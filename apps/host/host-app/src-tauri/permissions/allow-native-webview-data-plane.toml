@@ -6,8 +6,8 @@ description = """
 Grants the webview the right to invoke the app-defined
 `native_webview_data_plane_emit` command, the desktop sniffer content
 webview's gated web→host transport for its data-plane stream
-(`PageLoaded` / `ResponseStart` / `ResponseData` / `ResponseFinished` /
-`RequestError` / `Cancelled` / `Log`). The command allowlists the inner
+(`PageLoaded` / `PageRequested` / `ResponseStart` / `ResponseData` /
+`ResponseFinished` / `RequestError` / `Cancelled`). The command allowlists the inner
 `_tag` host-side before re-broadcasting on the `bridge` event channel.
 
 SECURITY: this is granted to `native-webview-content` (untrusted remote

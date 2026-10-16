@@ -80,7 +80,7 @@ describe('makeNativeBridgeEventBus — outbound (emit)', () => {
     globals.nativeWebview = { postMessage: android.postMessage }
 
     const bus = makeNativeBridgeEventBus()
-    void bus.emit('bridge', { _tag: 'Log' })
+    void bus.emit('bridge', { _tag: 'ResponseFinished', id: 'r1' })
 
     expect(ios.posts).toHaveLength(1)
     expect(android.posts).toHaveLength(0)
@@ -88,7 +88,9 @@ describe('makeNativeBridgeEventBus — outbound (emit)', () => {
 
   test('is a silent no-op when no native bridge is present', async () => {
     const bus = makeNativeBridgeEventBus()
-    await expect(bus.emit('bridge', { _tag: 'Log' })).resolves.toBeUndefined()
+    await expect(
+      bus.emit('bridge', { _tag: 'ResponseFinished', id: 'r1' })
+    ).resolves.toBeUndefined()
   })
 })
 

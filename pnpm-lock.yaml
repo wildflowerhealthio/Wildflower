@@ -4064,9 +4064,6 @@ importers:
       '@wildflowerhealthio/browser-sniffer-core':
         specifier: workspace:*
         version: link:../browser-sniffer-core
-      '@wildflowerhealthio/effect-messaging-core':
-        specifier: workspace:*
-        version: link:../../../global/effect-messaging/effect-messaging-core
       '@wildflowerhealthio/effect-messaging-tauri-js':
         specifier: workspace:*
         version: link:../../../global/effect-messaging/effect-messaging-tauri-js

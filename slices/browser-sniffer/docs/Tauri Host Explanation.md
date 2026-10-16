@@ -52,7 +52,7 @@ The TS side ships two self-contained IIFEs and the Rust crate `include_str!`s th
 - `native-bootstrap.js` — used on iOS/Android. Builds a `TauriEventApi`-shaped event bus over the plugin's native bridge (`window.webkit.messageHandlers.nativeWebview` / `window.nativeWebview`) via `makeNativeBridgeEventBus`. No `__TAURI__` access.
 - `tauri-bootstrap.js` — used on desktop. Listens on `globalThis.__TAURI__.event` for inbound tags but routes outbound emits through the `globalThis.__TAURI__.core.invoke('native_webview_data_plane_emit', …)` command (the content webview holds no bus `emit` grant — see "Why the content webview can't emit control tags"). The content webview is a Tauri webview, so both globals are present.
 
-Both variants call `installSniffer(event)`, which wires fetch / XHR / console shims and registers a single `event.listen(BRIDGE_EVENT, …)` that demuxes inbound `PageAction` / `CancelSnifferRequest` by the payload's `_tag` (and `PageAction` further by its inner `action.kind`). **No in-page `BrowserTopBar`** — the plugin draws native chrome on all three platforms, so the in-page bar is gone for good.
+Both variants call `installSniffer(event)`, which wires fetch / XHR shims and registers a single `event.listen(BRIDGE_EVENT, …)` that demuxes inbound `PageAction` / `CancelSnifferRequest` by the payload's `_tag` (and `PageAction` further by its inner `action.kind`). **No in-page `BrowserTopBar`** — the plugin draws native chrome on all three platforms, so the in-page bar is gone for good.
 
 If neither transport is present (e.g. the page is opened outside a native webview), both bootstraps no-op end-to-end: no shims attach, no listeners register.
 
@@ -121,7 +121,7 @@ Doc-comments at the top of each file should be quick references useful on hover.
 - [`browser-sniffer-tauri/src/lib.rs`](../../../apps/host/browser-sniffer-tauri/src/lib.rs) — entry point; wires the single bridge listener.
 - [`browser-sniffer-tauri/src/sniffer_window.rs`](../../../apps/host/browser-sniffer-tauri/src/sniffer_window.rs) — the only file that calls `native_webview().open_url(...)`.
 - [`browser-sniffer-tauri/src/native_webview_bridge.rs`](../../../apps/host/browser-sniffer-tauri/src/native_webview_bridge.rs) — channel handler: validates inbound native-webview `Message`s and re-emits them on `BRIDGE_EVENT`; logs `Hidden` / `Disposed` lifecycle events (non-terminal — `SniffingComplete` is SPA-driven).
-- [`browser-sniffer-tauri-js/src/install-sniffer.ts`](../browser-sniffer-tauri-js/src/install-sniffer.ts) — fetch / XHR / console shim emitting on `BRIDGE_EVENT` via `eventBus.emit`.
+- [`browser-sniffer-tauri-js/src/install-sniffer.ts`](../browser-sniffer-tauri-js/src/install-sniffer.ts) — fetch / XHR shim emitting on `BRIDGE_EVENT` via `eventBus.emit`.
 - [`browser-sniffer-tauri-js/src/native-bridge.ts`](../browser-sniffer-tauri-js/src/native-bridge.ts) — `makeNativeBridgeEventBus`, the `TauriEventApi`-shaped bus over the plugin's native bridge.
 - [`browser-sniffer-tauri-js/src/tauri-sniffer-entry.ts`](../browser-sniffer-tauri-js/src/tauri-sniffer-entry.ts) — desktop IIFE wrapper.
 - [`browser-sniffer-tauri-js/src/native-sniffer-entry.ts`](../browser-sniffer-tauri-js/src/native-sniffer-entry.ts) — mobile IIFE wrapper.

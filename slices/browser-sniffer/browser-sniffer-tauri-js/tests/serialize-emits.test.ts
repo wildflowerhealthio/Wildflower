@@ -1,8 +1,8 @@
 import type { TauriEventApi } from '@wildflowerhealthio/effect-messaging-tauri-js'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
-import { makeFilteringEventBus } from '../src/filter-tauri-internal.ts'
 import { BRIDGE_EVENT } from '../src/install-sniffer.ts'
+import { makeSerializedEventBus } from '../src/serialize-emits.ts'
 
 interface Emission {
   readonly event: string
@@ -45,49 +45,25 @@ const flushChain = async (): Promise<void> => {
   for (let i = 0; i < 8; i += 1) await Promise.resolve()
 }
 
-const TAURI_IPC_FALLBACK_LOG = {
-  _tag: 'Log',
-  level: 'warn',
-  payload: ['IPC custom protocol failed: WebKit blocked ipc://localhost'],
-}
-
-describe('makeFilteringEventBus', () => {
+describe('makeSerializedEventBus', () => {
   describe('pass-through', () => {
-    it('forwards non-BRIDGE_EVENT emits unchanged', async () => {
+    it('forwards emits unchanged on any event name', async () => {
       const { emissions, bus } = makeFakeBus()
-      const wrapped = makeFilteringEventBus(bus)
+      const wrapped = makeSerializedEventBus(bus)
 
+      const finished = { _tag: 'ResponseFinished', id: 'r1' }
+      await wrapped.emit(BRIDGE_EVENT, finished)
       await wrapped.emit('tauri://updater', { something: 'else' })
 
-      expect(emissions).toEqual([{ event: 'tauri://updater', payload: { something: 'else' } }])
-    })
-
-    it('forwards BRIDGE_EVENT emits with non-object payloads unchanged', async () => {
-      const { emissions, bus } = makeFakeBus()
-      const wrapped = makeFilteringEventBus(bus)
-
-      await wrapped.emit(BRIDGE_EVENT, null)
-      await wrapped.emit(BRIDGE_EVENT, 'string-payload')
-
       expect(emissions).toEqual([
-        { event: BRIDGE_EVENT, payload: null },
-        { event: BRIDGE_EVENT, payload: 'string-payload' },
+        { event: BRIDGE_EVENT, payload: finished },
+        { event: 'tauri://updater', payload: { something: 'else' } },
       ])
-    })
-
-    it('forwards BRIDGE_EVENT emits whose payload has no string _tag unchanged', async () => {
-      const { emissions, bus } = makeFakeBus()
-      const wrapped = makeFilteringEventBus(bus)
-
-      const noTag = { id: 'r1', url: 'https://example.com' }
-      await wrapped.emit(BRIDGE_EVENT, noTag)
-
-      expect(emissions).toEqual([{ event: BRIDGE_EVENT, payload: noTag }])
     })
 
     it('forwards listen() through to the underlying bus', async () => {
       const { listeners, bus } = makeFakeBus()
-      const wrapped = makeFilteringEventBus(bus)
+      const wrapped = makeSerializedEventBus(bus)
       const seen: unknown[] = []
 
       const unlisten = await wrapped.listen(BRIDGE_EVENT, ({ payload }) => {
@@ -105,65 +81,6 @@ describe('makeFilteringEventBus', () => {
 
       unlisten()
       expect(listeners.has(BRIDGE_EVENT)).toBe(false)
-    })
-
-    it('forwards SniffingComplete (not a filtered tag)', async () => {
-      const { emissions, bus } = makeFakeBus()
-      const wrapped = makeFilteringEventBus(bus)
-
-      await wrapped.emit(BRIDGE_EVENT, { _tag: 'SniffingComplete' })
-
-      expect(emissions).toEqual([{ event: BRIDGE_EVENT, payload: { _tag: 'SniffingComplete' } }])
-    })
-
-    it('forwards non-warn Logs', async () => {
-      const { emissions, bus } = makeFakeBus()
-      const wrapped = makeFilteringEventBus(bus)
-
-      const infoLog = { _tag: 'Log', level: 'info', payload: ['IPC custom protocol failed'] }
-      await wrapped.emit(BRIDGE_EVENT, infoLog)
-
-      expect(emissions).toEqual([{ event: BRIDGE_EVENT, payload: infoLog }])
-    })
-
-    it('forwards Logs whose first payload entry does not match a guarded prefix', async () => {
-      const { emissions, bus } = makeFakeBus()
-      const wrapped = makeFilteringEventBus(bus)
-
-      const ordinaryWarn = { _tag: 'Log', level: 'warn', payload: ['something else broke'] }
-      await wrapped.emit(BRIDGE_EVENT, ordinaryWarn)
-
-      expect(emissions).toEqual([{ event: BRIDGE_EVENT, payload: ordinaryWarn }])
-    })
-  })
-
-  describe('Tauri IPC fallback Log', () => {
-    it('drops the warn entirely', async () => {
-      const { emissions, bus } = makeFakeBus()
-      const wrapped = makeFilteringEventBus(bus)
-
-      await wrapped.emit(BRIDGE_EVENT, TAURI_IPC_FALLBACK_LOG)
-      await flushChain()
-
-      expect(emissions).toEqual([])
-    })
-
-    it('does not affect a following unrelated event', async () => {
-      const { emissions, bus } = makeFakeBus()
-      const wrapped = makeFilteringEventBus(bus)
-
-      await wrapped.emit(BRIDGE_EVENT, TAURI_IPC_FALLBACK_LOG)
-      const externalStart = {
-        _tag: 'ResponseStart',
-        id: 'r1',
-        url: 'https://api.example.com/things',
-        status: 200,
-        statusText: 'OK',
-        headers: [],
-      }
-      await wrapped.emit(BRIDGE_EVENT, externalStart)
-
-      expect(emissions).toEqual([{ event: BRIDGE_EVENT, payload: externalStart }])
     })
   })
 
@@ -185,10 +102,9 @@ describe('makeFilteringEventBus', () => {
           }),
         listen: async () => () => {},
       }
-      const wrapped = makeFilteringEventBus(bus)
+      const wrapped = makeSerializedEventBus(bus)
 
-      // Three external-URL emits — all pass the filter and ride the
-      // chain. Issued back-to-back synchronously, fire-and-forget.
+      // Three emits issued back-to-back synchronously, fire-and-forget.
       const a = { _tag: 'ResponseStart', id: 'a', url: 'https://x/a', status: 200 }
       const b = { _tag: 'ResponseData', id: 'a', data: 'aaaa' }
       const c = { _tag: 'ResponseFinished', id: 'a' }
@@ -232,10 +148,8 @@ describe('makeFilteringEventBus', () => {
 
   describe('dropped emit surfacing', () => {
     it('reports a rejected emit via console.error and keeps the chain alive', async () => {
-      // The wrapper captures the native console.error at construction
-      // time; spy before constructing so the captured reference is the
-      // spy. A rejected emit must be surfaced (not swallowed) and must
-      // not poison the chain for later messages.
+      // A rejected emit must be surfaced (not swallowed) and must not
+      // poison the chain for later messages.
       const spy = vi.spyOn(globalThis.console, 'error').mockImplementation(() => {})
       try {
         let attempts = 0
@@ -246,7 +160,7 @@ describe('makeFilteringEventBus', () => {
           },
           listen: async () => () => {},
         }
-        const wrapped = makeFilteringEventBus(bus)
+        const wrapped = makeSerializedEventBus(bus)
 
         await wrapped.emit(BRIDGE_EVENT, { _tag: 'ResponseData', id: 'r1', data: 'AAAA' })
         await wrapped.emit(BRIDGE_EVENT, { _tag: 'ResponseData', id: 'r1', data: 'BBBB' })

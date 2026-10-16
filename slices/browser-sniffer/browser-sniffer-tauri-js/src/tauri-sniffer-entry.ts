@@ -16,8 +16,8 @@
 import type { TauriEventApi } from '@wildflowerhealthio/effect-messaging-tauri-js'
 
 import { makeCommandEmitEventBus } from './command-event-bus.ts'
-import { makeFilteringEventBus } from './filter-tauri-internal.ts'
 import { installSniffer } from './install-sniffer.ts'
+import { makeSerializedEventBus } from './serialize-emits.ts'
 
 type InvokeFn = (command: string, args?: Record<string, unknown>) => Promise<unknown>
 
@@ -38,7 +38,7 @@ const core = tauri?.core
 
 if (event !== undefined && core !== undefined) {
   // Command-gated emit (data-plane out) + bus listen (control in), wrapped in
-  // the FIFO / IPC-fallback-warn filter (see `filter-tauri-internal.ts`).
+  // the FIFO emit chain (see `serialize-emits.ts`).
   const invoke: InvokeFn = (command, args) => core.invoke(command, args)
-  installSniffer(makeFilteringEventBus(makeCommandEmitEventBus(event, invoke)))
+  installSniffer(makeSerializedEventBus(makeCommandEmitEventBus(event, invoke)))
 }

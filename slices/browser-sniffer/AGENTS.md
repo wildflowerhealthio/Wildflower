@@ -1,6 +1,6 @@
 # AGENTS.md — slices/browser-sniffer
 
-Page-sniffing primitive: shims `fetch`/`XHR`/`console` inside arbitrary third-party pages and streams captured activity to the host. Read the [Architecture Explanation](./docs/Architecture%20Explanation.md) before changing anything here.
+Page-sniffing primitive: shims `fetch`/`XHR` inside arbitrary third-party pages and streams captured activity to the host. Read the [Architecture Explanation](./docs/Architecture%20Explanation.md) before changing anything here.
 
 ## Guardrails
 

@@ -45,14 +45,13 @@ describe('nativeSnifferBootstrapScript', () => {
     boot()
 
     expect(SNIFFER_STATE_SLOT in (globalThis as object)).toBe(true)
-    // installSniffer posts diagnostic `Log`s on install (e.g. "Shimming fetch"),
-    // proving the bridge transport carries sniffer output. Everything posted is a
-    // valid bridge envelope `{ event: 'bridge', payload }`.
-    expect(posted.length).toBeGreaterThan(0)
-    for (const raw of posted) {
-      const envelope: unknown = JSON.parse(raw)
-      expect(envelope).toMatchObject({ event: 'bridge' })
-    }
+    // jsdom's document is already parsed, so install posts `PageRequested` for
+    // it straight away, proving the bridge transport carries sniffer output.
+    const envelopes: unknown[] = posted.map((raw) => JSON.parse(raw))
+    expect(envelopes).toContainEqual({
+      event: 'bridge',
+      payload: { _tag: 'PageRequested', url: globalThis.location.href },
+    })
   })
 
   it('no-ops when no native bridge is present', () => {

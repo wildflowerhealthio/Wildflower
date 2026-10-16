@@ -9,7 +9,6 @@ import {
   ResponseFinishedMessage,
   ResponseStartMessage,
 } from '@wildflowerhealthio/browser-sniffer-core'
-import { Logging } from '@wildflowerhealthio/effect-messaging-core'
 import type { TauriEventApi } from '@wildflowerhealthio/effect-messaging-tauri-js'
 import { numRunsFor, utilityExpectations } from '@wildflowerhealthio/kitchen-sink/test'
 import { Schema } from 'effect'
@@ -132,7 +131,6 @@ const cancelRequest = (id: string): void => {
 }
 
 // Domain-event schemas.
-const decodeLog = Schema.decodeUnknownSync(Schema.typeSchema(Logging.LogMessage))
 const decodeResponseStart = Schema.decodeUnknownSync(Schema.typeSchema(ResponseStartMessage))
 const decodeResponseData = Schema.decodeUnknownSync(Schema.typeSchema(ResponseDataMessage))
 const decodeResponseFinished = Schema.decodeUnknownSync(Schema.typeSchema(ResponseFinishedMessage))
@@ -140,7 +138,6 @@ const decodeRequestError = Schema.decodeUnknownSync(Schema.typeSchema(RequestErr
 const decodePageLoaded = Schema.decodeUnknownSync(Schema.typeSchema(PageLoadedMessage))
 const decodePageRequested = Schema.decodeUnknownSync(Schema.typeSchema(PageRequestedMessage))
 const decodeByTag: Record<string, (msg: unknown) => unknown> = {
-  Log: decodeLog,
   ResponseStart: decodeResponseStart,
   ResponseData: decodeResponseData,
   ResponseFinished: decodeResponseFinished,
@@ -184,6 +181,32 @@ const reassembleStream = (msgs: Message[], id: string): string => {
   return new TextDecoder().decode(combined)
 }
 
+describe('console', () => {
+  beforeEach(resetShims)
+  afterEach(resetShims)
+
+  test('leaves the page console alone: console calls post nothing', () => {
+    const getMessages = setupEnv()
+    const spies = (['log', 'warn', 'error'] as const).map((level) =>
+      vi.spyOn(globalThis.console, level).mockImplementation(() => {})
+    )
+    try {
+      const consoleLogBeforeInstall = globalThis.console.log
+      installSnifferForTest()
+      const postedByInstall = getMessages().length
+
+      globalThis.console.log('x')
+      globalThis.console.warn('x')
+      globalThis.console.error('x')
+
+      expect(getMessages()).toHaveLength(postedByInstall)
+      expect(globalThis.console.log).toBe(consoleLogBeforeInstall)
+    } finally {
+      for (const spy of spies) spy.mockRestore()
+    }
+  })
+})
+
 describe('fetch shim', () => {
   let getMessages: () => Message[]
 
@@ -203,15 +226,6 @@ describe('fetch shim', () => {
     // `window.fetch` was swapped for the shim.
     expect(getState()).toEqual(expect.objectContaining({ nativeFetch: expect.any(Function) }))
     expect(window.fetch).not.toBe(original)
-  })
-
-  test('should log shim installation', () => {
-    installSnifferForTest()
-    expect(getMessages()).toContainEqual({
-      _tag: 'Log',
-      level: 'info',
-      payload: ['Shimming fetch'],
-    })
   })
 
   test('should forward arbitrary status + statusText to ResponseStart', async () => {
@@ -293,7 +307,7 @@ describe('fetch shim', () => {
 
     // No ResponseData emitted between start and finish for a null body.
     const lifecycle = getMessages()
-      .filter((m) => m._tag !== 'Log' && m._tag !== 'PageRequested')
+      .filter((m) => m._tag !== 'PageRequested')
       .map((m) => m._tag)
     expect(lifecycle).toEqual(['ResponseStart', 'ResponseFinished'])
   })
@@ -450,7 +464,7 @@ describe('fetch shim', () => {
         const res = await window.fetch(url)
         await res.text()
 
-        const msgs = getMs().filter((m) => m._tag !== 'Log')
+        const msgs = getMs()
         expect(withTag(msgs, 'ResponseStart')).toHaveLength(1)
         expect(withTag(msgs, 'ResponseFinished')).toHaveLength(1)
       }),
@@ -468,9 +482,9 @@ describe('fetch shim', () => {
         const res = await window.fetch('https://test.example')
         await res.text()
 
-        // `Log` and the install-time `PageRequested` are id-less notifications;
+        // The install-time `PageRequested` is an id-less notification;
         // only the request stream carries the correlation id under test.
-        const msgs = getMs().filter((m) => m._tag !== 'Log' && m._tag !== 'PageRequested')
+        const msgs = getMs().filter((m) => m._tag !== 'PageRequested')
         const ids = new Set(msgs.map((m) => m['id']))
         expect(ids.size).toBe(1)
       }),
@@ -685,15 +699,6 @@ describe('XHR shim', () => {
     )
   })
 
-  test('should log shim installation', () => {
-    installSnifferForTest()
-    expect(getMessages()).toContainEqual({
-      _tag: 'Log',
-      level: 'info',
-      payload: ['Shimming XMLHttpRequest'],
-    })
-  })
-
   test('should defer ResponseStart until response headers are available', () => {
     installSnifferForTest()
     const xhr = new XMLHttpRequest()
@@ -845,7 +850,7 @@ describe('XHR shim', () => {
     xhr.dispatchEvent(new Event('error'))
 
     const lifecycle = getMessages()
-      .filter((m) => m._tag !== 'Log' && m._tag !== 'PageRequested')
+      .filter((m) => m._tag !== 'PageRequested')
       .map((m) => m._tag)
     expect(lifecycle).toEqual(['ResponseStart', 'RequestError'])
     expect(withTag(getMessages(), 'ResponseStart')).toEqual([
@@ -891,7 +896,7 @@ describe('XHR shim', () => {
     // before-headers error), the partial chunk survives, one terminal, no
     // ResponseFinished (the body was never complete).
     const lifecycle = getMessages()
-      .filter((m) => m._tag !== 'Log' && m._tag !== 'PageRequested')
+      .filter((m) => m._tag !== 'PageRequested')
       .map((m) => m._tag)
     expect(lifecycle).toEqual(['ResponseStart', 'ResponseData', 'RequestError'])
     expect(withTag(getMessages(), 'ResponseStart')).toEqual([

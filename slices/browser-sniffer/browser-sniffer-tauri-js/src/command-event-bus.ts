@@ -25,8 +25,8 @@ const DATA_PLANE_EMIT_COMMAND = 'native_webview_data_plane_emit'
  * `SniffingComplete` / `Open`). The command is the
  * only sanctioned page→host emit path and allowlists the inner `_tag`
  * host-side; inbound `PageAction` / `CancelSnifferRequest` can't be spoofed from
- * a page script. Wrapped by `makeFilteringEventBus` (FIFO + `Log` IPC-fallback
- * drop) so streaming `ResponseData` chunks stay ordered.
+ * a page script. Wrapped by `makeSerializedEventBus` (FIFO emit chain) so
+ * streaming `ResponseData` chunks stay ordered.
  */
 const makeCommandEmitEventBus = (event: TauriEventApi, invoke: InvokeFn): TauriEventApi => ({
   emit: (eventName, payload) => {

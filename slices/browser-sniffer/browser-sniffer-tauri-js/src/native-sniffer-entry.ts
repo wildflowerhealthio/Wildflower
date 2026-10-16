@@ -13,9 +13,8 @@ import { installSniffer } from './install-sniffer.ts'
 import { hasNativeBridge, makeNativeBridgeEventBus } from './native-bridge.ts'
 
 if (hasNativeBridge()) {
-  // No filtering wrapper (unlike the desktop entry): the IPC-fallback
-  // `console.warn` it strips is a `__TAURI__` artifact absent here, and the
-  // bridge's synchronous `postMessage` is already FIFO without the desktop
-  // entry's serializing promise chain.
+  // No serializing wrapper (unlike the desktop entry): the bridge's
+  // synchronous `postMessage` is already FIFO without the desktop entry's
+  // promise chain.
   installSniffer(makeNativeBridgeEventBus())
 }

@@ -133,7 +133,7 @@ test('property: every encoded value decodes back to itself', () => {
 })
 ```
 
-Use `fc.asyncProperty` + `await fc.assert(...)` for effectful bodies. Canonical shape: [`effect-messaging-core/src/logging.test.ts`](../../global/effect-messaging/effect-messaging-core/src/logging.test.ts).
+Use `fc.asyncProperty` + `await fc.assert(...)` for effectful bodies. Canonical shape: [`browser-sniffer-core/src/bridge.test.ts`](../../slices/browser-sniffer/browser-sniffer-core/src/bridge.test.ts).
 
 ## Never hardcode `numRuns` — always `numRunsFor({ base })`
 

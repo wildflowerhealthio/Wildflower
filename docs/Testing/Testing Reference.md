@@ -97,7 +97,7 @@ const captureLogs = (sink: { level: string; message: unknown }[]): Layer.Layer<n
   )
 ```
 
-Provide `captureLogs(sink)` to the program under test and assert on `sink`. Lift the minimum level (`Logger.withMinimumLogLevel(EffectLogLevel.All)`) when you need `DEBUG` to surface. Generic capture helpers live in `kitchen-sink/test`; see [`effect-messaging-core/src/logging.test.ts`](../../global/effect-messaging/effect-messaging-core/src/logging.test.ts).
+Provide `captureLogs(sink)` to the program under test and assert on `sink`. Lift the minimum level (`Logger.withMinimumLogLevel(EffectLogLevel.All)`) when you need `DEBUG` to surface. Generic capture helpers live in `kitchen-sink/test`; see [`browser-sniffer-core/src/bridge.test.ts`](../../slices/browser-sniffer/browser-sniffer-core/src/bridge.test.ts).
 
 ## Slice-Level Bridge Tests: Test the Slice's Own Contract
 

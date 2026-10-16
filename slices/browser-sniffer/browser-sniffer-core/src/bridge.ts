@@ -49,13 +49,6 @@ type BrowserSnifferBridge = Bridge.Bridge<
  * schemas as their own `Host→Web` messages to forward sniffer traffic
  * across nested bridges — see
  * `apps/host/recorder/recorder-core-js/src/bridge.ts` for the pattern.
- *
- * @remarks
- * Cross-process `console.<level>(...)` mirroring is handled by the
- * shared `LogBridge` in `effect-messaging-core`; the injected sniffer
- * posts `{ _tag: 'Log', level, payload }` wire messages whose shape
- * already matches `LogBridge`'s schema, so the host shell composes
- * `LogBridge` into the same transport tuple to receive them.
  */
 const BrowserSnifferBridge: BrowserSnifferBridge = Bridge.make({
   name: 'BrowserSniffer',
