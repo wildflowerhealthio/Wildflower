@@ -5,11 +5,9 @@
 
 use std::sync::Arc;
 
-use wildflowerhealthio_servers::{ServerDetail, ServerRecord, ServerUnit};
+use wildflowerhealthio_servers::{ConsentViews, ServerDetail, ServerRecord, ServerUnit};
 use wildflowerhealthio_tauri_unit_runner::{RunPolicy, TauriUnitRunner, UnitId, UnitStatuses};
 use wildflowerhealthio_wildflower_server::WildflowerServerConfig;
-
-use crate::consent_views::ConsentViews;
 
 /// Builds the config a server's run reads from its record: what the host
 /// derives at build time, from its platform paths and from the record. Called

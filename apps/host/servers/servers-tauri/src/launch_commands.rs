@@ -59,12 +59,12 @@ use tokio::sync::{watch, Notify};
 use url::Url;
 use wildflowerhealthio_authorization_server::domain::authorization_server_error::AuthorizationServerError;
 use wildflowerhealthio_servers::{
-    ConsentKey, LaunchError, ListedServer, PendingConsent, RegistryError, ServerConsentWatcher,
-    ServerDetail, ServerLaunchMinter, ServerRecord, ServerRegistry, ServerSignInCodeMinter,
+    ConsentKey, ConsentViewClaim, ConsentViews, IfShowing, LaunchError, ListedServer,
+    PendingConsent, RegistryError, ServerConsentWatcher, ServerDetail, ServerLaunchMinter,
+    ServerRecord, ServerRegistry, ServerSignInCodeMinter,
 };
 use wildflowerhealthio_tauri_unit_runner::{UnitId, UnitStatus, UnitStatuses};
 
-use crate::consent_views::{ConsentViewClaim, ConsentViews};
 use crate::server_status::certificate_state;
 use crate::{ServerUnits, ServersState};
 
@@ -146,7 +146,7 @@ pub async fn server_open_pending_consent(
         NativePageLaunchBrowser { app },
         servers.server_units.clone(),
         ConsentViewOpening {
-            even_if_showing: true,
+            if_showing: IfShowing::TakeOver,
             close_once_settled: CLOSE_A_CONSENT_S_VIEW_ONCE_SETTLED,
         },
     )
@@ -185,7 +185,7 @@ pub async fn server_open_notified_consent(
         NativePageLaunchBrowser { app },
         servers.server_units.clone(),
         ConsentViewOpening {
-            even_if_showing: false,
+            if_showing: IfShowing::Skip,
             close_once_settled: CLOSE_A_CONSENT_S_VIEW_ONCE_SETTLED,
         },
     )
@@ -229,7 +229,7 @@ pub(crate) async fn open_consent_once_openable(
             launch_browser.clone(),
             launch_presence.clone(),
             ConsentViewOpening {
-                even_if_showing: false,
+                if_showing: IfShowing::Skip,
                 close_once_settled: CLOSE_A_CONSENT_S_VIEW_ONCE_SETTLED,
             },
         )
@@ -243,9 +243,8 @@ pub(crate) async fn open_consent_once_openable(
 /// How a consent opens in its view of the in-app browser.
 #[derive(Debug, Clone, Copy)]
 struct ConsentViewOpening {
-    /// Open another view while one of the same request shows, instead of
-    /// opening nothing.
-    even_if_showing: bool,
+    /// What opens while a view of the same request shows.
+    if_showing: IfShowing,
     /// Close the view once the run's [`ServerConsentWatcher`] says the request
     /// is decided or expired.
     close_once_settled: bool,
@@ -466,7 +465,7 @@ async fn open_pending_consent(
         let Some(claim) = launch_presence.consent_views().claim(
             &domain,
             &pending_consent.key,
-            opening.even_if_showing,
+            opening.if_showing,
         ) else {
             return Ok(false);
         };
@@ -475,20 +474,14 @@ async fn open_pending_consent(
             &sign_in_code_minter.mint(),
             &pending_consent.key,
         );
-        let launch_view = match open_launch_view(
+        // A failed open drops the claim with the rest.
+        let launch_view = open_launch_view(
             &launch_browser,
             launch_presence,
             sign_in_url,
             OpenMode::Stack,
         )
-        .await
-        {
-            Ok(launch_view) => launch_view,
-            Err(error) => {
-                claim.release();
-                return Err(error);
-            }
-        };
+        .await?;
         let settled = async move { consent_watcher.until_settled(pending_consent.key).await };
         tokio::spawn(follow_consent_view(
             launch_browser,
@@ -539,7 +532,8 @@ async fn follow_consent_view(
         },
         () = launch_view.closed.notified() => {}
     }
-    claim.release();
+    // The view no longer shows the request.
+    drop(claim);
 }
 
 /// How many times the base tries to close a settled consent's view: iOS
@@ -901,7 +895,10 @@ mod tests {
     /// The launch views open, and those kept alive, as a [`LaunchPresence`]
     /// hears them, and the consents showing in them.
     #[derive(Clone, Default)]
-    struct OpenLaunchViews(Arc<Mutex<LaunchViews>>, ConsentViews);
+    struct OpenLaunchViews {
+        launch_views: Arc<Mutex<LaunchViews>>,
+        consent_views: ConsentViews,
+    }
 
     #[derive(Default)]
     struct LaunchViews {
@@ -911,36 +908,40 @@ mod tests {
 
     impl OpenLaunchViews {
         fn views(&self) -> BTreeSet<String> {
-            self.0.lock().unwrap().open.clone()
+            self.launch_views.lock().unwrap().open.clone()
         }
 
         fn kept_alive_views(&self) -> BTreeSet<String> {
-            self.0.lock().unwrap().kept_alive.clone()
+            self.launch_views.lock().unwrap().kept_alive.clone()
         }
     }
 
     impl LaunchPresence for OpenLaunchViews {
         fn view_opened(&self, view: &str) {
             assert!(
-                self.0.lock().unwrap().open.insert(view.to_owned()),
+                self.launch_views
+                    .lock()
+                    .unwrap()
+                    .open
+                    .insert(view.to_owned()),
                 "{view}"
             );
         }
 
         fn view_kept_alive(&self, view: &str) {
-            let mut views = self.0.lock().unwrap();
+            let mut views = self.launch_views.lock().unwrap();
             assert!(views.open.contains(view), "{view}");
             assert!(views.kept_alive.insert(view.to_owned()), "{view}");
         }
 
         fn view_closed(&self, view: &str) {
-            let mut views = self.0.lock().unwrap();
+            let mut views = self.launch_views.lock().unwrap();
             assert!(views.open.remove(view), "{view}");
             views.kept_alive.remove(view);
         }
 
         fn consent_views(&self) -> &ConsentViews {
-            &self.1
+            &self.consent_views
         }
     }
 
@@ -1407,7 +1408,7 @@ mod tests {
             browser,
             presence.clone(),
             ConsentViewOpening {
-                even_if_showing: false,
+                if_showing: IfShowing::Skip,
                 close_once_settled,
             },
         )
@@ -1587,7 +1588,9 @@ mod tests {
 
     /// The claim of the consent `req-1` on the server [`DOMAIN`] in `views`.
     fn claim_in(views: &ConsentViews) -> ConsentViewClaim {
-        views.claim(DOMAIN, &consent_key(), false).unwrap()
+        views
+            .claim(DOMAIN, &consent_key(), IfShowing::Skip)
+            .unwrap()
     }
 
     fn consent_key() -> ConsentKey {
@@ -1843,7 +1846,7 @@ mod tests {
             browser.clone(),
             presence.clone(),
             ConsentViewOpening {
-                even_if_showing: true,
+                if_showing: IfShowing::TakeOver,
                 close_once_settled: false,
             },
         )

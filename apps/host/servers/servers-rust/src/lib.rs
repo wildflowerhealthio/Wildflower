@@ -91,6 +91,7 @@ pub use domain::notifications::consent_notifications::{
     consent_notification_id_for_plugin, server_of_consent_notification, ConsentNotificationChanges,
     ConsentNotificationCoalescer, ConsentOpening, ConsentRequest,
 };
+pub use domain::notifications::consent_views::{ConsentViewClaim, ConsentViews, IfShowing};
 pub use domain::notifications::local_notification::LocalNotification;
 pub use domain::notifications::stop_notifications::{
     ServerStop, StopCause, StopNotificationCoalescer,

@@ -27,8 +27,8 @@ changing how servers run or what the host notifies about them.
   certificate state its run reported or its cache holds; `PendingConsent`,
   the newest consent waiting on a server, named by its `ConsentKey`; and the
   notification decisions: the stop notification for each new stop of a server's run, and the consent
-  notification for each new request waiting on a server, with the count of
-  servers with a request pending that the app icon's badge shows.
+  notification for each new request waiting on a server; and `ConsentViews`, the consents showing in
+  a view of the in-app browser, so each opens in one.
   - Layout: `domain/` the record (`ServerRecord`, `RelayKind`, `TunnelToken`),
     `RegistryError`, enrolment (`add_server`, `set_server_credentials`,
     `EnteredRelay`, `EnteredCredentials`, `RelayIdentity`, `EnrolmentError`),
@@ -43,8 +43,9 @@ changing how servers run or what the host notifies about them.
     `consent_sign_in_url`, `LaunchError`), and `notifications/`
     (`LocalNotification` with its `fnv1a` id hash,
     `StopNotificationCoalescer` with
-    `ServerStop` and `StopCause`, and `ConsentNotificationCoalescer` with
-    `ConsentRequest` and `server_of_consent_notification`); `ports/` the
+    `ServerStop` and `StopCause`, `ConsentNotificationCoalescer` with
+    `ConsentRequest` and `server_of_consent_notification`, and `ConsentViews`
+    with `ConsentViewClaim` and `IfShowing`); `ports/` the
     `ServerRegistry` port (read all, insert, modify, remove) and the
     `RelayClient` port (`GET /rathole`, signed `GET /me`, `POST /claim`);
     `adapters/`

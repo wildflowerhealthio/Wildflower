@@ -102,7 +102,6 @@
 
 mod commands;
 mod consent_requests;
-mod consent_views;
 mod launch_commands;
 mod notifications;
 mod pending_consent_badge;
