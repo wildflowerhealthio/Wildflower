@@ -555,10 +555,12 @@ running the server, and the host app runs on that device.
    card's Authorization, the server's Authorization app with `iss`; and for
    a pending request, its consent card or the device page, with `then=back`.
 3. The server redeems the code (`RedeemedSameDeviceSignInCode`, an authority
-   proof) and mints a token through the ordinary minter, issued to the
+   proof), stores the `owner` [browser session](#browser-session) it starts,
+   and mints a token through the ordinary minter, issued to the
    `wildflower-owner-browser` client (its `sub`) and holding the Owner's
    grant (`OWNER_SCOPES`, the grant the Owner decides consents with), as a
-   JWT with its own `jti` that expires in 8 hours.
+   JWT with its own `jti` and the session's [`sid`](#sid-session-id) that
+   expires in 8 hours, with the session.
 4. It answers `303` to `next`, setting
    `__Host-owner_browser_session=<the token>; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800`.
 
@@ -574,15 +576,16 @@ Enabling the client again lets sign-in work. Disabling it signs no browser
 out: a browser already signed in keeps its session until the token expires or
 is revoked.
 
-There is no session table: the cookie's value is the token, so a restart
-doesn't sign the browser out. One session is revoked by its token's `jti`;
-every Owner browser is signed out by revoking the `wildflower-owner-browser`
-subject. A request whose cookie holds an expired or revoked token is served as
+The cookie's value is the token, so a restart doesn't sign the browser out.
+One browser is signed out by revoking its browser session or its token's
+`jti`; every Owner browser is signed out by revoking the
+`wildflower-owner-browser` subject. A request whose cookie holds an expired or revoked token is served as
 if the cookie weren't sent, and the response clears it. The cookie needs
 `https`, as the server's origin, `https://<domain>`, is.
 `/oauth/authorize` reads the cookie too: a parked request from an Owner
 browser goes to the [consent card](#consent-card) rather than the
-[wait page](#wait-page).
+[wait page](#wait-page), and the request, the code it earns, and the tokens
+and refresh family the code earns all record the browser's session.
 
 A browser can hold the FHIR web UI's `hfs_session` beside this cookie. A
 request carrying both gets `hfs_session`'s bearer, so the UI runs as its own
@@ -593,6 +596,35 @@ read as no header. The consent card and the wait page's check for it send the
 header. It needs no guard of its own: it isn't CORS-safelisted, so another
 origin's page sends it only after a preflight, and since CORS never allows
 credentials, that request carries neither cookie.
+
+### Browser session
+
+A browser the server has signed in, one row in `browser_sessions`, keyed by
+its `sid`. Its `kind` says how the browser came to hold it: `owner` for an
+[Owner browser](#owner-browser), signed in with a same-device sign-in code.
+An Owner session has no `name`, holds `OWNER_SCOPES`, and expires 8 hours
+(`OWNER_BROWSER_SESSION_TTL`) after the sign-in; `last_seen_at` is the
+sign-in.
+
+Everything minted under a session names it as its [`sid`](#sid-session-id):
+the browser's own token, and an authorization request made in that browser,
+the code it earns, and that code's access tokens and refresh family.
+**Revoking** a session sets its `revoked_at` and ends all of them: the token
+verifier refuses a token whose `sid` names a revoked session, on the
+`/authorization` gates and the FHIR server alike, and refresh redemption
+refuses a family whose `sid` does. A `sid` that names no row is treated as
+revoked. Whether a session's _expiry_ ends a refresh family is the client's
+refresh policy; today it doesn't. Tokens, requests and families with no
+`sid` (the host app's in-process tokens, the device flow, a browser with no
+session) have no session to check.
+
+Revoking is done through the store; no route revokes a session.
+The retention sweep deletes a session 24 hours after it expired or was
+revoked, unless a refresh family alive by then still names it.
+
+- **Table:** `browser_sessions`
+- **Identifier:** `sid` (a random UUID).
+- **Kind:** `'owner'`.
 
 ### Expandable consent
 
@@ -737,6 +769,13 @@ to resolve to a registered, enabled [`Client`](#client) row. The
 "valid token issued by this authorization server" from "valid signature but
 not-our-issuer".
 
+### `sid` (session id)
+
+JWT claim naming the [browser session](#browser-session) the token was minted
+under (the OpenID Connect spelling). Absent when there was none. Authorization
+codes and refresh families record it too, so a token minted from either names
+the same session. A token whose `sid` names a revoked session is refused.
+
 ### `exp`, `iat`
 
 JWT claim timestamps (Unix seconds). Both set at token minting; `exp`
@@ -800,6 +839,10 @@ semantics. Issued at `/oauth/token` only when the granted scopes include
   pulls the family's `expires_at` back to the revocation instant and
   stamps its live token consumed. Rows are never deleted, so the lineage
   stays auditable.
+- **Browser session:** a family minted under a
+  [browser session](#browser-session) records its `sid`, and redemption
+  refuses it once that session is revoked. A family with no `sid` (the device
+  flow) has none to check.
 
 ### Access-token revocation (`jti` denylist + subject epoch)
 
@@ -820,12 +863,17 @@ levers:
   (today the `client_id`), so revocation is per-client; per-device needs a
   device handle in the token (future work).
 
-A token is **revoked** iff its `jti` is denylisted **or** its `iat` predates its
-subject's epoch. The auth gate (`verify_auth_token_claims`) runs the full check
-on every Owner-gated and every FHIR request; HFS additionally checks the
-per-`jti` denylist in-process (defense-in-depth). Expired denylist rows are swept
-at startup and daily. See `docs/Origins/Explanation.md` for how this composes
-with the one-origin model.
+A third lever lives with the authorization server: a token whose
+[`sid`](#sid-session-id) names a revoked [browser session](#browser-session).
+
+A token is **revoked** iff its `jti` is denylisted, **or** its `iat` predates its
+subject's epoch, **or** its `sid` names a revoked session. The auth gate
+(`verify_auth_token_claims`) runs the full check on every Owner-gated and every
+FHIR request; HFS additionally checks the per-`jti` denylist in-process
+(defense-in-depth). Expired denylist rows are swept at startup and daily, once
+they were revoked at least 24 hours ago, the longest a browser session's token
+lives. See `docs/Origins/Explanation.md` for how this composes with the
+one-origin model.
 
 ### Bearer token / `token_type=Bearer`
 

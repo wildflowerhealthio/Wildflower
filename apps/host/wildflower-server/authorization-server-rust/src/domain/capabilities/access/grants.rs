@@ -192,6 +192,7 @@ mod tests {
                 expires_at: Utc::now() + chrono::Duration::days(90),
                 authorization_code_hash: None,
                 grant_id: Some("g1".to_owned()),
+                sid: None,
             })
             .unwrap();
         store

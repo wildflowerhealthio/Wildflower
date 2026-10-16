@@ -62,6 +62,11 @@ pub struct AccessTokenClaims {
     /// Optional SMART-on-FHIR patient context.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub patient: Option<String>,
+    /// The browser session the token was minted under (the OpenID `sid`
+    /// spelling), absent when there was none. Revoking that session revokes
+    /// the token.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sid: Option<String>,
 }
 
 /// Inputs required to mint a new JWT access token.
@@ -78,6 +83,8 @@ pub struct NewJwtArgs<'a> {
     pub audience: Option<&'a str>,
     /// Optional SMART-on-FHIR patient context.
     pub patient: Option<&'a str>,
+    /// The browser session the token is minted under, if any.
+    pub sid: Option<&'a str>,
 }
 
 /// Failures while minting an access token.
@@ -129,6 +136,7 @@ pub fn mint_access_token(
         issued_at: now,
         scope: args.scopes.join(" "),
         patient: args.patient.map(str::to_string),
+        sid: args.sid.map(str::to_string),
     };
     let mut header = Header::new(Algorithm::RS256);
     header.kid = Some(signing_key.kid.clone());
@@ -168,6 +176,9 @@ pub struct VerifiedClaims {
     /// SMART-on-FHIR patient context, if present.
     #[serde(default)]
     pub patient: Option<String>,
+    /// The browser session the token was minted under (`sid`), if any.
+    #[serde(default)]
+    pub sid: Option<String>,
 }
 
 /// Read the caller's authority from the verified `scope` claim so the shared
@@ -212,8 +223,8 @@ pub enum VerifyError {
     #[error("signing key material could not be loaded")]
     SigningKeyUnreadable(#[source] KeyMaterialError),
     /// The token verified cryptographically but has since been revoked — its
-    /// `jti` is on the denylist, or the subject's revocation epoch post-dates
-    /// the token's `iat`. Surface as 401. Distinct from [`Self::TokenRejected`]
+    /// `jti` is on the denylist, the subject's revocation epoch post-dates
+    /// the token's `iat`, or the browser session its `sid` names is revoked. Surface as 401. Distinct from [`Self::TokenRejected`]
     /// so the caller and the logs can tell a revoked token from a bad one.
     #[error("token revoked")]
     Revoked,
@@ -223,6 +234,13 @@ pub enum VerifyError {
     /// token — matching how [`Self::KeyStoreUnavailable`] is treated.
     #[error("revocation store unavailable: {0}")]
     RevocationStoreUnavailable(String),
+    /// The browser session a token's `sid` names could not be read while
+    /// checking whether it was revoked. Fails closed like
+    /// [`Self::RevocationStoreUnavailable`].
+    #[error("browser session store unavailable")]
+    BrowserSessionStoreUnavailable(
+        #[source] crate::domain::authorization_server_error::AuthorizationServerError,
+    ),
 }
 
 /// Verify a JWT against `possible_signing_keys`, returning the decoded claims

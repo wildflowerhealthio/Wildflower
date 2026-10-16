@@ -47,6 +47,11 @@ pub struct RefreshTokenFamily {
     /// revoked between approval and the token poll). No FK: families outlive
     /// grants by design (expired in place, never deleted).
     pub grant_id: Option<String>,
+    /// The browser session the family was minted under, or `None` when there
+    /// was none (the device-code flow, a browser without a session). Refresh
+    /// is refused once that session is revoked. No FK: the retention sweep
+    /// prunes an ended session only once no live family names it.
+    pub sid: Option<String>,
 }
 
 /// One rotation of a refresh token. Presenting the plaintext at `/token`
@@ -141,6 +146,7 @@ mod tests {
                 expires_at: now + Duration::days(90),
                 authorization_code_hash: None,
                 grant_id: None,
+                sid: None,
             })
             .unwrap();
         store

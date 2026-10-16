@@ -159,6 +159,7 @@ pub fn mint_client_token(db: &TestDb, client_id: &str, scopes: &[&str]) -> Strin
             issuer: SERVER_ORIGIN,
             audience: Some(SERVER_ORIGIN),
             patient: None,
+            sid: None,
         },
     )
     .expect("mint token")
@@ -259,6 +260,7 @@ pub fn mint_token_naming(db: &TestDb, scopes: &[&str], issuer: &str, audience: &
             issuer,
             audience: Some(audience),
             patient: None,
+            sid: None,
         },
     )
     .expect("mint token")
@@ -339,6 +341,7 @@ pub fn plant_authorization_code(
             launch: None,
             launch_bound_patient: None,
             requested_by_owner_browser: false,
+            sid: None,
         })
         .expect("insert request");
     store
@@ -352,6 +355,7 @@ pub fn plant_authorization_code(
             patient: None,
             issued_at: now,
             expires_at,
+            sid: None,
         })
         .expect("issue code");
 }
@@ -391,6 +395,7 @@ pub fn plant_device_request(
             launch: None,
             launch_bound_patient: None,
             requested_by_owner_browser: false,
+            sid: None,
         })
         .expect("insert device request");
 }
@@ -577,6 +582,7 @@ pub fn plant_refresh_token(
             expires_at: family_expires_at,
             authorization_code_hash: None,
             grant_id: None,
+            sid: None,
         })
         .expect("insert refresh token family row");
     store

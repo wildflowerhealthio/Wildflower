@@ -355,6 +355,7 @@ mod tests {
                     issuer: SERVER_ORIGIN,
                     audience: Some(SERVER_ORIGIN),
                     patient: None,
+                    sid: None,
                 },
             )
             .expect("mint")

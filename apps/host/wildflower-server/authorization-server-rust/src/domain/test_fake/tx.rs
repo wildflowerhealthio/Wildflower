@@ -8,6 +8,7 @@ use super::FakeGrantTx;
 use crate::domain::authorization_code::IssuedAuthorizationCode;
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::browser_session::BrowserSession;
 use crate::domain::client::Client;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
 use crate::domain::launch_context::LaunchContext;
@@ -339,6 +340,64 @@ impl GrantTx for FakeGrantTx<'_> {
             .borrow_mut()
             .retain(|_, f| f.expires_at >= cutoff);
         Ok(doomed.len())
+    }
+
+    fn insert_browser_session(
+        &mut self,
+        session: &BrowserSession,
+    ) -> Result<(), AuthorizationServerError> {
+        self.store
+            .browser_sessions
+            .borrow_mut()
+            .insert(session.sid.clone(), session.clone());
+        Ok(())
+    }
+
+    fn browser_session_by_sid(
+        &mut self,
+        sid: &str,
+    ) -> Result<Option<BrowserSession>, AuthorizationServerError> {
+        Ok(self.store.browser_sessions.borrow().get(sid).cloned())
+    }
+
+    fn revoke_browser_session(
+        &mut self,
+        sid: &str,
+        now: DateTime<Utc>,
+    ) -> Result<bool, AuthorizationServerError> {
+        Ok(
+            match self.store.browser_sessions.borrow_mut().get_mut(sid) {
+                Some(session) if session.revoked_at.is_none() => {
+                    session.revoked_at = Some(now);
+                    true
+                }
+                _ => false,
+            },
+        )
+    }
+
+    fn delete_browser_sessions_ended_before(
+        &mut self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<usize, AuthorizationServerError> {
+        let named_by_a_family_alive_at_cutoff: Vec<String> = self
+            .store
+            .families
+            .borrow()
+            .values()
+            .filter(|family| family.expires_at >= cutoff)
+            .filter_map(|family| family.sid.clone())
+            .collect();
+        let mut sessions = self.store.browser_sessions.borrow_mut();
+        let before = sessions.len();
+        sessions.retain(|sid, session| {
+            let ended_before_cutoff = session.expires_at < cutoff
+                || session
+                    .revoked_at
+                    .is_some_and(|revoked_at| revoked_at < cutoff);
+            !ended_before_cutoff || named_by_a_family_alive_at_cutoff.contains(sid)
+        });
+        Ok(before - sessions.len())
     }
 
     fn insert_refresh_token_family_row(

@@ -52,7 +52,8 @@ impl<'a, S: GrantStore> RequestApprover<'a, S> {
 
     /// Approve the pending code-flow request under `authority` and issue
     /// `code` for it, bound to the request's client, redirect, and PKCE
-    /// challenge and to the SMART-on-FHIR `patient` context (if any), expiring
+    /// challenge, to the browser session the request was made in (if any), and
+    /// to the SMART-on-FHIR `patient` context (if any), expiring
     /// [`AUTHORIZATION_CODE_TTL`] after `now`. The flow generates `code` (a
     /// CSPRNG opaque token) so tests can inject a known value.
     ///
@@ -84,6 +85,7 @@ impl<'a, S: GrantStore> RequestApprover<'a, S> {
             patient: patient.map(str::to_owned),
             issued_at: now,
             expires_at: now + AUTHORIZATION_CODE_TTL,
+            sid: request.sid.clone(),
         };
         // One transaction, so an approved request never exists without its code.
         self.store.transaction(|tx| {

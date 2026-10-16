@@ -105,6 +105,10 @@ pub struct AuthorizationRequest {
     /// session (auth-code flow only; `false` for a device request). That
     /// browser is sent to the consent card itself.
     pub requested_by_owner_browser: bool,
+    /// The browser session the request was made in (auth-code flow only),
+    /// which the code it earns is issued under; `None` when the browser had
+    /// none, and for a device request.
+    pub sid: Option<String>,
 }
 
 /// Inputs to start an authorization-code flow request.
@@ -132,6 +136,8 @@ pub struct StartCodeAuthorizationArgs {
     /// Whether the browser calling `/authorize` carries the Owner browser
     /// session.
     pub requested_by_owner_browser: bool,
+    /// The browser session the browser calling `/authorize` holds, if any.
+    pub sid: Option<String>,
 }
 
 /// Inputs to start a device-code flow request.
@@ -200,6 +206,7 @@ impl AuthorizationRequest {
             launch,
             launch_bound_patient,
             requested_by_owner_browser: input.requested_by_owner_browser,
+            sid: input.sid,
         }
     }
 
@@ -227,6 +234,7 @@ impl AuthorizationRequest {
             launch: None,
             launch_bound_patient: None,
             requested_by_owner_browser: false,
+            sid: None,
         }
     }
 }

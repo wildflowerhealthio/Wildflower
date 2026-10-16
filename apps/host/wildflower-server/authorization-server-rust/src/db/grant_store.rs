@@ -17,12 +17,13 @@ use url::Url;
 use wildflowerhealthio_persistence::{DieselPool, PooledDieselConnection};
 
 use crate::db::{
-    authorization_codes, authorization_requests, clients, grants, launch_contexts, refresh_tokens,
-    signing_keys,
+    authorization_codes, authorization_requests, browser_sessions, clients, grants,
+    launch_contexts, refresh_tokens, signing_keys,
 };
 use crate::domain::authorization_code::IssuedAuthorizationCode;
 use crate::domain::authorization_request::AuthorizationRequest;
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::browser_session::BrowserSession;
 use crate::domain::client::Client;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
 use crate::domain::launch_context::LaunchContext;
@@ -333,6 +334,35 @@ impl GrantTx for SqliteGrantTx<'_> {
     }
 
     // ----- refresh-token families ----------------------------------------
+
+    fn insert_browser_session(
+        &mut self,
+        session: &BrowserSession,
+    ) -> Result<(), AuthorizationServerError> {
+        browser_sessions::insert_browser_session(self.conn, session)
+    }
+
+    fn browser_session_by_sid(
+        &mut self,
+        sid: &str,
+    ) -> Result<Option<BrowserSession>, AuthorizationServerError> {
+        browser_sessions::browser_session_by_sid(self.conn, sid)
+    }
+
+    fn revoke_browser_session(
+        &mut self,
+        sid: &str,
+        now: DateTime<Utc>,
+    ) -> Result<bool, AuthorizationServerError> {
+        browser_sessions::revoke_browser_session(self.conn, sid, now)
+    }
+
+    fn delete_browser_sessions_ended_before(
+        &mut self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<usize, AuthorizationServerError> {
+        browser_sessions::delete_browser_sessions_ended_before(self.conn, cutoff)
+    }
 
     fn insert_refresh_token_family_row(
         &mut self,
@@ -1601,6 +1631,7 @@ mod tests {
             "clients",
             "device_grants",
             "grants",
+            "browser_sessions",
             "launch_contexts",
             "refresh_token_families",
             "refresh_tokens",

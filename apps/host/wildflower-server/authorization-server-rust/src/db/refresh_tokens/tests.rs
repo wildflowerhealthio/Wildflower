@@ -36,6 +36,7 @@ fn arb_family() -> impl Strategy<Value = RefreshTokenFamily> {
                     expires_at,
                     authorization_code_hash,
                     grant_id,
+                    sid: None,
                 }
             },
         )
@@ -160,6 +161,7 @@ fn sample_family(family_id: &str, client_id: &str) -> RefreshTokenFamily {
         expires_at: Utc::now() + chrono::Duration::days(90),
         authorization_code_hash: None,
         grant_id: None,
+        sid: None,
     }
 }
 

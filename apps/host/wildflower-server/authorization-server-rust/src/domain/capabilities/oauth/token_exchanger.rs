@@ -224,6 +224,7 @@ mod tests {
                 patient: None,
                 issued_at: now,
                 expires_at: now + AUTHORIZATION_CODE_TTL,
+                sid: None,
             })
             .unwrap();
         code

@@ -29,6 +29,7 @@ use crate::domain::authorization_code::IssuedAuthorizationCode;
 use crate::domain::authorization_request::{
     device_grant_name, AuthorizationRequest, GrantType, RequestStatus, DEVICE_CODE_POLL_INTERVAL,
 };
+use crate::domain::browser_session::browser_session_is_revoked;
 use crate::domain::refresh_token::RefreshTokenFamily;
 use crate::domain::token_exchange_error::{InvalidGrantReason, TokenExchangeError};
 use crate::domain::GrantStore;
@@ -102,6 +103,15 @@ impl<'a> GrantRedemption<'a> {
             GrantRedemption::AuthorizationCode(redeemed_code) => {
                 Some(redeemed_code.authorization_code())
             }
+            GrantRedemption::DeviceCode(_) => None,
+        }
+    }
+
+    /// The browser session the redemption was made under, which the family it
+    /// starts records; `None` for the device flow.
+    pub(crate) fn sid(self) -> Option<&'a str> {
+        match self {
+            GrantRedemption::AuthorizationCode(redeemed_code) => redeemed_code.sid(),
             GrantRedemption::DeviceCode(_) => None,
         }
     }
@@ -241,6 +251,11 @@ impl RedeemedAuthorizationCode {
         &self.code.code
     }
 
+    /// The browser session the code was issued under, if any.
+    pub(crate) fn sid(&self) -> Option<&str> {
+        self.code.sid.as_deref()
+    }
+
     /// The standing grant behind the code, if one was resolved.
     pub(crate) fn grant_id(&self) -> Option<&str> {
         self.grant_id.as_deref()
@@ -371,8 +386,8 @@ pub(crate) struct ValidatedRefreshToken {
 }
 
 impl ValidatedRefreshToken {
-    /// Resolve the presented token's family and require it to be this client's
-    /// and unexpired. A valid token presented by the wrong client is answered
+    /// Resolve the presented token's family and require it to be this client's,
+    /// unexpired, and not minted under a revoked browser session. A valid token presented by the wrong client is answered
     /// exactly like an unknown one so a stranger can't probe validity, and is
     /// refused before any consume so it can't burn the rightful client's token.
     ///
@@ -408,6 +423,17 @@ impl ValidatedRefreshToken {
                 InvalidGrantReason::RefreshTokenExpired,
             ));
         }
+        // Revoking a browser session ends every family minted under it. A
+        // family with no session (the device flow) has none to check.
+        if let Some(sid) = family.sid.as_deref() {
+            if browser_session_is_revoked(store, sid)? {
+                return Err(TokenExchangeError::InvalidGrant(
+                    InvalidGrantReason::RefreshTokenSessionRevoked {
+                        family_id: family.family_id,
+                    },
+                ));
+            }
+        }
         Ok(ValidatedRefreshToken {
             token_scopes: token_scope_spellings(&family.scopes),
             family,
@@ -436,6 +462,11 @@ impl ValidatedRefreshToken {
         self.family.patient.as_deref()
     }
 
+    /// The browser session the family was minted under, if any.
+    pub(crate) fn sid(&self) -> Option<&str> {
+        self.family.sid.as_deref()
+    }
+
     /// The family this token belongs to.
     pub(crate) fn family_id(&self) -> &str {
         &self.family.family_id
@@ -462,6 +493,7 @@ mod tests {
     use super::*;
     use crate::crypto_util::random_token::generate_authorization_code;
     use crate::domain::authorization_code::AUTHORIZATION_CODE_TTL;
+    use crate::domain::browser_session::BrowserSession;
 
     use crate::domain::refresh_token::RefreshToken;
     use crate::domain::test_fake::{
@@ -493,6 +525,7 @@ mod tests {
                 patient: Some("pat-1".to_owned()),
                 issued_at: now,
                 expires_at: now + AUTHORIZATION_CODE_TTL,
+                sid: None,
             })
             .unwrap();
         code
@@ -668,6 +701,15 @@ mod tests {
     }
 
     fn live_family(store: &FakeGrantStore, client_id: &str, now: DateTime<Utc>) {
+        live_family_under(store, client_id, None, now);
+    }
+
+    fn live_family_under(
+        store: &FakeGrantStore,
+        client_id: &str,
+        sid: Option<&str>,
+        now: DateTime<Utc>,
+    ) {
         store
             .insert_refresh_token_family_row(&RefreshTokenFamily {
                 family_id: "fam".to_owned(),
@@ -678,6 +720,7 @@ mod tests {
                 expires_at: now + Duration::days(1),
                 authorization_code_hash: None,
                 grant_id: None,
+                sid: sid.map(str::to_owned),
             })
             .unwrap();
         store
@@ -726,6 +769,46 @@ mod tests {
                 now + Duration::days(2)
             )),
             InvalidGrantReason::RefreshTokenExpired
+        );
+    }
+
+    /// A family minted under a browser session validates while the session
+    /// stands and carries its `sid`; once the session is revoked, or when the
+    /// `sid` names no session, the family is refused. A family with no
+    /// session (the device flow) has none to check, which the test above
+    /// covers.
+    #[test]
+    fn a_refresh_token_is_refused_once_its_session_is_revoked() {
+        let now = Utc::now();
+        let session = BrowserSession::new_owner(vec![], Duration::hours(8), now);
+
+        let store = FakeGrantStore::default();
+        let client = authenticated(&store, "client");
+        store.insert_browser_session(&session).unwrap();
+        live_family_under(&store, "client", Some(&session.sid), now);
+        let proof =
+            ValidatedRefreshToken::validate(&store, &client, "live", now).expect("validates");
+        assert_eq!(proof.sid(), Some(session.sid.as_str()));
+        assert!(store.revoke_browser_session(&session.sid, now).unwrap());
+        assert_eq!(
+            reason(ValidatedRefreshToken::validate(
+                &store, &client, "live", now
+            )),
+            InvalidGrantReason::RefreshTokenSessionRevoked {
+                family_id: "fam".to_owned()
+            }
+        );
+
+        let store = FakeGrantStore::default();
+        let client = authenticated(&store, "client");
+        live_family_under(&store, "client", Some("no-such-sid"), now);
+        assert_eq!(
+            reason(ValidatedRefreshToken::validate(
+                &store, &client, "live", now
+            )),
+            InvalidGrantReason::RefreshTokenSessionRevoked {
+                family_id: "fam".to_owned()
+            }
         );
     }
 }

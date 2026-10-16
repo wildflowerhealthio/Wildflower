@@ -31,8 +31,8 @@ impl<'a, S: GrantStore> AccessTokenMinter<'a, S> {
         }
     }
 
-    /// Sign a token carrying exactly the entitlement's client, scopes and
-    /// patient, and return it.
+    /// Sign a token carrying exactly the entitlement's client, scopes,
+    /// patient and browser session, and return it.
     ///
     /// # Errors
     ///
@@ -56,6 +56,7 @@ impl<'a, S: GrantStore> AccessTokenMinter<'a, S> {
                 issuer: self.server_origin,
                 audience: Some(self.server_origin),
                 patient: entitlement.patient(),
+                sid: entitlement.sid(),
             },
         )?)
     }

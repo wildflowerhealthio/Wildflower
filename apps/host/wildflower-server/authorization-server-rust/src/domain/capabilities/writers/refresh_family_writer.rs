@@ -34,7 +34,8 @@ impl<'a, S: GrantStore> RefreshFamilyWriter<'a, S> {
     /// [`earns_refresh_token`](GrantRedemption::earns_refresh_token) first. The
     /// family records the redemption's
     /// scopes and patient verbatim, the code it consumed (so a replay of that
-    /// code can revoke the lineage), and the standing grant behind it.
+    /// code can revoke the lineage), the standing grant behind it, and the
+    /// browser session it was made under (so revoking that session ends it).
     ///
     /// The family row is inserted before its token, with no transaction: the
     /// token insert's foreign key rejects a token whose family didn't land, so a
@@ -58,6 +59,7 @@ impl<'a, S: GrantStore> RefreshFamilyWriter<'a, S> {
             expires_at: now + REFRESH_TOKEN_FAMILY_TTL,
             authorization_code_hash: redemption.authorization_code().map(token_storage_hash),
             grant_id: redemption.grant_id().map(str::to_owned),
+            sid: redemption.sid().map(str::to_owned),
         };
         let first_token = RefreshToken {
             token_hash: token_storage_hash(&plaintext),

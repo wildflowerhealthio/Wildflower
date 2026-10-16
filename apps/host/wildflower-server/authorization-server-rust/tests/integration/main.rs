@@ -1,5 +1,6 @@
 mod authorization_start_limit;
 mod bearer_only;
+mod browser_sessions;
 mod cache_suppression;
 mod client_auth;
 mod client_management;

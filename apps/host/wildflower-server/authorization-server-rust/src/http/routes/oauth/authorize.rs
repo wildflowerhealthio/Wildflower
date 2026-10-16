@@ -13,7 +13,7 @@ use crate::domain::client_redirect::{build_client_error_redirect_url, build_clie
 use crate::http::errors::InternalError;
 use crate::http::errors::{oauth_error_html, OAuthErrorKind};
 use crate::http::extractors::Live;
-use crate::http::owner_browser_session_cookie::carries_owner_browser_session;
+use crate::http::owner_browser_session_cookie::carried_owner_browser_session;
 
 use super::authorization_pages::consent_page_location;
 use super::wait_page::wait_page_location;
@@ -157,8 +157,9 @@ pub struct AuthorizeParams {
 ///    the browser used. A browser signed in as the Owner (it carries a live
 ///    Owner browser session) goes to the consent card at
 ///    `/oauth/authorize/{id}/consent`, where the Owner decides in place; the
-///    request records that it was (`requested_by_owner_browser`). Any
-///    other goes to the wait page at `/oauth/authorize/{id}/wait`, which polls
+///    request records that it was (`requested_by_owner_browser`), and the
+///    browser session it was made in (`sid`), which the code is issued under.
+///    Any other goes to the wait page at `/oauth/authorize/{id}/wait`, which polls
 ///    `GET /oauth/authorize/{id}` (a custom extension, not part of any RFC)
 ///    until the Owner decides — in the popup, in a signed-in launcher, or on
 ///    the consent card once that browser signs in.
@@ -195,7 +196,11 @@ pub(super) async fn handle_authorize_request(
     headers: HeaderMap,
     Query(params): Query<AuthorizeParams>,
 ) -> Result<Response, AuthorizeError> {
-    let requested_by_owner_browser = carries_owner_browser_session(&token_verifier, &headers);
+    let owner_browser_session = carried_owner_browser_session(&token_verifier, &headers);
+    let requested_by_owner_browser = owner_browser_session.is_some();
+    let owner_browser_sid = owner_browser_session
+        .as_ref()
+        .and_then(|claims| claims.sid.as_deref());
     let next_step = code_authorization_starter.start(
         &AuthorizeRequest {
             response_type: &params.response_type,
@@ -208,6 +213,7 @@ pub(super) async fn handle_authorize_request(
             launch: params.launch.as_deref(),
             aud: params.aud.as_deref(),
             requested_by_owner_browser,
+            sid: owner_browser_sid,
         },
         FreshIds {
             request_id: Uuid::new_v4().to_string(),

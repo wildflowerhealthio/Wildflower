@@ -666,6 +666,7 @@ fn client_token(server_dir: &Path, server_origin: &str, scopes: &[String]) -> St
             issuer: server_origin,
             audience: Some(server_origin),
             patient: None,
+            sid: None,
         },
     )
     .expect("mint a client token")

@@ -19,6 +19,7 @@ use std::collections::HashMap;
 use crate::domain::authorization_code::IssuedAuthorizationCode;
 use crate::domain::authorization_request::AuthorizationRequest;
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::browser_session::BrowserSession;
 use crate::domain::client::Client;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant};
 use crate::domain::launch_context::LaunchContext;
@@ -48,6 +49,7 @@ pub(crate) struct FakeGrantStore {
     code_grants: RefCell<HashMap<String, AuthorizationCodeGrant>>,
     device_grants: RefCell<HashMap<String, DeviceGrant>>,
     launch_contexts: RefCell<HashMap<String, LaunchContext>>,
+    browser_sessions: RefCell<HashMap<String, BrowserSession>>,
 }
 
 /// A clone of every map, taken before a transaction runs so it can be restored
@@ -62,6 +64,7 @@ struct Snapshot {
     code_grants: HashMap<String, AuthorizationCodeGrant>,
     device_grants: HashMap<String, DeviceGrant>,
     launch_contexts: HashMap<String, LaunchContext>,
+    browser_sessions: HashMap<String, BrowserSession>,
 }
 
 impl FakeGrantStore {
@@ -76,6 +79,7 @@ impl FakeGrantStore {
             code_grants: self.code_grants.borrow().clone(),
             device_grants: self.device_grants.borrow().clone(),
             launch_contexts: self.launch_contexts.borrow().clone(),
+            browser_sessions: self.browser_sessions.borrow().clone(),
         }
     }
 
@@ -89,6 +93,7 @@ impl FakeGrantStore {
         *self.code_grants.borrow_mut() = snapshot.code_grants;
         *self.device_grants.borrow_mut() = snapshot.device_grants;
         *self.launch_contexts.borrow_mut() = snapshot.launch_contexts;
+        *self.browser_sessions.borrow_mut() = snapshot.browser_sessions;
     }
 }
 

@@ -1,10 +1,12 @@
 //! [`TokenVerifier`] — the access-token verification policy both authN gates
 //! run: signature against the stored keys, `iss` and `aud` against this
-//! server's origin, and revocation as the last gate. The middleware only
+//! server's origin, and revocation, by the token itself, its subject or its
+//! browser session, as the last gate. The middleware only
 //! extracts the token and maps the outcome to a status.
 
 use std::sync::Arc;
 
+use crate::domain::browser_session::browser_session_is_revoked;
 use crate::domain::token::{verify_jwt, VerifiedClaims, VerifyError, VerifyOptions};
 use crate::domain::GrantStore;
 use crate::ports::RevocationCheck;
@@ -40,16 +42,20 @@ impl<S: GrantStore> TokenVerifier<S> {
     ///
     /// Revocation is the last gate: the token is cryptographically valid, but
     /// a logout / owner revoke / grant revoke may have denylisted its `jti` or
-    /// bumped the subject's epoch since it was minted. Both authN gates funnel
-    /// through here, so it runs the *complete* check (per-`jti` denylist **and**
-    /// per-subject epoch). A store-read failure fails closed, never admitting
-    /// the token.
+    /// bumped the subject's epoch since it was minted, or revoked the browser
+    /// session its `sid` names. Both authN gates, and through
+    /// [`InProcessTokenVerifier`](crate::InProcessTokenVerifier) the FHIR
+    /// server, funnel through here, so it runs the *complete* check (per-`jti`
+    /// denylist, per-subject epoch **and** browser session). A token with no
+    /// `sid` has no session to check. A store-read failure fails closed, never
+    /// admitting the token.
     ///
     /// # Errors
     ///
     /// [`VerifyError::TokenRejected`] for a bad, expired, wrong-issuer or
     /// wrong-audience token; [`VerifyError::Revoked`] for a revoked one; the
-    /// server-side variants when the key or revocation store can't be read.
+    /// server-side variants when the key, revocation or browser-session store
+    /// can't be read.
     pub(crate) fn verify(&self, token: &str) -> Result<VerifiedClaims, VerifyError> {
         let keys = self
             .store
@@ -70,6 +76,13 @@ impl<S: GrantStore> TokenVerifier<S> {
         if revoked {
             return Err(VerifyError::Revoked);
         }
+        if let Some(sid) = claims.sid.as_deref() {
+            if browser_session_is_revoked(&self.store, sid)
+                .map_err(VerifyError::BrowserSessionStoreUnavailable)?
+            {
+                return Err(VerifyError::Revoked);
+            }
+        }
         Ok(claims)
     }
 }
@@ -81,6 +94,7 @@ mod tests {
     use chrono::{DateTime, Duration, Utc};
 
     use super::*;
+    use crate::domain::browser_session::BrowserSession;
     use crate::domain::signing_key::SigningKey;
     use crate::domain::test_fake::{seed_active_signing_key, FakeGrantStore};
     use crate::domain::token::{mint_access_token, NewJwtArgs};
@@ -125,6 +139,15 @@ mod tests {
     }
 
     fn mint(key: &SigningKey, issuer: &str, audience: &str) -> String {
+        mint_under_session(key, issuer, audience, None)
+    }
+
+    fn mint_under_session(
+        key: &SigningKey,
+        issuer: &str,
+        audience: &str,
+        sid: Option<&str>,
+    ) -> String {
         mint_access_token(
             key,
             &NewJwtArgs {
@@ -134,6 +157,7 @@ mod tests {
                 issuer,
                 audience: Some(audience),
                 patient: None,
+                sid,
             },
         )
         .expect("mint")
@@ -229,5 +253,37 @@ mod tests {
             failing.verify(&token),
             Err(VerifyError::RevocationStoreUnavailable(_))
         ));
+    }
+
+    /// A token minted under a browser session verifies while the session
+    /// stands, and is `Revoked` once it is revoked or when its `sid` names no
+    /// session; a token with no `sid` has no session to check.
+    #[test]
+    fn a_token_is_revoked_with_its_browser_session() {
+        let (store, key) = store_with_key();
+        let now = Utc::now();
+        let session = BrowserSession::new_owner(vec![], Duration::hours(8), now);
+        store.insert_browser_session(&session).expect("insert");
+        let under_session = mint_under_session(&key, ORIGIN, ORIGIN, Some(&session.sid));
+        let under_no_session = mint(&key, ORIGIN, ORIGIN);
+        let under_a_missing_session = mint_under_session(&key, ORIGIN, ORIGIN, Some("no-such-sid"));
+        let verifier = verifier(store);
+
+        let claims = verifier.verify(&under_session).expect("verifies");
+        assert_eq!(claims.sid.as_deref(), Some(session.sid.as_str()));
+        assert!(matches!(
+            verifier.verify(&under_a_missing_session),
+            Err(VerifyError::Revoked)
+        ));
+
+        assert!(verifier
+            .store
+            .revoke_browser_session(&session.sid, now)
+            .expect("revoke"));
+        assert!(matches!(
+            verifier.verify(&under_session),
+            Err(VerifyError::Revoked)
+        ));
+        assert!(verifier.verify(&under_no_session).is_ok());
     }
 }

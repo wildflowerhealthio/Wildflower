@@ -39,6 +39,7 @@ diesel::table! {
         launch -> Nullable<Text>,
         launch_bound_patient -> Nullable<Text>,
         requested_by_owner_browser -> Bool,
+        sid -> Nullable<Text>,
     }
 }
 
@@ -75,6 +76,7 @@ struct Row {
     launch: Option<String>,
     launch_bound_patient: Option<String>,
     requested_by_owner_browser: bool,
+    sid: Option<String>,
 }
 
 impl From<Row> for AuthorizationRequest {
@@ -100,6 +102,7 @@ impl From<Row> for AuthorizationRequest {
             launch: row.launch,
             launch_bound_patient: row.launch_bound_patient,
             requested_by_owner_browser: row.requested_by_owner_browser,
+            sid: row.sid,
         }
     }
 }
@@ -127,6 +130,7 @@ impl From<&AuthorizationRequest> for Row {
             launch: request.launch.clone(),
             launch_bound_patient: request.launch_bound_patient.clone(),
             requested_by_owner_browser: request.requested_by_owner_browser,
+            sid: request.sid.clone(),
         }
     }
 }
@@ -492,6 +496,7 @@ mod tests {
                 launch,
                 launch_bound_patient,
                 requested_by_owner_browser,
+                sid: None,
             }
         }
     }
@@ -538,6 +543,7 @@ mod tests {
             launch: None,
             launch_bound_patient: None,
             requested_by_owner_browser: false,
+            sid: None,
         }
     }
 
@@ -788,6 +794,7 @@ mod tests {
             launch: None,
             launch_bound_patient: None,
             requested_by_owner_browser: false,
+            sid: None,
         }
     }
 

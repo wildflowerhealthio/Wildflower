@@ -50,6 +50,7 @@ pub(crate) fn device_request(
         launch: None,
         launch_bound_patient: None,
         requested_by_owner_browser: false,
+        sid: None,
     }
 }
 
@@ -81,6 +82,7 @@ pub(crate) fn code_request(
         launch: None,
         launch_bound_patient: None,
         requested_by_owner_browser: false,
+        sid: None,
     }
 }
 
@@ -172,6 +174,7 @@ pub(crate) fn redeemed_code(
             patient: Some("pat-1".to_owned()),
             issued_at: now,
             expires_at: now + AUTHORIZATION_CODE_TTL,
+            sid: None,
         })
         .unwrap();
     RedeemedAuthorizationCode::redeem(

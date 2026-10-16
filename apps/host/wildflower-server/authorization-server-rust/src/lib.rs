@@ -35,7 +35,7 @@ use wildflowerhealthio_scopes::{
 };
 use wildflowerhealthio_token_revocation::RevocationStore;
 
-use crate::domain::capabilities::oauth::OWNER_BROWSER_SESSION_TTL;
+use crate::domain::browser_session::LONGEST_BROWSER_SESSION_TTL;
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
 use crate::domain::sign_in_redirect::SignInDestinations;
 
@@ -91,7 +91,8 @@ pub const WILDFLOWER_HOST_APP_CLIENT_ID: &str = "c4e755b6a4c1abf2aae6d0d83f2545a
 /// signed in as the Owner on its own device, with a same-device sign-in code at
 /// `/oauth/sign-in`. Each such browser holds a token issued to this client
 /// (its `sub`), so revoking the client's subject signs every Owner browser
-/// out, and one browser's session is revoked by its token's `jti`. Like
+/// out, and one browser is signed out by revoking its browser session (its
+/// token's `sid`) or its token's `jti`. Like
 /// [`WILDFLOWER_HOST_APP_CLIENT_ID`], it is an essential client: it can't be
 /// disabled. Seeded at boot by [`crate::setup_authorization_server`] with
 /// [`OWNER_SCOPES`]; it takes part in no OAuth flow.
@@ -329,12 +330,13 @@ fn spawn_revocation_purge(revocation_store: RevocationStore) {
         loop {
             // First tick is immediate → startup purge; then daily.
             ticks.tick().await;
-            // Retention floor = the longest access token we mint (the 8h Owner
-            // browser session token, past the 15-min OAuth `ACCESS_TOKEN_TTL`),
-            // so a denylist row is never dropped while its token could still be
-            // live — even if the `/authorization/revocations` caller supplied a
-            // too-early `expiresAt`. See `RevocationStore::purge_expired`.
-            match revocation_store.purge_expired(Utc::now(), OWNER_BROWSER_SESSION_TTL) {
+            // Retention floor = the longest access token we mint (a browser
+            // session's token lives as long as the session, at most a day,
+            // past the 15-min OAuth `ACCESS_TOKEN_TTL`), so a denylist row is
+            // never dropped while its token could still be live — even if the
+            // `/authorization/revocations` caller supplied a too-early
+            // `expiresAt`. See `RevocationStore::purge_expired`.
+            match revocation_store.purge_expired(Utc::now(), LONGEST_BROWSER_SESSION_TTL) {
                 Ok(purged) if purged > 0 => {
                     tracing::info!(purged, "swept expired revoked jtis");
                 }
@@ -378,6 +380,7 @@ fn spawn_retention_sweep(store: SqliteGrantStore) {
                     refresh_token_families = purged.refresh_token_families,
                     authorization_requests = purged.authorization_requests,
                     authorization_codes = purged.authorization_codes,
+                    browser_sessions = purged.browser_sessions,
                     "swept the authorization server rows past their retention window",
                 ),
                 Ok(Ok(_)) => {}

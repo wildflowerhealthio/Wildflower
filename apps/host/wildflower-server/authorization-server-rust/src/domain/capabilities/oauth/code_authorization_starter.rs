@@ -48,6 +48,9 @@ pub(crate) struct AuthorizeRequest<'a> {
     /// Whether the browser making the request carries the Owner browser
     /// session, recorded on a parked request.
     pub(crate) requested_by_owner_browser: bool,
+    /// The browser session the browser making the request holds, if any,
+    /// recorded on the parked request and on the code it earns.
+    pub(crate) sid: Option<&'a str>,
 }
 
 /// The identifiers the flow mints; supplied by the caller so tests can inject
@@ -254,6 +257,7 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
                 ttl: AUTHORIZATION_REQUEST_TTL,
                 launch_context,
                 requested_by_owner_browser: authorize_query.requested_by_owner_browser,
+                sid: authorize_query.sid.map(str::to_owned),
             });
         self.store
             .insert_authorization_request(parked_request.request())?;
@@ -467,6 +471,7 @@ mod tests {
             launch: None,
             aud: None,
             requested_by_owner_browser: false,
+            sid: None,
         }
     }
 

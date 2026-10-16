@@ -3,7 +3,8 @@
 //! browser goes next. It reads top to bottom as: check `next` against the
 //! allow-list and check the Owner-browser client isn't disabled (both before
 //! the code is touched), redeem the code for its
-//! [`RedeemedSameDeviceSignInCode`] proof, mint under it.
+//! [`RedeemedSameDeviceSignInCode`] proof, store the Owner browser session it
+//! starts, mint under it.
 
 use std::sync::Arc;
 
@@ -12,7 +13,7 @@ use wildflowerhealthio_scopes::Grant;
 
 use crate::domain::authority::{RedeemedSameDeviceSignInCode, TokenEntitlement};
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::capabilities::writers::AccessTokenMinter;
+use crate::domain::capabilities::writers::{AccessTokenMinter, BrowserSessionWriter};
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
 use crate::domain::sign_in_redirect::{SignInDestinations, SignInRedirect};
 use crate::domain::token::TokenIssuanceError;
@@ -40,6 +41,8 @@ pub(crate) enum SameDeviceSignInError {
     /// The Owner-browser client's row couldn't be read, or is missing though
     /// it is seeded at boot. The code is unspent.
     Store(AuthorizationServerError),
+    /// The Owner browser session couldn't be stored. The code is spent.
+    SessionNotStored(AuthorizationServerError),
     /// The token couldn't be minted (no signing key, a signing or store
     /// failure). The code is spent.
     Issuance(TokenIssuanceError),
@@ -89,8 +92,8 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
         }
     }
 
-    /// Redeem `presented_code` at `now` for an Owner browser's session token that
-    /// lives [`OWNER_BROWSER_SESSION_TTL`], to go on to `next`. A `next` that isn't
+    /// Redeem `presented_code` at `now` for an Owner browser session and its
+    /// token, both lasting [`OWNER_BROWSER_SESSION_TTL`], to go on to `next`. A `next` that isn't
     /// allowed, or a disabled Owner-browser client, is refused before the code
     /// is touched, so the code stays redeemable.
     ///
@@ -101,7 +104,8 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
     /// ([`SignInRefusal::OwnerBrowserClientDisabled`]), or a code that is
     /// unknown, spent or expired ([`SignInRefusal::CodeNotRedeemable`]);
     /// [`SameDeviceSignInError::Store`] when the Owner-browser client can't be
-    /// read; [`SameDeviceSignInError::Issuance`] when minting fails.
+    /// read; [`SameDeviceSignInError::SessionNotStored`] when the session
+    /// can't be stored; [`SameDeviceSignInError::Issuance`] when minting fails.
     pub(crate) fn sign_in(
         &self,
         presented_code: &str,
@@ -126,11 +130,15 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
             &self.codes,
             presented_code,
             &self.owner_grant,
+            OWNER_BROWSER_SESSION_TTL,
             now,
         )
         .ok_or(SameDeviceSignInError::Refused(
             SignInRefusal::CodeNotRedeemable,
         ))?;
+        BrowserSessionWriter::over(&self.store)
+            .start_owner_session(&redeemed_sign_in_code)
+            .map_err(SameDeviceSignInError::SessionNotStored)?;
         let access_token =
             AccessTokenMinter::new(&self.store, &self.server_origin, OWNER_BROWSER_SESSION_TTL)
                 .mint(TokenEntitlement::SameDeviceSignIn(&redeemed_sign_in_code))
