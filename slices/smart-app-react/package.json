@@ -24,6 +24,7 @@
     "@testing-library/user-event": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
+    "@wildflowerhealthio/authorization-core": "workspace:*",
     "@wildflowerhealthio/branding-core": "workspace:*",
     "@wildflowerhealthio/branding-react": "workspace:*",
     "@wildflowerhealthio/fhir-r4": "workspace:*",
@@ -47,6 +48,7 @@
   },
   "peerDependencies": {
     "@tanstack/react-query": "catalog:",
+    "@wildflowerhealthio/authorization-core": "workspace:*",
     "@wildflowerhealthio/branding-core": "workspace:*",
     "@wildflowerhealthio/branding-react": "workspace:*",
     "@wildflowerhealthio/fhir-r4": "workspace:*",
