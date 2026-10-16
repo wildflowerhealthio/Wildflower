@@ -51,7 +51,7 @@ const loadFhir = async (): Promise<FhirClientModule> => (await import('fhirclien
  * The check is on the URL fhirclient navigates to, not on a configuration
  * fetched beforehand, because fhirclient fetches the configuration again
  * itself. When the server names no authorize endpoint, fhirclient's URL is
- * the app's own redirect target, which passes the same check.
+ * the app's own redirect target, and it goes through the same check.
  */
 const authorizeSmartLaunch = async (config: SmartLaunchConfig): Promise<void> => {
   const FHIR = await loadFhir()
