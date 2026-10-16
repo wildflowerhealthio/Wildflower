@@ -274,7 +274,7 @@ mod tests {
     use wildflowerhealthio_unit_runner::{RunState, UnitStatus};
 
     use super::*;
-    use crate::domain::server_status::tests::{LAB, RUTH};
+    use crate::domain::server_status::tests::{statuses, LAB, RUTH};
 
     /// A phone's coalescer whose one open at the app's start is spent, so it
     /// only notifies.
@@ -313,15 +313,6 @@ mod tests {
             user_code: user_code.to_owned(),
             client_name: "Pebble".to_owned(),
         }
-    }
-
-    fn statuses(
-        entries: impl IntoIterator<Item = (&'static str, UnitStatus<ServerDetail>)>,
-    ) -> UnitStatuses<ServerDetail> {
-        entries
-            .into_iter()
-            .map(|(domain, status)| (UnitId::from(domain), status))
-            .collect()
     }
 
     /// The domain and key of each request, to compare at a glance.
