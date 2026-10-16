@@ -26,6 +26,9 @@ type Series = ValueSeries | SpanSeries.SpanSeries
 /** Whether `series` takes a value axis — a point or level series, not a span lane. */
 const isValueSeries = (series: Series): series is ValueSeries => series.kind !== 'spans'
 
+/** Whether `series` is a span lane — drawn under the time axis, against no value axis. */
+const isSpanSeries = (series: Series): series is SpanSeries.SpanSeries => series.kind === 'spans'
+
 /**
  * `series` as levels — a point series' readings each held until the next one
  * (`PointSeries.toLevels`), a level series' own levels.
@@ -103,5 +106,14 @@ const sizeOf = (series: Series): number => {
   return series.spans.length
 }
 
-export { boundariesOf, extentOf, extentOfAll, isValueSeries, levelAt, levelsOf, sizeOf }
+export {
+  boundariesOf,
+  extentOf,
+  extentOfAll,
+  isSpanSeries,
+  isValueSeries,
+  levelAt,
+  levelsOf,
+  sizeOf,
+}
 export type { Series, ValueScale, ValueSeries }

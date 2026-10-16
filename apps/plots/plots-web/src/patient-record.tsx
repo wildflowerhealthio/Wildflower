@@ -4,7 +4,7 @@ import {
   groupForPanel,
   xDomain,
 } from '@wildflowerhealthio/plots-core-js'
-import { Series, type SpanSeries, ValueAxis } from '@wildflowerhealthio/plots-fundamentals'
+import { Series, ValueAxis } from '@wildflowerhealthio/plots-fundamentals'
 import {
   PlotsLayout,
   MultiAxisChart,
@@ -99,13 +99,7 @@ const RecordView = ({
     () => ValueAxis.assign(selectedSeries.filter(Series.isValueSeries)),
     [selectedSeries]
   )
-  const lanes = useMemo(
-    () =>
-      selectedSeries.filter(
-        (series): series is SpanSeries.SpanSeries => !Series.isValueSeries(series)
-      ),
-    [selectedSeries]
-  )
+  const lanes = useMemo(() => selectedSeries.filter(Series.isSpanSeries), [selectedSeries])
   const chartTimeDomain = useMemo(
     () => xDomain(selection.range, openedAt, Series.extentOfAll(selectedSeries)),
     [selection.range, openedAt, selectedSeries]

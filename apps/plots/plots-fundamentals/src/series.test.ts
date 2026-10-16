@@ -154,6 +154,18 @@ describe('Series.sizeOf', () => {
   })
 })
 
+describe('Series.isSpanSeries', () => {
+  test('is true exactly for span series, the complement of isValueSeries', () => {
+    fc.assert(
+      fc.property(anySeriesArb, (series) => {
+        expect(Series.isSpanSeries(series)).toBe(series.kind === 'spans')
+        expect(Series.isSpanSeries(series)).toBe(!Series.isValueSeries(series))
+      }),
+      { numRuns: RUNS }
+    )
+  })
+})
+
 describe('Series.isValueSeries', () => {
   test('is true exactly for the kinds that take a value axis', () => {
     fc.assert(
