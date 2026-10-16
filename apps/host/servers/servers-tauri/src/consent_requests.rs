@@ -1,15 +1,12 @@
-//! Notifying each new consent waiting on the servers: a notification for
-//! each, "‹client› wants access to ‹domain›", withdrawn once the request is
-//! no longer the server's newest, and opening requests in the in-app browser,
-//! signed in as the Owner, as the server's page's Open does. On a phone a tap
-//! on the notification opens its request, and the first fresh request a
-//! server reports at the app's start opens instead of notifying, so a request
-//! whose notification launched the app opens too; a return to the foreground
-//! opens a pending request the same way, so coming back to the app after
-//! seeing a notification opens its request. On the desktop, which reports no taps, each request opens in the
-//! default browser as it notifies. A request the Owner's own browser made does
-//! neither. Which request notifies or opens is
-//! [`ConsentNotificationCoalescer`]'s decision.
+//! Notifying each new consent waiting on the servers: a notification for each, "‹client› wants
+//! access to ‹domain›", withdrawn once the request is no longer the server's newest, and opening
+//! requests in the in-app browser, signed in as the Owner, as the server's page's Open does. On a
+//! phone a tap on the notification opens its request, and the first fresh request a server reports
+//! at the app's start opens instead of notifying, so a request whose notification launched the app
+//! opens too; a return to the foreground opens a pending request the same way, so coming back to
+//! the app after seeing a notification opens its request. On the desktop, which reports no taps,
+//! each request opens in the default browser as it notifies. A request the Owner's own browser made
+//! does neither. Which request notifies or opens is [`ConsentNotificationCoalescer`]'s decision.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -127,29 +124,44 @@ async fn notify_and_open_consent_requests(
     opening: ConsentOpening,
 ) {
     let mut coalescer = ConsentNotificationCoalescer::new(opening);
+    // A return `returns.changed()` woke the loop for, which marks it seen.
     let mut returned = false;
     loop {
-        if std::mem::take(&mut returned) || returns.has_changed().unwrap_or(false) {
+        let Ok(returned_meanwhile) = returns.has_changed() else {
+            log_returns_closed();
+            return;
+        };
+        if std::mem::take(&mut returned) || returned_meanwhile {
             let app_return = returns.borrow_and_update().clone();
             apply(&notifier, &coalescer.returned_to_foreground(&app_return));
         }
         let current = statuses.borrow_and_update().clone();
         apply(&notifier, &coalescer.record(&current));
-        let closed = tokio::select! {
+        tokio::select! {
             biased;
             changed = returns.changed() => {
-                returned = changed.is_ok();
-                changed.is_err()
+                if changed.is_err() {
+                    log_returns_closed();
+                    return;
+                }
+                returned = true;
             }
-            changed = statuses.changed() => changed.is_err(),
-        };
-        if closed {
-            log::error!(
-                "[servers] the unit runner's statuses closed; consent notifications stopped"
-            );
-            return;
+            changed = statuses.changed() => {
+                if changed.is_err() {
+                    log::error!(
+                        "[servers] the unit runner's statuses closed; consent notifications stopped"
+                    );
+                    return;
+                }
+            }
         }
     }
+}
+
+/// Log that the unit runner's returns to the foreground closed, which stops
+/// the consent notifications.
+fn log_returns_closed() {
+    log::error!("[servers] the unit runner's returns closed; consent notifications stopped");
 }
 
 /// Withdraw, announce and open through `notifier` as `changes` says.
@@ -392,5 +404,24 @@ mod tests {
 
         assert_eq!(recorded.opened_keys(), [oauth("a"), oauth("a")]);
         assert_eq!(recorded.keys(), [oauth("a")], "it notified once");
+    }
+
+    #[tokio::test]
+    async fn the_returns_closing_stops_the_notifications() {
+        let (_statuses_tx, statuses_rx) = watch::channel(ruth_waiting_on(None));
+        let (returns_tx, returns_rx) = watch::channel(AppReturn::default());
+        let notifying = tokio::spawn(notify_and_open_consent_requests(
+            RecordedRequests::default(),
+            statuses_rx,
+            returns_rx,
+            ConsentOpening::FirstAtStart,
+        ));
+
+        drop(returns_tx);
+
+        tokio::time::timeout(std::time::Duration::from_secs(5), notifying)
+            .await
+            .expect("it stops")
+            .unwrap();
     }
 }
