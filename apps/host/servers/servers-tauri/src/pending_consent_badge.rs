@@ -33,14 +33,19 @@ pub(crate) struct AppIconBadge {
 }
 
 impl PendingConsentBadge for AppIconBadge {
+    /// A failure is logged: the badge is the end of the line, with nothing
+    /// further to report it to.
     fn show(&self, count: usize) -> anyhow::Result<()> {
         let window = self
             .app
             .get_webview_window(BASE_WEBVIEW_LABEL)
             .context("the base's window is gone")?;
-        // `None` clears the badge: macOS would show a 0.
-        let badge_count = (count > 0).then(|| i64::try_from(count)).transpose()?;
-        window.set_badge_count(badge_count)?;
+        #[cfg(desktop)]
+        {
+            // `None` clears the badge: macOS would show a 0.
+            let badge_count = (count > 0).then(|| i64::try_from(count).unwrap_or(i64::MAX));
+            window.set_badge_count(badge_count)?;
+        }
         Ok(())
     }
 }
