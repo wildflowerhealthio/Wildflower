@@ -2,7 +2,7 @@ import { arrivingSmartLaunchFrom as sharedArrivingSmartLaunchFrom } from '@wildf
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
 import type Client from 'fhirclient/lib/Client'
-import { beforeEach, describe, expect, it, vi } from 'vite-plus/test'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import {
   appRootRedirectUri,
@@ -16,18 +16,33 @@ import {
 // and drives `.oauth2`, so the module boundary is where we stub. Only `authorize`
 // and `ready` are exercised. `vi.hoisted` builds the spies before the import is
 // wired so the factory can reference them, and typing `authorize`'s parameter as a
-// record lets the tests inspect exactly which keys were passed.
-const { authorizeMock, readyMock } = vi.hoisted(() => ({
-  authorizeMock: vi.fn<(params: Record<string, unknown>) => Promise<void>>(() => Promise.resolve()),
+// record lets the tests inspect exactly which keys were passed. Asked with
+// `noRedirect`, fhirclient's `authorize` resolves to the URL it would have
+// navigated to; the stub answers a well-formed one unless a test says otherwise.
+const { authorizeMock, readyMock, assignMock } = vi.hoisted(() => ({
+  authorizeMock: vi.fn<(params: Record<string, unknown>) => Promise<string | void>>(),
   readyMock: vi.fn<() => Promise<Client>>(),
+  assignMock: vi.fn<(url: string) => void>(),
 }))
 
 vi.mock('fhirclient', () => ({
   default: { oauth2: { authorize: authorizeMock, ready: readyMock } },
 }))
 
+/** An authorize URL as fhirclient builds it from a well-formed endpoint. */
+const AUTHORIZE_URL =
+  'https://ehr.example/oauth/authorize?response_type=code&client_id=medication-app&state=xyz'
+
 beforeEach(() => {
   vi.clearAllMocks()
+  authorizeMock.mockResolvedValue(AUTHORIZE_URL)
+  // The navigation is the subject, so the page's `location` is the stub: an
+  // https page, whose `assign` records where it was sent.
+  stubPageLocation('https:')
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
 })
 
 describe('authorizeSmartLaunch', () => {
@@ -93,6 +108,98 @@ describe('authorizeSmartLaunch', () => {
       ),
       { numRuns: numRunsFor({ base: 100 }) }
     )
+  })
+})
+
+describe('authorizeSmartLaunch navigation', () => {
+  it('should ask fhirclient for the authorize URL rather than let it navigate', async () => {
+    // Act
+    await authorizeSmartLaunch({ clientId: 'medication-app', scope: 'launch' })
+
+    // Assert
+    expect(authorizeArg()).toHaveProperty('noRedirect', true)
+  })
+
+  it('should send the page to a well-formed authorize URL', async () => {
+    // Act
+    await authorizeSmartLaunch({ clientId: 'medication-app', scope: 'launch' })
+
+    // Assert
+    expect(assignMock).toHaveBeenCalledTimes(1)
+    expect(assignMock).toHaveBeenCalledWith(AUTHORIZE_URL)
+  })
+
+  it('should send the page to a loopback http authorize URL from an https page', async () => {
+    // Arrange — a desktop host's authorization server on this computer
+    const loopbackUrl = 'http://127.0.0.1:8080/oauth/authorize?state=xyz'
+    authorizeMock.mockResolvedValue(loopbackUrl)
+
+    // Act
+    await authorizeSmartLaunch({ clientId: 'medication-app', scope: 'launch' })
+
+    // Assert
+    expect(assignMock).toHaveBeenCalledWith(loopbackUrl)
+  })
+
+  it.each([
+    {
+      case: 'a javascript: endpoint',
+      authorizeUrl: 'javascript:alert(document.domain)//?response_type=code',
+      reason: 'It is a javascript: URL, not an http or https one.',
+    },
+    {
+      case: 'an endpoint with userinfo',
+      authorizeUrl: 'https://user:pw@ehr.example/oauth/authorize?state=xyz',
+      reason: 'It carries a user name or password.',
+    },
+    {
+      case: 'an endpoint with a fragment',
+      authorizeUrl: 'https://ehr.example/oauth/authorize#here?state=xyz',
+      reason: 'It carries a fragment',
+    },
+    {
+      case: 'a plain-http endpoint off loopback from an https page',
+      authorizeUrl: 'http://ehr.example/oauth/authorize?state=xyz',
+      reason: 'It is plain http to a host off this computer',
+    },
+  ])(
+    'should reject naming the reason, and not navigate, for $case',
+    async ({ authorizeUrl, reason }) => {
+      // Arrange
+      authorizeMock.mockResolvedValue(authorizeUrl)
+
+      // Act
+      const launch = authorizeSmartLaunch({ clientId: 'medication-app', scope: 'launch' })
+
+      // Assert
+      await expect(launch).rejects.toThrow(reason)
+      expect(assignMock).not.toHaveBeenCalled()
+    }
+  )
+
+  it('should send the page to a plain-http authorize URL when the page is itself http', async () => {
+    // Arrange — a LAN dev server, where the browser blocks nothing
+    stubPageLocation('http:')
+    const plainUrl = 'http://ehr.example/oauth/authorize?state=xyz'
+    authorizeMock.mockResolvedValue(plainUrl)
+
+    // Act
+    await authorizeSmartLaunch({ clientId: 'medication-app', scope: 'launch' })
+
+    // Assert
+    expect(assignMock).toHaveBeenCalledWith(plainUrl)
+  })
+
+  it('should reject, and not navigate, when fhirclient hands back no URL', async () => {
+    // Arrange
+    authorizeMock.mockResolvedValue(undefined)
+
+    // Act
+    const launch = authorizeSmartLaunch({ clientId: 'medication-app', scope: 'launch' })
+
+    // Assert
+    await expect(launch).rejects.toThrow('no authorize URL')
+    expect(assignMock).not.toHaveBeenCalled()
   })
 })
 
@@ -265,6 +372,11 @@ const authorizeArg = (): Record<string, unknown> => {
     throw new Error('authorize was not called')
   }
   return call[0]
+}
+
+/** Stub the page's `location` as a page served over `protocol`, recording `assign`. */
+const stubPageLocation = (protocol: 'http:' | 'https:'): void => {
+  vi.stubGlobal('location', { protocol, assign: assignMock })
 }
 
 /** Assert `key` is present with `value` when defined, and absent otherwise. */

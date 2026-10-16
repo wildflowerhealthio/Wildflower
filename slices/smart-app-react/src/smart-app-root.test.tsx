@@ -63,7 +63,7 @@ vi.mock('@wildflowerhealthio/telemetry-web', async (importOriginal) => {
 const FHIR_SERVER_URL = 'https://fhir.example:8443/r4'
 const { tokenExchangeMock, authorizeMock } = vi.hoisted(() => ({
   tokenExchangeMock: vi.fn(() => Promise.resolve(clientConnectedTo(FHIR_SERVER_URL))),
-  authorizeMock: vi.fn<(params: Record<string, unknown>) => Promise<void>>(),
+  authorizeMock: vi.fn<(params: Record<string, unknown>) => Promise<string | void>>(),
 }))
 vi.mock('fhirclient', () => ({
   default: { oauth2: { ready: tokenExchangeMock, authorize: authorizeMock } },
@@ -381,6 +381,7 @@ describe('SmartAppRoot on a launch', () => {
       expect(authorizeMock).toHaveBeenCalledWith({
         ...REGISTRATION,
         redirectUri: `${window.location.origin}/importer/`,
+        noRedirect: true,
       })
       expect(authorizeFromLaunchPageSpy).toHaveBeenCalledTimes(1)
     })
@@ -443,6 +444,53 @@ describe('SmartAppRoot on a launch', () => {
           iss: 'https://ruth.wildflowerhealth.io',
         })
       )
+    })
+
+    describe('whose server advertises an unusable authorization endpoint', () => {
+      const assignMock = vi.fn<(url: string) => void>()
+
+      beforeEach(() => {
+        // fhirclient, asked with `noRedirect`, answers the URL the server's
+        // advertised endpoint makes; the page's `assign` records any navigation
+        authorizeMock.mockResolvedValue('javascript:alert(document.domain)//?state=xyz')
+        setUrl(`/importer/${EHR_LAUNCH}`)
+        vi.stubGlobal(
+          'location',
+          Object.assign(new URL(window.location.href), { assign: assignMock })
+        )
+      })
+
+      afterEach(() => {
+        vi.unstubAllGlobals()
+      })
+
+      it('should land on the app root with the reason as its arrival problem, not on the endpoint', async () => {
+        // Arrange
+        const replaceLocation = vi.fn<(url: string) => void>()
+
+        // Act — the launch page starts the launch
+        renderShell({ replaceLocation })
+
+        // Assert — no navigation to the endpoint; one to the bare app root
+        await waitFor(() => {
+          expect(replaceLocation).toHaveBeenCalledTimes(1)
+        })
+        expect(assignMock).not.toHaveBeenCalled()
+        const target = new URL(replaceLocation.mock.calls[0]?.[0] ?? '')
+        expect(`${target.origin}${target.pathname}`).toBe(`${window.location.origin}/importer/`)
+
+        // Act — the app root the launch page sent the reader to
+        cleanup()
+        vi.unstubAllGlobals()
+        setUrl(`${target.pathname}${target.search}`)
+        renderShell({})
+
+        // Assert — the menu says why, with the retry right there
+        expect(arrivalProblem()).toBe(
+          'Could not start the SMART launch. The server’s authorization endpoint is not one ' +
+            'this app will go to. It is a javascript: URL, not an http or https one.'
+        )
+      })
     })
 
     it('should leave for the bare app root when restored from the back-forward cache', async () => {

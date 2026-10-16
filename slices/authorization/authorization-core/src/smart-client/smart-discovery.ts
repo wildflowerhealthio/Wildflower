@@ -107,8 +107,16 @@ const isLoopbackHost = (hostname: string): boolean =>
   /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)
 
 /**
+ * Why a URL is not one the client will send a reader (or a token request) to,
+ * as a sentence about that URL.
+ */
+class UnusableEndpointUrl extends Data.TaggedError('UnusableEndpointUrl')<{
+  readonly reason: string
+}> {}
+
+/**
  * `candidate` as an endpoint URL the client will send a reader (or a token
- * request) to, or `undefined` when it is not one.
+ * request) to, or why it is not one.
  *
  * Rejected: anything that is not an absolute `http:`/`https:` URL; embedded
  * credentials (userinfo, which a redirect would carry into the address bar); a
@@ -117,24 +125,52 @@ const isLoopbackHost = (hostname: string): boolean =>
  * itself is on a secure page — a downgrade the browser would block anyway, and
  * which would put an access token on the wire in the clear.
  */
-const usableEndpointUrl = (
+const endpointUrlFrom = (
   candidate: string,
   options: { readonly pageIsSecure: boolean }
-): string | undefined => {
+): Either.Either<string, UnusableEndpointUrl> => {
   let url: URL
   try {
     url = new URL(candidate.trim())
   } catch {
-    return undefined
+    return Either.left(new UnusableEndpointUrl({ reason: 'It is not an absolute URL.' }))
   }
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined
-  if (url.username !== '' || url.password !== '') return undefined
-  if (url.hash !== '') return undefined
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return Either.left(
+      new UnusableEndpointUrl({
+        reason: `It is a ${url.protocol} URL, not an http or https one.`,
+      })
+    )
+  }
+  if (url.username !== '' || url.password !== '') {
+    return Either.left(new UnusableEndpointUrl({ reason: 'It carries a user name or password.' }))
+  }
+  if (url.hash !== '') {
+    return Either.left(
+      new UnusableEndpointUrl({
+        reason: 'It carries a fragment (#…), which would strand the parameters sign-in adds.',
+      })
+    )
+  }
   if (options.pageIsSecure && url.protocol === 'http:' && !isLoopbackHost(url.hostname)) {
-    return undefined
+    return Either.left(
+      new UnusableEndpointUrl({
+        reason: 'It is plain http to a host off this computer, and this page is served over https.',
+      })
+    )
   }
-  return url.toString()
+  return Either.right(url.toString())
 }
+
+/**
+ * `candidate` as an endpoint URL the client will send a reader (or a token
+ * request) to, or `undefined` when it is not one — {@link endpointUrlFrom}
+ * without the reason.
+ */
+const usableEndpointUrl = (
+  candidate: string,
+  options: { readonly pageIsSecure: boolean }
+): string | undefined => Either.getOrUndefined(endpointUrlFrom(candidate, options))
 
 /**
  * Why a page cannot reach `serverUrl`, or `undefined` when it can.
@@ -293,6 +329,8 @@ export {
   SMART_CONFIGURATION_PATH,
   smartConfigurationUrl,
   isLoopbackHost,
+  endpointUrlFrom,
+  UnusableEndpointUrl,
   usableEndpointUrl,
   insecureTargetReason,
   smartIssuerFrom,

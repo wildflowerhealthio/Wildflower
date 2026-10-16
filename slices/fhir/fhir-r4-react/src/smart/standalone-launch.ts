@@ -1,8 +1,10 @@
 import {
   insecureTargetReason,
   normalizeServerUrl,
+  smartIssuerFrom,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 import { trimTrailingSlashes } from '@wildflowerhealthio/fhir-r4/clients'
+import { Either, Schema } from 'effect'
 
 import { authorizeOpenServer, authorizeSmartLaunch } from './smart-launch.ts'
 
@@ -11,18 +13,22 @@ import { authorizeOpenServer, authorizeSmartLaunch } from './smart-launch.ts'
  * how to connect to it.
  *
  * @remarks
- * Three outcomes, not two, and the third is deliberate. A CORS-blocked probe
- * rejects identically to a down server — the browser gives no way to tell them
- * apart — so a rejected probe is `unreachable`, surfaced to the user, **never**
- * silently treated as `open`. Treating it as open would fire unauthenticated
- * resource reads at a server that may well require auth, producing misleading
- * 401s. A real HTTP answer (even a 404, or non-JSON) is `open`: the server
- * responded, it just has no SMART config.
+ * Four outcomes. A CORS-blocked probe rejects identically to a down server —
+ * the browser gives no way to tell them apart — so a rejected probe is
+ * `unreachable`, surfaced to the user, **never** silently treated as `open`.
+ * Treating it as open would fire unauthenticated resource reads at a server
+ * that may well require auth, producing misleading 401s. A real HTTP answer
+ * (even a 404, or non-JSON) is `open`: the server responded, it just has no
+ * SMART config. A config that names an `authorization_endpoint` is `smart`
+ * when `authorization-core`'s `smartIssuerFrom` accepts it for this page, and
+ * `unusable`, with its `DiscoveryFailed` reason, when it does not (an endpoint
+ * that is not https or loopback, a missing `token_endpoint`, no S256).
  */
 type SmartSupport =
-  | { readonly kind: 'smart' } // config found, has authorization_endpoint
+  | { readonly kind: 'smart' } // config found, its endpoints usable from this page
   | { readonly kind: 'open' } // HTTP non-ok, or JSON without authorization_endpoint
   | { readonly kind: 'unreachable'; readonly message: string } // fetch rejected (network/CORS — indistinguishable)
+  | { readonly kind: 'unusable'; readonly reason: string } // config names endpoints this page will not use
 
 /** The inputs a standalone launch needs: the server, and the app's own client. */
 interface StandaloneLaunchConfig {
@@ -34,35 +40,34 @@ interface StandaloneLaunchConfig {
 }
 
 /**
- * True when `config` is an object carrying a string `authorization_endpoint` —
- * the one field that distinguishes a SMART server from an open one.
- *
- * @remarks
- * The `in` narrowing plus a `typeof` guard reads the field off `unknown` without
- * a cast: an object that lacks the key, or whose value is not a string, is not a
- * SMART server as far as the standalone flow is concerned.
+ * A configuration that names an `authorization_endpoint` — the one field that
+ * distinguishes a SMART server from an open one. Anything else (no such key,
+ * or a value that is not a string) is an open server as far as the standalone
+ * flow is concerned.
  */
-const hasAuthorizationEndpoint = (config: unknown): boolean => {
-  if (typeof config !== 'object' || config === null) return false
-  if (!('authorization_endpoint' in config)) return false
-  return typeof config.authorization_endpoint === 'string'
-}
+const NamesAuthorizationEndpoint = Schema.Struct({ authorization_endpoint: Schema.String })
+
+const namesAuthorizationEndpoint = Schema.is(NamesAuthorizationEndpoint)
 
 /**
  * Probe `{iss}/.well-known/smart-configuration` to decide how to connect.
  *
  * @remarks
  * `fetchFn` is a parameter (default `globalThis.fetch`) so a test can drive the
- * three outcomes over a stub without a real wire — the same transport-is-a-
- * parameter philosophy as the SMART runtime's `HttpClient`.
+ * outcomes over a stub without a real wire — the same transport-is-a-parameter
+ * philosophy as the SMART runtime's `HttpClient`. `pageIsSecure` (default: read
+ * from `window.location`) is what decides whether a plain-http endpoint off
+ * loopback is `unusable`.
  *
  * @param iss - The FHIR server base (trailing slashes are trimmed before the
  *   well-known path is appended)
  * @param fetchFn - The `fetch` to probe with; defaults to `globalThis.fetch`
+ * @param pageIsSecure - Whether this page is served over https
  */
 const detectSmartSupport = async (
   iss: string,
-  fetchFn: typeof fetch = globalThis.fetch
+  fetchFn: typeof fetch = globalThis.fetch,
+  pageIsSecure: boolean = window.location.protocol === 'https:'
 ): Promise<SmartSupport> => {
   const base = trimTrailingSlashes(iss)
   let response: Response
@@ -76,7 +81,8 @@ const detectSmartSupport = async (
     return { kind: 'unreachable', message: error instanceof Error ? error.message : String(error) }
   }
   // A real HTTP answer that isn't ok (404, 500, …) is a server with no SMART
-  // config → open. Only a config that names an authorization endpoint is SMART.
+  // config → open. Only a config that names an authorization endpoint is SMART,
+  // and only when its endpoints are usable from this page.
   if (!response.ok) return { kind: 'open' }
   let config: unknown
   try {
@@ -84,7 +90,11 @@ const detectSmartSupport = async (
   } catch {
     return { kind: 'open' }
   }
-  return hasAuthorizationEndpoint(config) ? { kind: 'smart' } : { kind: 'open' }
+  if (!namesAuthorizationEndpoint(config)) return { kind: 'open' }
+  return Either.match(smartIssuerFrom(base, config, { pageIsSecure }), {
+    onLeft: (failed): SmartSupport => ({ kind: 'unusable', reason: failed.reason }),
+    onRight: (): SmartSupport => ({ kind: 'smart' }),
+  })
 }
 
 /**
@@ -92,17 +102,20 @@ const detectSmartSupport = async (
  * SMART OAuth path, the open (no-auth) path, or neither.
  *
  * @remarks
- * On `smart`/`open` the browser redirects away (fhirclient's `authorize` sends
- * it to the provider or straight to the redirect target), so the returned
- * promise usually never resolves. On `unreachable` there is no redirect — the
- * `SmartSupport` is returned so the caller can render the error and offer a
- * retry.
+ * On `smart`/`open` the browser redirects away (`authorizeSmartLaunch` sends
+ * it to the provider, `authorizeOpenServer` straight to the redirect target),
+ * so the page usually leaves. `authorizeSmartLaunch` rejects, without
+ * navigating, when the authorize URL fhirclient builds is not usable from this
+ * page; the rejection propagates. On `unreachable` or `unusable` there is no
+ * redirect — the `SmartSupport` is returned so the caller can render the
+ * error and offer a retry.
  *
  * @param config - The picked server plus the app's client id, scope, and
  *   redirect target
  * @param fetchFn - The `fetch` the probe uses; defaults to `globalThis.fetch`
  * @returns The probe outcome. `smart`/`open` are returned only in the (unusual)
- *   case the redirect does not navigate the page away; `unreachable` always is.
+ *   case the redirect does not navigate the page away; `unreachable` and
+ *   `unusable` always are.
  */
 const startStandaloneLaunch = async (
   config: StandaloneLaunchConfig,
@@ -119,7 +132,8 @@ const startStandaloneLaunch = async (
   } else if (support.kind === 'open') {
     await authorizeOpenServer({ fhirServiceUrl: config.iss, redirectUri: config.redirectUri })
   }
-  // `unreachable` falls through with no redirect — the caller renders it.
+  // `unreachable` and `unusable` fall through with no redirect — the caller
+  // renders them.
   return support
 }
 

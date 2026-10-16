@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import {
   discoverSmartEndpoints,
+  endpointUrlFrom,
   insecureTargetReason,
   PlainSmartServer,
   SMART_CONFIGURATION_PATH,
@@ -131,6 +132,43 @@ describe('usableEndpointUrl', () => {
       usableEndpointUrl('https://user:pw@example.test/authorize', onSecurePage)
     ).toBeUndefined()
     expect(usableEndpointUrl('https://example.test/authorize#here', onSecurePage)).toBeUndefined()
+  })
+})
+
+describe('endpointUrlFrom', () => {
+  it('is the URL itself for an endpoint usableEndpointUrl accepts', () => {
+    // Act / Assert
+    expect(endpointUrlFrom('https://example.test/oauth/authorize', onSecurePage)).toStrictEqual(
+      Either.right('https://example.test/oauth/authorize')
+    )
+  })
+
+  it.each([
+    { candidate: 'not a url', reason: 'It is not an absolute URL.' },
+    {
+      candidate: 'javascript:alert(1)',
+      reason: 'It is a javascript: URL, not an http or https one.',
+    },
+    {
+      candidate: 'https://user:pw@example.test/authorize',
+      reason: 'It carries a user name or password.',
+    },
+    {
+      candidate: 'https://example.test/authorize#here',
+      reason: 'It carries a fragment (#…), which would strand the parameters sign-in adds.',
+    },
+    {
+      candidate: 'http://example.test/authorize',
+      reason: 'It is plain http to a host off this computer, and this page is served over https.',
+    },
+  ])('names why $candidate is not usable', ({ candidate, reason }) => {
+    // Act
+    const result = endpointUrlFrom(candidate, onSecurePage)
+
+    // Assert
+    expect(Either.getLeft(result).pipe(Option.map((unusable) => unusable.reason))).toStrictEqual(
+      Option.some(reason)
+    )
   })
 })
 

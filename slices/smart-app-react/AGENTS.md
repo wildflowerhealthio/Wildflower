@@ -166,9 +166,11 @@ import `branding-react/styles.css` itself.
   target, with `insecureTargetReason`'s explanation in the banner beside where
   the connect started (re-exported by `fhir-r4-react/smart`, like `normalizeServerUrl`; the scheme
   read when the pick is made). `startStandaloneLaunch`'s
-  `unreachable` outcome, like a problem the `wildflower` caller's `connect`
-  reports, is shown as a retryable error banner beside where the connect
-  started (the bottom for a pick) rather than connecting. A `connect` that
+  `unreachable` and `unusable` outcomes, a launch it rejects (an authorize
+  URL `authorizeSmartLaunch` refuses to go to), and a problem the
+  `wildflower` caller's `connect` reports, are shown as a retryable error
+  banner beside where the connect started (the bottom for a pick) rather than
+  connecting. A `connect` that
   throws synchronously is reported like one that rejects. For either target, a loopback pick's problem on an https page is
   followed by `fhir-r4-react/smart`'s Local Network Access hint
   (`withLocalNetworkAccessHint`, the page's scheme read when the pick is made),
