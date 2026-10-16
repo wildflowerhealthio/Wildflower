@@ -1,0 +1,182 @@
+/*
+ * Router tab strip, in two shapes:
+ *
+ * - Below 768px, a card: the strip is the card's top edge, running its full
+ *   width, and the panel is the card's body. The current tab takes the
+ *   card's surface, so it reads as the open folder.
+ * - From 768px, a pill: `SegmentedToggle`'s rounded track on the chip
+ *   background, tabs sized to their labels, above an unframed panel.
+ *
+ * The 768px is the viewport's, through a media query that applies under
+ * `route-tabs--sized-by-viewport` (the component's class without
+ * `wideFromOwnWidth`), so the strip switches with the rest of the app's
+ * layout. With `wideFromOwnWidth` the component measures its own width and
+ * sets `route-tabs--wide` itself, so the wide rules are written out under
+ * each of the two conditions.
+ *
+ * In either shape a strip whose tabs don't fit scrolls sideways, with no
+ * visible scrollbar, and a fade on each end with tabs past it. The scroll
+ * padding matches the fade, so a tab scrolled into view stays clear of it.
+ *
+ * The current tab is a neutral chip in the panel's surface colour, raised
+ * by a small shadow in the wide shape, not the accent. Tokens only, so dark
+ * mode needs no override here. The tabs are plain links that set their own
+ * font, colour and decoration, so no button or link styling reaches them.
+ */
+
+.route-tabs {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--card-color-border);
+  border-radius: var(--radius-3);
+  background: var(--card-color-background);
+  overflow: hidden;
+}
+
+/*
+ * The strip's bottom hairline is an inset shadow rather than a border: it
+ * paints under the tabs, so the current tab's surface covers it and opens
+ * onto the panel.
+ */
+.route-tabs__strip {
+  display: flex;
+  padding: var(--space-3) var(--space-3) 0;
+  background: var(--color-chip-background);
+  box-shadow: inset 0 -1px 0 var(--color-divider);
+  overflow-x: auto;
+  scroll-padding-inline: var(--space-10);
+  scrollbar-width: none;
+  /*
+   * Fade whichever end has tabs scrolled past it. The modifiers set the fade
+   * widths; with neither, the mask is solid and changes nothing.
+   */
+  --route-tabs-fade-before: 0px;
+  --route-tabs-fade-after: 0px;
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 var(--route-tabs-fade-before),
+    #000 calc(100% - var(--route-tabs-fade-after)),
+    transparent
+  );
+}
+
+.route-tabs__strip::-webkit-scrollbar {
+  display: none;
+}
+
+/* The tabs in a row, as wide as they need: what the strip scrolls over. */
+.route-tabs__row {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--space-1);
+}
+
+.route-tabs__strip--hidden-before {
+  --route-tabs-fade-before: var(--space-10);
+}
+
+.route-tabs__strip--hidden-after {
+  --route-tabs-fade-after: var(--space-10);
+}
+
+.route-tabs__tab {
+  flex: 0 0 auto;
+  padding: var(--space-4) var(--space-6);
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: var(--radius-2) var(--radius-2) 0 0;
+  background: transparent;
+  color: var(--color-neutral-4);
+  font: inherit;
+  font-weight: var(--font-weight-3);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.route-tabs__tab:hover {
+  color: var(--color-neutral-1);
+}
+
+.route-tabs__tab[aria-current='page'] {
+  border-color: var(--color-divider);
+  background: var(--card-color-background);
+  color: var(--color-neutral-1);
+}
+
+.route-tabs__tab:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.route-tabs__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+  padding: var(--space-7);
+}
+
+@media (min-width: 768px) {
+  .route-tabs--sized-by-viewport {
+    gap: var(--space-7);
+    border: 0;
+    border-radius: 0;
+    background: none;
+    overflow: visible;
+  }
+
+  .route-tabs--sized-by-viewport .route-tabs__strip {
+    align-self: flex-start;
+    max-width: 100%;
+    padding: var(--space-1);
+    border: 1px solid var(--color-divider);
+    border-radius: 999px;
+    box-shadow: none;
+  }
+
+  .route-tabs--sized-by-viewport .route-tabs__tab {
+    padding: var(--space-2) var(--space-7);
+    border: 0;
+    border-radius: 999px;
+  }
+
+  .route-tabs--sized-by-viewport .route-tabs__tab[aria-current='page'] {
+    box-shadow: var(--raised-chip-box-shadow);
+  }
+
+  .route-tabs--sized-by-viewport .route-tabs__panel {
+    padding: 0;
+  }
+}
+
+.route-tabs--wide {
+  gap: var(--space-7);
+  border: 0;
+  border-radius: 0;
+  background: none;
+  overflow: visible;
+}
+
+.route-tabs--wide .route-tabs__strip {
+  align-self: flex-start;
+  max-width: 100%;
+  padding: var(--space-1);
+  border: 1px solid var(--color-divider);
+  border-radius: 999px;
+  box-shadow: none;
+}
+
+.route-tabs--wide .route-tabs__tab {
+  padding: var(--space-2) var(--space-7);
+  border: 0;
+  border-radius: 999px;
+}
+
+.route-tabs--wide .route-tabs__tab[aria-current='page'] {
+  box-shadow: var(--raised-chip-box-shadow);
+}
+
+.route-tabs--wide .route-tabs__panel {
+  padding: 0;
+}

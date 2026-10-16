@@ -24,6 +24,7 @@
     "FieldDescription": { "cardMode": "column" },
     "Chip": { "cardMode": "column" },
     "PageHeader": { "cardMode": "column" },
-    "SegmentedToggle": { "cardMode": "column" }
+    "SegmentedToggle": { "cardMode": "column" },
+    "RouteTabs": { "cardMode": "column" }
   }
 }
