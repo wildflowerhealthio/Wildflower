@@ -91,6 +91,15 @@ describe('preparedSpec', () => {
     )
   })
 
+  it('leaves the snapshot as committed when there is no server: no server, no bearer scheme', () => {
+    fc.assert(
+      fc.property(otherRootKeys, (spec) => {
+        expect(preparedSpec(spec, undefined)).toEqual(spec)
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
   it('makes every shipped slice snapshot sendable against the chosen server', () => {
     // Runs against the real committed snapshots this page bundles, so a
     // snapshot that stopped being a usable OpenAPI document fails here.

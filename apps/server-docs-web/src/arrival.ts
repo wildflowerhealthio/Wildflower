@@ -1,16 +1,20 @@
 /**
  * How a page load of the console settles what it arrived with: the query
- * string it leaves in the address bar, and the sign-in controls it shows when
- * the back-forward cache hands it back.
+ * string it leaves in the address bar, the server a return leg comes back
+ * to, and the sign-in controls it shows when the back-forward cache hands it
+ * back.
  *
  * `main.ts` wires both to `window`; they are here so that wiring is tested.
  */
 
 import {
   isAuthorizationResponse,
+  parsePendingAuthorization,
   searchAfterArrivingLaunch,
   searchWithoutAuthorizationResponse,
+  type PendingStore,
 } from '@wildflowerhealthio/authorization-core/smart-client'
+import { Option } from 'effect'
 
 /**
  * The query string a load arriving with `arrivalSearch` settles on, once what
@@ -28,6 +32,29 @@ const searchSettledFrom = (arrivalSearch: string): string =>
   isAuthorizationResponse(arrivalSearch)
     ? searchWithoutAuthorizationResponse(arrivalSearch)
     : searchAfterArrivingLaunch(arrivalSearch)
+
+/**
+ * The server the sign-in this tab is waiting on was started for, from its
+ * pending record in `store` at `key`; `undefined` when there is none, or the
+ * storage refuses to be read.
+ *
+ * Read before `completeSignIn`, which drops the record on a return leg: the
+ * redirect URI carries no `?server=`, so this is how a failed or cancelled
+ * return gets back to the server the reader picked.
+ */
+const pendingSignInServerUrl = (
+  store: Pick<PendingStore, 'getItem'>,
+  key: string
+): string | undefined => {
+  try {
+    return parsePendingAuthorization(store.getItem(key)).pipe(
+      Option.map((pending) => pending.serverUrl),
+      Option.getOrUndefined
+    )
+  } catch {
+    return undefined
+  }
+}
 
 /**
  * Run `resetAuthControls` whenever `page` is restored from the back-forward
@@ -48,4 +75,4 @@ const resetAuthControlsOnBackForwardRestore = (
   })
 }
 
-export { resetAuthControlsOnBackForwardRestore, searchSettledFrom }
+export { pendingSignInServerUrl, resetAuthControlsOnBackForwardRestore, searchSettledFrom }

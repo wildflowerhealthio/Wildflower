@@ -16,24 +16,22 @@
         <span class="brand-bar__wordmark">Wildflower</span>
       </a>
     </header>
-    <form id="server-form" class="server-bar">
-      <label class="server-bar__label" for="server-url">Wildflower server</label>
-      <input
-        id="server-url"
-        class="server-bar__input"
-        type="url"
-        name="server"
-        spellcheck="false"
-        autocomplete="url"
-      />
-      <button class="server-bar__submit" type="submit">Use this server</button>
-      <button id="sign-in" class="server-bar__submit" type="button">Sign in</button>
-      <p class="server-bar__hint">
+    <div class="server-bar">
+      <p id="server-target" class="server-bar__target" hidden>
+        <span class="server-bar__label">Wildflower server</span>
+        <span id="server-target-url" class="server-bar__url"></span>
+      </p>
+      <button id="change-server" class="server-bar__submit" type="button" hidden>
+        Change server
+      </button>
+      <button id="sign-in" class="server-bar__submit" type="button" hidden>Sign in</button>
+      <p id="server-hint" class="server-bar__hint" hidden>
         Every request below is sent to this origin, straight from your browser — nothing is proxied.
         The target is kept in the page URL, so a configured console can be shared as a link.
       </p>
       <p id="auth-status" class="server-bar__status" hidden></p>
-    </form>
+    </div>
+    <section id="connect" class="connect" aria-labelledby="connect-heading" hidden></section>
     <div id="reference"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

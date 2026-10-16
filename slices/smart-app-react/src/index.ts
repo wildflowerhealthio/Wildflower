@@ -4,7 +4,7 @@ export {
   DEFAULT_SERVER_PRESETS,
   type ServerPreset,
   type ServerPresetGroup,
-} from './server-presets.ts'
+} from '@wildflowerhealthio/smart-app-core'
 export {
   LoadingLine,
   LoadingMoreLine,

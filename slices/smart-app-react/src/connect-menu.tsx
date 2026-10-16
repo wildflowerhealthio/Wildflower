@@ -1,22 +1,25 @@
 import { ErrorBanner, TextField } from '@wildflowerhealthio/react-tundraish'
-import { Match } from 'effect'
+import { Either, Match } from 'effect'
 import { useEffect, useRef, useState, type JSX, type SubmitEvent } from 'react'
 
 import {
   insecureTargetReason,
-  normalizeServerUrl,
   startStandaloneLaunch,
   withLocalNetworkAccessHint,
   type SmartSupport,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
   DEFAULT_SERVER_PRESET_GROUPS,
-  RELAY_DOMAIN,
-  relayServerUrlFor,
+  MENU_COPY,
+  RELAY_GROUP_NAME,
+  RELAY_NAME_DESCRIPTION,
+  RELAY_NAME_LABEL,
+  RELAY_NAME_PLACEHOLDER,
   serverPresetGroupsFor,
-  type ConnectTarget,
+  serverUrlForFreeEntry,
+  serverUrlForRelayEntry,
   type ServerPresetGroup,
-} from './server-presets.ts'
+} from '@wildflowerhealthio/smart-app-core'
 
 import styles from './connect-menu.module.css'
 
@@ -85,7 +88,10 @@ interface WildflowerConnectMenuProps {
   readonly autoConnect?: boolean
 }
 
-/** Props for {@link ConnectMenu}, discriminated by what it connects: see {@link ConnectTarget}. */
+/**
+ * Props for {@link ConnectMenu}, discriminated by what it connects: see
+ * `smart-app-core`'s `ConnectTarget`.
+ */
 type ConnectMenuProps = FhirR4ConnectMenuProps | WildflowerConnectMenuProps
 
 /**
@@ -113,24 +119,6 @@ type ConnectState =
   | { readonly kind: 'launching'; readonly from: ConnectOrigin }
   | { readonly kind: 'error'; readonly message: string; readonly from: ConnectOrigin }
 
-/** The words that differ between a SMART app's menu and the launcher's. */
-const MENU_COPY = {
-  'fhir-r4': {
-    heading: 'Launch with a FHIR server',
-    freeEntryName: 'Another FHIR R4 server',
-    freeEntryLabel: 'FHIR base URL',
-    freeEntryPlaceholder: 'https://example.org/fhir',
-    invalidFreeEntry: 'Enter a valid http(s) FHIR base URL, e.g. https://example.org/fhir.',
-  },
-  wildflower: {
-    heading: 'Connect to a server',
-    freeEntryName: 'Another Wildflower server',
-    freeEntryLabel: 'Server URL',
-    freeEntryPlaceholder: 'https://my-server.example.com',
-    invalidFreeEntry: 'Enter a valid http(s) server URL, e.g. https://my-server.example.com.',
-  },
-} as const satisfies Record<ConnectTarget, Record<string, string>>
-
 /**
  * The problem to show for a standalone launch's probe outcome against
  * `serverUrl`, or `undefined` when there is none: `smart`/`open` redirect the
@@ -151,15 +139,6 @@ const standaloneLaunchProblem =
       Match.when({ kind: 'open' }, () => undefined),
       Match.exhaustive
     )
-
-/** The heading (and form name) of the group that connects by relay name. */
-const RELAY_GROUP_NAME = 'Official Wildflower Relay'
-
-/** The relay name field's label. */
-const RELAY_NAME_LABEL = 'Official Wildflower Relay Name'
-
-/** The line under the relay name field, saying where the named server is found. */
-const RELAY_NAME_DESCRIPTION = `This server is found at https://[Name]${RELAY_DOMAIN}`
 
 /**
  * The standalone connect menu: first a relay name entry for a server reached
@@ -304,24 +283,22 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
 
   const onRelaySubmit = (event: SubmitEvent<HTMLFormElement>): void => {
     event.preventDefault()
-    const relayUrl = relayServerUrlFor(relayName)
-    if (relayUrl === undefined) {
-      setRelayProblem(
-        "Enter your server's relay name: letters, digits and hyphens, e.g. my-server."
-      )
-      return
-    }
-    connectTo(relayUrl)
+    Either.match(serverUrlForRelayEntry(relayName), {
+      onLeft: setRelayProblem,
+      onRight: (relayUrl) => {
+        connectTo(relayUrl)
+      },
+    })
   }
 
   const onFreeEntrySubmit = (event: SubmitEvent<HTMLFormElement>): void => {
     event.preventDefault()
-    const serverUrl = normalizeServerUrl(freeEntryUrl)
-    if (serverUrl === undefined) {
-      setFreeEntryProblem(copy.invalidFreeEntry)
-      return
-    }
-    connectTo(serverUrl)
+    Either.match(serverUrlForFreeEntry(freeEntryUrl, props.target), {
+      onLeft: setFreeEntryProblem,
+      onRight: (serverUrl) => {
+        connectTo(serverUrl)
+      },
+    })
   }
 
   const presetGroup = (group: ServerPresetGroup): JSX.Element => (
@@ -383,7 +360,7 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
           inputMode="url"
           value={relayName}
           onChange={setRelayName}
-          placeholder="my-server"
+          placeholder={RELAY_NAME_PLACEHOLDER}
           disabled={launching}
           description={RELAY_NAME_DESCRIPTION}
         />

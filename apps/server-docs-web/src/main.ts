@@ -1,6 +1,6 @@
 import { createApiReference } from '@scalar/api-reference'
 import { restoreRedirectedUrl } from '@wildflowerhealthio/branding-core'
-import { Effect, Option } from 'effect'
+import { Effect, Either, Option } from 'effect'
 
 import '@scalar/api-reference/style.css'
 import './styles.css'
@@ -22,9 +22,18 @@ import {
   type SignInError,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 
-import { resetAuthControlsOnBackForwardRestore, searchSettledFrom } from './arrival.ts'
+import {
+  pendingSignInServerUrl,
+  resetAuthControlsOnBackForwardRestore,
+  searchSettledFrom,
+} from './arrival.ts'
 import { consoleConfiguration } from './configuration.ts'
-import { NO_SERVER_PROMPT, SERVER_URL_EXAMPLE, serverEntryProblem } from './server-target.ts'
+import {
+  CONNECT_CHOICES,
+  CONNECT_HEADING,
+  type ServerEntryChoice,
+  type WithoutServerChoice,
+} from './connect-choices.ts'
 import { PENDING_AUTHORIZATION_KEY, CLIENT_ID, REGISTERED_REDIRECT_URI } from './smart-client.ts'
 
 /**
@@ -32,8 +41,9 @@ import { PENDING_AUTHORIZATION_KEY, CLIENT_ID, REGISTERED_REDIRECT_URI } from '.
  * the five committed slice snapshots, targeted at whichever running server the
  * `?server=` parameter names, optionally signed in to that server as the
  * console's SMART client (see `smart-client.ts` and `sign-in.ts`). With no
- * `?server=` it has no target: the header bar asks for one and no reference is
- * mounted (see `server-target.ts`).
+ * `?server=` it has no target: it shows the connect choices
+ * (`connect-choices.ts`) and mounts no reference until the reader picks a
+ * server, or launches without one.
  * Opened with a SMART launch (`?iss=`, with the EHR's `launch` when there is
  * one), it targets the server `iss` names and signs in to it straight away.
  *
@@ -64,12 +74,13 @@ const requireElement = <T extends Element>(
 restoreRedirectedUrl(window)
 
 const referenceContainer = requireElement('#reference', HTMLElement)
-const serverForm = requireElement('#server-form', HTMLFormElement)
-const serverInput = requireElement('#server-url', HTMLInputElement)
+const connectSection = requireElement('#connect', HTMLElement)
+const serverTarget = requireElement('#server-target', HTMLParagraphElement)
+const serverTargetUrl = requireElement('#server-target-url', HTMLSpanElement)
+const changeServerButton = requireElement('#change-server', HTMLButtonElement)
+const serverHint = requireElement('#server-hint', HTMLParagraphElement)
 const signInButton = requireElement('#sign-in', HTMLButtonElement)
 const statusLine = requireElement('#auth-status', HTMLParagraphElement)
-
-serverInput.placeholder = SERVER_URL_EXAMPLE
 
 const prefersDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches
 
@@ -77,6 +88,13 @@ const prefersDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matche
 const pageIsSecure = window.location.protocol === 'https:'
 
 let reference: ReturnType<typeof createApiReference> | undefined
+
+/**
+ * Whether the reader chose **Launch without a server**. In memory only: it is
+ * not written to the URL, so a reload or a shared link shows the connect
+ * choices again.
+ */
+let browsingWithoutServer = false
 
 /**
  * The signed-in session, or `undefined`. **In memory only, deliberately**: the
@@ -106,18 +124,11 @@ const signInEnvironment: SignInEnvironment = browserSignInEnvironment(window, {
   redirectUri,
 })
 
-/**
- * Show `message` on the status line, or clear it when `undefined`. A `prompt`
- * asks the reader for something rather than reporting how things went.
- */
-const showStatus = (
-  message: string | undefined,
-  kind: 'ok' | 'problem' | 'prompt' = 'ok'
-): void => {
+/** Show `message` on the status line, or clear it when `undefined`. */
+const showStatus = (message: string | undefined, kind: 'ok' | 'problem' = 'ok'): void => {
   statusLine.textContent = message ?? ''
   statusLine.hidden = message === undefined
   statusLine.classList.toggle('server-bar__status--problem', kind === 'problem')
-  statusLine.classList.toggle('server-bar__status--prompt', kind === 'prompt')
 }
 
 /** The server this page load targets, or `undefined` when its URL names none. */
@@ -128,11 +139,11 @@ const currentServerUrl = (): string | undefined => serverUrlFromSearch(window.lo
  *
  * Both halves of the flow fail with a {@link SignInError}, and every variant of
  * it carries a `reason` written for a reader, so one handler renders them all:
- * the message goes on the status line and the button comes back for another
+ * the message goes on the status line and the buttons come back for another
  * try. `Effect.match` folds both channels away, so the promise never rejects. An
  * optional `onFailure` runs after that shared handling, for a caller that must
- * still do something itself when its effect fails (the return leg mounts the
- * reference against the page's target there, since success never will).
+ * still do something itself when its effect fails (the return leg goes back to
+ * the server the sign-in was for there, since success never will).
  */
 const runSignInEffect = <A>(
   effect: Effect.Effect<A, SignInError>,
@@ -145,6 +156,7 @@ const runSignInEffect = <A>(
         onSuccess,
         onFailure: (error: SignInError) => {
           signInButton.disabled = false
+          changeServerButton.disabled = false
           showStatus(error.reason, 'problem')
           onFailure?.(error)
         },
@@ -154,22 +166,31 @@ const runSignInEffect = <A>(
 }
 
 /**
- * Mount (or re-mount) the reference against `serverUrl`, or leave none mounted
- * when there is no target. Re-targeting tears the previous instance down rather
+ * Show the page for `serverUrl`: the target line and the reference mounted
+ * (or re-mounted) against it, with no target when the reader is browsing
+ * without a server; with neither, the connect choices and no reference.
+ *
+ * Re-targeting tears the previous instance down rather
  * than patching its configuration: the documents themselves differ between
  * targets, so a clean mount is the honest update — and the same is true of
  * signing in or out, which changes the token every source's bearer field is
  * prefilled with.
  *
- * The token is only offered to the server it was issued for: a reader who
- * re-points the console mid-session keeps their session, but the requests going
- * somewhere else go without it.
+ * The token is only offered to the server it was issued for. **Change server**
+ * signs out, so that is the server shown; the check keeps it so regardless.
  */
 const render = (serverUrl: string | undefined): void => {
   reference?.destroy()
   reference = undefined
-  if (serverUrl === undefined) return
-  const accessToken = session?.serverUrl === serverUrl ? session.accessToken : undefined
+  const choosing = serverUrl === undefined && !browsingWithoutServer
+  connectSection.hidden = !choosing
+  serverTarget.hidden = choosing
+  changeServerButton.hidden = choosing
+  serverHint.hidden = serverUrl === undefined
+  serverTargetUrl.textContent = serverUrl ?? 'None'
+  if (choosing) return
+  const accessToken =
+    serverUrl !== undefined && session?.serverUrl === serverUrl ? session.accessToken : undefined
   reference = createApiReference(
     referenceContainer,
     consoleConfiguration(serverUrl, { prefersDarkMode, accessToken })
@@ -178,14 +199,15 @@ const render = (serverUrl: string | undefined): void => {
 
 /**
  * Put the sign-in button and the status line in step with the current state.
- * With no target there is nothing to sign in to, so the button goes and the
- * status line asks for a server.
+ * With no target there is nothing to sign in to, so the button and the status
+ * line go.
  */
 const renderAuthControls = (serverUrl: string | undefined): void => {
   signInButton.disabled = false
+  changeServerButton.disabled = false
   signInButton.hidden = serverUrl === undefined
   if (serverUrl === undefined) {
-    showStatus(NO_SERVER_PROMPT, 'prompt')
+    showStatus(undefined)
     return
   }
   if (session === undefined) {
@@ -221,6 +243,12 @@ const cancelExpiryNotice = (): void => {
   }
 }
 
+/** Drop the signed-in session, and the expiry notice armed for it. */
+const forgetSession = (): void => {
+  cancelExpiryNotice()
+  session = undefined
+}
+
 /**
  * Arm a notice for when `current`'s token lapses. The console holds the token in
  * memory only and does not refresh it, so an expired one would just 401 every
@@ -251,41 +279,32 @@ const scheduleExpiryNotice = (current: Session): void => {
 }
 
 /**
- * Point the console at `candidate`, writing the canonical value back into both
- * the URL (so the configured console stays shareable) and the input, then
- * re-rendering. An unusable candidate changes nothing: the status line says
- * why, and the console stays on the target it had.
+ * Point the console at `serverUrl` (an empty string for none), writing its
+ * canonical value into the URL, so the configured console stays shareable,
+ * then re-rendering.
  */
-const applyServerUrl = (candidate: string): void => {
-  const problem = serverEntryProblem(candidate)
-  if (problem !== undefined) {
-    showStatus(problem, 'problem')
-    return
-  }
-  const search = searchWithServerUrl(window.location.search, candidate)
+const applyServerUrl = (serverUrl: string): void => {
+  const search = searchWithServerUrl(window.location.search, serverUrl)
   window.history.replaceState(
     null,
     '',
     `${window.location.pathname}${search}${window.location.hash}`
   )
-  const serverUrl = serverUrlFromSearch(search)
-  serverInput.value = serverUrl ?? ''
-  render(serverUrl)
-  renderAuthControls(serverUrl)
+  const target = serverUrlFromSearch(search)
+  browsingWithoutServer = false
+  render(target)
+  renderAuthControls(target)
 }
-
-serverForm.addEventListener('submit', (event) => {
-  event.preventDefault()
-  applyServerUrl(serverInput.value)
-})
 
 /**
  * Leave for `serverUrl`'s authorization endpoint to sign in: an EHR launch
  * when `launch` is the one the console was opened with, a standalone launch
- * otherwise.
+ * otherwise. **Sign in** and **Change server** stay disabled until the page
+ * leaves, or the sign-in fails.
  */
 const startSigningIn = (serverUrl: string, launch?: string): void => {
   signInButton.disabled = true
+  changeServerButton.disabled = true
   showStatus(`Asking ${serverUrl} how to sign in…`)
   // The console is one page, so there is nowhere in particular to return to.
   runSignInEffect(
@@ -296,11 +315,128 @@ const startSigningIn = (serverUrl: string, launch?: string): void => {
   )
 }
 
+/**
+ * Target the server a connect choice named and sign in to it, as **Sign in**
+ * does — unless this page cannot reach it, which the status line then says.
+ */
+const connectTo = (serverUrl: string): void => {
+  applyServerUrl(serverUrl)
+  if (insecureTargetReason(serverUrl, { pageIsSecure }) === undefined) startSigningIn(serverUrl)
+}
+
+/**
+ * One server entry as a form: its heading, its field, a line under the field
+ * when it has one, its own validation message, then its Connect button.
+ */
+const serverEntryForm = (choice: ServerEntryChoice): HTMLFormElement => {
+  const form = document.createElement('form')
+  form.className = 'connect__group'
+  form.setAttribute('aria-label', choice.name)
+  form.noValidate = true
+
+  const heading = document.createElement('h3')
+  heading.className = 'connect__name'
+  heading.textContent = choice.name
+
+  const input = document.createElement('input')
+  input.className = 'connect__input'
+  input.type = 'text'
+  input.inputMode = 'url'
+  input.spellcheck = false
+  input.placeholder = choice.placeholder
+
+  // The field inside its label, so the two are associated without an id.
+  const label = document.createElement('label')
+  label.className = 'connect__label'
+  label.append(choice.label, input)
+
+  const problem = document.createElement('p')
+  problem.className = 'connect__problem'
+  problem.setAttribute('role', 'alert')
+  problem.hidden = true
+
+  const submit = document.createElement('button')
+  submit.className = 'connect__button'
+  submit.type = 'submit'
+  submit.textContent = 'Connect'
+
+  form.append(heading, label)
+  if (choice.description !== undefined) {
+    const description = document.createElement('p')
+    description.className = 'connect__description'
+    description.textContent = choice.description
+    form.append(description)
+  }
+  form.append(problem, submit)
+
+  form.addEventListener('submit', (event) => {
+    event.preventDefault()
+    Either.match(choice.serverUrlFor(input.value), {
+      onLeft: (message) => {
+        problem.textContent = message
+        problem.hidden = false
+      },
+      onRight: (serverUrl) => {
+        problem.hidden = true
+        connectTo(serverUrl)
+      },
+    })
+  })
+  return form
+}
+
+/** **Launch without a server**: what it gives, then its button. */
+const withoutServerGroup = (choice: WithoutServerChoice): HTMLElement => {
+  const group = document.createElement('section')
+  group.className = 'connect__group'
+  group.setAttribute('aria-label', choice.name)
+
+  const heading = document.createElement('h3')
+  heading.className = 'connect__name'
+  heading.textContent = choice.name
+
+  const description = document.createElement('p')
+  description.className = 'connect__description'
+  description.textContent = choice.description
+
+  const button = document.createElement('button')
+  button.className = 'connect__button'
+  button.type = 'button'
+  button.textContent = choice.buttonLabel
+  button.addEventListener('click', () => {
+    // No token outlives its target: browsing has none to offer one to.
+    forgetSession()
+    browsingWithoutServer = true
+    render(undefined)
+    renderAuthControls(undefined)
+  })
+
+  group.append(heading, description, button)
+  return group
+}
+
+const connectHeading = document.createElement('h2')
+connectHeading.id = 'connect-heading'
+connectHeading.className = 'connect__heading'
+connectHeading.textContent = CONNECT_HEADING
+connectSection.append(
+  connectHeading,
+  ...CONNECT_CHOICES.map((choice) =>
+    choice.kind === 'server-entry' ? serverEntryForm(choice) : withoutServerGroup(choice)
+  )
+)
+
+// Back to the connect choices, signed out: the session belongs to the server
+// being left, and with no target there is no Sign out to drop it with later.
+changeServerButton.addEventListener('click', () => {
+  forgetSession()
+  applyServerUrl('')
+})
+
 signInButton.addEventListener('click', () => {
   const serverUrl = currentServerUrl()
   if (session !== undefined) {
-    cancelExpiryNotice()
-    session = undefined
+    forgetSession()
     render(serverUrl)
     renderAuthControls(serverUrl)
     showStatus('Signed out. The access token is gone from this tab.')
@@ -333,15 +469,29 @@ if (settledSearch !== returnSearch) {
 }
 
 const initialServerUrl = currentServerUrl()
-serverInput.value = initialServerUrl ?? ''
 renderAuthControls(initialServerUrl)
+
+// The server a return leg's sign-in was for. Read now: `completeSignIn` drops
+// the pending record it is read from.
+const pendingServerUrl = returningFromAuthorization
+  ? pendingSignInServerUrl(signInEnvironment.store, signInEnvironment.pendingKey)
+  : undefined
 
 // Mount the reference now on an ordinary load. On a return leg, defer it: a
 // successful sign-in re-targets the reference at the signed-in server, so mounting
 // the multi-megabyte Scalar bundle against the page's target first would only
 // be torn down and rebuilt. Each way the return resolves below mounts it exactly
-// once — `applyServerUrl` on success, `render` on a failed or empty return.
+// once — `applyServerUrl` on success, `returnWithoutSession` otherwise.
 if (!returningFromAuthorization) render(initialServerUrl)
+
+/**
+ * Mount a return leg that brought no session back against the server its
+ * sign-in was for, or the page's own target when no pending record names one.
+ */
+const returnWithoutSession = (): void => {
+  if (pendingServerUrl === undefined) render(initialServerUrl)
+  else applyServerUrl(pendingServerUrl)
+}
 
 // A return leg from `/oauth/authorize` looks like any other load until the query
 // string is read, so every load asks. `?server=` is restored from the pending
@@ -350,15 +500,18 @@ runSignInEffect(
   completeSignIn(returnSearch, signInEnvironment),
   (result) => {
     if (Option.isNone(result)) {
-      if (returningFromAuthorization) render(initialServerUrl)
+      if (returningFromAuthorization) returnWithoutSession()
       return
     }
     session = result.value
     scheduleExpiryNotice(result.value)
     applyServerUrl(result.value.serverUrl)
   },
-  () => {
-    if (returningFromAuthorization) render(initialServerUrl)
+  (error) => {
+    if (!returningFromAuthorization) return
+    returnWithoutSession()
+    // Re-targeting resets the status line; the failure is what it should say.
+    showStatus(error.reason, 'problem')
   }
 )
 

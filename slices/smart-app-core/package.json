@@ -1,0 +1,36 @@
+{
+  "name": "@wildflowerhealthio/smart-app-core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "What a Wildflower connect menu offers, as pure data: the Official Wildflower Relay name entry (`relayServerUrlFor`, `RELAY_DOMAIN`), the server preset groups per connect target (`serverPresetGroupsFor`), what a relay or free entry names or why it names none (`serverUrlForRelayEntry`, `serverUrlForFreeEntry`), and the menu's copy (`MENU_COPY`, the relay group's heading, label, description and problem). Shared by `smart-app-react`'s `ConnectMenu` and the React-free server-docs console. No React, no DOM.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@wildflowerhealthio/authorization-core": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "typescript": "catalog:",
+    "typescript-7": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "@wildflowerhealthio/authorization-core": "workspace:*",
+    "effect": "catalog:"
+  }
+}
