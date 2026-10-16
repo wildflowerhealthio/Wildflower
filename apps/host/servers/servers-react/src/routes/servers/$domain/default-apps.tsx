@@ -39,10 +39,10 @@ const PAGE_URL_COPY: Readonly<
   >
 > = {
   launcherUrl: {
-    label: 'Launcher',
+    label: 'App launcher',
     description: "The page this server's apps are launched from.",
-    saveLabel: 'Save Launcher URL',
-    resetLabel: 'Reset Launcher URL to default',
+    saveLabel: 'Save App Launcher URL',
+    resetLabel: 'Reset App Launcher URL to default',
   },
   authorizationUrl: {
     label: 'Authorization',
@@ -110,7 +110,7 @@ const usePageUrlForm = (
 }
 
 /**
- * One of the pages the server opens, its launcher or its Authorization app
+ * One of the pages the server opens, its app launcher or its Authorization app
  * (see {@link usePageUrlForm}): a field starting at the saved URL, Save once
  * it is changed, and, while the saved URL isn't `defaultUrl`, the one the
  * host gives a new server, Reset to default, which saves the default at
@@ -171,7 +171,7 @@ const PageUrlForm = ({
 
 /**
  * The server page's Default Apps tab, `/servers/$domain/default-apps`: the
- * pages the server opens, its launcher and its Authorization app, each with
+ * pages the server opens, its app launcher and its Authorization app, each with
  * the default the host gives a new server.
  */
 const ServerDefaultAppsTab = (): JSX.Element => {

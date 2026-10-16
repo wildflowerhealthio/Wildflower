@@ -94,13 +94,13 @@
   color: var(--color-neutral-3);
 }
 
-/* Launch can say under itself why it is disabled, so the actions align at the top. */
+/* Apps, Authorization and Edit, in three equal columns. */
 .server-card__actions {
-  display: flex;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-4);
 }
 
 .server-card__action {
-  flex: 1 1 0;
+  min-width: 0;
 }

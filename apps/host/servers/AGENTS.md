@@ -136,7 +136,10 @@ changing how servers run or what the host notifies about them.
   seconds, then only in short spells iOS allows); under it, what the
   status says beyond plain Running or Stopped, with the host's reason a
   running server isn't reachable, why its tunnel is reconnecting, or what to
-  do about a relay that rejected its token or has no tunnel of its name; why its latest run stopped; Launch (`LaunchButton`);
+  do about a relay that rejected its token or has no tunnel of its name; why its latest run stopped; the latest failure of Launch or
+  Authorization, then why Launch can't launch when nothing above says, each
+  across the card; then, in three equal columns, Launch, labelled Apps
+  (`useLaunch` and `LaunchButton`);
   Authorization (`AuthorizationButton`), which opens the server's Wildflower
   Authorization app through `server_open_authorization_app`, disabled while
   the webview is offline or the host would refuse for what the status shows,
@@ -170,15 +173,15 @@ changing how servers run or what the host notifies about them.
   waiting."; and an Authorization app row, which lists the apps and devices
   with access, with Open (`server_open_authorization_app`), disabled as the
   card's Authorization is, its refusal taking the row's text. Default Apps
-  holds its launcher and its Authorization app, each with Reset to default
-  (`PageUrlForm`), named "Reset Launcher URL to default" and "Reset
+  holds its app launcher and its Authorization app, each with Reset to default
+  (`PageUrlForm`), named "Reset App Launcher URL to default" and "Reset
   Authorization Manager URL to default" for assistive technology. Relay holds its relay and tunnel name and a new tunnel token (`server_set_credentials`), in a
   password field that starts empty, a `relayIdentityChanged` refusal shown
   as a warning that the relay may be impersonated, with no retry.
   Certificate holds its certificate's state (its `certificate`): the status in words,
   shown as a failure only for `orderFailing` and `cacheUnreadable`, the
   certificate authority the server orders from (the record's, which Save
-  Launcher URL and Save Authorization Manager URL save unchanged), and the one the state is for (its `issuer`) when
+  App Launcher URL and Save Authorization Manager URL save unchanged), and the one the state is for (its `issuer`) when
   that differs, the held certificate's validity and SHA-256 fingerprint, and
   the latest error, described by its kind, a rate limit's retry time saying
   so once it has passed (one timer, set for it). With no servers it says what
@@ -202,8 +205,8 @@ changing how servers run or what the host notifies about them.
   Launch and Authorization report their failures, the host's refusal or why
   a wait gave up, through `onError`, and each start through `onActionStart`
   (`useActionError`): the card shows the latest failure in one banner
-  across it, above the buttons, until either starts again. Launch's reasons stay above its own button.
-  Launch opens the server's launcher through `server_launch`, signed in as
+  across it, above the buttons, until either starts again.
+  Launch opens the server's app launcher through `server_launch`, signed in as
   the Owner. It is
   disabled, saying why: while the webview is offline (`navigator.onLine`),
   that launching needs a connection (the host commands themselves need none,

@@ -1,22 +1,11 @@
-/* Why Launch is disabled, over Launch, or Starting… with Cancel. */
+/* Apps, or Starting… with Cancel, in a row. */
 .launch-button {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  min-width: 0;
-}
-
-.launch-button__buttons {
   display: flex;
   align-items: center;
   gap: var(--space-4);
+  min-width: 0;
 }
 
 .launch-button__launch {
   flex: 1 1 0;
-}
-
-.launch-button__reason {
-  margin: 0;
-  color: var(--color-neutral-3);
 }

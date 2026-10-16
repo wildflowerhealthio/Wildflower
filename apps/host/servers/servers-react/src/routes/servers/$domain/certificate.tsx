@@ -86,7 +86,7 @@ const certificateErrorText = (
 
 /**
  * The server's certificate for its domain: its status; the CA the server
- * orders from, its record's, which Save Launcher URL and Save Authorization
+ * orders from, its record's, which Save App Launcher URL and Save Authorization
  * Manager URL save unchanged, and, when the certificate state is for another
  * CA (`issuer`), as before a changed CA takes effect, the CA the state is for; the certificate
  * held, with when it is valid and its fingerprint; and the run's latest error

@@ -542,7 +542,9 @@ describe('the server list', () => {
       servers.map((server) => server.domain)
     )
     for (const card of screen.getAllByRole('listitem')) {
-      expect(within(card).getByRole('button', { name: 'Launch' })).toHaveProperty('disabled', false)
+      const apps = within(card).getByRole('button', { name: 'Apps' })
+      expect(apps).toHaveProperty('disabled', false)
+      expect(apps.getAttribute('title')).toBe("Open this server's app launcher")
       expect(within(card).getByRole('link', { name: 'Edit' })).toBeDefined()
     }
     expect(screen.getByRole('link', { name: 'Add new server' }).getAttribute('href')).toBe(
@@ -1063,9 +1065,9 @@ describe('Launch', () => {
   /** The list item of the server `domain`. */
   const serverRow = (domain: string): HTMLElement => screen.getByRole('listitem', { name: domain })
 
-  /** The Launch button on the server `domain`'s card. */
+  /** The Launch button, labelled Apps, on the server `domain`'s card. */
   const launchOn = (domain: string): HTMLButtonElement => {
-    const button = within(serverRow(domain)).getByRole('button', { name: 'Launch' })
+    const button = within(serverRow(domain)).getByRole('button', { name: 'Apps' })
     if (!(button instanceof HTMLButtonElement)) throw new Error('Launch is no <button>')
     return button
   }
@@ -1148,11 +1150,13 @@ describe('Launch', () => {
 
       // Assert
       expect(launchOn(RUTH).disabled).toBe(true)
-      expect(
-        within(serverRow(RUTH)).getByText(
-          'Apps open from the web, so launching needs a connection.'
-        )
-      ).toBeDefined()
+      const reason = within(serverRow(RUTH)).getByText(
+        'Apps open from the web, so launching needs a connection.'
+      )
+      expect(descriptionOf(launchOn(RUTH))).toBe(reason.textContent)
+      // Across the card, above its row of buttons, rather than in Apps' column.
+      expect(reason.parentElement).toBe(serverRow(RUTH))
+      expect(isBefore(reason, launchOn(RUTH))).toBe(true)
     } finally {
       onLine.mockRestore()
       // TanStack Query's online manager hears the window's events.
@@ -1822,7 +1826,7 @@ describe('Authorization', () => {
       server_open_authorization_app: () => Promise.reject(golden.launchErrors[2]),
     })
     await screen.findByRole('listitem', { name: RUTH })
-    const launch = within(serverRow(RUTH)).getByRole('button', { name: 'Launch' })
+    const launch = within(serverRow(RUTH)).getByRole('button', { name: 'Apps' })
     const edit = within(serverRow(RUTH)).getByRole('link', { name: 'Edit' })
 
     // Act
@@ -1850,7 +1854,7 @@ describe('Authorization', () => {
       server_launch: () => launchAnswer(),
     })
     await screen.findByRole('listitem', { name: RUTH })
-    const launch = within(serverRow(RUTH)).getByRole('button', { name: 'Launch' })
+    const launch = within(serverRow(RUTH)).getByRole('button', { name: 'Apps' })
     await user.click(authorizationOn(RUTH))
     await within(serverRow(RUTH)).findByRole('alert')
 
@@ -2180,13 +2184,13 @@ describe('the server page', () => {
     expect(await openTabName()).toBe('Status')
     expect(screen.getByRole('heading', { name: 'Connection' })).toBeDefined()
     expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull()
-    expect(screen.queryByLabelText('Launcher')).toBeNull()
+    expect(screen.queryByLabelText('App launcher')).toBeNull()
 
     // Act
     await openTab('Default Apps')
 
     // Assert
-    expect(screen.getByLabelText('Launcher')).toHaveProperty(
+    expect(screen.getByLabelText('App launcher')).toHaveProperty(
       'value',
       'https://launcher.wildflowerhealth.io/'
     )
@@ -2200,7 +2204,7 @@ describe('the server page', () => {
       screen.getByText('Self-hosted Wildflower relay at https://relay.example.com/')
     ).toBeDefined()
     expect(screen.getByText('ruth')).toBeDefined()
-    expect(screen.queryByLabelText('Launcher')).toBeNull()
+    expect(screen.queryByLabelText('App launcher')).toBeNull()
 
     // Act
     await openTab('Certificate')
@@ -2586,9 +2590,9 @@ describe('the server page', () => {
     })
 
     // Act
-    await user.clear(await screen.findByLabelText('Launcher'))
-    await user.type(screen.getByLabelText('Launcher'), 'https://launcher.example.com/')
-    await user.click(screen.getByRole('button', { name: 'Save Launcher URL' }))
+    await user.clear(await screen.findByLabelText('App launcher'))
+    await user.type(screen.getByLabelText('App launcher'), 'https://launcher.example.com/')
+    await user.click(screen.getByRole('button', { name: 'Save App Launcher URL' }))
     await openTab('Certificate')
 
     // Assert
@@ -2805,8 +2809,8 @@ describe('the server page', () => {
       tab: 'default-apps',
       answers: { server_update: () => Promise.resolve(null) },
     })
-    const field = await screen.findByLabelText('Launcher')
-    const save = screen.getByRole('button', { name: 'Save Launcher URL' })
+    const field = await screen.findByLabelText('App launcher')
+    const save = screen.getByRole('button', { name: 'Save App Launcher URL' })
     expect(save).toHaveProperty('disabled', true)
 
     // Act
@@ -2885,7 +2889,7 @@ describe('the server page', () => {
     // Assert
     const form = await formOf('Authorization')
     expect(await within(form).findByText(refusal.message, { exact: false })).toBeDefined()
-    expect(within(await formOf('Launcher')).queryByRole('alert')).toBeNull()
+    expect(within(await formOf('App launcher')).queryByRole('alert')).toBeNull()
   })
 
   it('should reset the launcher to the default at once, and offer no reset when it is the default', async () => {
@@ -2898,7 +2902,7 @@ describe('the server page', () => {
     })
 
     // Act
-    const reset = await screen.findByRole('button', { name: 'Reset Launcher URL to default' })
+    const reset = await screen.findByRole('button', { name: 'Reset App Launcher URL to default' })
     expect(reset.textContent).toBe('Reset to default')
     await user.click(reset)
 
@@ -2913,17 +2917,17 @@ describe('the server page', () => {
       },
     })
     await waitFor(() => {
-      expect(screen.queryByRole('button', { name: 'Reset Launcher URL to default' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Reset App Launcher URL to default' })).toBeNull()
     })
-    expect(screen.getByLabelText('Launcher')).toHaveProperty('value', DEFAULT_LAUNCHER_URL)
+    expect(screen.getByLabelText('App launcher')).toHaveProperty('value', DEFAULT_LAUNCHER_URL)
     cleanup()
 
     // Act
     renderServerPage({ domain: 'ruth.relay.example.com', tab: 'default-apps' })
 
     // Assert
-    expect(await screen.findByLabelText('Launcher')).toBeDefined()
-    expect(screen.queryByRole('button', { name: 'Reset Launcher URL to default' })).toBeNull()
+    expect(await screen.findByLabelText('App launcher')).toBeDefined()
+    expect(screen.queryByRole('button', { name: 'Reset App Launcher URL to default' })).toBeNull()
   })
 
   it('should reset the Authorization app to the default at once, keeping the launcher', async () => {
@@ -2961,7 +2965,7 @@ describe('the server page', () => {
       'value',
       DEFAULT_AUTHORIZATION_URL
     )
-    expect(screen.getByRole('button', { name: 'Reset Launcher URL to default' })).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Reset App Launcher URL to default' })).toBeDefined()
   })
 
   it.each([
@@ -2979,10 +2983,10 @@ describe('the server page', () => {
       })
 
       // Assert
-      expect(await screen.findByLabelText('Launcher')).toHaveProperty('value', launcherUrl)
-      expect(screen.queryByRole('button', { name: 'Reset Launcher URL to default' }) !== null).toBe(
-        offersReset
-      )
+      expect(await screen.findByLabelText('App launcher')).toHaveProperty('value', launcherUrl)
+      expect(
+        screen.queryByRole('button', { name: 'Reset App Launcher URL to default' }) !== null
+      ).toBe(offersReset)
     }
   )
 
