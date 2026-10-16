@@ -1,6 +1,6 @@
 import type { JSX } from 'react'
 
-import { SpanSeries, type ValueAxis } from '@wildflowerhealthio/plots-fundamentals'
+import type { SpanSeries, ValueAxis } from '@wildflowerhealthio/plots-fundamentals'
 
 import { seriesColors, spanColour } from './series-colors.ts'
 import { labelWithUnit } from './value-format.ts'
@@ -13,6 +13,8 @@ interface LegendProps {
   readonly colours: readonly number[]
   /** The chart's span lanes, in selection order. */
   readonly lanes: readonly SpanSeries.SpanSeries[]
+  /** Each lane's categories (`SpanSeries.categoriesOf`), parallel to `lanes`. */
+  readonly laneCategories: readonly (readonly SpanSeries.SpanCategory[])[]
 }
 
 /**
@@ -26,10 +28,10 @@ interface LegendProps {
  * line) and the text stays in the text tokens.
  *
  * Each span lane follows as one entry: its label, then every category its
- * spans fall in (`SpanSeries.categoriesOf`), each keyed by a small bar in its
- * lane colour.
+ * spans fall in (`laneCategories`), each keyed by a small bar in its lane
+ * colour.
  */
-const Legend = ({ axes, colours, lanes }: LegendProps): JSX.Element => (
+const Legend = ({ axes, colours, lanes, laneCategories }: LegendProps): JSX.Element => (
   <ul className={styles.legend} aria-label="Series">
     {axes.map((axis, position) => (
       <li key={axis.series.id} className={styles.entry}>
@@ -42,11 +44,11 @@ const Legend = ({ axes, colours, lanes }: LegendProps): JSX.Element => (
         <span className={styles.side}>{axis.side === 'left' ? 'left axis' : 'right axis'}</span>
       </li>
     ))}
-    {lanes.map((lane) => (
+    {lanes.map((lane, position) => (
       <li key={lane.id} className={styles.entry}>
         <span className={styles.label}>{lane.label}</span>
         <ul className={styles['legend__categories']} aria-label={`${lane.label} categories`}>
-          {SpanSeries.categoriesOf(lane).map((category) => (
+          {laneCategories[position].map((category) => (
             <li key={category.id} className={styles['legend__category']}>
               <span
                 className={styles['legend__span-key']}

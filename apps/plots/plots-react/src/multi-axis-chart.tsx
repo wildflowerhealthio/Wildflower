@@ -5,7 +5,7 @@ import {
   Buckets,
   ColourSlots,
   Crosshair,
-  type SpanSeries,
+  SpanSeries,
   type TimeDomain,
   type ValueAxis,
 } from '@wildflowerhealthio/plots-fundamentals'
@@ -117,6 +117,8 @@ const MultiAxisChart = ({ axes, lanes, xDomain, onHover }: MultiAxisChartProps):
   }, [hoverIsStale, onHover])
 
   const colours = useColours(axes)
+  // The legend re-renders on every crosshair move; its categories do not change with it.
+  const laneCategories = useMemo(() => lanes.map((lane) => SpanSeries.categoriesOf(lane)), [lanes])
   const options = useMemo(
     () => chartOptions(axes, lanes, xDomain, colours, bucketsBySeriesId),
     [axes, lanes, xDomain, colours, bucketsBySeriesId]
@@ -157,7 +159,7 @@ const MultiAxisChart = ({ axes, lanes, xDomain, onHover }: MultiAxisChartProps):
 
   return (
     <div className={styles.chart}>
-      <Legend axes={axes} colours={colours} lanes={lanes} />
+      <Legend axes={axes} colours={colours} lanes={lanes} laneCategories={laneCategories} />
       <div
         className={styles['plot-area']}
         onPointerMove={handlePointerMove}
