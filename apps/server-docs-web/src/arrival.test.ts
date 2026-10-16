@@ -1,13 +1,19 @@
 import {
   arrivingSmartLaunchFrom,
   isAuthorizationResponse,
+  serializePendingAuthorization,
+  WildflowerServer,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Option } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
-import { resetAuthControlsOnBackForwardRestore, searchSettledFrom } from './arrival.ts'
+import {
+  pendingSignInServerUrl,
+  resetAuthControlsOnBackForwardRestore,
+  searchSettledFrom,
+} from './arrival.ts'
 
 describe('searchSettledFrom', () => {
   it('should drop the authorization server’s iss (RFC 9207) from a return leg', () => {
@@ -61,6 +67,43 @@ describe('searchSettledFrom', () => {
   })
 })
 
+describe('pendingSignInServerUrl', () => {
+  it('should read the server the pending sign-in was started for', () => {
+    // Arrange
+    const server = 'https://ruth.wildflowerhealth.io'
+    const store = storeHolding(
+      serializePendingAuthorization({
+        state: 'a-state',
+        codeVerifier: 'a-verifier',
+        serverUrl: server,
+        smartServer: WildflowerServer.make({ fhirBaseUrl: server }),
+        tokenEndpoint: `${server}/oauth/token`,
+      })
+    )
+
+    // Act / Assert
+    expect(pendingSignInServerUrl(store, PENDING_KEY)).toBe(server)
+  })
+
+  it('should read no server when there is no usable record', () => {
+    // Act / Assert
+    expect(pendingSignInServerUrl(storeHolding(null), PENDING_KEY)).toBeUndefined()
+    expect(pendingSignInServerUrl(storeHolding('not a record'), PENDING_KEY)).toBeUndefined()
+  })
+
+  it('should read no server when the storage refuses to be read', () => {
+    // Arrange
+    const refusing = {
+      getItem: (): string | null => {
+        throw new Error('SecurityError')
+      },
+    }
+
+    // Act / Assert
+    expect(pendingSignInServerUrl(refusing, PENDING_KEY)).toBeUndefined()
+  })
+})
+
 describe('resetAuthControlsOnBackForwardRestore', () => {
   it('should reset the controls when the page is restored from the back-forward cache', () => {
     // Arrange
@@ -90,6 +133,13 @@ describe('resetAuthControlsOnBackForwardRestore', () => {
 })
 
 // Helpers
+
+const PENDING_KEY = 'server-docs-web.pending-authorization'
+
+/** A store holding `raw` at {@link PENDING_KEY} and nothing anywhere else. */
+const storeHolding = (raw: string | null): { getItem: (key: string) => string | null } => ({
+  getItem: (key) => (key === PENDING_KEY ? raw : null),
+})
 
 /** Every param a return leg (RFC 6749 §4.1.2, RFC 9207) or a SMART launch arrives with. */
 const ARRIVAL_PARAMS = ['code', 'state', 'error', 'error_description', 'error_uri', 'iss', 'launch']

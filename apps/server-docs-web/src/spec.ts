@@ -62,7 +62,7 @@ const withBearerAuth = (spec: OpenApiDocument): OpenApiDocument => {
           type: 'http',
           scheme: 'bearer',
           description:
-            'The access token the host issues. Signing in from the header bar ' +
+            'The access token the host issues. Signing in from the server bar ' +
             'fills this field with a freshly issued token.',
         },
       },
@@ -74,10 +74,11 @@ const withBearerAuth = (spec: OpenApiDocument): OpenApiDocument => {
 /**
  * A snapshot made sendable: pointed at `serverUrl` and offering a bearer token
  * field. Composition of {@link withServer} and {@link withBearerAuth}. With no
- * `serverUrl` (the reader is browsing without a server) it gets no server
- * entry, so it names nowhere to send a request.
+ * `serverUrl` (the reader is browsing without a server) it is the snapshot as
+ * committed: no server entry, so it names nowhere to send a request, and no
+ * token field for a request that cannot be sent.
  */
 const preparedSpec = (spec: OpenApiDocument, serverUrl: string | undefined): OpenApiDocument =>
-  withBearerAuth(serverUrl === undefined ? spec : withServer(spec, serverUrl))
+  serverUrl === undefined ? spec : withBearerAuth(withServer(spec, serverUrl))
 
 export { BEARER_SCHEME_NAME, preparedSpec, withBearerAuth, withServer, type OpenApiDocument }

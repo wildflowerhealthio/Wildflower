@@ -6,6 +6,8 @@ export {
   RELAY_NAME_PLACEHOLDER,
   RELAY_NAME_PROBLEM,
 } from './connect-copy.ts'
+export { serverUrlForFreeEntry, serverUrlForRelayEntry } from './server-entry.ts'
+export type { ServerEntryOutcome } from './server-entry.ts'
 export {
   DEFAULT_SERVER_PRESET_GROUPS,
   DEFAULT_SERVER_PRESETS,

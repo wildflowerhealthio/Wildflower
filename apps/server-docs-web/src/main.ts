@@ -22,7 +22,11 @@ import {
   type SignInError,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 
-import { resetAuthControlsOnBackForwardRestore, searchSettledFrom } from './arrival.ts'
+import {
+  pendingSignInServerUrl,
+  resetAuthControlsOnBackForwardRestore,
+  searchSettledFrom,
+} from './arrival.ts'
 import { consoleConfiguration } from './configuration.ts'
 import {
   CONNECT_CHOICES,
@@ -135,11 +139,11 @@ const currentServerUrl = (): string | undefined => serverUrlFromSearch(window.lo
  *
  * Both halves of the flow fail with a {@link SignInError}, and every variant of
  * it carries a `reason` written for a reader, so one handler renders them all:
- * the message goes on the status line and the button comes back for another
+ * the message goes on the status line and the buttons come back for another
  * try. `Effect.match` folds both channels away, so the promise never rejects. An
  * optional `onFailure` runs after that shared handling, for a caller that must
- * still do something itself when its effect fails (the return leg mounts the
- * reference against the page's target there, since success never will).
+ * still do something itself when its effect fails (the return leg goes back to
+ * the server the sign-in was for there, since success never will).
  */
 const runSignInEffect = <A>(
   effect: Effect.Effect<A, SignInError>,
@@ -152,6 +156,7 @@ const runSignInEffect = <A>(
         onSuccess,
         onFailure: (error: SignInError) => {
           signInButton.disabled = false
+          changeServerButton.disabled = false
           showStatus(error.reason, 'problem')
           onFailure?.(error)
         },
@@ -171,9 +176,8 @@ const runSignInEffect = <A>(
  * signing in or out, which changes the token every source's bearer field is
  * prefilled with.
  *
- * The token is only offered to the server it was issued for: a reader who
- * re-points the console mid-session keeps their session, but the requests going
- * somewhere else go without it.
+ * The token is only offered to the server it was issued for. **Change server**
+ * signs out, so that is the server shown; the check keeps it so regardless.
  */
 const render = (serverUrl: string | undefined): void => {
   reference?.destroy()
@@ -200,6 +204,7 @@ const render = (serverUrl: string | undefined): void => {
  */
 const renderAuthControls = (serverUrl: string | undefined): void => {
   signInButton.disabled = false
+  changeServerButton.disabled = false
   signInButton.hidden = serverUrl === undefined
   if (serverUrl === undefined) {
     showStatus(undefined)
@@ -236,6 +241,12 @@ const cancelExpiryNotice = (): void => {
     clearTimeout(expiryTimer)
     expiryTimer = undefined
   }
+}
+
+/** Drop the signed-in session, and the expiry notice armed for it. */
+const forgetSession = (): void => {
+  cancelExpiryNotice()
+  session = undefined
 }
 
 /**
@@ -288,10 +299,12 @@ const applyServerUrl = (serverUrl: string): void => {
 /**
  * Leave for `serverUrl`'s authorization endpoint to sign in: an EHR launch
  * when `launch` is the one the console was opened with, a standalone launch
- * otherwise.
+ * otherwise. **Sign in** and **Change server** stay disabled until the page
+ * leaves, or the sign-in fails.
  */
 const startSigningIn = (serverUrl: string, launch?: string): void => {
   signInButton.disabled = true
+  changeServerButton.disabled = true
   showStatus(`Asking ${serverUrl} how to sign in…`)
   // The console is one page, so there is nowhere in particular to return to.
   runSignInEffect(
@@ -391,6 +404,8 @@ const withoutServerGroup = (choice: WithoutServerChoice): HTMLElement => {
   button.type = 'button'
   button.textContent = choice.buttonLabel
   button.addEventListener('click', () => {
+    // No token outlives its target: browsing has none to offer one to.
+    forgetSession()
     browsingWithoutServer = true
     render(undefined)
     renderAuthControls(undefined)
@@ -411,17 +426,17 @@ connectSection.append(
   )
 )
 
-// Back to the connect choices. The in-memory session stays: it is only ever
-// offered to the server it was issued for.
+// Back to the connect choices, signed out: the session belongs to the server
+// being left, and with no target there is no Sign out to drop it with later.
 changeServerButton.addEventListener('click', () => {
+  forgetSession()
   applyServerUrl('')
 })
 
 signInButton.addEventListener('click', () => {
   const serverUrl = currentServerUrl()
   if (session !== undefined) {
-    cancelExpiryNotice()
-    session = undefined
+    forgetSession()
     render(serverUrl)
     renderAuthControls(serverUrl)
     showStatus('Signed out. The access token is gone from this tab.')
@@ -456,12 +471,27 @@ if (settledSearch !== returnSearch) {
 const initialServerUrl = currentServerUrl()
 renderAuthControls(initialServerUrl)
 
+// The server a return leg's sign-in was for. Read now: `completeSignIn` drops
+// the pending record it is read from.
+const pendingServerUrl = returningFromAuthorization
+  ? pendingSignInServerUrl(signInEnvironment.store, signInEnvironment.pendingKey)
+  : undefined
+
 // Mount the reference now on an ordinary load. On a return leg, defer it: a
 // successful sign-in re-targets the reference at the signed-in server, so mounting
 // the multi-megabyte Scalar bundle against the page's target first would only
 // be torn down and rebuilt. Each way the return resolves below mounts it exactly
-// once — `applyServerUrl` on success, `render` on a failed or empty return.
+// once — `applyServerUrl` on success, `returnWithoutSession` otherwise.
 if (!returningFromAuthorization) render(initialServerUrl)
+
+/**
+ * Mount a return leg that brought no session back against the server its
+ * sign-in was for, or the page's own target when no pending record names one.
+ */
+const returnWithoutSession = (): void => {
+  if (pendingServerUrl === undefined) render(initialServerUrl)
+  else applyServerUrl(pendingServerUrl)
+}
 
 // A return leg from `/oauth/authorize` looks like any other load until the query
 // string is read, so every load asks. `?server=` is restored from the pending
@@ -470,15 +500,18 @@ runSignInEffect(
   completeSignIn(returnSearch, signInEnvironment),
   (result) => {
     if (Option.isNone(result)) {
-      if (returningFromAuthorization) render(initialServerUrl)
+      if (returningFromAuthorization) returnWithoutSession()
       return
     }
     session = result.value
     scheduleExpiryNotice(result.value)
     applyServerUrl(result.value.serverUrl)
   },
-  () => {
-    if (returningFromAuthorization) render(initialServerUrl)
+  (error) => {
+    if (!returningFromAuthorization) return
+    returnWithoutSession()
+    // Re-targeting resets the status line; the failure is what it should say.
+    showStatus(error.reason, 'problem')
   }
 )
 

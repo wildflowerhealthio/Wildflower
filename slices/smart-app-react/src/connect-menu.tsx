@@ -1,10 +1,9 @@
 import { ErrorBanner, TextField } from '@wildflowerhealthio/react-tundraish'
-import { Match } from 'effect'
+import { Either, Match } from 'effect'
 import { useEffect, useRef, useState, type JSX, type SubmitEvent } from 'react'
 
 import {
   insecureTargetReason,
-  normalizeServerUrl,
   startStandaloneLaunch,
   withLocalNetworkAccessHint,
   type SmartSupport,
@@ -16,9 +15,9 @@ import {
   RELAY_NAME_DESCRIPTION,
   RELAY_NAME_LABEL,
   RELAY_NAME_PLACEHOLDER,
-  RELAY_NAME_PROBLEM,
-  relayServerUrlFor,
   serverPresetGroupsFor,
+  serverUrlForFreeEntry,
+  serverUrlForRelayEntry,
   type ServerPresetGroup,
 } from '@wildflowerhealthio/smart-app-core'
 
@@ -284,22 +283,22 @@ const ConnectMenu = (props: ConnectMenuProps): JSX.Element => {
 
   const onRelaySubmit = (event: SubmitEvent<HTMLFormElement>): void => {
     event.preventDefault()
-    const relayUrl = relayServerUrlFor(relayName)
-    if (relayUrl === undefined) {
-      setRelayProblem(RELAY_NAME_PROBLEM)
-      return
-    }
-    connectTo(relayUrl)
+    Either.match(serverUrlForRelayEntry(relayName), {
+      onLeft: setRelayProblem,
+      onRight: (relayUrl) => {
+        connectTo(relayUrl)
+      },
+    })
   }
 
   const onFreeEntrySubmit = (event: SubmitEvent<HTMLFormElement>): void => {
     event.preventDefault()
-    const serverUrl = normalizeServerUrl(freeEntryUrl)
-    if (serverUrl === undefined) {
-      setFreeEntryProblem(copy.invalidFreeEntry)
-      return
-    }
-    connectTo(serverUrl)
+    Either.match(serverUrlForFreeEntry(freeEntryUrl, props.target), {
+      onLeft: setFreeEntryProblem,
+      onRight: (serverUrl) => {
+        connectTo(serverUrl)
+      },
+    })
   }
 
   const presetGroup = (group: ServerPresetGroup): JSX.Element => (

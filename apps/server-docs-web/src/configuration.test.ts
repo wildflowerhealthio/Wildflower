@@ -77,6 +77,7 @@ describe('consoleConfiguration', () => {
 
   it('leaves the send button on, as Scalar has it, while there is a target', () => {
     expect(configuration).not.toHaveProperty('hideTestRequestButton')
+    expect(configuration).not.toHaveProperty('hideClientButton')
   })
 
   it('follows the reader’s colour-scheme preference', () => {
@@ -105,6 +106,10 @@ describe('consoleConfiguration with no target', () => {
 
   it('offers no send button, so nothing goes to the page’s own origin', () => {
     expect(withoutServer.hideTestRequestButton).toBe(true)
+  })
+
+  it('offers no API client either, which could send one', () => {
+    expect(withoutServer.hideClientButton).toBe(true)
   })
 
   it('keeps the third-party and storage guards of a targeted console', () => {

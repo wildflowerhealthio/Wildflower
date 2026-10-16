@@ -91,10 +91,10 @@ describe('preparedSpec', () => {
     )
   })
 
-  it('names no server when there is none, and still offers the bearer field', () => {
+  it('leaves the snapshot as committed when there is no server: no server, no bearer scheme', () => {
     fc.assert(
       fc.property(otherRootKeys, (spec) => {
-        expect(preparedSpec(spec, undefined)).toEqual(withBearerAuth(spec))
+        expect(preparedSpec(spec, undefined)).toEqual(spec)
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )

@@ -144,7 +144,7 @@ effect-messaging bridge.
 
 `smart-app-react` is the Wildflower chrome a first-party SMART app boots through (`SmartAppRoot`, the launch-page entry, `ConnectMenu`) — see [smart-app-react/AGENTS.md](./smart-app-react/AGENTS.md). It joins `fhir`'s SMART primitives to `branding`'s chrome, so neither of those depends on the other.
 
-`smart-app-core` is what `ConnectMenu` offers as pure data (the Official Wildflower Relay entry, the server preset groups per connect target, the menu's copy), with no React and no DOM, so `apps/server-docs-web`, which is not React, offers the same connect choices.
+`smart-app-core` is what `ConnectMenu` offers as pure data (the Official Wildflower Relay entry, the server preset groups per connect target, what an entry names or why it names none, the menu's copy), with no React and no DOM, so `apps/server-docs-web`, which is not React, offers the same connect choices.
 
 `web-trace-core` records a browsing session as FHIR `DocumentReference`s and exports a redacting HAR — see [web-trace-core/AGENTS.md](./web-trace-core/AGENTS.md). It sits below the HAR packages (`http-archive`, `har-importer-core`, `recorder-core-js`, `har-anonymizer-core`), which is why it stands on its own rather than as a package inside any of them.
 

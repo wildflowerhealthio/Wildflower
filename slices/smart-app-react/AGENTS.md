@@ -9,7 +9,8 @@ package is where the two meet, so neither has to know about the other.
 ## Exports
 
 Everything here is UI or DOM boot code. What the connect menu offers, as
-pure data (the relay entry, the preset groups, the menu's copy), is
+pure data (the relay entry, the preset groups, what an entry names or why
+it names none, the menu's copy), is
 `smart-app-core`'s, so a page that is not React (the server-docs console)
 offers the same choices; this package re-exports its preset groups.
 

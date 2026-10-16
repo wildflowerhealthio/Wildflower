@@ -286,6 +286,9 @@ importers:
       '@wildflowerhealthio/react-tundraish':
         specifier: workspace:*
         version: link:../../../global/react-tundraish
+      '@wildflowerhealthio/smart-app-core':
+        specifier: workspace:*
+        version: link:../../../slices/smart-app-core
       '@wildflowerhealthio/smart-app-react':
         specifier: workspace:*
         version: link:../../../slices/smart-app-react
@@ -388,6 +391,9 @@ importers:
       '@tanstack/react-router':
         specifier: 'catalog:'
         version: 1.170.42(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@wildflowerhealthio/authorization-core':
+        specifier: workspace:*
+        version: link:../../../slices/authorization/authorization-core
       '@wildflowerhealthio/branding-core':
         specifier: workspace:*
         version: link:../../../slices/branding/branding-core
@@ -415,6 +421,9 @@ importers:
       '@wildflowerhealthio/scopes-react':
         specifier: workspace:*
         version: link:../../../slices/scopes/scopes-react
+      '@wildflowerhealthio/smart-app-core':
+        specifier: workspace:*
+        version: link:../../../slices/smart-app-core
       '@wildflowerhealthio/smart-app-react':
         specifier: workspace:*
         version: link:../../../slices/smart-app-react
@@ -931,6 +940,9 @@ importers:
       '@wildflowerhealthio/anonymizer-react':
         specifier: workspace:*
         version: link:../../slices/anonymizer/anonymizer-react
+      '@wildflowerhealthio/authorization-core':
+        specifier: workspace:*
+        version: link:../../slices/authorization/authorization-core
       '@wildflowerhealthio/branding-core':
         specifier: workspace:*
         version: link:../../slices/branding/branding-core
@@ -958,6 +970,9 @@ importers:
       '@wildflowerhealthio/shared-structures-react':
         specifier: workspace:*
         version: link:../../slices/shared-structures/shared-structures-react
+      '@wildflowerhealthio/smart-app-core':
+        specifier: workspace:*
+        version: link:../../slices/smart-app-core
       '@wildflowerhealthio/smart-app-react':
         specifier: workspace:*
         version: link:../../slices/smart-app-react
@@ -1307,6 +1322,9 @@ importers:
       '@wildflowerhealthio/shared-structures-react':
         specifier: workspace:*
         version: link:../../../slices/shared-structures/shared-structures-react
+      '@wildflowerhealthio/smart-app-core':
+        specifier: workspace:*
+        version: link:../../../slices/smart-app-core
       '@wildflowerhealthio/smart-app-react':
         specifier: workspace:*
         version: link:../../../slices/smart-app-react
@@ -1704,6 +1722,9 @@ importers:
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.104.1(react@19.3.0)
+      '@wildflowerhealthio/authorization-core':
+        specifier: workspace:*
+        version: link:../../../slices/authorization/authorization-core
       '@wildflowerhealthio/branding-core':
         specifier: workspace:*
         version: link:../../../slices/branding/branding-core
@@ -1743,6 +1764,9 @@ importers:
       '@wildflowerhealthio/react-tundraish':
         specifier: workspace:*
         version: link:../../../global/react-tundraish
+      '@wildflowerhealthio/smart-app-core':
+        specifier: workspace:*
+        version: link:../../../slices/smart-app-core
       '@wildflowerhealthio/smart-app-react':
         specifier: workspace:*
         version: link:../../../slices/smart-app-react
@@ -2036,6 +2060,9 @@ importers:
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.104.1(react@19.3.0)
+      '@wildflowerhealthio/authorization-core':
+        specifier: workspace:*
+        version: link:../../../slices/authorization/authorization-core
       '@wildflowerhealthio/branding-core':
         specifier: workspace:*
         version: link:../../../slices/branding/branding-core
@@ -2069,6 +2096,9 @@ importers:
       '@wildflowerhealthio/react-tundraish':
         specifier: workspace:*
         version: link:../../../global/react-tundraish
+      '@wildflowerhealthio/smart-app-core':
+        specifier: workspace:*
+        version: link:../../../slices/smart-app-core
       '@wildflowerhealthio/smart-app-react':
         specifier: workspace:*
         version: link:../../../slices/smart-app-react
@@ -2421,6 +2451,9 @@ importers:
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.104.1(react@19.3.0)
+      '@wildflowerhealthio/authorization-core':
+        specifier: workspace:*
+        version: link:../../../slices/authorization/authorization-core
       '@wildflowerhealthio/branding-core':
         specifier: workspace:*
         version: link:../../../slices/branding/branding-core
@@ -2442,6 +2475,9 @@ importers:
       '@wildflowerhealthio/react-tundraish':
         specifier: workspace:*
         version: link:../../../global/react-tundraish
+      '@wildflowerhealthio/smart-app-core':
+        specifier: workspace:*
+        version: link:../../../slices/smart-app-core
       '@wildflowerhealthio/smart-app-react':
         specifier: workspace:*
         version: link:../../../slices/smart-app-react
@@ -2746,6 +2782,9 @@ importers:
       '@types/react-dom':
         specifier: 'catalog:'
         version: 19.3.0(@types/react@19.3.0)
+      '@wildflowerhealthio/authorization-core':
+        specifier: workspace:*
+        version: link:../../../slices/authorization/authorization-core
       '@wildflowerhealthio/fhir-r4':
         specifier: workspace:*
         version: link:../../../slices/fhir/fhir-r4
@@ -2758,6 +2797,9 @@ importers:
       '@wildflowerhealthio/react-tundraish':
         specifier: workspace:*
         version: link:../../../global/react-tundraish
+      '@wildflowerhealthio/smart-app-core':
+        specifier: workspace:*
+        version: link:../../../slices/smart-app-core
       '@wildflowerhealthio/smart-app-react':
         specifier: workspace:*
         version: link:../../../slices/smart-app-react
@@ -2908,6 +2950,9 @@ importers:
       '@tanstack/react-router':
         specifier: 'catalog:'
         version: 1.170.42(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@wildflowerhealthio/authorization-core':
+        specifier: workspace:*
+        version: link:../../../slices/authorization/authorization-core
       '@wildflowerhealthio/branding-core':
         specifier: workspace:*
         version: link:../../../slices/branding/branding-core
@@ -2929,6 +2974,9 @@ importers:
       '@wildflowerhealthio/shared-structures-react':
         specifier: workspace:*
         version: link:../../../slices/shared-structures/shared-structures-react
+      '@wildflowerhealthio/smart-app-core':
+        specifier: workspace:*
+        version: link:../../../slices/smart-app-core
       '@wildflowerhealthio/smart-app-react':
         specifier: workspace:*
         version: link:../../../slices/smart-app-react
@@ -5343,6 +5391,15 @@ importers:
       '@wildflowerhealthio/authorization-core':
         specifier: workspace:*
         version: link:../authorization/authorization-core
+      '@wildflowerhealthio/kitchen-sink':
+        specifier: workspace:*
+        version: link:../../global/kitchen-sink
+      effect:
+        specifier: 'catalog:'
+        version: 3.22.2
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
@@ -15868,7 +15925,7 @@ snapshots:
       pathe: 2.0.3
       sirv: 3.0.2
       tinyrainbow: 3.1.1
-      vitest: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/browser-preview@5.0.3)(@vitest/ui@5.0.3(vitest@5.0.3))(@voidzero-dev/vite-plus-core@1.1.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(jsdom@30.1.2)
+      vitest: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/browser-preview@5.0.3)(@vitest/ui@5.0.3(vitest@5.0.3))(@voidzero-dev/vite-plus-core@1.1.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1))(jsdom@30.1.2)
 
   '@vitest/utils@5.0.3':
     dependencies:

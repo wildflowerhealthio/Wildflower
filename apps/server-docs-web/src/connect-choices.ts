@@ -10,44 +10,19 @@
  * Pure data; `main.ts` renders it as plain DOM.
  */
 
-import { normalizeServerUrl } from '@wildflowerhealthio/authorization-core/smart-client'
 import {
   MENU_COPY,
   RELAY_GROUP_NAME,
   RELAY_NAME_DESCRIPTION,
   RELAY_NAME_LABEL,
   RELAY_NAME_PLACEHOLDER,
-  RELAY_NAME_PROBLEM,
-  relayServerUrlFor,
+  serverUrlForFreeEntry,
+  serverUrlForRelayEntry,
+  type ServerEntryOutcome,
 } from '@wildflowerhealthio/smart-app-core'
-import { Either } from 'effect'
 
 /** The words the console's connect choices use: the launcher's, a Wildflower server's. */
 const COPY = MENU_COPY.wildflower
-
-/**
- * The server an entry names, as a FHIR base in `normalizeServerUrl`'s canonical
- * form, or why the text names none, to show beside the entry's field.
- */
-type ServerEntryOutcome = Either.Either<string, string>
-
-/**
- * The server the relay name `relayName` names under the official Wildflower
- * relay (`relayServerUrlFor`), or {@link RELAY_NAME_PROBLEM}.
- */
-const serverUrlForRelayEntry = (relayName: string): ServerEntryOutcome => {
-  const serverUrl = relayServerUrlFor(relayName)
-  return serverUrl === undefined ? Either.left(RELAY_NAME_PROBLEM) : Either.right(serverUrl)
-}
-
-/**
- * The server the free-entry `text` names (`normalizeServerUrl`), or the
- * Wildflower menu's invalid-entry message.
- */
-const serverUrlForFreeEntry = (text: string): ServerEntryOutcome => {
-  const serverUrl = normalizeServerUrl(text)
-  return serverUrl === undefined ? Either.left(COPY.invalidFreeEntry) : Either.right(serverUrl)
-}
 
 /** A form with one text field that names a server, and its Connect button. */
 interface ServerEntryChoice {
@@ -95,7 +70,7 @@ const CONNECT_CHOICES: readonly ConnectChoice[] = [
     name: COPY.freeEntryName,
     label: COPY.freeEntryLabel,
     placeholder: COPY.freeEntryPlaceholder,
-    serverUrlFor: serverUrlForFreeEntry,
+    serverUrlFor: (text) => serverUrlForFreeEntry(text, 'wildflower'),
   },
   {
     kind: 'without-server',
@@ -108,10 +83,7 @@ const CONNECT_CHOICES: readonly ConnectChoice[] = [
 export {
   CONNECT_CHOICES,
   CONNECT_HEADING,
-  serverUrlForFreeEntry,
-  serverUrlForRelayEntry,
   type ConnectChoice,
   type ServerEntryChoice,
-  type ServerEntryOutcome,
   type WithoutServerChoice,
 }

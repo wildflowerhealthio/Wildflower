@@ -35,6 +35,7 @@
     "@wildflowerhealthio/scopes-react": "workspace:*",
     "@wildflowerhealthio/shared-structures-core": "workspace:*",
     "@wildflowerhealthio/shared-structures-react": "workspace:*",
+    "@wildflowerhealthio/smart-app-core": "workspace:*",
     "@wildflowerhealthio/smart-app-react": "workspace:*",
     "@wildflowerhealthio/telemetry-react": "workspace:*",
     "@wildflowerhealthio/telemetry-web": "workspace:*",

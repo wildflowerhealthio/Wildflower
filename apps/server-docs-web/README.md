@@ -59,20 +59,25 @@ The target lives in the URL:
   it straight away, as **Sign in** does. An entry that names no server is
   refused beside its field, with `ConnectMenu`'s wording.
 - **Launch without a server** mounts the reference with no target, to browse
-  it: the specs name no server, there is no **Sign in** button and no token,
-  and Scalar's send button is hidden (`hideTestRequestButton`), since with no
-  server Scalar would send to the page's own origin. Nothing is written to the
-  URL, so a reload shows the connect choices again.
+  it: the specs are the snapshots as committed, naming no server and declaring
+  no bearer scheme, there is no **Sign in** button and no token, and Scalar's
+  send button and "Open API Client" button are hidden (`hideTestRequestButton`,
+  `hideClientButton`), since with no server Scalar would send to the page's own
+  origin. Nothing is written to the URL, so a reload shows the connect choices
+  again.
 - With a target, the server bar shows it beside **Change server** and
-  **Sign in**. **Change server** takes `?server=` out of the URL, unmounts the
-  reference and shows the connect choices. A signed-in session stays in
-  memory; it is only offered to the server it was issued for.
+  **Sign in**. **Change server** signs out, takes `?server=` out of the URL,
+  unmounts the reference and shows the connect choices. It is disabled while a
+  sign-in is on its way out, as **Sign in** is.
+- A failed or cancelled sign-in comes back to the server it was started for,
+  read from the pending record, with the reason on the status line.
 - Only absolute `http:` / `https:` URLs are accepted. A `?server=` carrying
   anything else — `javascript:`, `data:`, protocol-relative `//host`, a bare
   hostname — names no server.
 - A `?server=` link targets that server without signing in on its own.
-- Each spec is served to Scalar with that origin as its only `server` entry and
-  with a bearer HTTP security scheme declared, so the UI offers a token field.
+- With a target, each spec is served to Scalar with that origin as its only
+  `server` entry and with a bearer HTTP security scheme declared, so the UI
+  offers a token field.
   The running host gates its admin surface on that bearer; the snapshots
   themselves carry no security metadata because the host applies the gate as a
   layer.
@@ -88,7 +93,8 @@ The document transforms and the Scalar configuration are pure functions in
 `src/spec.ts` and `src/configuration.ts`, unit-tested beside them; the `?server=`
 parsing itself lives in `authorization-core/smart-client` (every static Wildflower
 page that targets a reader-chosen server needs it), and `src/connect-choices.ts`
-holds the connect choices and what each entry names, or why it names none.
+holds the connect choices, each entry checked by `smart-app-core`'s rule for
+what it names, or why it names none.
 `src/arrival.ts` holds how a load settles what it arrived with: the query it
 leaves in the address bar after a launch or a return leg, and the sign-in
 controls it resets when the back-forward cache restores it.

@@ -59,6 +59,12 @@ interface ConsoleConfiguration {
    * "send request" button at all.
    */
   hideTestRequestButton?: true
+  /**
+   * Set with no target only, beside {@link hideTestRequestButton}: the
+   * sidebar's "Open API Client" button opens a client that sends requests
+   * too.
+   */
+  hideClientButton?: true
 }
 
 /**
@@ -88,7 +94,7 @@ const consoleConfiguration = (
   persistAuth: false,
   darkMode: options.prefersDarkMode,
   ...(serverUrl === undefined
-    ? { hideTestRequestButton: true as const }
+    ? { hideTestRequestButton: true as const, hideClientButton: true as const }
     : {
         authentication: {
           preferredSecurityScheme: BEARER_SCHEME_NAME,
