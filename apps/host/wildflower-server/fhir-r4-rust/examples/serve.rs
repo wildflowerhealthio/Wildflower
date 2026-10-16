@@ -27,7 +27,7 @@ async fn main() -> anyhow::Result<()> {
         public_origin: "http://127.0.0.1:8080".parse()?,
         authorization_app_base:
             wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase::parse(
-                "https://wildflowerhealth.io/authorization/",
+                "https://authorization.wildflowerhealth.io/",
             )?,
     };
 

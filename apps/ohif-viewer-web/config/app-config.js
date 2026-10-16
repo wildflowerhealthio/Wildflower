@@ -1,4 +1,4 @@
-// Runtime configuration for the OHIF viewer published at /ohif-viewer.
+// Runtime configuration for the OHIF viewer published at https://ohif-viewer.wildflowerhealth.io/.
 //
 // OHIF loads this file (`window.config`) before its bundle, so everything here
 // is a plain edit-and-redeploy setting: changing it never needs a rebuild of the
@@ -7,8 +7,9 @@
 ;(function () {
   // This script is loaded as `./app-config.js` next to the viewer's index.html,
   // so its own URL says where the viewer lives. Deriving the router basename
-  // from it lets one path-agnostic bundle serve wildflowerhealth.io/ohif-viewer/
-  // and a PR preview at .../staging/pr-N/ohif-viewer/ alike.
+  // from it lets one path-agnostic bundle serve its own origin's root
+  // (ohif-viewer.wildflowerhealth.io/) and a PR preview at
+  // .../staging/pr-N/ohif-viewer/ alike.
   var script = document.currentScript
   var basename = '/'
   var loopback = false

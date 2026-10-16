@@ -29,7 +29,7 @@ const PLOTS_SCOPE =
  * The OAuth client the build launches as, which depends on how it is served:
  *
  * - A **production** build is published to
- *   `https://wildflowerhealth.io/health-viewer/` and launches as the
+ *   `https://plots.wildflowerhealth.io/` and launches as the
  *   `plots` tile's client, `474e103de61f9141c4b640d59bfa130e`.
  * - The **vite dev server** (`vp run -F @wildflowerhealthio/plots-web dev`, on the port
  *   `dev-app-ports.json` pins) launches as the `plots-dev`

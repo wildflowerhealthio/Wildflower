@@ -321,7 +321,7 @@ describe('the settings route’s Manage access row', () => {
     authorization_endpoint: 'https://ruth.wildflowerhealth.io/oauth/authorize',
     token_endpoint: 'https://ruth.wildflowerhealth.io/oauth/token',
     management_endpoint:
-      'https://wildflowerhealth.io/authorization/?iss=https%3A%2F%2Fruth.wildflowerhealth.io',
+      'https://authorization.wildflowerhealth.io/?iss=https%3A%2F%2Fruth.wildflowerhealth.io',
     wildflower_authorization_api: 'https://ruth.wildflowerhealth.io/authorization/',
     capabilities: ['wildflower-server'],
   }

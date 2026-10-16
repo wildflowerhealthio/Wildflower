@@ -584,7 +584,7 @@ describe('ConnectMenu, what the page arrived with', () => {
 describe('ConnectMenu, the Local Network Access hint', () => {
   // The published site is served over https; jsdom's own page is plain http.
   const onPublishedSite = (): void => {
-    vi.stubGlobal('location', new URL('https://wildflowerhealth.io/medications/'))
+    vi.stubGlobal('location', new URL('https://medications.wildflowerhealth.io/'))
   }
 
   afterEach(() => {
@@ -665,7 +665,7 @@ describe('ConnectMenu, a plain-http server from an https page', () => {
   })
 
   it('refuses a SMART launch against it, saying why, on the published site', async () => {
-    vi.stubGlobal('location', new URL('https://wildflowerhealth.io/medications/'))
+    vi.stubGlobal('location', new URL('https://medications.wildflowerhealth.io/'))
     const user = userEvent.setup()
     render(<ConnectMenu {...PROPS} />)
 
@@ -678,7 +678,7 @@ describe('ConnectMenu, a plain-http server from an https page', () => {
   })
 
   it('refuses a Wildflower sign-in to it, saying why, on the published site', async () => {
-    vi.stubGlobal('location', new URL('https://wildflowerhealth.io/launcher/'))
+    vi.stubGlobal('location', new URL('https://launcher.wildflowerhealth.io/'))
     const user = userEvent.setup()
     render(<ConnectMenu {...WILDFLOWER_PROPS} />)
 
@@ -694,7 +694,7 @@ describe('ConnectMenu, a plain-http server from an https page', () => {
   })
 
   it('still connects to a loopback server, which the browser allows', async () => {
-    vi.stubGlobal('location', new URL('https://wildflowerhealth.io/launcher/'))
+    vi.stubGlobal('location', new URL('https://launcher.wildflowerhealth.io/'))
     const user = userEvent.setup()
     render(<ConnectMenu {...WILDFLOWER_PROPS} />)
 

@@ -11,7 +11,7 @@ import {
   WatchSync,
 } from '@wildflowerhealthio/fhir-sync-pebble-core/pkjs'
 
-const CONFIGURATION_URL = 'https://wildflowerhealth.io/fhir-sync-pebble/'
+const CONFIGURATION_URL = 'https://fhir-sync-pebble.wildflowerhealth.io/'
 
 /**
  * Where the full settings, access token included, are kept on the phone, with

@@ -791,7 +791,7 @@ const discoveringStart = (): {
         pending.delete(key)
       },
     },
-    location: { href: 'https://wildflowerhealth.io/launcher/', protocol: 'https:' },
+    location: { href: 'https://launcher.wildflowerhealth.io/', protocol: 'https:' },
   })
   return { start: (target) => startSignIn(target, undefined, environment), requested }
 }

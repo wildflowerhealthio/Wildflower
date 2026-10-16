@@ -294,13 +294,13 @@ pub(crate) mod tests {
     /// The launcher the fixtures' records have, and the default launcher the
     /// tests give [`add_server`](crate::add_server).
     pub(crate) fn launcher_url() -> Url {
-        Url::parse("https://wildflowerhealth.io/launcher").unwrap()
+        Url::parse("https://launcher.wildflowerhealth.io/").unwrap()
     }
 
     /// The Authorization app the fixtures' records have, and the default
     /// Authorization app the tests give [`add_server`](crate::add_server).
     pub(crate) fn authorization_url() -> Url {
-        Url::parse("https://wildflowerhealth.io/authorization/").unwrap()
+        Url::parse("https://authorization.wildflowerhealth.io/").unwrap()
     }
 
     pub(crate) fn official_record(tunnel_name: &str) -> ServerRecord {

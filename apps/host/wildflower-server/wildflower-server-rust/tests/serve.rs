@@ -999,7 +999,7 @@ async fn authorize_plots_launch(tunnel: &TunnelClient, launch: &str, aud: &str) 
             "code_challenge",
             "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
         )
-        .append_pair("redirect_uri", "https://wildflowerhealth.io/health-viewer/")
+        .append_pair("redirect_uri", "https://plots.wildflowerhealth.io/")
         .append_pair("state", "xyz")
         .append_pair("launch", launch)
         .append_pair("aud", aud);
@@ -1057,7 +1057,7 @@ async fn a_smart_launch_is_minted_for_its_client_and_consumed_once() {
     );
     assert_eq!(
         authorize_plots_launch(&tunnel, &launch, &iss).await,
-        "https://wildflowerhealth.io/health-viewer/?error=invalid_request&state=xyz",
+        "https://plots.wildflowerhealth.io/?error=invalid_request&state=xyz",
         "the launch works once"
     );
 

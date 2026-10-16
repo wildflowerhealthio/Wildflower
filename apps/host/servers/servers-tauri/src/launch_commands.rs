@@ -1190,7 +1190,7 @@ mod tests {
         let data_root = tempfile::tempdir().unwrap();
         let registry = JsonServerRegistry::in_data_root(
             data_root.path(),
-            Url::parse("https://wildflowerhealth.io/authorization/").unwrap(),
+            Url::parse("https://authorization.wildflowerhealth.io/").unwrap(),
         );
         let record = ServerRecord {
             relay: RelayKind::Rathole,

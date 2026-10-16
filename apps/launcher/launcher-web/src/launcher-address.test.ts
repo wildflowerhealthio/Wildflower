@@ -11,9 +11,9 @@ import { RETURN_TO_PARAM } from './sign-in.ts'
 // `dev-app-ports.json`'s `launcher-dev` port). Rust can't read branding-core, so
 // the JSON repeats the published address; this pins the copy to its source.
 describe('tauri-shared-config.json launcher address', () => {
-  it('should point release builds at the published /launcher section', () => {
+  it('should point release builds at the published launcher origin', () => {
     // Arrange
-    const published = `${sectionUrl('launcher')}/`
+    const published = sectionUrl('launcher')
 
     // Act
     const configured = launcherBaseUrl

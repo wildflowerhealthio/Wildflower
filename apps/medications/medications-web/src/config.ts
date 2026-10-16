@@ -30,7 +30,7 @@ const MEDICATIONS_SCOPE =
  * The OAuth client the build launches as, which depends on how it is served:
  *
  * - A **production** build is published to
- *   `https://wildflowerhealth.io/medications/` and launches as the
+ *   `https://medications.wildflowerhealth.io/` and launches as the
  *   `medications` tile's client, `9769f8b274370708d0d3ebb2e3e59b7c`, which
  *   registers that absolute Pages URL as its redirect URI.
  * - The **vite dev server** (`vp run -F @wildflowerhealthio/medications-web dev`, on the port

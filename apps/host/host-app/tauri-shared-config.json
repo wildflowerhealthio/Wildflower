@@ -7,8 +7,8 @@
   "_background_service_comment": "How the background service starts the Wildflower server: the text of Android's persistent foreground-service notification, and its Android foreground-service type. The host starts the service with these (Rust, re-emitted by `src-tauri/build.rs`), and the Tauri entry hands the same pair to the plugin's `configureRecovery` for the restarts the plugin makes itself (TS, imported by `src/main.tsx`). The type must also be in `tauri.conf.json`'s `androidForegroundServiceTypes` and be the one the Android manifest narrows the plugin's service to; host tests hold both to this value.",
   "host_app_client_scopes": "openid",
   "wildflower_host_app_client_id": "c4e755b6a4c1abf2aae6d0d83f2545a5",
-  "launcher_base_url": "https://wildflowerhealth.io/launcher/",
-  "authorization_app_base_url": "https://wildflowerhealth.io/authorization/",
+  "launcher_base_url": "https://launcher.wildflowerhealth.io/",
+  "authorization_app_base_url": "https://authorization.wildflowerhealth.io/",
   "background_service_label": "Wildflower server is running",
   "background_service_foreground_type": "shortService"
 }

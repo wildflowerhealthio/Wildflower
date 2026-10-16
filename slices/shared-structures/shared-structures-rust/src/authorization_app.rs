@@ -2,7 +2,7 @@
 //! advertises.
 //!
 //! The Wildflower Authorization app is published at a fixed address —
-//! `https://wildflowerhealth.io/authorization/` — and is a SMART client of
+//! `https://authorization.wildflowerhealth.io/` — and is a SMART client of
 //! whichever Wildflower server its `?iss=` query parameter names. There the
 //! Owner reads and edits what a server has authorized, so a server's SMART
 //! discovery advertises it, pointed back at that server, as its
@@ -21,7 +21,7 @@ use crate::launcher::directory_url;
 const ISS_PARAM: &str = "iss";
 
 /// The root URL of the hosted Wildflower Authorization app, e.g.
-/// `https://wildflowerhealth.io/authorization/`.
+/// `https://authorization.wildflowerhealth.io/`.
 ///
 /// Always stored with a trailing slash, and without a query or fragment, like
 /// [`LauncherBase`](crate::launcher::LauncherBase).
@@ -65,10 +65,16 @@ mod tests {
     #[test]
     fn parse_adds_the_trailing_slash_and_drops_query_and_fragment() {
         assert_eq!(
-            base("https://wildflowerhealth.io/authorization?x=1#y")
+            base("https://wildflowerhealthio.github.io/staging/pr-7/authorization?x=1#y")
                 .as_url()
                 .as_str(),
-            "https://wildflowerhealth.io/authorization/"
+            "https://wildflowerhealthio.github.io/staging/pr-7/authorization/"
+        );
+        assert_eq!(
+            base("https://authorization.wildflowerhealth.io?x=1#y")
+                .as_url()
+                .as_str(),
+            "https://authorization.wildflowerhealth.io/"
         );
     }
 
@@ -79,11 +85,11 @@ mod tests {
 
     #[test]
     fn management_url_points_the_app_at_the_issuer() {
-        let url = base("https://wildflowerhealth.io/authorization")
+        let url = base("https://authorization.wildflowerhealth.io")
             .management_url("https://ruth.wildflowerhealth.io");
         assert_eq!(
             url.as_str(),
-            "https://wildflowerhealth.io/authorization/?iss=https%3A%2F%2Fruth.wildflowerhealth.io"
+            "https://authorization.wildflowerhealth.io/?iss=https%3A%2F%2Fruth.wildflowerhealth.io"
         );
     }
 }

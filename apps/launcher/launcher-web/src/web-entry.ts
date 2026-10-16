@@ -85,8 +85,8 @@ const searchAfterReturnLeg = (
  *
  * A router navigation (`router.navigate`, `<Link>`) applies the basepath on its
  * own, but a write straight to the history object or the location does not, so
- * the logout's reload of `/` on a build served under `/launcher/` (or a PR preview's
- * `/staging/pr-<n>/launcher/`) would land at the origin root, off the app. `basepath`
+ * the logout's reload of `/` on a build served under a PR preview's
+ * `/staging/pr-<n>/launcher/` would land at the origin root, off the app. `basepath`
  * is the slash-suffixed served directory (`basenameOf(location.pathname)`); at
  * the origin root it is `/`, and the prefix is a no-op.
  *

@@ -54,14 +54,11 @@ describe('signInEnvironment', () => {
     expect(fromDev.redirectUri).toBe('http://127.0.0.1:5173/')
   })
 
-  it('returns under the served subpath when the build is published there', () => {
-    // Arrange / Act — the hosted build runs under `/launcher/` in production and
-    // under a PR preview's `/staging/pr-<n>/launcher/`; the caller passes that
-    // served base.
-    const production = signInEnvironment(
-      pageAt('https://wildflowerhealth.io/launcher/'),
-      '/launcher/'
-    )
+  it('returns under the served base, the origin root in production', () => {
+    // Arrange / Act — the hosted build runs at the root of its own origin in
+    // production and under a PR preview's `/staging/pr-<n>/launcher/`; the
+    // caller passes that served base.
+    const production = signInEnvironment(pageAt('https://launcher.wildflowerhealth.io/'), '/')
     const preview = signInEnvironment(
       pageAt('https://wildflowerhealthio.github.io/staging/pr-719/launcher/'),
       '/staging/pr-719/launcher/'
@@ -88,9 +85,9 @@ describe('signInEnvironment', () => {
 
   it('names the published app root', () => {
     // `/oauth/authorize` matches the seeded row's entry by exact string
-    // equality. This holds the constant to the published section address;
+    // equality. This holds the constant to the launcher's published origin;
     // authorization-server-rust's `clients.rs` holds the seeded row to the same value.
-    expect(REGISTERED_REDIRECT_URI).toBe(`${sectionUrl('launcher')}/`)
+    expect(REGISTERED_REDIRECT_URI).toBe(sectionUrl('launcher'))
   })
 
   it('asks for exactly the scopes the launcher uses', () => {
@@ -462,7 +459,7 @@ describe('scheduleExpiry', () => {
 describe('returnToOnPage', () => {
   it('reads the path the auth gate bounced the reader from, raw', () => {
     // Arrange — raw: `main-web` sanitises what comes back, not this reader.
-    const href = `https://wildflowerhealth.io/launcher/?server=x&returnTo=${encodeURIComponent('/settings/requests?tab=logs')}`
+    const href = `https://launcher.wildflowerhealth.io/?server=x&returnTo=${encodeURIComponent('/settings/requests?tab=logs')}`
 
     // Act / Assert
     expect(returnToOnPage(href)).toBe('/settings/requests?tab=logs')
@@ -470,8 +467,8 @@ describe('returnToOnPage', () => {
 
   it('names nothing when the page carries no returnTo, or an empty one', () => {
     // Act / Assert
-    expect(returnToOnPage('https://wildflowerhealth.io/launcher/?server=x')).toBeUndefined()
-    expect(returnToOnPage('https://wildflowerhealth.io/launcher/?returnTo=')).toBeUndefined()
+    expect(returnToOnPage('https://launcher.wildflowerhealth.io/?server=x')).toBeUndefined()
+    expect(returnToOnPage('https://launcher.wildflowerhealth.io/?returnTo=')).toBeUndefined()
   })
 })
 

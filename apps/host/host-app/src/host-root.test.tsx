@@ -119,8 +119,8 @@ const renderHost = async ({
         listen: listenToNoHostEvent,
         listenToNotificationTaps: () => Promise.reject(new Error('no notification taps here')),
         backgroundServiceStartConfig: { serviceLabel: 'Servers', foregroundServiceType: 'none' },
-        defaultLauncherUrl: 'https://wildflowerhealth.io/launcher/',
-        defaultAuthorizationUrl: 'https://wildflowerhealth.io/authorization/',
+        defaultLauncherUrl: 'https://launcher.wildflowerhealth.io/',
+        defaultAuthorizationUrl: 'https://authorization.wildflowerhealth.io/',
         telemetry: { dsn: '', app: 'host-app' },
         storage,
       }}

@@ -24,17 +24,16 @@
 const CLIENT_ID = '664a01e8614050cd82ffe90350b81413'
 
 /**
- * The redirect URI of the **published** console, and the sole entry of the
- * seeded row — the one redirect that is genuinely registered. Every other copy
- * derives its own.
+ * The redirect URI of the **published** console, on its own origin, and the
+ * first entry of the seeded row. Every other copy derives its own.
  */
-const REGISTERED_REDIRECT_URI = 'https://wildflowerhealth.io/server-docs/'
+const REGISTERED_REDIRECT_URI = 'https://server-docs.wildflowerhealth.io/'
 
 /**
  * The `sessionStorage` key this console's pending-authorization record lives at,
- * namespaced because the console shares both the flow in
- * `authorization-core/smart-client` and the `wildflowerhealth.io` origin with the
- * hosted launcher.
+ * namespaced because the console shares the flow in
+ * `authorization-core/smart-client` with the hosted launcher, and a PR preview
+ * serves both on one origin.
  */
 const PENDING_AUTHORIZATION_KEY = 'server-docs-web.pending-authorization'
 

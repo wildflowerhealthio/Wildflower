@@ -148,7 +148,7 @@ mod tests {
     /// The document, advertising the hosted app.
     fn document() -> SmartConfiguration {
         let authorization_app =
-            AuthorizationAppBase::parse("https://wildflowerhealth.io/authorization/")
+            AuthorizationAppBase::parse("https://authorization.wildflowerhealth.io/")
                 .expect("valid base");
         build_smart_configuration(SERVER_ORIGIN, &authorization_app)
     }
@@ -213,7 +213,7 @@ mod tests {
         let doc = document();
         assert_eq!(
             doc.management_endpoint,
-            "https://wildflowerhealth.io/authorization/?iss=https%3A%2F%2Fruth.wildflowerhealth.io"
+            "https://authorization.wildflowerhealth.io/?iss=https%3A%2F%2Fruth.wildflowerhealth.io"
         );
         assert_eq!(
             doc.wildflower_authorization_api,

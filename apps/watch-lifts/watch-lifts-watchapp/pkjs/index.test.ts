@@ -67,7 +67,7 @@ const save = (settings: PhoneSettings.Settings): void => {
 }
 
 const pageUrl = (settings: PhoneSettings.Settings): string =>
-  PhoneSettings.configurationUrl('https://wildflowerhealth.io/watch-lifts/', settings)
+  PhoneSettings.configurationUrl('https://watch-lifts.wildflowerhealth.io/', settings)
 
 describe('the settings page', () => {
   it('should open with the default weights before any were saved', () => {

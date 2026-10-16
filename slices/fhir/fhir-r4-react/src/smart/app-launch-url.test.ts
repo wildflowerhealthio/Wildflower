@@ -270,7 +270,7 @@ describe('appLaunchUrl', () => {
 
     // Act
     const launchUrl = new URL(
-      appLaunchUrl('https://wildflowerhealth.io/medications/', {
+      appLaunchUrl('https://medications.wildflowerhealth.io/', {
         fhirBaseUrl,
         patient,
       })
@@ -288,7 +288,7 @@ describe('appLaunchUrl', () => {
 
   it('should throw for a FHIR base that is not a URL', () => {
     expect(() =>
-      appLaunchUrl('https://wildflowerhealth.io/medications/', {
+      appLaunchUrl('https://medications.wildflowerhealth.io/', {
         fhirBaseUrl: 'not a url',
         patient: undefined,
       })

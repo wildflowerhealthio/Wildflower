@@ -156,7 +156,7 @@ describe('authorizationRequestUrl', () => {
     const url = new URL(
       authorizationRequestUrl('https://ruth.wildflowerhealth.io/oauth/authorize', {
         clientId: '664a01e8614050cd82ffe90350b81413',
-        redirectUri: 'https://wildflowerhealth.io/server-docs/',
+        redirectUri: 'https://server-docs.wildflowerhealth.io/',
         scope: 'openid system/*.cruds',
         state: 'state-value',
         codeChallenge: 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM',
@@ -169,7 +169,7 @@ describe('authorizationRequestUrl', () => {
     expect(Object.fromEntries(url.searchParams)).toEqual({
       response_type: 'code',
       client_id: '664a01e8614050cd82ffe90350b81413',
-      redirect_uri: 'https://wildflowerhealth.io/server-docs/',
+      redirect_uri: 'https://server-docs.wildflowerhealth.io/',
       scope: 'openid system/*.cruds',
       state: 'state-value',
       code_challenge: 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM',
@@ -187,7 +187,7 @@ describe('authorizationRequestUrl', () => {
           const url = new URL(
             authorizationRequestUrl('https://ruth.wildflowerhealth.io/oauth/authorize', {
               clientId: '03a513940b52f8c2649a5366d1a26d19',
-              redirectUri: 'https://wildflowerhealth.io/launcher/',
+              redirectUri: 'https://launcher.wildflowerhealth.io/',
               scope: 'openid launch',
               state: 's',
               codeChallenge: 'c',
@@ -211,7 +211,7 @@ describe('authorizationRequestUrl', () => {
     const url = new URL(
       authorizationRequestUrl('https://example.test/authorize?tenant=acme', {
         clientId: '664a01e8614050cd82ffe90350b81413',
-        redirectUri: 'https://wildflowerhealth.io/server-docs/',
+        redirectUri: 'https://server-docs.wildflowerhealth.io/',
         scope: 'openid',
         state: 's',
         codeChallenge: 'c',
@@ -438,7 +438,7 @@ describe('tokenRequestBody', () => {
       tokenRequestBody({
         code: 'the-code',
         codeVerifier: 'the-verifier',
-        redirectUri: 'https://wildflowerhealth.io/server-docs/',
+        redirectUri: 'https://server-docs.wildflowerhealth.io/',
         clientId: '664a01e8614050cd82ffe90350b81413',
       })
     )
@@ -447,7 +447,7 @@ describe('tokenRequestBody', () => {
     expect(Object.fromEntries(body)).toEqual({
       grant_type: 'authorization_code',
       code: 'the-code',
-      redirect_uri: 'https://wildflowerhealth.io/server-docs/',
+      redirect_uri: 'https://server-docs.wildflowerhealth.io/',
       client_id: '664a01e8614050cd82ffe90350b81413',
       code_verifier: 'the-verifier',
     })
