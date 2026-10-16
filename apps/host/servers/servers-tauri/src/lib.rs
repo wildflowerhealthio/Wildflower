@@ -15,6 +15,8 @@
 //! - emits the [`SERVER_STATUS_EVENT`] to the base for each server whose
 //!   status on `TauriUnitRunner` changed, with its certificate's state (its
 //!   run's, or what its cache says) and the newest consent waiting on it;
+//! - shows on the app icon's badge how many servers have a consent waiting,
+//!   cleared once none does (`pending_consent_badge`);
 //! - posts a stop notification for each new stop of a server's run, read from
 //!   `TauriUnitRunner`'s statuses, and a notification for each new consent
 //!   waiting on a server, opening the request as the server's page's Open
@@ -101,6 +103,7 @@ mod commands;
 mod consent_requests;
 mod launch_commands;
 mod notifications;
+mod pending_consent_badge;
 mod server_status;
 mod server_units;
 #[cfg(test)]
@@ -234,6 +237,10 @@ pub fn host_servers(
     tauri::async_runtime::spawn(notifications::post_stop_notifications(
         app.clone(),
         runner.subscribe_stops(),
+    ));
+    tauri::async_runtime::spawn(pending_consent_badge::show_pending_consent_count(
+        pending_consent_badge::AppIconBadge { app: app.clone() },
+        runner.subscribe(),
     ));
     app.manage(ServersState::new(
         registry,

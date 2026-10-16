@@ -61,7 +61,8 @@
 //!    registered server with [`RunPolicyChoice`] and [`ServerChangeError`];
 //!    [`ServerDetail`]; launching, with [`ensure_launchable`], [`launch_url`],
 //!    [`authorization_app_url`], [`sign_in_url`], [`consent_sign_in_url`]
-//!    and [`LaunchError`]; [`PendingConsent`] with its [`ConsentKey`]; and
+//!    and [`LaunchError`]; [`PendingConsent`] with its [`ConsentKey`], and
+//!    [`pending_consent_server_count`], what the app icon's badge shows; and
 //!    the [`notifications`](domain::notifications) the host posts:
 //!    [`LocalNotification`], the request coalescer, the stop notifications
 //!    and the consent notifications. The token is a secret: its `Debug` and `Serialize`
@@ -97,11 +98,11 @@ pub use domain::notifications::stop_notifications::{
 };
 pub use domain::{
     add_server, authorization_app_url, consent_sign_in_url, ensure_launchable, launch_url,
-    remove_server, set_run_policy, set_server_credentials, sign_in_url, update_server,
-    CertificateAuthority, ConsentKey, EnrolmentError, EnteredCredentials, EnteredRelay,
-    LaunchError, ListedServer, PendingConsent, RegistryError, RelayIdentity, RelayKind,
-    RunPolicyChoice, ServerChangeError, ServerDetail, ServerRecord, ServerStatus,
-    ServerStatusTracker, ServerUpdate, TunnelToken, SERVERS_DIR_NAME,
+    pending_consent_server_count, remove_server, set_run_policy, set_server_credentials,
+    sign_in_url, update_server, CertificateAuthority, ConsentKey, EnrolmentError,
+    EnteredCredentials, EnteredRelay, LaunchError, ListedServer, PendingConsent, RegistryError,
+    RelayIdentity, RelayKind, RunPolicyChoice, ServerChangeError, ServerDetail, ServerRecord,
+    ServerStatus, ServerStatusTracker, ServerUpdate, TunnelToken, SERVERS_DIR_NAME,
 };
 pub use live_bindings::server_consent_watcher::ServerConsentWatcher;
 pub use live_bindings::server_launch_minter::ServerLaunchMinter;
