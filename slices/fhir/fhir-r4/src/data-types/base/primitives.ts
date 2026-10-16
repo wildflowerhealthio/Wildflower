@@ -98,6 +98,21 @@ const IdSchema = Schema.String.pipe(
   })
 )
 
+/**
+ * Generator of `DateTime.Utc` values inside the FHIR `instant` year window: the
+ * arbitrary of {@link InstantSchema} and of any other schema that decodes a
+ * FHIR date-time to `DateTime.Utc`.
+ */
+const instantArbitrary: Arbitrary.LazyArbitrary<DateTime.Utc> = (
+  fc: typeof FastCheck
+): FastCheck.Arbitrary<DateTime.Utc> =>
+  // FHIR `instant` regex bounds years to [1000, 9999]. Sample epoch-ms
+  // within that window so `DateTime.formatIso` always emits a
+  // FHIR-valid string. 0001-01-01T00:00:00Z → -62135596800000;
+  // 9999-12-31T23:59:59.999Z → 253402300799999; clamp to
+  // [1000-01-01, 9999-12-31].
+  fc.integer({ min: -30610224000000, max: 253402300799999 }).map((ms) => DateTime.unsafeMake(ms))
+
 /** FHIR R4 `instant`: precise UTC datetime, always with timezone, at least
  * seconds precision. Decoded shape is `DateTime.Utc` so it shares the
  * Effect-side representation of `dateTime`.
@@ -110,19 +125,7 @@ const IdSchema = Schema.String.pipe(
  * embed `InstantSchema` exercise spec-conformant values. */
 const InstantSchema = pipe(
   Schema.DateTimeUtc,
-  Schema.annotations({
-    arbitrary:
-      (): Arbitrary.LazyArbitrary<DateTime.Utc> =>
-      (fc: typeof FastCheck): FastCheck.Arbitrary<DateTime.Utc> =>
-        // FHIR `instant` regex bounds years to [1000, 9999]. Sample epoch-ms
-        // within that window so `DateTime.formatIso` always emits a
-        // FHIR-valid string. 0001-01-01T00:00:00Z → -62135596800000;
-        // 9999-12-31T23:59:59.999Z → 253402300799999; clamp to
-        // [1000-01-01, 9999-12-31].
-        fc
-          .integer({ min: -30610224000000, max: 253402300799999 })
-          .map((ms) => DateTime.unsafeMake(ms)),
-  })
+  Schema.annotations({ arbitrary: (): Arbitrary.LazyArbitrary<DateTime.Utc> => instantArbitrary })
 )
 
-export { DateSchema, IdSchema, InstantSchema, TimeSchema, UriSchema }
+export { DateSchema, IdSchema, InstantSchema, TimeSchema, UriSchema, instantArbitrary }

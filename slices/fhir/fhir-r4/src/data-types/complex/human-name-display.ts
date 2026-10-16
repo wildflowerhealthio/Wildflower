@@ -1,5 +1,7 @@
 import { Array as Arr, DateTime, Option, Order, String as Str } from 'effect'
 
+import { endOfPartialDate } from './partial-date.ts'
+
 /*
  * The display name of a person's `HumanName`s, apart from the `HumanName`
  * schema: this module imports no schema and registers no datatype, so a page
@@ -50,19 +52,6 @@ const renderName = (name: Displayable): string => {
   return parts.length > 0 ? parts.join(' ') : (name.text ?? '').trim()
 }
 
-/** A FHIR `date` / partial `dateTime`: a year, a year-month, or a full date. */
-const PARTIAL_DATE = /^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$/u
-
-/** The span a partial date covers: a day, a month, or a year. */
-const precisionOf = (
-  month: string | undefined,
-  day: string | undefined
-): Partial<DateTime.DateTime.PartsForMath> => {
-  if (day !== undefined) return { days: 1 }
-  if (month !== undefined) return { months: 1 }
-  return { years: 1 }
-}
-
 /**
  * Whether a `period.end` written as `end` has passed at `now`, or `None` when
  * `end` does not parse as a date.
@@ -70,26 +59,20 @@ const precisionOf = (
  * @remarks
  * A FHIR `Period.end` is inclusive to its precision: `2024-06-01` runs to the
  * end of that day, `2020-05` to the end of May, `2020` to the end of the year.
- * So a date or partial date has passed once `now` reaches the start of the
- * next day, month or year (taken in UTC); a full `dateTime` has passed once
- * `now` is after it.
+ * So a date or partial date has passed once `now` is after the last instant it
+ * covers ({@link endOfPartialDate}, taken in UTC); a full `dateTime` has passed
+ * once `now` is after it.
  */
-const hasPassed = (end: string, now: DateTime.DateTime): Option.Option<boolean> => {
-  const partial = PARTIAL_DATE.exec(end)
-  if (partial === null)
-    return Option.map(DateTime.make(end), (instant) => DateTime.lessThan(instant, now))
-  const [, year, month, day] = partial
-  const start = DateTime.make(`${year}-${month ?? '01'}-${day ?? '01'}T00:00:00Z`)
-  const precision = precisionOf(month, day)
-  return Option.map(start, (periodStart) =>
-    DateTime.lessThanOrEqualTo(DateTime.add(periodStart, precision), now)
+const hasPassed = (end: string, now: DateTime.DateTime): Option.Option<boolean> =>
+  endOfPartialDate(end).pipe(
+    Option.orElse(() => DateTime.make(end)),
+    Option.map((lastInstant) => DateTime.lessThan(lastInstant, now))
   )
-}
 
 /**
  * Whether `name`'s period has ended by `now`. No end, or one that does not parse
- * as a date, is not taken as ended. A decoded `DateTime` end is an instant — the
- * decode has already dropped the precision it was written to.
+ * as a date, is not taken as ended. A decoded `DateTime` end is the last instant
+ * the period covers, so it has ended once `now` is after it.
  */
 const hasEndedAt = (name: Displayable, now: DateTime.DateTime): boolean => {
   const end = name.period?.end

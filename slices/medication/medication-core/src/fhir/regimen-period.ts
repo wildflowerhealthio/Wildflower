@@ -15,6 +15,9 @@ const regimenStartOf = (request: MedicationRequest.Type): DateTime.Utc | null =>
  * (`null`) while the request is `active` and `regimenStart` itself otherwise.
  *
  * @remarks
+ * A date-only `validityPeriod.end` counts through that whole day (UTC): the
+ * `Period` decode makes it the day's last instant.
+ *
  * A stated or estimated end before `regimenStart` is raised to it, so a
  * regimen never runs backwards.
  */
