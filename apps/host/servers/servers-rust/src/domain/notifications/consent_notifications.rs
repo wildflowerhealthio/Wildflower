@@ -119,6 +119,11 @@ const NOTIFIED_PER_SERVER: usize = 32;
 /// remembers its newest request as its run last reported it. A run that isn't
 /// reporting, as while it stops or starts, leaves them, and its notification,
 /// as they are. A server that is removed is forgotten.
+///
+/// The servers it remembers requests for are the ones with a request
+/// pending, as their run last reported:
+/// [`pending_server_count`](Self::pending_server_count), what the app icon's
+/// badge shows.
 #[derive(Debug)]
 pub struct ConsentNotificationCoalescer {
     /// Which requests open.
@@ -139,7 +144,8 @@ pub struct ConsentNotificationCoalescer {
     /// ([`end_arrival_wait`](ConsentNotificationCoalescer::end_arrival_wait)).
     awaiting_first_report: BTreeMap<UnitId, bool>,
     /// The requests each server notified for or opened, and those the
-    /// Owner's own browser made, earliest first.
+    /// Owner's own browser made, earliest first, for each server with a
+    /// request pending as its run last reported.
     notified: BTreeMap<UnitId, VecDeque<NotifiedRequest>>,
     /// How many requests every server has notified for, opened, or seen the
     /// Owner's own browser make, which orders them across servers.
@@ -387,6 +393,22 @@ impl ConsentNotificationCoalescer {
             .map(|(unit_id, _)| (unit_id.clone(), false))
             .collect();
         changes
+    }
+
+    /// How many servers have a request pending, as their run last reported
+    /// to [`record`](Self::record): what the app icon's badge shows.
+    ///
+    /// A server counts from its run's report of a pending request until its
+    /// run reports nothing pending or it is removed, when its notification is
+    /// withdrawn too. A run that isn't reporting, as while it stops or
+    /// starts, keeps its server counted, as it keeps the server's
+    /// notification posted. A server counts once however many requests wait
+    /// on it, and a request that didn't notify counts all the same: one the
+    /// Owner's own browser made, one opened at an arrival in the foreground,
+    /// or one that came back once a newer one was decided.
+    #[must_use]
+    pub fn pending_server_count(&self) -> usize {
+        self.notified.len()
     }
 }
 
@@ -1135,12 +1157,18 @@ mod tests {
 
     #[test]
     fn a_request_that_did_not_notify_counts() {
-        let mut coalescer = ConsentNotificationCoalescer::new(ConsentOpening::FirstAtStart);
+        let mut coalescer = notifying();
+        come_to_foreground(
+            &mut coalescer,
+            &statuses([(RUTH, UnitStatus::never_run())]),
+            &[RUTH],
+        );
         let start = coalescer.record(&statuses([
             (RUTH, running_with(Some(oauth("a")))),
             (LAB, running_with(Some(oauth_from_owner_browser("b")))),
         ]));
         assert!(start.posted.is_empty());
+        assert_eq!(summary(&start.opened), [(RUTH, oauth_key("a"))]);
         assert_eq!(coalescer.pending_server_count(), 2);
     }
 

@@ -27,7 +27,8 @@ changing how servers run or what the host notifies about them.
   certificate state its run reported or its cache holds; `PendingConsent`,
   the newest consent waiting on a server, named by its `ConsentKey`; and the
   notification decisions: the stop notification for each new stop of a server's run, and the consent
-  notification for each new request waiting on a server; and `ConsentViews`, the consents showing in
+  notification for each new request waiting on a server, with the count of
+  servers with a request pending that the app icon's badge shows; and `ConsentViews`, the consents showing in
   a view of the in-app browser, so each opens in one.
   - Layout: `domain/` the record (`ServerRecord`, `RelayKind`, `TunnelToken`),
     `RegistryError`, enrolment (`add_server`, `set_server_credentials`,
