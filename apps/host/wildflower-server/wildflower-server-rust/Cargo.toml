@@ -90,7 +90,7 @@ wildflowerhealthio-fhir-r4 = { path = "../fhir-r4-rust" }
 wildflowerhealthio-authorization-server = { path = "../authorization-server-rust" }
 # The limits on starting an authorization request
 # (`rate_limit::RateLimiter`, keyed by `ClientKey`; see
-# `src/http/middleware/authorization_start_limit.rs`).
+# `src/adapters/authorization_start_limit.rs`).
 wildflowerhealthio-kitchen-sink = { path = "../../../../global/kitchen-sink-rust" }
 wildflowerhealthio-ohif-server = { path = "../../../../slices/ohif-server-rust" }
 wildflowerhealthio-persistence = { path = "../../../../slices/persistence-rust" }
