@@ -24,7 +24,8 @@ lives in each domain package.
   `seriesKindOfId`) and
   the range preset as query parameters; `withSelection` writes them into a
   query that keeps every other key (the app's `?patient=`, which is
-  `smart-app-react`'s).
+  `smart-app-react`'s). `selectionCapsOf` and `capIsFull` are that one
+  counting rule, shared with the series panel.
 - `src/time-range.ts` — the range presets (`all`, `5y`, `1y`, `90d`, `28d`,
   `7d`, `24h`) and `xDomain`, the window a preset selects.
 

@@ -52,7 +52,8 @@ and opaque series ids.
   span under the crosshair (`SpanSeries.spansAt`) — its category, the lane's
   label, its start and end — or one `—` row in a gap.
 - `src/legend.tsx` — `Legend`, the key above the figure: an entry per axis,
-  then one per lane listing its categories (`SpanSeries.categoriesOf`).
+  then one per lane listing its categories (`laneCategories`, which
+  `MultiAxisChart` derives once per lane with `SpanSeries.categoriesOf`).
 - `src/series-colors.ts` — `seriesColors`, the `--color-series-N` /
   `-soft` tokens for a palette index, and `spanColour`, the `--color-span-N`
   token for a span category's colour slot (neutral for `null`).
@@ -102,7 +103,9 @@ and opaque series ids.
   sides in — is the order the reader picked.
 - **Series ids are opaque to the panel.** It compares a row's `id` with the
   selected ids and never parses one, so a new domain's rows need no change
-  here.
+  here. Its caps are counted by the core's `selectionCapsOf` and `capIsFull`,
+  from the selected ids' kinds, so a selected series whose row has not loaded
+  yet still counts.
 - **The narrow-width disclosure is a button, not `<details>`.** A closed
   `<details>` hides its content whatever the CSS says, so one panel could not
   both dock on a wide viewport and fold on a narrow one; the 900px breakpoint

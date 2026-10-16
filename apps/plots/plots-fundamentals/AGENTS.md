@@ -37,12 +37,14 @@ functions read in the namespace's context (`ValueAxis.assign`, not
   lane colours, or `null` for neutral — the domain picks), with an optional
   `note`. Spans may overlap or leave gaps. A span series takes no value axis:
   the chart draws it as a lane, at most `LANE_CAP` = 2 of them, counted apart
-  from `ValueAxis.CAP`. `spansAt(series, time)` is every span covering `time`;
+  from `ValueAxis.CAP`. `spansAt(series, time)` is every span covering `time`,
+  except that at a hand-off — one span ending where another starts — the
+  latest start wins, as in `Level.inEffectAt`;
   `categoriesOf` is each category once, by colour slot, for the legend.
 - **`Series`** (`src/series.ts`) — `Series = ValueSeries | SpanSeries`,
   discriminated on `kind` (`'points' | 'levels' | 'spans'`), where
-  `ValueSeries = PointSeries | LevelSeries` and `isValueSeries` tells them
-  apart. A value series carries an opaque `id`, `label`, `unit` and a
+  `ValueSeries = PointSeries | LevelSeries` and `isValueSeries` /
+  `isSpanSeries` tell them apart. A value series carries an opaque `id`, `label`, `unit` and a
   `ValueScale` (`'fitted' | 'from-zero' | 'zero-to-one'`). `levelsOf` is the
   one place the two value kinds are told apart; `levelAt` reads through it.
   `boundariesOf` (level starts and stated ends; span starts and ends),
