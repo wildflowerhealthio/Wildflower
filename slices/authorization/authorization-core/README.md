@@ -71,7 +71,7 @@ and 90 days respectively). See the
   registration are carried to the consent prompt as a registration verdict
   rather than rejected (the host app's client excepted). A request no standing
   grant covers redirects to the consent card below when the browser carries a
-  live Owner browser session, and to the wait page otherwise, relative to
+  live browser session, and to the wait page otherwise, relative to
   itself, so the browser stays on the server's origin.
 - `/oauth/authorize/:id` — long-poll JSON status of an authorization
   request.
@@ -81,15 +81,15 @@ and 90 days respectively). See the
   the Owner decides, leaves for the redirect the status carries. It switches
   to the consent card once the browser can read the request's consent. See
   "Wait page" in the [Jargon Explanation](../docs/Jargon%20Explanation.md).
-- `/oauth/authorize/:id/consent` — the **consent card**, where an Owner
-  browser decides the request through `/authorization/oauth-consents/:id`
+- `/oauth/authorize/:id/consent` — the **consent card**, where a browser
+  signed in as the Owner decides the request through `/authorization/oauth-consents/:id`
   and leaves for the callback the decision carries. A React page from
   `apps/host/wildflower-server/authorization-server-web`, which the
   authorization server embeds; its hashed assets are at `/oauth/assets/*`.
   See "Consent card" in the
   [Jargon Explanation](../docs/Jargon%20Explanation.md).
 - `/oauth/device` — the **device page**, the RFC 8628 verification page,
-  where an Owner browser confirms a device's code and decides the request
+  where a browser signed in as the Owner confirms a device's code and decides the request
   through `/authorization/devices/:userCode`. From the same bundle as the
   consent card. See "Device page" in the
   [Jargon Explanation](../docs/Jargon%20Explanation.md).
@@ -113,7 +113,7 @@ and 90 days respectively). See the
 - `/authorization/clients`, `/authorization/clients/:clientId` — list every registered
   client, and `PATCH` one's `disabledAt` to take trust back (a UTC time) or
   restore it (`null`); an essential client (the host app's or the
-  Owner-browser client) can't be disabled (`409 EssentialClient`).
+  browser-session client) can't be disabled (`409 EssentialClient`).
 - `/authorization/revocations` — revoke issued tokens now: every token a
   subject (`client_id`) holds, or one token by `jti`.
 

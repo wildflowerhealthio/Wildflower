@@ -17,7 +17,7 @@ issue **Grants** to OAuth Clients (registered in the
 allowing them to access data in a system. The
 [Wildflower host app](#wildflower-host-app) holds no token: it acts as the
 Owner in process, and signs browsers on its own device in as the Owner (see
-[Owner browser](#owner-browser)).
+[Same-device sign-in](#same-device-sign-in)).
 
 ## Roles
 
@@ -30,7 +30,7 @@ first. "Host" alone is ambiguous (the host app, the HTTP `Host` header, the
 | **OAuth client**        | Remote app requesting access (the SMART-on-FHIR caller, or the Wildflower host app itself).                              | `client_id`, `redirect_uri`, `/oauth/...` endpoints, the [`clients`](#client) table       |
 | **Owner**               | Human with absolute control over the data this authorization server protects. Approves consent, gates inbound requests.  | `/authorization/...` endpoints, `RequireAuthMiddleware`, tokens holding the Owner's grant |
 | **Wildflower host app** | The app on the Owner's device that runs this server in its own process. See [Wildflower host app](#wildflower-host-app). | The host app's client (`WILDFLOWER_HOST_APP_CLIENT_ID`), the in-process consent decider   |
-| **Owner browser**       | A browser the host app has signed in as the Owner on the same device. See [Owner browser](#owner-browser).               | The `wildflower-owner-browser` client, the `__Host-owner_browser_session` cookie          |
+| **Signed-in browser**   | A browser the server has signed in, today the Owner's on the same device. See [Browser session](#browser-session).       | The `wildflower-browser` client, the `__Host-browser_session` cookie                      |
 | **Resource owner**      | OAuth-spec name for the Owner — the person whose data is being shared.                                                   | OAuth spec only; we say "Owner"                                                           |
 
 > **Open question:** The OAuth `client` (third-party app) is unrelated to
@@ -102,11 +102,11 @@ empty `redirectUris`:
   [Wildflower host app](#wildflower-host-app)'s. It is allowed only its own
   scopes (`host_app_client_scopes`, `openid`), not the Owner's. The host app holds
   no token of its own (see [Wildflower host app](#wildflower-host-app)).
-- `wildflower-owner-browser` (`OWNER_BROWSER_CLIENT_ID`), the
-  [Owner browsers](#owner-browser)', allowed the Owner's scopes
-  (`OWNER_SCOPES`). It is allowed no grant type: its tokens
-  are minted only at `/oauth/sign-in`. Revoking its subject signs every Owner
-  browser out.
+- `wildflower-browser` (`BROWSER_SESSION_CLIENT_ID`), named
+  `Wildflower Browsers`, the client every [browser session](#browser-session)'s
+  token is issued to, allowed the Owner's scopes (`OWNER_SCOPES`). It is
+  allowed no grant type: its tokens are minted only at `/oauth/sign-in`.
+  Revoking its subject signs every browser out.
 
 Both are [essential clients](#essential-client), which can't be disabled.
 
@@ -114,13 +114,13 @@ Both are [essential clients](#essential-client), which can't be disabled.
 
 A client the Owner can't lose without being stuck: the
 [Wildflower host app](#wildflower-host-app)'s, which is how
-the Owner reaches the server at all, and the Owner-browser client
-(`wildflower-owner-browser`), which is how a browser on the Owner's device
+the Owner reaches the server at all, and the browser-session client
+(`wildflower-browser`), which is how a browser on the Owner's device
 signs in as the Owner. Disabling either would leave the Owner no way in, so a
 `PATCH /authorization/clients/:clientId` that sets a `disabledAt` on one is
 refused with a `409 EssentialClient`, and nothing is written. Re-enabling one
 stays allowed, so an essential client disabled out of band (direct SQL) can be
-recovered; while the Owner-browser client is disabled that way,
+recovered; while the browser-session client is disabled that way,
 `/oauth/sign-in` signs no browser in. `GET /authorization/clients` flags both
 `essential`, and the "Trusted Apps" list offers them no switch. The rule lives
 in one place, `EssentialClientGuard`, which the client reader and disabler
@@ -325,12 +325,12 @@ The authorization wall on every Owner-facing JSON endpoint
 HTML pages in the `authorization-server-pages` group do **not** carry this
 middleware; they're public. The middleware reads the access token from the
 `Authorization: Bearer` header only. The server accepts two cookies,
-`__Host-owner_browser_session` (see [Owner browser](#owner-browser)) and the
+`__Host-browser_session` (see [Browser session](#browser-session)) and the
 FHIR UI's `hfs_session`, only from its own pages, with an Origin check on
 writes, and turns each into a bearer token ahead of the gate
 (`wildflower-server-rust`'s `session_cookie_bearer`); with both, `hfs_session`
-wins, unless the page asks for the Owner browser's session with
-`Wildflower-Session: owner-browser` (see [Owner browser](#owner-browser)). Every
+wins, unless the page asks for the browser session with
+`Wildflower-Session: browser` (see [Browser session](#browser-session)). Every
 other caller attaches its own bearer: the launcher
 its in-memory one.
 
@@ -347,7 +347,8 @@ The host app's path to becoming an Owner-authenticated client. Flow:
    `https://<domain>/oauth/device`, and `…/oauth/device?user_code=<code>` for
    `verification_uri_complete`.
 2. Owner confirms the `user_code` on the device page (typed, or filled in by
-   `verification_uri_complete`) in an [Owner browser](#owner-browser). The
+   `verification_uri_complete`) in a browser signed in as the Owner (see
+   [Same-device sign-in](#same-device-sign-in)). The
    host app opens the device page with the code filled in for the newest of
    the [pending consents](#pending-consents).
 3. Owner reviews the request (device name + requested scopes) and approves via
@@ -414,8 +415,8 @@ to ‹domain›") once for each request it hasn't notified for, and on the deskt
 where a notification can't be clicked, opens the request at once. A request that comes back once a newer one is
 decided doesn't notify again. A code request made by a browser signed in as the
 Owner neither notifies nor opens: `/oauth/authorize` sent that browser to the
-consent card, and records it on the request (`requested_by_owner_browser`,
-carried on the newest pending consent). The base's server page shows it as a pending
+consent card, and records on the request that it can be decided there
+(`decidable_in_requesting_browser`, carried on the newest pending consent). The base's server page shows it as a pending
 request; Open, a tap on the notification on a phone, or the notification
 itself on the desktop opens its page in a
 browser signed in as the Owner, with `then=back` (see `apps/host/servers`'s
@@ -441,8 +442,8 @@ request).
 
 ### Wait page
 
-The page `/oauth/authorize` parks a browser that isn't an
-[Owner browser](#owner-browser) on while the Owner decides:
+The page `/oauth/authorize` parks a browser that carries no
+[browser session](#browser-session) on while the Owner decides:
 `/oauth/authorize/{id}/wait`, served by the authorization server itself at the
 server's origin, `https://<domain>`. The `Location` is relative to
 `/oauth/authorize`, so no launcher address is involved. The page is static
@@ -454,8 +455,8 @@ address a sign-in ever leaves the authorization server for, and no request param
 name a different one. The page takes no decision itself: the Owner answers on
 the [consent card](#consent-card), in this browser once it signs in, or in one
 the host opens. While the request is pending, the page also
-reads `GET /authorization/oauth-consents/{id}` on the browser's Owner browser
-session, asked for with `Wildflower-Session: owner-browser`; once that
+reads `GET /authorization/oauth-consents/{id}` on the browser's browser
+session, asked for with `Wildflower-Session: browser`; once that
 succeeds (the browser has signed in as the Owner since), it switches to the consent card beside it.
 
 It interpolates nothing (the script reads the request id from its own path),
@@ -465,12 +466,12 @@ tokens under the same names.
 
 ### Consent card
 
-The page an [Owner browser](#owner-browser) decides a parked
+The page a browser signed in as the Owner decides a parked
 authorization-code request on: `/oauth/authorize/{id}/consent`, on the
 server's own origin, so the address bar names the server being approved.
 `/oauth/authorize` sends a browser there instead of the
 [wait page](#wait-page) when the request carries a live
-`__Host-owner_browser_session` cookie, and the wait page switches to it once
+`__Host-browser_session` cookie, and the wait page switches to it once
 the browser signs in.
 
 It is a React page from the **authorization pages** bundle
@@ -478,9 +479,9 @@ It is a React page from the **authorization pages** bundle
 authorization server embeds and serves with the wait page's headers; its
 hashed scripts, stylesheets and fonts are at `/oauth/assets/*`, cached as
 immutable.
-It has no API of its own. On the Owner browser's session, which the host's
+It has no API of its own. On the browser session, which the host's
 cookie→bearer layer presents as the bearer, and which every request asks for
-with `Wildflower-Session: owner-browser` (so a browser also signed in to the
+with `Wildflower-Session: browser` (so a browser also signed in to the
 FHIR web UI still acts as the Owner), it reads
 `GET /authorization/oauth-consents/{id}`, searches FHIR `GET /Patient?name=…`
 when the request asks for a patient, and posts `/approve` or `/deny`. The card
@@ -516,7 +517,7 @@ origin, from the same **authorization pages** bundle and with the same headers
 as the [consent card](#consent-card). It has a code box, filled in from
 `user_code` when the URL carries one but sent only when the Owner presses
 Continue (RFC 8628 §5.4), so a phished link can't approve a code on its own.
-On the [Owner browser](#owner-browser)'s session it reads
+On the [browser session](#browser-session) it reads
 `GET /authorization/devices/{userCode}` and shows `authorization-react`'s
 `DeviceConsentCard`, which posts `/approve` or `/deny`; then it tells the Owner
 they can return to the device. Opened by the host app as
@@ -539,10 +540,10 @@ holds no token of its own: it decides
 consents, mints launches and mints same-device sign-in codes in-process, as
 the Owner.
 
-### Owner browser
+### Same-device sign-in
 
-A browser the [Wildflower host app](#wildflower-host-app) has signed in as the
-Owner on the same device, with a one-time **same-device sign-in code**.
+How the [Wildflower host app](#wildflower-host-app) signs a browser on its
+own device in as the Owner: with a one-time **same-device sign-in code**.
 Wildflower has no accounts or passwords; the Owner is whoever holds the device
 running the server, and the host app runs on that device.
 
@@ -557,12 +558,12 @@ running the server, and the host app runs on that device.
 3. The server redeems the code (`RedeemedSameDeviceSignInCode`, an authority
    proof), stores the `owner` [browser session](#browser-session) it starts,
    and mints a token through the ordinary minter, issued to the
-   `wildflower-owner-browser` client (its `sub`) and holding the Owner's
+   `wildflower-browser` client (its `sub`) and holding the Owner's
    grant (`OWNER_SCOPES`, the grant the Owner decides consents with), as a
    JWT with its own `jti` and the session's [`sid`](#sid-session-id) that
    expires in 8 hours, with the session.
 4. It answers `303` to `next`, setting
-   `__Host-owner_browser_session=<the token>; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800`.
+   `__Host-browser_session=<the token>; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800`.
 
 `next` must be a path on the server (starting with `/`, not `//`), a URL under
 the hosted launcher or the Wildflower Authorization app, or a URL under the
@@ -570,40 +571,42 @@ launcher or Authorization app the host opens for this server, from the
 server's record (the page itself, whatever its query, or a URL within it as a
 folder). Any other
 `next`, an unknown, spent or expired code, or a disabled
-`wildflower-owner-browser` client, gets a local error page with no cookie and
+`wildflower-browser` client, gets a local error page with no cookie and
 no redirect; a refused `next` or a disabled client leaves the code unspent.
 Enabling the client again lets sign-in work. Disabling it signs no browser
 out: a browser already signed in keeps its session until the token expires or
 is revoked.
 
-The cookie's value is the token, so a restart doesn't sign the browser out.
-One browser is signed out by revoking its browser session or its token's
-`jti`; every Owner browser is signed out by revoking the
-`wildflower-owner-browser` subject. A request whose cookie holds an expired or revoked token is served as
-if the cookie weren't sent, and the response clears it. The cookie needs
-`https`, as the server's origin, `https://<domain>`, is.
-`/oauth/authorize` reads the cookie too: a parked request from an Owner
-browser goes to the [consent card](#consent-card) rather than the
-[wait page](#wait-page), and the request, the code it earns, and the tokens
-and refresh family the code earns all record the browser's session.
-
-A browser can hold the FHIR web UI's `hfs_session` beside this cookie. A
-request carrying both gets `hfs_session`'s bearer, so the UI runs as its own
-signed-in user, unless it carries the header `Wildflower-Session: owner-browser`:
-then it gets the Owner browser session's bearer, or none if this cookie is
-missing or its session has ended, never `hfs_session`'s. Any other value is
-read as no header. The consent card and the wait page's check for it send the
-header. It needs no guard of its own: it isn't CORS-safelisted, so another
-origin's page sends it only after a preflight, and since CORS never allows
-credentials, that request carries neither cookie.
-
 ### Browser session
 
 A browser the server has signed in, one row in `browser_sessions`, keyed by
-its `sid`. Its `kind` says how the browser came to hold it: `owner` for an
-[Owner browser](#owner-browser), signed in with a same-device sign-in code.
-An Owner session has no `name`, holds `OWNER_SCOPES`, and expires 8 hours
-(`OWNER_BROWSER_SESSION_TTL`) after the sign-in.
+its `sid`. Its `kind` says how the browser came to hold it: `owner` for a
+browser signed in as the Owner with a
+[same-device sign-in](#same-device-sign-in). An Owner session has no `name`,
+holds `OWNER_SCOPES`, and expires 8 hours (`OWNER_SESSION_TTL`) after the
+sign-in.
+
+The browser holds its session in the `__Host-browser_session` cookie, whose
+value is the session's token, issued to the `wildflower-browser` client (its
+`sub`), so a restart doesn't sign the browser out. One browser is signed out
+by revoking its browser session or its token's `jti`; every browser is signed
+out by revoking the `wildflower-browser` subject. A request whose cookie holds
+an expired or revoked token is served as if the cookie weren't sent, and the
+response clears it. The cookie needs `https`, as the server's origin,
+`https://<domain>`, is. `/oauth/authorize` reads the cookie too: a parked
+request from a browser carrying a session goes to the
+[consent card](#consent-card) rather than the [wait page](#wait-page), and
+records that it can be decided there (`decidable_in_requesting_browser`).
+
+A browser can hold the FHIR web UI's `hfs_session` beside this cookie. A
+request carrying both gets `hfs_session`'s bearer, so the UI runs as its own
+signed-in user, unless it carries the header `Wildflower-Session: browser`:
+then it gets the browser session's bearer, or none if this cookie is missing
+or its session has ended, never `hfs_session`'s. Any other value is read as no
+header. The consent card, the device page and the wait page's check for the
+card send the header. It needs no guard of its own: it isn't CORS-safelisted,
+so another origin's page sends it only after a preflight, and since CORS never
+allows credentials, that request carries neither cookie.
 
 Everything minted under a session names it as its [`sid`](#sid-session-id):
 the browser's own token, and an authorization request made in that browser,

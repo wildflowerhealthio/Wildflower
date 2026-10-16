@@ -518,7 +518,7 @@ changing how servers run or what the host notifies about them.
   `UnitRunner`'s statuses, each server whose newest request is one it hasn't
   notified for, and the host posts "‹client› wants access to ‹domain›" under
   `consent-request:<domain>`, replacing the server's last. A request made by
-  a browser signed in as the Owner (`requested_by_owner_browser`, which
+  a browser signed in as the Owner (`decidable_in_requesting_browser`, which
   `/oauth/authorize` records when it sends that browser to the consent card),
   as one a launch opened, neither notifies nor opens: the Owner is already
   looking at its consent card. It still counts as the server's newest, and

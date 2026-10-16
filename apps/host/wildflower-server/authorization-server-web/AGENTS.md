@@ -13,7 +13,7 @@ the server's own origin, so the address bar names the server being approved:
   The code box and the card are `authorization-react`'s `DeviceCodeEntryForm`
   and `DeviceConsentCard`.
 
-This package composes them over the Owner browser's session. The host app
+This package composes them over the browser session. The host app
 also opens either page with `?then=back`, in a browser signed in as the Owner,
 to decide a request another browser or device made: after Allow or Deny the
 page says how it went ("Approved. You can close this." or "Declined. You can
@@ -35,7 +35,7 @@ Security Policy (below).
 - `consent.html` + `src/consent/main.tsx` — the consent card's entry: reads
   the request id from its path and `then` from its query
   (`src/then-query.ts`), and mounts `ConsentPage` over
-  `ownerBrowserSessionRunner(location.origin, FetchHttpClient.layer)`.
+  `browserSessionRunner(location.origin, FetchHttpClient.layer)`.
 - `src/consent/consent-page.tsx` — reads the consent, renders the card with a
   patient search (`patient-search.ts`, FHIR `GET /Patient?name=`, each hit
   read as a `PatientMinimal`), and leaves
@@ -75,13 +75,13 @@ Security Policy (below).
   they call it, so a window the browser refuses to close still shows it.
 - The authorization server's `401` has no body, as the client's declared
   `HttpApiError.Unauthorized` expects, so the pages see it as a `401`.
-- `src/owner-browser-session.ts` — the runner: the authorization API's client
+- `src/browser-session.ts` — the runner: the authorization API's client
   and plain FHIR reads on the page's origin, with no `Authorization` header.
-  The browser's `__Host-owner_browser_session` cookie rides every same-origin
+  The browser's `__Host-browser_session` cookie rides every same-origin
   request, and the server's cookie→bearer layer presents its token. Every
-  request carries `OWNER_BROWSER_SESSION_HEADER`
-  (`Wildflower-Session: owner-browser`), so a browser also holding the FHIR web
-  UI's `hfs_session` still acts as the Owner, not as the UI's user.
+  request carries `BROWSER_SESSION_HEADER`
+  (`Wildflower-Session: browser`), so a browser also holding the FHIR web
+  UI's `hfs_session` still acts in its browser session, not as the UI's user.
 - `page-script-budget.ts` — the build plugin that fails `vp build` when a
   page's JavaScript, beside the shared React chunk, is over 150 KB gzipped.
 - `vite.config.ts` — the page inputs, `base: '/oauth/'`, the shared `react`

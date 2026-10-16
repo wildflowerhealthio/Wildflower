@@ -177,7 +177,7 @@ so an under-scoped caller gets a `403 { error: "InsufficientScope", missingScope
 ### No launch sets a cookie
 
 No launch plants a session for the app it opens: the server's only cookies,
-an Owner browser's and the FHIR web UI's, are for its own pages. A SMART app earns its own bearer through its
+the browser session's and the FHIR web UI's, are for its own pages. A SMART app earns its own bearer through its
 OAuth flow. A non-SMART app has no credential of its own, so only a SMART app
 reaches the API.
 

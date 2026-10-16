@@ -44,7 +44,7 @@ that.
   for element: `authorization-server-rust`'s `db/clients.rs` reads the file and
   fails otherwise.
 - **Essential clients can't be disabled.** The Trusted Apps section offers
-  the host app's client and the Owner-browser client no switch (the server
+  the host app's client and the browser-session client no switch (the server
   answers `409 EssentialClient`).
 - **No Revoke on this app's own grant.** The Approved Apps list offers none
   there, since it would revoke the page's bearer.

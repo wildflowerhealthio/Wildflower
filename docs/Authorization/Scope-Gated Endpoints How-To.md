@@ -290,7 +290,7 @@ the rule the proof stands for:
   record it redeemed.
 - `RedeemedSameDeviceSignInCode` — a one-time same-device sign-in code the
   Wildflower host app minted in-process, redeemed at `/oauth/sign-in`: an Owner
-  browser's token's authority, as the `wildflower-owner-browser` client holding
+  session's token's authority, as the `wildflower-browser` client holding
   the Owner's grant.
 
 The minter signs only under a `TokenEntitlement` — an enum with one variant per
