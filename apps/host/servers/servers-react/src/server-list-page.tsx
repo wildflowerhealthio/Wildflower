@@ -1,5 +1,5 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
-import { Link, useRouteContext } from '@tanstack/react-router'
+import { Link } from '@tanstack/react-router'
 import {
   GateCard,
   PageBodyError,
@@ -10,7 +10,7 @@ import type { HostCommandError, ListedServer } from '@wildflowerhealthio/servers
 import type { JSX } from 'react'
 
 import { serversQueryOptions, useServerStatusEvents } from './queries.ts'
-import type { RouterContext, RunHostCommand } from './router-context.ts'
+import { type RunHostCommand, useListenToHostEvent, useRunHostCommand } from './router-context.ts'
 import { ServerCard } from './server-card.tsx'
 import { useOnline } from './use-online.ts'
 import styles from './server-list-page.module.css'
@@ -87,14 +87,8 @@ const ServerListBody = ({
  * needs a connection.
  */
 const ServerListPage = (): JSX.Element => {
-  const runHostCommand = useRouteContext({
-    from: '__root__',
-    select: (context: RouterContext) => context.runHostCommand,
-  })
-  const listenToHostEvent = useRouteContext({
-    from: '__root__',
-    select: (context: RouterContext) => context.listenToHostEvent,
-  })
+  const runHostCommand = useRunHostCommand()
+  const listenToHostEvent = useListenToHostEvent()
   useServerStatusEvents(listenToHostEvent)
   const servers = useQuery(serversQueryOptions(runHostCommand))
   const online = useOnline()

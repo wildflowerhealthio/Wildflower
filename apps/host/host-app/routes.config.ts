@@ -1,25 +1,27 @@
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
-import { layout, physical, rootRoute, route } from '@tanstack/virtual-file-routes'
+import { index, physical, rootRoute, route } from '@tanstack/virtual-file-routes'
 
 /**
  * Virtual route config for host-app. The app owns the skeleton as files under
  * `src/routes`: the root (the Servers | Recorder bar over every route, and the
- * not-found page under it), `/recorder`, and the pathless `_servers` layout,
- * into which `physical()` pulls `servers-react`'s `routes/_servers/`, the
- * base's screens.
+ * not-found page under it), `/`, which opens `/servers`, and `/recorder`. The
+ * base's screens are `servers-react`'s: `physical()` pulls its
+ * `routes/servers/` in under `/servers` (the page shell over the server list,
+ * Add server and a server's page), and `route()` its `routes/settings.tsx` as
+ * `/settings`.
  *
- * The base's bucket mounts under a layout of the same name, so the id its
- * own generator computes for each route (`/_servers/settings`) is the id this
- * generator computes; otherwise the two would fight over the
- * `createFileRoute('<id>')` literal in each route file.
+ * Each of the base's routes sits at the path it has under the base's own
+ * root, so the id this generator computes for it (`/servers/new`,
+ * `/settings`) is the id the base's generator does; otherwise the two would
+ * fight over the `createFileRoute('<id>')` literal in each route file.
  *
- * Paths passed to `physical()` resolve against `routesDirectory`
- * (`src/routes`), so `../../..` is `apps/host/`.
+ * Paths passed to `physical()` and `route()` resolve against
+ * `routesDirectory` (`src/routes`), so `../../..` is `apps/host/`.
  */
 const routes = rootRoute('__root.tsx', [
-  layout('_servers', '_servers.tsx', [
-    physical('', '../../../servers/servers-react/src/routes/_servers'),
-  ]),
+  index('index.tsx'),
+  physical('/servers', '../../../servers/servers-react/src/routes/servers'),
+  route('/settings', '../../../servers/servers-react/src/routes/settings.tsx'),
   route('/recorder', 'recorder.tsx'),
 ])
 

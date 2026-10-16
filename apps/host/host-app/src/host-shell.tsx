@@ -1,22 +1,21 @@
 import { Link, Outlet, useLoaderData, useRouterState } from '@tanstack/react-router'
+import { isBaseScreen } from '@wildflowerhealthio/servers-react'
 import { Option } from 'effect'
 import { useState, type JSX } from 'react'
 
 import { RecorderSession } from './recorder-session.tsx'
 import styles from './host-shell.module.css'
 
-/** The id of the layout route the base's screens render under. */
-const BASE_LAYOUT_ID = '/_servers'
-
 /**
- * The path of the base's screen the router has matched, or none when the
+ * The path of the base's screen the router has matched, a match marked as
+ * one in its route's `staticData` (`isBaseScreen`), or none when the
  * location is the Recorder's or no route's.
  */
 const useBasePathname = (): Option.Option<string> =>
   Option.fromNullable(
     useRouterState({
       select: ({ matches }) =>
-        matches.some(({ routeId }) => routeId === BASE_LAYOUT_ID)
+        matches.some(({ staticData }) => isBaseScreen(staticData))
           ? matches.at(-1)?.pathname
           : undefined,
     })
@@ -24,11 +23,11 @@ const useBasePathname = (): Option.Option<string> =>
 
 /**
  * Where the Servers link goes: the base's screen while it shows, or else its
- * last, `/` until the base has had one, so coming back finds the base where it
- * was left.
+ * last, `/servers` until the base has had one, so coming back finds the base
+ * where it was left.
  */
 const useServersPath = (basePathname: Option.Option<string>): string => {
-  const [lastBasePathname, setLastBasePathname] = useState('/')
+  const [lastBasePathname, setLastBasePathname] = useState('/servers')
   const serversPath = Option.getOrElse(basePathname, () => lastBasePathname)
   if (serversPath !== lastBasePathname) setLastBasePathname(serversPath)
   return serversPath
@@ -43,7 +42,7 @@ const useServersPath = (basePathname: Option.Option<string>): string => {
  * **The router marks the current link.** Each is a TanStack `<Link>`, which
  * sets `aria-current="page"` on the one whose path is the location's; neither
  * is current on the not-found page. The Servers link goes to the base's last
- * location rather than `/`.
+ * location rather than `/servers`.
  *
  * **A recording outlives the Recorder route.** `RecorderSession` runs it
  * around every route, so it keeps going while the base shows.

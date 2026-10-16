@@ -107,14 +107,17 @@ changing how servers run or what the host notifies about them.
   the `TAURI_ENV_PLATFORM` the Tauri CLI builds it with (the base never
   detects it),
   `@tauri-apps/api/event`'s `listen` and the default launcher
-  and Authorization app from `tauri-shared-config.json`; `BaseLayout`, the page shell;
-  and the route bucket `routes/_servers/`, which the app mounts
-  under a pathless `_servers` layout whose component is `BaseLayout`:
-  `/` the server list, `/servers/new` Add server, `/servers/$domain` a
-  server's page and `/settings` Host Settings, for the app on this device rather than any one
+  and Authorization app from `tauri-shared-config.json`; and its routes,
+  which the app mounts at the same paths: `routes/servers/`, `/servers`,
+  whose component is `BaseLayout`, the page shell, over `/servers/` the
+  server list, `/servers/new` Add server and `/servers/$domain` a server's
+  page; and `routes/settings.tsx`, `/settings` Host Settings, in its own
+  `BaseLayout`, for the app on this device rather than any one
   server (Notifications, Telemetry, Legal — the privacy policy, consumer health data
   policy, terms of use and deletion page on the canonical site, opened in the system browser — and
-  About). The server list is a card per
+  About). `/servers` and `/settings` each carry `BASE_SCREEN_STATIC_DATA`
+  in their route's `staticData`, which the app's bar reads (`isBaseScreen`)
+  to tell the base's screens from its own. The server list is a card per
   server, kept current by the `server-status` event: its domain and a status
   dot merged from its run state, its tunnel's state and its health, a
   refused or reconnecting tunnel taking priority over a `reachable` health
@@ -133,33 +136,53 @@ changing how servers run or what the host notifies about them.
   seconds, then only in short spells iOS allows); under it, what the
   status says beyond plain Running or Stopped, with the host's reason a
   running server isn't reachable, why its tunnel is reconnecting, or what to
-  do about a relay that rejected its token or has no tunnel of its name; why its latest run stopped; Launch (`LaunchButton`);
+  do about a relay that rejected its token or has no tunnel of its name; why its latest run stopped; the latest failure of Launch or
+  Authorization, then why Launch can't launch when nothing above says, each
+  across the card; then, in three equal columns, Launch, labelled Apps
+  (`useLaunch` and `LaunchButton`);
   Authorization (`AuthorizationButton`), which opens the server's Wildflower
   Authorization app through `server_open_authorization_app`, disabled while
   the webview is offline or the host would refuse for what the status shows,
   never starting a server; and
   Edit, which opens the server's page, kept current by the `server-status`
-  event too: its domain with Copy, its status badge, when its run started, the
-  run-policy field, and Launch with Authorization under it, each full width;
-  while a consent waits on the server, a Pending request row, "‹client› wants
-  access.", with Open (`server_open_pending_consent`), the host's refusal
-  taking the row's text; over three tabs in component state. Status holds the
-  host's last check of its connection (said to be from before, once the
+  event too: set as its title rather than in a card, its domain on one line
+  that scrolls sideways, fading at an end with text past it, and copies
+  itself when tapped, a check mark bouncing in beside it (without the
+  bounce under reduced motion) and a live region saying "Copied" or that
+  the clipboard refused; under it its status badge and, while it runs, when its run
+  started; over six tabs on `RouteTabs`, each a child route of
+  `/servers/$domain` (`status`, `access`, `default-apps`, `relay`,
+  `certificate`, `destructive-actions`), each in its own folder under
+  `routes/servers/$domain/`, its `route.tsx` with the parts and tests only
+  it uses beside it.
+  The page's `beforeLoad` reads the server from the cached server list,
+  showing a read that fails, with Retry, and a domain the list doesn't hold;
+  the page and its open tab read the server from the same cached list
+  (`useListedServer`), so `server-status` events keep them current. The bare
+  `/servers/$domain`'s `beforeLoad` redirects to Access while a consent waits
+  on the server and to Status otherwise, replacing itself in history; a
+  consent that arrives while the page is open leaves the tab as it is. Status holds the host's last check of its connection (said to be from before, once the
   tunnel has dropped or been refused since), with its tunnel's connection to
   the relay while a run reports it (a failure once the relay refused the
   tunnel), or how its latest run stopped, and
-  while it runs its `/health` report with each check, read by the webview
-  itself, with Refresh; its launcher and its Authorization app, each with
-  Reset to default (`PageUrlForm`), named "Reset Launcher URL to default" and
-  "Reset Authorization Manager URL to default" for assistive technology; and
-  its removal, said in full, behind a confirm that asks for the domain to be
-  typed. Relay holds its relay and tunnel name and a new tunnel token (`server_set_credentials`), in a
+  while it runs its `/health` report with each check, titled by its key in
+  Title Case (`healthCheckTitle`), read by the webview itself, with Refresh.
+  Destructive actions holds its removal, said in full, behind a confirm that
+  asks for the domain to be typed. Access holds, while a consent waits on the server, a Pending request row,
+  "‹client› wants access.", with Open (`server_open_pending_consent`), the
+  host's refusal taking the row's text, and otherwise "No requests
+  waiting."; and an Authorization app row, which lists the apps and devices
+  with access, with Open (`server_open_authorization_app`), disabled as the
+  card's Authorization is, its refusal taking the row's text. Default Apps
+  holds its app launcher and its Authorization app, each with Reset to default
+  (`PageUrlForm`), named "Reset App Launcher URL to default" and "Reset
+  Authorization Manager URL to default" for assistive technology. Relay holds its relay and tunnel name and a new tunnel token (`server_set_credentials`), in a
   password field that starts empty, a `relayIdentityChanged` refusal shown
   as a warning that the relay may be impersonated, with no retry.
   Certificate holds its certificate's state (its `certificate`): the status in words,
   shown as a failure only for `orderFailing` and `cacheUnreadable`, the
   certificate authority the server orders from (the record's, which Save
-  Launcher URL and Save Authorization Manager URL save unchanged), and the one the state is for (its `issuer`) when
+  App Launcher URL and Save Authorization Manager URL save unchanged), and the one the state is for (its `issuer`) when
   that differs, the held certificate's validity and SHA-256 fingerprint, and
   the latest error, described by its kind, a rate limit's retry time saying
   so once it has passed (one timer, set for it). With no servers it says what
@@ -182,10 +205,9 @@ changing how servers run or what the host notifies about them.
   the host has added the server.
   Launch and Authorization report their failures, the host's refusal or why
   a wait gave up, through `onError`, and each start through `onActionStart`
-  (`useActionError`): the card, and the page's status, shows
-  the latest failure in one banner across it, above the buttons, until either
-  starts again. Launch's reasons stay above its own button.
-  Launch opens the server's launcher through `server_launch`, signed in as
+  (`useActionError`): the card shows the latest failure in one banner
+  across it, above the buttons, until either starts again.
+  Launch opens the server's app launcher through `server_launch`, signed in as
   the Owner. It is
   disabled, saying why: while the webview is offline (`navigator.onLine`),
   that launching needs a connection (the host commands themselves need none,
@@ -209,8 +231,9 @@ changing how servers run or what the host notifies about them.
   seconds without a break (any other status starts that again: the host
   probes only once the tunnel is connected, first after 400 ms and then
   after twice the last wait, so the grace spans the first few probes). The wait is held in the router
-  context's `pendingLaunches`, a store keyed by domain, so it carries on
-  when Edit opens the server's page, whose Launch shows the same wait.
+  context's `pendingLaunches`, a store keyed by domain, and driven by the
+  server's page too (`useStartAndLaunch`), so it carries on while Edit has
+  the page open.
   Launching never changes an active policy or extends an `until`.
   The base decides no consent itself: Open, and a tap on a consent
   notification on a phone, open the server's own consent page in a browser

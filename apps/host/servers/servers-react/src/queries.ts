@@ -6,6 +6,7 @@ import {
   useQueryClient,
   type UseMutationResult,
   type UseQueryOptions,
+  type UseSuspenseQueryOptions,
 } from '@tanstack/react-query'
 import {
   addServer,
@@ -44,13 +45,26 @@ const APP_VERSION_QUERY_KEY = ['servers', 'app-version'] as const
 
 const SERVERS_QUERY_KEY = ['servers', 'list'] as const
 
+/** The key of the cached server list. */
+type ServersQueryKey = typeof SERVERS_QUERY_KEY
+
 /**
- * The servers on this device, each with its status on the host's unit
- * runner; {@link useServerStatusEvents} keeps the statuses current.
+ * Reads the servers on this device.
  *
  * @remarks
  * Each listed server's domain is redacted from telemetry
  * (`redactServerHost`), so an error naming it reports `{host}` instead.
+ */
+const readServers =
+  (runHostCommand: RunHostCommand) => async (): Promise<readonly ListedServer.Type[]> => {
+    const servers = await runHostCommand(listServers)
+    for (const server of servers) redactServerHost(server.domain)
+    return servers
+  }
+
+/**
+ * The servers on this device, each with its status on the host's unit
+ * runner; {@link useServerStatusEvents} keeps the statuses current.
  */
 const serversQueryOptions = (
   runHostCommand: RunHostCommand
@@ -58,15 +72,27 @@ const serversQueryOptions = (
   readonly ListedServer.Type[],
   HostCommandError,
   readonly ListedServer.Type[],
-  typeof SERVERS_QUERY_KEY
+  ServersQueryKey
+> => queryOptions({ queryKey: SERVERS_QUERY_KEY, queryFn: readServers(runHostCommand) })
+
+/**
+ * The server `domain` from the cached server list of
+ * {@link serversQueryOptions}, or `undefined` when the list doesn't hold it,
+ * so its reader renders again only as that server changes.
+ */
+const listedServerQueryOptions = (
+  runHostCommand: RunHostCommand,
+  domain: string
+): UseSuspenseQueryOptions<
+  readonly ListedServer.Type[],
+  HostCommandError,
+  ListedServer.Type | undefined,
+  ServersQueryKey
 > =>
   queryOptions({
     queryKey: SERVERS_QUERY_KEY,
-    queryFn: async () => {
-      const servers = await runHostCommand(listServers)
-      for (const server of servers) redactServerHost(server.domain)
-      return servers
-    },
+    queryFn: readServers(runHostCommand),
+    select: (servers) => servers.find((server) => server.domain === domain),
   })
 
 /** A change to the cached server list, or `undefined` when the list can't take it. */
@@ -487,6 +513,7 @@ const useRequestNotificationPermission = (
 
 export {
   appVersionQueryOptions,
+  listedServerQueryOptions,
   notificationPermissionQueryOptions,
   serverHealthQueryOptions,
   serversQueryOptions,

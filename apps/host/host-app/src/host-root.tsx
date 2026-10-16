@@ -84,8 +84,8 @@ function HostRouter({
  * Servers | Recorder bar come after, so nothing calls the host before then.
  *
  * **One router.** `routes.config.ts` composes the host's root (the bar, and
- * the not-found page under it) and `/recorder` with the base's routes, under
- * the `_servers` layout. Its context is the base's, from
+ * the not-found page under it), `/` and `/recorder` with the base's routes,
+ * `/servers` and `/settings`. Its context is the base's, from
  * `ServersRouterContext.make`, whose query cache the `QueryClientProvider`
  * shares, with the Recorder's settled transport and page props beside it.
  */

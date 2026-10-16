@@ -1,0 +1,25 @@
+/* The removal: its heading, what it does, its error and Remove, stacked. */
+.destructive-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* The eyebrow an `ItemList`'s title is, for a section that isn't a list. */
+.destructive-actions__title {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-2);
+  font-weight: var(--font-weight-2);
+  letter-spacing: var(--letter-spacing-4);
+  color: var(--color-neutral-4);
+}
+
+.destructive-actions__note {
+  margin: 0;
+  color: var(--color-neutral-3);
+}
+
+.destructive-actions__remove {
+  align-self: flex-start;
+}

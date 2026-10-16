@@ -1,0 +1,39 @@
+/* The token form: its field, its error and its button, stacked. */
+.relay__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.relay__form-action {
+  align-self: flex-start;
+}
+
+/*
+ * The relay-identity warning: the danger callout `ErrorBanner` draws, from
+ * the same red ramp, holding a title and several lines.
+ */
+.relay__identity-warning {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--color-red-7);
+  border-radius: var(--radius-3);
+  background: var(--color-red-9);
+  color: var(--color-red-3);
+}
+
+.relay__identity-warning > p {
+  margin: 0;
+}
+
+.relay__identity-warning-title {
+  font-weight: var(--font-weight-3);
+}
+
+/* The host's message names a key or address, so it wraps anywhere. */
+.relay__identity-warning-detail {
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+}

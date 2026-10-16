@@ -1,5 +1,6 @@
 import { FetchHttpClient, type HttpClient } from '@effect/platform'
 import { QueryCache, QueryClient } from '@tanstack/react-query'
+import { useRouteContext } from '@tanstack/react-router'
 import { type HostPlatform, TauriInvoke } from '@wildflowerhealthio/servers-core-js'
 import { Sentry } from '@wildflowerhealthio/telemetry-web'
 import { Cause, type Context, Effect, Exit, type Layer } from 'effect'
@@ -56,8 +57,8 @@ interface RouterContext {
    */
   readonly defaultAuthorizationUrl: string
   /**
-   * The servers' pending start-and-launches, which every Launch of a server
-   * reads, so a wait outlives the screen it began on.
+   * The servers' pending start-and-launches, which a server's card and
+   * page both drive, so a wait outlives the screen it began on.
    */
   readonly pendingLaunches: PendingLaunches
 }
@@ -156,7 +157,55 @@ const make = ({
   pendingLaunches: makeEmptyPendingLaunches(),
 })
 
-export { make, runHostCommandWith, runHttpRequestWith }
+/** How the calling component reaches the host. */
+const useRunHostCommand = (): RunHostCommand =>
+  useRouteContext({ from: '__root__', select: (context: RouterContext) => context.runHostCommand })
+
+/** How the calling component makes an HTTP request from the webview. */
+const useRunHttpRequest = (): RunHttpRequest =>
+  useRouteContext({ from: '__root__', select: (context: RouterContext) => context.runHttpRequest })
+
+/** How the calling component hears the host's events. */
+const useListenToHostEvent = (): ListenToHostEvent =>
+  useRouteContext({
+    from: '__root__',
+    select: (context: RouterContext) => context.listenToHostEvent,
+  })
+
+/** The kind of device the host runs on. */
+const useHostPlatform = (): HostPlatform.Type =>
+  useRouteContext({ from: '__root__', select: (context: RouterContext) => context.platform })
+
+/** The launcher the host gives a new server. */
+const useDefaultLauncherUrl = (): string =>
+  useRouteContext({
+    from: '__root__',
+    select: (context: RouterContext) => context.defaultLauncherUrl,
+  })
+
+/** The Authorization app the host gives a new server. */
+const useDefaultAuthorizationUrl = (): string =>
+  useRouteContext({
+    from: '__root__',
+    select: (context: RouterContext) => context.defaultAuthorizationUrl,
+  })
+
+/** The servers' pending start-and-launches. */
+const usePendingLaunches = (): PendingLaunches =>
+  useRouteContext({ from: '__root__', select: (context: RouterContext) => context.pendingLaunches })
+
+export {
+  make,
+  runHostCommandWith,
+  runHttpRequestWith,
+  useDefaultAuthorizationUrl,
+  useDefaultLauncherUrl,
+  useHostPlatform,
+  useListenToHostEvent,
+  usePendingLaunches,
+  useRunHostCommand,
+  useRunHttpRequest,
+}
 export type {
   ListenToHostEvent,
   RouterContext,
