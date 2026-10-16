@@ -181,12 +181,12 @@ struct DevAppPorts {
     ohif_viewer_dev: u16,
     #[serde(rename = "fhir-sync-pebble-dev")]
     fhir_sync_pebble_dev: u16,
-    #[serde(rename = "health-viewer-dev")]
-    health_viewer_dev: u16,
+    #[serde(rename = "plots-dev")]
+    plots_dev: u16,
     #[serde(rename = "synthetic-data-dev")]
     synthetic_data_dev: u16,
-    #[serde(rename = "lifting-dev")]
-    lifting_dev: u16,
+    #[serde(rename = "strength-dev")]
+    strength_dev: u16,
 }
 
 /// The dev tiles' OAuth clients: random ids (`openssl rand -hex 16`), not the
@@ -199,25 +199,25 @@ const MEDICATIONS_DEV_CLIENT_ID: &str = "4be2ee91360733fdcb99b43a3822de5f";
 #[cfg(debug_assertions)]
 const IMPORTER_DEV_CLIENT_ID: &str = "57268ff88aea38d6a22de56ae53e2c28";
 #[cfg(debug_assertions)]
-const HEALTH_VIEWER_DEV_CLIENT_ID: &str = "e7efc7c805f5f8f640bb3b3d48a2d7aa";
+const PLOTS_DEV_CLIENT_ID: &str = "e7efc7c805f5f8f640bb3b3d48a2d7aa";
 #[cfg(debug_assertions)]
 const SYNTHETIC_DATA_DEV_CLIENT_ID: &str = "07a31e58db3367afda5c6480e03ed993";
 #[cfg(debug_assertions)]
-const LIFTING_DEV_CLIENT_ID: &str = "8467e680a05f1e92e22864e923144e5a";
+const STRENGTH_DEV_CLIENT_ID: &str = "8467e680a05f1e92e22864e923144e5a";
 #[cfg(debug_assertions)]
 const OHIF_VIEWER_DEV_CLIENT_ID: &str = "f9866f7b1d0d8505dc65ef4f749664b5";
 #[cfg(debug_assertions)]
 const FHIR_SYNC_PEBBLE_DEV_CLIENT_ID: &str = "61e195d6b08bab6bf2cedb1ef3831fa7";
 
-/// The Health Viewer dev client's scopes: exactly the scope string in
+/// The Plots dev client's scopes: exactly the scope string in
 /// `apps/plots/plots-web/src/config.ts`, which requests the same set for an EHR
 /// launch and a standalone connect, and the same set the production
-/// Health Viewer client allows (the authorization server migration
+/// Plots client allows (the authorization server migration
 /// `0022_seed_health_viewer_app_client`, re-keyed by `0028_rekey_site_app_clients`). A test below reads that file and pins
 /// all three together, so a scope added on one side alone fails the test rather
 /// than `/authorize` on a real device.
 #[cfg(debug_assertions)]
-const HEALTH_VIEWER_DEV_SCOPES: &[&str] = &[
+const PLOTS_DEV_SCOPES: &[&str] = &[
     "launch",
     "openid",
     "fhirUser",
@@ -264,9 +264,9 @@ const MEDICATIONS_DEV_SCOPES: &[&str] = &[
     "system/Patient.rs",
 ];
 
-/// The Lifting dev client's scopes: exactly `STRENGTH_SCOPE` in
+/// The Strength dev client's scopes: exactly `STRENGTH_SCOPE` in
 /// `apps/strength/strength-web/src/config.ts`, which requests the same set for an
-/// EHR launch and a standalone connect, and the same set the production Lifting
+/// EHR launch and a standalone connect, and the same set the production Strength
 /// client allows (authorization server migrations `0019_seed_lifting_app_client` and
 /// `0020_first_party_apps_pick_the_patient`, re-keyed by
 /// `0025_rekey_lifting_app_clients`).
@@ -274,7 +274,7 @@ const MEDICATIONS_DEV_SCOPES: &[&str] = &[
 /// `.crus`: every write is an update-as-create to a client-minted id, and the
 /// app never deletes.
 #[cfg(debug_assertions)]
-const LIFTING_DEV_SCOPES: &[&str] = &[
+const STRENGTH_DEV_SCOPES: &[&str] = &[
     "launch",
     "openid",
     "fhirUser",
@@ -294,7 +294,7 @@ const DEV_ROOT_REDIRECT_PATH: &str = "/";
 /// authorization server half of `wildflowerhealthio_apps::seed_dev_apps`.
 ///
 /// The first-party SMART apps (Medications, Importer, the OHIF
-/// imaging viewer, Lifting) ship as rows served from
+/// imaging viewer, Strength) ship as rows served from
 /// <https://wildflowerhealth.io> (apps migrations `0005_first_party_apps_to_cloud`
 /// onward), whose clients register the published-site redirect URI. A debug
 /// build also gets an `<app>-dev` row (`wildflowerhealthio_apps::dev_seed`) whose launch
@@ -415,12 +415,12 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             DEV_ROOT_REDIRECT_PATH,
         ),
         (
-            HEALTH_VIEWER_DEV_CLIENT_ID,
+            PLOTS_DEV_CLIENT_ID,
             "Health Viewer (Dev)",
             // `apps/plots/plots-web/src/config.ts`'s scope string — see
-            // [`HEALTH_VIEWER_DEV_SCOPES`].
-            HEALTH_VIEWER_DEV_SCOPES,
-            ports.health_viewer_dev,
+            // [`PLOTS_DEV_SCOPES`].
+            PLOTS_DEV_SCOPES,
+            ports.plots_dev,
             DEV_ROOT_REDIRECT_PATH,
         ),
         (
@@ -433,12 +433,12 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             DEV_ROOT_REDIRECT_PATH,
         ),
         (
-            LIFTING_DEV_CLIENT_ID,
+            STRENGTH_DEV_CLIENT_ID,
             "Lifting (Dev)",
             // `apps/strength/strength-web/src/config.ts`'s `STRENGTH_SCOPE` — see
-            // [`LIFTING_DEV_SCOPES`].
-            LIFTING_DEV_SCOPES,
-            ports.lifting_dev,
+            // [`STRENGTH_DEV_SCOPES`].
+            STRENGTH_DEV_SCOPES,
+            ports.strength_dev,
             DEV_ROOT_REDIRECT_PATH,
         ),
     ];
@@ -476,28 +476,28 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
 mod tests {
     use super::*;
 
-    /// The health viewer's dev client is seeded on its dev server's loopback
+    /// The Plots dev client is seeded on its dev server's loopback
     /// root with exactly the scopes the app requests, and the production client
     /// (the authorization server migration `0022`, re-keyed by `0028`) allows the same set.
     /// The app's scope string and both client ids are read out of `config.ts`
     /// itself, the one place the app writes them, so neither client can drift
     /// from it unnoticed.
     #[test]
-    fn seeds_the_health_viewer_dev_client_with_the_apps_own_scopes() {
-        const HEALTH_VIEWER_CONFIG_TS: &str = include_str!(concat!(
+    fn seeds_the_plots_dev_client_with_the_apps_own_scopes() {
+        const PLOTS_CONFIG_TS: &str = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../../../apps/plots/plots-web/src/config.ts"
         ));
         /// The production client `0028_rekey_site_app_clients` re-keys to.
-        const HEALTH_VIEWER_CLIENT_ID: &str = "474e103de61f9141c4b640d59bfa130e";
-        let scope_string = format!("'{}'", HEALTH_VIEWER_DEV_SCOPES.join(" "));
+        const PLOTS_CLIENT_ID: &str = "474e103de61f9141c4b640d59bfa130e";
+        let scope_string = format!("'{}'", PLOTS_DEV_SCOPES.join(" "));
         assert!(
-            HEALTH_VIEWER_CONFIG_TS.contains(&scope_string),
+            PLOTS_CONFIG_TS.contains(&scope_string),
             "apps/plots/plots-web/src/config.ts must request exactly {scope_string}",
         );
-        for client_id in [HEALTH_VIEWER_DEV_CLIENT_ID, HEALTH_VIEWER_CLIENT_ID] {
+        for client_id in [PLOTS_DEV_CLIENT_ID, PLOTS_CLIENT_ID] {
             assert!(
-                HEALTH_VIEWER_CONFIG_TS.contains(&format!("'{client_id}'")),
+                PLOTS_CONFIG_TS.contains(&format!("'{client_id}'")),
                 "apps/plots/plots-web/src/config.ts must launch as {client_id}",
             );
         }
@@ -507,31 +507,31 @@ mod tests {
         seed_dev_app_clients(pool.clone()).expect("seed dev clients");
         let store = SqliteGrantStore::new(pool).expect("open grant store");
         let client = store
-            .client_by_id(HEALTH_VIEWER_DEV_CLIENT_ID)
+            .client_by_id(PLOTS_DEV_CLIENT_ID)
             .expect("query client")
-            .expect("health viewer dev client seeded");
+            .expect("plots dev client seeded");
         let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON).expect("dev ports");
         assert_eq!(client.kind, ClientKind::Public);
-        assert_eq!(client.allowed_scopes, HEALTH_VIEWER_DEV_SCOPES);
+        assert_eq!(client.allowed_scopes, PLOTS_DEV_SCOPES);
         assert_eq!(
             client.redirect_uris,
             vec![
-                url::Url::parse(&format!("http://localhost:{}/", ports.health_viewer_dev))
+                url::Url::parse(&format!("http://localhost:{}/", ports.plots_dev))
                     .expect("a valid absolute redirect")
             ],
         );
 
         let production = store
-            .client_by_id(HEALTH_VIEWER_CLIENT_ID)
+            .client_by_id(PLOTS_CLIENT_ID)
             .expect("query client")
-            .expect("migration 0028 re-keys the Health Viewer client");
-        assert_eq!(production.allowed_scopes, HEALTH_VIEWER_DEV_SCOPES);
+            .expect("migration 0028 re-keys the Plots client");
+        assert_eq!(production.allowed_scopes, PLOTS_DEV_SCOPES);
     }
 
     /// The synthetic data loader's dev client is seeded on its dev server's
     /// loopback root with exactly the scopes the app requests, and the
     /// production client (the authorization server migration `0028`) allows the same set, read
-    /// out of `config.ts` itself with both client ids, as the health viewer's are.
+    /// out of `config.ts` itself with both client ids, as Plots' are.
     #[test]
     fn seeds_the_synthetic_data_dev_client_with_the_apps_own_scopes() {
         const SYNTHETIC_DATA_CONFIG_TS: &str = include_str!(concat!(
@@ -624,28 +624,28 @@ mod tests {
         assert_eq!(production.allowed_scopes, MEDICATIONS_DEV_SCOPES);
     }
 
-    /// The Lifting dev client is seeded on its dev server's loopback root with
-    /// exactly the scopes the app requests, and the production Lifting client
+    /// The Strength dev client is seeded on its dev server's loopback root with
+    /// exactly the scopes the app requests, and the production Strength client
     /// (authorization server migrations `0019`, `0020` and `0025`) allows the same set. The
     /// app's `STRENGTH_SCOPE` and both client ids are read out of `config.ts`
     /// itself, the one place the app writes them, so neither client can drift
     /// from it unnoticed.
     #[test]
-    fn seeds_the_lifting_dev_client_with_the_apps_own_scopes() {
-        const LIFTING_CONFIG_TS: &str = include_str!(concat!(
+    fn seeds_the_strength_dev_client_with_the_apps_own_scopes() {
+        const STRENGTH_CONFIG_TS: &str = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../../../apps/strength/strength-web/src/config.ts"
         ));
         /// The production client `0025_rekey_lifting_app_clients` re-keys to.
-        const LIFTING_CLIENT_ID: &str = "bdf9fc5cb5a28c6683b49896b0ef8a75";
-        let scope_string = format!("'{}'", LIFTING_DEV_SCOPES.join(" "));
+        const STRENGTH_CLIENT_ID: &str = "bdf9fc5cb5a28c6683b49896b0ef8a75";
+        let scope_string = format!("'{}'", STRENGTH_DEV_SCOPES.join(" "));
         assert!(
-            LIFTING_CONFIG_TS.contains(&scope_string),
+            STRENGTH_CONFIG_TS.contains(&scope_string),
             "apps/strength/strength-web/src/config.ts must request exactly {scope_string}",
         );
-        for client_id in [LIFTING_DEV_CLIENT_ID, LIFTING_CLIENT_ID] {
+        for client_id in [STRENGTH_DEV_CLIENT_ID, STRENGTH_CLIENT_ID] {
             assert!(
-                LIFTING_CONFIG_TS.contains(&format!("'{client_id}'")),
+                STRENGTH_CONFIG_TS.contains(&format!("'{client_id}'")),
                 "apps/strength/strength-web/src/config.ts must launch as {client_id}",
             );
         }
@@ -655,25 +655,25 @@ mod tests {
         seed_dev_app_clients(pool.clone()).expect("seed dev clients");
         let store = SqliteGrantStore::new(pool).expect("open grant store");
         let client = store
-            .client_by_id(LIFTING_DEV_CLIENT_ID)
+            .client_by_id(STRENGTH_DEV_CLIENT_ID)
             .expect("query client")
-            .expect("lifting dev client seeded");
+            .expect("strength dev client seeded");
         let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON).expect("dev ports");
         assert_eq!(client.kind, ClientKind::Public);
-        assert_eq!(client.allowed_scopes, LIFTING_DEV_SCOPES);
+        assert_eq!(client.allowed_scopes, STRENGTH_DEV_SCOPES);
         assert_eq!(
             client.redirect_uris,
             vec![
-                url::Url::parse(&format!("http://localhost:{}/", ports.lifting_dev))
+                url::Url::parse(&format!("http://localhost:{}/", ports.strength_dev))
                     .expect("a valid absolute redirect")
             ],
         );
 
         let production = store
-            .client_by_id(LIFTING_CLIENT_ID)
+            .client_by_id(STRENGTH_CLIENT_ID)
             .expect("query client")
-            .expect("migration 0025 re-keys the Lifting client");
-        assert_eq!(production.allowed_scopes, LIFTING_DEV_SCOPES);
+            .expect("migration 0025 re-keys the Strength client");
+        assert_eq!(production.allowed_scopes, STRENGTH_DEV_SCOPES);
     }
 
     /// The host app's client is seeded under the `client_id` and scopes threaded

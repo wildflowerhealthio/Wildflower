@@ -2,7 +2,7 @@
 
 Lifting, a SMART-on-FHIR strength-training app published to
 <https://wildflowerhealth.io/lifting/> (package `strength-web`), launched
-from the `lifting-dev` tile under the vite dev server. See [README.md](./README.md)
+from the `strength-dev` tile under the vite dev server. See [README.md](./README.md)
 for the boot structure, the reads, the tabs, the writes and the scopes.
 
 `apps/plots/plots-web` is the template: the same one HTML entry, relative
@@ -77,11 +77,11 @@ they cover.
   set index and keeps the id within FHIR's grammar; change it only with its
   property tests.
 - **Scopes match the clients.** `STRENGTH_SCOPE` is the one string both
-  launches request — `system/` only, no `launch/patient`; the `lifting` and
-  `lifting-dev` tiles' OAuth clients' `allowed_scopes` must equal it
+  launches request — `system/` only, no `launch/patient`; the `strength` and
+  `strength-dev` tiles' OAuth clients' `allowed_scopes` must equal it
   (authorization server migrations `0019_seed_lifting_app_client`,
   `0020_first_party_apps_pick_the_patient` and
-  `0025_rekey_lifting_app_clients`, and `LIFTING_DEV_SCOPES` in
+  `0025_rekey_lifting_app_clients`, and `STRENGTH_DEV_SCOPES` in
   `authorization-server-rust/src/seeding.rs`, whose test reads `src/config.ts`). A
   change here is a new authorization server migration and a dev-scope edit too.
 

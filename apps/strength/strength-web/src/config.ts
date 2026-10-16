@@ -35,10 +35,10 @@ const STRENGTH_SCOPE =
  * The OAuth client the build launches as, which depends on how it is served:
  *
  * - A **production** build is published to
- *   `https://wildflowerhealth.io/lifting/` and launches as the `lifting` tile's
+ *   `https://wildflowerhealth.io/lifting/` and launches as the `strength` tile's
  *   client, `bdf9fc5cb5a28c6683b49896b0ef8a75`.
  * - The **vite dev server** (`vp run -F @wildflowerhealthio/strength-web dev`, on the port
- *   `dev-app-ports.json` pins) launches as the `lifting-dev` tile's
+ *   `dev-app-ports.json` pins) launches as the `strength-dev` tile's
  *   client, `8467e680a05f1e92e22864e923144e5a`.
  *
  * The ids are random (`openssl rand -hex 16`), not the tile ids. Either way

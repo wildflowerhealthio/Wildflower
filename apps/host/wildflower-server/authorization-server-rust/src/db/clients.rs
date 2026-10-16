@@ -587,7 +587,7 @@ mod tests {
                 "system/Observation.cu".to_string(),
             ],
         );
-        // Lifting's client (seeded by `0019` as `lifting-app`, re-keyed to a
+        // Strength's client (seeded by `0019` as `lifting-app`, re-keyed to a
         // random id by `0025`) carries its published-site redirect, and its
         // scopes carry writes: the training plan
         // definition's `PlanDefinition`, a `ServiceRequest` per exercise, and
@@ -595,19 +595,19 @@ mod tests {
         // `launch/patient`: the app picks the lifter itself (`0020`).
         // This vector must stay element-for-element equal to `STRENGTH_SCOPE` in
         // `apps/strength/strength-web/src/config.ts`; `seeding.rs`'s
-        // `seeds_the_lifting_dev_client_with_the_apps_own_scopes` reads that
+        // `seeds_the_strength_dev_client_with_the_apps_own_scopes` reads that
         // file and pins this client to it.
-        let lifting = store
+        let strength = store
             .client_by_id("bdf9fc5cb5a28c6683b49896b0ef8a75")
             .unwrap()
             .unwrap();
         assert_eq!(
-            lifting.redirect_uris,
+            strength.redirect_uris,
             vec![url::Url::parse("https://wildflowerhealth.io/lifting/")
                 .expect("a valid absolute redirect")],
         );
         assert_eq!(
-            lifting.allowed_scopes,
+            strength.allowed_scopes,
             vec![
                 "launch".to_string(),
                 "openid".to_string(),
@@ -620,29 +620,29 @@ mod tests {
             ],
         );
         assert_eq!(
-            lifting.allowed_grant_types,
+            strength.allowed_grant_types,
             vec![
                 AllowedGrantType::AuthorizationCode,
                 AllowedGrantType::RefreshToken,
             ],
         );
-        // The Synthesized Health Viewer carries its published-site redirect,
+        // Plots' client carries its published-site redirect,
         // seeded by `0022` and moved by `0028`, and read-only scopes. Its
         // scopes are pinned to `apps/plots/plots-web/src/config.ts` by
-        // `seeding.rs`'s `seeds_the_health_viewer_dev_client_with_the_apps_own_scopes`.
-        let health_viewer = store
+        // `seeding.rs`'s `seeds_the_plots_dev_client_with_the_apps_own_scopes`.
+        let plots = store
             .client_by_id("474e103de61f9141c4b640d59bfa130e")
             .unwrap()
             .unwrap();
         assert_eq!(
-            health_viewer.redirect_uris,
+            plots.redirect_uris,
             vec![
                 url::Url::parse("https://wildflowerhealth.io/health-viewer/")
                     .expect("a valid absolute redirect")
             ],
         );
         assert_eq!(
-            health_viewer.allowed_grant_types,
+            plots.allowed_grant_types,
             vec![
                 AllowedGrantType::AuthorizationCode,
                 AllowedGrantType::RefreshToken,

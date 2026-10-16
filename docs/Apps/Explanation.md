@@ -25,8 +25,8 @@ An app's assets are served from its own origin, never the host's. Growth Chart,
 Medication Viewer, and PRECISE-HBR are third-party apps. The **first-party** apps —
 Medications (`medications`), the Server Docs
 console (`server-docs`), Importer (`importer`), the OHIF imaging viewer
-(`ohif-viewer`), Lifting (`lifting`), the Synthesized Health Viewer
-(`health-viewer`) and the Synthetic Data Loader (`synthetic-data`) — are
+(`ohif-viewer`), Strength (`strength`), Plots (`plots`) and the
+Synthetic Data Loader (`synthetic-data`) — are
 published to
 <https://wildflowerhealth.io> by `apps/wildflower-site/wildflower-site-web` and launched from there.
 Serving the deployed copy means a shipped app updates when the site deploys

@@ -980,9 +980,9 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
     shut_down(&shutdown, serving).await;
 }
 
-/// `GET /oauth/authorize` for the seeded Health Viewer client with `launch`,
+/// `GET /oauth/authorize` for the seeded Plots client with `launch`,
 /// as the app's browser would reach it; the `Location` it redirects to.
-async fn authorize_health_viewer_launch(tunnel: &TunnelClient, launch: &str, aud: &str) -> String {
+async fn authorize_plots_launch(tunnel: &TunnelClient, launch: &str, aud: &str) -> String {
     let mut authorize_url = Url::parse(SERVER_ORIGIN)
         .and_then(|origin| origin.join("oauth/authorize"))
         .expect("authorize URL");
@@ -1027,7 +1027,7 @@ async fn a_smart_launch_is_minted_for_its_client_and_consumed_once() {
 
     let launched = tunnel
         .send(
-            request(Method::POST, "/apps/health-viewer")
+            request(Method::POST, "/apps/plots")
                 .header(header::AUTHORIZATION, format!("Bearer {launcher}"))
                 .body(Full::default())
                 .expect("a request"),
@@ -1047,13 +1047,13 @@ async fn a_smart_launch_is_minted_for_its_client_and_consumed_once() {
     assert_eq!(iss, SERVER_ORIGIN);
     assert!(!launch.is_empty());
 
-    let parked = authorize_health_viewer_launch(&tunnel, &launch, &iss).await;
+    let parked = authorize_plots_launch(&tunnel, &launch, &iss).await;
     assert!(
         parked.ends_with("/wait"),
         "the launch parks a request for the Owner, got {parked}"
     );
     assert_eq!(
-        authorize_health_viewer_launch(&tunnel, &launch, &iss).await,
+        authorize_plots_launch(&tunnel, &launch, &iss).await,
         "https://wildflowerhealth.io/health-viewer/?error=invalid_request&state=xyz",
         "the launch works once"
     );

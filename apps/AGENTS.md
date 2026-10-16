@@ -105,9 +105,9 @@ names the iOS Xcode project and scheme, `gen/apple/host-app.xcodeproj`, the
 binary and the Linux AppImage after the package). No crate is published: the
 workspace sets `publish = false`.
 
-Ids that predate this, among them the `health-viewer` and `lifting` ids
-Plots and Strength are still published and registered under, are tracked in
-[#1042](https://github.com/wildflowerhealthio/Wildflower/issues/1042).
+Two products are off the table's published paths: Plots is published at
+`/health-viewer/` and Strength at `/lifting/`, and their OAuth clients are
+named "Synthesized Health Viewer" and "Lifting". Their tile ids follow it.
 
 ### Moving a product in
 
