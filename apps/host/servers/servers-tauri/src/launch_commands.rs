@@ -552,7 +552,11 @@ async fn open_pending_consent(
     if_showing: IfShowing,
 ) -> Result<(), LaunchError> {
     let result = async {
-        let statuses = statuses_rx.borrow().clone();
+        // Seen up to the statuses the consent's watcher comes from, so a run
+        // that reports after them, while the view opens included, can watch
+        // the consent once this run's watch fails.
+        let mut runs_rx = statuses_rx.clone();
+        let statuses = runs_rx.borrow_and_update().clone();
         let server = listed_server(registry, data_root, &statuses, domain.clone()).await?;
         let sign_in_code_minter = ServerSignInCodeMinter::of_launchable_server(&server.status)?;
         let consent_watcher = ServerConsentWatcher::of_launchable_server(&server.status)?;
@@ -589,8 +593,7 @@ async fn open_pending_consent(
                     let key = key.clone();
                     async move { consent_watcher.until_settled(key).await }
                 };
-                let settled =
-                    until_consent_settled(watched, key, domain.clone(), statuses_rx.clone());
+                let settled = until_consent_settled(watched, key, domain.clone(), runs_rx);
                 tokio::spawn(close_once_settled_view(
                     launch_browser,
                     settled,
@@ -648,8 +651,8 @@ async fn close_once_settled_view(
 /// it, and, each time a watch fails, as when the run stops under it, as the
 /// restart each return to the foreground brings on iOS does, through the
 /// watcher of the next run of the server to report in the statuses
-/// `statuses_rx` holds, which answers at once for a request no longer
-/// pending. `true` once it is settled, or the server is gone; `false` once
+/// `statuses_rx` holds past those it has seen, as of `watched`'s run, which
+/// answers at once for a request no longer pending. `true` once it is settled, or the server is gone; `false` once
 /// the statuses close first. Each failed watch is logged.
 async fn until_consent_settled(
     watched: impl Future<Output = Result<(), AuthorizationServerError>> + Send + 'static,
@@ -657,9 +660,6 @@ async fn until_consent_settled(
     domain: String,
     mut statuses_rx: watch::Receiver<UnitStatuses<ServerDetail>>,
 ) -> bool {
-    // A run that reports from now on can watch, even one that reports
-    // before the watch fails.
-    statuses_rx.borrow_and_update();
     let mut watched: Pin<Box<dyn Future<Output = Result<(), AuthorizationServerError>> + Send>> =
         Box::pin(watched);
     loop {

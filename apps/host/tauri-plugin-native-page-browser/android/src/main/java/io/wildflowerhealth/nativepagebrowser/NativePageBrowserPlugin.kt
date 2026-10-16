@@ -65,10 +65,11 @@ class OpenArgs {
  * latest of them, when a `replace` open launched it, instead of launching
  * another, and resolves as that view's `open` does; over a `stack` open's
  * view, it launches its own, so its URL opens. A `stack` open launches a view
- * of its own, which shows over them, also while a view covers the host: the
- * app's task is in front then. `open` rejects while the app is in the
- * background, its host activity not in front and no view of its own up over
- * it: Android blocks activity starts from the background. Every other `open`
+ * of its own, which shows over them, also while a view whose browser keeps
+ * the app alive covers the host: the app's task is in front then. `open`
+ * rejects while the app is in the background, its host activity not in front
+ * and no such view up over it, or the user left it: Android blocks activity
+ * starts from the background. Every other `open`
  * launches its view and resolves.
  *
  * The browser's binding of [KeepAliveService] says when the app leaves and
@@ -152,7 +153,9 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
         /** The host activity paused after this view launched: the view is up over it. */
         var hostLeft = false
 
-        private var keptAlive = false
+        /** The view's browser keeps the app alive under it: it bound [KeepAliveService]. */
+        var keptAlive = false
+            private set
 
         /**
          * A later `open` lands on this view: it hears the view's events on
@@ -410,10 +413,12 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
 
     /**
      * The app is in front: its host activity, or a view of its own up over the
-     * host that the user hasn't left for the home screen or another app.
+     * host that the user hasn't left for the home screen or another app. Only
+     * a view whose browser keeps the app alive counts: only its browser's
+     * binding says when the user leaves it.
      */
     private fun appInFront(): Boolean =
-        hostInFront || (showing.any { it.hostLeft } && !leftWithViewsUp)
+        hostInFront || (showing.any { it.hostLeft && it.keptAlive } && !leftWithViewsUp)
 
     /** A browser bound [KeepAliveService]: the views are kept alive, and the app is back if it left. */
     private fun browserBound() {

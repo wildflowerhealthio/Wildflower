@@ -192,7 +192,14 @@ async fn notify_and_open_consent_requests(
     taps.borrow_and_update();
     let mut seen_arrivals = foreground.arrivals;
     if foreground.arrivals > 0 && foreground.in_foreground {
-        arrive(&notifier, &mut coalescer, &mut statuses, &units_to_run).await;
+        arrive(
+            &notifier,
+            &mut coalescer,
+            &mut statuses,
+            &mut taps,
+            &units_to_run,
+        )
+        .await;
     } else {
         let current = statuses.borrow_and_update().clone();
         apply(&notifier, &coalescer.record(&current));
@@ -218,7 +225,8 @@ async fn notify_and_open_consent_requests(
                         notifier.end_waiting_opens();
                     }
                 } else if arrived {
-                    arrive(&notifier, &mut coalescer, &mut statuses, &units_to_run).await;
+                    arrive(&notifier, &mut coalescer, &mut statuses, &mut taps, &units_to_run)
+                        .await;
                 }
             }
             changed = taps.changed() => {
@@ -248,17 +256,25 @@ async fn notify_and_open_consent_requests(
 
 /// The app arrived in the foreground: record the servers' `statuses` with
 /// `coalescer`, which opens at most one request for the arrival, unless the
-/// arrival came to open a page of its own, which ends the arrival's wait
-/// instead; then withdraw, announce and open through `notifier` as it says.
+/// arrival came to open a page of its own, or a consent notification was
+/// tapped since the last tap read from `taps`, as the tap the arrival brings
+/// may be before the arrival is read; either ends the arrival's wait instead.
+/// Then withdraw, announce and open through `notifier` as it says.
 async fn arrive(
     notifier: &impl ConsentRequestNotifier,
     coalescer: &mut ConsentNotificationCoalescer,
     statuses: &mut watch::Receiver<UnitStatuses<ServerDetail>>,
+    taps: &mut watch::Receiver<u64>,
     units_to_run: &impl Fn() -> BTreeSet<UnitId>,
 ) {
     let opens_its_own_page = notifier.take_arrival_opening_its_own_page().await;
+    // A tap the select hasn't read yet: the arrival goes first there.
+    let tapped = taps.has_changed().unwrap_or(false);
+    if tapped {
+        taps.borrow_and_update();
+    }
     let current = statuses.borrow_and_update().clone();
-    let changes = if opens_its_own_page {
+    let changes = if opens_its_own_page || tapped {
         coalescer.end_arrival_wait();
         coalescer.record(&current)
     } else {
@@ -648,6 +664,32 @@ mod tests {
 
         // The host's activity marks the resume the tap on "a" brings.
         recorded.4.store(true, Ordering::SeqCst);
+        return_and_let_it_read(&arrivals_tx).await;
+        assert!(recorded.opened_keys().is_empty(), "the tap opens it");
+        return_and_let_it_read(&arrivals_tx).await;
+        drop(statuses_tx);
+        notifying.await.unwrap();
+
+        assert_eq!(
+            recorded.opened_keys(),
+            [oauth("a")],
+            "the next arrival opens as usual"
+        );
+    }
+
+    #[tokio::test]
+    async fn on_a_phone_an_arrival_read_with_a_tap_ready_opens_nothing() {
+        let (statuses_tx, statuses_rx) = watch::channel(ruth_waiting_on(Some("a")));
+        let (arrivals_tx, arrivals_rx) = watch::channel(arrived(0));
+        let (taps_tx, taps_rx) = watch::channel(0);
+        let recorded = RecordedRequests::default();
+        let notifying = notify_on_a_phone(&recorded, statuses_rx, arrivals_rx, taps_rx);
+        let_it_read().await;
+        assert_eq!(recorded.keys(), [oauth("a")]);
+
+        // The tap's command runs before the notifier reads the arrival the
+        // tap brings, as it may on iOS.
+        taps_tx.send_modify(|taps| *taps += 1);
         return_and_let_it_read(&arrivals_tx).await;
         assert!(recorded.opened_keys().is_empty(), "the tap opens it");
         return_and_let_it_read(&arrivals_tx).await;
