@@ -521,9 +521,9 @@ changing how servers run or what the host notifies about them.
   the app in the foreground, its first window and each return alike
   (`subscribe_foreground_arrivals`), opens at most one request: the one
   notified latest that is still its server's newest as the server last
-  reported, so coming back after seeing a notification, or after closing a
+  reported, on a server the runner runs now (`units_to_run`), so coming back after seeing a notification, or after closing a
   consent undecided, opens it; failing one, the first request a server on
-  its way up reports (one `units_to_run` names whose run isn't reporting yet),
+  its way up reports (one of those whose run isn't reporting yet),
   instead of notifying, so a request whose notification launched the app
   opens. A server that isn't on its way up, as one turned on later, notifies
   as usual. A desktop can't click a notification, so there the host also

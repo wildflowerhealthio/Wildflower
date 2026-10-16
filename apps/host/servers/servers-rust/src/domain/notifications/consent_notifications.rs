@@ -312,15 +312,15 @@ impl ConsentNotificationCoalescer {
     /// opens for the arrival. On the desktop ([`ConsentOpening::AsNotified`])
     /// an arrival opens nothing.
     ///
-    /// Of the servers' newest requests as their runs last reported them, each
-    /// the server notified for or opened is a candidate, and the one seen
-    /// latest opens: the Owner saw it and came back to decide it, or closed
-    /// its view undecided and came back to it, or it notified while the app
-    /// was in the background. A server whose run stopped while the app was
-    /// away, or is stopping for the restart a return brings, still has its
-    /// last report's request, which opens once a run reports it again, as the
-    /// opener waits for. A request first seen in `statuses` opens instead of
-    /// notifying.
+    /// Of the newest requests of the servers in `units_to_run` as their runs
+    /// last reported them, each the server notified for or opened is a
+    /// candidate, and the one seen latest opens: the Owner saw it and came
+    /// back to decide it, or closed its view undecided and came back to it, or
+    /// it notified while the app was in the background. A server whose run
+    /// stopped while the app was away, or is stopping for the restart a
+    /// return brings, still has its last report's request, which opens once a
+    /// run reports it again, as the opener waits for. A request first seen in
+    /// `statuses` opens instead of notifying.
     ///
     /// Failing a candidate, each server in `units_to_run` whose run isn't
     /// reporting, as one starting at the app's start, is on its way up: the
@@ -344,7 +344,9 @@ impl ConsentNotificationCoalescer {
         let surfaced = self
             .newest
             .iter()
-            .filter(|(_, newest)| !newest.requested_by_owner_browser)
+            .filter(|(unit_id, newest)| {
+                units_to_run.contains(*unit_id) && !newest.requested_by_owner_browser
+            })
             .filter_map(|(unit_id, newest)| {
                 let seen_after = self
                     .notified
@@ -939,6 +941,28 @@ mod tests {
                 "the next run's report notifies and opens nothing more"
             );
         }
+    }
+
+    #[test]
+    fn on_a_phone_an_arrival_opens_no_request_on_a_server_it_doesn_t_run() {
+        let mut coalescer = notifying();
+        coalescer.record(&statuses([(RUTH, running_with(Some(oauth("a"))))]));
+        // The Owner turned RUTH off while the app was away.
+        let arrived = come_to_foreground(
+            &mut coalescer,
+            &statuses([
+                (RUTH, UnitStatus::never_run()),
+                (LAB, UnitStatus::never_run()),
+            ]),
+            &[LAB],
+        );
+        assert!(arrived.opened.is_empty());
+
+        let started = coalescer.record(&statuses([
+            (RUTH, UnitStatus::never_run()),
+            (LAB, running_with(Some(oauth("b")))),
+        ]));
+        assert_eq!(summary(&started.opened), [(LAB, oauth_key("b"))]);
     }
 
     #[test]

@@ -6,7 +6,8 @@
 //! app after seeing a notification opens its request, or failing one, the first request a server on
 //! its way up reports, so a request whose notification launched the app opens too, instead of
 //! notifying. On the desktop, which reports no taps, each request opens in the default browser as
-//! it notifies. A request the Owner's own browser made does neither. Which request notifies or opens is [`ConsentNotificationCoalescer`]'s decision.
+//! it notifies. A request the Owner's own browser made does neither. Which request notifies or
+//! opens is [`ConsentNotificationCoalescer`]'s decision.
 
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;

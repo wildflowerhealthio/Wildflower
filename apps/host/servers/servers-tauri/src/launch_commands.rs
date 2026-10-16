@@ -21,7 +21,7 @@
 //! tap on its notification on a phone, at an arrival of the app in the
 //! foreground on a phone, or, on a desktop, which reports no taps, as its
 //! notification posts. Each consent shows in one view ([`ConsentViews`]), as
-//! a tap and the return it brings both open it.
+//! a tap and the arrival in the foreground it brings both open it.
 //!
 //! All open in the in-app browser, [`LaunchBrowser`]. A launch and the
 //! Authorization app replace the views showing: on iOS an open replaces the
@@ -187,9 +187,10 @@ pub async fn server_open_notified_consent(
     .await
 }
 
-/// Open `request`, a consent waiting on its server, in `launch_browser`, as [`open_pending_consent`] does with the statuses
-/// `statuses_rx` holds, now and on each change until it opens, while it is
-/// still the server's newest request. A server whose run isn't reporting, as
+/// Open `request`, a consent waiting on its server, in `launch_browser`, as
+/// [`open_pending_consent`] does with the statuses `statuses_rx` holds, now
+/// and on each change until it opens, while it is still the server's newest
+/// request. A server whose run isn't reporting, as
 /// one stopping, stopped or starting, as across the restart a return to the
 /// foreground brings on iOS, is waited for until a run reports; the wait ends
 /// once a run reports another request newest, or nothing pending, or the
@@ -200,8 +201,8 @@ pub async fn server_open_notified_consent(
 ///
 /// Each request `consent_requests` opens, opens this way: on the desktop
 /// each it notifies for, in the default browser, and on a phone one at each
-/// arrival of the app in the foreground. A consent already showing in a view, as one a tap on its
-/// notification opened, opens in no other.
+/// arrival of the app in the foreground. A consent already showing in a view,
+/// as one a tap on its notification opened, opens in no other.
 pub(crate) async fn open_consent_once_openable(
     registry: Arc<dyn ServerRegistry>,
     data_root: &Path,
