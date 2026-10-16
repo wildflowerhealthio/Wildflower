@@ -1,19 +1,38 @@
 import { Observation } from '@wildflowerhealthio/fhir-r4/resources'
-import type { PointSeries, SeriesSource } from '@wildflowerhealthio/plots-fundamentals'
+import type { PointSeries, SeriesSource, SpanSeries } from '@wildflowerhealthio/plots-fundamentals'
 import { DateTime, Option, Schema } from 'effect'
 
-import { type ObservationSeriesKey, observationSeriesIdOf } from './observation-series-key.ts'
+import {
+  type ObservationPointSeriesKey,
+  type ObservationSpanSeriesKey,
+  observationSeriesIdOf,
+} from './observation-series-key.ts'
+import { spanCategoryOf } from './span-categories.ts'
 
 /**
  * A plottable line of observation readings, sharing one code and one unit: a
  * `PointSeries` that also carries the key its `id` encodes and the category
  * the catalogue files it under.
  */
-interface ObservationSeries extends PointSeries.PointSeries {
-  readonly key: ObservationSeriesKey
+interface ObservationPointSeries extends PointSeries.PointSeries {
+  readonly key: ObservationPointSeriesKey
   /** The FHIR `Observation.category` code (`vital-signs`, `laboratory`, …), or `null`. */
   readonly category: string | null
 }
+
+/**
+ * A lane of coded-value observations dated by a period, sharing one code: a
+ * `SpanSeries` with one span per observation, told apart by the value coding,
+ * that also carries its key and catalogue category.
+ */
+interface ObservationSpanSeries extends SpanSeries.SpanSeries {
+  readonly key: ObservationSpanSeriesKey
+  /** As on an {@link ObservationPointSeries}. */
+  readonly category: string | null
+}
+
+/** Any series observations are read into; discriminate on `kind`. */
+type ObservationSeries = ObservationPointSeries | ObservationSpanSeries
 
 /**
  * Which `value[x]` slot a reading came from, which decides how its line is
@@ -99,6 +118,7 @@ const ObservationView = Schema.Struct({
   ),
   effectiveInstant: nullableInstant,
   issued: nullableInstant,
+  valueCodeableConcept: Schema.optional(Schema.NullOr(ConceptView)),
   referenceRange: Schema.optional(Schema.NullOr(Schema.Array(ReferenceRangeView))),
   component: Schema.optional(Schema.NullOr(Schema.Array(ComponentView))),
   ...valueFields,
@@ -348,7 +368,7 @@ const rangeBounds = (
 
 /** A plottable reading, with the instant it is plotted at when the observation states one. */
 interface Reading {
-  readonly key: ObservationSeriesKey
+  readonly key: ObservationPointSeriesKey
   readonly label: string
   readonly unit: string | null
   readonly valueType: ValueType
@@ -387,7 +407,7 @@ const readingsOf = (observation: ObservationValue): readonly Reading[] => {
     const bounds = rangeBounds(ranges)
     for (const numeric of numerics) {
       readings.push({
-        key: { system: key.system, code: key.code, unit: numeric.unit },
+        key: { kind: 'points', system: key.system, code: key.code, unit: numeric.unit },
         label,
         unit: numeric.unit,
         valueType: numeric.valueType,
@@ -436,6 +456,43 @@ const categoryOf = (observation: ObservationValue): string | null => {
   return hl7Coding?.code ?? (categories[0]?.coding ?? [])[0]?.code ?? null
 }
 
+/** The span one observation contributes, with the series it belongs to. */
+interface SpanReading {
+  readonly key: ObservationSpanSeriesKey
+  readonly label: string
+  readonly span: SpanSeries.Span
+}
+
+/**
+ * The span a coded-value observation states: its `valueCodeableConcept` held
+ * from `effectivePeriod.start` to `.end`, in the series keyed by its `code`.
+ *
+ * @returns `null` unless the observation has a usable `code`, a coded value
+ *   and a period with both ends, the end not before the start — a coded value
+ *   is only plottable over the time it held, so one dated by an instant, or by
+ *   half a period, plots nothing
+ *
+ * @remarks
+ * The value's coding is chosen the way a series key's is ({@link conceptKey}),
+ * and names the span's category: its label (`Sleeping`) and the lane colour
+ * {@link spanCategoryOf} gives it.
+ */
+const spanOf = (observation: ObservationValue): SpanReading | null => {
+  const concept = observation.code ?? null
+  const key = concept === null ? null : conceptKey(concept)
+  const valueConcept = observation.valueCodeableConcept ?? null
+  const valueKey = valueConcept === null ? null : conceptKey(valueConcept)
+  const start = observation.effectivePeriod?.start ?? null
+  const end = observation.effectivePeriod?.end ?? null
+  if (concept === null || key === null || valueConcept === null || valueKey === null) return null
+  if (start === null || end === null || end.epochMillis < start.epochMillis) return null
+  return {
+    key: { kind: 'spans', system: key.system, code: key.code },
+    label: conceptLabel(concept, key),
+    span: { start, end, category: spanCategoryOf(valueKey, conceptLabel(valueConcept, valueKey)) },
+  }
+}
+
 /**
  * How a yes/no reading is drawn: held flat and stepped, on an axis pinned to
  * `[0, 1]`. Every other value type is a line between readings on a fitted
@@ -443,7 +500,7 @@ const categoryOf = (observation: ObservationValue): string | null => {
  */
 const presentationOf = (
   valueType: ValueType
-): Pick<ObservationSeries, 'interpolation' | 'valueScale'> =>
+): Pick<ObservationPointSeries, 'interpolation' | 'valueScale'> =>
   valueType === 'boolean'
     ? { interpolation: 'step', valueScale: 'zero-to-one' }
     : { interpolation: 'linear', valueScale: 'fitted' }
@@ -452,12 +509,13 @@ const presentationOf = (
  * Turn decoded FHIR `Observation`s into the plottable series the viewer draws.
  *
  * @param observations - Decoded resources, in any order
- * @returns The series, plus counts of what did not make it in so the UI can
- *   say "12 results could not be dated" rather than silently shrinking:
- *   `undated` for observations that carried a plottable value but no
- *   resolvable effective time (for a `valueSampledData`, no stated start to
- *   offset samples from), `dropped` for those that contributed nothing (an
- *   excluded status, or no plottable value)
+ * @returns The series — point series, then span series — plus counts of what
+ *   did not make it in so the UI can say "12 results could not be dated"
+ *   rather than silently shrinking: `undated` for observations that carried a
+ *   plottable number but no resolvable effective time (for a
+ *   `valueSampledData`, no stated start to offset samples from), `dropped`
+ *   for those that contributed nothing (an excluded status, no plottable
+ *   number, and no span — see {@link spanOf})
  *
  * @remarks
  * Readings group by their series id, so one code in two units is two series
@@ -465,6 +523,10 @@ const presentationOf = (
  * first reading in input order, its value type included. A `valueSampledData` contributes one point per
  * numeric sample, so one observation can add many points, but every
  * observation still moves at most one counter.
+ *
+ * An observation with no plottable number is read as a span ({@link spanOf}).
+ * Spans group by their code alone, so every activity FHIR Sync for Pebble
+ * writes lands in one series, its spans told apart by their value coding.
  */
 const observationsToSeries = (
   observations: readonly ObservationResource[]
@@ -472,6 +534,10 @@ const observationsToSeries = (
   const byId = new Map<
     string,
     { meta: Reading; points: PointSeries.Point[]; category: string | null }
+  >()
+  const spansById = new Map<
+    string,
+    { meta: SpanReading; spans: SpanSeries.Span[]; category: string | null }
   >()
   let undated = 0
   let dropped = 0
@@ -490,7 +556,22 @@ const observationsToSeries = (
     }
     const readings = readingsOf(observation)
     if (readings.length === 0) {
-      dropped += 1
+      const spanReading = spanOf(observation)
+      if (spanReading === null) {
+        dropped += 1
+        continue
+      }
+      const id = observationSeriesIdOf(spanReading.key)
+      const existing = spansById.get(id)
+      if (existing === undefined) {
+        spansById.set(id, {
+          meta: spanReading,
+          spans: [spanReading.span],
+          category: categoryOf(observation),
+        })
+      } else {
+        existing.spans.push(spanReading.span)
+      }
       continue
     }
     // Extraction comes first so "has a value but no date" is `undated` and
@@ -518,20 +599,38 @@ const observationsToSeries = (
     }
   }
 
-  const series = [...byId.entries()].map(([id, { meta, points, category }]): ObservationSeries => ({
-    kind: 'points',
-    id,
-    key: meta.key,
-    label: meta.label,
-    unit: meta.unit,
-    category,
-    ...presentationOf(meta.valueType),
-    // `toSorted` is stable, so equal times keep input order.
-    points: points.toSorted((left, right) => left.time.epochMillis - right.time.epochMillis),
-  }))
+  const pointSeries = [...byId.entries()].map(
+    ([id, { meta, points, category }]): ObservationPointSeries => ({
+      kind: 'points',
+      id,
+      key: meta.key,
+      label: meta.label,
+      unit: meta.unit,
+      category,
+      ...presentationOf(meta.valueType),
+      // `toSorted` is stable, so equal times keep input order.
+      points: points.toSorted((left, right) => left.time.epochMillis - right.time.epochMillis),
+    })
+  )
+  const spanSeries = [...spansById.entries()].map(
+    ([id, { meta, spans, category }]): ObservationSpanSeries => ({
+      kind: 'spans',
+      id,
+      key: meta.key,
+      label: meta.label,
+      category,
+      // `toSorted` is stable, so equal starts keep input order.
+      spans: spans.toSorted((left, right) => left.start.epochMillis - right.start.epochMillis),
+    })
+  )
 
-  return { series, undated, dropped }
+  return { series: [...pointSeries, ...spanSeries], undated, dropped }
 }
 
-export type { ObservationResource, ObservationSeries }
+export type {
+  ObservationPointSeries,
+  ObservationResource,
+  ObservationSeries,
+  ObservationSpanSeries,
+}
 export { EXCLUDED_STATUSES, LOINC_SYSTEM, observationsToSeries }

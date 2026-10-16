@@ -1,20 +1,27 @@
 # AGENTS.md — apps/plots/plots-observations
 
 Plots' **observation source**: how FHIR R4 `Observation`s become
-plottable point series, exported as one `SeriesSource` value —
+plottable point series and span series, exported as one `SeriesSource` value —
 `observationSource`. Everything that knows what an observation _means_ lives
 here; the chart math it feeds lives in `plots-fundamentals`.
 
 ## Shape
 
 - `src/observation-series.ts` — `observationsToSeries` (the descriptor's
-  `read`): decoded `Observation`s → `ObservationSeries` (a `PointSeries` plus
-  its `key` and `category`), with `undated` / `dropped` counts. Also the value
-  presentation: a boolean steps on a `'zero-to-one'` axis, every other value
-  type is a linear line on a `'fitted'` one.
-- `src/observation-series-key.ts` — `ObservationSeriesKey` (`system`, `code`,
-  `unit`) and its id grammar under the `o` prefix:
-  `o:<system>|<code>|<unit>`, written through `SeriesId`.
+  `read`): decoded `Observation`s → `ObservationSeries`, an
+  `ObservationPointSeries` (a `PointSeries` plus its `key` and `category`) or
+  an `ObservationSpanSeries` (the same over a `SpanSeries`), with `undated` /
+  `dropped` counts. Also the value presentation: a boolean steps on a
+  `'zero-to-one'` axis, every other value type is a linear line on a
+  `'fitted'` one.
+- `src/observation-series-key.ts` — `ObservationSeriesKey`, discriminated on
+  `kind` like the series: a point key (`system`, `code`, `unit`) or a span key
+  (`system`, `code`), and their id grammar under the `o` prefix —
+  `o:<system>|<code>|<unit>` and `o:<system>|<code>|\~|span` — written
+  through `SeriesId`.
+- `src/span-categories.ts` — `spanCategoryOf`: a span's coded value as a
+  `SpanCategory`, and the lane colour each of FHIR Sync for Pebble's five
+  activity codes keeps.
 - `src/observation-groups.ts` — the catalogue grouping by
   `Observation.category`: `CATEGORY_ORDER`, the labels, `OTHER_GROUP`, and
   `observationGroupIdOf`.
@@ -27,8 +34,10 @@ here; the chart math it feeds lives in `plots-fundamentals`.
 - **The observation id is external contract.** `o:<system>|<code>|<unit>` is
   what a shared URL carries, so changing the field order, the prefix, or
   `SeriesId`'s escaping invalidates every link a patient has already saved.
-  `observation-series-key.test.ts` pins it against an independent spelling of
-  the grammar. `parseObservationSeriesId` never throws — a URL is
+  The span form is the point form with a `null` unit and a fourth `span`
+  marker field, so the field count tells the two apart.
+  `observation-series-key.test.ts` pins both against an independent spelling
+  of the grammar. `parseObservationSeriesId` never throws — a URL is
   user-editable, so a malformed entry is dropped, not raised.
 - **The unit is part of a series' identity.** The same LOINC code reported in
   `mmol/L` and in `mg/dL` is two series. One line that silently changes scale
@@ -42,6 +51,16 @@ here; the chart math it feeds lives in `plots-fundamentals`.
   `origin.unit` before `origin.code`, as for a quantity, so FHIR Sync for
   Pebble's heart rate is keyed `beats/minute` — a separate series from heart
   rate stored as `/min`, since nothing converts between units.
+- **A coded value over a period is a span.** An observation with no plottable
+  number, a `valueCodeableConcept` and an `effectivePeriod` with both ends
+  (the end not before the start) is one span, in the series keyed by its
+  `code` alone — so every activity FHIR Sync for Pebble writes lands in one
+  series, its spans told apart by the value coding. A coded value dated by an
+  instant, or by half a period, plots nothing and counts as `dropped`. Each of
+  the five Pebble activity codes keeps a fixed lane colour slot (any other
+  code is neutral); `observation-span-series.test.ts` builds its fixtures with
+  `fhir-sync-pebble-core`'s own writer (a dev dependency), so a renamed code
+  fails there.
 - **Nothing disappears silently.** `observationsToSeries` returns `undated` and
   `dropped` counts alongside the series, and every input moves at most one of
   them, so the UI can say what it could not plot.

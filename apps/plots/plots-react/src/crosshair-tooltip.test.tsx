@@ -8,11 +8,12 @@ import {
   Buckets,
   type LevelSeries,
   type PointSeries,
+  type SpanSeries,
   ValueAxis,
 } from '@wildflowerhealthio/plots-fundamentals'
 
 import { CrosshairTooltip } from './crosshair-tooltip.tsx'
-import { formatDate, formatReading } from './value-format.ts'
+import { formatDate, formatDateTime, formatReading } from './value-format.ts'
 
 afterEach(cleanup)
 
@@ -49,6 +50,7 @@ const renderRow = (
     <CrosshairTooltip
       axes={axes}
       colours={[0]}
+      lanes={[]}
       bucketsBySeriesId={bucketsBySeriesId}
       time={time}
       left={0}
@@ -146,5 +148,46 @@ describe('CrosshairTooltip', () => {
       expect(row).toContain('—')
       expect(row).not.toContain('reading')
     })
+  })
+})
+
+describe('CrosshairTooltip span lanes', () => {
+  const asleep = { id: 'asleep', label: 'Sleeping', colourSlot: 0 }
+  const deep = { id: 'deep', label: 'Restful Sleeping', colourSlot: 1 }
+  const lane: SpanSeries.SpanSeries = {
+    kind: 'spans',
+    id: 's:activity',
+    label: 'Activity',
+    spans: [
+      { start: DateTime.unsafeMake(0), end: DateTime.unsafeMake(10 * DAY), category: asleep },
+      { start: DateTime.unsafeMake(2 * DAY), end: DateTime.unsafeMake(3 * DAY), category: deep },
+    ],
+  }
+
+  const renderLaneRows = (time: DateTime.Utc): readonly string[] => {
+    render(
+      <CrosshairTooltip
+        axes={[]}
+        colours={[]}
+        lanes={[lane]}
+        bucketsBySeriesId={new Map()}
+        time={time}
+        left={0}
+        flip={false}
+      />
+    )
+    return screen.getAllByTestId('crosshair-row').map((row) => row.textContent ?? '')
+  }
+
+  test('lists every span covering the crosshair, with its start and end', () => {
+    const rows = renderLaneRows(DateTime.unsafeMake(2.5 * DAY))
+    expect(rows).toEqual([
+      `SleepingActivity${formatDateTime(DateTime.unsafeMake(0))} – ${formatDateTime(DateTime.unsafeMake(10 * DAY))}`,
+      `Restful SleepingActivity${formatDateTime(DateTime.unsafeMake(2 * DAY))} – ${formatDateTime(DateTime.unsafeMake(3 * DAY))}`,
+    ])
+  })
+
+  test('reads a dash in a gap, so the lane is still listed', () => {
+    expect(renderLaneRows(DateTime.unsafeMake(20 * DAY))).toEqual(['—Activity'])
   })
 })

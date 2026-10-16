@@ -9,7 +9,12 @@ import {
   matchesSearch,
   normaliseForSearch,
 } from '@wildflowerhealthio/plots-core-js'
-import { type Series, type TimeDomain, ValueAxis } from '@wildflowerhealthio/plots-fundamentals'
+import {
+  type Series,
+  SpanSeries,
+  type TimeDomain,
+  ValueAxis,
+} from '@wildflowerhealthio/plots-fundamentals'
 
 import styles from './series-panel.module.css'
 
@@ -25,14 +30,56 @@ interface SeriesPanelProps {
   readonly onSelectionChange: (selectedSeriesIds: readonly string[]) => void
 }
 
-/** The hint shown once the selection is full, naming the cap `ValueAxis.assign` enforces. */
+/** The hint shown once the value series are full, naming the cap `ValueAxis.assign` enforces. */
 const CAP_REACHED_HINT = `Up to ${ValueAxis.CAP} series at once`
 
-/** What a row counts, by the kind of series it selects: a point series' readings, a level series' levels. */
+/** The hint shown once the span lanes are full, naming `SpanSeries.LANE_CAP`. */
+const LANE_CAP_REACHED_HINT = `Up to ${SpanSeries.LANE_CAP} lanes at once`
+
+/**
+ * What a row counts, by the kind of series it selects: a point series'
+ * readings, a level series' levels, a span series' spans.
+ */
 const COUNTED_NOUN: Readonly<Record<Series.Series['kind'], string>> = {
   points: 'reading',
   levels: 'period',
+  spans: 'span',
 }
+
+/** How many of each cap the selection uses, and whether each is full. */
+interface SelectionCaps {
+  readonly valueSeriesCount: number
+  readonly laneCount: number
+  readonly valueSeriesFull: boolean
+  readonly lanesFull: boolean
+}
+
+/**
+ * How the selection stands against its two caps — `ValueAxis.CAP` value
+ * series and `SpanSeries.LANE_CAP` lanes — read off the catalogue rows'
+ * `seriesKind`, so the panel never parses an id. A selected id with no row
+ * counts against neither.
+ */
+const selectionCapsOf = (
+  catalogGroups: readonly CatalogGroup[],
+  selectedSeriesIdSet: ReadonlySet<string>
+): SelectionCaps => {
+  const selectedRows = catalogGroups
+    .flatMap((group) => group.rows)
+    .filter((row) => selectedSeriesIdSet.has(row.id))
+  const laneCount = selectedRows.filter((row) => row.seriesKind === 'spans').length
+  const valueSeriesCount = selectedRows.length - laneCount
+  return {
+    valueSeriesCount,
+    laneCount,
+    valueSeriesFull: valueSeriesCount >= ValueAxis.CAP,
+    lanesFull: laneCount >= SpanSeries.LANE_CAP,
+  }
+}
+
+/** Whether selecting `row` would pass the cap its kind counts against. */
+const rowIsCapped = (row: CatalogRow, caps: SelectionCaps): boolean =>
+  row.seriesKind === 'spans' ? caps.lanesFull : caps.valueSeriesFull
 
 /** `amount` with its noun, pluralised with a plain `s`. */
 const formatCount = (amount: number, noun: string): string =>
@@ -152,9 +199,10 @@ const SeriesRow = ({ row, checked, disabled, onToggle }: SeriesRowProps): JSX.El
  * The selection is the caller's; this component only proposes the next one
  * through {@link SeriesPanelProps.onSelectionChange}. A toggled row's id is
  * appended to or removed from `selectedSeriesIds`, preserving the order the
- * axes are assigned in. Once `ValueAxis.CAP` series are selected every
- * unchecked row is disabled and a hint says why — the checked rows stay
- * enabled so one can be swapped out. Search filters through the core's
+ * axes are assigned in. Once `ValueAxis.CAP` point or level series are
+ * selected every unchecked point or level row is disabled and a hint says why
+ * — the checked rows stay enabled so one can be swapped out; span rows count
+ * against `SpanSeries.LANE_CAP` the same way, on their own. Search filters through the core's
  * `matchesSearch`, hides groups left empty, and counts each group's matches
  * against its size while a query is typed; fold state is local, and every
  * group starts open. Ids are opaque here: the panel compares them and never
@@ -178,7 +226,14 @@ const SeriesPanel = ({
     [catalogGroups, searchQuery]
   )
   const emptyMessage = emptyMessageFor(catalogGroups, groupsWithMatches, searchQuery)
-  const selectionIsFull = selectedSeriesIds.length >= ValueAxis.CAP
+  const caps = selectionCapsOf(catalogGroups, selectedSeriesIdSet)
+  const hasLanes =
+    caps.laneCount > 0 ||
+    catalogGroups.some((group) => group.rows.some((row) => row.seriesKind === 'spans'))
+  const capHints = [
+    ...(caps.valueSeriesFull ? [CAP_REACHED_HINT] : []),
+    ...(caps.lanesFull ? [LANE_CAP_REACHED_HINT] : []),
+  ]
   const searchIsActive = normaliseForSearch(searchQuery) !== ''
 
   return (
@@ -191,7 +246,8 @@ const SeriesPanel = ({
       />
       <div className={styles.summary}>
         <span>
-          {selectedSeriesIds.length} of {ValueAxis.CAP} selected
+          {caps.valueSeriesCount} of {ValueAxis.CAP} selected
+          {hasLanes && ` · ${caps.laneCount} of ${SpanSeries.LANE_CAP} lanes`}
         </span>
         <button
           type="button"
@@ -205,7 +261,7 @@ const SeriesPanel = ({
         </button>
       </div>
       <p className={styles.hint} role="status">
-        {selectionIsFull ? CAP_REACHED_HINT : null}
+        {capHints.length === 0 ? null : capHints.join(' · ')}
       </p>
       {emptyMessage !== null ? (
         <p className={styles.empty}>{emptyMessage}</p>
@@ -243,7 +299,7 @@ const SeriesPanel = ({
                           key={row.id}
                           row={row}
                           checked={rowIsSelected}
-                          disabled={selectionIsFull && !rowIsSelected}
+                          disabled={rowIsCapped(row, caps) && !rowIsSelected}
                           onToggle={(checked) => {
                             onSelectionChange(
                               toggleSeriesInSelection(selectedSeriesIds, row.id, checked)

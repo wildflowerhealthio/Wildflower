@@ -9,11 +9,12 @@ interface CatalogRow {
   readonly label: string
   readonly unit: string | null
   /**
-   * Whether the series holds readings (`'points'`) or levels (`'levels'`) —
-   * what {@link CatalogRow.count} counts.
+   * Whether the series holds readings (`'points'`), levels (`'levels'`) or
+   * spans (`'spans'`) — what {@link CatalogRow.count} counts, and which cap
+   * selecting it counts against.
    */
   readonly seriesKind: Series.Series['kind']
-  /** How many readings (or levels) the series holds. */
+  /** How many readings, levels or spans the series holds. */
   readonly count: number
   /** The `[first, last]` instants the series spans, or `null` when it is empty. */
   readonly span: TimeDomain.TimeDomain | null
@@ -30,7 +31,7 @@ interface CatalogGroup {
 const rowFor = (series: Series.Series): CatalogRow => ({
   id: series.id,
   label: series.label,
-  unit: series.unit,
+  unit: series.kind === 'spans' ? null : series.unit,
   seriesKind: series.kind,
   count: Series.sizeOf(series),
   span: Series.extentOf(series),

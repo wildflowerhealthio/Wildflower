@@ -10,6 +10,7 @@ import {
   type LevelSeries,
   type PointSeries,
   Series,
+  SpanSeries,
   type TimeDomain,
   ValueAxis,
 } from '@wildflowerhealthio/plots-fundamentals'
@@ -22,9 +23,10 @@ import {
   levelSeriesArb,
   pointSeriesArb,
   selectionArb,
+  spanSeriesArb,
   testWindow,
 } from './series-arbitraries.test-helpers.ts'
-import { seriesColors } from './series-colors.ts'
+import { seriesColors, spanColour } from './series-colors.ts'
 import { FALLBACK_WIDTH } from './use-plot.ts'
 import { formatAxisValue, formatReading, tickDecimals } from './value-format.ts'
 
@@ -62,7 +64,7 @@ const levels: LevelSeries.LevelSeries = {
 }
 
 const renderChart = (axes: readonly ValueAxis.ValueAxis[]): RenderResult =>
-  render(<MultiAxisChart axes={axes} xDomain={testWindow} />)
+  render(<MultiAxisChart axes={axes} lanes={[]} xDomain={testWindow} />)
 
 /** The plot frame Plot clips marks to — the rendered extent of the x and y ranges. */
 interface Frame {
@@ -164,6 +166,7 @@ describe('MultiAxisChart time axis', () => {
   test('draws a grid line at every labelled time tick and nowhere else, at any width', () => {
     const options = chartOptions(
       ValueAxis.assign([readings, levels]),
+      [],
       testWindow,
       [0, 1],
       new Map()
@@ -420,7 +423,7 @@ describe('MultiAxisChart crosshair', () => {
   test('snaps to the nearest stop and lists each series’ level there', () => {
     const onHover = vi.fn()
     const { container } = render(
-      <MultiAxisChart axes={axes} xDomain={testWindow} onHover={onHover} />
+      <MultiAxisChart axes={axes} lanes={[]} xDomain={testWindow} onHover={onHover} />
     )
 
     // Day 34 is nearest the day-31 reading (the level starting at 14 and the
@@ -453,14 +456,14 @@ describe('MultiAxisChart crosshair', () => {
   test('drops the crosshair when the window changes under a resting pointer', () => {
     const onHover = vi.fn()
     const { container, rerender } = render(
-      <MultiAxisChart axes={axes} xDomain={testWindow} onHover={onHover} />
+      <MultiAxisChart axes={axes} lanes={[]} xDomain={testWindow} onHover={onHover} />
     )
 
     fireEvent.pointerMove(plotAreaOf(container), { clientX: clientXFor(container, 34) })
     expect(screen.queryAllByTestId('crosshair-row')).not.toHaveLength(0)
 
     const later: TimeDomain.TimeDomain = [atDay(100), atDay(200)]
-    rerender(<MultiAxisChart axes={axes} xDomain={later} onHover={onHover} />)
+    rerender(<MultiAxisChart axes={axes} lanes={[]} xDomain={later} onHover={onHover} />)
     expect(screen.queryAllByTestId('crosshair-row')).toHaveLength(0)
     expect(screen.queryByTestId('crosshair-rule')).toBeNull()
     expect(onHover).toHaveBeenLastCalledWith(null)
@@ -469,7 +472,7 @@ describe('MultiAxisChart crosshair', () => {
   test('tells onHover only when the crosshair lands on a new stop', () => {
     const onHover = vi.fn()
     const { container } = render(
-      <MultiAxisChart axes={axes} xDomain={testWindow} onHover={onHover} />
+      <MultiAxisChart axes={axes} lanes={[]} xDomain={testWindow} onHover={onHover} />
     )
 
     // Days 33 and 35 both snap to the day-31 reading.
@@ -479,7 +482,7 @@ describe('MultiAxisChart crosshair', () => {
   })
 
   test('reads a level series as absent before its first level', () => {
-    const { container } = render(<MultiAxisChart axes={axes} xDomain={testWindow} />)
+    const { container } = render(<MultiAxisChart axes={axes} lanes={[]} xDomain={testWindow} />)
 
     fireEvent.pointerMove(plotAreaOf(container), { clientX: clientXFor(container, 2) })
 
@@ -491,7 +494,7 @@ describe('MultiAxisChart crosshair', () => {
   test('hides the readout when the pointer leaves', () => {
     const onHover = vi.fn()
     const { container } = render(
-      <MultiAxisChart axes={axes} xDomain={testWindow} onHover={onHover} />
+      <MultiAxisChart axes={axes} lanes={[]} xDomain={testWindow} onHover={onHover} />
     )
 
     fireEvent.pointerMove(plotAreaOf(container), { clientX: clientXFor(container, 34) })
@@ -508,7 +511,9 @@ describe('MultiAxisChart tooltip placement', () => {
 
   /** The readout with the crosshair on `day`, a reading, inside a window of `days`. */
   const tooltipAt = (day: number, days: number): HTMLElement => {
-    const { container } = render(<MultiAxisChart axes={axes} xDomain={[atDay(0), atDay(days)]} />)
+    const { container } = render(
+      <MultiAxisChart axes={axes} lanes={[]} xDomain={[atDay(0), atDay(days)]} />
+    )
     const frame = frameOf(container)
     fireEvent.pointerMove(plotAreaOf(container), {
       clientX: frame.x + (day / days) * frame.width,
@@ -534,16 +539,18 @@ describe('MultiAxisChart colours', () => {
 
   test('removing an earlier series does not repaint the rest; a newcomer takes the freed colour', () => {
     const { container, rerender } = render(
-      <MultiAxisChart axes={ValueAxis.assign([readings, levels])} xDomain={testWindow} />
+      <MultiAxisChart axes={ValueAxis.assign([readings, levels])} lanes={[]} xDomain={testWindow} />
     )
     expect(legendKeys(container)[1]).toContain(seriesColors(1).mark)
 
-    rerender(<MultiAxisChart axes={ValueAxis.assign([levels])} xDomain={testWindow} />)
+    rerender(<MultiAxisChart axes={ValueAxis.assign([levels])} lanes={[]} xDomain={testWindow} />)
     expect(legendKeys(container)).toHaveLength(1)
     expect(legendKeys(container)[0]).toContain(seriesColors(1).mark)
     expect(markStrokes(container, 'line')).toEqual([seriesColors(1).mark])
 
-    rerender(<MultiAxisChart axes={ValueAxis.assign([levels, readings])} xDomain={testWindow} />)
+    rerender(
+      <MultiAxisChart axes={ValueAxis.assign([levels, readings])} lanes={[]} xDomain={testWindow} />
+    )
     expect(legendKeys(container)[0]).toContain(seriesColors(1).mark)
     expect(legendKeys(container)[1]).toContain(seriesColors(0).mark)
   })
@@ -642,7 +649,7 @@ describe('MultiAxisChart dense series', () => {
     const axes = ValueAxis.assign([dense, levels])
     const onHover = vi.fn()
     const { container } = render(
-      <MultiAxisChart axes={axes} xDomain={testWindow} onHover={onHover} />
+      <MultiAxisChart axes={axes} lanes={[]} xDomain={testWindow} onHover={onHover} />
     )
     const frame = frameOf(container)
     fireEvent.pointerMove(plotAreaOf(container), {
@@ -724,5 +731,88 @@ describe('bucketVertices', () => {
       }),
       { numRuns: PURE_RUNS }
     )
+  })
+})
+
+describe('MultiAxisChart span lanes', () => {
+  const asleep = { id: 'asleep', label: 'Sleeping', colourSlot: 0 }
+  const lane: SpanSeries.SpanSeries = {
+    kind: 'spans',
+    id: 's:activity',
+    label: 'Activity',
+    spans: [
+      { start: atDay(20), end: atDay(40), category: asleep },
+      { start: atDay(-30), end: atDay(-10), category: asleep },
+    ],
+  }
+
+  /** The bars drawn in the span lanes, one `rect` per span. */
+  const laneRects = (container: HTMLElement): readonly Element[] =>
+    [...container.querySelectorAll('svg > g[aria-description="span lane"]')].flatMap((group) => [
+      ...group.querySelectorAll('rect'),
+    ])
+
+  test(
+    'draws one rect per span inside the window, in its lane colour, and adds no value axis',
+    () => {
+      fc.assert(
+        fc.property(pointSeriesArb('p'), spanSeriesArb('s'), (points, spans) => {
+          const { container } = render(
+            <MultiAxisChart
+              axes={ValueAxis.assign([points])}
+              lanes={[spans]}
+              xDomain={testWindow}
+            />
+          )
+          const inWindow = spans.spans.filter(
+            (span) =>
+              span.end.epochMillis >= testWindow[0].epochMillis &&
+              span.start.epochMillis <= testWindow[1].epochMillis
+          )
+          const rects = laneRects(container)
+          expect(rects).toHaveLength(inWindow.length)
+          expect(rects.map((rect) => rect.getAttribute('fill'))).toEqual(
+            inWindow.map((span) => spanColour(span.category.colourSlot))
+          )
+          expect(container.querySelectorAll('[aria-label="y-axis tick"]')).toHaveLength(1)
+          cleanup()
+        }),
+        { numRuns: RENDER_RUNS }
+      )
+    },
+    RENDER_TIMEOUT
+  )
+
+  test('a lane alone draws with no value axis at all', () => {
+    const { container } = render(<MultiAxisChart axes={[]} lanes={[lane]} xDomain={testWindow} />)
+    expect(laneRects(container)).toHaveLength(1)
+    expect(container.querySelectorAll('[aria-label^="y-axis"]')).toHaveLength(0)
+    expect(screen.getByRole('list', { name: 'Activity categories' }).textContent).toBe('Sleeping')
+  })
+
+  test('the crosshair lists the span covering it, under the value series', () => {
+    const { container } = render(
+      <MultiAxisChart axes={ValueAxis.assign([readings])} lanes={[lane]} xDomain={testWindow} />
+    )
+    const frame = frameOf(container)
+    // Day 34 is nearest the day-31 reading; the span runs from day 20 to 40.
+    fireEvent.pointerMove(plotAreaOf(container), {
+      clientX: frame.x + (34 / WINDOW_DAYS) * frame.width,
+    })
+    const rows = screen.getAllByTestId('crosshair-row')
+    expect(rows).toHaveLength(2)
+    expect(rows[1].textContent).toContain('Sleeping')
+    expect(rows[1].textContent).toContain('Activity')
+  })
+
+  test(`more than SpanSeries.LANE_CAP lanes is an error, not a lost lane`, () => {
+    const lanes = Array.from({ length: SpanSeries.LANE_CAP + 1 }, (_, index) => ({
+      ...lane,
+      id: `s:${index}`,
+    }))
+    expect(() => chartOptions([], lanes, testWindow, [], new Map())).toThrow(/at most 2/)
+    expect(
+      chartOptions([], lanes.slice(0, SpanSeries.LANE_CAP), testWindow, [], new Map())
+    ).not.toBeNull()
   })
 })

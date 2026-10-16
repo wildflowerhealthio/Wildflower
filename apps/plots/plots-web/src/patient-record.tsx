@@ -4,7 +4,7 @@ import {
   groupForPanel,
   xDomain,
 } from '@wildflowerhealthio/plots-core-js'
-import { Series, ValueAxis } from '@wildflowerhealthio/plots-fundamentals'
+import { Series, type SpanSeries, ValueAxis } from '@wildflowerhealthio/plots-fundamentals'
 import {
   PlotsLayout,
   MultiAxisChart,
@@ -55,7 +55,8 @@ interface RecordViewProps extends SelectionProps {
  *
  * @remarks
  * The page only composes: `groupForPanel` for the panel, `ValueAxis.assign`
- * for the chart's axes, `xDomain` for its window.
+ * for the chart's axes over the selected point and level series, the selected
+ * span series as its lanes, `xDomain` for its window.
  *
  * Once the record is complete, selected ids it holds no series for — a link
  * shared from another patient's record — are dropped from the selection; not
@@ -94,7 +95,17 @@ const RecordView = ({
       }),
     [selection.series, seriesById]
   )
-  const axes = useMemo(() => ValueAxis.assign(selectedSeries), [selectedSeries])
+  const axes = useMemo(
+    () => ValueAxis.assign(selectedSeries.filter(Series.isValueSeries)),
+    [selectedSeries]
+  )
+  const lanes = useMemo(
+    () =>
+      selectedSeries.filter(
+        (series): series is SpanSeries.SpanSeries => !Series.isValueSeries(series)
+      ),
+    [selectedSeries]
+  )
   const chartTimeDomain = useMemo(
     () => xDomain(selection.range, openedAt, Series.extentOfAll(selectedSeries)),
     [selection.range, openedAt, selectedSeries]
@@ -134,7 +145,7 @@ const RecordView = ({
       rangePresets={<RangePresets selectedPreset={selection.range} onPresetChange={changeRange} />}
       status={statusLines.length === 0 ? null : statusLines}
     >
-      <MultiAxisChart axes={axes} xDomain={chartTimeDomain} />
+      <MultiAxisChart axes={axes} lanes={lanes} xDomain={chartTimeDomain} />
       {leftOutNotes.length > 0 && <p className={styles.note}>{leftOutNotes.join(' · ')}</p>}
     </PlotsLayout>
   )

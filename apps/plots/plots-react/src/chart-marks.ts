@@ -6,11 +6,12 @@ import {
   type Level,
   type LevelSeries,
   type PointSeries,
+  SpanSeries,
   type TimeDomain,
   ValueAxis,
 } from '@wildflowerhealthio/plots-fundamentals'
 
-import { seriesColors } from './series-colors.ts'
+import { seriesColors, spanColour } from './series-colors.ts'
 import { axisTickFormat, labelWithUnit } from './value-format.ts'
 
 /**
@@ -34,8 +35,31 @@ const MARGIN_BOTTOM = 32
 /** The figure's height; its width follows the container. */
 const CHART_HEIGHT = 360
 
-/** The plot frame's height: what the crosshair rule spans below {@link MARGIN_TOP}. */
+/** The plot frame's height, below {@link MARGIN_TOP}; span lanes add none to it. */
 const FRAME_HEIGHT = CHART_HEIGHT - MARGIN_TOP - MARGIN_BOTTOM
+
+/**
+ * Room above a span lane's label, clear of what sits over it: the time axis'
+ * two-line labels (`6 PM` over `Oct 1`), or the lane before.
+ */
+const LANE_GAP = 8
+
+/** Room above a span lane's bar for the lane's label. */
+const LANE_LABEL_HEIGHT = 14
+
+/** How tall a span lane's bar is: a thin strip, not a second plot. */
+const LANE_BAR_HEIGHT = 10
+
+/** The height one span lane adds to the figure, under the time axis' labels. */
+const LANE_HEIGHT = LANE_GAP + LANE_LABEL_HEIGHT + LANE_BAR_HEIGHT
+
+/**
+ * How tall the crosshair rule is with `laneCount` span lanes: the frame alone,
+ * or down through the time axis' labels and every lane, so the rule marks the
+ * span it reads.
+ */
+const crosshairHeightFor = (laneCount: number): number =>
+  laneCount === 0 ? FRAME_HEIGHT : FRAME_HEIGHT + MARGIN_BOTTOM + laneCount * LANE_HEIGHT
 
 /** Pixels between time ticks — shared by the grid and the axis so every grid line has a label. */
 const X_TICK_SPACING = 96
@@ -441,6 +465,82 @@ const seriesLineMarks = (
 }
 
 /**
+ * The shared `0..1` value scale's position `pixelsBelow` pixels under the
+ * frame's bottom edge — where span lanes, which have no value, are drawn.
+ *
+ * @remarks
+ * Exact because lanes grow the figure's height and bottom margin together,
+ * so the frame keeps its {@link FRAME_HEIGHT} and `0..1` keeps its pixels.
+ */
+const belowFrame = (pixelsBelow: number): number => -pixelsBelow / FRAME_HEIGHT
+
+/** One span as a lane draws it: clamped to the window, in its category's colour. */
+interface LaneRect {
+  readonly start: Date
+  readonly end: Date
+  readonly fill: string
+}
+
+/**
+ * The marks for span lane `index`, under the time axis' labels: the lane's
+ * label, a faint track the width of the window, and a bar per span over it
+ * in its category's colour, later spans drawn over earlier ones.
+ *
+ * @remarks
+ * Not clipped — clipping is to the frame, which the lane sits outside — so
+ * each span is clamped to `xDomain` instead, and one wholly outside it is left
+ * out.
+ */
+const spanLaneMarks = (
+  lane: SpanSeries.SpanSeries,
+  index: number,
+  xDomain: TimeDomain.TimeDomain
+): readonly Plot.Markish[] => {
+  const [windowStart, windowEnd] = xDomain
+  const top = MARGIN_BOTTOM + index * LANE_HEIGHT + LANE_GAP
+  const barTop = belowFrame(top + LANE_LABEL_HEIGHT)
+  const barBottom = belowFrame(top + LANE_LABEL_HEIGHT + LANE_BAR_HEIGHT)
+  const rects: readonly LaneRect[] = lane.spans.flatMap((span) =>
+    span.end.epochMillis < windowStart.epochMillis || span.start.epochMillis > windowEnd.epochMillis
+      ? []
+      : [
+          {
+            start: new Date(Math.max(span.start.epochMillis, windowStart.epochMillis)),
+            end: new Date(Math.min(span.end.epochMillis, windowEnd.epochMillis)),
+            fill: spanColour(span.category.colourSlot),
+          },
+        ]
+  )
+  return [
+    Plot.text([{ time: toDate(windowStart), y: belowFrame(top), label: lane.label }], {
+      x: 'time',
+      y: 'y',
+      text: 'label',
+      textAnchor: 'start',
+      lineAnchor: 'top',
+      fill: 'currentColor',
+    }),
+    Plot.rect([{ start: toDate(windowStart), end: toDate(windowEnd) }], {
+      x1: 'start',
+      x2: 'end',
+      y1: barBottom,
+      y2: barTop,
+      fill: 'currentColor',
+      fillOpacity: 0.08,
+      ariaDescription: 'span lane track',
+    }),
+    Plot.rectX(rects, {
+      x1: 'start',
+      x2: 'end',
+      y1: barBottom,
+      y2: barTop,
+      fill: 'fill',
+      ariaDescription: 'span lane',
+    }),
+  ]
+}
+
+/**
  * A value axis' own marks: a series-coloured axis line and tick marks at its
  * offset, labels in the text colour, placed at its ticks on the shared `0..1`
  * scale and labelled back in the series' own values.
@@ -480,8 +580,11 @@ const valueAxisMarks = (
 
 /**
  * The figure's options, bottom layer first: time grid and axis, every value
- * axis, every band, and every series' lines and dots in axis order.
+ * axis, every band, every series' lines and dots in axis order, and the span
+ * lanes under the time axis.
  *
+ * @param lanes - The span series, in selection order, one lane each from the
+ *   top
  * @param colours - Each axis' palette index, parallel to `axes` — from
  *   `ColourSlots.assign`, so a series keeps its colour when an earlier one is
  *   removed
@@ -489,6 +592,8 @@ const valueAxisMarks = (
  *   `Buckets.ofDenseSeries`: a mean line over a min–max envelope, no dots
  *
  * @returns `null` for an empty selection — there is nothing to draw
+ * @throws When `lanes` holds more than `SpanSeries.LANE_CAP` series, rather
+ *   than drawing a lane the figure has no room for
  *
  * @remarks
  * The crosshair is not a mark: it moves on every pointer move, and drawing it
@@ -497,11 +602,18 @@ const valueAxisMarks = (
  */
 const chartOptions = (
   axes: readonly ValueAxis.ValueAxis[],
+  lanes: readonly SpanSeries.SpanSeries[],
   xDomain: TimeDomain.TimeDomain,
   colours: readonly number[],
   bucketsBySeriesId: ReadonlyMap<string, readonly Buckets.Bucket[]>
 ): Plot.PlotOptions | null => {
-  if (axes.length === 0) return null
+  if (lanes.length > SpanSeries.LANE_CAP) {
+    throw new Error(
+      `The health viewer draws at most ${SpanSeries.LANE_CAP} span lanes at once; got ${lanes.length}`
+    )
+  }
+  if (axes.length === 0 && lanes.length === 0) return null
+  const lanesHeight = lanes.length * LANE_HEIGHT
   const domainEnd = xDomain[1]
   const marks: Plot.Markish[] = [
     Plot.gridX({ strokeOpacity: 0.08, tickSpacing: X_TICK_SPACING }),
@@ -513,11 +625,12 @@ const chartOptions = (
     ...axes.flatMap((axis, position) =>
       seriesLineMarks(axis, colours[position], domainEnd, bucketsBySeriesId.get(axis.series.id))
     ),
+    ...lanes.flatMap((lane, index) => spanLaneMarks(lane, index, xDomain)),
   ]
   return {
-    height: CHART_HEIGHT,
+    height: CHART_HEIGHT + lanesHeight,
     marginTop: MARGIN_TOP,
-    marginBottom: MARGIN_BOTTOM,
+    marginBottom: MARGIN_BOTTOM + lanesHeight,
     marginLeft: sideMargin(axes, 'left'),
     marginRight: sideMargin(axes, 'right'),
     x: { type: 'utc', domain: [toDate(xDomain[0]), toDate(xDomain[1])] },
@@ -534,5 +647,6 @@ export {
   bucketCountFor,
   bucketVertices,
   chartOptions,
+  crosshairHeightFor,
   levelRuns,
 }

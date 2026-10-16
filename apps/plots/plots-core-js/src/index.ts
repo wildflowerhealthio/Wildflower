@@ -12,7 +12,7 @@
  * @packageDocumentation
  */
 export type { FiledSeries, RecordReading, RecordResources } from './series-sources.ts'
-export { CATALOG_GROUPS, SERIES_SOURCES, isKnownSeriesId, readRecord } from './series-sources.ts'
+export { CATALOG_GROUPS, SERIES_SOURCES, readRecord, seriesKindOfId } from './series-sources.ts'
 
 export type { RangePreset } from './time-range.ts'
 export { PRESET_LOOKBACK, RANGE_PRESETS, isRangePreset, xDomain } from './time-range.ts'

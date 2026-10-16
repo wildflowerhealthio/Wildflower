@@ -1,6 +1,6 @@
-import { ValueAxis } from '@wildflowerhealthio/plots-fundamentals'
+import { SpanSeries, ValueAxis } from '@wildflowerhealthio/plots-fundamentals'
 
-import { isKnownSeriesId } from './series-sources.ts'
+import { seriesKindOfId } from './series-sources.ts'
 import { type RangePreset, isRangePreset } from './time-range.ts'
 
 /**
@@ -10,8 +10,10 @@ import { type RangePreset, isRangePreset } from './time-range.ts'
 interface Selection {
   /**
    * The plotted series' ids, in selection order — the order that decides axis
-   * sides. Distinct, and at most `ValueAxis.CAP` of them. Opaque here: each id
-   * belongs to the source whose prefix it carries.
+   * sides and lane order. Distinct, with at most `ValueAxis.CAP` point or
+   * level series and at most `SpanSeries.LANE_CAP` span series. Opaque here:
+   * each id belongs to the source whose prefix it carries, which says its
+   * kind.
    */
   readonly series: readonly string[]
   readonly range: RangePreset
@@ -53,18 +55,28 @@ const withSelection = (params: URLSearchParams, selection: Selection): URLSearch
  * Everything unrecognised is dropped, not rejected: a URL is user-editable and
  * outlives the series it names, so one stale `s` must not cost the reader the
  * rest of their link. An `s` survives when some source can read it
- * (`isKnownSeriesId`) — so an id whose source the viewer does not assemble,
+ * (`seriesKindOfId`) — so an id whose source the viewer does not assemble,
  * or that its source would not have written, is dropped.
- * A repeated `s` keeps its first place, and only the first `ValueAxis.CAP`
- * survivors are kept — the chart draws no more, and `ValueAxis.assign` throws
- * past the cap rather than truncating, so a hand-edited link is cut here.
+ * A repeated `s` keeps its first place. Only the first `ValueAxis.CAP` point
+ * or level series and the first `SpanSeries.LANE_CAP` span series are kept,
+ * each cap counted on its own — the chart draws no more, and it throws past
+ * either cap rather than truncating, so a hand-edited link is cut here.
  * An absent or bad `r` means {@link DEFAULT_RANGE}.
  */
 const decodeSelection = (params: URLSearchParams): Selection => {
-  const series = [...new Set(params.getAll(SERIES_PARAM).filter(isKnownSeriesId))].slice(
-    0,
-    ValueAxis.CAP
-  )
+  const series: string[] = []
+  let valueSeriesCount = 0
+  let spanSeriesCount = 0
+  for (const id of new Set(params.getAll(SERIES_PARAM))) {
+    const kind = seriesKindOfId(id)
+    if (kind === 'spans' && spanSeriesCount < SpanSeries.LANE_CAP) {
+      series.push(id)
+      spanSeriesCount += 1
+    } else if ((kind === 'points' || kind === 'levels') && valueSeriesCount < ValueAxis.CAP) {
+      series.push(id)
+      valueSeriesCount += 1
+    }
+  }
   const range = params.get(RANGE_PARAM)
   return {
     series,

@@ -42,14 +42,17 @@ interface Reading<TSeries extends Series.Series> {
  *   inverse. `parseSeriesId` never throws and reads only ids `seriesIdOf`
  *   could have written, so an id that parses is already canonical.
  * - `groupIdOf`: which of `groups` a series is filed under.
+ * - `seriesKindOf`: the kind of series a key names — what a selection caps
+ *   an id against before any series is read (`ValueAxis.CAP` for points and
+ *   levels, `SpanSeries.LANE_CAP` for spans).
  *
  * @typeParam TResources - What `read` is handed. Each domain reads different
  *   resource types (observations; requests and statements for medications), so
  *   the viewer supplies each source its own.
  * @typeParam TKey - The domain's own identity for a series, which its ids
  *   encode.
- * @typeParam TSeries - The domain's series: a `PointSeries` or `LevelSeries`
- *   carrying whatever domain fields `groupIdOf` needs.
+ * @typeParam TSeries - The domain's series: a `PointSeries`, `LevelSeries` or
+ *   `SpanSeries` carrying whatever domain fields `groupIdOf` needs.
  *
  * @remarks
  * `read` lives here, typed by `TResources`, so a domain package's whole
@@ -65,6 +68,7 @@ interface SeriesSource<TResources, TKey, TSeries extends Series.Series> {
   readonly seriesIdOf: (key: TKey) => string
   readonly parseSeriesId: (id: string) => TKey | null
   readonly groupIdOf: (series: TSeries) => string
+  readonly seriesKindOf: (key: TKey) => Series.Series['kind']
 }
 
 /**
@@ -83,6 +87,7 @@ const make = <TResources, TKey, TSeries extends Series.Series>(
     seriesIdOf: source.seriesIdOf,
     parseSeriesId: source.parseSeriesId,
     groupIdOf: source.groupIdOf,
+    seriesKindOf: source.seriesKindOf,
   })
 
 export { make }

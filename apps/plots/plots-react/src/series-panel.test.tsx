@@ -10,7 +10,7 @@ import {
   type CatalogRow,
   matchesSearch,
 } from '@wildflowerhealthio/plots-core-js'
-import { type Series, ValueAxis } from '@wildflowerhealthio/plots-fundamentals'
+import { type Series, SpanSeries, ValueAxis } from '@wildflowerhealthio/plots-fundamentals'
 
 import { SeriesPanel } from './series-panel.tsx'
 
@@ -307,5 +307,69 @@ describe('SeriesPanel', () => {
 
     // Assert
     expect(screen.getByText('No plottable series in this record.')).toBeDefined()
+  })
+})
+
+describe('SeriesPanel span lanes', () => {
+  const spanRow = (id: string, label: string, count: number): CatalogRow => ({
+    id,
+    label,
+    unit: null,
+    seriesKind: 'spans',
+    count,
+    span: [DateTime.unsafeMake(0), DateTime.unsafeMake(DAY)],
+  })
+  const laneRows = [
+    spanRow('s:activity', 'Activity', 12),
+    spanRow('s:sleep', 'Sleep stage', 1),
+    spanRow('s:workout', 'Workout', 3),
+  ]
+  const groupsWithLanes: readonly CatalogGroup[] = [
+    ...catalogGroups,
+    { id: 'activity', label: 'Activity', rows: laneRows },
+  ]
+  const valueIds = seriesIds.slice(0, ValueAxis.CAP)
+  const laneIds = laneRows.map((row) => row.id)
+
+  const renderWithLanes = (selectedSeriesIds: readonly string[]): void => {
+    render(
+      <SeriesPanel
+        catalogGroups={groupsWithLanes}
+        selectedSeriesIds={selectedSeriesIds}
+        onSelectionChange={vi.fn()}
+      />
+    )
+  }
+
+  it('should count a span row in spans', () => {
+    renderWithLanes([])
+    expect(checkboxFor('Activity').labels?.[0]?.textContent).toContain('12 spans')
+    expect(screen.getByText('0 of 4 selected · 0 of 2 lanes')).toBeDefined()
+  })
+
+  it('should keep lanes selectable with four value series selected', () => {
+    renderWithLanes(valueIds)
+    for (const row of laneRows) expect(checkboxFor(row.label).disabled).toBe(false)
+    expect(checkboxFor('Cholesterol').disabled).toBe(true)
+    expect(screen.getByRole('status').textContent).toBe(`Up to ${ValueAxis.CAP} series at once`)
+  })
+
+  it('should disable a third lane, with a hint, once two are selected', () => {
+    renderWithLanes([...valueIds, ...laneIds.slice(0, SpanSeries.LANE_CAP)])
+    expect(checkboxFor('Activity').disabled).toBe(false)
+    expect(checkboxFor('Sleep stage').disabled).toBe(false)
+    expect(checkboxFor('Workout').disabled).toBe(true)
+    expect(screen.getByText('4 of 4 selected · 2 of 2 lanes')).toBeDefined()
+    expect(screen.getByRole('status').textContent).toBe(
+      `Up to ${ValueAxis.CAP} series at once · Up to ${SpanSeries.LANE_CAP} lanes at once`
+    )
+  })
+
+  it('should keep value rows selectable with only lanes selected', () => {
+    renderWithLanes(laneIds.slice(0, SpanSeries.LANE_CAP))
+    for (const row of allRows) expect(checkboxFor(row.label).disabled).toBe(false)
+    expect(screen.getByRole('status').textContent).toBe(
+      `Up to ${SpanSeries.LANE_CAP} lanes at once`
+    )
   })
 })

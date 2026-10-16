@@ -225,6 +225,24 @@
   --color-series-2-soft: color-mix(in oklab, var(--color-series-2) 18%, transparent);
   --color-series-3-soft: color-mix(in oklab, var(--color-series-3) 18%, transparent);
   --color-series-4-soft: color-mix(in oklab, var(--color-series-4) 18%, transparent);
+
+  /*
+   * Span lane slots — the categories of a span lane (an activity: sleeping,
+   * restful sleeping, walking, running, an open workout), assigned 1 → 5 by
+   * the domain so a category keeps its colour from one record to the next.
+   * Separate from the series slots: a lane colour fills a bar and names a
+   * category, never a series. Drawn from the dataviz reference palette's
+   * violet / magenta / green / blue / red, in an order validated as a set per
+   * mode against `--color-canvas` on its adjacent pairs — the categories that
+   * sit side by side in a lane (1↔2, 2↔3, 3↔4, 4↔5). Magenta and red sit
+   * below 3:1 here, so a lane's categories are always labelled in the legend
+   * and the crosshair readout.
+   */
+  --color-span-1: #4a3aa7; /* violet */
+  --color-span-2: #e87ba4; /* magenta */
+  --color-span-3: #008300; /* green */
+  --color-span-4: #2a78d6; /* blue */
+  --color-span-5: #e34948; /* red */
 }
 
 /* Narrow the `:root` `color-scheme: light dark` default down to the resolved
@@ -346,6 +364,14 @@
   --color-series-2-soft: color-mix(in oklab, var(--color-series-2) 22%, transparent);
   --color-series-3-soft: color-mix(in oklab, var(--color-series-3) 22%, transparent);
   --color-series-4-soft: color-mix(in oklab, var(--color-series-4) 22%, transparent);
+
+  /* Span lane slots, dark: the same five hues stepped for the dark canvas and
+   * re-validated there; all five clear 3:1. */
+  --color-span-1: #9085e9; /* violet */
+  --color-span-2: #d55181; /* magenta */
+  --color-span-3: #008300; /* green */
+  --color-span-4: #3987e5; /* blue */
+  --color-span-5: #e66767; /* red */
 }
 
 /*

@@ -18,7 +18,7 @@ const categoryArb = fc.option(
 const seriesIn = (category: string | null): ObservationSeries => ({
   kind: 'points',
   id: 'o:\\~|code|u',
-  key: { system: null, code: 'code', unit: 'u' },
+  key: { kind: 'points', system: null, code: 'code', unit: 'u' },
   label: 'Code',
   unit: 'u',
   category,
@@ -34,18 +34,27 @@ describe('observationSource', () => {
     expect(observationSource.read).toBe(observationsToSeries)
   })
 
-  test('every id it mints starts with its prefix and parses back', () => {
+  test('every id it mints starts with its prefix, parses back, and names its kind', () => {
     fc.assert(
       fc.property(
-        fc.record({
-          system: fc.option(fc.string(), { nil: null }),
-          code: fc.string(),
-          unit: fc.option(fc.string(), { nil: null }),
-        }),
+        fc.oneof(
+          fc.record({
+            kind: fc.constant('points' as const),
+            system: fc.option(fc.string(), { nil: null }),
+            code: fc.string(),
+            unit: fc.option(fc.string(), { nil: null }),
+          }),
+          fc.record({
+            kind: fc.constant('spans' as const),
+            system: fc.option(fc.string(), { nil: null }),
+            code: fc.string(),
+          })
+        ),
         (key) => {
           const id = observationSource.seriesIdOf(key)
           expect(id.startsWith(`${observationSource.idPrefix}:`)).toBe(true)
           expect(observationSource.parseSeriesId(id)).toEqual(key)
+          expect(observationSource.seriesKindOf(key)).toBe(key.kind)
         }
       ),
       { numRuns: RUNS }

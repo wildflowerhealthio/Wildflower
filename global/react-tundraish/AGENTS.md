@@ -78,6 +78,34 @@ a mode, no slot equals a status value, and each `-soft` mixes from its own slot.
 Hue _separation_ is not something the stylesheet can assert — that is the
 validator's job, which is why re-stepping any slot means re-running it.
 
+## Span lane tokens
+
+`--color-span-1` … `--color-span-5` fill the bars of a span lane — the health
+viewer's activity lane under its time axis — one per category the domain
+assigns (sleeping, restful sleeping, walking, running, open workout). They
+are a separate set from the series slots: a lane colour names a category, not
+a series, and never strokes a line or an axis. The series rules otherwise
+hold — fixed order, never cycled, never a status colour, text in the text
+tokens.
+
+They are the dataviz reference palette's violet / magenta / green / blue /
+red, validated as a set per mode on the adjacent pairs a lane puts side by
+side (1↔2, 2↔3, 3↔4, 4↔5), against both the canvas and the card surface.
+Light-mode magenta and red sit below 3:1, so every lane category is labelled
+in the legend and the crosshair readout. Green is the reference palette's
+mode-invariant step, so it is the one slot shared by both modes.
+
+```bash
+node <dataviz-skill>/scripts/validate_palette.js \
+  "#4a3aa7,#e87ba4,#008300,#2a78d6,#e34948" --mode light --surface "#dedede"
+node <dataviz-skill>/scripts/validate_palette.js \
+  "#9085e9,#d55181,#008300,#3987e5,#e66767" --mode dark --surface "#161616"
+```
+
+`src/colors-custom.test.ts` holds the same structural half for them: a literal
+hex in each mode, distinct within a mode and from the series slots, and never
+a status value.
+
 ## References
 
 - [global AGENTS.md](../AGENTS.md) — the project-agnostic rule these packages live by.

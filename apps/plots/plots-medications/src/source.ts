@@ -13,7 +13,8 @@ import { type MedicationSeries, medicationRequestsToSeries } from './medication-
 /**
  * The medication source as one value — the package's whole public surface
  * apart from its types: FHIR R4 `MedicationRequest`s read into dose level
- * series, the `m:` id grammar, and the Medications catalogue group.
+ * series, the `m:` id grammar, and the Medications catalogue group. Every
+ * medication series is a level series.
  */
 const medicationSource: SeriesSource.SeriesSource<
   readonly MedicationRequestWithId[],
@@ -27,6 +28,7 @@ const medicationSource: SeriesSource.SeriesSource<
   seriesIdOf: medicationSeriesIdOf,
   parseSeriesId: parseMedicationSeriesId,
   groupIdOf: medicationGroupIdOf,
+  seriesKindOf: () => 'levels',
 })
 
 export { medicationSource }

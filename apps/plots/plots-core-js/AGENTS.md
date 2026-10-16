@@ -12,12 +12,16 @@ lives in each domain package.
   `observationSource`, then `medicationSource`), `readRecord` (hands each source its resources and
   files every series under the group the source names, summing the `undated` /
   `dropped` accounting), `CATALOG_GROUPS` (each source's groups, source by
-  source) and `isKnownSeriesId` (some source can read the id).
+  source) and `seriesKindOfId` (the kind of series an id names, through the
+  source that can read it; `null` when none can).
 - `src/catalog.ts` — `groupForPanel` (filed series → non-empty groups in
-  `CATALOG_GROUPS` order, one row per series with its kind, count and span) and the
+  `CATALOG_GROUPS` order, one row per series with its kind, count — readings,
+  levels or spans — and span) and the
   search (`normaliseForSearch`, `matchesSearch`).
 - `src/selection-url.ts` — `encodeSelection` / `decodeSelection`: series ids
-  (opaque here, in selection order, distinct and at most `ValueAxis.CAP`) and
+  (opaque here, in selection order, distinct, and at most `ValueAxis.CAP`
+  point or level series and `SpanSeries.LANE_CAP` span series, each counted by
+  `seriesKindOfId`) and
   the range preset as query parameters; `withSelection` writes them into a
   query that keeps every other key (the app's `?patient=`, which is
   `smart-app-react`'s).
@@ -30,7 +34,8 @@ lives in each domain package.
   `RecordResources` and one line in `readRecord`. Prefixes and group ids must
   stay distinct across sources — `series-sources.test.ts` checks both.
 - **Ids are opaque here.** The codec keeps an `s` parameter only when some
-  source's `parseSeriesId` reads it, and each parser only reads the spelling
+  source's `parseSeriesId` reads it — and asks that source's `seriesKindOf`
+  which cap it counts against — and each parser only reads the spelling
   its own `seriesIdOf` writes. An id whose source is not assembled — an
   unknown prefix — is dropped like any other stale entry, never raised.
 - **Range presets stay here, not in fundamentals.** Which windows the viewer

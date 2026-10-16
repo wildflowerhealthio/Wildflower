@@ -8,7 +8,7 @@ import { Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { CATALOG_GROUPS, SERIES_SOURCES, isKnownSeriesId, readRecord } from './series-sources.ts'
+import { CATALOG_GROUPS, SERIES_SOURCES, readRecord, seriesKindOfId } from './series-sources.ts'
 
 const RUNS = numRunsFor({ base: 200 })
 
@@ -67,8 +67,8 @@ describe('SERIES_SOURCES', () => {
   })
 })
 
-describe('isKnownSeriesId', () => {
-  test('agrees with whether any source parses the id', () => {
+describe('seriesKindOfId', () => {
+  test('has a kind exactly when some source parses the id', () => {
     fc.assert(
       fc.property(
         fc.oneof(
@@ -77,7 +77,7 @@ describe('isKnownSeriesId', () => {
           fc.string().map((body) => `m:${body}`)
         ),
         (id) => {
-          expect(isKnownSeriesId(id)).toBe(
+          expect(seriesKindOfId(id) !== null).toBe(
             SERIES_SOURCES.some((source) => source.parseSeriesId(id) !== null)
           )
         }
@@ -86,26 +86,34 @@ describe('isKnownSeriesId', () => {
     )
   })
 
-  test('every id a source mints is known', () => {
+  test('every observation id names the kind of its key', () => {
     fc.assert(
       fc.property(
-        fc.record({
-          system: fc.option(fc.string(), { nil: null }),
-          code: fc.string(),
-          unit: fc.option(fc.string(), { nil: null }),
-        }),
+        fc.oneof(
+          fc.record({
+            kind: fc.constant('points' as const),
+            system: fc.option(fc.string(), { nil: null }),
+            code: fc.string(),
+            unit: fc.option(fc.string(), { nil: null }),
+          }),
+          fc.record({
+            kind: fc.constant('spans' as const),
+            system: fc.option(fc.string(), { nil: null }),
+            code: fc.string(),
+          })
+        ),
         (key) => {
-          expect(isKnownSeriesId(observationSource.seriesIdOf(key))).toBe(true)
+          expect(seriesKindOfId(observationSource.seriesIdOf(key))).toBe(key.kind)
         }
       ),
       { numRuns: RUNS }
     )
   })
 
-  test('every medication id the medication source mints is known', () => {
+  test('every medication id names a level series', () => {
     fc.assert(
       fc.property(medicationKeyArb, (key) => {
-        expect(isKnownSeriesId(medicationSource.seriesIdOf(key))).toBe(true)
+        expect(seriesKindOfId(medicationSource.seriesIdOf(key))).toBe('levels')
       }),
       { numRuns: RUNS }
     )
@@ -113,7 +121,7 @@ describe('isKnownSeriesId', () => {
 
   test('an id no source would write is unknown', () => {
     for (const id of ['m:insulin|mg', 'm:insulin|mg|day', 'x:a|b|c', 'o:a|b']) {
-      expect(isKnownSeriesId(id)).toBe(false)
+      expect(seriesKindOfId(id)).toBeNull()
     }
   })
 })

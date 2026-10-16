@@ -4,12 +4,16 @@ import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
 import {
+  anySeriesArb,
   levelFrom,
   levelSeriesArb,
   levelSeriesOf,
   pointSeriesArb,
   seriesArb,
   smallMillis,
+  spanFrom,
+  spanSeriesArb,
+  spanSeriesOf,
 } from './arbitraries.test-helpers.ts'
 import * as LevelSeries from './level-series.ts'
 import * as Level from './level.ts'
@@ -61,11 +65,14 @@ describe('Series.levelAt', () => {
 describe('Series.extentOf', () => {
   test('spans every stated boundary, and nothing when the series is empty', () => {
     fc.assert(
-      fc.property(seriesArb, (series) => {
-        const boundaries = Series.levelsOf(series).flatMap((level) => [
-          level.start.epochMillis,
-          ...(level.end === null ? [] : [level.end.epochMillis]),
-        ])
+      fc.property(anySeriesArb, (series) => {
+        const boundaries =
+          series.kind === 'spans'
+            ? series.spans.flatMap((span) => [span.start.epochMillis, span.end.epochMillis])
+            : Series.levelsOf(series).flatMap((level) => [
+                level.start.epochMillis,
+                ...(level.end === null ? [] : [level.end.epochMillis]),
+              ])
         const extent = Series.extentOf(series)
         if (boundaries.length === 0) expect(extent).toBeNull()
         else {
@@ -97,7 +104,7 @@ describe('Series.extentOf', () => {
 describe('Series.extentOfAll', () => {
   test('is the hull of each series’ own extent, and nothing when none has one', () => {
     fc.assert(
-      fc.property(fc.array(seriesArb, { maxLength: 5 }), (seriesList) => {
+      fc.property(fc.array(anySeriesArb, { maxLength: 5 }), (seriesList) => {
         const extents = seriesList.flatMap((series) => {
           const extent = Series.extentOf(series)
           return extent === null ? [] : [extent]
@@ -119,7 +126,7 @@ describe('Series.extentOfAll', () => {
 
   test('of one series is that series’ extent', () => {
     fc.assert(
-      fc.property(seriesArb, (series) => {
+      fc.property(anySeriesArb, (series) => {
         expect(Series.extentOfAll([series])).toEqual(Series.extentOf(series))
       }),
       { numRuns: RUNS }
@@ -135,5 +142,30 @@ describe('Series.sizeOf', () => {
       }),
       { numRuns: RUNS }
     )
+  })
+
+  test('counts spans', () => {
+    fc.assert(
+      fc.property(spanSeriesArb, (series) => {
+        expect(Series.sizeOf(series)).toBe(series.spans.length)
+      }),
+      { numRuns: RUNS }
+    )
+  })
+})
+
+describe('Series.isValueSeries', () => {
+  test('is true exactly for the kinds that take a value axis', () => {
+    fc.assert(
+      fc.property(anySeriesArb, (series) => {
+        expect(Series.isValueSeries(series)).toBe(series.kind !== 'spans')
+      }),
+      { numRuns: RUNS }
+    )
+  })
+
+  test('a span series spans its earliest start to its latest end', () => {
+    const series = spanSeriesOf([spanFrom(10, 500), spanFrom(20, 30)])
+    expect(Series.extentOf(series)?.map((time) => time.epochMillis)).toEqual([10, 500])
   })
 })

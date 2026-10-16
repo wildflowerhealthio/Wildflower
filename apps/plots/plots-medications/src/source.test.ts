@@ -51,6 +51,7 @@ describe('medicationSource', () => {
           const id = medicationSource.seriesIdOf(key)
           expect(id.startsWith(`${medicationSource.idPrefix}:`)).toBe(true)
           expect(medicationSource.parseSeriesId(id)).toEqual(key)
+          expect(medicationSource.seriesKindOf(key)).toBe('levels')
         }
       ),
       { numRuns: RUNS }

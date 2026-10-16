@@ -168,6 +168,63 @@ describe('colors-custom.css series tokens', () => {
   })
 })
 
+/** The span lane slots, as one list, as {@link SERIES_SLOTS} is for the series. */
+const SPAN_SLOTS = [1, 2, 3, 4, 5] as const
+
+describe('colors-custom.css span lane tokens', () => {
+  it('should define every lane slot in both palettes as a literal hex', () => {
+    for (const selector of [LIGHT_SELECTOR, DARK_SELECTOR]) {
+      // Arrange
+      const palette = customPropertiesOf(selector)
+
+      // Act
+      const notHex = SPAN_SLOTS.filter(
+        (slot) => !/^#[0-9a-f]{6}$/.test(palette.get(`--color-span-${slot}`) ?? '')
+      )
+
+      // Assert — defined in each mode's own rule, and a literal the palette
+      // validator was run over rather than a `var()` alias.
+      expect(notHex).toEqual([])
+    }
+  })
+
+  it('should give every lane slot its own value within a mode, apart from the series slots', () => {
+    for (const selector of [LIGHT_SELECTOR, DARK_SELECTOR]) {
+      // Arrange
+      const palette = customPropertiesOf(selector)
+      const seriesValues = new Set(
+        SERIES_SLOTS.map((slot) => palette.get(`--color-series-${slot}`))
+      )
+
+      // Act
+      const values = SPAN_SLOTS.map((slot) => palette.get(`--color-span-${slot}`))
+
+      // Assert
+      expect(new Set(values).size).toBe(SPAN_SLOTS.length)
+      expect(values.filter((value) => seriesValues.has(value))).toEqual([])
+    }
+  })
+
+  it('should never paint a lane with a reserved status colour', () => {
+    for (const selector of [LIGHT_SELECTOR, DARK_SELECTOR]) {
+      // Arrange
+      const palette =
+        selector === DARK_SELECTOR
+          ? new Map([...customPropertiesOf(LIGHT_SELECTOR), ...customPropertiesOf(DARK_SELECTOR)])
+          : customPropertiesOf(LIGHT_SELECTOR)
+      const statusValues = new Set(STATUS_TOKENS.map((token) => palette.get(token)))
+
+      // Act
+      const collisions = SPAN_SLOTS.map((slot) => `--color-span-${slot}`).filter((token) =>
+        statusValues.has(palette.get(token))
+      )
+
+      // Assert
+      expect(collisions).toEqual([])
+    }
+  })
+})
+
 // Helpers
 
 /** Every series token name, both the marks and their band companions. */

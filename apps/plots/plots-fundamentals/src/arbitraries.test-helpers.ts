@@ -4,6 +4,7 @@ import * as fc from 'fast-check'
 import type * as LevelSeries from './level-series.ts'
 import type * as PointSeries from './point-series.ts'
 import type * as Series from './series.ts'
+import * as SpanSeries from './span-series.ts'
 import type * as TimeDomain from './time-domain.ts'
 
 /** An instant within a small window, so generated series collide and interleave. */
@@ -91,9 +92,61 @@ const levelSeriesArb: fc.Arbitrary<LevelSeries.LevelSeries> = fc
     )
   )
 
-const seriesArb: fc.Arbitrary<Series.Series> = fc.oneof(pointSeriesArb, levelSeriesArb)
+const seriesArb: fc.Arbitrary<Series.ValueSeries> = fc.oneof(pointSeriesArb, levelSeriesArb)
+
+/** A span category in one of the colour slots, or the neutral colour. */
+const spanCategoryArb: fc.Arbitrary<SpanSeries.SpanCategory> = fc
+  .option(fc.integer({ min: 0, max: SpanSeries.COLOUR_SLOTS - 1 }), { nil: null })
+  .map((colourSlot) => ({
+    id: `c${colourSlot ?? 'neutral'}`,
+    label: `Category ${colourSlot ?? 'neutral'}`,
+    colourSlot,
+  }))
+
+/** A span series built from spans in any order, sorted by `start` as the type requires. */
+const spanSeriesOf = (spans: readonly SpanSeries.Span[]): SpanSeries.SpanSeries => ({
+  kind: 'spans',
+  id: 's:series',
+  label: 'Spans',
+  spans: spans.toSorted((left, right) => left.start.epochMillis - right.start.epochMillis),
+})
+
+/** A span from `start` to `end` in `category`. */
+const spanFrom = (
+  start: number,
+  end: number,
+  category: SpanSeries.SpanCategory = { id: 'c0', label: 'Category 0', colourSlot: 0 }
+): SpanSeries.Span => ({
+  start: DateTime.unsafeMake(start),
+  end: DateTime.unsafeMake(end),
+  category,
+})
+
+/** Spans that may overlap, leave gaps, or last an instant. */
+const spanSeriesArb: fc.Arbitrary<SpanSeries.SpanSeries> = fc
+  .array(
+    fc.record({
+      start: smallMillis,
+      length: fc.integer({ min: 0, max: 200_000 }),
+      category: spanCategoryArb,
+    }),
+    { maxLength: 8 }
+  )
+  .map((drafts) =>
+    spanSeriesOf(
+      drafts.map(({ start, length, category }) => spanFrom(start, start + length, category))
+    )
+  )
+
+/** Any series the chart plots: points, levels or spans. */
+const anySeriesArb: fc.Arbitrary<Series.Series> = fc.oneof(
+  pointSeriesArb,
+  levelSeriesArb,
+  spanSeriesArb
+)
 
 export {
+  anySeriesArb,
   levelFrom,
   levelSeriesArb,
   levelSeriesOf,
@@ -102,5 +155,8 @@ export {
   pointSeriesOf,
   seriesArb,
   smallMillis,
+  spanFrom,
+  spanSeriesArb,
+  spanSeriesOf,
   windowArb,
 }

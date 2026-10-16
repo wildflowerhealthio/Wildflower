@@ -1,5 +1,5 @@
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import type { LevelSeries, PointSeries } from '@wildflowerhealthio/plots-fundamentals'
+import type { LevelSeries, PointSeries, SpanSeries } from '@wildflowerhealthio/plots-fundamentals'
 import { DateTime } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
@@ -123,6 +123,32 @@ describe('groupForPanel', () => {
     expect(row.seriesKind).toBe('levels')
     expect(row.count).toBe(1)
     expect(row.span).toEqual([DateTime.unsafeMake(0), DateTime.unsafeMake(86_400_000)])
+  })
+
+  test('a span series lists in its group with a span count, no unit, and its extent', () => {
+    const category = { id: 'asleep', label: 'Asleep', colourSlot: 0 }
+    const series: SpanSeries.SpanSeries = {
+      kind: 'spans',
+      id: 'activity',
+      label: 'Activity',
+      spans: [
+        { start: DateTime.unsafeMake(0), end: DateTime.unsafeMake(500), category },
+        { start: DateTime.unsafeMake(100), end: DateTime.unsafeMake(200), category },
+      ],
+    }
+    const groupId = 'activity'
+    const [group] = groupForPanel([{ groupId, series }])
+    expect(group.id).toBe(groupId)
+    expect(group.rows).toEqual([
+      {
+        id: 'activity',
+        label: 'Activity',
+        unit: null,
+        seriesKind: 'spans',
+        count: 2,
+        span: [DateTime.unsafeMake(0), DateTime.unsafeMake(500)],
+      },
+    ])
   })
 })
 

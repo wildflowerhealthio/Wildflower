@@ -5,6 +5,7 @@ import {
   type LevelSeries,
   type PointSeries,
   type Series,
+  SpanSeries,
   type TimeDomain,
   ValueAxis,
 } from '@wildflowerhealthio/plots-fundamentals'
@@ -106,14 +107,56 @@ const levelSeriesArb = (tag: string): fc.Arbitrary<LevelSeries.LevelSeries> =>
       }
     })
 
+/**
+ * A span series of spans starting on days inside the window, some running
+ * past its end, in any of the lane colours or the neutral one, possibly
+ * overlapping.
+ */
+const spanSeriesArb = (tag: string): fc.Arbitrary<SpanSeries.SpanSeries> =>
+  fc
+    .array(
+      fc.record({
+        day: fc.integer({ min: 0, max: WINDOW_DAYS }),
+        length: fc.integer({ min: 0, max: 30 }),
+        colourSlot: fc.option(fc.integer({ min: 0, max: SpanSeries.COLOUR_SLOTS - 1 }), {
+          nil: null,
+        }),
+      }),
+      { minLength: 1, maxLength: 10 }
+    )
+    .map((drafts) => ({
+      kind: 'spans',
+      id: `s:${tag}`,
+      label: `Spans ${tag}`,
+      spans: drafts
+        .toSorted((left, right) => left.day - right.day)
+        .map(({ day, length, colourSlot }): SpanSeries.Span => ({
+          start: atDay(day),
+          end: atDay(day + length),
+          category: {
+            id: `c${colourSlot ?? 'neutral'}`,
+            label: `Category ${colourSlot ?? 'neutral'}`,
+            colourSlot,
+          },
+        })),
+    }))
+
 /** One to `ValueAxis.CAP` series with distinct ids, in selection order. */
 const selectionArb = (
-  seriesArb: (tag: string) => fc.Arbitrary<Series.Series>
-): fc.Arbitrary<readonly Series.Series[]> =>
+  seriesArb: (tag: string) => fc.Arbitrary<Series.ValueSeries>
+): fc.Arbitrary<readonly Series.ValueSeries[]> =>
   fc
     .integer({ min: 1, max: ValueAxis.CAP })
     .chain((count) =>
       fc.tuple(...Array.from({ length: count }, (_, index) => seriesArb(`s${index}`)))
     )
 
-export { WINDOW_DAYS, atDay, levelSeriesArb, pointSeriesArb, selectionArb, testWindow }
+export {
+  WINDOW_DAYS,
+  atDay,
+  levelSeriesArb,
+  pointSeriesArb,
+  selectionArb,
+  spanSeriesArb,
+  testWindow,
+}

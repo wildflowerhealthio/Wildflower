@@ -15,8 +15,8 @@ import {
 
 /**
  * The observation source as one value — the package's whole public surface
- * apart from its types: FHIR R4 `Observation`s read into point series, the
- * `o:` id grammar, and the catalogue grouping by `Observation.category`.
+ * apart from its types: FHIR R4 `Observation`s read into point series and
+ * span series, the `o:` id grammar, and the catalogue grouping by `Observation.category`.
  */
 const observationSource: SeriesSource.SeriesSource<
   readonly ObservationResource[],
@@ -30,6 +30,7 @@ const observationSource: SeriesSource.SeriesSource<
   seriesIdOf: observationSeriesIdOf,
   parseSeriesId: parseObservationSeriesId,
   groupIdOf: observationGroupIdOf,
+  seriesKindOf: (key) => key.kind,
 })
 
 export { observationSource }

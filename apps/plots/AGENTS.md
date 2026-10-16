@@ -14,7 +14,7 @@ package per kind of record, and an assembly on top.
 ```text
 plots-fundamentals   plot vocabulary and chart math; imports no slice
       ▲
-plots-observations   FHIR R4 Observation → PointSeries
+plots-observations   FHIR R4 Observation → PointSeries, SpanSeries
 plots-medications    medication-core DoseRegimen → LevelSeries
       ▲
 plots-core-js           closed list of sources, catalogue, URL codec, range presets
@@ -24,13 +24,14 @@ plots-react          the Plot chart, series panel, range presets and page layout
 
 - **`plots-fundamentals`** — the plot vocabulary, as `effect`-style
   namespaces from one flat entry: `Level`, `PointSeries`, `LevelSeries`,
-  `Series`, `ValueAxis` (domains, ticks, axis assignment), `Buckets` (a dense
+  `SpanSeries` (labelled time spans, drawn as a lane), `Series`, `ValueAxis` (domains, ticks, axis assignment), `Buckets` (a dense
   series summarised per time slice), `Crosshair`,
   `ColourSlots`, `TimeDomain`, `SeriesId` (the escaped field grammar ids are
   written in) and `SeriesSource` (a domain source as one value). See its
   [AGENTS.md](./plots-fundamentals/AGENTS.md).
 - **`plots-observations`** — the observation source,
-  `observationSource`: FHIR R4 `Observation`s read into point series, the `o:`
+  `observationSource`: FHIR R4 `Observation`s read into point series — and,
+  for a coded value over an `effectivePeriod`, span series — the `o:`
   id grammar, and the catalogue grouping by `Observation.category`. See its
   [AGENTS.md](./plots-observations/AGENTS.md).
 - **`plots-medications`** — the medication source,
@@ -48,9 +49,11 @@ plots-react          the Plot chart, series panel, range presets and page layout
   colour-matched value axis per series, point series as lines with dots (or,
   too dense for dots, a bucket-mean line over a min–max envelope), level
   series as step lines broken at gaps and dashed where the domain says, `low` /
-  `high` bands, a legend, and a crosshair readout of `Series.levelAt` per
-  series. `SeriesPanel` lays out `groupForPanel`'s catalogue as searchable,
-  collapsible groups of checkboxes capped at `ValueAxis.CAP`; `RangePresets`
+  `high` bands, span series as thin lanes under the time axis, a legend, and a
+  crosshair readout of `Series.levelAt` per value series and
+  `SpanSeries.spansAt` per lane. `SeriesPanel` lays out `groupForPanel`'s
+  catalogue as searchable, collapsible groups of checkboxes capped at
+  `ValueAxis.CAP` value series and `SpanSeries.LANE_CAP` lanes; `RangePresets`
   picks a `RangePreset`; `PlotsLayout` docks the panel beside the chart
   from 900px and folds it into a `Series (n selected)` disclosure below that.
   It imports no domain package. See its
@@ -90,9 +93,11 @@ the app's paged read for it in `useRecordRead`.
 - **Nothing disappears silently.** Every source's `read` returns `undated` and
   `dropped` counts alongside its series, every input moves at most one of them,
   and `readRecord` carries them up, so the UI can say what it could not plot.
-- **`ValueAxis.CAP` is a rendering limit.** `ValueAxis.assign` throws past it
-  rather than truncating, so a selection UI caps against the constant instead
-  of discovering a series vanished.
+- **`ValueAxis.CAP` and `SpanSeries.LANE_CAP` are rendering limits.**
+  `ValueAxis.assign` throws past four value series and the chart past two
+  lanes, rather than truncating, so a selection UI caps against the constants
+  — each counted on its own, by the kind each source's `seriesKindOf` names —
+  instead of discovering a series vanished.
 
 ## References
 

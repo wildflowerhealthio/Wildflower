@@ -3,9 +3,10 @@ import * as Series from './series.ts'
 import * as TimeDomain from './time-domain.ts'
 
 /**
- * Every instant the crosshair can rest on inside `window`: each level boundary
- * of each series — a start, and a stated end — or, for a series drawn as
- * buckets, each bucket's middle. Sorted, deduplicated, in epoch milliseconds.
+ * Every instant the crosshair can rest on inside `window`: each boundary of
+ * each series (`Series.boundariesOf` — a level's start and stated end, a
+ * span's start and end) or, for a series drawn as buckets, each bucket's
+ * middle. Sorted, deduplicated, in epoch milliseconds.
  *
  * @param bucketsBySeriesId - The series drawn as buckets, from
  *   `Buckets.ofDenseSeries` — the same map the chart draws them from
@@ -13,7 +14,7 @@ import * as TimeDomain from './time-domain.ts'
  * @remarks
  * Snapping to these rather than to the raw pointer time means the crosshair
  * always sits where some series changes, so the readout it lists
- * (`Series.levelAt`) is never a stale value picked between two changes. A
+ * (`Series.levelAt`, `SpanSeries.spansAt`) is never a stale value picked between two changes. A
  * point series' levels begin at its readings and end at the next one, so its
  * stops are exactly its reading times; a bucketed series stops once per bucket,
  * where its readout (`Buckets.at`) names that bucket.
@@ -26,11 +27,7 @@ const stops = (
   const boundaries = plotted.flatMap((series) => {
     const buckets = bucketsBySeriesId.get(series.id)
     if (buckets !== undefined) return buckets.map((bucket) => bucket.time.epochMillis)
-    return Series.levelsOf(series).flatMap((level) =>
-      level.end === null
-        ? [level.start.epochMillis]
-        : [level.start.epochMillis, level.end.epochMillis]
-    )
+    return Series.boundariesOf(series).map((boundary) => boundary.epochMillis)
   })
   return [...new Set(boundaries)]
     .filter((boundary) => TimeDomain.contains(window, boundary))

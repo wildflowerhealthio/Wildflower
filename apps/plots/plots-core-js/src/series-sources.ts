@@ -92,17 +92,29 @@ const CATALOG_GROUPS: readonly SeriesSource.SeriesGroup[] = SERIES_SOURCES.flatM
   (source) => source.groups
 )
 
+/** The kind of series `source` says `id` names, or `null` when `source` cannot read it. */
+const seriesKindOfIdIn = <TResources, TKey, TSeries extends Series.Series>(
+  source: SeriesSource.SeriesSource<TResources, TKey, TSeries>,
+  id: string
+): Series.Series['kind'] | null => {
+  const key = source.parseSeriesId(id)
+  return key === null ? null : source.seriesKindOf(key)
+}
+
 /**
- * Whether some source can read `id` — the test a series id from a URL must
- * pass to be kept.
+ * The kind of series `id` names, read by the source that can parse it — the
+ * test a series id from a URL must pass to be kept, and the cap it counts
+ * against.
+ *
+ * @returns `null` when no source can read `id`
  *
  * @remarks
  * Each source's parser only accepts ids its own `seriesIdOf` could have
- * written, so an id that passes is already in the one spelling the source's
- * series carry.
+ * written, so an id that has a kind is already in the one spelling the
+ * source's series carry. Prefixes are distinct, so at most one source reads it.
  */
-const isKnownSeriesId = (id: string): boolean =>
-  SERIES_SOURCES.some((source) => source.parseSeriesId(id) !== null)
+const seriesKindOfId = (id: string): Series.Series['kind'] | null =>
+  seriesKindOfIdIn(observationSource, id) ?? seriesKindOfIdIn(medicationSource, id)
 
-export { CATALOG_GROUPS, SERIES_SOURCES, isKnownSeriesId, readRecord }
+export { CATALOG_GROUPS, SERIES_SOURCES, readRecord, seriesKindOfId }
 export type { FiledSeries, RecordReading, RecordResources }

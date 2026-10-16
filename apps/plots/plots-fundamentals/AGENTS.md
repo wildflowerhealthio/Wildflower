@@ -31,14 +31,25 @@ functions read in the namespace's context (`ValueAxis.assign`, not
   a `StyledLevel` with a `LineStyle` (`'solid' | 'dashed'`) the domain decides.
   Levels may overlap or leave gaps. `levelAt` reads through
   `Level.inEffectAt`, with no fallback.
-- **`Series`** (`src/series.ts`) — `Series = PointSeries | LevelSeries`,
-  discriminated on `kind` (`'points' | 'levels'`). Both carry an opaque `id`,
-  `label`, `unit` and a `ValueScale` (`'fitted' | 'from-zero' |
-  'zero-to-one'`). `levelsOf` is the one place the two kinds are told apart;
-  `levelAt`, `extentOf`, `extentOfAll` (the span of several series together) and
-  `sizeOf` read through it.
-- **`ValueAxis`** (`src/value-axis.ts`) — one value axis per series: `assign`
-  (sides alternate in selection order, `CAP` = 4 axes), `domainFor` (fitted as
+- **`SpanSeries`** (`src/span-series.ts`) — labelled time spans with no value:
+  each `Span` runs from `start` to `end` (both inclusive) in a `SpanCategory`
+  (an opaque `id`, a `label`, and the `colourSlot` — one of `COLOUR_SLOTS` = 5
+  lane colours, or `null` for neutral — the domain picks), with an optional
+  `note`. Spans may overlap or leave gaps. A span series takes no value axis:
+  the chart draws it as a lane, at most `LANE_CAP` = 2 of them, counted apart
+  from `ValueAxis.CAP`. `spansAt(series, time)` is every span covering `time`;
+  `categoriesOf` is each category once, by colour slot, for the legend.
+- **`Series`** (`src/series.ts`) — `Series = ValueSeries | SpanSeries`,
+  discriminated on `kind` (`'points' | 'levels' | 'spans'`), where
+  `ValueSeries = PointSeries | LevelSeries` and `isValueSeries` tells them
+  apart. A value series carries an opaque `id`, `label`, `unit` and a
+  `ValueScale` (`'fitted' | 'from-zero' | 'zero-to-one'`). `levelsOf` is the
+  one place the two value kinds are told apart; `levelAt` reads through it.
+  `boundariesOf` (level starts and stated ends; span starts and ends),
+  `extentOf`, `extentOfAll` (the span of several series together) and `sizeOf`
+  take any series.
+- **`ValueAxis`** (`src/value-axis.ts`) — one value axis per value series:
+  `assign` (sides alternate in selection order, `CAP` = 4 axes), `domainFor` (fitted as
   the series' `valueScale` says), `niceDomain`, `ticksFor` (never `-0`; a
   `niceDomain` result is labelled at both ends), `normalise` / `denormalise`.
 - **`Buckets`** (`src/buckets.ts`) — a dense point series summarised for
@@ -51,9 +62,10 @@ functions read in the namespace's context (`ValueAxis.assign`, not
   as buckets — point series with more readings in the domain than buckets —
   and returns their buckets by series id; level series never are.
 - **`Crosshair`** (`src/crosshair.ts`) —
-  `stops(series, window, bucketsBySeriesId)`: every level boundary inside the
-  window, sorted and distinct, so a point series' stops are its reading times
-  — and a bucketed series' are its bucket middles; `nearestStop` snaps the
+  `stops(series, window, bucketsBySeriesId)`: every boundary
+  (`Series.boundariesOf`) inside the window, sorted and distinct, so a point
+  series' stops are its reading times, a span series' its spans' ends — and a
+  bucketed series' are its bucket middles; `nearestStop` snaps the
   pointer to one.
 - **`ColourSlots`** (`src/colour-slots.ts`) — `assign(previous, selectedIds)`:
   a series keeps its colour while it stays selected; newcomers take the lowest
@@ -68,7 +80,8 @@ functions read in the namespace's context (`ValueAxis.assign`, not
 - **`SeriesSource`** (`src/series-source.ts`) — "a plots domain
   source" as one value, the analogue of `http-extraction-fundamentals`'
   `SourceDescriptor`: `name`, `idPrefix`, catalogue `groups`, `read`,
-  `seriesIdOf` / `parseSeriesId`, `groupIdOf`. `read` returns a `Reading` —
+  `seriesIdOf` / `parseSeriesId`, `groupIdOf`, and `seriesKindOf` (the kind a
+  key names, so a URL's ids are capped by kind before any series is read). `read` returns a `Reading` —
   the series plus `undated` / `dropped` counts. `make` clones and deep-freezes.
 
 ## Why `read` is on the descriptor
@@ -93,16 +106,17 @@ the parser a URL goes through come from the same value.
   `Series`, property-tested. A renderer draws what these return and re-derives
   none of it.
 - **The domain decides presentation; this package applies it.** Which
-  `Interpolation`, `ValueScale`, `LineStyle` and `note` a series gets is the
-  domain package's call (a boolean steps on `[0, 1]`, a dose axis starts at
+  `Interpolation`, `ValueScale`, `LineStyle`, `note` and span `colourSlot` a
+  series gets is the domain package's call (a boolean steps on `[0, 1]`, a dose axis starts at
   zero, an inferred extent is dashed). Nothing here branches on what a series
   means.
 - **`SeriesId`'s escaping is external contract.** Shared URLs carry ids written
   through `fromFields`, so changing the escaping or the null marker invalidates
   every link already saved. `toFields` never throws.
-- **`ValueAxis.CAP` is a rendering limit.** `ValueAxis.assign` and
-  `ColourSlots.assign` throw past it rather than truncating, so a selection UI
-  caps against the constant instead of discovering a series vanished.
+- **`ValueAxis.CAP` and `SpanSeries.LANE_CAP` are rendering limits.**
+  `ValueAxis.assign` and `ColourSlots.assign` throw past `CAP`, and the chart
+  past `LANE_CAP`, rather than truncating, so a selection UI caps against the
+  constants instead of discovering a series vanished.
 
 ## References
 
