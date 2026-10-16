@@ -1,7 +1,7 @@
 //! Runs: isolation, concurrency, the run gate, panics, details and removal.
 
 use std::future::Future;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::task::Poll;
 use std::time::Duration;
@@ -204,7 +204,7 @@ async fn an_error_is_reported_as_its_full_chain_and_the_detail_is_cleared() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_running_unit_reports_its_detail_until_its_run_ends() {
+async fn a_running_unit_reports_its_detail_until_its_run_is_asked_to_stop() {
     let harness = Harness::new();
     harness.set_unit(
         "unit",
@@ -231,6 +231,68 @@ async fn a_running_unit_reports_its_detail_until_its_run_ends() {
         Some((StopReason::PolicyInactive, None))
     );
     assert_eq!(status.detail, None);
+}
+
+/// A harness with `unit` running [`Script::ReportWhileWindingDown`], its
+/// detail `"up"`, with the flag it sets once it reports winding down and the
+/// semaphore that lets it wind down.
+async fn reporting_while_winding_down() -> (Harness, Arc<AtomicBool>, Arc<Semaphore>) {
+    let harness = Harness::new();
+    let reported = Arc::new(AtomicBool::new(false));
+    let allow_wind_down = Arc::new(Semaphore::new(0));
+    harness.set_unit(
+        "unit",
+        RunPolicy::Always,
+        Script::ReportWhileWindingDown {
+            reported: Arc::clone(&reported),
+            allow_wind_down: Arc::clone(&allow_wind_down),
+        },
+        &Probe::default(),
+    );
+    harness
+        .wait_for("unit", "reporting", |status| {
+            status.detail.as_deref() == Some("up")
+        })
+        .await;
+    (harness, reported, allow_wind_down)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_run_asked_to_stop_has_its_detail_cleared_at_once() {
+    let (harness, _reported, allow_wind_down) = reporting_while_winding_down().await;
+
+    harness.set_unit_policy("unit", RunPolicy::Off);
+
+    let status = harness.status("unit").expect("the unit is listed");
+    assert_eq!(status.detail, None);
+    assert_eq!(
+        status.run_state,
+        RunState::Running,
+        "the run is still winding down"
+    );
+    allow_wind_down.add_permits(1);
+    harness
+        .wait_until_stopped_for("unit", StopReason::PolicyInactive)
+        .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_detail_a_run_reports_once_asked_to_stop_is_dropped() {
+    let (harness, reported, allow_wind_down) = reporting_while_winding_down().await;
+
+    harness.set_unit_policy("unit", RunPolicy::Off);
+    eventually("the run reports winding down", || {
+        reported.load(Ordering::SeqCst)
+    })
+    .await;
+
+    let status = harness.status("unit").expect("the unit is listed");
+    assert_eq!(status.detail, None);
+    assert_eq!(status.run_state, RunState::Running);
+    allow_wind_down.add_permits(1);
+    harness
+        .wait_until_stopped_for("unit", StopReason::PolicyInactive)
+        .await;
 }
 
 #[tokio::test(flavor = "multi_thread")]

@@ -19,10 +19,10 @@
 //!   `TauriUnitRunner`'s statuses, and a notification for each new consent
 //!   waiting on a server, opening the request as the server's page's Open
 //!   does: on the desktop each one at once, in the default browser, and on a
-//!   phone the first one waiting at the app's start, instead of notifying;
-//!   and shows on the app icon's badge how many servers have a consent
-//!   request pending, counted through a run that stops as its notification
-//!   stays, and cleared once none does (`pending_consent_badge`);
+//!   phone one at each arrival of the app in the foreground; and shows on
+//!   the app icon's badge how many servers have a consent request pending,
+//!   counted through a run that stops as its notification stays, and
+//!   cleared once none does (`pending_consent_badge`);
 //! - puts the [`ServersState`] the commands read in the app's managed state.
 //!
 //! The commands write the registry, then push the server they changed. One
@@ -79,7 +79,9 @@
 //!   [`server_open_notified_consent`], invoked as
 //!   `invoke('server_open_notified_consent', { notificationId })` for a
 //!   tapped notification, opens the consent of the server whose consent
-//!   notification it is, and nothing for any other.
+//!   notification it is once the server can open it, answering at once, and
+//!   nothing for any other notification. The tap wins over the arrival in the
+//!   foreground it brings: it ends every other consent open still waiting.
 //!
 //! Parameters are top-level and camelCase in the invoke payload, which Tauri
 //! maps onto the commands' snake_case parameters; answers are camelCase. The
@@ -109,6 +111,9 @@ mod server_status;
 mod server_units;
 #[cfg(test)]
 mod test_authorization_server;
+#[cfg(test)]
+mod test_statuses;
+mod waiting_consent_opens;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -234,7 +239,7 @@ pub fn host_servers(
             statuses_rx: runner.subscribe(),
         },
         pending_consent_badge::AppIconBadge { app: app.clone() },
-        runner.subscribe(),
+        runner.clone(),
     ));
     tauri::async_runtime::spawn(notifications::post_stop_notifications(
         app.clone(),

@@ -14,8 +14,8 @@
 //!   right, in the app's colours, which asks its browser to keep the app alive
 //!   under it; the default browser when no Custom Tabs provider is installed.
 //!   A [`OpenMode::Replace`] `open` joins a `Replace` view still launching, a
-//!   [`OpenMode::Stack`] one launches its own, and either returns an error
-//!   while the app is in the background. A Custom Tab can't be closed, so
+//!   [`OpenMode::Stack`] one launches its own, also over a kept-alive view up over the
+//!   app, and either returns an error while the app is in the background. A Custom Tab can't be closed, so
 //!   `close` returns an error.
 //! - **Desktop** — the default browser, through `tauri-plugin-opener`. A browser
 //!   tab isn't a window the app owns, so desktop never reports a close, and
@@ -26,7 +26,9 @@
 //! `events` channel hears exactly one [`BrowserEvent::Closed`] per `open` that
 //! returns `Ok`, and none after one that returns an `Err`. On Android it hears
 //! [`BrowserEvent::KeptAlive`] before that when the view's browser keeps the
-//! app alive under the view.
+//! app alive under the view, and [`BrowserEvent::MovedToBackground`] and
+//! [`BrowserEvent::ReturnedToForeground`] as the user leaves the app for the
+//! home screen or another app with the view up, and comes back.
 //!
 //! Usage (Rust caller — the canonical path). `open` is async on every
 //! platform; await it rather than blocking on it, since iOS answers from the

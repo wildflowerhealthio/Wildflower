@@ -2,7 +2,7 @@
 //! app is present, the background session, and starting and stopping runs per
 //! policy.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
@@ -19,7 +19,7 @@ use super::status_publisher::{RunLiveness, StatusPublisher};
 use super::unit_entry::{PendingRestart, RunGeneration, UnitEntry, UnitRun};
 use super::wall_clock_ticker::start_and_stop_runs_on_the_wall_clock;
 use super::RunnerTimings;
-use crate::domain::app_presence::{AppPresence, Presence, PresenceChange};
+use crate::domain::app_presence::{AppPresence, ForegroundArrivals, Presence, PresenceChange};
 use crate::domain::background_session_length::BackgroundSessionLength;
 use crate::domain::run_policy::RunPolicy;
 use crate::domain::session_ledger::{SessionEnd, SessionId, SessionLedger};
@@ -57,6 +57,10 @@ pub struct UnitRunner<D> {
     timings: RunnerTimings,
     background_session_length: BackgroundSessionLength,
     session_demand_tx: watch::Sender<SessionDemand>,
+    /// The app's arrivals in the foreground, and whether it is in the
+    /// foreground (see
+    /// [`subscribe_foreground_arrivals`](Self::subscribe_foreground_arrivals)).
+    foreground_arrivals_tx: watch::Sender<ForegroundArrivals>,
     /// Wakes the wall-clock ticker when the next deadline moves.
     pub(super) next_start_and_stop_runs_moved: Notify,
 }
@@ -125,6 +129,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
             timings,
             background_session_length,
             session_demand_tx: watch::Sender::new(SessionDemand::default()),
+            foreground_arrivals_tx: watch::Sender::new(ForegroundArrivals::default()),
             next_start_and_stop_runs_moved: Notify::new(),
         });
         unit_runner
@@ -154,6 +159,33 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
         self.status_publisher.snapshot()
     }
 
+    /// The units that should run now, as runs are started and stopped per
+    /// policy, and whose run is up, starting, or about to start: each with a
+    /// run, one stopping for a restart included, or whose restart is due
+    /// now. A run the app's arrival in the foreground just asked to start
+    /// counts, though its status still says how the last one stopped until it
+    /// begins, as does one waiting at its run gate for its unit's last run to
+    /// end. A unit waiting out its restart delay doesn't.
+    #[must_use]
+    pub fn units_to_run(&self) -> BTreeSet<UnitId> {
+        let state = self.lock_state();
+        let now = self.clock.now();
+        let app_present_or_in_grace = state.app_presence.present_or_in_grace(now);
+        let runs_discouraged = self.runs_discouraged(&state, app_present_or_in_grace);
+        state
+            .units
+            .iter()
+            .filter(|(_, entry)| {
+                entry.should_run(now, app_present_or_in_grace, runs_discouraged)
+                    && entry
+                        .pending_restart
+                        .as_ref()
+                        .is_none_or(PendingRestart::is_due)
+            })
+            .map(|(unit_id, _)| unit_id.clone())
+            .collect()
+    }
+
     /// Every unit's status, as it changes. The receiver always holds the
     /// current statuses; a slow reader sees the latest, not every step.
     #[must_use]
@@ -170,6 +202,20 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
     #[must_use]
     pub fn subscribe_stops(&self) -> broadcast::Receiver<RunStopped> {
         self.status_publisher.subscribe_stops()
+    }
+
+    /// The app's arrivals in the foreground, and whether it is in the
+    /// foreground. An arrival is the app becoming [`Presence::Present`] after
+    /// being absent, its first window opening and each return to the
+    /// foreground alike, or coming back to the foreground it left while
+    /// present ([`set_in_foreground_while_present`](Self::set_in_foreground_while_present)),
+    /// though not leaving the background on Android. Each arrival changes it
+    /// once the runs it starts and stops are asked for, and so does the app
+    /// leaving the foreground: becoming absent, or leaving while present. A
+    /// slow reader sees one change for several.
+    #[must_use]
+    pub fn subscribe_foreground_arrivals(&self) -> watch::Receiver<ForegroundArrivals> {
+        self.foreground_arrivals_tx.subscribe()
     }
 
     pub(crate) fn subscribe_session_demand(&self) -> watch::Receiver<SessionDemand> {
@@ -292,19 +338,77 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
     /// The app's `presence` now. Becoming [`Presence::Present`] clears an end
     /// of the background session by the platform, and starts every unit's
     /// restarts over, so a unit waiting out its restart delay starts at once.
+    /// Becoming present after being absent is an arrival in the foreground,
+    /// which [`subscribe_foreground_arrivals`](Self::subscribe_foreground_arrivals)
+    /// reports once the runs it starts and stops are asked for; becoming
+    /// absent leaves the foreground.
     pub fn set_app_presence(self: &Arc<Self>, presence: Presence) {
         let mut state = self.lock_state();
         let now = self.clock.now();
-        match state.app_presence.update(presence, now) {
-            PresenceChange::BecamePresent => {
-                state.session_ledger.clear_ended_by_platform();
-                for entry in state.units.values_mut() {
-                    entry.start_restarts_over();
-                }
+        let change = state.app_presence.update(presence, now);
+        match change {
+            PresenceChange::FirstBecamePresent
+            | PresenceChange::ReturnedToTheForeground
+            | PresenceChange::LeftTheBackground => {
+                Self::start_over_for_a_return_locked(&mut state);
             }
             PresenceChange::BecameAbsent | PresenceChange::Unchanged => {}
         }
         self.start_and_stop_runs_per_policy_locked(&mut state);
+        match change {
+            PresenceChange::FirstBecamePresent | PresenceChange::ReturnedToTheForeground => {
+                self.publish_arrival();
+            }
+            PresenceChange::BecameAbsent => self.publish_left_the_foreground(),
+            PresenceChange::LeftTheBackground | PresenceChange::Unchanged => {}
+        }
+    }
+
+    /// The app, present all along, left the foreground (`in_foreground`
+    /// false) or came back to it (`true`): on Android, the user went to the
+    /// home screen or another app while an in-app browser view, which keeps
+    /// the app present, showed over it, and came back to it. Coming back is
+    /// an arrival in the foreground, as a return is: it clears an end of the
+    /// background session by the platform and starts every unit's restarts
+    /// over. Ignored while the app is absent, whose presence says it left,
+    /// and when it doesn't change whether the app is in the foreground.
+    pub fn set_in_foreground_while_present(self: &Arc<Self>, in_foreground: bool) {
+        let mut state = self.lock_state();
+        let was_in_foreground = self.foreground_arrivals_tx.borrow().in_foreground;
+        if !state.app_presence.presence().is_present() || was_in_foreground == in_foreground {
+            return;
+        }
+        if !in_foreground {
+            self.publish_left_the_foreground();
+            return;
+        }
+        Self::start_over_for_a_return_locked(&mut state);
+        self.start_and_stop_runs_per_policy_locked(&mut state);
+        self.publish_arrival();
+    }
+
+    /// Start over on a fresh return of the app: clear an end of the
+    /// background session by the platform, and start every unit's restarts
+    /// over, so a unit waiting out its restart delay starts at once.
+    fn start_over_for_a_return_locked(state: &mut UnitRunnerState<D>) {
+        state.session_ledger.clear_ended_by_platform();
+        for entry in state.units.values_mut() {
+            entry.start_restarts_over();
+        }
+    }
+
+    /// Publish an arrival of the app in the foreground.
+    fn publish_arrival(&self) {
+        self.foreground_arrivals_tx.send_modify(|foreground| {
+            foreground.arrivals += 1;
+            foreground.in_foreground = true;
+        });
+    }
+
+    /// Publish that the app left the foreground, unless it had already.
+    fn publish_left_the_foreground(&self) {
+        self.foreground_arrivals_tx
+            .send_if_modified(|foreground| std::mem::replace(&mut foreground.in_foreground, false));
     }
 
     /// Restart every unit that should be running: each run in progress
@@ -491,8 +595,6 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
         }
         let should_run = entry.should_run(now, app_present_or_in_grace, runs_discouraged);
         if restarts_after(reason, should_run) {
-            let (pending_restart, restart_token) = PendingRestart::new();
-            entry.pending_restart = Some(pending_restart);
             let restart_delay = backed_off_restart_delay(
                 entry.restarts_in_a_row,
                 self.timings.first_unit_restart_backoff,
@@ -503,6 +605,8 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
             // The delay counts from the run's end, not from the timer task's
             // first poll.
             let restart_at = tokio::time::Instant::now() + restart_delay;
+            let (pending_restart, restart_token) = PendingRestart::new(restart_at);
+            entry.pending_restart = Some(pending_restart);
             let unit_runner = Arc::clone(self);
             let unit_id = unit_id.clone();
             self.runtime.spawn(async move {
@@ -623,8 +727,10 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
         let stop_signal = RunStopSignal::default();
         let (run_finished_tx, run_finished_rx) = watch::channel(false);
         entry.current_run = Some(UnitRun {
+            unit_id: unit_id.clone(),
             generation,
             stop_signal: stop_signal.clone(),
+            status_publisher: self.status_publisher.clone(),
             run_finished_rx,
         });
         log::info!("[unit-runner] starting {unit_id}");

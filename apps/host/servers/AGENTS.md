@@ -16,7 +16,8 @@ changing how servers run or what the host notifies about them.
   to a registered server: its run policy, its launcher, Authorization app and
   certificate source, and its removal. `ServerUnit`, a server as a unit `UnitRunner` runs, with
   `ServerDetail`, what its runs report (health, tunnel state, certificate
-  state and the newest consent waiting), its `ServerLaunchMinter` included,
+  state and the newest consent waiting) until they are asked to stop, its
+  `ServerLaunchMinter` included,
   through which the host mints a running server's launches, and its
   `ServerSignInCodeMinter`, through which it mints the codes that sign the
   browser in as the server's Owner; launching (`ensure_launchable`,
@@ -27,7 +28,8 @@ changing how servers run or what the host notifies about them.
   the newest consent waiting on a server, named by its `ConsentKey`; and the
   notification decisions: the stop notification for each new stop of a server's run, and the consent
   notification for each new request waiting on a server, with the count of
-  servers with a request pending that the app icon's badge shows.
+  servers with a request pending that the app icon's badge shows; and `ConsentViews`, the consents showing in
+  a view of the in-app browser, so each opens in one.
   - Layout: `domain/` the record (`ServerRecord`, `RelayKind`, `TunnelToken`),
     `RegistryError`, enrolment (`add_server`, `set_server_credentials`,
     `EnteredRelay`, `EnteredCredentials`, `RelayIdentity`, `EnrolmentError`),
@@ -41,8 +43,9 @@ changing how servers run or what the host notifies about them.
     `consent_sign_in_url`, `LaunchError`), and `notifications/`
     (`LocalNotification` with its `fnv1a` id hash,
     `StopNotificationCoalescer` with
-    `ServerStop` and `StopCause`, and `ConsentNotificationCoalescer` with
-    `ConsentRequest` and `server_of_consent_notification`); `ports/` the
+    `ServerStop` and `StopCause`, `ConsentNotificationCoalescer` with
+    `ConsentRequest` and `server_of_consent_notification`, and `ConsentViews`
+    with `ConsentViewClaim` and `IfShowing`); `ports/` the
     `ServerRegistry` port (read all, insert, modify, remove) and the
     `RelayClient` port (`GET /rathole`, signed `GET /me`, `POST /claim`);
     `adapters/`
@@ -461,7 +464,14 @@ changing how servers run or what the host notifies about them.
   default-browser tab. On iOS the base then waits on the run's
   `ServerConsentWatcher` and closes the view once the request is decided or
   expires, revealing the page under it, unless the user closed it first; a
-  Custom Tab and a desktop's tab can't be closed by the app. Further errors
+  watch that fails, as when the restart a return brings stops the run under
+  the view, waits for the next run's watcher, so the view keeps its consent
+  (`ConsentViews`) until it closes or its request settles. A Custom Tab and a
+  desktop's tab can't be closed by the app. A tap's open
+  (`server_open_notified_consent`) answers at once and waits for its server
+  as `open_consent_once_openable` does, across the iOS restart included; it
+  ends every other open waiting for its server and the arrival's wait for a
+  first report, so the tapped consent is the one that opens. Further errors
   are `nothingPending` and the launch's.
 - **Launching opens the launcher with a launch for any client, signed in.**
   `server_launch` (`{domain}`) reads the record's launcher URL, refuses at
@@ -515,18 +525,29 @@ changing how servers run or what the host notifies about them.
   the server's page still shows it as the pending request. On a phone the
   host withdraws it once the request is no longer the server's newest
   (decided or expired, or another it notified for is newest again), or the
-  server is removed. A tap opens it on a phone. On a phone the host also
-  opens, at the app's start, the request a server reports in its run's first
-  status since then, instead of notifying for it, so a request whose
-  notification launched the app opens: once per app start, for the first
-  such server in domain order, while any other's notifies; one the Owner's
-  own browser made doesn't open, since that browser died with the app. A
-  desktop can't click a notification, so there the host also opens each
-  request it notifies for at once in the default browser, as the server's
-  page's Open does. Either open waits for the server: one that can't open it
-  then, as one not launchable yet at the app's start, opens it on a later
-  status change once it can, while it is still the server's newest request
-  (`open_consent_once_openable`). `ConsentNotificationCoalescer` decides
+  server is removed. A tap opens it on a phone. On a phone each arrival of
+  the app in the foreground, its first window and each return alike, an
+  Android return to a Custom Tab left up over the base included
+  (`subscribe_foreground_arrivals`), opens at most one request: the one
+  notified latest that is still its server's newest as the server last
+  reported, on a server the runner runs now (`units_to_run`), so coming back after seeing a notification, or after closing a
+  consent undecided, opens it; failing one, the first request a server on
+  its way up reports (one of those whose run isn't reporting yet),
+  instead of notifying, so a request whose notification launched the app
+  opens. A server that isn't on its way up, as one turned on later, notifies
+  as usual, and so does every server once the app leaves the foreground or a
+  notification is tapped (`end_arrival_wait`). An arrival a tap on a
+  notification brings opens nothing on Android, whose `MainActivity` marks
+  that resume (`take_resume_opening_its_own_page`), and on either phone the
+  tap ends every open still waiting for its server; leaving the foreground
+  ends them too. A desktop can't click a notification, so there the host also
+  opens each request it notifies for at once in the default browser, as the
+  server's page's Open does. Either open waits for the server: one that can't
+  open it then, as one not launchable yet, or whose run isn't reporting, as
+  one the iOS restart stops, opens it on a later status change once it can,
+  while it is still the server's newest request
+  (`open_consent_once_openable`), each server with at most one open waiting
+  (`WaitingConsentOpens`). `ConsentNotificationCoalescer` decides
   which requests notify and which open (`ConsentOpening`). A request already notified for, as when it
   comes back once a newer one is decided or after a run restarts, doesn't
   notify again. A server forgets the requests it notified for once its run

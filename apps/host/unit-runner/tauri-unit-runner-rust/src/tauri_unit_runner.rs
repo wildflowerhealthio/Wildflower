@@ -1,14 +1,15 @@
 //! [`TauriUnitRunner`], what the app builds before its Tauri builder and pushes
 //! its units to.
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use tauri_plugin_background_service::StartConfig as BackgroundServiceStartConfig;
 use tokio::sync::{broadcast, watch};
 
 use wildflowerhealthio_unit_runner::{
-    BackgroundSessionLength, RunPolicy, RunStopped, SystemClock, Unit, UnitId, UnitRunner,
-    UnitStatuses,
+    BackgroundSessionLength, ForegroundArrivals, RunPolicy, RunStopped, SystemClock, Unit, UnitId,
+    UnitRunner, UnitStatuses,
 };
 
 use crate::tauri_bindings::TauriBindings;
@@ -124,6 +125,13 @@ impl<D: Clone + Send + Sync + 'static> TauriUnitRunner<D> {
         self.unit_runner.statuses()
     }
 
+    /// The units that should run now: each whose run is up, starting, or
+    /// about to start.
+    #[must_use]
+    pub fn units_to_run(&self) -> BTreeSet<UnitId> {
+        self.unit_runner.units_to_run()
+    }
+
     /// Every unit's status, as it changes. The receiver always holds the
     /// current statuses; a slow reader sees the latest, not every step.
     #[must_use]
@@ -137,5 +145,19 @@ impl<D: Clone + Send + Sync + 'static> TauriUnitRunner<D> {
     #[must_use]
     pub fn subscribe_stops(&self) -> broadcast::Receiver<RunStopped> {
         self.unit_runner.subscribe_stops()
+    }
+
+    /// The app's arrivals in the foreground, and whether it is in the
+    /// foreground. An arrival is the app becoming present after being
+    /// absent, its first window opening and each return to the foreground
+    /// alike, or, on Android, coming back to the foreground it left while an
+    /// in-app browser view showed over it. Each arrival changes it once the
+    /// runs it starts and stops are asked for, on iOS after this host has
+    /// asked every running unit's run to stop for the restart a return
+    /// brings; so does the app leaving the foreground. A slow reader sees one
+    /// change for several.
+    #[must_use]
+    pub fn subscribe_foreground_arrivals(&self) -> watch::Receiver<ForegroundArrivals> {
+        self.unit_runner.subscribe_foreground_arrivals()
     }
 }

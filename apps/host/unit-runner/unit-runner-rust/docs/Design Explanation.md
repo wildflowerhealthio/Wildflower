@@ -98,6 +98,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
     pub async fn remove_unit(self: &Arc<Self>, unit_id: &UnitId);
     pub fn statuses(&self) -> UnitStatuses<D>; // BTreeMap<UnitId, UnitStatus<D>>
     pub fn subscribe(&self) -> watch::Receiver<UnitStatuses<D>>;
+    pub fn units_to_run(&self) -> BTreeSet<UnitId>;
 
     // What the host calls.
     pub fn attach_background_session_platform<P: BackgroundSessionPlatform>(
@@ -105,6 +106,7 @@ impl<D: Clone + Send + Sync + 'static> UnitRunner<D> {
         platform: Arc<P>,
     );
     pub fn set_app_presence(self: &Arc<Self>, presence: Presence);
+    pub fn set_in_foreground_while_present(self: &Arc<Self>, in_foreground: bool);
     pub fn restart_running_units(self: &Arc<Self>);
     pub fn session_started(self: &Arc<Self>) -> SessionId;
     pub fn session_ended(
@@ -148,7 +150,24 @@ matters to a reader that acts on stops, such as one that notifies: each run's
 stop once, as a `RunStopped` with the unit id, the `RunStop` its status now
 holds, and whether the run had announced running. It is a broadcast
 `RUN_STOPS_CAPACITY` (64) deep; a reader that falls further behind is told how
-many stops it missed.
+many stops it missed. `subscribe_foreground_arrivals()` counts the app's
+arrivals in the foreground (`ForegroundArrivals`), and says whether it is in
+the foreground: an arrival is each time it becomes present after being absent,
+its first window opening and each return to the foreground alike, though not
+leaving the background on Android, and each time it comes back to the
+foreground it left while present (`set_in_foreground_while_present`, as on
+Android with an in-app browser view up over the app while the user went home).
+Each arrival changes it once `UnitRunner` has asked for the runs it starts and
+stops, and so does the app leaving the foreground, by becoming absent or
+leaving while present; a slow reader sees one change for several. It says
+nothing about the units: a reader reads their statuses, where a run the host
+asked to stop for the arrival, as the Tauri host does every running unit's on
+iOS, already reports no detail, and `units_to_run()`, the units that should
+run now and whose run is up, starting, or about to start: each with a run, one
+stopping for a restart included, or a restart due now. A unit whose run an
+arrival just asked to start is among them while its status still says how its
+last run stopped, until the run begins; one waiting out its restart delay
+isn't.
 
 A new unit is `Stopped` with no last stop until its first run.
 
@@ -213,9 +232,13 @@ either way.
     recorded the end (and scheduled any restart) by then, so a
     `set_unit_policy` the app makes on seeing `Stopped` always cancels that
     restart.
-  - The detail is cleared at both ends of the run. Once `Stopped` is
-    published, nothing a leftover clone of the run's `RunContext` reports
-    lands.
+  - The detail is what a run reports until it is asked to stop. It is cleared
+    as the run begins, and again as `UnitRunner` asks the run to stop, in the
+    same call, while the run state stays until the run ends; a detail the run
+    sets after that is dropped. So a reader never
+    acts on what a stopping run reported, such as a handle into a run that is
+    about to end. Once `Stopped` is published, nothing a leftover clone of the
+    run's `RunContext` reports lands.
 
 ## Stop reasons
 

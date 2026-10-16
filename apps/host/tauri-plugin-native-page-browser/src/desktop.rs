@@ -40,6 +40,12 @@ impl<R: Runtime> NativePageBrowser<R> {
     pub async fn close(&self, _request: CloseRequest) -> crate::Result<()> {
         Err(crate::Error::CloseDefaultBrowserTab)
     }
+
+    /// `false`: a desktop app comes to the front to open no page of its own.
+    /// Async only to match the mobile backend's.
+    pub async fn take_resume_opening_its_own_page(&self) -> crate::Result<bool> {
+        Ok(false)
+    }
 }
 
 #[cfg(test)]

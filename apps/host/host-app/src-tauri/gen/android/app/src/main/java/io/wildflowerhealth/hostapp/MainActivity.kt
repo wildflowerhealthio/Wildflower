@@ -3,6 +3,7 @@ package io.wildflowerhealth.hostapp
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge
+import io.wildflowerhealth.nativepagebrowser.NativePageBrowserPlugin
 import org.json.JSONObject
 
 class MainActivity : TauriActivity() {
@@ -35,10 +36,16 @@ private const val NOTIFICATION_OBJECT_EXTRA = "LocalNotficationObject"
  * Android, so its `actionPerformed` reports `notification: null`, and the base,
  * which finds the tapped consent by `notification.id`, can't tell which
  * notification was tapped. Any other intent is left as it is.
+ *
+ * A tapped notification's intent also marks the resume it brings as opening a
+ * page of its own: the base opens the tapped consent, so its arrival in the
+ * foreground opens none besides.
  */
 private fun withTappedNotificationId(intent: Intent?) {
-  if (intent == null || intent.getStringExtra(NOTIFICATION_OBJECT_EXTRA) != null) return
+  if (intent == null) return
   val id = intent.getIntExtra(NOTIFICATION_ID_EXTRA, Int.MIN_VALUE)
   if (id == Int.MIN_VALUE) return
+  NativePageBrowserPlugin.markResumeOpeningItsOwnPage()
+  if (intent.getStringExtra(NOTIFICATION_OBJECT_EXTRA) != null) return
   intent.putExtra(NOTIFICATION_OBJECT_EXTRA, JSONObject().put("id", id).toString())
 }

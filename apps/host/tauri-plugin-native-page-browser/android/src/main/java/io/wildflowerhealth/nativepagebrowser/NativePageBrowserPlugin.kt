@@ -32,7 +32,9 @@ import app.tauri.plugin.Plugin
  * can't be closed, so nothing here reads it. `mode` is `models.rs` `OpenMode`:
  * `"replace"` or `"stack"`. `events` is a Tauri `Channel<BrowserEvent>`
  * that hears `{"event":"keptAlive"}` when the view's browser keeps the app
- * alive, and `{"event":"closed"}` once this view is gone.
+ * alive, `{"event":"movedToBackground"}` and `{"event":"returnedToForeground"}`
+ * as the app leaves and comes back with the view over it, and
+ * `{"event":"closed"}` once this view is gone.
  */
 @InvokeArg
 class OpenArgs {
@@ -63,9 +65,20 @@ class OpenArgs {
  * latest of them, when a `replace` open launched it, instead of launching
  * another, and resolves as that view's `open` does; over a `stack` open's
  * view, it launches its own, so its URL opens. A `stack` open launches a view
- * of its own, which shows over them. `open` rejects while the host activity isn't in front: Android blocks
- * activity starts from the background. Every other `open` launches its view
- * and resolves.
+ * of its own, which shows over them, also while a view whose browser keeps
+ * the app alive covers the host: the app's task is in front then. `open`
+ * rejects while the app is in the background, its host activity not in front
+ * and no such view up over it, or the user left it: Android blocks activity
+ * starts from the background. Every other `open`
+ * launches its view and resolves.
+ *
+ * The browser's binding of [KeepAliveService] says when the app leaves and
+ * comes back while a view is up: the browser lets go of it as its tab stops,
+ * so a let-go while the host isn't in front means the user left the tab for
+ * the home screen or another app, and every view hears
+ * `{"event":"movedToBackground"}`; the next binding, as the tab starts again,
+ * sends `{"event":"returnedToForeground"}`. Closing the last tab resumes the
+ * host before the tab stops, so its let-go sends nothing.
  *
  * A view counts as closed when the host activity resumes after pausing under
  * it, and that resume sends `{"event":"closed"}` on the channel of each `open`
@@ -103,6 +116,25 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
 
         /** `models.rs` `OpenMode::Stack`, as [OpenArgs.mode] carries it. */
         private const val MODE_STACK = "stack"
+
+        /**
+         * The host activity's coming resume opens a page of its own: the host
+         * marks it with [markResumeOpeningItsOwnPage] before the resume, and
+         * `takeResumeOpeningItsOwnPage` forgets it. Main thread only.
+         */
+        private var resumeOpensItsOwnPage = false
+
+        /**
+         * The host activity's coming resume opens a page of its own, as a tap
+         * on a notification that opens what it announced does, so the app
+         * opens none for it itself. Call it before the resume, on the main
+         * thread: from `onCreate` or `onNewIntent`. Forgotten once taken, or
+         * once the host pauses again.
+         */
+        @JvmStatic
+        fun markResumeOpeningItsOwnPage() {
+            resumeOpensItsOwnPage = true
+        }
     }
 
     /**
@@ -121,7 +153,9 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
         /** The host activity paused after this view launched: the view is up over it. */
         var hostLeft = false
 
-        private var keptAlive = false
+        /** The view's browser keeps the app alive under it: it bound [KeepAliveService]. */
+        var keptAlive = false
+            private set
 
         /**
          * A later `open` lands on this view: it hears the view's events on
@@ -153,7 +187,12 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
         }
 
         fun reportClosed() {
-            eventChannels.forEach { send(it, "closed") }
+            report("closed")
+        }
+
+        /** Send `event` to every `open` that launched or joined this view. */
+        fun report(event: String) {
+            eventChannels.forEach { send(it, event) }
         }
 
         private fun send(events: Channel, event: String) {
@@ -169,6 +208,14 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
 
     /** The host activity is resumed. Tracked by [HostLifecycle]. */
     private var hostInFront = true
+
+    /**
+     * The user left the app for the home screen or another app with a view up
+     * over the host, as the browser letting go of [KeepAliveService] while the
+     * host isn't in front says; until the browser binds it again, or the host
+     * resumes.
+     */
+    private var leftWithViewsUp = false
 
     /** The Custom Tabs session tabs launch from, once connected. */
     private var customTabsSession: CustomTabsSession? = null
@@ -189,7 +236,8 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
 
     init {
         activity.application.registerActivityLifecycleCallbacks(HostLifecycle())
-        KeepAliveService.onBound = { showing.forEach { it.reportKeptAlive() } }
+        KeepAliveService.onBound = { browserBound() }
+        KeepAliveService.onUnbound = { browserLetGo() }
         connectSession()
     }
 
@@ -242,7 +290,7 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
     fun open(invoke: Invoke) {
         val args = invoke.parseArgs(OpenArgs::class.java)
         activity.runOnUiThread {
-            if (!hostInFront) {
+            if (!appInFront()) {
                 invoke.reject(
                     "native-page-browser: could not open ${args.url}: the app is in the background"
                 )
@@ -261,6 +309,20 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
         }
     }
 
+    /**
+     * Whether the host's latest resume came to open a page of its own
+     * ([markResumeOpeningItsOwnPage]), as `{"opensItsOwnPage": …}`; forgets it.
+     */
+    @Command
+    fun takeResumeOpeningItsOwnPage(invoke: Invoke) {
+        activity.runOnUiThread {
+            val result = JSObject()
+            result.put("opensItsOwnPage", resumeOpensItsOwnPage)
+            resumeOpensItsOwnPage = false
+            invoke.resolve(result)
+        }
+    }
+
     /** A Custom Tab can't be closed programmatically: rejects, whichever view it names. */
     @Command
     fun close(invoke: Invoke) {
@@ -270,12 +332,14 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
     /** Launch `page`'s view of `url`, unless the host left while it waited for the session. */
     private fun launch(page: Page, invoke: Invoke, url: Uri) {
         val failure =
-            if (!hostInFront) {
+            if (!appInFront()) {
                 "the app is in the background"
             } else {
                 try {
                     // Launched before the start, so the pause the start causes marks `hostLeft`.
                     page.markLaunched()
+                    // Over a view already up, the host has left: its resume closes this one too.
+                    page.hostLeft = !hostInFront
                     startView(url)
                     null
                 } catch (error: Exception) {
@@ -347,8 +411,37 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
             .apply { setTint(color) }
             .toBitmap()
 
+    /**
+     * The app is in front: its host activity, or a view of its own up over the
+     * host that the user hasn't left for the home screen or another app. Only
+     * a view whose browser keeps the app alive counts: only its browser's
+     * binding says when the user leaves it.
+     */
+    private fun appInFront(): Boolean =
+        hostInFront || (showing.any { it.hostLeft && it.keptAlive } && !leftWithViewsUp)
+
+    /** A browser bound [KeepAliveService]: the views are kept alive, and the app is back if it left. */
+    private fun browserBound() {
+        showing.forEach { it.reportKeptAlive() }
+        if (!leftWithViewsUp) return
+        leftWithViewsUp = false
+        showing.forEach { it.report("returnedToForeground") }
+    }
+
+    /**
+     * The last browser bound let [KeepAliveService] go: with the host not in
+     * front and a view up over it, the user left the app.
+     */
+    private fun browserLetGo() {
+        if (hostInFront || leftWithViewsUp || showing.none { it.hostLeft }) return
+        leftWithViewsUp = true
+        showing.forEach { it.report("movedToBackground") }
+    }
+
     private fun hostPaused() {
         hostInFront = false
+        // A mark no arrival took since the last resume is stale.
+        resumeOpensItsOwnPage = false
         // A view still waiting for the session hasn't covered the host.
         showing.filter { it.launched }.forEach { it.hostLeft = true }
     }
@@ -356,6 +449,7 @@ class NativePageBrowserPlugin(private val activity: Activity) : Plugin(activity)
     /** The host is back in front, so the views that were up over it are gone. */
     private fun hostResumed() {
         hostInFront = true
+        leftWithViewsUp = false
         val gone = showing.filter { it.hostLeft }
         showing.removeAll(gone)
         gone.forEach { it.reportClosed() }

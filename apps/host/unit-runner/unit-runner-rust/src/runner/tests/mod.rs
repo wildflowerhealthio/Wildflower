@@ -3,6 +3,7 @@
 
 mod background_session;
 mod fakes;
+mod foreground_arrivals;
 mod grace_period_session;
 mod policies;
 mod restart_backoff;

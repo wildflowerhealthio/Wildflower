@@ -1,13 +1,17 @@
 //! [`ServerUnits`]: the one place a server's record becomes a unit on the
 //! unit runner, the way the servers commands change and read the servers'
-//! units, and how a launch's in-app browser view counts toward their
-//! `WhileOpen` run policy.
+//! units, how a launch's in-app browser view counts toward their
+//! `WhileOpen` run policy, the consents showing in those views, the consent
+//! opens waiting for their server, and the taps on consent notifications.
 
 use std::sync::Arc;
 
-use wildflowerhealthio_servers::{ServerDetail, ServerRecord, ServerUnit};
+use tokio::sync::watch;
+use wildflowerhealthio_servers::{ConsentViews, ServerDetail, ServerRecord, ServerUnit};
 use wildflowerhealthio_tauri_unit_runner::{RunPolicy, TauriUnitRunner, UnitId, UnitStatuses};
 use wildflowerhealthio_wildflower_server::WildflowerServerConfig;
+
+use crate::waiting_consent_opens::WaitingConsentOpens;
 
 /// Builds the config a server's run reads from its record: what the host
 /// derives at build time, from its platform paths and from the record. Called
@@ -21,6 +25,13 @@ pub type ServerConfigBuilder =
 pub struct ServerUnits {
     runner: TauriUnitRunner<ServerDetail>,
     server_config: ServerConfigBuilder,
+    /// The consents showing in a launch view, shared by every way one opens.
+    consent_views: ConsentViews,
+    /// The consent opens waiting for their server, shared by every way one
+    /// opens.
+    waiting_consent_opens: WaitingConsentOpens,
+    /// How many consent notifications have been tapped.
+    notification_taps: Arc<watch::Sender<u64>>,
 }
 
 impl ServerUnits {
@@ -31,6 +42,9 @@ impl ServerUnits {
         Self {
             runner,
             server_config,
+            consent_views: ConsentViews::default(),
+            waiting_consent_opens: WaitingConsentOpens::default(),
+            notification_taps: Arc::new(watch::Sender::new(0)),
         }
     }
 
@@ -84,6 +98,13 @@ impl ServerUnits {
         self.runner.statuses()
     }
 
+    /// Every server's status on `TauriUnitRunner`, keyed by domain, as it
+    /// changes.
+    #[must_use]
+    pub fn subscribe_statuses(&self) -> watch::Receiver<UnitStatuses<ServerDetail>> {
+        self.runner.subscribe()
+    }
+
     /// A launch opened in the in-app browser view `view`. While it is open, it
     /// keeps the app present for the servers' `WhileOpen` run policy where the
     /// view moves the app to the background.
@@ -100,5 +121,39 @@ impl ServerUnits {
     /// The in-app browser view `view`, a launch's, closed.
     pub fn launch_view_closed(&self, view: &str) {
         self.runner.browser_view_closed(view);
+    }
+
+    /// The app went fully to the background with the in-app browser view
+    /// `view`, a launch's, over it (Android).
+    pub fn launch_view_moved_to_background(&self, view: &str) {
+        self.runner.browser_view_moved_to_background(view);
+    }
+
+    /// The app came back from fully in the background with the in-app
+    /// browser view `view`, a launch's, still over it (Android).
+    pub fn launch_view_returned_to_foreground(&self, view: &str) {
+        self.runner.browser_view_returned_to_foreground(view);
+    }
+
+    /// The consents showing in a launch view, or opening in one, so each
+    /// shows in one view however many ways open it at once.
+    pub(crate) fn consent_views(&self) -> &ConsentViews {
+        &self.consent_views
+    }
+
+    /// The consent opens waiting for their server, at most one per server.
+    pub(crate) fn waiting_consent_opens(&self) -> &WaitingConsentOpens {
+        &self.waiting_consent_opens
+    }
+
+    /// A consent notification was tapped: the consent notifications hear it
+    /// through [`Self::subscribe_notification_taps`].
+    pub(crate) fn notification_tapped(&self) {
+        self.notification_taps.send_modify(|taps| *taps += 1);
+    }
+
+    /// How many consent notifications have been tapped, as it changes.
+    pub(crate) fn subscribe_notification_taps(&self) -> watch::Receiver<u64> {
+        self.notification_taps.subscribe()
     }
 }

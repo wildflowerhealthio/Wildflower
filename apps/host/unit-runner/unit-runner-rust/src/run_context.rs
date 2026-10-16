@@ -9,7 +9,8 @@ use crate::unit::UnitId;
 /// that it is up and what its detail is.
 ///
 /// Cloning is cheap; every clone reports for the same run. Once the run has
-/// stopped, what any clone reports is dropped.
+/// stopped, what any clone reports is dropped, and so is any detail once the
+/// run is asked to stop.
 pub struct RunContext<D> {
     unit_id: UnitId,
     shutdown_token: CancellationToken,
@@ -64,9 +65,15 @@ impl<D: Clone + Send + Sync + 'static> RunContext<D> {
             .publish_running(&self.unit_id, &self.run_liveness);
     }
 
-    /// Report the unit's own status. It is cleared when the run ends.
+    /// Report the unit's own status. It is cleared once the run is asked to
+    /// stop, and when the run ends; what the run reports once it is asked to
+    /// stop is dropped.
     pub fn set_detail(&self, detail: D) {
-        self.status_publisher
-            .publish_detail(&self.unit_id, &self.run_liveness, detail);
+        self.status_publisher.publish_detail(
+            &self.unit_id,
+            &self.run_liveness,
+            &self.shutdown_token,
+            detail,
+        );
     }
 }

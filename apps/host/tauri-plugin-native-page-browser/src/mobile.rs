@@ -56,7 +56,11 @@ impl<R: Runtime> NativePageBrowser<R> {
     /// sends [`BrowserEvent::Closed`](crate::BrowserEvent::Closed) on
     /// `request.events` once the view is gone, and on Android
     /// [`BrowserEvent::KeptAlive`](crate::BrowserEvent::KeptAlive) before it
-    /// when the view's browser keeps the app alive.
+    /// when the view's browser keeps the app alive, and
+    /// [`BrowserEvent::MovedToBackground`](crate::BrowserEvent::MovedToBackground)
+    /// and
+    /// [`BrowserEvent::ReturnedToForeground`](crate::BrowserEvent::ReturnedToForeground)
+    /// as the app leaves and comes back with the view up.
     ///
     /// Validates the URL up front via [`crate::url_scheme::parse_http_url`] and
     /// sends its normalised form, so the native side parses exactly the
@@ -86,4 +90,28 @@ impl<R: Runtime> NativePageBrowser<R> {
             .await
             .map_err(|error| crate::Error::PluginInvoke(error.to_string()))
     }
+
+    /// Whether the app's latest return to the front came to open a page of
+    /// its own, as a tap on a notification that opens what it announced
+    /// does, by invoking the Kotlin `takeResumeOpeningItsOwnPage` command,
+    /// which forgets it: on Android, as the host's activity marks it before it
+    /// resumes. Always `false` on iOS, where nothing marks one.
+    pub async fn take_resume_opening_its_own_page(&self) -> crate::Result<bool> {
+        if !cfg!(target_os = "android") {
+            return Ok(false);
+        }
+        self.0
+            .run_mobile_plugin_async::<TakenResume>("takeResumeOpeningItsOwnPage", ())
+            .await
+            .map(|taken| taken.opens_its_own_page)
+            .map_err(|error| crate::Error::PluginInvoke(error.to_string()))
+    }
+}
+
+/// What the Kotlin `takeResumeOpeningItsOwnPage` command resolves with.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TakenResume {
+    /// The app's latest return to the front came to open a page of its own.
+    opens_its_own_page: bool,
 }
