@@ -16,6 +16,7 @@ export * as CertificateState from './certificate-state.ts'
 export * as EnteredCredentials from './entered-credentials.ts'
 export * as EnteredRelay from './entered-relay.ts'
 export * as HealthReport from './health-report.ts'
+export * as HostPlatform from './host-platform.ts'
 export * as LaunchError from './launch-error.ts'
 export * as ListedServer from './listed-server.ts'
 export {

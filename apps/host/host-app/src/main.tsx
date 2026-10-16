@@ -7,6 +7,7 @@ import '@wildflowerhealthio/react-tundraish/styles.css'
 import { makeTauriTransport } from '@wildflowerhealthio/effect-messaging-tauri-js'
 import { addOsColorSchemeListener } from '@wildflowerhealthio/react-tundraish'
 import { RecorderBridge } from '@wildflowerhealthio/recorder-core-js'
+import type { HostPlatform } from '@wildflowerhealthio/servers-core-js'
 import type { BaseGateProps } from '@wildflowerhealthio/servers-react'
 import { Effect } from 'effect'
 import { StrictMode } from 'react'
@@ -32,6 +33,14 @@ const backgroundServiceStartConfig = {
   serviceLabel: backgroundServiceLabel,
   foregroundServiceType: backgroundServiceForegroundType,
 } as const
+
+// The kind of device the app runs on, fixed when the Tauri CLI builds it: a
+// phone suspends or stops the servers once the user leaves the app, which the
+// base says on its run-policy field.
+const hostPlatform = ((): HostPlatform.Type => {
+  const os = import.meta.env.TAURI_ENV_PLATFORM
+  return os === 'ios' || os === 'android' ? os : 'desktop'
+})()
 
 // The Recorder's bridge transport, built once for the page's lifetime:
 // one listener on the host's bridge channel for `RecorderBridge` alone, so the
@@ -69,6 +78,7 @@ createRoot(rootElement).render(
     <HostRoot
       base={{
         invoke,
+        platform: hostPlatform,
         listen,
         listenToNotificationTaps,
         backgroundServiceStartConfig,

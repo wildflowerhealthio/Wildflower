@@ -17,6 +17,10 @@ export default defineConfig({
     conditions: ['source'],
   },
 
+  // The Tauri CLI sets `TAURI_ENV_PLATFORM` and the rest of `TAURI_ENV_*` for
+  // the frontend's build; `main.tsx` reads the platform from it.
+  envPrefix: ['VITE_', 'TAURI_ENV_'],
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent vite from obscuring rust errors

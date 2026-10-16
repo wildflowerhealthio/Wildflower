@@ -82,7 +82,8 @@ changing how servers run or what the host notifies about them.
   `Schema` and its `Type` with getters; and `LaunchError`'s
   `statusRefusalOf`, the refusal `server_launch` answers from a status, with
   `certificateRefusalOf`, its certificate's part, held to the host's by the
-  golden file. A refused
+  golden file; and `HostPlatform`, the kind of device the host runs on
+  (`ios`, `android` or `desktop`). A refused
   command is a `HostCommandFailed` whose `refusal` is the host's
   `{kind, message}`. Besides the host, `readServerHealth` reads a server's
   `/health` at its public origin, an Effect over `@effect/platform`'s
@@ -96,7 +97,10 @@ changing how servers run or what the host notifies about them.
   `invoke` and `addPluginListener`, and the background service's start config
   from `tauri-shared-config.json`; `ServersRouterContext`, the context the base's
   routes read, which `ServersRouterContext.make` builds, query cache included,
-  from `invoke`, `@tauri-apps/api/event`'s `listen` and the default launcher
+  from `invoke`, the device's `HostPlatform`, which the app maps once from
+  the `TAURI_ENV_PLATFORM` the Tauri CLI builds it with (the base never
+  detects it),
+  `@tauri-apps/api/event`'s `listen` and the default launcher
   and Authorization app from `tauri-shared-config.json`; `BaseLayout`, the page shell;
   and the route bucket `routes/_servers/`, which the app mounts
   under a pathless `_servers` layout whose component is `BaseLayout`:
@@ -111,7 +115,16 @@ changing how servers run or what the host notifies about them.
   that predates it; a run-policy field
   (`RunPolicyPicker`) that says when it runs, outlined in the dot's tone, over
   a native picker that changes it at once, putting the previous policy back
-  if the host refuses (the refusal shows under the field); under it, what the
+  if the host refuses (the refusal shows under the field); a live `until`
+  says the time left, rounded up (minutes under an hour, never "0 min", then
+  whole hours), and its deadline ("On for 2 h — until …"), and an ended one
+  "Ended at …", the field's clock ticking each minute (`useNow`, on the
+  deadline's minutes, until it passes, and again as the page is shown, the
+  clock `useHasPassed` shares) so it reads as ended once the deadline passes;
+  on iOS and Android, while the policy is `always` or a live `until`, a note
+  above the field, which describes its picker, says how long that phone lets
+  the server run once Wildflower is left (Android: 2 minutes; iOS: about 25
+  seconds, then only in short spells iOS allows); under it, what the
   status says beyond plain Running or Stopped, with the host's reason a
   running server isn't reachable, why its tunnel is reconnecting, or what to
   do about a relay that rejected its token or has no tunnel of its name; why its latest run stopped; Launch (`LaunchButton`);

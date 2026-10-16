@@ -78,3 +78,8 @@
 .run-policy-picker[data-tone='danger'] {
   --run-policy-picker-border: var(--color-red-7);
 }
+
+.run-policy-picker__note {
+  margin: 0;
+  color: var(--color-neutral-3);
+}

@@ -19,6 +19,7 @@ const router = createRouter({
   routeTree,
   context: make({
     invoke: () => Promise.reject(new Error('package-local router is never run')),
+    platform: 'desktop',
     listen: () => Promise.reject(new Error('package-local router is never run')),
     defaultLauncherUrl: '',
     defaultAuthorizationUrl: '',

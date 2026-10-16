@@ -17,8 +17,8 @@ interface HostRootProps {
    * What the base needs: its gate's (`invoke`, the background service's start
    * config, how it hears notification taps, its telemetry and where the
    * consent answer is kept) and its
-   * routes' (`listen`, the default launcher and Authorization app, and the
-   * HTTP client).
+   * routes' (the device's platform, `listen`, the default launcher and
+   * Authorization app, and the HTTP client).
    */
   readonly base: Omit<BaseGateProps, 'children'> &
     Omit<ServersRouterContext.RouterContextInputs, 'invoke'>
@@ -43,7 +43,7 @@ interface HostRootProps {
 
 /** The host's router and the base's query cache, built once. */
 function HostRouter({
-  base: { invoke, listen, defaultLauncherUrl, defaultAuthorizationUrl, httpClient },
+  base: { invoke, platform, listen, defaultLauncherUrl, defaultAuthorizationUrl, httpClient },
   history,
   recorderTransport,
   revealFile,
@@ -56,6 +56,7 @@ function HostRouter({
       context: {
         ...ServersRouterContext.make({
           invoke,
+          platform,
           listen,
           defaultLauncherUrl,
           defaultAuthorizationUrl,
