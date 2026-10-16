@@ -33,8 +33,6 @@ pub(crate) struct AppIconBadge {
 }
 
 impl PendingConsentBadge for AppIconBadge {
-    /// A failure is logged: the badge is the end of the line, with nothing
-    /// further to report it to.
     fn show(&self, count: usize) -> anyhow::Result<()> {
         let window = self
             .app
