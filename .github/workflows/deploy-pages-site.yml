@@ -115,10 +115,10 @@ jobs:
           SLUG: ${{ inputs.slug }}
         run: node scripts/ci/pages-sites.ts check "$SLUG"
 
-      # Registers the release the build names, uploads the app's source maps
-      # to it and deletes them from the build. Needs the `SENTRY_AUTH_TOKEN`
-      # secret and the `SENTRY_ORG` variable; without the token it only
-      # deletes the maps.
+      # Registers the release the build names and uploads the app's source
+      # maps to it; the maps are published with the build either way. Needs
+      # the `SENTRY_AUTH_TOKEN` secret and the `SENTRY_ORG` variable; without
+      # the token it does nothing.
       - name: Upload source maps to Sentry
         if: inputs.sentry-dsn-variable != ''
         uses: ./.github/actions/sentry-sourcemaps

@@ -36,9 +36,10 @@ export default defineConfig({
   // consent prompt's "this app is asking to return somewhere new" warning.
   server: devAppServer('authorization-dev'),
   build: {
-    // Emitted for the deploy's Sentry upload, unreferenced from the bundle;
-    // the deploy deletes them before publishing (.github/actions/sentry-sourcemaps).
-    sourcemap: 'hidden',
+    // Published beside the bundle and referenced from it, so devtools show the
+    // original source in production; the deploy also uploads them to Sentry
+    // (.github/actions/sentry-sourcemaps).
+    sourcemap: true,
     rolldownOptions: {
       input: {
         main: './index.html',

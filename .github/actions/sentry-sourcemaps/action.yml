@@ -1,9 +1,9 @@
 name: Upload Sentry source maps
 description: >-
-  Creates the Sentry release an app's build reports under, uploads the build's
-  source maps to the app's Sentry project, and then deletes those maps from
-  the build so they are never published. Runs in deploy-pages-site.yml between
-  the app's build and the push that publishes it.
+  Creates the Sentry release an app's build reports under and uploads the
+  build's source maps to the app's Sentry project. The maps stay in the build
+  and are published with it. Runs in deploy-pages-site.yml between the app's
+  build and the push that publishes it.
 
 inputs:
   environment:
@@ -69,12 +69,3 @@ runs:
         # shallow, so there are no commits to associate.
         set_commits: skip
         disable_telemetry: true
-
-    # The apps build with `sourcemap: 'hidden'`: maps are emitted for this
-    # upload but nothing in the bundle points at them. Delete them so the
-    # site never serves the original source.
-    - name: Delete source maps from the build
-      shell: bash
-      env:
-        SITE_DIR: ${{ inputs.site-dir }}
-      run: find "$SITE_DIR" -name '*.map' -type f -print -delete

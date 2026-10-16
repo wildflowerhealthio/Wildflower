@@ -47,7 +47,9 @@
   font-weight: inherit;
 }
 
+/* The dropdown's anchor, so it opens under the toggle. */
 .site-header__nav {
+  position: relative;
   display: flex;
   align-items: center;
 }
@@ -65,8 +67,8 @@
 }
 
 /*
- * The app links: a dropdown panel of titled groups, anchored to the header's
- * right gutter; below 640px the panel spans the full width.
+ * The app links: a dropdown panel of titled groups, right-aligned under the
+ * toggle; below 640px the panel spans the full width of the header.
  */
 .site-header__menu {
   font-size: var(--font-size-3);
@@ -78,8 +80,8 @@
 
 .site-header__menu[data-open='true'] {
   position: absolute;
-  top: 100%;
-  right: var(--page-padding-x);
+  top: calc(100% + var(--space-6));
+  right: 0;
   z-index: 20;
   display: grid;
   gap: var(--space-9);
@@ -125,8 +127,16 @@
 }
 
 @media (max-width: 639.98px) {
-  /* Full-width dropdown: edge to edge under the bar. */
+  /*
+   * Full-width dropdown: edge to edge under the bar, so it anchors to the
+   * header rather than the toggle.
+   */
+  .site-header__nav {
+    position: static;
+  }
+
   .site-header__menu[data-open='true'] {
+    top: 100%;
     left: 0;
     right: 0;
     min-width: 0;
