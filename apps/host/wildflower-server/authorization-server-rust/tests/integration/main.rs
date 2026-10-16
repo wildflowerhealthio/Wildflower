@@ -1,3 +1,4 @@
+mod authorization_start_limit;
 mod bearer_only;
 mod cache_suppression;
 mod client_auth;

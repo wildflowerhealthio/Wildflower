@@ -24,6 +24,7 @@ use wildflowerhealthio_tunnel::{TunnelDaemon, TunnelStream};
 use crate::adapters::access_token_verifier::AuthorizationServerAccessTokenVerifier;
 use crate::adapters::acme_certificate::DeviceCertificate;
 use crate::adapters::app_launch_scopes::AuthorizationServerAppLaunchScopes;
+use crate::adapters::authorization_start_limit::AuthorizationStartLimit;
 use crate::adapters::health_probe::ReqwestHealthProbe;
 use crate::adapters::launch_context_minter::AuthorizationServerLaunchContextMinter;
 use crate::domain::reachability_monitor::ReachabilityMonitor;
@@ -308,12 +309,17 @@ pub async fn set_up(
     }
 
     // `setup_authorization_server` publishes its newest pending consent on the
-    // host's channel.
+    // host's channel. Starting an authorization request raises the Owner's
+    // popup, so tunnel visitors may start them only so fast, each and all
+    // together (see `authorization_start_limit`); the authorization server's
+    // limit on the two routes that start one asks it, inside the
+    // forwarded-request report, so a `429` is reported.
     let authorization_server = setup_authorization_server(
         diesel_pool.clone(),
         revocation_store,
         &authorization_server_config,
         observers.pending_consent_tx,
+        Arc::new(AuthorizationStartLimit::new()),
     )
     .context("failed to set up the authorization server")?;
 

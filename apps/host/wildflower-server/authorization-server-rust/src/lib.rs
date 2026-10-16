@@ -72,6 +72,9 @@ pub use http::{
 pub use live_bindings::{
     InProcessTokenVerifier, LaunchContextMinter, PendingConsentWatcher, SameDeviceSignInCodeMinter,
 };
+// The host's say over how fast authorization requests are started (see
+// `setup_authorization_server`).
+pub use ports::{AdmitEveryAuthorizationStart, AuthorizationStartGate};
 pub use wildflowerhealthio_persistence::DieselPool;
 
 /// `client_id` of the Wildflower host app's OAuth client, seeded at bootstrap
@@ -231,6 +234,12 @@ pub struct AuthorizationServer {
 ///  - returns the [`InProcessTokenVerifier`] the host's FHIR server verifies
 ///    each bearer through, in-process.
 ///
+/// `authorization_start_gate` says whether a request may start an
+/// authorization request (`GET /oauth/authorize`,
+/// `POST /oauth/device_authorization`): asked for every one that carries no
+/// live Owner browser session, which is answered `429` when it refuses. Pass
+/// [`AdmitEveryAuthorizationStart`] where no visitor reaches the server.
+///
 /// Every token this server mints carries the server's origin
 /// ([`AuthorizationServerConfig::server_origin`]) as both `iss` and `aud`, and
 /// the bearer gates accept no other. See
@@ -248,6 +257,7 @@ pub fn setup_authorization_server(
     revocation_store: RevocationStore,
     config: &AuthorizationServerConfig,
     owner_approval_tx: watch::Sender<Option<NewestPendingConsent>>,
+    authorization_start_gate: Arc<dyn AuthorizationStartGate>,
 ) -> anyhow::Result<AuthorizationServer> {
     let store = seeding::open_and_seed_store(
         pool,
@@ -278,6 +288,7 @@ pub fn setup_authorization_server(
             config.launcher_url.clone(),
             config.authorization_url.clone(),
         )),
+        authorization_start_gate,
     });
     // Seed the newest pending consent from SQLite so a request that was
     // pending across an app restart is reported in the run's first detail —

@@ -19,6 +19,8 @@
 //!
 //! A SMART app's launch carries a `launch` the apps slice mints through
 //! the authorization server, which the app's `/oauth/authorize` consumes once.
+//! A visitor that starts authorization requests faster than its allowance is
+//! answered `429`, and the request log records it.
 //! The FHIR API takes an Owner browser's session cookie as its bearer, which
 //! HFS checks against the authorization server's keys in process.
 
@@ -1595,4 +1597,64 @@ fn walk_files(dir: &Path) -> Vec<PathBuf> {
             }
         })
         .collect()
+}
+
+/// How many authorization requests one visitor may start at once: the
+/// server's `PER_CLIENT` burst (`adapters/authorization_start_limit.rs`).
+const AUTHORIZATION_STARTS_PER_VISITOR_BURST: usize = 10;
+
+/// The tunnel router's limit on starting authorization requests: one visitor
+/// over its burst of `GET /oauth/authorize` is answered `429`, which the
+/// request log records with the visitor's address, while another visitor
+/// still gets through.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_visitor_over_its_burst_of_authorization_starts_is_refused_and_reported() {
+    let server_dir = tempfile::tempdir().expect("temp server folder");
+    let shutdown = CancellationToken::new();
+    let (tunnel, _handles, serving) =
+        start_serving(server_dir.path(), observers(), shutdown.clone()).await;
+    let mut logged_requests = LoggedRequests::of(server_dir.path());
+    let visitor = proxy_header("192.0.2.7:4711");
+
+    // Malformed, so each admitted one is a `400`: the limit counts it anyway.
+    for _ in 0..AUTHORIZATION_STARTS_PER_VISITOR_BURST {
+        let response = tunnel
+            .send_from(Some(&visitor), get("/oauth/authorize"))
+            .await;
+        assert_eq!(response.status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            next_report(&mut logged_requests).await,
+            (Some("192.0.2.7".to_owned()), 400)
+        );
+    }
+
+    let refused = tunnel
+        .send_from(Some(&visitor), get("/oauth/authorize"))
+        .await;
+    assert_eq!(refused.status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(refused.header(header::CACHE_CONTROL), Some("no-store"));
+    assert_eq!(
+        refused.text(),
+        "too many authorization requests; try again later"
+    );
+    // The log keeps a path's first segment only.
+    let reported = logged_requests.next().await;
+    assert_eq!(
+        (
+            reported.reduced_path.as_str(),
+            reported.status,
+            reported.client_address.as_deref(),
+        ),
+        ("/oauth", 429, Some("192.0.2.7"))
+    );
+
+    let other_visitor = tunnel
+        .send_from(
+            Some(&proxy_header("198.51.100.9:4711")),
+            get("/oauth/authorize"),
+        )
+        .await;
+    assert_eq!(other_visitor.status, StatusCode::BAD_REQUEST);
+
+    shut_down(&shutdown, serving).await;
 }

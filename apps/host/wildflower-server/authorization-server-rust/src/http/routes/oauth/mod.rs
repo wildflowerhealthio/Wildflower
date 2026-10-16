@@ -15,7 +15,7 @@ mod wait_page;
 use std::sync::Arc;
 
 use axum::Router;
-use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::router::{OpenApiRouter, UtoipaMethodRouter};
 use utoipa_axum::routes;
 
 use crate::http::state::AuthorizationServerState;
@@ -40,14 +40,27 @@ pub(crate) fn page_router() -> Router<Arc<AuthorizationServerState>> {
 /// from the same handlers that serve traffic. Mounted under `/oauth` by
 /// [`crate::http`]; `routes!` reads each handler's `#[utoipa::path]` for its
 /// method + path.
-pub(crate) fn openapi_router() -> OpenApiRouter<Arc<AuthorizationServerState>> {
+///
+/// `limit_authorization_starts` wraps the two routes that start an
+/// authorization request, `/authorize` and `/device_authorization`, in the
+/// limit on how fast they are started (see
+/// [`limit_authorization_starts`](crate::http::middleware::limit_authorization_starts)),
+/// so it covers every method axum serves them on; the spec, which serves
+/// nothing, leaves them as they are.
+pub(crate) fn openapi_router(
+    limit_authorization_starts: impl Fn(
+        UtoipaMethodRouter<Arc<AuthorizationServerState>>,
+    ) -> UtoipaMethodRouter<Arc<AuthorizationServerState>>,
+) -> OpenApiRouter<Arc<AuthorizationServerState>> {
     OpenApiRouter::new()
-        .routes(routes!(authorize::handle_authorize_request))
+        .routes(limit_authorization_starts(routes!(
+            authorize::handle_authorize_request
+        )))
         .routes(routes!(
             authorization_status::handle_authorization_status_request
         ))
         .routes(routes!(token_exchange::handle_token_request))
-        .routes(routes!(
+        .routes(limit_authorization_starts(routes!(
             device_authorization::handle_device_authorization_request
-        ))
+        )))
 }

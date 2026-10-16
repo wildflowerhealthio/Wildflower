@@ -31,14 +31,24 @@ only it composes. Rust-only, no `-core`.
     connection; a TLS-ALPN-01 validation handshake (ALPN `acme-tls/1`) is
     answered and closed. The tunnel router adds the forwarded-request
     report, the tunnel front and, outermost so even a `421` is readable
-    cross-origin, CORS. The front answers `421` (unreported) unless every
-    host the request names (each `Host`, and the request target's authority)
+    cross-origin, CORS. Inside the report, the authorization server's limit
+    on starting authorization requests (on `/oauth/authorize`, `HEAD`
+    included, and `/oauth/device_authorization` only) asks the
+    `AuthorizationStartLimit` `set_up` hands it
+    (`adapters/authorization_start_limit.rs`), so its `429` is reported: an
+    allowance per visitor address (an IPv4 address or an IPv6 `/64`, from
+    the PROXY header; a connection with none shares one) and one shared by
+    all, spent before the request is parsed. A browser signed in as the
+    Owner is never limited, and a request that didn't come through the
+    tunnel listener (no `TunnelVisitor`) isn't either. The front answers
+    `421` (unreported) unless every host the request names (each `Host`, and the request target's authority)
     is the server's domain, and drops every `Forwarded` and `X-Forwarded-*`
     header, so neither the layers inside nor HFS see a visitor-supplied one.
     Every request is served at the public origin, which every reader takes
     from config. The
     visitor's address rides the request as its `TunnelVisitor` connect info,
-    which the forwarded-request report reads. `WildflowerServer` holds the tunnel's
+    which the forwarded-request report and the authorization start limit
+    read. `WildflowerServer` holds the tunnel's
     daemon, so it dials for exactly as long as the server serves.
   - **The device certificate** (`adapters/acme_certificate.rs`) is
     the tunnel listener's certificate for the server's domain, from
@@ -153,8 +163,11 @@ only it composes. Rust-only, no `-core`.
     `ObservedCertificate` a run derives it from, and
     `CertificateHistoryEntry`;
     `adapters/` ports implemented here (apps' `AppLaunchScopes` and
-    `LaunchContextMinter` from the authorization server, the monitor's `HealthProbe` over
-    reqwest), the device certificate over rustls-acme with its state, and
+    `LaunchContextMinter` from the authorization server, the authorization
+    server's `AuthorizationStartGate` as the limit on starting
+    authorization requests over kitchen-sink's `RateLimiter`, the monitor's
+    `HealthProbe` over reqwest), the device certificate over rustls-acme
+    with its state, and
     the certificate history file; `http/` the
     server's own middleware (CORS, the
     forwarded-request report, the tunnel front, the session cookies'
