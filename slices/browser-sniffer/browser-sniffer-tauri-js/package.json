@@ -2,7 +2,7 @@
   "name": "@wildflowerhealthio/browser-sniffer-tauri-js",
   "version": "0.0.0",
   "private": true,
-  "description": "Tauri sniffer bootstrap: the fetch/XHR/console shim that emits captured network activity as structured payloads on the single multiplexed `BRIDGE_EVENT` Tauri channel (with `_tag` as the dispatch discriminator), plus an in-page top bar for the sniffer webview. The bundled IIFE is consumed by browser-sniffer-tauri via include_str!.",
+  "description": "Tauri sniffer bootstrap: the fetch/XHR shim that emits captured network activity as structured payloads on the single multiplexed `BRIDGE_EVENT` Tauri channel (with `_tag` as the dispatch discriminator), plus an in-page top bar for the sniffer webview. The bundled IIFE is consumed by browser-sniffer-tauri via include_str!.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -33,7 +33,6 @@
     "@tauri-apps/api": "catalog:",
     "@types/node": "catalog:",
     "@wildflowerhealthio/browser-sniffer-core": "workspace:*",
-    "@wildflowerhealthio/effect-messaging-core": "workspace:*",
     "@wildflowerhealthio/effect-messaging-tauri-js": "workspace:*",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "effect": "catalog:",

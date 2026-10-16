@@ -11,9 +11,7 @@ import type {
   ResponseFinishedMessageBody,
   ResponseStartMessageBody,
 } from '@wildflowerhealthio/browser-sniffer-core'
-import type { Logging } from '@wildflowerhealthio/effect-messaging-core'
 import type { TauriEventApi } from '@wildflowerhealthio/effect-messaging-tauri-js'
-import type { JsonValue } from '@wildflowerhealthio/kitchen-sink/schema'
 import { type Schema, Match, Predicate } from 'effect'
 
 /**
@@ -26,7 +24,7 @@ import { type Schema, Match, Predicate } from 'effect'
  * page. Type-only imports are erased and so survive.
  *
  * Wire format:
- *   - Emits `Log`, `ResponseStart`, `ResponseData`, `ResponseFinished`,
+ *   - Emits `ResponseStart`, `ResponseData`, `ResponseFinished`,
  *     `RequestError`, `Cancelled`, `PageRequested`, `PageLoaded` on the
  *     multiplexed `BRIDGE_EVENT` channel (discriminated by `_tag`).
  *     `PageRequested` fires once per document at `DOMContentLoaded` (early,
@@ -34,9 +32,9 @@ import { type Schema, Match, Predicate } from 'effect'
  *     until the page *settles* — no DOM mutations and no in-flight fetch/XHR
  *     for a continuous quiet window, or a hard ceiling — rather than firing on
  *     the raw `window.load` event (see the settle watch below). Emits are
- *     fire-and-forget here; the wrapping `makeFilteringEventBus` serializes
+ *     fire-and-forget here; the wrapping `makeSerializedEventBus` serializes
  *     them to keep the ~64KB `ResponseData` chunks FIFO (see
- *     `filter-tauri-internal.ts`).
+ *     `serialize-emits.ts`).
  *   - Listens for Host→Web messages on the same channel, demuxing by
  *     `_tag` (`CancelSnifferRequest` / `PageAction`, the latter further
  *     demuxed by its inner `action.kind`). No `message`-event indirection
@@ -52,7 +50,6 @@ import { type Schema, Match, Predicate } from 'effect'
 
 /** Wire form posted Web→Host: JSON-stringifiable, base64 `data`. */
 type SnifferOutboundMessage =
-  | Schema.Schema.Encoded<typeof Logging.LogMessageBody>
   | Schema.Schema.Encoded<typeof ResponseStartMessageBody>
   | Schema.Schema.Encoded<typeof ResponseDataMessageBody>
   | Schema.Schema.Encoded<typeof ResponseFinishedMessageBody>
@@ -171,50 +168,6 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
     void eventBus.emit(BRIDGE_EVENT, msg)
   }
 
-  // Per-level Log emitters. The host re-emits each `Log` message via
-  // `console[level](...payload)` on its side, so each page-side
-  // `console.<level>(...args)` flows verbatim to the host's matching
-  // native sink. Mirrors `Logging.installConsoleInterceptor` in
-  // `effect-messaging-core`; the injected script can't import the
-  // Effect runtime, so this is the plain-JS analogue. `LogLevel` is type-imported from `Logging` so
-  // any future expansion of the bridge's level union surfaces here at
-  // compile time. (Type-only imports survive esbuild's bundle.)
-  const makeLogForLevel =
-    (level: Logging.LogLevel) =>
-    (...args: unknown[]): void => {
-      // Try to log, but fail for unsafe payloads. We assert the
-      // JSON-safe shape rather than validating it: `logging.ts` narrows
-      // with `Schema.is(JsonValue)`, but that's a runtime value and only
-      // type-only imports survive this file's IIFE bundle — so the
-      // schema guard isn't available here. The `catch` below is the
-      // runtime backstop: a non-JSON-safe arg makes `post`'s encode
-      // throw and we fall through to the warn payload.
-      try {
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        post({ _tag: 'Log', level, payload: args as readonly JsonValue[] })
-      } catch {
-        post({ _tag: 'Log', level: 'warn', payload: ['JSON unsafe payload failed to log'] })
-      }
-    }
-  const logDebug = makeLogForLevel('debug')
-  const logInfo = makeLogForLevel('info')
-  const logLog = makeLogForLevel('log')
-  const logWarning = makeLogForLevel('warn')
-  const logError = makeLogForLevel('error')
-
-  // Override the page's console methods so any page-side `console.<level>`
-  // call is forwarded to the host as a structured Log. We assign onto the
-  // global `console` object directly — its identity is preserved (we only
-  // swap the methods, not the object), so any page code that captured a
-  // bound reference to `console` still sees the new methods.
-  Object.assign(globalThis.console, {
-    debug: logDebug,
-    info: logInfo,
-    log: logLog,
-    warn: logWarning,
-    error: logError,
-  })
-
   // Per-request correlation key. `Math.random() + 1` keeps the value in
   // `[1, 2)` so `.toString(36)` yields a string of the form
   // `"1.xyz123…"`; `.slice(2)` drops the `"1."` leaving a non-empty
@@ -304,15 +257,6 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
   // Single shared encoder; the closure preserves it across calls.
   const utf8 = new TextEncoder()
 
-  // One-shot Log emitter so we don't spam for repeated unsupported
-  // observations (e.g., XHR `blob` / `document` response types).
-  const onceLogged = new Set<string>()
-  const logOnce = (key: string, message: string): void => {
-    if (onceLogged.has(key)) return
-    onceLogged.add(key)
-    logInfo(message)
-  }
-
   // Tauri's own IPC transport fetches `ipc://localhost/...` from this
   // same JS context; without a guard every host call gets re-sniffed and
   // forwarded back, re-entering the bridge. Skip these at the source — the
@@ -362,7 +306,6 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
 
   // Fetch shim — capture the native into a const so the closure has a
   // typed, definitely-defined reference (no `!` later).
-  logInfo('Shimming fetch')
   const nativeFetch = win.fetch.bind(win)
 
   win.fetch = async function (
@@ -413,7 +356,7 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
       }
     } catch (err) {
       // Pre-response throw (DNS failure, TLS error, AbortSignal, …).
-      // Emit Log → synthetic ResponseStart → RequestError so the host
+      // Emit a synthetic ResponseStart → RequestError so the host
       // sees the full Start→terminal pair (host-side `Cancelled` /
       // `RequestError` handlers assume a prior `ResponseStart`).
       // We re-throw so the caller's catch still fires; the synthetic
@@ -432,7 +375,6 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
       // plus an aborted `AbortSignal`, which rejects here rather than firing a
       // separate event.
       const message = `fetch ${method} ${errorUrl} failed before any response: ${rawError} — likely CORS, blocked mixed content, CSP connect-src, DNS, a refused connection, or an aborted request`
-      logWarning(message)
       post({
         _tag: 'ResponseStart',
         id: requestId,
@@ -515,7 +457,6 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
   }
 
   // XHR shim — same capture pattern; per-XHR state lives in a WeakMap.
-  logInfo('Shimming XMLHttpRequest')
   // The captured prototype methods are always invoked via `.call(this, …)`
   // below, so the `unbound-method` rule's concern (lost `this`) doesn't
   // apply — we re-supply `this` at every call site.
@@ -613,9 +554,9 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
     /**
      * Final-flush for non-text response types (`json`, `arraybuffer`).
      * `xhr.response` is only well-defined after `load`, so this is
-     * called once from the `load` handler. `blob` and `document` are
-     * skipped with a one-shot Log (their bodies are async-only on
-     * `blob` and DOM-shaped on `document` — outside the v1 surface).
+     * called once from the `load` handler. `blob` and `document` bodies
+     * are not captured (async-only on `blob` and DOM-shaped on
+     * `document` — outside the v1 surface).
      */
     const flushFinalNonTextBody = (xhr: XMLHttpRequest): void => {
       if (xhr.responseType === 'json') {
@@ -632,24 +573,10 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
         post({ _tag: 'ResponseData', id: requestId, data: toBase64(buf) })
         return
       }
-      if (xhr.responseType === 'blob') {
-        logOnce(
-          'xhr-blob-unsupported',
-          'XHR responseType=blob captured but body is invisible to the sniffer (v1 limitation)'
-        )
-        return
-      }
-      if (xhr.responseType === 'document') {
-        logOnce(
-          'xhr-document-unsupported',
-          'XHR responseType=document captured but body is invisible to the sniffer (v1 limitation)'
-        )
-        return
-      }
     }
 
     /**
-     * Reconstruct a legible failure message for the host log + `RequestError`
+     * Reconstruct a legible failure message for the `RequestError`
      * terminal. XHR `error` / `abort` events carry no cause by design, so we
      * surface what the shim *can* observe: method + URL, whether the response
      * had begun, the bytes already streamed, and the XHR status / readyState.
@@ -707,7 +634,6 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
         if (!activeRequests.has(requestId)) return
         // Read the failure phase *before* `ensureStartSent` flips `startSent`.
         const message = describeXhrFailure(this, startSent, 'error')
-        logWarning(message)
         // Emit a synthetic `ResponseStart` before the terminal so the host
         // sees the full Start→terminal pair. A network-level `error` fires
         // with `xhr.status === 0` and empty headers, so the synthesized start
@@ -732,7 +658,6 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
         if (xhrState.get(this)?.id !== requestId) return
         if (!activeRequests.has(requestId)) return
         const message = describeXhrFailure(this, startSent, 'abort')
-        logWarning(message)
         // Same Start-before-terminal invariant as `error`. Emit `RequestError`
         // rather than `ResponseFinished`: an aborted request's body is
         // partial, and a `ResponseFinished` would hand that truncated payload
@@ -1007,10 +932,6 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
     teardownSettleWatch,
     unlistens,
   }
-  // `logError` is captured for use by future top-level error sinks;
-  // referencing it here keeps the local binding from being optimized
-  // away by the IIFE bundler.
-  void logError
 }
 
 export { BRIDGE_EVENT, installSniffer, SNIFFER_STATE_KEY }

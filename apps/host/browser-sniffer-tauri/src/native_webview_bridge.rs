@@ -52,7 +52,6 @@ const NATIVE_WEBVIEW_DATA_PLANE_TAGS: &[&str] = &[
     events::RESPONSE_FINISHED,
     events::REQUEST_ERROR,
     events::CANCELLED,
-    events::LOG,
 ];
 
 /// Managed state wrapping the [`Channel`] handed to each plugin `open` call.
@@ -430,10 +429,10 @@ mod tests {
     use crate::events;
 
     /// Drift guard: the Rust allowlist must match the sniffer's web→host
-    /// emit set (`browser-sniffer-core`'s `messages.ts` page→host tags plus
-    /// the `Log` console-shim tag in `install-sniffer.ts`). Adding a tag the
-    /// page emits without listing it here would silently drop that stream;
-    /// listing one the page can't emit would widen the spoofing surface.
+    /// emit set (the seven page→host tags in `browser-sniffer-core`'s
+    /// `messages.ts`). Adding a tag the page emits without listing it here
+    /// would silently drop that stream; listing one the page can't emit would
+    /// widen the spoofing surface.
     #[test]
     fn data_plane_tags_match_ts() {
         assert_eq!(
@@ -446,7 +445,6 @@ mod tests {
                 "ResponseFinished",
                 "RequestError",
                 "Cancelled",
-                "Log",
             ]
         );
     }
@@ -502,6 +500,16 @@ mod tests {
         }
     }
 
+    /// A `Log` payload is outside the allowlist, so it is dropped like any
+    /// other tag the page does not legitimately emit.
+    #[test]
+    fn log_tag_is_rejected() {
+        let json = format!(
+            r#"{{"event":"{BRIDGE_EVENT}","payload":{{"_tag":"Log","level":"info","payload":["x"]}}}}"#
+        );
+        assert!(validate_native_webview_message(&json).is_err());
+    }
+
     /// An envelope targeting a different Tauri event name is refused — the
     /// sniffer only ever multiplexes `BRIDGE_EVENT`.
     #[test]
@@ -539,7 +547,7 @@ mod tests {
     #[test]
     fn duplicate_keys_are_rejected() {
         let dup_tag = format!(
-            r#"{{"event":"{BRIDGE_EVENT}","payload":{{"_tag":"SniffingComplete","_tag":"Log"}}}}"#
+            r#"{{"event":"{BRIDGE_EVENT}","payload":{{"_tag":"SniffingComplete","_tag":"ResponseData"}}}}"#
         );
         assert!(validate_native_webview_message(&dup_tag).is_err());
         let dup_other = format!(

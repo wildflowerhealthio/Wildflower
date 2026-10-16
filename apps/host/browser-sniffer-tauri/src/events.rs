@@ -14,8 +14,8 @@ pub const SNIFFING_COMPLETE: &str = "SniffingComplete";
 /// These are the ONLY inner `_tag`s `native_webview_bridge` re-emits from an
 /// untrusted native-webview `Message` — control tags are deliberately excluded
 /// so a hostile page can't spoof them (see `native_webview_bridge`). Mirrors
-/// `browser-sniffer-core`'s `messages.ts` page→host set plus the `Log`
-/// console-shim tag; drift-guarded in `native_webview_bridge::tests`.
+/// `browser-sniffer-core`'s `messages.ts` page→host set; drift-guarded in
+/// `native_webview_bridge::tests`.
 pub const PAGE_LOADED: &str = "PageLoaded";
 /// Early page-arrival notification: emitted once per document at
 /// `DOMContentLoaded`, before (and even without) the settled `PAGE_LOADED`.
@@ -25,7 +25,6 @@ pub const RESPONSE_DATA: &str = "ResponseData";
 pub const RESPONSE_FINISHED: &str = "ResponseFinished";
 pub const REQUEST_ERROR: &str = "RequestError";
 pub const CANCELLED: &str = "Cancelled";
-pub const LOG: &str = "Log";
 
 /// Host→web tag literals this crate forwards into the native webview on
 /// mobile. On desktop these are picked up by the content webview's own Tauri

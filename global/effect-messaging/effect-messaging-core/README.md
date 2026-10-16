@@ -138,7 +138,7 @@ The dispatcher lives for the page's lifetime; nothing tears it down.
 ## Subpaths
 
 - `effect-messaging-core` — main barrel: `Bridge`, `BridgeTransport`,
-  `Message`, `MessageHandler`, `PageDispatcher`, `HandlerHelpers`, `Logging`,
+  `Message`, `MessageHandler`, `PageDispatcher`, `HandlerHelpers`,
   `TransportAdapter`, the `BridgeHandlerRecord` / `HandlerCoordinator`
   types, and the `bare-sender` re-exports.
 - `effect-messaging-core/test` — `TestPlatformAdapterLayer`, the

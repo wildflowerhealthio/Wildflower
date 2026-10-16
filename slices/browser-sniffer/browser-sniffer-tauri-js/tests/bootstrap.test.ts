@@ -138,7 +138,7 @@ describe('tauriSnifferBootstrapScript', () => {
 
   it('skips installSniffer when window.__TAURI__ is absent', () => {
     // Without __TAURI__ there's no event bus to ride; the bootstrap no-ops
-    // rather than shimming fetch/XHR/console with nowhere to emit them.
+    // rather than shimming fetch/XHR with nowhere to emit them.
     bootBootstrap({ withTauri: false })
     const stateSlotPresent = SNIFFER_STATE_SLOT in (globalThis as object)
     expect(stateSlotPresent).toBe(false)
