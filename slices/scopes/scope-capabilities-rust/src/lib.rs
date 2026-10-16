@@ -145,6 +145,15 @@ pub trait Capability: Sized {
     /// `InsufficientScope` variant) and rendered through its `IntoResponse`.
     type Error: From<MissingScopes> + IntoResponse;
 
+    /// Whether an empty [`required_scopes`](Capability::required_scopes) is a
+    /// wiring bug. `true` for every [`FixedScopeCapability`] (via the blanket
+    /// impl): an empty fixed requirement would gate nothing while looking gated
+    /// at the impl line, so [`Scoped`] refuses it with a `500`. The legitimate
+    /// "empty" shape is a data-dependent capability, which implements
+    /// `Capability` directly, keeps this `false`, and stores the [`Grant`] for its
+    /// methods to re-check per resource.
+    const REQUIRES_SCOPES: bool = false;
+
     /// The scope(s) the caller's token must cover — **all** of them — to obtain
     /// this capability. Empty means the static gate is "authenticated only" and
     /// the real check is data-dependent inside the methods; a capability with a
@@ -173,9 +182,10 @@ pub trait FixedScopeCapability: Sized {
     /// See [`Capability::Error`].
     type Error: From<MissingScopes> + IntoResponse;
 
-    /// The static scope(s) gating this capability — must be non-empty (an empty
-    /// requirement means the check is data-dependent, which is [`Capability`]
-    /// implemented directly).
+    /// The static scope(s) gating this capability — must be non-empty. An empty
+    /// set is refused at request time: [`Scoped`] fails closed with a `500`
+    /// (see [`Capability::REQUIRES_SCOPES`]). A per-resource check is
+    /// [`Capability`] implemented directly.
     fn required_scopes() -> Vec<Scope>;
 
     /// Build the capability from the router state alone; the covering-scope
@@ -188,18 +198,10 @@ impl<F: FixedScopeCapability> Capability for F {
     type Claims = F::Claims;
     type Error = F::Error;
 
+    const REQUIRES_SCOPES: bool = true;
+
     fn required_scopes() -> Vec<Scope> {
-        let scopes = F::required_scopes();
-        // An empty requirement here is a misuse: it would gate nothing while
-        // looking gated. The legitimate "empty" shape is a data-dependent
-        // capability, which implements `Capability` directly and stores the Grant.
-        debug_assert!(
-            !scopes.is_empty(),
-            "a FixedScopeCapability must require at least one scope; make the \
-             capability data-dependent (impl Capability directly, storing the \
-             Grant) if its check is per-resource",
-        );
-        scopes
+        F::required_scopes()
     }
 
     fn build(state: F::State, _granted: Grant) -> Self {
@@ -211,7 +213,9 @@ impl<F: FixedScopeCapability> Capability for F {
 /// [`required_scopes`](Capability::required_scopes); otherwise it rejects with
 /// `F`'s [`Error`](Capability::Error) built from the uncovered
 /// [`MissingScopes`] — the slice's `InsufficientScope`, rendered as the `403`
-/// naming them. Derefs to `F`, so a handler writes
+/// naming them. A missing claims value or an empty fixed requirement (see
+/// [`Capability::REQUIRES_SCOPES`]) is a wiring bug and fails closed with a
+/// `500`. Derefs to `F`, so a handler writes
 /// `grants: Scoped<GrantsRevoker>` and calls `grants.revoke(...)`.
 pub struct Scoped<F: Capability>(pub F);
 
@@ -242,8 +246,20 @@ impl<F: Capability> FromRequestParts<F::State> for Scoped<F> {
             )
             .into_response());
         };
+        let required_scopes = F::required_scopes();
+        // An empty fixed requirement is the same kind of wiring bug: it would
+        // admit any authenticated caller while looking gated — fail closed.
+        if F::REQUIRES_SCOPES && required_scopes.is_empty() {
+            return Err(InternalError::new(
+                "scoped capability",
+                "a FixedScopeCapability must require at least one scope; make the \
+                 capability data-dependent (impl Capability directly, storing the \
+                 Grant) if its check is per-resource",
+            )
+            .into_response());
+        }
         let granted = claims.granted();
-        let missing: Vec<Scope> = F::required_scopes()
+        let missing: Vec<Scope> = required_scopes
             .into_iter()
             .filter(|required| !granted.covers(required))
             .collect();
@@ -610,6 +626,71 @@ mod tests {
             .err()
             .expect("claims absent");
         assert_eq!(rejection.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    /// A fixed-scope capability wired with an empty requirement — the misuse
+    /// `Scoped` must refuse.
+    struct UngatedReader;
+
+    impl FixedScopeCapability for UngatedReader {
+        type State = ();
+        type Claims = ScopeClaims;
+        type Error = TeapotError;
+
+        fn required_scopes() -> Vec<Scope> {
+            Vec::new()
+        }
+
+        fn build((): ()) -> Self {
+            UngatedReader
+        }
+    }
+
+    /// A data-dependent capability: an empty static gate, with the grant stored
+    /// for per-resource checks.
+    struct PerResourceReader(Grant);
+
+    impl Capability for PerResourceReader {
+        type State = ();
+        type Claims = ScopeClaims;
+        type Error = TeapotError;
+
+        fn required_scopes() -> Vec<Scope> {
+            Vec::new()
+        }
+
+        fn build((): (), granted: Grant) -> Self {
+            PerResourceReader(granted)
+        }
+    }
+
+    /// An empty `FixedScopeCapability` fails closed with a 500 even for claims
+    /// that cover everything — it never admits a caller, in release builds too.
+    #[tokio::test]
+    async fn scoped_fails_closed_for_an_empty_fixed_scope_capability() {
+        let mut parts = parts();
+        parts.extensions.insert(ScopeClaims::new(Some(
+            "system/*.cruds wildflower/*.cruds".to_owned(),
+        )));
+        let rejection = Scoped::<UngatedReader>::from_request_parts(&mut parts, &())
+            .await
+            .err()
+            .expect("empty fixed requirement refused");
+        assert_eq!(rejection.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    /// A direct `Capability` with an empty static gate still builds, carrying the
+    /// caller's grant for its per-resource checks.
+    #[tokio::test]
+    async fn scoped_builds_a_data_dependent_capability_with_empty_scopes() {
+        let mut parts = parts();
+        parts
+            .extensions
+            .insert(ScopeClaims::new(Some("wildflower/Grant.r".to_owned())));
+        let Scoped(reader) = Scoped::<PerResourceReader>::from_request_parts(&mut parts, &())
+            .await
+            .expect("authenticated-only static gate");
+        assert!(reader.0.covers(&Scope::from("wildflower/Grant.r")));
     }
 
     #[derive(Clone)]
