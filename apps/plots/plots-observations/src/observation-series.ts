@@ -506,6 +506,54 @@ const presentationOf = (
     : { interpolation: 'linear', valueScale: 'fitted' }
 
 /**
+ * What a series is built from while observations are read: the first
+ * contribution's metadata and filing category, and every item contributed so
+ * far, in input order.
+ */
+interface SeriesGroup<TMeta, TItem> {
+  readonly meta: TMeta
+  readonly category: string | null
+  readonly items: TItem[]
+}
+
+/**
+ * Add `item` to the group under `id`, opening it with `meta` and `category`
+ * when it is the first — so a series keeps its first contribution's metadata.
+ */
+const addToGroup = <TMeta, TItem>(
+  groups: Map<string, SeriesGroup<TMeta, TItem>>,
+  id: string,
+  meta: TMeta,
+  category: string | null,
+  item: TItem
+): void => {
+  const existing = groups.get(id)
+  if (existing === undefined) {
+    groups.set(id, { meta, category, items: [item] })
+  } else {
+    existing.items.push(item)
+  }
+}
+
+/**
+ * One series per group, in the order groups were opened, built by `build`
+ * from the group's items sorted by `timeOf`.
+ */
+const seriesOfGroups = <TMeta, TItem, TSeries>(
+  groups: ReadonlyMap<string, SeriesGroup<TMeta, TItem>>,
+  timeOf: (item: TItem) => number,
+  build: (id: string, group: SeriesGroup<TMeta, TItem>, items: readonly TItem[]) => TSeries
+): readonly TSeries[] =>
+  [...groups.entries()].map(([id, group]) =>
+    // `toSorted` is stable, so equal times keep input order.
+    build(
+      id,
+      group,
+      group.items.toSorted((left, right) => timeOf(left) - timeOf(right))
+    )
+  )
+
+/**
  * Turn decoded FHIR `Observation`s into the plottable series the viewer draws.
  *
  * @param observations - Decoded resources, in any order
@@ -531,14 +579,8 @@ const presentationOf = (
 const observationsToSeries = (
   observations: readonly ObservationResource[]
 ): SeriesSource.Reading<ObservationSeries> => {
-  const byId = new Map<
-    string,
-    { meta: Reading; points: PointSeries.Point[]; category: string | null }
-  >()
-  const spansById = new Map<
-    string,
-    { meta: SpanReading; spans: SpanSeries.Span[]; category: string | null }
-  >()
+  const pointGroups = new Map<string, SeriesGroup<Reading, PointSeries.Point>>()
+  const spanGroups = new Map<string, SeriesGroup<SpanReading, SpanSeries.Span>>()
   let undated = 0
   let dropped = 0
 
@@ -561,17 +603,13 @@ const observationsToSeries = (
         dropped += 1
         continue
       }
-      const id = observationSeriesIdOf(spanReading.key)
-      const existing = spansById.get(id)
-      if (existing === undefined) {
-        spansById.set(id, {
-          meta: spanReading,
-          spans: [spanReading.span],
-          category: categoryOf(observation),
-        })
-      } else {
-        existing.spans.push(spanReading.span)
-      }
+      addToGroup(
+        spanGroups,
+        observationSeriesIdOf(spanReading.key),
+        spanReading,
+        categoryOf(observation),
+        spanReading.span
+      )
       continue
     }
     // Extraction comes first so "has a value but no date" is `undated` and
@@ -590,17 +628,14 @@ const observationsToSeries = (
         value: reading.value,
         ...reading.bounds,
       }
-      const existing = byId.get(id)
-      if (existing === undefined) {
-        byId.set(id, { meta: reading, points: [point], category })
-      } else {
-        existing.points.push(point)
-      }
+      addToGroup(pointGroups, id, reading, category, point)
     }
   }
 
-  const pointSeries = [...byId.entries()].map(
-    ([id, { meta, points, category }]): ObservationPointSeries => ({
+  const pointSeries = seriesOfGroups(
+    pointGroups,
+    (point) => point.time.epochMillis,
+    (id, { meta, category }, points): ObservationPointSeries => ({
       kind: 'points',
       id,
       key: meta.key,
@@ -608,19 +643,19 @@ const observationsToSeries = (
       unit: meta.unit,
       category,
       ...presentationOf(meta.valueType),
-      // `toSorted` is stable, so equal times keep input order.
-      points: points.toSorted((left, right) => left.time.epochMillis - right.time.epochMillis),
+      points,
     })
   )
-  const spanSeries = [...spansById.entries()].map(
-    ([id, { meta, spans, category }]): ObservationSpanSeries => ({
+  const spanSeries = seriesOfGroups(
+    spanGroups,
+    (span) => span.start.epochMillis,
+    (id, { meta, category }, spans): ObservationSpanSeries => ({
       kind: 'spans',
       id,
       key: meta.key,
       label: meta.label,
       category,
-      // `toSorted` is stable, so equal starts keep input order.
-      spans: spans.toSorted((left, right) => left.start.epochMillis - right.start.epochMillis),
+      spans,
     })
   )
 
