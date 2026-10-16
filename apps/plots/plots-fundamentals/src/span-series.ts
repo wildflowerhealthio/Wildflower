@@ -33,7 +33,8 @@ interface SpanCategory {
 }
 
 /**
- * A labelled stretch of time, from `start` to `end`, both included. `note` is
+ * A labelled stretch of time, from `start` to `end`, both included — though
+ * an end another span starts at hands over to it (`spansAt`). `note` is
  * absent rather than `undefined` when there is none.
  */
 interface Span {
@@ -66,14 +67,23 @@ const covers = (span: Span, epochMillis: number): boolean =>
  * The spans a crosshair reads off `series` at `time`.
  *
  * @returns Every span covering `time`, in series order — several where spans
- *   overlap, none in a gap
+ *   overlap, none in a gap. At a hand-off, where one span ends as another
+ *   starts, only the starting one: the latest start wins a shared boundary,
+ *   as in `Level.inEffectAt`. A span's end with no span starting there is
+ *   still covered, so the crosshair resting on a lane's last end reads it.
  *
  * @remarks
  * A linear scan: a long span can cover `time` however far back it started, so
  * no prefix of the spans can be skipped.
  */
-const spansAt = (series: SpanSeries, time: DateTime.Utc): readonly Span[] =>
-  series.spans.filter((span) => covers(span, time.epochMillis))
+const spansAt = (series: SpanSeries, time: DateTime.Utc): readonly Span[] => {
+  const target = time.epochMillis
+  const covering = series.spans.filter((span) => covers(span, target))
+  if (!covering.some((span) => span.start.epochMillis === target)) return covering
+  return covering.filter(
+    (span) => span.start.epochMillis === target || span.end.epochMillis !== target
+  )
+}
 
 /** A sort key putting the neutral colour after every slot. */
 const slotOrder = (category: SpanCategory): number => category.colourSlot ?? COLOUR_SLOTS
