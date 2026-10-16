@@ -35,17 +35,20 @@ pub struct DatabaseDescriptor {
 impl DatabaseDescriptor {
     /// Whether `id` is safe to embed verbatim both as an on-disk filename and in
     /// a `Content-Disposition: attachment; filename="{id}"` header value:
-    /// non-empty and composed only of ASCII alphanumerics plus `.`, `-`, and
-    /// `_`. The download handler
+    /// non-empty, composed only of ASCII alphanumerics plus `.`, `-`, and `_`,
+    /// and not `.` or `..`. The download handler
     /// ([`handle_download_database`](crate::http)) formats the id straight into
     /// that header with an infallible `expect`, and the id doubles as the bare
     /// filename resolved beneath the data dir — this charset keeps both uses free
-    /// of quote-escaping, control characters, and path separators. Enforced when
-    /// the host catalogue enters the slice (see
+    /// of quote-escaping, control characters, and path separators, and refusing
+    /// `.` and `..` keeps `data_dir.join(id)` from naming the data dir itself or
+    /// its parent. Enforced when the host catalogue enters the slice (see
     /// [`DatabasesState::new`](crate::DatabasesState)).
     #[must_use]
     pub fn has_header_safe_id(&self) -> bool {
         !self.id.is_empty()
+            && self.id != "."
+            && self.id != ".."
             && self
                 .id
                 .bytes()
@@ -88,7 +91,15 @@ mod tests {
     /// The real-shaped catalogue ids (bare `*.sqlite` filenames) are header-safe.
     #[test]
     fn catalogue_shaped_ids_are_header_safe() {
-        for id in ["health-data.sqlite", "wildflower.sqlite", "a_b.C-1.sqlite3"] {
+        for id in [
+            "health-data.sqlite",
+            "wildflower.sqlite",
+            "a_b.C-1.sqlite3",
+            // Dots are fine anywhere; only the bare `.` / `..` path components
+            // are refused.
+            "a..b.sqlite",
+            ".hidden.sqlite",
+        ] {
             assert!(
                 descriptor(id).has_header_safe_id(),
                 "expected {id:?} to be header-safe"
@@ -96,9 +107,10 @@ mod tests {
         }
     }
 
-    /// Anything with a quote, a control byte, a path separator, non-ASCII, or an
-    /// empty id is rejected — those are exactly the cases that would break the
-    /// verbatim `Content-Disposition` header or the on-disk filename.
+    /// Anything with a quote, a control byte, a path separator, non-ASCII, an
+    /// empty id, or the bare `.` / `..` is rejected — those are exactly the cases
+    /// that would break the verbatim `Content-Disposition` header or stop the id
+    /// naming a file beneath the data dir.
     #[test]
     fn unsafe_ids_are_rejected() {
         for id in [
@@ -109,6 +121,8 @@ mod tests {
             "a\\b.sqlite",
             "a\nb.sqlite",
             "café.sqlite",
+            ".",
+            "..",
         ] {
             assert!(
                 !descriptor(id).has_header_safe_id(),

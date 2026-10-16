@@ -41,8 +41,8 @@ impl DatabasesState {
         for descriptor in &databases {
             assert!(
                 descriptor.has_header_safe_id(),
-                "database catalogue id {:?} is not header-safe: ids must be non-empty and \
-                 ASCII alphanumeric plus '.', '-', '_' (used verbatim as a filename and in the \
+                "database catalogue id {:?} is not header-safe: ids must be non-empty, \
+                 ASCII alphanumeric plus '.', '-', '_', and not '.' or '..' (used verbatim as a filename and in the \
                  download Content-Disposition header)",
                 descriptor.id,
             );
