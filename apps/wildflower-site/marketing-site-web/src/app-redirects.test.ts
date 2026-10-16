@@ -9,7 +9,7 @@ import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { APP_REDIRECTS, MOVED_APP_PATHS, redirectPageHtml } from './app-redirects.ts'
+import { APP_REDIRECTS, APEX_REDIRECT_PATHS, redirectPageHtml } from './app-redirects.ts'
 
 describe('APP_REDIRECTS', () => {
   it("should put a page at each app's old apex path, sending it to the app's origin", () => {
@@ -28,8 +28,8 @@ describe('APP_REDIRECTS', () => {
     )
   })
 
-  it('should pin the old apex paths', () => {
-    expect(Object.values(MOVED_APP_PATHS).toSorted()).toEqual(
+  it('should pin the apex redirect paths', () => {
+    expect(Object.values(APEX_REDIRECT_PATHS).toSorted()).toEqual(
       [
         'authorization',
         'fhir-sync-pebble',
@@ -48,7 +48,7 @@ describe('APP_REDIRECTS', () => {
 
   it("should never put a redirect over one of the site's policy pages", () => {
     const policyPaths: readonly string[] = Object.values(POLICY_PATHS)
-    for (const path of Object.values(MOVED_APP_PATHS)) {
+    for (const path of Object.values(APEX_REDIRECT_PATHS)) {
       expect(policyPaths).not.toContain(path)
     }
   })
@@ -77,7 +77,7 @@ describe('redirectPageHtml', () => {
       fc.property(appIdArb, routeArb, queryArb, (app, route, query) => {
         // Arrange — `404.html` sends `/<old>/<route>?<query>` to the page at
         // `/<old>/`, with the path it was asked for in `?redirect=`.
-        const oldPath = `/${MOVED_APP_PATHS[app]}/`
+        const oldPath = `/${APEX_REDIRECT_PATHS[app]}/`
         const params = new URLSearchParams(query)
         params.set('redirect', `${oldPath}${route}`)
         const handedOver = `https://wildflowerhealth.io${oldPath}?${params.toString()}`
@@ -143,7 +143,7 @@ const followRedirect = (app: HostedAppId, href: string): string | undefined => {
       },
     },
   }
-  const html = redirectPageHtml(`/${MOVED_APP_PATHS[app]}/`, sectionUrl(app))
+  const html = redirectPageHtml(`/${APEX_REDIRECT_PATHS[app]}/`, sectionUrl(app))
   const script = /<script>([\s\S]*?)<\/script>/.exec(html)?.[1] ?? ''
   // oxlint-disable-next-line typescript/no-implied-eval -- runs the generated page's own script under test
   new Function('window', script)(window)

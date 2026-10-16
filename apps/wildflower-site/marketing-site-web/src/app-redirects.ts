@@ -1,12 +1,13 @@
 import { APP_SLUGS, sectionUrl, type HostedAppId } from '@wildflowerhealthio/branding-core'
 
 /**
- * The paths on the apex, `https://wildflowerhealth.io`, each hosted app was
- * served from before it moved to its own origin. Bookmarks and SMART launch
- * URLs still name them, so this site's build puts a redirect page at each one
+ * The path on the apex, `https://wildflowerhealth.io`, that redirects to each
+ * hosted app's own origin: where the app was served before it had one, so
+ * bookmarks and SMART launch URLs naming it keep working, and its slug for an
+ * app added since. This site's build puts a redirect page at each one
  * (`scripts/write-app-redirects.ts`).
  */
-const MOVED_APP_PATHS: Readonly<Record<HostedAppId, string>> = {
+const APEX_REDIRECT_PATHS: Readonly<Record<HostedAppId, string>> = {
   medications: 'medications',
   importer: 'importer',
   serverDocs: 'server-docs',
@@ -72,8 +73,8 @@ const APP_REDIRECTS: readonly AppRedirect[] = Object.keys(APP_SLUGS)
   .filter((id): id is HostedAppId => Object.hasOwn(APP_SLUGS, id))
   .map((app) => ({
     app,
-    file: `${MOVED_APP_PATHS[app]}/index.html`,
-    html: redirectPageHtml(`/${MOVED_APP_PATHS[app]}/`, sectionUrl(app)),
+    file: `${APEX_REDIRECT_PATHS[app]}/index.html`,
+    html: redirectPageHtml(`/${APEX_REDIRECT_PATHS[app]}/`, sectionUrl(app)),
   }))
 
-export { APP_REDIRECTS, MOVED_APP_PATHS, redirectPageHtml, type AppRedirect }
+export { APP_REDIRECTS, APEX_REDIRECT_PATHS, redirectPageHtml, type AppRedirect }
