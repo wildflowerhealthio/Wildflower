@@ -10,7 +10,7 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "tsc && vp build",
+    "build": "vp build && tsc",
     "check": "vp check",
     "data:ddinter": "node --conditions=source scripts/convert-ddinter.ts",
     "dev": "vp dev",
@@ -21,6 +21,7 @@
     "@fontsource-variable/atkinson-hyperlegible-mono": "catalog:",
     "@fontsource-variable/atkinson-hyperlegible-next": "catalog:",
     "@tanstack/react-query": "catalog:",
+    "@tanstack/react-router": "catalog:",
     "@wildflowerhealthio/authorization-core": "workspace:*",
     "@wildflowerhealthio/branding-core": "workspace:*",
     "@wildflowerhealthio/branding-react": "workspace:*",
@@ -46,6 +47,7 @@
     "tundra-css": "catalog:"
   },
   "devDependencies": {
+    "@tanstack/router-plugin": "catalog:",
     "@testing-library/dom": "catalog:",
     "@testing-library/react": "catalog:",
     "@types/react": "catalog:",

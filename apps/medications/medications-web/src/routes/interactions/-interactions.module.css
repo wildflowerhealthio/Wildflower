@@ -1,0 +1,6 @@
+/* The interaction catalogue's failure line, sized and coloured like
+ * `smart-app-react`'s read-status lines. */
+.interactions__error {
+  font-size: var(--font-size-3);
+  color: var(--color-red-3);
+}

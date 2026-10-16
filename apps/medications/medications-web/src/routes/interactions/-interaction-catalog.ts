@@ -3,7 +3,7 @@ import {
   type InteractionCatalog,
 } from '@wildflowerhealthio/medication-interaction-core-js'
 
-import ddinterUrl from './data/ddinter/ddinter.json?url'
+import ddinterUrl from '../../data/ddinter/ddinter.json?url'
 
 let cached: InteractionCatalog | null = null
 

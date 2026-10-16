@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vite-plus/test'
 
-import { catalogs } from './catalogs.ts'
+import { catalogs } from './-catalogs.ts'
 
 describe('bundled sponsor catalogs', () => {
   test('decodes both programs innoviCares-first', () => {
