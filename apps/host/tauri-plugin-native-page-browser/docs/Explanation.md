@@ -35,7 +35,7 @@ The host opens each view through the server's `/oauth/sign-in`, which sets the O
 
 - **iOS**: `SFSafariViewController` keeps its cookies per app, so Safari never sees them. Views the plugin opens share them with each other.
 - **Android**: each view is an **ephemeral** Custom Tab (`CustomTabsIntent.Builder.setEphemeralBrowsingEnabled`, Chrome 137+). Its cookies, cache and history are its own and are dropped when it closes, so the user's everyday Chrome never holds the Owner's session, and every view signs in again. Pages the tab navigates to, such as an app the launcher opens, share its cookies until it closes. Two views open at once (a `stack` open over another) don't share cookies.
-  - Before each launch the plugin asks `CustomTabsClient.isEphemeralBrowsingSupported` whether the provider supports ephemeral tabs. One that doesn't (an older Chrome, or another default browser) gets a shared Custom Tab, with the provider's own cookies, as does the `ACTION_VIEW` fallback to the default browser. The first such view logs a warning (tag `NativePageBrowser`).
+  - Before each view launches, the plugin asks `CustomTabsClient.isEphemeralBrowsingSupported` whether the provider supports ephemeral tabs. With a provider that doesn't (an older Chrome, or another default browser) the view is a shared Custom Tab, holding the provider's own cookies, as the `ACTION_VIEW` fallback to the default browser does. The first such view logs a warning (tag `NativePageBrowser`).
   - An ephemeral tab launches like a shared one, from the Custom Tabs session with the keep-alive extra, in the app's colours with its close icon. Chrome turns off downloads in it.
 - **Desktop**: the default browser's own cookies.
 
