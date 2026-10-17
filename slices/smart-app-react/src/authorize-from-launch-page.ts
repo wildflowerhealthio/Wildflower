@@ -6,6 +6,8 @@ import {
   type SmartLaunchConfig,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
 
+import { forgetLandingRoute, saveLandingRoute } from './landing-route.ts'
+
 /**
  * Authorize the SMART launch the app root at `launchPageHref` was opened to
  * start, resolving to where the page must go if the launch fails before it
@@ -25,6 +27,12 @@ import {
  * shows only a loading line, so the failure goes to the app root without the
  * launch, where `SmartAppRoot` hands it to `ConnectMenu` as its
  * `arrivalProblem`.
+ *
+ * The route the launch page sits on (a deep link such as `/calendar?…`, its
+ * launch parameters left out) is kept in `sessionStorage` before the page
+ * leaves, since the callback comes back to the app root;
+ * `SmartHandshakeGate` restores it once the exchange completes. A launch that
+ * fails here drops it again.
  */
 const authorizeFromLaunchPage = async (
   launch: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'>,
@@ -32,10 +40,12 @@ const authorizeFromLaunchPage = async (
 ): Promise<string | null> => {
   const redirectUri = appRootRedirectUri(launchPageHref)
   const search = new URL(launchPageHref).search
+  saveLandingRoute(window.sessionStorage, launchPageHref)
   try {
     await authorizeSmartLaunch({ ...launch, redirectUri })
     return null
   } catch (error: unknown) {
+    forgetLandingRoute(window.sessionStorage)
     return launchErrorRedirect(redirectUri, launchErrorBodyFor('AuthorizeFailed', error, search))
   }
 }

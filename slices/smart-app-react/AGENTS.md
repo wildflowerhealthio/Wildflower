@@ -32,7 +32,7 @@ offers the same choices; this package re-exports its preset groups.
   (`autoConnect`). Either target shows the problem the page arrived with
   (`arrivalProblem`).
 - `openSmartAppPage(import.meta.url)`, its `SmartAppPage` (`history`,
-  `basepath`), and `SmartHandshakeGate({ connecting, children })` — what a
+  `basepath`), and `SmartHandshakeGate({ page, connecting, children })` — what a
   routed app's router runs over, and the gate it is built under; see
   [Routing a SMART app](#routing-a-smart-app).
 - `LoadingLine`, `LoadingMoreLine` and `ReadFailureLine` — the read-status
@@ -117,7 +117,7 @@ package, in an order that is load-bearing:
   still reads that URL. The gate runs `useSmartHandshake`, shows the app's
   `connecting` element meanwhile, shows a failed exchange and carries it to
   the app root (`useLaunchFailureRedirect`), and renders `children(client)`
-  once ready; the app builds its router there, once (`useState` or a memo on
+  once ready (it takes the app's `SmartAppPage` as `page`); the app builds its router there, once (`useState` or a memo on
   its context), so a tab change is a navigation inside it, never a rebuild.
   A launch URL never reaches the router at all: `SmartAppRoot` starts the
   launch before the app mounts.
@@ -143,6 +143,22 @@ package, in an order that is load-bearing:
   for the tab open) with the new `?patient=` and no flag. No navigation
   keeps the flag, so it never reaches a tab link. Patient changes are
   navigations, so the router lives as long as the page.
+- **A launch from a deep route comes back to that route.** The OAuth
+  redirect URI is the app root, so a launch at `/calendar?iss=…&launch=…`
+  returns there. Before the page leaves, `authorizeFromLaunchPage` keeps the
+  route it sat on (path, its own query less the launch and OAuth parameters,
+  and fragment) in `sessionStorage` under `LANDING_ROUTE_STORAGE_KEY`
+  (`landing-route.ts`); a launch at the bare app root keeps nothing. Once the
+  exchange completes, `SmartHandshakeGate` takes the key out and, before its
+  children build the router, replaces the current entry on the page's
+  history with that route, so the router opens it. Only a same-origin path
+  under the basepath is restored; anything else is dropped. The key is
+  one-shot, so StrictMode's second render finds nothing, and every way a
+  launch ends without a callback drops it: a rejected authorize, and every
+  plain visit to `SmartAppRoot` (a failed launch's `?launchError`, an OAuth
+  `?error`, a page back from the back-forward cache, a fresh visit). A
+  standalone `ConnectMenu` connect keeps no route: it starts from the
+  landing page.
 - **A deep link comes back through the 404 page.** On GitHub Pages a deep
   route is served by the site's 404 page, whose redirect to the app root
   `main.tsx` completes with `branding-core`'s `restoreRedirectedUrl` before

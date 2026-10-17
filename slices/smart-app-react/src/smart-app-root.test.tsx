@@ -21,6 +21,7 @@ import {
 
 import type * as AuthorizeFromLaunchPage from './authorize-from-launch-page.ts'
 import type { ConnectMenuProps } from './connect-menu.tsx'
+import { LANDING_ROUTE_STORAGE_KEY } from './landing-route.ts'
 import { SmartAppRoot, type SmartAppTelemetry } from './smart-app-root.tsx'
 
 /** The part of Sentry's `captureException` hint the root sets. */
@@ -142,6 +143,7 @@ afterEach(() => {
   cleanup()
   setUrl('/')
   window.localStorage.clear()
+  window.sessionStorage.clear()
   restoreDialogModality()
   connectMenuRenderFailure.current = undefined
   vi.unstubAllEnvs()
@@ -336,6 +338,30 @@ describe('SmartAppRoot', () => {
     // Assert
     expect(arrivalProblem()).toContain('The user declined')
   })
+
+  it.each([
+    { case: 'a plain visit', search: '', expectKept: false },
+    {
+      case: 'a failed launch sent back',
+      search: `?launchError=${FAILED_LAUNCH}`,
+      expectKept: false,
+    },
+    { case: 'an OAuth error return', search: '?error=access_denied&state=xyz', expectKept: false },
+    { case: 'a callback', search: '?code=abc&state=xyz', expectKept: true },
+  ])(
+    'should drop a route a launch kept on $case, keeping it only for a callback',
+    ({ search, expectKept }) => {
+      // Arrange — a launch from a deep route that did not come back to complete
+      window.sessionStorage.setItem(LANDING_ROUTE_STORAGE_KEY, '/calendar')
+      setUrl(`/${search}`)
+
+      // Act
+      renderShell({})
+
+      // Assert
+      expect(window.sessionStorage.getItem(LANDING_ROUTE_STORAGE_KEY) !== null).toBe(expectKept)
+    }
+  )
 
   it('should hand the menu no arrival problem on a plain visit', () => {
     // Arrange / Act — the resting state: nothing failed, so nothing is announced.
