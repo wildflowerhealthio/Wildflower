@@ -51,7 +51,11 @@ offers the same choices; this package re-exports its preset groups.
     router owns `?patient=` as a search param.
   - `usePatientChoice(launchPatientId)` — the choice the page reads under,
     `None` while the reader is choosing, with `choosePatient` and
-    `changePatient`.
+    `changePatient`, for an app without a router.
+  - `PatientSearch`, `useRoutedPatientChoice(launchPatientId)` and
+    `routedPatientChoiceOf(patientKey, launchPatientId)` — the same choice
+    for an app whose router owns `?patient=`; see
+    [Routing a SMART app](#routing-a-smart-app).
   - `PatientPicker({ client, onPatientChoice })` — "All patients" first,
     then every patient the session can see (`fetchPatientPage`, name and
     birth date per row, sorted by family name, "More patients" while the
@@ -115,6 +119,19 @@ load-bearing:
   its context), so a tab change is a navigation inside it, never a rebuild.
   A launch URL never reaches the router at all: `SmartAppRoot` starts the
   launch before the app mounts.
+- **`?patient=` is a root search param, read as a string.** The router's
+  default `parseSearch` JSON-parses each value (`?patient=1.50` would read as
+  `1.5`, `1e5` as `100000`), and a FHIR id can look like a number, so the
+  router is built with `parsePlainSearch` / `stringifyPlainSearch`, which
+  keep every value as the address bar holds it. The root route validates
+  `PatientSearch` and keeps only `?patient=` across navigations
+  (`retainSearchParams([PATIENT_PARAM])`), so a tab change keeps the patient
+  and each history entry names the one it showed. Any route reads the choice
+  with `useRoutedPatientChoice(client.patient.id)` (the address bar's, else
+  the launch's, else none, which the root shows as the picker); a
+  `beforeLoad` reads it from the search it is handed with
+  `routedPatientChoiceOf`. A choice is a navigation, so the router lives as
+  long as the page.
 - **A deep link comes back through the 404 page.** On GitHub Pages a deep
   route is served by the site's 404 page, whose redirect to the app root
   `main.tsx` completes with `branding-core`'s `restoreRedirectedUrl` before

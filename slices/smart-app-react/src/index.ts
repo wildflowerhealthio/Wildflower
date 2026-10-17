@@ -21,6 +21,12 @@ export {
 } from './patient-choice.ts'
 export { PatientChoiceLine, type PatientChoiceLineProps } from './patient-choice-line.tsx'
 export { PatientPicker, type PatientPickerProps } from './patient-picker.tsx'
+export { parsePlainSearch, stringifyPlainSearch } from './plain-search.ts'
+export {
+  PatientSearch,
+  routedPatientChoiceOf,
+  useRoutedPatientChoice,
+} from './routed-patient-choice.ts'
 export { type PatientChoosing, usePatientChoice } from './use-patient-choice.ts'
 export { SmartAppRoot, type SmartAppRootProps, type SmartAppTelemetry } from './smart-app-root.tsx'
 export { openSmartAppPage, servedDirectoryOf, type SmartAppPage } from './smart-app-page.ts'
