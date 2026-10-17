@@ -78,6 +78,7 @@ const stubServer: Layer.Layer<HttpClient.HttpClient> = Layer.succeed(
 
 /** The pending device request the stub server holds for `userCode`. */
 const deviceConsentFor = (userCode: string): unknown => ({
+  kind: 'device',
   userCode,
   clientId: 'pebble-watch',
   clientName: 'Pebble Watch',
@@ -240,6 +241,37 @@ describe('DevicePage — deciding', () => {
     expect(new Set(seen.map((request) => request.session))).toEqual(
       new Set([BROWSER_SESSION_HEADER.value])
     )
+  })
+
+  test('approving a browser pairing says the browser signs in on its own', async () => {
+    const holding = serverHolding('WDJB-MJHT', { status: 'approved' })
+    answer = (request) =>
+      request.path === '/authorization/devices/WDJB-MJHT'
+        ? {
+            status: 200,
+            body: {
+              kind: 'browser',
+              userCode: 'WDJB-MJHT',
+              clientId: 'cb9bbe139845cae9654b7909d60d274f',
+              clientName: 'Wildflower Browsers',
+              deviceName: 'Firefox on Linux',
+              requestedScopes: ['wildflower/launch'],
+              allowedScopes: ['system/*.cruds', 'wildflower/*.cruds', 'wildflower/launch'],
+            },
+          }
+        : holding(request)
+    const { user } = renderPage('WDJB-MJHT')
+
+    await user.click(await screen.findByRole('button', { name: 'Continue' }))
+    expect(await screen.findByText('A browser wants to sign in to your server.')).toBeDefined()
+    await user.click(screen.getByRole('button', { name: 'Approve' }))
+
+    expect(
+      await screen.findByText('The browser is approved. It signs in on its own.')
+    ).toBeDefined()
+    expect(decisions().map((request) => request.body)).toEqual([
+      { approvedScopes: ['wildflower/launch'] },
+    ])
   })
 
   test('declining denies the request and says so', async () => {

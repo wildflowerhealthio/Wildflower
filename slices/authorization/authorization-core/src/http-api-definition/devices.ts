@@ -4,15 +4,20 @@ import { Schema } from 'effect'
 import { RequireAuthMiddleware } from './require-auth.ts'
 
 const DeviceConsentSchema = Schema.Struct({
+  // What asks: a device, through the RFC 8628 device-code flow, or a browser that wants a
+  // browser session (a browser pairing, started at `/oauth/pair`). A browser is always remote:
+  // the Owner's own browser signs in on the server's device instead.
+  kind: Schema.Literal('device', 'browser'),
   userCode: Schema.String,
   clientId: Schema.String,
   clientName: Schema.String,
-  // The human-chosen device name the requester supplied (RFC 8628 extension). Nullable:
-  // absent on requests made before the field existed, or when the device didn't name itself.
+  // The human-chosen device name the requester supplied (RFC 8628 extension), or a browser's
+  // name. Nullable: absent when a device didn't name itself; a browser always has one.
   deviceName: Schema.NullishOr(Schema.String),
   requestedScopes: Schema.Array(Schema.String),
-  // The client's full `allowed_scopes` — the *expansion envelope* the approver can grant up to
-  // (device-auth consent is expandable, `granted ⊆ allowed`, not clamped to `requestedScopes`).
+  // The *expansion envelope* the approver can grant up to (device-auth consent is expandable,
+  // `granted ⊆ allowed`, not clamped to `requestedScopes`): a device client's full
+  // `allowed_scopes`, or for a browser the Owner's scopes.
   allowedScopes: Schema.Array(Schema.String),
 })
 

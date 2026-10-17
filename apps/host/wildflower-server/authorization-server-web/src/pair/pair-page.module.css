@@ -1,0 +1,39 @@
+/*
+ * The pairing page: where the Owner approves this browser's code, the code
+ * itself, what the page is waiting on, and how a pairing ended.
+ */
+
+.pair-page__message {
+  margin: var(--space-9) auto 0;
+  max-width: 560px;
+  text-align: center;
+  color: var(--color-neutral-4);
+}
+
+/* The code as a centered, monospace, dashed-border stub on the sunken
+ * surface, as the device page's card shows it, so the Owner matches the two
+ * at a glance. */
+.pair-page__code {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-6);
+  font-weight: var(--font-weight-2);
+  letter-spacing: var(--letter-spacing-5);
+  color: var(--color-neutral-1);
+  background: var(--color-sunken);
+  border: 1px dashed var(--card-color-border);
+  border-radius: var(--radius-3);
+  padding: var(--space-5) var(--space-7);
+  text-align: center;
+}
+
+.pair-page__status {
+  margin: 0;
+  text-align: center;
+  color: var(--color-neutral-5);
+}
+
+.pair-page__actions {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--space-6);
+}

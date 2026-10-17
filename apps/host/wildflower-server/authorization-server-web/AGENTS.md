@@ -11,7 +11,10 @@ the server's own origin, so the address bar names the server being approved:
 - the **device page**, `device.html`, served at `/oauth/device`: the RFC 8628
   `verification_uri`, and with `?user_code=` its `verification_uri_complete`.
   The code box and the card are `authorization-react`'s `DeviceCodeEntryForm`
-  and `DeviceConsentCard`.
+  and `DeviceConsentCard`. It decides browser pairings too.
+- the **pairing page**, `pair.html`, served at `/oauth/pair?next=…`: where a
+  browser that isn't the Owner's signs in, by showing a code the Owner
+  approves (a browser pairing).
 
 This package composes them over the browser session. The host app
 also opens either page with `?then=back`, in a browser signed in as the Owner,
@@ -68,6 +71,19 @@ Security Policy (below).
   doesn't refill it. With `then=back` a decision shows the done message in
   place of the decision's own, then steps back out; the "approve on the
   server" cases stay as they are.
+- `pair.html` + `src/pair/main.tsx` — the pairing page's entry: reads `next`
+  from its query (`next-query.ts`) and mounts `PairPage` over the same runner,
+  leaving with `window.location.assign`.
+- `src/pair/pair-page.tsx` — on load posts `/oauth/pair/start` with `next`
+  (one start per attempt: a `useQuery` that never refetches), then shows the
+  code, a name field filled from the start's `browserName`, and polls
+  `/oauth/pair/poll` every `interval` with the name as it stands, waiting
+  5 s longer after each `slow_down`. `approved` (whose answer set the session
+  cookie) leaves for the `next` the start answered with; `denied`, `expired`
+  or a `404` says so, with "Get a new code". A refused start
+  (`BrowserPairingNextNotAllowed`, `BrowserSessionClientDisabled`) says why in
+  plain words. The page judges no `next` itself: the server allows only a
+  path on its own origin.
 - `src/then-query.ts` — `goBackOnceDecidedOf`: the query's `then`, decoded at
   the entry into `Some` step back out of the window for `then=back` and
   `None` for anything else. The pages take it as the `goBackOnceDecided`
@@ -108,8 +124,8 @@ Security Policy (below).
   first, or `scripts/ci/stub-embedded-bundles.sh authorization-server-web` for
   a placeholder. The crate's `build.rs` rebuilds it when `dist/` changes.
 - **The APIs are same-origin only.** `vp dev` serves the page with no server
-  behind it; the pages' behaviour is covered by `consent-page.test.tsx` and
-  `device-page.test.tsx` against a stub server.
+  behind it; the pages' behaviour is covered by `consent-page.test.tsx`,
+  `device-page.test.tsx` and `pair-page.test.tsx` against a stub server.
 
 ## References
 

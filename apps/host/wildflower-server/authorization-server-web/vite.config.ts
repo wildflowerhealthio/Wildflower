@@ -10,7 +10,7 @@ import { pageScriptBudget, SHARED_REACT_CHUNK } from './page-script-budget.ts'
  * (`apps/host/wildflower-server/authorization-server-rust`) embeds in its
  * binary and serves on the server's own origin. One HTML input per page, each
  * served at its own path: `consent.html` at `/oauth/authorize/{id}/consent`,
- * `device.html` at `/oauth/device`.
+ * `device.html` at `/oauth/device`, `pair.html` at `/oauth/pair`.
  *
  * - `base: '/oauth/'`, so a page loads its files from `/oauth/assets/`, where
  *   the server serves Vite's content-hashed scripts, stylesheets and fonts
@@ -33,6 +33,7 @@ export default defineConfig({
       input: {
         consent: './consent.html',
         device: './device.html',
+        pair: './pair.html',
       },
       output: {
         codeSplitting: {
