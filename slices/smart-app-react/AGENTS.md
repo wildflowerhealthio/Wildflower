@@ -96,8 +96,8 @@ import `branding-react/styles.css` itself.
 ## Routing a SMART app
 
 An app with a router (`apps/medications/medications-web`,
-`apps/importer-web`) boots it through this package, in an order that is
-load-bearing:
+`apps/strength/strength-web`, `apps/importer-web`) boots it through this
+package, in an order that is load-bearing:
 
 - **`main.tsx` opens the page once.** `openSmartAppPage(import.meta.url)`
   creates the window's browser history for the page's life (creating it

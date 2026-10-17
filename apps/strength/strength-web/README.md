@@ -21,14 +21,15 @@ boots through (see [slices/smart-app-react/AGENTS.md](../../../slices/smart-app-
 exactly as `apps/plots/plots-web` does.
 
 `src/main.tsx` is the `index.html` entry: it imports the design-system
-stylesheet module (`react-tundraish/styles`), reads the served directory (the
-router's basepath), completes a GitHub Pages 404 redirect, wires the OS
-colour-scheme listener, and renders `<AppRoot basepath={basepath} />` inside
-`<StrictMode>`.
+stylesheet module (`react-tundraish/styles`), completes a GitHub Pages 404
+redirect, wires the OS colour-scheme listener, opens the page the router runs
+over (`smart-app-react`'s `openSmartAppPage(import.meta.url)`: the window's
+history, and the served directory read off the entry module's URL as the
+basepath), and renders `<AppRoot page={page} />` inside `<StrictMode>`.
 
 `src/app-root.tsx` exports `AppRoot`: `<SmartAppRoot app="strength"
 registration={smartRegistration} telemetry={smartAppTelemetry}>` around
-`<App basepath={basepath} />`. `SmartAppRoot` shows the telemetry consent dialog first, then
+`<App page={page} />`. `SmartAppRoot` shows the telemetry consent dialog first, then
 starts a launch the URL carries under a loading line or renders one of the
 other two branches (`smartAppTelemetry` in `src/config.ts` names the app's Sentry project
 through the `VITE_SENTRY_DSN_STRENGTH_WEB` build variable; see `.env.example`),
@@ -39,16 +40,17 @@ when launched, the full Wildflower chrome with `APP_DESCRIPTIONS.strength`'s
 
 ## The page
 
-`src/app.tsx`'s `App` completes the handshake and builds the write runner
-(`buildSmartRouterContext` over `FetchHttpClient.layer`). The patient is
-`smart-app-react`'s `usePatientChoice`: the URL's `?patient=`, else the
-launch's `client.patient.id`, else its `PatientPicker` ("All patients" first,
-then every patient by name and birth date), whose choice is written to the URL
-as `?patient=<id>` or `?patient=*`. Then the page's router, built per
-choice, shows the record under `react-tundraish`'s `RouteTabs` — **Today**,
-**Plan** and **History**, each a child route — with the choice named under
-the title by `PatientChoiceLine` and a "Change patient" link back to the
-picker.
+`src/app.tsx`'s `App` shows the title, completes the handshake under
+`SmartHandshakeGate`, and builds the page's router once, with the write
+runner (`buildSmartRouterContext` over `FetchHttpClient.layer`). The patient
+is the address bar's `?patient=` (`smart-app-react`'s
+`useRoutedPatientChoice`), else the launch's `client.patient.id`, else the
+root route shows `PatientPicker` ("All patients" first, then every patient by
+name and birth date), whose choice navigates to `/?patient=<id>` or
+`/?patient=*`. The root then shows the record under `react-tundraish`'s
+`RouteTabs` — **Today**, **Plan** and **History**, each a child route — with
+the choice named by `PatientChoiceLine` and a "Change patient" link back to
+the picker.
 
 - **A lifter** (one patient): their training record, read and written as
   below.
@@ -62,24 +64,36 @@ picker.
 
 The router is TanStack's, over file routes under `src/routes/` (the tree is
 generated into the git-ignored `src/routeTree.gen.ts` by the router plugin in
-`vite.config.ts`). The root route (`routes/__root.tsx`) is the page: the
-title and the patient line over the tab strip. Each tab is a child route in
+`vite.config.ts`). The root route (`routes/__root.tsx`) is the patient picker or the page: the
+patient line over the tab strip, and in the tab panel for a path no tab
+names, a not-found card offering the app root. Each tab is a child route in
 its own folder with the files only it uses: `/today`, `/plan` and `/history`.
 `/` redirects, replacing itself in history, to Today for a lifter and to
-History for All patients. Every navigation keeps `?patient=`.
+History for All patients, and stays (under the picker) with no patient yet.
+A patient choice navigates to `/`, pushing a history entry, so each choice
+opens on its first tab and Back returns to the patient before; "Change
+patient" only opens the picker, and the address bar keeps the patient until
+another is chosen.
+
+`?patient=` is the root route's one search param (`PatientSearch`), read and
+written as a plain string (`parsePlainSearch` / `stringifyPlainSearch`, so an
+id such as `1.50` is never read as a number), and the only query every
+navigation keeps.
 
 The app root is the OAuth redirect target, so the router is built only once
-the SMART handshake has completed and a patient is chosen: by then fhirclient
-has taken `code` and `state` out of the address bar, and nothing the router
-does (the `/` redirect, a tab change) can rewrite a URL the token exchange
-still reads. A launch URL never reaches the router at all: `SmartAppRoot`
-starts its launch before the app mounts. Each patient choice gets its own
-router, opening on the tab in the address bar.
+the SMART handshake has completed: by then fhirclient has taken `code` and
+`state` out of the address bar, and nothing the router does (the `/`
+redirect, a tab change) can rewrite a URL the token exchange still reads. A
+launch URL never reaches the router at all: `SmartAppRoot` starts its launch
+before the app mounts. The router is built once for the visit, its context
+fixed: the client, the write runner, the picker's state, and the StrongLifts
+5×5 template id per lifter, minted the first time it is asked for, so a
+retried start for one lifter writes the same id.
 
-The router's basepath is the served directory: `src/main.tsx` reads it with
-`branding-core`'s `basenameOf` before completing a GitHub Pages 404 redirect,
-so a deep link such as `/plan` (or `/pr-<n>/plan` in a preview) is served by
-the 404 page's redirect to the app root and restored there. The OAuth
+The router's basepath is the served directory, read off the entry module's
+URL rather than the page's, so a deep link such as `/plan` (or
+`/pr-<n>/plan` in a preview), served by the 404 page's redirect to the app
+root and restored there, opens on its tab. The OAuth
 redirect URI is the same directory, so a launch from any tab returns to the
 app root, which opens Today (or History).
 

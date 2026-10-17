@@ -14,15 +14,18 @@ Sentry DSN, and read-status lines.
 `src/` keeps the entry and the root at its top: `main.tsx` (the `index.html`
 entry), `config.ts`,
 `app-root.tsx` (the package export), `app.tsx`, the router (`router.ts`, and
-`router-context.ts` with the hooks the routes read it through), and the
-app-wide `clock.ts` and `smart-client.ts`. Everything else is a folder per
+`router-context.ts` with `useStrengthContext`, the one hook the routes read
+it through), and the app-wide `clock.ts` and `smart-client.ts`. Everything else is a folder per
 screen or concern:
 
 - `routes/` — the TanStack file routes (the tree is generated into the
-  git-ignored `src/routeTree.gen.ts`). `__root.tsx` is the page (the header,
-  with the patient chosen, over `RouteTabs`), `index.tsx` redirects `/` to a
-  tab, and `-lifter-tab.tsx`'s `LifterTab` is one lifter's training record
-  read, under Today and Plan. Each tab is a folder, `today/`, `plan/`,
+  git-ignored `src/routeTree.gen.ts`). `__root.tsx` is the patient picker or
+  the page (the patient line over `RouteTabs`), with the not-found card
+  (`-strength-not-found.tsx`) for a path no tab names; `-chosen-patient.ts`
+  reads whose record the address bar names and opens the picker;
+  `index.tsx` redirects `/` to the chosen patient's first tab; and
+  `-lifter-tab.tsx`'s `LifterTab` is one lifter's training record read,
+  under Today and Plan. Each tab is a folder, `today/`, `plan/`,
   `history/`: its `route.tsx`, the `-`-prefixed files only it uses (Today's
   `-workout-due.tsx` and the write it builds,
   `-submitted-workout-resources.ts`; Plan's `-plan-editor.tsx`), and its
@@ -40,8 +43,9 @@ screen or concern:
   write takes) and the write hooks every screen writes through
   (`use-strength-write.ts`).
 - `ids/` — the ids the app mints: `mintResourceId`,
-  `exerciseSetObservationIdOf`, `workoutIdMinter` and
-  `serviceRequestIdMinter`, one per file.
+  `exerciseSetObservationIdOf`, `workoutIdMinter`,
+  `serviceRequestIdMinter` and `strongLiftsPlanDefinitionIdMinter`, one per
+  file.
 
 One component per file, named after it in kebab-case (a route's component
 lives in its `route.tsx`). A styled component has
@@ -54,7 +58,8 @@ they cover.
 - **Compose; decide nothing.** The app wires `strength-core-js` and
   `strength-react` together and owns only the SMART shell, the reads, the ids,
   the clock and the writes; the patient is `smart-app-react`'s
-  (`usePatientChoice`, `PatientPicker`, `PatientChoiceLine`). The day due, the
+  (`useRoutedPatientChoice` over `?patient=`, `PatientPicker`,
+  `PatientChoiceLine`). The day due, the
   progression, what a submission or a start writes, and every check on a
   training plan definition or a starting load are core's
   (`PlannedWorkout.make` / `submit`,
@@ -73,13 +78,22 @@ they cover.
   cannot reach a write: it reads unscoped (History) and `LifterTab` shows a
   "Choose a patient to train" card in place of Today and Plan. Queries sit under
   `strengthKeyOf` of the patient scope (`null` for All patients).
-- **Route only after the handshake.** The app root is the OAuth redirect
-  target, so `App` builds the router (`StrengthRouter`) only once
-  `useSmartHandshake` is ready and a patient is chosen, by when fhirclient
-  has taken `code` and `state` out of the URL: nothing the router does may
-  rewrite a URL the token exchange still reads. One router per patient
-  choice; its basepath is the served directory, read in `main.tsx` before
-  the 404 redirect is restored.
+- **Route only after the handshake, once.** The app root is the OAuth
+  redirect target, so `App` builds the router (`StrengthRouter`) under
+  `smart-app-react`'s `SmartHandshakeGate`, by when fhirclient has taken
+  `code` and `state` out of the URL: nothing the router does may rewrite a
+  URL the token exchange still reads. It runs over the `SmartAppPage`
+  `main.tsx` opens (`openSmartAppPage`: the window's history, the served
+  directory as basepath), and is built once for the visit, its context
+  fixed (client, `runAuthed`, the picker's state, the StrongLifts template
+  ids); see "Routing a SMART app" in
+  [slices/smart-app-react/AGENTS.md](../../../slices/smart-app-react/AGENTS.md).
+- **The patient is the URL's.** `?patient=` is a root search param, read as
+  a string (`parsePlainSearch`, so `1.50` stays `1.50`) and the only one
+  kept across navigations. A choice navigates to `/`, which opens the
+  choice's first tab (Today for a lifter, History for All patients), so a
+  patient change is a navigation in the same router and Back returns to the
+  patient before.
 - **Every write is one batch, to minted ids, and refetches when it settles.**
   `useStrengthWrite` writes through `persistBatchBundleOrFail` and invalidates
   the lifter's queries on success and failure alike; `useStrengthWriting`
@@ -114,9 +128,12 @@ they cover.
   in its folder (`record/training-record.test.tsx`,
   `session/use-strength-write.test.tsx`, …); `routes/-root.test.tsx` drives
   every tab to check the scopes cover each read and write, where the bare
-  app path opens, and All patients' read-only tabs; `app.test.tsx` drives
-  `App` over a stubbed handshake — the picker, a pick, the launch's patient
-  and a change.
+  app path opens, `?patient=` read as a string and kept alone across tabs,
+  the not-found card, and All patients' read-only tabs; `app.test.tsx` drives
+  `App` over a stubbed handshake — the picker, a pick, the launch's patient,
+  a change (to All patients opening History, in the same router) and Back
+  from it. `RouteTabs`'s browser APIs are stubbed with `react-tundraish`'s
+  `stubRouteTabsBrowserApis`.
 - `ids/*.test.ts` — property tests: set ids are FHIR ids and sort in set
   order, long exercise ids stay apart, and a minter names one resource with
   one id on every call.
