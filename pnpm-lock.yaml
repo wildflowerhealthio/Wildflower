@@ -3231,6 +3231,12 @@ importers:
       '@wildflowerhealthio/kitchen-sink':
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
+      '@wildflowerhealthio/suggested-apps-core':
+        specifier: workspace:*
+        version: link:../../../slices/suggested-apps-core
+      effect:
+        specifier: 'catalog:'
+        version: 3.22.2
       fast-check:
         specifier: 'catalog:'
         version: 3.23.2
@@ -5442,6 +5448,40 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@1.1.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 1.1.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.3(vitest@5.0.3))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.2)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
+
+  slices/suggested-apps-core:
+    dependencies:
+      '@wildflowerhealthio/branding-core':
+        specifier: workspace:*
+        version: link:../branding/branding-core
+      '@wildflowerhealthio/scopes-core':
+        specifier: workspace:*
+        version: link:../scopes/scopes-core
+      effect:
+        specifier: 'catalog:'
+        version: 3.22.2
+    devDependencies:
+      '@types/node':
+        specifier: ^26
+        version: 26.1.0
+      '@wildflowerhealthio/kitchen-sink':
+        specifier: workspace:*
+        version: link:../../global/kitchen-sink
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      typescript-7:
+        specifier: 'catalog:'
+        version: typescript@7.0.2
       vite:
         specifier: 'catalog:'
         version: '@voidzero-dev/vite-plus-core@1.1.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)'
@@ -15883,7 +15923,7 @@ snapshots:
       pathe: 2.0.3
       sirv: 3.0.2
       tinyrainbow: 3.1.1
-      vitest: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/browser-preview@5.0.3)(@vitest/ui@5.0.3(vitest@5.0.3))(@voidzero-dev/vite-plus-core@1.1.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(jsdom@30.1.2)
+      vitest: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/browser-preview@5.0.3)(@vitest/ui@5.0.3(vitest@5.0.3))(@voidzero-dev/vite-plus-core@1.1.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1))(jsdom@30.1.2)
 
   '@vitest/utils@5.0.3':
     dependencies:

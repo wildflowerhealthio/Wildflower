@@ -62,6 +62,13 @@ vp build    # production build to dist/
 - `public/app-icon.png` / `public/favicon.png` — scaled from the shared
   app-icon set in `apps/host/host-app/src-tauri/icons`; `public/CNAME` — the
   custom domain.
+- `public/suggested_apps.json` — the SMART apps worth trying with a Wildflower
+  server, published at `https://wildflowerhealth.io/suggested_apps.json`.
+  Hand-edited; its schema is `suggested-apps-core`'s `SuggestedApps`.
+  `src/suggested-apps.test.ts` decodes it and holds each first-party entry's
+  launch URL, name and description to `branding-core`'s
+  `SMART_APP_LAUNCH_PAGES` and `APP_DESCRIPTIONS`, so a renamed or new hosted
+  app fails there until the file follows.
 
 ## Styling conventions
 

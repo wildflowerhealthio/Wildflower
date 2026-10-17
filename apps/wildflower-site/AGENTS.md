@@ -12,8 +12,10 @@ only what the apex serves.
   scheme, plus the policy pages and a redirect page at each app's old apex
   path (`src/app-redirects.ts`, written into the build by
   `scripts/write-apex-pages.ts`). Its `public/` carries the `CNAME` that
-  keeps the custom domain, and the `versions.json` the Tauri release workflow
-  writes.
+  keeps the custom domain, the `versions.json` the Tauri release workflow
+  writes, and `suggested_apps.json`, the SMART apps worth trying with a
+  Wildflower server, hand-edited, whose schema is
+  [`suggested-apps-core`](../../slices/suggested-apps-core/).
 
 ## Publishing
 
