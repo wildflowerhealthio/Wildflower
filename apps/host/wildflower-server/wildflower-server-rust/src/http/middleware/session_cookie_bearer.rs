@@ -357,8 +357,22 @@ mod tests {
             }
         }
 
-        /// A browser session's token, signed by the server's key, living `ttl`.
+        /// A browser session's token, signed by the server's key, living `ttl`,
+        /// under a standing Owner session stored for it.
         fn browser_session_token(&self, ttl: Duration) -> String {
+            use diesel::RunQueryDsl as _;
+            use std::sync::atomic::{AtomicUsize, Ordering};
+
+            static SESSIONS: AtomicUsize = AtomicUsize::new(0);
+            let sid = format!("session-{}", SESSIONS.fetch_add(1, Ordering::Relaxed));
+            diesel::sql_query(
+                "INSERT INTO browser_sessions (sid, kind, name, scopes, created_at, expires_at) \
+                 VALUES (?, 'owner', NULL, '[]', '2026-01-01 00:00:00+00:00', \
+                         '2099-01-01 00:00:00+00:00')",
+            )
+            .bind::<diesel::sql_types::Text, _>(&sid)
+            .execute(&mut self.pool.get().expect("connection"))
+            .expect("store the browser session");
             let key = SqliteGrantStore::new(self.pool.clone())
                 .expect("store")
                 .active_signing_key()
@@ -373,7 +387,7 @@ mod tests {
                     issuer: SERVER_ORIGIN,
                     audience: Some(SERVER_ORIGIN),
                     patient: None,
-                    sid: None,
+                    sid: Some(&sid),
                 },
             )
             .expect("mint")
@@ -898,16 +912,20 @@ mod tests {
     }
 
     /// Asking for the browser session without a live one presents no
-    /// session at all, never the FHIR web UI's: whether the Owner cookie is
-    /// missing or its session has ended, which is still cleared.
+    /// session at all, never the FHIR web UI's: whether the browser session
+    /// cookie is missing or its session has ended, which is still cleared.
     #[tokio::test]
     async fn asking_for_a_missing_browser_session_presents_none() {
         let authorization_server = AuthorizationServerFixture::new();
         let expired = authorization_server.browser_session_token(Duration::hours(-1));
         for (what, cookies, cleared) in [
-            ("no Owner cookie", "hfs_session=session-1".to_owned(), false),
             (
-                "an ended Owner session",
+                "no browser session cookie",
+                "hfs_session=session-1".to_owned(),
+                false,
+            ),
+            (
+                "an ended browser session",
                 format!("__Host-browser_session={expired}; hfs_session=session-1"),
                 true,
             ),
