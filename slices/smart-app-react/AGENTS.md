@@ -42,7 +42,9 @@ offers the same choices; this package re-exports its preset groups.
     every patient (`{ kind: 'all-patients' }`). `patientScopeOf` turns it
     into the `patientId: string | null` a `fhir-r4-react/smart` reader
     takes (`null` reads unscoped); `patientChoiceKeyOf` into one string,
-    distinct per choice, for a React key or a query key.
+    distinct per choice, for a React key, a query key, or `?patient=`
+    (`PATIENT_PARAM`), and `patientChoiceOfKey` back, for an app whose
+    router owns `?patient=` as a search param.
   - `usePatientChoice(launchPatientId)` — the choice the page reads under,
     `None` while the reader is choosing, with `choosePatient` and
     `changePatient`.
