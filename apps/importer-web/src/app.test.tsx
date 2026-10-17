@@ -175,7 +175,7 @@ describe('ImporterApp', () => {
 
   it('should open the bare path on the Import tab, in place of the bare path in history', async () => {
     // Arrange / Act
-    mount({})
+    const { historyLengthAtMount } = mount({})
 
     // Assert — the app owns the title, the Import | Anonymize tab strip (on
     // Import) and the subtitle for that tab; the picker below it is the slice's.
@@ -306,9 +306,6 @@ const IMPORT_SUBTITLE = 'Import FHIR records from a captured browsing session.'
 /** The Anonymize tab's subtitle. */
 const ANONYMIZE_SUBTITLE =
   'Replace every value in a capture with a pseudonym so its shape can be shared.'
-
-/** `window.history.length` as {@link mount} found it. */
-let historyLengthAtMount = 0
 
 /** The tab strip's link to `label`. */
 const tabLink = (label: string): HTMLElement => screen.getByRole('link', { name: label })
@@ -481,12 +478,14 @@ const recordingServer = (
               responseEntries.push({ response: { status: '400 Bad Request' } })
               continue
             }
-            const entryUrl = `${SERVER_URL}/${entryReq.url}`
+            // An entry's url is base-relative and may carry a query (a
+            // search): recorded split, as an unbatched request is.
+            const [entryPath, entryQuery = ''] = entryReq.url.split('?', 2)
             const entryBody = entry.resource === undefined ? '' : JSON.stringify(entry.resource)
             recorded.push({
               method: entryReq.method,
-              url: entryUrl,
-              urlParams: {},
+              url: `${SERVER_URL}/${entryPath}`,
+              urlParams: Object.fromEntries(new URLSearchParams(entryQuery)),
               authorization,
               body: entryBody,
             })
@@ -567,6 +566,12 @@ const safeParseBundle = (body: string): RecordedBundleShape | undefined => {
   return parsed
 }
 
+/** What {@link mount} hands the test. */
+interface MountedApp {
+  /** `window.history.length` as the mount found it. */
+  readonly historyLengthAtMount: number
+}
+
 /**
  * Mount the app through the **real** `buildSmartRouterContext`, so the URL
  * prefixing and the bearer header under test are the production ones, at
@@ -575,14 +580,15 @@ const safeParseBundle = (body: string): RecordedBundleShape | undefined => {
 const mount = (config: {
   readonly sourceFiles?: readonly ServerSourceFile[]
   readonly route?: string
-}): void => {
+}): MountedApp => {
   const page = pageAt(config.route ?? '')
-  historyLengthAtMount = window.history.length
+  const historyLengthAtMount = window.history.length
   const context = buildSmartRouterContext(
     { serverUrl: SERVER_URL, accessToken: ACCESS_TOKEN },
     recordingServer(config.sourceFiles ?? [])
   )
   render(<ImporterApp page={page} context={context} />)
+  return { historyLengthAtMount }
 }
 
 /** Drive the local-pick flow from an empty server all the way to a completed import. */
