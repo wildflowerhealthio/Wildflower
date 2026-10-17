@@ -414,6 +414,23 @@ impl GrantTx for FakeGrantTx<'_> {
         )
     }
 
+    fn touch_browser_session_last_seen(
+        &mut self,
+        sid: &str,
+        seen_at: DateTime<Utc>,
+        seen_before: DateTime<Utc>,
+    ) -> Result<bool, AuthorizationServerError> {
+        Ok(
+            match self.store.browser_sessions.borrow_mut().get_mut(sid) {
+                Some(session) if session.last_seen_at <= seen_before => {
+                    session.last_seen_at = seen_at;
+                    true
+                }
+                _ => false,
+            },
+        )
+    }
+
     fn delete_browser_sessions_ended_before(
         &mut self,
         cutoff: DateTime<Utc>,

@@ -180,6 +180,7 @@ mod tests {
             created_at: expires_at - Duration::hours(8),
             expires_at,
             revoked_at: None,
+            last_seen_at: expires_at - Duration::hours(8),
         }
     }
 

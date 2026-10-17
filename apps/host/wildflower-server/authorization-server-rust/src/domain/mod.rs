@@ -54,6 +54,9 @@ pub mod authorization_server_error;
 // disabled.
 pub(crate) mod essential_client_guard;
 pub mod grant;
+// The in-memory gate on how often a browser session's cookie use moves its
+// `last_seen_at`.
+pub(crate) mod last_seen_throttle;
 // The SMART App Launch contexts a launch mints and `/oauth/authorize` consumes.
 pub mod launch_context;
 // The closed set of OAuth error codes (RFC 6749 §5.2 + the redirect/device

@@ -19,6 +19,11 @@ use crate::db::shared::JsonStrings;
 /// the tokens that may still name it.
 pub(crate) const LONGEST_BROWSER_SESSION_TTL: Duration = Duration::hours(24);
 
+/// How finely a session's cookie use moves its `last_seen_at`: at most once
+/// every five minutes, so a page load, which sends many requests, writes at
+/// most once.
+pub(crate) const LAST_SEEN_RESOLUTION: Duration = Duration::minutes(5);
+
 /// How a browser came to hold its session. The wire string, stored in the
 /// `kind` column, is the lowercased variant name.
 #[derive(
@@ -57,6 +62,10 @@ pub struct BrowserSession {
     /// When the session was revoked, ending everything it minted; `None`
     /// while it stands.
     pub revoked_at: Option<DateTime<Utc>>,
+    /// When the session was last seen in use: its sign-in, then the server
+    /// accepting its cookie (at most once every [`LAST_SEEN_RESOLUTION`])
+    /// and a refresh-token family that names it rotating.
+    pub last_seen_at: DateTime<Utc>,
 }
 
 impl BrowserSession {
@@ -72,6 +81,7 @@ impl BrowserSession {
             created_at: now,
             expires_at: now + ttl,
             revoked_at: None,
+            last_seen_at: now,
         }
     }
 
@@ -93,6 +103,7 @@ impl BrowserSession {
             created_at: now,
             expires_at: now + ttl,
             revoked_at: None,
+            last_seen_at: now,
         }
     }
 }
@@ -111,6 +122,7 @@ mod tests {
         assert_eq!(session.name, None);
         assert_eq!(session.expires_at - session.created_at, Duration::hours(8));
         assert_eq!(session.revoked_at, None);
+        assert_eq!(session.last_seen_at, now, "signing in is a use");
         assert_ne!(
             session.sid,
             BrowserSession::new_owner(vec![], Duration::hours(8), now).sid,

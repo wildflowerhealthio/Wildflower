@@ -366,6 +366,20 @@ pub trait GrantTx {
         now: DateTime<Utc>,
     ) -> Result<bool, AuthorizationServerError>;
 
+    /// Move the browser session `sid`'s `last_seen_at` to `seen_at`, unless
+    /// it was last seen after `seen_before`, returning `true` iff it
+    /// moved. A `sid` with no row moves nothing.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the update fails.
+    fn touch_browser_session_last_seen(
+        &mut self,
+        sid: &str,
+        seen_at: DateTime<Utc>,
+        seen_before: DateTime<Utc>,
+    ) -> Result<bool, AuthorizationServerError>;
+
     // ----- retention ------------------------------------------------------
     //
     // The three reclaiming deletes, each taking an already-computed *cutoff*

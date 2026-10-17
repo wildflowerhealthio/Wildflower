@@ -100,7 +100,7 @@ async fn revoking_a_session_stops_its_authorization_and_fhir_requests() {
 
 /// An app authorized from a browser signed in as the Owner is issued its code,
 /// tokens and refresh family under that browser's session: they all name its
-/// `sid`, and once the session is revoked the family can't be refreshed and
+/// `sid`, its refresh marks the session seen, and once the session is revoked the family can't be refreshed and
 /// the app's access token is refused.
 #[tokio::test]
 async fn an_app_authorized_in_a_session_is_ended_with_it() {
@@ -177,9 +177,19 @@ async fn an_app_authorized_in_a_session_is_ended_with_it() {
             ),
         )
     };
+    let refreshed_at = Utc::now();
     let res = refresh(refresh_token.to_owned()).await;
     assert_eq!(res.status(), StatusCode::OK);
     let refreshed = body_json(res.into_body()).await;
+    let last_seen_at = store_handle(&db)
+        .browser_session_by_sid(&sid)
+        .expect("read")
+        .expect("stored")
+        .last_seen_at;
+    assert!(
+        last_seen_at >= refreshed_at,
+        "the app refreshing marks the session seen, at {last_seen_at}"
+    );
     assert_eq!(
         sid_of(refreshed["access_token"].as_str().expect("access token")),
         sid,

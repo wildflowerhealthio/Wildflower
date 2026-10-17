@@ -1,4 +1,6 @@
-//! The session bindings — the [`TokenVerifier`] both authN gates run, and the
+//! The session bindings — the [`TokenVerifier`] both authN gates run, the
+//! [`BrowserSessionUseRecorder`] the host's cookie→bearer layer records a
+//! browser session's cookie use through, and the
 //! authenticated-only [`SessionEnder`] / [`SessionReader`] the `/authorization`
 //! self-service handlers acquire through `Authenticated<…>`, over the concrete
 //! runtime types. See the [module docs](super) for the binding seam.
@@ -10,7 +12,9 @@ use wildflowerhealthio_scope_capabilities::AuthenticatedCapability;
 use super::state::AuthorizationServerState;
 use super::FromState;
 use crate::db::SqliteGrantStore;
-use crate::domain::capabilities::session::{SessionEnder, SessionReader, TokenVerifier};
+use crate::domain::capabilities::session::{
+    BrowserSessionUseRecorder, SessionEnder, SessionReader, TokenVerifier,
+};
 use crate::domain::token::VerifiedClaims;
 
 /// Verify presented access tokens — built by the two authN gates.
@@ -23,6 +27,17 @@ impl FromState for LiveTokenVerifier {
             state.revocation_check(),
             state.server_origin.clone(),
         )
+    }
+}
+
+/// Record a browser session's cookie use — built by
+/// [`record_browser_session_cookie_use`](crate::record_browser_session_cookie_use),
+/// which the host's cookie→bearer layer calls once it accepts the cookie.
+pub(crate) type LiveBrowserSessionUseRecorder = BrowserSessionUseRecorder<SqliteGrantStore>;
+
+impl FromState for LiveBrowserSessionUseRecorder {
+    fn from_state(state: &Arc<AuthorizationServerState>) -> Self {
+        BrowserSessionUseRecorder::new(state.store.clone(), state.last_seen_throttle.clone())
     }
 }
 

@@ -36,6 +36,7 @@ use wildflowerhealthio_scopes::{
 use wildflowerhealthio_token_revocation::RevocationStore;
 
 use crate::domain::browser_session::LONGEST_BROWSER_SESSION_TTL;
+use crate::domain::last_seen_throttle::LastSeenThrottle;
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
 use crate::domain::sign_in_redirect::SignInDestinations;
 
@@ -65,9 +66,9 @@ pub use domain::{GrantStore, GrantTx};
 pub use domain::capabilities::grantable_admin_scopes;
 pub use http::{
     authorization_server_auth_middleware, browser_session_clearing_set_cookie,
-    browser_session_has_ended, client_allowed_scopes, ensure_bearer_header,
-    AuthorizationServerAuthMiddleware, AuthorizationServerState, BROWSER_SESSION_COOKIE,
-    BROWSER_SESSION_HEADER_VALUE, SESSION_HEADER,
+    client_allowed_scopes, ensure_bearer_header, record_browser_session_cookie_use,
+    standing_browser_session, AuthorizationServerAuthMiddleware, AuthorizationServerState,
+    BROWSER_SESSION_COOKIE, BROWSER_SESSION_HEADER_VALUE, SESSION_HEADER,
 };
 pub use live_bindings::{
     InProcessTokenVerifier, LaunchContextMinter, PendingConsentWatcher, SameDeviceSignInCodeMinter,
@@ -293,6 +294,7 @@ pub fn setup_authorization_server(
             config.authorization_url.clone(),
         )),
         authorization_start_gate,
+        last_seen_throttle: Arc::new(LastSeenThrottle::new()),
     });
     // Seed the newest pending consent from SQLite so a request that was
     // pending across an app restart is reported in the run's first detail —

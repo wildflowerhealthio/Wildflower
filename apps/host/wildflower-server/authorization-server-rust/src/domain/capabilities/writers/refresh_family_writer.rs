@@ -15,7 +15,7 @@ use crate::domain::refresh_token::{
     REFRESH_TOKEN_FAMILY_TTL,
 };
 use crate::domain::token_exchange_error::{InvalidGrantReason, TokenExchangeError};
-use crate::domain::GrantStore;
+use crate::domain::{GrantStore, GrantTx as _};
 
 /// Issue and rotate refresh tokens. A borrowed view over the store; the gate is
 /// the redemption proof each method takes.
@@ -77,7 +77,9 @@ impl<'a, S: GrantStore> RefreshFamilyWriter<'a, S> {
     /// its own; the successor insert is ordered after it, so a failure of the
     /// insert leaves the presented token spent with no successor (a failed
     /// rotation the client recovers from by re-authorizing), never a usable
-    /// extra token.
+    /// extra token. A family made under a browser session moves that
+    /// session's `last_seen_at` to `now` in the successor's transaction: an
+    /// app refreshing is the session in use.
     ///
     /// # Errors
     ///
@@ -95,11 +97,17 @@ impl<'a, S: GrantStore> RefreshFamilyWriter<'a, S> {
         match consume_refresh_token(self.store, validated_refresh_token.presented_hash(), now)? {
             RefreshTokenConsumeOutcome::Consumed => {
                 let successor = generate_refresh_token();
-                self.store.insert_refresh_token(&RefreshToken {
-                    token_hash: token_storage_hash(&successor),
-                    family_id: validated_refresh_token.family_id().to_owned(),
-                    issued_at: now,
-                    consumed_at: None,
+                self.store.transaction(|tx| {
+                    tx.insert_refresh_token(&RefreshToken {
+                        token_hash: token_storage_hash(&successor),
+                        family_id: validated_refresh_token.family_id().to_owned(),
+                        issued_at: now,
+                        consumed_at: None,
+                    })?;
+                    if let Some(sid) = validated_refresh_token.sid() {
+                        tx.touch_browser_session_last_seen(sid, now, now)?;
+                    }
+                    Ok(())
                 })?;
                 Ok(successor)
             }
@@ -174,6 +182,65 @@ mod tests {
         let client = authenticated_public_client(store, client("client", &["openid"]));
         ValidatedRefreshToken::validate(store, &NothingRevoked, &client, plaintext, Utc::now())
             .unwrap()
+    }
+
+    /// Rotating a family made under a browser session moves the session's
+    /// `last_seen_at` to the rotation's instant; a family with no session
+    /// touches none.
+    #[test]
+    fn rotate_marks_the_family_s_browser_session_seen() {
+        use crate::domain::browser_session::BrowserSession;
+
+        let store = FakeGrantStore::default();
+        let writer = RefreshFamilyWriter::over(&store);
+        let signed_in_at = Utc::now() - chrono::Duration::hours(1);
+        let session = BrowserSession::new_owner(vec![], chrono::Duration::hours(8), signed_in_at);
+        store.insert_browser_session(&session).unwrap();
+        for (family_id, sid) in [("under-session", Some(&session.sid)), ("no-session", None)] {
+            store
+                .insert_refresh_token_family_row(&RefreshTokenFamily {
+                    family_id: family_id.to_owned(),
+                    client_id: "client".to_owned(),
+                    scopes: vec!["offline_access".to_owned()],
+                    patient: None,
+                    issued_at: signed_in_at,
+                    expires_at: signed_in_at + REFRESH_TOKEN_FAMILY_TTL,
+                    authorization_code_hash: None,
+                    grant_id: None,
+                    sid: sid.cloned(),
+                })
+                .unwrap();
+            store
+                .insert_refresh_token(&RefreshToken {
+                    token_hash: token_storage_hash(family_id),
+                    family_id: family_id.to_owned(),
+                    issued_at: signed_in_at,
+                    consumed_at: None,
+                })
+                .unwrap();
+        }
+        let last_seen = || {
+            store
+                .browser_session_by_sid(&session.sid)
+                .unwrap()
+                .unwrap()
+                .last_seen_at
+        };
+
+        let rotated_at = Utc::now();
+        writer
+            .rotate(&validated(&store, "no-session"), rotated_at)
+            .expect("rotates");
+        assert_eq!(
+            last_seen(),
+            signed_in_at,
+            "a family with no session touches none"
+        );
+
+        writer
+            .rotate(&validated(&store, "under-session"), rotated_at)
+            .expect("rotates");
+        assert_eq!(last_seen(), rotated_at);
     }
 
     /// Rotation consumes the presented token and issues a live successor in the

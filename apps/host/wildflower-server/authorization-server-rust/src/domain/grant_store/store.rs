@@ -373,6 +373,20 @@ pub trait GrantStore {
         self.with_connection(|tx| tx.revoke_browser_session(sid, now))
     }
 
+    /// See [`GrantTx::touch_browser_session_last_seen`].
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`GrantTx::touch_browser_session_last_seen`]'s error.
+    fn touch_browser_session_last_seen(
+        &self,
+        sid: &str,
+        seen_at: DateTime<Utc>,
+        seen_before: DateTime<Utc>,
+    ) -> Result<bool, AuthorizationServerError> {
+        self.with_connection(|tx| tx.touch_browser_session_last_seen(sid, seen_at, seen_before))
+    }
+
     /// See [`GrantTx::insert_refresh_token_family_row`].
     ///
     /// # Errors

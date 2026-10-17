@@ -22,6 +22,7 @@ use wildflowerhealthio_token_revocation::RevocationStore;
 
 use crate::db::SqliteGrantStore;
 use crate::domain::essential_client_guard::EssentialClientGuard;
+use crate::domain::last_seen_throttle::LastSeenThrottle;
 use crate::domain::pending_consent::NewestPendingConsent;
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
 use crate::domain::sign_in_redirect::SignInDestinations;
@@ -107,6 +108,10 @@ pub struct AuthorizationServerState {
     /// `/oauth/authorize` and `/oauth/device_authorization` for each request
     /// that carries no live browser session.
     pub(crate) authorization_start_gate: Arc<dyn AuthorizationStartGate>,
+    /// Which browser sessions' cookie use moved their `last_seen_at` within
+    /// the last [`LAST_SEEN_RESOLUTION`](crate::domain::browser_session::LAST_SEEN_RESOLUTION),
+    /// so the rest of a page load's requests write nothing.
+    pub(crate) last_seen_throttle: Arc<LastSeenThrottle>,
 }
 
 impl AuthorizationServerState {

@@ -6,11 +6,13 @@
 //! token's `jti`, the browser-session client's subject, or the browser
 //! session, does.
 //!
-//! The authorization server sets it, and says whether the session it holds has
-//! ended. The host's cookie→bearer layer (`wildflower-server-rust`'s
-//! `session_cookie_bearer`) reads it back on requests from the server's own
-//! pages: it presents a live session's token as the request's bearer, so the
-//! bearer gates check it like any other token, and clears an ended one.
+//! The authorization server sets it, says whether the session it holds still
+//! stands, and records the cookie's use. The host's cookie→bearer layer
+//! (`wildflower-server-rust`'s `session_cookie_bearer`) reads it back on
+//! requests from the server's own pages: it presents a standing session's
+//! token as the request's bearer, so the bearer gates check it like any other
+//! token, records the use, which moves the session's `last_seen_at`, and
+//! clears an ended one.
 //! `/oauth/authorize` reads it too, on the navigation a client starts, to send
 //! a browser signed in as the Owner to the consent card rather than the wait
 //! page, and to issue the request's code under that browser session.
@@ -25,10 +27,11 @@
 use std::sync::Arc;
 
 use axum::http::{header, HeaderMap};
-use chrono::Duration;
+use chrono::{DateTime, Duration, Utc};
 use cookie::Cookie;
 use wildflowerhealthio_scope_capabilities::GrantedScopes as _;
 
+use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::access::consents::{
     consent_decider_scopes, consent_reader_scopes,
 };
@@ -36,7 +39,7 @@ use crate::domain::capabilities::session::TokenVerifier;
 use crate::domain::token::{VerifiedClaims, VerifyError};
 use crate::domain::GrantStore;
 use crate::http::state::AuthorizationServerState;
-use crate::live_bindings::{FromState, LiveTokenVerifier};
+use crate::live_bindings::{FromState, LiveBrowserSessionUseRecorder, LiveTokenVerifier};
 use crate::BROWSER_SESSION_CLIENT_ID;
 
 /// The browser session cookie. The `__Host-` prefix holds a browser to
@@ -79,28 +82,45 @@ fn browser_session_cookie(value: &str, max_age_seconds: i64) -> String {
     )
 }
 
-/// Whether the session a browser session cookie holds has ended: the gates
-/// would refuse `session_token` as a bad, expired or revoked token (by its
-/// `jti`, its subject or its browser session), checked by the same
-/// [`TokenVerifier`] the gates run, or it is no browser session's token at
-/// all.
+/// The verified claims of the browser session a browser session cookie holds,
+/// or `None` once the session has ended: the gates would refuse
+/// `session_token` as a bad, expired or revoked token (by its `jti`, its
+/// subject or its browser session), checked by the same [`TokenVerifier`] the
+/// gates run, or it is no browser session's token at all. Their `sid` names
+/// the browser session.
 ///
 /// # Errors
 ///
 /// The server-side [`VerifyError`]s, when a key, revocation or browser-session
 /// store can't be read, so the session can't be checked.
-pub fn browser_session_has_ended(
+pub fn standing_browser_session(
     state: &Arc<AuthorizationServerState>,
     session_token: &str,
-) -> Result<bool, VerifyError> {
-    Ok(standing_session_claims(&LiveTokenVerifier::from_state(state), session_token)?.is_none())
+) -> Result<Option<VerifiedClaims>, VerifyError> {
+    standing_session_claims(&LiveTokenVerifier::from_state(state), session_token)
+}
+
+/// Record that the host accepted, at `now`, the cookie holding the browser
+/// session `session_claims` name (see [`standing_browser_session`]): the
+/// session's `last_seen_at` moves to `now`, at most once every five minutes per
+/// session. An in-memory throttle answers most calls, so they write nothing.
+///
+/// # Errors
+///
+/// [`AuthorizationServerError::Infrastructure`] when the update fails.
+pub fn record_browser_session_cookie_use(
+    state: &Arc<AuthorizationServerState>,
+    session_claims: &VerifiedClaims,
+    now: DateTime<Utc>,
+) -> Result<(), AuthorizationServerError> {
+    LiveBrowserSessionUseRecorder::from_state(state).record_cookie_use(session_claims, now)
 }
 
 /// The verified claims of the browser session `headers` carry, when the
 /// browser that sent them is signed in: its cookie holds a browser session's
 /// token the gates would accept. Its `sid` names the browser session. `None`
 /// when there is no cookie or its session has ended (see
-/// [`browser_session_has_ended`]).
+/// [`standing_browser_session`]).
 ///
 /// # Errors
 ///
