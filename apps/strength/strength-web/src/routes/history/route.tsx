@@ -5,9 +5,10 @@ import { WorkoutHistoryView } from '@wildflowerhealthio/strength-react'
 import { Effect } from 'effect'
 import type { JSX } from 'react'
 
+import { useReadPatient } from '../-chosen-patient.ts'
 import { UnreadableNotice } from '../../record/unreadable-notice.tsx'
 import { readWorkoutHistory, type WorkoutHistory } from '../../record/workout-history.ts'
-import { useChosenPatient, useSmartClient } from '../../router-context.ts'
+import { useStrengthContext } from '../../router-context.ts'
 import { strengthKeyOf } from '../../session/strength-session.ts'
 
 /** What the History tab shows: whose history it names, and its read. */
@@ -23,8 +24,8 @@ interface WorkoutHistoryRead {
  * "All patients", every patient's, read unscoped.
  */
 const useWorkoutHistory = (): WorkoutHistoryRead => {
-  const client = useSmartClient()
-  const patientChoice = useChosenPatient()
+  const { client } = useStrengthContext()
+  const patientChoice = useReadPatient()
   const patientScope = patientScopeOf(patientChoice)
   const workoutHistory = useQuery({
     queryKey: [...strengthKeyOf(patientScope), 'history'],

@@ -6,13 +6,9 @@ import { type JSX, useMemo } from 'react'
 
 import { TrainingRecordNotices } from '../record/training-record-notices.tsx'
 import { readTrainingRecord, type TrainingRecord } from '../record/training-record.ts'
-import {
-  useChangePatient,
-  useChosenPatient,
-  useRunAuthed,
-  useSmartClient,
-} from '../router-context.ts'
+import { useStrengthContext } from '../router-context.ts'
 import { strengthKeyOf, type StrengthSession } from '../session/strength-session.ts'
+import { useChangePatient, useReadPatient } from './-chosen-patient.ts'
 
 /** What a lifter's tab is drawn over: what it writes through, and what it shows. */
 interface LifterRecord {
@@ -35,9 +31,8 @@ type LifterRecordRead =
  * patients, who have no lifter.
  */
 const useLifterRecord = (): LifterRecordRead => {
-  const client = useSmartClient()
-  const runAuthed = useRunAuthed()
-  const patientChoice = useChosenPatient()
+  const { client, runAuthed } = useStrengthContext()
+  const patientChoice = useReadPatient()
   const patientId = patientChoice.kind === 'patient' ? patientChoice.patientId : null
   const session = useMemo(
     (): StrengthSession | null => (patientId === null ? null : { client, patientId, runAuthed }),

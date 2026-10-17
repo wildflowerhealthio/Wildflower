@@ -1,18 +1,22 @@
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type * as FhirR4ReactSmart from '@wildflowerhealthio/fhir-r4-react/smart'
 import type { SmartHandshake } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { type FakeFhirServer, resourceTypeOfQuery } from './fake-fhir-server.test-helpers.ts'
+import type * as RouterModule from './router.ts'
 import {
   BASEPATH,
+  currentRoute,
   END_TO_END_TIMEOUT_MILLIS,
   endStrengthTest,
+  openTestPage,
   PATIENT_ID,
   renderWithQueryClient,
   seedStartedLifter,
   startStrengthTest,
+  tabLink,
 } from './strength-app.test-helpers.ts'
 
 const { handshakeMock } = vi.hoisted(() => ({
@@ -24,7 +28,15 @@ vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async (importOriginal) => ({
   useLaunchFailureRedirect: (): void => undefined,
 }))
 
+// The router builder, spied on, so a test can tell the router outlives a
+// patient change.
+vi.mock('./router.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof RouterModule>()
+  return { buildRouter: vi.fn(actual.buildRouter) }
+})
+
 const { App } = await import('./app.tsx')
+const { buildRouter } = await import('./router.ts')
 
 /**
  * `App`: the patient chosen — the URL's, the launch's, or the picker's —
@@ -44,6 +56,7 @@ beforeEach(() => {
 afterEach(() => {
   endStrengthTest()
   handshakeMock.mockReset()
+  vi.mocked(buildRouter).mockClear()
 })
 
 describe('App', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
@@ -52,7 +65,7 @@ describe('App', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
     handshakeMock.mockReturnValue({ kind: 'ready', client: server.clientFor(null) })
 
     // Act
-    renderWithQueryClient(<App basepath={BASEPATH} />)
+    renderWithQueryClient(<App page={openTestPage()} />)
 
     // Assert — only patients are searched
     expect(await screen.findByRole('button', { name: /Ada Lovelace/ })).toBeDefined()
@@ -66,7 +79,7 @@ describe('App', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
     const user = userEvent.setup()
     seedStartedLifter(server)
     handshakeMock.mockReturnValue({ kind: 'ready', client: server.clientFor(null) })
-    renderWithQueryClient(<App basepath={BASEPATH} />)
+    renderWithQueryClient(<App page={openTestPage()} />)
 
     // Act
     await user.click(await screen.findByRole('button', { name: /Ada Lovelace/ }))
@@ -81,7 +94,7 @@ describe('App', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
     const user = userEvent.setup()
     seedStartedLifter(server)
     handshakeMock.mockReturnValue({ kind: 'ready', client: server.clientFor(PATIENT_ID) })
-    renderWithQueryClient(<App basepath={BASEPATH} />)
+    renderWithQueryClient(<App page={openTestPage()} />)
     await screen.findByRole('heading', { name: 'Workout A' })
 
     // Act
@@ -91,13 +104,58 @@ describe('App', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
     expect(await screen.findByRole('heading', { name: 'Choose a patient' })).toBeDefined()
   })
 
+  it('should open History on a change to All patients from Today, in the same router', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    seedStartedLifter(server)
+    handshakeMock.mockReturnValue({ kind: 'ready', client: server.clientFor(PATIENT_ID) })
+    renderWithQueryClient(<App page={openTestPage()} />)
+    await screen.findByRole('heading', { name: 'Workout A' })
+    const routersBuilt = vi.mocked(buildRouter).mock.calls.length
+
+    // Act
+    await user.click(screen.getByRole('button', { name: 'Change patient' }))
+    await user.click(await screen.findByRole('button', { name: /All patients/ }))
+
+    // Assert — History, not Today's "Choose a patient" card, and no new router
+    await waitFor(() => {
+      expect(currentRoute()).toBe('history')
+    })
+    expect(new URLSearchParams(window.location.search).get('patient')).toBe('*')
+    expect(tabLink('History').getAttribute('aria-current')).toBe('page')
+    expect(screen.queryByText('Choose a patient to train')).toBeNull()
+    expect(vi.mocked(buildRouter).mock.calls).toHaveLength(routersBuilt)
+  })
+
+  it('should return to the lifter’s Today on Back from a patient change', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    seedStartedLifter(server)
+    handshakeMock.mockReturnValue({ kind: 'ready', client: server.clientFor(PATIENT_ID) })
+    renderWithQueryClient(<App page={openTestPage()} />)
+    await screen.findByRole('heading', { name: 'Workout A' })
+    await user.click(screen.getByRole('button', { name: 'Change patient' }))
+    await user.click(await screen.findByRole('button', { name: /All patients/ }))
+    await waitFor(() => {
+      expect(currentRoute()).toBe('history')
+    })
+
+    // Act
+    window.history.back()
+
+    // Assert
+    expect(await screen.findByRole('heading', { name: 'Workout A' })).toBeDefined()
+    expect(currentRoute()).toBe('today')
+    expect(screen.getByText('Ada Lovelace · born 1990-01-01')).toBeDefined()
+  })
+
   it('should mount the lifting screens for the patient the launch names', async () => {
     // Arrange
     seedStartedLifter(server)
     handshakeMock.mockReturnValue({ kind: 'ready', client: server.clientFor(PATIENT_ID) })
 
     // Act
-    renderWithQueryClient(<App basepath={BASEPATH} />)
+    renderWithQueryClient(<App page={openTestPage()} />)
 
     // Assert
     expect(await screen.findByRole('heading', { name: 'Workout A' })).toBeDefined()

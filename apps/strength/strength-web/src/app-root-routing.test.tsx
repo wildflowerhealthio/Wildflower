@@ -1,15 +1,12 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { TELEMETRY_CONSENT_COPY } from '@wildflowerhealthio/branding-core'
+import { stubRouteTabsBrowserApis } from '@wildflowerhealthio/react-tundraish/test-helpers'
 import { writeConsent } from '@wildflowerhealthio/telemetry-core'
 import type * as TelemetryWeb from '@wildflowerhealthio/telemetry-web'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { AppRoot } from './app-root.tsx'
-import {
-  BASEPATH,
-  restorePageBrowserApis,
-  stubPageBrowserApis,
-} from './strength-app.test-helpers.ts'
+import { BASEPATH, openTestPage } from './strength-app.test-helpers.ts'
 
 // The real app root, app and router over the real URL, with fhirclient's
 // OAuth calls stubbed at the module boundary: `authorize` is the redirect a
@@ -62,13 +59,13 @@ beforeEach(() => {
     performance: false,
     decidedAt: '2026-09-29T12:00:00.000Z',
   })
-  stubPageBrowserApis()
+  // `RouteTabs`'s browser APIs, put back as the test finishes.
+  return stubRouteTabsBrowserApis()
 })
 
 afterEach(() => {
   cleanup()
   window.localStorage.clear()
-  restorePageBrowserApis()
   authorizeMock.mockReset()
   readyMock.mockReset()
 })
@@ -84,7 +81,7 @@ describe('AppRoot over the address bar', () => {
     window.history.replaceState(null, '', launchUrl)
 
     // Act
-    render(<AppRoot basepath={BASEPATH} />)
+    render(<AppRoot page={openTestPage()} />)
 
     // Assert
     await waitFor(() => {
@@ -110,7 +107,7 @@ describe('AppRoot over the address bar', () => {
     )
     const callbackUrl = `${BASEPATH}?code=abc&state=xyz`
     window.history.replaceState(null, '', callbackUrl)
-    render(<AppRoot basepath={BASEPATH} />)
+    render(<AppRoot page={openTestPage()} />)
     await waitFor(() => {
       expect(readyMock).toHaveBeenCalledTimes(1)
     })

@@ -4,7 +4,7 @@ import { Array as Arr, Match } from 'effect'
 import type { JSX } from 'react'
 
 import { LifterTab } from '../-lifter-tab.tsx'
-import { useStrongLiftsPlanDefinitionId } from '../../router-context.ts'
+import { useStrengthContext } from '../../router-context.ts'
 import { StartProgram } from '../../start-program/start-program.tsx'
 import { WorkoutDue } from './-workout-due.tsx'
 
@@ -13,7 +13,7 @@ import { WorkoutDue } from './-workout-due.tsx'
  * none, a start of the StrongLifts 5×5 template at its starting loads.
  */
 function TodayTab(): JSX.Element {
-  const strongLiftsPlanDefinitionId = useStrongLiftsPlanDefinitionId()
+  const { strongLiftsPlanDefinitionIdFor } = useStrengthContext()
   return (
     <LifterTab>
       {({ session, trainingRecord }) =>
@@ -29,7 +29,9 @@ function TodayTab(): JSX.Element {
             <StartProgram
               session={session}
               trainingPlanDefinitions={Arr.of(
-                StrongLifts5x5.trainingPlanDefinition(strongLiftsPlanDefinitionId)
+                StrongLifts5x5.trainingPlanDefinition(
+                  strongLiftsPlanDefinitionIdFor(session.patientId)
+                )
               )}
               storesTrainingPlanDefinition
               suggestedStartingLoads={StrongLifts5x5.STARTING_LOADS}

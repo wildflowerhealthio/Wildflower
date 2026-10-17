@@ -10,6 +10,7 @@ import {
   searchParamsOf,
 } from '../fake-fhir-server.test-helpers.ts'
 import {
+  BASEPATH,
   currentRoute,
   END_TO_END_TIMEOUT_MILLIS,
   endStrengthTest,
@@ -65,17 +66,17 @@ describe('StrengthPage', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
   })
 
   it.each([
-    { case: 'a lifter', patientChoice: { kind: 'patient', patientId: PATIENT_ID }, tab: 'today' },
-    { case: 'All patients', patientChoice: { kind: 'all-patients' }, tab: 'history' },
+    { case: 'a lifter', route: '', tab: 'today' },
+    { case: 'All patients', route: '?patient=*', tab: 'history' },
   ] as const)(
     'should open the bare app path on $tab for $case, in its place in history',
-    async ({ patientChoice, tab }) => {
+    async ({ route, tab }) => {
       // Arrange
       seedStartedLifter(server)
       const historyLength = window.history.length
 
       // Act
-      mountStrengthApp(server, { patientChoice })
+      mountStrengthApp(server, { route })
 
       // Assert
       await waitFor(() => {
@@ -105,6 +106,51 @@ describe('StrengthPage', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
     expect(new URLSearchParams(window.location.search).get('patient')).toBe(PATIENT_ID)
   })
 
+  it('should read a numeric-looking ?patient= as the id it is, and keep it across tabs', async () => {
+    // Arrange — `1.50` reads as the number 1.5 under a JSON search parser
+    const user = userEvent.setup()
+    mountStrengthApp(server, { launchPatientId: null, route: 'today?patient=1.50' })
+    await screen.findByRole('button', { name: 'Start program' })
+
+    // Act
+    await user.click(tabLink('History'))
+
+    // Assert — every scoped search named `1.50`, and the address bar still does
+    await waitFor(() => {
+      expect(currentRoute()).toBe('history')
+    })
+    expect(window.location.search).toBe('?patient=1.50')
+    const scopedPatients = new Set(
+      server.searches.flatMap((query) => searchParamsOf(query).getAll('patient'))
+    )
+    expect([...scopedPatients]).toEqual(['1.50'])
+  })
+
+  it('should keep only ?patient= on the tab links', async () => {
+    // Act
+    mountStrengthApp(server, { route: `today?patient=${PATIENT_ID}&stray=1` })
+
+    // Assert
+    await screen.findByRole('button', { name: 'Start program' })
+    expect(tabLink('History').getAttribute('href')).toBe(`${BASEPATH}history?patient=${PATIENT_ID}`)
+  })
+
+  it('should show the not-found card for a path no tab names, opening the first tab from it', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    mountStrengthApp(server, { route: 'nowhere' })
+    expect(await screen.findByText('Strength has no page at /nowhere.')).toBeDefined()
+
+    // Act
+    await user.click(screen.getByRole('button', { name: 'Open Strength' }))
+
+    // Assert
+    await waitFor(() => {
+      expect(currentRoute()).toBe('today')
+    })
+    expect(screen.queryByText('Strength has no page at /nowhere.')).toBeNull()
+  })
+
   it('should name the lifter under the title', async () => {
     // Act
     mountStrengthApp(server)
@@ -120,7 +166,7 @@ describe('StrengthPage', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
     seedWorkout(server, { squat: [5, 5, 5, 5, 5], 'bench-press': [5, 5, 5, 5, 5] })
 
     // Act
-    mountStrengthApp(server, { patientChoice: { kind: 'all-patients' } })
+    mountStrengthApp(server, { route: '?patient=*' })
 
     // Assert — the history is listed, and no search named a patient
     expect(await screen.findByText(/^Workout A · /)).toBeDefined()
@@ -136,7 +182,7 @@ describe('StrengthPage', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
       // Arrange
       const user = userEvent.setup()
       seedStartedLifter(server)
-      mountStrengthApp(server, { patientChoice: { kind: 'all-patients' } })
+      mountStrengthApp(server, { route: '?patient=*' })
 
       // Act
       await user.click(await screen.findByRole('link', { name: tabLabel }))
@@ -150,6 +196,19 @@ describe('StrengthPage', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
       expect(server.writes).toEqual([])
     }
   )
+
+  it('should open the patient picker from Today’s card with All patients', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    mountStrengthApp(server, { route: 'today?patient=*' })
+
+    // Act
+    await user.click(await screen.findByRole('button', { name: 'Choose a patient' }))
+
+    // Assert
+    expect(await screen.findByRole('heading', { name: 'Choose a patient' })).toBeDefined()
+    expect(currentRoute()).toBe('today')
+  })
 })
 
 /**

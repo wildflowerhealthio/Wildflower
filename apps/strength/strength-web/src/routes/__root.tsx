@@ -1,21 +1,36 @@
-import { createRootRouteWithContext, retainSearchParams } from '@tanstack/react-router'
+import { createRootRouteWithContext, retainSearchParams, useNavigate } from '@tanstack/react-router'
+import { useSubscribable } from '@wildflowerhealthio/react-kitchen-sink'
 import { RouteTabs } from '@wildflowerhealthio/react-tundraish'
-import { PatientChoiceLine } from '@wildflowerhealthio/smart-app-react'
-import type { JSX } from 'react'
-
 import {
-  type RouterContext,
-  useChangePatient,
-  useChosenPatient,
-  useSmartClient,
-} from '../router-context.ts'
+  PATIENT_PARAM,
+  PatientChoiceLine,
+  type PatientChoice,
+  patientChoiceKeyOf,
+  PatientPicker,
+  PatientSearch,
+} from '@wildflowerhealthio/smart-app-react'
+import { Match, Option, Schema } from 'effect'
+import { type JSX, useEffect } from 'react'
+
+import { type RouterContext, useStrengthContext } from '../router-context.ts'
+import type { SmartClient } from '../smart-client.ts'
+import { useChangePatient, useChosenPatient } from './-chosen-patient.ts'
+import { StrengthNotFound } from './-strength-not-found.tsx'
 import styles from './-strength-page.module.css'
 
+/** Props for {@link StrengthPage}. */
+interface StrengthPageProps {
+  readonly client: SmartClient
+  /** Whose record the page shows. */
+  readonly patientChoice: PatientChoice
+  /** Go back to the patient picker: the patient line's "Change patient". */
+  readonly onPatientChange: () => void
+}
+
 /**
- * The lifting page: its title, with whose record it is named under it, over
- * the tabs, each a child route the strip links to: Today, the workout due
- * (or a program's start); Plan, the program editor; History, the completed
- * workouts.
+ * The lifting page: whose record it is, over the tabs, each a child route
+ * the strip links to: Today, the workout due (or a program's start); Plan,
+ * the program editor; History, the completed workouts.
  *
  * @remarks
  * The app holds no lifting logic: reads go through `fhir-r4-react/smart`'s
@@ -29,20 +44,16 @@ import styles from './-strength-page.module.css'
  * History, every patient's workouts read unscoped; Today and Plan, which
  * write, ask for a patient instead.
  */
-function StrengthPage(): JSX.Element {
-  const client = useSmartClient()
-  const patientChoice = useChosenPatient()
-  const changePatient = useChangePatient()
+function StrengthPage({ client, patientChoice, onPatientChange }: StrengthPageProps): JSX.Element {
   return (
     <>
-      <header className={styles['strength-page__header']}>
-        <h1 className="text-heading-3">Strength</h1>
+      <div className={styles['strength-page__status']}>
         <PatientChoiceLine
           client={client}
           patientChoice={patientChoice}
-          onPatientChange={changePatient}
+          onPatientChange={onPatientChange}
         />
-      </header>
+      </div>
       <RouteTabs
         tabs={[
           { to: '/today', label: 'Today' },
@@ -55,17 +66,84 @@ function StrengthPage(): JSX.Element {
   )
 }
 
+/** What the root shows: the page for a patient, or the picker. */
+interface StrengthRootModel {
+  readonly client: SmartClient
+  /** Whose record the page shows; `None` while the picker is up. */
+  readonly shownPatient: Option.Option<PatientChoice>
+  /** Settle on `patientChoice`: the picker's `onPatientChoice`. */
+  readonly choosePatient: (patientChoice: PatientChoice) => void
+  /** Open the picker over the patient shown: the patient line's "Change patient". */
+  readonly changePatient: () => void
+}
+
 /**
- * The root route: the lifting page, each of whose tabs is a child route.
+ * The root's logic: whose record the address bar names, the picker the
+ * reader opened over it, and choosing.
  *
  * @remarks
- * Every navigation keeps the page's query: `?patient=`, which
- * `usePatientChoice` writes when the reader picks a patient, stays in the
- * address bar as the reader changes tabs.
+ * A choice navigates to `/`, pushing a history entry on the tab open, with
+ * `?patient=` naming it, and `/` opens the choice's first tab in its place:
+ * Back returns to the patient before (from the first choice, to the
+ * picker), and a reload or a shared link opens the patient the address bar
+ * names. "Change patient" only opens the picker, over the patient it was
+ * opened from; the address bar keeps that patient until another is chosen,
+ * and Back or Forward to an entry naming a different patient closes the
+ * picker on that patient's page.
+ */
+const useStrengthRoot = (): StrengthRootModel => {
+  const { client, patientChangingFrom } = useStrengthContext()
+  const chosenPatient = useChosenPatient()
+  const changePatient = useChangePatient()
+  const navigate = useNavigate()
+  const chosenKey = Option.getOrNull(Option.map(chosenPatient, patientChoiceKeyOf))
+  const changingFrom = useSubscribable(patientChangingFrom.subscribable)
+  useEffect(() => {
+    // The address bar has moved to another patient (Back, Forward): the
+    // picker closes for good, rather than reopening on a return to its entry.
+    if (changingFrom !== null && changingFrom !== chosenKey) patientChangingFrom.set(null)
+  }, [changingFrom, chosenKey, patientChangingFrom])
+  return {
+    client,
+    shownPatient: Option.filter(chosenPatient, () => changingFrom !== chosenKey),
+    choosePatient: (patientChoice) => {
+      patientChangingFrom.set(null)
+      void navigate({ to: '/', search: { [PATIENT_PARAM]: patientChoiceKeyOf(patientChoice) } })
+    },
+    changePatient,
+  }
+}
+
+/**
+ * The root route's page: the lifting page for the patient chosen, or, with
+ * none (or while the reader changes it), the patient picker.
+ */
+function StrengthRoot(): JSX.Element {
+  const { client, shownPatient, choosePatient, changePatient } = useStrengthRoot()
+  return Match.value({ patientChoice: Option.getOrUndefined(shownPatient) }).pipe(
+    Match.when({ patientChoice: Match.defined }, ({ patientChoice }): JSX.Element => (
+      <StrengthPage client={client} patientChoice={patientChoice} onPatientChange={changePatient} />
+    )),
+    Match.orElse((): JSX.Element => (
+      <PatientPicker client={client} onPatientChoice={choosePatient} />
+    ))
+  )
+}
+
+/**
+ * The root route: the patient picker or the lifting page, each of whose tabs
+ * is a child route, and in the tab panel for a path no tab names, the
+ * not-found card.
+ *
+ * @remarks
+ * Every navigation keeps `?patient=` (and only it), so changing tabs keeps
+ * the patient and each history entry names the patient it showed.
  */
 const Route = createRootRouteWithContext<RouterContext>()({
-  search: { middlewares: [retainSearchParams(true)] },
-  component: StrengthPage,
+  validateSearch: Schema.standardSchemaV1(PatientSearch),
+  search: { middlewares: [retainSearchParams([PATIENT_PARAM])] },
+  component: StrengthRoot,
+  notFoundComponent: StrengthNotFound,
 })
 
 export { Route }

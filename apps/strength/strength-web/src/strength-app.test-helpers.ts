@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { createBrowserHistory } from '@tanstack/react-router'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import type userEvent from '@testing-library/user-event'
-import { buildSmartRouterContext } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
   Observation,
@@ -9,7 +9,8 @@ import {
   Procedure,
   ServiceRequest,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import type { PatientChoice } from '@wildflowerhealthio/smart-app-react'
+import { stubRouteTabsBrowserApis } from '@wildflowerhealthio/react-tundraish/test-helpers'
+import type { SmartAppPage } from '@wildflowerhealthio/smart-app-react'
 import {
   ExerciseConcept,
   ExerciseRequest,
@@ -24,15 +25,13 @@ import {
 import { made } from '@wildflowerhealthio/strength-core-js/test-helpers'
 import { DateTime, Option, Schema } from 'effect'
 import { createElement, type ReactNode, StrictMode } from 'react'
-import { vi } from 'vite-plus/test'
+import { onTestFinished, vi } from 'vite-plus/test'
 
 import { StrengthRouter } from './app.tsx'
 import {
-  ACCESS_TOKEN,
   type FakeFhirServer,
   fakeFhirServer,
   resourceTypeOfWire,
-  SERVER_URL,
 } from './fake-fhir-server.test-helpers.ts'
 
 /**
@@ -60,8 +59,6 @@ const PATIENT_WIRE = {
   name: [{ given: ['Ada'], family: 'Lovelace' }],
   birthDate: '1990-01-01',
 }
-/** The lifter's choice, as `usePatientChoice` hands it over. */
-const LIFTER_CHOICE: PatientChoice = { kind: 'patient', patientId: PATIENT_ID }
 /** When every workout in these tests is submitted. */
 const SUBMITTED_AT = '2026-09-28T18:30:00.000Z'
 
@@ -80,48 +77,19 @@ const END_TO_END_TIMEOUT_MILLIS = 20_000
 /** The directory the app is served from in these tests. */
 const BASEPATH = '/strength/'
 
-/**
- * A `ResizeObserver` that never fires: jsdom has no layout, and nothing these
- * tests check hangs on a resize (the page's `RouteTabs` observes its strip).
- */
-class InertResizeObserver {
-  observe(): void {}
-  unobserve(): void {}
-  disconnect(): void {}
-}
-
-/** `Element.scrollTo` as it was before each test, which jsdom leaves undefined. */
-const scrollToDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTo')
-
-/**
- * Stub the browser APIs the page's router and `RouteTabs` read that jsdom
- * lacks (`window.scrollTo`, which the router resets the scroll with on each
- * navigation, `ResizeObserver`, `matchMedia`, `Element.scrollTo`); undone by
- * {@link restorePageBrowserApis}.
- */
-const stubPageBrowserApis = (): void => {
-  vi.stubGlobal('scrollTo', () => {})
-  vi.stubGlobal('ResizeObserver', InertResizeObserver)
-  vi.stubGlobal('matchMedia', () => ({ matches: false }))
-  Element.prototype.scrollTo = () => {}
-}
-
-/** Put back what {@link stubPageBrowserApis} stubbed. */
-const restorePageBrowserApis = (): void => {
-  vi.unstubAllGlobals()
-  if (scrollToDescriptor === undefined) Reflect.deleteProperty(Element.prototype, 'scrollTo')
-  else Object.defineProperty(Element.prototype, 'scrollTo', scrollToDescriptor)
-}
+/** Put back the browser APIs the running test stubbed. */
+let restoreBrowserApis: () => void = () => undefined
 
 /**
  * Start a test: a server holding only the lifter's `Patient`, the clock
  * stopped at {@link SUBMITTED_AT}, and the browser APIs the page's
- * router and `RouteTabs` read that jsdom lacks stubbed ({@link stubPageBrowserApis}).
+ * `RouteTabs` reads that jsdom lacks stubbed (`react-tundraish`'s
+ * `stubRouteTabsBrowserApis`).
  */
 const startStrengthTest = (): FakeFhirServer => {
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date(SUBMITTED_AT))
-  stubPageBrowserApis()
+  restoreBrowserApis = stubRouteTabsBrowserApis()
   const server = fakeFhirServer()
   server.seedWire(PATIENT_WIRE)
   return server
@@ -131,7 +99,7 @@ const startStrengthTest = (): FakeFhirServer => {
 const endStrengthTest = (): void => {
   cleanup()
   vi.useRealTimers()
-  restorePageBrowserApis()
+  restoreBrowserApis()
 }
 
 // ---------------------------------------------------------------------------
@@ -286,35 +254,38 @@ const testQueryClient = (): QueryClient =>
   new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
 /**
+ * The page the app's router runs over in a test: the window's history at the
+ * address bar as it is, under {@link BASEPATH}, destroyed as the test
+ * finishes, as a page never needs to.
+ */
+const openTestPage = (): SmartAppPage => {
+  const history = createBrowserHistory()
+  onTestFinished(() => {
+    history.destroy()
+  })
+  return { basepath: BASEPATH, history }
+}
+
+/**
  * Mount the lifting page's router over `server`, through the real runtime,
- * for `patientChoice` — the lifter {@link PATIENT_ID} unless told otherwise —
- * at `route` under {@link BASEPATH} (the app root unless told otherwise).
+ * for a launch naming `launchPatientId` — the lifter {@link PATIENT_ID}
+ * unless told otherwise — at `route` under {@link BASEPATH} (the app root
+ * unless told otherwise; `?patient=*` for All patients).
  */
 const mountStrengthApp = (
   server: FakeFhirServer,
   {
-    patientChoice = LIFTER_CHOICE,
+    launchPatientId = PATIENT_ID,
     route = '',
-  }: { readonly patientChoice?: PatientChoice; readonly route?: string } = {}
+  }: { readonly launchPatientId?: string | null; readonly route?: string } = {}
 ): void => {
   window.history.replaceState(null, '', `${BASEPATH}${route}`)
-  const queryClient = testQueryClient()
-  const { runAuthed } = buildSmartRouterContext(
-    { serverUrl: SERVER_URL, accessToken: ACCESS_TOKEN },
-    server.transport,
-    queryClient
-  )
   renderWithQueryClient(
     createElement(StrengthRouter, {
-      basepath: BASEPATH,
-      context: {
-        client: server.clientFor(PATIENT_ID),
-        runAuthed,
-        patientChoice,
-        changePatient: () => undefined,
-      },
-    }),
-    queryClient
+      page: openTestPage(),
+      client: server.clientFor(launchPatientId),
+      transport: server.transport,
+    })
   )
 }
 
@@ -337,14 +308,13 @@ export {
   loadsOf,
   mountStrengthApp,
   PATIENT_ID,
+  openTestPage,
   renderWithQueryClient,
-  restorePageBrowserApis,
   SEEDED_PLAN_DEFINITION_ID,
   seededExerciseRequests,
   seedStartedLifter,
   seedWorkout,
   startStrengthTest,
-  stubPageBrowserApis,
   SUBJECT,
   SUBMITTED_AT,
   tabLink,

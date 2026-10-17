@@ -1,3 +1,4 @@
+import { createMemoryHistory } from '@tanstack/react-router'
 import { cleanup, render, screen } from '@testing-library/react'
 import { APP_DESCRIPTIONS, TELEMETRY_CONSENT_COPY } from '@wildflowerhealthio/branding-core'
 import { writeConsent } from '@wildflowerhealthio/telemetry-core'
@@ -5,6 +6,9 @@ import type * as TelemetryWeb from '@wildflowerhealthio/telemetry-web'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { AppRoot } from './app-root.tsx'
+
+/** The page `App` would run over; the app is stubbed, so only forwarded. */
+const page = { basepath: '/', history: createMemoryHistory() }
 
 // The build variable this app's DSN comes from, set before `config.ts` reads it.
 const { SENTRY_DSN } = vi.hoisted(() => {
@@ -50,7 +54,7 @@ afterEach(() => {
 describe('AppRoot', () => {
   it('should mount the shell as Strength when not launched', () => {
     // Arrange / Act
-    render(<AppRoot basepath="/" launched={false} />)
+    render(<AppRoot page={page} launched={false} />)
 
     // Assert — the landing introduces this app, not another
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
@@ -61,7 +65,7 @@ describe('AppRoot', () => {
 
   it('should start telemetry with this app’s own DSN and name', () => {
     // Arrange / Act
-    render(<AppRoot basepath="/" launched={false} />)
+    render(<AppRoot page={page} launched={false} />)
 
     // Assert
     expect(initConsentedTelemetryMock).toHaveBeenCalledTimes(1)

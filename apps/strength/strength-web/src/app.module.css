@@ -11,3 +11,8 @@
   margin: 0 auto;
   padding: var(--space-9) var(--space-7) var(--space-13);
 }
+
+/* The page title, above the patient line and the tabs. */
+.app__header {
+  margin-bottom: var(--space-5);
+}

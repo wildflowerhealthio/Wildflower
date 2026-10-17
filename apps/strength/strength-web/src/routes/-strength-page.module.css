@@ -1,13 +1,9 @@
 /*
- * StrengthPage skin — the header over the tabs. Tokens only, so dark mode
- * needs no rule here; the title uses tundra's built-in `text-heading-3` class.
+ * StrengthPage skin — the patient line over the tabs. Tokens only, so dark
+ * mode needs no rule here.
  */
 
-/* The title, and under it whose record the page shows. */
-.strength-page__header {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-5);
+/* Whose record the page shows, under the app's title. */
+.strength-page__status {
   margin-bottom: var(--space-9);
 }
