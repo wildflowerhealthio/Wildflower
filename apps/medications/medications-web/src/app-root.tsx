@@ -1,3 +1,4 @@
+import type { RouterHistory } from '@tanstack/react-router'
 import { SmartAppRoot } from '@wildflowerhealthio/smart-app-react'
 import type { JSX } from 'react'
 
@@ -13,14 +14,17 @@ import { smartAppTelemetry, smartRegistration } from './config.ts'
  * and only once the visitor consents to it.
  *
  * @param basepath - The served directory, the app's router's basepath.
+ * @param history - The window's history, which the app's router navigates.
  * @param launched - Whether the URL carries a SMART callback to complete; see
  *   `SmartAppRoot`. Defaults to the live URL check; tests pass it explicitly.
  */
 function AppRoot({
   basepath,
+  history,
   launched,
 }: {
   readonly basepath: string
+  readonly history: RouterHistory
   readonly launched?: boolean
 }): JSX.Element {
   return (
@@ -30,7 +34,7 @@ function AppRoot({
       telemetry={smartAppTelemetry}
       launched={launched}
     >
-      <App basepath={basepath} />
+      <App basepath={basepath} history={history} />
     </SmartAppRoot>
   )
 }

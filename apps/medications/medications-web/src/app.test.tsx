@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vite-plus/test'
 
 import {
   arrangePages,
+  atorvastatin,
   awaitFirstPage,
   BASEPATH,
   currentRoute,
@@ -149,6 +150,86 @@ describe('App', () => {
       expect(currentRoute()).toBe('savings')
     })
     expect(new URLSearchParams(window.location.search).get('patient')).toBe('p2')
+  })
+
+  it('should bring back the patient before, on their tab, on Back after a patient change', async () => {
+    // Arrange: the launch's patient p1 takes atorvastatin; Ada (p2) takes nothing.
+    handshakeMock.mockReturnValue(readyHandshake)
+    fetchMock.mockImplementation((cursor) =>
+      Promise.resolve(
+        'patientId' in cursor && cursor.patientId === 'p1'
+          ? { items: [atorvastatin('mr-1')], nextPageUrl: null, droppedEntryCount: 0 }
+          : lastPage
+      )
+    )
+    patientPageMock.mockResolvedValue(patientPage)
+    renderApp({ route: 'calendar' })
+    await awaitFirstPage()
+    fireEvent.click(tabLink('Medications'))
+    expect(await screen.findByText(/Atorvastatin/)).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: 'Change patient' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Ada Lovelace/ }))
+    expect(await screen.findByText('No medications found.')).toBeDefined()
+    expect(new URLSearchParams(window.location.search).get('patient')).toBe('p2')
+
+    // Act
+    window.history.back()
+
+    // Assert: the entry before names no patient, so the launch's, as it showed.
+    expect(await screen.findByText(/Atorvastatin/)).toBeDefined()
+    expect(currentRoute()).toBe('medications')
+    expect(window.location.search).toBe('')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('should close the picker for the patient an entry names, on Back with the picker up', async () => {
+    // Arrange: Ada (p2) chosen over the launch's p1, then the picker opened.
+    handshakeMock.mockReturnValue(readyHandshake)
+    fetchMock.mockResolvedValue(lastPage)
+    patientPageMock.mockResolvedValue(patientPage)
+    renderApp()
+    await awaitFirstPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Change patient' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Ada Lovelace/ }))
+    await awaitFirstPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Change patient' }))
+    expect(await screen.findByRole('heading', { name: 'Choose a patient' })).toBeDefined()
+
+    // Act
+    window.history.back()
+
+    // Assert
+    await awaitFirstPage()
+    expect(screen.queryByRole('heading', { name: 'Choose a patient' })).toBeNull()
+    expect(window.location.search).toBe('')
+
+    // Act: Forward, to the entry the picker was opened on.
+    window.history.forward()
+
+    // Assert: Ada's page, the picker closed for good.
+    await waitFor(() => {
+      expect(new URLSearchParams(window.location.search).get('patient')).toBe('p2')
+    })
+    await awaitFirstPage()
+    expect(screen.queryByRole('heading', { name: 'Choose a patient' })).toBeNull()
+  })
+
+  it('should read the patient a numeric `?patient=` names, keeping it as written across tabs', async () => {
+    // Arrange
+    handshakeMock.mockReturnValue(readyHandshake)
+    fetchMock.mockResolvedValue(lastPage)
+    renderApp({ route: 'medications?patient=123' })
+    await awaitFirstPage()
+
+    // Act
+    fireEvent.click(tabLink('Savings'))
+
+    // Assert
+    await waitFor(() => {
+      expect(currentRoute()).toBe('savings')
+    })
+    expect(fetchMock).toHaveBeenCalledWith({ patientId: '123' })
+    expect(window.location.search).toBe('?patient=123')
   })
 
   it('should not read MedicationRequests until the handshake resolves', () => {

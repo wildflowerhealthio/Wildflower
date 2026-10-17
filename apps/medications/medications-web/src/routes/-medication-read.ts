@@ -21,7 +21,8 @@ import { patientChoiceKeyOf, patientScopeOf } from '@wildflowerhealthio/smart-ap
 import { Effect, Match } from 'effect'
 import { useCallback, useMemo } from 'react'
 
-import { useChosenPatient, usePageState, useSmartClient } from '../router-context.ts'
+import { usePageState, useSmartClient } from '../router-context.ts'
+import { useReadPatient } from './-chosen-patient.ts'
 
 /** The page's read of the chosen patient's MedicationRequests, as the header and every tab see it. */
 interface MedicationRead {
@@ -62,7 +63,7 @@ interface MedicationRead {
  */
 const useMedicationRead = (): MedicationRead => {
   const client = useSmartClient()
-  const patientChoice = useChosenPatient()
+  const patientChoice = useReadPatient()
   const firstPageCursor: MedicationRequestCursor = { patientId: patientScopeOf(patientChoice) }
   const pagedQuery = useInfiniteQuery({
     queryKey: ['medications', patientChoiceKeyOf(patientChoice)],

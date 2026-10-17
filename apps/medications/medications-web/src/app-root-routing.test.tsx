@@ -1,8 +1,9 @@
+import { createBrowserHistory } from '@tanstack/react-router'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { TELEMETRY_CONSENT_COPY } from '@wildflowerhealthio/branding-core'
 import { writeConsent } from '@wildflowerhealthio/telemetry-core'
 import type * as TelemetryWeb from '@wildflowerhealthio/telemetry-web'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vite-plus/test'
 
 import { AppRoot } from './app-root.tsx'
 
@@ -56,6 +57,18 @@ class InertResizeObserver {
   disconnect(): void {}
 }
 
+/**
+ * Render the app root at the address bar as it is, over a browser history the
+ * test destroys as it finishes.
+ */
+const renderAppRoot = (): void => {
+  const history = createBrowserHistory()
+  onTestFinished(() => {
+    history.destroy()
+  })
+  render(<AppRoot basepath={BASEPATH} history={history} />)
+}
+
 /** The address bar's path and query. */
 const addressBar = (): string => `${window.location.pathname}${window.location.search}`
 
@@ -92,7 +105,7 @@ describe('AppRoot over the address bar', () => {
     window.history.replaceState(null, '', launchUrl)
 
     // Act
-    render(<AppRoot basepath={BASEPATH} />)
+    renderAppRoot()
 
     // Assert
     await waitFor(() => {
@@ -118,7 +131,7 @@ describe('AppRoot over the address bar', () => {
     )
     const callbackUrl = `${BASEPATH}?code=abc&state=xyz`
     window.history.replaceState(null, '', callbackUrl)
-    render(<AppRoot basepath={BASEPATH} />)
+    renderAppRoot()
     await waitFor(() => {
       expect(readyMock).toHaveBeenCalledTimes(1)
     })
