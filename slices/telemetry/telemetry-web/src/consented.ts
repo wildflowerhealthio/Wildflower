@@ -87,29 +87,34 @@ type SentryTransport = ReturnType<NonNullable<InitSentryWebOptions['transport']>
 /** What the SDK sends in one request: headers, and the items it carries. */
 type SentryEnvelope = Parameters<SentryTransport['send']>[0]
 
+/** The headers of an envelope, as against those of each of its items. */
+type SentryEnvelopeHeaders = SentryEnvelope[0]
+
 /** The kind of thing an envelope item carries, named in its headers. */
 type SentryEnvelopeItemType = SentryEnvelope[1][number][0]['type']
 
 /**
- * The envelope item types crash reports let through: error events, the
- * attachments sent with them, and release-health sessions, which count the
- * page loads that crashed.
+ * The envelope item types crash reports let through: error events and the
+ * attachments sent with them.
  */
 const CRASH_REPORT_ITEM_TYPES: ReadonlySet<SentryEnvelopeItemType> = new Set([
   'event',
   'attachment',
-  'session',
-  'sessions',
 ])
 
 /** The envelope item types performance lets through: transactions and standalone spans. */
 const PERFORMANCE_ITEM_TYPES: ReadonlySet<SentryEnvelopeItemType> = new Set(['transaction', 'span'])
 
 /**
- * The envelope item types either switch lets through: client reports, which
- * carry only counts of what the SDK dropped.
+ * The envelope item types either switch lets through: release-health
+ * sessions, which count page loads and the ones that crashed, and client
+ * reports, which carry only counts of what the SDK dropped.
  */
-const EITHER_SWITCH_ITEM_TYPES: ReadonlySet<SentryEnvelopeItemType> = new Set(['client_report'])
+const EITHER_SWITCH_ITEM_TYPES: ReadonlySet<SentryEnvelopeItemType> = new Set([
+  'session',
+  'sessions',
+  'client_report',
+])
 
 /**
  * Whether `consent` lets an envelope item of `itemType` be sent. Default-deny:
@@ -130,8 +135,24 @@ const isItemTypeConsented = (
 }
 
 /**
- * `envelope` with only its items that {@link latestConsent} lets through, or
- * `undefined` when none are left.
+ * `envelopeHeaders` without the `transaction` of their trace header, the
+ * root span's name, which for an interaction span is the element string the
+ * SDK names the element by: only Sentry's sampling rules by transaction name,
+ * which no app sets, read it.
+ */
+const withoutTraceTransaction = (envelopeHeaders: SentryEnvelopeHeaders): SentryEnvelopeHeaders => {
+  const trace: unknown = 'trace' in envelopeHeaders ? envelopeHeaders.trace : undefined
+  if (typeof trace !== 'object' || trace === null || !('transaction' in trace)) {
+    return envelopeHeaders
+  }
+  const { transaction: _transaction, ...traceWithoutTransaction } = trace
+  return { ...envelopeHeaders, trace: traceWithoutTransaction }
+}
+
+/**
+ * `envelope` with only its items that {@link latestConsent} lets through,
+ * and without its trace header's transaction (see
+ * {@link withoutTraceTransaction}), or `undefined` when no items are left.
  */
 const consentedEnvelope = (envelope: SentryEnvelope): SentryEnvelope | undefined => {
   const [envelopeHeaders, items] = envelope
@@ -139,15 +160,17 @@ const consentedEnvelope = (envelope: SentryEnvelope): SentryEnvelope | undefined
     isItemTypeConsented(itemHeaders.type, latestConsent)
   )
   if (consentedItems.length === 0) return undefined
-  if (consentedItems.length === items.length) return envelope
+  const sentHeaders = withoutTraceTransaction(envelopeHeaders)
+  if (consentedItems.length === items.length && sentHeaders === envelopeHeaders) return envelope
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- each envelope type pairs its headers with the item types it may carry, so a subset of its items still fits it, which TS cannot follow through `filter` on a union of tuples; the SDK's own `createEnvelope` asserts the same.
-  return [envelopeHeaders, consentedItems] as SentryEnvelope
+  return [sentHeaders, consentedItems] as SentryEnvelope
 }
 
 /**
  * The transport `makeTransport` builds, sending only the items of each
- * envelope that {@link latestConsent} lets through when it is sent, and
- * nothing at all for an envelope with none left.
+ * envelope that {@link latestConsent} lets through when it is sent, without
+ * its trace header's transaction, and nothing at all for an envelope with
+ * no items left.
  *
  * @remarks
  * The one consent check every item passes, whatever its type: the transport

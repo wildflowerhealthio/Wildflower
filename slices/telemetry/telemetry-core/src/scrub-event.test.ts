@@ -606,6 +606,28 @@ describe('scrubEvent', () => {
   })
 })
 
+describe('scrubEvent element strings', () => {
+  test('reduces the element in a click or input breadcrumb and a click span to their tag names', () => {
+    const event = {
+      breadcrumbs: [
+        { category: 'ui.click', message: 'button#open-123[aria-label="Open Jane Doe\'s results"]' },
+        { category: 'ui.input', message: 'input#mrn[name="mrn"]' },
+        { category: 'console', message: 'see https://fhir.example/r4/Patient/123' },
+      ],
+      spans: [{ op: 'ui.interaction.click', description: 'li.patient[title="Jane Doe"]' }],
+    }
+
+    expect(scrubEvent(event)).toStrictEqual({
+      breadcrumbs: [
+        { category: 'ui.click', message: 'button' },
+        { category: 'ui.input', message: 'input' },
+        { category: 'console', message: 'see https://{host}/r4/Patient/{id}' },
+      ],
+      spans: [{ op: 'ui.interaction.click', description: 'li' }],
+    })
+  })
+})
+
 describe('scrubSpan', () => {
   test('anonymizes the URLs and the route name a standalone span carries', () => {
     const span = {
@@ -615,7 +637,7 @@ describe('scrubSpan', () => {
         transaction: '/r4/Patient/123',
         'url.full': FHIR_URL,
         'http.url': FHIR_URL,
-        'sentry.op': 'ui.interaction.click',
+        'sentry.op': 'http.client',
       },
     }
 
@@ -626,8 +648,43 @@ describe('scrubSpan', () => {
         transaction: '/r4/Patient/{id}',
         'url.full': ANONYMIZED_FHIR_URL,
         'http.url': ANONYMIZED_FHIR_URL,
-        'sentry.op': 'ui.interaction.click',
+        'sentry.op': 'http.client',
       },
+    })
+  })
+
+  test.each([
+    { label: 'an INP span', span: { op: 'ui.interaction.click' } },
+    {
+      label: 'an INP span by its op attribute',
+      span: { data: { 'sentry.op': 'ui.interaction.press' } },
+    },
+    { label: 'a standalone web vital span', span: { op: 'ui.webvital.lcp' } },
+  ])('reduces the element string that describes $label to its tag names', ({ span }) => {
+    const scrubbedSpan = scrubSpan({
+      ...span,
+      description: 'main > button#open-123[aria-label="Open Jane Doe\'s results"]',
+    })
+
+    expect(scrubbedSpan.description).toBe('main > button')
+  })
+
+  test('reduces the elements in web vital attributes to their tag names', () => {
+    const span = {
+      op: 'pageload',
+      data: {
+        'lcp.element': 'main > img#photo-123[alt="Jane Doe"]',
+        'cls.source.1': 'div.banner[title="Jane"]',
+        'browser.web_vital.lcp.element': 'h1#jane-doe',
+        'browser.web_vital.cls.source.2': 'p[title="Doe"]',
+      },
+    }
+
+    expect(scrubSpan(span).data).toStrictEqual({
+      'lcp.element': 'main > img',
+      'cls.source.1': 'div',
+      'browser.web_vital.lcp.element': 'h1',
+      'browser.web_vital.cls.source.2': 'p',
     })
   })
 

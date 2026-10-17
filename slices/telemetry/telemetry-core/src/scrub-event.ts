@@ -1,4 +1,5 @@
 import { anonymizeHost, anonymizeUrl, anonymizeUrlsInText } from './anonymize-url.ts'
+import { elementPath } from './element-path.ts'
 import { type HostRedactor, makeHostRedactor } from './redact-hosts.ts'
 
 /**
@@ -66,6 +67,30 @@ const SCRIPT_KEYS: ReadonlySet<string> = new Set(['code.filepath', 'browser.scri
  */
 const TEXT_KEYS: ReadonlySet<string> = new Set(['transaction'])
 
+/**
+ * Keys whose string value is an element string (see {@link elementPath}),
+ * compared case-insensitively: the element a page-load span's largest
+ * contentful paint painted; so is every key naming a layout shift's source
+ * (see {@link isElementKey}).
+ */
+const ELEMENT_KEYS: ReadonlySet<string> = new Set(['lcp.element', 'browser.web_vital.lcp.element'])
+
+/** Keys naming the element a layout shift moved: `cls.source.1`, `browser.web_vital.cls.source.2`, … */
+const CLS_SOURCE_KEY = /^(?:browser\.web_vital\.)?cls\.source\.\d+$/
+
+/**
+ * Prefixes of the ops of spans whose description is an element string: the
+ * element a click or other interaction hit (INP's standalone spans among
+ * them), and the one a standalone web vital span painted or moved.
+ */
+const ELEMENT_SPAN_OP_PREFIXES: readonly string[] = ['ui.interaction.', 'ui.webvital.']
+
+/**
+ * Prefix of the categories of breadcrumbs whose message is an element string:
+ * `ui.click` and `ui.input`, the element a visitor clicked or typed into.
+ */
+const ELEMENT_BREADCRUMB_CATEGORY_PREFIX = 'ui.'
+
 /** Keys that carry a URL's query string or fragment on their own; dropped outright. */
 const DROPPED_KEYS: ReadonlySet<string> = new Set([
   'http.query',
@@ -100,12 +125,14 @@ interface ScrubbableRequest {
 
 /** A breadcrumb: what happened before the event, fetches and navigations among it. */
 interface ScrubbableBreadcrumb {
+  readonly category?: string
   readonly message?: string
   readonly data?: UrlBearingRecord
 }
 
 /** A span in a transaction event, or the transaction's own trace context. */
 interface ScrubbableSpan {
+  readonly op?: string
   readonly description?: string
   readonly data?: UrlBearingRecord
 }
@@ -160,6 +187,20 @@ const isScriptKey = (lowerCaseKey: string): boolean => SCRIPT_KEYS.has(lowerCase
 
 /** Whether the value under `lowerCaseKey` is free text. */
 const isTextKey = (lowerCaseKey: string): boolean => TEXT_KEYS.has(lowerCaseKey)
+
+/** Whether the value under `lowerCaseKey` is an element string. */
+const isElementKey = (lowerCaseKey: string): boolean =>
+  ELEMENT_KEYS.has(lowerCaseKey) || CLS_SOURCE_KEY.test(lowerCaseKey)
+
+/** Whether `span`'s description is an element string, by its op. */
+const hasElementDescription = (span: ScrubbableSpan): boolean => {
+  const op = span.op ?? span.data?.['sentry.op']
+  return typeof op === 'string' && ELEMENT_SPAN_OP_PREFIXES.some((prefix) => op.startsWith(prefix))
+}
+
+/** Whether `breadcrumb`'s message is an element string, by its category. */
+const hasElementMessage = (breadcrumb: ScrubbableBreadcrumb): boolean =>
+  breadcrumb.category?.startsWith(ELEMENT_BREADCRUMB_CATEGORY_PREFIX) === true
 
 /**
  * `value` with `redactHosts` applied to every string in it, at any depth of
@@ -229,7 +270,8 @@ const scrubScript = (script: string, redactHosts: HostRedactor): string => {
 /**
  * `record` with the value under every URL or host key anonymized, the script
  * under every script key scrubbed (see `scrubScript`), the text under every
- * text key scrubbed (see `scrubText`), the value under every dropped key
+ * text key scrubbed (see `scrubText`), the element string under every
+ * element key reduced (see `elementPath`), the value under every dropped key
  * cleared to `undefined`, which the SDK leaves out of what it sends, and the
  * server hosts in every other key and value replaced.
  */
@@ -253,6 +295,9 @@ const scrubUrlBearingRecord = (
       if (isTextKey(lowerCaseKey) && typeof value === 'string') {
         return [key, scrubText(value, redactHosts)]
       }
+      if (isElementKey(lowerCaseKey) && typeof value === 'string') {
+        return [key, elementPath(value)]
+      }
       return [redactHosts(key), redactHostsInValue(value, redactHosts)]
     })
   )
@@ -266,6 +311,11 @@ const scrubRequest = <R extends ScrubbableRequest>(request: R, redactHosts: Host
     : { headers: scrubUrlBearingRecord(request.headers, redactHosts) }),
 })
 
+/**
+ * `breadcrumb` with its message scrubbed as free text, or reduced to its tag
+ * names when it is an element string (see {@link elementPath}), and its data
+ * as a span's.
+ */
 const scrubBreadcrumb = <B extends ScrubbableBreadcrumb>(
   breadcrumb: B,
   redactHosts: HostRedactor
@@ -273,16 +323,21 @@ const scrubBreadcrumb = <B extends ScrubbableBreadcrumb>(
   ...breadcrumb,
   ...(breadcrumb.message === undefined
     ? {}
-    : { message: scrubText(breadcrumb.message, redactHosts) }),
+    : {
+        message: hasElementMessage(breadcrumb)
+          ? elementPath(breadcrumb.message)
+          : scrubText(breadcrumb.message, redactHosts),
+      }),
   ...(breadcrumb.data === undefined
     ? {}
     : { data: scrubUrlBearingRecord(breadcrumb.data, redactHosts) }),
 })
 
 /**
- * `span` with its description scrubbed as free text and its data as
- * `scrubEvent` scrubs a span's: for a span the SDK sends on its own, outside
- * any event.
+ * `span` with its description scrubbed as free text, or reduced to its tag
+ * names when it is an element string (see {@link elementPath}), and its data
+ * as `scrubEvent` scrubs a span's: for a span the SDK sends on its own,
+ * outside any event.
  *
  * @typeParam S - The SDK's span type; every other field passes through
  * @param redactHosts - As for {@link scrubEvent}
@@ -298,7 +353,11 @@ const scrubSpan = <S extends ScrubbableSpan>(
   ...span,
   ...(span.description === undefined
     ? {}
-    : { description: scrubText(span.description, redactHosts) }),
+    : {
+        description: hasElementDescription(span)
+          ? elementPath(span.description)
+          : scrubText(span.description, redactHosts),
+      }),
   ...(span.data === undefined ? {} : { data: scrubUrlBearingRecord(span.data, redactHosts) }),
 })
 
@@ -385,9 +444,13 @@ const scrubLogEntry = <L extends NonNullable<ScrubbableEvent['logentry']>>(
  *     `net.peer.name`) reduced to a kept host or `{host}`, and its query and
  *     fragment keys (`http.query`, `url.query`, …) and HTTP header attributes
  *     cleared
+ *   - the element strings — the description of each `ui.interaction.*` and
+ *     `ui.webvital.*` span, the message of each `ui.*` breadcrumb, and
+ *     `lcp.element` and `cls.source.<n>` in span data — are reduced to their
+ *     tag names (see `elementPath`)
  *   - the free text — the message and `logentry` (its message and string
- *     parameters), each exception's message, each breadcrumb's message, each
- *     span description, the trace context's, the transaction name, and the
+ *     parameters), each exception's message, every other breadcrumb message
+ *     and span description, the trace context's, the transaction name, and the
  *     `transaction` attribute in breadcrumb and span data — has the URLs in
  *     it anonymized
  *   - in all of the above, in each stack frame's `filename`, `abs_path` and

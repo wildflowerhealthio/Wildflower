@@ -329,7 +329,7 @@ describe('the consent-gated transport', () => {
     {
       label: 'performance only',
       switches: { crashReports: false, performance: true },
-      sent: ['transaction', 'span', 'client_report'],
+      sent: ['session', 'sessions', 'transaction', 'span', 'client_report'],
     },
     {
       label: 'both switches',
@@ -393,7 +393,7 @@ describe('the consent-gated transport', () => {
     expect(fetchTransportSendMock).not.toHaveBeenCalled()
   })
 
-  test('stops sending spans and sessions alike once their switch is turned off', async () => {
+  test('stops sending spans once performance is turned off, and keeps sending sessions', async () => {
     const { initConsentedTelemetry } = await importConsented()
     initConsentedTelemetry({
       consent: consentWith({ crashReports: true, performance: true }),
@@ -411,6 +411,26 @@ describe('the consent-gated transport', () => {
 
     expect(sentItemTypes()).toStrictEqual(['session', 'client_report'])
   })
+
+  test('drops the transaction from an envelope’s trace header and keeps the rest', async () => {
+    const { initConsentedTelemetry } = await importConsented()
+    initConsentedTelemetry({
+      consent: consentWith({ crashReports: false, performance: true }),
+      config: buildConfig,
+      tags,
+    })
+    const trace = { trace_id: 't1', public_key: 'key', sampled: 'true' }
+    const spanEnvelope: Envelope = [
+      {
+        trace: { ...trace, transaction: 'button#open-123[aria-label="Open Jane Doe\'s results"]' },
+      },
+      [[{ type: 'span' }, { span_id: 's1', trace_id: 't1', start_timestamp: 0 }]],
+    ]
+
+    await sentryTransport().send(spanEnvelope)
+
+    expect(fetchTransportSendMock.mock.calls[0]?.[0][0]).toStrictEqual({ trace })
+  })
 })
 
 describe('beforeSendSpan', () => {
@@ -420,7 +440,7 @@ describe('beforeSendSpan', () => {
     start_timestamp: 0,
     description: `GET ${FHIR_URL}`,
     data: {
-      'sentry.op': 'ui.interaction.click',
+      'sentry.op': 'http.client',
       transaction: '/r4/Patient/123',
       'url.full': FHIR_URL,
       'http.url': FHIR_URL,
@@ -438,12 +458,29 @@ describe('beforeSendSpan', () => {
     const sentSpan = sentryInitOptions().beforeSendSpan?.(span)
 
     expect(sentSpan?.data).toStrictEqual({
-      'sentry.op': 'ui.interaction.click',
+      'sentry.op': 'http.client',
       transaction: '/r4/Patient/{id}',
       'url.full': ANONYMIZED_FHIR_URL,
       'http.url': ANONYMIZED_FHIR_URL,
     })
     expect(sentSpan?.description).toBe(`GET ${ANONYMIZED_FHIR_URL}`)
+  })
+
+  test('reduces the element an INP span is named by to its tag names', async () => {
+    const { initConsentedTelemetry } = await importConsented()
+    initConsentedTelemetry({
+      consent: consentWith({ crashReports: false, performance: true }),
+      config: buildConfig,
+      tags,
+    })
+
+    const sentSpan = sentryInitOptions().beforeSendSpan?.({
+      ...span,
+      op: 'ui.interaction.click',
+      description: 'main > button#open-123[aria-label="Open Jane Doe\'s results"]',
+    })
+
+    expect(sentSpan?.description).toBe('main > button')
   })
 
   test('replaces a server host in a span’s description', async () => {
