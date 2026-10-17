@@ -5,6 +5,7 @@ import { Option } from 'effect'
 import type { JSX } from 'react'
 
 import type { RouterContext } from '../router.ts'
+import { ImporterNotFound } from './-importer-not-found.tsx'
 import styles from './-importer-page.module.css'
 
 /**
@@ -58,9 +59,13 @@ function ImporterPage(): JSX.Element {
   )
 }
 
-/** The root route: the importer page, each of whose tabs is a child route. */
+/**
+ * The root route: the importer page, each of whose tabs is a child route, and
+ * in the tab panel for a path no tab names, the not-found card.
+ */
 const Route = createRootRouteWithContext<RouterContext>()({
   component: ImporterPage,
+  notFoundComponent: ImporterNotFound,
 })
 
 export { Route }

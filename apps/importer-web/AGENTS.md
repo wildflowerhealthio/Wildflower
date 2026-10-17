@@ -37,7 +37,9 @@ handshake gate, then `ImporterApp`, which builds the router) and `router.ts`
 file routes (the tree is generated into the git-ignored `src/routeTree.gen.ts`):
 
 - `__root.tsx` is the page: the title, the open tab's subtitle (each tab's
-  route names it in its `staticData.subtitle`), and `RouteTabs`.
+  route names it in its `staticData.subtitle`), and `RouteTabs`. A path no
+  tab names shows `-importer-not-found.tsx`'s card in the tab panel, with no
+  tab current, offering the Import tab.
 - `index.tsx` redirects `/` to `/import`, with `replace`.
 - `import/route.tsx` mounts `ImporterScreen`; `anonymize/route.tsx` mounts
   `AnonymizerScreen`, beside `-server-source.tsx`, the `serverSource` adapter
@@ -298,7 +300,8 @@ workspace `source` condition at bundle time.
   addressed to the FHIR base and carries `Bearer …`, and the resource types
   written are exactly the ones `config.ts`'s scope string covers. Also pins the
   tabs, over a browser history at a test basepath: the bare path opens
-  `/import` in its place in history, `/anonymize` opens Anonymize, switching
+  `/import` in its place in history, `/anonymize` opens Anonymize, a path no
+  tab names shows the not-found card with no tab current, switching
   tabs unmounts the other surface (and the subtitle and address bar follow), a
   query's results survive a switch and back, and the Anonymize tab reaches a
   download from a picked HAR with **zero writes** on the wire.

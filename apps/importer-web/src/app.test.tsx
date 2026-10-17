@@ -202,6 +202,23 @@ describe('ImporterApp', () => {
     expect(screen.queryByLabelText('Import file')).toBeNull()
   })
 
+  it('should show a path no tab names as not found, under the strip with no tab current', async () => {
+    // Arrange / Act
+    mount({ route: 'files' })
+
+    // Assert — the card names the path, and no tab is current
+    expect(await screen.findByText('The Importer has no page at /files.')).toBeDefined()
+    expect(tabLink('Import').getAttribute('aria-current')).toBeNull()
+    expect(tabLink('Anonymize').getAttribute('aria-current')).toBeNull()
+
+    // Act — the card's way out
+    await userEvent.click(screen.getByRole('button', { name: 'Open the Import tab' }))
+
+    // Assert
+    expect(await screen.findByLabelText('Import file')).toBeDefined()
+    expect(currentRoute()).toBe('import')
+  })
+
   it('should mount the Anonymize surface — and unmount the Import one — when the tab changes', async () => {
     // Arrange
     mount({})
