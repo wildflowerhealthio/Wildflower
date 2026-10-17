@@ -14,8 +14,10 @@ only what the apex serves.
   `scripts/write-apex-pages.ts`). Its `public/` carries the `CNAME` that
   keeps the custom domain, the `versions.json` the Tauri release workflow
   writes, and `suggested_apps.json`, the SMART apps worth trying with a
-  Wildflower server, hand-edited, whose schema is
-  [`suggested-apps-core`](../../slices/suggested-apps-core/).
+  Wildflower server, hand-edited, whose schema is `suggested-apps-core-js`.
+- [`suggested-apps-core-js`](./suggested-apps-core-js/) — the schema of
+  `suggested_apps.json`. The site is its only consumer, decoding its file
+  with it in a test.
 
 ## Publishing
 

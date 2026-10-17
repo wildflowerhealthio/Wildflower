@@ -64,7 +64,7 @@ vp build    # production build to dist/
   custom domain.
 - `public/suggested_apps.json` — the SMART apps worth trying with a Wildflower
   server, published at `https://wildflowerhealth.io/suggested_apps.json`.
-  Hand-edited; its schema is `suggested-apps-core`'s `SuggestedApps`.
+  Hand-edited; its schema is `suggested-apps-core-js`'s `SuggestedApps`.
   `src/suggested-apps.test.ts` decodes it and requires a first-party entry
   for each app in `branding-core`'s `SMART_APP_LAUNCH_PAGES`, at that launch
   page and with its `APP_DESCRIPTIONS` name and tagline, so a renamed or new

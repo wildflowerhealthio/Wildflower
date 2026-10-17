@@ -167,7 +167,7 @@ const MARKETING_PAGES_SITE: PagesSite = {
   // are app-store and legal requirements, and the redirect pages and the
   // `404.html` that hands them deep links keep the apps' apex paths working.
   // `suggested_apps.json` (also from `public/`) is the published list of
-  // suggested SMART apps, whose schema is `suggested-apps-core`.
+  // suggested SMART apps, whose schema is `suggested-apps-core-js`.
   requiredFiles: [
     'index.html',
     'CNAME',

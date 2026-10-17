@@ -4,7 +4,7 @@
  * the file at {@link SUGGESTED_APPS_URL}; it is static and hand-edited, and a
  * test in the marketing site decodes it with {@link SuggestedApps}.
  *
- * Namespace module (`import { SuggestedApps } from '@wildflowerhealthio/suggested-apps-core'`):
+ * Namespace module (`import { SuggestedApps } from '@wildflowerhealthio/suggested-apps-core-js'`):
  * the document is `SuggestedApps.SuggestedApps`, one app `SuggestedApps.SuggestedApp`,
  * with `SuggestedApps.TAG_LABELS`, `SuggestedApps.SUGGESTED_APPS_URL`, …
  */

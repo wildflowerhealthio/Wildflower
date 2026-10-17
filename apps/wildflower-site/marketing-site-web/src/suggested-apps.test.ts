@@ -1,5 +1,5 @@
 import { APP_DESCRIPTIONS, SMART_APP_LAUNCH_PAGES } from '@wildflowerhealthio/branding-core'
-import { SuggestedApps } from '@wildflowerhealthio/suggested-apps-core'
+import { SuggestedApps } from '@wildflowerhealthio/suggested-apps-core-js'
 import { Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
