@@ -327,9 +327,7 @@ use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 
 pub use db::SqliteTunnelStore;
-pub use domain::{
-    ConnectionTotalsStore, HourlyCount, Outcome, StoredTunnel, Tunnel, TunnelOutcome, TunnelStore,
-};
+pub use domain::{Outcome, StoredTunnel, Tunnel, TunnelOutcome, TunnelStore};
 pub use front::{Front, Limits};
 pub use live_bindings::state::{RatholeFeed, TunnelRegistry};
 pub use outcomes::ConnectionOutcomes;

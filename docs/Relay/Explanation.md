@@ -53,8 +53,8 @@ Whoever runs the relay sees routing metadata:
 - **How connections fare.** The relay counts, per hour, how many connections
   reached a device and how many it refused and why, and keeps the counts for
   30 days. It also keeps each tunnel's last connection outcome in memory.
-  Neither holds any visitor data: no addresses, times or tunnel names in the
-  counts, and no time, count or address with the last outcome.
+  Neither holds any visitor data: a count holds only an hour, an outcome and
+  a number, and the last outcome has no time, count or address.
 - **Each tunnel's name, token and owner's email.** The relay keeps them in its
   SQLite database, the token in plain text because rathole and request
   signing both need it. The email is whatever the operator recorded when

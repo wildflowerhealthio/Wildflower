@@ -318,6 +318,7 @@ mod tests {
 
     use super::*;
     use crate::domain::test_fake::stored_tunnel;
+    use crate::domain::TunnelOutcome;
     use crate::live_bindings::{LiveTunnelTokensReissuer, LiveTunnelsCreator, LiveTunnelsDeleter};
     use crate::route::Destination;
     use crate::test_support::{admin, device, open_registry, registry, settings, until_connected};
@@ -358,6 +359,31 @@ mod tests {
         assert!(matches!(refused, TunnelError::Infrastructure { .. }));
         assert!(registry.store.list_tunnels().unwrap().is_empty());
         assert!(registry.router().resolve("bob.relay.example.com").is_none());
+    }
+
+    /// A reissued token keeps the tunnel's last outcome; a delete drops it,
+    /// so the name created again starts with none.
+    #[tokio::test]
+    async fn a_tunnels_last_outcome_survives_a_reissue_but_not_a_delete() {
+        let (registry, _fixture) = registry(None).await;
+        let creator: LiveTunnelsCreator = admin(&registry);
+        let create = || creator.create("bob@example.com".to_owned(), Some("bob".to_owned()));
+        create().await.unwrap();
+        let outcomes = registry.outcomes();
+        outcomes.record_for_tunnel("bob", TunnelOutcome::TunnelDown);
+
+        let reissuer: LiveTunnelTokensReissuer = admin(&registry);
+        reissuer.reissue("bob".to_owned()).await.unwrap();
+        assert_eq!(
+            outcomes.last_outcome("bob"),
+            Some(TunnelOutcome::TunnelDown)
+        );
+
+        let deleter: LiveTunnelsDeleter = admin(&registry);
+        deleter.delete("bob".to_owned()).await.unwrap();
+        assert_eq!(outcomes.last_outcome("bob"), None);
+        create().await.unwrap();
+        assert_eq!(outcomes.last_outcome("bob"), None);
     }
 
     /// With the real rathole server and a rathole client as the device: a

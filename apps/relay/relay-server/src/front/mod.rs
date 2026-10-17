@@ -133,7 +133,10 @@ impl Front {
                 accepted = self.accept(&listener) => accepted,
                 _ = shutdown_rx.recv() => return Ok(()),
             };
-            let (Some(stream), Some(permit)) = (accepted, self.permit()) else {
+            let Some(stream) = accepted else {
+                continue;
+            };
+            let Some(permit) = self.permit() else {
                 continue;
             };
             let front = Arc::clone(&self);

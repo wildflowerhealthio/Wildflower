@@ -87,7 +87,7 @@ const TotalsTable = ({
   return (
     <div className={styles['connection-totals__scroll']}>
       <table className={cn(styles['connection-totals__table'], 'text-body-3')}>
-        <caption className="text-heading-6">{caption}</caption>
+        <caption className="text-heading-1">{caption}</caption>
         <thead>
           <tr>
             <th scope="col">{timeHeading}</th>

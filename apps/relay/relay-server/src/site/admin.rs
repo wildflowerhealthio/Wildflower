@@ -111,8 +111,8 @@ struct TunnelInfo {
     /// Unix epoch seconds.
     created_at: i64,
     /// What became of the last connection to the tunnel since the relay
-    /// started; `null` before the first.
-    last_outcome: Option<TunnelOutcome>,
+    /// started, by its [`Outcome::as_str`] name; `null` before the first.
+    last_outcome: Option<&'static str>,
 }
 
 impl TunnelInfo {
@@ -122,7 +122,7 @@ impl TunnelInfo {
             email: stored.email,
             public_host,
             created_at: stored.created_at,
-            last_outcome,
+            last_outcome: last_outcome.map(|outcome| Outcome::from(outcome).as_str()),
         }
     }
 }

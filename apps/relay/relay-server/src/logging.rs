@@ -282,9 +282,14 @@ mod tests {
             let span = tracing::info_span!(target: "rathole::server", "connection", addr = "192.0.2.7:1234");
             let _entered = span.enter();
             tracing::info!(target: "rathole::server", "control channel up");
+            // Another crate's event inside rathole's span reaches the
+            // journal without the span.
+            tracing::info!(target: "snow", "handshake step");
         });
         assert!(connection_log.text().contains("192.0.2.7"));
-        assert!(!journal.text().contains("192.0.2.7"));
+        let journal = journal.text();
+        assert!(journal.contains("handshake step"), "{journal}");
+        assert!(!journal.contains("192.0.2.7"), "{journal}");
     }
 
     #[test]

@@ -5,11 +5,9 @@
 //! [`crate::outcomes`]), and the hourly totals are keyed by the outcome
 //! alone.
 
-use serde::{Serialize, Serializer};
-
-/// What became of a connection routed to a known tunnel. Its wire name (see
-/// [`Outcome::as_str`]) is what `GET /api/tunnels` reports as a tunnel's
-/// `last_outcome`.
+/// What became of a connection routed to a known tunnel. Its name as an
+/// [`Outcome`] ([`Outcome::as_str`]) is what `GET /api/tunnels` reports as a
+/// tunnel's `last_outcome`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TunnelOutcome {
     /// The PROXY header and the hello reached the tunnel's visitor pipe.
@@ -25,12 +23,6 @@ pub enum TunnelOutcome {
     TunnelClosed,
     /// The PROXY header could not be built.
     ProxyHeaderFailed,
-}
-
-impl Serialize for TunnelOutcome {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(Outcome::from(*self).as_str())
-    }
 }
 
 /// What became of a connection to `:443`, as the hourly totals count it:
@@ -126,13 +118,5 @@ mod tests {
             assert_eq!(Outcome::parse(outcome.as_str()), Some(outcome));
         }
         assert_eq!(Outcome::parse("unknown"), None);
-    }
-
-    #[test]
-    fn a_tunnel_outcome_serializes_as_its_outcome_name() {
-        assert_eq!(
-            serde_json::to_value(TunnelOutcome::TunnelBusy).unwrap(),
-            "tunnel_busy"
-        );
     }
 }

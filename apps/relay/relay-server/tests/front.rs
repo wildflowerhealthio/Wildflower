@@ -719,9 +719,13 @@ impl<'writer> tracing_subscriber::fmt::MakeWriter<'writer> for Captured {
 }
 
 /// A refusal that names a tunnel reaches the connection log, and neither the
-/// tunnel's name nor the visitor's address reaches the journal. The test
-/// runtime runs every task on this thread, so the subscriber set here sees
-/// the front's events.
+/// tunnel's name nor the visitor's address reaches the journal.
+///
+/// The subscriber is the process's global one, not one scoped to this test:
+/// with a single scoped subscriber, tracing works out which events are wanted
+/// from whichever thread first reaches an event, so another test's thread
+/// could switch this one's events off. Every other test in this file logs
+/// into it too, so the journal is checked across all of them.
 #[tokio::test]
 async fn a_tunnel_down_refusal_names_the_tunnel_only_in_the_connection_log() {
     use tracing_subscriber::layer::SubscriberExt;
@@ -733,7 +737,8 @@ async fn a_tunnel_down_refusal_names_the_tunnel_only_in_the_connection_log() {
             journal.clone(),
             connection_log.clone(),
         ));
-    let _subscriber = tracing::subscriber::set_default(subscriber);
+    tracing::subscriber::set_global_default(subscriber)
+        .expect("no other test sets a global subscriber");
     let harness = start_front(router(&[TUNNEL]), no_tunnels()).await;
 
     let mut client = TcpStream::connect(harness.https).await.unwrap();

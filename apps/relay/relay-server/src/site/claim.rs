@@ -28,7 +28,7 @@ use axum::routing::post;
 use axum::Json;
 use wildflowerhealthio_kitchen_sink::rate_limit::ClientKey;
 use wildflowerhealthio_rathole_settings::{
-    ClaimRequest, ClaimedTunnel, PublicRatholeSettings, TunnelName,
+    ClaimRequest, ClaimedTunnel, InvalidTunnelName, PublicRatholeSettings, TunnelName,
 };
 
 use super::claim_limiter::{ClaimLimiter, GLOBAL, MAX_CLIENTS, PER_CLIENT};
@@ -92,8 +92,17 @@ async fn claim(
     };
     let tunnel_name = match TunnelName::parse(tunnel.name) {
         Ok(tunnel_name) => tunnel_name,
-        Err(e) => {
-            return TunnelError::infrastructure("a stored tunnel name is invalid", e)
+        // The reason without the name, which the error carries: this is
+        // logged to the journal.
+        Err(InvalidTunnelName::NotDnsLabel { .. }) => {
+            return TunnelError::infrastructure(
+                "a stored tunnel name is invalid",
+                "not a lowercase DNS label",
+            )
+            .into_response()
+        }
+        Err(InvalidTunnelName::Reserved { .. }) => {
+            return TunnelError::infrastructure("a stored tunnel name is invalid", "reserved")
                 .into_response()
         }
     };
