@@ -1399,6 +1399,7 @@ mod tests {
             consent_watcher: Some(ServerConsentWatcher::new(
                 authorization_server.pending_consent_watcher.clone(),
             )),
+            certificate_actions: None,
         };
         change(&mut detail);
         let status = UnitStatus {
