@@ -200,6 +200,15 @@ async fn a_server_unit_runs_reports_its_health_and_runs_again_after_a_stop() {
         .and_then(|detail| detail.sign_in_code_minter.clone())
         .expect("the run's detail holds its sign-in code minter");
     assert!(!sign_in_code_minter.mint().is_empty());
+    // And its certificate actions, which restart the run's ordering.
+    wildflowerhealthio_servers::running_certificate_actions(
+        DOMAIN,
+        unit_runner.statuses().get(&UnitId::from(DOMAIN)),
+    )
+    .expect("the running server's detail holds its certificate actions")
+    .get_certificate()
+    .await
+    .expect("the run restarts its ordering");
     let unit_status = unit_runner.statuses()[&UnitId::from(DOMAIN)].clone();
     // Unknown health is refused before the certificate is looked at, so a
     // run that hasn't reported one yet is given any.

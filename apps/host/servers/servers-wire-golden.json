@@ -595,5 +595,43 @@
   "browserTrustedCertificateAuthorities": {
     "letsEncrypt": true,
     "letsEncryptStaging": false
+  },
+  "certificateActionErrors": [
+    {
+      "kind": "serverNotRunning",
+      "message": "the server ruth.relay.example.com isn't running"
+    },
+    {
+      "kind": "cachedCertificateNotRemoved",
+      "message": "the server ruth.relay.example.com's cached certificate couldn't be removed: permission denied"
+    },
+    {
+      "kind": "duplicateLimitReached",
+      "message": "the certificate authority has issued 5 certificates for ruth.relay.example.com in the last 7 days, its limit; it issues another after 2026-10-20T17:00:00Z"
+    },
+    {
+      "kind": "historyUnreadable",
+      "message": "the server ruth.relay.example.com's certificate history couldn't be read: permission denied"
+    },
+    {
+      "kind": "notRegistered",
+      "message": "no server with the domain ruth.relay.example.com is registered"
+    }
+  ],
+  "duplicateCertificates": {
+    "noneInTheWindow": {
+      "limit": 5,
+      "count": 0
+    },
+    "oneBelowTheLimit": {
+      "limit": 5,
+      "count": 4,
+      "oldestLeavesWindowAt": "2026-10-20T17:00:00Z"
+    },
+    "atTheLimit": {
+      "limit": 5,
+      "count": 5,
+      "oldestLeavesWindowAt": "2026-10-20T17:00:00Z"
+    }
   }
 }
