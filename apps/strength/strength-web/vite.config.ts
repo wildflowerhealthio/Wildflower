@@ -33,7 +33,7 @@ export default defineConfig({
     }),
     react(),
   ],
-  // The homescreen's "Strength (Dev)" tile launches this port's
+  // The homescreen's "Wildflower Strength (Dev)" tile launches this port's
   // root, so the dev server must hold exactly it. Run with
   // `vp run -F @wildflowerhealthio/strength-web dev`.
   server: devAppServer('strength-dev'),
