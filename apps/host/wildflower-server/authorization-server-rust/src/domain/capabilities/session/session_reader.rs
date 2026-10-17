@@ -15,6 +15,12 @@ impl SessionReader {
         SessionReader { claims }
     }
 
+    /// The browser session the caller's token was minted under (its `sid`),
+    /// or `None` for a token under no browser session.
+    pub(crate) fn sid(&self) -> Option<&str> {
+        self.claims.sid.as_deref()
+    }
+
     /// The `scope` claim split on whitespace — the scopes this session actually
     /// holds. Empty when the token carries no `scope` claim at all.
     pub(crate) fn scopes(&self) -> Vec<String> {

@@ -344,6 +344,18 @@ pub trait GrantTx {
         sid: &str,
     ) -> Result<Option<BrowserSession>, AuthorizationServerError>;
 
+    /// Every browser session live at `now`: not revoked, and expiring after
+    /// `now`. Newest first.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the read fails or a row
+    /// cannot be mapped to a [`BrowserSession`].
+    fn live_browser_sessions(
+        &mut self,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<BrowserSession>, AuthorizationServerError>;
+
     /// Whether the browser session `sid` has been revoked, without loading
     /// it. A `sid` that names no session counts as revoked: a session is
     /// pruned only once nothing it minted can still be live, so a missing row

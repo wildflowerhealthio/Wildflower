@@ -16,6 +16,9 @@ pub(crate) mod consents;
 pub(crate) mod grants;
 pub(crate) mod tokens;
 
+pub(crate) use browser_sessions::{
+    BrowserSessionView, BrowserSessionsReader, BrowserSessionsRevoker,
+};
 pub(crate) use clients::{ClientView, ClientsDisabler, ClientsReader};
 pub use consents::{
     ApproveDeviceConsentInput, ApproveOAuthConsentInput, ConsentOutcome, DeviceConsentView,

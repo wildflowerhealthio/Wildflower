@@ -87,6 +87,7 @@ pub fn router(state: Arc<AuthorizationServerState>) -> Router {
     let access = Router::new()
         .merge(clients)
         .merge(routes::grants::router())
+        .merge(routes::browser_sessions::router())
         .merge(routes::oauth_consents::router())
         .merge(routes::devices::router())
         .merge(routes::logout::router())

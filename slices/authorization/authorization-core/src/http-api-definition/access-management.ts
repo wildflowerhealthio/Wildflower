@@ -123,6 +123,40 @@ const SessionSchema = Schema.Struct({
 })
 
 /**
+ * A live browser session: a browser the server has signed in, neither revoked
+ * nor expired, keyed by the `sid` every token, code and refresh family minted
+ * under it records.
+ *
+ * - `kind` is how the browser came to hold it: `owner`, a same-device sign-in
+ *   as the Owner, or `approved`, a browser that paired at `/oauth/pair` with a
+ *   code the Owner approved;
+ * - `name` is the name an approved browser was given, `null` for an Owner
+ *   browser;
+ * - `lastSeenAt` is when it was last seen in use: its sign-in, the server
+ *   accepting its cookie (at most once every five minutes), or a refresh-token
+ *   family made under it rotating;
+ * - `heldByCaller` is whether the caller's own token was minted under it.
+ */
+const BrowserSessionSchema = Schema.Struct({
+  sid: Schema.String,
+  kind: Schema.Literal('owner', 'approved'),
+  name: Schema.NullOr(Schema.String),
+  createdAt: Schema.DateTimeUtc,
+  expiresAt: Schema.DateTimeUtc,
+  lastSeenAt: Schema.DateTimeUtc,
+  heldByCaller: Schema.Boolean,
+})
+
+/** Every live browser session: `ListBrowserSessions`' answer. */
+const BrowserSessionsSchema = Schema.Array(BrowserSessionSchema)
+
+/** `RevokeBrowserSession`'s `404` for a `sid` that names no live session. */
+const BrowserSessionNotFoundSchema = Schema.Struct({
+  error: Schema.Literal('BrowserSessionNotFound'),
+  sid: Schema.String,
+})
+
+/**
  * Owner-only operator surface. Every endpoint here carries
  * `RequireAuthMiddleware` so the slice's `-core` layer cannot ship them
  * unauthenticated by accident.
@@ -137,6 +171,9 @@ const SessionSchema = Schema.Struct({
  *   disabling an essential client is a `409`.
  * - `CreateRevocation`: revoke issued tokens now — a subject's whole cohort,
  *   or one token by `jti`.
+ * - `ListBrowserSessions` / `RevokeBrowserSession`: see every browser the
+ *   server has signed in and end one, which ends everything minted under it.
+ *   Revoking the caller's own session is allowed, and signs that browser out.
  * - `GetSession`: the caller reading back *their own* token's scopes. The
  *   odd one out — self-service rather than operator, and deliberately
  *   ungated by any scope on the server, since the sessions that need it
@@ -170,6 +207,16 @@ const httpApiGroup = HttpApiGroup.make('access-management', { topLevel: false })
       .setPayload(RevocationSchema)
       .addError(RevocationRejectedSchema, { status: 400 })
   )
+  .add(
+    HttpApiEndpoint.get('ListBrowserSessions', '/browser-sessions').addSuccess(
+      BrowserSessionsSchema
+    )
+  )
+  .add(
+    HttpApiEndpoint.del('RevokeBrowserSession', '/browser-sessions/:sid')
+      .setPath(Schema.Struct({ sid: Schema.String }))
+      .addError(BrowserSessionNotFoundSchema, { status: 404 })
+  )
   // Every *operator* endpoint here is scope-gated on the server (a `Scoped<…>`
   // capability per operation), so the shared `403 InsufficientScope` is declared
   // once at the group level rather than per endpoint — the generated client then
@@ -181,6 +228,9 @@ const httpApiGroup = HttpApiGroup.make('access-management', { topLevel: false })
 
 export {
   httpApiGroup,
+  BrowserSessionNotFoundSchema,
+  BrowserSessionSchema,
+  BrowserSessionsSchema,
   ClientNotFoundSchema,
   ClientsSchema,
   EssentialClientSchema,

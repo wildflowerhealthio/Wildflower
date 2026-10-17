@@ -27,9 +27,20 @@ pub(crate) const LAST_SEEN_RESOLUTION: Duration = Duration::minutes(5);
 /// How a browser came to hold its session. The wire string, stored in the
 /// `kind` column, is the lowercased variant name.
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, EnumString, AsRefStr, Display, AsExpression, FromSqlRow,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    EnumString,
+    AsRefStr,
+    Display,
+    AsExpression,
+    FromSqlRow,
+    serde::Serialize,
 )]
 #[strum(serialize_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
 #[diesel(sql_type = diesel::sql_types::Text)]
 pub enum BrowserSessionKind {
     /// The Owner's browser, signed in on the server's own device with a

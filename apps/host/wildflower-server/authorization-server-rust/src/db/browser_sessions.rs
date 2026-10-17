@@ -58,6 +58,21 @@ pub(super) fn browser_session_by_sid(
         .map_err(|e| AuthorizationServerError::infrastructure("browser_session_by_sid failed", e))
 }
 
+/// Every browser session live at `now` (not revoked, `expires_at` after
+/// `now`), newest first.
+pub(super) fn live_browser_sessions(
+    conn: &mut SqliteConnection,
+    now: DateTime<Utc>,
+) -> Result<Vec<BrowserSession>, AuthorizationServerError> {
+    browser_sessions::table
+        .filter(browser_sessions::revoked_at.is_null())
+        .filter(browser_sessions::expires_at.gt(now))
+        .order(browser_sessions::created_at.desc())
+        .select(BrowserSession::as_select())
+        .load(conn)
+        .map_err(|e| AuthorizationServerError::infrastructure("live_browser_sessions failed", e))
+}
+
 /// Whether the browser session `sid` is revoked or missing: no row with that
 /// `sid` and `revoked_at IS NULL` exists.
 pub(super) fn browser_session_is_revoked(
@@ -223,6 +238,35 @@ mod tests {
         assert!(!store
             .revoke_browser_session("no-such-sid", now)
             .expect("revoke"));
+    }
+
+    /// Only sessions neither revoked nor expired at `now` are live, newest
+    /// first.
+    #[test]
+    fn live_sessions_are_the_unrevoked_unexpired_ones_newest_first() {
+        let store = store();
+        let now = chrono::Utc::now();
+        let older = BrowserSession::new_owner(vec![], Duration::hours(8), now - Duration::hours(2));
+        let newer = BrowserSession::new_owner(vec![], Duration::hours(8), now - Duration::hours(1));
+        let expired =
+            BrowserSession::new_owner(vec![], Duration::hours(8), now - Duration::hours(9));
+        let revoked = BrowserSession::new_owner(vec![], Duration::hours(8), now);
+        for session in [&older, &newer, &expired, &revoked] {
+            store
+                .with_connection(|tx| tx.insert_browser_session(session))
+                .expect("insert");
+        }
+        store
+            .revoke_browser_session(&revoked.sid, now)
+            .expect("revoke");
+
+        let live: Vec<String> = store
+            .live_browser_sessions(now)
+            .expect("read")
+            .into_iter()
+            .map(|session| session.sid)
+            .collect();
+        assert_eq!(live, vec![newer.sid, older.sid]);
     }
 
     /// A touch moves `last_seen_at` only when it was last seen before the

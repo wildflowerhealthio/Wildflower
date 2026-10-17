@@ -25,6 +25,9 @@ pub enum AuthorizationServerError {
     DeviceConsentNotFound { user_code: String },
     /// No standing grant has this id — the `/authorization/grants/{id}` 404.
     GrantNotFound { id: String },
+    /// No standing browser session has this `sid` — the
+    /// `DELETE /authorization/browser-sessions/{sid}` 404.
+    BrowserSessionNotFound { sid: String },
     /// No registered client has this `client_id` — the
     /// `PATCH /authorization/clients/{clientId}` 404.
     ClientNotFound { client_id: String },
@@ -86,6 +89,9 @@ impl std::fmt::Display for AuthorizationServerError {
                 write!(f, "no pending device consent with user code {user_code}")
             }
             AuthorizationServerError::GrantNotFound { id } => write!(f, "no grant with id {id}"),
+            AuthorizationServerError::BrowserSessionNotFound { sid } => {
+                write!(f, "no standing browser session with sid {sid}")
+            }
             AuthorizationServerError::ClientNotFound { client_id } => {
                 write!(f, "no client with id {client_id}")
             }

@@ -4,6 +4,7 @@
  *
  *   - {@link file://./grants.ts}          — access-management grants (list + detail + revoke)
  *   - {@link file://./clients.ts}         — access-management clients (list + update)
+ *   - {@link file://./browser-sessions.ts} — access-management browser sessions (list + revoke)
  *   - {@link file://./device-consent.ts}  — RFC 8628 device-authorization consent decisions
  *   - {@link file://./oauth-consent.ts}   — OAuth authorization-code consent decisions
  *
@@ -15,7 +16,7 @@
  * which resource module a hook lives in.
  */
 
-export { CLIENTS_QUERY_KEY, GRANTS_QUERY_KEY } from './keys.ts'
+export { BROWSER_SESSIONS_QUERY_KEY, CLIENTS_QUERY_KEY, GRANTS_QUERY_KEY } from './keys.ts'
 export { useRunAuthed } from './use-run-authed.ts'
 
 export {
@@ -29,6 +30,13 @@ export type { AppGrant, DeviceGrant, Grant, RevokeGrantVariables } from './grant
 
 export { clientsQueryOptions, useClientsQuery, useUpdateClientMutation } from './clients.ts'
 export type { ClientSwitch, UpdateClientVariables } from './clients.ts'
+
+export {
+  browserSessionsQueryOptions,
+  useBrowserSessionsQuery,
+  useRevokeBrowserSessionMutation,
+} from './browser-sessions.ts'
+export type { BrowserSession, RevokeBrowserSessionVariables } from './browser-sessions.ts'
 
 export { ExpiredDeviceConsent, deviceConsentMutationOptions } from './device-consent.ts'
 export type { DeviceConsent, DeviceConsentDecision, DeviceConsentResult } from './device-consent.ts'
