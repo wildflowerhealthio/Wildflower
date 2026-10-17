@@ -819,7 +819,7 @@ mod migration_tests {
 
     /// Strength ships as a first-party app (apps migration `0010`), launched at
     /// its published Pages copy's root (`0016`) — a SMART EHR launch — under a
-    /// random client id (`0017`) and its product's name (`0023`).
+    /// random client id (`0017`) and its product's name (`0023`, `0025`).
     #[test]
     fn strength_launches_at_its_root() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
@@ -832,7 +832,7 @@ mod migration_tests {
             registration.client_id.as_deref(),
             Some("bdf9fc5cb5a28c6683b49896b0ef8a75")
         );
-        assert_eq!(registration.name, "Strength");
+        assert_eq!(registration.name, "Wildflower Strength");
         assert_eq!(
             registration.url.to_string(),
             "https://strength.wildflowerhealth.io/?launch={launch}&iss={origin}",
@@ -2020,5 +2020,88 @@ mod migration_tests {
             "https://wildflowerhealth.io/lifting/?launch={launch}&iss={origin}",
         );
         assert_eq!(reverted_url(&mut conn, "plots"), edited);
+    }
+
+    /// An install at `0024` renames the Strength tile and its dev tile to
+    /// Wildflower Strength when `0025` runs, while each still holds its seeded
+    /// name, keeping the tile's placement, client and launch URL. Reverting
+    /// `0025` restores the seeded names.
+    #[test]
+    fn an_install_already_at_0024_renames_strength_in_place() {
+        let pool = pool_migrated_through("0024");
+        let mut conn = pool.get().unwrap();
+        sql_query("UPDATE app_registrations SET on_homescreen = 0 WHERE id = 'strength'")
+            .execute(&mut conn)
+            .expect("the user hides Strength");
+        sql_query(
+            "INSERT INTO app_registrations \
+             (id, position, on_homescreen, name, url, client_id) \
+             VALUES ('strength-dev', (SELECT MAX(position) + 1 FROM app_registrations), 1, \
+                     'Strength (Dev)', 'http://localhost:5191/?launch={launch}&iss={origin}', \
+                     '8467e680a05f1e92e22864e923144e5a')",
+        )
+        .execute(&mut conn)
+        .expect("a dev row seeded before 0025");
+        let position_before = sql_query("SELECT position FROM app_registrations WHERE id = ?")
+            .bind::<Text, _>("strength")
+            .get_result::<Position>(&mut conn)
+            .unwrap()
+            .position;
+        drop(conn);
+
+        let store = SqliteAppsStore::new(pool.clone()).expect("0025 must apply");
+        let strength = store.find_app("strength").unwrap().expect("strength");
+        assert_eq!(
+            strength.name, "Wildflower Strength",
+            "the seeded name moves"
+        );
+        assert!(!strength.on_homescreen, "the user's placement stays");
+        assert_eq!(strength.position, position_before);
+        assert_eq!(
+            strength.client_id.as_deref(),
+            Some("bdf9fc5cb5a28c6683b49896b0ef8a75")
+        );
+        assert_eq!(
+            stored_url(&store, "strength"),
+            "https://strength.wildflowerhealth.io/?launch={launch}&iss={origin}",
+        );
+        assert_eq!(
+            store
+                .find_app("strength-dev")
+                .unwrap()
+                .expect("strength-dev")
+                .name,
+            "Wildflower Strength (Dev)"
+        );
+
+        let mut conn = pool.get().unwrap();
+        embedded_migration("0025")
+            .revert(&mut conn)
+            .expect("revert 0025");
+        assert_eq!(stored_name(&mut conn, "strength"), "Strength");
+        assert_eq!(stored_name(&mut conn, "strength-dev"), "Strength (Dev)");
+    }
+
+    /// `0025` leaves a Strength tile the user renamed alone, both ways.
+    #[test]
+    fn renaming_strength_keeps_a_name_the_user_edited() {
+        let pool = pool_migrated_through("0024");
+        let mut conn = pool.get().unwrap();
+        sql_query("UPDATE app_registrations SET name = 'My Lifts' WHERE id = 'strength'")
+            .execute(&mut conn)
+            .expect("the user renames Strength");
+        drop(conn);
+
+        let store = SqliteAppsStore::new(pool.clone()).expect("0025 must apply");
+        assert_eq!(
+            store.find_app("strength").unwrap().expect("strength").name,
+            "My Lifts"
+        );
+
+        let mut conn = pool.get().unwrap();
+        embedded_migration("0025")
+            .revert(&mut conn)
+            .expect("revert 0025");
+        assert_eq!(stored_name(&mut conn, "strength"), "My Lifts");
     }
 }

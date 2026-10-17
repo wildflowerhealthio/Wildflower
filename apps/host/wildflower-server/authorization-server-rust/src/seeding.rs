@@ -437,7 +437,7 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
         ),
         (
             STRENGTH_DEV_CLIENT_ID,
-            "Strength (Dev)",
+            "Wildflower Strength (Dev)",
             // `apps/strength/strength-web/src/config.ts`'s `STRENGTH_SCOPE` — see
             // [`STRENGTH_DEV_SCOPES`].
             STRENGTH_DEV_SCOPES,

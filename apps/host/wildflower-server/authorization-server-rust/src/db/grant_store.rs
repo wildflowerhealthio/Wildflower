@@ -1592,7 +1592,7 @@ mod tests {
         wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
-            MIGRATIONS,
+            MigrationsThrough("0035"),
         )
         .expect("upgrade through 0035");
 
@@ -1816,6 +1816,64 @@ mod tests {
         diesel::sql_query("SELECT requested_by_owner_browser FROM authorization_requests")
             .execute(&mut conn)
             .expect("the column has its old name");
+    }
+
+    /// An install already at `0038` renames the Strength clients to
+    /// Wildflower Strength when `0039` runs: a client still holding the name
+    /// `0035` wrote takes the product's, and one whose name is anything else
+    /// keeps it. Reverting `0039` restores the `0035` names.
+    #[test]
+    fn an_install_already_at_0038_renames_the_strength_clients() {
+        use diesel::connection::SimpleConnection as _;
+        const STRENGTH: &str = "bdf9fc5cb5a28c6683b49896b0ef8a75";
+        const STRENGTH_DEV: &str = "8467e680a05f1e92e22864e923144e5a";
+
+        let name_of = |conn: &mut SqliteConnection, client_id: &str| {
+            column_for_client(conn, "name", client_id)[0].name.clone()
+        };
+        let migration_0039 = || {
+            MIGRATIONS
+                .migrations()
+                .expect("embedded migrations")
+                .into_iter()
+                .find(|migration| migration.name().version() == MigrationVersion::from("0039"))
+                .expect("0039 is embedded")
+        };
+        for (dev_name, dev_name_after) in [
+            ("Strength (Dev)", "Wildflower Strength (Dev)"),
+            ("My lifts", "My lifts"),
+        ] {
+            let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+            wildflowerhealthio_persistence::run_diesel_migrations(
+                &mut conn,
+                MIGRATION_NAMESPACE,
+                MigrationsThrough("0038"),
+            )
+            .expect("migrate to 0038");
+            conn.batch_execute(&format!(
+                "INSERT INTO clients \
+                 (client_id, name, kind, redirect_uris, allowed_scopes, allowed_grant_types, \
+                  secret_hash, registered_at, disabled_at) \
+                 VALUES ('{STRENGTH_DEV}', '{dev_name}', 'public', \
+                         '[\"http://localhost:5199/\"]', '[\"launch\"]', \
+                         '[\"authorization_code\"]', NULL, '2024-01-01 00:00:00+00:00', NULL)"
+            ))
+            .expect("the dev client at 0038");
+            assert_eq!(name_of(&mut conn, STRENGTH), "Strength");
+
+            wildflowerhealthio_persistence::run_diesel_migrations(
+                &mut conn,
+                MIGRATION_NAMESPACE,
+                MigrationsThrough("0039"),
+            )
+            .expect("upgrade through 0039");
+            assert_eq!(name_of(&mut conn, STRENGTH), "Wildflower Strength");
+            assert_eq!(name_of(&mut conn, STRENGTH_DEV), dev_name_after);
+
+            migration_0039().revert(&mut conn).expect("revert 0039");
+            assert_eq!(name_of(&mut conn, STRENGTH), "Strength");
+            assert_eq!(name_of(&mut conn, STRENGTH_DEV), dev_name);
+        }
     }
 
     /// Running the migrations twice is a no-op the second time (the namespaced

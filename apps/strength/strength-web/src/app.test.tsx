@@ -100,6 +100,6 @@ describe('App', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
 
     // Assert
     expect(await screen.findByRole('heading', { name: 'Workout A' })).toBeDefined()
-    expect(screen.getByRole('heading', { name: 'Strength', level: 1 })).toBeDefined()
+    expect(screen.getByRole('heading', { name: 'Wildflower Strength', level: 1 })).toBeDefined()
   })
 })

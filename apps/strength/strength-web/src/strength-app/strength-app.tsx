@@ -89,7 +89,7 @@ const StrengthApp = ({
   return (
     <>
       <header className={styles['strength-app__header']}>
-        <h1 className="text-heading-3">Strength</h1>
+        <h1 className="text-heading-3">Wildflower Strength</h1>
         <PatientChoiceLine
           client={client}
           patientChoice={patientChoice}

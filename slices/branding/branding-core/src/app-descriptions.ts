@@ -251,7 +251,7 @@ const APP_DESCRIPTIONS: {
     launchesFromUrl: true,
   },
   strength: {
-    name: 'Strength',
+    name: 'Wildflower Strength',
     tagline:
       'A strength-training program, the workout due today and every set you lift, ' +
       'kept on your own FHIR record.',
@@ -269,7 +269,7 @@ const APP_DESCRIPTIONS: {
     ],
     anchor: 'built',
     launch: {
-      label: 'Open Strength',
+      label: 'Open Wildflower Strength',
       note: 'Plan and log workouts on any FHIR server, including our demo',
     },
     launchesFromUrl: true,
