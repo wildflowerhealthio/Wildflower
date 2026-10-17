@@ -203,6 +203,19 @@ describe('SmartAppRoot', () => {
     expect(menu.getAttribute('data-redirect-uri')).toBe(`${window.location.origin}/importer/`)
   })
 
+  it('should hand the connect menu the served directory as its redirect on a deep route', () => {
+    // Arrange — a plain visit to a routed app's nested route
+    setUrl('/strength/patients/123/today')
+
+    // Act
+    renderShell({ launched: false, basepath: '/strength/' })
+
+    // Assert
+    expect(screen.getByTestId('connect-menu-stub').getAttribute('data-redirect-uri')).toBe(
+      `${window.location.origin}/strength/`
+    )
+  })
+
   it('should resolve every header nav link as an absolute published-site URL', () => {
     // Arrange / Act
     renderShell({ launched: false })
@@ -411,6 +424,24 @@ describe('SmartAppRoot on a launch', () => {
         noRedirect: true,
       })
       expect(authorizeFromLaunchPageSpy).toHaveBeenCalledTimes(1)
+    })
+
+    it('should authorize a launch at a nested route with the served directory as its redirect', async () => {
+      // Arrange
+      setUrl(`/strength/patients/123/today${EHR_LAUNCH}`)
+
+      // Act
+      renderShell({ basepath: '/strength/' })
+
+      // Assert
+      await waitFor(() => {
+        expect(authorizeMock).toHaveBeenCalledTimes(1)
+      })
+      expect(authorizeMock).toHaveBeenCalledWith({
+        ...REGISTRATION,
+        redirectUri: `${window.location.origin}/strength/`,
+        noRedirect: true,
+      })
     })
 
     it('should show the launch page, naming the app, with no dialog', async () => {
@@ -913,11 +944,13 @@ function Shell({
 /** Render the shell under StrictMode, as an app's `main.tsx` does. */
 function renderShell({
   app = 'medications',
+  basepath,
   launched,
   replaceLocation,
   children = <div data-testid="app" />,
 }: {
   readonly app?: AppSectionId
+  readonly basepath?: string
   readonly launched?: boolean
   readonly replaceLocation?: (url: string) => void
   readonly children?: JSX.Element
@@ -928,6 +961,7 @@ function renderShell({
         app={app}
         registration={REGISTRATION}
         telemetry={TELEMETRY}
+        basepath={basepath}
         launched={launched}
         replaceLocation={replaceLocation}
       >

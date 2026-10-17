@@ -3,7 +3,7 @@ import { useCallback, useMemo, useState } from 'react'
 
 import { decodePatientChoice, type PatientChoice, withPatientChoice } from './patient-choice.ts'
 
-/** What {@link usePatientChoice} hands the page, and `useRoutedPatientPicker` a routed app's root. */
+/** What {@link usePatientChoice} hands the page. */
 interface PatientChoosing {
   /**
    * Whose records the page reads; `None` while the reader is choosing, which

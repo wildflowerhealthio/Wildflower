@@ -1,215 +1,133 @@
+import { QueryClient } from '@tanstack/react-query'
 import {
   createMemoryHistory,
   createRootRoute,
   createRoute,
   createRouter,
-  Link,
-  Outlet,
-  retainSearchParams,
-  type RouterHistory,
+  isNotFound,
   RouterProvider,
 } from '@tanstack/react-router'
-import { act, cleanup, render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
-import { Match, Option, Schema } from 'effect'
+import { cleanup, render, screen } from '@testing-library/react'
+import type { SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
+import { Option } from 'effect'
 import type { JSX } from 'react'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
-import { PATIENT_PARAM, patientChoiceKeyOf } from './patient-choice.ts'
-import { parsePlainSearch, stringifyPlainSearch } from './plain-search.ts'
+import { patientChoiceKeyOf } from './patient-choice.ts'
 import {
-  PatientSearch,
-  PICKING_PATIENT_PARAM,
-  routedPatientChoiceOf,
+  ensureRoutedPatient,
+  launchPatientRoute,
+  missingPatientIdOf,
   useRoutedPatientChoice,
-  useRoutedPatientPicker,
 } from './routed-patient-choice.ts'
+import { answer, stubSmartClient } from './smart-client.test-helpers.ts'
 
 afterEach(() => {
   cleanup()
 })
 
-describe('routedPatientChoiceOf', () => {
-  it('should read the address bar’s patient over the launch’s', () => {
-    expect(routedPatientChoiceOf('p2', 'p1')).toStrictEqual(
-      Option.some({ kind: 'patient', patientId: 'p2' })
-    )
+/** A client whose launch put `patientId` in context; only `patient.id` is read. */
+const launchedWith = (patientId: string | null): SmartClient =>
+  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test-only stub: only `patient.id` is read
+  ({ patient: { id: patientId } }) as unknown as SmartClient
+
+describe('launchPatientRoute', () => {
+  it('should open the launch’s patient', () => {
+    expect(launchPatientRoute(launchedWith('1.50'))).toBe('/patients/1.50')
   })
 
-  it('should read `*` as every patient', () => {
-    expect(routedPatientChoiceOf('*', 'p1')).toStrictEqual(Option.some({ kind: 'all-patients' }))
-  })
-
-  it.each([
-    { case: 'no `?patient=`', patientKey: undefined },
-    { case: 'an empty `?patient=`', patientKey: '' },
-  ])('should fall back to the launch’s patient with $case', ({ patientKey }) => {
-    expect(routedPatientChoiceOf(patientKey, 'p1')).toStrictEqual(
-      Option.some({ kind: 'patient', patientId: 'p1' })
-    )
-  })
-
-  it('should be no choice yet with neither', () => {
-    expect(routedPatientChoiceOf(undefined, null)).toStrictEqual(Option.none())
+  it('should open the picker for a launch with no patient', () => {
+    expect(launchPatientRoute(launchedWith(null))).toBe('/patients')
   })
 })
 
-/** A child route's page, naming the choice the hook reads there. */
+/** A route's page, naming the choice the hook reads there. */
 function ChoiceLine(): JSX.Element {
-  const patientChoice = useRoutedPatientChoice('p1')
-  return <p>{Option.getOrElse(Option.map(patientChoice, patientChoiceKeyOf), () => 'none')}</p>
+  return <p>{patientChoiceKeyOf(useRoutedPatientChoice())}</p>
 }
 
-/** Render a router whose root validates {@link PatientSearch}, at `url`, with a child route at `/tab`. */
+/** Render a router at `url`, with `/patients/$patientId/tab` and an all-patients `/tab`. */
 const renderAt = (url: string): void => {
-  const rootRoute = createRootRoute({ validateSearch: Schema.standardSchemaV1(PatientSearch) })
-  const tabRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/tab',
-    component: ChoiceLine,
-  })
+  const rootRoute = createRootRoute()
   const router = createRouter({
-    routeTree: rootRoute.addChildren([tabRoute]),
+    routeTree: rootRoute.addChildren([
+      createRoute({ getParentRoute: () => rootRoute, path: '/tab', component: ChoiceLine }),
+      createRoute({
+        getParentRoute: () => rootRoute,
+        path: '/patients/$patientId/tab',
+        component: ChoiceLine,
+      }),
+    ]),
     history: createMemoryHistory({ initialEntries: [url] }),
-    parseSearch: parsePlainSearch,
-    stringifySearch: stringifyPlainSearch,
   })
   render(<RouterProvider router={router} />)
 }
 
 describe('useRoutedPatientChoice', () => {
-  it('should read a child route’s `?patient=` as the address bar holds it', async () => {
-    renderAt('/tab?patient=1.50')
+  it.each([
+    { case: 'the patient the path names', url: '/patients/p2/tab', key: 'p2' },
+    { case: 'a numeric-looking id as written', url: '/patients/1.50/tab', key: '1.50' },
+    { case: 'every patient on a route naming none', url: '/tab', key: '*' },
+  ])('should read $case', async ({ url, key }) => {
+    // Act
+    renderAt(url)
 
-    expect(await screen.findByText('1.50')).toBeDefined()
-  })
-
-  it('should fall back to the launch’s patient without one', async () => {
-    renderAt('/tab')
-
-    expect(await screen.findByText('p1')).toBeDefined()
+    // Assert
+    expect(await screen.findByText(key)).toBeDefined()
   })
 })
 
-/**
- * Render a router whose root shows a link to `/other` over
- * {@link useRoutedPatientPicker}'s page (the patient and "Change patient") or
- * its picker (a "Choose Ada" button), at `url`, choices landing on
- * `choiceLandsOn`; its history, to read the location and go Back.
- */
-const renderPickerAt = (url: string, choiceLandsOn: string): RouterHistory => {
-  function PickerRoot(): JSX.Element {
-    const { patientChoice, choosePatient, changePatient } = useRoutedPatientPicker(
-      null,
-      choiceLandsOn
-    )
-    return (
-      <>
-        <Link to="/other">Other</Link>
-        {Match.value({ shown: Option.getOrUndefined(patientChoice) }).pipe(
-          Match.when({ shown: Match.defined }, ({ shown }) => (
-            <>
-              <p>Showing {patientChoiceKeyOf(shown)}</p>
-              <button type="button" onClick={changePatient}>
-                Change patient
-              </button>
-              <Outlet />
-            </>
-          )),
-          Match.orElse(() => (
-            <button
-              type="button"
-              onClick={() => {
-                choosePatient({ kind: 'patient', patientId: 'ada' })
-              }}
-            >
-              Choose Ada
-            </button>
-          ))
-        )}
-      </>
-    )
-  }
-  const rootRoute = createRootRoute({
-    validateSearch: Schema.standardSchemaV1(PatientSearch),
-    search: { middlewares: [retainSearchParams([PATIENT_PARAM])] },
-    component: PickerRoot,
+describe('missingPatientIdOf', () => {
+  it('should read nothing for a path no route matched', () => {
+    expect(missingPatientIdOf(undefined)).toStrictEqual(Option.none())
   })
-  const childRoutes = ['/', '/tab', '/other'].map((path) =>
-    createRoute({ getParentRoute: () => rootRoute, path })
-  )
-  const history = createMemoryHistory({ initialEntries: [url] })
-  const router = createRouter({
-    routeTree: rootRoute.addChildren(childRoutes),
-    history,
-    parseSearch: parsePlainSearch,
-    stringifySearch: stringifyPlainSearch,
-  })
-  render(<RouterProvider router={router} />)
-  return history
-}
+})
 
-/** Where `history` stands: its path and query. */
-const locationOf = (history: RouterHistory): string =>
-  `${history.location.pathname}${history.location.search}`
+describe('ensureRoutedPatient', () => {
+  /** A retry-free cache, so a failed read settles at once. */
+  const testQueryClient = (): QueryClient =>
+    new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
-describe('useRoutedPatientPicker', () => {
-  it('should show the picker with no patient to show', async () => {
-    renderPickerAt('/tab', '.')
-
-    expect(await screen.findByRole('button', { name: 'Choose Ada' })).toBeDefined()
-  })
-
-  it('should open the picker over the patient shown, closing it on Back', async () => {
+  it('should load the patient into the cache the patient line reads', async () => {
     // Arrange
-    const user = userEvent.setup()
-    const history = renderPickerAt('/tab?patient=p2', '.')
-    await user.click(await screen.findByRole('button', { name: 'Change patient' }))
-    await screen.findByRole('button', { name: 'Choose Ada' })
-    expect(locationOf(history)).toBe(`/tab?patient=p2&${PICKING_PATIENT_PARAM}=1`)
-
-    // Act
-    act(() => {
-      history.back()
+    const queryClient = testQueryClient()
+    const { client } = stubSmartClient({
+      'Patient/p1': answer({ resourceType: 'Patient', id: 'p1' }),
     })
 
+    // Act
+    await ensureRoutedPatient(queryClient, client, 'p1')
+
     // Assert
-    expect(await screen.findByText('Showing p2')).toBeDefined()
-    expect(locationOf(history)).toBe('/tab?patient=p2')
+    expect(queryClient.getQueryData(['patient', 'p1'])).toMatchObject({ kind: 'found' })
   })
 
-  it.each([
-    { choiceLandsOn: '.', landing: '/tab?patient=ada' },
-    { choiceLandsOn: '/', landing: '/?patient=ada' },
-  ])(
-    'should land a choice on $choiceLandsOn, pushed with ?patient= and no flag',
-    async ({ choiceLandsOn, landing }) => {
-      // Arrange
-      const user = userEvent.setup()
-      const history = renderPickerAt('/tab?patient=p2', choiceLandsOn)
-      await user.click(await screen.findByRole('button', { name: 'Change patient' }))
+  it.each([404, 410])('should throw not-found naming the patient on a %i', async (status) => {
+    // Arrange
+    const { client } = stubSmartClient({
+      'Patient/bogus': () => Promise.reject(Object.assign(new Error('gone'), { status })),
+    })
 
-      // Act
-      await user.click(await screen.findByRole('button', { name: 'Choose Ada' }))
-
-      // Assert — the picker's entry is still Back's
-      expect(await screen.findByText('Showing ada')).toBeDefined()
-      expect(locationOf(history)).toBe(landing)
-      act(() => {
-        history.back()
-      })
-      await screen.findByRole('button', { name: 'Choose Ada' })
-    }
-  )
-
-  it('should keep ?patient= but not the flag on a link from the picker’s entry', async () => {
     // Act
-    renderPickerAt(`/tab?patient=p2&${PICKING_PATIENT_PARAM}=1`, '.')
+    const thrown: unknown = await ensureRoutedPatient(testQueryClient(), client, 'bogus').then(
+      () => null,
+      (error: unknown) => error
+    )
 
     // Assert
-    await screen.findByRole('button', { name: 'Choose Ada' })
-    expect(screen.getByRole('link', { name: 'Other' }).getAttribute('href')).toBe(
-      '/other?patient=p2'
+    expect(isNotFound(thrown)).toBe(true)
+    expect(missingPatientIdOf(isNotFound(thrown) ? thrown.data : undefined)).toStrictEqual(
+      Option.some('bogus')
     )
+  })
+
+  it('should let the route render on any other failure', async () => {
+    // Arrange
+    const { client } = stubSmartClient({
+      'Patient/p1': () => Promise.reject(Object.assign(new Error('down'), { status: 503 })),
+    })
+
+    // Act / Assert
+    await expect(ensureRoutedPatient(testQueryClient(), client, 'p1')).resolves.toBeUndefined()
   })
 })

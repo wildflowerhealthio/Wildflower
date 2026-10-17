@@ -7,7 +7,7 @@ import { ErrorBanner } from '@wildflowerhealthio/react-tundraish'
 import { Match } from 'effect'
 import { useState, type JSX } from 'react'
 
-import { restoreLandingRoute } from './landing-route.ts'
+import { landOnRoute, restoreLandingRoute } from './landing-route.ts'
 import type { SmartAppPage } from './smart-app-page.ts'
 
 /** Props for {@link SmartHandshakeGate}. */
@@ -16,28 +16,40 @@ interface SmartHandshakeGateProps {
   readonly page: SmartAppPage
   /** What the page shows while the token exchange runs. */
   readonly connecting: JSX.Element
+  /**
+   * The app's route a completed launch opens when it kept no route of its
+   * own (a launch at the app root, a standalone connect), given the client
+   * the handshake handed out: e.g. `launchPatientRoute`, the launch's
+   * patient or the picker. Omitted, the page stays on the app root.
+   */
+  readonly landsOn?: (client: SmartClient) => string
   /** The app over the client the completed handshake handed it, where its router is built. */
   readonly children: (client: SmartClient) => JSX.Element
 }
 
 /**
- * Restores the route a launch landed on onto `page`'s history as it first
- * renders, so the router `children` builds reads it.
+ * Opens the route a launch landed on, or else the app's `landsOn` route, on
+ * `page`'s history as it first renders, replacing the app root, so the
+ * router `children` builds reads it.
  *
  * @remarks
- * The restore is one-shot (`restoreLandingRoute` removes its key), so a
- * second call from StrictMode's double render finds nothing and leaves the
- * URL as the first one set it.
+ * `landOnRoute` acts only on the bare app root, so it gives way to a
+ * restored route. The restore is one-shot (`restoreLandingRoute` removes its
+ * key), so a second call from StrictMode's double render finds nothing to do
+ * and leaves the URL as the first one set it.
  */
-function LandingRouteRestored({
+function LaunchLandingOpened({
   page,
+  landsOn,
   children,
 }: {
   readonly page: SmartAppPage
+  readonly landsOn: string | undefined
   readonly children: JSX.Element
 }): JSX.Element {
   useState(() => {
     restoreLandingRoute(window.sessionStorage, page)
+    if (landsOn !== undefined) landOnRoute(page, landsOn)
   })
   return children
 }
@@ -58,17 +70,24 @@ function LandingRouteRestored({
  *
  * Once ready, and before `children` renders, the route a launch landed on
  * (kept by `authorizeFromLaunchPage`) replaces the app root on `page`'s
- * history, so a deep link such as `/calendar?…` opens that route rather than
- * the default tab.
+ * history, so a deep link such as `/patients/123/plan?…` opens that route;
+ * with none kept, `landsOn`'s route does. One history entry either way.
  */
-function SmartHandshakeGate({ page, connecting, children }: SmartHandshakeGateProps): JSX.Element {
+function SmartHandshakeGate({
+  page,
+  connecting,
+  landsOn,
+  children,
+}: SmartHandshakeGateProps): JSX.Element {
   const handshake = useSmartHandshake()
   useLaunchFailureRedirect(handshake)
   return Match.value(handshake).pipe(
     Match.when({ kind: 'error' }, ({ error }) => <ErrorBanner error={error} />),
     Match.when({ kind: 'connecting' }, () => connecting),
     Match.when({ kind: 'ready' }, ({ client }) => (
-      <LandingRouteRestored page={page}>{children(client)}</LandingRouteRestored>
+      <LaunchLandingOpened page={page} landsOn={landsOn?.(client)}>
+        {children(client)}
+      </LaunchLandingOpened>
     )),
     Match.exhaustive
   )

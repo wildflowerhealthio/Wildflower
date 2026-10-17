@@ -28,16 +28,22 @@ afterEach(() => {
   window.sessionStorage.clear()
 })
 
-/** A client the gate only forwards to its children. */
-// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test-only stub, forwarded to the children
-const client = { state: { serverUrl: 'https://fhir.example/r4' } } as unknown as Client
+/** A client the gate only forwards to its children, whose launch put patient `p1` in context. */
+const client =
+  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test-only stub, forwarded to the children
+  { state: { serverUrl: 'https://fhir.example/r4' }, patient: { id: 'p1' } } as unknown as Client
+
+/** A `landsOn` opening the launch's patient. */
+const landsOnLaunchPatient = (ready: Client): string => `/patients/${ready.patient.id ?? ''}`
 
 /**
  * The gate over a page at the app root, its children naming the server of the
  * client they were handed and the route the history was at as they first
  * rendered; returns the page's history.
  */
-const renderGate = (): RouterHistory => {
+const renderGate = ({
+  landsOn,
+}: { readonly landsOn?: (ready: Client) => string } = {}): RouterHistory => {
   const history = createMemoryHistory({ initialEntries: ['/'] })
   const AppStub = ({ serverUrl }: { readonly serverUrl: string }): JSX.Element => {
     const [route] = useState(() => history.location.href)
@@ -49,7 +55,11 @@ const renderGate = (): RouterHistory => {
   }
   render(
     <StrictMode>
-      <SmartHandshakeGate page={{ history, basepath: '/' }} connecting={<p>Connecting…</p>}>
+      <SmartHandshakeGate
+        page={{ history, basepath: '/' }}
+        connecting={<p>Connecting…</p>}
+        landsOn={landsOn}
+      >
         {(ready) => <AppStub serverUrl={ready.state.serverUrl} />}
       </SmartHandshakeGate>
     </StrictMode>
@@ -89,6 +99,31 @@ describe('SmartHandshakeGate', () => {
     ).toBeDefined()
     expect(history.length).toBe(1)
     expect(window.sessionStorage.getItem(LANDING_ROUTE_STORAGE_KEY)).toBeNull()
+  })
+
+  it('should open the landsOn route when the launch kept none, in one entry', () => {
+    // Arrange
+    handshakeMock.mockReturnValue({ kind: 'ready', client })
+
+    // Act — under StrictMode, which renders the gate twice
+    const history = renderGate({ landsOn: landsOnLaunchPatient })
+
+    // Assert
+    expect(screen.getByText('App over https://fhir.example/r4 at /patients/p1')).toBeDefined()
+    expect(history.length).toBe(1)
+  })
+
+  it('should open the kept route over the landsOn route', () => {
+    // Arrange
+    window.sessionStorage.setItem(LANDING_ROUTE_STORAGE_KEY, '/patients/p2/plan')
+    handshakeMock.mockReturnValue({ kind: 'ready', client })
+
+    // Act
+    const history = renderGate({ landsOn: landsOnLaunchPatient })
+
+    // Assert
+    expect(screen.getByText('App over https://fhir.example/r4 at /patients/p2/plan')).toBeDefined()
+    expect(history.length).toBe(1)
   })
 
   it('should keep the kept route while the exchange runs', () => {

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vite-plus/test'
 import {
   forgetLandingRoute,
   LANDING_ROUTE_STORAGE_KEY,
+  landOnRoute,
   restoreLandingRoute,
   saveLandingRoute,
 } from './landing-route.ts'
@@ -50,6 +51,18 @@ describe('saveLandingRoute', () => {
     { case: 'a failure', search: '?launchError=e30&error=access_denied&error_description=no' },
   ])('should keep nothing for the bare app root carrying only $case', ({ search }) => {
     expect(savedFor(`${ORIGIN}/pr-7/${search}`)).toBeNull()
+  })
+
+  it('should keep a nested route, and nothing for the root, of an app served from a directory', () => {
+    // Act
+    saveLandingRoute(window.sessionStorage, `${ORIGIN}/pr-7/patients/1.50/plan?${LAUNCH}`, '/pr-7/')
+
+    // Assert
+    expect(window.sessionStorage.getItem(LANDING_ROUTE_STORAGE_KEY)).toBe(
+      '/pr-7/patients/1.50/plan'
+    )
+    saveLandingRoute(window.sessionStorage, `${ORIGIN}/pr-7/?${LAUNCH}`, '/pr-7/')
+    expect(window.sessionStorage.getItem(LANDING_ROUTE_STORAGE_KEY)).toBeNull()
   })
 
   it('should clear what an earlier launch kept when this one is at the app root', () => {
@@ -101,6 +114,34 @@ describe('restoreLandingRoute', () => {
     // Assert
     expect(page.history.location.href).toBe('/pr-7/')
     expect(window.sessionStorage.getItem(LANDING_ROUTE_STORAGE_KEY)).toBeNull()
+  })
+})
+
+describe('landOnRoute', () => {
+  it('should replace the bare app root with the route, under the basepath', () => {
+    // Arrange
+    const page = pageAt('/pr-7/')
+
+    // Act
+    landOnRoute(page, '/patients/1.50')
+
+    // Assert
+    expect(page.history.location.href).toBe('/pr-7/patients/1.50')
+    expect(page.history.length).toBe(1)
+  })
+
+  it('should leave a page off the app root where it is', () => {
+    // Arrange — a landing route already restored
+    const page = {
+      history: createMemoryHistory({ initialEntries: ['/pr-7/calendar'] }),
+      basepath: '/pr-7/',
+    }
+
+    // Act
+    landOnRoute(page, '/patients')
+
+    // Assert
+    expect(page.history.location.href).toBe('/pr-7/calendar')
   })
 })
 

@@ -1,146 +1,90 @@
-import { useNavigate, useSearch } from '@tanstack/react-router'
+import type { QueryClient } from '@tanstack/react-query'
+import { notFound, useParams } from '@tanstack/react-router'
+import type { SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { Option, Schema } from 'effect'
-import { useCallback, useMemo } from 'react'
+import { useMemo } from 'react'
 
-import {
-  PATIENT_PARAM,
-  type PatientChoice,
-  patientChoiceKeyOf,
-  patientChoiceOfKey,
-} from './patient-choice.ts'
-import type { PatientChoosing } from './use-patient-choice.ts'
+import type { PatientChoice } from './patient-choice.ts'
+import { patientQuery } from './patient-query.ts'
 
 /**
- * Query key marking a history entry as the patient picker's: present (as
- * `1`) on the entry "Change patient" pushes, over the `?patient=` it was
- * opened from. A root keeps only `?patient=` across navigations, so no other
- * navigation carries it: Back leaves the picker, and a choice lands without
- * it.
+ * The path param a routed SMART app's patient routes name their patient
+ * with: `/patients/$patientId` and every route under it.
  */
-const PICKING_PATIENT_PARAM = 'picking-patient'
+const PATIENT_ID_PARAM = 'patientId'
 
 /**
- * The search a routed SMART app's root route validates (`validateSearch:
- * Schema.standardSchemaV1(PatientSearch)`): whose records the page reads,
- * `?patient=` (a patient's id, or `*` for every patient), absent for the
- * launch's patient, which every navigation keeps
- * (`retainSearchParams([PATIENT_PARAM])`); and the picker's
- * {@link PICKING_PATIENT_PARAM}, which none does.
+ * The route a completed launch opens in a routed app: the launch's patient's
+ * (`/patients/<id>`, e.g. an EHR launch from a patient's record), else the
+ * patient picker (`/patients`). A `SmartHandshakeGate`'s `landsOn`.
+ */
+const launchPatientRoute = (client: SmartClient): string =>
+  client.patient.id === null ? '/patients' : `/patients/${encodeURIComponent(client.patient.id)}`
+
+/** `params`' {@link PATIENT_ID_PARAM} when the open route has one, else `undefined`. */
+const patientIdParamOf = (params: Readonly<Record<string, unknown>>): string | undefined => {
+  const patientId = params[PATIENT_ID_PARAM]
+  return typeof patientId === 'string' ? patientId : undefined
+}
+
+/**
+ * Whose records the open route reads: the patient its path names (under
+ * `/patients/$patientId`), else every patient's (an app's all-patients
+ * routes).
  *
  * @remarks
- * Read as a string only under `parsePlainSearch`, which a router
- * carrying it is built with.
+ * Read under whichever route is matched (`strict: false`), so the hook needs
+ * no app's route tree. A path param is the string the address bar holds, so
+ * an id such as `1.50` reads as itself.
  */
-const PatientSearch = Schema.Struct({
-  [PATIENT_PARAM]: Schema.optional(Schema.String),
-  [PICKING_PATIENT_PARAM]: Schema.optional(Schema.String),
-})
-
-/** `search[key]` when the router holds it as a string (as `PatientSearch` does), else `undefined`. */
-const searchStringOf =
-  (key: string) =>
-  (search: Readonly<Record<string, unknown>>): string | undefined => {
-    const value = search[key]
-    return typeof value === 'string' ? value : undefined
-  }
-
-/**
- * Whose records a routed app's address bar names: `patientKey` (its
- * `?patient=`) when it carries one, else the launch's patient
- * (`launchPatientId`, `client.patient.id`, e.g. an EHR launch from a
- * patient's record), else none yet, which the app shows as the patient
- * picker. For a route's `beforeLoad`, which reads the search it is handed;
- * a component reads {@link useRoutedPatientChoice}.
- */
-const routedPatientChoiceOf = (
-  patientKey: string | undefined,
-  launchPatientId: string | null | undefined
-): Option.Option<PatientChoice> =>
-  Option.orElse(patientChoiceOfKey(patientKey ?? ''), () =>
-    Option.map(Option.fromNullable(launchPatientId), (patientId): PatientChoice => ({
-      kind: 'patient',
-      patientId,
-    }))
-  )
-
-/**
- * {@link routedPatientChoiceOf} for the router's current location, under
- * any route of an app whose root validates {@link PatientSearch}.
- *
- * @remarks
- * Read from the router's location, so it is the history entry's own: Back
- * and Forward bring each entry's patient back with its tab.
- */
-const useRoutedPatientChoice = (
-  launchPatientId: string | null | undefined
-): Option.Option<PatientChoice> => {
-  // Read under whichever route is matched (`strict: false`), so the hook
-  // needs no app's route tree; the root's `PatientSearch` makes it a string.
-  const patientKey = useSearch({ strict: false, select: searchStringOf(PATIENT_PARAM) })
+const useRoutedPatientChoice = (): PatientChoice => {
+  const patientId = useParams({ strict: false, select: patientIdParamOf })
   return useMemo(
-    () => routedPatientChoiceOf(patientKey, launchPatientId),
-    [patientKey, launchPatientId]
+    (): PatientChoice =>
+      patientId === undefined ? { kind: 'all-patients' } : { kind: 'patient', patientId },
+    [patientId]
   )
 }
+
+/** The `notFound()` data {@link ensureRoutedPatient} throws: the id no patient is under. */
+const MissingPatient = Schema.Struct({ missingPatientId: Schema.String })
 
 /**
- * A routed app root's patient choosing, the router's counterpart of
- * `usePatientChoice`: whose records the page shows, `None` while the picker
- * is up ({@link PICKING_PATIENT_PARAM} set, or no patient to show), with the
- * picker's `choosePatient` and the patient line's `changePatient`.
- *
- * @param launchPatientId - The launch's patient, `client.patient.id`, as
- *   {@link useRoutedPatientChoice} takes it.
- * @param choiceLandsOn - Where a choice navigates: a path of the app's (a
- *   strength app's `/`, which opens the choice's first tab), or `.` for the
- *   tab open.
+ * The patient id a route's `notFoundComponent` was handed by
+ * {@link ensureRoutedPatient} (its `data`), or `None` for a path no route
+ * matched.
+ */
+const missingPatientIdOf = (notFoundData: unknown): Option.Option<string> =>
+  Option.map(
+    Schema.decodeUnknownOption(MissingPatient)(notFoundData),
+    ({ missingPatientId }) => missingPatientId
+  )
+
+/**
+ * A patient route's `loader`: read patient `patientId` into the page's cache
+ * (`patientQuery`, the read `PatientChoiceLine` then names them from), and
+ * throw TanStack's `notFound()` when the server holds no such patient (404
+ * or 410), for the route's `notFoundComponent` (`PatientRouteNotFound`) to
+ * say so.
  *
  * @remarks
- * Both are navigations, each pushing a history entry. "Change patient" adds
- * {@link PICKING_PATIENT_PARAM} to the location open, keeping its
- * `?patient=`, so Back closes the picker on the page it was opened over. A
- * choice lands on `choiceLandsOn` with `?patient=` naming it and no flag, so
- * a reload or a shared link opens the patient the address bar names. Read
- * and navigated without the app's route tree (`strict: false`, `to` as a
- * string), under a root that validates {@link PatientSearch}.
+ * Any other failure lets the route render: the patient line says the read
+ * failed, since a server that could not answer is not one without the
+ * patient.
  */
-const useRoutedPatientPicker = (
-  launchPatientId: string | null | undefined,
-  choiceLandsOn: string
-): PatientChoosing => {
-  const routedPatientChoice = useRoutedPatientChoice(launchPatientId)
-  const isPicking =
-    useSearch({ strict: false, select: searchStringOf(PICKING_PATIENT_PARAM) }) !== undefined
-  const navigate = useNavigate()
-  const choosePatient = useCallback(
-    (patientChoice: PatientChoice) => {
-      void navigate({
-        to: choiceLandsOn,
-        search: { [PATIENT_PARAM]: patientChoiceKeyOf(patientChoice) },
-      })
-    },
-    [navigate, choiceLandsOn]
-  )
-  const changePatient = useCallback(() => {
-    void navigate({
-      to: '.',
-      search: (search: Readonly<Record<string, unknown>>) => ({
-        ...search,
-        [PICKING_PATIENT_PARAM]: '1',
-      }),
-    })
-  }, [navigate])
-  const patientChoice = useMemo(
-    () => Option.filter(routedPatientChoice, () => !isPicking),
-    [routedPatientChoice, isPicking]
-  )
-  return { patientChoice, choosePatient, changePatient }
+const ensureRoutedPatient = async (
+  queryClient: QueryClient,
+  client: SmartClient,
+  patientId: string
+): Promise<void> => {
+  // A read already in the cache is used as it stands, as the patient line
+  // would show it.
+  const patientRead = await queryClient
+    .query({ ...patientQuery(client, patientId), staleTime: 'static' })
+    .catch(() => null)
+  if (patientRead?.kind === 'missing') {
+    throw notFound({ data: MissingPatient.make({ missingPatientId: patientId }) })
+  }
 }
 
-export {
-  PatientSearch,
-  PICKING_PATIENT_PARAM,
-  routedPatientChoiceOf,
-  useRoutedPatientChoice,
-  useRoutedPatientPicker,
-}
+export { ensureRoutedPatient, launchPatientRoute, missingPatientIdOf, useRoutedPatientChoice }

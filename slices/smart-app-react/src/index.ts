@@ -12,23 +12,19 @@ export {
   type LoadingLineProps,
   type ReadFailureLineProps,
 } from './read-status-lines.tsx'
-export {
-  PATIENT_PARAM,
-  type PatientChoice,
-  patientChoiceKeyOf,
-  patientChoiceOfKey,
-  patientScopeOf,
-} from './patient-choice.ts'
+export { type PatientChoice, patientChoiceKeyOf, patientScopeOf } from './patient-choice.ts'
 export { PatientChoiceLine, type PatientChoiceLineProps } from './patient-choice-line.tsx'
 export { PatientPicker, type PatientPickerProps } from './patient-picker.tsx'
-export { parsePlainSearch, stringifyPlainSearch } from './plain-search.ts'
 export {
-  PatientSearch,
-  PICKING_PATIENT_PARAM,
-  routedPatientChoiceOf,
+  ensureRoutedPatient,
+  launchPatientRoute,
   useRoutedPatientChoice,
-  useRoutedPatientPicker,
 } from './routed-patient-choice.ts'
+export {
+  PatientRouteNotFound,
+  RouteNotFound,
+  type RouteNotFoundProps,
+} from './routed-not-found.tsx'
 export { type PatientChoosing, usePatientChoice } from './use-patient-choice.ts'
 export { SmartAppRoot, type SmartAppRootProps, type SmartAppTelemetry } from './smart-app-root.tsx'
 export { openSmartAppPage, servedDirectoryOf, type SmartAppPage } from './smart-app-page.ts'

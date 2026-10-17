@@ -82,6 +82,27 @@ describe('authorizeFromLaunchPage', () => {
     })
   })
 
+  it('should return a launch at a nested route to the app’s served root', async () => {
+    // Arrange
+    authorizeSmartLaunchMock.mockResolvedValue(undefined)
+
+    // Act — a route two directories deep, which is no registered redirect URI
+    await authorizeFromLaunchPage(
+      LAUNCH,
+      'https://strength.wildflowerhealth.io/pr-7/patients/123/today?iss=https%3A%2F%2Fehr.example%2Ffhir&launch=xyz',
+      '/pr-7/'
+    )
+
+    // Assert
+    expect(authorizeSmartLaunchMock).toHaveBeenCalledWith({
+      ...LAUNCH,
+      redirectUri: 'https://strength.wildflowerhealth.io/pr-7/',
+    })
+    expect(window.sessionStorage.getItem(LANDING_ROUTE_STORAGE_KEY)).toBe(
+      '/pr-7/patients/123/today'
+    )
+  })
+
   it('should drop the kept route when the authorize rejects', async () => {
     // Arrange
     authorizeSmartLaunchMock.mockRejectedValue(new TypeError('Failed to fetch'))
