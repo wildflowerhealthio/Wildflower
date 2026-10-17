@@ -81,8 +81,8 @@ mod tests {
     fn privileged_store_calls_happen_only_in_writers() {
         let src = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
         let mut checked = 0;
-        for path in rs_files_under(src) {
-            let relative = relative_to(&path, src);
+        for path in rs_files_under(src).expect("enumerate src") {
+            let relative = relative_to(&path, src).expect("enumerated under src");
             if ALLOWED_PREFIXES
                 .iter()
                 .any(|prefix| relative.starts_with(prefix))
