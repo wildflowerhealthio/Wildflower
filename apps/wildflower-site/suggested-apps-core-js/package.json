@@ -2,7 +2,7 @@
   "name": "@wildflowerhealthio/suggested-apps-core-js",
   "version": "0.0.0",
   "private": true,
-  "description": "The schema of `https://wildflowerhealth.io/suggested_apps.json`, which the marketing site publishes: the SMART apps worth trying with a Wildflower server, each tagged and explained. `SuggestedApps` (the document), `SuggestedApp`, the closed `SuggestedAppTag` list with its `TAG_LABELS`, and where the file is published (`SUGGESTED_APPS_PATH`, `SUGGESTED_APPS_URL`). No React, no DOM.",
+  "description": "The schema of `https://wildflowerhealth.io/suggested_apps.json`, which the marketing site publishes: the SMART apps worth trying with a Wildflower server, each tagged and explained. `SuggestedApps` (the document), `SuggestedApp` with its optional public `OAuthClient` registration, the closed `SuggestedAppTag` list with its `TAG_LABELS`, and where the file is published (`SUGGESTED_APPS_PATH`, `SUGGESTED_APPS_URL`). No React, no DOM.",
   "license": "MIT",
   "type": "module",
   "exports": {

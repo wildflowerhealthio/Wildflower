@@ -763,6 +763,61 @@ mod tests {
         );
     }
 
+    /// The marketing site publishes each first-party app's public OAuth client
+    /// registration in `suggested_apps.json`, for a server that registers the
+    /// app itself. Every entry with an `oauthClient` must match its seeded row:
+    /// a public client with no secret, the same scopes and grant types, and
+    /// every redirect it lists registered. The row is the source of truth, so a
+    /// migration that changes one fails here until the file follows.
+    #[test]
+    fn suggested_apps_json_publishes_the_seeded_first_party_clients() {
+        const SUGGESTED_APPS_JSON: &str = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../../apps/wildflower-site/marketing-site-web/public/suggested_apps.json"
+        ));
+        let document: serde_json::Value =
+            serde_json::from_str(SUGGESTED_APPS_JSON).expect("suggested_apps.json is JSON");
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
+        let mut checked = 0;
+        for app in document["apps"].as_array().expect("an apps array") {
+            let Some(published) = app.get("oauthClient") else {
+                continue;
+            };
+            if app["publisher"]["kind"] != "first-party" {
+                continue;
+            }
+            let id = app["id"].as_str().expect("an id");
+            let client_id = published["clientId"].as_str().expect("a clientId");
+            let client = store
+                .client_by_id(client_id)
+                .expect("query (a decode failure surfaces here)")
+                .unwrap_or_else(|| panic!("{id}: {client_id} is seeded by a clients migration"));
+
+            assert_eq!(client.kind, ClientKind::Public, "{id}");
+            assert!(client.secret_hash.is_none(), "{id}");
+            assert_eq!(published["tokenEndpointAuthMethod"], "none", "{id}");
+            let scopes: Vec<String> =
+                serde_json::from_value(app["scopes"].clone()).expect("scopes are strings");
+            assert_eq!(scopes, client.allowed_scopes, "{id}: scopes");
+            let grant_types: Vec<AllowedGrantType> =
+                serde_json::from_value(published["grantTypes"].clone()).expect("grant types");
+            assert_eq!(grant_types, client.allowed_grant_types, "{id}: grantTypes");
+            for redirect in published["redirectUris"].as_array().expect("redirectUris") {
+                let redirect = url::Url::parse(redirect.as_str().expect("a string"))
+                    .expect("an absolute redirect");
+                assert!(
+                    client.redirect_uris.contains(&redirect),
+                    "{id}: {redirect} is not registered for {client_id}",
+                );
+            }
+            checked += 1;
+        }
+        assert!(
+            checked > 0,
+            "suggested_apps.json lists no first-party OAuth client"
+        );
+    }
+
     /// The launcher's client (`0012`, narrowed by `0032`) allows exactly the
     /// scopes the launcher asks for. The scope string is read out of the app's
     /// `src/sign-in.ts`, the one place the app writes it: the client is trusted

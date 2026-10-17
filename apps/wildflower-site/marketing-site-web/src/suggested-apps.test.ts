@@ -27,7 +27,7 @@ describe('public/suggested_apps.json', () => {
   })
 
   it.each(SMART_APP_LAUNCH_PAGES)(
-    'should list $app as a first-party app with its launch page, menu name and tagline',
+    'should list $app as a first-party app with its launch page, menu name, tagline and OAuth client',
     ({ app, launchPageUrl }) => {
       const suggestedApp = decodeSuggestedApps().apps.find(
         ({ launchUrl }) => launchUrl === launchPageUrl
@@ -37,6 +37,7 @@ describe('public/suggested_apps.json', () => {
         name: navLabelOf(app),
         description: APP_DESCRIPTIONS[app].tagline,
       })
+      expect(suggestedApp?.oauthClient?.redirectUris).toContain(launchPageUrl)
     }
   )
 })

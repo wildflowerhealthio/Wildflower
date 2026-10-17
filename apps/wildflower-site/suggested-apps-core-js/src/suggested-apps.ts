@@ -86,6 +86,45 @@ const LaunchUrl = Schema.String.pipe(
 type LaunchUrl = typeof LaunchUrl.Type
 
 /**
+ * A URL the authorization server returns to after sign-in: an absolute
+ * `https:` URL with no credentials and no fragment (RFC 6749 §3.1.2).
+ */
+const RedirectUri = Schema.String.pipe(
+  Schema.filter((text) => {
+    if (!URL.canParse(text)) return `${JSON.stringify(text)} is not a URL`
+    const url = new URL(text)
+    if (url.protocol !== 'https:') return `${JSON.stringify(text)} is not an https: URL`
+    if (url.username !== '' || url.password !== '') {
+      return `${JSON.stringify(text)} carries credentials, which a published file must not`
+    }
+    if (url.hash !== '' || text.includes('#')) {
+      return `${JSON.stringify(text)} carries a fragment, which a redirect URI must not`
+    }
+    return true
+  }),
+  Schema.annotations({ identifier: 'RedirectUri' })
+)
+type RedirectUri = typeof RedirectUri.Type
+
+/**
+ * The public half of an app's OAuth client registration, what a server needs
+ * to register the app as a client: its id, where it returns to, the grants it
+ * uses, and `none` as its token endpoint authentication method, since a
+ * browser app keeps no secret and proves itself with PKCE instead. The names
+ * follow RFC 7591's client metadata, in camelCase.
+ */
+const OAuthClient = Schema.Struct({
+  /** The `client_id` the app sends to `/authorize` and `/token`. */
+  clientId: Schema.NonEmptyTrimmedString,
+  /** The redirect URIs the app returns to, at least one. */
+  redirectUris: Schema.NonEmptyArray(RedirectUri),
+  /** The grants the app uses at `/token`. */
+  grantTypes: Schema.NonEmptyArray(Schema.Literal('authorization_code', 'refresh_token')),
+  tokenEndpointAuthMethod: Schema.Literal('none'),
+}).annotations({ identifier: 'OAuthClient' })
+type OAuthClient = typeof OAuthClient.Type
+
+/**
  * Who publishes an app: Wildflower Health for the apps this repository
  * builds (`first-party`), or the outside organization that does.
  */
@@ -112,6 +151,8 @@ const SuggestedApp = Schema.Struct({
   tags: Schema.NonEmptyArray(SuggestedAppTag),
   /** The scopes the app sends to `/authorize`, exactly as it sends them. */
   scopes: Schema.NonEmptyArray(SmartScope),
+  /** The app's public OAuth client registration, where the file knows it. */
+  oauthClient: Schema.optional(OAuthClient),
 }).annotations({ identifier: 'SuggestedApp' })
 type SuggestedApp = typeof SuggestedApp.Type
 
@@ -140,7 +181,9 @@ const SUGGESTED_APPS_URL = `${SITE_ORIGIN}/${SUGGESTED_APPS_PATH}`
 
 export {
   LaunchUrl,
+  OAuthClient,
   Publisher,
+  RedirectUri,
   SmartScope,
   SUGGESTED_APPS_PATH,
   SUGGESTED_APPS_URL,

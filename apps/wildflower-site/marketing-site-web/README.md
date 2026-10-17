@@ -68,10 +68,15 @@ vp build    # production build to dist/
   `src/suggested-apps.test.ts` decodes it and requires a first-party entry
   for each app in `branding-core`'s `SMART_APP_LAUNCH_PAGES`, at that launch
   page, with the name the header menu gives it (`HEADER_NAV_GROUPS`, as
-  `Wildflower Medications`) and its `APP_DESCRIPTIONS` tagline, so a renamed
-  or new hosted app fails there until the file follows. Nothing checks the
-  `ohif-viewer` entry or any entry's scopes: those are copied by hand from
-  each app's SMART config.
+  `Wildflower Medications`), its `APP_DESCRIPTIONS` tagline and an
+  `oauthClient` returning to that page, so a renamed or new hosted app fails
+  there until the file follows. Each first-party entry's `oauthClient`
+  (client id, redirect URIs, grant types, `none` as its token endpoint
+  authentication) and scopes are copied from the client the authorization
+  server's migrations seed for the app, and `authorization-server-rust`'s
+  `suggested_apps_json_publishes_the_seeded_first_party_clients` test holds
+  them to that row. A third-party entry's scopes are copied by hand from the
+  app.
 
 ## Styling conventions
 

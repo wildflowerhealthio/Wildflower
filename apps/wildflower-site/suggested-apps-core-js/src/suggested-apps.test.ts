@@ -3,11 +3,26 @@ import { Either, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { LaunchUrl, SmartScope, SUGGESTED_APPS_URL, SuggestedApps } from './suggested-apps.ts'
+import {
+  LaunchUrl,
+  RedirectUri,
+  SmartScope,
+  SUGGESTED_APPS_URL,
+  SuggestedApps,
+} from './suggested-apps.ts'
 
 const decodeDocument = Schema.decodeUnknownEither(SuggestedApps)
 const decodeLaunchUrl = Schema.decodeUnknownEither(LaunchUrl)
 const decodeScope = Schema.decodeUnknownEither(SmartScope)
+const decodeRedirectUri = Schema.decodeUnknownEither(RedirectUri)
+
+/** A valid public client registration for {@link app}. */
+const oauthClient = {
+  clientId: 'growth_chart',
+  redirectUris: ['https://examples.smarthealthit.org/growth-chart-app/'],
+  grantTypes: ['authorization_code', 'refresh_token'],
+  tokenEndpointAuthMethod: 'none',
+}
 
 /** One valid app; each rejection test changes one field of it. */
 const app = {
@@ -55,6 +70,22 @@ describe('SuggestedApps', () => {
   it('rejects an app with no tags or no scopes', () => {
     expect(Either.isLeft(decodeDocument(documentOf({ ...app, tags: [] })))).toBe(true)
     expect(Either.isLeft(decodeDocument(documentOf({ ...app, scopes: [] })))).toBe(true)
+  })
+
+  it('decodes an app with its OAuth client registration', () => {
+    const withClient = { ...app, oauthClient }
+    expect(decodeDocument(documentOf(withClient))).toEqual(Either.right(documentOf(withClient)))
+  })
+
+  it('rejects an OAuth client with no redirect, an unknown grant or a secret', () => {
+    for (const client of [
+      { ...oauthClient, clientId: '' },
+      { ...oauthClient, redirectUris: [] },
+      { ...oauthClient, grantTypes: ['implicit'] },
+      { ...oauthClient, tokenEndpointAuthMethod: 'client_secret_basic' },
+    ]) {
+      expect(Either.isLeft(decodeDocument(documentOf({ ...app, oauthClient: client })))).toBe(true)
+    }
   })
 
   it('rejects an id that is not kebab-case', () => {
@@ -127,6 +158,29 @@ describe('LaunchUrl', () => {
 
   it('rejects text that is not a URL', () => {
     expect(Either.isLeft(decodeLaunchUrl('launch.html'))).toBe(true)
+  })
+})
+
+describe('RedirectUri', () => {
+  it('accepts any https: URL without a fragment', () => {
+    fc.assert(
+      fc.property(fc.webUrl({ validSchemes: ['https'], withQueryParameters: true }), (text) => {
+        expect(decodeRedirectUri(text)).toEqual(Either.right(text))
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('rejects a URL that is not https:, or carries a fragment or credentials', () => {
+    for (const text of [
+      'http://example.com/',
+      'https://example.com/#done',
+      'https://example.com/#',
+      'https://user:secret@example.com/',
+      'callback',
+    ]) {
+      expect(Either.isLeft(decodeRedirectUri(text))).toBe(true)
+    }
   })
 })
 

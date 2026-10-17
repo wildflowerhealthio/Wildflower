@@ -18,7 +18,13 @@
         "system/MedicationRequest.rs",
         "system/Medication.rs",
         "system/Patient.rs"
-      ]
+      ],
+      "oauthClient": {
+        "clientId": "9769f8b274370708d0d3ebb2e3e59b7c",
+        "redirectUris": ["https://medications.wildflowerhealth.io/"],
+        "grantTypes": ["authorization_code", "refresh_token"],
+        "tokenEndpointAuthMethod": "none"
+      }
     },
     {
       "id": "plots",
@@ -37,7 +43,13 @@
         "system/Observation.rs",
         "system/MedicationRequest.rs",
         "system/Patient.rs"
-      ]
+      ],
+      "oauthClient": {
+        "clientId": "474e103de61f9141c4b640d59bfa130e",
+        "redirectUris": ["https://plots.wildflowerhealth.io/"],
+        "grantTypes": ["authorization_code", "refresh_token"],
+        "tokenEndpointAuthMethod": "none"
+      }
     },
     {
       "id": "strength",
@@ -58,7 +70,13 @@
         "system/ServiceRequest.crus",
         "system/Procedure.crus",
         "system/Observation.crus"
-      ]
+      ],
+      "oauthClient": {
+        "clientId": "bdf9fc5cb5a28c6683b49896b0ef8a75",
+        "redirectUris": ["https://strength.wildflowerhealth.io/"],
+        "grantTypes": ["authorization_code", "refresh_token"],
+        "tokenEndpointAuthMethod": "none"
+      }
     },
     {
       "id": "importer",
@@ -84,7 +102,13 @@
         "system/MedicationDispense.cruds",
         "system/ServiceRequest.cruds",
         "system/ImagingStudy.cruds"
-      ]
+      ],
+      "oauthClient": {
+        "clientId": "165cd26573e5ac72378e6ad2d2198330",
+        "redirectUris": ["https://importer.wildflowerhealth.io/"],
+        "grantTypes": ["authorization_code", "refresh_token"],
+        "tokenEndpointAuthMethod": "none"
+      }
     },
     {
       "id": "synthetic-data",
@@ -110,7 +134,13 @@
         "system/MedicationDispense.cu",
         "system/ServiceRequest.cu",
         "system/ImagingStudy.cu"
-      ]
+      ],
+      "oauthClient": {
+        "clientId": "225ba6af034a3acec6be7ff8010df67f",
+        "redirectUris": ["https://synthetic-data.wildflowerhealth.io/"],
+        "grantTypes": ["authorization_code", "refresh_token"],
+        "tokenEndpointAuthMethod": "none"
+      }
     },
     {
       "id": "ohif-viewer",
@@ -129,7 +159,13 @@
         "system/Patient.rs",
         "system/ImagingStudy.rs",
         "system/DocumentReference.rs"
-      ]
+      ],
+      "oauthClient": {
+        "clientId": "941de68e6b59eb9dcc32df8ede89e636",
+        "redirectUris": ["https://ohif-viewer.wildflowerhealth.io/fhir-viewer"],
+        "grantTypes": ["authorization_code", "refresh_token"],
+        "tokenEndpointAuthMethod": "none"
+      }
     },
     {
       "id": "precise-hbr",
