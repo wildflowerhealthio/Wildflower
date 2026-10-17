@@ -52,9 +52,11 @@ offers the same choices; this package re-exports its preset groups.
   - `usePatientChoice(launchPatientId)` — the choice the page reads under,
     `None` while the reader is choosing, with `choosePatient` and
     `changePatient`, for an app without a router.
-  - `PatientSearch`, `useRoutedPatientChoice(launchPatientId)` and
+  - `PatientSearch`, `useRoutedPatientPicker(launchPatientId,
+    choiceLandsOn)`, `useRoutedPatientChoice(launchPatientId)` and
     `routedPatientChoiceOf(patientKey, launchPatientId)` — the same choice
-    for an app whose router owns `?patient=`; see
+    for an app whose router owns `?patient=` (and the picker's
+    `?picking-patient=`, `PICKING_PATIENT_PARAM`); see
     [Routing a SMART app](#routing-a-smart-app).
   - `PatientPicker({ client, onPatientChoice })` — "All patients" first,
     then every patient the session can see (`fetchPatientPage`, name and
@@ -128,10 +130,19 @@ package, in an order that is load-bearing:
   (`retainSearchParams([PATIENT_PARAM])`), so a tab change keeps the patient
   and each history entry names the one it showed. Any route reads the choice
   with `useRoutedPatientChoice(client.patient.id)` (the address bar's, else
-  the launch's, else none, which the root shows as the picker); a
-  `beforeLoad` reads it from the search it is handed with
-  `routedPatientChoiceOf`. A choice is a navigation, so the router lives as
-  long as the page.
+  the launch's, else none); a `beforeLoad` reads it from the search it is
+  handed with `routedPatientChoiceOf`.
+- **The picker is a history entry.** The root takes
+  `useRoutedPatientPicker(client.patient.id, choiceLandsOn)` and shows the
+  picker while its `patientChoice` is `None`: with no patient to show, or on
+  an entry carrying `?picking-patient=` (`PICKING_PATIENT_PARAM`).
+  `changePatient` (the patient line's "Change patient", or a tab's own
+  prompt for a patient) pushes the location open with the flag added and
+  `?patient=` kept, so Back closes the picker on the page it was opened
+  over. `choosePatient` pushes `choiceLandsOn` (a path of the app's, or `.`
+  for the tab open) with the new `?patient=` and no flag. No navigation
+  keeps the flag, so it never reaches a tab link. Patient changes are
+  navigations, so the router lives as long as the page.
 - **A deep link comes back through the 404 page.** On GitHub Pages a deep
   route is served by the site's 404 page, whose redirect to the app root
   `main.tsx` completes with `branding-core`'s `restoreRedirectedUrl` before

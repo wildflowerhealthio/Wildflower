@@ -24,8 +24,10 @@ export { PatientPicker, type PatientPickerProps } from './patient-picker.tsx'
 export { parsePlainSearch, stringifyPlainSearch } from './plain-search.ts'
 export {
   PatientSearch,
+  PICKING_PATIENT_PARAM,
   routedPatientChoiceOf,
   useRoutedPatientChoice,
+  useRoutedPatientPicker,
 } from './routed-patient-choice.ts'
 export { type PatientChoosing, usePatientChoice } from './use-patient-choice.ts'
 export { SmartAppRoot, type SmartAppRootProps, type SmartAppTelemetry } from './smart-app-root.tsx'
