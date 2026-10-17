@@ -48,6 +48,16 @@ const OAuthConsentSchema = Schema.Struct({
    * is required.
    */
   registration: OAuthConsentRegistrationSchema,
+  /**
+   * The approval scopes the reader's own token lacks to approve this request:
+   * `wildflower/Grant.c` for the grant every approval records, and
+   * `wildflower/Client.c` (a `new` {@link OAuthConsentRegistrationSchema}) or
+   * `wildflower/Client.u` (a `changed` one) for the client registration it
+   * creates or widens. Empty when the reader may approve; otherwise an
+   * approval answers `403 InsufficientScope` naming them, and the consent UI
+   * asks the server's Owner in place of Allow.
+   */
+  missingApprovalScopes: Schema.Array(Schema.String),
 })
 
 const ApproveOAuthConsentBody = Schema.Struct({
@@ -127,7 +137,8 @@ const httpApiGroup = HttpApiGroup.make('oauth-consent', { topLevel: false })
   )
   // Every endpoint here is scope-gated (`wildflower/AuthorizationRequest.r` to
   // read, `.u` to decide), and an approval additionally answers the same `403`
-  // when it names a resource scope the approver's own token doesn't cover. So
+  // when the approver's own token lacks one of its `missingApprovalScopes` or
+  // a resource scope it names. So
   // the shared `403 InsufficientScope` is declared once at the group level: the
   // generated client decodes it, naming the missing scopes, and the consent
   // form's error surface can offer the step-up instead of an opaque failure.

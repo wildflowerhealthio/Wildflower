@@ -109,7 +109,9 @@ const lookUpConsent = (
  * longer pending, goes to the wait page instead, which follows the client
  * callback once the request is decided; in `then=back` mode a request no
  * longer pending says so and steps back out instead, since that callback is
- * not this browser's to follow.
+ * not this browser's to follow. A browser whose session lacks an approval
+ * scope this request takes (`missingApprovalScopes`) is offered "Ask the
+ * server's owner" in place of Allow, which leaves for the wait page too.
  *
  * @remarks
  * Everything goes through `runAuthed` on the browser session: the
@@ -191,6 +193,9 @@ const ConsentPage = ({
       consentMutation={consentMutation}
       runAuthed={runAuthed}
       onDone={leaveWith}
+      onAskOwner={() => {
+        leaveFor(waitPage)
+      }}
     />
   )
 }
@@ -200,6 +205,8 @@ interface DecidableConsentProps {
   readonly consentMutation: OAuthConsentMutation
   readonly runAuthed: AuthorizationRouterContext.RunAuthed
   readonly onDone: (result: OAuthConsentResult) => void
+  /** Leave for the wait page, where the Owner's decision arrives. */
+  readonly onAskOwner: () => void
 }
 
 /**
@@ -211,6 +218,7 @@ const DecidableConsent = ({
   consentMutation,
   runAuthed,
   onDone,
+  onAskOwner,
 }: DecidableConsentProps): JSX.Element => {
   const asksForPatient = consentAsksForPatient(consent)
   const [patientName, setPatientName] = useState('')
@@ -240,6 +248,7 @@ const DecidableConsent = ({
         },
       }}
       onDone={onDone}
+      onAskOwner={onAskOwner}
     />
   )
 }

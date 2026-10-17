@@ -6,7 +6,9 @@
 use chrono::{DateTime, Utc};
 
 use super::delegation::deny_consent;
-use super::{ApproveOAuthConsentInput, ConsentOutcome};
+use super::{
+    registration_to_widen, require_approval_scopes, ApproveOAuthConsentInput, ConsentOutcome,
+};
 use crate::domain::authority::{ApprovableScopes, DelegatedScopes};
 use crate::domain::authorization_code::PendingCodeRequest;
 use crate::domain::authorization_request::{GrantType, RequestStatus};
@@ -26,7 +28,8 @@ use wildflowerhealthio_scopes::Grant;
 /// stamped with. Bundled (rather than three more parameters) so
 /// [`approve_oauth_consent`]'s signature stays readable.
 pub(crate) struct ApprovalContext<'a> {
-    /// The deciding Owner's own granted scopes — the bound on what the
+    /// The deciding Owner's own granted scopes — checked for the request's
+    /// [approval scopes](super::approval_scopes), and the bound on what the
     /// approval may delegate (see [`DelegatedScopes::clamp`]).
     pub(crate) approver_grant: &'a Grant,
     /// The host app's `client_id` — the one client whose registration is
@@ -60,14 +63,19 @@ pub(crate) fn load_pending_code_request(
     }
 }
 
-/// Approve an authorization-code consent prompt: clamp the Owner's ticks into a
+/// Approve an authorization-code consent prompt: require the approver's
+/// [approval scopes](super::approval_scopes), clamp the Owner's ticks into a
 /// [`DelegatedScopes`] proof, issue the code, record the standing grant and,
 /// for a client trusted on first use, its registration, republish the popup
 /// head, and return the client callback URL.
 /// An approval that grants nothing is applied as a **deny**, and so is one
 /// for a request whose browser session has been revoked since it was made.
 ///
-/// A request the
+/// An approver lacking an approval scope (`wildflower/Grant.c`, and
+/// `wildflower/Client.c` or `wildflower/Client.u` for a client this approval
+/// would register or widen) fails with
+/// [`InsufficientScope`](AuthorizationServerError::InsufficientScope) naming
+/// them, and nothing is written. A request the
 /// [registration verdict](crate::domain::client_registration::ClientRegistrationVerdict)
 /// finds new or changed must carry the Owner's
 /// [`acknowledged_registration`](ApproveOAuthConsentInput::acknowledged_registration),
@@ -104,6 +112,12 @@ pub(crate) fn approve_oauth_consent(
         redirect_uri: requested_redirect_uri,
         scopes: &request.requested_scopes,
     });
+    let registration_to_widen = registration_to_widen(
+        &request.client_id,
+        ctx.wildflower_host_app_client_id,
+        &registration_verdict,
+    );
+    require_approval_scopes(ctx.approver_grant, registration_to_widen)?;
     if registration_verdict.needs_acknowledgement() && !input.acknowledged_registration {
         return Err(AuthorizationServerError::RegistrationNotAcknowledged { id: id.to_owned() });
     }
@@ -146,7 +160,6 @@ pub(crate) fn approve_oauth_consent(
 
     // Persist the (possibly brand-new) registration with the grant it justifies:
     // one transaction, so a client row never outlives a failed approval.
-    let registration_to_widen = (!registration_is_fixed).then_some(&registration_verdict);
     GrantRecorder::over(store).record_code_grant(
         &request.client_id,
         requested_redirect_uri,

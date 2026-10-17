@@ -41,7 +41,11 @@ pub enum AuthorizationServerError {
     /// `/authorization` operation requires — the surface's **403**. `missing_scopes`
     /// are the rendered scopes the caller must additionally hold. Raised when the
     /// [`Scoped`](wildflowerhealthio_scope_capabilities::Scoped) extractor rejects (via
-    /// `From<MissingScopes>`).
+    /// `From<MissingScopes>`), and when a consent approval's approver lacks one
+    /// of the request's approval scopes (`wildflower/Grant.c`, and
+    /// `wildflower/Client.c` or `wildflower/Client.u` for a client the approval
+    /// would register or widen), which depend on the request and so are
+    /// checked per call. Nothing is written when an approval raises it.
     InsufficientScope { missing_scopes: Vec<String> },
     /// An approver tried to grant a client more than they themselves hold —
     /// the consent approve surfaces' **403**. `approver_missing_scopes` are the rendered

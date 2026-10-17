@@ -118,6 +118,7 @@ const consentFor = (scopes: readonly string[]): OAuthConsentResource => ({
   preApprovedScopes: [],
   patient: null,
   registration: { status: 'registered' },
+  missingApprovalScopes: [],
 })
 
 describe('consentAsksForPatient', () => {
@@ -142,6 +143,7 @@ describe('OAuthConsentCard — patient search', () => {
         patients={{ options: [], loading: false, error: null }}
         patientSearch={patientSearch}
         onDone={vi.fn()}
+        onAskOwner={vi.fn()}
       />
     )
   }
@@ -180,6 +182,7 @@ describe('OAuthConsentCard — searching for a patient', () => {
       patients={{ options: patients, loading: false, error: null }}
       patientSearch={{ name, onNameChange: vi.fn() }}
       onDone={vi.fn()}
+      onAskOwner={vi.fn()}
     />
   )
 
@@ -445,6 +448,54 @@ describe('OAuthConsentCard — empty grant', () => {
   })
 })
 
+describe("OAuthConsentCard — asking the server's owner", () => {
+  test('a reader lacking an approval scope asks the owner in place of Allow, saying why above the buttons', async () => {
+    const onAskOwner = vi.fn()
+    const { user } = renderCard(
+      makeConsent({
+        scopes: ['system/Observation.r'],
+        registration: { status: 'new' },
+        missingApprovalScopes: ['wildflower/Client.c'],
+      }),
+      vi.fn(),
+      null,
+      onAskOwner
+    )
+
+    expect(screen.queryByRole('button', { name: 'Allow access' })).toBeNull()
+    const reason = screen.getByText("This browser can't allow this app.")
+    const askOwner = screen.getByRole('button', { name: "Ask the server's owner" })
+    expect(reason.compareDocumentPosition(askOwner) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    await user.click(askOwner)
+    expect(onAskOwner).toHaveBeenCalledOnce()
+    expect(mutate).not.toHaveBeenCalled()
+  })
+
+  test('a reader lacking nothing gets Allow and no reason', () => {
+    renderCard(makeConsent({ scopes: ['system/Observation.r'] }), vi.fn())
+
+    expect(screen.getByRole('button', { name: 'Allow access' })).toBeDefined()
+    expect(screen.queryByRole('button', { name: "Ask the server's owner" })).toBeNull()
+    expect(screen.queryByText("This browser can't allow this app.")).toBeNull()
+  })
+
+  test('a reader asking the owner can still deny', async () => {
+    const onDone = vi.fn()
+    const { user } = renderCard(
+      makeConsent({
+        scopes: ['system/Observation.r'],
+        missingApprovalScopes: ['wildflower/Grant.c'],
+      }),
+      onDone
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Deny' }))
+    expect(mutate.mock.calls.at(-1)?.[0]).toEqual({ kind: 'deny', id: 'consent-1' })
+    expect(onDone).toHaveBeenCalledWith({ status: 'denied' })
+  })
+})
+
 describe('OAuthConsentCard — registration warning', () => {
   test('a registered app shows no callout and no checkbox, and Approve works as before', async () => {
     const { user } = renderCard(
@@ -564,6 +615,7 @@ describe('OAuthConsentCard — registration warning', () => {
             consentMutation={stubConsentMutation(null)}
             patients={{ options: [], loading: false, error: null }}
             onDone={vi.fn()}
+            onAskOwner={vi.fn()}
           />
         )
 
@@ -881,6 +933,7 @@ const makeConsent = (
   preApprovedScopes: [],
   patient: 'pat-launch',
   registration: { status: 'registered' },
+  missingApprovalScopes: [],
   ...overrides,
 })
 
@@ -891,7 +944,8 @@ const unboundConsent = (scopes: readonly string[]): OAuthConsentResource =>
 const renderCard = (
   consent: OAuthConsentResource,
   onDone: (result: OAuthConsentResult) => void,
-  errorBodyRenderer: ErrorBodyRenderer | null = null
+  errorBodyRenderer: ErrorBodyRenderer | null = null,
+  onAskOwner: () => void = vi.fn()
 ): { readonly user: ReturnType<typeof userEvent.setup> } => {
   // No timer between pointer actions: the property renders and clicks once per run.
   const user = userEvent.setup({ delay: null })
@@ -906,6 +960,7 @@ const renderCard = (
       consentMutation={stubConsentMutation(mutationError)}
       patients={{ options: patientOptions, loading: false, error: patientsError }}
       onDone={onDone}
+      onAskOwner={onAskOwner}
     />,
     { wrapper }
   )

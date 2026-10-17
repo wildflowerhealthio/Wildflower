@@ -1,3 +1,4 @@
+mod approval_scopes;
 mod authorization_start_limit;
 mod bearer_only;
 mod browser_pairing;
