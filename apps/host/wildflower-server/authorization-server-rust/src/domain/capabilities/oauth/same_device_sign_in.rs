@@ -24,11 +24,12 @@ use crate::BROWSER_SESSION_CLIENT_ID;
 /// base signs the browser in again.
 pub(crate) const OWNER_SESSION_TTL: Duration = Duration::hours(8);
 
-/// What a sign-in issued: the Owner session's token, and where the browser
-/// goes with it.
-pub(crate) struct IssuedOwnerSession {
-    /// The Owner's access token, which the browser holds as its session.
-    pub(crate) access_token: String,
+/// What a successful sign-in yields: the browser session's token, and where
+/// the browser goes next.
+pub(crate) struct SignedIn {
+    /// The session's token, which the browser holds as its
+    /// `__Host-browser_session` cookie.
+    pub(crate) session_token: String,
     /// Where the browser goes next.
     pub(crate) redirect: SignInRedirect,
 }
@@ -111,7 +112,7 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
         presented_code: &str,
         next: &str,
         now: DateTime<Utc>,
-    ) -> Result<IssuedOwnerSession, SameDeviceSignInError> {
+    ) -> Result<SignedIn, SameDeviceSignInError> {
         let redirect = self
             .destinations
             .allow(next)
@@ -139,12 +140,12 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
         BrowserSessionWriter::over(&self.store)
             .start_owner_session(&redeemed_sign_in_code)
             .map_err(SameDeviceSignInError::SessionNotStored)?;
-        let access_token =
+        let session_token =
             AccessTokenMinter::new(&self.store, &self.server_origin, OWNER_SESSION_TTL)
                 .mint(TokenEntitlement::SameDeviceSignIn(&redeemed_sign_in_code))
                 .map_err(SameDeviceSignInError::Issuance)?;
-        Ok(IssuedOwnerSession {
-            access_token,
+        Ok(SignedIn {
+            session_token,
             redirect,
         })
     }
@@ -219,10 +220,10 @@ mod tests {
     fn a_code_signs_the_owner_in_for_eight_hours() {
         let now = Utc::now();
         let (sign_in, signing_key) = sign_in_with_a_code(now);
-        let session = sign_in.sign_in("code-1", "/", now).expect("signed in");
-        assert_eq!(session.redirect.location(), "/");
+        let signed_in = sign_in.sign_in("code-1", "/", now).expect("signed in");
+        assert_eq!(signed_in.redirect.location(), "/");
         let claims = verify_jwt(
-            &session.access_token,
+            &signed_in.session_token,
             &[signing_key],
             &VerifyOptions {
                 expected_issuer: SERVER_ORIGIN,

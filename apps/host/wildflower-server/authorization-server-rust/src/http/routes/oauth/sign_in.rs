@@ -18,9 +18,7 @@ use axum::Router;
 use chrono::Utc;
 use serde::Deserialize;
 
-use crate::domain::capabilities::oauth::{
-    IssuedOwnerSession, SameDeviceSignInError, SignInRefusal,
-};
+use crate::domain::capabilities::oauth::{SameDeviceSignInError, SignInRefusal, SignedIn};
 use crate::http::browser_session_set_cookie;
 use crate::http::errors::{sign_in_error_html, InternalError};
 use crate::http::extractors::Live;
@@ -58,8 +56,8 @@ async fn handle_sign_in(
     Query(params): Query<SignInParams>,
 ) -> Response {
     let response = match same_device_sign_in.sign_in(&params.code, &params.next, Utc::now()) {
-        Ok(IssuedOwnerSession {
-            access_token,
+        Ok(SignedIn {
+            session_token,
             redirect,
         }) => (
             StatusCode::SEE_OTHER,
@@ -67,7 +65,7 @@ async fn handle_sign_in(
                 (header::LOCATION, redirect.location().to_owned()),
                 (
                     header::SET_COOKIE,
-                    browser_session_set_cookie(&access_token),
+                    browser_session_set_cookie(&session_token),
                 ),
             ],
         )

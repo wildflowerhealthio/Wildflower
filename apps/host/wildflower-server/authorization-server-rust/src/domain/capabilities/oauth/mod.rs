@@ -41,6 +41,6 @@ pub(crate) use device_authorizer::{DeviceAuthorizationError, DeviceAuthorizer};
 pub(crate) use launch_contexts::LaunchContexts;
 pub(crate) use public_keys_reader::PublicKeysReader;
 pub(crate) use same_device_sign_in::{
-    IssuedOwnerSession, SameDeviceSignIn, SameDeviceSignInError, SignInRefusal, OWNER_SESSION_TTL,
+    SameDeviceSignIn, SameDeviceSignInError, SignInRefusal, SignedIn, OWNER_SESSION_TTL,
 };
 pub(crate) use token_exchanger::{IssuedTokens, TokenExchanger};
