@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import type { SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { LinkButton } from '@wildflowerhealthio/react-tundraish'
-import { Match } from 'effect'
+import { Match, Option } from 'effect'
 import type { JSX } from 'react'
 
 import type { PatientChoice } from './patient-choice.ts'
@@ -33,16 +33,12 @@ const PatientNameLine = ({
     return <ReadFailureLine subject="the patient" error={patientRead.error} />
   }
   if (patientRead.data === undefined) return null
-  return Match.value(patientRead.data).pipe(
-    Match.when({ kind: 'found' }, ({ patient }) => <span>{patientLineOf(patient)}</span>),
-    Match.when({ kind: 'not-a-patient' }, () => (
-      <ReadFailureLine subject={`patient ${patientId}`} error="not a FHIR Patient" />
-    )),
-    Match.when({ kind: 'missing' }, () => (
+  if (Option.isNone(patientRead.data)) {
+    return (
       <ReadFailureLine subject={`patient ${patientId}`} error="no such patient on this server" />
-    )),
-    Match.exhaustive
-  )
+    )
+  }
+  return <span>{patientLineOf(patientRead.data.value)}</span>
 }
 
 /**

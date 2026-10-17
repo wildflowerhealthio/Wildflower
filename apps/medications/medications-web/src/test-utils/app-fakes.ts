@@ -9,7 +9,7 @@ import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import { MedicationRequest, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import type { InteractionCatalog } from '@wildflowerhealthio/medication-interaction-core-js'
 import { stubRouteTabsBrowserApis } from '@wildflowerhealthio/react-tundraish/test-helpers'
-import { Effect, Schema } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 import type Client from 'fhirclient/lib/Client'
 import { afterEach, beforeEach, expect, vi } from 'vite-plus/test'
 
@@ -62,8 +62,8 @@ const smartModuleFake = (): Record<string, unknown> => ({
   fetchPatient: (_client: unknown, patientId: string) =>
     Effect.succeed(
       patientId === MISSING_PATIENT_ID
-        ? { kind: 'missing' }
-        : { kind: 'found', patient: { resourceType: 'Patient', id: patientId, name: [] } }
+        ? Option.none()
+        : Option.some({ resourceType: 'Patient', id: patientId, name: [] })
     ),
 })
 

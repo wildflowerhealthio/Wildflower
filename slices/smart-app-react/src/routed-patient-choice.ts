@@ -79,10 +79,10 @@ const ensureRoutedPatient = async (
 ): Promise<void> => {
   // A read already in the cache is used as it stands, as the patient line
   // would show it.
-  const patientRead = await queryClient
+  const missing = await queryClient
     .query({ ...patientQuery(client, patientId), staleTime: 'static' })
-    .catch(() => null)
-  if (patientRead?.kind === 'missing') {
+    .then(Option.isNone, () => false)
+  if (missing) {
     throw notFound({ data: MissingPatient.make({ missingPatientId: patientId }) })
   }
 }

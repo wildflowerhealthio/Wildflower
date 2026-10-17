@@ -99,7 +99,7 @@ describe('ensureRoutedPatient', () => {
     await ensureRoutedPatient(queryClient, client, 'p1')
 
     // Assert
-    expect(queryClient.getQueryData(['patient', 'p1'])).toMatchObject({ kind: 'found' })
+    expect(queryClient.getQueryData(['patient', 'p1'])).toMatchObject(Option.some({ id: 'p1' }))
   })
 
   it.each([404, 410])('should throw not-found naming the patient on a %i', async (status) => {

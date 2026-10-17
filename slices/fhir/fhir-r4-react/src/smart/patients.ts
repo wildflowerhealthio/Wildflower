@@ -1,11 +1,12 @@
 import { Patient } from '@wildflowerhealthio/fhir-r4/resources'
-import { Effect, Option, Schema } from 'effect'
+import type { Option } from 'effect'
+import { Effect, Schema } from 'effect'
 import type Client from 'fhirclient/lib/Client'
 
 import {
+  BundleDecodeError,
   RESOURCE_PAGE_SIZE,
   ResourcePageRequestError,
-  type BundleDecodeError,
   fetchResourcePage,
   type PagedResourceRead,
   type ResourcePage,
@@ -44,8 +45,6 @@ const patientRead: PagedResourceRead<
   firstPageQuery: (): string => FIRST_PAGE_QUERY,
 }
 
-const decodePatient = Schema.decodeUnknownOption(Patient.Schema)
-
 /**
  * Fetch a single page of `Patient`s from the SMART FHIR server and report the
  * cursor to the next page.
@@ -66,15 +65,6 @@ const fetchPatientPage = (
   fetchResourcePage(client, patientRead, cursor)
 
 /**
- * What a read of one `Patient` by id found: the patient, an answer that does
- * not decode as one, or the server saying it holds no patient under that id.
- */
-type PatientRead =
-  | { readonly kind: 'found'; readonly patient: PatientResource }
-  | { readonly kind: 'not-a-patient' }
-  | { readonly kind: 'missing' }
-
-/**
  * Whether a rejected `client.request` is the server answering that it holds no
  * such resource: fhirclient's `HttpError` with status 404 Not Found or 410
  * Gone.
@@ -85,38 +75,40 @@ const isNoSuchResource = (cause: unknown): boolean =>
   'status' in cause &&
   (cause.status === 404 || cause.status === 410)
 
+/** Decode `resource` as a `Patient`, failing with what did not decode. */
+const decodePatient = (resource: unknown): Effect.Effect<PatientResource, BundleDecodeError> =>
+  Schema.decodeUnknown(Patient.Schema)(resource).pipe(
+    Effect.mapError((cause) => new BundleDecodeError({ cause, response: resource }))
+  )
+
 /**
  * Read one `Patient` by id.
  *
  * @param client - The SMART client the read is issued through
  * @param id - The patient's logical id, e.g. the `client.patient.id` a launch put in context
- * @returns An effect yielding the decoded `Patient` (`found`), `not-a-patient`
- *          when the server's answer does not decode as one, or `missing` when
- *          the server answers 404 or 410
+ * @returns An effect yielding the decoded `Patient`, or `None` when the
+ *          server answers 404 or 410
  *
  * @remarks
- * Every other failure, a transport failure or another HTTP status, surfaces
- * through the error channel as {@link ResourcePageRequestError}: "this server
- * does not have that patient", "this server sent something this client cannot
- * read" and "the read failed" are different things for a caller to show.
+ * Every other failure surfaces through the error channel: a transport failure
+ * or another HTTP status as {@link ResourcePageRequestError}, and an answer
+ * that does not decode as a `Patient` as {@link BundleDecodeError}, as a page
+ * reader reports an entry it cannot decode. "This server does not have that
+ * patient" is the one answer a caller acts on rather than reports.
  */
 const fetchPatient = (
   client: Client,
   id: string
-): Effect.Effect<PatientRead, ResourcePageRequestError> =>
+): Effect.Effect<Option.Option<PatientResource>, ResourcePageRequestError | BundleDecodeError> =>
   Effect.tryPromise({
     try: () => client.request<unknown>(`Patient/${encodeURIComponent(id)}`),
     catch: (cause) => new ResourcePageRequestError({ cause }),
   }).pipe(
-    Effect.map((resource) =>
-      Option.match(decodePatient(resource), {
-        onNone: (): PatientRead => ({ kind: 'not-a-patient' }),
-        onSome: (patient): PatientRead => ({ kind: 'found', patient }),
-      })
-    ),
+    Effect.flatMap(decodePatient),
+    Effect.asSome,
     Effect.catchIf(
-      ({ cause }) => isNoSuchResource(cause),
-      () => Effect.succeed<PatientRead>({ kind: 'missing' })
+      (error) => error instanceof ResourcePageRequestError && isNoSuchResource(error.cause),
+      () => Effect.succeedNone
     )
   )
 
@@ -125,6 +117,5 @@ export {
   fetchPatientPage,
   type PatientPage,
   type PatientPageCursor,
-  type PatientRead,
   type PatientResource,
 }
