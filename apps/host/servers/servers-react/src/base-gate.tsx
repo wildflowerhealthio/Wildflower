@@ -1,7 +1,9 @@
 import { WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY } from '@wildflowerhealthio/branding-core'
 import {
+  denyNotifiedConsent,
   enableBackgroundSessionRecovery,
   type BackgroundServiceStartConfig,
+  NotificationAction,
   openNotifiedConsent,
   TauriInvoke,
 } from '@wildflowerhealthio/servers-core-js'
@@ -11,7 +13,7 @@ import {
   TelemetryConsentGate,
   useConsentedTelemetryStart,
 } from '@wildflowerhealthio/telemetry-react'
-import { type Context, Effect, Either, Schema } from 'effect'
+import { type Context, Effect, Either, Match, Schema } from 'effect'
 import { useEffect, type JSX, type ReactNode } from 'react'
 
 /** Where the base's telemetry goes, once the user consents to it. */
@@ -27,11 +29,12 @@ interface BaseTelemetry {
 }
 
 /**
- * How the base hears a tap on one of the app's notifications: the
- * notification plugin's `actionPerformed`, through `addPluginListener` from
- * `@tauri-apps/api/core`. `handler` gets each tap's payload, which the base
- * decodes. Resolves with the function that stops listening; rejects where
- * the platform reports no taps, as a desktop's doesn't.
+ * How the base hears a tap on one of the app's notifications, on its text or
+ * on an action: the notification plugin's `actionPerformed`, through
+ * `addPluginListener` from `@tauri-apps/api/core`. `handler` gets each tap's
+ * payload, which the base decodes. Resolves with the function that stops
+ * listening; rejects where the platform reports no taps, as a desktop's
+ * doesn't.
  */
 type ListenToNotificationTaps = (handler: (tap: unknown) => void) => Promise<() => void>
 
@@ -80,45 +83,64 @@ const useBackgroundSessionRecovery = (
 }
 
 /**
- * A tap on a notification, as the plugin reports it: the id the notification
- * was posted under, the one thing about it every platform reports.
+ * The host command that does what `action` asks for, on the consent its
+ * notification named, logging a refusal; nothing for an action that asks for
+ * nothing, as a dismissal.
  */
-const NotificationTapSchema = Schema.Struct({
-  notification: Schema.Struct({ id: Schema.Number }),
-})
+const actOnConsentNotification = (
+  action: NotificationAction.Type
+): Effect.Effect<void, never, TauriInvoke> => {
+  const notificationId = action.notification.id
+  return Match.value(NotificationAction.intentOf(action)).pipe(
+    Match.when('open', () =>
+      openNotifiedConsent({ notificationId }).pipe(
+        Effect.catchAll((error) =>
+          Effect.logWarning("[servers] the tapped notification's consent didn't open", error)
+        )
+      )
+    ),
+    Match.when('deny', () =>
+      denyNotifiedConsent({ notificationId }).pipe(
+        Effect.catchAll((error) =>
+          Effect.logWarning("[servers] the notification's consent wasn't denied", error)
+        )
+      )
+    ),
+    Match.when('nothing', () =>
+      Effect.logDebug(`[servers] notification action ${action.actionId} asks for nothing`)
+    ),
+    Match.exhaustive
+  )
+}
 
 /**
- * While mounted, open the consent each tapped consent notification announced,
- * at its page, through the host (`openNotifiedConsent`): on a phone, from
- * anywhere in the app. The host opens it once its server can, and logs a
- * request decided meanwhile; a tap the host refuses is logged here. A
- * platform that reports no taps is logged too.
+ * While mounted, act on each tapped consent notification through the host:
+ * a tap on its text or its Open opens the consent it announced at its page
+ * (`openNotifiedConsent`), and its Deny denies it (`denyNotifiedConsent`), on
+ * a phone, from anywhere in the app. The host acts once its server can, and
+ * logs a request decided meanwhile; an action the host refuses is logged
+ * here. A platform that reports no taps is logged too.
  */
-const useNotifiedConsentOpening = (
+const useNotificationActions = (
   invoke: Context.Tag.Service<TauriInvoke>,
   listenToNotificationTaps: ListenToNotificationTaps
 ): void => {
   useEffect(() => {
-    const openTapped = (tap: unknown): void => {
-      Either.match(Schema.decodeUnknownEither(NotificationTapSchema)(tap), {
+    const actOnTapped = (tap: unknown): void => {
+      Either.match(Schema.decodeUnknownEither(NotificationAction.Schema)(tap), {
         onLeft: (error) => {
           Effect.runSync(Effect.logWarning("[servers] a notification tap didn't decode", error))
         },
-        onRight: ({ notification }) => {
+        onRight: (action) => {
           Effect.runFork(
-            openNotifiedConsent({ notificationId: notification.id }).pipe(
-              Effect.catchAll((error) =>
-                Effect.logWarning("[servers] the tapped notification's consent didn't open", error)
-              ),
-              Effect.provideService(TauriInvoke, invoke)
-            )
+            actOnConsentNotification(action).pipe(Effect.provideService(TauriInvoke, invoke))
           )
         },
       })
     }
     let unmounted = false
     let stopListening: (() => void) | undefined
-    listenToNotificationTaps(openTapped).then(
+    listenToNotificationTaps(actOnTapped).then(
       (stop) => {
         if (unmounted) {
           stop()
@@ -141,7 +163,7 @@ const useNotifiedConsentOpening = (
 
 /**
  * `children`, once the background session's recovery has been asked for,
- * opening the consent of each tapped consent notification.
+ * acting on each tapped consent notification.
  */
 function BackgroundSessionRecovery({
   invoke,
@@ -153,7 +175,7 @@ function BackgroundSessionRecovery({
   'invoke' | 'backgroundServiceStartConfig' | 'listenToNotificationTaps' | 'children'
 >): JSX.Element {
   useBackgroundSessionRecovery(invoke, backgroundServiceStartConfig)
-  useNotifiedConsentOpening(invoke, listenToNotificationTaps)
+  useNotificationActions(invoke, listenToNotificationTaps)
   return <>{children}</>
 }
 
@@ -167,8 +189,9 @@ function BackgroundSessionRecovery({
  * the consent dialog alone: `children` aren't mounted, so the app builds no
  * router or query cache and calls no host command. Once it is answered, the
  * gate enables the background session's recovery with
- * `backgroundServiceStartConfig`, opens the consent of each consent
- * notification tapped (through `listenToNotificationTaps`), and shows
+ * `backgroundServiceStartConfig`, opens or denies the consent of each consent
+ * notification tapped, as its tap asks (through `listenToNotificationTaps`),
+ * and shows
  * `children`. The answer, stored or
  * new, starts telemetry through `useConsentedTelemetryStart` with
  * `telemetry`'s DSN and `app` tag. The base's consent is its own: the web app

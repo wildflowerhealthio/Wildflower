@@ -160,6 +160,56 @@ describe('a tapped notification', () => {
     })
   })
 
+  it('should ask the host to deny the consent a Deny names', async () => {
+    // Arrange
+    const host = hostWith({
+      answers: { server_deny_notified_consent: () => Promise.resolve(null) },
+    })
+    const taps = fakeTaps()
+    renderBase({
+      invoke: host.invoke,
+      storage: storageAnswered({ crashReports: false, performance: false }),
+      taps,
+    })
+    await screen.findByText('No servers yet')
+
+    // Act
+    act(() => {
+      taps.tap({ actionId: 'deny', notification: { id: 1_534_013_825 } })
+    })
+
+    // Assert
+    await waitFor(() => {
+      expect(host.seen).toContainEqual({
+        command: 'server_deny_notified_consent',
+        args: { notificationId: 1_534_013_825 },
+      })
+    })
+    expect(host.seen.map(({ command }) => command)).not.toContain('server_open_notified_consent')
+  })
+
+  it('should do nothing for a dismissal', async () => {
+    // Arrange
+    const host = hostWith()
+    const taps = fakeTaps()
+    renderBase({
+      invoke: host.invoke,
+      storage: storageAnswered({ crashReports: false, performance: false }),
+      taps,
+    })
+    await screen.findByText('No servers yet')
+
+    // Act
+    act(() => {
+      taps.tap({ actionId: 'dismiss', notification: { id: 1_534_013_825 } })
+    })
+
+    // Assert
+    const commands = host.seen.map(({ command }) => command)
+    expect(commands).not.toContain('server_open_notified_consent')
+    expect(commands).not.toContain('server_deny_notified_consent')
+  })
+
   it('should open nothing for a tap that does not decode', async () => {
     // Arrange
     const host = hostWith()

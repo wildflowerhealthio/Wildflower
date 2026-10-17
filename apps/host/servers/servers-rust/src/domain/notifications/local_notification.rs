@@ -10,8 +10,8 @@ const ALL_BUT_SIGN_BIT: u32 = 0x7fff_ffff;
 /// notifications stack).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalNotification {
-    /// The stable string id: `server-stopped:<domain>` or
-    /// `consent-request:<domain>`.
+    /// The stable string id: `server-stopped:<domain>`,
+    /// `consent-request:<domain>` or `consent-requests-pending`.
     pub id: String,
     /// The notification's title.
     pub title: String,

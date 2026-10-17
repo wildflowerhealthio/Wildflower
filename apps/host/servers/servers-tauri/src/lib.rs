@@ -19,7 +19,9 @@
 //!   `TauriUnitRunner`'s statuses, and a notification for each new consent
 //!   waiting on a server, opening the request as the server's page's Open
 //!   does: on the desktop each one at once, in the default browser, and on a
-//!   phone one at each arrival of the app in the foreground; and shows on
+//!   phone one at each arrival of the app in the foreground; on a phone each
+//!   consent notification offers Deny, and on Android an ongoing notification
+//!   with Open and Deny stays while a request is pending; and shows on
 //!   the app icon's badge how many servers have a consent request pending,
 //!   counted through a run that stops as its notification stays, and
 //!   cleared once none does (`pending_consent_badge`);
@@ -80,8 +82,15 @@
 //!   `invoke('server_open_notified_consent', { notificationId })` for a
 //!   tapped notification, opens the consent of the server whose consent
 //!   notification it is once the server can open it, answering at once, and
-//!   nothing for any other notification. The tap wins over the arrival in the
-//!   foreground it brings: it ends every other consent open still waiting.
+//!   nothing for any other notification; for the ongoing consent
+//!   notification (Android) it opens the request that notification names.
+//!   The tap wins over the arrival in the foreground it brings: it ends every
+//!   other consent open still waiting.
+//! - [`server_deny_notified_consent`], invoked as
+//!   `invoke('server_deny_notified_consent', { notificationId })` for the
+//!   Deny on a consent notification, denies the request that notification
+//!   named, with the run's own Owner authority, once the server's run
+//!   reports, answering at once; a request already decided stays as it was.
 //!
 //! Parameters are top-level and camelCase in the invoke payload, which Tauri
 //! maps onto the commands' snake_case parameters; answers are camelCase. The
@@ -103,6 +112,7 @@
 //! included) permissions.
 
 mod commands;
+mod consent_denials;
 mod consent_requests;
 mod launch_commands;
 mod notifications;
@@ -130,6 +140,7 @@ pub use commands::{
     server_add, server_remove, server_set_credentials, server_set_run_policy, server_update,
     servers_list,
 };
+pub use consent_denials::server_deny_notified_consent;
 pub use launch_commands::{
     server_launch, server_open_authorization_app, server_open_notified_consent,
     server_open_pending_consent,
@@ -224,6 +235,7 @@ pub fn host_servers(
             log::error!("[servers] the registered servers are unreadable, so none runs: {error}");
         }
     }
+    notifications::register_consent_notification_actions(app);
     tauri::async_runtime::spawn(server_status::emit_server_statuses(
         app.clone(),
         runner.subscribe(),

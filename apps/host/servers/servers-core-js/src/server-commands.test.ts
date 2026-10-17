@@ -12,6 +12,7 @@ import * as RunPolicyChoice from './run-policy-choice.ts'
 import * as RunPolicy from './run-policy.ts'
 import {
   addServer,
+  denyNotifiedConsent,
   listServers,
   openNotifiedConsent,
   removeServer,
@@ -384,6 +385,9 @@ describe('the server commands', () => {
       runAgainstHostAnswering(openNotifiedConsent({ notificationId: 1_534_013_825 }), () =>
         Promise.resolve(null)
       ),
+      runAgainstHostAnswering(denyNotifiedConsent({ notificationId: 1_534_013_825 }), () =>
+        Promise.resolve(null)
+      ),
     ])
 
     // Assert
@@ -425,6 +429,7 @@ describe('the server commands', () => {
         },
       ],
       [{ command: 'server_open_notified_consent', args: { notificationId: 1_534_013_825 } }],
+      [{ command: 'server_deny_notified_consent', args: { notificationId: 1_534_013_825 } }],
     ])
     expect(runs[0]?.exit).toEqual(Exit.succeed({ kind: 'until', at: utc('2026-10-06T17:42:00Z') }))
   })

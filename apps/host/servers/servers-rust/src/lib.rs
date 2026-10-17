@@ -87,6 +87,10 @@ mod live_bindings;
 mod ports;
 
 pub use adapters::{JsonServerRegistry, ReqwestRelayClient, SERVERS_FILE_NAME};
+pub use domain::notifications::announced_consents::{
+    ongoing_consent_notification_id_for_plugin, AnnouncedConsents, OngoingConsentNotification,
+    DENY_CONSENT_ACTION_ID, ONGOING_CONSENT_NOTIFICATION_ID, OPEN_CONSENT_ACTION_ID,
+};
 pub use domain::notifications::consent_notifications::{
     consent_notification_id_for_plugin, server_of_consent_notification, ConsentNotificationChanges,
     ConsentNotificationCoalescer, ConsentOpening, ConsentRequest,
@@ -104,6 +108,7 @@ pub use domain::{
     RunPolicyChoice, ServerChangeError, ServerDetail, ServerRecord, ServerStatus,
     ServerStatusTracker, ServerUpdate, TunnelToken, SERVERS_DIR_NAME,
 };
+pub use live_bindings::server_consent_denier::ServerConsentDenier;
 pub use live_bindings::server_consent_watcher::ServerConsentWatcher;
 pub use live_bindings::server_launch_minter::ServerLaunchMinter;
 pub use live_bindings::server_sign_in_code_minter::ServerSignInCodeMinter;
