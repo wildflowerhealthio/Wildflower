@@ -6,16 +6,18 @@ development. It pairs
 [`importer-react`](../../slices/importer/importer-react/AGENTS.md)'s
 `ImporterScreen` with
 [`anonymizer-react`](../../slices/anonymizer/anonymizer-react/AGENTS.md)'s
-`AnonymizerScreen` under an **Import | Anonymize** header toggle
-(`react-tundraish`'s `SegmentedToggle`) — the app itself holds no importing or
-anonymizing logic, only the tabstrip, the wiring a SMART app needs, and the
+`AnonymizerScreen` under **Import | Anonymize** tabs (`react-tundraish`'s
+`RouteTabs`, each tab a child route, `/import` and `/anonymize`) — the app
+itself holds no importing or anonymizing logic, only the tab strip, the wiring
+a SMART app needs, and the
 one adapter the anonymizer's `serverSource` slot asks of a host (it passes
 `importer-react`'s `ServerHarArchiveList` through — both slices' `PickedFile`
 carry `{ fileName, bytes }`, so the adapter is the identity). The unselected
 screen is unmounted, not hidden.
 
 The app has one HTML entry, a relative `base`, a build into the package's own
-`dist/`, a memory router carrying a SMART-built context, and a standalone
+`dist/`, a browser-history router at the served directory carrying a
+SMART-built context, and a standalone
 `ConnectMenu` beside the EHR launch. **Unlike the read-only SMART apps, this app
 writes.** Everything that follows from that is called out below.
 
@@ -25,6 +27,21 @@ published path segment, as `medications` is the medications app's; its OAuth
 dev row is `importer-dev`, whose client is `57268ff88aea38d6a22de56ae53e2c28`.
 Those identities are load-bearing — see
 [Seeded registration](#seeded-registration).
+
+## Layout
+
+`src/` keeps the entry and the root at its top: `main.tsx` (the `index.html`
+entry), `config.ts`, `app-root.tsx` (the package export), `app.tsx` (the
+handshake, then `ImporterApp`, which builds the router) and `router.ts`
+(`buildRouter` and the router context type). `routes/` holds the TanStack
+file routes (the tree is generated into the git-ignored `src/routeTree.gen.ts`):
+
+- `__root.tsx` is the page: the title, the open tab's subtitle (each tab's
+  route names it in its `staticData.subtitle`), and `RouteTabs`.
+- `index.tsx` redirects `/` to `/import`, with `replace`.
+- `import/route.tsx` mounts `ImporterScreen`; `anonymize/route.tsx` mounts
+  `AnonymizerScreen`, beside `-server-source.tsx`, the `serverSource` adapter
+  only it uses.
 
 ## Why this app has a router and a bearer token
 
@@ -52,9 +69,10 @@ runtime:
 
 `importer-react` reads its authed runner out of **route context**
 (`fhir-r4-react`'s `useRunAuthed`), which is how every consumer of that package's
-queries gets one. So this app builds a router and supplies the same
+queries gets one. So this app's router supplies the same
 `RouterContextWith<FhirR4ResourcesHttpApiClient>` shape, rather than the slice
-package growing a second, prop-threaded way in.
+package growing a second, prop-threaded way in. The router also carries the
+tabs, so each can be linked to.
 
 ## EHR launch and standalone launch
 
@@ -134,10 +152,13 @@ accepts the writes and the set has room to grow.
 
 ## Traps
 
-- **The history is a memory history.** This page is the OAuth redirect target,
-  so its real URL carries `?code=…&state=…`. A browser history would try to
-  match that against the route tree, and any navigation would rewrite the URL
-  the SMART handshake is still reading.
+- **Route only after the handshake.** The app root is the OAuth redirect
+  target, so its URL carries `?code=…&state=…`. `App` builds the router (in
+  `ImporterApp`) only once `useSmartHandshake` is ready, by when fhirclient
+  has taken `code` and `state` out of the URL: nothing the router does may
+  rewrite a URL the token exchange still reads. The browser history is created
+  once in `main.tsx` (creating it touches no URL), and the basepath is the
+  served directory, read there before the 404 redirect is restored.
 - **Plain `FetchHttpClient.layer`.** The importer's assets are served from
   wildflowerhealth.io and it writes to the FHIR base the handshake named; its
   only outbound traffic is that FHIR server and, once the visitor says yes in
@@ -154,20 +175,20 @@ accepts the writes and the set has room to grow.
 - **The app owns no importing or anonymizing surface.** `ImporterScreen` takes
   no props; `AnonymizerScreen` takes only the `serverSource` slot. Each owns
   every level below it (source pick → preview → confirm/download → results).
-  This app renders a heading, the Import | Anonymize tabstrip, and the one
-  screen the picked tab mounts. Splitting a flow across that boundary opens
+  This app renders a heading, the Import | Anonymize tab strip, and the one
+  screen the open tab's route mounts. Splitting a flow across that boundary opens
   two surfaces at once, and the accessibility tree hides it. Don't re-create any
   of the four levels here.
-- **The tabstrip state lives inside `ImporterHome`, not `ImporterApp`.** The
-  router memo above is keyed on the context; lifting `tab` into `ImporterApp`
-  would rebuild the router (and its mounted tree) on every tab switch. Keep the
-  `useState<Tab>` a per-render local of `ImporterHome`.
+- **The open tab is the route, and the router is built once per context.**
+  `ImporterApp` memoises the router on its context, so a tab switch is a
+  navigation inside it, never a rebuild. Don't key the router, or anything
+  above it, on the open tab.
 - **The unselected tab is unmounted.** The two screens hold their own state
-  (`AnonymizerScreen`'s pick, `ImporterScreen`'s read/confirm), and toggling
-  the header is a fresh mount, not a `display: none` swap — the accessibility
-  tree only carries the surface the user is on, and a flip-back opens fresh at
-  the picker. Do not lift screen state into the app to preserve it across
-  toggles.
+  (`AnonymizerScreen`'s pick, `ImporterScreen`'s read/confirm), and switching
+  tabs is a fresh mount of the other route, not a `display: none` swap — the
+  accessibility tree only carries the surface the user is on, and a flip-back
+  opens fresh at the picker. Do not lift screen state into the app to preserve
+  it across tabs. Query results do survive, in the page's one `QueryClient`.
 - **The app test must run through the real `buildSmartRouterContext`.** The
   slice's `importer-screen.test.tsx` mocks the `useRunAuthed` seam, so nothing
   down there ever puts a prefixed URL or an `Authorization` header on the wire.
@@ -214,9 +235,10 @@ the port.
 `.github/workflows/deploy-pages-site.yml` publishes this app's `dist/` at
 <https://importer.wildflowerhealth.io/>, and a PR preview's under
 `https://importer.wildflowerhealth.io/pr-<n>/`. The relative `base: './'` in
-`vite.config.ts` is the whole subpath mechanism. No SPA
-fallback is needed: the router is a memory history, so the site has no deep links
-into it. The marketing site links there from its infrastructure section
+`vite.config.ts` and the router's basepath (the served directory, which
+`main.tsx` reads) are the whole subpath mechanism. A deep link such as
+`/anonymize` reaches the app through the site's 404 page, whose redirect
+`main.tsx` completes (`restoreRedirectedUrl`). The marketing site links there from its infrastructure section
 (`apps/wildflower-site/marketing-site-web/src/components/infrastructure.tsx`,
 from the shared `APP_DESCRIPTIONS` entry).
 
@@ -226,11 +248,12 @@ The entry runs on `smart-app-react`, the chrome every first-party SMART app
 boots through (see [slices/smart-app-react/AGENTS.md](../../slices/smart-app-react/AGENTS.md)).
 `main.tsx` imports the design-system stylesheet module (`react-tundraish/styles`:
 tundra → tundraish → fonts; branding's tokens arrive through `branding-react`'s
-JS entry), completes a GitHub Pages 404 redirect, calls `addOsColorSchemeListener()`, and
-renders `<AppRoot />`. `AppRoot` (exported from `app-root.tsx` and from the
+JS entry), reads the served directory, completes a GitHub Pages 404 redirect,
+calls `addOsColorSchemeListener()`, and renders
+`<AppRoot basepath={…} history={createBrowserHistory()} />`. `AppRoot` (exported from `app-root.tsx` and from the
 package's `"."` export as a `source`-only seam) is
 `<SmartAppRoot app="importer" registration={smartRegistration} telemetry={smartAppTelemetry}>`
-around `<App />`; `SmartAppRoot` holds every branch behind the telemetry
+around `<App basepath={…} history={…} />`; `SmartAppRoot` holds every branch behind the telemetry
 consent dialog and owns the `QueryClientProvider` and the chrome gate:
 
 - **launch** (`arrivingSmartLaunchFrom`) → the launch page (`BrandBar` over
@@ -274,9 +297,14 @@ workspace `source` condition at bundle time.
   and asserts what only this layer can see: every read **and every write** is
   addressed to the FHIR base and carries `Bearer …`, and the resource types
   written are exactly the ones `config.ts`'s scope string covers. Also pins the
-  tabstrip: the Import tab is the default, flipping to Anonymize unmounts the
-  Import surface (and the subtitle switches), and the Anonymize tab reaches a
+  tabs, over a browser history at a test basepath: the bare path opens
+  `/import` in its place in history, `/anonymize` opens Anonymize, switching
+  tabs unmounts the other surface (and the subtitle and address bar follow), a
+  query's results survive a switch and back, and the Anonymize tab reaches a
   download from a picked HAR with **zero writes** on the wire.
+- `app-root-routing.test.tsx` — the real root, app and router over the address
+  bar, with fhirclient's token exchange stubbed: the callback URL is left alone
+  until the exchange completes, then the page opens on `/import`.
 
 ## References
 

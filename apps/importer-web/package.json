@@ -45,6 +45,7 @@
     "tundra-css": "catalog:"
   },
   "devDependencies": {
+    "@tanstack/router-plugin": "catalog:",
     "@testing-library/dom": "catalog:",
     "@testing-library/react": "catalog:",
     "@testing-library/user-event": "catalog:",
@@ -56,6 +57,7 @@
     "@wildflowerhealthio/web-trace-core": "workspace:*",
     "events": "catalog:",
     "fast-check": "catalog:",
+    "fhirclient": "^2.5.4",
     "jsdom": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",

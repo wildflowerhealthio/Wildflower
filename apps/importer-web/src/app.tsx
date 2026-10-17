@@ -1,106 +1,28 @@
 import { FetchHttpClient } from '@effect/platform'
 import { QueryClientProvider, useQueryClient } from '@tanstack/react-query'
-import {
-  createMemoryHistory,
-  createRootRouteWithContext,
-  createRoute,
-  createRouter,
-  RouterProvider,
-} from '@tanstack/react-router'
-import type { PickedFile } from '@wildflowerhealthio/anonymizer-fundamentals'
-import { AnonymizerScreen } from '@wildflowerhealthio/anonymizer-react'
-import { type FhirR4ResourcesRouterContext } from '@wildflowerhealthio/fhir-r4-react'
+import { RouterProvider, type RouterHistory } from '@tanstack/react-router'
 import {
   buildSmartRouterContext,
+  type SmartHandshake,
   useLaunchFailureRedirect,
   useSmartHandshake,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
-import { ImporterScreen, ServerSourceFileList } from '@wildflowerhealthio/importer-react'
-import { cn } from '@wildflowerhealthio/react-kitchen-sink'
-import { ErrorBanner, PageLoading, SegmentedToggle } from '@wildflowerhealthio/react-tundraish'
-import { useMemo, useState, type JSX } from 'react'
+import { ErrorBanner, PageLoading } from '@wildflowerhealthio/react-tundraish'
+import { Match } from 'effect'
+import { useMemo, type JSX } from 'react'
 
+import { buildRouter, type RouterContext } from './router.ts'
 import styles from './app.module.css'
 
-/**
- * The router context `importer-react` reads through — this app's instantiation
- * of the shared shape, narrowed to the one slice client it needs.
- */
-type RouterContext = FhirR4ResourcesRouterContext.RouterContext
-
-/** Which of the two screens the header toggle is showing. */
-type Tab = 'import' | 'anonymize'
-
-const tabOptions: readonly { value: Tab; label: string }[] = [
-  { value: 'import', label: 'Import' },
-  { value: 'anonymize', label: 'Anonymize' },
-]
-
-/**
- * The anonymizer shell is server-blind; this app has an authed FHIR context,
- * so it passes the importer slice's uploaded-source-files list through the
- * `serverSource` slot. The anonymizer reads one file at a time, so the list is
- * capped at one pick and the one file it yields is handed straight on — the
- * importer's picked file and the anonymizer's both carry
- * `{ fileName, bytes }`, so there is nothing to re-encode.
- */
-const ServerSource = ({ onPick }: { readonly onPick: (file: PickedFile) => void }): JSX.Element => (
-  <ServerSourceFileList
-    maxPicks={1}
-    onPick={([picked]) => {
-      if (picked !== undefined) onPick({ fileName: picked.fileName, bytes: picked.bytes })
-    }}
-  />
-)
-
-/** The subtitle each tab reads under the header. */
-const subtitleFor = (tab: Tab): string =>
-  tab === 'import'
-    ? 'Import FHIR records from a captured browsing session.'
-    : 'Replace every value in a capture with a pseudonym so its shape can be shared.'
-
-/**
- * The importer surface: the app's title, the Import | Anonymize tabstrip, and
- * the one slice screen the picked tab mounts.
- *
- * @remarks
- * **This app renders no importing or anonymizing surface of its own.** Each tab
- * mounts one slice screen (`ImporterScreen` / `AnonymizerScreen`) that owns
- * every level below it — source pick, preview, confirm/download, results.
- * `ImporterScreen` takes no props and reads its authed runner out of route
- * context; `AnonymizerScreen` is server-blind and takes only the
- * `serverSource` slot this app fills with `ServerSourceFileList`. The app owns
- * the tabstrip and the header copy, nothing else; see the traps in
- * [AGENTS.md](../AGENTS.md) for why splitting a flow across the app boundary is
- * the mistake this shape exists to avoid.
- *
- * The unselected screen is **unmounted**, not hidden: an accessibility tree
- * only carries the surface the user is on, and the screen holds its own state
- * so a flip-back opens fresh at the picker.
- */
-const ImporterHome = (): JSX.Element => {
-  // Tab state lives inside `ImporterHome` — a per-render local — so the router
-  // memo above stays keyed only on `context`. Lifting it into `ImporterApp`
-  // would rebuild the router on every tab switch, taking the mounted tree with
-  // it.
-  const [tab, setTab] = useState<Tab>('import')
-  return (
-    <>
-      <header className={styles['header']}>
-        <h1 className="text-heading-3">Importer</h1>
-        <div className={styles['controls']}>
-          <SegmentedToggle value={tab} options={tabOptions} onChange={setTab} aria-label="View" />
-        </div>
-        <p className={cn(styles['subtitle'], 'text-body-3')}>{subtitleFor(tab)}</p>
-      </header>
-
-      {tab === 'import' ? <ImporterScreen /> : <AnonymizerScreen serverSource={ServerSource} />}
-    </>
-  )
-}
+/** The SMART client a completed handshake hands the app. */
+type SmartClient = Extract<SmartHandshake, { readonly kind: 'ready' }>['client']
 
 /** Props for {@link ImporterApp}. */
 interface ImporterAppProps {
+  /** The window's history, which the router navigates. */
+  readonly history: RouterHistory
+  /** The served directory, the router's basepath. */
+  readonly basepath: string
   /** The router context built from a completed SMART handshake. */
   readonly context: RouterContext
 }
@@ -113,39 +35,79 @@ interface ImporterAppProps {
  * transport: the handshake is the only part that needs a browser redirect, and
  * everything below this point is the part worth testing.
  *
- * A router exists for one reason: `importer-react` reads its authed runner out
- * of route context (`fhir-r4-react`'s `useRunAuthed`), which is how every other
- * consumer of that package's queries gets one — so this app supplies the same
- * shape rather than the package growing a second, prop-threaded way in.
+ * The router reads the address bar, under `basepath`, and each tab is a child
+ * route of it, so a tab can be linked to. It is mounted only once the SMART
+ * handshake has completed, by when fhirclient has taken `code` and `state` out
+ * of the address bar: the router matches the URL and redirects `/` to a tab, so
+ * building it any earlier could rewrite the callback URL the token exchange
+ * still reads.
+ *
+ * It also carries `importer-react`'s authed runner, which that package reads
+ * out of route context (`fhir-r4-react`'s `useRunAuthed`), as every other
+ * consumer of its queries does.
+ *
+ * Memoised on the context, so neither a re-render nor a tab switch (a
+ * navigation inside this router) rebuilds it, and with it the mounted tree.
  */
-const ImporterApp = ({ context }: ImporterAppProps): JSX.Element => {
-  // The history is a *memory* history. This page is the OAuth redirect target,
-  // so its real URL carries `?code=…&state=…`; a browser history would try to
-  // match that against the route tree, and any navigation would rewrite the URL
-  // the SMART handshake is still reading. The app has one screen — nothing
-  // needs the address bar.
-  //
-  // Memoised on the context so a re-render does not rebuild the router (and
-  // with it the mounted tree) underneath live query state.
-  const router = useMemo(() => {
-    const rootRoute = createRootRouteWithContext<RouterContext>()({})
-    const indexRoute = createRoute({
-      getParentRoute: () => rootRoute,
-      path: '/',
-      component: ImporterHome,
-    })
-    return createRouter({
-      routeTree: rootRoute.addChildren([indexRoute]),
-      history: createMemoryHistory({ initialEntries: ['/'] }),
-      context,
-    })
-  }, [context])
+const ImporterApp = ({ history, basepath, context }: ImporterAppProps): JSX.Element => {
+  const router = useMemo(
+    () => buildRouter({ history, basepath, context }),
+    [history, basepath, context]
+  )
 
   return (
     <QueryClientProvider client={context.queryClient}>
       <RouterProvider router={router} />
     </QueryClientProvider>
   )
+}
+
+/** Props for {@link LaunchedImporter}. */
+interface LaunchedImporterProps {
+  /** The client the completed SMART handshake handed the app. */
+  readonly client: SmartClient
+  /** The window's history, which the router navigates. */
+  readonly history: RouterHistory
+  /** The served directory, the router's basepath. */
+  readonly basepath: string
+}
+
+/**
+ * The importer over a completed handshake: the router context built from the
+ * client it handed over, under {@link ImporterApp}.
+ *
+ * @remarks
+ * Plain `FetchHttpClient.layer`: the app's only outbound traffic is the FHIR
+ * server the SMART handshake named and, once the visitor consents in
+ * `SmartAppRoot`'s dialog, Sentry. The handshake's `serverUrl` is the FHIR base
+ * verbatim — the typed client emits base-relative paths, so there is no prefix
+ * to reconcile.
+ */
+const LaunchedImporter = ({ client, history, basepath }: LaunchedImporterProps): JSX.Element => {
+  const queryClient = useQueryClient()
+  // Memoised on the (stable) resolved client so a re-render neither rebuilds the
+  // context nor, through `ImporterApp`'s own memo, the router beneath it.
+  const context = useMemo(
+    () =>
+      buildSmartRouterContext(
+        {
+          serverUrl: client.state.serverUrl,
+          accessToken: client.state.tokenResponse?.access_token,
+        },
+        FetchHttpClient.layer,
+        queryClient
+      ),
+    [client, queryClient]
+  )
+  return <ImporterApp history={history} basepath={basepath} context={context} />
+}
+
+/** Props for {@link App}. */
+interface AppProps {
+  /** The window's history, which the router navigates once the handshake completes. */
+  readonly history: RouterHistory
+  /** The served directory, the router's basepath. */
+  readonly basepath: string
 }
 
 /**
@@ -155,54 +117,33 @@ const ImporterApp = ({ context }: ImporterAppProps): JSX.Element => {
  * @remarks
  * The handshake has to finish before the router is built — the router context
  * carries the HTTP layer, and that layer needs the token and the server URL the
- * handshake produces. So a failed handshake renders as a failed handshake and
- * the importer never mounts, rather than mounting and offering an import whose
- * every write would 401.
+ * handshake produces, and the router must not read the address bar while the
+ * callback's `code` and `state` are still in it. So a failed handshake renders
+ * as a failed handshake and the importer never mounts, rather than mounting and
+ * offering an import whose every write would 401.
  *
  * The exchange runs through {@link useSmartHandshake} rather than a raw
  * `useEffect` so it fires exactly once — a bare effect double-POSTs the
  * single-use authorization code under `React.StrictMode`. The page's one
- * `QueryClient` (from `main.tsx`, read here with `useQueryClient`) is handed to
+ * `QueryClient` (`SmartAppRoot`'s, read here with `useQueryClient`) is handed to
  * the router context so the handshake and every app read/write share a cache.
  */
-const App = (): JSX.Element => {
-  const queryClient = useQueryClient()
+const App = ({ history, basepath }: AppProps): JSX.Element => {
   const handshake = useSmartHandshake()
   // A failed exchange has nothing to retry here (the code is single-use), so
   // carry the reason to the app root, which can offer the connect menu.
   useLaunchFailureRedirect(handshake)
 
-  // Memoised on the (stable) resolved client so a re-render neither rebuilds the
-  // context nor, through `ImporterApp`'s own memo, the router beneath it.
-  //
-  // Plain `FetchHttpClient.layer`: the app's only outbound traffic is the FHIR
-  // server the SMART handshake named and, once the visitor consents in
-  // `SmartAppRoot`'s dialog, Sentry. The handshake's `serverUrl` is the FHIR
-  // base verbatim — the typed client emits base-relative paths, so there is no
-  // prefix to reconcile and no failure arm here beyond the handshake's own.
-  const client = handshake.kind === 'ready' ? handshake.client : undefined
-  const context = useMemo<RouterContext | undefined>(
-    () =>
-      client === undefined
-        ? undefined
-        : buildSmartRouterContext(
-            {
-              serverUrl: client.state.serverUrl,
-              accessToken: client.state.tokenResponse?.access_token,
-            },
-            FetchHttpClient.layer,
-            queryClient
-          ),
-    [client, queryClient]
+  const body = Match.value(handshake).pipe(
+    Match.when({ kind: 'error' }, ({ error }) => <ErrorBanner error={error} />),
+    Match.when({ kind: 'connecting' }, () => <PageLoading message="Connecting…" />),
+    Match.when({ kind: 'ready' }, ({ client }) => (
+      <LaunchedImporter client={client} history={history} basepath={basepath} />
+    )),
+    Match.exhaustive
   )
 
-  return (
-    <main className={styles['app']}>
-      {handshake.kind === 'connecting' && <PageLoading message="Connecting…" />}
-      {handshake.kind === 'error' && <ErrorBanner error={handshake.error} />}
-      {context !== undefined && <ImporterApp context={context} />}
-    </main>
-  )
+  return <main className={styles['app']}>{body}</main>
 }
 
-export { App, ImporterApp, type ImporterAppProps, ImporterHome }
+export { App, type AppProps, ImporterApp, type ImporterAppProps }
