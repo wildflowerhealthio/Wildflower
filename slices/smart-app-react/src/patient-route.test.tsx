@@ -9,6 +9,7 @@ import {
 } from '@tanstack/react-router'
 import { cleanup, render, screen } from '@testing-library/react'
 import type { SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
+import { anonymizeUrl } from '@wildflowerhealthio/telemetry-core'
 import { Option } from 'effect'
 import type { JSX } from 'react'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
@@ -33,6 +34,15 @@ describe('launchStartRoute', () => {
 
   it('should open the picker for a launch with no patient', () => {
     expect(launchStartRoute(launchedWith(null))).toBe('/patients')
+  })
+
+  // `telemetry-core`'s `anonymizeUrl` knows this scheme: the segment after
+  // `patients` is a patient id, whatever its shape. Renaming the route
+  // without it would send patient ids to Sentry.
+  it('should name the patient where telemetry anonymizes it', () => {
+    expect(anonymizeUrl(`${launchStartRoute(launchedWith('alice'))}/today`)).toBe(
+      '/patients/{id}/today'
+    )
   })
 })
 
