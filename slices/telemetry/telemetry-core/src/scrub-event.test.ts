@@ -3,7 +3,7 @@ import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 import { anonymizeHost, anonymizeUrl } from './anonymize-url.ts'
 import { makeHostRedactor } from './redact-hosts.ts'
-import { type ScrubbableEvent, scrubEvent } from './scrub-event.ts'
+import { type ScrubbableEvent, scrubEvent, scrubSpan } from './scrub-event.ts'
 
 interface SampleBreadcrumb {
   readonly category: string
@@ -600,6 +600,55 @@ describe('scrubEvent', () => {
 
         expect(scrubEvent(scrubbedErrorEvent)).toStrictEqual(scrubbedErrorEvent)
         expect(scrubEvent(scrubbedTransactionEvent)).toStrictEqual(scrubbedTransactionEvent)
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+})
+
+describe('scrubSpan', () => {
+  test('anonymizes the URLs and the route name a standalone span carries', () => {
+    const span = {
+      span_id: 's1',
+      description: `GET ${FHIR_URL}`,
+      data: {
+        transaction: '/r4/Patient/123',
+        'url.full': FHIR_URL,
+        'http.url': FHIR_URL,
+        'sentry.op': 'ui.interaction.click',
+      },
+    }
+
+    expect(scrubSpan(span)).toStrictEqual({
+      span_id: 's1',
+      description: `GET ${ANONYMIZED_FHIR_URL}`,
+      data: {
+        transaction: '/r4/Patient/{id}',
+        'url.full': ANONYMIZED_FHIR_URL,
+        'http.url': ANONYMIZED_FHIR_URL,
+        'sentry.op': 'ui.interaction.click',
+      },
+    })
+  })
+
+  test('replaces the server hosts it names', () => {
+    const span = { description: 'connect ruth.example', data: { transaction: 'ruth.example:8443' } }
+
+    expect(scrubSpan(span, makeHostRedactor(['ruth.example']))).toStrictEqual({
+      description: 'connect {host}',
+      data: { transaction: '{host}' },
+    })
+  })
+
+  test('property: scrubbing twice is the same as scrubbing once', () => {
+    fc.assert(
+      fc.property(fc.webUrl({ withQueryParameters: true, withFragments: true }), (url) => {
+        const scrubbedSpan = scrubSpan({
+          description: `GET ${url}`,
+          data: { transaction: new URL(url).pathname, 'url.full': url },
+        })
+
+        expect(scrubSpan(scrubbedSpan)).toStrictEqual(scrubbedSpan)
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )

@@ -59,6 +59,13 @@ const HOST_KEYS: ReadonlySet<string> = new Set([
  */
 const SCRIPT_KEYS: ReadonlySet<string> = new Set(['code.filepath', 'browser.script.invoker'])
 
+/**
+ * Keys whose string value is free text, compared case-insensitively:
+ * `transaction` is the route name a standalone span, such as INP's, carries
+ * as an attribute, which can be a URL's path.
+ */
+const TEXT_KEYS: ReadonlySet<string> = new Set(['transaction'])
+
 /** Keys that carry a URL's query string or fragment on their own; dropped outright. */
 const DROPPED_KEYS: ReadonlySet<string> = new Set([
   'http.query',
@@ -151,6 +158,9 @@ const isHostKey = (lowerCaseKey: string): boolean => HOST_KEYS.has(lowerCaseKey)
 /** Whether the value under `lowerCaseKey` names a script. */
 const isScriptKey = (lowerCaseKey: string): boolean => SCRIPT_KEYS.has(lowerCaseKey)
 
+/** Whether the value under `lowerCaseKey` is free text. */
+const isTextKey = (lowerCaseKey: string): boolean => TEXT_KEYS.has(lowerCaseKey)
+
 /**
  * `value` with `redactHosts` applied to every string in it, at any depth of
  * arrays and plain objects, object keys included; any other value as it was.
@@ -218,8 +228,8 @@ const scrubScript = (script: string, redactHosts: HostRedactor): string => {
 
 /**
  * `record` with the value under every URL or host key anonymized, the script
- * under every script key scrubbed (see `scrubScript`),
- * the value under every dropped key cleared to `undefined`, which the SDK
+ * under every script key scrubbed (see `scrubScript`), the text under every
+ * text key scrubbed (see `scrubText`), the value under every dropped key cleared to `undefined`, which the SDK
  * leaves out of what it sends, and the server hosts in every other key and
  * value replaced.
  */
@@ -239,6 +249,9 @@ const scrubUrlBearingRecord = (
       }
       if (isScriptKey(lowerCaseKey) && typeof value === 'string') {
         return [key, scrubScript(value, redactHosts)]
+      }
+      if (isTextKey(lowerCaseKey) && typeof value === 'string') {
+        return [key, scrubText(value, redactHosts)]
       }
       return [redactHosts(key), redactHostsInValue(value, redactHosts)]
     })
@@ -266,7 +279,22 @@ const scrubBreadcrumb = <B extends ScrubbableBreadcrumb>(
     : { data: scrubUrlBearingRecord(breadcrumb.data, redactHosts) }),
 })
 
-const scrubSpan = <S extends ScrubbableSpan>(span: S, redactHosts: HostRedactor): S => ({
+/**
+ * `span` with its description scrubbed as free text and its data as
+ * `scrubEvent` scrubs a span's: for a span the SDK sends on its own, outside
+ * any event.
+ *
+ * @typeParam S - The SDK's span type; every other field passes through
+ * @param redactHosts - As for {@link scrubEvent}
+ *
+ * @remarks
+ * Pure and idempotent, like {@link scrubEvent}, which scrubs the spans of a
+ * transaction event the same way.
+ */
+const scrubSpan = <S extends ScrubbableSpan>(
+  span: S,
+  redactHosts: HostRedactor = makeHostRedactor([])
+): S => ({
   ...span,
   ...(span.description === undefined
     ? {}
@@ -359,8 +387,9 @@ const scrubLogEntry = <L extends NonNullable<ScrubbableEvent['logentry']>>(
  *     cleared
  *   - the free text — the message and `logentry` (its message and string
  *     parameters), each exception's message, each breadcrumb's message, each
- *     span description, the trace context's, and the transaction name — has
- *     the URLs in it anonymized
+ *     span description, the trace context's, the transaction name, and the
+ *     `transaction` attribute in breadcrumb and span data — has the URLs in
+ *     it anonymized
  *   - in all of the above, in each stack frame's `filename`, `abs_path` and
  *     `module`, each debug image's `code_file`, and every other string in
  *     breadcrumb and span data, tags, `extra` and contexts, every relay
@@ -435,4 +464,4 @@ const scrubEvent = <E extends ScrubbableEvent>(
 })
 
 export type { ScrubbableEvent }
-export { scrubEvent }
+export { scrubEvent, scrubSpan }

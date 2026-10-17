@@ -13,6 +13,7 @@ const {
   setTagMock,
   browserTracingIntegration,
   browserTracingIntegrationMock,
+  fetchTransportSendMock,
 } = vi.hoisted(() => {
   const integration = { name: 'BrowserTracing', setupOnce: (): void => {} }
   return {
@@ -20,7 +21,8 @@ const {
     setTagsMock: vi.fn<(tags: Readonly<Record<string, string | undefined>>) => void>(),
     setTagMock: vi.fn<(key: string, value: string) => void>(),
     browserTracingIntegration: integration,
-    browserTracingIntegrationMock: vi.fn((_options?: { enableInp?: boolean }) => integration),
+    browserTracingIntegrationMock: vi.fn((..._options: readonly unknown[]) => integration),
+    fetchTransportSendMock: vi.fn((_envelope: Envelope) => Promise.resolve({ statusCode: 200 })),
   }
 })
 
@@ -29,9 +31,19 @@ vi.mock('@sentry/react', () => ({
   getClient: (): undefined => undefined,
   getGlobalScope: () => ({ setTags: setTagsMock, setTag: setTagMock }),
   browserTracingIntegration: browserTracingIntegrationMock,
+  makeFetchTransport: () => ({
+    send: fetchTransportSendMock,
+    flush: (): Promise<boolean> => Promise.resolve(true),
+  }),
 }))
 
 type TransactionEvent = Parameters<NonNullable<BrowserOptions['beforeSendTransaction']>>[0]
+
+type SpanJson = Parameters<NonNullable<BrowserOptions['beforeSendSpan']>>[0]
+
+type Transport = ReturnType<NonNullable<BrowserOptions['transport']>>
+
+type Envelope = Parameters<Transport['send']>[0]
 
 const buildConfig = configFromEnv({
   SENTRY_DSN: 'https://key@sentry.example/1',
@@ -85,6 +97,51 @@ const sentryInitOptions = (): BrowserOptions => {
   if (options === undefined) throw new Error('Sentry.init was called without options')
   return options
 }
+
+/** The transport the single `Sentry.init` call was given, built as the SDK builds it. */
+const sentryTransport = (): Transport => {
+  const makeTransport = sentryInitOptions().transport
+  if (makeTransport === undefined) throw new Error('Sentry.init was called without a transport')
+  return makeTransport({
+    url: 'https://sentry.example/api/1/envelope/',
+    recordDroppedEvent: () => {},
+  })
+}
+
+/**
+ * An envelope carrying one empty item of each of `itemTypes`, in order. The
+ * SDK never mixes these in one envelope, and an unknown type is one a later
+ * SDK may add, so the envelope is built outside the SDK's types.
+ */
+const envelopeCarrying = (itemTypes: readonly string[]): Envelope =>
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test envelope: mixes item types, and names types the SDK does not, to exercise the gate's filtering
+  [{}, itemTypes.map((type) => [{ type }, {}])] as unknown as Envelope
+
+/** The item types of the one envelope the gated transport handed the fetch transport. */
+const sentItemTypes = (): readonly string[] => {
+  expect(fetchTransportSendMock).toHaveBeenCalledTimes(1)
+  const [envelope] = fetchTransportSendMock.mock.calls[0] ?? []
+  if (envelope === undefined) throw new Error('the fetch transport was sent no envelope')
+  return envelope[1].map(([itemHeaders]) => itemHeaders.type)
+}
+
+/** Every envelope item type the SDK names, and one it does not. */
+const EVERY_ITEM_TYPE = [
+  'event',
+  'attachment',
+  'session',
+  'sessions',
+  'transaction',
+  'span',
+  'client_report',
+  'log',
+  'trace_metric',
+  'profile',
+  'replay_event',
+  'replay_recording',
+  'feedback',
+  'a_later_sdk_item',
+]
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -147,7 +204,7 @@ describe('initConsentedTelemetry', () => {
     const options = sentryInitOptions()
     expect(options.tracesSampleRate).toBe(0.5)
     expect(options.integrations).toStrictEqual([browserTracingIntegration])
-    expect(browserTracingIntegrationMock).toHaveBeenCalledWith({ enableInp: false })
+    expect(browserTracingIntegrationMock.mock.calls).toStrictEqual([[]])
   })
 
   test('sends scrubbed errors and transactions for both switches', async () => {
@@ -193,7 +250,7 @@ describe('initConsentedTelemetry', () => {
 
     const options = sentryInitOptions()
     expect(options.integrations).toStrictEqual([browserTracingIntegration])
-    expect(browserTracingIntegrationMock).toHaveBeenCalledWith({ enableInp: false })
+    expect(browserTracingIntegrationMock.mock.calls).toStrictEqual([[]])
     expect(await options.beforeSend?.(errorEvent, {})).toBeNull()
     const sentTransactionEvent = await options.beforeSendTransaction?.(transactionEvent, {})
     expect(sentTransactionEvent?.transaction).toBe('/r4/Patient/{id}')
@@ -259,6 +316,151 @@ describe('initConsentedTelemetry', () => {
     initConsentedTelemetry({ consent, config: buildConfig, tags })
 
     expect(initMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('the consent-gated transport', () => {
+  test.each([
+    {
+      label: 'crash reports only',
+      switches: { crashReports: true, performance: false },
+      sent: ['event', 'attachment', 'session', 'sessions', 'client_report'],
+    },
+    {
+      label: 'performance only',
+      switches: { crashReports: false, performance: true },
+      sent: ['transaction', 'span', 'client_report'],
+    },
+    {
+      label: 'both switches',
+      switches: { crashReports: true, performance: true },
+      sent: ['event', 'attachment', 'session', 'sessions', 'transaction', 'span', 'client_report'],
+    },
+  ])('sends only the items $label lets through', async ({ switches, sent }) => {
+    const { initConsentedTelemetry } = await importConsented()
+    initConsentedTelemetry({ consent: consentWith(switches), config: buildConfig, tags })
+
+    await sentryTransport().send(envelopeCarrying(EVERY_ITEM_TYPE))
+
+    expect(sentItemTypes()).toStrictEqual(sent)
+  })
+
+  test('sends an envelope whose items are all let through as it is', async () => {
+    const { initConsentedTelemetry } = await importConsented()
+    initConsentedTelemetry({
+      consent: consentWith({ crashReports: true, performance: false }),
+      config: buildConfig,
+      tags,
+    })
+    const envelope = envelopeCarrying(['event', 'attachment'])
+
+    await sentryTransport().send(envelope)
+
+    expect(fetchTransportSendMock).toHaveBeenCalledExactlyOnceWith(envelope)
+  })
+
+  test.each([
+    { label: 'an item type it does not know', itemTypes: ['a_later_sdk_item'] },
+    { label: 'only items no switch covers', itemTypes: ['log', 'profile', 'replay_event'] },
+  ])('sends nothing for an envelope of $label', async ({ itemTypes }) => {
+    const { initConsentedTelemetry } = await importConsented()
+    initConsentedTelemetry({
+      consent: consentWith({ crashReports: true, performance: true }),
+      config: buildConfig,
+      tags,
+    })
+
+    expect(await sentryTransport().send(envelopeCarrying(itemTypes))).toStrictEqual({})
+    expect(fetchTransportSendMock).not.toHaveBeenCalled()
+  })
+
+  test('sends nothing once the visitor turns both switches off', async () => {
+    const { initConsentedTelemetry } = await importConsented()
+    initConsentedTelemetry({
+      consent: consentWith({ crashReports: true, performance: true }),
+      config: buildConfig,
+      tags,
+    })
+    const transport = sentryTransport()
+
+    initConsentedTelemetry({
+      consent: consentWith({ crashReports: false, performance: false }),
+      config: buildConfig,
+      tags,
+    })
+    await transport.send(envelopeCarrying(EVERY_ITEM_TYPE))
+
+    expect(fetchTransportSendMock).not.toHaveBeenCalled()
+  })
+
+  test('stops sending spans and sessions alike once their switch is turned off', async () => {
+    const { initConsentedTelemetry } = await importConsented()
+    initConsentedTelemetry({
+      consent: consentWith({ crashReports: true, performance: true }),
+      config: buildConfig,
+      tags,
+    })
+    const transport = sentryTransport()
+
+    initConsentedTelemetry({
+      consent: consentWith({ crashReports: true, performance: false }),
+      config: buildConfig,
+      tags,
+    })
+    await transport.send(envelopeCarrying(['span', 'session', 'client_report']))
+
+    expect(sentItemTypes()).toStrictEqual(['session', 'client_report'])
+  })
+})
+
+describe('beforeSendSpan', () => {
+  const span: SpanJson = {
+    span_id: 's1',
+    trace_id: 't1',
+    start_timestamp: 0,
+    description: `GET ${FHIR_URL}`,
+    data: {
+      'sentry.op': 'ui.interaction.click',
+      transaction: '/r4/Patient/123',
+      'url.full': FHIR_URL,
+      'http.url': FHIR_URL,
+    },
+  }
+
+  test('anonymizes the route name, the URLs and the description a span carries', async () => {
+    const { initConsentedTelemetry } = await importConsented()
+    initConsentedTelemetry({
+      consent: consentWith({ crashReports: false, performance: true }),
+      config: buildConfig,
+      tags,
+    })
+
+    const sentSpan = sentryInitOptions().beforeSendSpan?.(span)
+
+    expect(sentSpan?.data).toStrictEqual({
+      'sentry.op': 'ui.interaction.click',
+      transaction: '/r4/Patient/{id}',
+      'url.full': ANONYMIZED_FHIR_URL,
+      'http.url': ANONYMIZED_FHIR_URL,
+    })
+    expect(sentSpan?.description).toBe(`GET ${ANONYMIZED_FHIR_URL}`)
+  })
+
+  test('replaces a server host in a span’s description', async () => {
+    const { initConsentedTelemetry, redactServerHost } = await importConsented()
+    initConsentedTelemetry({
+      consent: consentWith({ crashReports: false, performance: true }),
+      config: buildConfig,
+      tags,
+    })
+    redactServerHost('ruth.example')
+
+    const sentSpan = sentryInitOptions().beforeSendSpan?.({
+      ...span,
+      description: 'connect ruth.example',
+    })
+
+    expect(sentSpan?.description).toBe('connect {host}')
   })
 })
 

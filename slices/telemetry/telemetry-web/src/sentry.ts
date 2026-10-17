@@ -12,12 +12,17 @@ const resolveRelease = (raw: string): string | undefined => {
 /**
  * The `Sentry.init` options {@link initSentryWeb} takes beyond what
  * `TelemetryConfig` says: the integrations to add to the SDK's defaults, the
- * hooks events pass through before they are sent, and what data the SDK
- * collects alongside them.
+ * hooks events and spans pass through before they are sent, the transport
+ * that sends them, and what data the SDK collects alongside them.
  */
 type InitSentryWebOptions = Pick<
   Sentry.BrowserOptions,
-  'integrations' | 'beforeSend' | 'beforeSendTransaction' | 'dataCollection'
+  | 'integrations'
+  | 'beforeSend'
+  | 'beforeSendTransaction'
+  | 'beforeSendSpan'
+  | 'transport'
+  | 'dataCollection'
 >
 
 /**
