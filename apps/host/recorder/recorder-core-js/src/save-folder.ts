@@ -8,10 +8,10 @@ import { Data, Effect, Schema } from 'effect'
  */
 
 /**
- * How the page calls a host command: Tauri's `invoke`, narrowed to the one
- * argument the recorder passes.
+ * How the page calls a host command: Tauri's `invoke`, narrowed to the
+ * arguments the recorder passes, a command name and its named arguments.
  */
-type InvokeHostCommand = (command: string) => Promise<unknown>
+type InvokeHostCommand = (command: string, args?: Record<string, unknown>) => Promise<unknown>
 
 /** The host command that answers with the {@link SaveFolder}. */
 const SAVE_FOLDER_COMMAND = 'recorder_save_folder'
@@ -62,5 +62,5 @@ const readSaveFolder = (
     )
   )
 
-export { readSaveFolder, SAVE_FOLDER_COMMAND, SaveFolder, SaveFolderUnreadable }
+export { messageOf, readSaveFolder, SAVE_FOLDER_COMMAND, SaveFolder, SaveFolderUnreadable }
 export type { InvokeHostCommand }

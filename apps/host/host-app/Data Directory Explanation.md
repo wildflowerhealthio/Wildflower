@@ -5,6 +5,7 @@ The host keeps everything it owns under one directory, the data root:
 ```text
 <data root>/
   servers.json            the install's servers
+  recorder-bookmarks.json the Recorder's bookmarks
   saved_data/             desktop only: files a page in the sniffer webview downloads
   fhir-search-params/     Android only: the materialized FHIR SearchParameter bundle
   acme-account/           the install's ACME account keys, one per CA
@@ -27,7 +28,9 @@ the permissions they inherit from the data root.
 root and hands it to the slices that keep install-wide files, among them
 `servers-tauri`, which reads `servers.json` and pushes every server to the
 unit runner with its run policy (see the servers package group's
-[Server Runs Explanation](../servers/docs/Server%20Runs%20Explanation.md)).
+[Server Runs Explanation](../servers/docs/Server%20Runs%20Explanation.md)),
+and `recorder-tauri`, which keeps the Recorder's bookmarks in
+`recorder-bookmarks.json`.
 Each run of a server gets its folder as `ServerRuntimeConfig.server_dir`, and
 the server creates the folder, applies scheduled database deletions in it, and
 opens both databases there; the data-management screen (`/databases`) exports
@@ -87,6 +90,38 @@ the Owner; a new server gets the hosted ones. A version 2 file, which has no
 
 `certificateAuthority` is the ACME CA the server's certificates are ordered
 from: `"letsEncryptStaging"` or `"letsEncrypt"`.
+
+## `recorder-bookmarks.json`
+
+`recorder-rust`'s `JsonBookmarks` owns the file: the pages the Recorder page
+lists to record from, and when a recording last started from each. It is
+written the way `servers.json` is, through a fsynced
+`.recorder-bookmarks.json.tmp` renamed over it, and a version this build
+doesn't read is neither read nor overwritten:
+
+```json
+{
+  "version": 1,
+  "bookmarks": [
+    {
+      "name": "LifeLabs reports",
+      "url": "https://www.on.mycarecompass.lifelabs.com/reports",
+      "lastRecordedAt": "2026-09-25T14:02:11Z"
+    },
+    {
+      "name": "Shoppers prescriptions",
+      "url": "https://mypharmacy.shoppersdrugmart.ca/en/prescription-dashboard/",
+      "lastRecordedAt": null
+    }
+  ]
+}
+```
+
+The URL is a bookmark's key. `lastRecordedAt` is always present, `null` until
+a recording starts from exactly that URL, when the host stamps it. A missing
+file reads as four first-run bookmarks, the pharmacy and lab portals the
+Recorder was first used with, and is written by the first change; a file that
+exists is never reseeded, so removing every bookmark leaves `"bookmarks": []`.
 
 Where the data root lands is a per-platform decision, and on iOS it is a
 deliberate one.

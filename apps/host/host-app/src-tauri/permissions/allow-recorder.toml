@@ -3,12 +3,23 @@
 [[permission]]
 identifier = "allow-recorder"
 description = """
-Grants the webview the right to invoke the app-defined
-`recorder_save_folder` command (`recorder-tauri`): reading the folder the
-Recorder saves into, which the Recorder page shows.
+Grants the webview the right to invoke the app-defined Recorder commands
+(`recorder-tauri`): `recorder_save_folder`, reading the folder the Recorder
+saves into, which the Recorder page shows; and `recorder_bookmarks`,
+`recorder_bookmark_add`, `recorder_bookmark_rename`,
+`recorder_bookmark_remove` and `recorder_bookmark_recorded`, reading and
+changing the Recorder's bookmarks.
 
 SECURITY: granted to the `main` webview only (capabilities/default.json),
-which runs the host shell. It reads one path the host already chose and
-writes nothing.
+which runs the host shell. It reads one path the host already chose, and
+writes one file, `recorder-bookmarks.json` in the data root, whose name the
+host fixes: no command takes a path.
 """
-commands.allow = ["recorder_save_folder"]
+commands.allow = [
+  "recorder_save_folder",
+  "recorder_bookmarks",
+  "recorder_bookmark_add",
+  "recorder_bookmark_rename",
+  "recorder_bookmark_remove",
+  "recorder_bookmark_recorded",
+]

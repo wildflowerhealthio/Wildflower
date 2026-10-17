@@ -2,7 +2,8 @@
 
 The **Recorder's pure layer**: sniffer response events in, a HAR 1.2 archive
 out, plus the bridge that carries the sniffer's traffic in and the finished
-file text out to the host that writes it. No DOM, no `fs`, no React, no Effect
+file text out to the host that writes it, and the host commands for the
+recordings folder and the bookmarks. No DOM, no `fs`, no React, no Effect
 runtime.
 
 ## Shape
@@ -34,11 +35,22 @@ runtime.
   `recorder_save_folder` command over an injected `invoke`, its answer
   decoded as a `SaveFolder` (`path`, `revealsFiles`), or a
   `SaveFolderUnreadable` with the host's reason.
-- `src/index.ts` — re-exports all six.
-- `../recorder-wire-golden.json` — one wire payload per `RecorderBridge` tag
-  and the `recorder_save_folder` answer, read by `bridge.test.ts`,
-  `save-folder.test.ts`, `recorder-rust`'s and `browser-sniffer-tauri`'s
-  tests.
+  `InvokeHostCommand` is Tauri's `invoke` narrowed to a command name and its
+  named arguments.
+- `src/bookmarks.ts` — **the bookmarks**: `Bookmark` (`name`, `url` as
+  `HttpUrl`, `lastRecordedAt` as a `DateTimeUtc` or `null`), one function per
+  host command over an injected `invoke` (`readBookmarks`, `addBookmark`,
+  `renameBookmark`, `removeBookmark`, `markBookmarkRecorded`), each answering
+  with every bookmark or a `BookmarksUnavailable` with the host's reason;
+  `byRecency`, most recently recorded first and never recorded last, ties by
+  name; and `bookmarkUrl`, the URL parser's spelling of a URL, the bookmark's
+  key.
+- `src/index.ts` — re-exports all seven.
+- `../recorder-wire-golden.json` — one wire payload per `RecorderBridge` tag,
+  the `recorder_save_folder` and `recorder_bookmarks` answers, and each
+  bookmark change's arguments under `commandArgs`, read by `bridge.test.ts`,
+  `save-folder.test.ts`, `bookmarks.test.ts`, `recorder-rust`'s and
+  `browser-sniffer-tauri`'s tests.
 
 ## Layering
 
@@ -80,6 +92,11 @@ package or anything from `slices/importer`.
   non-`http(s)` URL; plus the save channel's JSON-string wire.
 - `save-folder.test.ts` — the golden answer decodes, a refusal carries the
   host's reason, and an empty path is refused.
+- `bookmarks.test.ts` — the golden answer decodes, each command sends its
+  golden name and arguments, a refusal carries the host's reason, a property
+  that `byRecency` puts later stamps first and every never-recorded bookmark
+  last, and a property that `bookmarkUrl` makes the forms with and without a
+  trailing slash one key.
 
 ## References
 

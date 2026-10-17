@@ -246,9 +246,14 @@ pub fn run() {
             wildflowerhealthio_servers_tauri::server_open_authorization_app,
             wildflowerhealthio_servers_tauri::server_open_pending_consent,
             wildflowerhealthio_servers_tauri::server_open_notified_consent,
-            // The Recorder page's save folder, granted to the `main` webview
-            // only (`allow-recorder`).
+            // The Recorder page's save folder and bookmarks, granted to the
+            // `main` webview only (`allow-recorder`).
             wildflowerhealthio_recorder_tauri::recorder_save_folder,
+            wildflowerhealthio_recorder_tauri::recorder_bookmarks,
+            wildflowerhealthio_recorder_tauri::recorder_bookmark_add,
+            wildflowerhealthio_recorder_tauri::recorder_bookmark_rename,
+            wildflowerhealthio_recorder_tauri::recorder_bookmark_remove,
+            wildflowerhealthio_recorder_tauri::recorder_bookmark_recorded,
         ])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
@@ -342,8 +347,9 @@ pub fn run() {
 
             // Wire the Recorder's `SaveHar` listener, which writes a
             // finished recording into the platform's `Wildflower Recordings`
-            // folder, resolved there.
-            wildflowerhealthio_recorder_tauri::attach_recorder(app.handle());
+            // folder, resolved there, and manage its bookmarks, kept in
+            // `recorder-bookmarks.json` in the data root.
+            wildflowerhealthio_recorder_tauri::attach_recorder(app.handle(), &data_root);
 
             // Push every server in `servers.json`, in the same data root, to
             // `TauriUnitRunner`, and manage the registry the commands write,
