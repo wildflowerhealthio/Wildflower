@@ -10,9 +10,10 @@ development. It pairs
 `RouteTabs`, each tab a child route, `/import` and `/anonymize`) — the app
 itself holds no importing or anonymizing logic, only the tab strip, the wiring
 a SMART app needs, and the
-one adapter the anonymizer's `serverSource` slot asks of a host (it passes
-`importer-react`'s `ServerHarArchiveList` through — both slices' `PickedFile`
-carry `{ fileName, bytes }`, so the adapter is the identity). The unselected
+one adapter the anonymizer's `serverSource` slot asks of a host (it wraps
+`importer-react`'s `ServerSourceFileList`, capped at one pick, and hands that
+file straight on — both slices' picked files carry `{ fileName, bytes }`, so
+there is nothing to re-encode). The unselected
 screen is unmounted, not hidden.
 
 The app has one HTML entry, a relative `base`, a build into the package's own
@@ -195,8 +196,8 @@ accepts the writes and the set has room to grow.
   down there ever puts a prefixed URL or an `Authorization` header on the wire.
   This app's test is the only place that does — keep it that way rather than
   stubbing the context here too.
-- **jsdom's `TextEncoder` returns a foreign-realm `Uint8Array`** that the archive
-  codec's `Uint8ArrayFromSelf` schema rejects on `instanceof`. Any test that
+- **jsdom's `TextEncoder` returns a foreign-realm `Uint8Array`** that the source
+  file codec's `Uint8ArrayFromSelf` schema rejects on `instanceof`. Any test that
   drives the confirm step's local upload needs the `RealmSafeTextEncoder`
   `vi.stubGlobal` workaround (copied from `importer-screen.test.tsx`); it is a
   jsdom artifact, not a bug in the codec.
