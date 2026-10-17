@@ -1,6 +1,7 @@
 //! What the consent notifications offer beyond a tap, and what an action on
 //! one acts on: [`OngoingConsentNotification`], the notification that stays
-//! on Android while a request is pending; the ids of the actions a consent
+//! on Android while a request is pending that its server's own notification
+//! doesn't show; the ids of the actions a consent
 //! notification offers ([`OPEN_CONSENT_ACTION_ID`],
 //! [`DENY_CONSENT_ACTION_ID`]); and [`AnnouncedConsents`], the request each
 //! notification posted names, which an action on it opens or denies.
@@ -21,15 +22,16 @@ pub const OPEN_CONSENT_ACTION_ID: &str = "open";
 /// notification, as the golden file pins it for the base.
 pub const DENY_CONSENT_ACTION_ID: &str = "deny";
 
-/// The notification that stays while a request is pending on any server, on
-/// Android, where a request's own notification can be dismissed: it names the
-/// newest request, which its Open and Deny act on.
+/// The notification that stays on Android while a request is pending that no
+/// notification of its server's own shows, as once a tap took that down: it
+/// names the newest such request, which its Open and Deny act on.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OngoingConsentNotification {
-    /// The request it names: of the requests still each server's newest, the
-    /// one seen latest.
+    /// The request it names: of the requests still each server's newest and
+    /// not shown in its server's own notification, the one seen latest.
     pub newest: ConsentRequest,
-    /// How many servers have a request it counts waiting.
+    /// How many servers have a request it counts waiting, shown in their own
+    /// notification or not.
     pub waiting_server_count: usize,
 }
 

@@ -55,10 +55,12 @@ pub(crate) enum NotificationKind {
     /// A stop of a server's run: its text only.
     ServerStop,
     /// A consent request waiting on a server: on a phone, Deny besides the
-    /// tap that opens it.
+    /// tap that opens it; on Android, kept until it is withdrawn or tapped,
+    /// on the default channel, which alerts.
     ConsentRequest,
-    /// The ongoing consent notification, posted on Android only: Open and
-    /// Deny, kept until it is withdrawn, on a channel that makes no sound.
+    /// The ongoing consent notification, posted on Android only, for the
+    /// requests no server's own notification shows: Open and Deny, kept
+    /// until it is withdrawn or tapped, on a channel that makes no sound.
     OngoingConsent,
 }
 
@@ -71,15 +73,19 @@ const CONSENT_REQUEST_ACTION_TYPE_ID: &str = "consent-request";
 const ONGOING_CONSENT_ACTION_TYPE_ID: &str = "ongoing-consent";
 
 /// The channel the ongoing consent notification posts on: low importance, so
-/// it shows in the shade without a sound or a heads-up, each request's own
-/// notification having alerted already.
+/// it shows in the shade without a sound or a heads-up, each request it names
+/// having alerted in its server's own notification already, or opened in the
+/// app.
 #[cfg(target_os = "android")]
 const ONGOING_CONSENT_CHANNEL_ID: &str = "ongoing-consent";
 
 /// Register the actions the consent notifications offer, on a phone, before
 /// any posts: Deny on a request's notification, and Open and Deny on the
 /// ongoing one; and, on Android, the ongoing one's quiet channel. Open brings
-/// the app to the foreground, to show the request; Deny doesn't need to. A
+/// the app to the foreground, to show the request; Deny doesn't ask to, so on
+/// iOS a Deny while the app is suspended lands once the base's webview runs
+/// again, and an action that starts the app, on either phone, is dropped
+/// before the base listens: #1288 captures actions natively for both. A
 /// failure is logged, and the notifications post without the actions.
 #[cfg(any(target_os = "ios", target_os = "android"))]
 pub(crate) fn register_consent_notification_actions<R: Runtime>(app: &AppHandle<R>) {
@@ -156,11 +162,16 @@ pub(crate) fn post_notification<R: Runtime>(
         NotificationKind::ConsentRequest => builder.action_type_id(CONSENT_REQUEST_ACTION_TYPE_ID),
         NotificationKind::OngoingConsent => builder.action_type_id(ONGOING_CONSENT_ACTION_TYPE_ID),
     };
+    // Kept, so a request stays in sight until it is decided; Android 14 and
+    // later let the Owner swipe a kept notification away all the same, and
+    // the plugin doesn't report that.
     #[cfg(target_os = "android")]
-    let builder = if kind == NotificationKind::OngoingConsent {
-        builder.ongoing().channel_id(ONGOING_CONSENT_CHANNEL_ID)
-    } else {
-        builder
+    let builder = match kind {
+        NotificationKind::ServerStop => builder,
+        NotificationKind::ConsentRequest => builder.ongoing(),
+        NotificationKind::OngoingConsent => {
+            builder.ongoing().channel_id(ONGOING_CONSENT_CHANNEL_ID)
+        }
     };
     #[cfg(not(any(target_os = "ios", target_os = "android")))]
     let _ = kind;

@@ -119,7 +119,10 @@ const actOnConsentNotification = (
  * (`openNotifiedConsent`), and its Deny denies it (`denyNotifiedConsent`), on
  * a phone, from anywhere in the app. The host acts once its server can, and
  * logs a request decided meanwhile; an action the host refuses is logged
- * here. A platform that reports no taps is logged too.
+ * here. A platform that reports no taps is logged too. An action that starts
+ * the app reaches the plugin before this listens, and is dropped, and on iOS
+ * a Deny while the app is suspended lands only once this runs again: #1288
+ * captures actions natively for both.
  */
 const useNotificationActions = (
   invoke: Context.Tag.Service<TauriInvoke>,
