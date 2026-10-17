@@ -20,7 +20,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
 
-use super::pages::{page_security_headers, request_page_location};
+use super::pages::{page_security_headers, request_page_location, NO_FORM_TARGETS};
 use crate::http::state::AuthorizationServerState;
 use crate::http::wire_representations::CacheSuppressed;
 
@@ -64,5 +64,5 @@ fn wait_page_stylesheet() -> Response {
 /// like the status poll it drives, so an authorization server update never leaves a stale
 /// script polling a changed endpoint.
 fn page_file(content_type: &'static str, body: &'static str) -> Response {
-    CacheSuppressed((page_security_headers(content_type), body)).into_response()
+    CacheSuppressed((page_security_headers(content_type, NO_FORM_TARGETS), body)).into_response()
 }

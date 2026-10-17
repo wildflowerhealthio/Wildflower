@@ -147,9 +147,14 @@ only it composes. Rust-only, no `-core`.
     carries both, unless it sends `Wildflower-Session: browser`
     (the authorization server's `SESSION_HEADER` and
     `BROWSER_SESSION_HEADER_VALUE`), when it gets the browser
-    session's bearer or none, never `hfs_session`'s; a browser session cookie whose token has expired or been
+    session's bearer or none, never `hfs_session`'s; a browser session cookie
+    it accepts has its use recorded with the authorization server
+    (`standing_browser_session`, then `record_browser_session_cookie_use`,
+    which moves the session's last-seen time at most once every five
+    minutes); a browser session cookie whose token has expired or been
     revoked is skipped and cleared on the response; and a write carrying
-    either cookie from any other origin gets `403`. No route is singled out;
+    either cookie from any other origin gets `403`, which is also the Origin
+    check on the pages' `POST /oauth/sign-out`. No route is singled out;
     the gates check the token's scopes and revocation. The Wildflower host
     app mints the one-time same-device sign-in codes through
     `WildflowerServer::same_device_sign_in_code_minter`, and waits for a

@@ -11,5 +11,6 @@ const grantQueryKey = (id: string): readonly [string, string, string] => [
   id,
 ]
 const CLIENTS_QUERY_KEY = ['authorization', 'clients'] as const
+const BROWSER_SESSIONS_QUERY_KEY = ['authorization', 'browser-sessions'] as const
 
-export { CLIENTS_QUERY_KEY, GRANTS_QUERY_KEY, grantQueryKey }
+export { BROWSER_SESSIONS_QUERY_KEY, CLIENTS_QUERY_KEY, GRANTS_QUERY_KEY, grantQueryKey }

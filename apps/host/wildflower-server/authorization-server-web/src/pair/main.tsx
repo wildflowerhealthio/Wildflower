@@ -11,6 +11,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { addOsColorSchemeListener, pageLayoutStyles } from '@wildflowerhealthio/react-tundraish'
 
 import { browserSessionRunner } from '../browser-session.ts'
+import { SessionFooter } from '../session-footer.tsx'
 import { nextOf } from './next-query.ts'
 import { PairPage } from './pair-page.tsx'
 
@@ -19,6 +20,7 @@ import { PairPage } from './pair-page.tsx'
 addOsColorSchemeListener()
 
 const queryClient = new QueryClient()
+const runAuthed = browserSessionRunner(window.location.origin, FetchHttpClient.layer)
 
 /** Leave for the `next` the server resolved, a path on its own origin. */
 const goTo = (location: string): void => {
@@ -31,11 +33,8 @@ if (container !== null) {
     <StrictMode>
       <QueryClientProvider client={queryClient}>
         <main className={pageLayoutStyles['page']}>
-          <PairPage
-            next={nextOf(window.location.search)}
-            runAuthed={browserSessionRunner(window.location.origin, FetchHttpClient.layer)}
-            goTo={goTo}
-          />
+          <PairPage next={nextOf(window.location.search)} runAuthed={runAuthed} goTo={goTo} />
+          <SessionFooter runAuthed={runAuthed} />
         </main>
       </QueryClientProvider>
     </StrictMode>

@@ -4,9 +4,9 @@ use wildflowerhealthio_authorization_server::domain::token::VerifyError;
 
 // Browser sessions: a same-device sign-in starts an Owner session row, every
 // token, code and refresh family minted under it names it as `sid`, and
-// revoking the row (through the store; there is no HTTP surface for it yet)
-// ends them on the `/authorization` surface, the in-process FHIR verifier and
-// at refresh.
+// revoking the row ends them on the `/authorization` surface, the in-process
+// FHIR verifier and at refresh. `/authorization/browser-sessions` lists the
+// live rows and revokes one.
 
 /// The `sid` claim of `token`, unverified.
 fn sid_of(token: &str) -> String {
@@ -100,7 +100,7 @@ async fn revoking_a_session_stops_its_authorization_and_fhir_requests() {
 
 /// An app authorized from a browser signed in as the Owner is issued its code,
 /// tokens and refresh family under that browser's session: they all name its
-/// `sid`, and once the session is revoked the family can't be refreshed and
+/// `sid`, its refresh marks the session seen, and once the session is revoked the family can't be refreshed and
 /// the app's access token is refused.
 #[tokio::test]
 async fn an_app_authorized_in_a_session_is_ended_with_it() {
@@ -177,9 +177,19 @@ async fn an_app_authorized_in_a_session_is_ended_with_it() {
             ),
         )
     };
+    let refreshed_at = Utc::now();
     let res = refresh(refresh_token.to_owned()).await;
     assert_eq!(res.status(), StatusCode::OK);
     let refreshed = body_json(res.into_body()).await;
+    let last_seen_at = store_handle(&db)
+        .browser_session_by_sid(&sid)
+        .expect("read")
+        .expect("stored")
+        .last_seen_at;
+    assert!(
+        last_seen_at >= refreshed_at,
+        "the app refreshing marks the session seen, at {last_seen_at}"
+    );
     assert_eq!(
         sid_of(refreshed["access_token"].as_str().expect("access token")),
         sid,
@@ -260,4 +270,261 @@ async fn approving_a_request_whose_session_was_revoked_denies_it() {
     let query: Vec<(String, String)> = redirect.query_pairs().into_owned().collect();
     assert!(query.contains(&("error".to_owned(), "access_denied".to_owned())));
     assert!(query.iter().all(|(name, _)| name != "code"));
+}
+
+/// `method path` on the `/authorization` surface, with `token` as its bearer.
+async fn authorization_request(
+    g: &AuthorizationServer,
+    method: &str,
+    path: &str,
+    token: &str,
+) -> axum::response::Response {
+    g.router
+        .clone()
+        .oneshot(build_request(
+            Request::builder()
+                .method(method)
+                .uri(path)
+                .header("authorization", format!("Bearer {token}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot")
+}
+
+/// The `sid`s `GET /authorization/browser-sessions` lists to `token`, each
+/// with whether it is the caller's.
+async fn listed_browser_sessions(g: &AuthorizationServer, token: &str) -> Vec<(String, bool)> {
+    let res = authorization_request(g, "GET", "/authorization/browser-sessions", token).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    body_json(res.into_body())
+        .await
+        .as_array()
+        .expect("a list")
+        .iter()
+        .map(|session| {
+            (
+                session["sid"].as_str().expect("a sid").to_owned(),
+                session["heldByCaller"].as_bool().expect("a flag"),
+            )
+        })
+        .collect()
+}
+
+/// The list holds the live sessions, newest first, each row carrying the
+/// session's columns and the caller's marked. Revoking one through the API
+/// takes it off the list and ends its token; revoking it again is a `404`.
+#[tokio::test]
+async fn the_browsers_list_shows_live_sessions_and_revokes_one() {
+    let (g, _owner_token, _db) = spin_up();
+    let caller = signed_in_owner_session_token(&g).await;
+    let other = signed_in_owner_session_token(&g).await;
+    let (caller_sid, other_sid) = (sid_of(&caller), sid_of(&other));
+
+    let res = authorization_request(&g, "GET", "/authorization/browser-sessions", &caller).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let rows = body_json(res.into_body()).await;
+    let caller_row = rows
+        .as_array()
+        .expect("a list")
+        .iter()
+        .find(|row| row["sid"] == caller_sid.as_str())
+        .expect("the caller's session is listed");
+    assert_eq!(caller_row["kind"], "owner");
+    assert_eq!(caller_row["name"], Value::Null);
+    assert_eq!(caller_row["heldByCaller"], true);
+    assert_eq!(
+        caller_row["lastSeenAt"], caller_row["createdAt"],
+        "signing in is the session's first use"
+    );
+    for column in ["createdAt", "expiresAt"] {
+        assert!(caller_row[column].is_string(), "{column}");
+    }
+    assert_eq!(
+        listed_browser_sessions(&g, &caller).await,
+        vec![(other_sid.clone(), false), (caller_sid.clone(), true)]
+    );
+
+    let path = format!("/authorization/browser-sessions/{other_sid}");
+    let res = authorization_request(&g, "DELETE", &path, &caller).await;
+    assert_eq!(res.status(), StatusCode::NO_CONTENT);
+    assert_eq!(
+        listed_browser_sessions(&g, &caller).await,
+        vec![(caller_sid.clone(), true)]
+    );
+    assert_eq!(
+        g.router
+            .clone()
+            .oneshot(owner_grants_probe(&other))
+            .await
+            .expect("oneshot")
+            .status(),
+        StatusCode::UNAUTHORIZED,
+        "the revoked session's token is ended"
+    );
+
+    let res = authorization_request(&g, "DELETE", &path, &caller).await;
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    assert_eq!(
+        body_json(res.into_body()).await,
+        serde_json::json!({ "error": "BrowserSessionNotFound", "sid": other_sid })
+    );
+}
+
+/// A browser may revoke its own session, which signs it out: its next
+/// request is refused.
+#[tokio::test]
+async fn revoking_the_caller_s_own_session_signs_it_out() {
+    let (g, _owner_token, _db) = spin_up();
+    let caller = signed_in_owner_session_token(&g).await;
+    let path = format!("/authorization/browser-sessions/{}", sid_of(&caller));
+
+    let res = authorization_request(&g, "DELETE", &path, &caller).await;
+    assert_eq!(res.status(), StatusCode::NO_CONTENT);
+    let res = authorization_request(&g, "GET", "/authorization/browser-sessions", &caller).await;
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+}
+
+/// Listing takes `wildflower/BrowserSession.r` and revoking
+/// `wildflower/BrowserSession.d`: a token without them gets the `403` naming
+/// the missing scope, and nothing is revoked.
+#[tokio::test]
+async fn the_browsers_routes_are_scope_gated() {
+    let (g, _owner_token, db) = spin_up();
+    let session_token = signed_in_owner_session_token(&g).await;
+    let reader = mint_scoped_token(&db, &["wildflower/BrowserSession.r"]);
+
+    let res = authorization_request(
+        &g,
+        "GET",
+        "/authorization/browser-sessions",
+        &mint_scoped_token(&db, &["wildflower/Grant.r"]),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    assert_eq!(
+        body_json(res.into_body()).await["missingScopes"],
+        serde_json::json!(["wildflower/BrowserSession.r"])
+    );
+
+    let path = format!("/authorization/browser-sessions/{}", sid_of(&session_token));
+    let res = authorization_request(&g, "DELETE", &path, &reader).await;
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    assert_eq!(
+        body_json(res.into_body()).await["missingScopes"],
+        serde_json::json!(["wildflower/BrowserSession.d"])
+    );
+    assert_eq!(
+        listed_browser_sessions(&g, &reader)
+            .await
+            .into_iter()
+            .map(|(sid, _)| sid)
+            .collect::<Vec<_>>(),
+        vec![sid_of(&session_token)],
+        "the session stands"
+    );
+}
+
+/// `POST /oauth/sign-out` with `cookie`, if any, as the pages' Sign out form
+/// sends it.
+async fn sign_out(g: &AuthorizationServer, cookie: Option<String>) -> axum::response::Response {
+    let mut request = Request::post("/oauth/sign-out").header("origin", SERVER_ORIGIN);
+    if let Some(cookie) = cookie {
+        request = request.header("cookie", cookie);
+    }
+    g.router
+        .clone()
+        .oneshot(build_request(request, Body::empty()))
+        .await
+        .expect("oneshot")
+}
+
+/// Signing out revokes the session the cookie holds, so its token is refused
+/// from then on, clears the cookie with the attributes it was set with, and
+/// `303`s to the launcher's root. Another browser's session stands.
+#[tokio::test]
+async fn signing_out_revokes_the_cookie_s_session_and_clears_it() {
+    let (g, _owner_token, db) = spin_up();
+    let signing_out = signed_in_owner_session_token(&g).await;
+    let other = signed_in_owner_session_token(&g).await;
+
+    let res = sign_out(&g, Some(format!("__Host-browser_session={signing_out}"))).await;
+
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    assert_eq!(location_of(&res), LAUNCHER_BASE);
+    assert_eq!(
+        set_cookie_values(&res),
+        vec!["__Host-browser_session=; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=0"]
+    );
+    assert_cache_suppressed(&res, "the sign-out");
+    let store = store_handle(&db);
+    assert!(store
+        .browser_session_is_revoked(&sid_of(&signing_out))
+        .expect("read"));
+    assert!(!store
+        .browser_session_is_revoked(&sid_of(&other))
+        .expect("read"));
+    assert!(matches!(
+        g.in_process_token_verifier.verify(&signing_out),
+        Err(VerifyError::Revoked)
+    ));
+}
+
+/// A browser with no cookie, or one whose session has already ended, has
+/// nothing to revoke, and is still sent on signed out with its cookie cleared.
+#[tokio::test]
+async fn signing_out_without_a_standing_session_still_clears_the_cookie() {
+    let (g, _owner_token, _db) = spin_up();
+    let ended = signed_in_owner_session_token(&g).await;
+    let res = sign_out(&g, Some(format!("__Host-browser_session={ended}"))).await;
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+
+    for cookie in [
+        None,
+        Some(format!("__Host-browser_session={ended}")),
+        Some("__Host-browser_session=not-a-token".to_owned()),
+    ] {
+        let res = sign_out(&g, cookie.clone()).await;
+        assert_eq!(res.status(), StatusCode::SEE_OTHER, "{cookie:?}");
+        assert_eq!(location_of(&res), LAUNCHER_BASE, "{cookie:?}");
+        assert_eq!(
+            set_cookie_values(&res),
+            vec!["__Host-browser_session=; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=0"],
+            "{cookie:?}"
+        );
+    }
+}
+
+/// `GET /authorization/session` on a browser session's token answers the
+/// session's expiry, which the server's pages show as "Signed in until"; a
+/// token under no browser session answers `null`.
+#[tokio::test]
+async fn the_session_read_answers_the_browser_session_s_expiry() {
+    let (g, _owner_token, db) = spin_up();
+    let session_token = signed_in_owner_session_token(&g).await;
+    let session = store_handle(&db)
+        .browser_session_by_sid(&sid_of(&session_token))
+        .expect("read")
+        .expect("stored");
+
+    let res = authorization_request(&g, "GET", "/authorization/session", &session_token).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let expires_at = body_json(res.into_body()).await["browserSessionExpiresAt"]
+        .as_str()
+        .expect("an expiry")
+        .parse::<chrono::DateTime<Utc>>()
+        .expect("an RFC 3339 time");
+    assert_eq!(expires_at, session.expires_at);
+
+    let res = authorization_request(
+        &g,
+        "GET",
+        "/authorization/session",
+        &mint_scoped_token(&db, &["wildflower/Grant.r"]),
+    )
+    .await;
+    assert_eq!(
+        body_json(res.into_body()).await["browserSessionExpiresAt"],
+        Value::Null
+    );
 }
