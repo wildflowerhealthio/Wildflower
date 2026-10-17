@@ -2,7 +2,7 @@ import { skipToken, useQuery } from '@tanstack/react-query'
 import { GateCard } from '@wildflowerhealthio/react-tundraish'
 import { LoadingLine, ReadFailureLine } from '@wildflowerhealthio/smart-app-react'
 import { Effect, Match } from 'effect'
-import { type JSX, useMemo } from 'react'
+import { Fragment, type JSX, useMemo } from 'react'
 
 import { TrainingRecordNotices } from '../record/training-record-notices.tsx'
 import { readTrainingRecord, type TrainingRecord } from '../record/training-record.ts'
@@ -81,10 +81,13 @@ const LifterTab = ({ children }: LifterTabProps): JSX.Element => {
     )),
     Match.when({ kind: 'loading' }, () => <LoadingLine subject="your training" />),
     Match.when({ kind: 'read' }, (read) => (
-      <>
+      // Keyed by the lifter: one router serves every patient, so Back or
+      // Forward to another lifter's entry on the same tab keeps the route
+      // mounted, and no screen's attempt may carry over to them.
+      <Fragment key={read.session.patientId}>
         <TrainingRecordNotices trainingRecord={read.trainingRecord} />
         {children(read)}
-      </>
+      </Fragment>
     )),
     Match.exhaustive
   )
