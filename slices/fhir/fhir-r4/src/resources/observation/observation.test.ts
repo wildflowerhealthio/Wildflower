@@ -9,6 +9,7 @@ import {
   atMostOnePopulatedSlot,
   expectChoiceElementGuardFailure,
 } from '../../data-types/base/choice-element-passthrough-fields.test-helpers.ts'
+import * as FhirString from '../../data-types/base/fhir-string.ts'
 import { InstantSchema, TimeSchema } from '../../data-types/base/primitives.ts'
 import {
   Annotation,
@@ -118,6 +119,25 @@ const overrideArb = <Fields extends Schema.Struct.Fields>(
 describe('FhirR4Observation', () => {
   test('encode-decode round-trip with shell observation', () => {
     roundTrip(sampleObservation)
+  })
+
+  test('reads blank code.text and referenceRange.text as absent, and writes them as absent', () => {
+    const wire = {
+      ...Schema.encodeSync(Observation.Schema)(sampleObservation),
+      code: { text: '' },
+      referenceRange: [{ text: '' }],
+    }
+
+    const decoded = Schema.decodeUnknownSync(Observation.Schema)(wire)
+    const reencoded: unknown = JSON.parse(
+      JSON.stringify(Schema.encodeSync(Observation.Schema)(decoded))
+    )
+
+    expect(decoded.code.text).toBeNull()
+    expect(decoded.referenceRange.map((range) => range.text)).toEqual([null])
+    expect(reencoded).not.toHaveProperty(['code', 'text'])
+    expect(reencoded).toHaveProperty(['referenceRange', 0])
+    expect(reencoded).not.toHaveProperty(['referenceRange', 0, 'text'])
   })
 
   test('property: code field round-trips', () => {
@@ -374,7 +394,7 @@ describe('FhirR4Observation', () => {
     const valueArb = atMostOnePopulatedSlot({
       valueQuantity: Schema.NullOr(Quantity.Schema),
       valueCodeableConcept: Schema.NullOr(CodeableConcept.Schema),
-      valueString: Schema.NullOr(Schema.String),
+      valueString: Schema.NullOr(FhirString.Schema),
       valueBoolean: Schema.NullOr(Schema.Boolean),
       valueInteger: Schema.NullOr(Schema.Int),
       valueRange: Schema.NullOr(Range.Schema),
@@ -400,7 +420,7 @@ describe('FhirR4Observation', () => {
 const conflictingValueSlotsArb = atLeastTwoPopulatedSlots({
   valueQuantity: Quantity.Schema,
   valueCodeableConcept: CodeableConcept.Schema,
-  valueString: Schema.String,
+  valueString: FhirString.Schema,
   valueBoolean: Schema.Boolean,
   valueInteger: Schema.Int,
   valueRange: Range.Schema,

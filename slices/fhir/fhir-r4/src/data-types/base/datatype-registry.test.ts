@@ -81,6 +81,19 @@ describe('fhir-r4 datatype registry', () => {
     })
   })
 
+  describe('string', () => {
+    // A blank `valueString` is invalid FHIR; it reads as no value rather than
+    // failing the resource that carries the extension.
+    test.each(['', '   '])('decodes valueString %j as no value', (blank) => {
+      const decoded = Schema.decodeSync(Extension.Schema)({
+        url: 'http://example.org/ext/note',
+        valueString: blank,
+      })
+      expect(decoded.valueString).toBeNull()
+      expect(Schema.encodeSync(Extension.Schema)(decoded).valueString).toBeUndefined()
+    })
+  })
+
   describe('date', () => {
     const dateExtension = (
       value: string

@@ -14,6 +14,7 @@ import {
 } from '../../data-types/base/choice-element-passthrough-fields.ts'
 import * as ChoiceElementSet from '../../data-types/base/choice-element-set.ts'
 import * as DomainResource from '../../data-types/base/domain-resource.ts'
+import * as FhirString from '../../data-types/base/fhir-string.ts'
 import * as Attachment from '../../data-types/complex/attachment.ts'
 import * as CodeableConcept from '../../data-types/complex/codeable-concept.ts'
 import * as IdentifierAndReference from '../../data-types/complex/identifier-and-reference.ts'
@@ -209,7 +210,7 @@ const DiagnosticReportStruct = Schema.extend(
       media: Schema.optionalWith(mutableEncoded(Schema.Array(DiagnosticReportMedia.Schema)), {
         default: (): readonly (typeof DiagnosticReportMedia.Schema.Type)[] => [],
       }),
-      conclusion: OrNullAsOptional(Schema.String),
+      conclusion: FhirString.Optional,
       conclusionCode: codeableConceptArray,
       presentedForm: Schema.optionalWith(
         mutableEncoded(Schema.Array(Schema.suspend(() => Attachment.Schema))),

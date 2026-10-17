@@ -10,6 +10,7 @@ import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import { registerDatatypeSchema } from '../base/datatype-registry.ts'
 import * as Element from '../base/element.ts'
+import * as FhirString from '../base/fhir-string.ts'
 import * as CodeableConcept from './codeable-concept.ts'
 import * as Period from './period.ts'
 
@@ -36,9 +37,9 @@ interface IdentifierType extends Schema.Struct.Type<typeof Element.fields> {
 const ReferenceSchema: Schema.Schema<ReferenceType, FhirR4.Reference, never> = mutableEncoded(
   StructNoContext({
     ...Element.fields,
-    display: OrNullAsOptional(Schema.String),
+    display: FhirString.Optional,
     identifier: OrNullAsOptional(Schema.suspend(() => IdentifierSchema)),
-    reference: OrNullAsOptional(Schema.String),
+    reference: FhirString.Optional,
     type: OrNullAsOptional(Schema.String),
   })
 )
@@ -59,7 +60,7 @@ const IdentifierSchema: Schema.Schema<IdentifierType, FhirR4.Identifier, never> 
         Schema.Literal('old')
       )
     ),
-    value: OrNullAsOptional(Schema.String),
+    value: FhirString.Optional,
   })
 )
 

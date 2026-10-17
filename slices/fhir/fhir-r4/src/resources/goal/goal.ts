@@ -14,6 +14,7 @@ import {
 } from '../../data-types/base/choice-element-passthrough-fields.ts'
 import * as ChoiceElementSet from '../../data-types/base/choice-element-set.ts'
 import * as DomainResource from '../../data-types/base/domain-resource.ts'
+import * as FhirString from '../../data-types/base/fhir-string.ts'
 import * as Annotation from '../../data-types/complex/annotation.ts'
 import * as CodeableConcept from '../../data-types/complex/codeable-concept.ts'
 import * as IdentifierAndReference from '../../data-types/complex/identifier-and-reference.ts'
@@ -182,7 +183,7 @@ const GoalStruct = Schema.extend(
         default: (): readonly (typeof GoalTarget.Schema.Type)[] => [],
       }),
       statusDate: OrNullAsOptional(Schema.String),
-      statusReason: OrNullAsOptional(Schema.String),
+      statusReason: FhirString.Optional,
       expressedBy: OrNullAsOptional(Schema.suspend(() => IdentifierAndReference.ReferenceSchema)),
       addresses: referenceArray,
       note: Schema.optionalWith(

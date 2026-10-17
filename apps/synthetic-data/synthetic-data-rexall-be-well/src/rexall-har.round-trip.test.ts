@@ -210,11 +210,13 @@ describe(
         const { reference, identifier } = rexallPatientReferenceOf(account)
         expect(reference).toBe(`Patient/${imported.patients[0]?.id}`)
         for (const { subject } of imported.requests) {
-          // The target is named by the reference and its identifier; the dialect adds an empty display.
-          expect({ reference: subject.reference, identifier: subject.identifier }).toEqual({
-            reference,
-            identifier,
-          })
+          // The target is named by the reference and its identifier; the dialect's
+          // empty display is not a FHIR string, so it reads as absent.
+          expect({
+            reference: subject.reference,
+            identifier: subject.identifier,
+            display: subject.display,
+          }).toEqual({ reference, identifier, display: null })
         }
       })
     })

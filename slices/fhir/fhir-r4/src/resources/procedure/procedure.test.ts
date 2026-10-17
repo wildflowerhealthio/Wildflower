@@ -10,6 +10,7 @@ import {
   expectChoiceElementGuardFailure,
 } from '../../data-types/base/choice-element-passthrough-fields.test-helpers.ts'
 import { Code } from '../../data-types/base/code.ts'
+import * as FhirString from '../../data-types/base/fhir-string.ts'
 import {
   Annotation,
   CodeableConcept,
@@ -360,7 +361,7 @@ describe('FhirR4Procedure', () => {
         atMostOnePopulatedSlot({
           performedDateTime: Schema.NullOr(Schema.DateTimeUtc),
           performedPeriod: Schema.NullOr(Period.Schema),
-          performedString: Schema.NullOr(Schema.String),
+          performedString: Schema.NullOr(FhirString.Schema),
           performedRange: Schema.NullOr(Range.Schema),
         }),
         (override) => roundTrip({ ...sampleProcedure, ...override })
@@ -375,7 +376,7 @@ describe('FhirR4Procedure', () => {
       slots: atLeastTwoPopulatedSlots({
         performedDateTime: Schema.DateTimeUtc,
         performedPeriod: Period.Schema,
-        performedString: Schema.String,
+        performedString: FhirString.Schema,
         performedRange: Range.Schema,
       }),
     },

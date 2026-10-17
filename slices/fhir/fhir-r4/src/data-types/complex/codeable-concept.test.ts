@@ -3,6 +3,7 @@ import { Arbitrary, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it, test } from 'vite-plus/test'
 
+import * as FhirString from '../base/fhir-string.ts'
 import * as CodeableConcept from './codeable-concept.ts'
 
 describe('FhirR4CodeableConcept', () => {
@@ -77,8 +78,8 @@ describe('make', () => {
       fc.property(
         fc.webUrl(),
         fc.string(),
-        fc.option(fc.string()),
-        fc.option(fc.string()),
+        fc.option(Arbitrary.make(FhirString.Schema)),
+        fc.option(Arbitrary.make(FhirString.Schema)),
         (system, code, display, text) => {
           // Act
           const concept = CodeableConcept.make({ system, code, display, text })

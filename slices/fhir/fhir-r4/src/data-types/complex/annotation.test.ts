@@ -20,7 +20,7 @@ const sampleAnnotation: typeof Annotation.Schema.Type = {
   authorString: null,
   authorReference: null,
   time: null,
-  text: '',
+  text: 'Patient tolerated the procedure well.',
 }
 
 const roundTrip = (annotation: typeof Annotation.Schema.Type): void => {

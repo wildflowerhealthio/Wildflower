@@ -10,6 +10,7 @@ import {
   expectChoiceElementGuardFailure,
 } from '../../data-types/base/choice-element-passthrough-fields.test-helpers.ts'
 import { Code } from '../../data-types/base/code.ts'
+import * as FhirString from '../../data-types/base/fhir-string.ts'
 import { UriSchema } from '../../data-types/base/primitives.ts'
 import {
   CodeableConcept,
@@ -252,21 +253,22 @@ describe('FhirR4PlanDefinition', () => {
 
   test('property: shell primitives round-trip', () => {
     const nullableString = Schema.NullOr(Schema.String)
+    const nullableFhirString = Schema.NullOr(FhirString.Schema)
     fc.assert(
       fc.property(
         overrideArb({
           url: nullableString,
-          version: nullableString,
-          name: nullableString,
-          title: nullableString,
-          subtitle: nullableString,
+          version: nullableFhirString,
+          name: nullableFhirString,
+          title: nullableFhirString,
+          subtitle: nullableFhirString,
           experimental: Schema.NullOr(Schema.Boolean),
           date: nullableString,
-          publisher: nullableString,
-          description: nullableString,
-          purpose: nullableString,
-          usage: nullableString,
-          copyright: nullableString,
+          publisher: nullableFhirString,
+          description: nullableFhirString,
+          purpose: nullableFhirString,
+          usage: nullableFhirString,
+          copyright: nullableFhirString,
           approvalDate: nullableString,
           lastReviewDate: nullableString,
           library: Schema.Array(Schema.String),
@@ -384,13 +386,14 @@ describe('FhirR4PlanDefinition', () => {
   describe('action', () => {
     test('property: non-choice fields round-trip', () => {
       const nullableString = Schema.NullOr(Schema.String)
+      const nullableFhirString = Schema.NullOr(FhirString.Schema)
       fc.assert(
         fc.property(
           overrideArb({
-            prefix: nullableString,
-            title: nullableString,
-            description: nullableString,
-            textEquivalent: nullableString,
+            prefix: nullableFhirString,
+            title: nullableFhirString,
+            description: nullableFhirString,
+            textEquivalent: nullableFhirString,
             priority: Schema.NullOr(PlanDefinitionAction.PrioritySchema),
             code: codeableConceptArray,
             reason: codeableConceptArray,

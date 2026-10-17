@@ -13,6 +13,7 @@ export * as ChoiceElementSet from './base/choice-element-set.ts'
 export * as Datatype from './base/datatype.ts'
 export * as DomainResource from './base/domain-resource.ts'
 export * as Element from './base/element.ts'
+export * as FhirString from './base/fhir-string.ts'
 export * as Meta from './base/meta.ts'
 export * as Resource from './base/resource.ts'
 export {

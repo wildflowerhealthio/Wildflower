@@ -9,6 +9,7 @@ import {
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import * as BackboneElement from '../../data-types/base/backbone-element.ts'
+import * as FhirString from '../../data-types/base/fhir-string.ts'
 import * as Coding from '../../data-types/complex/coding.ts'
 
 const ImagingStudySeriesInstanceStruct = mutableEncoded(
@@ -17,7 +18,7 @@ const ImagingStudySeriesInstanceStruct = mutableEncoded(
     uid: Schema.String,
     sopClass: Schema.suspend(() => Coding.Schema),
     number: OrNullAsOptional(Schema.Number.pipe(Schema.int())),
-    title: OrNullAsOptional(Schema.String),
+    title: FhirString.Optional,
   })
 )
 

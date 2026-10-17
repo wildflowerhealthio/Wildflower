@@ -14,6 +14,7 @@ import {
   choiceElementSetPassthroughFields,
 } from '../base/choice-element-passthrough-fields.ts'
 import * as ChoiceElementSet from '../base/choice-element-set.ts'
+import * as FhirString from '../base/fhir-string.ts'
 import * as CodeableConcept from './codeable-concept.ts'
 import * as Range from './range.ts'
 import * as Ratio from './ratio.ts'
@@ -51,12 +52,12 @@ const DosageStruct = mutableEncoded(
   StructNoContext({
     ...BackboneElement.fields,
     sequence: OrNullAsOptional(Schema.Int),
-    text: OrNullAsOptional(Schema.String),
+    text: FhirString.Optional,
     additionalInstruction: Schema.optionalWith(
       mutableEncoded(Schema.Array(Schema.suspend(() => CodeableConcept.Schema))),
       { default: (): readonly (typeof CodeableConcept.Schema.Type)[] => [] }
     ),
-    patientInstruction: OrNullAsOptional(Schema.String),
+    patientInstruction: FhirString.Optional,
     timing: OrNullAsOptional(Schema.suspend(() => Timing.Schema)),
     ...choiceElementSetPassthroughFields(
       'asNeeded',

@@ -5,6 +5,7 @@ import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { atMostOnePopulatedSlot } from '../base/choice-element-passthrough-fields.test-helpers.ts'
+import * as FhirString from '../base/fhir-string.ts'
 import * as CodeableConcept from './codeable-concept.ts'
 import * as Dosage from './dosage.ts'
 import * as Ratio from './ratio.ts'
@@ -73,8 +74,8 @@ describe('FhirR4Dosage', () => {
       fc.property(
         overrideArb({
           sequence: Schema.NullOr(Schema.Int),
-          text: Schema.NullOr(Schema.String),
-          patientInstruction: Schema.NullOr(Schema.String),
+          text: Schema.NullOr(FhirString.Schema),
+          patientInstruction: Schema.NullOr(FhirString.Schema),
         }),
         (override) => roundTrip({ ...sampleDosage, ...override })
       ),

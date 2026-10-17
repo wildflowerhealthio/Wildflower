@@ -10,6 +10,7 @@ import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import { registerDatatypeSchema } from '../base/datatype-registry.ts'
 import * as Element from '../base/element.ts'
+import * as FhirString from '../base/fhir-string.ts'
 
 // SimpleQuantity is a Quantity without `comparator`. FhirR4's TS types alias
 // it to `Quantity`, so the wire shape is identical apart from the absent
@@ -20,7 +21,7 @@ const SimpleQuantityStruct = mutableEncoded(
     ...Element.fields,
     code: OrNullAsOptional(Schema.String),
     system: OrNullAsOptional(Schema.String),
-    unit: OrNullAsOptional(Schema.String),
+    unit: FhirString.Optional,
     value: OrNullAsOptional(Schema.Finite),
   })
 )

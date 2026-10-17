@@ -15,6 +15,7 @@ import {
   choiceElementSetPassthroughFields,
 } from '../../data-types/base/choice-element-passthrough-fields.ts'
 import * as ChoiceElementSet from '../../data-types/base/choice-element-set.ts'
+import * as FhirString from '../../data-types/base/fhir-string.ts'
 import * as CodeableConcept from '../../data-types/complex/codeable-concept.ts'
 
 /** FHIR R4 value set for `PlanDefinition.action.priority` (`request-priority`). */
@@ -55,10 +56,10 @@ const passthroughArray = Schema.optionalWith(mutableEncoded(Schema.Array(Permiss
 // `PlanDefinitionActionType` below to type its self-reference.
 const nonRecursiveFields = {
   ...BackboneElement.fields,
-  prefix: OrNullAsOptional(Schema.String),
-  title: OrNullAsOptional(Schema.String),
-  description: OrNullAsOptional(Schema.String),
-  textEquivalent: OrNullAsOptional(Schema.String),
+  prefix: FhirString.Optional,
+  title: FhirString.Optional,
+  description: FhirString.Optional,
+  textEquivalent: FhirString.Optional,
   priority: OrNullAsOptional(PrioritySchema),
   code: codeableConceptArray,
   reason: codeableConceptArray,

@@ -9,6 +9,7 @@ import {
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import * as DomainResource from '../../data-types/base/domain-resource.ts'
+import * as FhirString from '../../data-types/base/fhir-string.ts'
 import * as Annotation from '../../data-types/complex/annotation.ts'
 import * as CodeableConcept from '../../data-types/complex/codeable-concept.ts'
 import * as IdentifierAndReference from '../../data-types/complex/identifier-and-reference.ts'
@@ -207,8 +208,8 @@ const CarePlanStruct = Schema.extend(
       status: StatusSchema,
       intent: IntentSchema,
       category: codeableConceptArray,
-      title: OrNullAsOptional(Schema.String),
-      description: OrNullAsOptional(Schema.String),
+      title: FhirString.Optional,
+      description: FhirString.Optional,
       subject: Schema.suspend(() => IdentifierAndReference.ReferenceSchema),
       encounter: OrNullAsOptional(Schema.suspend(() => IdentifierAndReference.ReferenceSchema)),
       period: OrNullAsOptional(Schema.suspend(() => Period.Schema)),

@@ -10,14 +10,15 @@ import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import { registerDatatypeSchema } from '../base/datatype-registry.ts'
 import * as Element from '../base/element.ts'
+import * as FhirString from '../base/fhir-string.ts'
 import { ReferenceSchema } from './identifier-and-reference.ts'
 
 const AnnotationStruct = mutableEncoded(
   StructNoContext({
     ...Element.fields,
     authorReference: OrNullAsOptional(Schema.suspend(() => ReferenceSchema)),
-    authorString: OrNullAsOptional(Schema.String),
-    text: Schema.String,
+    authorString: FhirString.Optional,
+    text: FhirString.Schema,
     time: OrNullAsOptional(Schema.DateTimeUtc),
   })
 )

@@ -1,16 +1,13 @@
 import { Array as Arr, Option, pipe, Schema, String as Str } from 'effect'
 
-import {
-  OrNullAsOptional,
-  StructNoContext,
-  mutableEncoded,
-} from '@wildflowerhealthio/kitchen-sink/schema'
+import { StructNoContext, mutableEncoded } from '@wildflowerhealthio/kitchen-sink/schema'
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import { Code } from '../base/code.ts'
 import { registerDatatypeSchema } from '../base/datatype-registry.ts'
 import * as Element from '../base/element.ts'
+import * as FhirString from '../base/fhir-string.ts'
 import * as Coding from './coding.ts'
 
 const CodeableConceptStruct = mutableEncoded(
@@ -19,7 +16,7 @@ const CodeableConceptStruct = mutableEncoded(
     coding: Schema.optionalWith(mutableEncoded(Schema.Array(Schema.suspend(() => Coding.Schema))), {
       default: (): readonly (typeof Coding.Schema.Type)[] => [],
     }),
-    text: OrNullAsOptional(Schema.String),
+    text: FhirString.Optional,
   })
 )
 

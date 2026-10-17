@@ -10,6 +10,7 @@ import {
   expectChoiceElementGuardFailure,
 } from '../../data-types/base/choice-element-passthrough-fields.test-helpers.ts'
 import { Code } from '../../data-types/base/code.ts'
+import * as FhirString from '../../data-types/base/fhir-string.ts'
 import {
   Annotation,
   CodeableConcept,
@@ -289,8 +290,8 @@ describe('FhirR4CarePlan', () => {
         overrideArb({
           instantiatesCanonical: Schema.Array(Schema.String),
           instantiatesUri: Schema.Array(Schema.String),
-          title: Schema.NullOr(Schema.String),
-          description: Schema.NullOr(Schema.String),
+          title: Schema.NullOr(FhirString.Schema),
+          description: Schema.NullOr(FhirString.Schema),
           created: Schema.NullOr(Schema.String),
           language: Schema.NullOr(Code),
           implicitRules: Schema.NullOr(Schema.URL),
@@ -333,7 +334,7 @@ describe('FhirR4CarePlan', () => {
             performer: referenceArray,
             dailyAmount: Schema.NullOr(Quantity.Schema),
             quantity: Schema.NullOr(Quantity.Schema),
-            description: Schema.NullOr(Schema.String),
+            description: Schema.NullOr(FhirString.Schema),
           }),
           (override) => roundTrip(withDetail({ ...sampleDetail, ...override }))
         ),
@@ -347,7 +348,7 @@ describe('FhirR4CarePlan', () => {
           atMostOnePopulatedSlot({
             scheduledTiming: Schema.NullOr(Timing.Schema),
             scheduledPeriod: Schema.NullOr(Period.Schema),
-            scheduledString: Schema.NullOr(Schema.String),
+            scheduledString: Schema.NullOr(FhirString.Schema),
           }),
           (override) => roundTrip(withDetail({ ...sampleDetail, ...override }))
         ),
@@ -374,7 +375,7 @@ describe('FhirR4CarePlan', () => {
         slots: atLeastTwoPopulatedSlots({
           scheduledTiming: Timing.Schema,
           scheduledPeriod: Period.Schema,
-          scheduledString: Schema.String,
+          scheduledString: FhirString.Schema,
         }),
       },
       {

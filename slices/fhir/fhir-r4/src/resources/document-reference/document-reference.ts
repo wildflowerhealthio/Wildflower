@@ -9,6 +9,7 @@ import {
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import * as DomainResource from '../../data-types/base/domain-resource.ts'
+import * as FhirString from '../../data-types/base/fhir-string.ts'
 import * as CodeableConcept from '../../data-types/complex/codeable-concept.ts'
 import * as IdentifierAndReference from '../../data-types/complex/identifier-and-reference.ts'
 import * as DocumentReferenceContent from './document-reference-content.ts'
@@ -160,7 +161,7 @@ const DocumentReferenceStruct = Schema.extend(
         mutableEncoded(Schema.Array(DocumentReferenceRelatesTo.Schema)),
         { default: (): readonly (typeof DocumentReferenceRelatesTo.Schema.Type)[] => [] }
       ),
-      description: OrNullAsOptional(Schema.String),
+      description: FhirString.Optional,
       securityLabel: codeableConceptArray,
       // Required 1..* per spec — no default; a caller must supply at least one
       // content entry. Modeled as a plain (non-optional) array so its presence

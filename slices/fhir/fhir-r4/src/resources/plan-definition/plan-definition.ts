@@ -15,6 +15,7 @@ import {
 } from '../../data-types/base/choice-element-passthrough-fields.ts'
 import * as ChoiceElementSet from '../../data-types/base/choice-element-set.ts'
 import * as DomainResource from '../../data-types/base/domain-resource.ts'
+import * as FhirString from '../../data-types/base/fhir-string.ts'
 import * as CodeableConcept from '../../data-types/complex/codeable-concept.ts'
 import * as IdentifierAndReference from '../../data-types/complex/identifier-and-reference.ts'
 import * as Period from '../../data-types/complex/period.ts'
@@ -182,10 +183,10 @@ const PlanDefinitionStruct = Schema.extend(
           default: (): readonly (typeof IdentifierAndReference.IdentifierSchema.Type)[] => [],
         }
       ),
-      version: OrNullAsOptional(Schema.String),
-      name: OrNullAsOptional(Schema.String),
-      title: OrNullAsOptional(Schema.String),
-      subtitle: OrNullAsOptional(Schema.String),
+      version: FhirString.Optional,
+      name: FhirString.Optional,
+      title: FhirString.Optional,
+      subtitle: FhirString.Optional,
       type: OrNullAsOptional(Schema.suspend(() => CodeableConcept.Schema)),
       status: StatusSchema,
       experimental: OrNullAsOptional(Schema.Boolean),
@@ -194,14 +195,14 @@ const PlanDefinitionStruct = Schema.extend(
         ChoiceElementSet.FhirR4SetChoices['PlanDefinition.subject[x]']
       ),
       date: OrNullAsOptional(Schema.String),
-      publisher: OrNullAsOptional(Schema.String),
+      publisher: FhirString.Optional,
       contact: passthroughArray,
-      description: OrNullAsOptional(Schema.String),
+      description: FhirString.Optional,
       useContext: passthroughArray,
       jurisdiction: codeableConceptArray,
-      purpose: OrNullAsOptional(Schema.String),
-      usage: OrNullAsOptional(Schema.String),
-      copyright: OrNullAsOptional(Schema.String),
+      purpose: FhirString.Optional,
+      usage: FhirString.Optional,
+      copyright: FhirString.Optional,
       approvalDate: OrNullAsOptional(Schema.String),
       lastReviewDate: OrNullAsOptional(Schema.String),
       effectivePeriod: OrNullAsOptional(Schema.suspend(() => Period.Schema)),

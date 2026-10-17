@@ -10,6 +10,7 @@ import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import { registerDatatypeSchema } from '../base/datatype-registry.ts'
 import * as Element from '../base/element.ts'
+import * as FhirString from '../base/fhir-string.ts'
 import * as SimpleQuantity from './simple-quantity.ts'
 
 const SampledDataStruct = mutableEncoded(
@@ -21,7 +22,7 @@ const SampledDataStruct = mutableEncoded(
     lowerLimit: OrNullAsOptional(Schema.Finite),
     upperLimit: OrNullAsOptional(Schema.Finite),
     dimensions: Schema.Int.pipe(Schema.positive()),
-    data: OrNullAsOptional(Schema.String),
+    data: FhirString.Optional,
   })
 )
 

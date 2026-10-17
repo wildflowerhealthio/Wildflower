@@ -11,6 +11,7 @@ import type * as FhirR4 from 'fhir/r4.d.ts'
 import { Code } from '../base/code.ts'
 import { registerDatatypeSchema } from '../base/datatype-registry.ts'
 import * as Element from '../base/element.ts'
+import * as FhirString from '../base/fhir-string.ts'
 // Type-only: SimpleQuantity and Quantity don't import each other at runtime, so
 // this keeps the widening helper here without introducing a module cycle.
 import type * as SimpleQuantity from './simple-quantity.ts'
@@ -28,7 +29,7 @@ const QuantityStruct = mutableEncoded(
       )
     ),
     system: OrNullAsOptional(Schema.String),
-    unit: OrNullAsOptional(Schema.String),
+    unit: FhirString.Optional,
     value: OrNullAsOptional(Schema.Finite),
   })
 )

@@ -9,6 +9,7 @@ import {
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import * as BackboneElement from '../../data-types/base/backbone-element.ts'
+import * as FhirString from '../../data-types/base/fhir-string.ts'
 import * as CodeableConcept from '../../data-types/complex/codeable-concept.ts'
 import * as Quantity from '../../data-types/complex/quantity.ts'
 import * as Range from '../../data-types/complex/range.ts'
@@ -23,7 +24,7 @@ const ObservationReferenceRangeStruct = mutableEncoded(
     ),
     high: OrNullAsOptional(Schema.suspend(() => Quantity.Schema)),
     low: OrNullAsOptional(Schema.suspend(() => Quantity.Schema)),
-    text: OrNullAsOptional(Schema.String),
+    text: FhirString.Optional,
     type: OrNullAsOptional(Schema.suspend(() => CodeableConcept.Schema)),
   })
 )
