@@ -10,7 +10,12 @@ import { LaunchButton } from './launch-button.tsx'
 import { useLaunch } from './launch.ts'
 import type { RunHostCommand } from './router-context.ts'
 import { RunPolicyPicker } from './run-policy-picker.tsx'
-import { lastStopText, statusNote, statusSummary } from './server-status-text.ts'
+import {
+  lastStopText,
+  orderingWithoutCertificateNote,
+  statusNote,
+  statusSummary,
+} from './server-status-text.ts'
 import styles from './server-card.module.css'
 
 /**
@@ -18,7 +23,8 @@ import styles from './server-card.module.css'
  * run-policy field that says when it runs, outlined in its status's tone,
  * over the native picker that changes it; the host's refusal of the latest
  * change; what its status says beyond running or stopped; why its latest
- * run stopped; the latest failure of Apps or Authorization; why Apps can't
+ * run stopped; that it can't be reached until its certificate arrives,
+ * while it runs ordering one with none to serve; the latest failure of Apps or Authorization; why Apps can't
  * launch, when nothing above says; and Apps, Authorization and Edit, in
  * three equal columns.
  *
@@ -82,6 +88,14 @@ const ServerCard = ({
         Option.map((stop) => (
           <p key="last-stop" id={statusId} className={`text-body-3 ${styles['server-card__note']}`}>
             {lastStopText(stop)}
+          </p>
+        )),
+        Option.getOrNull
+      )}
+      {orderingWithoutCertificateNote(server.status).pipe(
+        Option.map((note) => (
+          <p key="unreachable" className={`text-body-3 ${styles['server-card__note']}`}>
+            {note}
           </p>
         )),
         Option.getOrNull
