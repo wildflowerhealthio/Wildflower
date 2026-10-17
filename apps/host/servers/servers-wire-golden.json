@@ -131,7 +131,7 @@
       "pendingConsent": {
         "kind": "oauth",
         "id": "req-1",
-        "clientName": "Lifting"
+        "requesterName": "Lifting"
       }
     },
     "runningAndReachableOnStaging": {
@@ -431,12 +431,17 @@
     {
       "kind": "device",
       "userCode": "ABCD-EFGH",
-      "clientName": "Lifting"
+      "requesterName": "Lifting"
     },
     {
       "kind": "oauth",
       "id": "req-1",
-      "clientName": "app-client-id"
+      "requesterName": "app-client-id"
+    },
+    {
+      "kind": "browser",
+      "userCode": "WXYZ-BCDF",
+      "requesterName": "Firefox on Linux"
     }
   ],
   "enteredRelays": {

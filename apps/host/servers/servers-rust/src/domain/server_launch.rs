@@ -75,7 +75,7 @@ pub fn sign_in_url(public_origin: &Url, code: &str, next: &str) -> Url {
 /// The page is a path on the server, the one kind of `next` the sign-in
 /// allows on its own origin: `/oauth/authorize/{id}/consent?then=back` for
 /// an app's authorization request, `/oauth/device?user_code=…&then=back` for
-/// a device's.
+/// a device's or a browser pairing's.
 ///
 /// # Panics
 ///
@@ -93,7 +93,7 @@ pub fn consent_sign_in_url(public_origin: &Url, code: &str, consent: &ConsentKey
                 .extend(["authorize", id, "consent"]);
             page.query_pairs_mut().append_pair("then", "back");
         }
-        ConsentKey::Device { user_code } => {
+        ConsentKey::Device { user_code } | ConsentKey::Browser { user_code } => {
             page.path_segments_mut()
                 .expect("a URL joined to an origin has path segments")
                 .pop_if_empty()
@@ -375,6 +375,18 @@ mod tests {
             },
         );
         assert_eq!(next_of(&url), "/oauth/device?user_code=ABCD-EFGH&then=back");
+    }
+
+    #[test]
+    fn a_browser_pairing_s_consent_opens_at_the_device_page_with_its_code_then_goes_back() {
+        let url = consent_sign_in_url(
+            &ruth_origin(),
+            "code-1",
+            &ConsentKey::Browser {
+                user_code: "WXYZ-BCDF".to_owned(),
+            },
+        );
+        assert_eq!(next_of(&url), "/oauth/device?user_code=WXYZ-BCDF&then=back");
     }
 
     /// The status of [`RUTH`] whose `unit_status` is given, with its run's

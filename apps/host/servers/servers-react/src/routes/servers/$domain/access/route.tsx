@@ -66,7 +66,7 @@ const pendingRequestItem = ({
 }: PendingConsentOpening): ItemListItem => {
   const item = { id: 'pending-request', title: 'Pending request' } as const
   return pendingConsent.pipe(
-    Option.map(({ clientName }): ItemListItem => ({
+    Option.map((waiting): ItemListItem => ({
       ...item,
       actions: (
         <button type="button" className="button-2 filled" disabled={isOpening} onClick={open}>
@@ -75,7 +75,7 @@ const pendingRequestItem = ({
       ),
       ...failure.pipe(
         Option.match({
-          onNone: () => ({ subtitle: `${clientName} wants access.` }),
+          onNone: () => ({ subtitle: PendingConsent.askOf(waiting) }),
           onSome: (text) => ({ subtitle: text, tone: 'danger' as const }),
         })
       ),

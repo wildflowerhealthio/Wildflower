@@ -3,13 +3,15 @@
 //! the authorization server's.
 //!
 //! A server's authorization server publishes the newest of the consents
-//! waiting for the Owner, device-code and authorization-code requests alike,
-//! as the run's [`ServerDetail::pending_consent`](crate::ServerDetail).
-//! On the wire, camelCase:
+//! waiting for the Owner, device-code and authorization-code requests and
+//! browser pairings alike, as the run's
+//! [`ServerDetail::pending_consent`](crate::ServerDetail). On the wire,
+//! camelCase:
 //!
 //! ```json
-//! {"kind": "device", "userCode": "ABCD-EFGH", "clientName": "Lifting"}
-//! | {"kind": "oauth", "id": "…", "clientName": "Lifting"}
+//! {"kind": "device", "userCode": "ABCD-EFGH", "requesterName": "Lifting"}
+//! | {"kind": "oauth", "id": "…", "requesterName": "Lifting"}
+//! | {"kind": "browser", "userCode": "ABCD-EFGH", "requesterName": "Firefox on Linux"}
 //! ```
 
 use serde::Serialize;
@@ -19,8 +21,8 @@ use wildflowerhealthio_unit_runner::UnitStatus;
 
 use crate::domain::ServerDetail;
 
-/// The newest consent waiting on a server: which request, and the name of the
-/// client that asks.
+/// The newest consent waiting on a server: which request, and the name of
+/// what asks.
 ///
 /// `Serialize` writes the camelCase shape the [module docs](self) give.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -29,12 +31,15 @@ pub struct PendingConsent {
     /// The request.
     #[serde(flatten)]
     pub key: ConsentKey,
-    /// The client's registered name, or its `client_id` while it has no
-    /// registration.
-    pub client_name: String,
+    /// The name of what asks: for a device or an app, its client's
+    /// registered name, or its `client_id` while it has no registration; for
+    /// a browser pairing, the browser's name. Which it is, the key's kind
+    /// says.
+    pub requester_name: String,
     /// Whether the request can be decided in the browser that made it, which
     /// carried a browser session that can decide consents, so it shows the
-    /// request's consent card itself. Always `false` for a device request.
+    /// request's consent card itself. Always `false` for a device request or
+    /// a browser pairing.
     /// Not on the wire: the base shows the request either way.
     #[serde(skip)]
     pub decidable_in_requesting_browser: bool,
@@ -62,7 +67,7 @@ impl From<NewestPendingConsent> for PendingConsent {
                 client_name,
             } => Self {
                 key: ConsentKey::Device { user_code },
-                client_name,
+                requester_name: client_name,
                 decidable_in_requesting_browser: false,
             },
             NewestPendingConsent::OAuth {
@@ -71,8 +76,16 @@ impl From<NewestPendingConsent> for PendingConsent {
                 decidable_in_requesting_browser,
             } => Self {
                 key: ConsentKey::OAuth { id },
-                client_name,
+                requester_name: client_name,
                 decidable_in_requesting_browser,
+            },
+            NewestPendingConsent::BrowserPairing {
+                user_code,
+                browser_name,
+            } => Self {
+                key: ConsentKey::Browser { user_code },
+                requester_name: browser_name,
+                decidable_in_requesting_browser: false,
             },
         }
     }
@@ -94,8 +107,12 @@ mod tests {
             client_name: "app-client-id".to_owned(),
             decidable_in_requesting_browser: false,
         });
+        let browser = PendingConsent::from(NewestPendingConsent::BrowserPairing {
+            user_code: "WXYZ-BCDF".to_owned(),
+            browser_name: "Firefox on Linux".to_owned(),
+        });
         assert_eq!(
-            serde_json::to_value([device, oauth]).unwrap(),
+            serde_json::to_value([device, oauth, browser]).unwrap(),
             golden()["pendingConsents"]
         );
     }
