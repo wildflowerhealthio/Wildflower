@@ -21,7 +21,7 @@ import {
 
 import type * as AuthorizeFromLaunchPage from './authorize-from-launch-page.ts'
 import type { ConnectMenuProps } from './connect-menu.tsx'
-import { LANDING_ROUTE_STORAGE_KEY } from './landing-route.ts'
+import { RETURN_ROUTE_STORAGE_KEY } from './return-route.ts'
 import { SmartAppRoot, type SmartAppTelemetry } from './smart-app-root.tsx'
 
 /** The part of Sentry's `captureException` hint the root sets. */
@@ -208,7 +208,7 @@ describe('SmartAppRoot', () => {
     setUrl('/strength/patients/123/today')
 
     // Act
-    renderShell({ launched: false, basepath: '/strength/' })
+    renderShell({ launched: false, servedDirectory: '/strength/' })
 
     // Assert
     expect(screen.getByTestId('connect-menu-stub').getAttribute('data-redirect-uri')).toBe(
@@ -362,17 +362,17 @@ describe('SmartAppRoot', () => {
     { case: 'an OAuth error return', search: '?error=access_denied&state=xyz', expectKept: false },
     { case: 'a callback', search: '?code=abc&state=xyz', expectKept: true },
   ])(
-    'should drop a route a launch kept on $case, keeping it only for a callback',
+    'should clear a route a launch saved on $case, keeping it only for a callback',
     ({ search, expectKept }) => {
       // Arrange — a launch from a deep route that did not come back to complete
-      window.sessionStorage.setItem(LANDING_ROUTE_STORAGE_KEY, '/calendar')
+      window.sessionStorage.setItem(RETURN_ROUTE_STORAGE_KEY, '/calendar')
       setUrl(`/${search}`)
 
       // Act
       renderShell({})
 
       // Assert
-      expect(window.sessionStorage.getItem(LANDING_ROUTE_STORAGE_KEY) !== null).toBe(expectKept)
+      expect(window.sessionStorage.getItem(RETURN_ROUTE_STORAGE_KEY) !== null).toBe(expectKept)
     }
   )
 
@@ -431,7 +431,7 @@ describe('SmartAppRoot on a launch', () => {
       setUrl(`/strength/patients/123/today${EHR_LAUNCH}`)
 
       // Act
-      renderShell({ basepath: '/strength/' })
+      renderShell({ servedDirectory: '/strength/' })
 
       // Assert
       await waitFor(() => {
@@ -944,13 +944,13 @@ function Shell({
 /** Render the shell under StrictMode, as an app's `main.tsx` does. */
 function renderShell({
   app = 'medications',
-  basepath,
+  servedDirectory,
   launched,
   replaceLocation,
   children = <div data-testid="app" />,
 }: {
   readonly app?: AppSectionId
-  readonly basepath?: string
+  readonly servedDirectory?: string
   readonly launched?: boolean
   readonly replaceLocation?: (url: string) => void
   readonly children?: JSX.Element
@@ -961,7 +961,7 @@ function renderShell({
         app={app}
         registration={REGISTRATION}
         telemetry={TELEMETRY}
-        basepath={basepath}
+        servedDirectory={servedDirectory}
         launched={launched}
         replaceLocation={replaceLocation}
       >

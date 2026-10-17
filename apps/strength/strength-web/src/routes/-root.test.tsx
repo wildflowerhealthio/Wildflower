@@ -193,20 +193,6 @@ describe('The strength routes', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
     expect(server.searches.every((query) => !searchParamsOf(query).has('patient'))).toBe(true)
     expect(server.writes).toEqual([])
   })
-
-  it('should introduce the app at /, opening the picker from it', async () => {
-    // Arrange
-    const user = userEvent.setup()
-    mountStrengthApp(server, { route: '' })
-    expect(await screen.findByRole('heading', { name: 'Strength', level: 1 })).toBeDefined()
-
-    // Act
-    await user.click(screen.getByRole('link', { name: 'Choose a patient' }))
-
-    // Assert
-    expect(await screen.findByRole('heading', { name: 'Choose a patient' })).toBeDefined()
-    expect(currentRoute()).toBe('patients')
-  })
 })
 
 /**

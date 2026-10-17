@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 import { launchErrorFrom, type SmartLaunchConfig } from '@wildflowerhealthio/fhir-r4-react/smart'
 import type * as Smart from '@wildflowerhealthio/fhir-r4-react/smart'
 import { authorizeFromLaunchPage } from './authorize-from-launch-page.ts'
-import { LANDING_ROUTE_STORAGE_KEY } from './landing-route.ts'
+import { RETURN_ROUTE_STORAGE_KEY } from './return-route.ts'
 
 // Stub the one call that leaves the page: fhirclient's authorize redirect.
 const { authorizeSmartLaunchMock } = vi.hoisted(() => ({
@@ -63,11 +63,11 @@ describe('authorizeFromLaunchPage', () => {
     expect(reported).toHaveProperty('iss', 'https://ehr.example/fhir')
   })
 
-  it('should keep the route the launch landed on before the page leaves', async () => {
-    // Arrange — the route is kept by the time the authorize starts
-    let keptAtAuthorize: string | null = null
+  it('should save the route the launch started on before the page leaves', async () => {
+    // Arrange — the route is saved by the time the authorize starts
+    let savedAtAuthorize: string | null = null
     authorizeSmartLaunchMock.mockImplementation(() => {
-      keptAtAuthorize = window.sessionStorage.getItem(LANDING_ROUTE_STORAGE_KEY)
+      savedAtAuthorize = window.sessionStorage.getItem(RETURN_ROUTE_STORAGE_KEY)
       return Promise.resolve()
     })
 
@@ -75,7 +75,7 @@ describe('authorizeFromLaunchPage', () => {
     await authorizeFromLaunchPage(LAUNCH, DEEP_LAUNCH_PAGE)
 
     // Assert — still the app root as the redirect target
-    expect(keptAtAuthorize).toBe('/anonymize?source=pharmacy')
+    expect(savedAtAuthorize).toBe('/anonymize?source=pharmacy')
     expect(authorizeSmartLaunchMock).toHaveBeenCalledWith({
       ...LAUNCH,
       redirectUri: 'https://importer.wildflowerhealth.io/',
@@ -98,19 +98,6 @@ describe('authorizeFromLaunchPage', () => {
       ...LAUNCH,
       redirectUri: 'https://strength.wildflowerhealth.io/pr-7/',
     })
-    expect(window.sessionStorage.getItem(LANDING_ROUTE_STORAGE_KEY)).toBe(
-      '/pr-7/patients/123/today'
-    )
-  })
-
-  it('should drop the kept route when the authorize rejects', async () => {
-    // Arrange
-    authorizeSmartLaunchMock.mockRejectedValue(new TypeError('Failed to fetch'))
-
-    // Act
-    await authorizeFromLaunchPage(LAUNCH, DEEP_LAUNCH_PAGE)
-
-    // Assert
-    expect(window.sessionStorage.getItem(LANDING_ROUTE_STORAGE_KEY)).toBeNull()
+    expect(window.sessionStorage.getItem(RETURN_ROUTE_STORAGE_KEY)).toBe('/patients/123/today')
   })
 })

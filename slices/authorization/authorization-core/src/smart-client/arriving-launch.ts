@@ -24,6 +24,14 @@ interface ArrivingSmartLaunch {
 }
 
 /**
+ * The query parameters a launch URL carries the launch in, which
+ * {@link arrivingSmartLaunchFrom} reads: the FHIR server (`iss`) and the
+ * EHR's `launch` token. Everything else a launch page's URL carries is the
+ * page's own.
+ */
+const SMART_LAUNCH_PARAMS = ['iss', 'launch'] as const
+
+/**
  * The SMART launch `search` asks the page to start, or `None` when it asks for
  * none.
  *
@@ -49,5 +57,5 @@ const arrivingSmartLaunchFrom = (search: string): Option.Option<ArrivingSmartLau
   return Option.some({ iss, launch: launch === null || launch === '' ? undefined : launch })
 }
 
-export { arrivingSmartLaunchFrom }
+export { arrivingSmartLaunchFrom, SMART_LAUNCH_PARAMS }
 export type { ArrivingSmartLaunch }

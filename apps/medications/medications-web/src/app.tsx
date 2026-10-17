@@ -2,7 +2,6 @@ import { useQueryClient } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
 import type { SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
-  launchPatientRoute,
   LoadingLine,
   type SmartAppPage,
   SmartHandshakeGate,
@@ -50,11 +49,11 @@ function MedicationsRouter({ page, client }: MedicationsRouterProps): JSX.Elemen
 
 /**
  * The redirect-target app: completes the SMART handshake and then hands the
- * page to its router: the introduction at `/`, the patient picker at
- * `/patients`, every patient's tabs at the top level (`/medications`,
- * `/calendar`, `/interactions`, `/savings`) and one patient's under
- * `/patients/$patientId`. A completed launch opens the route it started on,
- * else its patient's page, else the picker (`launchPatientRoute`).
+ * page to its router: the patient picker at `/patients`, every patient's
+ * tabs at the top level (`/medications`, `/calendar`, `/interactions`,
+ * `/savings`) and one patient's under `/patients/$patientId`. The callback
+ * lands on `/`, which opens the route the launch started on, else its
+ * patient's page, else the picker.
  *
  * @remarks
  * The token exchange (`useSmartHandshake`) is a TanStack Query on the page's
@@ -65,8 +64,6 @@ function MedicationsRouter({ page, client }: MedicationsRouterProps): JSX.Elemen
 const App = ({ page }: AppProps): JSX.Element => (
   <main className={styles['app']}>
     <SmartHandshakeGate
-      page={page}
-      landsOn={launchPatientRoute}
       connecting={
         <>
           <AppTitle />

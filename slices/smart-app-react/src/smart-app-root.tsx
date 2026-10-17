@@ -29,8 +29,8 @@ import {
 
 import { authorizeFromLaunchPage } from './authorize-from-launch-page.ts'
 import { ConnectMenu } from './connect-menu.tsx'
-import { forgetLandingRoute } from './landing-route.ts'
 import { LaunchPage } from './launch-page.tsx'
+import { clearReturnRoute } from './return-route.ts'
 
 /**
  * Where a SMART app's telemetry goes, once the visitor consents to it: the
@@ -86,7 +86,7 @@ interface SmartAppRootProps {
    * page was opened at. Omitted, it is the page URL's own directory, right
    * for an app that is only ever opened at its root.
    */
-  readonly basepath?: string
+  readonly servedDirectory?: string
   /**
    * Whether the URL carries a SMART callback to complete. Read once, on mount:
    * defaults to the live URL checks (`shouldCompleteSmartLaunch`, then
@@ -128,29 +128,33 @@ function ConsentStatusControl(): JSX.Element {
 function LaunchingApp({
   app,
   registration,
-  basepath,
+  servedDirectory,
   replaceLocation,
-}: Pick<SmartAppRootProps, 'app' | 'registration' | 'basepath'> & {
+}: Pick<SmartAppRootProps, 'app' | 'registration' | 'servedDirectory'> & {
   readonly replaceLocation: (url: string) => void
 }): JSX.Element {
   const launchAuthorized = useRef(false)
   useEffect(() => {
     if (launchAuthorized.current) return
     launchAuthorized.current = true
-    void authorizeFromLaunchPage(registration, window.location.href, basepath).then((failure) => {
-      if (failure !== null) replaceLocation(failure)
-    })
-  }, [registration, basepath, replaceLocation])
+    void authorizeFromLaunchPage(registration, window.location.href, servedDirectory).then(
+      (failure) => {
+        if (failure !== null) replaceLocation(failure)
+      }
+    )
+  }, [registration, servedDirectory, replaceLocation])
 
   useEffect(() => {
     const onPageShow = (event: PageTransitionEvent): void => {
-      if (event.persisted) replaceLocation(appRootRedirectUri(window.location.href, basepath))
+      if (event.persisted) {
+        replaceLocation(appRootRedirectUri(window.location.href, servedDirectory))
+      }
     }
     window.addEventListener('pageshow', onPageShow)
     return (): void => {
       window.removeEventListener('pageshow', onPageShow)
     }
-  }, [basepath, replaceLocation])
+  }, [servedDirectory, replaceLocation])
 
   return <LaunchPage message={`Launching ${APP_DESCRIPTIONS[app].name}…`} />
 }
@@ -207,7 +211,7 @@ function SmartAppRoot({
   app,
   registration,
   telemetry,
-  basepath,
+  servedDirectory,
   launched,
   replaceLocation = replaceWindowLocation,
   children,
@@ -220,9 +224,9 @@ function SmartAppRoot({
 
   // A plain visit (a fresh one, a failed launch sent back here, a page back
   // from the back-forward cache) completes no launch, so the route a launch
-  // kept for its callback is dropped: it must not hijack a later callback.
+  // saved to return to is cleared: it must not hijack a later callback.
   useEffect(() => {
-    if (arrival === 'visit') forgetLandingRoute(window.sessionStorage)
+    if (arrival === 'visit') clearReturnRoute(window.sessionStorage)
   }, [arrival])
 
   // A failed launch lands back here carrying its reason — our own `?launchError`
@@ -284,7 +288,7 @@ function SmartAppRoot({
 
   // The app root is also the OAuth redirect target. Derived in render, not at
   // module load, so importing this module never reads `window`.
-  const redirectUri = appRootRedirectUri(window.location.href, basepath)
+  const redirectUri = appRootRedirectUri(window.location.href, servedDirectory)
 
   return (
     <TelemetryConsentGate copy={TELEMETRY_CONSENT_COPY} onDecided={startTelemetry}>
@@ -293,7 +297,7 @@ function SmartAppRoot({
           <LaunchingApp
             app={app}
             registration={registration}
-            basepath={basepath}
+            servedDirectory={servedDirectory}
             replaceLocation={replaceLocation}
           />
         </CrashReportingBoundary>

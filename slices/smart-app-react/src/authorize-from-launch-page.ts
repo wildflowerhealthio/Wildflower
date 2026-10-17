@@ -6,16 +6,16 @@ import {
   type SmartLaunchConfig,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
 
-import { forgetLandingRoute, saveLandingRoute } from './landing-route.ts'
+import { saveReturnRoute } from './return-route.ts'
 
 /**
  * Authorize the SMART launch the page at `launchPageHref` was opened to
  * start, resolving to where the page must go if the launch fails before it
  * leaves.
  *
- * @param appDirectory - The directory the app is served from (a routed app's
- *   basepath), as `appRootRedirectUri` takes it; omitted, the page's own
- *   directory.
+ * @param servedDirectory - The directory the app is served from (a routed
+ *   app's basepath), as `appRootRedirectUri` takes it; omitted, the page's
+ *   own directory.
  * @returns `null` once the page has been sent to the authorization server,
  *   or the app-root URL carrying the failure as `?launchError` when
  *   `authorizeSmartLaunch` rejects.
@@ -23,7 +23,7 @@ import { forgetLandingRoute, saveLandingRoute } from './landing-route.ts'
  * @remarks
  * fhirclient reads `iss` and `launch` off the page URL itself. The OAuth
  * redirect target is the app's root (`appRootRedirectUri`), derived from
- * `launchPageHref` and `appDirectory`, whichever route of the app the launch
+ * `launchPageHref` and `servedDirectory`, whichever route of the app the launch
  * opened. A launch that never reaches the authorization server fails
  * here — an unreachable or CORS-blocked `iss`, a server that serves no SMART
  * config, an advertised authorization endpoint `authorizeSmartLaunch` will not
@@ -33,24 +33,22 @@ import { forgetLandingRoute, saveLandingRoute } from './landing-route.ts'
  * `arrivalProblem`.
  *
  * The route the launch page sits on (a deep link such as `/calendar?…`, its
- * launch parameters left out) is kept in `sessionStorage` before the page
- * leaves, since the callback comes back to the app root;
- * `SmartHandshakeGate` restores it once the exchange completes. A launch that
- * fails here drops it again.
+ * launch parameters left out) is saved in `sessionStorage` before the page
+ * leaves (`saveReturnRoute`), since the callback comes back to the app root,
+ * whose redirect (`appRootRedirect`) returns to it.
  */
 const authorizeFromLaunchPage = async (
   launch: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'>,
   launchPageHref: string,
-  appDirectory?: string
+  servedDirectory?: string
 ): Promise<string | null> => {
-  const redirectUri = appRootRedirectUri(launchPageHref, appDirectory)
+  const redirectUri = appRootRedirectUri(launchPageHref, servedDirectory)
   const search = new URL(launchPageHref).search
-  saveLandingRoute(window.sessionStorage, launchPageHref, appDirectory)
+  saveReturnRoute(window.sessionStorage, launchPageHref, servedDirectory)
   try {
     await authorizeSmartLaunch({ ...launch, redirectUri })
     return null
   } catch (error: unknown) {
-    forgetLandingRoute(window.sessionStorage)
     return launchErrorRedirect(redirectUri, launchErrorBodyFor('AuthorizeFailed', error, search))
   }
 }

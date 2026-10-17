@@ -1,29 +1,15 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
-import { AppLanding } from '@wildflowerhealthio/branding-react'
-import type { JSX } from 'react'
+import { createFileRoute } from '@tanstack/react-router'
+import { appRootRedirect, launchPatientRoute } from '@wildflowerhealthio/smart-app-react'
 
 /**
- * The introduction, connected: `AppLanding`'s introduction of the app, the
- * one the standalone landing shows beside its connect menu, with the way
- * into the app in its place, the patient picker.
- */
-function MedicationsIntroduction(): JSX.Element {
-  return (
-    <AppLanding app="medications">
-      <Link to="/patients" className="button-2 filled">
-        Choose a patient
-      </Link>
-    </AppLanding>
-  )
-}
-
-/**
- * `/`, the introduction. A completed launch never stays on it (the handshake
- * gate opens the launch's route, its patient or the picker), so it is what a
- * later visit to the app root inside the visit shows.
+ * `/`, which is never a page: it replaces itself with the route the launch
+ * started on, else the launch's patient's page, else the patient picker
+ * (`launchPatientRoute`). A completed launch's callback lands here.
  */
 const Route = createFileRoute('/')({
-  component: MedicationsIntroduction,
+  beforeLoad: ({ context: { client } }) => {
+    throw appRootRedirect(launchPatientRoute(client))
+  },
 })
 
 export { Route }

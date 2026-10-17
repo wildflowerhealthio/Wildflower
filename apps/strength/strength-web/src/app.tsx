@@ -3,7 +3,6 @@ import { useQueryClient } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
 import { buildSmartRouterContext } from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
-  launchPatientRoute,
   LoadingLine,
   type SmartAppPage,
   SmartHandshakeGate,
@@ -69,11 +68,10 @@ function StrengthRouter({ page, client, transport }: StrengthRouterProps): JSX.E
 
 /**
  * The redirect-target app: completes the SMART handshake and then hands the
- * page to its router: the introduction at `/`, the patient picker at
- * `/patients`, one lifter's Today, Plan and Workouts under
- * `/patients/$patientId`, and every patient's workouts at `/workouts`. A
- * completed launch opens the route it started on, else its patient's page,
- * else the picker (`launchPatientRoute`).
+ * page to its router: the patient picker at `/patients`, one lifter's
+ * Today, Plan and Workouts under `/patients/$patientId`, and every patient's
+ * workouts at `/workouts`. The callback lands on `/`, which opens the route
+ * the launch started on, else its patient's page, else the picker.
  *
  * @remarks
  * The token exchange (`useSmartHandshake`) is a TanStack Query on the page's
@@ -86,8 +84,6 @@ function StrengthRouter({ page, client, transport }: StrengthRouterProps): JSX.E
 const App = ({ page }: AppProps): JSX.Element => (
   <main className={styles['app']}>
     <SmartHandshakeGate
-      page={page}
-      landsOn={launchPatientRoute}
       connecting={
         <>
           <AppTitle />

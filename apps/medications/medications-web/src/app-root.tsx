@@ -29,7 +29,7 @@ function AppRoot({
       app="medications"
       registration={smartRegistration}
       telemetry={smartAppTelemetry}
-      basepath={page.basepath}
+      servedDirectory={page.basepath}
       launched={launched}
     >
       <App page={page} />

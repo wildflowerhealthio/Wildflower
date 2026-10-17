@@ -26,6 +26,7 @@ export {
   type RouteNotFoundProps,
 } from './routed-not-found.tsx'
 export { type PatientChoosing, usePatientChoice } from './use-patient-choice.ts'
+export { appRootRedirect } from './return-route.ts'
 export { SmartAppRoot, type SmartAppRootProps, type SmartAppTelemetry } from './smart-app-root.tsx'
 export { openSmartAppPage, servedDirectoryOf, type SmartAppPage } from './smart-app-page.ts'
 export { SmartHandshakeGate, type SmartHandshakeGateProps } from './smart-handshake-gate.tsx'

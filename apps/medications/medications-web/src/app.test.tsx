@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
 import {
@@ -327,28 +327,6 @@ describe('App', () => {
     ).toBeDefined()
     expect(screen.queryByRole('navigation', { name: 'Medication views' })).toBeNull()
     expect(fetchMock).not.toHaveBeenCalled()
-  })
-
-  it('should introduce the app at /, opening the picker from it', async () => {
-    // Arrange: a visit to the app root once the page is open.
-    handshakeMock.mockReturnValue(readyHandshake)
-    fetchMock.mockResolvedValue(lastPage)
-    patientPageMock.mockResolvedValue(patientPage)
-    const { history } = renderApp({ route: 'patients/p1/medications' })
-    await awaitFirstPage()
-    act(() => {
-      history.push(BASEPATH)
-    })
-    expect(
-      await screen.findByRole('heading', { name: 'Medication Viewer', level: 1 })
-    ).toBeDefined()
-
-    // Act
-    fireEvent.click(screen.getByRole('link', { name: 'Choose a patient' }))
-
-    // Assert
-    expect(await screen.findByRole('heading', { name: 'Choose a patient' })).toBeDefined()
-    expect(currentRoute()).toBe('patients')
   })
 
   it('should render the chunk bar only from four pages, locked once every page has arrived', async () => {
