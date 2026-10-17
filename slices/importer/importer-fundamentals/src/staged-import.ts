@@ -162,12 +162,16 @@ const sourceMergeOf = (
     : Option.none()
 }
 
-/** Every merge the included, reviewed entries ask for, in review order. */
+/**
+ * Every merge the reviewed entries ask for, in review order — included or not:
+ * a merged source Patient is never written either way, and a source Patient the
+ * server already holds unchanged starts out excluded.
+ */
 const sourceMerges = (
-  included: readonly DecodedFile.Resource[],
+  reviewed: readonly DecodedFile.Resource[],
   selection: Selection
 ): readonly PatientIdentity.SourceMerge[] =>
-  included.flatMap((entry) => Option.toArray(sourceMergeOf(selection, entry)))
+  reviewed.flatMap((entry) => Option.toArray(sourceMergeOf(selection, entry)))
 
 /**
  * The confirm's write set: every labeled resource the reviewer left included,
@@ -182,12 +186,12 @@ const sourceMerges = (
  * @remarks
  * Two identity steps run over the included resources, in this order:
  * `PatientIdentity.attributeHouseholdDispenses` re-files a dispense on a
- * household account onto its request's subject, and then each included source
- * Patient assigned to `{ person }` is left out and merged into that person
+ * household account onto its request's subject, and then each source Patient
+ * assigned to `{ person }`, included or not, is left out and merged into that person
  * (`PatientIdentity.mergeSourcePatients`), which re-points every reference to
  * it — so a dispense lands on the account's family member and then on the
- * person in one pass. A source Patient assigned `'new'` is written as it is.
- * An excluded source Patient is neither written nor merged.
+ * person in one pass. A source Patient assigned `'new'` is written as it is,
+ * unless excluded.
  */
 const chosenResources = (
   labeled: readonly DecodedFile.Resource[],
@@ -202,7 +206,7 @@ const chosenResources = (
     kept,
     reviewed.map(({ resource }) => resource)
   )
-  return PatientIdentity.mergeSourcePatients(attributed, sourceMerges(included, selection))
+  return PatientIdentity.mergeSourcePatients(attributed, sourceMerges(reviewed, selection))
 }
 
 /** How many labeled resources are included under a selection. */
@@ -217,13 +221,11 @@ const referencesNotRewrittenCount = (
   labeled: readonly DecodedFile.Resource[],
   selection: Selection
 ): number => {
-  const chosen = chosenResources(labeled, selection)
-  const included = reviewedResources(labeled, selection).filter((entry) =>
-    isResourceIncluded(selection, entry.key)
-  )
   return PatientIdentity.referencesNotRewrittenCount(
-    chosen,
-    sourceMerges(included, selection).map(({ sourcePatient }) => sourcePatient)
+    chosenResources(labeled, selection),
+    sourceMerges(reviewedResources(labeled, selection), selection).map(
+      ({ sourcePatient }) => sourcePatient
+    )
   )
 }
 

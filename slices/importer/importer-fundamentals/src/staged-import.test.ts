@@ -622,11 +622,20 @@ describe('StagedImport patient assignments', () => {
     ).toBe('Patient/wf-sam')
   })
 
-  it('should neither write nor merge an excluded source Patient', () => {
+  it('should merge a source Patient assigned to a person even when it is excluded', () => {
     const selection = StagedImport.toggleResource(
       StagedImport.assignPatient(StagedImport.initial(), 'sam', existingPerson('person-sam')),
       'sam'
     )
+
+    const chosen = StagedImport.chosenResources(householdLabeled, selection)
+
+    expect(patientIds(chosen)).toEqual(['wf-dana', 'wf-acct', 'person-sam'])
+    expect(subjectsById(chosen)['rx-sam']).toBe('Patient/person-sam')
+  })
+
+  it("should neither write nor merge an excluded source Patient left 'new'", () => {
+    const selection = StagedImport.toggleResource(StagedImport.initial(), 'sam')
 
     const chosen = StagedImport.chosenResources(householdLabeled, selection)
 

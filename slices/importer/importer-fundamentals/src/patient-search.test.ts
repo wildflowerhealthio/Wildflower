@@ -134,6 +134,18 @@ describe('PatientSearch.findPatientByIdentifier', () => {
     expect(urls).toEqual([])
   })
 
+  it("escapes FHIR search's special characters in the token", async () => {
+    const { urls } = await search(
+      decodePatient({
+        resourceType: 'Patient',
+        id: 'p',
+        identifier: [{ system: 'https://a.example/id', value: 'a,b|c$d\\e' }],
+      })
+    )
+
+    expect(urls[0]?.searchParams.get('identifier')).toBe('https://a.example/id|a\\,b\\|c\\$d\\\\e')
+  })
+
   it('does not search an identifier with no system', async () => {
     const { urls } = await search(
       decodePatient({ resourceType: 'Patient', id: 'p', identifier: [{ value: 'bare' }] })

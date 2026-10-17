@@ -239,7 +239,7 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
 - **A source Patient is never a person.** A person is a Patient the user
   owns, which accumulates source identifiers: a merge keeps the person's
   demographics and only adds identifiers, and a merged source Patient is not
-  written. A household account is a Patient, but a fill is attributed to the
+  written, whether or not the reviewer included it. A household account is a Patient, but a fill is attributed to the
   clinical Patient whenever the source says who that is. A household account
   is never matched into a person by search; only the reviewer assigns it. The
   household rules were built from fixtures modelled on a two-person Shoppers
