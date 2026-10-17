@@ -2,8 +2,9 @@
 
 The **resource-agnostic, format-agnostic upstream** of the importer slice: the
 contract every file-format binding implements, the pure per-resource
-staged-import model (what a decoded-but-unwritten import consists of), and the
-structural failure record the sinks report against. It is the
+staged-import model (what a decoded-but-unwritten import consists of), the
+patient identity rules that fold each source's Patient into one Patient per
+human, and the structural failure record the sinks report against. It is the
 layer a concrete binding (`har-importer-core`, `lifelabs-pdf-importer`)
 sits on top of.
 
@@ -88,20 +89,48 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   requirement.
 
 - `src/staged-import.ts` — the **`StagedImport`** namespace, the pure per-resource
-  selection model. A `Selection` is two axes: `excludedResources`
-  (per-resource opt-outs, keyed by a `DecodedFile.Resource`'s `key`) and
+  selection model. A `Selection` is three axes: `excludedResources`
+  (per-resource opt-outs, keyed by a `DecodedFile.Resource`'s `key`),
   `resourceOverrides` (per-resource inline edits over `FhirResource`, same
   keying — the reviewer's edited resource replaces the decoded original at
-  confirm). `initial` / `toggleResource` / `setResourcesIncluded` (the batch
+  confirm) and `patientAssignments` (per source Patient, same keying, a
+  `PatientIdentity.Target`: `'new'`, the default, or `{ person }`).
+  `initial` / `toggleResource` / `setResourcesIncluded` (the batch
   form of `toggleResource`, so the shell can opt a whole section in or out at
-  once) / `edit` / `revert` are the transitions;
-  `isResourceIncluded` / `isResourceEdited` / `editedResource` the reads;
-  `chosenResources` folds a flat labeled list through the exclusions and
-  edit overrides into the confirm's write set — no re-parse at confirm, the
-  reviewed (or edited) objects are what gets written; `includedCount` /
-  `excludedCount` drive the shell's tallies. Orphaned selection entries
+  once) / `edit` / `revert` / `assignPatient` are the transitions;
+  `isResourceIncluded` / `isResourceEdited` / `editedResource` /
+  `patientTarget` the reads;
+  `chosenResources` folds a flat labeled list through the exclusions,
+  edit overrides and patient assignments into the confirm's write set — no
+  re-parse at confirm, the reviewed (or edited) objects are what gets written,
+  household dispenses attributed and each source Patient assigned to a person
+  merged into it (`PatientIdentity`). `includedCount` / `excludedCount` drive
+  the shell's tallies, and `referencesNotRewrittenCount` /
+  `dispensesLeftOnAccountCount` say what a merge left pointing at a source
+  Patient or an account. Orphaned selection entries
   (keys a re-decode no longer produces) are inert — sets and maps of keys,
   nothing dangling.
+- `src/patient-identity.ts` — the **`PatientIdentity`** namespace, pure.
+  **`Person`** is a Patient the user owns (an `id` always), **`Target`**
+  (`'new' | { person }`) where a source Patient goes.
+  **`mergeIntoPatient(target, source)`** appends the source's identifiers the
+  target lacks (matched on `system` + `value`) and changes nothing else.
+  **`rewriteSubjects(resources, from, to)`** re-points every `Reference` whose
+  `reference` is exactly `from`, found by walking each resource against
+  `fhir-r4`'s `Reference` schema, not a field list; absolute and
+  identifier-only references are left and counted
+  (`referencesNotRewrittenCount`). **`mergeSourcePatients`** folds every
+  merge of one confirm into its person in a single walk.
+  **`isHouseholdAccount`** (a Patient that `link.seealso`s other Patients),
+  **`attributeHouseholdDispenses`** (a dispense filed on one moves to its
+  `authorizingPrescription` request's subject when the import carries it),
+  **`dispensesLeftOnAccountCount`**, and **`searchedIdentifiers`** (none for a
+  household account) are the household rules.
+- `src/patient-search.ts` — the **`PatientSearch`** namespace:
+  **`findPatientByIdentifier(sourcePatient)`**, the one server read identity
+  needs. `GET Patient?identifier=system|value` per searched identifier, in the
+  source Patient's own order, the first hit wins; requires
+  `FhirR4ResourcesHttpApiClient`.
 - `src/picked-file.ts` — the **`PickedFile`** namespace: the picked file
   vocabulary _and_ the codec that source files one. **`Type`**
   (`{ id, fileName, bytes }`) is the one value every `decode` receives, and
@@ -142,12 +171,14 @@ Depends on `effect` (and `kitchen-sink` in tests), plus `fhir-r4` for the
 `FhirResource` (`decoded-file.ts` and `staged-import.ts` are concrete over it,
 not generic — every format binds `FhirResource`, so there is no `TParsed` left
 to abstract over), `fhir-r4/data-types` for `Meta` (the slot `MetaSource.stamp`
-writes into), `fhir-r4/identity` for the shared id derivation, and `fhir`'s
+writes into) and the `Reference` schema (what `PatientIdentity`'s walk finds
+references by), `fhir-r4/identity` for the shared id derivation, and `fhir`'s
 wire types. Hosting the source file codec is what widened
 `fhir-r4` from a type-only import to the `DocumentReference` runtime schema
-(it builds and decodes the resource) — but still no client, no other resource
-schemas, and no `persistResources`: the write sink stays at the shell
-(`fhir-r4/clients`' `persistBatchBundle`). It deliberately does **not** depend
+(it builds and decodes the resource). `fhir-r4/clients` is used for one read
+only, `PatientSearch.findPatientByIdentifier`'s `Patient` search through
+`FhirR4ResourcesHttpApiClient`; there is no `persistResources` here: the write
+sink stays at the shell (`fhir-r4/clients`' `persistBatchBundle`). It deliberately does **not** depend
 on `web-trace-core`: the digest helper (`sha256.ts`) and `meta-source.ts` are
 both verbatim-in-spirit copies of web-trace's, for the same reason — standard,
 project-neutral helpers, and moving them would invert the importer →
@@ -205,8 +236,17 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
   fixed key safe. Do not push that obligation down into a `decodeFileSet` —
   one that tries to be unique across a batch cannot be, since it is not given
   the batch.
+- **A source Patient is never a person.** A person is a Patient the user
+  owns, which accumulates source identifiers: a merge keeps the person's
+  demographics and only adds identifiers, and a merged source Patient is not
+  written. A household account is a Patient, but a fill is attributed to the
+  clinical Patient whenever the source says who that is. A household account
+  is never matched into a person by search; only the reviewer assigns it. The
+  household rules were built from fixtures modelled on a two-person Shoppers
+  account and have not been checked against a real one. See
+  [Source Identity Explanation](../../fhir/fhir-r4/docs/Source%20Identity%20Explanation.md#person-vs-source-patient).
 - **Selection keys by a `DecodedFile.Resource`'s `key`.** Selection state must
-  be serializable and survive a settings re-decode, so both axes hold string
+  be serializable and survive a settings re-decode, so every axis holds string
   keys; a key that disappears simply stops applying.
 
 ## References

@@ -1,10 +1,16 @@
 import { Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 
-import { type FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  type FhirResource,
+  MedicationDispense,
+  MedicationRequest,
+  Patient,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 import type * as DecodedFile from './decoded-file.ts'
+import type * as PatientIdentity from './patient-identity.ts'
 import * as StagedImport from './staged-import.ts'
 
 /**
@@ -49,6 +55,7 @@ describe('StagedImport.initial', () => {
 
     expect(selection.excludedResources.size).toBe(0)
     expect(selection.resourceOverrides.size).toBe(0)
+    expect(selection.patientAssignments.size).toBe(0)
   })
 })
 
@@ -484,5 +491,197 @@ describe('StagedImport.excludedCount', () => {
       }),
       { numRuns: numRunsFor({ base: 20 }) }
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Patient assignments — a two-person household account (modelled on the
+// Shoppers fixture in `customer-response-kind.test.ts`, as adoption leaves it)
+// ---------------------------------------------------------------------------
+
+const decodePatient = Schema.decodeUnknownSync(Patient.Schema)
+const decodeRequest = Schema.decodeUnknownSync(MedicationRequest.Schema)
+const decodeDispense = Schema.decodeUnknownSync(MedicationDispense.Schema)
+
+const SID = 'https://wildflowerhealth.io/fhir/sid/shoppers-drugmart'
+const PC_ID_SYSTEM = 'https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/pc-id'
+
+const sourcePerson = (id: string): FhirResource =>
+  decodePatient({ resourceType: 'Patient', id, identifier: [{ system: SID, value: id }] })
+
+/** The account `link.seealso`s both people; every history fill is filed on it. */
+const householdLabeled: readonly DecodedFile.Resource[] = [
+  { key: 'dana', title: 'Dana', resource: sourcePerson('wf-dana') },
+  { key: 'sam', title: 'Sam', resource: sourcePerson('wf-sam') },
+  {
+    key: 'account',
+    title: 'Account',
+    resource: decodePatient({
+      resourceType: 'Patient',
+      id: 'wf-acct',
+      identifier: [{ system: PC_ID_SYSTEM, value: 'acct' }],
+      link: [
+        { other: { reference: 'Patient/wf-dana' }, type: 'seealso' },
+        { other: { reference: 'Patient/wf-sam' }, type: 'seealso' },
+      ],
+    }),
+  },
+  {
+    key: 'rx-sam',
+    title: 'Request',
+    resource: decodeRequest({
+      resourceType: 'MedicationRequest',
+      id: 'rx-sam',
+      status: 'active',
+      intent: 'order',
+      subject: { reference: 'Patient/wf-sam' },
+    }),
+  },
+  ...[
+    { id: 'fill-sam', request: 'rx-sam' },
+    { id: 'fill-unknown', request: 'rx-missing' },
+  ].map(({ id, request }): DecodedFile.Resource => ({
+    key: id,
+    title: id,
+    resource: decodeDispense({
+      resourceType: 'MedicationDispense',
+      id,
+      status: 'completed',
+      subject: { reference: 'Patient/wf-acct' },
+      authorizingPrescription: [{ reference: `MedicationRequest/${request}` }],
+    }),
+  })),
+]
+
+/** An existing person the reviewer merges a source Patient into. */
+const existingPerson = (id: string): PatientIdentity.Target => ({
+  person: { ...decodePatient({ resourceType: 'Patient', id }), id },
+})
+
+const subjectsById = (resources: readonly FhirResource[]): Readonly<Record<string, string>> =>
+  Object.fromEntries(
+    resources.flatMap((entry) =>
+      entry.resourceType === 'MedicationRequest' || entry.resourceType === 'MedicationDispense'
+        ? [[entry.id ?? '', entry.subject?.reference ?? '']]
+        : []
+    )
+  )
+
+const patientIds = (resources: readonly FhirResource[]): readonly (string | null)[] =>
+  resources.flatMap((entry) => (entry.resourceType === 'Patient' ? [entry.id] : []))
+
+describe('StagedImport patient assignments', () => {
+  it("should default every source Patient to 'new'", () => {
+    expect(StagedImport.patientTarget(StagedImport.initial(), 'dana')).toBe('new')
+  })
+
+  it('should record an assignment without disturbing the other axes', () => {
+    const excluded = StagedImport.toggleResource(StagedImport.initial(), 'fill-sam')
+    const target = existingPerson('person-sam')
+
+    const assigned = StagedImport.assignPatient(excluded, 'sam', target)
+
+    expect(StagedImport.patientTarget(assigned, 'sam')).toBe(target)
+    expect(StagedImport.patientTarget(assigned, 'dana')).toBe('new')
+    expect(assigned.excludedResources).toEqual(excluded.excludedResources)
+  })
+
+  it("should write every source Patient as it is when all are 'new'", () => {
+    const chosen = StagedImport.chosenResources(householdLabeled, StagedImport.initial())
+
+    expect(patientIds(chosen)).toEqual(['wf-dana', 'wf-sam', 'wf-acct'])
+  })
+
+  it('should write no merged source Patient, and file every subject on its person, re-attributed dispenses included', () => {
+    const selection = StagedImport.assignPatient(
+      StagedImport.assignPatient(StagedImport.initial(), 'sam', existingPerson('person-sam')),
+      'dana',
+      existingPerson('person-dana')
+    )
+
+    const chosen = StagedImport.chosenResources(householdLabeled, selection)
+
+    expect(patientIds(chosen)).toEqual(['wf-acct', 'person-dana', 'person-sam'])
+    expect(subjectsById(chosen)).toEqual({
+      'rx-sam': 'Patient/person-sam',
+      'fill-sam': 'Patient/person-sam',
+      'fill-unknown': 'Patient/wf-acct',
+    })
+    expect(chosen.find((entry) => entry.id === 'person-sam')).toMatchObject({
+      identifier: [{ value: 'wf-sam' }],
+    })
+    expect(StagedImport.dispensesLeftOnAccountCount(householdLabeled, selection)).toBe(1)
+    expect(StagedImport.referencesNotRewrittenCount(householdLabeled, selection)).toBe(0)
+  })
+
+  it('should re-attribute through a request the reviewer excluded', () => {
+    const selection = StagedImport.toggleResource(StagedImport.initial(), 'rx-sam')
+
+    expect(
+      subjectsById(StagedImport.chosenResources(householdLabeled, selection))['fill-sam']
+    ).toBe('Patient/wf-sam')
+  })
+
+  it('should neither write nor merge an excluded source Patient', () => {
+    const selection = StagedImport.toggleResource(
+      StagedImport.assignPatient(StagedImport.initial(), 'sam', existingPerson('person-sam')),
+      'sam'
+    )
+
+    const chosen = StagedImport.chosenResources(householdLabeled, selection)
+
+    expect(patientIds(chosen)).toEqual(['wf-dana', 'wf-acct'])
+    expect(subjectsById(chosen)['rx-sam']).toBe('Patient/wf-sam')
+  })
+
+  it("should merge the reviewer's edit of a source Patient, not the decoded original", () => {
+    const edited = decodePatient({
+      resourceType: 'Patient',
+      id: 'wf-sam',
+      identifier: [{ system: SID, value: 'sam-edited' }],
+    })
+    const selection = StagedImport.assignPatient(
+      StagedImport.edit(StagedImport.initial(), 'sam', edited),
+      'sam',
+      existingPerson('person-sam')
+    )
+
+    const chosen = StagedImport.chosenResources(householdLabeled, selection)
+
+    expect(chosen.find((entry) => entry.id === 'person-sam')).toMatchObject({
+      identifier: [{ value: 'sam-edited' }],
+    })
+  })
+
+  it('should count the source Patients a merge leaves out as included', () => {
+    const selection = StagedImport.assignPatient(
+      StagedImport.initial(),
+      'sam',
+      existingPerson('person-sam')
+    )
+
+    expect(StagedImport.includedCount(householdLabeled, selection)).toBe(householdLabeled.length)
+  })
+
+  it('should count a reference to a merged source Patient that is not relative', () => {
+    const absolute: DecodedFile.Resource = {
+      key: 'absolute',
+      title: 'absolute',
+      resource: decodeDispense({
+        resourceType: 'MedicationDispense',
+        id: 'absolute',
+        status: 'completed',
+        subject: { reference: 'https://fhir.example/Patient/wf-sam' },
+      }),
+    }
+    const selection = StagedImport.assignPatient(
+      StagedImport.initial(),
+      'sam',
+      existingPerson('person-sam')
+    )
+
+    expect(
+      StagedImport.referencesNotRewrittenCount([...householdLabeled, absolute], selection)
+    ).toBe(1)
   })
 })

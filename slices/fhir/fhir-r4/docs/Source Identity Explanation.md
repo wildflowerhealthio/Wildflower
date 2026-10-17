@@ -292,6 +292,68 @@ exactly once per resource, at the response-kind seam, so there is deliberately
 no "already adopted?" guard: such a guard has to guess, and a source that
 publishes its own base URL as an identifier system makes it guess wrong.
 
+## Person vs source Patient
+
+Adoption keys every resource under its source, so a Patient is keyed too: one
+human with a Rexall account, a Shoppers account and a hospital record arrives
+as three Patients, and each `MedicationRequest.subject` or
+`Observation.subject` names its own one. The store keeps **one Patient per
+human**, not one per provider–human relationship.
+
+A **source Patient is never a person.** A person is a Patient the user owns,
+and it accumulates the identifiers of every source Patient merged into it. At
+an import's confirm (`importer-fundamentals`' `StagedImport.chosenResources`,
+through `PatientIdentity`), each source Patient goes one of two ways:
+
+- **`'new'`** — it is written as it is, and becomes the person.
+- **`{ person }`** — it is merged into an existing person. The person gains
+  every identifier of the source Patient it does not already carry (matched on
+  `system` + `value`) and nothing else: the person's demographics are the
+  truth, and a source's spelling of them is not. Every `Reference` whose
+  `reference` is exactly the source Patient's `Patient/<id>` is re-pointed at
+  the person; its `identifier` and `display` stay. The source Patient itself
+  is not written.
+
+References are found by walking each resource against `fhir-r4`'s own
+`Reference` schema, not through a field table like adoption's, so a reference
+anywhere in a resource moves with the person. An absolute or identifier-only
+reference to the source Patient is left alone and counted, so the review can
+say how many references were not rewritten.
+
+Merging keeps one row per human, so it writes no `Patient.link`. A later import
+finds its person by searching each of the source Patient's identifiers in
+order (`GET Patient?identifier=system|value`, `PatientSearch`): the adopted
+source id comes first, and the first hit wins. That works because the person
+carries the merged source's adopted identifier. Resources already stored from
+imports made before a merge are not re-linked.
+
+### Household accounts
+
+A **household account** is a source Patient that `link.seealso`s the Patients
+of the people it manages. Shoppers makes one: its account `Patient`, keyed by
+the account's `pcid` (`ShoppersIdentifierSystem.PcId`), links each managed
+person's demographic `Patient`. The history feed does not say which person a
+fill was for, so a history `MedicationDispense.subject` names the account.
+
+- **A fill goes to the clinical Patient when the import says who that is.** A
+  dispense filed on a household account is re-filed on the `subject` of its
+  `authorizingPrescription` `MedicationRequest`, when the import decoded that
+  request (written or not) and the request names a subject. This runs before
+  the merge rewrite, so a fill lands on the family member and then, through
+  the merge, on the person, in one pass.
+- **Otherwise the fill stays on the account,** and is counted with the
+  references not rewritten.
+- **A household account is a Patient and is written,** but no search matches
+  it into a person: none of its identifiers is searched, so it defaults to
+  `'new'`, and only the reviewer assigns it elsewhere. Matching it by `pcid`
+  would attribute every earlier fill of the whole family to one person.
+- **An account that links nobody is the person it names,** and is matched,
+  merged and assigned like any other source Patient.
+
+Nobody on the team has a multi-person Shoppers account. These rules were built
+from fixtures modelled on a two-person account (`customer-response-kind.test.ts`)
+and have not been checked against a real one.
+
 ## References
 
 - [http-extraction AGENTS.md](../../../http-extraction/AGENTS.md) — the
@@ -300,3 +362,6 @@ publishes its own base URL as an identifier system makes it guess wrong.
   the importer that runs the pre-adopted kinds over a HAR.
 - [web-trace-core AGENTS.md](../../../web-trace-core/AGENTS.md) — the codec that
   mints trace ids.
+- [importer-fundamentals AGENTS.md](../../../importer/importer-fundamentals/AGENTS.md)
+  — `PatientIdentity` and `PatientSearch`, which merge a source Patient into
+  its person.

@@ -110,4 +110,18 @@ describe('planFormatWrite', () => {
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })
+
+  it('should write a source Patient assigned to an existing person as that person', () => {
+    const person = {
+      ...Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id: 'person' }),
+      id: 'person',
+    }
+    const selection = StagedImport.assignPatient(StagedImport.initial(), 'source', { person })
+
+    const plan = planFormatWrite(formatResult(['source', 'other']), selection)
+
+    if (plan._tag !== 'write') throw new Error('expected a write')
+    expect(plan.resources.map((entry) => entry.id)).toEqual(['other', 'person'])
+    expect(plan.excluded).toBe(0)
+  })
 })
