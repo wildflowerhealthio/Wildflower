@@ -229,9 +229,9 @@ const scrubScript = (script: string, redactHosts: HostRedactor): string => {
 /**
  * `record` with the value under every URL or host key anonymized, the script
  * under every script key scrubbed (see `scrubScript`), the text under every
- * text key scrubbed (see `scrubText`), the value under every dropped key cleared to `undefined`, which the SDK
- * leaves out of what it sends, and the server hosts in every other key and
- * value replaced.
+ * text key scrubbed (see `scrubText`), the value under every dropped key
+ * cleared to `undefined`, which the SDK leaves out of what it sends, and the
+ * server hosts in every other key and value replaced.
  */
 const scrubUrlBearingRecord = (
   record: UrlBearingRecord,
