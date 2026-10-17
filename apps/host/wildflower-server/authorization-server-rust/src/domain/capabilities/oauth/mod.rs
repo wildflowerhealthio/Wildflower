@@ -5,8 +5,8 @@
 //!  - client-gated: anything a client does on its own behalf takes an
 //!    [`AuthenticatedClient`](crate::domain::authority::AuthenticatedClient)
 //!    proof, produced by [`ClientAuthenticator`] (the door the token-style
-//!    request extractor goes through) and consumed by [`TokenExchanger`] and
-//!    [`DeviceAuthorizer`];
+//!    request extractor goes through) and consumed by [`TokenExchanger`],
+//!    [`ClientTokenRevoker`] and [`DeviceAuthorizer`];
 //!  - public: [`CodeAuthorizationStarter`] (a browser arriving at
 //!    `/authorize`), [`AuthorizationStatusReader`] (polling by request id),
 //!    [`PublicKeysReader`] (the JWKS), and [`ClientScopesReader`] (the host's
@@ -26,6 +26,7 @@ mod authorization_status_reader;
 mod browser_pairing;
 mod client_authenticator;
 mod client_scopes_reader;
+mod client_token_revoker;
 mod code_authorization_starter;
 mod device_authorizer;
 mod launch_contexts;
@@ -42,6 +43,7 @@ pub(crate) use browser_pairing::{
 };
 pub(crate) use client_authenticator::ClientAuthenticator;
 pub(crate) use client_scopes_reader::ClientScopesReader;
+pub(crate) use client_token_revoker::ClientTokenRevoker;
 pub(crate) use code_authorization_starter::{
     AuthorizationStartError, AuthorizeNextStep, AuthorizeRequest, CodeAuthorizationStarter,
     FreshIds,

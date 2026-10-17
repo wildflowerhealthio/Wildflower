@@ -17,6 +17,10 @@ pub(crate) type LiveTokenExchanger = TokenExchanger<SqliteGrantStore>;
 
 impl FromState for LiveTokenExchanger {
     fn from_state(state: &Arc<AuthorizationServerState>) -> Self {
-        TokenExchanger::new(state.store.clone(), state.server_origin.clone())
+        TokenExchanger::new(
+            state.store.clone(),
+            state.revocation_check(),
+            state.server_origin.clone(),
+        )
     }
 }

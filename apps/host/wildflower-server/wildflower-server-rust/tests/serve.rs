@@ -1112,6 +1112,7 @@ async fn every_endpoint_smart_discovery_advertises_is_routed() {
         [
             "authorization_endpoint",
             "jwks_uri",
+            "revocation_endpoint",
             "token_endpoint",
             "wildflower_authorization_api"
         ]

@@ -30,6 +30,7 @@
 //!   the handlers name in `Scoped<…>`, `Authenticated<…>`, or `Live<…>`.
 
 mod client_authenticator;
+mod client_token_revoker;
 mod clients_disabler;
 mod clients_reader;
 mod consents_decider;
@@ -48,6 +49,7 @@ mod token_exchanger;
 mod token_revoker;
 
 pub(crate) use client_authenticator::LiveClientAuthenticator;
+pub(crate) use client_token_revoker::LiveClientTokenRevoker;
 pub(crate) use clients_disabler::LiveClientsDisabler;
 pub(crate) use clients_reader::LiveClientsReader;
 pub(crate) use consents_decider::LiveConsentDecider;

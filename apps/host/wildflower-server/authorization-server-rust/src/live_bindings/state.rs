@@ -25,7 +25,7 @@ use crate::domain::essential_client_guard::EssentialClientGuard;
 use crate::domain::pending_consent::NewestPendingConsent;
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
 use crate::domain::sign_in_redirect::SignInDestinations;
-use crate::ports::{AuthorizationStartGate, Revocation};
+use crate::ports::{AuthorizationStartGate, Revocation, RevocationCheck};
 
 /// Shared state threaded through every authorization server handler and lifted into the
 /// scope-gated capabilities. Opaque to callers outside the crate — the host
@@ -123,6 +123,13 @@ impl AuthorizationServerState {
     /// The [`Revocation`] port the capabilities revoke through: the shared
     /// [`revocation_store`](Self::revocation_store).
     pub(crate) fn revocation(&self) -> Arc<dyn Revocation> {
+        Arc::new(self.revocation_store.clone())
+    }
+
+    /// The [`RevocationCheck`] port the token verifier and refresh redemption
+    /// read through: the same shared
+    /// [`revocation_store`](Self::revocation_store).
+    pub(crate) fn revocation_check(&self) -> Arc<dyn RevocationCheck> {
         Arc::new(self.revocation_store.clone())
     }
 }

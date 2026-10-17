@@ -29,9 +29,11 @@ use crate::domain::authorization_code::IssuedAuthorizationCode;
 use crate::domain::authorization_request::{
     device_grant_name, AuthorizationRequest, GrantType, RequestStatus, DEVICE_CODE_POLL_INTERVAL,
 };
+use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::refresh_token::RefreshTokenFamily;
 use crate::domain::token_exchange_error::{InvalidGrantReason, TokenExchangeError};
 use crate::domain::GrantStore;
+use crate::ports::RevocationCheck;
 
 /// The presented halves of an `authorization_code` grant request (RFC 6749
 /// §4.1.3), as the client sent them.
@@ -386,16 +388,20 @@ pub(crate) struct ValidatedRefreshToken {
 
 impl ValidatedRefreshToken {
     /// Resolve the presented token's family and require it to be this client's,
-    /// unexpired, and not minted under a revoked browser session. A valid token presented by the wrong client is answered
-    /// exactly like an unknown one so a stranger can't probe validity, and is
-    /// refused before any consume so it can't burn the rightful client's token.
+    /// unexpired, not minted under a revoked browser session, and begun no
+    /// earlier than its client's revocation epoch. A valid token presented by
+    /// the wrong client is answered exactly like an unknown one so a stranger
+    /// can't probe validity, and is refused before any consume so it can't
+    /// burn the rightful client's token.
     ///
     /// # Errors
     ///
     /// [`TokenExchangeError::InvalidGrant`] with the specific reason;
-    /// [`TokenExchangeError::Store`] on a store failure.
+    /// [`TokenExchangeError::Store`] on a store failure, the revocation
+    /// store's included, so an unreadable epoch never admits a family.
     pub(crate) fn validate(
         store: &impl GrantStore,
+        revocation: &dyn RevocationCheck,
         authenticated_client: &AuthenticatedClient,
         presented_refresh_token: &str,
         now: DateTime<Utc>,
@@ -432,6 +438,25 @@ impl ValidatedRefreshToken {
                     },
                 ));
             }
+        }
+        // Bumping a client's revocation epoch revokes every token it held at
+        // that instant, refresh families included: a family begun before the
+        // epoch is refused like an access token issued before it. The family
+        // has no `jti` of its own, so only the epoch applies.
+        let family_predates_client_epoch = revocation
+            .is_revoked(None, Some(family.issued_at), &family.client_id)
+            .map_err(|error| {
+                AuthorizationServerError::infrastructure(
+                    "refresh-token revocation epoch check failed",
+                    error,
+                )
+            })?;
+        if family_predates_client_epoch {
+            return Err(TokenExchangeError::InvalidGrant(
+                InvalidGrantReason::RefreshTokenClientRevoked {
+                    family_id: family.family_id,
+                },
+            ));
         }
         Ok(ValidatedRefreshToken {
             token_scopes: token_scope_spellings(&family.scopes),
@@ -496,8 +521,9 @@ mod tests {
 
     use crate::domain::refresh_token::RefreshToken;
     use crate::domain::test_fake::{
-        authenticated_public_client, client, device_request, FakeGrantStore,
+        authenticated_public_client, client, device_request, FakeGrantStore, NothingRevoked,
     };
+    use wildflowerhealthio_token_revocation::RevocationStore;
 
     fn authenticated(store: &FakeGrantStore, client_id: &str) -> AuthenticatedClient {
         authenticated_public_client(store, client(client_id, &["openid"]))
@@ -743,26 +769,35 @@ mod tests {
         let stranger = authenticated(&store, "stranger");
         live_family(&store, "client", now);
 
-        let proof =
-            ValidatedRefreshToken::validate(&store, &client, "live", now).expect("validates");
+        let proof = ValidatedRefreshToken::validate(&store, &NothingRevoked, &client, "live", now)
+            .expect("validates");
         assert_eq!(proof.family_id(), "fam");
         assert_eq!(proof.presented_hash(), token_storage_hash("live"));
         assert_eq!(proof.granted_scopes(), ["openid", "offline_access"]);
         assert_eq!(
             reason(ValidatedRefreshToken::validate(
-                &store, &client, "ghost", now
+                &store,
+                &NothingRevoked,
+                &client,
+                "ghost",
+                now
             )),
             InvalidGrantReason::RefreshTokenNotFound
         );
         assert!(matches!(
             reason(ValidatedRefreshToken::validate(
-                &store, &stranger, "live", now
+                &store,
+                &NothingRevoked,
+                &stranger,
+                "live",
+                now
             )),
             InvalidGrantReason::RefreshTokenClientMismatch { .. }
         ));
         assert_eq!(
             reason(ValidatedRefreshToken::validate(
                 &store,
+                &NothingRevoked,
                 &client,
                 "live",
                 now + Duration::days(2)
@@ -785,13 +820,17 @@ mod tests {
         let client = authenticated(&store, "client");
         store.insert_browser_session(&session).unwrap();
         live_family_under(&store, "client", Some(&session.sid), now);
-        let proof =
-            ValidatedRefreshToken::validate(&store, &client, "live", now).expect("validates");
+        let proof = ValidatedRefreshToken::validate(&store, &NothingRevoked, &client, "live", now)
+            .expect("validates");
         assert_eq!(proof.sid(), Some(session.sid.as_str()));
         assert!(store.revoke_browser_session(&session.sid, now).unwrap());
         assert_eq!(
             reason(ValidatedRefreshToken::validate(
-                &store, &client, "live", now
+                &store,
+                &NothingRevoked,
+                &client,
+                "live",
+                now
             )),
             InvalidGrantReason::RefreshTokenSessionRevoked {
                 family_id: "fam".to_owned()
@@ -803,9 +842,51 @@ mod tests {
         live_family_under(&store, "client", Some("no-such-sid"), now);
         assert_eq!(
             reason(ValidatedRefreshToken::validate(
-                &store, &client, "live", now
+                &store,
+                &NothingRevoked,
+                &client,
+                "live",
+                now
             )),
             InvalidGrantReason::RefreshTokenSessionRevoked {
+                family_id: "fam".to_owned()
+            }
+        );
+    }
+
+    /// A family begun before its client's revocation epoch is refused; one
+    /// begun at or after it, or belonging to another client, still validates.
+    #[test]
+    fn a_refresh_token_is_refused_once_its_client_epoch_passes_the_family() {
+        let now = Utc::now();
+        let store = FakeGrantStore::default();
+        let client = authenticated(&store, "client");
+        live_family(&store, "client", now);
+        let revocation_store = RevocationStore::open_in_memory().expect("revocation store");
+
+        revocation_store
+            .bump_subject_epoch("client", now)
+            .expect("bump to the family's start");
+        ValidatedRefreshToken::validate(&store, &revocation_store, &client, "live", now)
+            .expect("a family begun at the epoch validates");
+        revocation_store
+            .bump_subject_epoch("other-client", now + Duration::seconds(1))
+            .expect("bump another client");
+        ValidatedRefreshToken::validate(&store, &revocation_store, &client, "live", now)
+            .expect("another client's epoch doesn't touch this family");
+
+        revocation_store
+            .bump_subject_epoch("client", now + Duration::seconds(1))
+            .expect("bump past the family's start");
+        assert_eq!(
+            reason(ValidatedRefreshToken::validate(
+                &store,
+                &revocation_store,
+                &client,
+                "live",
+                now
+            )),
+            InvalidGrantReason::RefreshTokenClientRevoked {
                 family_id: "fam".to_owned()
             }
         );
