@@ -62,21 +62,18 @@ const SCRIPT_KEYS: ReadonlySet<string> = new Set(['code.filepath', 'browser.scri
 
 /**
  * Keys whose string value is free text, compared case-insensitively:
- * `transaction` is the route name a standalone span, such as INP's, carries
- * as an attribute, which can be a URL's path.
+ * `transaction` and `sentry.segment.name` are the route name a standalone
+ * span, such as INP's, carries as attributes, which can be a URL's path.
  */
-const TEXT_KEYS: ReadonlySet<string> = new Set(['transaction'])
+const TEXT_KEYS: ReadonlySet<string> = new Set(['transaction', 'sentry.segment.name'])
 
 /**
  * Keys whose string value is an element string (see {@link elementPath}),
- * compared case-insensitively: the element a page-load span's largest
- * contentful paint painted; so is every key naming a layout shift's source
- * (see {@link isElementKey}).
+ * matched against the lower-cased key: the element a page-load span's largest
+ * contentful paint painted (`lcp.element`), and each one a layout shift moved
+ * (`cls.source.1`, …), with or without the `browser.web_vital.` prefix.
  */
-const ELEMENT_KEYS: ReadonlySet<string> = new Set(['lcp.element', 'browser.web_vital.lcp.element'])
-
-/** Keys naming the element a layout shift moved: `cls.source.1`, `browser.web_vital.cls.source.2`, … */
-const CLS_SOURCE_KEY = /^(?:browser\.web_vital\.)?cls\.source\.\d+$/
+const ELEMENT_KEY = /^(?:browser\.web_vital\.)?(?:lcp\.element|cls\.source\.\d+)$/
 
 /**
  * Prefixes of the ops of spans whose description is an element string: the
@@ -91,12 +88,19 @@ const ELEMENT_SPAN_OP_PREFIXES: readonly string[] = ['ui.interaction.', 'ui.webv
  */
 const ELEMENT_BREADCRUMB_CATEGORY_PREFIX = 'ui.'
 
-/** Keys that carry a URL's query string or fragment on their own; dropped outright. */
+/**
+ * Keys dropped outright: those that carry a URL's query string or fragment on
+ * their own, and the `id` of the element a page-load span's largest
+ * contentful paint painted (`lcp.id`), which, like the ids
+ * {@link elementPath} drops, can name a patient.
+ */
 const DROPPED_KEYS: ReadonlySet<string> = new Set([
   'http.query',
   'http.fragment',
   'url.query',
   'url.fragment',
+  'lcp.id',
+  'browser.web_vital.lcp.id',
 ])
 
 /**
@@ -189,8 +193,7 @@ const isScriptKey = (lowerCaseKey: string): boolean => SCRIPT_KEYS.has(lowerCase
 const isTextKey = (lowerCaseKey: string): boolean => TEXT_KEYS.has(lowerCaseKey)
 
 /** Whether the value under `lowerCaseKey` is an element string. */
-const isElementKey = (lowerCaseKey: string): boolean =>
-  ELEMENT_KEYS.has(lowerCaseKey) || CLS_SOURCE_KEY.test(lowerCaseKey)
+const isElementKey = (lowerCaseKey: string): boolean => ELEMENT_KEY.test(lowerCaseKey)
 
 /** Whether `span`'s description is an element string, by its op. */
 const hasElementDescription = (span: ScrubbableSpan): boolean => {
@@ -442,8 +445,8 @@ const scrubLogEntry = <L extends NonNullable<ScrubbableEvent['logentry']>>(
  *     `browser.script.invoker`) keeps only the scheme, host and path of an
  *     `http(s)` URL, its host-valued data (`server.address`, `url.domain`, `http.host`,
  *     `net.peer.name`) reduced to a kept host or `{host}`, and its query and
- *     fragment keys (`http.query`, `url.query`, …) and HTTP header attributes
- *     cleared
+ *     fragment keys (`http.query`, `url.query`, …), HTTP header attributes
+ *     and the largest contentful paint's element id (`lcp.id`) cleared
  *   - the element strings — the description of each `ui.interaction.*` and
  *     `ui.webvital.*` span, the message of each `ui.*` breadcrumb, and
  *     `lcp.element` and `cls.source.<n>` in span data — are reduced to their
@@ -451,8 +454,8 @@ const scrubLogEntry = <L extends NonNullable<ScrubbableEvent['logentry']>>(
  *   - the free text — the message and `logentry` (its message and string
  *     parameters), each exception's message, every other breadcrumb message
  *     and span description, the trace context's, the transaction name, and the
- *     `transaction` attribute in breadcrumb and span data — has the URLs in
- *     it anonymized
+ *     `transaction` and `sentry.segment.name` attributes in breadcrumb and span
+ *     data — has the URLs in it anonymized
  *   - in all of the above, in each stack frame's `filename`, `abs_path` and
  *     `module`, each debug image's `code_file`, and every other string in
  *     breadcrumb and span data, tags, `extra` and contexts, every relay

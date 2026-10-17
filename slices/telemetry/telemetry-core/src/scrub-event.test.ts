@@ -635,6 +635,7 @@ describe('scrubSpan', () => {
       description: `GET ${FHIR_URL}`,
       data: {
         transaction: '/r4/Patient/123',
+        'sentry.segment.name': '/r4/Patient/123',
         'url.full': FHIR_URL,
         'http.url': FHIR_URL,
         'sentry.op': 'http.client',
@@ -646,6 +647,7 @@ describe('scrubSpan', () => {
       description: `GET ${ANONYMIZED_FHIR_URL}`,
       data: {
         transaction: '/r4/Patient/{id}',
+        'sentry.segment.name': '/r4/Patient/{id}',
         'url.full': ANONYMIZED_FHIR_URL,
         'http.url': ANONYMIZED_FHIR_URL,
         'sentry.op': 'http.client',
@@ -669,21 +671,25 @@ describe('scrubSpan', () => {
     expect(scrubbedSpan.description).toBe('main > button')
   })
 
-  test('reduces the elements in web vital attributes to their tag names', () => {
+  test('reduces the elements in web vital attributes to their tag names and drops the element id', () => {
     const span = {
       op: 'pageload',
       data: {
         'lcp.element': 'main > img#photo-123[alt="Jane Doe"]',
+        'lcp.id': 'jane-doe',
         'cls.source.1': 'div.banner[title="Jane"]',
         'browser.web_vital.lcp.element': 'h1#jane-doe',
+        'browser.web_vital.lcp.id': 'jane-doe',
         'browser.web_vital.cls.source.2': 'p[title="Doe"]',
       },
     }
 
     expect(scrubSpan(span).data).toStrictEqual({
       'lcp.element': 'main > img',
+      'lcp.id': undefined,
       'cls.source.1': 'div',
       'browser.web_vital.lcp.element': 'h1',
+      'browser.web_vital.lcp.id': undefined,
       'browser.web_vital.cls.source.2': 'p',
     })
   })
