@@ -168,7 +168,7 @@ mod tests {
     use std::sync::Arc;
 
     use axum::http::{header, HeaderMap, HeaderValue};
-    use chrono::{DateTime, Duration, Utc};
+    use chrono::{Duration, Utc};
 
     use super::{
         browser_session_clearing_set_cookie, browser_session_set_cookie, browser_session_token,
@@ -177,27 +177,12 @@ mod tests {
     use crate::domain::browser_session::BrowserSession;
     use crate::domain::capabilities::session::TokenVerifier;
     use crate::domain::signing_key::SigningKey;
-    use crate::domain::test_fake::{seed_active_signing_key, FakeGrantStore};
+    use crate::domain::test_fake::{seed_active_signing_key, FakeGrantStore, NothingRevoked};
     use crate::domain::token::{mint_access_token, NewJwtArgs};
     use crate::domain::GrantStore as _;
-    use crate::ports::RevocationCheck;
     use crate::BROWSER_SESSION_CLIENT_ID;
 
     const ORIGIN: &str = "https://ruth.relay.example";
-
-    /// A revocation check that revokes nothing.
-    struct NothingRevoked;
-
-    impl RevocationCheck for NothingRevoked {
-        fn is_revoked(
-            &self,
-            _jti: Option<&str>,
-            _issued_at: Option<DateTime<Utc>>,
-            _subject: &str,
-        ) -> Result<bool, String> {
-            Ok(false)
-        }
-    }
 
     /// A token for this server, issued to `client_id` under `sid`.
     fn mint(key: &SigningKey, client_id: &str, sid: Option<&str>) -> String {

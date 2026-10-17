@@ -20,7 +20,7 @@ use crate::domain::client_credentials::ClientCredentials;
 use crate::domain::grant::AuthorizationCodeGrant;
 use crate::domain::signing_key::SigningKey;
 use crate::domain::GrantStore;
-use crate::ports::OwnerApproval;
+use crate::ports::{OwnerApproval, RevocationCheck};
 
 /// A pending (by default) device-code authorization request fixture.
 pub(crate) fn device_request(
@@ -219,5 +219,20 @@ impl RecordingOwnerApproval {
 impl OwnerApproval for RecordingOwnerApproval {
     fn republish_active(&self) {
         self.republishes.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+/// A [`RevocationCheck`] under which nothing is revoked: no denylisted `jti`
+/// and no subject epoch.
+pub(crate) struct NothingRevoked;
+
+impl RevocationCheck for NothingRevoked {
+    fn is_revoked(
+        &self,
+        _jti: Option<&str>,
+        _issued_at: Option<DateTime<Utc>>,
+        _subject: &str,
+    ) -> Result<bool, String> {
+        Ok(false)
     }
 }

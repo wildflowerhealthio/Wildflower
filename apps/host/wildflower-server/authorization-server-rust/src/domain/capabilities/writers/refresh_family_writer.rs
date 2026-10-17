@@ -128,6 +128,7 @@ mod tests {
 
     use crate::domain::test_fake::{
         authenticated_public_client, client, code_grant, redeemed_code, FakeGrantStore,
+        NothingRevoked,
     };
 
     /// Only a grant carrying `offline_access` earns a refresh token.
@@ -171,7 +172,8 @@ mod tests {
 
     fn validated(store: &FakeGrantStore, plaintext: &str) -> ValidatedRefreshToken {
         let client = authenticated_public_client(store, client("client", &["openid"]));
-        ValidatedRefreshToken::validate(store, &client, plaintext, Utc::now()).unwrap()
+        ValidatedRefreshToken::validate(store, &NothingRevoked, &client, plaintext, Utc::now())
+            .unwrap()
     }
 
     /// Rotation consumes the presented token and issues a live successor in the

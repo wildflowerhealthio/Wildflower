@@ -28,14 +28,15 @@ The system, Patient and Group `$export` operations are served, with HFS's defaul
 
 `GET /.well-known/smart-configuration` is handled locally (`src/smart_configuration.rs`), mounted ahead of HFS with HFS's router as the fallback.
 
-HFS's built-in discovery doc is shaped for **SMART Backend Services** — it advertises `client_credentials` with `token_endpoint_auth_methods_supported: ["private_key_jwt"]` only. Public **SMART App Launch** clients (e.g. the SMART growth-chart sample) need the `authorization_code` grant and an `authorization_endpoint`. Our override advertises the authorization server authorize/token URLs that already exist at the host root, so a SMART app fetches discovery here and follows the links straight to the authorization server for the authorize/token exchange. Its `capabilities` also list `wildflower-server`, which is how a client (`authorization-core`'s discovery) tells a Wildflower server from a plain SMART server answering at the same kind of URL.
+HFS's built-in discovery doc is shaped for **SMART Backend Services** — it advertises `client_credentials` with `token_endpoint_auth_methods_supported: ["private_key_jwt"]` only. Public **SMART App Launch** clients (e.g. the SMART growth-chart sample) need the `authorization_code` grant and an `authorization_endpoint`. Our override advertises the authorization server's authorize, token and revocation URLs at the host root, so a SMART app fetches discovery here and follows the links straight to the authorization server for the authorize/token exchange and to revoke its tokens. Its `capabilities` also list `wildflower-server`, which is how a client (`authorization-core`'s discovery) tells a Wildflower server from a plain SMART server answering at the same kind of URL.
 
 The document advertises only what is served. Every endpoint URL in it is a route on the server's origin (`wildflower-server-rust`'s `every_endpoint_smart_discovery_advertises_is_routed` walks them), except `management_endpoint`:
 
 - **`management_endpoint`** is the hosted Wildflower Authorization app, pointed at this server: `<AuthorizationAppBase>?iss=<issuer>`. The host sets the base (`authorization_app_base_url` in `tauri-shared-config.json`, `https://authorization.wildflowerhealth.io/`).
 - **`wildflower_authorization_api`**, a Wildflower extension field, is the authorization server's JSON API base, `<origin>/authorization/`. The app reads it, so it never hardcodes a server path.
 - **`grant_types_supported`** and **`token_endpoint_auth_methods_supported`** are what `/oauth/token` accepts: the `authorization_code`, `refresh_token` and device-code grants; a client secret in a Basic header or the form body, or `none` for a public client.
-- There is no `registration_endpoint`, `revocation_endpoint` or `introspection_endpoint`: none is served. `/authorization/revocations` takes `{jti, expiresAt}` or `{subject}`, not RFC 7009's `token`, so it isn't advertised as one.
+- **`revocation_endpoint`** is `/oauth/revoke`, RFC 7009 token revocation. A client presents one of its own access or refresh tokens and authenticates as it does at `/oauth/token`. A refresh token ends its whole family; an access token is denylisted until it expires. An unknown token, one already dead, and another client's token all get `200` and are left alone.
+- There is no `registration_endpoint` or `introspection_endpoint`: neither is served.
 
 ## `$everything` operation (added; Patient only)
 

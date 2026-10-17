@@ -2,7 +2,8 @@
 //!
 //! These exist because the real handler payload types
 //! (`super::token_exchange::TokenPayload`,
-//! `super::device_authorization::DeviceAuthorizationPayload`) deliberately omit
+//! `super::device_authorization::DeviceAuthorizationPayload`,
+//! `super::token_revocation::TokenRevocationPayload`) deliberately omit
 //! the client credentials — `resolve_client_credentials` parses them from the
 //! same form body out-of-band — so the on-the-wire request body has to model
 //! `client_id`/`client_secret` back in. The 404 body has no Rust type either
@@ -65,6 +66,21 @@ pub(super) struct DeviceAuthorizationRequest {
     scope: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     device_name: Option<String>,
+}
+
+/// `POST /oauth/revoke` request body (RFC 7009 §2.1) — the token plus the
+/// body credentials. Form-urlencoded. `token_type_hint` is accepted and not
+/// read: the server tells the token's type from the token.
+#[derive(Serialize, ToSchema)]
+pub(super) struct TokenRevocationRequestBody {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    client_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    client_secret: Option<String>,
+    token: String,
+    /// `access_token` or `refresh_token`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    token_type_hint: Option<String>,
 }
 
 /// The JSON 404 body `not_found("AuthorizationRequestNotFound", "id", ...)`

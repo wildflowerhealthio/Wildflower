@@ -184,7 +184,8 @@ fn invalid_grant_description(reason: &InvalidGrantReason) -> &'static str {
         | InvalidGrantReason::RefreshTokenVanished { .. } => "Invalid refresh_token parameter",
         InvalidGrantReason::RefreshTokenExpired => "Refresh token has expired",
         InvalidGrantReason::RefreshTokenReplayed { .. }
-        | InvalidGrantReason::RefreshTokenSessionRevoked { .. } => "Refresh token has been revoked",
+        | InvalidGrantReason::RefreshTokenSessionRevoked { .. }
+        | InvalidGrantReason::RefreshTokenClientRevoked { .. } => "Refresh token has been revoked",
     }
 }
 
