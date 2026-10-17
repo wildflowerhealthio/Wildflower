@@ -33,6 +33,12 @@ pub(crate) struct OAuthConsent {
     /// now** — the warning the consent UI leads with, and the flag that makes
     /// its acknowledgement checkbox mandatory.
     pub(crate) registration: ClientRegistrationBody,
+    /// The approval scopes the caller's own token lacks to approve this
+    /// request (`wildflower/Grant.c`, and `wildflower/Client.c` or
+    /// `wildflower/Client.u` when approving would register or widen the
+    /// client). Empty when it may approve; otherwise the consent UI asks the
+    /// server's Owner in place of Allow.
+    pub(crate) missing_approval_scopes: Vec<String>,
 }
 
 /// Wire shape of [`OAuthConsent::registration`] — the
@@ -90,6 +96,7 @@ async fn handle_get_oauth_consent(
         requested_redirect_uri,
         client_name,
         registration_verdict,
+        missing_approval_scopes,
     } = consents.oauth_consent(&id)?;
     Ok(Json(OAuthConsent {
         id: id.clone(),
@@ -100,5 +107,6 @@ async fn handle_get_oauth_consent(
         pre_approved_scopes: request.pre_approved_scopes,
         patient: request.patient,
         registration: registration_verdict.into(),
+        missing_approval_scopes,
     }))
 }

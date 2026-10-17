@@ -153,6 +153,8 @@ expired prompt leaves no trace of it.
 Approving a `new` or `changed` prompt requires the Owner's explicit
 `acknowledgedRegistration` (the consent UI's "I recognise this app and this
 redirect address" checkbox) — the server rejects the approval without it.
+Creating the row also takes `wildflower/Client.c` of the approver, and
+widening it `wildflower/Client.u` (see [Approval scopes](#approval-scopes)).
 On approval the row is created (`kind: 'public'`, every grant type, name
 equal to the `client_id`, the one redirect, the granted scopes) or widened:
 the exact `redirect_uri` is added to `redirectUris` and the **granted** (not
@@ -355,7 +357,9 @@ The host app's path to becoming an Owner-authenticated client. Flow:
    host app opens the device page with the code filled in for the newest of
    the [pending consents](#pending-consents).
 3. Owner reviews the request (device name + requested scopes) and approves via
-   `POST /authorization/devices/:userCode/approve`. The Owner may add scopes beyond
+   `POST /authorization/devices/:userCode/approve`, which takes
+   `wildflower/Grant.c` of the approver (see
+   [Approval scopes](#approval-scopes)). The Owner may add scopes beyond
    what the device requested (up to the client's `allowedScopes`) or prune them
    — see [Expandable consent](#expandable-consent) — and, from the settings
    surface, adjust the device name.
@@ -421,8 +425,9 @@ to ‹domain›", or for a pairing "‹browser›, a remote browser, wants to si
 to ‹domain›") once for each request it hasn't notified for, and on the
 desktop, where a notification can't be clicked, opens the request at once. A
 request that comes back once a newer one is decided doesn't notify again. A
-code request made by a browser whose session can decide consents, as the
-Owner's can, neither notifies nor opens: `/oauth/authorize` sent that browser
+code request made by a browser whose session can decide it (holding its
+[approval scopes](#approval-scopes)), as the Owner's can, neither notifies nor
+opens: `/oauth/authorize` sent that browser
 to the consent card, and records on the request that it can be decided there
 (`decidable_in_requesting_browser`, carried on the newest pending consent).
 The base's server page shows it as a pending request; Open, a tap on the
@@ -501,7 +506,11 @@ patient search, and Approve and Deny. The decision's answer carries the
 client's callback (`code` + `state`, or `error=access_denied` + `state`), and
 the page leaves for it with `location.replace`, only for an `http:`/`https:`
 URL. A browser that can't read the request (`401`, `403`, or `404` once it is
-no longer pending) goes to the wait page instead.
+no longer pending) goes to the wait page instead. A browser whose session
+lacks some of the request's [approval scopes](#approval-scopes) (the read's
+`missingApprovalScopes`) sees "This browser can't allow this app." above the
+buttons, none of the patient search, registration warning or scopes, and "Ask
+the server's owner" in place of Allow, which goes to the wait page.
 The FHIR server doesn't yet limit a `patient/` scope to the token's patient
 (it checks it like a `system/` one, #416), so while the draft grants any
 `patient/` scope the card warns, above Allow and Deny, that the app can read
@@ -651,10 +660,13 @@ holds an expired or revoked token is served as if the cookie weren't sent, and
 the response clears it. The cookie needs `https`, as the server's origin,
 `https://<domain>`, is. `/oauth/authorize` reads the cookie too: a parked
 request from a browser whose session can decide consents (its scopes cover
-both `wildflower/AuthorizationRequest.r` and `wildflower/AuthorizationRequest.u`,
-as `OWNER_SCOPES` do) goes to the
-[consent card](#consent-card) rather than the [wait page](#wait-page), and
-records that it can be decided there (`decidable_in_requesting_browser`).
+`wildflower/AuthorizationRequest.r`, `wildflower/AuthorizationRequest.u` and
+`wildflower/Grant.c`, as `OWNER_SCOPES` do) and that holds the request's
+[approval scopes](#approval-scopes) goes to the [consent card](#consent-card)
+rather than the [wait page](#wait-page), and records that it can be decided
+there (`decidable_in_requesting_browser`). One whose session lacks
+`wildflower/Client.c` or `wildflower/Client.u` the request takes goes to the
+wait page, and the request is raised for the Owner like any other.
 Only a token issued to the browser-session client under a browser session
 (its `sid`) counts: any other token in the cookie is served as no session.
 
@@ -716,6 +728,7 @@ one by **where it comes from**:
 | `registration_ceiling_scopes`   | The most a code approval may grant: the registration, plus the request for a client trusted on first use.    |
 | `unregistered_requested_scopes` | Requested scopes the registration does not cover (`newScopes` on the wire).                                  |
 | `approver_missing_scopes`       | Resource scopes an approval would grant that the approving Owner does not hold (`missingScopes` on the 403). |
+| `missing_approval_scopes`       | [Approval scopes](#approval-scopes) the reader of a consent prompt does not hold (`missingApprovalScopes`).  |
 | `granted_scopes`                | What an approval delegated, recorded on the request, the code, and the refresh family.                       |
 | `OWNER_SCOPES`                  | The Owner's authority: `WILDFLOWER_WIDEST_SCOPES` plus `wildflower/launch`, defined in code.                 |
 
@@ -724,6 +737,37 @@ An approval with any `approver_missing_scopes` is refused as a whole with
 stays `pending`, so an approver whose token does cover it can still answer it.
 The [consent card](#consent-card) shows the refusal above its decision, and
 the Owner can narrow the ticked scopes and approve again.
+
+### Approval scopes
+
+An approver may approve a code-flow or device-flow request only when it can
+also create what the approval creates. On top of
+`wildflower/AuthorizationRequest.u`, which decides a request at all, approving
+takes:
+
+| Approval creates                                                         | Scope                 |
+| ------------------------------------------------------------------------ | --------------------- |
+| The standing [grant](#grant), on every code or device approval           | `wildflower/Grant.c`  |
+| A [client](#client) row, for a `new` [registration](#trust-on-first-use) | `wildflower/Client.c` |
+| A widened client row, for a `changed` registration                       | `wildflower/Client.u` |
+
+The host app's client has a fixed registration, so approving its requests
+takes no client scope. A [browser pairing](#browser-pairing) records no grant
+and registers no client, so it takes `wildflower/AuthorizationRequest.u` alone.
+`OWNER_SCOPES` cover every approval scope, so an Owner session can always
+approve; an [approved browser](#browser-session) can only with the scopes its
+pairing granted.
+
+`ConsentDecider` holds the approver's grant and checks the approval scopes per
+call (`approval_scopes` in `domain/capabilities/access/consents`), before
+anything is written. An approver lacking one is refused as a whole with
+`403 InsufficientScope` naming the missing scopes, and the request stays
+`pending` for the Owner. `GET /authorization/oauth-consents/{id}` returns the
+ones the reader lacks as `missingApprovalScopes`, and the
+[consent card](#consent-card) asks the server's Owner in place of Allow when
+there are any. [`DelegatedScopes`](#scope-sets) still applies on top: an
+approver holding every approval scope still can't grant a resource scope it
+doesn't hold.
 
 ### `authorization-server-pages` group
 

@@ -58,6 +58,12 @@ interface OAuthConsentCardProps {
   /** A name search above the patient picker. Absent ⇒ the picker lists `patients` alone. */
   readonly patientSearch?: PatientNameSearch
   readonly onDone: (result: OAuthConsentResult) => void
+  /**
+   * Hand the request to the server's Owner, for a reader whose token lacks
+   * some of the consent's `missingApprovalScopes`: the card offers it in place
+   * of Allow.
+   */
+  readonly onAskOwner: () => void
 }
 
 /** The host `redirectUri` sends the browser back to, or the raw string if it doesn't parse. */
@@ -69,10 +75,16 @@ const redirectHostOf = (redirectUri: string): string => {
   }
 }
 
+/** Why the card offers "Ask the server's owner" in place of Allow. */
+const CANNOT_ALLOW = "This browser can't allow this app."
+
 /**
  * The OAuth consent card: the app-identity header with where it sends the
  * browser back to, the launch-patient bar, the shared {@link ScopePicker}
- * editing surface, and the approve/deny decision wiring. The scope editing
+ * editing surface, and the approve/deny decision wiring. A reader lacking
+ * some of the consent's `missingApprovalScopes` gets none of the patient bar,
+ * registration warning or scope editing, and "Ask the server's owner" in place
+ * of Allow. The scope editing
  * itself (statements ⇄ grid, exclusions, flags) is `scopes-react`'s; this card
  * owns the draft and the result routing. What sends the decision and what
  * reads the patients come from its composer: the authorization server's own
@@ -84,6 +96,7 @@ const OAuthConsentCard = ({
   patients: patientOptions,
   patientSearch,
   onDone,
+  onAskOwner,
 }: OAuthConsentCardProps): JSX.Element => {
   const request = useMemo(
     () => ScopeRequest.fromRequestedScopes({ optional: consent.scopes }),
@@ -107,6 +120,10 @@ const OAuthConsentCard = ({
   // shown) for `registered`, so it always sends `false` in that case.
   const [registrationAcknowledged, setRegistrationAcknowledged] = useState(false)
   const registrationNeedsAcknowledgment = consent.registration.status !== 'registered'
+  // A reader whose token lacks an approval scope (the power to create the
+  // grant, or the client registration this approval would create or widen)
+  // can't allow; the server would refuse it.
+  const canAllow = consent.missingApprovalScopes.length === 0
   const { options: patients, loading: patientsLoading, error: patientsError } = patientOptions
   // The patient the Owner picked, kept so the picker still names them once a
   // later name search no longer lists them.
@@ -237,7 +254,9 @@ const OAuthConsentCard = ({
         </div>
       ) : null}
 
-      {draftHasPatientScope ? (
+      {/* A reader who can't allow gets none of the decision's controls: they
+          only shape an approval it can't make. */}
+      {canAllow && draftHasPatientScope ? (
         <div className={styles['patient-bar']} ref={patientBarRef}>
           <p className={styles['eyebrow']}>Patient</p>
           {patientSearch !== undefined ? (
@@ -275,26 +294,39 @@ const OAuthConsentCard = ({
         </div>
       ) : null}
 
-      <RegistrationWarning
-        registration={consent.registration}
-        clientId={consent.clientId}
-        redirectUri={consent.redirectUri}
-        acknowledged={registrationAcknowledged}
-        onAcknowledgeChange={setRegistrationAcknowledged}
-      />
-
-      <ScopePicker subjectName={appName} request={request} draft={draft} onDraftChange={setDraft} />
+      {canAllow ? (
+        <>
+          <RegistrationWarning
+            registration={consent.registration}
+            clientId={consent.clientId}
+            redirectUri={consent.redirectUri}
+            acknowledged={registrationAcknowledged}
+            onAcknowledgeChange={setRegistrationAcknowledged}
+          />
+          <ScopePicker
+            subjectName={appName}
+            request={request}
+            draft={draft}
+            onDraftChange={setDraft}
+          />
+        </>
+      ) : null}
 
       <div className={styles['footer']}>
         {/* Stopgap until the FHIR server enforces patient compartments (#416):
             a patient-context scope is checked like a system one. Tracks the
             draft, so it goes once every patient-context scope is unticked. */}
-        {draftHasPatientContextScope ? (
+        {canAllow && draftHasPatientContextScope ? (
           <p role="note" className={styles['patient-scope-warning']}>
             This server can't yet limit an app to one patient. If you allow this, the app can read
             the records it asks for for every patient on this server.
           </p>
         ) : null}
+        {canAllow ? null : (
+          <p role="note" className={styles['ask-owner-reason']}>
+            {CANNOT_ALLOW}
+          </p>
+        )}
         <div className={styles['buttons']}>
           <button
             type="button"
@@ -304,22 +336,33 @@ const OAuthConsentCard = ({
           >
             Deny
           </button>
-          <button
-            type="button"
-            className={cn('button-2 filled', styles['allow'])}
-            // A fully-pruned draft serializes to no scopes, which the backend
-            // treats as a deny — block the approve action rather than let an
-            // empty grant submit as an accidental denial. A `new`/`changed`
-            // registration additionally gates on the acknowledgment checkbox.
-            disabled={
-              submitting ||
-              !GrantDraft.hasScopes(draft) ||
-              (registrationNeedsAcknowledgment && !registrationAcknowledged)
-            }
-            onClick={handleApprove}
-          >
-            Allow access
-          </button>
+          {canAllow ? (
+            <button
+              type="button"
+              className={cn('button-2 filled', styles['allow'])}
+              // A fully-pruned draft serializes to no scopes, which the backend
+              // treats as a deny — block the approve action rather than let an
+              // empty grant submit as an accidental denial. A `new`/`changed`
+              // registration additionally gates on the acknowledgment checkbox.
+              disabled={
+                submitting ||
+                !GrantDraft.hasScopes(draft) ||
+                (registrationNeedsAcknowledgment && !registrationAcknowledged)
+              }
+              onClick={handleApprove}
+            >
+              Allow access
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={cn('button-2 filled', styles['allow'])}
+              disabled={submitting}
+              onClick={onAskOwner}
+            >
+              Ask the server's owner
+            </button>
+          )}
         </div>
       </div>
     </section>

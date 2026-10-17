@@ -80,8 +80,14 @@ const stubServer: Layer.Layer<HttpClient.HttpClient> = Layer.succeed(
   })
 )
 
-/** The pending request the stub server holds for `scopes`. */
-const consentFor = (scopes: readonly string[]): unknown => ({
+/**
+ * The pending request the stub server holds for `scopes`, read by a browser
+ * lacking `missingApprovalScopes` (none by default).
+ */
+const consentFor = (
+  scopes: readonly string[],
+  missingApprovalScopes: readonly string[] = []
+): unknown => ({
   id: 'req-1',
   clientId: 'fitbit-sync',
   clientName: 'Fitbit Sync',
@@ -90,6 +96,7 @@ const consentFor = (scopes: readonly string[]): unknown => ({
   preApprovedScopes: [],
   patient: null,
   registration: { status: 'registered' },
+  missingApprovalScopes,
 })
 
 /** A stub server holding `consent`, deciding with `decision`, and finding `patients`. */
@@ -202,6 +209,20 @@ describe('ConsentPage — exit', () => {
       await screen.findByText('The authorization server returned an unexpected answer.')
     ).toBeDefined()
     expect(leaveFor).not.toHaveBeenCalled()
+  })
+})
+
+describe("ConsentPage — asking the server's owner", () => {
+  test('a browser lacking an approval scope asks the owner, which leaves for the wait page and approves nothing', async () => {
+    answer = serverHolding(consentFor(['user/Observation.rs'], ['wildflower/Grant.c']), {
+      status: 'approved',
+    })
+    const { user } = renderPage()
+
+    await user.click(await screen.findByRole('button', { name: "Ask the server's owner" }))
+
+    expect(leaveFor).toHaveBeenCalledWith(WAIT_PAGE)
+    expect(approvals()).toEqual([])
   })
 })
 

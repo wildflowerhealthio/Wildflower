@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 use wildflowerhealthio_scopes::Grant;
 
 use super::delegation::deny_consent;
-use super::{ApproveDeviceConsentInput, ConsentOutcome};
+use super::{require_approval_scopes, ApproveDeviceConsentInput, ConsentOutcome};
 use crate::domain::authority::{ApprovableScopes, DelegatedScopes};
 use crate::domain::authorization_request::{
     device_grant_name, AuthorizationRequest, GrantType, RequestStatus,
@@ -47,6 +47,12 @@ pub(super) fn load_pending_request_by_user_code(
 /// request, for a device mint (or refresh) the standing device grant, and
 /// republish the popup head. An approval that grants nothing is applied as a
 /// **deny**.
+///
+/// A device request's approver must hold its
+/// [approval scopes](super::approval_scopes) (`wildflower/Grant.c`, for the
+/// standing device grant), else the approval fails with
+/// [`InsufficientScope`](AuthorizationServerError::InsufficientScope) and
+/// nothing is written. A browser pairing records no grant, so it takes none.
 pub(super) fn approve_device_consent(
     store: &impl GrantStore,
     owner_approval: &dyn OwnerApproval,
@@ -69,6 +75,7 @@ pub(super) fn approve_device_consent(
             make_consent_not_found,
         );
     }
+    require_approval_scopes(approver_grant, None)?;
     let client = store
         .client_by_id(&device_request.client_id)?
         .ok_or_else(make_consent_not_found)?;

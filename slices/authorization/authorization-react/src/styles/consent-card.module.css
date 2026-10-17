@@ -164,6 +164,10 @@
   color: var(--color-neutral-5);
 }
 
+.ask-owner-reason {
+  margin: 0;
+}
+
 .buttons {
   display: flex;
   gap: var(--space-5);
