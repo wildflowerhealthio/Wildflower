@@ -14,11 +14,14 @@ it names none, the menu's copy), is
 `smart-app-core`'s, so a page that is not React (the server-docs console)
 offers the same choices; this package re-exports its preset groups.
 
-- `SmartAppRoot({ app, registration, telemetry, launched?, replaceLocation?, children })`
+- `SmartAppRoot({ app, registration, telemetry, basepath?, launched?, replaceLocation?, children })`
   — the app root, and the app's one page: it starts a SMART launch its URL
   carries, completes the callback, and shows the landing on a plain visit.
   `registration` is the app's SMART registration (`clientId` and `scope`),
-  for a launch the URL carries and for the connect menu alike. `telemetry`
+  for a launch the URL carries and for the connect menu alike. `basepath`
+  is a routed app's served directory (`SmartAppPage.basepath`): the OAuth
+  redirect URI is that directory, whichever route the page was opened at;
+  without it, the page URL's own directory. `telemetry`
   (`SmartAppTelemetry`: `dsn`, `app`) names where the app reports once the
   visitor consents: its own Sentry project's DSN and the id its events are
   tagged with. `replaceLocation` replaces the page in the session history
@@ -32,8 +35,8 @@ offers the same choices; this package re-exports its preset groups.
   (`autoConnect`). Either target shows the problem the page arrived with
   (`arrivalProblem`).
 - `openSmartAppPage(import.meta.url)`, its `SmartAppPage` (`history`,
-  `basepath`), and `SmartHandshakeGate({ page, connecting, children })` — what a
-  routed app's router runs over, and the gate it is built under; see
+  `basepath`), and `SmartHandshakeGate({ page, connecting, landsOn?, children })`
+  — what a routed app's router runs over, and the gate it is built under; see
   [Routing a SMART app](#routing-a-smart-app).
 - `LoadingLine`, `LoadingMoreLine` and `ReadFailureLine` — the read-status
   vocabulary an app's page speaks: `Loading…` (or `Loading <subject>…`)
@@ -46,17 +49,14 @@ offers the same choices; this package re-exports its preset groups.
     every patient (`{ kind: 'all-patients' }`). `patientScopeOf` turns it
     into the `patientId: string | null` a `fhir-r4-react/smart` reader
     takes (`null` reads unscoped); `patientChoiceKeyOf` into one string,
-    distinct per choice, for a React key, a query key, or `?patient=`
-    (`PATIENT_PARAM`), and `patientChoiceOfKey` back, for an app whose
-    router owns `?patient=` as a search param.
+    distinct per choice, for a React key, a query key, or `?patient=`.
   - `usePatientChoice(launchPatientId)` — the choice the page reads under,
-    `None` while the reader is choosing, with `choosePatient` and
-    `changePatient`, for an app without a router.
-  - `PatientSearch`, `useRoutedPatientPicker(launchPatientId,
-    choiceLandsOn)`, `useRoutedPatientChoice(launchPatientId)` and
-    `routedPatientChoiceOf(patientKey, launchPatientId)` — the same choice
-    for an app whose router owns `?patient=` (and the picker's
-    `?picking-patient=`, `PICKING_PATIENT_PARAM`); see
+    `?patient=` in the URL, `None` while the reader is choosing, with
+    `choosePatient` and `changePatient`, for an app without a router.
+  - `useRoutedPatientChoice()`, `ensureRoutedPatient(queryClient, client,
+    patientId)`, `launchPatientRoute(client)`, `RouteNotFound({ appName })`
+    and `PatientRouteNotFound({ appName, data })` — the choice for an app
+    whose router names the patient in the path; see
     [Routing a SMART app](#routing-a-smart-app).
   - `PatientPicker({ client, onPatientChoice })` — "All patients" first,
     then every patient the session can see (`fetchPatientPage`, name and
@@ -113,45 +113,62 @@ package, in an order that is load-bearing:
 - **The router is built only under `SmartHandshakeGate`.** The app root is
   the OAuth redirect target, so its URL carries `?code=…&state=…` until
   fhirclient takes them out as the exchange completes. A router matches the
-  URL and redirects `/` to a tab, so it must not exist while the exchange
-  still reads that URL. The gate runs `useSmartHandshake`, shows the app's
-  `connecting` element meanwhile, shows a failed exchange and carries it to
-  the app root (`useLaunchFailureRedirect`), and renders `children(client)`
-  once ready (it takes the app's `SmartAppPage` as `page`); the app builds its router there, once (`useState` or a memo on
-  its context), so a tab change is a navigation inside it, never a rebuild.
-  A launch URL never reaches the router at all: `SmartAppRoot` starts the
-  launch before the app mounts.
-- **`?patient=` is a root search param, read as a string.** The router's
-  default `parseSearch` JSON-parses each value (`?patient=1.50` would read as
-  `1.5`, `1e5` as `100000`), and a FHIR id can look like a number, so the
-  router is built with `parsePlainSearch` / `stringifyPlainSearch`, which
-  keep every value as the address bar holds it. The root route validates
-  `PatientSearch` and keeps only `?patient=` across navigations
-  (`retainSearchParams([PATIENT_PARAM])`), so a tab change keeps the patient
-  and each history entry names the one it showed. Any route reads the choice
-  with `useRoutedPatientChoice(client.patient.id)` (the address bar's, else
-  the launch's, else none); a `beforeLoad` reads it from the search it is
-  handed with `routedPatientChoiceOf`.
-- **The picker is a history entry.** The root takes
-  `useRoutedPatientPicker(client.patient.id, choiceLandsOn)` and shows the
-  picker while its `patientChoice` is `None`: with no patient to show, or on
-  an entry carrying `?picking-patient=` (`PICKING_PATIENT_PARAM`).
-  `changePatient` (the patient line's "Change patient", or a tab's own
-  prompt for a patient) pushes the location open with the flag added and
-  `?patient=` kept, so Back closes the picker on the page it was opened
-  over. `choosePatient` pushes `choiceLandsOn` (a path of the app's, or `.`
-  for the tab open) with the new `?patient=` and no flag. No navigation
-  keeps the flag, so it never reaches a tab link. Patient changes are
-  navigations, so the router lives as long as the page.
+  URL and can rewrite it (an index redirecting to its first tab), so it must
+  not exist while the exchange still reads that URL. The gate runs
+  `useSmartHandshake`, shows the app's `connecting` element meanwhile, shows
+  a failed exchange and carries it to the app root
+  (`useLaunchFailureRedirect`), and renders `children(client)` once ready
+  (it takes the app's `SmartAppPage` as `page`, and `landsOn`, below); the
+  app builds its router there, once (`useState` or a memo on its context),
+  so a tab change is a navigation inside it, never a rebuild. A launch URL
+  never reaches the router at all: `SmartAppRoot` starts the launch before
+  the app mounts.
+- **The patient is in the path.** The routes follow one scheme: `/` the
+  app's introduction (`branding-react`'s `AppLanding`, the standalone
+  landing's, with a link into the app in place of the connect menu),
+  `/patients` the picker, one patient's pages under `/patients/$patientId`,
+  and every patient's pages at routes of the app's own (strength's
+  `/workouts`, medications' top-level tabs). The router owns no query, so it
+  keeps TanStack's default search parser; a path param is the string the
+  address bar holds, so an id such as `1.50` reads as itself. Any route
+  reads whose records it shows with `useRoutedPatientChoice()`: the patient
+  `$patientId` names, else every patient.
+- **The picker is a route.** "Change patient" (the patient line's
+  `onPatientChange`) is a plain push to `/patients`, so Back closes it on
+  the page it was opened over. A choice pushes the patient's page
+  (`/patients/<id>`, whose index opens its first tab, replacing itself) or
+  the app's every-patient page, so Back from a choice returns to the
+  picker, then to the page before. Patient changes are navigations, so the
+  router lives as long as the page.
+- **A patient route reads its patient first.** Its `loader` is
+  `ensureRoutedPatient`: the patient read on the cache `PatientChoiceLine`
+  reads (`patientQuery`), throwing `notFound()` when the server answers 404
+  or 410, which its `notFoundComponent`, `PatientRouteNotFound`, shows as
+  "<app> has no patient <id>." in place of the page. Any other failed read
+  lets the page render, its patient line saying the read failed. The root's
+  `notFoundComponent` is `RouteNotFound` ("<app> has no page at <path>.");
+  `PatientRouteNotFound` shows the same for a path under a patient no route
+  names. Both offer the picker. A patient route sets `remountDeps` to its
+  patient id, so nothing one patient's pages hold carries over to another's.
+- **A completed launch lands on a page.** The gate's `landsOn`
+  (`launchPatientRoute`: `/patients/<client.patient.id>` for a launch with
+  a patient, else `/patients`) replaces the app root once the exchange
+  completes, when the launch kept no route of its own (below); one history
+  entry either way, and only while the page sits on the bare app root, so
+  StrictMode's second render finds nothing to do. A later visit to `/`
+  inside the router shows the introduction.
 - **A launch from a deep route comes back to that route.** The OAuth
-  redirect URI is the app root, so a launch at `/calendar?iss=…&launch=…`
-  returns there. Before the page leaves, `authorizeFromLaunchPage` keeps the
-  route it sat on (path, its own query less the launch and OAuth parameters,
-  and fragment) in `sessionStorage` under `LANDING_ROUTE_STORAGE_KEY`
-  (`landing-route.ts`); a launch at the bare app root keeps nothing. Once the
-  exchange completes, `SmartHandshakeGate` takes the key out and, before its
-  children build the router, replaces the current entry on the page's
-  history with that route, so the router opens it. Only a same-origin path
+  redirect URI is the app root, so a launch at
+  `/patients/123/calendar?iss=…&launch=…` returns there: the served
+  directory (`SmartAppRoot`'s `basepath`), never the launch route's own
+  directory, which is no registered redirect URI. Before the page leaves,
+  `authorizeFromLaunchPage` keeps the route it sat on (path, its own query
+  less the launch and OAuth parameters, and fragment) in `sessionStorage`
+  under `LANDING_ROUTE_STORAGE_KEY` (`landing-route.ts`); a launch at the
+  bare app root keeps nothing. Once the exchange completes,
+  `SmartHandshakeGate` takes the key out and, before its children build the
+  router, replaces the current entry on the page's history with that route,
+  so the router opens it, in place of `landsOn`'s. Only a same-origin path
   under the basepath is restored; anything else is dropped. The key is
   one-shot, so StrictMode's second render finds nothing, and every way a
   launch ends without a callback drops it: a rejected authorize, and every
