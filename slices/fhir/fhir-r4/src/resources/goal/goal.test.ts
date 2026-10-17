@@ -10,6 +10,7 @@ import {
   expectChoiceElementGuardFailure,
 } from '../../data-types/base/choice-element-passthrough-fields.test-helpers.ts'
 import { Code } from '../../data-types/base/code.ts'
+import * as FhirString from '../../data-types/base/fhir-string.ts'
 import { DateSchema } from '../../data-types/base/primitives.ts'
 import {
   Annotation,
@@ -253,7 +254,7 @@ describe('FhirR4Goal', () => {
       fc.property(
         overrideArb({
           statusDate: Schema.NullOr(Schema.String),
-          statusReason: Schema.NullOr(Schema.String),
+          statusReason: Schema.NullOr(FhirString.Schema),
           language: Schema.NullOr(Code),
           implicitRules: Schema.NullOr(Schema.URL),
           meta: Schema.NullOr(Meta.Schema),
@@ -308,7 +309,7 @@ describe('FhirR4Goal', () => {
             detailQuantity: Schema.NullOr(Quantity.Schema),
             detailRange: Schema.NullOr(Range.Schema),
             detailCodeableConcept: Schema.NullOr(CodeableConcept.Schema),
-            detailString: Schema.NullOr(Schema.String),
+            detailString: Schema.NullOr(FhirString.Schema),
             detailBoolean: Schema.NullOr(Schema.Boolean),
             detailInteger: Schema.NullOr(Schema.Int),
             detailRatio: Schema.NullOr(Ratio.Schema),
@@ -382,7 +383,7 @@ describe('FhirR4Goal', () => {
         detailQuantity: Quantity.Schema,
         detailRange: Range.Schema,
         detailCodeableConcept: CodeableConcept.Schema,
-        detailString: Schema.String,
+        detailString: FhirString.Schema,
         detailBoolean: Schema.Boolean,
         detailInteger: Schema.Int,
         detailRatio: Ratio.Schema,

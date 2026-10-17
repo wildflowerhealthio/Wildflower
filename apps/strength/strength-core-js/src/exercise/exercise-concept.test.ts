@@ -40,14 +40,30 @@ describe('ExerciseConcept', () => {
     )
   })
 
-  it('should refuse an id that is not a slug and an empty or untrimmed name, naming both', () => {
+  it('should refuse an id that is not a slug and an untrimmed name, naming both', () => {
     fc.assert(
       fc.property(
         fc.constantFrom('', ' ', 'Bench Press', '-squat', 'squat--row', 'Squat'),
-        fc.constantFrom('', ' ', '\t', ' Squat', 'Squat\n'),
+        fc.constantFrom(' Squat', 'Squat\n'),
         (id, name) => {
           expect(issuePathsOf(ExerciseConcept.make({ id, name }))).toEqual([
             'coding.0.code',
+            'coding.0.display',
+          ])
+        }
+      ),
+      { numRuns: RUNS }
+    )
+  })
+
+  it('should refuse a blank name as a FHIR string, at the text and the display', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom('squat', '', 'Bench Press'),
+        fc.constantFrom('', ' ', '\t'),
+        (id, name) => {
+          expect(issuePathsOf(ExerciseConcept.make({ id, name }))).toEqual([
+            'text',
             'coding.0.display',
           ])
         }

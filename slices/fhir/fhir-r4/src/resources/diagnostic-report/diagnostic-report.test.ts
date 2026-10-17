@@ -6,6 +6,7 @@ import { describe, expect, test } from 'vite-plus/test'
 
 import { atMostOnePopulatedSlot } from '../../data-types/base/choice-element-passthrough-fields.test-helpers.ts'
 import { Code } from '../../data-types/base/code.ts'
+import * as FhirString from '../../data-types/base/fhir-string.ts'
 import {
   Attachment,
   CodeableConcept,
@@ -84,6 +85,19 @@ describe('FhirR4DiagnosticReport', () => {
       sampleDiagnosticReport
     )
     expect(Schema.decodeUnknownEither(DiagnosticReport.Schema)(withoutCode)._tag).toBe('Left')
+  })
+
+  test('reads a blank identifier value as absent', () => {
+    // An unprinted lab number arrives as `value: ''`; FHIR forbids a blank
+    // string, so it decodes as no value rather than as an empty one.
+    const decoded = Schema.decodeUnknownSync(DiagnosticReport.Schema)({
+      ...Schema.encodeSync(DiagnosticReport.Schema)(sampleDiagnosticReport),
+      identifier: [{ system: 'https://example.org/lab-no', value: '' }],
+    })
+    expect(decoded.identifier.map((identifier) => identifier.value)).toEqual([null])
+    expect(decoded.identifier.map((identifier) => identifier.system?.href)).toEqual([
+      'https://example.org/lab-no',
+    ])
   })
 
   test('property: status field round-trips', () => {
@@ -200,7 +214,7 @@ describe('FhirR4DiagnosticReport', () => {
       fc.property(
         overrideArb({
           issued: Schema.NullOr(Schema.DateTimeUtc),
-          conclusion: Schema.NullOr(Schema.String),
+          conclusion: Schema.NullOr(FhirString.Schema),
           language: Schema.NullOr(Code),
           implicitRules: Schema.NullOr(Schema.URL),
           meta: Schema.NullOr(Meta.Schema),

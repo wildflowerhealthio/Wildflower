@@ -2,7 +2,6 @@ import { Schema } from 'effect'
 
 import {
   mutableEncoded,
-  OrNullAsOptional,
   type FieldsNoContext,
   AnnotateArrayWithArbitrary,
 } from '@wildflowerhealthio/kitchen-sink/schema'
@@ -10,9 +9,10 @@ import {
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import * as Extension from '../special-purpose/extension.ts'
+import * as FhirString from './fhir-string.ts'
 
 const fields = {
-  id: OrNullAsOptional(Schema.String),
+  id: FhirString.Optional,
   extension: Schema.Array(Schema.suspend(() => Extension.Schema)).pipe(
     AnnotateArrayWithArbitrary({ maxLength: 2 }),
     mutableEncoded,

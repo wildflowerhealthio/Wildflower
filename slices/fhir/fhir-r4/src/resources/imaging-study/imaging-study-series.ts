@@ -9,6 +9,7 @@ import {
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import * as BackboneElement from '../../data-types/base/backbone-element.ts'
+import * as FhirString from '../../data-types/base/fhir-string.ts'
 import * as CodeableConcept from '../../data-types/complex/codeable-concept.ts'
 import * as Coding from '../../data-types/complex/coding.ts'
 import * as IdentifierAndReference from '../../data-types/complex/identifier-and-reference.ts'
@@ -28,7 +29,7 @@ const ImagingStudySeriesStruct = mutableEncoded(
     uid: Schema.String,
     number: OrNullAsOptional(Schema.Number.pipe(Schema.int())),
     modality: Schema.suspend(() => Coding.Schema),
-    description: OrNullAsOptional(Schema.String),
+    description: FhirString.Optional,
     numberOfInstances: OrNullAsOptional(
       Schema.Number.pipe(Schema.int(), Schema.greaterThanOrEqualTo(0))
     ),

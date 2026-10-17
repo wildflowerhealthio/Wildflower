@@ -5,6 +5,7 @@ import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { Code } from '../../data-types/base/code.ts'
+import * as FhirString from '../../data-types/base/fhir-string.ts'
 import { CodeableConcept, Coding, IdentifierAndReference, Meta } from '../../data-types/index.ts'
 import * as ImagingStudySeries from './imaging-study-series.ts'
 import * as ImagingStudy from './imaging-study.ts'
@@ -208,7 +209,7 @@ describe('FhirR4ImagingStudy', () => {
       fc.property(
         overrideArb({
           started: Schema.NullOr(Schema.String),
-          description: Schema.NullOr(Schema.String),
+          description: Schema.NullOr(FhirString.Schema),
           language: Schema.NullOr(Code),
           implicitRules: Schema.NullOr(Schema.URL),
           meta: Schema.NullOr(Meta.Schema),

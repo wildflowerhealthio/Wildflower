@@ -11,6 +11,7 @@ import type * as FhirR4 from 'fhir/r4.d.ts'
 import { Code } from '../base/code.ts'
 import { registerDatatypeSchema } from '../base/datatype-registry.ts'
 import * as Element from '../base/element.ts'
+import * as FhirString from '../base/fhir-string.ts'
 
 const AttachmentStruct = mutableEncoded(
   StructNoContext({
@@ -22,7 +23,7 @@ const AttachmentStruct = mutableEncoded(
     hash: OrNullAsOptional(Schema.String),
     language: OrNullAsOptional(Code),
     size: OrNullAsOptional(Schema.Int),
-    title: OrNullAsOptional(Schema.String),
+    title: FhirString.Optional,
   })
 )
 

@@ -15,6 +15,7 @@ import {
 } from '../../data-types/base/choice-element-passthrough-fields.ts'
 import * as ChoiceElementSet from '../../data-types/base/choice-element-set.ts'
 import * as DomainResource from '../../data-types/base/domain-resource.ts'
+import * as FhirString from '../../data-types/base/fhir-string.ts'
 import * as CodeableConcept from '../../data-types/complex/codeable-concept.ts'
 import * as IdentifierAndReference from '../../data-types/complex/identifier-and-reference.ts'
 import '../../data-types/register-all.ts'
@@ -292,7 +293,7 @@ const ServiceRequestStruct = Schema.extend(
       note: Schema.optionalWith(mutableEncoded(Schema.Array(PermissivePassthrough)), {
         default: (): readonly unknown[] => [],
       }),
-      patientInstruction: OrNullAsOptional(Schema.String),
+      patientInstruction: FhirString.Optional,
       relevantHistory: referenceArray,
     })
   )

@@ -10,6 +10,7 @@ import {
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import * as DomainResource from '../../data-types/base/domain-resource.ts'
+import * as FhirString from '../../data-types/base/fhir-string.ts'
 import * as CodeableConcept from '../../data-types/complex/codeable-concept.ts'
 import * as Coding from '../../data-types/complex/coding.ts'
 import * as IdentifierAndReference from '../../data-types/complex/identifier-and-reference.ts'
@@ -195,7 +196,7 @@ const ImagingStudyStruct = Schema.extend(
       note: Schema.optionalWith(mutableEncoded(Schema.Array(PermissivePassthrough)), {
         default: (): readonly unknown[] => [],
       }),
-      description: OrNullAsOptional(Schema.String),
+      description: FhirString.Optional,
       series: Schema.optionalWith(mutableEncoded(Schema.Array(ImagingStudySeries.Schema)), {
         default: (): readonly (typeof ImagingStudySeries.Schema.Type)[] => [],
       }),

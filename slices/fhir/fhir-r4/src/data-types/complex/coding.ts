@@ -11,15 +11,16 @@ import type * as FhirR4 from 'fhir/r4.d.ts'
 import { Code } from '../base/code.ts'
 import { registerDatatypeSchema } from '../base/datatype-registry.ts'
 import * as Element from '../base/element.ts'
+import * as FhirString from '../base/fhir-string.ts'
 
 const CodingStruct = mutableEncoded(
   StructNoContext({
     ...Element.fields,
     code: OrNullAsOptional(Code),
-    display: OrNullAsOptional(Schema.String),
+    display: FhirString.Optional,
     system: OrNullAsOptional(Schema.URL),
     userSelected: OrNullAsOptional(Schema.Boolean),
-    version: OrNullAsOptional(Schema.String),
+    version: FhirString.Optional,
   })
 )
 

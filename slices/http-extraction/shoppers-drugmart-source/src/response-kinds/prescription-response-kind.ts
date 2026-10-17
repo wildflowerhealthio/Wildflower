@@ -1,3 +1,4 @@
+import { FhirString } from '@wildflowerhealthio/fhir-r4/data-types'
 import { MedicationDispense, MedicationRequest } from '@wildflowerhealthio/fhir-r4/resources'
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import {
@@ -257,8 +258,11 @@ const requestWire = (
 
   const statusReason = statusReasonWire(rx)
   if (statusReason != null) wire['statusReason'] = statusReason
-  if (rx.status?.labelDescription != null) {
-    wire['note'] = [{ text: rx.status.labelDescription }]
+  // `Annotation.text` is a required FHIR string, so a blank description would
+  // fail the request's decode; it is written only when it holds text.
+  const labelDescription = rx.status?.labelDescription
+  if (labelDescription != null && !FhirString.isBlank(labelDescription)) {
+    wire['note'] = [{ text: labelDescription }]
   }
 
   // The prior rx's number as an identifier-only reference (its uuid is unknown;

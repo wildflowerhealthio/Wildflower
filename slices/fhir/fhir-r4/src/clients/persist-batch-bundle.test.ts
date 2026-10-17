@@ -129,6 +129,29 @@ describe('persistBatchBundle', () => {
     expect(captured.outcomes[0]?.issues[0]?.severity).toBe('error')
   })
 
+  it('fails every entry without touching the wire when a resource holds a blank string', async () => {
+    // FHIR forbids a blank `string`, so encode refuses one rather than posting it.
+    const observation = Schema.decodeUnknownSync(Observation.Schema)({
+      resourceType: 'Observation',
+      id: 'blank-1',
+      status: 'final',
+      code: { text: 'Heart rate' },
+    })
+    const captured = await runWith(
+      [makePatient('p-1'), { ...observation, code: { ...observation.code, text: '' } }],
+      allOk
+    )
+
+    expect(captured.requests).toEqual([])
+    expect(captured.outcomes.map((outcome) => outcome.target.id)).toEqual(['p-1', 'blank-1'])
+    expect(captured.outcomes.every((outcome) => !outcome.ok)).toBe(true)
+    expect(captured.outcomes.map((outcome) => outcome.status)).toEqual([
+      NO_RESPONSE_STATUS,
+      NO_RESPONSE_STATUS,
+    ])
+    expect(captured.outcomes[1]?.issues[0]?.severity).toBe('error')
+  })
+
   it('skips a null-id resource without touching the wire', async () => {
     const captured = await runWith([makePatient(null)], allOk)
     expect(captured.requests).toEqual([])

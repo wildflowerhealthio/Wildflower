@@ -10,6 +10,7 @@ import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import { registerDatatypeSchema } from '../base/datatype-registry.ts'
 import * as Element from '../base/element.ts'
+import * as FhirString from '../base/fhir-string.ts'
 import * as Period from './period.ts'
 
 const ContactPointStruct = mutableEncoded(
@@ -37,7 +38,7 @@ const ContactPointStruct = mutableEncoded(
         Schema.Literal('mobile')
       )
     ),
-    value: OrNullAsOptional(Schema.String),
+    value: FhirString.Optional,
   })
 )
 

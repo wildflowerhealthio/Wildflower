@@ -36,6 +36,23 @@ Remaining gaps:
 - **Required choice elements are not required.** FHIR marks `MedicationRequest.medication[x]` and `MedicationDispense.medication[x]` as 1..1; with every variant optional, a payload with no medication slot set also validates.
 - **`Schema.omit` / `Schema.pick` drop the guard.** Effect rebuilds the struct without its refinements. `withMandatoryId` — the `id`-narrowing wrapper the HTTP API definition applies to every resource — and `narrowFields`, which narrows any fields the same way, re-apply them; any other schema derived that way from a guarded resource has no guard.
 
+## `string` / `markdown`: blank reads as absent
+
+FHIR R4 forbids an empty value for every primitive, and a strict server rejects a resource holding a `''` or whitespace-only `string` or `markdown`. The spec calls such a value invalid; this client normalizes it instead. One module, `data-types/base/fhir-string.ts` (`FhirString`), holds the rule for both primitives, and every `string` / `markdown` element is built on it. A value is blank when it holds no non-whitespace character.
+
+- **Optional element** (`FhirString.Optional`): a blank value decodes as absent (`null`), like a missing key. `null` encodes as absent.
+- **Required element** (`FhirString.Schema`, e.g. `Annotation.text`): a blank value fails decode, since absent is not an option there.
+- **Repeating element** (`FhirString.Array`, e.g. `HumanName.given`, `Address.line`): blank items are dropped on decode.
+- **`Extension.valueString`**: the registry's `string` schema is `FhirString.BlankAsNull`, so a blank `valueString` decodes as no value instead of failing the enclosing resource.
+- **Encoding never writes a blank value.** A decoded value holding a blank string, or a blank array item, fails encode.
+- **Non-blank values are not trimmed.** `' a '` round-trips byte for byte.
+
+Consequences:
+
+- **Wire → decoded → wire drops blanks.** `{ "text": "" }` re-encodes as `{}`. Decoded → wire → decoded still holds, and a second pass over normalized wire JSON changes nothing.
+- **Read-modify-write cleans the server copy.** A resource read with a blank element and written back (an update) loses that element.
+- **Only `string` and `markdown`.** The other primitives modelled as `Schema.String` (`uri`, `canonical`, `id`, `code`, `base64Binary`, `date`, `dateTime`, `xhtml`) keep their current schemas, and the Bundle envelope (`data-types/resources/bundle.ts`) and `PatientMinimal` are untouched.
+
 ## `Observation.status` defaulted to `unknown` when absent
 
 FHIR R4 marks `Observation.status` as required (1..1). Real servers — notably HAPI's public sandbox — nonetheless return hand-entered Observations that omit it, and in a search `Bundle` a single such entry would otherwise fail the decode of the **entire page** (`Bundle.Schema(Observation.Schema)` types `entry.resource` as `Observation | undefined`, so a status-less resource matches neither arm). The client therefore models `status` as `Schema.optionalWith(StatusSchema, { default: () => 'unknown' })`: a **missing/undefined** status decodes to FHIR's own `unknown` sentinel, so the resource (and its Bundle page) survives.

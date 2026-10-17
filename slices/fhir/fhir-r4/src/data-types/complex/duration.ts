@@ -11,6 +11,7 @@ import type * as FhirR4 from 'fhir/r4.d.ts'
 import { Code } from '../base/code.ts'
 import { registerDatatypeSchema } from '../base/datatype-registry.ts'
 import * as Element from '../base/element.ts'
+import * as FhirString from '../base/fhir-string.ts'
 
 // FHIR R4 `Duration` is a specialization of `Quantity` (`Duration extends
 // Quantity` in the R4 type set), so the wire shape is identical to Quantity.
@@ -34,7 +35,7 @@ const DurationStruct = mutableEncoded(
       )
     ),
     system: OrNullAsOptional(Schema.String),
-    unit: OrNullAsOptional(Schema.String),
+    unit: FhirString.Optional,
     value: OrNullAsOptional(Schema.Finite),
   })
 )

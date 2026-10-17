@@ -1,16 +1,13 @@
-import { Array as Arr, Option, pipe, Schema, String as Str } from 'effect'
+import { Array as Arr, Option, pipe, Predicate, Schema } from 'effect'
 
-import {
-  OrNullAsOptional,
-  StructNoContext,
-  mutableEncoded,
-} from '@wildflowerhealthio/kitchen-sink/schema'
+import { StructNoContext, mutableEncoded } from '@wildflowerhealthio/kitchen-sink/schema'
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import { Code } from '../base/code.ts'
 import { registerDatatypeSchema } from '../base/datatype-registry.ts'
 import * as Element from '../base/element.ts'
+import * as FhirString from '../base/fhir-string.ts'
 import * as Coding from './coding.ts'
 
 const CodeableConceptStruct = mutableEncoded(
@@ -19,7 +16,7 @@ const CodeableConceptStruct = mutableEncoded(
     coding: Schema.optionalWith(mutableEncoded(Schema.Array(Schema.suspend(() => Coding.Schema))), {
       default: (): readonly (typeof Coding.Schema.Type)[] => [],
     }),
-    text: OrNullAsOptional(Schema.String),
+    text: FhirString.Optional,
   })
 )
 
@@ -44,7 +41,8 @@ interface Labelled {
 
 /**
  * The concept's human-readable label: its `text`, else the first coding's
- * `display`. A blank value counts as absent.
+ * `display`. A blank value (see {@link FhirString.isBlank}) counts as absent,
+ * as decode reads it.
  *
  * @remarks
  * `text` wins because R4 defines it as the concept "as entered or chosen by the
@@ -54,10 +52,10 @@ interface Labelled {
 const label = (concept: Labelled): Option.Option<string> =>
   pipe(
     Option.fromNullable(concept.text),
-    Option.filter(Str.isNonEmpty),
+    Option.filter(Predicate.not(FhirString.isBlank)),
     Option.orElse(() =>
       Arr.findFirst(concept.coding ?? [], (coding) =>
-        pipe(Option.fromNullable(coding.display), Option.filter(Str.isNonEmpty))
+        pipe(Option.fromNullable(coding.display), Option.filter(Predicate.not(FhirString.isBlank)))
       )
     )
   )

@@ -6,6 +6,7 @@ import { describe, expect, test } from 'vite-plus/test'
 
 import { atMostOnePopulatedSlot } from '../../data-types/base/choice-element-passthrough-fields.test-helpers.ts'
 import { Code } from '../../data-types/base/code.ts'
+import * as FhirString from '../../data-types/base/fhir-string.ts'
 import { CodeableConcept, IdentifierAndReference, Meta, Period } from '../../data-types/index.ts'
 import { SearchParams } from './search-params.ts'
 import * as ServiceRequest from './service-request.ts'
@@ -245,7 +246,7 @@ describe('FhirR4ServiceRequest', () => {
       fc.property(
         overrideArb({
           authoredOn: Schema.NullOr(Schema.String),
-          patientInstruction: Schema.NullOr(Schema.String),
+          patientInstruction: Schema.NullOr(FhirString.Schema),
           doNotPerform: Schema.NullOr(Schema.Boolean),
           language: Schema.NullOr(Code),
           implicitRules: Schema.NullOr(Schema.URL),

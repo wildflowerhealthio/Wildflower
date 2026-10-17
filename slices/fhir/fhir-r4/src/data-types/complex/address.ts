@@ -10,21 +10,22 @@ import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import { registerDatatypeSchema } from '../base/datatype-registry.ts'
 import * as Element from '../base/element.ts'
+import * as FhirString from '../base/fhir-string.ts'
 import * as Period from './period.ts'
 
 const AddressStruct = mutableEncoded(
   StructNoContext({
     ...Element.fields,
-    city: OrNullAsOptional(Schema.String),
-    country: OrNullAsOptional(Schema.String),
-    district: OrNullAsOptional(Schema.String),
-    line: Schema.optionalWith(mutableEncoded(Schema.Array(Schema.String)), {
+    city: FhirString.Optional,
+    country: FhirString.Optional,
+    district: FhirString.Optional,
+    line: Schema.optionalWith(mutableEncoded(FhirString.Array), {
       default: () => [] as readonly string[],
     }),
     period: OrNullAsOptional(Schema.suspend(() => Period.Schema)),
-    postalCode: OrNullAsOptional(Schema.String),
-    state: OrNullAsOptional(Schema.String),
-    text: OrNullAsOptional(Schema.String),
+    postalCode: FhirString.Optional,
+    state: FhirString.Optional,
+    text: FhirString.Optional,
     type: OrNullAsOptional(
       Schema.Union(Schema.Literal('postal'), Schema.Literal('physical'), Schema.Literal('both'))
     ),

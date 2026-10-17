@@ -1,10 +1,6 @@
 import { type Arbitrary, Array as Arr, type FastCheck, Option, Schema } from 'effect'
 
-import {
-  mutableEncoded,
-  OrNullAsOptional,
-  StructNoContext,
-} from '@wildflowerhealthio/kitchen-sink/schema'
+import { mutableEncoded, StructNoContext } from '@wildflowerhealthio/kitchen-sink/schema'
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
@@ -14,6 +10,7 @@ import {
 } from '../base/choice-element-passthrough-fields.ts'
 import * as ChoiceElementSet from '../base/choice-element-set.ts'
 import * as Datatype from '../base/datatype.ts'
+import * as FhirString from '../base/fhir-string.ts'
 
 const valueChoiceFields = choiceElementSetPassthroughFields('value', Datatype.names)
 
@@ -34,7 +31,7 @@ interface ExtensionType extends Schema.Struct.Type<typeof valueChoiceFields> {
 
 const ExtensionSchema: Schema.Schema<ExtensionType, FhirR4.Extension, never> = mutableEncoded(
   StructNoContext({
-    id: OrNullAsOptional(Schema.String),
+    id: FhirString.Optional,
     // Override `Arbitrary.make(...)` to always emit `[]`. Nested extensions
     // multiply the size of every resource property test (each child carries
     // the full ~50-field value[x] choice). Recursion through `extension` is

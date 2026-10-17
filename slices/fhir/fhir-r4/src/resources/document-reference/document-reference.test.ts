@@ -5,6 +5,7 @@ import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { Code } from '../../data-types/base/code.ts'
+import * as FhirString from '../../data-types/base/fhir-string.ts'
 import { CodeableConcept, IdentifierAndReference, Meta } from '../../data-types/index.ts'
 import * as DocumentReferenceContent from './document-reference-content.ts'
 import * as DocumentReferenceContext from './document-reference-context.ts'
@@ -180,7 +181,7 @@ describe('FhirR4DocumentReference', () => {
       fc.property(
         overrideArb({
           date: Schema.NullOr(Schema.DateTimeUtc),
-          description: Schema.NullOr(Schema.String),
+          description: Schema.NullOr(FhirString.Schema),
           language: Schema.NullOr(Code),
           implicitRules: Schema.NullOr(Schema.URL),
           meta: Schema.NullOr(Meta.Schema),

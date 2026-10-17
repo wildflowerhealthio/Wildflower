@@ -9,12 +9,13 @@ import {
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import * as BackboneElement from '../../data-types/base/backbone-element.ts'
+import * as FhirString from '../../data-types/base/fhir-string.ts'
 
 // FHIR R4 `Medication.batch` — details about a packaged batch of the product.
 const MedicationBatchStruct = mutableEncoded(
   StructNoContext({
     ...BackboneElement.fields,
-    lotNumber: OrNullAsOptional(Schema.String),
+    lotNumber: FhirString.Optional,
     expirationDate: OrNullAsOptional(Schema.DateTimeUtc),
   })
 )

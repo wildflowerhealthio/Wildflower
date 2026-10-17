@@ -1,5 +1,6 @@
 import { Schema } from 'effect'
 
+import * as FhirString from './fhir-string.ts'
 import { DateSchema, IdSchema, InstantSchema, TimeSchema, UriSchema } from './primitives.ts'
 
 /**
@@ -136,7 +137,11 @@ const baseSchemas = {
   // remaining-repeats dual-write). Recorded in the Client Capabilities
   // Reference under "Unregistered choice-element datatypes".
   positiveInt: Schema.Int,
-  string: Schema.String,
+  // A blank `valueString` decodes to `null` rather than failing the enclosing
+  // resource; the choice slot's `OrNullAsOptional` then reads it as no value.
+  // Recorded in the Client Capabilities Reference under "`string` /
+  // `markdown`: blank reads as absent".
+  string: FhirString.BlankAsNull,
   time: TimeSchema,
   uri: UriSchema,
   url: UriSchema,

@@ -14,6 +14,7 @@ import {
   choiceElementSetPassthroughFields,
 } from '../../data-types/base/choice-element-passthrough-fields.ts'
 import * as ChoiceElementSet from '../../data-types/base/choice-element-set.ts'
+import * as FhirString from '../../data-types/base/fhir-string.ts'
 import * as CodeableConcept from '../../data-types/complex/codeable-concept.ts'
 import * as IdentifierAndReference from '../../data-types/complex/identifier-and-reference.ts'
 import * as Quantity from '../../data-types/complex/quantity.ts'
@@ -88,7 +89,7 @@ const CarePlanActivityDetailStruct = mutableEncoded(
     ),
     dailyAmount: OrNullAsOptional(Schema.suspend(() => Quantity.Schema)),
     quantity: OrNullAsOptional(Schema.suspend(() => Quantity.Schema)),
-    description: OrNullAsOptional(Schema.String),
+    description: FhirString.Optional,
   })
 ).pipe(
   filterForExclusiveChoiceElementSet(

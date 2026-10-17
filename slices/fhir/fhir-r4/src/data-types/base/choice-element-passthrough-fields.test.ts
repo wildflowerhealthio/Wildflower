@@ -1,5 +1,5 @@
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Either, Schema } from 'effect'
+import { Arbitrary, Either, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -10,6 +10,7 @@ import {
   filterForExclusiveChoiceElementSet,
   choiceElementSetPassthroughFields,
 } from './choice-element-passthrough-fields.ts'
+import * as FhirString from './fhir-string.ts'
 
 describe('filterForExclusiveChoiceElementSet', () => {
   it('should decode a payload with exactly one populated slot', () => {
@@ -154,7 +155,7 @@ const Reading = Schema.Struct({
 
 // Every `value[x]` slot of `Reading`, each paired with a wire value.
 const valueSlotsArb: fc.Arbitrary<(readonly [string, unknown])[]> = fc.tuple(
-  fc.string().map((v) => ['valueString', v] as const),
+  Arbitrary.make(FhirString.Schema).map((v) => ['valueString', v] as const),
   fc.integer().map((v) => ['valueInteger', v] as const),
   fc.boolean().map((v) => ['valueBoolean', v] as const)
 )
