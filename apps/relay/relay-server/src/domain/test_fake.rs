@@ -8,14 +8,16 @@
 //! keeps tunnels with no diesel and no database. It is the
 //! [`ClaimCodeStore`] fake too, keeping at most one code per tunnel as the
 //! database's primary key does, and deleting a tunnel's code with it as its
-//! `ON DELETE CASCADE` does. The `SQLite` adapter's own coverage
+//! `ON DELETE CASCADE` does. And it is the [`ConnectionTotalsStore`] fake,
+//! one count per hour and outcome. The `SQLite` adapter's own coverage
 //! lives in `crate::db`.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
 use crate::domain::{
-    ClaimCodeHash, ClaimCodeStore, StoredClaimCode, StoredTunnel, Tunnel, TunnelError, TunnelStore,
+    ClaimCodeHash, ClaimCodeStore, ConnectionTotalsStore, HourlyCount, Outcome, StoredClaimCode,
+    StoredTunnel, Tunnel, TunnelError, TunnelStore,
 };
 use crate::settings::Secret;
 
@@ -23,6 +25,7 @@ use crate::settings::Secret;
 pub(crate) struct FakeTunnelStore {
     tunnels: RefCell<BTreeMap<String, StoredTunnel>>,
     claim_codes: RefCell<BTreeMap<ClaimCodeHash, StoredClaimCode>>,
+    connection_totals: RefCell<BTreeMap<(i64, Outcome), u64>>,
 }
 
 impl TunnelStore for FakeTunnelStore {
@@ -102,6 +105,36 @@ impl ClaimCodeStore for FakeTunnelStore {
         let before = claim_codes.len();
         claim_codes.retain(|_, stored| stored.expires_at > now);
         Ok(before - claim_codes.len())
+    }
+}
+
+impl ConnectionTotalsStore for FakeTunnelStore {
+    fn add_connection_totals(&self, counts: &[HourlyCount]) -> Result<(), TunnelError> {
+        let mut totals = self.connection_totals.borrow_mut();
+        for counted in counts {
+            *totals.entry((counted.hour, counted.outcome)).or_default() += counted.count;
+        }
+        Ok(())
+    }
+
+    fn delete_connection_totals_before(&self, hour: i64) -> Result<usize, TunnelError> {
+        let mut totals = self.connection_totals.borrow_mut();
+        let before = totals.len();
+        totals.retain(|(counted_hour, _), _| *counted_hour >= hour);
+        Ok(before - totals.len())
+    }
+
+    fn connection_totals_since(&self, hour: i64) -> Result<Vec<HourlyCount>, TunnelError> {
+        Ok(self
+            .connection_totals
+            .borrow()
+            .range((hour, Outcome::ALL[0])..)
+            .map(|(&(hour, outcome), &count)| HourlyCount {
+                hour,
+                outcome,
+                count,
+            })
+            .collect())
     }
 }
 

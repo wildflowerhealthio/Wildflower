@@ -9,6 +9,7 @@ use super::state::TunnelRegistry;
 use crate::db::SqliteTunnelStore;
 use crate::domain::capabilities::ClaimCodesRedeemer;
 use crate::domain::{Tunnel, TunnelError};
+use crate::logging::IDENTIFYING;
 use crate::site::signature::unix_now;
 
 /// Redeem a claim code — the state of `POST /claim`. Not admin-gated: the
@@ -40,7 +41,7 @@ impl LiveClaimCodesRedeemer {
             })
         })
         .await?;
-        tracing::info!(tunnel = %tunnel.name, "claim code redeemed");
+        tracing::info!(target: IDENTIFYING, tunnel = %tunnel.name, "claim code redeemed");
         Ok(tunnel)
     }
 }

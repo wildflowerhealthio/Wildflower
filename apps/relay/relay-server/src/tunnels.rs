@@ -15,6 +15,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 use rathole::{AsyncStream, ConfigChange, ServerServiceEvent};
 use tokio::sync::{broadcast, mpsc};
 
+use crate::logging::IDENTIFYING;
+
 /// Where rathole takes a tunnel's visitors.
 type VisitorQueue = mpsc::Sender<Box<dyn AsyncStream>>;
 
@@ -68,14 +70,14 @@ impl Tunnels {
             .unwrap_or_else(PoisonError::into_inner);
         match event {
             ServerServiceEvent::TcpConnected { config, visitor_tx } => {
-                tracing::info!(tunnel = %config.name, "tunnel up");
+                tracing::info!(target: IDENTIFYING, tunnel = %config.name, "tunnel up");
                 visitor_queues.insert(config.name, visitor_tx);
             }
             // Every tunnel is a TCP service.
             ServerServiceEvent::UdpConnected { .. } => {}
             ServerServiceEvent::Disconnected { name } => {
                 if visitor_queues.remove(&name).is_some() {
-                    tracing::info!(tunnel = %name, "tunnel down");
+                    tracing::info!(target: IDENTIFYING, tunnel = %name, "tunnel down");
                 }
             }
         }

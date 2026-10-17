@@ -10,6 +10,14 @@
 //! live connection is the device's HTTP server's to close. The front never
 //! decrypts a tunnel's traffic. Every step that fails logs why and drops the
 //! visitor's socket, which closes it without a byte written.
+//!
+//! Each connection not for a local hostname is recorded in the
+//! [`ConnectionOutcomes`](crate::outcomes::ConnectionOutcomes) once, where
+//! its outcome is known: a refusal before routing as an [`Outcome`], and a
+//! routed connection as its tunnel's [`TunnelOutcome`], `ok` once the PROXY
+//! header and hello are written. The visitor's address goes only into that
+//! header, and is never logged. A refusal that names a tunnel is logged to
+//! the connection log ([`IDENTIFYING`]), not the journal.
 
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -24,6 +32,8 @@ use wildflowerhealthio_rathole_settings::proxy_header::proxy_header;
 
 use super::hello::{read_client_hello, ClientHello};
 use super::Front;
+use crate::domain::{Outcome, TunnelOutcome};
+use crate::logging::IDENTIFYING;
 use crate::route::{Destination, Route};
 use crate::tunnels::TunnelDown;
 
@@ -37,8 +47,12 @@ impl Front {
         let (Ok(visitor), Ok(relay)) = (client.peer_addr(), client.local_addr()) else {
             return;
         };
-        let Some((hello_bytes, server_name)) = self.read_server_name(&mut client).await else {
-            return;
+        let (hello_bytes, server_name) = match self.read_server_name(&mut client).await {
+            Ok(read) => read,
+            Err(refusal) => {
+                self.outcomes.record(refusal);
+                return;
+            }
         };
         let route = match self.router.resolve(&server_name) {
             Some(Destination::Tunnel(route)) => route,
@@ -48,18 +62,26 @@ impl Front {
                 return;
             }
             None => {
-                tracing::debug!(%server_name, "refused: unknown tunnel");
+                // The name is logged nowhere, only counted.
+                tracing::debug!("refused: unknown tunnel");
+                self.outcomes.record(Outcome::UnknownTunnel);
                 return;
             }
         };
-        let Some(mut backend) = self.connect_to_tunnel(&route).await else {
-            return;
+        let mut backend = match self.connect_to_tunnel(&route).await {
+            Ok(backend) => backend,
+            Err(refusal) => {
+                self.outcomes.record_for_tunnel(&route.tunnel_name, refusal);
+                return;
+            }
         };
         tune(&client);
-        if !send_preface(&mut backend, visitor, relay, &hello_bytes, &route).await {
+        let sent = send_preface(&mut backend, visitor, relay, &hello_bytes, &route).await;
+        self.outcomes.record_for_tunnel(&route.tunnel_name, sent);
+        if sent != TunnelOutcome::Ok {
             return;
         }
-        self.pipe(client, backend, &route, shutdown_rx).await;
+        self.pipe(client, backend, shutdown_rx).await;
     }
 
     /// Hand the connection from `visitor` to the relay's own site. The site's
@@ -83,28 +105,29 @@ impl Front {
             .await;
     }
 
-    /// The ClientHello's bytes (to replay) and its server name, or `None`
-    /// if the visitor sent no usable hello in time.
-    async fn read_server_name(&self, client: &mut TcpStream) -> Option<(Vec<u8>, String)> {
+    /// The ClientHello's bytes (to replay) and its server name, or, if the
+    /// visitor sent no usable hello in time, the refusal to count.
+    async fn read_server_name(&self, client: &mut TcpStream) -> Result<(Vec<u8>, String), Outcome> {
         let read = tokio::time::timeout(self.limits.hello_timeout, read_client_hello(client)).await;
         let (bytes, hello) = match read {
             Ok(Ok(read)) => read,
             Ok(Err(e)) => {
                 tracing::debug!("refused: reading ClientHello failed: {e}");
-                return None;
+                return Err(Outcome::NotAHello);
             }
             Err(_) => {
                 tracing::debug!("refused: no ClientHello within the deadline");
-                return None;
+                return Err(Outcome::HelloTimeout);
             }
         };
-        match hello {
-            ClientHello::ServerName(name) => Some((bytes, name)),
-            other => {
-                tracing::debug!(hello = ?other, "refused: no usable server name");
-                None
-            }
-        }
+        let refusal = match hello {
+            ClientHello::ServerName(name) => return Ok((bytes, name)),
+            ClientHello::NoServerName => Outcome::NoServerName,
+            // `read_client_hello` gives a verdict, so never `Incomplete`.
+            ClientHello::Incomplete | ClientHello::Invalid => Outcome::NotAHello,
+        };
+        tracing::debug!(hello = ?hello, "refused: no usable server name");
+        Err(refusal)
     }
 
     /// Hand rathole one end of a pipe as a visitor of the tunnel, and return
@@ -114,21 +137,26 @@ impl Front {
     /// to tell the device (wake-up push, #918). It waits only while the
     /// tunnel's queue of visitors is full, so running out of time means the
     /// device is connected but not taking visitors, not that it is down.
-    async fn connect_to_tunnel(&self, route: &Route) -> Option<DuplexStream> {
+    async fn connect_to_tunnel(&self, route: &Route) -> Result<DuplexStream, TunnelOutcome> {
         let (backend, visitor) = tokio::io::duplex(PIPE_BUFFER_SIZE);
         let connect = self.tunnels.connect(&route.tunnel_name, visitor);
         match tokio::time::timeout(self.limits.hello_timeout, connect).await {
-            Ok(Ok(())) => Some(backend),
+            Ok(Ok(())) => Ok(backend),
             Ok(Err(TunnelDown)) => {
-                tracing::info!(tunnel = %route.tunnel_name, "refused: tunnel is down");
-                None
+                tracing::info!(
+                    target: IDENTIFYING,
+                    tunnel = %route.tunnel_name,
+                    "refused: tunnel is down"
+                );
+                Err(TunnelOutcome::TunnelDown)
             }
             Err(_) => {
                 tracing::warn!(
+                    target: IDENTIFYING,
                     tunnel = %route.tunnel_name,
                     "refused: the tunnel's visitor queue stayed full past the deadline"
                 );
-                None
+                Err(TunnelOutcome::TunnelBusy)
             }
         }
     }
@@ -139,13 +167,12 @@ impl Front {
         &self,
         mut client: TcpStream,
         mut backend: DuplexStream,
-        route: &Route,
         mut shutdown_rx: broadcast::Receiver<bool>,
     ) {
         tokio::select! {
             result = tokio::io::copy_bidirectional(&mut client, &mut backend) => {
                 if let Err(e) = result {
-                    tracing::debug!(tunnel = %route.tunnel_name, "pipe ended: {e}");
+                    tracing::debug!("pipe ended: {e}");
                 }
             }
             _ = shutdown_rx.recv() => {}
@@ -180,27 +207,31 @@ fn tune(stream: &TcpStream) {
 }
 
 /// Write the PROXY header and then the visitor's hello bytes to the tunnel,
-/// as one write. `false` if that failed.
+/// as one write. [`TunnelOutcome::Ok`] if that worked, otherwise why not.
 async fn send_preface(
     backend: &mut (impl AsyncWrite + Unpin),
     visitor: SocketAddr,
     relay: SocketAddr,
     hello_bytes: &[u8],
     route: &Route,
-) -> bool {
+) -> TunnelOutcome {
     let mut preface = match proxy_header(visitor, relay) {
         Ok(header) => header,
         Err(e) => {
             tracing::warn!("refused: building PROXY header failed: {e}");
-            return false;
+            return TunnelOutcome::ProxyHeaderFailed;
         }
     };
     preface.extend_from_slice(hello_bytes);
     match backend.write_all(&preface).await {
-        Ok(()) => true,
+        Ok(()) => TunnelOutcome::Ok,
         Err(e) => {
-            tracing::debug!(tunnel = %route.tunnel_name, "tunnel closed before the hello was sent: {e}");
-            false
+            tracing::debug!(
+                target: IDENTIFYING,
+                tunnel = %route.tunnel_name,
+                "tunnel closed before the hello was sent: {e}"
+            );
+            TunnelOutcome::TunnelClosed
         }
     }
 }

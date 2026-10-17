@@ -12,6 +12,7 @@ use super::AdminCapability;
 use crate::db::SqliteTunnelStore;
 use crate::domain::capabilities::TunnelsCreator;
 use crate::domain::{StoredTunnel, TunnelError};
+use crate::logging::IDENTIFYING;
 use crate::site::signature::unix_now;
 
 /// Create a tunnel — `Admin<LiveTunnelsCreator>` in the create handler.
@@ -64,7 +65,7 @@ impl LiveTunnelsCreator {
                 "tunnel stored but not served",
             )
             .await?;
-        tracing::info!(tunnel = %created.tunnel.name, "tunnel created");
+        tracing::info!(target: IDENTIFYING, tunnel = %created.tunnel.name, "tunnel created");
         Ok(created)
     }
 

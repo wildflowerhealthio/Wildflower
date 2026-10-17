@@ -1,7 +1,7 @@
 /*
  * The tunnel list: a heading, any failure, a claim code just issued, then one
- * row per tunnel with its public host and owner's email on the line under its
- * name, and its buttons side by side.
+ * row per tunnel with its public host, owner's email and last connection's
+ * outcome on the line under its name, and its buttons side by side.
  */
 .tunnel-list {
   display: flex;

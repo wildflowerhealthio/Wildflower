@@ -4,7 +4,11 @@
 //! - `POST /api/tunnels` `{"email": "…", "name": "…"}` (`name` optional):
 //!   `201 {"name", "token", "public_host"}`. The token is shown only here.
 //! - `GET /api/tunnels`: `200 [{"name", "email", "public_host",
-//!   "created_at"}]`. No tokens.
+//!   "created_at", "last_outcome"}]`. No tokens. `last_outcome` is what
+//!   became of the last connection to the tunnel since the relay started
+//!   (`"ok"`, `"tunnel_down"`, `"tunnel_busy"`, `"tunnel_closed"` or
+//!   `"proxy_header_failed"`, see [`TunnelOutcome`]), or `null` before the
+//!   first.
 //! - `DELETE /api/tunnels/{name}`: `204` once the tunnel is gone, with its
 //!   claim code.
 //! - `POST /api/tunnels/{name}/claim-codes` (no body): `201 {"code",
@@ -17,6 +21,13 @@
 //!   token stops signing and connecting at once, and a device connected
 //!   with it drops. The tunnel's claim code, if any, redeems for the new
 //!   token.
+//! - `GET /api/connection-totals`: `200 [{"hour", "ok",
+//!   "over_connection_limit", "hello_timeout", "not_a_hello",
+//!   "no_server_name", "unknown_tunnel", "tunnel_down", "tunnel_busy",
+//!   "tunnel_closed", "proxy_header_failed"}]`, one object per UTC hour of
+//!   the last 30 days with any connection, oldest first: the hour's start in
+//!   Unix epoch seconds and how many connections had each outcome (see
+//!   [`Outcome`]), zeros included. Stored and not yet stored counts alike.
 //!
 //! On any other `Host` these paths are `404`, before the signature is
 //! looked at, so `@target-uri` always names the admin hostname. A request
@@ -41,11 +52,13 @@ use axum::Json;
 use serde::{Deserialize, Serialize, Serializer};
 
 use super::signature::{authority, require_signature, Verifier};
-use crate::domain::{IssuedClaimCode, StoredTunnel, TunnelError};
+use crate::domain::{
+    HourlyTotals, IssuedClaimCode, Outcome, StoredTunnel, TunnelError, TunnelOutcome,
+};
 use crate::live_bindings::state::TunnelRegistry;
 use crate::live_bindings::{
-    Admin, LiveClaimCodesIssuer, LiveTunnelTokensReissuer, LiveTunnelsCreator, LiveTunnelsDeleter,
-    LiveTunnelsReader,
+    Admin, LiveClaimCodesIssuer, LiveConnectionTotalsReader, LiveTunnelTokensReissuer,
+    LiveTunnelsCreator, LiveTunnelsDeleter, LiveTunnelsReader,
 };
 use crate::settings::Secret;
 
@@ -58,6 +71,7 @@ pub(super) fn router(registry: Arc<TunnelRegistry>, verifier: Arc<Verifier>) -> 
         .route("/api/tunnels/{name}", delete(remove))
         .route("/api/tunnels/{name}/claim-codes", post(issue_claim_code))
         .route("/api/tunnels/{name}/token", post(reissue_token))
+        .route("/api/connection-totals", get(list_connection_totals))
         .route_layer(middleware::from_fn_with_state(verifier, require_signature))
         // The outer layer: the host is checked before the signature.
         .route_layer(middleware::from_fn_with_state(
@@ -96,15 +110,55 @@ struct TunnelInfo {
     public_host: String,
     /// Unix epoch seconds.
     created_at: i64,
+    /// What became of the last connection to the tunnel since the relay
+    /// started, by its [`Outcome::as_str`] name; `null` before the first.
+    last_outcome: Option<&'static str>,
 }
 
 impl TunnelInfo {
-    fn new(stored: StoredTunnel, public_host: String) -> Self {
+    fn new(stored: StoredTunnel, public_host: String, last_outcome: Option<TunnelOutcome>) -> Self {
         Self {
             name: stored.tunnel.name,
             email: stored.email,
             public_host,
             created_at: stored.created_at,
+            last_outcome: last_outcome.map(|outcome| Outcome::from(outcome).as_str()),
+        }
+    }
+}
+
+/// One hour as `GET /api/connection-totals` lists it: every outcome's
+/// count, zeros included, by its [`Outcome::as_str`] name.
+#[derive(Debug, Serialize)]
+struct ConnectionTotalsBody {
+    /// The UTC hour's start, Unix epoch seconds.
+    hour: i64,
+    ok: u64,
+    over_connection_limit: u64,
+    hello_timeout: u64,
+    not_a_hello: u64,
+    no_server_name: u64,
+    unknown_tunnel: u64,
+    tunnel_down: u64,
+    tunnel_busy: u64,
+    tunnel_closed: u64,
+    proxy_header_failed: u64,
+}
+
+impl From<&HourlyTotals> for ConnectionTotalsBody {
+    fn from(totals: &HourlyTotals) -> Self {
+        Self {
+            hour: totals.hour,
+            ok: totals.count(Outcome::Ok),
+            over_connection_limit: totals.count(Outcome::OverConnectionLimit),
+            hello_timeout: totals.count(Outcome::HelloTimeout),
+            not_a_hello: totals.count(Outcome::NotAHello),
+            no_server_name: totals.count(Outcome::NoServerName),
+            unknown_tunnel: totals.count(Outcome::UnknownTunnel),
+            tunnel_down: totals.count(Outcome::TunnelDown),
+            tunnel_busy: totals.count(Outcome::TunnelBusy),
+            tunnel_closed: totals.count(Outcome::TunnelClosed),
+            proxy_header_failed: totals.count(Outcome::ProxyHeaderFailed),
         }
     }
 }
@@ -182,9 +236,20 @@ async fn list(Admin(reader): Admin<LiveTunnelsReader>) -> Response {
                 .into_iter()
                 .map(|stored| {
                     let public_host = reader.public_host(&stored.tunnel.name);
-                    TunnelInfo::new(stored, public_host)
+                    let last_outcome = reader.last_outcome(&stored.tunnel.name);
+                    TunnelInfo::new(stored, public_host, last_outcome)
                 })
                 .collect();
+            Json(listed).into_response()
+        }
+        Err(error) => error.into_response(),
+    }
+}
+
+async fn list_connection_totals(Admin(reader): Admin<LiveConnectionTotalsReader>) -> Response {
+    match reader.list().await {
+        Ok(totals) => {
+            let listed: Vec<_> = totals.iter().map(ConnectionTotalsBody::from).collect();
             Json(listed).into_response()
         }
         Err(error) => error.into_response(),
@@ -375,6 +440,7 @@ mod tests {
                 "email": "bob@example.com",
                 "public_host": "bob.relay.example.com",
                 "created_at": created_at,
+                "last_outcome": null,
             })
         );
         assert!(listed.iter().all(|t| t.get("token").is_none()));
@@ -645,5 +711,139 @@ mod tests {
             let (status, _) = send(&router, request).await;
             assert_eq!(status, StatusCode::NOT_FOUND, "{method}");
         }
+    }
+
+    /// A tunnel's last outcome is `null` until a connection to it is
+    /// recorded, then that outcome's name.
+    #[tokio::test]
+    async fn lists_each_tunnels_last_outcome() {
+        let (router, tunnels, _, _fixture) = router_with_alice().await;
+        let list = || {
+            admin_request(
+                "GET",
+                &format!("{ADMIN}/api/tunnels"),
+                &serde_json::Value::Null,
+            )
+        };
+        let (status, body) = send(&router, list()).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json(&body)[0]["last_outcome"], serde_json::Value::Null);
+
+        tunnels
+            .outcomes()
+            .record_for_tunnel("alice", TunnelOutcome::TunnelDown);
+
+        let (_, body) = send(&router, list()).await;
+        assert_eq!(json(&body)[0]["last_outcome"], "tunnel_down");
+    }
+
+    #[tokio::test]
+    async fn connection_totals_need_the_admin_signature_and_the_admin_host() {
+        let (router, _tunnels, alice, _fixture) = router_with_alice().await;
+        let uri = format!("{ADMIN}/api/connection-totals");
+        let unsigned = Request::builder()
+            .uri("/api/connection-totals")
+            .header(header::HOST, "admin.relay.example.com")
+            .body(Body::empty())
+            .unwrap();
+        let now = unix_now().unwrap();
+        for request in [
+            unsigned,
+            signed_request("GET", &uri, b"", "alice", &alice, now, "a"),
+        ] {
+            let (status, body) = send(&router, request).await;
+            assert_eq!(status, StatusCode::UNAUTHORIZED);
+            assert!(body.is_empty(), "a 401 carries no detail");
+        }
+        let off_host = admin_request(
+            "GET",
+            "https://relay.example.com/api/connection-totals",
+            &serde_json::Value::Null,
+        );
+        let (status, _) = send(&router, off_host).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    /// Counts already flushed and counts still pending are listed together,
+    /// every outcome present.
+    #[tokio::test]
+    async fn connection_totals_merge_flushed_and_pending_counts() {
+        let (router, tunnels, _, _fixture) = router_with_alice().await;
+        let outcomes = tunnels.outcomes();
+        outcomes.record_for_tunnel("alice", TunnelOutcome::Ok);
+        outcomes.record(Outcome::UnknownTunnel);
+        tunnels.flush_connection_totals_once().await;
+        outcomes.record_for_tunnel("alice", TunnelOutcome::Ok);
+        let before = crate::domain::hour_start(unix_now().unwrap());
+
+        let (status, body) = send(
+            &router,
+            admin_request(
+                "GET",
+                &format!("{ADMIN}/api/connection-totals"),
+                &serde_json::Value::Null,
+            ),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        let listed = json(&body);
+        let listed = listed.as_array().unwrap();
+        // One hour, unless the hour turned while the test ran.
+        assert!((1..=2).contains(&listed.len()), "{listed:?}");
+        assert!(listed[0]["hour"].as_i64().unwrap() <= before);
+        let sum = |field: &str| -> u64 {
+            listed
+                .iter()
+                .map(|hour| hour[field].as_u64().unwrap())
+                .sum()
+        };
+        assert_eq!(sum("ok"), 2);
+        assert_eq!(sum("unknown_tunnel"), 1);
+        assert_eq!(sum("tunnel_down"), 0);
+        for hour in listed {
+            assert_eq!(hour.as_object().unwrap().len(), 11, "{hour}");
+        }
+    }
+
+    /// `apps/relay/relay-core-js/src/http-api-definition/fixtures/admin-wire.json`
+    /// holds the admin API's list bodies as relay-core-js decodes them
+    /// (`tunnels.test.ts`). These are the same values, serialized as the
+    /// relay does.
+    #[test]
+    fn the_admin_wire_fixture_matches_what_the_relay_serializes() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../relay-core-js/src/http-api-definition/fixtures/admin-wire.json"
+        )))
+        .unwrap();
+        let tunnel = |name: &str, last_outcome| {
+            let mut stored = crate::domain::test_fake::stored_tunnel(name);
+            stored.created_at = 1_700_000_000;
+            TunnelInfo::new(stored, format!("{name}.relay.example.com"), last_outcome)
+        };
+        let list_tunnels = [
+            tunnel("alice", Some(TunnelOutcome::TunnelDown)),
+            tunnel("bob", None),
+        ];
+        let mut first = HourlyTotals::new(crate::domain::hour_start(1_700_000_000));
+        first.add(Outcome::Ok, 12);
+        first.add(Outcome::UnknownTunnel, 3);
+        first.add(Outcome::TunnelDown, 1);
+        let mut second = HourlyTotals::new(first.hour + 3600);
+        for (index, outcome) in Outcome::ALL.into_iter().enumerate() {
+            second.add(outcome, u64::try_from(index).unwrap() + 1);
+        }
+        let list_connection_totals: Vec<_> = [first, second]
+            .iter()
+            .map(ConnectionTotalsBody::from)
+            .collect();
+        assert_eq!(
+            serde_json::json!({
+                "ListTunnels": list_tunnels,
+                "ListConnectionTotals": list_connection_totals,
+            }),
+            fixture
+        );
     }
 }

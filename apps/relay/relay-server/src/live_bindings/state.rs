@@ -19,6 +19,13 @@
 //! Claim codes live in the same store and change nothing that is served.
 //! Issuing one runs through `TunnelRegistry::while_unchanged`, between
 //! tunnel changes, so the tunnel it is for cannot be deleted under it.
+//!
+//! The registry also holds the [`ConnectionOutcomes`] the front records
+//! into: a deleted tunnel's last outcome is dropped once it stops being
+//! served, so a tunnel created later under the name starts with none, and a
+//! reissued token keeps it. The hourly counts reach the store's totals
+//! through `TunnelRegistry::flush_connection_totals` (in
+//! `connection_totals_flush`).
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -31,6 +38,8 @@ use super::on_blocking;
 use crate::config;
 use crate::db::SqliteTunnelStore;
 use crate::domain::{ReissuedTunnel, StoredTunnel, Tunnel, TunnelError, TunnelStore};
+use crate::logging::IDENTIFYING;
+use crate::outcomes::ConnectionOutcomes;
 use crate::route::Router;
 use crate::served::ServedTunnels;
 use crate::settings::{FrontSettings, RelaySettings};
@@ -94,8 +103,14 @@ pub struct TunnelRegistry {
     tunnels: Arc<ServedTunnels>,
     router: Arc<Router>,
     verifier: Arc<Verifier>,
+    /// What the front records about each connection; shares `tunnels`.
+    pub(crate) outcomes: Arc<ConnectionOutcomes>,
     /// Held across a whole change, so changes apply one at a time.
     changing: Mutex<()>,
+    /// Held across a flush of the hourly counts and across a read of the
+    /// totals, so a read never sees a count both pending and stored, or
+    /// neither.
+    pub(crate) totals_flush: Mutex<()>,
 }
 
 impl std::fmt::Debug for TunnelRegistry {
@@ -133,6 +148,7 @@ impl TunnelRegistry {
             Arc::clone(&served),
         );
         let verifier = Verifier::new(Arc::clone(&served), settings.admin_key.clone());
+        let outcomes = Arc::new(ConnectionOutcomes::new(Arc::clone(&served)));
         let registry = Self {
             store,
             front: settings.front.clone(),
@@ -141,7 +157,9 @@ impl TunnelRegistry {
             tunnels: served,
             router: Arc::new(router),
             verifier: Arc::new(verifier),
+            outcomes,
             changing: Mutex::new(()),
+            totals_flush: Mutex::new(()),
         };
         let feed = RatholeFeed {
             initial_config,
@@ -160,6 +178,13 @@ impl TunnelRegistry {
     #[must_use]
     pub fn verifier(&self) -> Arc<Verifier> {
         Arc::clone(&self.verifier)
+    }
+
+    /// What the front records about each connection, which the admin API
+    /// reads.
+    #[must_use]
+    pub fn outcomes(&self) -> Arc<ConnectionOutcomes> {
+        Arc::clone(&self.outcomes)
     }
 
     /// The hostname the admin API is served on.
@@ -208,7 +233,11 @@ impl TunnelRegistry {
             if let Err(error) = registry.serve(change, changed.tunnel()).await {
                 let name = changed.tunnel().name.clone();
                 if let Err(undo_error) = on_blocking(move || undo_write(&changed)).await {
-                    tracing::error!(tunnel = %name, "{undo_failed}: {undo_error}");
+                    tracing::error!(
+                        target: IDENTIFYING,
+                        tunnel = %name,
+                        "{undo_failed}: {undo_error}"
+                    );
                 }
                 return Err(error);
             }
@@ -263,8 +292,10 @@ impl TunnelRegistry {
             Change::Deleted => {
                 self.tunnels.remove(&tunnel.name);
                 // After the removal, so no request still being verified with
-                // the old token can record a nonce for it.
+                // the old token can record a nonce for it, and no connection
+                // still being routed to it can record an outcome.
                 self.verifier.forget(&tunnel.name);
+                self.outcomes.forget(&tunnel.name);
             }
             Change::TokenReissued => {
                 self.tunnels.insert(tunnel);
@@ -287,6 +318,7 @@ mod tests {
 
     use super::*;
     use crate::domain::test_fake::stored_tunnel;
+    use crate::domain::TunnelOutcome;
     use crate::live_bindings::{LiveTunnelTokensReissuer, LiveTunnelsCreator, LiveTunnelsDeleter};
     use crate::route::Destination;
     use crate::test_support::{admin, device, open_registry, registry, settings, until_connected};
@@ -327,6 +359,31 @@ mod tests {
         assert!(matches!(refused, TunnelError::Infrastructure { .. }));
         assert!(registry.store.list_tunnels().unwrap().is_empty());
         assert!(registry.router().resolve("bob.relay.example.com").is_none());
+    }
+
+    /// A reissued token keeps the tunnel's last outcome; a delete drops it,
+    /// so the name created again starts with none.
+    #[tokio::test]
+    async fn a_tunnels_last_outcome_survives_a_reissue_but_not_a_delete() {
+        let (registry, _fixture) = registry(None).await;
+        let creator: LiveTunnelsCreator = admin(&registry);
+        let create = || creator.create("bob@example.com".to_owned(), Some("bob".to_owned()));
+        create().await.unwrap();
+        let outcomes = registry.outcomes();
+        outcomes.record_for_tunnel("bob", TunnelOutcome::TunnelDown);
+
+        let reissuer: LiveTunnelTokensReissuer = admin(&registry);
+        reissuer.reissue("bob".to_owned()).await.unwrap();
+        assert_eq!(
+            outcomes.last_outcome("bob"),
+            Some(TunnelOutcome::TunnelDown)
+        );
+
+        let deleter: LiveTunnelsDeleter = admin(&registry);
+        deleter.delete("bob".to_owned()).await.unwrap();
+        assert_eq!(outcomes.last_outcome("bob"), None);
+        create().await.unwrap();
+        assert_eq!(outcomes.last_outcome("bob"), None);
     }
 
     /// With the real rathole server and a rathole client as the device: a

@@ -12,6 +12,7 @@ use super::AdminCapability;
 use crate::db::SqliteTunnelStore;
 use crate::domain::capabilities::ClaimCodesIssuer;
 use crate::domain::{IssuedClaimCode, TunnelError};
+use crate::logging::IDENTIFYING;
 use crate::site::signature::unix_now;
 
 /// Issue a claim code — `Admin<LiveClaimCodesIssuer>` in the issue handler.
@@ -56,7 +57,12 @@ impl LiveClaimCodesIssuer {
                 })
             })
             .await?;
-        tracing::info!(tunnel = %name, expires_at = issued.expires_at, "claim code issued");
+        tracing::info!(
+            target: IDENTIFYING,
+            tunnel = %name,
+            expires_at = issued.expires_at,
+            "claim code issued"
+        );
         Ok(issued)
     }
 }

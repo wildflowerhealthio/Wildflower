@@ -3,8 +3,10 @@
 //! database file, `<WILDFLOWER_RELAY_STATE_DIR>/tunnels.db`, as an r2d2 pool
 //! of Diesel `SqliteConnection`s (`wildflowerhealthio_persistence::DieselPool`), applies
 //! the embedded relay migrations once on construction, and implements the
-//! port by delegating to the query bodies in `tunnels`, and the
-//! [`ClaimCodeStore`] port by delegating to those in `claim_codes`. Mirrors
+//! port by delegating to the query bodies in `tunnels`, the
+//! [`ClaimCodeStore`] port by delegating to those in `claim_codes`, and the
+//! [`ConnectionTotalsStore`] port by delegating to those in
+//! `connection_totals`. Mirrors
 //! `apps-rust`'s `SqliteAppsStore`.
 //!
 //! Tokens are stored in plain text, since rathole and the HMAC check both
@@ -17,9 +19,10 @@ use anyhow::Context;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 use wildflowerhealthio_persistence::{DieselPool, PooledDieselConnection};
 
-use crate::db::{claim_codes, tunnels};
+use crate::db::{claim_codes, connection_totals, tunnels};
 use crate::domain::{
-    ClaimCodeHash, ClaimCodeStore, StoredClaimCode, StoredTunnel, Tunnel, TunnelError, TunnelStore,
+    ClaimCodeHash, ClaimCodeStore, ConnectionTotalsStore, HourlyCount, StoredClaimCode,
+    StoredTunnel, Tunnel, TunnelError, TunnelStore,
 };
 
 /// The relay's migration namespace. Applied versions are bookkept
@@ -102,6 +105,15 @@ impl SqliteTunnelStore {
         Self::new(wildflowerhealthio_persistence::open_in_memory_pool()?)
     }
 
+    /// Run `sql` on the database — for tests that break it on purpose.
+    #[cfg(test)]
+    pub(crate) fn execute(&self, sql: &str) {
+        use diesel::RunQueryDsl;
+        diesel::sql_query(sql)
+            .execute(&mut self.pool.get().expect("a connection"))
+            .expect("the statement runs");
+    }
+
     /// Check out a connection from the pool.
     fn connection(&self) -> Result<PooledDieselConnection, TunnelError> {
         self.pool
@@ -151,6 +163,22 @@ impl ClaimCodeStore for SqliteTunnelStore {
 
     fn delete_expired_claim_codes(&self, now: i64) -> Result<usize, TunnelError> {
         claim_codes::delete_expired_claim_codes(&mut self.connection()?, now)
+    }
+}
+
+/// The hourly connection totals over the same database: thin delegations to
+/// the query bodies in `connection_totals`.
+impl ConnectionTotalsStore for SqliteTunnelStore {
+    fn add_connection_totals(&self, counts: &[HourlyCount]) -> Result<(), TunnelError> {
+        connection_totals::add_connection_totals(&mut self.connection()?, counts)
+    }
+
+    fn delete_connection_totals_before(&self, hour: i64) -> Result<usize, TunnelError> {
+        connection_totals::delete_connection_totals_before(&mut self.connection()?, hour)
+    }
+
+    fn connection_totals_since(&self, hour: i64) -> Result<Vec<HourlyCount>, TunnelError> {
+        connection_totals::connection_totals_since(&mut self.connection()?, hour)
     }
 }
 
