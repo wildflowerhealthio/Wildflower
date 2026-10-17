@@ -3,7 +3,7 @@
   "apps": [
     {
       "id": "medications",
-      "name": "Medication Viewer",
+      "name": "Wildflower Medications",
       "description": "Every prescription on a patient's FHIR record, arranged around refill day, from any server that speaks SMART on FHIR.",
       "launchUrl": "https://medications.wildflowerhealth.io/",
       "publisher": {
@@ -22,7 +22,7 @@
     },
     {
       "id": "plots",
-      "name": "Plots",
+      "name": "Wildflower Plots",
       "description": "Plots labs, vitals and prescribed doses from a patient's FHIR record on one chart, so a dose change can be read against the numbers it is meant to move.",
       "launchUrl": "https://plots.wildflowerhealth.io/",
       "publisher": {
@@ -41,7 +41,7 @@
     },
     {
       "id": "strength",
-      "name": "Strength",
+      "name": "Wildflower Strength",
       "description": "A strength-training program, the workout due today and every set you lift, kept on your own FHIR record.",
       "launchUrl": "https://strength.wildflowerhealth.io/",
       "publisher": {
@@ -62,7 +62,7 @@
     },
     {
       "id": "importer",
-      "name": "Importer",
+      "name": "Wildflower Importer",
       "description": "Turns what your browser saw on a pharmacy, lab, or patient-portal website into FHIR records on a server you control.",
       "launchUrl": "https://importer.wildflowerhealth.io/",
       "publisher": {
@@ -88,7 +88,7 @@
     },
     {
       "id": "synthetic-data",
-      "name": "Synthetic Data Loader",
+      "name": "Wildflower Synthetic Data Loader",
       "description": "Loads a published snapshot of synthetic health records into a FHIR server, so the other apps have a realistic record to show.",
       "launchUrl": "https://synthetic-data.wildflowerhealth.io/",
       "publisher": {
@@ -114,7 +114,7 @@
     },
     {
       "id": "ohif-viewer",
-      "name": "Imaging",
+      "name": "OHIF Imaging Viewer",
       "description": "Views a patient's imaging studies and scanned documents in the OHIF viewer.",
       "launchUrl": "https://ohif-viewer.wildflowerhealth.io/fhir-viewer",
       "publisher": {
@@ -130,30 +130,6 @@
         "system/ImagingStudy.rs",
         "system/DocumentReference.rs"
       ]
-    },
-    {
-      "id": "growth-chart",
-      "name": "SMART Growth Chart",
-      "description": "Plots a child's height, weight and head circumference against standard growth curves.",
-      "launchUrl": "https://examples.smarthealthit.org/growth-chart-app/launch.html",
-      "publisher": {
-        "kind": "third-party",
-        "name": "SMART Health IT"
-      },
-      "tags": ["pediatrics", "vitals", "charts"],
-      "scopes": ["patient/Observation.read", "patient/Patient.read", "offline_access"]
-    },
-    {
-      "id": "smart-on-fhir-demo",
-      "name": "SMART on FHIR Demo",
-      "description": "A small demo that lists a patient's medications. Useful for checking that a server's SMART launch works.",
-      "launchUrl": "https://mitre.github.io/smart-on-fhir-demo/launch.html",
-      "publisher": {
-        "kind": "third-party",
-        "name": "MITRE"
-      },
-      "tags": ["medications", "developer"],
-      "scopes": ["launch", "openid", "fhirUser", "patient/*.read"]
     },
     {
       "id": "precise-hbr",

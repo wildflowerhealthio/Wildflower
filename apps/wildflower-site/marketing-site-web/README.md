@@ -67,8 +67,9 @@ vp build    # production build to dist/
   Hand-edited; its schema is `suggested-apps-core-js`'s `SuggestedApps`.
   `src/suggested-apps.test.ts` decodes it and requires a first-party entry
   for each app in `branding-core`'s `SMART_APP_LAUNCH_PAGES`, at that launch
-  page and with its `APP_DESCRIPTIONS` name and tagline, so a renamed or new
-  hosted app fails there until the file follows. Nothing checks the
+  page, with the name the header menu gives it (`HEADER_NAV_GROUPS`, as
+  `Wildflower Medications`) and its `APP_DESCRIPTIONS` tagline, so a renamed
+  or new hosted app fails there until the file follows. Nothing checks the
   `ohif-viewer` entry or any entry's scopes: those are copied by hand from
   each app's SMART config.
 
