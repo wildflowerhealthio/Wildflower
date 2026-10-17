@@ -444,6 +444,10 @@
       "requesterName": "Firefox on Linux"
     }
   ],
+  "consentNotificationActions": {
+    "open": "open",
+    "deny": "deny"
+  },
   "enteredRelays": {
     "wildflowerOfficial": {
       "kind": "wildflowerOfficial"

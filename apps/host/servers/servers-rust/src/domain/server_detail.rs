@@ -5,6 +5,7 @@ use wildflowerhealthio_authorization_server::NewestPendingConsent;
 use wildflowerhealthio_tunnel::TunnelState;
 use wildflowerhealthio_wildflower_server::{CertificateState, ServerHealth};
 
+use crate::live_bindings::server_consent_denier::ServerConsentDenier;
 use crate::live_bindings::server_consent_watcher::ServerConsentWatcher;
 use crate::live_bindings::server_launch_minter::ServerLaunchMinter;
 use crate::live_bindings::server_sign_in_code_minter::ServerSignInCodeMinter;
@@ -44,4 +45,8 @@ pub struct ServerDetail {
     /// sets it; it is `None` only in a detail built without a server, as the
     /// domain's tests build theirs.
     pub consent_watcher: Option<ServerConsentWatcher>,
+    /// How the host denies a consent waiting on this server, as the Owner,
+    /// from its notification. A run always sets it; it is `None` only in a
+    /// detail built without a server, as the domain's tests build theirs.
+    pub consent_denier: Option<ServerConsentDenier>,
 }

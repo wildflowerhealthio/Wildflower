@@ -2,12 +2,15 @@
 //! unit runner, the way the servers commands change and read the servers'
 //! units, how a launch's in-app browser view counts toward their
 //! `WhileOpen` run policy, the consents showing in those views, the consent
-//! opens waiting for their server, and the taps on consent notifications.
+//! opens waiting for their server, the taps on consent notifications and
+//! their actions, and the requests those notifications name.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use tokio::sync::watch;
-use wildflowerhealthio_servers::{ConsentViews, ServerDetail, ServerRecord, ServerUnit};
+use wildflowerhealthio_servers::{
+    AnnouncedConsents, ConsentViews, ServerDetail, ServerRecord, ServerUnit,
+};
 use wildflowerhealthio_tauri_unit_runner::{RunPolicy, TauriUnitRunner, UnitId, UnitStatuses};
 use wildflowerhealthio_wildflower_server::WildflowerServerConfig;
 
@@ -30,8 +33,12 @@ pub struct ServerUnits {
     /// The consent opens waiting for their server, shared by every way one
     /// opens.
     waiting_consent_opens: WaitingConsentOpens,
-    /// How many consent notifications have been tapped.
+    /// How many consent notifications have been tapped, on their text or
+    /// on an action.
     notification_taps: Arc<watch::Sender<u64>>,
+    /// The requests the consent notifications posted name, as the consent
+    /// notifications last recorded them.
+    announced_consents: Arc<Mutex<AnnouncedConsents>>,
 }
 
 impl ServerUnits {
@@ -45,6 +52,7 @@ impl ServerUnits {
             consent_views: ConsentViews::default(),
             waiting_consent_opens: WaitingConsentOpens::default(),
             notification_taps: Arc::new(watch::Sender::new(0)),
+            announced_consents: Arc::new(Mutex::new(AnnouncedConsents::default())),
         }
     }
 
@@ -146,8 +154,9 @@ impl ServerUnits {
         &self.waiting_consent_opens
     }
 
-    /// A consent notification was tapped: the consent notifications hear it
-    /// through [`Self::subscribe_notification_taps`].
+    /// A consent notification was tapped, on its text or on an action: the
+    /// consent notifications hear it through
+    /// [`Self::subscribe_notification_taps`].
     pub(crate) fn notification_tapped(&self) {
         self.notification_taps.send_modify(|taps| *taps += 1);
     }
@@ -155,5 +164,25 @@ impl ServerUnits {
     /// How many consent notifications have been tapped, as it changes.
     pub(crate) fn subscribe_notification_taps(&self) -> watch::Receiver<u64> {
         self.notification_taps.subscribe()
+    }
+
+    /// Record the requests the consent notifications posted name, for an
+    /// action on one to act on ([`Self::announced_consents`]).
+    pub(crate) fn record_announced_consents(&self, announced_consents: AnnouncedConsents) {
+        *self.announced_consents_lock() = announced_consents;
+    }
+
+    /// The requests the consent notifications posted name, as last recorded.
+    pub(crate) fn announced_consents(&self) -> AnnouncedConsents {
+        self.announced_consents_lock().clone()
+    }
+
+    /// The requests the consent notifications posted name, locked. A writer
+    /// that panicked left a whole value, as each write replaces it, so a
+    /// poisoned lock is taken as it stands.
+    fn announced_consents_lock(&self) -> MutexGuard<'_, AnnouncedConsents> {
+        self.announced_consents
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
     }
 }

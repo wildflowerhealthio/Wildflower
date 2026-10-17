@@ -11,7 +11,11 @@
 //! which reports no taps, each request opens in the default browser as it notifies. A request the
 //! Owner's own browser made does neither. Which request notifies or opens is
 //! [`ConsentNotificationCoalescer`]'s decision. The same coalescer counts the
-//! servers with a request pending, which the app icon's badge shows.
+//! servers with a request pending, which the app icon's badge shows, names the
+//! request the ongoing notification Android shows while one is pending, and
+//! says which request each notification posted names, which an action on it
+//! (Open, Deny) acts on. A tap or an action takes Android's notification down,
+//! so each posts the ongoing notification again.
 
 use std::collections::BTreeSet;
 use std::future::Future;
@@ -23,15 +27,18 @@ use tauri_plugin_log::log;
 use tauri_plugin_native_page_browser::NativePageBrowserExt;
 use tokio::sync::watch;
 use wildflowerhealthio_servers::{
-    ConsentNotificationChanges, ConsentNotificationCoalescer, ConsentOpening, ConsentRequest,
-    ServerDetail, ServerRegistry,
+    AnnouncedConsents, ConsentNotificationChanges, ConsentNotificationCoalescer, ConsentOpening,
+    ConsentRequest, OngoingConsentNotification, ServerDetail, ServerRegistry,
 };
 use wildflowerhealthio_tauri_unit_runner::{
     ForegroundArrivals, TauriUnitRunner, UnitId, UnitStatuses,
 };
 
 use crate::launch_commands::ConsentToOpen;
-use crate::notifications::{post_notification, withdraw_consent_notification};
+use crate::notifications::{
+    post_notification, withdraw_consent_notification, withdraw_ongoing_consent_notification,
+    NotificationKind,
+};
 use crate::pending_consent_badge::{PendingConsentBadge, ShownBadgeCount};
 use crate::ServerUnits;
 
@@ -51,6 +58,14 @@ pub(crate) trait ConsentRequestNotifier: Send + 'static {
     fn notify(&self, request: &ConsentRequest);
     /// Withdraw the announcement of the server `domain`'s request.
     fn withdraw(&self, domain: &str);
+    /// Post the ongoing consent notification as `ongoing` says, where the
+    /// platform shows one (Android), replacing the one posted.
+    fn post_ongoing(&self, ongoing: &OngoingConsentNotification);
+    /// Withdraw the ongoing consent notification.
+    fn withdraw_ongoing(&self);
+    /// Record the requests the notifications posted name, for an action on
+    /// one to act on.
+    fn record_announced(&self, announced_consents: AnnouncedConsents);
     /// Open `request`.
     fn open(&self, request: &ConsentRequest);
     /// End the wait of every open still waiting for its server.
@@ -77,11 +92,36 @@ pub(crate) struct AppConsentRequestNotifier {
 
 impl ConsentRequestNotifier for AppConsentRequestNotifier {
     fn notify(&self, request: &ConsentRequest) {
-        post_notification(&self.app, &request.notification());
+        post_notification(
+            &self.app,
+            &request.notification(),
+            NotificationKind::ConsentRequest,
+        );
     }
 
     fn withdraw(&self, domain: &str) {
         withdraw_consent_notification(&self.app, domain);
+    }
+
+    /// Only Android shows it: an iOS notification can't stay, and the
+    /// desktop has the app's own window.
+    fn post_ongoing(&self, ongoing: &OngoingConsentNotification) {
+        if cfg!(target_os = "android") {
+            post_notification(
+                &self.app,
+                &ongoing.notification(),
+                NotificationKind::OngoingConsent,
+            );
+        }
+    }
+
+    fn withdraw_ongoing(&self) {
+        withdraw_ongoing_consent_notification(&self.app);
+    }
+
+    fn record_announced(&self, announced_consents: AnnouncedConsents) {
+        self.server_units
+            .record_announced_consents(announced_consents);
     }
 
     /// Open `request` signed in as the Owner, stacked over the views
@@ -140,8 +180,9 @@ impl ConsentRequestNotifier for AppConsentRequestNotifier {
     }
 }
 
-/// Announce and open each consent request through `notifier`, and show on
-/// `badge` how many servers have one pending, every time `runner`'s statuses
+/// Announce and open each consent request through `notifier`, with the
+/// ongoing notification while one is pending, and show on `badge` how many
+/// servers have one pending, every time `runner`'s statuses
 /// change, the app arrives in or leaves the foreground, or a consent
 /// notification is tapped, as [`ConsentNotificationCoalescer`] decides for
 /// [`CONSENT_OPENING`].
@@ -179,9 +220,12 @@ pub(crate) async fn notify_consent_requests(
 /// the app leaves the foreground, and when a notification is tapped, the
 /// arrival's wait for a first report ends; leaving under
 /// [`ConsentOpening::OnArrival`] ends every open still waiting for its server
-/// too, as none can open in the background. When an arrival and a change of
+/// too, as none can open in the background. A tap, on a notification's text
+/// or an action, also posts the ongoing notification again, as Android takes
+/// a notification down when it is tapped. When an arrival and a change of
 /// the statuses are both ready, the arrival goes first: it reads the statuses
-/// itself.
+/// itself. After each, the requests the notifications name are recorded with
+/// `notifier`.
 async fn notify_and_open_consent_requests(
     notifier: impl ConsentRequestNotifier,
     badge: impl PendingConsentBadge,
@@ -193,6 +237,7 @@ async fn notify_and_open_consent_requests(
 ) {
     let mut coalescer = ConsentNotificationCoalescer::new(opening);
     let mut shown_badge_count = ShownBadgeCount::default();
+    let mut shown_ongoing = ShownOngoingNotification::default();
     let foreground = *arrivals.borrow_and_update();
     taps.borrow_and_update();
     let mut seen_arrivals = foreground.arrivals;
@@ -210,7 +255,9 @@ async fn notify_and_open_consent_requests(
         apply(&notifier, &coalescer.record(&current));
     }
     loop {
+        notifier.record_announced(coalescer.announced_consents());
         shown_badge_count.show_on(&badge, coalescer.pending_server_count());
+        shown_ongoing.show_on(&notifier, coalescer.ongoing_notification());
         tokio::select! {
             // An arrival first: it reads the statuses itself.
             biased;
@@ -230,9 +277,11 @@ async fn notify_and_open_consent_requests(
                     if opening == ConsentOpening::OnArrival {
                         notifier.end_waiting_opens();
                     }
-                } else if arrived {
-                    arrive(&notifier, &mut coalescer, &mut statuses, &mut taps, &units_to_run)
-                        .await;
+                } else if arrived
+                    && arrive(&notifier, &mut coalescer, &mut statuses, &mut taps, &units_to_run)
+                        .await
+                {
+                    shown_ongoing.forget();
                 }
             }
             changed = taps.changed() => {
@@ -245,6 +294,7 @@ async fn notify_and_open_consent_requests(
                 }
                 taps.borrow_and_update();
                 coalescer.end_arrival_wait();
+                shown_ongoing.forget();
             }
             changed = statuses.changed() => {
                 if changed.is_err() {
@@ -265,14 +315,15 @@ async fn notify_and_open_consent_requests(
 /// arrival came to open a page of its own, or a consent notification was
 /// tapped since the last tap read from `taps`, as the tap the arrival brings
 /// may be before the arrival is read; either ends the arrival's wait instead.
-/// Then withdraw, announce and open through `notifier` as it says.
+/// Then withdraw, announce and open through `notifier` as it says. Whether it
+/// read a tap from `taps`.
 async fn arrive(
     notifier: &impl ConsentRequestNotifier,
     coalescer: &mut ConsentNotificationCoalescer,
     statuses: &mut watch::Receiver<UnitStatuses<ServerDetail>>,
     taps: &mut watch::Receiver<u64>,
     units_to_run: &impl Fn() -> BTreeSet<UnitId>,
-) {
+) -> bool {
     let opens_its_own_page = notifier.take_arrival_opening_its_own_page().await;
     // A tap the select hasn't read yet: the arrival goes first there.
     let tapped = taps.has_changed().unwrap_or(false);
@@ -287,6 +338,38 @@ async fn arrive(
         coalescer.came_to_foreground(&current, &units_to_run())
     };
     apply(notifier, &changes);
+    tapped
+}
+
+/// The ongoing consent notification a [`ConsentRequestNotifier`] shows, so
+/// it is posted again only when it changes. None known at the app's start, so
+/// the first withdraws one left from an earlier run of the app; and none after
+/// a tap, which takes it down on Android, so the next posts it again.
+#[derive(Debug, Default)]
+struct ShownOngoingNotification(Option<Option<OngoingConsentNotification>>);
+
+impl ShownOngoingNotification {
+    /// Post `ongoing` through `notifier`, or withdraw it once there is none,
+    /// unless that is what shows already.
+    fn show_on(
+        &mut self,
+        notifier: &impl ConsentRequestNotifier,
+        ongoing: Option<OngoingConsentNotification>,
+    ) {
+        if self.0.as_ref() == Some(&ongoing) {
+            return;
+        }
+        match &ongoing {
+            Some(ongoing) => notifier.post_ongoing(ongoing),
+            None => notifier.withdraw_ongoing(),
+        }
+        self.0 = Some(ongoing);
+    }
+
+    /// Forget what shows, as a tap took it down.
+    fn forget(&mut self) {
+        self.0 = None;
+    }
 }
 
 /// Withdraw, announce and open through `notifier` as `changes` says.
@@ -320,8 +403,10 @@ mod tests {
 
     /// The requests announced, the domains whose announcement was
     /// withdrawn, and the requests opened, each in order; how many times the
-    /// waiting opens' waits were ended; and whether the next arrival comes to
-    /// open a page of its own, as one a tap brings on Android.
+    /// waiting opens' waits were ended; whether the next arrival comes to
+    /// open a page of its own, as one a tap brings on Android; each ongoing
+    /// notification posted, or `None` for each withdrawal, in order; and the
+    /// announced consents last recorded.
     #[derive(Clone, Default)]
     struct RecordedRequests(
         Arc<Mutex<Vec<ConsentRequest>>>,
@@ -329,6 +414,8 @@ mod tests {
         Arc<Mutex<Vec<ConsentRequest>>>,
         Arc<AtomicUsize>,
         Arc<AtomicBool>,
+        Arc<Mutex<Vec<Option<OngoingConsentNotification>>>>,
+        Arc<Mutex<AnnouncedConsents>>,
     );
 
     impl ConsentRequestNotifier for RecordedRequests {
@@ -338,6 +425,18 @@ mod tests {
 
         fn withdraw(&self, domain: &str) {
             self.1.lock().unwrap().push(domain.to_owned());
+        }
+
+        fn post_ongoing(&self, ongoing: &OngoingConsentNotification) {
+            self.5.lock().unwrap().push(Some(ongoing.clone()));
+        }
+
+        fn withdraw_ongoing(&self) {
+            self.5.lock().unwrap().push(None);
+        }
+
+        fn record_announced(&self, announced_consents: AnnouncedConsents) {
+            *self.6.lock().unwrap() = announced_consents;
         }
 
         fn open(&self, request: &ConsentRequest) {
@@ -369,6 +468,21 @@ mod tests {
         fn opened_keys(&self) -> Vec<ConsentKey> {
             keys_of(&self.2)
         }
+
+        /// The key of the request each ongoing notification posted named,
+        /// or `None` for each withdrawal, in order.
+        fn ongoing_keys(&self) -> Vec<Option<ConsentKey>> {
+            self.5
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|ongoing| {
+                    ongoing
+                        .as_ref()
+                        .map(|ongoing| ongoing.newest.pending_consent.key.clone())
+                })
+                .collect()
+        }
     }
 
     fn keys_of(requests: &Mutex<Vec<ConsentRequest>>) -> Vec<ConsentKey> {
@@ -395,6 +509,7 @@ mod tests {
             launch_minter: None,
             sign_in_code_minter: None,
             consent_watcher: None,
+            consent_denier: None,
         };
         [(
             UnitId::new(RUTH),
@@ -802,5 +917,78 @@ mod tests {
         notifying.await.unwrap();
         assert_eq!(*recorded.1.lock().unwrap(), [RUTH]);
         assert_eq!(badge.shown(), [0, 1, 0]);
+    }
+
+    #[tokio::test]
+    async fn the_ongoing_notification_follows_the_pending_requests_and_comes_back_after_a_tap() {
+        let (statuses_tx, statuses_rx) = watch::channel(ruth_waiting_on(None));
+        let (_arrivals_tx, arrivals_rx) = watch::channel(arrived(0));
+        let (taps_tx, taps_rx) = watch::channel(0);
+        let recorded = RecordedRequests::default();
+        let notifying = notify_on_a_phone(&recorded, statuses_rx, arrivals_rx, taps_rx);
+        let_it_read().await;
+        // The first statuses withdraw one left from before.
+        assert_eq!(recorded.ongoing_keys(), [None]);
+
+        send_and_let_it_read(&statuses_tx, ruth_waiting_on(Some("a"))).await;
+        send_and_let_it_read(&statuses_tx, ruth_waiting_on(Some("a"))).await;
+        assert_eq!(
+            recorded.ongoing_keys(),
+            [None, Some(oauth("a"))],
+            "shown once"
+        );
+
+        send_and_let_it_read(&statuses_tx, ruth_waiting_on(Some("b"))).await;
+        assert_eq!(
+            recorded.ongoing_keys(),
+            [None, Some(oauth("a")), Some(oauth("b"))],
+            "updated for a newer request"
+        );
+
+        // A tap, as on its Open, takes it down on Android: it posts again.
+        taps_tx.send_modify(|taps| *taps += 1);
+        let_it_read().await;
+        assert_eq!(
+            recorded.ongoing_keys(),
+            [None, Some(oauth("a")), Some(oauth("b")), Some(oauth("b"))]
+        );
+
+        send_and_let_it_read(&statuses_tx, ruth_waiting_on(None)).await;
+        drop(statuses_tx);
+        notifying.await.unwrap();
+        assert_eq!(
+            recorded.ongoing_keys(),
+            [
+                None,
+                Some(oauth("a")),
+                Some(oauth("b")),
+                Some(oauth("b")),
+                None
+            ],
+            "cleared once nothing is pending"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_requests_the_notifications_name_are_recorded_as_they_change() {
+        let (statuses_tx, statuses_rx) = watch::channel(ruth_waiting_on(None));
+        let (_arrivals_tx, arrivals_rx) = watch::channel(arrived(0));
+        let (_taps_tx, taps_rx) = watch::channel(0);
+        let recorded = RecordedRequests::default();
+        let notifying = notify_on_a_phone(&recorded, statuses_rx, arrivals_rx, taps_rx);
+        let_it_read().await;
+
+        send_and_let_it_read(&statuses_tx, ruth_waiting_on(Some("a"))).await;
+        let announced = recorded.6.lock().unwrap().clone();
+        assert_eq!(keys_of(&Mutex::new(announced.by_server)), [oauth("a")]);
+        assert_eq!(
+            announced.ongoing.map(|request| request.pending_consent.key),
+            Some(oauth("a"))
+        );
+
+        send_and_let_it_read(&statuses_tx, ruth_waiting_on(None)).await;
+        drop(statuses_tx);
+        notifying.await.unwrap();
+        assert_eq!(*recorded.6.lock().unwrap(), AnnouncedConsents::default());
     }
 }
