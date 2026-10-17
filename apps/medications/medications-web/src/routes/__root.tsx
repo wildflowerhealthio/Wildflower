@@ -9,6 +9,7 @@ import {
   type PatientChoice,
   patientChoiceKeyOf,
   PatientPicker,
+  PatientSearch,
   ReadFailureLine,
 } from '@wildflowerhealthio/smart-app-react'
 import { Match, Option, Schema } from 'effect'
@@ -174,13 +175,6 @@ function MedicationsRoot(): JSX.Element {
     ))
   )
 }
-
-/**
- * The search every route carries: whose medications the page reads,
- * `?patient=` (a patient's id, or `*` for every patient), absent for the
- * launch's patient.
- */
-const PatientSearch = Schema.Struct({ [PATIENT_PARAM]: Schema.optional(Schema.String) })
 
 /**
  * The root route: the patient picker or the medications page, each of whose

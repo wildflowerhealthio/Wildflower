@@ -1,38 +1,16 @@
-import { useSearch } from '@tanstack/react-router'
-import {
-  PATIENT_PARAM,
-  type PatientChoice,
-  patientChoiceOfKey,
-} from '@wildflowerhealthio/smart-app-react'
+import { type PatientChoice, useRoutedPatientChoice } from '@wildflowerhealthio/smart-app-react'
 import { Option } from 'effect'
-import { useMemo } from 'react'
 
 import { useSmartClient } from '../router-context.ts'
 
 /**
- * Whose medications the address bar names: the root route's `?patient=`
- * when it carries one, else the launch's patient (`client.patient.id`, e.g.
- * an EHR launch from a patient's record), else none yet, which the root
- * shows as the patient picker.
- *
- * @remarks
- * Read from the router's location, so it is the history entry's own: Back
- * and Forward bring each entry's patient back with its tab.
+ * Whose medications the address bar names: `smart-app-react`'s
+ * `useRoutedPatientChoice` over the launch's patient: the root route's
+ * `?patient=`, else `client.patient.id`, else none yet, which the root shows
+ * as the patient picker.
  */
-const useChosenPatient = (): Option.Option<PatientChoice> => {
-  const patientKey = useSearch({ from: '__root__', select: (search) => search[PATIENT_PARAM] })
-  const launchPatientId = useSmartClient().patient.id
-  return useMemo(
-    () =>
-      Option.orElse(patientChoiceOfKey(patientKey ?? ''), () =>
-        Option.map(Option.fromNullable(launchPatientId), (patientId): PatientChoice => ({
-          kind: 'patient',
-          patientId,
-        }))
-      ),
-    [patientKey, launchPatientId]
-  )
-}
+const useChosenPatient = (): Option.Option<PatientChoice> =>
+  useRoutedPatientChoice(useSmartClient().patient.id)
 
 /**
  * The patient the tabs read: the chosen one. The root shows the picker in
