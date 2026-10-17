@@ -12,12 +12,12 @@ use axum::http::Extensions;
 /// request; the host, whose listener put what it knows of the connection in
 /// the request's extensions (its connect info), decides. Asked at most once
 /// per request: before the request is parsed, or, for a request carrying a
-/// browser session that can decide consents, only once the request is to be
-/// raised for the Owner. `POST /authorization/oauth-consents/{id}/ask-owner`,
-/// which raises a parked request for the Owner, asks it too, only when it
-/// raises one. A request it admits has spent from whatever
-/// allowance it keeps, and one it refuses is answered
-/// `429 Too Many Requests`.
+/// browser session that can decide consents or an `/oauth/authorize` request
+/// carrying no browser session, only once the request is to be raised for the
+/// Owner. `POST /authorization/oauth-consents/{id}/ask-owner`, which raises a
+/// parked request for the Owner, asks it too, only when it raises one. A
+/// request it admits has spent from whatever allowance it keeps, and one it
+/// refuses is answered `429 Too Many Requests`.
 pub trait AuthorizationStartGate: Send + Sync + 'static {
     /// Whether to admit the request `request_extensions` belong to, spending
     /// from its allowance when it does.

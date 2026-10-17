@@ -22,6 +22,7 @@ use utoipa_axum::router::{OpenApiRouter, UtoipaMethodRouter};
 use utoipa_axum::routes;
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
+use crate::http::middleware::AuthorizationStartRoute;
 use crate::http::state::AuthorizationServerState;
 
 pub(crate) use authorization_pages::device_page_url;
@@ -50,28 +51,32 @@ pub(crate) fn page_router(launcher_base: &LauncherBase) -> Router<Arc<Authorizat
 /// method + path.
 ///
 /// `limit_authorization_starts` wraps the two routes that start an
-/// authorization request, `/authorize` and `/device_authorization`, in the
-/// limit on how fast they are started (see
+/// authorization request, `/authorize` and `/device_authorization`, each
+/// named by its [`AuthorizationStartRoute`], in the limit on how fast they
+/// are started (see
 /// [`limit_authorization_starts`](crate::http::middleware::limit_authorization_starts)),
 /// so it covers every method axum serves them on; the spec, which serves
 /// nothing, leaves them as they are.
 pub(crate) fn openapi_router(
     limit_authorization_starts: impl Fn(
         UtoipaMethodRouter<Arc<AuthorizationServerState>>,
+        AuthorizationStartRoute,
     ) -> UtoipaMethodRouter<Arc<AuthorizationServerState>>,
 ) -> OpenApiRouter<Arc<AuthorizationServerState>> {
     OpenApiRouter::new()
-        .routes(limit_authorization_starts(routes!(
-            authorize::handle_authorize_request
-        )))
+        .routes(limit_authorization_starts(
+            routes!(authorize::handle_authorize_request),
+            AuthorizationStartRoute::Authorize,
+        ))
         .routes(routes!(
             authorization_status::handle_authorization_status_request
         ))
         .routes(routes!(token_exchange::handle_token_request))
         .routes(routes!(token_revocation::handle_token_revocation_request))
-        .routes(limit_authorization_starts(routes!(
-            device_authorization::handle_device_authorization_request
-        )))
+        .routes(limit_authorization_starts(
+            routes!(device_authorization::handle_device_authorization_request),
+            AuthorizationStartRoute::DeviceAuthorization,
+        ))
         .routes(routes!(browser_pairing::handle_browser_pairing_start))
         .routes(routes!(browser_pairing::handle_browser_pairing_poll))
 }

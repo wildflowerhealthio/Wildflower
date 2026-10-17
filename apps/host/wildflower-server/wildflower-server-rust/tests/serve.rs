@@ -352,6 +352,13 @@ fn request(method: Method, path: &str) -> http::request::Builder {
         .header(header::HOST, DOMAIN)
 }
 
+/// An empty, and so malformed, `POST /oauth/device_authorization`.
+fn device_authorization() -> Request<Full<Bytes>> {
+    request(Method::POST, "/oauth/device_authorization")
+        .body(Full::default())
+        .expect("a request")
+}
+
 /// `GET path` with no body.
 fn get(path: &str) -> Request<Full<Bytes>> {
     request(Method::GET, path)
@@ -1650,9 +1657,9 @@ fn walk_files(dir: &Path) -> Vec<PathBuf> {
 const AUTHORIZATION_STARTS_PER_VISITOR_BURST: usize = 10;
 
 /// The tunnel router's limit on starting authorization requests: one visitor
-/// over its burst of `GET /oauth/authorize` is answered `429`, which the
-/// request log records with the visitor's address, while another visitor
-/// still gets through.
+/// over its burst of `POST /oauth/device_authorization` is answered `429`,
+/// which the request log records with the visitor's address, while another
+/// visitor still gets through.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_visitor_over_its_burst_of_authorization_starts_is_refused_and_reported() {
     let server_dir = tempfile::tempdir().expect("temp server folder");
@@ -1665,7 +1672,7 @@ async fn a_visitor_over_its_burst_of_authorization_starts_is_refused_and_reporte
     // Malformed, so each admitted one is a `400`: the limit counts it anyway.
     for _ in 0..AUTHORIZATION_STARTS_PER_VISITOR_BURST {
         let response = tunnel
-            .send_from(Some(&visitor), get("/oauth/authorize"))
+            .send_from(Some(&visitor), device_authorization())
             .await;
         assert_eq!(response.status, StatusCode::BAD_REQUEST);
         assert_eq!(
@@ -1675,7 +1682,7 @@ async fn a_visitor_over_its_burst_of_authorization_starts_is_refused_and_reporte
     }
 
     let refused = tunnel
-        .send_from(Some(&visitor), get("/oauth/authorize"))
+        .send_from(Some(&visitor), device_authorization())
         .await;
     assert_eq!(refused.status, StatusCode::TOO_MANY_REQUESTS);
     assert_eq!(refused.header(header::CACHE_CONTROL), Some("no-store"));
@@ -1697,7 +1704,7 @@ async fn a_visitor_over_its_burst_of_authorization_starts_is_refused_and_reporte
     let other_visitor = tunnel
         .send_from(
             Some(&proxy_header("198.51.100.9:4711")),
-            get("/oauth/authorize"),
+            device_authorization(),
         )
         .await;
     assert_eq!(other_visitor.status, StatusCode::BAD_REQUEST);
