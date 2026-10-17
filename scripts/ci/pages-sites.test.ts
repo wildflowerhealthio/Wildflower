@@ -95,7 +95,7 @@ describe('pages-sites / the sites', () => {
     }
   })
 
-  it("should require every page of the marketing site, its CNAME and the apps' old paths", () => {
+  it("should require every page of the marketing site, its CNAME, suggested_apps.json and the apps' old paths", () => {
     const dir = join(repoRoot, packageOf(MARKETING_PAGES_SITE).relDir)
     const config = readFileSync(join(dir, 'vite.config.ts'), 'utf8')
     const entries = [...config.matchAll(/'([\w/-]*index\.html)'/g)].map(([, file]) => file ?? '')
@@ -103,6 +103,8 @@ describe('pages-sites / the sites', () => {
     expect(MARKETING_PAGES_SITE.requiredFiles).toEqual(expect.arrayContaining(entries))
     expect(MARKETING_PAGES_SITE.requiredFiles).toContain('CNAME')
     expect(existsSync(join(dir, 'public', 'CNAME'))).toBe(true)
+    expect(MARKETING_PAGES_SITE.requiredFiles).toContain('suggested_apps.json')
+    expect(existsSync(join(dir, 'public', 'suggested_apps.json'))).toBe(true)
     expect(MARKETING_PAGES_SITE.requiredFiles).toContain('health-viewer/index.html')
   })
 

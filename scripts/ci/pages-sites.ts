@@ -166,6 +166,8 @@ const MARKETING_PAGES_SITE: PagesSite = {
   // the apex deploy or GitHub Pages drops the custom domain. The policy pages
   // are app-store and legal requirements, and the redirect pages and the
   // `404.html` that hands them deep links keep the apps' apex paths working.
+  // `suggested_apps.json` (also from `public/`) is the published list of
+  // suggested SMART apps, whose schema is `suggested-apps-core-js`.
   requiredFiles: [
     'index.html',
     'CNAME',
@@ -176,6 +178,7 @@ const MARKETING_PAGES_SITE: PagesSite = {
     'deletion/index.html',
     'health-viewer/index.html',
     'lifting/index.html',
+    'suggested_apps.json',
   ],
   sentryDsnVariable: '',
   pagesRepository: 'staging',
