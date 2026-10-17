@@ -140,9 +140,11 @@ const NOTIFIED_PER_SERVER: usize = 32;
 /// pending, as their run last reported:
 /// [`pending_server_count`](Self::pending_server_count), what the app icon's
 /// badge shows, and, of those, the ones the
-/// [ongoing notification](Self::ongoing_notification) counts. Which request
-/// each notification posted names, for an action on it to act on, is
-/// [`announced_consents`](Self::announced_consents).
+/// [ongoing notification](Self::ongoing_notification) counts; it names a
+/// request only while no notification of its server's own shows it. Which
+/// request each notification posted names, for an action on it to act on, is
+/// [`announced_consents`](Self::announced_consents), less those a tap took
+/// down ([`notification_taken_down`](Self::notification_taken_down)).
 #[derive(Debug)]
 pub struct ConsentNotificationCoalescer {
     /// Which requests open.
@@ -170,7 +172,7 @@ pub struct ConsentNotificationCoalescer {
     /// Owner's own browser make, which orders them across servers.
     requests_seen: u64,
     /// The request each server's notification announces, for each server
-    /// with one posted and not withdrawn.
+    /// with one posted and neither withdrawn nor taken down.
     announced: BTreeMap<UnitId, PendingConsent>,
 }
 
@@ -453,14 +455,22 @@ impl ConsentNotificationCoalescer {
 
     /// The ongoing consent notification, as the servers' runs last reported
     /// to [`record`](Self::record): while any server's newest request is one
-    /// that notifies, the one of those seen latest, and how many servers have
-    /// one. A request the Owner's own browser made doesn't count, as it never
-    /// notifies; nor does an older one under it.
+    /// that notifies and no notification of its server's own shows it, the
+    /// one of those seen latest, and how many servers have a request that
+    /// notifies waiting, shown or not. A request the Owner's own browser made
+    /// doesn't count, as it never notifies; nor does an older one under it.
+    ///
+    /// A request shows in its server's own notification from when it
+    /// notifies until that is withdrawn or
+    /// [taken down](Self::notification_taken_down), so the ongoing
+    /// notification doesn't repeat it meanwhile; it names one that came back
+    /// once a newer one was decided, one an arrival in the foreground opened,
+    /// and one whose notification a tap took down.
     ///
     /// It follows the servers [`pending_server_count`](Self::pending_server_count)
     /// counts: a run that isn't reporting keeps its server's request, and the
     /// notification goes once every server reports nothing pending or is
-    /// removed.
+    /// removed, or each request left shows in its server's own.
     #[must_use]
     pub fn ongoing_notification(&self) -> Option<OngoingConsentNotification> {
         let waiting: Vec<(u64, &UnitId, &PendingConsent)> = self
@@ -479,6 +489,11 @@ impl ConsentNotificationCoalescer {
             .collect();
         let (_, unit_id, newest) = waiting
             .iter()
+            .filter(|(_, unit_id, newest)| {
+                self.announced
+                    .get(*unit_id)
+                    .is_none_or(|announced| announced.key != newest.key)
+            })
             .max_by_key(|(seen_after, _, _)| *seen_after)?;
         Some(OngoingConsentNotification {
             newest: ConsentRequest {
@@ -487,6 +502,17 @@ impl ConsentNotificationCoalescer {
             },
             waiting_server_count: waiting.len(),
         })
+    }
+
+    /// The notification the plugin posted under `plugin_id` was taken down,
+    /// as a tap on its text or an action takes it down: a server's own
+    /// notification no longer shows its request, which the
+    /// [ongoing notification](Self::ongoing_notification) names from now on
+    /// while it waits, and which no action on it can name any more. Any
+    /// other notification, such as the ongoing one, changes nothing here.
+    pub fn notification_taken_down(&mut self, plugin_id: i32) {
+        self.announced
+            .retain(|unit_id, _| consent_notification_id_for_plugin(unit_id.as_str()) != plugin_id);
     }
 
     /// The requests the consent notifications posted name: each server's
@@ -516,6 +542,7 @@ mod tests {
     use wildflowerhealthio_unit_runner::{RunStop, StopReason, UnitStatus};
 
     use super::*;
+    use crate::domain::notifications::announced_consents::ongoing_consent_notification_id_for_plugin;
     use crate::domain::server_status::tests::{statuses, LAB, RUTH};
 
     /// A phone's coalescer, which only notifies until the app comes to the
@@ -1384,15 +1411,24 @@ mod tests {
         })
     }
 
+    /// Take down the server `domain`'s own notification, as a tap on it does.
+    fn take_down(coalescer: &mut ConsentNotificationCoalescer, domain: &str) {
+        coalescer.notification_taken_down(consent_notification_id_for_plugin(domain));
+    }
+
     #[test]
-    fn the_ongoing_notification_names_the_request_seen_latest_until_nothing_is_pending() {
+    fn the_ongoing_notification_names_no_request_its_server_s_own_notification_shows() {
         let mut coalescer = notifying();
         assert_eq!(ongoing_summary(&coalescer), None);
 
         coalescer.record(&statuses([(RUTH, running_with(Some(oauth("a"))))]));
+        assert_eq!(ongoing_summary(&coalescer), None, "RUTH's own shows a");
+
+        take_down(&mut coalescer, RUTH);
         assert_eq!(
             ongoing_summary(&coalescer),
-            Some((RUTH.to_owned(), oauth_key("a"), 1))
+            Some((RUTH.to_owned(), oauth_key("a"), 1)),
+            "a tap took RUTH's down"
         );
 
         coalescer.record(&statuses([
@@ -1401,8 +1437,8 @@ mod tests {
         ]));
         assert_eq!(
             ongoing_summary(&coalescer),
-            Some((LAB.to_owned(), device_key("WXYZ-1234"), 2)),
-            "a request on another server"
+            Some((RUTH.to_owned(), oauth_key("a"), 2)),
+            "LAB's own shows its request, which counts all the same"
         );
 
         coalescer.record(&statuses([
@@ -1411,8 +1447,18 @@ mod tests {
         ]));
         assert_eq!(
             ongoing_summary(&coalescer),
-            Some((RUTH.to_owned(), oauth_key("b"), 2)),
-            "a newer request"
+            None,
+            "RUTH's own shows the newer request"
+        );
+
+        coalescer.record(&statuses([
+            (RUTH, running_with(Some(oauth("a")))),
+            (LAB, running_with(Some(device("WXYZ-1234")))),
+        ]));
+        assert_eq!(
+            ongoing_summary(&coalescer),
+            Some((RUTH.to_owned(), oauth_key("a"), 2)),
+            "b decided brings a back, which notifies no more"
         );
 
         coalescer.record(&statuses([
@@ -1422,7 +1468,7 @@ mod tests {
         assert_eq!(
             ongoing_summary(&coalescer),
             Some((RUTH.to_owned(), oauth_key("a"), 1)),
-            "b decided brings a back, and LAB's is decided"
+            "LAB's is decided"
         );
 
         coalescer.record(&statuses([
@@ -1433,9 +1479,50 @@ mod tests {
     }
 
     #[test]
+    fn the_ongoing_notification_names_the_request_seen_latest_of_those_not_shown() {
+        let mut coalescer = notifying();
+        coalescer.record(&statuses([(RUTH, running_with(Some(oauth("a"))))]));
+        coalescer.record(&statuses([
+            (RUTH, running_with(Some(oauth("a")))),
+            (LAB, running_with(Some(device("WXYZ-1234")))),
+        ]));
+        take_down(&mut coalescer, RUTH);
+        take_down(&mut coalescer, LAB);
+        assert_eq!(
+            ongoing_summary(&coalescer),
+            Some((LAB.to_owned(), device_key("WXYZ-1234"), 2))
+        );
+    }
+
+    #[test]
+    fn taking_down_a_notification_leaves_the_others_announced() {
+        let mut coalescer = notifying();
+        coalescer.record(&statuses([
+            (RUTH, running_with(Some(oauth("a")))),
+            (LAB, running_with(Some(oauth("b")))),
+        ]));
+        take_down(&mut coalescer, RUTH);
+        coalescer.notification_taken_down(ongoing_consent_notification_id_for_plugin());
+        assert_eq!(
+            summary(&coalescer.announced_consents().by_server),
+            [(LAB, oauth_key("b"))]
+        );
+
+        let decided = coalescer.record(&statuses([
+            (RUTH, running_with(None)),
+            (LAB, running_with(Some(oauth("b")))),
+        ]));
+        assert!(
+            decided.withdrawn.is_empty(),
+            "nothing shows for RUTH to withdraw"
+        );
+    }
+
+    #[test]
     fn the_ongoing_notification_stays_through_a_run_not_reporting_and_goes_with_a_removed_server() {
         let mut coalescer = notifying();
         coalescer.record(&statuses([(RUTH, running_with(Some(oauth("a"))))]));
+        take_down(&mut coalescer, RUTH);
 
         coalescer.record(&statuses([(RUTH, UnitStatus::never_run())]));
         assert_eq!(
@@ -1457,6 +1544,7 @@ mod tests {
                 running_with(Some(oauth_decidable_in_requesting_browser("b"))),
             ),
         ]));
+        take_down(&mut coalescer, RUTH);
         assert_eq!(
             ongoing_summary(&coalescer),
             Some((RUTH.to_owned(), oauth_key("a"), 1))
@@ -1486,7 +1574,7 @@ mod tests {
     }
 
     #[test]
-    fn the_announced_consents_name_each_posted_notification_s_request_until_it_is_withdrawn() {
+    fn the_announced_consents_name_each_shown_notification_s_request() {
         let mut coalescer = notifying();
         coalescer.record(&statuses([(RUTH, running_with(Some(oauth("a"))))]));
         coalescer.record(&statuses([
@@ -1498,19 +1586,15 @@ mod tests {
             summary(&announced.by_server),
             [(LAB, oauth_key("b")), (RUTH, oauth_key("a"))]
         );
-        assert_eq!(
-            announced
-                .ongoing
-                .map(|request| (request.domain, request.pending_consent.key)),
-            Some((LAB.to_owned(), oauth_key("b")))
-        );
+        assert_eq!(announced.ongoing, None, "each shows in its own");
 
+        take_down(&mut coalescer, RUTH);
         coalescer.record(&statuses([
             (RUTH, running_with(Some(oauth("a")))),
             (LAB, running_with(None)),
         ]));
         let announced = coalescer.announced_consents();
-        assert_eq!(summary(&announced.by_server), [(RUTH, oauth_key("a"))]);
+        assert!(announced.by_server.is_empty());
         assert_eq!(
             announced
                 .ongoing

@@ -185,7 +185,7 @@ pub fn server_open_notified_consent(
         return;
     };
     server_units.waiting_consent_opens().end_all();
-    server_units.notification_tapped();
+    server_units.notification_tapped(notification_id);
     let superseded = server_units
         .waiting_consent_opens()
         .wait_for(consent.domain());

@@ -29,8 +29,8 @@ changing how servers run or what the host notifies about them.
   notification decisions: the stop notification for each new stop of a server's run, and the consent
   notification for each new request waiting on a server, with the count of
   servers with a request pending that the app icon's badge shows, the
-  ongoing notification Android shows while one is pending, and the request
-  each notification posted names, which its Open and Deny act on; and `ConsentViews`, the consents showing in
+  ongoing notification Android shows while one is pending that no server's
+  own notification shows, and the request each notification posted names, which its Open and Deny act on; and `ConsentViews`, the consents showing in
   a view of the in-app browser, so each opens in one.
   - Layout: `domain/` the record (`ServerRecord`, `RelayKind`, `TunnelToken`),
     `RegistryError`, enrolment (`add_server`, `set_server_credentials`,
@@ -601,12 +601,20 @@ changing how servers run or what the host notifies about them.
   comes back once a newer one is decided or after a run restarts, doesn't
   notify again. A server forgets the requests it notified for once its run
   reports nothing pending, and keeps at most 32 meanwhile. On a phone each
-  consent notification offers Deny, and on Android an ongoing notification,
-  on a quiet channel, stays while any request that notifies is pending: it
-  names the newest (`ongoing_notification`), with Open and Deny, follows the
-  badge's pending state, and posts again after each tap or action, which
-  takes Android's notifications down. The golden file pins the wire shape
-  and the action ids (`consentNotificationActions`).
+  consent notification offers Deny. On Android a request's own notification
+  posts as ongoing, so it stays until withdrawn or tapped, and an ongoing
+  notification on a quiet channel names the newest request that no server's
+  own notification shows (`ongoing_notification`), with Open and Deny: one
+  whose notification a tap or action took down
+  (`notification_taken_down`, fed each tap's notification id), one that came
+  back, or one an arrival opened. It follows the badge's pending state, and
+  posts again after a tap or action on it. The plugin reports no swipe, which
+  Android 14 and later allow on a kept notification. A server's notification
+  left from an earlier run of the app is withdrawn when the consent task
+  first sees the server. An action that starts the app does nothing, and an
+  iOS Deny while suspended lands once the app runs again: #1288 captures
+  actions natively. The golden file pins the wire shape and the action ids
+  (`consentNotificationActions`).
 - **A certificate's state is its run's, or its cache's.** Every
   `ServerStatus`, in the `server-status` event and in `servers_list`,
   carries one. While a run has reported one

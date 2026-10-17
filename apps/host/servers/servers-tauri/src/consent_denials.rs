@@ -24,8 +24,8 @@ use crate::ServersState;
 ///
 /// Like a tap, it ends the arrival's wait for a server's first report, so
 /// the arrival in the foreground the action may bring opens nothing for it,
-/// and posts the ongoing notification again, as Android takes a notification
-/// down when one of its actions is tapped.
+/// and takes the notification down with the consent notifications, as the
+/// platform takes a notification down when one of its actions is tapped.
 #[tauri::command]
 pub fn server_deny_notified_consent(servers: tauri::State<'_, ServersState>, notification_id: i32) {
     let server_units = servers.server_units.clone();
@@ -37,7 +37,7 @@ pub fn server_deny_notified_consent(servers: tauri::State<'_, ServersState>, not
         log::info!("[servers] notification {notification_id} names no request to deny");
         return;
     };
-    server_units.notification_tapped();
+    server_units.notification_tapped(notification_id);
     let statuses_rx = server_units.subscribe_statuses();
     tauri::async_runtime::spawn(async move {
         deny_consent_once_reporting(statuses_rx, &request).await;
