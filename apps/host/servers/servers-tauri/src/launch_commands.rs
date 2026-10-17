@@ -60,9 +60,10 @@ use tokio::sync::{watch, Notify};
 use url::Url;
 use wildflowerhealthio_authorization_server::domain::authorization_server_error::AuthorizationServerError;
 use wildflowerhealthio_servers::{
-    ConsentKey, ConsentRequest, ConsentViewClaim, ConsentViews, IfShowing, LaunchError,
-    ListedServer, PendingConsent, RegistryError, ServerConsentWatcher, ServerDetail,
-    ServerLaunchMinter, ServerRecord, ServerRegistry, ServerSignInCodeMinter,
+    ongoing_consent_notification_id_for_plugin, AnnouncedConsents, ConsentKey, ConsentRequest,
+    ConsentViewClaim, ConsentViews, IfShowing, LaunchError, ListedServer, PendingConsent,
+    RegistryError, ServerConsentWatcher, ServerDetail, ServerLaunchMinter, ServerRecord,
+    ServerRegistry, ServerSignInCodeMinter,
 };
 use wildflowerhealthio_tauri_unit_runner::{UnitId, UnitStatus, UnitStatuses};
 
@@ -152,14 +153,17 @@ pub async fn server_open_pending_consent(
 }
 
 /// Open the consent a tapped notification announced, as
-/// [`server_open_pending_consent`] opens a server's: the newest consent
-/// waiting on the server whose notification the plugin posted under
-/// `notificationId`, as its tap reports it, once the server can open it, as
-/// [`open_consent_once_openable`] waits for it, across the restart a return
-/// to the foreground brings on iOS included. Invoked as
-/// `invoke('server_open_notified_consent', { notificationId })`; answers with
-/// nothing at once, and logs each try's outcome. A notification that isn't a
-/// consent's opens nothing, and nor does a consent already showing.
+/// [`server_open_pending_consent`] opens a server's, once the server can open
+/// it, as [`open_consent_once_openable`] waits for it, across the restart a
+/// return to the foreground brings on iOS included: for a server's own
+/// notification, the newest consent waiting on the server whose notification
+/// the plugin posted under `notificationId`, as its tap reports it; for the
+/// ongoing consent notification (Android), the request it names, while it is
+/// still its server's newest. Invoked as
+/// `invoke('server_open_notified_consent', { notificationId })`, for a tap on
+/// a notification's text or its Open; answers with nothing at once, and logs
+/// each try's outcome. A notification that isn't a consent's opens nothing,
+/// and nor does a consent already showing.
 ///
 /// The tap wins over the arrival in the foreground it brings: every other
 /// open waiting for its server ends, and so does the arrival's wait for a
@@ -172,20 +176,19 @@ pub fn server_open_notified_consent(
     servers: tauri::State<'_, ServersState>,
     notification_id: i32,
 ) {
-    let statuses = servers.server_units.statuses();
-    let Some(domain) = wildflowerhealthio_servers::server_of_consent_notification(
+    let server_units = servers.server_units.clone();
+    let Some(consent) = notified_consent_to_open(
         notification_id,
-        statuses.keys().map(UnitId::as_str),
+        &server_units.statuses(),
+        &server_units.announced_consents(),
     ) else {
         return;
     };
-    let server_units = servers.server_units.clone();
     server_units.waiting_consent_opens().end_all();
-    server_units.notification_tapped();
-    let superseded = server_units.waiting_consent_opens().wait_for(domain);
-    let consent = ConsentToOpen::NewestOn {
-        domain: domain.to_owned(),
-    };
+    server_units.notification_tapped(notification_id);
+    let superseded = server_units
+        .waiting_consent_opens()
+        .wait_for(consent.domain());
     let registry = Arc::clone(&servers.registry);
     let data_root = servers.data_root.clone();
     let statuses_rx = server_units.subscribe_statuses();
@@ -203,11 +206,37 @@ pub fn server_open_notified_consent(
     });
 }
 
+/// The consent a tap on the notification the plugin posted under
+/// `plugin_id` opens: the ongoing consent notification's request, as
+/// `announced_consents` names it, or the newest on the server among
+/// `statuses` whose own notification it is; `None` for any other
+/// notification.
+fn notified_consent_to_open(
+    plugin_id: i32,
+    statuses: &UnitStatuses<ServerDetail>,
+    announced_consents: &AnnouncedConsents,
+) -> Option<ConsentToOpen> {
+    if plugin_id == ongoing_consent_notification_id_for_plugin() {
+        return announced_consents
+            .ongoing
+            .clone()
+            .map(ConsentToOpen::Request);
+    }
+    let domain = wildflowerhealthio_servers::server_of_consent_notification(
+        plugin_id,
+        statuses.keys().map(UnitId::as_str),
+    )?;
+    Some(ConsentToOpen::NewestOn {
+        domain: domain.to_owned(),
+    })
+}
+
 /// Which consent an open waiting for its server opens.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ConsentToOpen {
     /// The request, while it is still its server's newest: one its server
-    /// notified for, or one an arrival in the foreground opens.
+    /// notified for, one an arrival in the foreground opens, or the one the
+    /// ongoing consent notification names, which a tap on it opens.
     Request(ConsentRequest),
     /// The newest consent waiting on the server `domain` once a run of it
     /// reports: the one a tap on the server's notification opens, which
@@ -1243,6 +1272,7 @@ mod tests {
             consent_watcher: Some(ServerConsentWatcher::new(
                 authorization_server.pending_consent_watcher.clone(),
             )),
+            consent_denier: None,
         };
         change(&mut detail);
         let status = UnitStatus {
@@ -2449,5 +2479,48 @@ mod tests {
             "{refused:?}"
         );
         assert!(browser.opened().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_tap_on_the_ongoing_notification_opens_the_request_it_names() {
+        let authorization_server = test_authorization_server();
+        let statuses = launchable(&authorization_server);
+        let named = ConsentRequest {
+            domain: DOMAIN.to_owned(),
+            pending_consent: oauth_consent("req-1").into(),
+        };
+        let announced = AnnouncedConsents {
+            by_server: Vec::new(),
+            ongoing: Some(named.clone()),
+        };
+
+        assert_eq!(
+            notified_consent_to_open(
+                ongoing_consent_notification_id_for_plugin(),
+                &statuses,
+                &announced
+            ),
+            Some(ConsentToOpen::Request(named))
+        );
+        assert_eq!(
+            notified_consent_to_open(
+                wildflowerhealthio_servers::consent_notification_id_for_plugin(DOMAIN),
+                &statuses,
+                &announced
+            ),
+            Some(ConsentToOpen::NewestOn {
+                domain: DOMAIN.to_owned()
+            }),
+            "a server's own notification opens its newest"
+        );
+        assert_eq!(
+            notified_consent_to_open(
+                ongoing_consent_notification_id_for_plugin(),
+                &statuses,
+                &AnnouncedConsents::default()
+            ),
+            None,
+            "nothing once nothing is pending"
+        );
     }
 }

@@ -439,6 +439,10 @@
       "clientName": "app-client-id"
     }
   ],
+  "consentNotificationActions": {
+    "open": "open",
+    "deny": "deny"
+  },
   "enteredRelays": {
     "wildflowerOfficial": {
       "kind": "wildflowerOfficial"

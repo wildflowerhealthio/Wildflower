@@ -28,7 +28,9 @@ changing how servers run or what the host notifies about them.
   the newest consent waiting on a server, named by its `ConsentKey`; and the
   notification decisions: the stop notification for each new stop of a server's run, and the consent
   notification for each new request waiting on a server, with the count of
-  servers with a request pending that the app icon's badge shows; and `ConsentViews`, the consents showing in
+  servers with a request pending that the app icon's badge shows, the
+  ongoing notification Android shows while one is pending that no server's
+  own notification shows, and the request each notification posted names, which its Open and Deny act on; and `ConsentViews`, the consents showing in
   a view of the in-app browser, so each opens in one.
   - Layout: `domain/` the record (`ServerRecord`, `RelayKind`, `TunnelToken`),
     `RegistryError`, enrolment (`add_server`, `set_server_credentials`,
@@ -44,7 +46,10 @@ changing how servers run or what the host notifies about them.
     (`LocalNotification` with its `fnv1a` id hash,
     `StopNotificationCoalescer` with
     `ServerStop` and `StopCause`, `ConsentNotificationCoalescer` with
-    `ConsentRequest` and `server_of_consent_notification`, and `ConsentViews`
+    `ConsentRequest` and `server_of_consent_notification`,
+    `announced_consents` (`AnnouncedConsents`, `OngoingConsentNotification`
+    and the action ids `OPEN_CONSENT_ACTION_ID` and
+    `DENY_CONSENT_ACTION_ID`), and `ConsentViews`
     with `ConsentViewClaim` and `IfShowing`); `ports/` the
     `ServerRegistry` port (read all, insert, modify, remove) and the
     `RelayClient` port (`GET /rathole`, signed `GET /me`, `POST /claim`);
@@ -53,13 +58,16 @@ changing how servers run or what the host notifies about them.
     `live_bindings/` `ServerUnit`, bound to `wildflower-server-rust`;
     `ServerLaunchMinter`, bound to `authorization-server-rust`'s
     `LaunchContextMinter`; `ServerSignInCodeMinter`, bound to its
-    `SameDeviceSignInCodeMinter`; and `ServerConsentWatcher`, bound to its
-    `PendingConsentWatcher`. `tests/server_unit.rs` runs the real
+    `SameDeviceSignInCodeMinter`; `ServerConsentWatcher`, bound to its
+    `PendingConsentWatcher`; and `ServerConsentDenier`, bound to its
+    `PendingConsentDenier`. `tests/server_unit.rs` runs the real
     server through `UnitRunner`, the consent waiting on it included.
 - **`servers-tauri`** — the host side. `host_servers`, called from the
   app's `setup()`, pushes every server to the app's `TauriUnitRunner` through
   `ServerUnits::push`, emits the `server-status` event, posts the stop
-  and consent notifications, opening each consent's request in the
+  and consent notifications, with their Deny on a phone and the ongoing
+  notification on Android (`notifications::register_consent_notification_actions`),
+  opening each consent's request in the
   default browser on the desktop, sets the app icon's badge to how many
   servers have a consent request pending, as the consent notifications'
   coalescer counts them (`pending_consent_badge`), and manages the
@@ -70,7 +78,9 @@ changing how servers run or what the host notifies about them.
   `server_open_pending_consent` and `server_open_notified_consent`, which open
   a server's launcher, its Authorization app and the consent waiting on it in
   the in-app browser, signed in as the Owner, behind the `LaunchBrowser` port,
-  each view counting toward `WhileOpen` through the `LaunchPresence` port. Only glue; every decision and
+  each view counting toward `WhileOpen` through the `LaunchPresence` port;
+  and `server_deny_notified_consent`, which denies the consent a notification
+  named, as the Owner, through the run's `ServerConsentDenier`. Only glue; every decision and
   its tests are in `servers-rust`, except the commands' own order of write and
   push, tested here against a real `TauriUnitRunner`.
 - **`servers-core-js`** — the host commands the base calls, as Effects over the
@@ -78,7 +88,7 @@ changing how servers run or what the host notifies about them.
   Schema: the server commands (`listServers`, `addServer`,
   `setServerCredentials`, `setServerRunPolicy`, `updateServer`,
   `removeServer`, `launchServer`, `openServerAuthorizationApp`,
-  `openPendingConsent`, `openNotifiedConsent`), the background session's
+  `openPendingConsent`, `openNotifiedConsent`, `denyNotifiedConsent`), the background session's
   recovery (`enableBackgroundSessionRecovery`), and the app's version and the
   notification permission; and the wire's namespaces, `ListedServer`,
   `ServerStatus` (with the `server-status` event's name and decoder, and
@@ -88,8 +98,11 @@ changing how servers run or what the host notifies about them.
   `Schema` and its `Type` with getters; and `LaunchError`'s
   `statusRefusalOf`, the refusal `server_launch` answers from a status, with
   `certificateRefusalOf`, its certificate's part, held to the host's by the
-  golden file; and `HostPlatform`, the kind of device the host runs on
-  (`ios`, `android` or `desktop`). A refused
+  golden file; `HostPlatform`, the kind of device the host runs on
+  (`ios`, `android` or `desktop`); and `NotificationAction`, an action on a
+  notification as the notification plugin's `actionPerformed` reports it,
+  with `intentOf`, what it asks for (open, deny or nothing), its action ids
+  held to the host's by the golden file. A refused
   command is a `HostCommandFailed` whose `refusal` is the host's
   `{kind, message}`. Besides the host, `readServerHealth` reads a server's
   `/health` at its public origin, an Effect over `@effect/platform`'s
@@ -98,8 +111,8 @@ changing how servers run or what the host notifies about them.
 - **`servers-react`** — the base, as pieces `apps/host/host-app` composes
   into its one router, as `launcher-web` composes the launcher's packages:
   `BaseGate`, the base's telemetry consent gate, then the background
-  session's recovery and the opening of the consent a tapped consent
-  notification announced, around the whole app, with `@tauri-apps/api/core`'s
+  session's recovery and the opening or denial of the consent a tapped consent
+  notification announced, as the tap asks, around the whole app, with `@tauri-apps/api/core`'s
   `invoke` and `addPluginListener`, and the background service's start config
   from `tauri-shared-config.json`; `ServersRouterContext`, the context the base's
   routes read, which `ServersRouterContext.make` builds, query cache included,
@@ -469,11 +482,18 @@ changing how servers run or what the host notifies about them.
   `subscribe_stops()`'s; nothing in these packages tracks runs itself.
   A run's health, tunnel state and certificate state go out through
   `ctx.set_detail`, and `UnitRunner` clears them.
-- **Consents are decided on the server's own pages.** The base never decides
-  one: `server_open_pending_consent` (`{domain}`) opens the consent waiting
+- **Consents are decided on the server's own pages, or denied from a
+  notification.** The base never approves one:
+  `server_open_pending_consent` (`{domain}`) opens the consent waiting
   first on a server, and `server_open_notified_consent`
   (`{notificationId}`) the one a tapped consent notification is for
-  (`server_of_consent_notification`; any other notification opens nothing).
+  (`server_of_consent_notification`, or the request the ongoing notification
+  names; any other notification opens nothing).
+  `server_deny_notified_consent` (`{notificationId}`) denies the request the
+  notification named (`AnnouncedConsents`, recorded by the consent
+  notifications), never a newer one, through the authorization server's own
+  deny path with the Owner's authority (`ServerConsentDenier`), once the
+  server's run reports; a request already decided stays as it was.
   Each checks the server as `server_launch` does, then opens
   `consent_sign_in_url`: `/oauth/sign-in` with a same-device sign-in code,
   `next` the path `/oauth/authorize/{id}/consent?then=back` or
@@ -574,8 +594,21 @@ changing how servers run or what the host notifies about them.
   which requests notify and which open (`ConsentOpening`). A request already notified for, as when it
   comes back once a newer one is decided or after a run restarts, doesn't
   notify again. A server forgets the requests it notified for once its run
-  reports nothing pending, and keeps at most 32 meanwhile. The golden file
-  pins the wire shape.
+  reports nothing pending, and keeps at most 32 meanwhile. On a phone each
+  consent notification offers Deny. On Android a request's own notification
+  posts as ongoing, so it stays until withdrawn or tapped, and an ongoing
+  notification on a quiet channel names the newest request that no server's
+  own notification shows (`ongoing_notification`), with Open and Deny: one
+  whose notification a tap or action took down
+  (`notification_taken_down`, fed each tap's notification id), one that came
+  back, or one an arrival opened. It follows the badge's pending state, and
+  posts again after a tap or action on it. The plugin reports no swipe, which
+  Android 14 and later allow on a kept notification. A server's notification
+  left from an earlier run of the app is withdrawn when the consent task
+  first sees the server. An action that starts the app does nothing, and an
+  iOS Deny while suspended lands once the app runs again: #1288 captures
+  actions natively. The golden file pins the wire shape and the action ids
+  (`consentNotificationActions`).
 - **A certificate's state is its run's, or its cache's.** Every
   `ServerStatus`, in the `server-status` event and in `servers_list`,
   carries one. While a run has reported one

@@ -10,6 +10,7 @@ mod device_code;
 mod device_page;
 mod grant_flows;
 mod oauth_endpoints;
+mod pending_consent_denier;
 mod request_caller;
 mod revocation;
 mod same_device_sign_in;

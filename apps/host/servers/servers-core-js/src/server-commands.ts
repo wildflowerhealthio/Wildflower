@@ -175,8 +175,8 @@ const openPendingConsent = ({
 
 /**
  * Open the consent the tapped notification `notificationId` announced, as
- * {@link openPendingConsent} opens a server's; a tap on any other
- * notification opens nothing. The host answers at once, and opens it once its
+ * {@link openPendingConsent} opens a server's, for a tap on its text or its
+ * Open; a tap on any other notification opens nothing. The host answers at once, and opens it once its
  * server can, logging each try. Only a phone reports taps.
  */
 const openNotifiedConsent = ({
@@ -186,8 +186,23 @@ const openNotifiedConsent = ({
 }): Effect.Effect<null, HostCommandError, TauriInvoke> =>
   invokeHostCommand('server_open_notified_consent', Schema.Null, { notificationId })
 
+/**
+ * Deny the request the notification `notificationId` named, from its Deny,
+ * as the server's Owner, without opening a page; an action on any other
+ * notification denies nothing. The host answers at once, and denies once the
+ * server's run reports, logging the outcome; a request already decided stays
+ * as it was. Only a phone reports actions.
+ */
+const denyNotifiedConsent = ({
+  notificationId,
+}: {
+  readonly notificationId: number
+}): Effect.Effect<null, HostCommandError, TauriInvoke> =>
+  invokeHostCommand('server_deny_notified_consent', Schema.Null, { notificationId })
+
 export {
   addServer,
+  denyNotifiedConsent,
   launchServer,
   listServers,
   openNotifiedConsent,
