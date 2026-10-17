@@ -308,18 +308,35 @@ describe('authorizationRedirectOutcome', () => {
     expect(outcome.left.reason).toContain('access_denied')
   })
 
-  it('surfaces the server’s own refusal, description included', () => {
+  it('gives the server’s own sentence for a refusal, without the error code', () => {
     // Act
     const outcome = authorizationRedirectOutcome(
-      '?error=access_denied&error_description=Owner%20declined&state=x',
+      '?error=invalid_request&error_description=This+launch+has+expired.+Open+the+app+again.&state=x',
       Option.some(pendingRecord)
     )
 
     // Assert
     if (Either.isRight(outcome)) throw new Error('expected the refusal to be surfaced')
     expect(outcome.left._tag).toBe('AuthorizationRejected')
-    expect(outcome.left.reason).toContain('access_denied')
-    expect(outcome.left.reason).toContain('Owner declined')
+    expect(outcome.left.reason).toBe(
+      'The server refused the sign-in. This launch has expired. Open the app again.'
+    )
+    expect(outcome.left.reason).not.toContain('invalid_request')
+  })
+
+  it.each([
+    { case: 'no error_description', description: '' },
+    { case: 'an empty error_description', description: '&error_description=' },
+  ])('gives the bare error code for a refusal with $case', ({ description }) => {
+    // Act
+    const outcome = authorizationRedirectOutcome(
+      `?error=invalid_request${description}&state=x`,
+      Option.some(pendingRecord)
+    )
+
+    // Assert
+    if (Either.isRight(outcome)) throw new Error('expected the refusal to be surfaced')
+    expect(outcome.left.reason).toBe('The server refused the sign-in: invalid_request.')
   })
 })
 
