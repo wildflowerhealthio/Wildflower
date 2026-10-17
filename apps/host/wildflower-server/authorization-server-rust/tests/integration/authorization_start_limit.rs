@@ -1,8 +1,10 @@
 //! The limit on starting authorization requests: every request to
 //! `/oauth/authorize` (`HEAD` included) and `/oauth/device_authorization`
 //! asks the host's `AuthorizationStartGate`, before it is parsed, and is
-//! answered `429`, uncached, when the gate refuses; a browser whose session
-//! can decide consents passes without asking, and no other route asks.
+//! answered `429`, uncached, when the gate refuses. A browser whose session
+//! can decide consents passes without asking, as does a browser without a
+//! session at `/oauth/authorize`, which is only sent to pairing; no other
+//! route asks.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -62,14 +64,19 @@ async fn send(
 #[tokio::test]
 async fn a_refused_start_is_429_uncached_before_it_is_parsed_on_either_route() {
     let gate = CountingGate::refusing();
-    let (g, _owner_token, _db) = spin_up_with_authorization_start_gate(gate.clone());
+    let (g, _owner_token, db) = spin_up_with_authorization_start_gate(gate.clone());
+    let paired_browser_cookie = browser_session_cookie(&db.paired_browser_token);
 
     // Neither request is well-formed: admitted, each would be a `400`.
-    for (method, path) in [
-        (Method::GET, "/oauth/authorize"),
-        (Method::POST, "/oauth/device_authorization"),
+    for (method, path, cookie) in [
+        (
+            Method::GET,
+            "/oauth/authorize",
+            Some(paired_browser_cookie.as_str()),
+        ),
+        (Method::POST, "/oauth/device_authorization", None),
     ] {
-        let res = send(&g, method, path, None).await;
+        let res = send(&g, method, path, cookie).await;
         assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS, "{path}");
         assert_eq!(
             res.headers()
@@ -89,9 +96,15 @@ async fn a_refused_start_is_429_uncached_before_it_is_parsed_on_either_route() {
 #[tokio::test]
 async fn head_authorize_asks_the_gate() {
     let gate = CountingGate::refusing();
-    let (g, _owner_token, _db) = spin_up_with_authorization_start_gate(gate.clone());
+    let (g, _owner_token, db) = spin_up_with_authorization_start_gate(gate.clone());
 
-    let res = send(&g, Method::HEAD, "/oauth/authorize", None).await;
+    let res = send(
+        &g,
+        Method::HEAD,
+        "/oauth/authorize",
+        Some(&browser_session_cookie(&db.paired_browser_token)),
+    )
+    .await;
 
     assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);
     assert_eq!(gate.asked(), 1);
@@ -103,9 +116,15 @@ async fn an_admitted_start_is_served() {
         admitted: 1,
         asked: AtomicUsize::new(0),
     });
-    let (g, _owner_token, _db) = spin_up_with_authorization_start_gate(gate.clone());
+    let (g, _owner_token, db) = spin_up_with_authorization_start_gate(gate.clone());
 
-    let res = send(&g, Method::GET, "/oauth/authorize", None).await;
+    let res = send(
+        &g,
+        Method::GET,
+        "/oauth/authorize",
+        Some(&browser_session_cookie(&db.paired_browser_token)),
+    )
+    .await;
 
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
     assert_eq!(gate.asked(), 1);
@@ -136,15 +155,38 @@ async fn a_browser_signed_in_as_the_owner_passes_without_asking_the_gate() {
     .await;
     assert_eq!(res.status(), StatusCode::FOUND);
     assert_eq!(gate.asked(), 0);
+}
 
-    // A cookie that holds no live session asks like any other request.
-    let res = send(
-        &g,
-        Method::GET,
-        &authorize,
-        Some("__Host-browser_session=not-a-token"),
-    )
-    .await;
+/// A browser without a session, or whose cookie holds no live session, is
+/// only sent to pairing by `/oauth/authorize`, so it passes without asking
+/// the gate: a flood of them can't spend the allowance a paired browser's
+/// requests need. A device authorization without a session still asks.
+#[tokio::test]
+async fn a_browser_without_a_session_is_sent_to_pairing_without_asking_the_gate() {
+    let gate = CountingGate::refusing();
+    let (g, _owner_token, db) = spin_up_with_authorization_start_gate(gate.clone());
+    seed_client_with_redirect(
+        &db,
+        "test-app",
+        "https://app.example/cb",
+        &["patient/Observation.rs", "openid"],
+    );
+    let authorize = format!(
+        "/oauth/authorize?{}",
+        authorize_query("test-app", REQUESTED_SCOPES)
+    );
+
+    for cookie in [None, Some("__Host-browser_session=not-a-token")] {
+        let res = send(&g, Method::GET, &authorize, cookie).await;
+        assert_eq!(res.status(), StatusCode::FOUND, "{cookie:?}");
+        assert!(
+            location_of(&res).starts_with("pair?next="),
+            "{cookie:?} is sent to pairing"
+        );
+    }
+    assert_eq!(gate.asked(), 0);
+
+    let res = send(&g, Method::POST, "/oauth/device_authorization", None).await;
     assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);
     assert_eq!(gate.asked(), 1);
 }

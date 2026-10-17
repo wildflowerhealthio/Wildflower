@@ -91,7 +91,7 @@ impl TokenEntitlement<'_> {
             TokenEntitlement::BrowserPairing(claimed_pairing) => {
                 Some(claimed_pairing.session().sid.as_str())
             }
-            TokenEntitlement::AuthorizationCode(redeemed_code) => redeemed_code.sid(),
+            TokenEntitlement::AuthorizationCode(redeemed_code) => Some(redeemed_code.sid()),
             TokenEntitlement::DeviceCode(_) => None,
             TokenEntitlement::RefreshToken(validated_refresh_token) => {
                 validated_refresh_token.sid()

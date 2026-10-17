@@ -10,7 +10,8 @@
 //! asks before the request is parsed, so every attempt counts, however
 //! malformed. A request from a browser signed in as the Owner (a live browser
 //! session that can decide consents) is never asked about, so it spends
-//! nothing.
+//! nothing; nor is a `GET /oauth/authorize` from a browser without a browser
+//! session, which is only sent to pairing and parks nothing.
 //!
 //! The limit is two allowances, each a [`Rate`]: a burst of attempts at once,
 //! refilled one attempt per interval, [`PER_CLIENT`] for each visitor and

@@ -110,7 +110,7 @@ impl<'a> GrantRedemption<'a> {
     /// starts records; `None` for the device flow.
     pub(crate) fn sid(self) -> Option<&'a str> {
         match self {
-            GrantRedemption::AuthorizationCode(redeemed_code) => redeemed_code.sid(),
+            GrantRedemption::AuthorizationCode(redeemed_code) => Some(redeemed_code.sid()),
             GrantRedemption::DeviceCode(_) => None,
         }
     }
@@ -250,9 +250,9 @@ impl RedeemedAuthorizationCode {
         &self.code.code
     }
 
-    /// The browser session the code was issued under, if any.
-    pub(crate) fn sid(&self) -> Option<&str> {
-        self.code.sid.as_deref()
+    /// The browser session the code was issued under.
+    pub(crate) fn sid(&self) -> &str {
+        &self.code.sid
     }
 
     /// The standing grant behind the code, if one was resolved.
@@ -524,7 +524,7 @@ mod tests {
                 patient: Some("pat-1".to_owned()),
                 issued_at: now,
                 expires_at: now + AUTHORIZATION_CODE_TTL,
-                sid: None,
+                sid: "sid-1".to_owned(),
             })
             .unwrap();
         code

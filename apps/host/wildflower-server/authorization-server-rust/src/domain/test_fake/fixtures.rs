@@ -15,6 +15,7 @@ use crate::domain::authority::{
 };
 use crate::domain::authorization_code::{IssuedAuthorizationCode, AUTHORIZATION_CODE_TTL};
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
+use crate::domain::browser_session::BrowserSession;
 use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::client_credentials::ClientCredentials;
 use crate::domain::grant::AuthorizationCodeGrant;
@@ -54,8 +55,31 @@ pub(crate) fn device_request(
     }
 }
 
-/// A well-formed authorization-code request fixture (populated `redirect_uri` +
-/// PKCE `code_challenge`) with a caller-chosen `status` and `expires_at`.
+/// The browser session the code-flow fixtures ([`code_request`],
+/// [`redeemed_code`]) are made in. It names no session until
+/// [`seed_fixture_browser_session`] starts it.
+pub(crate) const FIXTURE_SID: &str = "sid-1";
+
+/// Start [`FIXTURE_SID`]'s browser session in `store`, standing, so a fixture
+/// request can be approved and the code and refresh family it earns are
+/// honoured.
+pub(crate) fn seed_fixture_browser_session(store: &FakeGrantStore) {
+    store
+        .insert_browser_session(&BrowserSession {
+            sid: FIXTURE_SID.to_owned(),
+            ..BrowserSession::new_approved(
+                "Firefox on Linux".to_owned(),
+                vec!["wildflower/launch".to_owned()],
+                Duration::hours(24),
+                Utc::now(),
+            )
+        })
+        .unwrap();
+}
+
+/// A well-formed authorization-code request fixture (populated `redirect_uri`,
+/// PKCE `code_challenge` and browser session [`FIXTURE_SID`]) with a
+/// caller-chosen `status` and `expires_at`.
 pub(crate) fn code_request(
     id: &str,
     status: RequestStatus,
@@ -82,7 +106,7 @@ pub(crate) fn code_request(
         launch: None,
         launch_bound_patient: None,
         decidable_in_requesting_browser: false,
-        sid: None,
+        sid: Some(FIXTURE_SID.to_owned()),
     }
 }
 
@@ -174,7 +198,7 @@ pub(crate) fn redeemed_code(
             patient: Some("pat-1".to_owned()),
             issued_at: now,
             expires_at: now + AUTHORIZATION_CODE_TTL,
-            sid: None,
+            sid: FIXTURE_SID.to_owned(),
         })
         .unwrap();
     RedeemedAuthorizationCode::redeem(

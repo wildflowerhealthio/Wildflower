@@ -32,7 +32,8 @@ mod tx;
 
 pub(crate) use fixtures::{
     authenticated_public_client, client, code_grant, code_request, delegated_scopes,
-    device_request, owned_scopes, redeemed_code, seed_active_signing_key, RecordingOwnerApproval,
+    device_request, owned_scopes, redeemed_code, seed_active_signing_key,
+    seed_fixture_browser_session, RecordingOwnerApproval, FIXTURE_SID,
 };
 
 /// An in-memory [`GrantStore`] modelling the primitive port semantics with

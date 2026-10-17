@@ -184,7 +184,8 @@ mod tests {
     use crate::domain::token::{verify_jwt, VerifyOptions};
 
     use crate::domain::test_fake::{
-        authenticated_public_client, client, seed_active_signing_key, FakeGrantStore,
+        authenticated_public_client, client, seed_active_signing_key, seed_fixture_browser_session,
+        FakeGrantStore, FIXTURE_SID,
     };
 
     const VERIFIER: &str = "verifier-verifier-verifier-verifier-verifier-1";
@@ -224,7 +225,7 @@ mod tests {
                 patient: None,
                 issued_at: now,
                 expires_at: now + AUTHORIZATION_CODE_TTL,
-                sid: None,
+                sid: FIXTURE_SID.to_owned(),
             })
             .unwrap();
         code
@@ -315,6 +316,7 @@ mod tests {
     #[test]
     fn a_refresh_exchange_rotates_and_a_replay_revokes_the_family() {
         let exchanger = exchanger();
+        seed_fixture_browser_session(&exchanger.store);
         let client = authenticated(&exchanger.store, "app", &AllowedGrantType::ALL);
         let plain = issue_code(&exchanger.store, "app", &["openid", "offline_access"]);
         let now = Utc::now();

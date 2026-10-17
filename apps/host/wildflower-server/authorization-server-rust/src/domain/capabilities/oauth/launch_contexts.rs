@@ -88,6 +88,30 @@ impl<'a, S: GrantStore> LaunchContexts<'a, S> {
         self.store
             .with_connection(|tx| tx.consume_launch_context(nonce, client_id, now))
     }
+
+    /// Whether `nonce` names a launch `client_id` may consume that is spent:
+    /// already consumed, or expired at `now`. A launch that was never minted,
+    /// one minted for another client, and one pruned since it expired are not
+    /// spent but unknown. `/oauth/authorize` asks this once a consume found
+    /// nothing, to tell the user to launch again rather than refuse the app.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] on a store failure.
+    pub(crate) fn is_spent_for(
+        &self,
+        nonce: &str,
+        client_id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<bool, AuthorizationServerError> {
+        let launch_context = self
+            .store
+            .with_connection(|tx| tx.launch_context_by_nonce(nonce))?;
+        Ok(launch_context.is_some_and(|launch_context| {
+            launch_context.admits_client(client_id)
+                && (launch_context.consumed_at.is_some() || launch_context.expires_at <= now)
+        }))
+    }
 }
 
 #[cfg(test)]
@@ -155,6 +179,47 @@ mod tests {
             None,
             "a second client is refused"
         );
+    }
+
+    /// A consumed launch and an expired one are spent for the client they
+    /// admit; a live one, one for another client, and a forged one are not.
+    #[test]
+    fn a_consumed_or_expired_launch_is_spent_for_its_client() {
+        let store = FakeGrantStore::default();
+        let launch_contexts = LaunchContexts::over(&store);
+        let now = Utc::now();
+        launch_contexts
+            .mint("app", "consumed".to_owned(), now)
+            .expect("mint consumed");
+        launch_contexts
+            .mint_for_any_client("consumed-any".to_owned(), now)
+            .expect("mint consumed for any client");
+        launch_contexts
+            .mint("app", "live".to_owned(), now)
+            .expect("mint live");
+        // Minted last: a mint at `now` would prune it.
+        launch_contexts
+            .mint("app", "expired".to_owned(), now - LAUNCH_CONTEXT_TTL)
+            .expect("mint expired");
+        launch_contexts
+            .consume("consumed", "app", now)
+            .unwrap()
+            .expect("consumed");
+        launch_contexts
+            .consume("consumed-any", "other-app", now)
+            .unwrap()
+            .expect("consumed by another client");
+        let is_spent = |nonce: &str, client_id: &str| {
+            launch_contexts
+                .is_spent_for(nonce, client_id, now)
+                .expect("read")
+        };
+        assert!(is_spent("expired", "app"));
+        assert!(is_spent("consumed", "app"));
+        assert!(is_spent("consumed-any", "app"));
+        assert!(!is_spent("live", "app"));
+        assert!(!is_spent("consumed", "other-app"), "for another client");
+        assert!(!is_spent("forged", "app"));
     }
 
     /// Minting prunes the contexts already expired, and keeps live ones.

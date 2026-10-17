@@ -24,9 +24,14 @@ fn header<'a>(res: &'a axum::response::Response, name: &str) -> &'a str {
 /// named relatively, and no launcher address is involved.
 #[tokio::test]
 async fn a_parked_request_waits_beside_the_authorize_endpoint() {
-    let (g, _owner_token, _db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
 
-    let res = get_authorize(&g.router, &authorize_query("ghost", "read")).await;
+    let res = get_authorize(
+        &g.router,
+        &db.paired_browser_token,
+        &authorize_query("ghost", "read"),
+    )
+    .await;
     let authorize_url = "http://127.0.0.1/oauth/authorize";
     let request_id = parked_request_id(&res);
     let resolved = Url::parse(authorize_url)
