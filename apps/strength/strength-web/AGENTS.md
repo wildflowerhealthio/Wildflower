@@ -20,13 +20,13 @@ screen or concern:
 
 - `routes/` — the TanStack file routes (the tree is generated into the
   git-ignored `src/routeTree.gen.ts`). `__root.tsx` puts the app's title
-  (`AppTitle`, `src/app-title.tsx`) over every page but `/`, with the
-  not-found card (`smart-app-react`'s `RouteNotFound`) for a path no route names;
-  `index.tsx` is the introduction at `/`; `patients/index.tsx` the picker;
+  (`AppTitle`, `src/app-title.tsx`) over every page, with the no-page card
+  (`smart-app-react`'s `NoPageCard`) for a path no route names;
+  `index.tsx` is `/`'s redirect; `patients/index.tsx` the picker;
   `workouts/` every patient's workouts. `patients/$patientId/route.tsx` is
   one lifter's page (the patient line, `-patient-status.tsx`, over
-  `RouteTabs`), its loader reading the patient and its not-found card
-  saying when the server has none; `-lifter-tab.tsx`'s `LifterTab` is the
+  `RouteTabs`), its loader reading the patient and its no-patient card
+  (`NoPatientCard`) saying when the server has none; `-lifter-tab.tsx`'s `LifterTab` is the
   lifter's training record read, under Today and Plan. Each tab is a folder
   under it, `today/`, `plan/`, `workouts/`: its `route.tsx`, the
   `-`-prefixed files only it uses (Today's `-workout-due.tsx` and the write
@@ -61,8 +61,8 @@ they cover.
 - **Compose; decide nothing.** The app wires `strength-core-js` and
   `strength-react` together and owns only the SMART shell, the reads, the ids,
   the clock and the writes; the patient pieces are `smart-app-react`'s
-  (`PatientPicker`, `PatientChoiceLine`, `ensureRoutedPatient`,
-  `launchPatientRoute`). The day due, the
+  (`PatientPicker`, `PatientChoiceLine`, `requirePatient`,
+  `launchStartRoute`, `appRootRedirect`). The day due, the
   progression, what a submission or a start writes, and every check on a
   training plan definition or a starting load are core's
   (`PlannedWorkout.make` / `submit`,
@@ -89,7 +89,8 @@ they cover.
   `main.tsx` opens (`openSmartAppPage`: the window's history, the served
   directory as basepath), and is built once for the visit, its context
   fixed (query cache, client, `runAuthed`, the StrongLifts template ids);
-  the gate opens the launch's route, else `launchPatientRoute`'s; see
+  `/` redirects to the route the launch started on, else
+  `launchStartRoute`'s; see
   "Routing a SMART app" in
   [slices/smart-app-react/AGENTS.md](../../../slices/smart-app-react/AGENTS.md).
 - **The patient is the path's.** A lifter's routes sit under
@@ -133,9 +134,9 @@ they cover.
   `session/use-strength-write.test.tsx`, …); `routes/-root.test.tsx` drives
   every tab to check the scopes cover each read and write, where a lifter's
   bare path opens, the tab links, an id such as `1.50` in the path, the
-  remount across lifters, the not-found card (at the root and under a
-  lifter), the unknown-patient card, every patient's `/workouts`, and the
-  introduction at `/`; `app.test.tsx` drives `App` over a stubbed handshake
+  remount across lifters, the no-page card (at the root and under a
+  lifter), the no-patient card, and every patient's `/workouts`;
+  `app.test.tsx` drives `App` over a stubbed handshake
   — the launch landing on the picker or its patient's Today, a pick, "Change
   patient" and Back, and All patients opening `/workouts` in the same router
   and Back through the picker. `RouteTabs`'s browser APIs are stubbed with `react-tundraish`'s

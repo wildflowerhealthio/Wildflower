@@ -29,7 +29,7 @@ basepath), and renders `<AppRoot page={page} />` inside `<StrictMode>`.
 
 `src/app-root.tsx` exports `AppRoot`: `<SmartAppRoot app="strength"
 registration={smartRegistration} telemetry={smartAppTelemetry}
-basepath={page.basepath}>` around `<App page={page} />`. `SmartAppRoot` shows the telemetry consent dialog first, then
+servedDirectory={page.basepath}>` around `<App page={page} />`. `SmartAppRoot` shows the telemetry consent dialog first, then
 starts a launch the URL carries under a loading line or renders one of the
 other two branches (`smartAppTelemetry` in `src/config.ts` names the app's Sentry project
 through the `VITE_SENTRY_DSN_STRENGTH_WEB` build variable; see `.env.example`),
@@ -45,9 +45,8 @@ builds the page's router once, with the write runner
 (`buildSmartRouterContext` over `FetchHttpClient.layer`). Whose record the
 page shows is the path:
 
-- **`/`**: the introduction, `branding-react`'s `AppLanding` for Strength
-  (the same one the standalone landing shows beside its connect menu) with a
-  "Choose a patient" link to the picker in its action card.
+- **`/`**: never a page. It replaces itself with the route the launch
+  started on, else the launch's patient's page, else the picker (below).
 - **`/patients`**: `PatientPicker` ("All patients" first, then every patient
   by name and birth date). A patient opens `/patients/<id>`, All patients
   opens `/workouts`; either is a pushed entry, so Back returns to the picker.
@@ -61,20 +60,17 @@ page shows is the path:
   and Plan write, and a write names one lifter. Only a lifter's page has a
   `StrengthSession` (`src/session/`), the one thing the writes take.
 
-The app's title sits over every page but `/`, whose `AppLanding` names the
-app itself.
+The app's title sits over every page.
 
 ### The router and the OAuth callback
 
 The router is TanStack's, over file routes under `src/routes/` (the tree is
 generated into the git-ignored `src/routeTree.gen.ts` by the router plugin in
-`vite.config.ts`). A path no route names shows the not-found card ("Wildflower
-Strength has no page at …", offering the picker): under the app's title, or
-under a lifter's tab strip with no tab current. The lifter's page's loader
-reads the patient first (`smart-app-react`'s `ensureRoutedPatient`, on the
-cache the patient line reads), so an id the server has no patient under
-(a 404 or 410) shows "Wildflower Strength has no patient …" in place of the
-page; any other failed read leaves the page up, its patient line saying the
+`vite.config.ts`). A path no route names, one under a lifter too, shows the
+no-page card under the app's title ("There's no page at …", offering the
+picker; the router's `notFoundMode` is `'root'`). The lifter's page's loader
+reads the patient first (`smart-app-react`'s `requirePatient`, on the cache
+the patient line reads), so an id the server has no patient under (a 404 or 410) shows "This server has no patient …" in place of the page; any other failed read leaves the page up, its patient line saying the
 read failed. The page remounts per lifter (`remountDeps` on the patient id),
 so nothing one lifter's screens hold carries over to another's, by Back,
 Forward or a link. A path param is the string the address bar holds, so an
@@ -84,11 +80,11 @@ The app root is the OAuth redirect target, so the router is built only once
 the SMART handshake has completed: by then fhirclient has taken `code` and
 `state` out of the address bar, and nothing the router does can rewrite a URL
 the token exchange still reads. A launch URL never reaches the router at all:
-`SmartAppRoot` starts its launch before the app mounts. As the handshake
-completes, the gate replaces the app root with the route the launch started
-on (a deep link such as `/patients/123/plan?iss=…` reopens that tab), or,
-with none, `launchPatientRoute`'s: the launch's patient's page, else the
-picker. A later visit to `/` within the visit shows the introduction. The
+`SmartAppRoot` starts its launch before the app mounts. The callback lands on
+`/`, whose redirect (`smart-app-react`'s `appRootRedirect`) replaces it with
+the route the launch started on (a deep link such as `/patients/123/plan?iss=…`
+reopens that tab), or, with none, `launchStartRoute`'s: the launch's patient's
+page, else the picker. The
 router is built once for the visit, its context fixed: the page's query
 cache, the client, the write runner, and the StrongLifts 5×5 template id per
 lifter, minted the first time it is asked for, so a retried start for one
@@ -98,7 +94,7 @@ The router's basepath is the served directory, read off the entry module's
 URL rather than the page's, so a deep link such as `/patients/123/plan` (or
 `/pr-<n>/patients/123/plan` in a preview), served by the 404 page's redirect
 to the app root and restored there, opens on its tab. The OAuth redirect URI
-is the same directory (`SmartAppRoot`'s `basepath`), so a launch from any
+is the same directory (`SmartAppRoot`'s `servedDirectory`), so a launch from any
 route returns to the app root.
 
 ### Reads (`src/record/`)

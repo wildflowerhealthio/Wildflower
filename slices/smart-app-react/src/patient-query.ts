@@ -10,7 +10,7 @@ import { Effect, type Option } from 'effect'
  * The read of patient `patientId` (`fetchPatient`: `None` when the server
  * has no such patient) as a query on the page's
  * cache: the one `PatientChoiceLine` names the patient from, and a routed
- * app's patient route loads before it renders (`ensureRoutedPatient`), so
+ * app's patient route loads before it renders (`requirePatient`), so
  * the two share one request.
  */
 const patientQuery = (
