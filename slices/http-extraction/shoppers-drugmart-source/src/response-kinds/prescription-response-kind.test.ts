@@ -243,6 +243,28 @@ describe('PrescriptionResponseKind', () => {
       }
     )
 
+    it.each(['', '  '])(
+      'writes no note for a blank status labelDescription %j, keeping the request',
+      (labelDescription) => {
+        // Act
+        const [request] = byType(
+          parse(
+            prescriptionJson({
+              status: {
+                label: 'Unable to renew online',
+                labelDescription,
+                type: 'UNABLE_TO_RENEW_ONLINE',
+              },
+            })
+          ),
+          'MedicationRequest'
+        )
+
+        // Assert
+        expect(request?.note).toEqual([])
+      }
+    )
+
     it('maps a prescription with no expired or archived flag onto MedicationRequest.status active', () => {
       const [request] = byType(
         parse(prescriptionJson({ expired: undefined, archived: undefined })),

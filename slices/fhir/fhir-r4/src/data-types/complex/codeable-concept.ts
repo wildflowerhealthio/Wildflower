@@ -1,4 +1,4 @@
-import { Array as Arr, Option, pipe, Schema, String as Str } from 'effect'
+import { Array as Arr, Option, pipe, Predicate, Schema } from 'effect'
 
 import { StructNoContext, mutableEncoded } from '@wildflowerhealthio/kitchen-sink/schema'
 
@@ -41,7 +41,8 @@ interface Labelled {
 
 /**
  * The concept's human-readable label: its `text`, else the first coding's
- * `display`. A blank value counts as absent.
+ * `display`. A blank value (see {@link FhirString.isBlank}) counts as absent,
+ * as decode reads it.
  *
  * @remarks
  * `text` wins because R4 defines it as the concept "as entered or chosen by the
@@ -51,10 +52,10 @@ interface Labelled {
 const label = (concept: Labelled): Option.Option<string> =>
   pipe(
     Option.fromNullable(concept.text),
-    Option.filter(Str.isNonEmpty),
+    Option.filter(Predicate.not(FhirString.isBlank)),
     Option.orElse(() =>
       Arr.findFirst(concept.coding ?? [], (coding) =>
-        pipe(Option.fromNullable(coding.display), Option.filter(Str.isNonEmpty))
+        pipe(Option.fromNullable(coding.display), Option.filter(Predicate.not(FhirString.isBlank)))
       )
     )
   )

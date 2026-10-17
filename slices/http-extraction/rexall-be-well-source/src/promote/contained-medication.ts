@@ -1,7 +1,8 @@
-import { Array as Arr, flow, Option, pipe, Schema, String as Str, Struct } from 'effect'
+import { Array as Arr, flow, Option, pipe, Predicate, Schema, String as Str, Struct } from 'effect'
 
 import {
   CodeableConcept,
+  FhirString,
   IdentifierAndReference,
   Narrative,
   WildflowerExtension,
@@ -112,7 +113,7 @@ const wireConceptLabel = (concept: WireCodeableConcept): Option.Option<string> =
       concept.text,
       ...Arr.map(Option.getOrElse(concept.coding, Arr.empty), ({ display }) => display),
     ],
-    Arr.map(Option.filter(Str.isNonEmpty)),
+    Arr.map(Option.filter(Predicate.not(FhirString.isBlank))),
     Option.firstSomeOf
   )
 

@@ -37,8 +37,8 @@ describe('label', () => {
   it('should fall back to the first coding with a non-blank display', () => {
     fc.assert(
       fc.property(
-        fc.constantFrom(null, undefined, ''),
-        fc.string({ minLength: 1 }),
+        fc.constantFrom(null, undefined, '', ' \t'),
+        Arbitrary.make(FhirString.Schema),
         (blankText, display) => {
           // Arrange — a blank display before the real one must be skipped.
           const concept = { text: blankText, coding: [{ display: '' }, { display }] }
@@ -57,8 +57,8 @@ describe('label', () => {
   it('should have no label when neither text nor any display is present', () => {
     fc.assert(
       fc.property(
-        fc.constantFrom(null, undefined, ''),
-        fc.array(fc.record({ display: fc.constantFrom(null, undefined, '') })),
+        fc.constantFrom(null, undefined, '', ' \t'),
+        fc.array(fc.record({ display: fc.constantFrom(null, undefined, '', '  ') })),
         (blankText, blankCodings) => {
           // Act
           const conceptLabel = CodeableConcept.label({ text: blankText, coding: blankCodings })

@@ -4,8 +4,9 @@ import { OrNullAsOptional } from '@wildflowerhealthio/kitchen-sink/schema'
 
 /**
  * True when `value` holds no non-whitespace character: `''`, `'   '`, `'\n\t'`.
- * FHIR R4 forbids such a value for every primitive, `string` and `markdown`
- * included.
+ * FHIR R4 forbids an empty primitive value; this client treats a
+ * whitespace-only `string` or `markdown` the same way. Exported so a reader of
+ * raw wire JSON judges blank by the same rule decode does.
  */
 const isBlank = (value: string): boolean => !/\S/.test(value)
 
@@ -82,4 +83,4 @@ const FhirStringArray = Schema.transform(
   }
 )
 
-export { BlankAsNull, FhirStringArray as Array, FhirStringSchema as Schema, Optional }
+export { BlankAsNull, FhirStringArray as Array, FhirStringSchema as Schema, isBlank, Optional }

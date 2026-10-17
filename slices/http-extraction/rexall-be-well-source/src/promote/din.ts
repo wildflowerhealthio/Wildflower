@@ -1,6 +1,11 @@
-import { Array as Arr, Equivalence, Option, pipe, String as Str, Struct } from 'effect'
+import { Array as Arr, Equivalence, Option, pipe, Predicate, String as Str, Struct } from 'effect'
 
-import { CanadianCodingSystem, Code, Coding } from '@wildflowerhealthio/fhir-r4/data-types'
+import {
+  CanadianCodingSystem,
+  Code,
+  Coding,
+  FhirString,
+} from '@wildflowerhealthio/fhir-r4/data-types'
 import { modifyIfDecodes } from '@wildflowerhealthio/kitchen-sink/schema'
 
 import { CarebookCodingSystem } from '../carebook.ts'
@@ -35,7 +40,7 @@ const sameDinCode: Equivalence.Equivalence<Din> = Equivalence.mapInput(
 const dinOf = (code: Option.Option<string>, display: Option.Option<string>): Option.Option<Din> =>
   Option.map(Option.filter(code, Str.isNonEmpty), (dinCode) => ({
     code: dinCode,
-    display: Option.filter(display, Str.isNonEmpty),
+    display: Option.filter(display, Predicate.not(FhirString.isBlank)),
   }))
 
 /** How to read a DIN off one kind of coding, when it is coded under `system`. */
