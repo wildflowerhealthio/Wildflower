@@ -126,7 +126,7 @@ pub fn init(state_dir: &Path) -> anyhow::Result<WorkerGuard> {
 }
 
 /// Delete the connection log's old files in `dir` (see
-/// [`prune_connection_log_files`]) at once and then every ten minutes, until
+/// `prune_connection_log_files`) at once and then every ten minutes, until
 /// `shutdown_rx` fires. A failure is logged to the journal and retried next
 /// time.
 ///

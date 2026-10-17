@@ -24,12 +24,17 @@ the relay's Content Security Policy (below).
 The operator opens `https://admin.<domain>/` and pastes
 `WILDFLOWER_RELAY_ADMIN_KEY` once. The browser keeps a non-extractable signing
 key made from it in IndexedDB until Sign out. The page then lists the tunnels
-(name, public host, owner's email, creation date), creates one for an email
+(name, public host, owner's email, what became of its last connection since
+the relay started, creation date), creates one for an email
 under a given or relay-picked name and shows its token once, issues a claim
 code for one and shows it once with its expiry (cancelling any earlier code
 for that tunnel), reissues one's token after a confirmation and shows the new
 one once, and deletes one after a
-confirmation. If the relay answers `401`, the key is wrong or the
+confirmation. Under the list, two tables count the connections to the
+relay's tunnels: the last 24 hours by UTC hour and the last 30 days by UTC
+day, each with how many reached a device, how many were refused, and a
+column for each refusal reason that occurred. They refresh when the page is
+focused again. If the relay answers `401`, the key is wrong or the
 device's clock is more than a minute off the relay's; the page drops the key
 and asks for it again.
 

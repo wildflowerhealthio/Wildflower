@@ -90,6 +90,28 @@ token stops working at once, and the device using it disconnects until the
 owner enters the new one. A claim code issued before the reissue redeems for
 the new token.
 
+## Logs
+
+The relay writes two logs. `RUST_LOG` (default `info`) sets the level for
+both.
+
+- **The journal** (`journalctl -u wildflowerhealthio-relay-server`) carries no
+  tunnel names, hostnames other than the relay's own, IP addresses, emails or
+  claim codes.
+- **The connection log**, in `/var/lib/wildflower-relay/connection-log/`
+  (`<state dir>/connection-log/`), holds the lines that name someone: tunnels
+  going up and down, connections refused because a tunnel is down or busy,
+  tunnels created, deleted or given a new token, claim codes issued and
+  redeemed, and every line from rathole, which names each device's IP
+  address. It is one file per UTC hour, such as
+  `connection.2026-10-16-13.log`, and the relay deletes each file 24 hours
+  after its last entry. Successful connections aren't logged.
+
+How many connections reached a device each hour, and how many were refused
+and why, are on the admin page, kept for 30 days, with no tunnel names or
+addresses. Each tunnel's row there says what became of its last connection
+since the relay started.
+
 ## Let's Encrypt's rate limit
 
 Every device's certificate is for a name under your registered domain

@@ -12,9 +12,11 @@ admin screen.
 - `relay-core-js` — no React. Four entries:
   - `relay-core-js/http-api-definition`: `RelayAdminApi`, the admin API as the
     relay serves it (`relay-server/src/site/admin.rs`): `CreateTunnel`,
-    `ListTunnels`, `DeleteTunnel`, `IssueClaimCode` and `ReissueToken`, with
-    the relay's snake_case JSON field names. `created_at` and a claim code's
-    `expires_at` decode from unix seconds to a `DateTime.Utc`. The
+    `ListTunnels`, `DeleteTunnel`, `IssueClaimCode`, `ReissueToken` and
+    `ListConnectionTotals`, with the relay's snake_case JSON field names.
+    `created_at`, a claim code's `expires_at` and a totals row's `hour`
+    decode from unix seconds to a `DateTime.Utc`, and a listed tunnel's
+    `last_outcome` is a `TunnelOutcome` literal or `null`. The
     relay's refusals are plain text, decoded into tagged errors carrying it as
     `reason` (`TunnelNameConflict` `409`, `TunnelRejected` `422`,
     `TunnelNotFound` `404`, `TunnelNamesExhausted` `503`); its `401` is
@@ -49,6 +51,13 @@ admin screen.
   accepts it. A change to the signer regenerates it with
   `UPDATE_FIXTURES=1 vp test` (in `relay-core-js`); if the relay then rejects
   it, the signer is wrong.
+- **The list bodies are pinned by a fixture too.**
+  `relay-core-js/src/http-api-definition/fixtures/admin-wire.json` holds a
+  `ListTunnels` and a `ListConnectionTotals` body. `relay-server`'s
+  `the_admin_wire_fixture_matches_what_the_relay_serializes` serializes the
+  same values and asserts the exact JSON, and `tunnels.test.ts` decodes it.
+  A change to either shape changes the fixture, the Rust test's values and
+  the TS test's expectations together.
 - **What is signed:** one signature labelled `sig`, covering `@method`,
   `@target-uri` and, with a body, `content-digest` (`sha-256`), with
   `created`, `nonce` (16 random bytes, base64url), `keyid="admin"` and

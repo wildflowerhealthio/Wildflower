@@ -48,7 +48,13 @@ Whoever runs the relay sees routing metadata:
   handles both, and a modified relay could record them.
 - **When each device is online.** wildflower-relay logs each tunnel going up
   and down, and the rathole library logs the IP address each device's control
-  channel comes from.
+  channel comes from. Both go to its connection log, which it deletes after
+  24 hours; its other log, the journal, names no tunnel or address.
+- **How connections fare.** The relay counts, per hour, how many connections
+  reached a device and how many it refused and why, and keeps the counts for
+  30 days. It also keeps each tunnel's last connection outcome in memory.
+  Neither holds any visitor data: no addresses, times or tunnel names in the
+  counts, and no time, count or address with the last outcome.
 - **Each tunnel's name, token and owner's email.** The relay keeps them in its
   SQLite database, the token in plain text because rathole and request
   signing both need it. The email is whatever the operator recorded when

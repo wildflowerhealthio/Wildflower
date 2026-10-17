@@ -8,7 +8,7 @@
 //! those side effects stay here, out of `domain/`. Store calls block on
 //! SQLite, so the bindings run them on blocking threads.
 //!
-//! [`LiveConnectionTotalsReader`] reads the hourly connection totals, and
+//! `LiveConnectionTotalsReader` reads the hourly connection totals, and
 //! `connection_totals_flush` holds the relay task that keeps them: it moves
 //! the counts the front records in memory into the store every minute.
 //!

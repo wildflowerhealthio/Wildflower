@@ -23,7 +23,7 @@ const EMAIL = 'ruthmarks151@gmail.com'
  */
 function PrivacyPolicy(): JSX.Element {
   return (
-    <PolicyPage title="Privacy policy" updated="2026-10-11">
+    <PolicyPage title="Privacy policy" updated="2026-10-17">
       <PolicySection title="In short">
         <ul>
           <li>
@@ -159,6 +159,27 @@ function PrivacyPolicy(): JSX.Element {
             delete="Email me from the address the tunnel is registered to."
           />
           <PolicyDataCard
+            title="Connection log"
+            where="On the relay server, hosted by DigitalOcean."
+            when="When your device connects to or disconnects from the relay, a connection to your tunnel is refused, or your tunnel is created, changed or deleted. It names your tunnel and the network address your device connects from. It never holds what you send, or visitors' addresses."
+            keptFor="24 hours. The relay deletes each hour's file a day after its last entry."
+            delete="It deletes itself within 24 hours."
+          />
+          <PolicyDataCard
+            title="Hourly connection counts"
+            where="In the relay's database, on the relay server."
+            when="For every connection to the relay: how many each hour reached a device, and how many were refused and why. No tunnel names, addresses or other detail about you."
+            keptFor="30 days."
+            delete="There is nothing about you in them to delete."
+          />
+          <PolicyDataCard
+            title="Your tunnel's last connection result"
+            where="In the relay's memory, never on disk."
+            when="Each time someone connects to your tunnel: whether that connection reached your device, or why it was refused. No time, count or address."
+            keptFor="Until the next connection replaces it, your tunnel is deleted, or the relay restarts."
+            delete="Deleting your tunnel removes it. See above."
+          />
+          <PolicyDataCard
             title="Your tunnel's address"
             where="In the public Certificate Transparency logs, which every certificate authority writes to."
             when="When a certificate is issued for your tunnel's address, by Let's Encrypt, from your device. Only the address is sent: no email address or other detail about you."
@@ -221,7 +242,10 @@ function PrivacyPolicy(): JSX.Element {
           <li>
             It passes the caller&rsquo;s network address on to your device, for your own logs.
           </li>
-          <li>Its own logs record tunnel names for refused connections, not requests.</li>
+          <li>
+            Its connection log names tunnels and devices&rsquo; network addresses, and is deleted
+            after 24 hours. Its other logs and its hourly counts name no one.
+          </li>
         </ul>
       </PolicySection>
 
