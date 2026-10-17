@@ -46,6 +46,30 @@ interface MedicationRead {
 }
 
 /**
+ * The views of every request in `pages`, converted once per `pages` for the
+ * whole page.
+ *
+ * @remarks
+ * Every caller of {@link useMedicationRead} (the root, the open tab, the
+ * partial-list banner) observes the one read, whose `pages` array is the same
+ * reference for all of them until a page lands. Keyed on that array, the
+ * conversion runs once per landed page rather than once per caller.
+ */
+const viewsByPages = new WeakMap<readonly MedicationRequestPage[], readonly MedicationView[]>()
+
+/** The views of `pages`, from {@link viewsByPages}, converting them on first ask. */
+const viewsOf = (pages: readonly MedicationRequestPage[]): readonly MedicationView[] => {
+  const cached = viewsByPages.get(pages)
+  if (cached !== undefined) return cached
+  const views = medicationRequestsToMedicationViews(pages.flatMap((page) => page.items))
+  viewsByPages.set(pages, views)
+  return views
+}
+
+/** No request landed yet. */
+const noViews: readonly MedicationView[] = []
+
+/**
  * The chosen patient's MedicationRequests, read a page at a time, and what
  * has landed as views.
  *
@@ -79,13 +103,8 @@ const useMedicationRead = (): MedicationRead => {
   const [everyPageRequested, updatePageState] = usePageState((state) => state.everyPageRequested)
   const { fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError } = pagedQuery
 
-  // `data` (and its `pages`) keeps a stable reference between renders unless a
-  // page is added, so the mapping only re-runs when the loaded set actually grows.
   const pages = pagedQuery.data?.pages
-  const views = useMemo(
-    () => medicationRequestsToMedicationViews((pages ?? []).flatMap((page) => page.items)),
-    [pages]
-  )
+  const views = pages === undefined ? noViews : viewsOf(pages)
   const pagesReceived = pages?.length ?? 0
   const listComplete = pagesReceived > 0 && !hasNextPage
 
