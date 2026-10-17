@@ -63,7 +63,7 @@ const App = ({ page }: AppProps): JSX.Element => (
     <header className={styles['app__header']}>
       <h1 className="text-heading-3">Medications</h1>
     </header>
-    <SmartHandshakeGate connecting={<LoadingLine subject="medications" />}>
+    <SmartHandshakeGate page={page} connecting={<LoadingLine subject="medications" />}>
       {(client) => <MedicationsRouter page={page} client={client} />}
     </SmartHandshakeGate>
   </main>

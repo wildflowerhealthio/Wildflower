@@ -102,7 +102,7 @@ const LaunchedImporter = ({ page, client }: LaunchedImporterProps): JSX.Element 
  */
 const App = ({ page }: AppProps): JSX.Element => (
   <main className={styles['app']}>
-    <SmartHandshakeGate connecting={<PageLoading message="Connecting…" />}>
+    <SmartHandshakeGate page={page} connecting={<PageLoading message="Connecting…" />}>
       {(client) => <LaunchedImporter page={page} client={client} />}
     </SmartHandshakeGate>
   </main>

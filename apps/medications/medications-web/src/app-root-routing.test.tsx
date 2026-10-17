@@ -1,5 +1,5 @@
 import { createBrowserHistory } from '@tanstack/react-router'
-import { render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { TELEMETRY_CONSENT_COPY } from '@wildflowerhealthio/branding-core'
 import { writeConsent } from '@wildflowerhealthio/telemetry-core'
 import type * as TelemetryWeb from '@wildflowerhealthio/telemetry-web'
@@ -77,6 +77,7 @@ beforeEach(() => {
 
 afterEach(() => {
   window.localStorage.clear()
+  window.sessionStorage.clear()
   authorizeMock.mockReset()
   readyMock.mockReset()
 })
@@ -131,5 +132,31 @@ describe('AppRoot over the address bar', () => {
     expect(await screen.findByText('No medications found.')).toBeDefined()
     expect(addressBar()).toBe(`${BASEPATH}medications`)
     expect(readyMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('should open the tab a launch started on once its exchange completes', async () => {
+    // Arrange: a launch at the calendar, with a patient of the reader's own,
+    // leaves for the authorization server (the authorize URL never arrives).
+    authorizeMock.mockReturnValue(new Promise(() => {}))
+    window.history.replaceState(null, '', `${BASEPATH}calendar?patient=p1&${EHR_LAUNCH.slice(1)}`)
+    renderAppRoot()
+    await waitFor(() => {
+      expect(authorizeMock).toHaveBeenCalledTimes(1)
+    })
+    cleanup()
+    // The callback returns to the app root, and the exchange takes `code`
+    // and `state` out of the address bar as fhirclient does.
+    readyMock.mockImplementation(() => {
+      window.history.replaceState(window.history.state, '', BASEPATH)
+      return Promise.resolve(readyClient)
+    })
+    window.history.replaceState(null, '', `${BASEPATH}?code=abc&state=xyz`)
+
+    // Act
+    renderAppRoot()
+
+    // Assert
+    expect(await screen.findByRole('button', { name: 'Next month' })).toBeDefined()
+    expect(addressBar()).toBe(`${BASEPATH}calendar?patient=p1`)
   })
 })

@@ -110,9 +110,11 @@ handshake has completed are `smart-app-react`'s; the ordering rules are its
 visit, with a context fixed for it: the page's query cache, the one client
 the handshake hands out, and the page store. A deep link such as `/calendar`
 (or `/pr-<n>/calendar` in a preview) is served by the 404 page's redirect to
-the app root and restored there. The OAuth redirect URI is the app root,
-where every launch starts, so a launch returns there, and the root opens
-Medications.
+the app root and restored there. The OAuth redirect URI is the app root, so
+every launch returns there; a launch started at the root opens Medications,
+and one started at a tab (`/calendar?iss=…&launch=…`) opens that tab, with
+its own query, once the exchange completes (`smart-app-react`'s
+`SmartHandshakeGate` restores it).
 
 ### Bundled catalogs
 

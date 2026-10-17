@@ -29,6 +29,7 @@ import {
 
 import { authorizeFromLaunchPage } from './authorize-from-launch-page.ts'
 import { ConnectMenu } from './connect-menu.tsx'
+import { forgetLandingRoute } from './landing-route.ts'
 import { LaunchPage } from './launch-page.tsx'
 
 /**
@@ -206,6 +207,13 @@ function SmartAppRoot({
     if (shouldCompleteSmartLaunch()) return 'callback'
     return Option.isSome(arrivingSmartLaunchFrom(window.location.search)) ? 'launch' : 'visit'
   })
+
+  // A plain visit (a fresh one, a failed launch sent back here, a page back
+  // from the back-forward cache) completes no launch, so the route a launch
+  // kept for its callback is dropped: it must not hijack a later callback.
+  useEffect(() => {
+    if (arrival === 'visit') forgetLandingRoute(window.sessionStorage)
+  }, [arrival])
 
   // A failed launch lands back here carrying its reason — our own `?launchError`
   // from the launch page or the token exchange, or the authorization server's
