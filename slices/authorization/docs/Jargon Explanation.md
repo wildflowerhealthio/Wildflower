@@ -30,7 +30,7 @@ first. "Host" alone is ambiguous (the host app, the HTTP `Host` header, the
 | **OAuth client**        | Remote app requesting access (the SMART-on-FHIR caller, or the Wildflower host app itself).                              | `client_id`, `redirect_uri`, `/oauth/...` endpoints, the [`clients`](#client) table       |
 | **Owner**               | Human with absolute control over the data this authorization server protects. Approves consent, gates inbound requests.  | `/authorization/...` endpoints, `RequireAuthMiddleware`, tokens holding the Owner's grant |
 | **Wildflower host app** | The app on the Owner's device that runs this server in its own process. See [Wildflower host app](#wildflower-host-app). | The host app's client (`WILDFLOWER_HOST_APP_CLIENT_ID`), the in-process consent decider   |
-| **Signed-in browser**   | A browser the server has signed in, today the Owner's on the same device. See [Browser session](#browser-session).       | The `wildflower-browser` client, the `__Host-browser_session` cookie                      |
+| **Signed-in browser**   | A browser the server has signed in, today the Owner's on the same device. See [Browser session](#browser-session).       | The browser-session client, the `__Host-browser_session` cookie                           |
 | **Resource owner**      | OAuth-spec name for the Owner — the person whose data is being shared.                                                   | OAuth spec only; we say "Owner"                                                           |
 
 > **Open question:** The OAuth `client` (third-party app) is unrelated to
@@ -102,11 +102,11 @@ empty `redirectUris`:
   [Wildflower host app](#wildflower-host-app)'s. It is allowed only its own
   scopes (`host_app_client_scopes`, `openid`), not the Owner's. The host app holds
   no token of its own (see [Wildflower host app](#wildflower-host-app)).
-- `wildflower-browser` (`BROWSER_SESSION_CLIENT_ID`), named
-  `Wildflower Browsers`, the client every [browser session](#browser-session)'s
-  token is issued to, allowed the Owner's scopes (`OWNER_SCOPES`). It is
-  allowed no grant type: its tokens are minted only at `/oauth/sign-in`.
-  Revoking its subject signs every browser out.
+- `BROWSER_SESSION_CLIENT_ID`, named `Wildflower Browsers`, the client every
+  [browser session](#browser-session)'s token is issued to, allowed the
+  Owner's scopes (`OWNER_SCOPES`). It is allowed no grant type: its tokens are
+  minted only at `/oauth/sign-in`. Revoking its subject signs every browser
+  out.
 
 Both are [essential clients](#essential-client), which can't be disabled.
 
@@ -115,7 +115,7 @@ Both are [essential clients](#essential-client), which can't be disabled.
 A client the Owner can't lose without being stuck: the
 [Wildflower host app](#wildflower-host-app)'s, which is how
 the Owner reaches the server at all, and the browser-session client
-(`wildflower-browser`), which is how a browser on the Owner's device
+(`BROWSER_SESSION_CLIENT_ID`), which is how a browser on the Owner's device
 signs in as the Owner. Disabling either would leave the Owner no way in, so a
 `PATCH /authorization/clients/:clientId` that sets a `disabledAt` on one is
 refused with a `409 EssentialClient`, and nothing is written. Re-enabling one
@@ -558,7 +558,7 @@ running the server, and the host app runs on that device.
 3. The server redeems the code (`RedeemedSameDeviceSignInCode`, an authority
    proof), stores the `owner` [browser session](#browser-session) it starts,
    and mints a token through the ordinary minter, issued to the
-   `wildflower-browser` client (its `sub`) and holding the Owner's
+   browser-session client (its `sub`) and holding the Owner's
    grant (`OWNER_SCOPES`, the grant the Owner decides consents with), as a
    JWT with its own `jti` and the session's [`sid`](#sid-session-id) that
    expires in 8 hours, with the session.
@@ -571,7 +571,7 @@ launcher or Authorization app the host opens for this server, from the
 server's record (the page itself, whatever its query, or a URL within it as a
 folder). Any other
 `next`, an unknown, spent or expired code, or a disabled
-`wildflower-browser` client, gets a local error page with no cookie and
+browser-session client, gets a local error page with no cookie and
 no redirect; a refused `next` or a disabled client leaves the code unspent.
 Enabling the client again lets sign-in work. Disabling it signs no browser
 out: a browser already signed in keeps its session until the token expires or
@@ -587,12 +587,12 @@ holds `OWNER_SCOPES`, and expires 8 hours (`OWNER_SESSION_TTL`) after the
 sign-in.
 
 The browser holds its session in the `__Host-browser_session` cookie, whose
-value is the session's token, issued to the `wildflower-browser` client (its
+value is the session's token, issued to the browser-session client (its
 `sub`), so a restart doesn't sign the browser out. One browser is signed out
 by revoking its browser session or its token's `jti`; every browser is signed
-out by revoking the `wildflower-browser` subject. A request whose cookie holds
-an expired or revoked token is served as if the cookie weren't sent, and the
-response clears it. The cookie needs `https`, as the server's origin,
+out by revoking the browser-session client's subject. A request whose cookie
+holds an expired or revoked token is served as if the cookie weren't sent, and
+the response clears it. The cookie needs `https`, as the server's origin,
 `https://<domain>`, is. `/oauth/authorize` reads the cookie too: a parked
 request from a browser carrying a session goes to the
 [consent card](#consent-card) rather than the [wait page](#wait-page), and

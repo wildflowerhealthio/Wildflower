@@ -96,7 +96,7 @@ pub const WILDFLOWER_HOST_APP_CLIENT_ID: &str = "c4e755b6a4c1abf2aae6d0d83f2545a
 /// [`WILDFLOWER_HOST_APP_CLIENT_ID`], it is an essential client: it can't be
 /// disabled. Seeded at boot by [`crate::setup_authorization_server`] with
 /// [`OWNER_SCOPES`]; it takes part in no OAuth flow.
-pub const BROWSER_SESSION_CLIENT_ID: &str = "wildflower-browser";
+pub const BROWSER_SESSION_CLIENT_ID: &str = "cb9bbe139845cae9654b7909d60d274f";
 
 /// The maximal-access scopes that mark an Owner: full system FHIR access
 /// (`system/*.cruds`) **and** full Wildflower-resource access

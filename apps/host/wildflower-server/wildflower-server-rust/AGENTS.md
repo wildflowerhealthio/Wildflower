@@ -137,7 +137,7 @@ only it composes. Rust-only, no `-core`.
   - **Session cookies.** A browser on the server's own pages carries a
     cookie and no `Authorization`: the browser session's
     `__Host-browser_session`, whose value is the token `/oauth/sign-in`
-    issued to the `wildflower-browser` client, or the FHIR web UI's
+    issued to the browser-session client, or the FHIR web UI's
     `hfs_session`, which names a UI session holding a bearer. The inner
     router, under both listeners, is wrapped in one cookie→bearer layer per
     cookie, the UI's outermost

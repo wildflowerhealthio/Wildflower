@@ -568,6 +568,13 @@ mod tests {
         name: String,
     }
 
+    /// A nullable column read under the alias `name`.
+    #[derive(QueryableByName)]
+    struct OptionalName {
+        #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Text>)]
+        name: Option<String>,
+    }
+
     /// [`MIGRATIONS`] narrowed to the versions at or below `.0` — it drives a
     /// database to the state an install was in *before* a later migration ran,
     /// so a test can observe what that migration actually changes. Mirrors the
@@ -1670,14 +1677,27 @@ mod tests {
     }
 
     /// An install already at `0037`, holding the browser-session client under
-    /// its old `wildflower-owner-browser` id, re-keys it when `0038` runs, and
-    /// every standing Owner session ends, so the Owner signs in again; one
-    /// already revoked keeps its time. The request column takes its new name.
-    /// Reverting `0038` restores the old id and column name.
+    /// its old `wildflower-owner-browser` id and a row naming it in every table
+    /// that names a client, re-keys them all when `0038` runs, and every
+    /// standing Owner session ends, so the Owner signs in again; one already
+    /// revoked keeps its time, and an approved browser's session stands. The
+    /// request column takes its new name. Reverting `0038` restores the old id
+    /// and column name.
     #[test]
     fn an_install_already_at_0037_rekeys_the_browser_session_client_and_ends_owner_sessions() {
         use diesel::connection::SimpleConnection as _;
+        const BROWSERS: &str = "cb9bbe139845cae9654b7909d60d274f";
+        const OLD_ID: &str = "wildflower-owner-browser";
         const REVOKED_AT: &str = "2026-10-01 00:00:00+00:00";
+        /// Each table that names a client, with the key of the row seeded in it.
+        const CLIENT_TABLES: [(&str, &str); 6] = [
+            ("authorization_requests", "id"),
+            ("authorization_codes", "code"),
+            ("authorization_code_grants", "id"),
+            ("device_grants", "id"),
+            ("refresh_token_families", "family_id"),
+            ("launch_contexts", "nonce"),
+        ];
 
         let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
         wildflowerhealthio_persistence::run_diesel_migrations(
@@ -1690,17 +1710,54 @@ mod tests {
             "INSERT INTO clients \
              (client_id, name, kind, redirect_uris, allowed_scopes, allowed_grant_types, \
               secret_hash, registered_at, disabled_at) \
-             VALUES ('wildflower-owner-browser', 'Wildflower (Owner browsers)', 'public', \
+             VALUES ('{OLD_ID}', 'Wildflower (Owner browsers)', 'public', \
                      '[]', '[\"system/*.cruds\"]', '[]', NULL, \
                      '2024-01-01 00:00:00+00:00', NULL); \
+             INSERT INTO authorization_requests \
+             (id, grant_type, client_id, requested_scopes, requested_at, expires_at, status) \
+             VALUES ('browser-row', 'authorization_code', '{OLD_ID}', '[]', \
+                     '2026-10-16 00:00:00+00:00', '2026-10-16 00:10:00+00:00', 'pending'); \
+             INSERT INTO authorization_codes \
+             (code, request_id, client_id, redirect_uri, code_challenge, granted_scopes, \
+              issued_at, expires_at) \
+             VALUES ('browser-row', 'browser-row', '{OLD_ID}', 'https://example/', \
+                     'challenge', '[]', '2026-10-16 00:00:00+00:00', \
+                     '2026-10-16 00:01:00+00:00'); \
+             INSERT INTO authorization_code_grants \
+             (id, client_id, scopes, granted_at, redirect_uri) \
+             VALUES ('browser-row', '{OLD_ID}', '[]', '2026-10-16T00:00:00Z', \
+                     'https://example/'); \
+             INSERT INTO device_grants \
+             (id, client_id, scopes, granted_at, device_name) \
+             VALUES ('browser-row', '{OLD_ID}', '[]', '2026-10-16T00:00:00Z', 'A laptop'); \
+             INSERT INTO refresh_token_families \
+             (family_id, client_id, scopes, issued_at, expires_at) \
+             VALUES ('browser-row', '{OLD_ID}', '[]', '2026-10-16 00:00:00+00:00', \
+                     '2026-10-17 00:00:00+00:00'); \
+             INSERT INTO launch_contexts (nonce, client_id, created_at, expires_at) \
+             VALUES ('browser-row', '{OLD_ID}', '2026-10-16 00:00:00+00:00', \
+                     '2026-10-16 00:10:00+00:00'); \
              INSERT INTO browser_sessions \
              (sid, kind, name, scopes, created_at, expires_at, revoked_at) \
              VALUES ('standing', 'owner', NULL, '[]', '2026-10-16 00:00:00+00:00', \
                      '2026-10-16 08:00:00+00:00', NULL), \
                     ('revoked', 'owner', NULL, '[]', '2026-10-01 00:00:00+00:00', \
-                     '2026-10-01 08:00:00+00:00', '{REVOKED_AT}')"
+                     '2026-10-01 08:00:00+00:00', '{REVOKED_AT}'), \
+                    ('approved', 'approved', 'A tablet', '[]', '2026-10-16 00:00:00+00:00', \
+                     '2026-11-16 00:00:00+00:00', NULL)"
         ))
-        .expect("the browser-session client and two Owner sessions at 0037");
+        .expect("the browser-session client, a row naming it per table and three sessions at 0037");
+        let client_ids_of_seeded_rows = |conn: &mut SqliteConnection| {
+            CLIENT_TABLES.map(|(table, key)| {
+                diesel::sql_query(format!(
+                    "SELECT client_id AS name FROM {table} WHERE {key} = 'browser-row'"
+                ))
+                .load::<Name>(conn)
+                .expect("read the seeded row")
+                .remove(0)
+                .name
+            })
+        };
 
         wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
@@ -1709,25 +1766,30 @@ mod tests {
         )
         .expect("upgrade through 0038");
 
-        assert!(column_for_client(&mut conn, "client_id", "wildflower-owner-browser").is_empty());
+        assert!(column_for_client(&mut conn, "client_id", OLD_ID).is_empty());
         assert_eq!(
-            column_for_client(&mut conn, "name", "wildflower-browser")[0].name,
+            column_for_client(&mut conn, "name", BROWSERS)[0].name,
             "Wildflower Browsers"
         );
+        assert_eq!(client_ids_of_seeded_rows(&mut conn), [BROWSERS; 6]);
         let revoked_at_of = |conn: &mut SqliteConnection, sid: &str| {
             diesel::sql_query("SELECT revoked_at AS name FROM browser_sessions WHERE sid = ?")
                 .bind::<diesel::sql_types::Text, _>(sid)
-                .load::<Name>(conn)
+                .load::<OptionalName>(conn)
                 .expect("read the session")
                 .remove(0)
                 .name
         };
-        let ended_at = revoked_at_of(&mut conn, "standing");
+        let ended_at = revoked_at_of(&mut conn, "standing").expect("the Owner session ended");
         assert!(
             chrono::DateTime::parse_from_str(&ended_at, "%F %T%.f%:z").is_ok(),
             "{ended_at} is in the diesel chrono text encoding"
         );
-        assert_eq!(revoked_at_of(&mut conn, "revoked"), REVOKED_AT);
+        assert_eq!(
+            revoked_at_of(&mut conn, "revoked").as_deref(),
+            Some(REVOKED_AT)
+        );
+        assert_eq!(revoked_at_of(&mut conn, "approved"), None);
         diesel::sql_query("SELECT decidable_in_requesting_browser FROM authorization_requests")
             .execute(&mut conn)
             .expect("the column has its new name");
@@ -1739,11 +1801,9 @@ mod tests {
             .find(|migration| migration.name().version() == MigrationVersion::from("0038"))
             .expect("0038 is embedded");
         migration_0038.revert(&mut conn).expect("revert 0038");
-        assert_eq!(
-            column_for_client(&mut conn, "client_id", "wildflower-owner-browser").len(),
-            1
-        );
-        assert!(column_for_client(&mut conn, "client_id", "wildflower-browser").is_empty());
+        assert_eq!(column_for_client(&mut conn, "client_id", OLD_ID).len(), 1);
+        assert!(column_for_client(&mut conn, "client_id", BROWSERS).is_empty());
+        assert_eq!(client_ids_of_seeded_rows(&mut conn), [OLD_ID; 6]);
         diesel::sql_query("SELECT requested_by_owner_browser FROM authorization_requests")
             .execute(&mut conn)
             .expect("the column has its old name");

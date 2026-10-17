@@ -230,7 +230,7 @@ mod tests {
             },
         )
         .expect("an Owner token this server accepts");
-        assert_eq!(claims.subject, "wildflower-browser");
+        assert_eq!(claims.subject, BROWSER_SESSION_CLIENT_ID);
         assert_eq!(
             claims.scope.as_deref(),
             Some("system/*.cruds wildflower/*.cruds")

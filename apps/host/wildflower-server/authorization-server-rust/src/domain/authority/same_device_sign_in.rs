@@ -83,7 +83,7 @@ mod tests {
             now,
         )
         .expect("an outstanding code redeems");
-        assert_eq!(redeemed.client_id(), "wildflower-browser");
+        assert_eq!(redeemed.client_id(), BROWSER_SESSION_CLIENT_ID);
         assert_eq!(
             redeemed.token_scopes(),
             ["system/*.cruds".to_owned(), "wildflower/*.cruds".to_owned()]

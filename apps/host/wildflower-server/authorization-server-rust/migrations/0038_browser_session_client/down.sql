@@ -6,10 +6,10 @@ ALTER TABLE authorization_requests
 UPDATE clients
    SET client_id = 'wildflower-owner-browser',
        name = 'Wildflower (Owner browsers)'
- WHERE client_id = 'wildflower-browser';
-UPDATE authorization_requests SET client_id = 'wildflower-owner-browser' WHERE client_id = 'wildflower-browser';
-UPDATE authorization_codes SET client_id = 'wildflower-owner-browser' WHERE client_id = 'wildflower-browser';
-UPDATE authorization_code_grants SET client_id = 'wildflower-owner-browser' WHERE client_id = 'wildflower-browser';
-UPDATE device_grants SET client_id = 'wildflower-owner-browser' WHERE client_id = 'wildflower-browser';
-UPDATE refresh_token_families SET client_id = 'wildflower-owner-browser' WHERE client_id = 'wildflower-browser';
-UPDATE launch_contexts SET client_id = 'wildflower-owner-browser' WHERE client_id = 'wildflower-browser';
+ WHERE client_id = 'cb9bbe139845cae9654b7909d60d274f';
+UPDATE authorization_requests SET client_id = 'wildflower-owner-browser' WHERE client_id = 'cb9bbe139845cae9654b7909d60d274f';
+UPDATE authorization_codes SET client_id = 'wildflower-owner-browser' WHERE client_id = 'cb9bbe139845cae9654b7909d60d274f';
+UPDATE authorization_code_grants SET client_id = 'wildflower-owner-browser' WHERE client_id = 'cb9bbe139845cae9654b7909d60d274f';
+UPDATE device_grants SET client_id = 'wildflower-owner-browser' WHERE client_id = 'cb9bbe139845cae9654b7909d60d274f';
+UPDATE refresh_token_families SET client_id = 'wildflower-owner-browser' WHERE client_id = 'cb9bbe139845cae9654b7909d60d274f';
+UPDATE launch_contexts SET client_id = 'wildflower-owner-browser' WHERE client_id = 'cb9bbe139845cae9654b7909d60d274f';
