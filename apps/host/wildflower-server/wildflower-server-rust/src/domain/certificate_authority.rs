@@ -4,6 +4,11 @@
 use serde::{Deserialize, Serialize};
 use url::Url;
 
+/// How far back a CA's duplicate-certificate limit counts
+/// ([`CertificateAuthority::duplicate_certificate_limit`]): Let's Encrypt's
+/// 7 days.
+pub(crate) const DUPLICATE_CERTIFICATE_WINDOW: chrono::TimeDelta = chrono::TimeDelta::days(7);
+
 /// Which ACME CA a server's certificates are ordered from. Written in
 /// camelCase, `"letsEncryptStaging"` or `"letsEncrypt"`, in `servers.json`
 /// and on the wire.
@@ -21,6 +26,14 @@ pub enum CertificateAuthority {
     /// issuer rather than a real CA it never reached.
     #[cfg(feature = "test-support")]
     UnreachableForTests,
+    /// A CA only tests order from, with the `test-support` feature: a fake
+    /// ACME server the test runs on this machine at `port`, over plain HTTP,
+    /// so a test can watch a run order and deploy a certificate.
+    #[cfg(feature = "test-support")]
+    LocalForTests {
+        /// The port the fake ACME server listens on, at `127.0.0.1`.
+        port: u16,
+    },
 }
 
 impl CertificateAuthority {
@@ -36,8 +49,27 @@ impl CertificateAuthority {
             Self::LetsEncrypt => rustls_acme::acme::LETS_ENCRYPT_PRODUCTION_DIRECTORY,
             #[cfg(feature = "test-support")]
             Self::UnreachableForTests => "https://127.0.0.1:9/directory",
+            #[cfg(feature = "test-support")]
+            Self::LocalForTests { port } => {
+                return Url::parse(&format!("http://127.0.0.1:{port}/directory"))
+                    .expect("a local directory is a URL");
+            }
         };
         Url::parse(directory_url).expect("rustls-acme's Let's Encrypt directories are URLs")
+    }
+
+    /// How many certificates for the same exact name the CA issues in
+    /// [`DUPLICATE_CERTIFICATE_WINDOW`]: Let's Encrypt's production CA issues
+    /// 5. `None` for a CA whose limit is far beyond what a server orders, as
+    /// staging's is.
+    #[must_use]
+    pub fn duplicate_certificate_limit(self) -> Option<usize> {
+        match self {
+            Self::LetsEncrypt => Some(5),
+            Self::LetsEncryptStaging => None,
+            #[cfg(feature = "test-support")]
+            Self::UnreachableForTests | Self::LocalForTests { .. } => None,
+        }
     }
 
     /// Whether browsers trust the CA's certificates: an app's browser
@@ -49,7 +81,7 @@ impl CertificateAuthority {
             Self::LetsEncrypt => true,
             Self::LetsEncryptStaging => false,
             #[cfg(feature = "test-support")]
-            Self::UnreachableForTests => false,
+            Self::UnreachableForTests | Self::LocalForTests { .. } => false,
         }
     }
 
@@ -61,6 +93,8 @@ impl CertificateAuthority {
             Self::LetsEncrypt => "Let's Encrypt",
             #[cfg(feature = "test-support")]
             Self::UnreachableForTests => "the tests' unreachable CA",
+            #[cfg(feature = "test-support")]
+            Self::LocalForTests { .. } => "the tests' local CA",
         }
     }
 }
@@ -94,6 +128,18 @@ mod tests {
         assert!(CertificateAuthority::LetsEncrypt.is_browser_trusted());
         assert!(!CertificateAuthority::LetsEncryptStaging.is_browser_trusted());
         assert!(!CertificateAuthority::UnreachableForTests.is_browser_trusted());
+    }
+
+    #[test]
+    fn only_let_s_encrypt_s_production_ca_has_a_duplicate_certificate_limit() {
+        assert_eq!(
+            CertificateAuthority::LetsEncrypt.duplicate_certificate_limit(),
+            Some(5)
+        );
+        assert_eq!(
+            CertificateAuthority::LetsEncryptStaging.duplicate_certificate_limit(),
+            None
+        );
     }
 
     #[test]

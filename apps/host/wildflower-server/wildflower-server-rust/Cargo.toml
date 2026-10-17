@@ -62,6 +62,11 @@ futures-util = { version = "0.3", default-features = false }
 x509-parser = "0.18"
 # A certificate's SHA-256 fingerprint. Already in the tree.
 sha2 = "0.10"
+# `CertificateRestartError`. Already in the tree.
+thiserror = "2"
+# The name rustls-acme's `DirCache` gives a cached certificate's file (see
+# `src/adapters/acme_certificate.rs`).
+base64.workspace = true
 # A cache entry's PEM sections, split as rustls-acme splits them (see
 # `src/adapters/acme_certificate.rs`); the version rustls-acme already builds.
 pem = "4"
