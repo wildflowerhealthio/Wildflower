@@ -425,8 +425,9 @@ to ‹domain›", or for a pairing "‹browser›, a remote browser, wants to si
 to ‹domain›") once for each request it hasn't notified for, and on the
 desktop, where a notification can't be clicked, opens the request at once. A
 request that comes back once a newer one is decided doesn't notify again. A
-code request made by a browser whose session can decide consents, as the
-Owner's can, neither notifies nor opens: `/oauth/authorize` sent that browser
+code request made by a browser whose session can decide it (holding its
+[approval scopes](#approval-scopes)), as the Owner's can, neither notifies nor
+opens: `/oauth/authorize` sent that browser
 to the consent card, and records on the request that it can be decided there
 (`decidable_in_requesting_browser`, carried on the newest pending consent).
 The base's server page shows it as a pending request; Open, a tap on the
@@ -508,8 +509,8 @@ URL. A browser that can't read the request (`401`, `403`, or `404` once it is
 no longer pending) goes to the wait page instead. A browser whose session
 lacks some of the request's [approval scopes](#approval-scopes) (the read's
 `missingApprovalScopes`) sees "This browser can't allow this app." above the
-buttons, and "Ask the server's owner" in place of Allow, which goes to the wait
-page; the Owner was notified when the request was made.
+buttons, none of the patient search, registration warning or scopes, and "Ask
+the server's owner" in place of Allow, which goes to the wait page.
 The FHIR server doesn't yet limit a `patient/` scope to the token's patient
 (it checks it like a `system/` one, #416), so while the draft grants any
 `patient/` scope the card warns, above Allow and Deny, that the app can read
@@ -660,9 +661,12 @@ the response clears it. The cookie needs `https`, as the server's origin,
 `https://<domain>`, is. `/oauth/authorize` reads the cookie too: a parked
 request from a browser whose session can decide consents (its scopes cover
 `wildflower/AuthorizationRequest.r`, `wildflower/AuthorizationRequest.u` and
-`wildflower/Grant.c`, as `OWNER_SCOPES` do) goes to the
-[consent card](#consent-card) rather than the [wait page](#wait-page), and
-records that it can be decided there (`decidable_in_requesting_browser`).
+`wildflower/Grant.c`, as `OWNER_SCOPES` do) and that holds the request's
+[approval scopes](#approval-scopes) goes to the [consent card](#consent-card)
+rather than the [wait page](#wait-page), and records that it can be decided
+there (`decidable_in_requesting_browser`). One whose session lacks
+`wildflower/Client.c` or `wildflower/Client.u` the request takes goes to the
+wait page, and the request is raised for the Owner like any other.
 Only a token issued to the browser-session client under a browser session
 (its `sid`) counts: any other token in the cookie is served as no session.
 

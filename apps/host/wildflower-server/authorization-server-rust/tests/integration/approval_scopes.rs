@@ -299,3 +299,52 @@ async fn a_browser_session_without_grant_create_goes_to_the_wait_page() {
     let location = location_of(&authorize_with(cookie_for(&with_grant_create)).await);
     assert!(location.ends_with("/consent"), "{location}");
 }
+
+/// A browser that can create grants but not register a client can't approve
+/// a new app's request, so `/oauth/authorize` sends it to the wait page and
+/// raises the request for the Owner (it isn't decidable in that browser); with
+/// `wildflower/Client.c` it decides on the consent card.
+#[tokio::test]
+async fn a_browser_session_without_client_create_starting_a_new_app_s_request_waits_for_the_owner()
+{
+    let (g, _owner_token, db) = spin_up();
+    let authorize_with = |token: String| {
+        let router = g.router.clone();
+        async move {
+            router
+                .oneshot(build_request(
+                    Request::get(format!(
+                        "/oauth/authorize?{}",
+                        authorize_query("new-app", REQUESTED_SCOPES)
+                    ))
+                    .header("cookie", format!("__Host-browser_session={token}")),
+                    Body::empty(),
+                ))
+                .await
+                .expect("oneshot")
+        }
+    };
+
+    let without_client_create = approved_browser_token(&g, &db, APPROVER_SCOPES).await;
+    let location = location_of(&authorize_with(without_client_create).await);
+    assert!(location.ends_with("/wait"), "{location}");
+    assert!(matches!(
+        newest_pending_consent(&db),
+        Some(NewestPendingConsent::OAuth {
+            decidable_in_requesting_browser: false,
+            ..
+        })
+    ));
+
+    let with_client_create =
+        approved_browser_token(&g, &db, &approver_scopes_with(&["wildflower/Client.c"])).await;
+    let location = location_of(&authorize_with(with_client_create).await);
+    assert!(location.ends_with("/consent"), "{location}");
+    assert!(matches!(
+        newest_pending_consent(&db),
+        Some(NewestPendingConsent::OAuth {
+            decidable_in_requesting_browser: true,
+            ..
+        })
+    ));
+}

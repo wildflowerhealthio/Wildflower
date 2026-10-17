@@ -472,6 +472,22 @@ describe("OAuthConsentCard — asking the server's owner", () => {
     expect(mutate).not.toHaveBeenCalled()
   })
 
+  test('a reader lacking an approval scope gets none of the decision controls', () => {
+    renderCard(
+      makeConsent({
+        scopes: ['patient/Observation.r'],
+        registration: { status: 'new' },
+        missingApprovalScopes: ['wildflower/Client.c'],
+      }),
+      vi.fn()
+    )
+
+    expect(screen.queryByText('This app has never been seen before')).toBeNull()
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    expect(screen.queryByText('Patient')).toBeNull()
+    expect(screen.queryByText(/can't yet limit an app to one patient/)).toBeNull()
+  })
+
   test('a reader lacking nothing gets Allow and no reason', () => {
     renderCard(makeConsent({ scopes: ['system/Observation.r'] }), vi.fn())
 

@@ -150,7 +150,7 @@ fn require_approval_scopes(
 /// The client registration approving a code-flow request for `client_id`
 /// would create or widen, as its `registration_verdict` says: `None` for the
 /// host app's client, whose registration is fixed.
-fn registration_to_widen<'verdict>(
+pub(crate) fn registration_to_widen<'verdict>(
     client_id: &str,
     wildflower_host_app_client_id: &str,
     registration_verdict: &'verdict ClientRegistrationVerdict,

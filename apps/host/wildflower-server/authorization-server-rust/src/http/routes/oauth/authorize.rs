@@ -4,6 +4,7 @@ use axum::response::{Html, IntoResponse, Response};
 use serde::Deserialize;
 use utoipa::IntoParams;
 use uuid::Uuid;
+use wildflowerhealthio_scope_capabilities::GrantedScopes;
 
 use crate::crypto_util::random_token::generate_authorization_code;
 use crate::domain::capabilities::oauth::{
@@ -155,7 +156,8 @@ pub struct AuthorizeParams {
 ///    queue (raising the host webview's popup) and the browser is 302'd to a
 ///    page this authorization server serves beside the endpoint, on the origin
 ///    the browser used. A browser signed in as the Owner (it carries a live
-///    browser session that can decide consents) goes to the consent card at
+///    browser session that can decide consents, and holds the request's
+///    approval scopes) goes to the consent card at
 ///    `/oauth/authorize/{id}/consent`, where the Owner decides in place; the
 ///    request records that it can be decided there
 ///    (`decidable_in_requesting_browser`), and the browser session it was made
@@ -203,7 +205,10 @@ pub(super) async fn handle_authorize_request(
             error,
         ))
     })?;
-    let decidable_in_requesting_browser = browser_session.as_ref().is_some_and(can_decide_consents);
+    let requesting_browser_grant = browser_session
+        .as_ref()
+        .filter(|claims| can_decide_consents(claims))
+        .map(GrantedScopes::granted);
     let browser_sid = browser_session
         .as_ref()
         .and_then(|claims| claims.sid.as_deref());
@@ -218,7 +223,7 @@ pub(super) async fn handle_authorize_request(
             client_state: &params.state,
             launch: params.launch.as_deref(),
             aud: params.aud.as_deref(),
-            decidable_in_requesting_browser,
+            requesting_browser_grant: requesting_browser_grant.as_ref(),
             sid: browser_sid,
         },
         FreshIds {
@@ -244,7 +249,10 @@ pub(super) async fn handle_authorize_request(
         // wait page, which waits for whichever surface — the host popup, a
         // signed-in launcher's consent list, or the consent card — decides
         // first.
-        AuthorizeNextStep::AwaitOwner { request_id } => {
+        AuthorizeNextStep::AwaitOwner {
+            request_id,
+            decidable_in_requesting_browser,
+        } => {
             if decidable_in_requesting_browser {
                 found_redirect(&consent_page_location(&request_id))
             } else {

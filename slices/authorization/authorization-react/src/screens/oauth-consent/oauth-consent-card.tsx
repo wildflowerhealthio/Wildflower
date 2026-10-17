@@ -61,7 +61,7 @@ interface OAuthConsentCardProps {
   /**
    * Hand the request to the server's Owner, for a reader whose token lacks
    * some of the consent's `missingApprovalScopes`: the card offers it in place
-   * of Allow. The Owner was notified when the request was made.
+   * of Allow.
    */
   readonly onAskOwner: () => void
 }
@@ -82,8 +82,9 @@ const CANNOT_ALLOW = "This browser can't allow this app."
  * The OAuth consent card: the app-identity header with where it sends the
  * browser back to, the launch-patient bar, the shared {@link ScopePicker}
  * editing surface, and the approve/deny decision wiring. A reader lacking
- * some of the consent's `missingApprovalScopes` gets "Ask the server's owner"
- * in place of Allow. The scope editing
+ * some of the consent's `missingApprovalScopes` gets none of the patient bar,
+ * registration warning or scope editing, and "Ask the server's owner" in place
+ * of Allow. The scope editing
  * itself (statements ⇄ grid, exclusions, flags) is `scopes-react`'s; this card
  * owns the draft and the result routing. What sends the decision and what
  * reads the patients come from its composer: the authorization server's own
@@ -253,7 +254,9 @@ const OAuthConsentCard = ({
         </div>
       ) : null}
 
-      {draftHasPatientScope ? (
+      {/* A reader who can't allow gets none of the decision's controls: they
+          only shape an approval it can't make. */}
+      {canAllow && draftHasPatientScope ? (
         <div className={styles['patient-bar']} ref={patientBarRef}>
           <p className={styles['eyebrow']}>Patient</p>
           {patientSearch !== undefined ? (
@@ -291,21 +294,29 @@ const OAuthConsentCard = ({
         </div>
       ) : null}
 
-      <RegistrationWarning
-        registration={consent.registration}
-        clientId={consent.clientId}
-        redirectUri={consent.redirectUri}
-        acknowledged={registrationAcknowledged}
-        onAcknowledgeChange={setRegistrationAcknowledged}
-      />
-
-      <ScopePicker subjectName={appName} request={request} draft={draft} onDraftChange={setDraft} />
+      {canAllow ? (
+        <>
+          <RegistrationWarning
+            registration={consent.registration}
+            clientId={consent.clientId}
+            redirectUri={consent.redirectUri}
+            acknowledged={registrationAcknowledged}
+            onAcknowledgeChange={setRegistrationAcknowledged}
+          />
+          <ScopePicker
+            subjectName={appName}
+            request={request}
+            draft={draft}
+            onDraftChange={setDraft}
+          />
+        </>
+      ) : null}
 
       <div className={styles['footer']}>
         {/* Stopgap until the FHIR server enforces patient compartments (#416):
             a patient-context scope is checked like a system one. Tracks the
             draft, so it goes once every patient-context scope is unticked. */}
-        {draftHasPatientContextScope ? (
+        {canAllow && draftHasPatientContextScope ? (
           <p role="note" className={styles['patient-scope-warning']}>
             This server can't yet limit an app to one patient. If you allow this, the app can read
             the records it asks for for every patient on this server.

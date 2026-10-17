@@ -52,7 +52,8 @@ Security Policy (below).
   any other failed read says so in plain words, never the error's text. A
   consent whose `missingApprovalScopes` isn't empty (the session lacks the
   power to create what approving it creates) gets "Ask the server's owner" in
-  place of Allow, which leaves for the wait page.
+  place of Allow, which leaves for the wait page, and none of the card's
+  decision controls.
 - `device.html` + `src/device/main.tsx` — the device page's entry: reads the
   `user_code` (`user-code-query.ts`) and `then` (`src/then-query.ts`) from its
   query and mounts `DevicePage` over the same runner.

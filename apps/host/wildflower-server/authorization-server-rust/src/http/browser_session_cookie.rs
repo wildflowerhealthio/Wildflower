@@ -120,8 +120,9 @@ pub(crate) fn carried_browser_session(
 /// client ([`approval_scopes`]: `wildflower/AuthorizationRequest.u` and
 /// `wildflower/Grant.c`). A request such a browser starts is sent to the
 /// consent card and decided there, so the start spends nothing of the
-/// authorization start limit. The card itself says when a request also takes
-/// `wildflower/Client.c` or `wildflower/Client.u` the session lacks.
+/// authorization start limit; one that also takes `wildflower/Client.c` or
+/// `wildflower/Client.u` the session lacks goes to the wait page and is raised
+/// for the Owner instead, still spending nothing.
 pub(crate) fn can_decide_consents(claims: &VerifiedClaims) -> bool {
     let granted = claims.granted();
     consent_reader_scopes()
