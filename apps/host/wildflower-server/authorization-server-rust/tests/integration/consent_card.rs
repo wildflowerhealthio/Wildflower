@@ -139,6 +139,30 @@ async fn any_other_browser_goes_to_the_wait_page() {
 }
 
 #[tokio::test]
+async fn a_browser_session_that_cannot_decide_consents_goes_to_the_wait_page() {
+    let (g, _host_owner_token, db) = spin_up();
+    seed_client_with_redirect(
+        &db,
+        "test-app",
+        "https://app.example/cb",
+        &["patient/Observation.rs", "openid"],
+    );
+    let session_token = signed_in_session_token_that_cannot_decide(&g, &db).await;
+
+    let res = authorize_with_cookie(&g, &format!("__Host-browser_session={session_token}")).await;
+    let (page, request_id) = parked_page(&res);
+    assert_eq!(page, "wait");
+    assert_eq!(
+        newest_pending_consent(&db),
+        Some(NewestPendingConsent::OAuth {
+            id: request_id,
+            client_name: "Integration Test Client".to_owned(),
+            decidable_in_requesting_browser: false,
+        }),
+    );
+}
+
+#[tokio::test]
 async fn the_newest_pending_consent_says_whether_its_browser_can_decide_it() {
     let (g, _host_owner_token, db) = spin_up();
     seed_client_with_redirect(

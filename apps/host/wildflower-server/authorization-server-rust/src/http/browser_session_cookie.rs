@@ -25,7 +25,9 @@ use std::sync::Arc;
 
 use axum::http::{header, HeaderMap};
 use cookie::Cookie;
+use wildflowerhealthio_scope_capabilities::GrantedScopes as _;
 
+use crate::domain::capabilities::access::consents::consent_decider_scopes;
 use crate::domain::capabilities::oauth::OWNER_SESSION_TTL;
 use crate::domain::capabilities::session::TokenVerifier;
 use crate::domain::token::{VerifiedClaims, VerifyError};
@@ -109,6 +111,17 @@ pub(crate) fn carried_browser_session(
         return Ok(None);
     };
     standing_session_claims(token_verifier, &session_token)
+}
+
+/// Whether the browser session `claims` describe can decide consents: its
+/// grant covers what deciding one requires ([`consent_decider_scopes`]). A
+/// request such a browser starts is sent to the consent card and decided
+/// there, so the start spends nothing of the authorization start limit.
+pub(crate) fn can_decide_consents(claims: &VerifiedClaims) -> bool {
+    let granted = claims.granted();
+    consent_decider_scopes()
+        .iter()
+        .all(|required| granted.covers(required))
 }
 
 /// The verified claims of `session_token`, or `None` when it holds no

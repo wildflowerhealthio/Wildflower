@@ -42,8 +42,8 @@ pub enum NewestPendingConsent {
         /// [`Device`](Self::Device).
         client_name: String,
         /// Whether the request can be decided in the browser that made it,
-        /// which carried a browser session, so it shows the request's consent
-        /// card itself.
+        /// which carried a browser session that can decide consents, so it
+        /// shows the request's consent card itself.
         decidable_in_requesting_browser: bool,
     },
 }

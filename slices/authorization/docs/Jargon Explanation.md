@@ -395,8 +395,8 @@ those still pending.
 
 Starting a request is rate-limited on the tunnel, per visitor address and
 overall, and a request over either limit is `429` (the host's
-`authorization_start_limit`). A browser signed in as the Owner is never
-limited.
+`authorization_start_limit`). A browser whose session can decide consents,
+as one signed in as the Owner can, is never limited.
 
 The newest is a `NewestPendingConsent`, discriminated because the two flows
 have no shared lookup key, with the name of the client that asks (its
@@ -411,15 +411,17 @@ The Rust side recomputes it (`newest_pending_consent`) after every transition
 that could change it — either flow's insert, approve, or deny — and publishes
 it on a `watch` channel. The Tauri host carries each server's newest pending
 consent in the server's status, posts a notification ("‹client› wants access
-to ‹domain›") once for each request it hasn't notified for, and on the desktop,
-where a notification can't be clicked, opens the request at once. A request that comes back once a newer one is
-decided doesn't notify again. A code request made by a browser signed in as the
-Owner neither notifies nor opens: `/oauth/authorize` sent that browser to the
-consent card, and records on the request that it can be decided there
-(`decidable_in_requesting_browser`, carried on the newest pending consent). The base's server page shows it as a pending
-request; Open, a tap on the notification on a phone, or the notification
-itself on the desktop opens its page in a
-browser signed in as the Owner, with `then=back` (see `apps/host/servers`'s
+to ‹domain›") once for each request it hasn't notified for, and on the
+desktop, where a notification can't be clicked, opens the request at once. A
+request that comes back once a newer one is decided doesn't notify again. A
+code request made by a browser whose session can decide consents, as the
+Owner's can, neither notifies nor opens: `/oauth/authorize` sent that browser
+to the consent card, and records on the request that it can be decided there
+(`decidable_in_requesting_browser`, carried on the newest pending consent).
+The base's server page shows it as a pending request; Open, a tap on the
+notification on a phone, or the notification itself on the desktop opens its
+page in a browser signed in as the Owner, with `then=back` (see
+`apps/host/servers`'s
 [Server Runs Explanation](../../../apps/host/servers/docs/Server%20Runs%20Explanation.md)).
 
 A request that the [grant](#grant) fast path fully pre-approves is never pending:
@@ -594,9 +596,12 @@ out by revoking the browser-session client's subject. A request whose cookie
 holds an expired or revoked token is served as if the cookie weren't sent, and
 the response clears it. The cookie needs `https`, as the server's origin,
 `https://<domain>`, is. `/oauth/authorize` reads the cookie too: a parked
-request from a browser carrying a session goes to the
+request from a browser whose session can decide consents (its scopes cover
+`wildflower/AuthorizationRequest.u`, as `OWNER_SCOPES` do) goes to the
 [consent card](#consent-card) rather than the [wait page](#wait-page), and
 records that it can be decided there (`decidable_in_requesting_browser`).
+Only a token issued to the browser-session client under a browser session
+(its `sid`) counts: any other token in the cookie is served as no session.
 
 A browser can hold the FHIR web UI's `hfs_session` beside this cookie. A
 request carrying both gets `hfs_session`'s bearer, so the UI runs as its own

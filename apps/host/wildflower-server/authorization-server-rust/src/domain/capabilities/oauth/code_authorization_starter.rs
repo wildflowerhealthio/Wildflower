@@ -46,7 +46,8 @@ pub(crate) struct AuthorizeRequest<'a> {
     /// the token, or `None` when the app doesn't declare one.
     pub(crate) aud: Option<&'a str>,
     /// Whether the request can be decided in the browser making it (it
-    /// carries a browser session), recorded on a parked request.
+    /// carries a browser session that can decide consents), recorded on a
+    /// parked request.
     pub(crate) decidable_in_requesting_browser: bool,
     /// The browser session the browser making the request holds, if any,
     /// recorded on the parked request and on the code it earns.

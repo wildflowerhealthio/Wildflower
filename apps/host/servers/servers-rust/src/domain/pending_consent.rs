@@ -33,9 +33,9 @@ pub struct PendingConsent {
     /// registration.
     pub client_name: String,
     /// Whether the request can be decided in the browser that made it, which
-    /// carried a browser session, so it shows the request's consent card
-    /// itself. Always `false` for a device request. Not on the wire: the base shows the request
-    /// either way.
+    /// carried a browser session that can decide consents, so it shows the
+    /// request's consent card itself. Always `false` for a device request.
+    /// Not on the wire: the base shows the request either way.
     #[serde(skip)]
     pub decidable_in_requesting_browser: bool,
 }

@@ -102,8 +102,9 @@ pub struct AuthorizationRequest {
     /// approval must name this patient (see [`Self::admits_patient`]).
     pub launch_bound_patient: Option<String>,
     /// Whether the request can be decided in the browser that made it: that
-    /// browser carried a browser session, so it is sent to the consent card
-    /// itself (auth-code flow only; `false` for a device request).
+    /// browser carried a browser session that can decide consents, so it is
+    /// sent to the consent card itself (auth-code flow only; `false` for a
+    /// device request).
     pub decidable_in_requesting_browser: bool,
     /// The browser session the request was made in (auth-code flow only),
     /// which the code it earns is issued under; `None` when the browser had
@@ -134,7 +135,7 @@ pub struct StartCodeAuthorizationArgs {
     /// a plain OAuth request.
     pub launch_context: Option<LaunchContext>,
     /// Whether the request can be decided in the browser calling
-    /// `/authorize`: it carries a browser session.
+    /// `/authorize`: it carries a browser session that can decide consents.
     pub decidable_in_requesting_browser: bool,
     /// The browser session the browser calling `/authorize` holds, if any.
     pub sid: Option<String>,

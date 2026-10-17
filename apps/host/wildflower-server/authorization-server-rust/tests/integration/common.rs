@@ -145,6 +145,28 @@ pub fn mint_owner_token(db: &TestDb) -> String {
 /// Mint an access token issued to `client_id` carrying exactly `scopes`, signed
 /// by the seeded active key and naming [`SERVER_ORIGIN`] as `iss` and `aud`.
 pub fn mint_client_token(db: &TestDb, client_id: &str, scopes: &[&str]) -> String {
+    mint_token_under_session(db, client_id, scopes, None)
+}
+
+/// A token issued to the browser-session client under the browser session
+/// `sid`, carrying exactly `scopes`: a signed-in browser whose session holds
+/// those scopes rather than the Owner's.
+pub fn mint_browser_session_token(db: &TestDb, sid: &str, scopes: &[&str]) -> String {
+    mint_token_under_session(
+        db,
+        wildflowerhealthio_authorization_server::BROWSER_SESSION_CLIENT_ID,
+        scopes,
+        Some(sid),
+    )
+}
+
+/// [`mint_client_token`], minted under the browser session `sid` when given.
+fn mint_token_under_session(
+    db: &TestDb,
+    client_id: &str,
+    scopes: &[&str],
+    sid: Option<&str>,
+) -> String {
     let key = store_handle(db)
         .active_signing_key()
         .expect("signing-key query")
@@ -159,7 +181,7 @@ pub fn mint_client_token(db: &TestDb, client_id: &str, scopes: &[&str]) -> Strin
             issuer: SERVER_ORIGIN,
             audience: Some(SERVER_ORIGIN),
             patient: None,
-            sid: None,
+            sid,
         },
     )
     .expect("mint token")
@@ -855,4 +877,18 @@ pub fn browser_session_token(res: &axum::response::Response) -> String {
 pub async fn signed_in_owner_session_token(g: &AuthorizationServer) -> String {
     let code = g.same_device_sign_in_code_minter.mint();
     browser_session_token(&sign_in(g, &code, "/").await)
+}
+
+/// The token of a signed-in browser whose session can't decide consents: it
+/// can read authorization requests but not update them.
+pub async fn signed_in_session_token_that_cannot_decide(
+    g: &AuthorizationServer,
+    db: &TestDb,
+) -> String {
+    let owner_session_token = signed_in_owner_session_token(g).await;
+    let sid = decode_jwt_payload(&owner_session_token)["sid"]
+        .as_str()
+        .expect("a browser session's token names its sid")
+        .to_owned();
+    mint_browser_session_token(db, &sid, &["wildflower/AuthorizationRequest.r"])
 }

@@ -24,9 +24,9 @@ UPDATE refresh_token_families SET client_id = 'cb9bbe139845cae9654b7909d60d274f'
 UPDATE launch_contexts SET client_id = 'cb9bbe139845cae9654b7909d60d274f' WHERE client_id = 'wildflower-owner-browser';
 
 -- Whether a request can be decided in the browser that made it: that browser
--- carried a browser session when `/oauth/authorize` parked the request, so it
--- was sent to the consent card itself, and the host neither notifies for nor
--- opens it.
+-- carried a browser session that can decide consents when `/oauth/authorize`
+-- parked the request, so it was sent to the consent card itself, and the host
+-- neither notifies for nor opens it.
 ALTER TABLE authorization_requests
     RENAME COLUMN requested_by_owner_browser TO decidable_in_requesting_browser;
 

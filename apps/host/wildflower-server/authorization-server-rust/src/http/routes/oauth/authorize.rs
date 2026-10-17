@@ -10,7 +10,7 @@ use crate::domain::capabilities::oauth::{
     AuthorizationStartError, AuthorizeNextStep, AuthorizeRequest, FreshIds,
 };
 use crate::domain::client_redirect::{build_client_error_redirect_url, build_client_redirect_url};
-use crate::http::browser_session_cookie::carried_browser_session;
+use crate::http::browser_session_cookie::{can_decide_consents, carried_browser_session};
 use crate::http::errors::InternalError;
 use crate::http::errors::{oauth_error_html, OAuthErrorKind};
 use crate::http::extractors::Live;
@@ -155,7 +155,7 @@ pub struct AuthorizeParams {
 ///    queue (raising the host webview's popup) and the browser is 302'd to a
 ///    page this authorization server serves beside the endpoint, on the origin
 ///    the browser used. A browser signed in as the Owner (it carries a live
-///    browser session) goes to the consent card at
+///    browser session that can decide consents) goes to the consent card at
 ///    `/oauth/authorize/{id}/consent`, where the Owner decides in place; the
 ///    request records that it can be decided there
 ///    (`decidable_in_requesting_browser`), and the browser session it was made
@@ -203,7 +203,7 @@ pub(super) async fn handle_authorize_request(
             error,
         ))
     })?;
-    let decidable_in_requesting_browser = browser_session.is_some();
+    let decidable_in_requesting_browser = browser_session.as_ref().is_some_and(can_decide_consents);
     let browser_sid = browser_session
         .as_ref()
         .and_then(|claims| claims.sid.as_deref());
