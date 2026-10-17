@@ -164,6 +164,97 @@ describe('the access page', () => {
     ).toBeNull()
   })
 
+  it('lists the signed-in browsers, this one marked, an unnamed Owner session as the Owner browser and an approved one by its name', async () => {
+    // Arrange
+    const server = stubServer()
+
+    // Act
+    mountAccessPages(server)
+
+    // Assert
+    const browsers = await sectionTitled('Browsers')
+    const rows = within(browsers).getAllByRole('listitem')
+    expect(rows).toHaveLength(3)
+    const [thisRow, otherRow, approvedRow] = rows
+    expect(within(thisRow).getByText('Owner browser')).toBeTruthy()
+    expect(within(thisRow).getByText('This browser')).toBeTruthy()
+    expect(
+      within(thisRow).getByText(/^Owner · Signed in .+ · Expires .+ · Last seen .+$/)
+    ).toBeTruthy()
+    expect(within(otherRow).getByText('Owner browser')).toBeTruthy()
+    expect(within(otherRow).queryByText('This browser')).toBeNull()
+    expect(within(approvedRow).getByText(approvedBrowserSession.name)).toBeTruthy()
+    expect(within(approvedRow).getByText(/^Approved · Signed in /)).toBeTruthy()
+    expect(
+      server.requests.find((request) => request.url.endsWith('/authorization/browser-sessions'))
+        ?.authorization
+    ).toBe('Bearer tok_owner')
+  })
+
+  it('revokes a browser’s session, then reads the list again', async () => {
+    // Arrange
+    const server = stubServer()
+    mountAccessPages(server)
+    const browsers = await sectionTitled('Browsers')
+    const [, otherRow] = within(browsers).getAllByRole('listitem')
+    fireEvent.click(within(otherRow).getByRole('button', { name: 'Actions for Owner browser' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Revoke' }))
+    const listReads = (): number =>
+      server.requests.filter((request) => request.url.endsWith('/authorization/browser-sessions'))
+        .length
+    const readsBefore = listReads()
+
+    // Act
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Revoke' }))
+
+    // Assert
+    await waitFor(() => {
+      expect(server.writes()).toEqual([
+        {
+          method: 'DELETE',
+          url: `https://ruth.wildflowerhealth.io/authorization/browser-sessions/${otherBrowserSession.sid}`,
+          authorization: 'Bearer tok_owner',
+          body: undefined,
+        },
+      ])
+    })
+    await waitFor(() => {
+      expect(listReads()).toBeGreaterThan(readsBefore)
+    })
+  })
+
+  it('offers a Revoke on this browser too, warning that it signs this browser out', async () => {
+    // Arrange
+    const server = stubServer()
+    mountAccessPages(server)
+    const browsers = await sectionTitled('Browsers')
+    const [thisRow] = within(browsers).getAllByRole('listitem')
+
+    // Act
+    fireEvent.click(within(thisRow).getByRole('button', { name: 'Actions for Owner browser' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Revoke' }))
+
+    // Assert
+    expect(within(screen.getByRole('dialog')).getByText(/^Revoke this browser\?/)).toBeTruthy()
+  })
+
+  it('still shows the rest of the page when the browsers can’t be read', async () => {
+    // Arrange — a session without `wildflower/BrowserSession.r`.
+    const server = stubServer(undefined, () =>
+      Response.json(
+        { error: 'InsufficientScope', missingScopes: ['wildflower/BrowserSession.r'] },
+        { status: 403 }
+      )
+    )
+
+    // Act
+    mountAccessPages(server)
+
+    // Assert
+    expect(await screen.findByText('Error Loading Browsers')).toBeTruthy()
+    expect(await sectionTitled('Approved Apps')).toBeTruthy()
+  })
+
   it('signs in again once the bearer has expired', async () => {
     // Arrange — the server answers the grants read with a 401.
     const server = stubServer(() => new Response(null, { status: 401 }))
@@ -245,6 +336,34 @@ const pebbleGrant = {
   patient: null,
 } as const
 
+/** The browser session this page is signed in through. */
+const thisBrowserSession = {
+  sid: 'session-this',
+  kind: 'owner',
+  name: null,
+  createdAt: '2026-10-17T08:00:00.000Z',
+  expiresAt: '2026-10-17T16:00:00.000Z',
+  lastSeenAt: '2026-10-17T09:30:00.000Z',
+  heldByCaller: true,
+} as const
+
+/** Another browser signed in as the Owner. */
+const otherBrowserSession = {
+  ...thisBrowserSession,
+  sid: 'session-other',
+  createdAt: '2026-10-17T07:00:00.000Z',
+  heldByCaller: false,
+} as const
+
+/** A browser that paired, under the name it was given. */
+const approvedBrowserSession = {
+  ...otherBrowserSession,
+  sid: 'session-approved',
+  kind: 'approved',
+  name: 'Kitchen tablet',
+  createdAt: '2026-10-17T06:00:00.000Z',
+} as const
+
 const medicationsClient = {
   clientId: medicationsGrant.clientId,
   name: 'Medication Viewer',
@@ -280,10 +399,15 @@ interface StubServer {
   readonly writes: () => readonly RecordedRequest[]
 }
 
-/** A server whose authorization API answers with the grants and clients above. */
+/**
+ * A server whose authorization API answers with the grants, clients and
+ * browser sessions above.
+ */
 const stubServer = (
   answerGrants: () => Response = () =>
-    Response.json([medicationsGrant, hostGrant, ownGrant, pebbleGrant])
+    Response.json([medicationsGrant, hostGrant, ownGrant, pebbleGrant]),
+  answerBrowserSessions: () => Response = () =>
+    Response.json([thisBrowserSession, otherBrowserSession, approvedBrowserSession])
 ): StubServer => {
   const requests: RecordedRequest[] = []
   const answer = (method: string, url: string): Response => {
@@ -296,6 +420,9 @@ const stubServer = (
     }
     if (method === 'GET' && path === '/authorization/clients') {
       return Response.json([hostClient, medicationsClient])
+    }
+    if (method === 'GET' && path === '/authorization/browser-sessions') {
+      return answerBrowserSessions()
     }
     if (method === 'PATCH') {
       return Response.json({ ...medicationsClient, disabledAt: '2026-10-13T12:00:00.000Z' })

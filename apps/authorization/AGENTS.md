@@ -51,6 +51,12 @@ that.
 - **Revoking a grant is two calls**: `DELETE /authorization/grants/:id`, then
   `POST /authorization/revocations` for the grant's client
   (`authorization-react`'s `useRevokeGrantMutation`).
+- **The Browsers list offers Revoke on this browser too.** Its row, the
+  session the page's token names (`heldByCaller`), is marked "This browser";
+  revoking it signs this browser out, and the page's next request, a `401`,
+  signs in again. Revoking a session is one call,
+  `DELETE /authorization/browser-sessions/:sid`, which ends everything minted
+  under it.
 - **Nothing boots before the telemetry consent dialog is answered.**
   `src/app-root.tsx`'s `ConsentedEntryRoot` runs the boot (the sign-in
   redemption) only after an answer, reporting to `VITE_SENTRY_DSN_AUTHORIZATION_WEB`

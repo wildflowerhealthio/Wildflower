@@ -1922,7 +1922,7 @@ mod tests {
         wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
-            MIGRATIONS,
+            MigrationsThrough("0040"),
         )
         .expect("upgrade through 0040");
 
@@ -1979,6 +1979,66 @@ mod tests {
         assert_eq!(
             column_of(&mut conn, "created_at", "standing").as_deref(),
             Some(CREATED_AT)
+        );
+    }
+
+    /// An install already at `0040` widens Wildflower Authorization's client
+    /// to the browser-session scopes when `0041` runs; one whose scopes the
+    /// Owner changed keeps them. Reverting `0041` restores `0031`'s set.
+    #[test]
+    fn an_install_already_at_0040_widens_the_authorization_web_client() {
+        use diesel::connection::SimpleConnection as _;
+        const AUTHORIZATION_WEB: &str = "7277e898bee8ac81ea44788236e619a5";
+        const AT_0040: &str =
+            r#"["openid","wildflower/Grant.rd","wildflower/Client.ru","wildflower/Token.d"]"#;
+        let migrated_through_0040 = || {
+            let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+            wildflowerhealthio_persistence::run_diesel_migrations(
+                &mut conn,
+                MIGRATION_NAMESPACE,
+                MigrationsThrough("0040"),
+            )
+            .expect("migrate to 0040");
+            conn
+        };
+
+        let mut conn = migrated_through_0040();
+        assert_eq!(allowed_scopes_of(&mut conn, AUTHORIZATION_WEB), AT_0040);
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MIGRATIONS,
+        )
+        .expect("upgrade through 0041");
+        assert_eq!(
+            allowed_scopes_of(&mut conn, AUTHORIZATION_WEB),
+            r#"["openid","wildflower/Grant.rd","wildflower/Client.ru","wildflower/Token.d","wildflower/BrowserSession.rd"]"#,
+        );
+        let migration_0041 = MIGRATIONS
+            .migrations()
+            .expect("embedded migrations")
+            .into_iter()
+            .find(|migration| migration.name().version() == MigrationVersion::from("0041"))
+            .expect("0041 is embedded");
+        migration_0041.revert(&mut conn).expect("revert 0041");
+        assert_eq!(allowed_scopes_of(&mut conn, AUTHORIZATION_WEB), AT_0040);
+
+        let mut changed = migrated_through_0040();
+        changed
+            .batch_execute(&format!(
+                "UPDATE clients SET allowed_scopes = '[\"openid\"]' \
+                 WHERE client_id = '{AUTHORIZATION_WEB}'"
+            ))
+            .expect("the Owner changed the scopes at 0040");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut changed,
+            MIGRATION_NAMESPACE,
+            MIGRATIONS,
+        )
+        .expect("upgrade through 0041");
+        assert_eq!(
+            allowed_scopes_of(&mut changed, AUTHORIZATION_WEB),
+            r#"["openid"]"#
         );
     }
 
