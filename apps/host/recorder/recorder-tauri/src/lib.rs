@@ -1,15 +1,18 @@
 //! Tauri host glue for the Recorder: one listener on the multiplexed
 //! bridge channel, the write moved off the event thread, and the two terminal
-//! answers. See the
+//! answers; and the page's commands, the recordings folder and the bookmarks.
+//! See the
 //! [Design Explanation](../../docs/Design%20Explanation.md).
 //!
 //! Every decision lives in [`wildflowerhealthio_recorder`], which needs no webview to be
 //! tested; this module is only the glue.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use tauri::{AppHandle, Emitter, Listener, Manager, Runtime};
 use tauri_plugin_log::log;
+use wildflowerhealthio_recorder::bookmarks::JsonBookmarks;
 use wildflowerhealthio_recorder::bridge::{RecorderHostToWeb, RecorderWebToHost, SAVE_HAR, TAGS};
 use wildflowerhealthio_recorder::recordings_folder::{Platform, RecordingsLocation};
 use wildflowerhealthio_recorder::save::save_har;
@@ -17,7 +20,10 @@ use wildflowerhealthio_shared_structures::bridge::{BridgeEnvelope, BRIDGE_EVENT}
 
 mod commands;
 
-pub use commands::recorder_save_folder;
+pub use commands::{
+    recorder_bookmark_add, recorder_bookmark_recorded, recorder_bookmark_remove,
+    recorder_bookmark_rename, recorder_bookmarks, recorder_save_folder,
+};
 
 /// The recordings folder this run saves to, or why there is none, resolved
 /// once by [`attach_recorder`]. `recorder_save_folder` reads it.
@@ -92,7 +98,8 @@ fn resolve_recordings_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, Str
 }
 
 /// Wire the recorder's listener on the multiplexed bridge event, and manage
-/// the [`RecordingsFolder`] it saves into.
+/// the [`RecordingsFolder`] it saves into and the [`JsonBookmarks`] in
+/// `data_root`, which the bookmark commands read and change.
 ///
 /// The recordings folder is resolved here, once, for
 /// [`Platform::current`]. A platform where none resolves still attaches: each
@@ -105,7 +112,7 @@ fn resolve_recordings_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, Str
 /// Sibling slices' tags are dropped silently; an undecodable payload is warned
 /// and, when a file name can still be read out of it, answered with
 /// `HarSaveFailed` so the page does not wait forever.
-pub fn attach_recorder(app: &AppHandle) {
+pub fn attach_recorder(app: &AppHandle, data_root: &Path) {
     // The shared bridge channel has no automated cross-process tag guard, so
     // the boot log records who dispatches what. See the effect-messaging-tauri-js
     // README ("Tag uniqueness across processes").
@@ -116,6 +123,7 @@ pub fn attach_recorder(app: &AppHandle) {
         Err(reason) => log::error!("[recorder] recordings can't be saved: {reason}"),
     }
     app.manage(RecordingsFolder(directory.clone()));
+    app.manage(Arc::new(JsonBookmarks::in_data_root(data_root)));
     let handle = app.clone();
     app.listen(BRIDGE_EVENT, move |event| {
         let payload = event.payload();

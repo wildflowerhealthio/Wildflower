@@ -71,6 +71,8 @@ const HOST_ANSWERS: Readonly<Record<string, unknown>> = {
   'plugin:app|version': '0.4.0',
   servers_list: [],
   recorder_save_folder: recorderGolden.commands.recorder_save_folder,
+  recorder_bookmarks: recorderGolden.commands.recorder_bookmarks,
+  recorder_bookmark_recorded: recorderGolden.commands.recorder_bookmarks,
 }
 
 const invoke = (command: string): Promise<unknown> =>

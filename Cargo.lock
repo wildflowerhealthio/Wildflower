@@ -9716,6 +9716,8 @@ dependencies = [
 name = "wildflowerhealthio-recorder"
 version = "0.0.0"
 dependencies = [
+ "chrono",
+ "parking_lot",
  "proptest",
  "serde",
  "serde_json",
@@ -9727,6 +9729,7 @@ dependencies = [
 name = "wildflowerhealthio-recorder-tauri"
 version = "0.0.0"
 dependencies = [
+ "chrono",
  "serde_json",
  "tauri",
  "tauri-plugin-log",
