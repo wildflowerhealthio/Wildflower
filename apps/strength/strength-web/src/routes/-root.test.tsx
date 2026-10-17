@@ -145,7 +145,7 @@ describe('The strength routes', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
       // Arrange
       const user = userEvent.setup()
       mountStrengthApp(server, { route })
-      const title = `Wildflower Strength has no page at ${pathname}.`
+      const title = `There's no page at ${pathname}.`
       expect(await screen.findByText(title)).toBeDefined()
 
       // Act
@@ -163,7 +163,7 @@ describe('The strength routes', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
     mountStrengthApp(server, { route: 'patients/bogus/today' })
 
     // Assert — and nothing of theirs is read past the patient
-    expect(await screen.findByText('Wildflower Strength has no patient bogus.')).toBeDefined()
+    expect(await screen.findByText('This server has no patient bogus.')).toBeDefined()
     expect(screen.queryByRole('navigation', { name: 'Strength views' })).toBeNull()
     expect(server.searches).toEqual([])
   })

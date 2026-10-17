@@ -302,9 +302,7 @@ describe('App', () => {
     fetchMock.mockResolvedValue(lastPage)
     patientPageMock.mockResolvedValue(patientPage)
     renderApp({ route })
-    expect(
-      await screen.findByText(`The Medication Viewer has no page at ${pathname}.`)
-    ).toBeDefined()
+    expect(await screen.findByText(`There's no page at ${pathname}.`)).toBeDefined()
 
     // Act
     fireEvent.click(screen.getByRole('button', { name: 'Choose a patient' }))
@@ -323,7 +321,7 @@ describe('App', () => {
 
     // Assert
     expect(
-      await screen.findByText(`The Medication Viewer has no patient ${MISSING_PATIENT_ID}.`)
+      await screen.findByText(`This server has no patient ${MISSING_PATIENT_ID}.`)
     ).toBeDefined()
     expect(screen.queryByRole('navigation', { name: 'Medication views' })).toBeNull()
     expect(fetchMock).not.toHaveBeenCalled()

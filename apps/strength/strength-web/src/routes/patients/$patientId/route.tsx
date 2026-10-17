@@ -1,10 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { RouteTabs } from '@wildflowerhealthio/react-tundraish'
-import {
-  ensureRoutedPatient,
-  LoadingLine,
-  PatientRouteNotFound,
-} from '@wildflowerhealthio/smart-app-react'
+import { LoadingLine, NoPatientCard, requirePatient } from '@wildflowerhealthio/smart-app-react'
 import type { JSX } from 'react'
 
 import { PatientStatus } from '../../-patient-status.tsx'
@@ -43,22 +39,20 @@ function LifterPage(): JSX.Element {
  * routes.
  *
  * @remarks
- * The loader reads the patient first (`ensureRoutedPatient`, on the cache
+ * The loader reads the patient first (`requirePatient`, on the cache
  * the patient line reads), so an id the server has no patient under shows
- * the not-found card in place of the page, and a read still running
+ * the no-patient card in place of the page, and a read still running
  * after a second a loading line. The page remounts per lifter
  * (`remountDeps`): nothing one lifter's screens hold carries over to the
  * next, by Back or Forward or a link.
  */
 const Route = createFileRoute('/patients/$patientId')({
   loader: ({ context: { queryClient, client }, params: { patientId } }) =>
-    ensureRoutedPatient(queryClient, client, patientId),
+    requirePatient(queryClient, client, patientId),
   remountDeps: ({ params }) => params.patientId,
   pendingComponent: () => <LoadingLine subject="the patient" />,
   component: LifterPage,
-  notFoundComponent: ({ data }) => (
-    <PatientRouteNotFound appName="Wildflower Strength" data={data} />
-  ),
+  notFoundComponent: NoPatientCard,
 })
 
 export { Route }

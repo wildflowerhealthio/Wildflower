@@ -15,16 +15,8 @@ export {
 export { type PatientChoice, patientChoiceKeyOf, patientScopeOf } from './patient-choice.ts'
 export { PatientChoiceLine, type PatientChoiceLineProps } from './patient-choice-line.tsx'
 export { PatientPicker, type PatientPickerProps } from './patient-picker.tsx'
-export {
-  ensureRoutedPatient,
-  launchPatientRoute,
-  useRoutedPatientChoice,
-} from './routed-patient-choice.ts'
-export {
-  PatientRouteNotFound,
-  RouteNotFound,
-  type RouteNotFoundProps,
-} from './routed-not-found.tsx'
+export { launchStartRoute, requirePatient, usePathPatientChoice } from './patient-route.ts'
+export { NoPageCard, NoPatientCard } from './not-found-cards.tsx'
 export { type PatientChoosing, usePatientChoice } from './use-patient-choice.ts'
 export { appRootRedirect } from './return-route.ts'
 export { SmartAppRoot, type SmartAppRootProps, type SmartAppTelemetry } from './smart-app-root.tsx'

@@ -10,8 +10,8 @@ import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
-import { PatientRouteNotFound, RouteNotFound } from './routed-not-found.tsx'
-import { ensureRoutedPatient } from './routed-patient-choice.ts'
+import { NoPageCard, NoPatientCard } from './not-found-cards.tsx'
+import { requirePatient } from './patient-route.ts'
 import { answer, stubSmartClient } from './smart-client.test-helpers.ts'
 
 afterEach(() => {
@@ -19,9 +19,10 @@ afterEach(() => {
 })
 
 /**
- * Render an app's routes at `url`: the picker at `/patients`, and a patient's
- * page at `/patients/$patientId` with a `/tab`, over a server holding only
- * patient `p1`.
+ * Render an app's routes at `url`, as a routed app's router sets them up
+ * (`notFoundMode: 'root'`): the picker at `/patients`, and a patient's page
+ * at `/patients/$patientId` with a `/tab`, over a server holding only patient
+ * `p1`.
  */
 const renderAt = (url: string): void => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -29,14 +30,12 @@ const renderAt = (url: string): void => {
     'Patient/p1': answer({ resourceType: 'Patient', id: 'p1' }),
     'Patient/': () => Promise.reject(Object.assign(new Error('Not Found'), { status: 404 })),
   })
-  const rootRoute = createRootRoute({
-    notFoundComponent: () => <RouteNotFound appName="Wildflower Test" />,
-  })
+  const rootRoute = createRootRoute({ notFoundComponent: NoPageCard })
   const patientRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/patients/$patientId',
-    loader: ({ params }) => ensureRoutedPatient(queryClient, client, params.patientId),
-    notFoundComponent: ({ data }) => <PatientRouteNotFound appName="Wildflower Test" data={data} />,
+    loader: ({ params }) => requirePatient(queryClient, client, params.patientId),
+    notFoundComponent: NoPatientCard,
   })
   const router = createRouter({
     routeTree: rootRoute.addChildren([
@@ -54,15 +53,16 @@ const renderAt = (url: string): void => {
       ]),
     ]),
     history: createMemoryHistory({ initialEntries: [url] }),
+    notFoundMode: 'root',
   })
   render(<RouterProvider router={router} />)
 }
 
-describe('RouteNotFound', () => {
-  it('should say the app has no page at the path, opening the picker', async () => {
+describe('NoPageCard', () => {
+  it('should say there is no page at the path, opening the picker', async () => {
     // Arrange
     renderAt('/nowhere')
-    expect(await screen.findByText('Wildflower Test has no page at /nowhere.')).toBeDefined()
+    expect(await screen.findByText("There's no page at /nowhere.")).toBeDefined()
 
     // Act
     await userEvent.click(screen.getByRole('button', { name: 'Choose a patient' }))
@@ -70,21 +70,25 @@ describe('RouteNotFound', () => {
     // Assert
     expect(await screen.findByRole('heading', { name: 'Picker' })).toBeDefined()
   })
-})
-
-describe('PatientRouteNotFound', () => {
-  it('should say the server has no such patient', async () => {
-    renderAt('/patients/bogus/tab')
-
-    expect(await screen.findByText('Wildflower Test has no patient bogus.')).toBeDefined()
-    expect(screen.queryByText('Tab')).toBeNull()
-  })
 
   it('should say a path under a known patient no route names has no page', async () => {
     renderAt('/patients/p1/nowhere')
 
-    expect(
-      await screen.findByText('Wildflower Test has no page at /patients/p1/nowhere.')
-    ).toBeDefined()
+    expect(await screen.findByText("There's no page at /patients/p1/nowhere.")).toBeDefined()
+  })
+})
+
+describe('NoPatientCard', () => {
+  it('should say the server has no patient the path names, opening the picker', async () => {
+    // Arrange
+    renderAt('/patients/bogus/tab')
+    expect(await screen.findByText('This server has no patient bogus.')).toBeDefined()
+    expect(screen.queryByText('Tab')).toBeNull()
+
+    // Act
+    await userEvent.click(screen.getByRole('button', { name: 'Choose a patient' }))
+
+    // Assert
+    expect(await screen.findByRole('heading', { name: 'Picker' })).toBeDefined()
   })
 })

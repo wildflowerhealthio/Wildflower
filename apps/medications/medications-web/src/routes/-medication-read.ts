@@ -20,7 +20,7 @@ import type { ChunkBarPhase } from '@wildflowerhealthio/react-tundraish'
 import {
   patientChoiceKeyOf,
   patientScopeOf,
-  useRoutedPatientChoice,
+  usePathPatientChoice,
 } from '@wildflowerhealthio/smart-app-react'
 import { Effect, Match } from 'effect'
 import { useCallback, useMemo } from 'react'
@@ -90,7 +90,7 @@ const noViews: readonly MedicationView[] = []
  */
 const useMedicationRead = (): MedicationRead => {
   const client = useSmartClient()
-  const patientChoice = useRoutedPatientChoice()
+  const patientChoice = usePathPatientChoice()
   const firstPageCursor: MedicationRequestCursor = { patientId: patientScopeOf(patientChoice) }
   const pagedQuery = useInfiniteQuery({
     queryKey: ['medications', patientChoiceKeyOf(patientChoice)],

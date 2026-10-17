@@ -14,12 +14,7 @@ import type { JSX } from 'react'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import { patientChoiceKeyOf } from './patient-choice.ts'
-import {
-  ensureRoutedPatient,
-  launchPatientRoute,
-  missingPatientIdOf,
-  useRoutedPatientChoice,
-} from './routed-patient-choice.ts'
+import { launchStartRoute, requirePatient, usePathPatientChoice } from './patient-route.ts'
 import { answer, stubSmartClient } from './smart-client.test-helpers.ts'
 
 afterEach(() => {
@@ -31,19 +26,19 @@ const launchedWith = (patientId: string | null): SmartClient =>
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test-only stub: only `patient.id` is read
   ({ patient: { id: patientId } }) as unknown as SmartClient
 
-describe('launchPatientRoute', () => {
+describe('launchStartRoute', () => {
   it('should open the launch’s patient', () => {
-    expect(launchPatientRoute(launchedWith('1.50'))).toBe('/patients/1.50')
+    expect(launchStartRoute(launchedWith('1.50'))).toBe('/patients/1.50')
   })
 
   it('should open the picker for a launch with no patient', () => {
-    expect(launchPatientRoute(launchedWith(null))).toBe('/patients')
+    expect(launchStartRoute(launchedWith(null))).toBe('/patients')
   })
 })
 
 /** A route's page, naming the choice the hook reads there. */
 function ChoiceLine(): JSX.Element {
-  return <p>{patientChoiceKeyOf(useRoutedPatientChoice())}</p>
+  return <p>{patientChoiceKeyOf(usePathPatientChoice())}</p>
 }
 
 /** Render a router at `url`, with `/patients/$patientId/tab` and an all-patients `/tab`. */
@@ -63,7 +58,7 @@ const renderAt = (url: string): void => {
   render(<RouterProvider router={router} />)
 }
 
-describe('useRoutedPatientChoice', () => {
+describe('usePathPatientChoice', () => {
   it.each([
     { case: 'the patient the path names', url: '/patients/p2/tab', key: 'p2' },
     { case: 'a numeric-looking id as written', url: '/patients/1.50/tab', key: '1.50' },
@@ -77,13 +72,7 @@ describe('useRoutedPatientChoice', () => {
   })
 })
 
-describe('missingPatientIdOf', () => {
-  it('should read nothing for a path no route matched', () => {
-    expect(missingPatientIdOf(undefined)).toStrictEqual(Option.none())
-  })
-})
-
-describe('ensureRoutedPatient', () => {
+describe('requirePatient', () => {
   /** A retry-free cache, so a failed read settles at once. */
   const testQueryClient = (): QueryClient =>
     new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -96,29 +85,26 @@ describe('ensureRoutedPatient', () => {
     })
 
     // Act
-    await ensureRoutedPatient(queryClient, client, 'p1')
+    await requirePatient(queryClient, client, 'p1')
 
     // Assert
     expect(queryClient.getQueryData(['patient', 'p1'])).toMatchObject(Option.some({ id: 'p1' }))
   })
 
-  it.each([404, 410])('should throw not-found naming the patient on a %i', async (status) => {
+  it.each([404, 410])('should throw not-found on a %i', async (status) => {
     // Arrange
     const { client } = stubSmartClient({
       'Patient/bogus': () => Promise.reject(Object.assign(new Error('gone'), { status })),
     })
 
     // Act
-    const thrown: unknown = await ensureRoutedPatient(testQueryClient(), client, 'bogus').then(
+    const thrown: unknown = await requirePatient(testQueryClient(), client, 'bogus').then(
       () => null,
       (error: unknown) => error
     )
 
     // Assert
     expect(isNotFound(thrown)).toBe(true)
-    expect(missingPatientIdOf(isNotFound(thrown) ? thrown.data : undefined)).toStrictEqual(
-      Option.some('bogus')
-    )
   })
 
   it('should let the route render on any other failure', async () => {
@@ -128,6 +114,6 @@ describe('ensureRoutedPatient', () => {
     })
 
     // Act / Assert
-    await expect(ensureRoutedPatient(testQueryClient(), client, 'p1')).resolves.toBeUndefined()
+    await expect(requirePatient(testQueryClient(), client, 'p1')).resolves.toBeUndefined()
   })
 })

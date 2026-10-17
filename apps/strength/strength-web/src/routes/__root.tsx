@@ -1,5 +1,5 @@
 import { createRootRouteWithContext, Outlet } from '@tanstack/react-router'
-import { RouteNotFound } from '@wildflowerhealthio/smart-app-react'
+import { NoPageCard } from '@wildflowerhealthio/smart-app-react'
 import type { JSX } from 'react'
 
 import { AppTitle } from '../app-title.tsx'
@@ -18,12 +18,12 @@ function StrengthRoot(): JSX.Element {
 /**
  * The root route: `/`, which redirects, the patient picker at
  * `/patients`, a lifter's tabs under `/patients/$patientId`, every patient's
- * workouts at `/workouts`, and for a path none of them names, the not-found
- * card.
+ * workouts at `/workouts`, and for a path none of them names (one under a
+ * patient too: the router's `notFoundMode` is `'root'`), the no-page card.
  */
 const Route = createRootRouteWithContext<RouterContext>()({
   component: StrengthRoot,
-  notFoundComponent: () => <RouteNotFound appName="Wildflower Strength" />,
+  notFoundComponent: NoPageCard,
 })
 
 export { Route }

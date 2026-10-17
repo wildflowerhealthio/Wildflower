@@ -1,10 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { RouteTabs } from '@wildflowerhealthio/react-tundraish'
-import {
-  ensureRoutedPatient,
-  LoadingLine,
-  PatientRouteNotFound,
-} from '@wildflowerhealthio/smart-app-react'
+import { LoadingLine, NoPatientCard, requirePatient } from '@wildflowerhealthio/smart-app-react'
 import type { JSX } from 'react'
 
 import { MedicationsPage } from '../../-medications-page.tsx'
@@ -39,22 +35,20 @@ function PatientMedications(): JSX.Element {
  * child routes.
  *
  * @remarks
- * The loader reads the patient first (`ensureRoutedPatient`, on the cache
+ * The loader reads the patient first (`requirePatient`, on the cache
  * the patient line reads), so an id the server has no patient under shows
- * the not-found card in place of the page, and a read still running
+ * the no-patient card in place of the page, and a read still running
  * after a second a loading line. The page remounts per patient
  * (`remountDeps`), so nothing one patient's tabs hold carries over to the
  * next.
  */
 const Route = createFileRoute('/patients/$patientId')({
   loader: ({ context: { queryClient, client }, params: { patientId } }) =>
-    ensureRoutedPatient(queryClient, client, patientId),
+    requirePatient(queryClient, client, patientId),
   remountDeps: ({ params }) => params.patientId,
   pendingComponent: () => <LoadingLine subject="the patient" />,
   component: PatientMedications,
-  notFoundComponent: ({ data }) => (
-    <PatientRouteNotFound appName="The Medication Viewer" data={data} />
-  ),
+  notFoundComponent: NoPatientCard,
 })
 
 export { Route }
