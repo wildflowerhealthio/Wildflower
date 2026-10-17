@@ -5,12 +5,7 @@ import type * as TelemetryWeb from '@wildflowerhealthio/telemetry-web'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { AppRoot } from './app-root.tsx'
-import {
-  BASEPATH,
-  pageAt,
-  restorePageBrowserApis,
-  stubPageBrowserApis,
-} from './importer-app.test-helpers.ts'
+import { BASEPATH, pageAt, stubPageBrowserApis } from './importer-app.test-helpers.ts'
 
 // The real app root, app and router over the real URL, with fhirclient's
 // token exchange stubbed at the module boundary. Pins that the router never
@@ -47,7 +42,6 @@ beforeEach(() => {
     performance: false,
     decidedAt: '2026-09-29T12:00:00.000Z',
   })
-  stubPageBrowserApis()
   // The FHIR server holds no source files: every search is an empty bundle.
   vi.stubGlobal('fetch', () =>
     Promise.resolve(
@@ -57,12 +51,12 @@ beforeEach(() => {
       })
     )
   )
+  return stubPageBrowserApis()
 })
 
 afterEach(() => {
   cleanup()
   window.localStorage.clear()
-  restorePageBrowserApis()
   readyMock.mockReset()
 })
 

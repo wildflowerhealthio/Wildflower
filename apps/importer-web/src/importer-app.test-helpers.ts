@@ -1,4 +1,5 @@
 import { createBrowserHistory } from '@tanstack/react-router'
+import { stubRouteTabsBrowserApis } from '@wildflowerhealthio/react-tundraish/test-helpers'
 import type { SmartAppPage } from '@wildflowerhealthio/smart-app-react'
 import { onTestFinished, vi } from 'vite-plus/test'
 
@@ -6,41 +7,20 @@ import { onTestFinished, vi } from 'vite-plus/test'
 const BASEPATH = '/importer/'
 
 /**
- * A `ResizeObserver` that never fires: jsdom has no layout, and nothing these
- * tests check hangs on a resize (the page's `RouteTabs` observes its strip).
+ * Stub the browser APIs the page reads that jsdom lacks: `window.scrollTo`,
+ * which the router resets the scroll with on each navigation, and those
+ * `RouteTabs` reads (`react-tundraish/test-helpers`).
+ *
+ * @returns Put them back, and every other stubbed global: a `beforeEach`
+ *   returns it, so it runs as the test finishes.
  */
-class InertResizeObserver {
-  observe(): void {}
-  unobserve(): void {}
-  disconnect(): void {}
-}
-
-/** `Element.scrollTo` as it was before each test, which jsdom leaves undefined. */
-const scrollToDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTo')
-
-/**
- * Stub the browser APIs the page's router and `RouteTabs` read that jsdom
- * lacks (`window.scrollTo`, which the router resets the scroll with on each
- * navigation, `ResizeObserver`, `matchMedia`, `Element.scrollTo`); undone by
- * {@link restorePageBrowserApis}.
- */
-const stubPageBrowserApis = (): void => {
+const stubPageBrowserApis = (): (() => void) => {
   vi.stubGlobal('scrollTo', () => {})
-  vi.stubGlobal('ResizeObserver', InertResizeObserver)
-  vi.stubGlobal('matchMedia', (media: string) => ({
-    matches: false,
-    media,
-    addEventListener: (): void => undefined,
-    removeEventListener: (): void => undefined,
-  }))
-  Element.prototype.scrollTo = () => {}
-}
-
-/** Put back what {@link stubPageBrowserApis} stubbed, and every other stubbed global. */
-const restorePageBrowserApis = (): void => {
-  vi.unstubAllGlobals()
-  if (scrollToDescriptor === undefined) Reflect.deleteProperty(Element.prototype, 'scrollTo')
-  else Object.defineProperty(Element.prototype, 'scrollTo', scrollToDescriptor)
+  const restoreRouteTabsBrowserApis = stubRouteTabsBrowserApis()
+  return () => {
+    vi.unstubAllGlobals()
+    restoreRouteTabsBrowserApis()
+  }
 }
 
 /**
@@ -60,4 +40,4 @@ const pageAt = (route: string): SmartAppPage => {
 /** The address bar's path under {@link BASEPATH}. */
 const currentRoute = (): string => window.location.pathname.slice(BASEPATH.length)
 
-export { BASEPATH, currentRoute, pageAt, restorePageBrowserApis, stubPageBrowserApis }
+export { BASEPATH, currentRoute, pageAt, stubPageBrowserApis }

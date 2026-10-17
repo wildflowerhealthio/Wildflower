@@ -11,7 +11,11 @@ export default defineConfig({
     // condition can sit alongside the default dist entry. Letting tsdown
     // regenerate it would overwrite that.
     exports: false,
-    entry: { index: 'src/index.ts', styles: 'src/styles.ts' },
+    entry: {
+      index: 'src/index.ts',
+      styles: 'src/styles.ts',
+      'test-helpers': 'src/test-helpers.ts',
+    },
   },
   test: {
     ...base.test,

@@ -23,6 +23,16 @@ bundler dedupes a stylesheet by module id, so an app that still imports
 while an `@import` would be inlined and ship twice. `tundra-css` and the two
 `@fontsource-variable` packages are peers, so the app lists them.
 
+## Testing a page around `RouteTabs`
+
+`RouteTabs` observes its strip with a `ResizeObserver`, asks `matchMedia`
+whether motion is reduced, and scrolls the strip with `Element.scrollTo`,
+none of which jsdom has. A consumer's test that renders a page around the
+strip calls `stubRouteTabsBrowserApis()` from `react-tundraish/test-helpers`
+in its `beforeEach` and the function it returns in its `afterEach`, rather
+than carrying its own stubs. The strip's own test (`route-tabs.test.tsx`)
+drives resizes and records scrolls, so it keeps its own.
+
 ## Categorical series tokens
 
 `--color-series-1` … `--color-series-4` are the chart-identity slots, with

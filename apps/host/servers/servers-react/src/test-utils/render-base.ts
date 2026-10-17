@@ -2,6 +2,7 @@ import type { HttpClient } from '@effect/platform'
 import type { RouterHistory } from '@tanstack/react-router'
 import { cleanup, render, type RenderResult } from '@testing-library/react'
 import { WILDFLOWER_HOST_TELEMETRY_CONSENT_COPY } from '@wildflowerhealthio/branding-core'
+import { stubRouteTabsBrowserApis } from '@wildflowerhealthio/react-tundraish/test-helpers'
 import type { HostPlatform, TauriInvoke } from '@wildflowerhealthio/servers-core-js'
 import {
   type ConsentStorage,
@@ -127,17 +128,6 @@ const dialogMethodDescriptors = (['showModal', 'close'] as const).map(
     [method, Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, method)] as const
 )
 
-/**
- * A `ResizeObserver` that never fires: jsdom has no layout, and nothing these
- * tests check hangs on a resize (the server page's `RouteTabs` observes its
- * strip).
- */
-class InertResizeObserver {
-  observe(): void {}
-  unobserve(): void {}
-  disconnect(): void {}
-}
-
 /** `HTMLDialogElement.showModal` as jsdom lacks it: the dialog gains `open`. */
 function showModalAsOpen(this: HTMLDialogElement): void {
   this.setAttribute('open', '')
@@ -149,32 +139,24 @@ function closeAsNotOpen(this: HTMLDialogElement): void {
   this.dispatchEvent(new Event('close'))
 }
 
-/** `Element.scrollTo` as it was before each test, which jsdom leaves undefined. */
-const scrollToDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTo')
-
 /**
  * Register, for each test of the calling file, the browser APIs the base
- * needs that jsdom lacks (`<dialog>`, `ResizeObserver`, `matchMedia`,
- * `Element.scrollTo`), and afterwards unmount, put them back, and reset the
+ * needs that jsdom lacks (`<dialog>`, and `RouteTabs`'s from
+ * `react-tundraish/test-helpers`), and afterwards unmount, put them back, and reset the
  * telemetry mocks. Call it once at the top level of a file that renders the
  * base.
  */
 const setUpEachBaseTest = (): void => {
   beforeEach(() => {
-    // `RouteTabs` scrolls its strip to the current tab, and asks whether
-    // motion is reduced, through APIs jsdom lacks.
-    vi.stubGlobal('ResizeObserver', InertResizeObserver)
-    vi.stubGlobal('matchMedia', () => ({ matches: false }))
-    Element.prototype.scrollTo = () => {}
     HTMLDialogElement.prototype.showModal = showModalAsOpen
     HTMLDialogElement.prototype.close = closeAsNotOpen
+    // `RouteTabs`'s browser APIs, put back as the test finishes.
+    return stubRouteTabsBrowserApis()
   })
 
   afterEach(() => {
     cleanup()
     vi.unstubAllGlobals()
-    if (scrollToDescriptor === undefined) Reflect.deleteProperty(Element.prototype, 'scrollTo')
-    else Object.defineProperty(Element.prototype, 'scrollTo', scrollToDescriptor)
     initConsentedTelemetryMock.mockClear()
     redactServerHostMock.mockReset()
     for (const [method, descriptor] of dialogMethodDescriptors) {

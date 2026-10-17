@@ -18,12 +18,7 @@ import { DateTime, Effect, Layer, Schema } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { ImporterApp } from './app.tsx'
-import {
-  currentRoute,
-  pageAt,
-  restorePageBrowserApis,
-  stubPageBrowserApis,
-} from './importer-app.test-helpers.ts'
+import { currentRoute, pageAt, stubPageBrowserApis } from './importer-app.test-helpers.ts'
 
 /**
  * The app's own wiring, end to end: its router context satisfies
@@ -75,12 +70,11 @@ class RealmSafeTextEncoder extends AmbientTextEncoder {
 beforeEach(() => {
   recorded = []
   vi.stubGlobal('TextEncoder', RealmSafeTextEncoder)
-  stubPageBrowserApis()
+  return stubPageBrowserApis()
 })
 
 afterEach(() => {
   cleanup()
-  restorePageBrowserApis()
 })
 
 describe('ImporterApp', () => {
