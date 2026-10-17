@@ -3,7 +3,7 @@ import { QueryClientProvider, useQueryClient } from '@tanstack/react-query'
 import { RouterProvider, type RouterHistory } from '@tanstack/react-router'
 import {
   buildSmartRouterContext,
-  type SmartHandshake,
+  type SmartClient,
   useLaunchFailureRedirect,
   useSmartHandshake,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
@@ -13,9 +13,6 @@ import { useMemo, type JSX } from 'react'
 
 import { buildRouter, type RouterContext } from './router.ts'
 import styles from './app.module.css'
-
-/** The SMART client a completed handshake hands the app. */
-type SmartClient = Extract<SmartHandshake, { readonly kind: 'ready' }>['client']
 
 /** Props for {@link ImporterApp}. */
 interface ImporterAppProps {

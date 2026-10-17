@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { RouterProvider, type RouterHistory } from '@tanstack/react-router'
 import {
+  type SmartClient,
   useLaunchFailureRedirect,
   useSmartHandshake,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
@@ -10,7 +11,6 @@ import { Match } from 'effect'
 import { type JSX, useState } from 'react'
 
 import { makePageStore } from './page-state.ts'
-import type { SmartClient } from './router-context.ts'
 import { buildRouter } from './router.ts'
 import styles from './app.module.css'
 

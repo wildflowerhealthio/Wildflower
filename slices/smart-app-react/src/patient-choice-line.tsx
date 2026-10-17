@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { fetchPatient } from '@wildflowerhealthio/fhir-r4-react/smart'
+import { fetchPatient, type SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { LinkButton } from '@wildflowerhealthio/react-tundraish'
 import { Effect, Match, Option } from 'effect'
 import type { JSX } from 'react'
@@ -7,7 +7,6 @@ import type { JSX } from 'react'
 import type { PatientChoice } from './patient-choice.ts'
 import { patientLineOf } from './patient-line.ts'
 import { ReadFailureLine } from './read-status-lines.tsx'
-import type { SmartClient } from './smart-client.ts'
 import styles from './patient-choice-line.module.css'
 
 /** Props for {@link PatientChoiceLine}. */
