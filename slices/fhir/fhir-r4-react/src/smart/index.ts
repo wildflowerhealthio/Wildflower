@@ -5,6 +5,7 @@ export {
   authorizeSmartLaunch,
   readySmartClient,
   shouldCompleteSmartLaunch,
+  SMART_LAUNCH_PARAMS,
   type ArrivingSmartLaunch,
   type OpenServerConfig,
   type SmartLaunchConfig,

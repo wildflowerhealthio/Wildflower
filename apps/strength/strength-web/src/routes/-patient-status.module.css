@@ -1,0 +1,9 @@
+/*
+ * PatientStatus skin: the patient line over a lifter's tabs or every
+ * patient's workouts. Tokens only, so dark mode needs no rule here.
+ */
+
+/* Whose record the page shows, under the app's title. */
+.patient-status {
+  margin-bottom: var(--space-9);
+}

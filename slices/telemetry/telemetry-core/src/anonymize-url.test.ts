@@ -380,6 +380,11 @@ describe('anonymizeUrl', () => {
       url: '/servers/ruth%2Erelay',
       expected: '/servers/{id}',
     },
+    {
+      label: 'a SMART app route naming a patient by a word-shaped id',
+      url: 'https://strength.wildflowerhealth.io/pr-7/patients/ada-lovelace/today',
+      expected: 'https://strength.wildflowerhealth.io/{id}/patients/{id}/today',
+    },
   ])('replaces the id in $label', ({ url, expected }) => {
     expect(anonymizeUrl(url)).toBe(expected)
   })

@@ -22,7 +22,7 @@ interface SmartHandshakeGateProps {
  * @remarks
  * The app root is the OAuth redirect target, so its URL carries the
  * callback's `code` and `state` until fhirclient takes them out as the
- * exchange completes. A router matches the URL and redirects `/` to a tab, so
+ * exchange completes. A router matches the URL and redirects `/` to a route, so
  * an app builds its router in `children`, never above this gate: nothing may
  * rewrite a URL the exchange still reads. A failed exchange shows its error
  * here and goes back to the app root (`useLaunchFailureRedirect`), which can

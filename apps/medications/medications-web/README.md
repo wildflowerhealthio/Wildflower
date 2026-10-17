@@ -20,8 +20,8 @@ and renders `<AppRoot page={openSmartAppPage(import.meta.url)} />` inside
 router navigates and runs under once it is built.
 
 `src/app-root.tsx` exports `AppRoot`: `<SmartAppRoot app="medications"
-registration={smartRegistration} telemetry={smartAppTelemetry}>` around
-`<App page={page} />`. `SmartAppRoot` shows the telemetry consent dialog first, then
+registration={smartRegistration} telemetry={smartAppTelemetry}
+servedDirectory={page.basepath}>` around `<App page={page} />`. `SmartAppRoot` shows the telemetry consent dialog first, then
 latches on mount which of three cases the URL is:
 
 - **Launch** (`iss`, with or without an EHR's `launch`, and no callback) —
@@ -49,57 +49,76 @@ standalone branches are testable without URL manipulation. The package exports
 
 ## The patient
 
-The page reads one patient's `MedicationRequest`s, or every patient's. Whose
-is the root route's `?patient=` search param (`<id>`, or `*` for All
-patients), else the launch's `client.patient.id`, else none, which the root
-shows as `smart-app-react`'s `PatientPicker` ("All patients" first, then every
-patient by name and birth date). One patient's requests are searched with
-`patient=`; All patients searches unscoped. Under the H1, `PatientChoiceLine`
-names the choice with a "Change patient" link, above the chunk bar.
+The page reads one patient's `MedicationRequest`s, or every patient's, and
+whose is the path. One patient's requests are searched with `patient=`; All
+patients searches unscoped.
 
-A choice is a navigation: it pushes a history entry on the open tab with
-`?patient=` naming it, and every later navigation keeps `?patient=`, so each
-entry names the patient it shows. Back returns to the patient before, on the
-tab they were on (from the first choice, to the picker), and a reload or a
-shared link opens the patient the address bar names. "Change patient" opens
-the picker over the patient shown without touching the address bar; Back or
-Forward to an entry naming a different patient leaves it for that patient's
-page. The router reads and writes the query as plain strings, so a numeric
-FHIR id stays `?patient=123`.
+- **`/`**: never a page. It replaces itself with the route the launch
+  started on, else the launch's patient's page, else the picker (see "The
+  router and the OAuth callback").
+- **`/patients`**: `smart-app-react`'s `PatientPicker` ("All patients"
+  first, then every patient by name and birth date). A patient opens
+  `/patients/<id>`, All patients opens `/medications`; either is a pushed
+  entry, so Back returns to the picker.
+- **`/patients/$patientId/…`**: one patient's tabs, Medications, Calendar,
+  Interactions and Savings. The bare path opens Medications, replacing
+  itself in history.
+- **`/medications`, `/calendar`, `/savings`**: every patient's tabs, at the
+  top level (a layout route adding nothing to the path,
+  `routes/_all-patients/`). There is no every-patient Interactions:
+  interactions are between one person's medications, so `/interactions` is
+  no page.
+
+Under the app's title, `PatientChoiceLine` names the patient, or All patients, with a
+"Change patient" link that pushes `/patients`, so Back closes the picker on
+the tab it was opened over; it sits above the chunk bar. A path param is the
+string the address bar holds, so a numeric-looking id such as `1.50` is
+never read as a number.
+
+A patient's page's loader reads the patient first (`smart-app-react`'s
+`requirePatient`, on the cache the patient line reads), so an id the server
+has no patient under (a 404 or 410) shows "This server has no patient …" in
+place of the page; any other failed read leaves the page
+up, its patient line saying the read failed. The page remounts per patient
+(`remountDeps` on the patient id).
 
 ## Tabs
 
 Once the handshake completes, `<App />` hands the page to a TanStack router
 (file routes under `src/routes/`, the tree generated into the git-ignored
-`src/routeTree.gen.ts` by the router plugin in `vite.config.ts`). The root
-route (`routes/__root.tsx`) is the page: with a patient chosen, the patient
-line and the chunk bar over `react-tundraish`'s `RouteTabs`, each tab a child
-route over the same loaded `MedicationRequest`s, in its own folder with the
-files only it uses:
+`src/routeTree.gen.ts` by the router plugin in `vite.config.ts`). One
+patient's page and every patient's are the same component
+(`routes/-medications-page.tsx`, which reads whose medications from the
+path, as the read does): the patient line and the chunk bar over
+`react-tundraish`'s `RouteTabs`, its links under the page's own path, each
+tab a child route over the same loaded `MedicationRequest`s. Each tab's
+component lives in `routes/-tabs/<tab>/` with the files only it uses, and
+the route files (`routes/patients/$patientId/<tab>.tsx`, and
+`routes/_all-patients/<tab>.tsx` for all but Interactions) mount it:
 
-- **Medications** (`/medications`) — `medication-sponsorship-react`'s list
-  with sponsorship chips, growing a page at a time as its end scrolls into
-  view.
-- **Calendar** (`/calendar`) — `medication-calendar-react`'s prescription
-  calendar.
-- **Interactions** (`/interactions`) — `medication-interaction-react`'s
-  three-group report over the current (active, deduplicated) medications,
-  checked against the bundled DDInter catalog. Opening it, by its tab or a
-  link, reads every remaining page and starts the catalog's download
-  alongside the list's first page: the report waits behind a gate for the
-  full list, unless the reader asks to see it as pages arrive.
-- **Savings** (`/savings`) — `medication-sponsorship-react`'s savings-program
-  breakdown of the same current medications, with the province picker.
+- **Medications** — `medication-sponsorship-react`'s list with sponsorship
+  chips, growing a page at a time as its end scrolls into view.
+- **Calendar** — `medication-calendar-react`'s prescription calendar.
+- **Interactions** — `medication-interaction-react`'s three-group report
+  over the current (active, deduplicated) medications, checked against the
+  bundled DDInter catalog. Opening it, by its tab or a link, reads every
+  remaining page and starts the catalog's download alongside the list's
+  first page (`enterInteractions`, the route's `onEnter`): the report waits
+  behind a gate for the full list, unless the reader asks to see it as pages
+  arrive.
+- **Savings** — `medication-sponsorship-react`'s savings-program breakdown
+  of the same current medications, with the province picker.
 
-`/` redirects to `/medications`, replacing itself in history. A path no tab
-names (a stale bookmark, `/index.html`) shows a not-found card in the tab
-panel, offering the Medications tab. Calendar and Savings render from the
-pages loaded so far, under a banner offering to load the rest. Every route
-reads the read through `routes/-medication-read.ts`, one query on the page's
-cache whose landed requests are converted to views once per page, and the
-reader's choices that span tabs (the load-everything request, the
-interactions gate's escape, the province) from the page store in the router
-context (`src/page-state.ts`, a `react-kitchen-sink` subscribable store).
+A path no route names (a stale bookmark, `/index.html`), one under a patient
+too, shows the no-page card under the app's title ("There's no page at …",
+`smart-app-react`'s `NoPageCard`; the router's `notFoundMode` is `'root'`),
+offering the picker. Calendar and Savings render from the pages loaded so far, under a
+banner offering to load the rest. Every route reads the read through
+`routes/-medication-read.ts`, one query on the page's cache whose landed
+requests are converted to views once per page, and the reader's choices
+that span tabs (the load-everything request, the interactions gate's escape,
+the province) from the page store in the router context
+(`src/page-state.ts`, a `react-kitchen-sink` subscribable store).
 
 ### The router and the OAuth callback
 
@@ -108,18 +127,22 @@ handshake has completed are `smart-app-react`'s; the ordering rules are its
 [Routing a SMART app](../../../slices/smart-app-react/AGENTS.md#routing-a-smart-app).
 `<App />` builds the router under its `SmartHandshakeGate`, once, for the
 visit, with a context fixed for it: the page's query cache, the one client
-the handshake hands out, and the page store. A deep link such as `/calendar`
-(or `/pr-<n>/calendar` in a preview) is served by the 404 page's redirect to
-the app root and restored there. The OAuth redirect URI is the app root,
-where every launch starts, so a launch returns there, and the root opens
-Medications.
+the handshake hands out, and the page store. A deep link such as
+`/patients/123/calendar` (or `/pr-<n>/patients/123/calendar` in a preview)
+is served by the 404 page's redirect to the app root and restored there. The
+OAuth redirect URI is the app's served root (`SmartAppRoot`'s
+`servedDirectory`), so every launch returns there, whichever route it
+started on. The callback lands on `/`, whose redirect (`appRootRedirect`)
+opens the route a launch started at (`/patients/123/calendar?iss=…&launch=…`),
+with its own query; for one started at the root, its patient's page, else
+the picker (`launchStartRoute`).
 
 ### Bundled catalogs
 
 `src/data/` holds the build-time data, each decoded once at module load:
 
-- `innovicares.json` / `rxhelp.json` → `src/routes/savings/-catalogs.ts` (sponsor programs).
-- `ddinter/ddinter.json` → `src/routes/interactions/-interaction-catalog.ts` (drug
+- `innovicares.json` / `rxhelp.json` → `src/routes/-tabs/savings/-catalogs.ts` (sponsor programs).
+- `ddinter/ddinter.json` → `src/routes/-tabs/interactions/-interaction-catalog.ts` (drug
   interactions).
   Regenerate it from DDInter's download CSVs
   (<https://ddinter.scbdd.com/download/>, `ddinter_downloads_code_<letter>.csv`)

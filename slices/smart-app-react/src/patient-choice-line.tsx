@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
-import { fetchPatient, type SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
+import type { SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { LinkButton } from '@wildflowerhealthio/react-tundraish'
-import { Effect, Match, Option } from 'effect'
+import { Match, Option } from 'effect'
 import type { JSX } from 'react'
 
 import type { PatientChoice } from './patient-choice.ts'
 import { patientLineOf } from './patient-line.ts'
+import { patientQuery } from './patient-query.ts'
 import { ReadFailureLine } from './read-status-lines.tsx'
 import styles from './patient-choice-line.module.css'
 
@@ -27,16 +28,17 @@ const PatientNameLine = ({
   readonly client: SmartClient
   readonly patientId: string
 }): JSX.Element | null => {
-  const patient = useQuery({
-    queryKey: ['patient', patientId],
-    queryFn: () => Effect.runPromise(fetchPatient(client, patientId)),
-  })
-  if (patient.isError) return <ReadFailureLine subject="the patient" error={patient.error} />
-  if (patient.data === undefined) return null
-  if (Option.isNone(patient.data)) {
-    return <ReadFailureLine subject={`patient ${patientId}`} error="not a FHIR Patient" />
+  const patientRead = useQuery(patientQuery(client, patientId))
+  if (patientRead.isError) {
+    return <ReadFailureLine subject="the patient" error={patientRead.error} />
   }
-  return <span>{patientLineOf(patient.data.value)}</span>
+  if (patientRead.data === undefined) return null
+  if (Option.isNone(patientRead.data)) {
+    return (
+      <ReadFailureLine subject={`patient ${patientId}`} error="no such patient on this server" />
+    )
+  }
+  return <span>{patientLineOf(patientRead.data.value)}</span>
 }
 
 /**

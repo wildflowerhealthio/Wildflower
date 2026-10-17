@@ -134,9 +134,9 @@ works out where the server should send the reader back to
 up on the way home (`authorization-flow.ts`, `sign-in.ts`).
 
 `arrivingSmartLaunchFrom` (`arriving-launch.ts`) reads the SMART launch a page
-was opened with, `iss` and the EHR's `launch`, off its query string. The
-fhirclient-based SMART apps read it through `fhir-r4-react/smart`, which
-re-exports it. A page that signs in with this package turns a launch into its
+was opened with, `iss` and the EHR's `launch` (`SMART_LAUNCH_PARAMS`), off its
+query string. The fhirclient-based SMART apps read it through
+`fhir-r4-react/smart`, which re-exports both. A page that signs in with this package turns a launch into its
 `?server=` with `searchAfterArrivingLaunch` (`server-target.ts`): `iss` and
 `launch` leave the URL, and `?server=` becomes the server `iss` names, in
 `normalizeServerUrl`'s canonical form: a Wildflower server serves FHIR at its

@@ -41,7 +41,8 @@ file routes (the tree is generated into the git-ignored `src/routeTree.gen.ts`):
   route names it in its `staticData.subtitle`), and `RouteTabs`. A path no
   tab names shows `-importer-not-found.tsx`'s card in the tab panel, with no
   tab current, offering the Import tab.
-- `index.tsx` redirects `/` to `/import`, with `replace`.
+- `index.tsx` redirects `/`, with `replace`, to the route a launch started on
+  (`smart-app-react`'s `appRootRedirect`), else to `/import`.
 - `import/route.tsx` mounts `ImporterScreen`; `anonymize/route.tsx` mounts
   `AnonymizerScreen`, beside `-server-source.tsx`, the `serverSource` adapter
   only it uses.

@@ -76,7 +76,7 @@ describe('PatientChoiceLine', () => {
     expect(onPatientChange).toHaveBeenCalledOnce()
   })
 
-  it('should say the patient could not be read, and still offer the change', async () => {
+  it('should say a patient that does not decode could not be read, and still offer the change', async () => {
     // Act
     renderLine(
       { kind: 'patient', patientId: 'p1' },
@@ -84,7 +84,20 @@ describe('PatientChoiceLine', () => {
     )
 
     // Assert
-    expect(await screen.findByText('Could not load patient p1: not a FHIR Patient')).toBeDefined()
+    expect(await screen.findByText(/^Could not load the patient: /)).toBeDefined()
     expect(screen.getByRole('button', { name: 'Change patient' })).toBeDefined()
+  })
+
+  it('should say the server has no such patient on a 404', async () => {
+    // Act
+    renderLine(
+      { kind: 'patient', patientId: 'p1' },
+      { 'Patient/p1': () => Promise.reject(Object.assign(new Error('gone'), { status: 404 })) }
+    )
+
+    // Assert
+    expect(
+      await screen.findByText('Could not load patient p1: no such patient on this server')
+    ).toBeDefined()
   })
 })
