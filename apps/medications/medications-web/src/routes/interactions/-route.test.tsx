@@ -60,6 +60,22 @@ describe('Interactions tab', () => {
     expect(tabLink('Interactions').getAttribute('aria-current')).toBe('page')
   })
 
+  it('should start the interaction catalog on entry, before the first medication page lands', async () => {
+    // Arrange: the first page never lands.
+    handshakeMock.mockReturnValue(readyHandshake)
+    fetchMock.mockReturnValue(new Promise(() => {}))
+
+    // Act
+    renderApp({ route: 'interactions' })
+
+    // Assert: both downloads are in flight, the tab not yet rendered.
+    await waitFor(() => {
+      expect(catalogMock).toHaveBeenCalledTimes(1)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(screen.getByText('Loading medications…')).toBeDefined()
+  })
+
   it('should keep loading every page after leaving Interactions', async () => {
     // Arrange: page 2 hangs until the reader has left the tab.
     stubQuietIntersectionObserver()

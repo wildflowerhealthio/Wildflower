@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { queryOptions, useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import type { InteractionCatalog } from '@wildflowerhealthio/medication-interaction-core-js'
 import { InteractionsView } from '@wildflowerhealthio/medication-interaction-react'
@@ -38,6 +38,17 @@ const useDelayedFlag = (active: boolean, delayMs: number): boolean => {
   return passed && active
 }
 
+/**
+ * The interaction catalog's read: a ~2 MB asset, fetched and decoded once,
+ * never stale within a visit.
+ */
+const interactionCatalogQuery = queryOptions({
+  queryKey: ['interaction-catalog'],
+  queryFn: getInteractionCatalog,
+  staleTime: Number.POSITIVE_INFINITY,
+  gcTime: Number.POSITIVE_INFINITY,
+})
+
 /** What the Interactions tab shows. */
 interface InteractionsTabModel {
   readonly read: MedicationRead
@@ -62,9 +73,8 @@ interface InteractionsTabModel {
  * The Interactions tab's logic.
  *
  * @remarks
- * The interaction catalog is a ~2 MB asset fetched (and decoded once) only
- * when this tab first opens, and it never goes stale within a visit. The
- * report gates on the *full* medication list, a missing medication being a
+ * The interaction catalog ({@link interactionCatalogQuery}) starts loading as
+ * the route is entered, and the tab observes that read. The report gates on the *full* medication list, a missing medication being a
  * missing interaction, unless the reader chooses to see it as pages arrive;
  * the gate is held back for its first 400ms so a short list never flashes it.
  */
@@ -73,12 +83,7 @@ const useInteractionsTab = (): InteractionsTabModel => {
   const [partialInteractionsShown, updatePageState] = usePageState(
     (state) => state.partialInteractionsShown
   )
-  const catalog = useQuery({
-    queryKey: ['interaction-catalog'],
-    queryFn: getInteractionCatalog,
-    staleTime: Number.POSITIVE_INFINITY,
-    gcTime: Number.POSITIVE_INFINITY,
-  })
+  const catalog = useQuery(interactionCatalogQuery)
   const gated = !read.listComplete && !partialInteractionsShown
   // Prescriber (requester) display name per medication id, for the avatars
   // the report shows between the patient's own medications.
@@ -211,11 +216,16 @@ function InteractionsTab(): JSX.Element | null {
  * Opening it, by its tab or by a link straight to it, asks for every page of
  * the medication list: the report can't be computed from a partial list, so
  * the reader never has to ask for it here. The other tabs render from
- * whatever pages have landed.
+ * whatever pages have landed. Entering it also starts the interaction
+ * catalog's download, alongside the medication list's first page rather
+ * than after it, when the tab first renders.
  */
 const Route = createFileRoute('/interactions')({
   onEnter: ({ context }) => {
     context.pageStore.update({ everyPageRequested: true })
+    // Not awaited: the tab renders as soon as the first medication page lands,
+    // and a failed download is the tab's to show, through its own observer.
+    context.queryClient.query(interactionCatalogQuery).catch(() => undefined)
   },
   component: InteractionsTab,
 })
