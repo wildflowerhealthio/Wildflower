@@ -312,13 +312,15 @@ through `PatientIdentity`), each source Patient goes one of two ways:
   truth, and a source's spelling of them is not. Every `Reference` whose
   `reference` is exactly the source Patient's `Patient/<id>` is re-pointed at
   the person; its `identifier` and `display` stay. The source Patient itself
-  is not written.
+  is not written, whether or not the reviewer included it.
 
 References are found by walking each resource against `fhir-r4`'s own
 `Reference` schema, not through a field table like adoption's, so a reference
 anywhere in a resource moves with the person. An absolute or identifier-only
 reference to the source Patient is left alone and counted, so the review can
-say how many references were not rewritten.
+say how many references were not rewritten. That includes an account's
+`link.seealso`: a link to a merged person's source Patient follows it to the
+person.
 
 Merging keeps one row per human, so it writes no `Patient.link`. A later import
 finds its person by searching each of the source Patient's identifiers in
@@ -341,8 +343,8 @@ fill was for, so a history `MedicationDispense.subject` names the account.
   request (written or not) and the request names a subject. This runs before
   the merge rewrite, so a fill lands on the family member and then, through
   the merge, on the person, in one pass.
-- **Otherwise the fill stays on the account,** and is counted with the
-  references not rewritten.
+- **Otherwise the fill stays on the account,** and is counted separately,
+  alongside the references not rewritten.
 - **A household account is a Patient and is written,** but no search matches
   it into a person: none of its identifiers is searched, so it defaults to
   `'new'`, and only the reviewer assigns it elsewhere. Matching it by `pcid`

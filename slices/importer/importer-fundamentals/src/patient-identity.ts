@@ -172,11 +172,12 @@ const rewriteReferences = (
   resources: readonly FhirResource[],
   targets: ReadonlyMap<string, PatientReference>
 ): SubjectRewrite => {
+  if (targets.size === 0) return { resources, rewrittenCount: 0 }
   let rewrittenCount = 0
   const rewritten = resources.map((resource) =>
     mapReferences(resource, (reference) => {
       const to = reference.reference === null ? undefined : targets.get(reference.reference)
-      if (to === undefined) return reference
+      if (to === undefined || to === reference.reference) return reference
       rewrittenCount += 1
       return { ...reference, reference: to }
     })
@@ -198,7 +199,8 @@ const rewriteReferences = (
  * and `display`, which name the source identity the person now carries too.
  * An absolute or identifier-only reference to the source Patient is left alone
  * ({@link referencesNotRewrittenCount} counts them). A resource with no
- * matching reference comes back as itself.
+ * matching reference comes back as itself, and so does every resource when
+ * `from` is `to`.
  */
 const rewriteSubjects = (
   resources: readonly FhirResource[],
@@ -264,8 +266,9 @@ const referencesNotRewrittenCount = (
  * @remarks
  * Several source Patients may merge into one person; it is written once,
  * carrying all their identifiers. When `resources` already holds a Patient
- * with the person's `id` (one the import writes as `'new'`), the merge folds
- * into that copy, so it is not written twice.
+ * with the person's `id` (one the import writes as `'new'`), that copy is
+ * folded into the person like any source, so the person is not written twice
+ * and keeps its own demographics and every identifier it already carried.
  */
 const mergeSourcePatients = (
   resources: readonly FhirResource[],
@@ -279,7 +282,7 @@ const mergeSourcePatients = (
     )
     const current =
       persons.get(person.id) ??
-      (inWriteSet === undefined ? person : { ...inWriteSet, id: person.id })
+      (inWriteSet === undefined ? person : mergeIntoPatient(person, inWriteSet))
     persons.set(person.id, mergeIntoPatient(current, sourcePatient))
   }
   const placed = resources.map((resource) =>

@@ -19,9 +19,15 @@ type SearchFailure = Effect.Effect.Error<
   ReturnType<FhirR4ResourcesHttpApiClientShape['Patient']['SearchByGet']>
 >
 
+/**
+ * One half of a `token` search value with FHIR search's special characters
+ * escaped, so a `,` (or) or `|` (system separator) inside it is read literally.
+ */
+const escapeSearchValue = (raw: string): string => raw.replaceAll(/[\\,$|]/gu, '\\$&')
+
 /** An identifier as a FHIR `token` search value, `system|value`. */
 const searchTokenOf = (identifier: PatientIdentity.SearchedIdentifier): string =>
-  `${identifier.system.href}|${identifier.value}`
+  `${escapeSearchValue(identifier.system.href)}|${escapeSearchValue(identifier.value)}`
 
 /**
  * The stored Patient one of `sourcePatient`'s identifiers names, searched
