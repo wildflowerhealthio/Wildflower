@@ -2,7 +2,6 @@ import { FetchHttpClient, type HttpClient } from '@effect/platform'
 import { useQueryClient } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
 import { buildSmartRouterContext } from '@wildflowerhealthio/fhir-r4-react/smart'
-import { makeSubscribableStore } from '@wildflowerhealthio/react-kitchen-sink'
 import {
   LoadingLine,
   type SmartAppPage,
@@ -42,9 +41,9 @@ type StrengthRouterProps = AppProps & {
  * (its code is single-use, so there is never a second), the write runner
  * `buildSmartRouterContext` builds over it and `transport` (the one shared
  * function that prefixes the FHIR base and sets the bearer header, on the
- * page's query cache), the picker's state, and the StrongLifts template ids.
- * Whose record the page shows is the root route's `?patient=`, so a patient
- * change is a navigation and the router lives as long as the page.
+ * page's query cache), and the StrongLifts template ids. Whose record the
+ * page shows, and whether the picker is up, is the root route's search, so a
+ * patient change is a navigation and the router lives as long as the page.
  */
 function StrengthRouter({ page, client, transport }: StrengthRouterProps): JSX.Element {
   const queryClient = useQueryClient()
@@ -59,7 +58,6 @@ function StrengthRouter({ page, client, transport }: StrengthRouterProps): JSX.E
         transport,
         queryClient
       ).runAuthed,
-      patientChangingFrom: makeSubscribableStore<string | null>(null),
       strongLiftsPlanDefinitionIdFor: strongLiftsPlanDefinitionIdMinter(),
     })
   )

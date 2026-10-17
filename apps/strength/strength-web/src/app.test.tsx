@@ -127,7 +127,26 @@ describe('App', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
     expect(vi.mocked(buildRouter).mock.calls).toHaveLength(routersBuilt)
   })
 
-  it('should return to the lifter’s Today on Back from a patient change', async () => {
+  it('should close the picker on Back, returning to the lifter’s Today', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    seedStartedLifter(server)
+    handshakeMock.mockReturnValue({ kind: 'ready', client: server.clientFor(PATIENT_ID) })
+    renderWithQueryClient(<App page={openTestPage()} />)
+    await screen.findByRole('heading', { name: 'Workout A' })
+    await user.click(screen.getByRole('button', { name: 'Change patient' }))
+    await screen.findByRole('heading', { name: 'Choose a patient' })
+
+    // Act
+    window.history.back()
+
+    // Assert
+    expect(await screen.findByRole('heading', { name: 'Workout A' })).toBeDefined()
+    expect(currentRoute()).toBe('today')
+    expect(screen.queryByRole('heading', { name: 'Choose a patient' })).toBeNull()
+  })
+
+  it('should return through the picker to the lifter’s Today on Back from a patient change', async () => {
     // Arrange
     const user = userEvent.setup()
     seedStartedLifter(server)
@@ -140,7 +159,13 @@ describe('App', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
       expect(currentRoute()).toBe('history')
     })
 
-    // Act
+    // Act — Back to the picker's entry
+    window.history.back()
+
+    // Assert
+    expect(await screen.findByRole('heading', { name: 'Choose a patient' })).toBeDefined()
+
+    // Act — Back past it
     window.history.back()
 
     // Assert

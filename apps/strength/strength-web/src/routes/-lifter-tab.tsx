@@ -8,7 +8,7 @@ import { TrainingRecordNotices } from '../record/training-record-notices.tsx'
 import { readTrainingRecord, type TrainingRecord } from '../record/training-record.ts'
 import { useStrengthContext } from '../router-context.ts'
 import { strengthKeyOf, type StrengthSession } from '../session/strength-session.ts'
-import { useChangePatient, useReadPatient } from './-chosen-patient.ts'
+import { useReadPatient, useStrengthPatientPicker } from './-chosen-patient.ts'
 
 /** What a lifter's tab is drawn over: what it writes through, and what it shows. */
 interface LifterRecord {
@@ -66,7 +66,7 @@ interface LifterTabProps {
  */
 const LifterTab = ({ children }: LifterTabProps): JSX.Element => {
   const lifterRecordRead = useLifterRecord()
-  const changePatient = useChangePatient()
+  const { changePatient } = useStrengthPatientPicker()
   return Match.value(lifterRecordRead).pipe(
     Match.when({ kind: 'no-lifter' }, () => (
       <GateCard

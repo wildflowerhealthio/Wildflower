@@ -58,8 +58,8 @@ they cover.
 - **Compose; decide nothing.** The app wires `strength-core-js` and
   `strength-react` together and owns only the SMART shell, the reads, the ids,
   the clock and the writes; the patient is `smart-app-react`'s
-  (`useRoutedPatientChoice` over `?patient=`, `PatientPicker`,
-  `PatientChoiceLine`). The day due, the
+  (`useRoutedPatientPicker` and `useRoutedPatientChoice` over `?patient=`,
+  `PatientPicker`, `PatientChoiceLine`). The day due, the
   progression, what a submission or a start writes, and every check on a
   training plan definition or a starting load are core's
   (`PlannedWorkout.make` / `submit`,
@@ -85,15 +85,15 @@ they cover.
   URL the token exchange still reads. It runs over the `SmartAppPage`
   `main.tsx` opens (`openSmartAppPage`: the window's history, the served
   directory as basepath), and is built once for the visit, its context
-  fixed (client, `runAuthed`, the picker's state, the StrongLifts template
-  ids); see "Routing a SMART app" in
+  fixed (client, `runAuthed`, the StrongLifts template ids); see "Routing a SMART app" in
   [slices/smart-app-react/AGENTS.md](../../../slices/smart-app-react/AGENTS.md).
 - **The patient is the URL's.** `?patient=` is a root search param, read as
   a string (`parsePlainSearch`, so `1.50` stays `1.50`) and the only one
   kept across navigations. A choice navigates to `/`, which opens the
   choice's first tab (Today for a lifter, History for All patients), so a
-  patient change is a navigation in the same router and Back returns to the
-  patient before.
+  patient change is a navigation in the same router. The open picker is the
+  URL's too (`?picking-patient=`, never kept): Back closes it, and Back from a
+  choice returns through the picker to the patient before.
 - **Every write is one batch, to minted ids, and refetches when it settles.**
   `useStrengthWrite` writes through `persistBatchBundleOrFail` and invalidates
   the lifter's queries on success and failure alike; `useStrengthWriting`

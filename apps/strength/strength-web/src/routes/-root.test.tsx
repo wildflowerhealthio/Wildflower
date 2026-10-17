@@ -197,7 +197,7 @@ describe('StrengthPage', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
     }
   )
 
-  it('should open the patient picker from Today’s card with All patients', async () => {
+  it('should open the patient picker from Today’s card with All patients, closing it on Back', async () => {
     // Arrange
     const user = userEvent.setup()
     mountStrengthApp(server, { route: 'today?patient=*' })
@@ -205,9 +205,18 @@ describe('StrengthPage', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
     // Act
     await user.click(await screen.findByRole('button', { name: 'Choose a patient' }))
 
-    // Assert
+    // Assert — the picker's own entry, over the same tab and patient
     expect(await screen.findByRole('heading', { name: 'Choose a patient' })).toBeDefined()
     expect(currentRoute()).toBe('today')
+    expect(new URLSearchParams(window.location.search).get('patient')).toBe('*')
+
+    // Act
+    window.history.back()
+
+    // Assert
+    expect(await screen.findByText('Choose a patient to train')).toBeDefined()
+    expect(screen.queryByRole('heading', { name: 'Choose a patient' })).toBeNull()
+    expect(window.location.search).toBe('?patient=*')
   })
 })
 

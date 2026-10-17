@@ -49,15 +49,15 @@ root route shows `PatientPicker` ("All patients" first, then every patient by
 name and birth date), whose choice navigates to `/?patient=<id>` or
 `/?patient=*`. The root then shows the record under `react-tundraish`'s
 `RouteTabs` — **Today**, **Plan** and **History**, each a child route — with
-the choice named by `PatientChoiceLine` and a "Change patient" link back to
-the picker.
+the choice named by `PatientChoiceLine` and a "Change patient" link that
+opens the picker.
 
 - **A lifter** (one patient): their training record, read and written as
   below.
 - **All patients**: read-only. The page opens on History, every patient's
   completed workouts read unscoped. Today and Plan write, and a write names
   one lifter, so each shows a "Choose a patient to train" card whose action
-  goes back to the picker; no write control mounts. Only a chosen lifter has a
+  opens the picker; no write control mounts. Only a chosen lifter has a
   `StrengthSession` (`src/session/`), the one thing the writes take.
 
 ### The router and the OAuth callback
@@ -70,15 +70,18 @@ names, a not-found card offering the app root. Each tab is a child route in
 its own folder with the files only it uses: `/today`, `/plan` and `/history`.
 `/` redirects, replacing itself in history, to Today for a lifter and to
 History for All patients, and stays (under the picker) with no patient yet.
-A patient choice navigates to `/`, pushing a history entry, so each choice
-opens on its first tab and Back returns to the patient before; "Change
-patient" only opens the picker, and the address bar keeps the patient until
-another is chosen.
+The root's patient choosing is `smart-app-react`'s `useRoutedPatientPicker`
+(`routes/-chosen-patient.ts`). Opening the picker ("Change patient", or the
+"Choose a patient" card) pushes the tab open with `?picking-patient=1` added
+to its `?patient=`, so Back closes the picker on the page it was opened
+over. A choice pushes `/` with the new `?patient=` and no flag, so each
+choice opens on its first tab, and Back from it returns to the picker, then
+to the patient before.
 
-`?patient=` is the root route's one search param (`PatientSearch`), read and
-written as a plain string (`parsePlainSearch` / `stringifyPlainSearch`, so an
-id such as `1.50` is never read as a number), and the only query every
-navigation keeps.
+`?patient=` and `?picking-patient=` are the root route's search
+(`PatientSearch`), read and written as plain strings (`parsePlainSearch` /
+`stringifyPlainSearch`, so an id such as `1.50` is never read as a number).
+`?patient=` is the only query every navigation keeps.
 
 The app root is the OAuth redirect target, so the router is built only once
 the SMART handshake has completed: by then fhirclient has taken `code` and
@@ -86,7 +89,7 @@ the SMART handshake has completed: by then fhirclient has taken `code` and
 redirect, a tab change) can rewrite a URL the token exchange still reads. A
 launch URL never reaches the router at all: `SmartAppRoot` starts its launch
 before the app mounts. The router is built once for the visit, its context
-fixed: the client, the write runner, the picker's state, and the StrongLifts
+fixed: the client, the write runner, and the StrongLifts
 5×5 template id per lifter, minted the first time it is asked for, so a
 retried start for one lifter writes the same id.
 
