@@ -36,6 +36,7 @@ mod token_exchanger;
 
 pub(crate) use authorization_status_reader::{
     AuthorizationStatusError, AuthorizationStatusReader, AuthorizationStatusView,
+    PollingBrowserSession,
 };
 pub(crate) use browser_pairing::{
     BrowserPairing, BrowserPairingPollError, BrowserPairingStartError, BrowserPairingStatus,

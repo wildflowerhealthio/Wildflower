@@ -483,22 +483,28 @@ its [browser session](#browser-session) can't approve the request itself:
 server's origin, `https://<domain>`. The `Location` is relative to
 `/oauth/authorize`, so no launcher address is involved. The page is static
 HTML, CSS and JS (`authorization-server-rust/src/http/routes/oauth/wait_page/`). It polls
-`GET /oauth/authorize/{id}`, which answers only the browser holding the
-session the request was made in (its cookie rides the same-origin poll); any
-other caller, with another session or none, gets the same `404` as an unknown
-id, so a leaked request id can't collect the code. Once the request is
-decided, the page leaves for the
+`GET /oauth/authorize/{id}` (the **status poll**), which reads the browser
+session the browser's cookie holds (the cookie rides the same-origin poll).
+It answers the session the request was made in, and a session whose grant
+covers `wildflower/AuthorizationRequest.r` and `wildflower/AuthorizationRequest.u`,
+the scopes that load and decide the request on the
+[consent card](#consent-card), as the Owner's does once the Owner signs in at
+`/oauth/sign-in` in this browser and the new session's cookie replaces the old
+one. Such a session could approve the request itself, and the code is bound by
+PKCE to the app that asked, so the read gives it nothing new. Any other
+caller, with another session or none, gets the same `404` as an unknown id, so
+a leaked request id can't collect the code. Once the request is decided, the
+page leaves for the
 redirect the status carries, which the authorization server built from the client's
 allowlisted or just-approved `redirect_uri`. That makes this redirect the only
 address a sign-in ever leaves the authorization server for, and no request parameter can
 name a different one. The page takes no decision itself: the Owner answers on
 the [consent card](#consent-card), in this browser once it can decide the
-request, or in one the host opens. While the request is pending, and when the
-status answers `404`, the page also
-reads `GET /authorization/oauth-consents/{id}` on the browser's browser
-session, asked for with `Wildflower-Session: browser`; once that
-succeeds (the browser has signed in as the Owner since, under a new session
-the status no longer answers), it switches to the consent card beside it.
+request, or in one the host opens. While the request is pending, the page
+also reads `GET /authorization/oauth-consents/{id}` on the browser's browser
+session, asked for with `Wildflower-Session: browser`; once that succeeds
+(the browser has signed in as the Owner since), it switches to the consent
+card beside it.
 
 It interpolates nothing (the script reads the request id from its own path),
 loads only from its own origin under a strict CSP, and follows only an

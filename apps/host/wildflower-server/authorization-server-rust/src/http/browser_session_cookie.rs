@@ -17,8 +17,8 @@
 //! a browser without a standing session is sent to pairing; one with a session
 //! that can approve the request goes to the consent card rather than the wait
 //! page; and the request's code is issued under the session either way. The
-//! wait page's status poll reads it to answer only the browser that made the
-//! request.
+//! wait page's status poll reads it to answer the browser that made the
+//! request, or a session whose grant lets it decide the request.
 //!
 //! A browser can hold the FHIR web UI's `hfs_session` beside it, and the layer
 //! presents `hfs_session`'s token when both ride a request. A page that acts
