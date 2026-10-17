@@ -88,6 +88,7 @@ export {
   fetchPatientPage,
   type PatientPage,
   type PatientPageCursor,
+  type PatientRead,
   type PatientResource,
 } from './patients.ts'
 
