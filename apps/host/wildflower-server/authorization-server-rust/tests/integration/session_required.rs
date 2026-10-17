@@ -4,8 +4,9 @@
 //! standing grant would cover the request. A browser with one gets the flow,
 //! fast path included, and every code and refresh family the request earns
 //! names the session of the browser that made it, never the approver's. The
-//! status poll answers only that browser, and a launch that lapsed while the
-//! browser paired asks for a new launch.
+//! status poll answers that browser and a session that can decide the request
+//! on the consent card, and a launch that lapsed while the browser paired asks
+//! for a new launch.
 
 use wildflowerhealthio_authorization_server::domain::launch_context::{
     LaunchContext, LAUNCH_CONTEXT_TTL,
@@ -291,9 +292,9 @@ async fn the_code_names_the_requesting_browser_s_session_not_the_approver_s() {
     );
 }
 
-/// The status poll answers only the browser that parked the request: another
-/// browser's session, and no session, get the same `404` as an unknown id, so
-/// a leaked request id can't collect the code.
+/// The status poll answers the browser that parked the request: another
+/// paired browser's session, and no session, get the same `404` as an unknown
+/// id, so a leaked request id can't collect the code.
 #[tokio::test]
 async fn a_leaked_request_id_collects_nothing() {
     let (g, owner_token, db) = spin_up();
@@ -329,6 +330,84 @@ async fn a_leaked_request_id_collects_nothing() {
     let res = get_authorization_status(&g.router, &db.paired_browser_token, &request_id).await;
     assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(body_json(res.into_body()).await["status"], "approved");
+}
+
+/// The Owner signs in through `/oauth/sign-in` in the browser whose wait page
+/// is polling (a Custom Tab sharing Chrome's cookies, a desktop default
+/// browser), so the Owner session's cookie replaces the paired session's. The
+/// poll answers that cookie, whose grant covers
+/// `wildflower/AuthorizationRequest.r` and `.u`, with the approved redirect,
+/// and the code still names the requesting browser's session. A signed-in
+/// session that can read requests but not update them, and no session, get
+/// the `404` an unknown id gets.
+#[tokio::test]
+async fn the_wait_page_reads_the_status_after_the_owner_signs_in_in_the_same_browser() {
+    let (g, _owner_token, db) = spin_up();
+    seed_app(&db);
+    let request_id =
+        parked_request_id(&get_authorize(&g.router, &db.paired_browser_token, &app_query()).await);
+
+    let code = g.same_device_sign_in_code_minter.mint();
+    let next = format!("/oauth/authorize/{request_id}/consent");
+    let sign_in_uri = format!(
+        "/oauth/sign-in?{}",
+        url::form_urlencoded::Serializer::new(String::new())
+            .append_pair("code", &code)
+            .append_pair("next", &next)
+            .finish()
+    );
+    let signed_in = g
+        .router
+        .clone()
+        .oneshot(build_request(
+            Request::get(sign_in_uri)
+                .header("cookie", browser_session_cookie(&db.paired_browser_token)),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    let owner_session_token = browser_session_token(&signed_in);
+    assert_ne!(sid_of(&owner_session_token), db.paired_browser_sid);
+    let res = approve_oauth_consent(
+        &g,
+        &owner_session_token,
+        &request_id,
+        APPROVE_APP.to_owned(),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let res = get_authorization_status(&g.router, &owner_session_token, &request_id).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let status = body_json(res.into_body()).await;
+    assert_eq!(status["status"], "approved");
+    let callback = status["redirect"].as_str().expect("the approved redirect");
+    assert!(
+        callback.starts_with("https://app.example/cb?"),
+        "{callback}"
+    );
+    let issued = redeem(&g, &code_of(callback)).await;
+    let access_token = issued["access_token"].as_str().expect("an access token");
+    assert_eq!(sid_of(access_token), db.paired_browser_sid);
+
+    let unknown = get_authorization_status(&g.router, &owner_session_token, "no-such-id").await;
+    assert_eq!(unknown.status(), StatusCode::NOT_FOUND);
+    let unknown_error = body_json(unknown.into_body()).await["error"].clone();
+    let cannot_decide = signed_in_session_token_that_cannot_decide(&g, &db).await;
+    for res in [
+        get_authorization_status(&g.router, &cannot_decide, &request_id).await,
+        g.router
+            .clone()
+            .oneshot(build_request(
+                Request::get(format!("/oauth/authorize/{request_id}")),
+                Body::empty(),
+            ))
+            .await
+            .expect("oneshot"),
+    ] {
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
+        assert_eq!(body_json(res.into_body()).await["error"], unknown_error);
+    }
 }
 
 /// A launch for this client that expired (as one may while the Owner approves

@@ -172,8 +172,9 @@ pub struct AuthorizeParams {
 ///    (`decidable_in_requesting_browser`). Any other goes to the wait page at
 ///    `/oauth/authorize/{id}/wait`, and the Owner is notified (the host
 ///    webview's popup). The wait page polls `GET /oauth/authorize/{id}` (a
-///    custom extension, not part of any RFC), which answers only the browser
-///    session the request was made in, until the Owner decides — in the
+///    custom extension, not part of any RFC), which answers the browser
+///    session the request was made in and a session that can decide it on
+///    the consent card, until the Owner decides — in the
 ///    popup, in a signed-in launcher, or on the consent card once that
 ///    browser can decide it. Either way the code is issued under the session
 ///    the request was made in, not the approver's.
