@@ -120,6 +120,11 @@ describe('LaunchUrl', () => {
     )
   })
 
+  it('rejects a URL carrying credentials', () => {
+    expect(Either.isLeft(decodeLaunchUrl('https://user@example.com/launch'))).toBe(true)
+    expect(Either.isLeft(decodeLaunchUrl('https://user:secret@example.com/launch'))).toBe(true)
+  })
+
   it('rejects text that is not a URL', () => {
     expect(Either.isLeft(decodeLaunchUrl('launch.html'))).toBe(true)
   })

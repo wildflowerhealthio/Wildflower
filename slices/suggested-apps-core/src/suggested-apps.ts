@@ -65,14 +65,17 @@ type SmartScope = typeof SmartScope.Type
 
 /**
  * The URL that starts an app's SMART launch: an absolute `https:` URL with no
- * `iss` or `launch` query parameter, since the launcher adds them for the
- * server it launches against.
+ * credentials, and no `iss` or `launch` query parameter, since the launcher
+ * adds them for the server it launches against.
  */
 const LaunchUrl = Schema.String.pipe(
   Schema.filter((text) => {
     if (!URL.canParse(text)) return `${JSON.stringify(text)} is not a URL`
     const url = new URL(text)
     if (url.protocol !== 'https:') return `${JSON.stringify(text)} is not an https: URL`
+    if (url.username !== '' || url.password !== '') {
+      return `${JSON.stringify(text)} carries credentials, which a published file must not`
+    }
     if (url.searchParams.has('iss') || url.searchParams.has('launch')) {
       return `${JSON.stringify(text)} carries iss or launch, which the launcher adds`
     }

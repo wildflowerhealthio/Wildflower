@@ -65,10 +65,12 @@ vp build    # production build to dist/
 - `public/suggested_apps.json` — the SMART apps worth trying with a Wildflower
   server, published at `https://wildflowerhealth.io/suggested_apps.json`.
   Hand-edited; its schema is `suggested-apps-core`'s `SuggestedApps`.
-  `src/suggested-apps.test.ts` decodes it and holds each first-party entry's
-  launch URL, name and description to `branding-core`'s
-  `SMART_APP_LAUNCH_PAGES` and `APP_DESCRIPTIONS`, so a renamed or new hosted
-  app fails there until the file follows.
+  `src/suggested-apps.test.ts` decodes it and requires a first-party entry
+  for each app in `branding-core`'s `SMART_APP_LAUNCH_PAGES`, at that launch
+  page and with its `APP_DESCRIPTIONS` name and tagline, so a renamed or new
+  hosted app fails there until the file follows. Nothing checks the
+  `ohif-viewer` entry or any entry's scopes: those are copied by hand from
+  each app's SMART config.
 
 ## Styling conventions
 
