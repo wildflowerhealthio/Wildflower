@@ -374,8 +374,8 @@ mod tests {
         let routes_dir =
             std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src/http/routes"));
         let mut checked = 0;
-        for path in rs_files_under(routes_dir) {
-            let relative = relative_to(&path, routes_dir);
+        for path in rs_files_under(routes_dir).expect("enumerate routes_dir") {
+            let relative = relative_to(&path, routes_dir).expect("enumerated under routes_dir");
             // Module glue and test-support files only — every operation handler
             // is gated.
             if relative.ends_with("mod.rs") || relative.ends_with("tests.rs") {

@@ -90,6 +90,7 @@ mod tests {
         // literal is folded in. The two needles live on separate lines so this
         // filter closure never satisfies both on one line.
         let scope_fns = rs_files_under(capabilities_dir)
+            .expect("enumerate capabilities_dir")
             .into_iter()
             .filter(|path| path.file_name().is_some_and(|name| name != "mod.rs"))
             .flat_map(|path| {
@@ -133,8 +134,8 @@ mod tests {
         let routes_dir =
             std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src/http/routes"));
         let mut checked = 0;
-        for path in rs_files_under(routes_dir) {
-            let relative = relative_to(&path, routes_dir);
+        for path in rs_files_under(routes_dir).expect("enumerate routes_dir") {
+            let relative = relative_to(&path, routes_dir).expect("enumerated under routes_dir");
             let file_name = relative.rsplit('/').next().unwrap_or(&relative);
             if EXEMPT_FILES.contains(&file_name) {
                 continue;

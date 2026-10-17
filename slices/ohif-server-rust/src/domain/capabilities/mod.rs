@@ -40,6 +40,7 @@ mod tests {
             "/src/domain/capabilities"
         ));
         let capability_scope_fns = rs_files_under(capabilities_dir)
+            .expect("enumerate capabilities_dir")
             .into_iter()
             .filter(|path| path.file_name().is_some_and(|name| name != "mod.rs"))
             .flat_map(|path| {
@@ -70,8 +71,8 @@ mod tests {
         let routes_dir =
             std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src/http/routes"));
         let mut checked = 0;
-        for path in rs_files_under(routes_dir) {
-            let relative = relative_to(&path, routes_dir);
+        for path in rs_files_under(routes_dir).expect("enumerate routes_dir") {
+            let relative = relative_to(&path, routes_dir).expect("enumerated under routes_dir");
             if relative.ends_with("mod.rs") {
                 continue;
             }

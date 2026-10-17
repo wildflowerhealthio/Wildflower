@@ -164,8 +164,8 @@ mod tests {
         let routes_dir =
             std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src/http/routes"));
         let mut checked = 0;
-        for path in rs_files_under(routes_dir) {
-            let relative = relative_to(&path, routes_dir);
+        for path in rs_files_under(routes_dir).expect("enumerate routes_dir") {
+            let relative = relative_to(&path, routes_dir).expect("enumerated under routes_dir");
             let file_name = relative.rsplit('/').next().unwrap_or(&relative);
             if EXEMPT_FILES.contains(&file_name) {
                 continue;

@@ -7,33 +7,32 @@
 //! `test-support` feature, which other crates enable from their
 //! `[dev-dependencies]`.
 
+use std::io;
 use std::path::{Path, PathBuf};
 
 /// Every `.rs` file under `dir`, recursively, sorted for stable failures.
-/// Panics naming `dir` when it can't be read.
-pub fn rs_files_under(dir: &Path) -> Vec<PathBuf> {
+/// The error names the directory that couldn't be read.
+pub fn rs_files_under(dir: &Path) -> io::Result<Vec<PathBuf>> {
+    let in_dir =
+        |e: io::Error| io::Error::new(e.kind(), format!("enumerate {}: {e}", dir.display()));
     let mut files = Vec::new();
-    let entries =
-        std::fs::read_dir(dir).unwrap_or_else(|e| panic!("enumerate {}: {e}", dir.display()));
-    for entry in entries {
-        let path = entry.expect("readable dir entry").path();
+    for entry in std::fs::read_dir(dir).map_err(in_dir)? {
+        let path = entry.map_err(in_dir)?.path();
         if path.is_dir() {
-            files.extend(rs_files_under(&path));
+            files.extend(rs_files_under(&path)?);
         } else if path.extension().is_some_and(|ext| ext == "rs") {
             files.push(path);
         }
     }
     files.sort();
-    files
+    Ok(files)
 }
 
 /// `path` relative to `root`, with forward slashes, for matching against a
-/// guard's allow-lists. Panics when `path` is not under `root`.
-pub fn relative_to(path: &Path, root: &Path) -> String {
-    path.strip_prefix(root)
-        .expect("enumerated under root")
-        .to_string_lossy()
-        .replace('\\', "/")
+/// guard's allow-lists. `None` when `path` is not under `root`.
+pub fn relative_to(path: &Path, root: &Path) -> Option<String> {
+    let relative = path.strip_prefix(root).ok()?;
+    Some(relative.to_string_lossy().replace('\\', "/"))
 }
 
 #[cfg(test)]
@@ -71,7 +70,7 @@ mod tests {
         }
 
         assert_eq!(
-            rs_files_under(root),
+            rs_files_under(root).expect("enumerate temp tree"),
             vec![root.join("a.rs"), root.join("sub").join("c.rs")]
         );
     }
@@ -81,12 +80,28 @@ mod tests {
         let root = Path::new("/project/src");
         let nested = root.join("sub").join("c.rs");
 
-        assert_eq!(relative_to(&nested, root), "sub/c.rs");
+        assert_eq!(relative_to(&nested, root).as_deref(), Some("sub/c.rs"));
     }
 
     #[test]
-    #[should_panic(expected = "enumerate /definitely/not/a/real/dir")]
-    fn rs_files_under_panics_on_a_missing_dir() {
-        rs_files_under(Path::new("/definitely/not/a/real/dir"));
+    fn relative_to_is_none_outside_root() {
+        assert_eq!(
+            relative_to(Path::new("/elsewhere/c.rs"), Path::new("/project/src")),
+            None
+        );
+    }
+
+    #[test]
+    fn rs_files_under_errors_naming_a_missing_dir() {
+        let error = rs_files_under(Path::new("/definitely/not/a/real/dir"))
+            .expect_err("missing dir can't be enumerated");
+
+        assert_eq!(error.kind(), io::ErrorKind::NotFound);
+        assert!(
+            error
+                .to_string()
+                .starts_with("enumerate /definitely/not/a/real/dir: "),
+            "{error}"
+        );
     }
 }

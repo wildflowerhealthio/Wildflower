@@ -33,7 +33,7 @@ mod http_free_guard {
         // literal it scans for (which would make it flag itself).
         let needle = concat!("crate", "::", "http");
         let domain_dir = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src/domain"));
-        for path in rs_files_under(domain_dir) {
+        for path in rs_files_under(domain_dir).expect("enumerate domain_dir") {
             let source = std::fs::read_to_string(&path)
                 .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
             for (n, line) in source.lines().enumerate() {

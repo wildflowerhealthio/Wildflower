@@ -425,8 +425,8 @@ mod test_layout_guard {
     fn production_code_precedes_the_test_module() {
         let src = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
         let mut violations = Vec::new();
-        for path in rs_files_under(src) {
-            let relative = relative_to(&path, src);
+        for path in rs_files_under(src).expect("enumerate src") {
+            let relative = relative_to(&path, src).expect("enumerated under src");
             let source =
                 std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {relative}: {e}"));
             if let Some(line) = production_code_after_test_module(&source) {
@@ -455,7 +455,7 @@ mod http_free_guard {
         // literal it scans for (which would make it flag itself).
         let needle = concat!("crate", "::", "http");
         let domain_dir = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src/domain"));
-        for path in rs_files_under(domain_dir) {
+        for path in rs_files_under(domain_dir).expect("enumerate domain_dir") {
             let source = std::fs::read_to_string(&path)
                 .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
             for (n, line) in production_lines(&source) {
