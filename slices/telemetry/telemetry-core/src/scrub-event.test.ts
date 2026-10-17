@@ -3,7 +3,7 @@ import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 import { anonymizeHost, anonymizeUrl } from './anonymize-url.ts'
 import { makeHostRedactor } from './redact-hosts.ts'
-import { type ScrubbableEvent, scrubEvent } from './scrub-event.ts'
+import { type ScrubbableEvent, scrubEvent, scrubSpan } from './scrub-event.ts'
 
 interface SampleBreadcrumb {
   readonly category: string
@@ -600,6 +600,118 @@ describe('scrubEvent', () => {
 
         expect(scrubEvent(scrubbedErrorEvent)).toStrictEqual(scrubbedErrorEvent)
         expect(scrubEvent(scrubbedTransactionEvent)).toStrictEqual(scrubbedTransactionEvent)
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+})
+
+describe('scrubEvent element strings', () => {
+  test('reduces the element in a click or input breadcrumb and a click span to their tag names', () => {
+    const event = {
+      breadcrumbs: [
+        { category: 'ui.click', message: 'button#open-123[aria-label="Open Jane Doe\'s results"]' },
+        { category: 'ui.input', message: 'input#mrn[name="mrn"]' },
+        { category: 'console', message: 'see https://fhir.example/r4/Patient/123' },
+      ],
+      spans: [{ op: 'ui.interaction.click', description: 'li.patient[title="Jane Doe"]' }],
+    }
+
+    expect(scrubEvent(event)).toStrictEqual({
+      breadcrumbs: [
+        { category: 'ui.click', message: 'button' },
+        { category: 'ui.input', message: 'input' },
+        { category: 'console', message: 'see https://{host}/r4/Patient/{id}' },
+      ],
+      spans: [{ op: 'ui.interaction.click', description: 'li' }],
+    })
+  })
+})
+
+describe('scrubSpan', () => {
+  test('anonymizes the URLs and the route name a standalone span carries', () => {
+    const span = {
+      span_id: 's1',
+      description: `GET ${FHIR_URL}`,
+      data: {
+        transaction: '/r4/Patient/123',
+        'sentry.segment.name': '/r4/Patient/123',
+        'url.full': FHIR_URL,
+        'http.url': FHIR_URL,
+        'sentry.op': 'http.client',
+      },
+    }
+
+    expect(scrubSpan(span)).toStrictEqual({
+      span_id: 's1',
+      description: `GET ${ANONYMIZED_FHIR_URL}`,
+      data: {
+        transaction: '/r4/Patient/{id}',
+        'sentry.segment.name': '/r4/Patient/{id}',
+        'url.full': ANONYMIZED_FHIR_URL,
+        'http.url': ANONYMIZED_FHIR_URL,
+        'sentry.op': 'http.client',
+      },
+    })
+  })
+
+  test.each([
+    { label: 'an INP span', span: { op: 'ui.interaction.click' } },
+    {
+      label: 'an INP span by its op attribute',
+      span: { data: { 'sentry.op': 'ui.interaction.press' } },
+    },
+    { label: 'a standalone web vital span', span: { op: 'ui.webvital.lcp' } },
+  ])('reduces the element string that describes $label to its tag names', ({ span }) => {
+    const scrubbedSpan = scrubSpan({
+      ...span,
+      description: 'main > button#open-123[aria-label="Open Jane Doe\'s results"]',
+    })
+
+    expect(scrubbedSpan.description).toBe('main > button')
+  })
+
+  test('reduces the elements in web vital attributes to their tag names and drops the element id', () => {
+    const span = {
+      op: 'pageload',
+      data: {
+        'lcp.element': 'main > img#photo-123[alt="Jane Doe"]',
+        'lcp.id': 'jane-doe',
+        'cls.source.1': 'div.banner[title="Jane"]',
+        'browser.web_vital.lcp.element': 'h1#jane-doe',
+        'browser.web_vital.lcp.id': 'jane-doe',
+        'browser.web_vital.cls.source.2': 'p[title="Doe"]',
+      },
+    }
+
+    expect(scrubSpan(span).data).toStrictEqual({
+      'lcp.element': 'main > img',
+      'lcp.id': undefined,
+      'cls.source.1': 'div',
+      'browser.web_vital.lcp.element': 'h1',
+      'browser.web_vital.lcp.id': undefined,
+      'browser.web_vital.cls.source.2': 'p',
+    })
+  })
+
+  test('replaces the server hosts it names', () => {
+    const span = { description: 'connect ruth.example', data: { transaction: 'ruth.example:8443' } }
+
+    expect(scrubSpan(span, makeHostRedactor(['ruth.example']))).toStrictEqual({
+      description: 'connect {host}',
+      data: { transaction: '{host}' },
+    })
+  })
+
+  test('property: scrubbing twice is the same as scrubbing once', () => {
+    fc.assert(
+      fc.property(fc.webUrl({ withQueryParameters: true, withFragments: true }), (url) => {
+        const scrubbedSpan = scrubSpan({
+          description: `GET ${url}`,
+          data: { transaction: new URL(url).pathname, 'url.full': url },
+        })
+
+        expect(scrubSpan(scrubbedSpan)).toStrictEqual(scrubbedSpan)
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )

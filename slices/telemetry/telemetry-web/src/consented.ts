@@ -5,6 +5,7 @@ import {
   makeEffectTracerLayer,
   makeHostRedactor,
   scrubEvent,
+  scrubSpan,
   type TelemetryConfig,
   type TelemetryConsent,
   telemetryConfigFor,
@@ -75,9 +76,121 @@ const PERSONAL_DATA_OFF: NonNullable<InitSentryWebOptions['dataCollection']> = {
 
 /**
  * The latest answer handed to {@link initConsentedTelemetry}. The SDK's hooks
- * read it for every event, so a switch turned off stops its events at once.
+ * and transport read it for every event and envelope, so a switch turned off
+ * stops what it covers at once.
  */
 let latestConsent: TelemetryConsent | undefined
+
+/** The transport the SDK sends envelopes through. */
+type SentryTransport = ReturnType<NonNullable<InitSentryWebOptions['transport']>>
+
+/** What the SDK sends in one request: headers, and the items it carries. */
+type SentryEnvelope = Parameters<SentryTransport['send']>[0]
+
+/** The headers of an envelope, as against those of each of its items. */
+type SentryEnvelopeHeaders = SentryEnvelope[0]
+
+/** The kind of thing an envelope item carries, named in its headers. */
+type SentryEnvelopeItemType = SentryEnvelope[1][number][0]['type']
+
+/**
+ * The envelope item types crash reports let through: error events and the
+ * attachments sent with them.
+ */
+const CRASH_REPORT_ITEM_TYPES: ReadonlySet<SentryEnvelopeItemType> = new Set([
+  'event',
+  'attachment',
+])
+
+/** The envelope item types performance lets through: transactions and standalone spans. */
+const PERFORMANCE_ITEM_TYPES: ReadonlySet<SentryEnvelopeItemType> = new Set(['transaction', 'span'])
+
+/**
+ * The envelope item types either switch lets through: release-health
+ * sessions, which count page loads and the ones that crashed, and client
+ * reports, which carry only counts of what the SDK dropped.
+ */
+const EITHER_SWITCH_ITEM_TYPES: ReadonlySet<SentryEnvelopeItemType> = new Set([
+  'session',
+  'sessions',
+  'client_report',
+])
+
+/**
+ * Whether `consent` lets an envelope item of `itemType` be sent. Default-deny:
+ * a type no switch names (logs, metrics, profiles, replays, feedback, and any
+ * a later SDK adds) is never sent.
+ */
+const isItemTypeConsented = (
+  itemType: SentryEnvelopeItemType,
+  consent: TelemetryConsent | undefined
+): boolean => {
+  const crashReports = consent?.crashReports === true
+  const performance = consent?.performance === true
+  return (
+    (crashReports && CRASH_REPORT_ITEM_TYPES.has(itemType)) ||
+    (performance && PERFORMANCE_ITEM_TYPES.has(itemType)) ||
+    ((crashReports || performance) && EITHER_SWITCH_ITEM_TYPES.has(itemType))
+  )
+}
+
+/**
+ * `envelopeHeaders` without the `transaction` of their trace header, the
+ * root span's name, which for an interaction span is the element string the
+ * SDK names the element by: only Sentry's sampling rules by transaction name,
+ * which no app sets, read it.
+ */
+const withoutTraceTransaction = (envelopeHeaders: SentryEnvelopeHeaders): SentryEnvelopeHeaders => {
+  const trace: unknown = 'trace' in envelopeHeaders ? envelopeHeaders.trace : undefined
+  if (typeof trace !== 'object' || trace === null || !('transaction' in trace)) {
+    return envelopeHeaders
+  }
+  const { transaction: _transaction, ...traceWithoutTransaction } = trace
+  return { ...envelopeHeaders, trace: traceWithoutTransaction }
+}
+
+/**
+ * `envelope` with only its items that {@link latestConsent} lets through,
+ * and without its trace header's transaction (see
+ * {@link withoutTraceTransaction}), or `undefined` when no items are left.
+ */
+const consentedEnvelope = (envelope: SentryEnvelope): SentryEnvelope | undefined => {
+  const [envelopeHeaders, items] = envelope
+  const consentedItems = items.filter(([itemHeaders]) =>
+    isItemTypeConsented(itemHeaders.type, latestConsent)
+  )
+  if (consentedItems.length === 0) return undefined
+  const sentHeaders = withoutTraceTransaction(envelopeHeaders)
+  if (consentedItems.length === items.length && sentHeaders === envelopeHeaders) return envelope
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- each envelope type pairs its headers with the item types it may carry, so a subset of its items still fits it, which TS cannot follow through `filter` on a union of tuples; the SDK's own `createEnvelope` asserts the same.
+  return [sentHeaders, consentedItems] as SentryEnvelope
+}
+
+/**
+ * The transport `makeTransport` builds, sending only the items of each
+ * envelope that {@link latestConsent} lets through when it is sent, without
+ * its trace header's transaction, and nothing at all for an envelope with
+ * no items left.
+ *
+ * @remarks
+ * The one consent check every item passes, whatever its type: the transport
+ * is the last step before the network, after every hook. The SDK's hooks
+ * cannot drop a standalone span or a session; this can.
+ */
+const consentGatedTransport =
+  (
+    makeTransport: NonNullable<InitSentryWebOptions['transport']>
+  ): NonNullable<InitSentryWebOptions['transport']> =>
+  (transportOptions) => {
+    const transport = makeTransport(transportOptions)
+    return {
+      ...transport,
+      send: (envelope) => {
+        const sentEnvelope = consentedEnvelope(envelope)
+        return sentEnvelope === undefined ? Promise.resolve({}) : transport.send(sentEnvelope)
+      },
+    }
+  }
 
 /**
  * The hosts of the servers this page is known to talk to, which every event
@@ -122,26 +235,26 @@ let consentedEffectTracerLayer: Layer.Layer<never> | undefined
  *
  * @remarks
  * {@link PERSONAL_DATA_OFF} applies whatever the answer. Browser tracing is
- * added only when `initialConsent` has `performance`, with INP off: INP is
- * sent as a standalone span, which bypasses `beforeSendTransaction`, so
- * neither the consent check nor `scrubEvent` would see it. Nothing adds
- * session replay or profiling. Each hook drops the events its switch does not
- * cover in {@link latestConsent} — error events without `crashReports`,
- * transactions without `performance` — and anonymizes the URLs in the ones it
- * sends, with the hosts {@link hostsToRedact} names as they stand when the
- * event is sent.
+ * added only when `initialConsent` has `performance`. Nothing adds session
+ * replay or profiling. The transport sends only the envelope items
+ * {@link latestConsent} lets through (see {@link consentGatedTransport}).
+ * `beforeSend` and `beforeSendTransaction` drop the events their switch does
+ * not cover in it too, and anonymize the URLs in the ones they send;
+ * `beforeSendSpan` anonymizes every span's, standalone ones included. All
+ * three redact the hosts {@link hostsToRedact} names as they stand when the
+ * event or span is sent.
  */
 const sentryOptionsFor = (initialConsent: TelemetryConsent): InitSentryWebOptions => ({
   dataCollection: PERSONAL_DATA_OFF,
-  integrations: initialConsent.performance
-    ? [Sentry.browserTracingIntegration({ enableInp: false })]
-    : [],
+  integrations: initialConsent.performance ? [Sentry.browserTracingIntegration()] : [],
+  transport: consentGatedTransport(Sentry.makeFetchTransport),
   beforeSend: (errorEvent) =>
     latestConsent?.crashReports === true ? scrubEvent(errorEvent, currentHostRedactor()) : null,
   beforeSendTransaction: (transactionEvent) =>
     latestConsent?.performance === true
       ? scrubEvent(transactionEvent, currentHostRedactor())
       : null,
+  beforeSendSpan: (span) => scrubSpan(span, currentHostRedactor()),
 })
 
 /**
@@ -161,10 +274,11 @@ const sentryOptionsFor = (initialConsent: TelemetryConsent): InitSentryWebOption
  * {@link consentedTelemetryLayer} binds Effect's spans to.
  *
  * Call it again whenever the answer changes. The SDK initializes once per page
- * load, keeping its first options, but its hooks follow the latest answer: a
- * switch turned off stops its events at once, crash reports turned on start
- * at once, and performance turned on after the SDK started without it takes
- * effect on the next page load, when browser tracing is added.
+ * load, keeping its first options, but its hooks and transport follow the
+ * latest answer: a switch turned off stops what it covers at once, crash
+ * reports turned on start at once, and performance turned on after the SDK
+ * started without it takes effect on the next page load, when browser
+ * tracing is added.
  */
 const initConsentedTelemetry = ({
   consent,
