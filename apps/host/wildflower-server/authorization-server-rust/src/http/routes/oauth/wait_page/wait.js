@@ -98,10 +98,14 @@ const canOpenConsentCard = async () => {
     if (!response.ok) {
       return false
     }
-    /** @type {{ readonly missingApprovalScopes?: unknown }} */
+    /** @type {unknown} */
     const consent = await response.json()
     return (
-      Array.isArray(consent.missingApprovalScopes) && consent.missingApprovalScopes.length === 0
+      typeof consent === 'object' &&
+      consent !== null &&
+      'missingApprovalScopes' in consent &&
+      Array.isArray(consent.missingApprovalScopes) &&
+      consent.missingApprovalScopes.length === 0
     )
   } catch {
     return false
