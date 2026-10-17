@@ -417,7 +417,9 @@ those still pending.
 Starting a request is rate-limited on the tunnel, per visitor address and
 overall, and a request over either limit is `429` (the host's
 `authorization_start_limit`). A browser whose session can decide consents,
-as one signed in as the Owner can, is never limited.
+as one signed in as the Owner can, is never limited, nor is a browser
+without a session at `/oauth/authorize`, which is only sent to
+[pairing](#browser-pairing) and parks nothing.
 
 The newest is a `NewestPendingConsent`, discriminated because the flows have
 no shared lookup key, with the name of what asks: the client's (its registered
@@ -484,10 +486,12 @@ allowlisted or just-approved `redirect_uri`. That makes this redirect the only
 address a sign-in ever leaves the authorization server for, and no request parameter can
 name a different one. The page takes no decision itself: the Owner answers on
 the [consent card](#consent-card), in this browser once it can decide the
-request, or in one the host opens. While the request is pending, the page also
+request, or in one the host opens. While the request is pending, and when the
+status answers `404`, the page also
 reads `GET /authorization/oauth-consents/{id}` on the browser's browser
 session, asked for with `Wildflower-Session: browser`; once that
-succeeds (the browser has signed in as the Owner since), it switches to the consent card beside it.
+succeeds (the browser has signed in as the Owner since, under a new session
+the status no longer answers), it switches to the consent card beside it.
 
 It interpolates nothing (the script reads the request id from its own path),
 loads only from its own origin under a strict CSP, and follows only an

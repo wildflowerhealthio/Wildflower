@@ -1,9 +1,11 @@
 // The authorization server's wait page (`../wait_page.rs`). Polls this request's status
 // at the sibling `/oauth/authorize/{id}` until the Owner decides, then leaves
 // for the redirect the authorization server built from the client's allowlisted
-// `redirect_uri`. While the request is pending it also checks whether this
-// browser is signed in as the Owner (it can read the request's consent), and
-// if so switches to the consent card beside it, `/oauth/authorize/{id}/consent`.
+// `redirect_uri`. While the request is pending, and when the status answers
+// `404` (as it does once this browser holds another session), it also checks
+// whether this browser is signed in as the Owner (it can read the request's
+// consent), and if so switches to the consent card beside it,
+// `/oauth/authorize/{id}/consent`.
 // See "Wait page" in the Wildflower Authorization Jargon Explanation.
 //
 // Loaded as a module script, so its names stay out of the page's globals.
@@ -98,6 +100,12 @@ const canOpenConsentCard = async () => {
   }
 }
 
+/** Leave for the consent card beside this page. */
+const openConsentCard = () => {
+  document.documentElement.dataset['state'] = 'leaving'
+  window.location.replace(new URL('consent', window.location.href).href)
+}
+
 /**
  * The request is still pending: switch to the consent card if this browser
  * can decide it there, else poll again after the interval.
@@ -107,8 +115,7 @@ const canOpenConsentCard = async () => {
  */
 const awaitDecision = async (statusPath) => {
   if (await canOpenConsentCard()) {
-    document.documentElement.dataset['state'] = 'leaving'
-    window.location.replace(new URL('consent', window.location.href).href)
+    openConsentCard()
     return
   }
   setTimeout(() => {
@@ -191,7 +198,11 @@ const poll = async (statusPath, unreachablePolls) => {
     return
   }
   if (response.status === 404) {
-    settleError('This sign-in request was not found. It may have expired; start again.')
+    // The status answers only the browser session the request was made in. A
+    // browser signed in as the Owner since holds a new one, but can still
+    // decide the request on the consent card.
+    if (await canOpenConsentCard()) openConsentCard()
+    else settleError('This sign-in request was not found. It may have expired; start again.')
     return
   }
   /** @type {unknown} */

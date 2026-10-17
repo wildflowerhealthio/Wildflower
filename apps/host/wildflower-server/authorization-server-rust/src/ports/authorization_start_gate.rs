@@ -11,8 +11,9 @@ use axum::http::Extensions;
 /// The authorization server knows nothing of who is asking beyond the
 /// request; the host, whose listener put what it knows of the connection in
 /// the request's extensions (its connect info), decides. Asked once per
-/// request that carries no live browser session, before the request is
-/// parsed; a request it admits has spent from whatever allowance it keeps,
+/// request that would park a request the Owner must be asked about (one
+/// without a live browser session that can decide consents, other than an
+/// `/oauth/authorize` with no session at all), before the request is parsed; a request it admits has spent from whatever allowance it keeps,
 /// and one it refuses is answered `429 Too Many Requests`.
 pub trait AuthorizationStartGate: Send + Sync + 'static {
     /// Whether to admit the request `request_extensions` belong to, spending

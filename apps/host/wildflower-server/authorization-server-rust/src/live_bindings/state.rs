@@ -105,7 +105,7 @@ pub struct AuthorizationServerState {
     /// The host's say over how fast authorization requests are started,
     /// handed to [`crate::setup_authorization_server`]: asked by the limit on
     /// `/oauth/authorize` and `/oauth/device_authorization` for each request
-    /// that carries no live browser session.
+    /// that would park a request the Owner must be asked about.
     pub(crate) authorization_start_gate: Arc<dyn AuthorizationStartGate>,
 }
 
