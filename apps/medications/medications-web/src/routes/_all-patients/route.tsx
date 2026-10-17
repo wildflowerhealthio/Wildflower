@@ -13,7 +13,6 @@ function EveryPatientsMedications(): JSX.Element {
           tabs={[
             { to: '/medications', label: 'Medications' },
             { to: '/calendar', label: 'Calendar' },
-            { to: '/interactions', label: 'Interactions' },
             { to: '/savings', label: 'Savings' },
           ]}
           aria-label="Medication views"
@@ -24,9 +23,10 @@ function EveryPatientsMedications(): JSX.Element {
 }
 
 /**
- * Every patient's tabs, `/medications`, `/calendar`, `/interactions` and
- * `/savings`: a layout adding nothing to the path, which the picker's All
- * patients opens.
+ * Every patient's tabs, `/medications`, `/calendar` and `/savings`: a layout
+ * adding nothing to the path, which the picker's All patients opens. There
+ * is no every-patient Interactions tab: interactions are between one
+ * person's medications.
  */
 const Route = createFileRoute('/_all-patients')({
   component: EveryPatientsMedications,

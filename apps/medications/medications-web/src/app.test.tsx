@@ -292,6 +292,11 @@ describe('App', () => {
   it.each([
     { case: 'a path no route names', route: 'index.html', pathname: '/index.html' },
     {
+      case: 'every patient’s interactions, between different people’s medications',
+      route: 'interactions',
+      pathname: '/interactions',
+    },
+    {
       case: 'a path under a patient no tab names',
       route: 'patients/p1/nowhere',
       pathname: '/patients/p1/nowhere',

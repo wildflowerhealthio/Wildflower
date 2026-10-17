@@ -50,9 +50,9 @@ const useMedicationsPage = (): MedicationRead => {
  * path names (`usePathPatientChoice`, as the read): the patient line
  * (whose "Change patient" pushes the picker) and the chunk bar tracking the
  * paged read, over `tabs`, each a child route the strip links to:
- * Medications, the list; Calendar, the prescription calendar; Interactions,
- * the report over the current medications; Savings, the savings-program
- * breakdown. Until the first page lands the tabs wait behind a loading line,
+ * Medications, the list; Calendar, the prescription calendar; Interactions
+ * (one patient's page only), the report over the current medications;
+ * Savings, the savings-program breakdown. Until the first page lands the tabs wait behind a loading line,
  * or the read's failure.
  */
 function MedicationsPage({ tabs }: MedicationsPageProps): JSX.Element {
