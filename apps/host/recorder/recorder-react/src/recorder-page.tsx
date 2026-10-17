@@ -308,9 +308,8 @@ function RecorderPage({ invoke, revealFile }: RecorderPageProps): JSX.Element {
 
       <SaveFolderLine saveFolder={saveFolder} />
 
-      <ErrorBanner
-        error={state._tag === 'Failed' ? state.message : (revealFailure ?? bookmarkFailure)}
-      />
+      <ErrorBanner error={state._tag === 'Failed' ? state.message : revealFailure} />
+      <ErrorBanner error={bookmarkFailure} />
 
       <TextField
         label="URL"
@@ -322,6 +321,16 @@ function RecorderPage({ invoke, revealFile }: RecorderPageProps): JSX.Element {
         value={url}
         onChange={setUrl}
         disabled={!takesUrl}
+      />
+
+      <BookmarksSection
+        bookmarks={bookmarks}
+        canPick={takesUrl}
+        onPick={(bookmarkedUrl) => {
+          setIsNamingBookmark(false)
+          setUrl(bookmarkedUrl)
+        }}
+        runChange={runChange}
       />
 
       {Match.value(state).pipe(
@@ -418,16 +427,6 @@ function RecorderPage({ invoke, revealFile }: RecorderPageProps): JSX.Element {
         )),
         Option.getOrNull
       )}
-
-      <BookmarksSection
-        bookmarks={bookmarks}
-        canPick={takesUrl}
-        onPick={(bookmarkedUrl) => {
-          setIsNamingBookmark(false)
-          setUrl(bookmarkedUrl)
-        }}
-        runChange={runChange}
-      />
     </div>
   )
 }

@@ -25,13 +25,14 @@ shell that drives it over `RecorderBridge`.
   `{ state, isChanging, add, rename, remove, recorded }`. `state` is
   `Reading` → `Read(bookmarks)` | `Unreadable(message)`, read once on mount;
   each action replaces the list with the host's answer and resolves to the
-  host's refusal, if any, for the page's `ErrorBanner`. Only the latest
-  request's answer lands.
+  host's refusal, if any, for the page's `ErrorBanner`. An answer lands
+  unless a later request's answer already has; a refused change lands
+  nothing.
 - `src/recorder-page.tsx` — **`RecorderPage`**, a plain component with no
   route, taking `invoke` (Tauri's) and `revealFile` (`tauri-plugin-opener`'s
   `revealItemInDir`). It shows the recordings folder, and after a save offers
   Show file where the folder's `revealsFiles` says the platform can. Under the
-  controls it lists the bookmarks `byRecency`, each with when it was last
+  URL field it lists the bookmarks `byRecency`, each with when it was last
   recorded (`kitchen-sink`'s `formatRelativeTime`), a name that fills the URL
   field, and Rename and Remove; Bookmark this names a startable URL that
   isn't bookmarked, and Start recording stamps the bookmark at that URL. It

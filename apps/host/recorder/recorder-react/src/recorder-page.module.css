@@ -21,7 +21,7 @@
   word-break: break-all;
 }
 
-/* The bookmarks, under the recording's controls. */
+/* The bookmarks, under the URL field. */
 .recorder-page__bookmarks {
   display: flex;
   flex-direction: column;
