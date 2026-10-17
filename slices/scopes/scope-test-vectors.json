@@ -32,6 +32,11 @@
       "kind": "wildflower",
       "rendered": "wildflower/RequestLog.r"
     },
+    {
+      "scope": "wildflower/BrowserSession.d",
+      "kind": "wildflower",
+      "rendered": "wildflower/BrowserSession.d"
+    },
     { "scope": "wildflower/launch", "kind": "known", "rendered": "wildflower/launch" },
     {
       "scope": "wildflower/RefreshToken.cruds",
@@ -102,6 +107,12 @@
     { "allowed": "wildflower/Apps.cruds", "requested": "wildflower/Grant.r", "covers": false },
     { "allowed": "wildflower/*.cruds", "requested": "wildflower/RequestLog.r", "covers": true },
     { "allowed": "wildflower/Apps.cruds", "requested": "wildflower/RequestLog.r", "covers": false },
+    { "allowed": "wildflower/*.rd", "requested": "wildflower/BrowserSession.d", "covers": true },
+    {
+      "allowed": "wildflower/Grant.cruds",
+      "requested": "wildflower/BrowserSession.r",
+      "covers": false
+    },
     { "allowed": "wildflower/launch", "requested": "wildflower/launch", "covers": true },
     { "allowed": "wildflower/*.cruds", "requested": "wildflower/launch", "covers": false },
     { "allowed": "offline_access", "requested": "offline_access", "covers": true },
