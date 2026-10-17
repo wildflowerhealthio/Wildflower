@@ -72,7 +72,12 @@ async fn list_shows_seeded_and_trusted_on_first_use_clients_without_secrets() {
     seed_confidential_client(&db, "conf-app", "a-secret", &["read"]);
 
     // Trust a brand-new app on first use.
-    let res = get_authorize(&g.router, &authorize_query("brand-new-app", "read")).await;
+    let res = get_authorize(
+        &g.router,
+        &db.paired_browser_token,
+        &authorize_query("brand-new-app", "read"),
+    )
+    .await;
     let request_id = parked_request_id(&res);
     let res = approve_oauth_consent(
         &g,
@@ -143,7 +148,7 @@ async fn a_disabled_client_is_refused_at_authorize_until_re_enabled() {
     let query = authorize_query("test-app", "read");
 
     // Enabled: the request parks for the Owner.
-    parked_request_id(&get_authorize(&g.router, &query).await);
+    parked_request_id(&get_authorize(&g.router, &db.paired_browser_token, &query).await);
 
     // The PATCH answers with the client as stored — the same row the list shows.
     let res = disable_client(&g, &owner_token, "test-app", Utc::now()).await;
@@ -154,7 +159,7 @@ async fn a_disabled_client_is_refused_at_authorize_until_re_enabled() {
     assert_eq!(find_client(&listed, "test-app"), Some(&patched));
 
     // Disabled: a local error page, never a redirect to the client or a prompt.
-    let res = get_authorize(&g.router, &query).await;
+    let res = get_authorize(&g.router, &db.paired_browser_token, &query).await;
     assert_ne!(res.status(), StatusCode::FOUND);
     assert!(body_string(res.into_body())
         .await
@@ -164,7 +169,7 @@ async fn a_disabled_client_is_refused_at_authorize_until_re_enabled() {
     assert_eq!(res.status(), StatusCode::OK);
 
     // Re-enabled with its registration intact: the same request parks again.
-    parked_request_id(&get_authorize(&g.router, &query).await);
+    parked_request_id(&get_authorize(&g.router, &db.paired_browser_token, &query).await);
     let row = body_json(res.into_body()).await;
     assert_eq!(row["disabledAt"], Value::Null);
     assert_eq!(

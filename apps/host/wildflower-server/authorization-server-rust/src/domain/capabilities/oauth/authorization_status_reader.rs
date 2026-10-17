@@ -1,7 +1,8 @@
-//! [`AuthorizationStatusReader`] — `GET /oauth/authorize/{id}`, the launcher's
+//! [`AuthorizationStatusReader`] — `GET /oauth/authorize/{id}`, the wait page's
 //! polling view of an authorization request as it moves from pending toward
-//! approval or denial. Public (the request id is the secret); its only power
-//! is this one read.
+//! approval or denial. It answers only the browser session the request was
+//! made in, so a leaked request id alone can't collect the code; its only
+//! power is this one read.
 
 use chrono::{DateTime, Utc};
 use url::Url;
@@ -60,9 +61,16 @@ impl<S: GrantStore> AuthorizationStatusReader<S> {
         AuthorizationStatusReader { store }
     }
 
-    /// The current status of request `id`. Nothing actively transitions
-    /// code-flow requests from pending to expired, so a pending request past
-    /// its TTL is reported expired here rather than left polling forever.
+    /// The current status of request `id`, for the browser holding the
+    /// browser session `polling_sid` (`None` when it holds none). Nothing
+    /// actively transitions code-flow requests from pending to expired, so a
+    /// pending request past its TTL is reported expired here rather than left
+    /// polling forever.
+    ///
+    /// A request made in another browser session, or in none (a device
+    /// request, a browser pairing), is [`AuthorizationStatusError::NotFound`]
+    /// for every caller, the same as an unknown id, so the read says nothing
+    /// about whether `id` exists.
     ///
     /// # Errors
     ///
@@ -70,11 +78,15 @@ impl<S: GrantStore> AuthorizationStatusReader<S> {
     pub(crate) fn status(
         &self,
         id: &str,
+        polling_sid: Option<&str>,
         now: DateTime<Utc>,
     ) -> Result<AuthorizationStatusView, AuthorizationStatusError> {
         let request = self
             .store
             .authorization_request_by_id(id)?
+            .filter(|request| {
+                polling_sid.is_some_and(|polling_sid| request.sid.as_deref() == Some(polling_sid))
+            })
             .ok_or_else(|| AuthorizationStatusError::NotFound { id: id.to_owned() })?;
         if request.status == RequestStatus::Pending && request.expires_at < now {
             return Ok(AuthorizationStatusView::Expired);
@@ -112,7 +124,7 @@ mod tests {
 
     use super::*;
     use crate::domain::authorization_code::{IssuedAuthorizationCode, AUTHORIZATION_CODE_TTL};
-    use crate::domain::test_fake::{code_request, FakeGrantStore};
+    use crate::domain::test_fake::{code_request, device_request, FakeGrantStore};
 
     /// Each stored status maps to its view; a pending request past its TTL
     /// reads as expired; an unknown id is not found.
@@ -159,28 +171,28 @@ mod tests {
                 patient: None,
                 issued_at: now,
                 expires_at: now + AUTHORIZATION_CODE_TTL,
-                sid: None,
+                sid: "sid-1".to_owned(),
             })
             .unwrap();
         let reader = AuthorizationStatusReader::new(store);
 
         assert_eq!(
-            reader.status("pending", now).unwrap(),
+            reader.status("pending", Some("sid-1"), now).unwrap(),
             AuthorizationStatusView::Pending
         );
         assert_eq!(
-            reader.status("stale", now).unwrap(),
+            reader.status("stale", Some("sid-1"), now).unwrap(),
             AuthorizationStatusView::Expired
         );
         assert!(matches!(
-            reader.status("denied", now).unwrap(),
+            reader.status("denied", Some("sid-1"), now).unwrap(),
             AuthorizationStatusView::Denied {
                 redirect_uri: Some(_),
                 client_state: Some(_),
             }
         ));
         assert_eq!(
-            reader.status("approved", now).unwrap(),
+            reader.status("approved", Some("sid-1"), now).unwrap(),
             AuthorizationStatusView::Approved {
                 redirect_uri: Url::parse("https://example.com/cb").unwrap(),
                 code: "the-code".to_owned(),
@@ -188,8 +200,46 @@ mod tests {
             }
         );
         assert!(matches!(
-            reader.status("ghost", now),
+            reader.status("ghost", Some("sid-1"), now),
             Err(AuthorizationStatusError::NotFound { .. })
         ));
+    }
+
+    /// Only the browser session a request was made in reads its status:
+    /// another session, no session, and a request made in none (a device
+    /// request) are all the same not-found as an unknown id.
+    #[test]
+    fn status_answers_only_the_session_the_request_was_made_in() {
+        let store = FakeGrantStore::default();
+        let now = Utc::now();
+        store
+            .insert_authorization_request(&code_request(
+                "parked",
+                RequestStatus::Pending,
+                now + Duration::minutes(5),
+            ))
+            .unwrap();
+        store
+            .insert_authorization_request(&device_request("device", "CODE", RequestStatus::Pending))
+            .unwrap();
+        let reader = AuthorizationStatusReader::new(store);
+        assert_eq!(
+            reader.status("parked", Some("sid-1"), now).unwrap(),
+            AuthorizationStatusView::Pending
+        );
+        for (id, polling_sid) in [
+            ("parked", Some("another-sid")),
+            ("parked", None),
+            ("device", Some("sid-1")),
+            ("device", None),
+        ] {
+            assert!(
+                matches!(
+                    reader.status(id, polling_sid, now),
+                    Err(AuthorizationStatusError::NotFound { .. })
+                ),
+                "{id} polled from {polling_sid:?}"
+            );
+        }
     }
 }

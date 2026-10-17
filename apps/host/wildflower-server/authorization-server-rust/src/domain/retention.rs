@@ -167,7 +167,7 @@ mod tests {
             patient: None,
             issued_at: expires_at - Duration::minutes(1),
             expires_at,
-            sid: None,
+            sid: "sid-1".to_owned(),
         }
     }
 

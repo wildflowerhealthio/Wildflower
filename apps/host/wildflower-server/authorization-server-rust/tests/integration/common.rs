@@ -40,6 +40,7 @@ pub use wildflowerhealthio_authorization_server::domain::authorization_code::Iss
 pub use wildflowerhealthio_authorization_server::domain::authorization_request::{
     AuthorizationRequest, GrantType, RequestStatus,
 };
+pub use wildflowerhealthio_authorization_server::domain::browser_session::BrowserSession;
 pub use wildflowerhealthio_authorization_server::domain::client::{
     AllowedGrantType, Client, ClientKind,
 };
@@ -67,6 +68,13 @@ pub struct TestDb {
     /// which is the only observable difference between "parked a request" and
     /// "parked a request and asked the Owner about it".
     pending_consent_rx: watch::Receiver<Option<NewestPendingConsent>>,
+    /// The browser session token of a browser the Owner paired, which holds
+    /// only `wildflower/launch`: a browser `/oauth/authorize` accepts but whose
+    /// session can't decide consents, so its requests park on the wait page.
+    /// Every helper that makes a request in "the app's browser" uses it.
+    pub paired_browser_token: String,
+    /// The `sid` of [`TestDb::paired_browser_token`]'s browser session.
+    pub paired_browser_sid: String,
 }
 
 /// Set up the authorization server over a fresh in-memory database, and mint
@@ -117,11 +125,14 @@ pub fn spin_up_with_authorization_start_gate(
         authorization_start_gate,
     )
     .expect("setup");
-    let db = TestDb {
+    let mut db = TestDb {
         pool,
         revocation_conn,
         pending_consent_rx,
+        paired_browser_token: String::new(),
+        paired_browser_sid: String::new(),
     };
+    (db.paired_browser_sid, db.paired_browser_token) = paired_browser_session(&db);
     let owner_token = mint_owner_token(&db);
     (g, owner_token, db)
 }
@@ -157,6 +168,31 @@ pub fn mint_browser_session_token(db: &TestDb, sid: &str, scopes: &[&str]) -> St
         wildflowerhealthio_authorization_server::BROWSER_SESSION_CLIENT_ID,
         scopes,
         Some(sid),
+    )
+}
+
+/// Start a browser session for a browser the Owner paired, holding only
+/// `wildflower/launch`, and return its `sid` and a token minted under it.
+pub fn paired_browser_session(db: &TestDb) -> (String, String) {
+    let session = BrowserSession::new_approved(
+        "Firefox on Linux".to_owned(),
+        vec!["wildflower/launch".to_owned()],
+        Duration::hours(24),
+        Utc::now(),
+    );
+    store_handle(db)
+        .insert_browser_session(&session)
+        .expect("insert the paired browser's session");
+    let token = mint_browser_session_token(db, &session.sid, &["wildflower/launch"]);
+    (session.sid, token)
+}
+
+/// The `Cookie` header a browser holding the browser session token
+/// `session_token` sends.
+pub fn browser_session_cookie(session_token: &str) -> String {
+    format!(
+        "{}={session_token}",
+        wildflowerhealthio_authorization_server::BROWSER_SESSION_COOKIE
     )
 }
 
@@ -326,11 +362,13 @@ pub async fn post_form(
 }
 
 /// Plant an `Approved` code-flow request plus its redeemable
-/// `AuthorizationCode` straight in the store, returning the `code`. `expires_at`
-/// (shared by both rows) lets a caller force an already-expired code without
-/// sleeping. The challenge is the real S256 digest of [`CODE_VERIFIER`].
+/// `AuthorizationCode` straight in the store, made in the browser session
+/// `sid`. `expires_at` (shared by both rows) lets a caller force an
+/// already-expired code without sleeping. The challenge is the real S256
+/// digest of [`CODE_VERIFIER`].
 pub fn plant_authorization_code(
     store: &SqliteGrantStore,
+    sid: &str,
     client_id: &str,
     redirect_uri: &Url,
     scopes: &[&str],
@@ -363,7 +401,7 @@ pub fn plant_authorization_code(
             launch: None,
             launch_bound_patient: None,
             decidable_in_requesting_browser: false,
-            sid: None,
+            sid: Some(sid.to_owned()),
         })
         .expect("insert request");
     store
@@ -377,7 +415,7 @@ pub fn plant_authorization_code(
             patient: None,
             issued_at: now,
             expires_at,
-            sid: None,
+            sid: sid.to_owned(),
         })
         .expect("issue code");
 }
@@ -441,12 +479,52 @@ pub fn authorize_query(client_id: &str, scope_query: &str) -> String {
     )
 }
 
-/// `GET /oauth/authorize?{query}` on a fresh oneshot of `router`.
-pub async fn get_authorize(router: &axum::Router, query: &str) -> axum::response::Response {
+/// `GET /oauth/authorize?{query}` on a fresh oneshot of `router`, from a
+/// browser holding the browser session token `session_token` (usually
+/// [`TestDb::paired_browser_token`]).
+pub async fn get_authorize(
+    router: &axum::Router,
+    session_token: &str,
+    query: &str,
+) -> axum::response::Response {
+    router
+        .clone()
+        .oneshot(build_request(
+            Request::get(format!("/oauth/authorize?{query}"))
+                .header("cookie", browser_session_cookie(session_token)),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot")
+}
+
+/// `GET /oauth/authorize?{query}` from a browser with no browser session.
+pub async fn get_authorize_without_session(
+    router: &axum::Router,
+    query: &str,
+) -> axum::response::Response {
     router
         .clone()
         .oneshot(build_request(
             Request::get(format!("/oauth/authorize?{query}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot")
+}
+
+/// The wait page's status poll, `GET /oauth/authorize/{request_id}`, from a
+/// browser holding the browser session token `session_token`.
+pub async fn get_authorization_status(
+    router: &axum::Router,
+    session_token: &str,
+    request_id: &str,
+) -> axum::response::Response {
+    router
+        .clone()
+        .oneshot(build_request(
+            Request::get(format!("/oauth/authorize/{request_id}"))
+                .header("cookie", browser_session_cookie(session_token)),
             Body::empty(),
         ))
         .await
@@ -530,9 +608,10 @@ pub async fn approve_oauth_consent(
         .expect("oneshot")
 }
 
-/// Drive `/authorize` → Owner consent approve for one request, returning the
-/// pending request id. Callers assert on the *consequences* (grant rows,
-/// fast-path behaviour, refresh issuance); the flow itself is proven by
+/// Drive `/authorize` → Owner consent approve for one request, made in the
+/// browser holding `session_token`, returning the pending request id.
+/// Callers assert on the *consequences* (grant rows, fast-path behaviour,
+/// refresh issuance); the flow itself is proven by
 /// `auth_code_grant_happy_path_end_to_end`. Uses the shared
 /// `https://app.example/cb` redirect and [`CODE_VERIFIER`]'s challenge.
 ///
@@ -542,24 +621,17 @@ pub async fn approve_oauth_consent(
 pub async fn authorize_and_approve(
     g: &AuthorizationServer,
     owner_token: &str,
+    session_token: &str,
     client_id: &str,
     scope_query: &str,
     approve_body: &'static str,
 ) -> String {
-    let challenge = compute_code_challenge(CODE_VERIFIER);
-    let query = format!(
-        "response_type=code&code_challenge_method=S256&client_id={client_id}&scope={scope_query}&\
-         code_challenge={challenge}&redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz"
-    );
-    let res = g
-        .router
-        .clone()
-        .oneshot(build_request(
-            Request::get(format!("/oauth/authorize?{query}")),
-            Body::empty(),
-        ))
-        .await
-        .expect("oneshot");
+    let res = get_authorize(
+        &g.router,
+        session_token,
+        &authorize_query(client_id, scope_query),
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::FOUND);
     let polling = res
         .headers()

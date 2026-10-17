@@ -47,8 +47,9 @@ pub struct RefreshTokenFamily {
     /// revoked between approval and the token poll). No FK: families outlive
     /// grants by design (expired in place, never deleted).
     pub grant_id: Option<String>,
-    /// The browser session the family was minted under, or `None` when there
-    /// was none (the device-code flow, a browser without a session). Refresh
+    /// The browser session the family was minted under: for the code flow,
+    /// that of the browser that made the request, which every code-flow
+    /// family has; `None` for the device-code flow, which has none. Refresh
     /// is refused once that session is revoked. No FK: the retention sweep
     /// prunes an ended session only once no live family names it.
     pub sid: Option<String>,

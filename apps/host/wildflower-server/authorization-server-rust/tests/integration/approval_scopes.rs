@@ -42,23 +42,20 @@ fn approver_scopes_with(extra_scopes: &[&'static str]) -> Vec<&'static str> {
 }
 
 /// A request from `test-app` for [`REQUESTED_SCOPES`], parked for the Owner.
-async fn parked_request(g: &AuthorizationServer) -> String {
+async fn parked_request(g: &AuthorizationServer, db: &TestDb) -> String {
     parked_request_id(
-        &get_authorize(&g.router, &authorize_query("test-app", REQUESTED_SCOPES)).await,
+        &get_authorize(
+            &g.router,
+            &db.paired_browser_token,
+            &authorize_query("test-app", REQUESTED_SCOPES),
+        )
+        .await,
     )
 }
 
 /// The wait page's status poll for `request_id`.
-async fn request_status(g: &AuthorizationServer, request_id: &str) -> Value {
-    let res = g
-        .router
-        .clone()
-        .oneshot(build_request(
-            Request::get(format!("/oauth/authorize/{request_id}")),
-            Body::empty(),
-        ))
-        .await
-        .expect("oneshot");
+async fn request_status(g: &AuthorizationServer, db: &TestDb, request_id: &str) -> Value {
+    let res = get_authorization_status(&g.router, &db.paired_browser_token, request_id).await;
     assert_eq!(res.status(), StatusCode::OK);
     body_json(res.into_body()).await["status"].clone()
 }
@@ -81,7 +78,7 @@ async fn an_approved_browser_approves_a_registered_app_within_its_own_scopes() {
         &["patient/Observation.rs", "openid"],
     );
     let approver = approved_browser_token(&g, &db, APPROVER_SCOPES).await;
-    let request_id = parked_request(&g).await;
+    let request_id = parked_request(&g, &db).await;
 
     let consent = get_oauth_consent(&g, &approver, &request_id).await;
     assert_eq!(consent["missingApprovalScopes"], serde_json::json!([]));
@@ -95,7 +92,7 @@ async fn an_approved_browser_without_client_create_cannot_register_a_new_app() {
     let (g, _owner_token, db) = spin_up();
     // `test-app` is registered nowhere: the request is `new`.
     let approver = approved_browser_token(&g, &db, APPROVER_SCOPES).await;
-    let request_id = parked_request(&g).await;
+    let request_id = parked_request(&g, &db).await;
 
     let consent = get_oauth_consent(&g, &approver, &request_id).await;
     assert_eq!(
@@ -104,7 +101,7 @@ async fn an_approved_browser_without_client_create_cannot_register_a_new_app() {
     );
     let res = approve_oauth_consent(&g, &approver, &request_id, APPROVE_REQUESTED.to_owned()).await;
     assert_refused_for_lacking(res, &["wildflower/Client.c"]).await;
-    assert_eq!(request_status(&g, &request_id).await, "pending");
+    assert_eq!(request_status(&g, &db, &request_id).await, "pending");
     assert!(
         store_handle(&db)
             .client_by_id("test-app")
@@ -133,7 +130,7 @@ async fn an_approved_browser_without_client_update_cannot_widen_an_app() {
     // would widen it.
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["openid"]);
     let approver = approved_browser_token(&g, &db, APPROVER_SCOPES).await;
-    let request_id = parked_request(&g).await;
+    let request_id = parked_request(&g, &db).await;
 
     let consent = get_oauth_consent(&g, &approver, &request_id).await;
     assert_eq!(
@@ -142,7 +139,7 @@ async fn an_approved_browser_without_client_update_cannot_widen_an_app() {
     );
     let res = approve_oauth_consent(&g, &approver, &request_id, APPROVE_REQUESTED.to_owned()).await;
     assert_refused_for_lacking(res, &["wildflower/Client.u"]).await;
-    assert_eq!(request_status(&g, &request_id).await, "pending");
+    assert_eq!(request_status(&g, &db, &request_id).await, "pending");
 
     let widening_approver =
         approved_browser_token(&g, &db, &approver_scopes_with(&["wildflower/Client.u"])).await;
@@ -175,7 +172,7 @@ async fn an_approved_browser_without_grant_create_cannot_approve_a_code_request(
         ],
     )
     .await;
-    let request_id = parked_request(&g).await;
+    let request_id = parked_request(&g, &db).await;
 
     let consent = get_oauth_consent(&g, &approver, &request_id).await;
     assert_eq!(
@@ -184,7 +181,7 @@ async fn an_approved_browser_without_grant_create_cannot_approve_a_code_request(
     );
     let res = approve_oauth_consent(&g, &approver, &request_id, APPROVE_REQUESTED.to_owned()).await;
     assert_refused_for_lacking(res, &["wildflower/Grant.c"]).await;
-    assert_eq!(request_status(&g, &request_id).await, "pending");
+    assert_eq!(request_status(&g, &db, &request_id).await, "pending");
 }
 
 #[tokio::test]
@@ -235,10 +232,10 @@ async fn an_approved_browser_without_grant_create_cannot_approve_a_device_reques
 /// none and registers a new app as before.
 #[tokio::test]
 async fn an_owner_session_lacks_no_approval_scope() {
-    let (g, _owner_token, _db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     let owner_session_token = signed_in_owner_session_token(&g).await;
     // `test-app` is registered nowhere: the request is `new`.
-    let request_id = parked_request(&g).await;
+    let request_id = parked_request(&g, &db).await;
 
     let consent = get_oauth_consent(&g, &owner_session_token, &request_id).await;
     assert_eq!(consent["missingApprovalScopes"], serde_json::json!([]));

@@ -1,5 +1,7 @@
 //! [`CodeAuthorizationStarter`] — the `/oauth/authorize` flow (RFC 6749 §3.1,
-//! §4.1.1; RFC 7636). Validates the request, parks it, and either issues a
+//! §4.1.1; RFC 7636), for a browser that holds a browser session (the handler
+//! sends one without a session to pairing first). Validates the request,
+//! parks it, and either issues a
 //! code on the spot under a
 //! [`StandingGrantCoverage`](crate::domain::authority::StandingGrantCoverage)
 //! proof (the one path that issues a code with no human in the loop — named as
@@ -56,9 +58,10 @@ pub(crate) struct AuthorizeRequest<'a> {
     /// as its registration verdict calls for; that is recorded on a parked
     /// request.
     pub(crate) requesting_browser_grant: Option<&'a Grant>,
-    /// The browser session the browser making the request holds, if any,
-    /// recorded on the parked request and on the code it earns.
-    pub(crate) sid: Option<&'a str>,
+    /// The browser session the browser making the request holds, recorded on
+    /// the parked request and on the code it earns. A browser without one
+    /// never gets this far: `/oauth/authorize` sends it to pairing.
+    pub(crate) sid: &'a str,
 }
 
 /// The identifiers the flow mints; supplied by the caller so tests can inject
@@ -162,8 +165,10 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
     /// A declared `aud` must be this server's origin (its FHIR base). A
     /// `launch` must name an unconsumed, unexpired launch context minted for
     /// this client; it is consumed (so it never works twice) and carried onto
-    /// the parked request. Either failure is `invalid_request`, the same for
-    /// every reason a launch is refused. A request with no `launch` is plain
+    /// the parked request. A launch this client may consume that is already
+    /// used or expired renders the local "launch again" page
+    /// ([`OAuthErrorKind::ExpiredLaunch`]); any other refused launch, and a
+    /// wrong `aud`, is `invalid_request`. A request with no `launch` is plain
     /// OAuth. When the launch binds a patient, the fast path applies only if
     /// the standing grant names the same one; otherwise the Owner decides.
     ///
@@ -248,15 +253,18 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
         let launch_context = match authorize_query.launch {
             None => None,
             Some(launch) => {
-                let Some(launch_context) = LaunchContexts::over(&self.store).consume(
-                    launch,
-                    authorize_query.client_id,
-                    now,
-                )?
+                let launch_contexts = LaunchContexts::over(&self.store);
+                let Some(launch_context) =
+                    launch_contexts.consume(launch, authorize_query.client_id, now)?
                 else {
+                    if launch_contexts.is_spent_for(launch, authorize_query.client_id, now)? {
+                        return Err(AuthorizationStartError::LocalPage(
+                            OAuthErrorKind::ExpiredLaunch,
+                        ));
+                    }
                     tracing::warn!(
                         client_id = authorize_query.client_id,
-                        "refused a launch that is unknown, consumed, expired, or for another client",
+                        "refused a launch that is unknown or for another client",
                     );
                     return Err(start_error(
                         authorize_query,
@@ -283,7 +291,7 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
                 ttl: AUTHORIZATION_REQUEST_TTL,
                 launch_context,
                 decidable_in_requesting_browser,
-                sid: authorize_query.sid.map(str::to_owned),
+                sid: authorize_query.sid.to_owned(),
             });
         self.store
             .insert_authorization_request(parked_request.request())?;
@@ -480,6 +488,7 @@ mod tests {
 
     use super::*;
     use crate::domain::authorization_request::RequestStatus;
+    use crate::domain::browser_session::BrowserSession;
     use crate::domain::client::ClientKind;
     use crate::domain::grant::AuthorizationCodeGrant;
     use crate::domain::launch_context::{LaunchContext, LAUNCH_CONTEXT_TTL};
@@ -491,6 +500,9 @@ mod tests {
 
     const CHALLENGE: &str = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
     const SERVER_ORIGIN: &str = "https://ruth.relay.example";
+    /// The browser session every request here is made in, standing in the
+    /// starter's store.
+    const REQUESTING_SID: &str = "requesting-sid";
 
     fn request<'a>(client_id: &'a str, scope: &'a str) -> AuthorizeRequest<'a> {
         AuthorizeRequest {
@@ -504,7 +516,7 @@ mod tests {
             launch: None,
             aud: None,
             requesting_browser_grant: None,
-            sid: None,
+            sid: REQUESTING_SID,
         }
     }
 
@@ -522,6 +534,17 @@ mod tests {
         Arc<RecordingOwnerApproval>,
     ) {
         seed_active_signing_key(&store);
+        store
+            .insert_browser_session(&BrowserSession {
+                sid: REQUESTING_SID.to_owned(),
+                ..BrowserSession::new_approved(
+                    "Firefox on Linux".to_owned(),
+                    vec!["wildflower/launch".to_owned()],
+                    Duration::hours(24),
+                    Utc::now(),
+                )
+            })
+            .unwrap();
         let owner_approval = Arc::new(RecordingOwnerApproval::default());
         let code_authorization_starter = CodeAuthorizationStarter::new(
             store,
@@ -533,9 +556,9 @@ mod tests {
     }
 
     /// A registered client with a standing grant covering every requested
-    /// scope takes the fast path: the request is parked_request and approved, a code
-    /// is issued under the grant's authority (with its patient), and the popup
-    /// head is recomputed.
+    /// scope takes the fast path: the request is parked and approved, a code
+    /// is issued under the grant's authority (with its patient) and the
+    /// requesting browser's session, and the popup head is recomputed.
     #[test]
     fn a_fully_covered_registered_request_is_issued_a_code_without_a_human() {
         let store = FakeGrantStore::default();
@@ -572,6 +595,17 @@ mod tests {
             .expect("parked_request");
         assert_eq!(parked_request.status, RequestStatus::Approved);
         assert_eq!(parked_request.patient.as_deref(), Some("pat-1"));
+        assert_eq!(parked_request.sid.as_deref(), Some(REQUESTING_SID));
+        assert_eq!(
+            code_authorization_starter
+                .store
+                .authorization_code_by_request_id("req-1")
+                .unwrap()
+                .expect("the code")
+                .sid,
+            REQUESTING_SID,
+            "the code is issued under the requesting browser's session"
+        );
         assert_eq!(owner_approval.count(), 1);
     }
 
@@ -593,7 +627,7 @@ mod tests {
         let (code_authorization_starter, owner_approval) = starter(store);
         let outcome = code_authorization_starter.start(
             &AuthorizeRequest {
-                sid: Some("no-such-sid"),
+                sid: "no-such-sid",
                 ..request("app", "patient/Patient.r")
             },
             ids(),
@@ -813,7 +847,8 @@ mod tests {
     }
 
     /// A valid `launch` is consumed and its context carried onto the parked
-    /// request; presenting it again is refused.
+    /// request; presenting it again renders the local page that asks for a
+    /// new launch, and parks nothing.
     #[test]
     fn a_launch_is_consumed_onto_the_parked_request_once() {
         let code_authorization_starter = registered_app_starter();
@@ -843,10 +878,9 @@ mod tests {
         };
         assert!(matches!(
             code_authorization_starter.start(&authorize_query, replay, now),
-            Err(AuthorizationStartError::Redirectable {
-                error: OAuthErrorCode::InvalidRequest,
-                ..
-            })
+            Err(AuthorizationStartError::LocalPage(
+                OAuthErrorKind::ExpiredLaunch
+            ))
         ));
         assert!(
             code_authorization_starter
@@ -858,21 +892,19 @@ mod tests {
         );
     }
 
-    /// A launch minted for another client, a forged one, and an expired one are
-    /// all the same `invalid_request`; the other client's launch is left for
-    /// its own client to consume. No `launch` at all is plain OAuth.
+    /// A launch minted for another client and a forged one are the same
+    /// `invalid_request`, back to a trusted redirect or as the local page;
+    /// the other client's launch is left for its own client to consume. No
+    /// `launch` at all is plain OAuth.
     #[test]
-    fn a_launch_for_another_client_forged_or_expired_is_refused() {
+    fn a_launch_for_another_client_or_forged_is_refused() {
         let code_authorization_starter = registered_app_starter();
         let now = Utc::now();
         let launch_contexts = launch_contexts_of(&code_authorization_starter);
         launch_contexts
             .mint("other-app", "for-other-app".to_owned(), now)
             .unwrap();
-        launch_contexts
-            .mint("app", "expired".to_owned(), now - LAUNCH_CONTEXT_TTL)
-            .unwrap();
-        for launch in ["for-other-app", "forged", "expired"] {
+        for launch in ["for-other-app", "forged"] {
             let authorize_query = AuthorizeRequest {
                 launch: Some(launch),
                 ..request("app", "openid")
@@ -909,6 +941,46 @@ mod tests {
             code_authorization_starter.start(&request("app", "openid"), ids(), now),
             Ok(AuthorizeNextStep::AwaitOwner { .. })
         ));
+    }
+
+    /// A launch minted for this client that has expired (as one may while
+    /// the Owner approves the browser's pairing) renders the local page that
+    /// asks the user to launch the app again, whether or not the redirect is
+    /// trusted, and parks nothing.
+    #[test]
+    fn an_expired_launch_asks_for_a_new_launch() {
+        let code_authorization_starter = registered_app_starter();
+        let now = Utc::now();
+        launch_contexts_of(&code_authorization_starter)
+            .mint("app", "expired".to_owned(), now - LAUNCH_CONTEXT_TTL)
+            .unwrap();
+        launch_contexts_of(&code_authorization_starter)
+            .mint_for_any_client("expired-any".to_owned(), now - LAUNCH_CONTEXT_TTL)
+            .unwrap();
+        for (client_id, launch) in [
+            ("app", "expired"),
+            ("app", "expired-any"),
+            ("newcomer", "expired-any"),
+        ] {
+            let authorize_query = AuthorizeRequest {
+                launch: Some(launch),
+                ..request(client_id, "openid")
+            };
+            assert!(
+                matches!(
+                    code_authorization_starter.start(&authorize_query, ids(), now),
+                    Err(AuthorizationStartError::LocalPage(
+                        OAuthErrorKind::ExpiredLaunch
+                    ))
+                ),
+                "{client_id} presenting {launch}",
+            );
+        }
+        assert!(code_authorization_starter
+            .store
+            .authorization_request_by_id("req-1")
+            .unwrap()
+            .is_none());
     }
 
     /// A request refused for another reason leaves its launch unspent.

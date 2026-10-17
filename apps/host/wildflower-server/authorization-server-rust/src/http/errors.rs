@@ -296,7 +296,11 @@ fn title_and_body(kind: &OAuthErrorKind) -> (&'static str, &'static str) {
         ),
         OAuthErrorKind::InvalidLaunch => (
             "Invalid launch",
-            "The supplied launch is unknown, already used, expired, or for another app.",
+            "The supplied launch is unknown or for another app.",
+        ),
+        OAuthErrorKind::ExpiredLaunch => (
+            "Launch expired",
+            "This app launch has expired. Launch the app again.",
         ),
         OAuthErrorKind::InvalidAudience => (
             "Invalid audience",

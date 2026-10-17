@@ -62,9 +62,24 @@ pub(super) fn consume_launch_context(
     .map_err(|e| AuthorizationServerError::infrastructure("consume_launch_context failed", e))
 }
 
+/// The launch context `nonce` names, whatever its state; `None` when no row
+/// has that nonce.
+pub(super) fn launch_context_by_nonce(
+    conn: &mut SqliteConnection,
+    nonce: &str,
+) -> Result<Option<LaunchContext>, AuthorizationServerError> {
+    launch_contexts::table
+        .find(nonce)
+        .select(LaunchContext::as_select())
+        .first(conn)
+        .optional()
+        .map_err(|e| AuthorizationServerError::infrastructure("launch_context_by_nonce failed", e))
+}
+
 /// Delete every launch context that expired at or before `now`, consumed or
 /// not, returning how many rows went. An expired context can never be
-/// consumed, so nothing reads it again.
+/// consumed; until it is pruned, `/oauth/authorize` still reads it to tell an
+/// expired launch from an unknown one.
 pub(super) fn delete_launch_contexts_expired_by(
     conn: &mut SqliteConnection,
     now: DateTime<Utc>,
@@ -180,6 +195,46 @@ mod tests {
         assert!(consume("forged", "app", now).is_none());
         assert!(consume("nonce-1", "app", now + LAUNCH_CONTEXT_TTL).is_none());
         assert!(consume("nonce-1", "app", now).is_some());
+    }
+
+    /// A context is read by its nonce whether consumed or expired, until the
+    /// prune deletes it; an unknown nonce reads as nothing.
+    #[test]
+    fn a_context_is_read_by_its_nonce_until_it_is_pruned() {
+        let store = store();
+        let now = chrono::Utc::now();
+        let expired =
+            LaunchContext::for_client("expired".to_owned(), "app", None, now - LAUNCH_CONTEXT_TTL);
+        store
+            .with_connection(|tx| {
+                tx.insert_launch_context(&expired)?;
+                tx.insert_launch_context(&LaunchContext::for_client(
+                    "consumed".to_owned(),
+                    "app",
+                    None,
+                    now,
+                ))
+            })
+            .expect("insert");
+        store
+            .with_connection(|tx| tx.consume_launch_context("consumed", "app", now))
+            .expect("consume")
+            .expect("live context");
+        let read = |nonce: &str| {
+            store
+                .with_connection(|tx| tx.launch_context_by_nonce(nonce))
+                .expect("read")
+        };
+        assert_eq!(read("expired"), Some(expired));
+        assert_eq!(
+            read("consumed").and_then(|context| context.consumed_at),
+            Some(now)
+        );
+        assert_eq!(read("forged"), None);
+        store
+            .with_connection(|tx| tx.delete_launch_contexts_expired_by(now))
+            .expect("prune");
+        assert_eq!(read("expired"), None, "a pruned context is gone");
     }
 
     /// The prune deletes contexts expired at or before `now`, consumed or not,

@@ -62,7 +62,7 @@ impl TestAuthorizationServer {
                     ttl: chrono::Duration::minutes(5),
                     launch_context: None,
                     decidable_in_requesting_browser: false,
-                    sid: None,
+                    sid: "requesting-browser".to_owned(),
                 },
             ))
             .unwrap();

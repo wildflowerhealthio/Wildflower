@@ -18,7 +18,9 @@
 //! through the relay is answered there, and logged.
 //!
 //! A SMART app's launch carries a `launch` the apps slice mints through
-//! the authorization server, which the app's `/oauth/authorize` consumes once.
+//! the authorization server, which the app's `/oauth/authorize` consumes once,
+//! from a browser with a browser session; a browser without one is sent to
+//! pairing first, leaving the launch unspent.
 //! A visitor that starts authorization requests faster than its allowance is
 //! answered `429`, and the request log records it.
 //! The FHIR API takes a browser session cookie as its bearer, which
@@ -983,9 +985,14 @@ async fn the_tunnel_listener_serves_remote_requests_as_the_public_origin() {
     shut_down(&shutdown, serving).await;
 }
 
-/// `GET /oauth/authorize` for the seeded Plots client with `launch`,
-/// as the app's browser would reach it; the `Location` it redirects to.
-async fn authorize_plots_launch(tunnel: &TunnelClient, launch: &str, aud: &str) -> String {
+/// `GET /oauth/authorize` for the seeded Plots client with `launch`, as the
+/// app's browser would reach it, carrying `session_cookie` when there is one.
+async fn authorize_plots_launch(
+    tunnel: &TunnelClient,
+    session_cookie: Option<&str>,
+    launch: &str,
+    aud: &str,
+) -> TunnelResponse {
     let mut authorize_url = Url::parse(SERVER_ORIGIN)
         .and_then(|origin| origin.join("oauth/authorize"))
         .expect("authorize URL");
@@ -1003,23 +1010,28 @@ async fn authorize_plots_launch(tunnel: &TunnelClient, launch: &str, aud: &str) 
         .append_pair("state", "xyz")
         .append_pair("launch", launch)
         .append_pair("aud", aud);
-    let response = tunnel.send(get(&path_of(authorize_url.as_str()))).await;
-    assert_eq!(response.status, StatusCode::FOUND);
-    response.location()
+    let request = request(Method::GET, &path_of(authorize_url.as_str()));
+    let request = match session_cookie {
+        Some(session_cookie) => request.header(header::COOKIE, session_cookie),
+        None => request,
+    };
+    tunnel
+        .send(request.body(Full::default()).expect("a request"))
+        .await
 }
 
 /// The composition root's launch wiring: `POST /apps/{id}` for a SMART app
 /// answers its launch URL with the FHIR base as `iss` and a `launch` the authorization server
-/// minted for the app's client, and that `launch` parks one authorization
-/// request at `/oauth/authorize`, then is refused.
+/// minted for the app's client. A browser without a session is sent to
+/// pairing and leaves the launch unspent; the signed-in browser's request
+/// parks one authorization request with it, and a second use asks for a new
+/// launch.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_smart_launch_is_minted_for_its_client_and_consumed_once() {
-    let server_dir = tempfile::tempdir().expect("temp server folder");
-    let shutdown = CancellationToken::new();
-    let (tunnel, _handles, serving) =
-        start_serving(server_dir.path(), observers(), shutdown.clone()).await;
+    let server = UiServer::start().await;
+    let tunnel = &server.tunnel;
     let launcher = client_token(
-        server_dir.path(),
+        server.server_dir.path(),
         SERVER_ORIGIN,
         &[
             "system/*.cruds".to_owned(),
@@ -1050,18 +1062,31 @@ async fn a_smart_launch_is_minted_for_its_client_and_consumed_once() {
     assert_eq!(iss, SERVER_ORIGIN);
     assert!(!launch.is_empty());
 
-    let parked = authorize_plots_launch(&tunnel, &launch, &iss).await;
+    let sessionless = authorize_plots_launch(tunnel, None, &launch, &iss).await;
+    assert_eq!(sessionless.status, StatusCode::FOUND);
     assert!(
-        parked.ends_with("/wait"),
-        "the launch parks a request for the Owner, got {parked}"
-    );
-    assert_eq!(
-        authorize_plots_launch(&tunnel, &launch, &iss).await,
-        "https://plots.wildflowerhealth.io/?error=invalid_request&state=xyz",
-        "the launch works once"
+        sessionless.location().starts_with("pair?next="),
+        "a browser without a session pairs first, got {}",
+        sessionless.location()
     );
 
-    shut_down(&shutdown, serving).await;
+    let owner_cookie = server.sign_in_as_the_owner().await;
+    let parked = authorize_plots_launch(tunnel, Some(&owner_cookie), &launch, &iss).await;
+    assert_eq!(parked.status, StatusCode::FOUND);
+    assert!(
+        parked.location().ends_with("/consent"),
+        "the launch parks a request for the Owner, got {}",
+        parked.location()
+    );
+    let replayed = authorize_plots_launch(tunnel, Some(&owner_cookie), &launch, &iss).await;
+    assert_eq!(
+        replayed.status,
+        StatusCode::BAD_REQUEST,
+        "the launch works once"
+    );
+    assert!(replayed.text().contains("Launch the app again"));
+
+    server.shut_down().await;
 }
 
 /// Every URL the SMART discovery document advertises is on the server's
@@ -1210,9 +1235,10 @@ impl UiServer {
 /// The FHIR web UI's sign-in through the composed server, as far as a test
 /// reaches: its assets are served without a session, the UI sends the
 /// browser to the authorization server's authorize endpoint on the server's
-/// origin as its seeded client, the Owner approves, and the browser is sent
-/// back to the UI's callback there. A FHIR read without a session is refused
-/// at the gate.
+/// origin as its seeded client, which sends a browser without a browser
+/// session to pairing first. The Owner's signed-in browser parks the request,
+/// the Owner approves, and the browser is sent back to the UI's callback
+/// there. A FHIR read without a session is refused at the gate.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_fhir_ui_sends_its_sign_in_through_the_authorization_server() {
     let server = UiServer::start().await;
@@ -1235,12 +1261,29 @@ async fn the_fhir_ui_sends_its_sign_in_through_the_authorization_server() {
         "sent to the authorization server's authorize endpoint, got {authorize_url}"
     );
 
-    let parked = server.tunnel.send(get(&path_of(&authorize_url))).await;
-    let wait_page = parked.location();
-    let request_id = wait_page
+    let sessionless = server.tunnel.send(get(&path_of(&authorize_url))).await;
+    assert_eq!(sessionless.status, StatusCode::FOUND);
+    assert!(
+        sessionless.location().starts_with("pair?next="),
+        "a browser without a session pairs first, got {}",
+        sessionless.location()
+    );
+
+    let owner_cookie = server.sign_in_as_the_owner().await;
+    let parked = server
+        .tunnel
+        .send(
+            request(Method::GET, &path_of(&authorize_url))
+                .header(header::COOKIE, &owner_cookie)
+                .body(Full::default())
+                .expect("a request"),
+        )
+        .await;
+    let consent_card = parked.location();
+    let request_id = consent_card
         .strip_prefix("authorize/")
-        .and_then(|rest| rest.strip_suffix("/wait"))
-        .unwrap_or_else(|| panic!("parked for the Owner, got {wait_page}"));
+        .and_then(|rest| rest.strip_suffix("/consent"))
+        .unwrap_or_else(|| panic!("parked for the Owner, got {consent_card}"));
     let owner_scopes: Vec<String> =
         wildflowerhealthio_authorization_server::WILDFLOWER_WIDEST_SCOPES
             .iter()
