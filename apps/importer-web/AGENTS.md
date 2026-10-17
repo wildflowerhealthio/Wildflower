@@ -72,7 +72,9 @@ runtime:
 queries gets one. So this app's router supplies the same
 `RouterContextWith<FhirR4ResourcesHttpApiClient>` shape, rather than the slice
 package growing a second, prop-threaded way in. The router also carries the
-tabs, so each can be linked to.
+tabs, so the address bar names the open one. A link from outside the page
+still opens on Import: a visit with no callback in its URL goes through the
+launch, whose redirect URI is the app directory.
 
 ## EHR launch and standalone launch
 

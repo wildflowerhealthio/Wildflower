@@ -69,12 +69,13 @@ afterEach(() => {
 describe('AppRoot over the address bar', () => {
   it('should leave the callback URL alone through the exchange, then open Import', async () => {
     // Arrange: an exchange the test completes, taking `code` and `state` out
-    // of the address bar as fhirclient does.
+    // of the address bar as fhirclient does: over an empty state, which drops
+    // the tags the browser history gave the entry.
     let completeExchange: () => void = () => {}
     readyMock.mockReturnValue(
       new Promise((resolve) => {
         completeExchange = () => {
-          window.history.replaceState(window.history.state, '', BASEPATH)
+          window.history.replaceState({}, '', BASEPATH)
           resolve(readyClient)
         }
       })

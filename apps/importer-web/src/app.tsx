@@ -36,7 +36,7 @@ interface ImporterAppProps {
  * everything below this point is the part worth testing.
  *
  * The router reads the address bar, under `basepath`, and each tab is a child
- * route of it, so a tab can be linked to. It is mounted only once the SMART
+ * route of it, so the address bar names the open tab. It is mounted only once the SMART
  * handshake has completed, by when fhirclient has taken `code` and `state` out
  * of the address bar: the router matches the URL and redirects `/` to a tab, so
  * building it any earlier could rewrite the callback URL the token exchange
