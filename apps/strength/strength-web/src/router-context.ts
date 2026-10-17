@@ -1,16 +1,20 @@
+import type { QueryClient } from '@tanstack/react-query'
 import { useRouteContext } from '@tanstack/react-router'
 import type { RunAuthed } from '@wildflowerhealthio/fhir-r4-react'
 
 import type { SmartClient } from './smart-client.ts'
 
 /**
- * What every route reads from the router, fixed for the visit: the SMART
- * client the handshake completed with, the write runner over it and the
- * StrongLifts template ids. Whose record the page shows, and whether the
- * picker is up, is the root route's search, so a patient change is a
- * navigation and the router lives as long as the page.
+ * What every route reads from the router, fixed for the visit: the page's
+ * query cache, the SMART client the handshake completed with, the write
+ * runner over it and the StrongLifts template ids. Whose record the page
+ * shows is the path (`/patients/$patientId`, or every patient's
+ * `/workouts`), so a patient change is a navigation and the router lives as
+ * long as the page.
  */
 interface RouterContext {
+  /** The page's one query cache, which the handshake ran on too. */
+  readonly queryClient: QueryClient
   /** The client the completed SMART handshake handed the app. */
   readonly client: SmartClient
   /** Runs a write against the FHIR server the handshake named, with the granted token. */

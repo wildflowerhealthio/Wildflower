@@ -16,7 +16,6 @@ import {
   renderWithQueryClient,
   seedStartedLifter,
   startStrengthTest,
-  tabLink,
 } from './strength-app.test-helpers.ts'
 
 const { handshakeMock } = vi.hoisted(() => ({
@@ -39,8 +38,8 @@ const { App } = await import('./app.tsx')
 const { buildRouter } = await import('./router.ts')
 
 /**
- * `App`: the patient chosen — the URL's, the launch's, or the picker's —
- * decides what mounts, over the in-memory FHIR server (see
+ * `App`: where a completed launch lands — its patient's page, or the picker
+ * — and the picker's navigations, over the in-memory FHIR server (see
  * `strength-app.test-helpers.ts`). The SMART handshake (which needs a browser
  * redirect) and `useLaunchFailureRedirect` (which would navigate away) are
  * stubbed.
@@ -60,21 +59,22 @@ afterEach(() => {
 })
 
 describe('App', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
-  it('should offer the patient picker when the launch names no patient, reading no record', async () => {
+  it('should open the patient picker when the launch names no patient, reading no record', async () => {
     // Arrange
     handshakeMock.mockReturnValue({ kind: 'ready', client: server.clientFor(null) })
 
     // Act
     renderWithQueryClient(<App page={openTestPage()} />)
 
-    // Assert — only patients are searched
+    // Assert — the picker's own path, and only patients are searched
     expect(await screen.findByRole('button', { name: /Ada Lovelace/ })).toBeDefined()
     expect(screen.getByRole('button', { name: /All patients/ })).toBeDefined()
+    expect(currentRoute()).toBe('patients')
     expect(server.searches.map(resourceTypeOfQuery)).toEqual(['Patient'])
     expect(server.writes).toEqual([])
   })
 
-  it('should mount the lifting screens for the patient picked, and write the pick to the URL', async () => {
+  it('should open the lifter picked on their Today', async () => {
     // Arrange
     const user = userEvent.setup()
     seedStartedLifter(server)
@@ -86,10 +86,26 @@ describe('App', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
 
     // Assert
     expect(await screen.findByRole('heading', { name: 'Workout A' })).toBeDefined()
-    expect(new URLSearchParams(window.location.search).get('patient')).toBe(PATIENT_ID)
+    expect(currentRoute()).toBe(`patients/${PATIENT_ID}/today`)
   })
 
-  it('should go back to the picker on Change patient', async () => {
+  it('should open the launch’s patient on their Today, in the app root’s place', async () => {
+    // Arrange
+    seedStartedLifter(server)
+    handshakeMock.mockReturnValue({ kind: 'ready', client: server.clientFor(PATIENT_ID) })
+    const historyLength = window.history.length
+
+    // Act
+    renderWithQueryClient(<App page={openTestPage()} />)
+
+    // Assert
+    expect(await screen.findByRole('heading', { name: 'Workout A' })).toBeDefined()
+    expect(screen.getByRole('heading', { name: 'Strength', level: 1 })).toBeDefined()
+    expect(currentRoute()).toBe(`patients/${PATIENT_ID}/today`)
+    expect(window.history.length).toBe(historyLength)
+  })
+
+  it('should push the picker on Change patient, closing it on Back', async () => {
     // Arrange
     const user = userEvent.setup()
     seedStartedLifter(server)
@@ -102,9 +118,18 @@ describe('App', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
 
     // Assert
     expect(await screen.findByRole('heading', { name: 'Choose a patient' })).toBeDefined()
+    expect(currentRoute()).toBe('patients')
+
+    // Act
+    window.history.back()
+
+    // Assert
+    expect(await screen.findByRole('heading', { name: 'Workout A' })).toBeDefined()
+    expect(currentRoute()).toBe(`patients/${PATIENT_ID}/today`)
+    expect(screen.queryByRole('heading', { name: 'Choose a patient' })).toBeNull()
   })
 
-  it('should open History on a change to All patients from Today, in the same router', async () => {
+  it("should open every patient's workouts on All patients, in the same router, and step Back through the picker", async () => {
     // Arrange
     const user = userEvent.setup()
     seedStartedLifter(server)
@@ -117,47 +142,12 @@ describe('App', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
     await user.click(screen.getByRole('button', { name: 'Change patient' }))
     await user.click(await screen.findByRole('button', { name: /All patients/ }))
 
-    // Assert — History, not Today's "Choose a patient" card, and no new router
+    // Assert — no new router
     await waitFor(() => {
-      expect(currentRoute()).toBe('history')
+      expect(currentRoute()).toBe('workouts')
     })
-    expect(new URLSearchParams(window.location.search).get('patient')).toBe('*')
-    expect(tabLink('History').getAttribute('aria-current')).toBe('page')
-    expect(screen.queryByText('Choose a patient to train')).toBeNull()
+    expect(screen.getByText('All patients')).toBeDefined()
     expect(vi.mocked(buildRouter).mock.calls).toHaveLength(routersBuilt)
-  })
-
-  it('should close the picker on Back, returning to the lifter’s Today', async () => {
-    // Arrange
-    const user = userEvent.setup()
-    seedStartedLifter(server)
-    handshakeMock.mockReturnValue({ kind: 'ready', client: server.clientFor(PATIENT_ID) })
-    renderWithQueryClient(<App page={openTestPage()} />)
-    await screen.findByRole('heading', { name: 'Workout A' })
-    await user.click(screen.getByRole('button', { name: 'Change patient' }))
-    await screen.findByRole('heading', { name: 'Choose a patient' })
-
-    // Act
-    window.history.back()
-
-    // Assert
-    expect(await screen.findByRole('heading', { name: 'Workout A' })).toBeDefined()
-    expect(currentRoute()).toBe('today')
-    expect(screen.queryByRole('heading', { name: 'Choose a patient' })).toBeNull()
-  })
-
-  it('should return through the picker to the lifter’s Today on Back from a patient change', async () => {
-    // Arrange
-    const user = userEvent.setup()
-    seedStartedLifter(server)
-    handshakeMock.mockReturnValue({ kind: 'ready', client: server.clientFor(PATIENT_ID) })
-    renderWithQueryClient(<App page={openTestPage()} />)
-    await screen.findByRole('heading', { name: 'Workout A' })
-    await user.click(screen.getByRole('button', { name: 'Change patient' }))
-    await user.click(await screen.findByRole('button', { name: /All patients/ }))
-    await waitFor(() => {
-      expect(currentRoute()).toBe('history')
-    })
 
     // Act — Back to the picker's entry
     window.history.back()
@@ -170,20 +160,7 @@ describe('App', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
 
     // Assert
     expect(await screen.findByRole('heading', { name: 'Workout A' })).toBeDefined()
-    expect(currentRoute()).toBe('today')
+    expect(currentRoute()).toBe(`patients/${PATIENT_ID}/today`)
     expect(screen.getByText('Ada Lovelace · born 1990-01-01')).toBeDefined()
-  })
-
-  it('should mount the lifting screens for the patient the launch names', async () => {
-    // Arrange
-    seedStartedLifter(server)
-    handshakeMock.mockReturnValue({ kind: 'ready', client: server.clientFor(PATIENT_ID) })
-
-    // Act
-    renderWithQueryClient(<App page={openTestPage()} />)
-
-    // Assert
-    expect(await screen.findByRole('heading', { name: 'Workout A' })).toBeDefined()
-    expect(screen.getByRole('heading', { name: 'Wildflower Strength', level: 1 })).toBeDefined()
   })
 })

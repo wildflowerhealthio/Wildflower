@@ -4,8 +4,8 @@ import { Array as Arr, Match } from 'effect'
 import type { JSX } from 'react'
 
 import { LifterTab } from '../-lifter-tab.tsx'
-import { useStrengthContext } from '../../router-context.ts'
-import { StartProgram } from '../../start-program/start-program.tsx'
+import { useStrengthContext } from '../../../../router-context.ts'
+import { StartProgram } from '../../../../start-program/start-program.tsx'
 import { WorkoutDue } from './-workout-due.tsx'
 
 /**
@@ -45,8 +45,8 @@ function TodayTab(): JSX.Element {
   )
 }
 
-/** `/today`, the Today tab. */
-const Route = createFileRoute('/today')({
+/** `/patients/$patientId/today`, the lifter's Today tab. */
+const Route = createFileRoute('/patients/$patientId/today')({
   component: TodayTab,
 })
 

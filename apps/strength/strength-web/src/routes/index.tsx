@@ -1,27 +1,29 @@
-import { createFileRoute, redirect } from '@tanstack/react-router'
-import { PATIENT_PARAM, routedPatientChoiceOf } from '@wildflowerhealthio/smart-app-react'
-import { Option } from 'effect'
+import { createFileRoute, Link } from '@tanstack/react-router'
+import { AppLanding } from '@wildflowerhealthio/branding-react'
+import type { JSX } from 'react'
 
 /**
- * `/` itself, which opens the chosen patient's first tab, replacing the bare
- * path in history, so Back leaves the page (or returns to the patient
- * before) rather than landing on it again: Today for a lifter, and History
- * for All patients, whose Today only asks for a patient. A patient choice
- * navigates here, so each choice opens on its first tab.
- *
- * @remarks
- * With no patient chosen yet it stays: the root shows the patient picker in
- * place of the tabs, and choosing navigates back here with the choice.
+ * The introduction, connected: `AppLanding`'s introduction of the app, the
+ * one the standalone landing shows beside its connect menu, with the way
+ * into the app in its place, the patient picker.
+ */
+function StrengthIntroduction(): JSX.Element {
+  return (
+    <AppLanding app="strength">
+      <Link to="/patients" className="button-2 filled">
+        Choose a patient
+      </Link>
+    </AppLanding>
+  )
+}
+
+/**
+ * `/`, the introduction. A completed launch never stays on it (the handshake
+ * gate opens the launch's route, its patient or the picker), so it is what a
+ * later visit to the app root inside the visit shows.
  */
 const Route = createFileRoute('/')({
-  beforeLoad: ({ search, context }) => {
-    const patientChoice = routedPatientChoiceOf(search[PATIENT_PARAM], context.client.patient.id)
-    if (Option.isNone(patientChoice)) return
-    throw redirect({
-      to: patientChoice.value.kind === 'patient' ? '/today' : '/history',
-      replace: true,
-    })
-  },
+  component: StrengthIntroduction,
 })
 
 export { Route }

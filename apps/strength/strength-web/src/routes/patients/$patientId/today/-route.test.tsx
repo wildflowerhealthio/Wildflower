@@ -4,7 +4,7 @@ import { ExerciseSetObservation, WorkoutProcedure } from '@wildflowerhealthio/st
 import { DateTime, Option } from 'effect'
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
 
-import { type FakeFhirServer, idsOf } from '../../fake-fhir-server.test-helpers.ts'
+import { type FakeFhirServer, idsOf } from '../../../../fake-fhir-server.test-helpers.ts'
 import {
   decodedOfType,
   END_TO_END_TIMEOUT_MILLIS,
@@ -18,7 +18,7 @@ import {
   SUBMITTED_AT,
   tapEverySet,
   workoutProcedureWireSchema,
-} from '../../strength-app.test-helpers.ts'
+} from '../../../../strength-app.test-helpers.ts'
 
 /**
  * The Today tab: a submitted workout written and read back as the next one,

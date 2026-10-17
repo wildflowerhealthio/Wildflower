@@ -3,11 +3,11 @@ import { TrainingPlanDefinitionEditor } from '@wildflowerhealthio/strength-react
 import { Array as Arr, Option } from 'effect'
 import { type JSX, useState } from 'react'
 
-import { mintResourceId } from '../../ids/mint-resource-id.ts'
-import type { StrengthSession } from '../../session/strength-session.ts'
-import { useStrengthWrite, useStrengthWriting } from '../../session/use-strength-write.ts'
-import { currentLoadsOf } from '../../start-program/current-loads.ts'
-import { StartProgram } from '../../start-program/start-program.tsx'
+import { mintResourceId } from '../../../../ids/mint-resource-id.ts'
+import type { StrengthSession } from '../../../../session/strength-session.ts'
+import { useStrengthWrite, useStrengthWriting } from '../../../../session/use-strength-write.ts'
+import { currentLoadsOf } from '../../../../start-program/current-loads.ts'
+import { StartProgram } from '../../../../start-program/start-program.tsx'
 
 /** Props for {@link PlanEditor}. */
 interface PlanEditorProps {

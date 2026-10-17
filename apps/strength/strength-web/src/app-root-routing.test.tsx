@@ -66,6 +66,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   window.localStorage.clear()
+  window.sessionStorage.clear()
   authorizeMock.mockReset()
   readyMock.mockReset()
 })
@@ -73,7 +74,7 @@ afterEach(() => {
 describe('AppRoot over the address bar', () => {
   it.each([
     { case: 'at the app root', route: '' },
-    { case: 'at a tab', route: 'plan' },
+    { case: 'at a lifter’s tab, two directories deep', route: 'patients/p1/plan' },
   ])('should start a launch URL’s launch $case, returning to the app root', async ({ route }) => {
     // Arrange: the authorize URL never arrives, so the page never leaves.
     authorizeMock.mockReturnValue(new Promise(() => {}))
@@ -93,7 +94,7 @@ describe('AppRoot over the address bar', () => {
     expect(addressBar()).toBe(launchUrl)
   })
 
-  it('should leave the callback URL alone through the exchange, then open Today', async () => {
+  it('should leave the callback URL alone through the exchange, then open the launch’s patient', async () => {
     // Arrange: an exchange the test completes, taking `code` and `state` out
     // of the address bar as fhirclient does.
     let completeExchange: () => void = () => {}
@@ -118,7 +119,33 @@ describe('AppRoot over the address bar', () => {
 
     // Assert
     expect(await screen.findByRole('button', { name: 'Start program' })).toBeDefined()
-    expect(addressBar()).toBe(`${BASEPATH}today`)
+    expect(addressBar()).toBe(`${BASEPATH}patients/p1/today`)
     expect(readyMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('should open the route a launch started on once its exchange completes', async () => {
+    // Arrange: a launch at a lifter's Plan leaves for the authorization
+    // server (the authorize URL never arrives).
+    authorizeMock.mockReturnValue(new Promise(() => {}))
+    window.history.replaceState(null, '', `${BASEPATH}patients/p1/plan${EHR_LAUNCH}`)
+    render(<AppRoot page={openTestPage()} />)
+    await waitFor(() => {
+      expect(authorizeMock).toHaveBeenCalledTimes(1)
+    })
+    cleanup()
+    // The callback returns to the app root, and the exchange takes `code`
+    // and `state` out of the address bar as fhirclient does.
+    readyMock.mockImplementation(() => {
+      window.history.replaceState(window.history.state, '', BASEPATH)
+      return Promise.resolve(readyClient)
+    })
+    window.history.replaceState(null, '', `${BASEPATH}?code=abc&state=xyz`)
+
+    // Act
+    render(<AppRoot page={openTestPage()} />)
+
+    // Assert
+    expect(await screen.findByLabelText('Title')).toBeDefined()
+    expect(addressBar()).toBe(`${BASEPATH}patients/p1/plan`)
   })
 })

@@ -6,7 +6,7 @@ import {
   type FakeFhirServer,
   resourceTypeOfQuery,
   searchParamsOf,
-} from '../../fake-fhir-server.test-helpers.ts'
+} from '../../../../fake-fhir-server.test-helpers.ts'
 import {
   END_TO_END_TIMEOUT_MILLIS,
   endStrengthTest,
@@ -15,10 +15,10 @@ import {
   seedWorkout,
   startStrengthTest,
   tabLink,
-} from '../../strength-app.test-helpers.ts'
+} from '../../../../strength-app.test-helpers.ts'
 
 /**
- * The History tab: completed workouts read and listed, driven through
+ * The Workouts tab: completed workouts read and listed, driven through
  * the app's router over the in-memory FHIR server (see
  * `strength-app.test-helpers.ts`).
  */
@@ -31,8 +31,8 @@ beforeEach(() => {
 
 afterEach(endStrengthTest)
 
-describe('HistoryTab', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
-  it('should list a completed workout in the history, read with closed requests', async () => {
+describe('WorkoutsTab', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
+  it('should list a completed workout, read with closed requests', async () => {
     // Arrange — one workout done, every lift met
     const user = userEvent.setup()
     seedStartedLifter(server)
@@ -41,7 +41,7 @@ describe('HistoryTab', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
     await screen.findByRole('heading', { name: 'Workout B' })
 
     // Act
-    await user.click(tabLink('History'))
+    await user.click(tabLink('Workouts'))
 
     // Assert
     expect(await screen.findByText(/^Workout A · /)).toBeDefined()

@@ -10,6 +10,7 @@ import { PlanEditor } from './-plan-editor.tsx'
  * Today once the program it saved has started.
  */
 function PlanTab(): JSX.Element {
+  const { patientId } = Route.useParams()
   const navigate = useNavigate()
   return (
     <LifterTab>
@@ -30,7 +31,11 @@ function PlanTab(): JSX.Element {
             activeExerciseRequests={trainingRecord.activeExerciseRequests}
             onStarted={() => {
               // As the Today tab's own link would: in place of Plan in history.
-              void navigate({ to: '/today', replace: true })
+              void navigate({
+                to: '/patients/$patientId/today',
+                params: { patientId },
+                replace: true,
+              })
             }}
           />
         )
@@ -39,8 +44,8 @@ function PlanTab(): JSX.Element {
   )
 }
 
-/** `/plan`, the Plan tab. */
-const Route = createFileRoute('/plan')({
+/** `/patients/$patientId/plan`, the lifter's Plan tab. */
+const Route = createFileRoute('/patients/$patientId/plan')({
   component: PlanTab,
 })
 

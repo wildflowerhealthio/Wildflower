@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { ExerciseRequest, StrongLifts5x5 } from '@wildflowerhealthio/strength-core-js'
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
 
-import type { FakeFhirServer } from '../../fake-fhir-server.test-helpers.ts'
+import type { FakeFhirServer } from '../../../../fake-fhir-server.test-helpers.ts'
 import {
   currentRoute,
   decodedOfType,
@@ -13,13 +13,14 @@ import {
   loadsByExerciseId,
   loadsOf,
   mountStrengthApp,
+  PATIENT_ID,
   SEEDED_PLAN_DEFINITION_ID,
   seededExerciseRequests,
   seedStartedLifter,
   startStrengthTest,
   tabLink,
   trainingPlanDefinitionWireSchema,
-} from '../../strength-app.test-helpers.ts'
+} from '../../../../strength-app.test-helpers.ts'
 
 /**
  * The Plan tab: an edited program saved and started, driven through
@@ -36,17 +37,17 @@ beforeEach(() => {
 afterEach(endStrengthTest)
 
 describe('PlanTab', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
-  it('should open Plan at /plan', async () => {
+  it('should open Plan at /patients/$patientId/plan', async () => {
     // Arrange
     seedStartedLifter(server)
 
     // Act
-    mountStrengthApp(server, { route: 'plan' })
+    mountStrengthApp(server, { route: `patients/${PATIENT_ID}/plan` })
 
     // Assert
     expect(await screen.findByLabelText('Title')).toBeDefined()
     expect(tabLink('Plan').getAttribute('aria-current')).toBe('page')
-    expect(currentRoute()).toBe('plan')
+    expect(currentRoute()).toBe(`patients/${PATIENT_ID}/plan`)
     expect(screen.queryByRole('heading', { name: 'Workout A' })).toBeNull()
   })
 
@@ -68,7 +69,7 @@ describe('PlanTab', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
     // Assert — Today opens on the started program; the saved definition is
     // new, and the old one is left as it was
     expect(await screen.findByRole('heading', { name: 'Workout A' })).toBeDefined()
-    expect(currentRoute()).toBe('today')
+    expect(currentRoute()).toBe(`patients/${PATIENT_ID}/today`)
     expect(server.writes).toHaveLength(2)
     const [savedTrainingPlanDefinition] = decodedOfType(
       server.writes[0],

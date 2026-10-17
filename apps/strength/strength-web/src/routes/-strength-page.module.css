@@ -1,9 +1,0 @@
-/*
- * StrengthPage skin — the patient line over the tabs. Tokens only, so dark
- * mode needs no rule here.
- */
-
-/* Whose record the page shows, under the app's title. */
-.strength-page__status {
-  margin-bottom: var(--space-9);
-}

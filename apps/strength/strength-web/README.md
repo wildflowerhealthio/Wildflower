@@ -28,8 +28,8 @@ history, and the served directory read off the entry module's URL as the
 basepath), and renders `<AppRoot page={page} />` inside `<StrictMode>`.
 
 `src/app-root.tsx` exports `AppRoot`: `<SmartAppRoot app="strength"
-registration={smartRegistration} telemetry={smartAppTelemetry}>` around
-`<App page={page} />`. `SmartAppRoot` shows the telemetry consent dialog first, then
+registration={smartRegistration} telemetry={smartAppTelemetry}
+basepath={page.basepath}>` around `<App page={page} />`. `SmartAppRoot` shows the telemetry consent dialog first, then
 starts a launch the URL carries under a loading line or renders one of the
 other two branches (`smartAppTelemetry` in `src/config.ts` names the app's Sentry project
 through the `VITE_SENTRY_DSN_STRENGTH_WEB` build variable; see `.env.example`),
@@ -40,65 +40,66 @@ when launched, the full Wildflower chrome with `APP_DESCRIPTIONS.strength`'s
 
 ## The page
 
-`src/app.tsx`'s `App` shows the title, completes the handshake under
-`SmartHandshakeGate`, and builds the page's router once, with the write
-runner (`buildSmartRouterContext` over `FetchHttpClient.layer`). The patient
-is the address bar's `?patient=` (`smart-app-react`'s
-`useRoutedPatientChoice`), else the launch's `client.patient.id`, else the
-root route shows `PatientPicker` ("All patients" first, then every patient by
-name and birth date), whose choice navigates to `/?patient=<id>` or
-`/?patient=*`. The root then shows the record under `react-tundraish`'s
-`RouteTabs` — **Today**, **Plan** and **History**, each a child route — with
-the choice named by `PatientChoiceLine` and a "Change patient" link that
-opens the picker.
+`src/app.tsx`'s `App` completes the handshake under `SmartHandshakeGate`, and
+builds the page's router once, with the write runner
+(`buildSmartRouterContext` over `FetchHttpClient.layer`). Whose record the
+page shows is the path:
 
-- **A lifter** (one patient): their training record, read and written as
-  below.
-- **All patients**: read-only. The page opens on History, every patient's
-  completed workouts read unscoped. Today and Plan write, and a write names
-  one lifter, so each shows a "Choose a patient to train" card whose action
-  opens the picker; no write control mounts. Only a chosen lifter has a
+- **`/`**: the introduction, `branding-react`'s `AppLanding` for Strength
+  (the same one the standalone landing shows beside its connect menu) with a
+  "Choose a patient" link to the picker in its action card.
+- **`/patients`**: `PatientPicker` ("All patients" first, then every patient
+  by name and birth date). A patient opens `/patients/<id>`, All patients
+  opens `/workouts`; either is a pushed entry, so Back returns to the picker.
+- **`/patients/$patientId`**: one lifter's page, the patient line
+  (`PatientChoiceLine`, with a "Change patient" link that pushes
+  `/patients`) over `react-tundraish`'s `RouteTabs`: **Today**, **Plan** and
+  **Workouts**, each a child route. The bare path opens Today, replacing
+  itself in history.
+- **`/workouts`**: every patient's completed workouts, read unscoped, under
+  the patient line naming All patients. Read-only, with no tab strip: Today
+  and Plan write, and a write names one lifter. Only a lifter's page has a
   `StrengthSession` (`src/session/`), the one thing the writes take.
+
+The app's title sits over every page but `/`, whose `AppLanding` names the
+app itself.
 
 ### The router and the OAuth callback
 
 The router is TanStack's, over file routes under `src/routes/` (the tree is
 generated into the git-ignored `src/routeTree.gen.ts` by the router plugin in
-`vite.config.ts`). The root route (`routes/__root.tsx`) is the patient picker or the page: the
-patient line over the tab strip, and in the tab panel for a path no tab
-names, a not-found card offering the app root. Each tab is a child route in
-its own folder with the files only it uses: `/today`, `/plan` and `/history`.
-`/` redirects, replacing itself in history, to Today for a lifter and to
-History for All patients, and stays (under the picker) with no patient yet.
-The root's patient choosing is `smart-app-react`'s `useRoutedPatientPicker`
-(`routes/-chosen-patient.ts`). Opening the picker ("Change patient", or the
-"Choose a patient" card) pushes the tab open with `?picking-patient=1` added
-to its `?patient=`, so Back closes the picker on the page it was opened
-over. A choice pushes `/` with the new `?patient=` and no flag, so each
-choice opens on its first tab, and Back from it returns to the picker, then
-to the patient before.
-
-`?patient=` and `?picking-patient=` are the root route's search
-(`PatientSearch`), read and written as plain strings (`parsePlainSearch` /
-`stringifyPlainSearch`, so an id such as `1.50` is never read as a number).
-`?patient=` is the only query every navigation keeps.
+`vite.config.ts`). A path no route names shows the not-found card ("Wildflower
+Strength has no page at …", offering the picker): under the app's title, or
+under a lifter's tab strip with no tab current. The lifter's page's loader
+reads the patient first (`smart-app-react`'s `ensureRoutedPatient`, on the
+cache the patient line reads), so an id the server has no patient under
+(a 404 or 410) shows "Wildflower Strength has no patient …" in place of the
+page; any other failed read leaves the page up, its patient line saying the
+read failed. The page remounts per lifter (`remountDeps` on the patient id),
+so nothing one lifter's screens hold carries over to another's, by Back,
+Forward or a link. A path param is the string the address bar holds, so an
+id such as `1.50` is never read as a number.
 
 The app root is the OAuth redirect target, so the router is built only once
 the SMART handshake has completed: by then fhirclient has taken `code` and
-`state` out of the address bar, and nothing the router does (the `/`
-redirect, a tab change) can rewrite a URL the token exchange still reads. A
-launch URL never reaches the router at all: `SmartAppRoot` starts its launch
-before the app mounts. The router is built once for the visit, its context
-fixed: the client, the write runner, and the StrongLifts
-5×5 template id per lifter, minted the first time it is asked for, so a
-retried start for one lifter writes the same id.
+`state` out of the address bar, and nothing the router does can rewrite a URL
+the token exchange still reads. A launch URL never reaches the router at all:
+`SmartAppRoot` starts its launch before the app mounts. As the handshake
+completes, the gate replaces the app root with the route the launch started
+on (a deep link such as `/patients/123/plan?iss=…` reopens that tab), or,
+with none, `launchPatientRoute`'s: the launch's patient's page, else the
+picker. A later visit to `/` within the visit shows the introduction. The
+router is built once for the visit, its context fixed: the page's query
+cache, the client, the write runner, and the StrongLifts 5×5 template id per
+lifter, minted the first time it is asked for, so a retried start for one
+lifter writes the same id.
 
 The router's basepath is the served directory, read off the entry module's
-URL rather than the page's, so a deep link such as `/plan` (or
-`/pr-<n>/plan` in a preview), served by the 404 page's redirect to the app
-root and restored there, opens on its tab. The OAuth
-redirect URI is the same directory, so a launch from any tab returns to the
-app root, which opens Today (or History).
+URL rather than the page's, so a deep link such as `/patients/123/plan` (or
+`/pr-<n>/patients/123/plan` in a preview), served by the 404 page's redirect
+to the app root and restored there, opens on its tab. The OAuth redirect URI
+is the same directory (`SmartAppRoot`'s `basepath`), so a launch from any
+route returns to the app root.
 
 ### Reads (`src/record/`)
 
@@ -124,15 +125,15 @@ withdrawn, not unreadable.
   is one search per exercise of the program however long the history, where
   per workout it would grow a search with every workout performed.
 
-- **The history** (`readWorkoutHistory`, `workout-history.ts`), read only when the History tab
-  opens: every lifting `ServiceRequest` in any status (`fetchServiceRequestPage`
+- **The workouts** (`readWorkoutHistory`, `workout-history.ts`), read only when a
+  Workouts tab or `/workouts` opens: every lifting `ServiceRequest` in any status (`fetchServiceRequestPage`
   — closed requests too, since each workout was judged against the one it
   carried out) and every lifting workout, then the sets `part-of` each
   completed workout — one search per workout the history shows.
 
 ### The tabs
 
-- **Today** (`src/routes/today/`). With a current program,
+- **Today** (`src/routes/patients/$patientId/today/`). With a current program,
   `PlannedWorkout.make` over it, shown by `PlannedWorkoutView`
   (`-workout-due.tsx`). "Submit workout" runs
   `PlannedWorkout.submit` with the launch patient as `subject` and a `mintId`
@@ -145,15 +146,16 @@ withdrawn, not unreadable.
   `PlanDefinition` with its requests in one batch. When the day due has an
   exercise with no active request or several, the refusal is shown above a
   restart of the program at the current loads.
-- **Plan** (`src/routes/plan/`). `TrainingPlanDefinitionEditor` over the
+- **Plan** (`src/routes/patients/$patientId/plan/`). `TrainingPlanDefinitionEditor` over the
   current program (or an empty form, which offers StrongLifts 5×5). "Save"
   writes the made training plan definition as a new `PlanDefinition` — under an
   id minted when the tab opens, so workouts and closed requests of the old one
   keep reading against its url — then `StartProgram` starts it at the current
   loads: `ExerciseRequest.changeTrainingPlanDefinition`'s revoked and started
   requests in one batch, and Today opens on it.
-- **History** (`src/routes/history/`). `WorkoutHistoryView` over the
-  history read: the lifter's, or every patient's for All patients.
+- **Workouts** (`src/routes/patients/$patientId/workouts/`).
+  `WorkoutHistoryView` over the lifter's workouts read
+  (`routes/-workouts-list.tsx`, which `/workouts` shows for every patient).
 
 ### Writes
 

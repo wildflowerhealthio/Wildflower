@@ -267,26 +267,35 @@ const openTestPage = (): SmartAppPage => {
 }
 
 /**
- * Mount the lifting page's router over `server`, through the real runtime,
- * for a launch naming `launchPatientId` — the lifter {@link PATIENT_ID}
- * unless told otherwise — at `route` under {@link BASEPATH} (the app root
- * unless told otherwise; `?patient=*` for All patients).
+ * Mount the app's router over `server`, through the real runtime, for a
+ * launch naming the lifter {@link PATIENT_ID}, at `route` under
+ * {@link BASEPATH}: the lifter's page unless told otherwise. Returns the
+ * page the router runs over.
  */
 const mountStrengthApp = (
   server: FakeFhirServer,
-  {
-    launchPatientId = PATIENT_ID,
-    route = '',
-  }: { readonly launchPatientId?: string | null; readonly route?: string } = {}
-): void => {
+  { route = `patients/${PATIENT_ID}` }: { readonly route?: string } = {}
+): SmartAppPage => {
   window.history.replaceState(null, '', `${BASEPATH}${route}`)
+  const page = openTestPage()
   renderWithQueryClient(
     createElement(StrengthRouter, {
-      page: openTestPage(),
-      client: server.clientFor(launchPatientId),
+      page,
+      client: server.clientFor(PATIENT_ID),
       transport: server.transport,
     })
   )
+  return page
+}
+
+/** Seed a second patient, Grace Hopper, under `id`. */
+const seedPatient = (server: FakeFhirServer, id: string): void => {
+  server.seedWire({
+    resourceType: 'Patient',
+    id,
+    name: [{ given: ['Grace'], family: 'Hopper' }],
+    birthDate: '1906-12-09',
+  })
 }
 
 /** The tab strip's link to `label`. */
@@ -312,6 +321,7 @@ export {
   renderWithQueryClient,
   SEEDED_PLAN_DEFINITION_ID,
   seededExerciseRequests,
+  seedPatient,
   seedStartedLifter,
   seedWorkout,
   startStrengthTest,
