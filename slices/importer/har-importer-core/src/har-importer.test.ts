@@ -1,17 +1,20 @@
 import type { DocumentReference, FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import { Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import { HarFromJson, HttpArchive, emitHar } from '@wildflowerhealthio/http-archive'
 import { SourceDescriptor } from '@wildflowerhealthio/http-extraction-fundamentals'
 import {
+  DecodedFile,
   MetaSource,
   PickedFile,
   FormatDecode,
-  type DecodedFile,
+  StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import {
   customerUrlOf,
   prescriptionHistoryUrlOf,
   prescriptionStatusUrlOf,
+  ShoppersIdentifierSystem,
 } from '@wildflowerhealthio/shoppers-drugmart-source'
 import { type TraceBody, type TraceExchange } from '@wildflowerhealthio/web-trace-core'
 import {
@@ -399,6 +402,101 @@ describe('harImporter.decode over a Shoppers capture', () => {
       ).toEqual([{ subject: `Patient/${person?.id}`, store: SHOPPERS_STORE_NAME }])
     }
   )
+})
+
+/**
+ * A two-person Shoppers account (as `customer-response-kind.test.ts` models
+ * it): Sam's prescription is in the status feed with its latest fill; the
+ * history feed adds an earlier fill of it, and a fill of a prescription the
+ * capture has no status for. Nobody has checked this against a real
+ * multi-person account.
+ */
+const householdExchanges = (): readonly TraceExchange[] =>
+  [
+    {
+      url: customerUrlOf(SHOPPERS_ACCOUNT_ID),
+      body: {
+        customer: {
+          pcid: SHOPPERS_ACCOUNT_ID,
+          patients: [
+            { id: 'pt-dana', firstName: 'Dana' },
+            { id: 'pt-sam', firstName: 'Sam' },
+          ],
+        },
+      },
+    },
+    {
+      url: prescriptionStatusUrlOf('rx-sam'),
+      body: {
+        id: 'rx-sam',
+        patientId: 'pt-sam',
+        dispenses: [{ dispenseId: 'disp-latest', status: 'COMPLETE' }],
+      },
+    },
+    {
+      url: prescriptionHistoryUrlOf(SHOPPERS_ACCOUNT_ID),
+      body: {
+        dispenses: [
+          { prescriptionId: 'rx-sam', dispenseId: 'disp-latest' },
+          { prescriptionId: 'rx-sam', dispenseId: 'disp-earlier' },
+          { prescriptionId: 'rx-unseen', dispenseId: 'disp-unknown' },
+        ],
+      },
+    },
+  ].map(({ url, body }, index) =>
+    traceExchange({
+      requestId: `req-${index}`,
+      url,
+      body: storedJson(body),
+      startedAtMillis: CAPTURE_FLOOR + index * 1000,
+    })
+  )
+
+describe('a Shoppers household account through the staged import', () => {
+  it("should file every fill the capture attributes on the person Sam's Patient merges into, and leave the rest on the account", async () => {
+    const result = await readOne({
+      id: '0:household.har',
+      fileName: 'household.har',
+      bytes: harBytesOf(householdExchanges()),
+    })
+    const labeled = DecodedFile.resources(result.decoded)
+    const samKey = labeled.find(
+      ({ resource }) =>
+        resource.resourceType === 'Patient' &&
+        resource.identifier.some(
+          (identifier) =>
+            identifier.system?.href === ShoppersIdentifierSystem.PatientId &&
+            identifier.value === 'pt-sam'
+        )
+    )?.key
+    const account = labeled.find(
+      ({ resource }) => resource.resourceType === 'Patient' && resource.link.length > 0
+    )?.resource
+    if (samKey === undefined || account === undefined) throw new Error('expected both Patients')
+    const person = {
+      ...Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id: 'person-sam' }),
+      id: 'person-sam',
+    }
+    const selection = StagedImport.assignPatient(StagedImport.initial(), samKey, { person })
+
+    const chosen = StagedImport.chosenResources(labeled, selection)
+
+    const dispenseSubjects = Object.fromEntries(
+      chosen.flatMap((resource) => {
+        if (resource.resourceType !== 'MedicationDispense') return []
+        const dispenseId = resource.identifier.find(
+          (identifier) => identifier.system?.href === ShoppersIdentifierSystem.DispenseId
+        )?.value
+        return [[dispenseId ?? '', resource.subject?.reference ?? null] as const]
+      })
+    )
+    expect(dispenseSubjects).toEqual({
+      'disp-latest': 'Patient/person-sam',
+      'disp-earlier': 'Patient/person-sam',
+      'disp-unknown': `Patient/${account.id}`,
+    })
+    expect(StagedImport.dispensesLeftOnAccountCount(labeled, selection)).toBe(1)
+  })
 })
 
 // ---------------------------------------------------------------------------

@@ -2,11 +2,13 @@ import { type FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { Option } from 'effect'
 
 import type * as DecodedFile from './decoded-file.ts'
+import * as PatientIdentity from './patient-identity.ts'
 
 /**
  * The pure model of an import that has been decoded but not yet written: which
- * of its resources are opted out, and which carry an inline edit, against the
- * flat list of labeled resources the format's decode produced.
+ * of its resources are opted out, which carry an inline edit, and which person
+ * each source Patient goes to, against the flat list of labeled resources the
+ * format's decode produced.
  *
  * @remarks
  * "Staged" in the sense the name carries elsewhere — resources sitting between
@@ -14,7 +16,7 @@ import type * as DecodedFile from './decoded-file.ts'
  * UI renders over this is *a* review; the model is the staged import itself,
  * and outlives any particular way of reviewing it.
  *
- * Both axes key by {@link LabeledResource.key} so the state stays serializable
+ * Every axis keys by {@link LabeledResource.key} so the state stays serializable
  * and survives a settings re-decode: a key the new decode no longer produces
  * simply stops applying, rather than dangling.
  *
@@ -22,9 +24,9 @@ import type * as DecodedFile from './decoded-file.ts'
  */
 
 /**
- * A whole review's per-resource selection state: which resources are excluded
- * and which have inline edits. A plain value the shell holds and threads
- * through the pure transitions below.
+ * A whole review's per-resource selection state: which resources are excluded,
+ * which have inline edits, and where each source Patient goes. A plain value
+ * the shell holds and threads through the pure transitions below.
  */
 interface Selection {
   /**
@@ -39,12 +41,20 @@ interface Selection {
    * at confirm.
    */
   readonly resourceOverrides: ReadonlyMap<string, FhirResource>
+  /**
+   * Per-source-Patient assignments, keyed by the source Patient's
+   * {@link LabeledResource.key} — `'new'` writes it as the person, `{ person }`
+   * merges it into an existing one at confirm. A source Patient whose key is
+   * not here goes to `'new'`; a key that is not a Patient's is inert.
+   */
+  readonly patientAssignments: ReadonlyMap<string, PatientIdentity.Target>
 }
 
-/** The default selection: every resource included, no edits. */
+/** The default selection: every resource included, no edits, every source Patient `'new'`. */
 const initial = (): Selection => ({
   excludedResources: new Set(),
   resourceOverrides: new Map(),
+  patientAssignments: new Map(),
 })
 
 /** Whether a resource is included in the confirm's write set. */
@@ -103,6 +113,24 @@ const revert = (selection: Selection, key: string): Selection => {
   return { ...selection, resourceOverrides }
 }
 
+/**
+ * Send the source Patient at `sourcePatientKey` to `target` at confirm: a new
+ * person (`'new'`), or merged into an existing one.
+ */
+const assignPatient = (
+  selection: Selection,
+  sourcePatientKey: string,
+  target: PatientIdentity.Target
+): Selection => {
+  const patientAssignments = new Map(selection.patientAssignments)
+  patientAssignments.set(sourcePatientKey, target)
+  return { ...selection, patientAssignments }
+}
+
+/** Where the source Patient at `sourcePatientKey` goes at confirm — `'new'` unless assigned. */
+const patientTarget = (selection: Selection, sourcePatientKey: string): PatientIdentity.Target =>
+  selection.patientAssignments.get(sourcePatientKey) ?? 'new'
+
 /** Whether the reviewer has set an inline edit for `key`. */
 const isResourceEdited = (selection: Selection, key: string): boolean =>
   selection.resourceOverrides.has(key)
@@ -113,33 +141,115 @@ const editedResource = (selection: Selection, key: string): Option.Option<FhirRe
   return override === undefined ? Option.none() : Option.some(override)
 }
 
+/** Every labeled resource with its inline edit substituted, whether included or not. */
+const reviewedResources = (
+  labeled: readonly DecodedFile.Resource[],
+  selection: Selection
+): readonly DecodedFile.Resource[] =>
+  labeled.map((entry) => ({
+    ...entry,
+    resource: selection.resourceOverrides.get(entry.key) ?? entry.resource,
+  }))
+
+/** The merge `entry` asks for: a source Patient the reviewer assigned to an existing person. */
+const sourceMergeOf = (
+  selection: Selection,
+  entry: DecodedFile.Resource
+): Option.Option<PatientIdentity.SourceMerge> => {
+  const target = patientTarget(selection, entry.key)
+  return entry.resource.resourceType === 'Patient' && target !== 'new'
+    ? Option.some({ sourcePatient: entry.resource, person: target.person })
+    : Option.none()
+}
+
+/**
+ * Every merge the reviewed entries ask for, in review order — included or not:
+ * a merged source Patient is never written either way, and a source Patient the
+ * server already holds unchanged starts out excluded.
+ */
+const sourceMerges = (
+  reviewed: readonly DecodedFile.Resource[],
+  selection: Selection
+): readonly PatientIdentity.SourceMerge[] =>
+  reviewed.flatMap((entry) => Option.toArray(sourceMergeOf(selection, entry)))
+
 /**
  * The confirm's write set: every labeled resource the reviewer left included,
- * with any inline edit substituted in, in resolve order.
+ * with any inline edit substituted in, in resolve order — and each source
+ * Patient assigned to an existing person merged into it.
  *
  * @param labeled - The labeled resources from the format's `resolve`
  * @param selection - The reviewer's per-resource choices
  * @returns The resources to write, each replaced by its edit override when the
  *   reviewer has set one
+ *
+ * @remarks
+ * Two identity steps run over the included resources, in this order:
+ * `PatientIdentity.attributeHouseholdDispenses` re-files a dispense on a
+ * household account onto its request's subject, and then each source Patient
+ * assigned to `{ person }`, included or not, is left out and merged into that person
+ * (`PatientIdentity.mergeSourcePatients`), which re-points every reference to
+ * it — so a dispense lands on the account's family member and then on the
+ * person in one pass. A source Patient assigned `'new'` is written as it is,
+ * unless excluded.
  */
 const chosenResources = (
   labeled: readonly DecodedFile.Resource[],
   selection: Selection
-): readonly FhirResource[] =>
-  labeled
-    .filter((entry) => isResourceIncluded(selection, entry.key))
-    .map((entry) => selection.resourceOverrides.get(entry.key) ?? entry.resource)
+): readonly FhirResource[] => {
+  const reviewed = reviewedResources(labeled, selection)
+  const included = reviewed.filter((entry) => isResourceIncluded(selection, entry.key))
+  const kept = included
+    .filter((entry) => Option.isNone(sourceMergeOf(selection, entry)))
+    .map(({ resource }) => resource)
+  const attributed = PatientIdentity.attributeHouseholdDispenses(
+    kept,
+    reviewed.map(({ resource }) => resource)
+  )
+  return PatientIdentity.mergeSourcePatients(attributed, sourceMerges(reviewed, selection))
+}
 
 /** How many labeled resources are included under a selection. */
 const includedCount = (labeled: readonly DecodedFile.Resource[], selection: Selection): number =>
-  chosenResources(labeled, selection).length
+  labeled.filter((entry) => isResourceIncluded(selection, entry.key)).length
+
+/**
+ * How many references in the write set name a merged source Patient other than
+ * by its relative reference, and so still name it rather than the person.
+ */
+const referencesNotRewrittenCount = (
+  labeled: readonly DecodedFile.Resource[],
+  selection: Selection
+): number => {
+  return PatientIdentity.referencesNotRewrittenCount(
+    chosenResources(labeled, selection),
+    sourceMerges(reviewedResources(labeled, selection), selection).map(
+      ({ sourcePatient }) => sourcePatient
+    )
+  )
+}
+
+/**
+ * How many dispenses in the write set stay filed on a household account,
+ * because the import does not say which family member they were for.
+ */
+const dispensesLeftOnAccountCount = (
+  labeled: readonly DecodedFile.Resource[],
+  selection: Selection
+): number =>
+  PatientIdentity.dispensesLeftOnAccountCount(
+    chosenResources(labeled, selection),
+    reviewedResources(labeled, selection).map(({ resource }) => resource)
+  )
 
 /** How many labeled resources are excluded under a selection. */
 const excludedCount = (labeled: readonly DecodedFile.Resource[], selection: Selection): number =>
   labeled.filter((entry) => !isResourceIncluded(selection, entry.key)).length
 
 export {
+  assignPatient,
   chosenResources,
+  dispensesLeftOnAccountCount,
   edit,
   editedResource,
   excludedCount,
@@ -147,6 +257,8 @@ export {
   initial,
   isResourceEdited,
   isResourceIncluded,
+  patientTarget,
+  referencesNotRewrittenCount,
   revert,
   setResourcesIncluded,
   toggleResource,
