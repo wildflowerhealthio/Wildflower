@@ -1,25 +1,30 @@
-import { type PatientChoice, useRoutedPatientChoice } from '@wildflowerhealthio/smart-app-react'
+import {
+  type PatientChoice,
+  type PatientChoosing,
+  useRoutedPatientChoice,
+  useRoutedPatientPicker,
+} from '@wildflowerhealthio/smart-app-react'
 import { Option } from 'effect'
 
 import { useSmartClient } from '../router-context.ts'
 
 /**
- * Whose medications the address bar names: `smart-app-react`'s
- * `useRoutedPatientChoice` over the launch's patient: the root route's
- * `?patient=`, else `client.patient.id`, else none yet, which the root shows
- * as the patient picker.
+ * The root's patient choosing: `smart-app-react`'s `useRoutedPatientPicker`
+ * over the launch's patient, a choice landing on the tab open (`.`).
  */
-const useChosenPatient = (): Option.Option<PatientChoice> =>
-  useRoutedPatientChoice(useSmartClient().patient.id)
+const useMedicationsPatientPicker = (): PatientChoosing =>
+  useRoutedPatientPicker(useSmartClient().patient.id, '.')
 
 /**
- * The patient the tabs read: the chosen one. The root shows the picker in
- * place of the tabs while there is none, so a tab never renders without one.
+ * The patient the tabs read: whose medications the address bar names, else
+ * the launch's (`smart-app-react`'s `useRoutedPatientChoice`). The root
+ * shows the picker in place of the tabs while there is none, so a tab never
+ * renders without one.
  */
 const useReadPatient = (): PatientChoice =>
   Option.getOrThrowWith(
-    useChosenPatient(),
+    useRoutedPatientChoice(useSmartClient().patient.id),
     () => new Error('A tab rendered with no patient chosen: the root shows the picker then')
   )
 
-export { useChosenPatient, useReadPatient }
+export { useMedicationsPatientPicker, useReadPatient }

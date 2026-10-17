@@ -57,15 +57,16 @@ patient by name and birth date). One patient's requests are searched with
 `patient=`; All patients searches unscoped. Under the H1, `PatientChoiceLine`
 names the choice with a "Change patient" link, above the chunk bar.
 
-A choice is a navigation: it pushes a history entry on the open tab with
-`?patient=` naming it, and every later navigation keeps `?patient=`, so each
-entry names the patient it shows. Back returns to the patient before, on the
-tab they were on (from the first choice, to the picker), and a reload or a
-shared link opens the patient the address bar names. "Change patient" opens
-the picker over the patient shown without touching the address bar; Back or
-Forward to an entry naming a different patient leaves it for that patient's
-page. The router reads and writes the query as plain strings, so a numeric
-FHIR id stays `?patient=123`.
+The root's patient choosing is `smart-app-react`'s `useRoutedPatientPicker`
+(`routes/-chosen-patient.ts`), and both of its moves are navigations, each
+pushing a history entry. "Change patient" adds `?picking-patient=1` to the
+open tab, keeping its `?patient=`, so Back closes the picker on the page it
+was opened over. A choice lands on the open tab with the new `?patient=` and
+no flag, and every later navigation keeps `?patient=` (and only it), so each
+entry names the patient it shows: Back from a choice returns to the picker,
+then to the patient before, and a reload or a shared link opens the patient
+the address bar names. The router reads and writes the query as plain
+strings, so a numeric FHIR id stays `?patient=123`.
 
 ## Tabs
 
