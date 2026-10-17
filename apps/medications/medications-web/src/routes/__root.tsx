@@ -16,6 +16,7 @@ import { type JSX, useState } from 'react'
 import { type RouterContext, type SmartClient, useSmartClient } from '../router-context.ts'
 import { useChosenPatient } from './-chosen-patient.ts'
 import { type MedicationRead, useMedicationRead } from './-medication-read.ts'
+import { MedicationsNotFound } from './-medications-not-found.tsx'
 import styles from './-medications-page.module.css'
 
 /** The chunk bar's copy: the generic component with this app's wording. */
@@ -182,7 +183,8 @@ const PatientSearch = Schema.Struct({ [PATIENT_PARAM]: Schema.optional(Schema.St
 
 /**
  * The root route: the patient picker or the medications page, each of whose
- * tabs is a child route.
+ * tabs is a child route, and in the tab panel for a path no tab names, the
+ * not-found card.
  *
  * @remarks
  * Every navigation keeps `?patient=`, so changing tabs keeps the patient and
@@ -192,6 +194,7 @@ const Route = createRootRouteWithContext<RouterContext>()({
   validateSearch: Schema.standardSchemaV1(PatientSearch),
   search: { middlewares: [retainSearchParams([PATIENT_PARAM])] },
   component: MedicationsRoot,
+  notFoundComponent: MedicationsNotFound,
 })
 
 export { Route }

@@ -322,6 +322,26 @@ describe('App', () => {
     expect(await screen.findByText('No medications found.')).toBeDefined()
   })
 
+  it('should say a path no tab names has no page, offering the list for the same patient', async () => {
+    // Arrange
+    handshakeMock.mockReturnValue(readyHandshake)
+    fetchMock.mockResolvedValue(lastPage)
+    renderApp({ route: 'index.html?patient=p2' })
+    await awaitFirstPage()
+    expect(
+      await screen.findByText('The Medication Viewer has no page at /index.html.')
+    ).toBeDefined()
+
+    // Act
+    fireEvent.click(screen.getByRole('button', { name: 'Open the medications list' }))
+
+    // Assert
+    expect(await screen.findByText('No medications found.')).toBeDefined()
+    expect(currentRoute()).toBe('medications')
+    expect(fetchMock).toHaveBeenCalledWith({ patientId: 'p2' })
+    expect(new URLSearchParams(window.location.search).get('patient')).toBe('p2')
+  })
+
   it('should render the chunk bar only from four pages, locked once every page has arrived', async () => {
     // Arrange
     stubQuietIntersectionObserver()
