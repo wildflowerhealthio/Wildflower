@@ -1,4 +1,6 @@
 import type { Province } from '@wildflowerhealthio/medication-sponsorship-core-js'
+import { makeSubscribableStore } from '@wildflowerhealthio/react-kitchen-sink'
+import { Effect, type Subscribable } from 'effect'
 
 /**
  * What the reader has chosen on the page that more than one tab reads, kept
@@ -26,33 +28,23 @@ interface PageState {
  * keeps them.
  */
 interface PageStore {
-  /** The state as it is now. */
-  readonly snapshot: () => PageState
+  /** The state as it is now, and its changes. */
+  readonly subscribable: Subscribable.Subscribable<PageState>
   /** Change the fields `change` names, keeping the rest. */
   readonly update: (change: Partial<PageState>) => void
-  /** Call `onChange` after every `update`, until unsubscribed. */
-  readonly subscribe: (onChange: () => void) => () => void
 }
 
 /** A store opening on the whole list unrequested, the gate up, and Ontario. */
 const makePageStore = (): PageStore => {
-  let state: PageState = {
+  const { subscribable, set } = makeSubscribableStore<PageState>({
     everyPageRequested: false,
     partialInteractionsShown: false,
     province: 'ON',
-  }
-  const listeners = new Set<() => void>()
+  })
   return {
-    snapshot: () => state,
+    subscribable,
     update: (change) => {
-      state = { ...state, ...change }
-      for (const listener of listeners) listener()
-    },
-    subscribe: (onChange) => {
-      listeners.add(onChange)
-      return () => {
-        listeners.delete(onChange)
-      }
+      set({ ...Effect.runSync(subscribable.get), ...change })
     },
   }
 }

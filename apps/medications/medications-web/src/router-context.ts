@@ -1,7 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { useRouteContext } from '@tanstack/react-router'
 import type { SmartHandshake } from '@wildflowerhealthio/fhir-r4-react/smart'
-import { useSyncExternalStore } from 'react'
+import { useSubscribable } from '@wildflowerhealthio/react-kitchen-sink'
 
 import type { PageState, PageStore } from './page-state.ts'
 
@@ -32,8 +32,7 @@ const useSmartClient = (): SmartClient =>
  */
 const usePageState = <A>(select: (state: PageState) => A): readonly [A, PageStore['update']] => {
   const pageStore = useRouteContext({ from: '__root__', select: (context) => context.pageStore })
-  const selected = useSyncExternalStore(pageStore.subscribe, () => select(pageStore.snapshot()))
-  return [selected, pageStore.update]
+  return [select(useSubscribable(pageStore.subscribable)), pageStore.update]
 }
 
 export { usePageState, useSmartClient }
