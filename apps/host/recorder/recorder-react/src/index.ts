@@ -18,4 +18,10 @@ export type { RecorderOutboundMessage, RecorderSender } from './recorder-sender-
 export { useRecorderRegister } from './use-recorder-register.ts'
 export { useRecorderSender } from './use-recorder-sender.ts'
 export { useRecorder, type Recorder, type RecorderState } from './use-recorder.ts'
+export {
+  type BookmarkChange,
+  type Bookmarks,
+  type BookmarksState,
+  useBookmarks,
+} from './use-bookmarks.ts'
 export { useSaveFolder, type SaveFolderState } from './use-save-folder.ts'

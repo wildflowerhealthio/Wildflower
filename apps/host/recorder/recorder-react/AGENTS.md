@@ -21,10 +21,21 @@ shell that drives it over `RecorderBridge`.
   provider above its routes so a recording outlives the page.
 - `src/use-save-folder.ts` — **`useSaveFolder(invoke)`**: the recordings
   folder, read once on mount: `Reading` → `Read(folder)` | `Unreadable(message)`.
+- `src/use-bookmarks.ts` — **`useBookmarks(invoke)`** →
+  `{ state, isChanging, add, rename, remove, recorded }`. `state` is
+  `Reading` → `Read(bookmarks)` | `Unreadable(message)`, read once on mount;
+  each action replaces the list with the host's answer and resolves to the
+  host's refusal, if any, for the page's `ErrorBanner`. An answer lands
+  unless a later request's answer already has; a refused change lands
+  nothing.
 - `src/recorder-page.tsx` — **`RecorderPage`**, a plain component with no
   route, taking `invoke` (Tauri's) and `revealFile` (`tauri-plugin-opener`'s
   `revealItemInDir`). It shows the recordings folder, and after a save offers
-  Show file where the folder's `revealsFiles` says the platform can. It
+  Show file where the folder's `revealsFiles` says the platform can. Under the
+  URL field it lists the bookmarks `byRecency`, each with when it was last
+  recorded (`kitchen-sink`'s `formatRelativeTime`), a name that fills the URL
+  field, and Rename and Remove; Bookmark this names a startable URL that
+  isn't bookmarked, and Start recording stamps the bookmark at that URL. It
   drives the provider's recorder, so a page that mounts mid-recording shows
   the recording and its URL. `apps/host/host-app` renders it at `/recorder`,
   under a `RecorderProvider`, a `RecorderSenderProvider` and a
@@ -62,7 +73,12 @@ shell that drives it over `RecorderBridge`.
   follows the URL's validity, Stop shows only while recording, the folder and
   the saved path are shown, a folder the host can't give says why, and Show
   file reveals the saved file, says so when it can't, and is absent where the
-  platform can't reveal one. It renders the page under a `RecorderProvider`.
+  platform can't reveal one. Over an in-memory bookmark host: the rows in
+  recency order with when each was recorded, a name filling the URL field,
+  Bookmark this adding under the entered name and absent for a bookmarked or
+  unstartable URL, Rename and Remove, Start stamping its URL, unreadable
+  bookmarks saying why while recording still works, and a refused add's
+  reason in the banner. It renders the page under a `RecorderProvider`.
 - `apps/host/host-app`'s `src/host-root.test.tsx` — a recording kept going
   while the base shows.
 

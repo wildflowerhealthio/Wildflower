@@ -20,3 +20,45 @@
   font-family: var(--font-family-mono);
   word-break: break-all;
 }
+
+/* The bookmarks, under the URL field. */
+.recorder-page__bookmarks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.recorder-page__bookmark-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* One bookmark: its name, URL and when it was last recorded, above its buttons. */
+.recorder-page__bookmark {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+/* The name fills the URL field, so it reads as the row's title. */
+.recorder-page__bookmark-name {
+  padding-inline: 0;
+  text-align: start;
+}
+
+.recorder-page__bookmark-meta {
+  margin: 0;
+}
+
+/* A bookmark's name being typed, with its Save and Cancel. */
+.recorder-page__bookmark-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-self: stretch;
+}
