@@ -143,14 +143,14 @@ const shouldCompleteSmartLaunch = (search: string = window.location.search): boo
 /**
  * The OAuth redirect URI for a SMART app, from the URL of any of its pages:
  * the app's served directory, `servedDirectory`, on `href`'s origin,
- * without the page's query or fragment. Without `servedDirectory` it is `href`'s own
- * directory (`new URL('.', href)`), right for an app whose every page sits at
- * its root.
+ * without the page's query or fragment. Without `servedDirectory` it is
+ * `href`'s own directory (`new URL('.', href)`), right for an app whose every
+ * page sits at its root.
  *
  * @param href - The page's URL.
- * @param servedDirectory - The directory the app is served from, as an absolute,
- *   slash-suffixed path (a routed app's basepath, e.g. `/pr-7/`). A routed
- *   app passes it, since a launch can open one of its deep routes
+ * @param servedDirectory - The directory the app is served from, as an
+ *   absolute, slash-suffixed path (a routed app's basepath, e.g. `/pr-7/`). A
+ *   routed app passes it, since a launch can open one of its deep routes
  *   (`/patients/123/today?iss=…`), whose own directory is no registered
  *   redirect URI.
  *

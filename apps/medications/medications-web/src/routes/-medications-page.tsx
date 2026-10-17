@@ -52,8 +52,8 @@ const useMedicationsPage = (): MedicationRead => {
  * paged read, over `tabs`, each a child route the strip links to:
  * Medications, the list; Calendar, the prescription calendar; Interactions
  * (one patient's page only), the report over the current medications;
- * Savings, the savings-program breakdown. Until the first page lands the tabs wait behind a loading line,
- * or the read's failure.
+ * Savings, the savings-program breakdown. Until the first page lands the
+ * tabs wait behind a loading line, or the read's failure.
  */
 function MedicationsPage({ tabs }: MedicationsPageProps): JSX.Element {
   const client = useSmartClient()

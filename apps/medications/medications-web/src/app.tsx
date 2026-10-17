@@ -51,9 +51,9 @@ function MedicationsRouter({ page, client }: MedicationsRouterProps): JSX.Elemen
  * The redirect-target app: completes the SMART handshake and then hands the
  * page to its router: the patient picker at `/patients`, every patient's
  * tabs at the top level (`/medications`, `/calendar`, `/savings`), and one
- * patient's, Interactions among them, under `/patients/$patientId`. The callback
- * lands on `/`, which opens the route the launch started on, else its
- * patient's page, else the picker.
+ * patient's, Interactions among them, under `/patients/$patientId`. The
+ * callback lands on `/`, which opens the route the launch started on, else
+ * its patient's page, else the picker.
  *
  * @remarks
  * The token exchange (`useSmartHandshake`) is a TanStack Query on the page's
