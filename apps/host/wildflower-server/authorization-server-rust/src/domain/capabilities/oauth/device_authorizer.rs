@@ -106,7 +106,8 @@ impl<S: GrantStore> DeviceAuthorizer<S> {
         // 256-bit CSPRNG opaque token per RFC 6749 §10.10, like an
         // authorization code.
         let device_code = generate_authorization_code();
-        let user_code = self.generate_unique_user_code()?;
+        let user_code = generate_unique_user_code(&self.store)?
+            .ok_or(DeviceAuthorizationError::UserCodeExhausted)?;
         let request =
             AuthorizationRequest::new_device_authorization(StartDeviceAuthorizationArgs {
                 id: device_code.clone(),
@@ -127,26 +128,32 @@ impl<S: GrantStore> DeviceAuthorizer<S> {
             interval: DEVICE_CODE_POLL_INTERVAL.num_seconds(),
         })
     }
+}
 
-    /// A random `user_code` that collides with *no* existing request — pending
-    /// or terminal: reusing a code attached to a denied/expired row would let
-    /// that stale row shadow the new request at the consent-side lookup.
-    fn generate_unique_user_code(&self) -> Result<String, DeviceAuthorizationError> {
-        for _ in 0..MAX_USER_CODE_GENERATION_ATTEMPTS {
-            let candidate = {
-                let mut rng = rand::rng();
-                generate_oauth_user_code(&mut rng)
-            };
-            if self
-                .store
-                .authorization_request_by_user_code(&candidate)?
-                .is_none()
-            {
-                return Ok(candidate);
-            }
+/// A random `user_code` that collides with *no* existing request in `store` —
+/// pending or terminal, of any flow: reusing a code attached to a
+/// denied/expired row would let that stale row shadow the new request at the
+/// consent-side lookup. `None` when every candidate collided.
+///
+/// # Errors
+///
+/// The store's, when reading a candidate's request fails.
+pub(super) fn generate_unique_user_code(
+    store: &impl GrantStore,
+) -> Result<Option<String>, AuthorizationServerError> {
+    for _ in 0..MAX_USER_CODE_GENERATION_ATTEMPTS {
+        let candidate = {
+            let mut rng = rand::rng();
+            generate_oauth_user_code(&mut rng)
+        };
+        if store
+            .authorization_request_by_user_code(&candidate)?
+            .is_none()
+        {
+            return Ok(Some(candidate));
         }
-        Err(DeviceAuthorizationError::UserCodeExhausted)
     }
+    Ok(None)
 }
 
 #[cfg(test)]

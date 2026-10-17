@@ -30,6 +30,9 @@ pub enum BrowserSessionKind {
     /// The Owner's browser, signed in on the server's own device with a
     /// same-device sign-in code.
     Owner,
+    /// Any other browser: one that paired at `/oauth/pair`, showing a code the
+    /// Owner approved.
+    Approved,
 }
 
 /// One browser session. Diesel-mapped 1:1 to the `browser_sessions` table.
@@ -42,7 +45,7 @@ pub struct BrowserSession {
     pub sid: String,
     /// How the browser came to hold the session.
     pub kind: BrowserSessionKind,
-    /// The name the browser was given; `None` for an Owner session.
+    /// The name the browser was given at pairing; `None` for an Owner session.
     pub name: Option<String>,
     /// The session's grant.
     #[diesel(serialize_as = JsonStrings, deserialize_as = JsonStrings)]
@@ -71,12 +74,33 @@ impl BrowserSession {
             revoked_at: None,
         }
     }
+
+    /// A fresh approved session with a new `sid`, named `browser_name`,
+    /// holding the `approved_scopes` the Owner granted and lasting `ttl` from
+    /// `now`.
+    #[must_use]
+    pub fn new_approved(
+        browser_name: String,
+        approved_scopes: Vec<String>,
+        ttl: Duration,
+        now: DateTime<Utc>,
+    ) -> Self {
+        BrowserSession {
+            sid: uuid::Uuid::new_v4().to_string(),
+            kind: BrowserSessionKind::Approved,
+            name: Some(browser_name),
+            scopes: approved_scopes,
+            created_at: now,
+            expires_at: now + ttl,
+            revoked_at: None,
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::capabilities::oauth::OWNER_SESSION_TTL;
+    use crate::domain::capabilities::oauth::{APPROVED_SESSION_TTL, OWNER_SESSION_TTL};
 
     #[test]
     fn an_owner_session_is_unnamed_and_lasts_its_ttl() {
@@ -94,10 +118,27 @@ mod tests {
         );
     }
 
-    /// The Owner's session is no longer than the longest session, which the
+    #[test]
+    fn an_approved_session_is_named_and_lasts_its_ttl() {
+        let now = Utc::now();
+        let session = BrowserSession::new_approved(
+            "Firefox on Linux".to_owned(),
+            vec!["wildflower/launch".to_owned()],
+            Duration::hours(24),
+            now,
+        );
+        assert_eq!(session.kind, BrowserSessionKind::Approved);
+        assert_eq!(session.name.as_deref(), Some("Firefox on Linux"));
+        assert_eq!(session.scopes, ["wildflower/launch"]);
+        assert_eq!(session.expires_at - session.created_at, Duration::hours(24));
+        assert_eq!(session.revoked_at, None);
+    }
+
+    /// Each session is no longer than the longest session, which the
     /// revoked-`jti` purge floor and session retention rely on.
     #[test]
-    fn the_owner_session_is_within_the_longest_session() {
+    fn every_session_is_within_the_longest_session() {
         assert!(OWNER_SESSION_TTL <= LONGEST_BROWSER_SESSION_TTL);
+        assert!(APPROVED_SESSION_TTL <= LONGEST_BROWSER_SESSION_TTL);
     }
 }

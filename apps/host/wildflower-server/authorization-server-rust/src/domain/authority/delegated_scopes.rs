@@ -32,6 +32,17 @@ impl ApprovableScopes {
         }
     }
 
+    /// A browser pairing prompt. Like device consent it is **expandable**:
+    /// whatever the pairing's ticks start from, the Owner may grant anything
+    /// up to [`OWNER_SCOPES`](crate::OWNER_SCOPES), which fill both halves, so
+    /// no approved browser session can hold more than an Owner session.
+    pub(crate) fn for_browser_pairing() -> Self {
+        ApprovableScopes {
+            requested_scopes: crate::owner_scopes(),
+            registration_ceiling_scopes: crate::owner_scopes(),
+        }
+    }
+
     /// An authorization-code prompt for `requested_scopes`. A fixed
     /// registration (the host app's client) is its own ceiling; any other client
     /// is trusted on first use, so its ceiling also takes in what this request
@@ -339,6 +350,23 @@ mod tests {
         assert_eq!(
             approvable.grantable_subset(owned_scopes(&["openid", "patient/Patient.r"])),
             ["openid"],
+        );
+    }
+
+    /// A pairing prompt grants up to the Owner's scopes, whatever the ticks
+    /// started from, and never past them: a tick no Owner scope covers is
+    /// dropped.
+    #[test]
+    fn a_pairing_prompt_grants_up_to_the_owner_s_scopes() {
+        let approvable = ApprovableScopes::for_browser_pairing();
+        assert_eq!(
+            approvable.grantable_subset(owned_scopes(&[
+                "wildflower/launch",
+                "system/Patient.rs",
+                "openid",
+                "offline_access",
+            ])),
+            ["wildflower/launch", "system/Patient.rs"],
         );
     }
 }

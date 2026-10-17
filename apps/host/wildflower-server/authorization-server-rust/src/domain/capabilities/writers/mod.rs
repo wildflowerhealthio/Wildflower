@@ -14,7 +14,7 @@
 //!  - [`RefreshFamilyWriter`] — start a refresh-token family or rotate a token
 //!    into its successor (under a redemption proof).
 //!  - [`BrowserSessionWriter`] — start a browser session (under a
-//!    `RedeemedSameDeviceSignInCode`).
+//!    `RedeemedSameDeviceSignInCode` or a `ClaimedBrowserPairing`).
 //!
 //! A writer is a borrowed view over a store, not a gate in itself; the gate is
 //! the proof each method demands. The source-guard test below keeps the

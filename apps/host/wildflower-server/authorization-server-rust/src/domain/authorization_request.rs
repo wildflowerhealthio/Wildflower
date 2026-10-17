@@ -11,12 +11,14 @@ use crate::domain::launch_context::LaunchContext;
 /// against `last_polled_at` with `slow_down` at `/token`.
 pub const DEVICE_CODE_POLL_INTERVAL: Duration = Duration::seconds(5);
 
-/// Which OAuth grant flow an `AuthorizationRequest` represents. Stored as the
-/// wire-level RFC string in the `grantType` column.
+/// Which flow an `AuthorizationRequest` belongs to: one of the two OAuth grant
+/// flows, or a browser pairing, which is no OAuth grant. Stored in the
+/// `grant_type` column.
 ///
 /// `strum` derives the `&str` ↔ enum conversions from the `snake_case` variant
 /// names — `AuthorizationCode` → `"authorization_code"`, `DeviceCode` →
-/// `"device_code"` — matching the RFC 6749 / RFC 8628 `grant_type` values.
+/// `"device_code"`, matching the RFC 6749 / RFC 8628 `grant_type` values, and
+/// `BrowserPairing` → `"browser_pairing"`.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, EnumString, AsRefStr, Display, AsExpression, FromSqlRow,
 )]
@@ -27,6 +29,11 @@ pub enum GrantType {
     AuthorizationCode,
     /// RFC 8628 device-code flow.
     DeviceCode,
+    /// A browser asking the Owner for a browser session at `/oauth/pair`. Not
+    /// an OAuth grant: no client redeems it at `/oauth/token`, and it records
+    /// no grant, so no `grants` row carries it. Its approval ends in an
+    /// approved browser session.
+    BrowserPairing,
 }
 
 /// Current state of an `AuthorizationRequest` as it moves from creation to
@@ -51,15 +58,17 @@ pub enum RequestStatus {
     Expired,
 }
 
-/// Persisted in-flight OAuth authorization request — used to track both
-/// authorization-code and device-code flows from creation through approval,
-/// denial, or expiry. The optional fields are populated only for the flow
-/// they apply to (e.g. `code_challenge` for auth-code, `user_code` for device).
+/// Persisted in-flight authorization request — used to track the
+/// authorization-code and device-code flows, and browser pairings, from
+/// creation through approval, denial, or expiry. The optional fields are
+/// populated only for the flow they apply to (e.g. `code_challenge` for
+/// auth-code, `user_code` for device and pairing).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthorizationRequest {
-    /// Primary key — the device-flow `device_code` for that flow, otherwise an internal UUID.
+    /// Primary key — the device-flow `device_code` for that flow, a browser
+    /// pairing's pairing code for a pairing, otherwise an internal UUID.
     pub id: String,
-    /// Which OAuth flow this request represents.
+    /// Which flow this request belongs to.
     pub grant_type: GrantType,
     /// `client_id` that initiated the request.
     pub client_id: String,
@@ -73,7 +82,8 @@ pub struct AuthorizationRequest {
     pub redirect_uri: Option<Url>,
     /// Opaque `state` value the client supplied and expects echoed back in the redirect (auth-code flow only).
     pub client_state: Option<String>,
-    /// Human-typed pairing code shown to the user on the device (device-code flow only, RFC 8628).
+    /// Human-typed pairing code shown to the user on the device (device-code
+    /// flow, RFC 8628) or on the pairing page (browser pairing).
     pub user_code: Option<String>,
     /// Subset of `requested_scopes` already covered by an existing `Grant`; the
     /// consent UI marks these as pre-approved. Empty means nothing was
@@ -83,7 +93,8 @@ pub struct AuthorizationRequest {
     pub requested_at: DateTime<Utc>,
     /// Instant after which the request stops accepting approval.
     pub expires_at: DateTime<Utc>,
-    /// Last device-flow `/token` poll, used to enforce the RFC 8628 §3.5 slow-down interval.
+    /// Last device-flow `/token` poll, or pairing-page poll, used to enforce
+    /// the RFC 8628 §3.5 slow-down interval.
     pub last_polled_at: Option<DateTime<Utc>>,
     /// Current lifecycle state — moves from `Pending` to one of `Approved`/`Denied`/`Expired`.
     pub status: RequestStatus,
@@ -93,7 +104,8 @@ pub struct AuthorizationRequest {
     pub patient: Option<String>,
     /// Human-chosen name for the requesting device (RFC 8628 extension, device-code flow only);
     /// surfaced to the approver. `None` for auth-code requests and for devices that didn't name
-    /// themselves. The settings approver may adjust it at approval time.
+    /// themselves. A browser pairing's browser name. The approver may adjust it
+    /// at approval time.
     pub device_name: Option<String>,
     /// The SMART App Launch `launch` value this request consumed at
     /// `/authorize` (auth-code flow only). `None` for a plain OAuth request.
@@ -153,6 +165,24 @@ pub struct StartDeviceAuthorizationArgs {
     pub user_code: String,
     /// Human-chosen name for the device being paired (RFC 8628 extension), or `None`.
     pub device_name: Option<String>,
+    /// How long the new request stays pending before expiring.
+    pub ttl: Duration,
+}
+
+/// Inputs to start a browser pairing request.
+pub struct StartBrowserPairingArgs {
+    /// The pairing code the pairing page polls with — a secret only that page
+    /// holds, and the request's primary key.
+    pub id: String,
+    /// The client every browser session's token is issued to.
+    pub client_id: String,
+    /// The scopes the Owner's ticks start from.
+    pub requested_scopes: Vec<String>,
+    /// The code the pairing page shows, which the Owner confirms at the device
+    /// page.
+    pub user_code: String,
+    /// The name the browser goes by on the Owner's card.
+    pub browser_name: String,
     /// How long the new request stays pending before expiring.
     pub ttl: Duration,
 }
@@ -232,6 +262,36 @@ impl AuthorizationRequest {
             granted_scopes: None,
             patient: None,
             device_name: input.device_name,
+            launch: None,
+            launch_bound_patient: None,
+            decidable_in_requesting_browser: false,
+            sid: None,
+        }
+    }
+
+    /// A pending browser pairing request. Its name is kept in `device_name`,
+    /// the column the device page reads a requester's name from.
+    #[must_use]
+    pub fn new_browser_pairing(input: StartBrowserPairingArgs) -> Self {
+        let now = Utc::now();
+        AuthorizationRequest {
+            id: input.id,
+            grant_type: GrantType::BrowserPairing,
+            client_id: input.client_id,
+            requested_scopes: input.requested_scopes,
+            code_challenge: None,
+            code_challenge_method: None,
+            redirect_uri: None,
+            client_state: None,
+            user_code: Some(input.user_code),
+            pre_approved_scopes: Vec::new(),
+            requested_at: now,
+            expires_at: now + input.ttl,
+            last_polled_at: None,
+            status: RequestStatus::Pending,
+            granted_scopes: None,
+            patient: None,
+            device_name: Some(input.browser_name),
             launch: None,
             launch_bound_patient: None,
             decidable_in_requesting_browser: false,

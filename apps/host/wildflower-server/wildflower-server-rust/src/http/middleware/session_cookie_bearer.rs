@@ -34,7 +34,9 @@
 //! - passes a request whose cookie stands for no live session as if the cookie
 //!   weren't sent. A browser session has ended once the gates would
 //!   refuse its token (expired, or revoked by `jti` or subject); the response
-//!   then clears the cookie, which is `HttpOnly`, so no script on the page can.
+//!   then clears the cookie, which is `HttpOnly`, so no script on the page can,
+//!   unless it sets a new session in the cookie itself (a sign-in, or a
+//!   pairing's approval).
 //!
 //! No route is singled out: the token's scopes decide what it reaches.
 //!
@@ -232,12 +234,31 @@ pub(crate) async fn present_session_cookie_bearer(
         CookieSession::Absent => next.run(request).await,
         CookieSession::Ended => {
             let mut response = next.run(request).await;
-            let clearing = HeaderValue::from_str(&browser_session_clearing_set_cookie())
-                .expect("the clearing Set-Cookie is a fixed, valid header value");
-            response.headers_mut().append(header::SET_COOKIE, clearing);
+            // A response that hands the browser a new session (a sign-in, or
+            // the pairing poll that finds its pairing approved) replaces the
+            // ended one already; clearing after it would undo it.
+            if !sets_cookie(&response, config.session_cookie.name()) {
+                let clearing = HeaderValue::from_str(&browser_session_clearing_set_cookie())
+                    .expect("the clearing Set-Cookie is a fixed, valid header value");
+                response.headers_mut().append(header::SET_COOKIE, clearing);
+            }
             response
         }
     }
+}
+
+/// Whether `response` sets the cookie `cookie_name`.
+fn sets_cookie(response: &Response, cookie_name: &str) -> bool {
+    response
+        .headers()
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .any(|set_cookie| {
+            set_cookie
+                .as_bytes()
+                .strip_prefix(cookie_name.as_bytes())
+                .is_some_and(|rest| rest.starts_with(b"="))
+        })
 }
 
 /// Whether the browser says the request came from a page on the server's
@@ -786,6 +807,34 @@ mod tests {
             [CLEARED_BROWSER_SESSION_COOKIE],
             "revoked with its subject"
         );
+    }
+
+    /// A response that sets a new browser session (a sign-in, or a pairing's
+    /// approval) to a browser whose cookie's session has ended keeps it: the
+    /// layer clears nothing after it.
+    #[tokio::test]
+    async fn an_ended_browser_session_is_not_cleared_over_a_new_one() {
+        let authorization_server = AuthorizationServerFixture::new();
+        let new_session = "__Host-browser_session=new-token; Secure; HttpOnly; Path=/";
+        let router = Router::new()
+            .route(
+                "/Patient",
+                get(move || async move { ([(header::SET_COOKIE, new_session)], "signed in") }),
+            )
+            .layer(axum::middleware::from_fn_with_state(
+                authorization_server.browser_session_config(),
+                present_session_cookie_bearer,
+            ));
+        let response = send(
+            router,
+            Method::GET,
+            &[
+                ("cookie", "__Host-browser_session=not-a-token"),
+                ("sec-fetch-site", "same-origin"),
+            ],
+        )
+        .await;
+        assert_eq!(set_cookies(&response), [new_session]);
     }
 
     /// A browser session cookie whose session can't be judged, because the

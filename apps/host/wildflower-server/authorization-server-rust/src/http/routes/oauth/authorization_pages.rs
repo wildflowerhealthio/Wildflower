@@ -10,15 +10,20 @@
 //!   the RFC 8628 `verification_uri`, and with `?user_code=` its
 //!   `verification_uri_complete`. The same bytes whatever the query: the page
 //!   reads the code from its own URL. Uncached.
+//! - `GET /oauth/pair?next=…` serves the pairing page, `pair.html`, where a
+//!   browser that isn't the Owner's starts a browser pairing, shows its code,
+//!   and waits for the Owner's approval. The same bytes whatever the query.
+//!   Uncached.
 //! - `GET /oauth/assets/{file}` serves the pages' scripts, stylesheets and
 //!   fonts, Vite's content-hashed files, which never change under a name and
 //!   are cached as `immutable`. Only `.js`, `.css` and `.woff2` files are
 //!   served; anything else is `404`.
 //!
 //! Every file carries the wait page's security headers
-//! ([`page_security_headers`]). The pages call only the existing APIs
-//! (`/authorization/*` and FHIR `GET /Patient`), on the browser
-//! session's bearer, which the host's cookie→bearer layer presents for them.
+//! ([`page_security_headers`]). The consent card and the device page call
+//! `/authorization/*` and FHIR `GET /Patient`, on the browser session's
+//! bearer, which the host's cookie→bearer layer presents for them; the pairing
+//! page calls `/oauth/pair/*`, which needs no session.
 
 use std::path::Path as FilePath;
 use std::sync::Arc;
@@ -50,6 +55,9 @@ const DEVICE_PAGE: &str = "device.html";
 /// Where the device verification page is served, relative to
 /// [`OAUTH_MOUNT`].
 const DEVICE_PAGE_ROUTE: &str = "/device";
+
+/// The pairing page in the build.
+const PAIR_PAGE: &str = "pair.html";
 
 /// The device page's query parameter that carries the code it fills in.
 const USER_CODE_PARAM: &str = "user_code";
@@ -100,6 +108,7 @@ fn router_for<S: Clone + Send + Sync + 'static>(pages: &'static Dir<'static>) ->
             DEVICE_PAGE_ROUTE,
             get(move || async move { page(pages, DEVICE_PAGE) }),
         )
+        .route("/pair", get(move || async move { page(pages, PAIR_PAGE) }))
         .route(
             "/assets/{*file}",
             get(move |Path(file): Path<String>| async move { asset(pages, &file) }),
@@ -172,6 +181,10 @@ mod tests {
             DirEntry::File(File::new(
                 "device.html",
                 b"<!doctype html><title>Authorize a device</title>",
+            )),
+            DirEntry::File(File::new(
+                "pair.html",
+                b"<!doctype html><title>Sign in this browser</title>",
             )),
             DirEntry::Dir(Dir::new(
                 "assets",
@@ -286,6 +299,29 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn the_pairing_page_is_the_same_uncached_page_whatever_its_next() {
+        for uri in [
+            "/pair",
+            "/pair?next=%2Foauth%2Fauthorize%3Fclient_id%3Dapp",
+            "/pair?next=%3Cscript%3E",
+        ] {
+            let response = get(uri).await;
+            assert_eq!(response.status(), StatusCode::OK, "{uri}");
+            assert_locked_down(&response, uri);
+            assert_eq!(
+                header_of(&response, header::CACHE_CONTROL),
+                "no-store",
+                "{uri}"
+            );
+            assert_eq!(
+                body(response).await,
+                b"<!doctype html><title>Sign in this browser</title>",
+                "{uri}"
+            );
+        }
+    }
+
     #[test]
     fn the_device_page_urls_are_on_the_server_origin_with_the_code_encoded() {
         let device_page =
@@ -356,6 +392,7 @@ mod tests {
             "/assets/%2E%2E/consent.html",
             "/consent.html",
             "/device.html",
+            "/pair.html",
             "/device/WDJB-MJHT",
             "/authorize/req-1/consent.html",
         ] {
@@ -364,11 +401,12 @@ mod tests {
         }
     }
 
-    /// Whatever was built (or stubbed) into this binary has a consent page and
-    /// a device page to serve.
+    /// Whatever was built (or stubbed) into this binary has a consent page, a
+    /// device page and a pairing page to serve.
     #[test]
-    fn the_embedded_build_has_the_consent_and_device_pages() {
+    fn the_embedded_build_has_the_consent_device_and_pairing_pages() {
         assert!(AUTHORIZATION_PAGES.get_file(CONSENT_PAGE).is_some());
         assert!(AUTHORIZATION_PAGES.get_file(DEVICE_PAGE).is_some());
+        assert!(AUTHORIZATION_PAGES.get_file(PAIR_PAGE).is_some());
     }
 }

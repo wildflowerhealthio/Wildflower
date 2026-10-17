@@ -1,6 +1,7 @@
 mod authorization_pages;
 mod authorization_status;
 mod authorize;
+mod browser_pairing;
 mod client_auth;
 mod device_authorization;
 mod device_name_hint;
@@ -27,7 +28,8 @@ pub(crate) use authorization_pages::device_page_url;
 pub(crate) const OAUTH_MOUNT: &str = "/oauth";
 
 /// The `/oauth/*` pages — the [`wait_page`] and its assets, the
-/// [`authorization_pages`] (the consent card) and theirs, and the Owner's
+/// [`authorization_pages`] (the consent card, the device page, the pairing
+/// page) and theirs, and the Owner's
 /// [`sign_in`] — mounted under `/oauth` beside [`openapi_router`]. Kept out of
 /// the `OpenAPI` spec: they are a browser's pages, not API surface.
 pub(crate) fn page_router() -> Router<Arc<AuthorizationServerState>> {
@@ -63,4 +65,6 @@ pub(crate) fn openapi_router(
         .routes(limit_authorization_starts(routes!(
             device_authorization::handle_device_authorization_request
         )))
+        .routes(routes!(browser_pairing::handle_browser_pairing_start))
+        .routes(routes!(browser_pairing::handle_browser_pairing_poll))
 }

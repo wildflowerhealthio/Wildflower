@@ -5,19 +5,32 @@ use axum::routing::{get, MethodRouter};
 use axum::Json;
 use serde::Serialize;
 
+use crate::domain::authorization_request::GrantType;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::{DeviceConsentView, Scoped};
 use crate::http::state::AuthorizationServerState;
 use crate::live_bindings::LiveConsentReader;
 
-/// Body returned to the launcher when it loads a pending device-code consent
-/// prompt — describes the requesting client, the device's chosen name, its
-/// requested scopes, and the client's full allowed-scope set (the *expansion
-/// envelope* the approver may grant up to, since device consent is expandable).
-/// Local to this one route (its only reader).
+/// What asks at the device page: a device, through the RFC 8628 device-code
+/// flow, or a browser pairing for a browser session. On the wire, `"device"`
+/// or `"browser"`.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum DeviceConsentKind {
+    Device,
+    Browser,
+}
+
+/// Body returned to the launcher when it loads a pending device-page consent
+/// prompt — what asks, the requesting client, the device's or browser's
+/// name, its requested scopes, and the *expansion envelope* the approver may
+/// grant up to (device consent is expandable): a device client's full
+/// allowed-scope set, a browser's the Owner's scopes. Local to this one route
+/// (its only reader).
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct DeviceConsent {
+    pub(crate) kind: DeviceConsentKind,
     pub(crate) user_code: String,
     pub(crate) client_id: String,
     pub(crate) client_name: String,
@@ -39,14 +52,19 @@ async fn handle_get_device_consent(
     let DeviceConsentView {
         request,
         client_name,
-        registered_client_scopes,
+        approvable_scopes,
     } = consents.device_consent(&user_code)?;
+    let kind = match request.grant_type {
+        GrantType::BrowserPairing => DeviceConsentKind::Browser,
+        GrantType::AuthorizationCode | GrantType::DeviceCode => DeviceConsentKind::Device,
+    };
     Ok(Json(DeviceConsent {
+        kind,
         user_code,
         client_id: request.client_id,
         client_name,
         device_name: request.device_name,
         requested_scopes: request.requested_scopes,
-        allowed_scopes: registered_client_scopes,
+        allowed_scopes: approvable_scopes,
     }))
 }

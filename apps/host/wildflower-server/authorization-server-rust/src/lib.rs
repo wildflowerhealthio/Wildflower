@@ -88,14 +88,16 @@ pub use wildflowerhealthio_persistence::DieselPool;
 pub const WILDFLOWER_HOST_APP_CLIENT_ID: &str = "c4e755b6a4c1abf2aae6d0d83f2545a5";
 
 /// `client_id` of the browser-session client: the browsers the server has
-/// signed in, today the Owner's, signed in by the host app on its own device
-/// with a same-device sign-in code at `/oauth/sign-in`. Each such browser
-/// holds a token issued to this client (its `sub`), so revoking the client's
-/// subject signs every browser out, and one browser is signed out by revoking
-/// its browser session (its token's `sid`) or its token's `jti`. Like
+/// signed in. The Owner's is signed in by the host app on its own device with
+/// a same-device sign-in code at `/oauth/sign-in`; an approved browser pairs at
+/// `/oauth/pair`, showing a code the Owner approves. Each such browser holds a
+/// token issued to this client (its `sub`), so revoking the client's subject
+/// signs every browser out, and one browser is signed out by revoking its
+/// browser session (its token's `sid`) or its token's `jti`. Like
 /// [`WILDFLOWER_HOST_APP_CLIENT_ID`], it is an essential client: it can't be
 /// disabled. Seeded at boot by [`crate::setup_authorization_server`] with
-/// [`OWNER_SCOPES`]; it takes part in no OAuth flow.
+/// [`OWNER_SCOPES`], the most a browser session may hold, and no grant type;
+/// it takes part in no OAuth flow, since neither sign-in nor pairing is one.
 pub const BROWSER_SESSION_CLIENT_ID: &str = "cb9bbe139845cae9654b7909d60d274f";
 
 /// The maximal-access scopes that mark an Owner: full system FHIR access
@@ -117,8 +119,8 @@ pub const WILDFLOWER_WIDEST_SCOPES: &[Scope] = &[
 ];
 
 /// The Owner's scopes: the authority the Owner approves consents with, what an
-/// Owner session holds, and the browser-session client's
-/// `allowed_scopes`.
+/// Owner session holds, the most an approved browser session may be granted,
+/// and the browser-session client's `allowed_scopes`.
 /// An approval can't delegate a resource scope these don't cover.
 ///
 /// [`WILDFLOWER_WIDEST_SCOPES`] (the owner *identity*) plus `wildflower/launch`,
@@ -212,7 +214,8 @@ pub struct AuthorizationServer {
 /// (schema migrations, signing-key seed, essential-client seed), and:
 ///
 ///  - publishes the newest pending consent — device-code and
-///    authorization-code requests alike — on `owner_approval_tx`. On the
+///    authorization-code requests and browser pairings alike — on
+///    `owner_approval_tx`. On the
 ///    Tauri host, the server's run reports it as its detail, which the base's
 ///    server status carries and from which the host notifies each new
 ///    request.

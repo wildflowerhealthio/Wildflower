@@ -25,13 +25,13 @@ Distinct human/machine roles whose names collide easily — get these straight
 first. "Host" alone is ambiguous (the host app, the HTTP `Host` header, the
 `__Host-` cookie prefix), so these docs say **Wildflower host app**.
 
-| Role                    | Who they are                                                                                                             | Where they show up                                                                        |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| **OAuth client**        | Remote app requesting access (the SMART-on-FHIR caller, or the Wildflower host app itself).                              | `client_id`, `redirect_uri`, `/oauth/...` endpoints, the [`clients`](#client) table       |
-| **Owner**               | Human with absolute control over the data this authorization server protects. Approves consent, gates inbound requests.  | `/authorization/...` endpoints, `RequireAuthMiddleware`, tokens holding the Owner's grant |
-| **Wildflower host app** | The app on the Owner's device that runs this server in its own process. See [Wildflower host app](#wildflower-host-app). | The host app's client (`WILDFLOWER_HOST_APP_CLIENT_ID`), the in-process consent decider   |
-| **Signed-in browser**   | A browser the server has signed in, today the Owner's on the same device. See [Browser session](#browser-session).       | The browser-session client, the `__Host-browser_session` cookie                           |
-| **Resource owner**      | OAuth-spec name for the Owner — the person whose data is being shared.                                                   | OAuth spec only; we say "Owner"                                                           |
+| Role                    | Who they are                                                                                                                     | Where they show up                                                                        |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| **OAuth client**        | Remote app requesting access (the SMART-on-FHIR caller, or the Wildflower host app itself).                                      | `client_id`, `redirect_uri`, `/oauth/...` endpoints, the [`clients`](#client) table       |
+| **Owner**               | Human with absolute control over the data this authorization server protects. Approves consent, gates inbound requests.          | `/authorization/...` endpoints, `RequireAuthMiddleware`, tokens holding the Owner's grant |
+| **Wildflower host app** | The app on the Owner's device that runs this server in its own process. See [Wildflower host app](#wildflower-host-app).         | The host app's client (`WILDFLOWER_HOST_APP_CLIENT_ID`), the in-process consent decider   |
+| **Signed-in browser**   | A browser the server has signed in: the Owner's on the same device, or an approved one. See [Browser session](#browser-session). | The browser-session client, the `__Host-browser_session` cookie                           |
+| **Resource owner**      | OAuth-spec name for the Owner — the person whose data is being shared.                                                           | OAuth spec only; we say "Owner"                                                           |
 
 > **Open question:** The OAuth `client` (third-party app) is unrelated to
 > HTTP-client instances in the codebase — the word is overloaded. The
@@ -115,13 +115,14 @@ Both are [essential clients](#essential-client), which can't be disabled.
 A client the Owner can't lose without being stuck: the
 [Wildflower host app](#wildflower-host-app)'s, which is how
 the Owner reaches the server at all, and the browser-session client
-(`BROWSER_SESSION_CLIENT_ID`), which is how a browser on the Owner's device
-signs in as the Owner. Disabling either would leave the Owner no way in, so a
+(`BROWSER_SESSION_CLIENT_ID`), which every [browser session](#browser-session)'s
+token is issued to. Disabling either would leave the Owner no way in, so a
 `PATCH /authorization/clients/:clientId` that sets a `disabledAt` on one is
 refused with a `409 EssentialClient`, and nothing is written. Re-enabling one
 stays allowed, so an essential client disabled out of band (direct SQL) can be
 recovered; while the browser-session client is disabled that way,
-`/oauth/sign-in` signs no browser in. `GET /authorization/clients` flags both
+`/oauth/sign-in` signs no browser in and `/oauth/pair` starts no
+[browser pairing](#browser-pairing). `GET /authorization/clients` flags both
 `essential`, and the "Trusted Apps" list offers them no switch. The rule lives
 in one place, `EssentialClientGuard`, which the client reader and disabler
 share.
@@ -196,19 +197,21 @@ all-or-nothing.
 
 ### AuthorizationRequest
 
-A pending OAuth 2.0 authorization that has been started but not yet
-resolved.
+A pending authorization that has been started but not yet resolved: an
+OAuth 2.0 request of either grant flow, or a [browser pairing](#browser-pairing),
+which is no OAuth grant.
 
 - **Table:** `authorizationRequests`
-- **Discriminator:** `grantType: 'authorization_code' | 'device_code'`
-  (matches the OAuth `grant_type` request parameter).
+- **Discriminator:** `grantType: 'authorization_code' | 'device_code' | 'browser_pairing'`
+  (the two OAuth flows match the OAuth `grant_type` request parameter).
 - **Status field:** `'pending' | 'approved' | 'denied' | 'expired'`.
 - **TTL:** 5 minutes.
 - **Identifier:** `id` (UUID — for code flow, the request id; for
-  device flow, the `device_code`).
-- **Device-flow extras:** `userCode` (the human-typed RFC 8628 §6.1
-  code, formatted `BCDF-GHJK`); `lastPolledAt` (for the `slow_down`
-  rate limit); `deviceName` (see [Device name](#device-name)).
+  device flow, the `device_code`; for a pairing, its pairing code).
+- **Device-flow and pairing extras:** `userCode` (the human-typed RFC 8628
+  §6.1 code, formatted `BCDF-GHJK`); `lastPolledAt` (for the `slow_down`
+  rate limit); `deviceName` (see [Device name](#device-name); a pairing's
+  browser name).
 
 Code-flow rows carry the OAuth client's PKCE `code_challenge`,
 `redirect_uri`, requested `scope`, and the `state` parameter. A code-flow row
@@ -386,9 +389,11 @@ Optional on the wire; auth-code requests carry no device name.
 
 ### Pending consents
 
-The authorization requests waiting on the Owner, spanning **both** grant flows:
-a device-code request parked by `/oauth/device_authorization` and an
-authorization-code request parked by `/oauth/authorize` alike. The host asks
+The authorization requests waiting on the Owner, spanning **both** grant flows
+and browser pairings: a device-code request parked by
+`/oauth/device_authorization`, an authorization-code request parked by
+`/oauth/authorize`, and a [browser pairing](#browser-pairing) started at
+`/oauth/pair` alike. The host asks
 about one at a time, the newest by `requestedAt`, like a stack: a new request
 takes over from the one before it, and deciding it brings back the newest of
 those still pending.
@@ -398,19 +403,21 @@ overall, and a request over either limit is `429` (the host's
 `authorization_start_limit`). A browser whose session can decide consents,
 as one signed in as the Owner can, is never limited.
 
-The newest is a `NewestPendingConsent`, discriminated because the two flows
-have no shared lookup key, with the name of the client that asks (its
-registered name, or its `client_id` while it has none):
+The newest is a `NewestPendingConsent`, discriminated because the flows have
+no shared lookup key, with the name of what asks: the client's (its registered
+name, or its `client_id` while it has none), or a pairing browser's:
 
-| Flow               | Newest pending consent                     | Decided at                                        |
-| ------------------ | ------------------------------------------ | ------------------------------------------------- |
-| Device (RFC 8628)  | `{ kind: 'device', userCode, clientName }` | the device page, `/oauth/device?user_code=`       |
-| Authorization code | `{ kind: 'oauth', id, clientName }`        | the consent card, `/oauth/authorize/{id}/consent` |
+| Flow               | Newest pending consent                       | Decided at                                        |
+| ------------------ | -------------------------------------------- | ------------------------------------------------- |
+| Device (RFC 8628)  | `{ kind: 'device', userCode, clientName }`   | the device page, `/oauth/device?user_code=`       |
+| Authorization code | `{ kind: 'oauth', id, clientName }`          | the consent card, `/oauth/authorize/{id}/consent` |
+| Browser pairing    | `{ kind: 'browser', userCode, browserName }` | the device page, `/oauth/device?user_code=`       |
 
 The Rust side recomputes it (`newest_pending_consent`) after every transition
 that could change it — either flow's insert, approve, or deny — and publishes
 it on a `watch` channel. The Tauri host carries each server's newest pending
 consent in the server's status, posts a notification ("‹client› wants access
+to ‹domain›", or for a pairing "‹browser›, a remote browser, wants to sign in
 to ‹domain›") once for each request it hasn't notified for, and on the
 desktop, where a notification can't be clicked, opens the request at once. A
 request that comes back once a newer one is decided doesn't notify again. A
@@ -432,8 +439,8 @@ TTL lapsed.
 
 The host also watches one request it opened, through the
 `PendingConsentWatcher` the authorization server hands it: it rereads that
-request, by its `ConsentKey` (the device request's `user_code` or the code
-request's `id`), each time the newest is recomputed, changed or not, so it
+request, by its `ConsentKey` (the device request's or pairing's `user_code`,
+or the code request's `id`), each time the newest is recomputed, changed or not, so it
 sees the request decided or expired even while a newer one stays newest. On
 iOS the host closes the page it opened the request at once it settles.
 
@@ -522,8 +529,11 @@ Continue (RFC 8628 §5.4), so a phished link can't approve a code on its own.
 On the [browser session](#browser-session) it reads
 `GET /authorization/devices/{userCode}` and shows `authorization-react`'s
 `DeviceConsentCard`, which posts `/approve` or `/deny`; then it tells the Owner
-they can return to the device. Opened by the host app as
-`/oauth/device?user_code=…&then=back`, it instead says how it went and goes
+they can return to the device. It decides a [browser pairing](#browser-pairing)
+the same way: the card then says "A browser wants to sign in to your server",
+names the browser and marks it **Remote**, and shows no application; once
+approved, the page says the browser signs in on its own. Opened by the host
+app as `/oauth/device?user_code=…&then=back`, it instead says how it went and goes
 back, or closes the window, with a Close button that does it again, as the
 consent card does. It follows the API's answers rather than
 checking who is signed in. On load it reads `GET /authorization/session`: with
@@ -579,14 +589,58 @@ Enabling the client again lets sign-in work. Disabling it signs no browser
 out: a browser already signed in keeps its session until the token expires or
 is revoked.
 
+### Browser pairing
+
+How a browser that isn't the Owner's gets a [browser session](#browser-session):
+it shows a code, and the Owner approves it. Pairing is its own request kind,
+not the OAuth device grant: the browser-session client may use no grant type,
+so `/oauth/token` never mints a browser's token, and pairing writes no grant
+and no refresh family. The session row is its only record.
+
+1. A browser opens `https://<domain>/oauth/pair?next=…`, the **pairing page**,
+   from the same **authorization pages** bundle and with the same headers as
+   the [consent card](#consent-card). `next` must be a path on the server
+   (starting with `/`, not `//`); in practice it is an `/oauth/authorize` URL.
+2. The page posts `/oauth/pair/start`. The server parks a `browser_pairing`
+   [`AuthorizationRequest`](#authorizationrequest) for the browser-session
+   client, keyed by a 256-bit **pairing code**, with a `userCode` and a name
+   taken from the browser's `User-Agent` (`"Firefox on Linux"`, or `Browser`).
+   It answers the pairing code, the `userCode`, the name, and `next`, resolved.
+   Only that page holds the pairing code.
+3. The page shows the code and a name field, and polls `/oauth/pair/poll`
+   with the pairing code and the name as it stands every `interval` (5s),
+   waiting longer after a `slow_down`. While the request is pending each poll
+   records the name. The host notifies the Owner of the newest pending
+   consent, as for any request.
+4. The Owner decides it at the [device page](#device-page). The ticks start
+   from `wildflower/launch` alone, not the Owner's own access, and the Owner
+   may widen them up to `OWNER_SCOPES` and no further
+   ([Expandable consent](#expandable-consent)); an approval delegates nothing
+   the approver doesn't hold.
+5. The first poll after the approval claims the request
+   (`ClaimedBrowserPairing`, an authority proof), stores the `approved` browser
+   session it starts, named as approved, holding exactly the approved scopes
+   and lasting 24 hours (`APPROVED_SESSION_TTL`), and mints the session's token
+   for the browser-session client, for 24 hours. It answers `approved`,
+   setting `__Host-browser_session=<the token>; …; Max-Age=86400`, and the page
+   goes on to `next`. Later polls find the request `expired`.
+
+The request expires 5 minutes after it starts, like any authorization request.
+Starting one is not rate-limited. The poll's JSON body needs a preflight from
+any other origin, and CORS never allows credentials, so only the server's own
+pages can have its cookie set.
+
 ### Browser session
 
 A browser the server has signed in, one row in `browser_sessions`, keyed by
 its `sid`. Its `kind` says how the browser came to hold it: `owner` for a
 browser signed in as the Owner with a
-[same-device sign-in](#same-device-sign-in). An Owner session has no `name`,
-holds `OWNER_SCOPES`, and expires 8 hours (`OWNER_SESSION_TTL`) after the
-sign-in.
+[same-device sign-in](#same-device-sign-in), `approved` for any other browser,
+signed in by a [browser pairing](#browser-pairing). An Owner session has no
+`name`, holds `OWNER_SCOPES`, and expires 8 hours (`OWNER_SESSION_TTL`) after
+the sign-in. An approved session has the name the browser was approved under,
+holds the scopes the Owner granted, and expires 24 hours
+(`APPROVED_SESSION_TTL`) after the pairing.
 
 The browser holds its session in the `__Host-browser_session` cookie, whose
 value is the session's token, issued to the browser-session client (its
@@ -633,7 +687,7 @@ revoked, unless a refresh family alive by then still names it.
 
 - **Table:** `browser_sessions`
 - **Identifier:** `sid` (a random UUID).
-- **Kind:** `'owner'`.
+- **Kind:** `'owner' | 'approved'`.
 
 ### Expandable consent
 
@@ -642,9 +696,11 @@ device did **not** request, up to the client's `allowedScopes`, as well as narro
 what was asked. This contrasts with the **clamped** authorization-code / app
 consent path, where the grant may only be narrowed within the requested set
 (`granted ⊆ requested`) — a third-party app can never widen its own grant. The
-distinction lives in the two `ApprovableScopes` constructors: `for_device`
+distinction lives in the `ApprovableScopes` constructors: `for_device`
 measures the grantable subset against `client.allowedScopes`; `for_code`
-measures it against the request's `requestedScopes`. The shared scope-picker UI models the
+measures it against the request's `requestedScopes`; `for_browser_pairing`,
+also expandable, against `OWNER_SCOPES`, so no approved browser session holds
+more than an Owner session. The shared scope-picker UI models the
 same split with its `expandable` vs `clamped` mode.
 
 ### Scope sets

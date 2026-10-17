@@ -1,5 +1,6 @@
 //! The cookie a browser holds its browser session in once the server has
-//! signed it in (the Owner's, at `/oauth/sign-in`): `__Host-browser_session`,
+//! signed it in (the Owner's, at `/oauth/sign-in`; an approved browser's, on
+//! the pairing page's poll): `__Host-browser_session`,
 //! whose value is the browser's access token itself, naming its browser
 //! session as its `sid`. A restart doesn't sign the browser out; revoking the
 //! token's `jti`, the browser-session client's subject, or the browser
@@ -24,13 +25,13 @@
 use std::sync::Arc;
 
 use axum::http::{header, HeaderMap};
+use chrono::Duration;
 use cookie::Cookie;
 use wildflowerhealthio_scope_capabilities::GrantedScopes as _;
 
 use crate::domain::capabilities::access::consents::{
     consent_decider_scopes, consent_reader_scopes,
 };
-use crate::domain::capabilities::oauth::OWNER_SESSION_TTL;
 use crate::domain::capabilities::session::TokenVerifier;
 use crate::domain::token::{VerifiedClaims, VerifyError};
 use crate::domain::GrantStore;
@@ -54,12 +55,12 @@ pub const SESSION_HEADER: &str = "wildflower-session";
 /// the session this browser is signed in with, or as no session if none is.
 pub const BROWSER_SESSION_HEADER_VALUE: &str = "browser";
 
-/// The `Set-Cookie` value that hands a browser `session_token` as its
-/// browser session: `HttpOnly`, so no script reads it; `SameSite=Lax`,
-/// so another site's subrequests don't carry it; and it lasts exactly as long
-/// as the token.
-pub(crate) fn browser_session_set_cookie(session_token: &str) -> String {
-    browser_session_cookie(session_token, OWNER_SESSION_TTL.num_seconds())
+/// The `Set-Cookie` value that hands a browser `session_token`, which lives
+/// `session_ttl`, as its browser session: `HttpOnly`, so no script reads it;
+/// `SameSite=Lax`, so another site's subrequests don't carry it; and it lasts
+/// exactly as long as the token.
+pub(crate) fn browser_session_set_cookie(session_token: &str, session_ttl: Duration) -> String {
+    browser_session_cookie(session_token, session_ttl.num_seconds())
 }
 
 /// The `Set-Cookie` value that clears a browser's browser session: the
@@ -329,9 +330,14 @@ mod tests {
     #[test]
     fn the_cookie_has_exactly_the_browser_session_attributes() {
         assert_eq!(
-            browser_session_set_cookie("header.payload.signature"),
+            browser_session_set_cookie("header.payload.signature", Duration::hours(8)),
             "__Host-browser_session=header.payload.signature; Secure; HttpOnly; \
              SameSite=Lax; Path=/; Max-Age=28800"
+        );
+        assert_eq!(
+            browser_session_set_cookie("header.payload.signature", Duration::hours(24)),
+            "__Host-browser_session=header.payload.signature; Secure; HttpOnly; \
+             SameSite=Lax; Path=/; Max-Age=86400"
         );
     }
 

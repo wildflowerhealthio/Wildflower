@@ -90,6 +90,12 @@ impl TryFrom<GrantViewRow> for Grant {
                     device_name,
                 }))
             }
+            // The view unions the two grant tables only, and a browser
+            // pairing records no grant, so no row carries this tag.
+            GrantType::BrowserPairing => Err(AuthorizationServerError::infrastructure(
+                "grants view row tagged as a browser pairing, which records no grant",
+                &row.id,
+            )),
         }
     }
 }

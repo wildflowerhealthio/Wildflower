@@ -84,6 +84,17 @@ impl SignInDestinations {
         is_allowed.then(|| SignInRedirect(url.into()))
     }
 
+    /// `next` as a redirect, when it is a path on this server; `None`
+    /// otherwise. A browser pairing's `next` must be one: an approved browser
+    /// is sent on to the server's own `/oauth/authorize`, never off it.
+    pub(crate) fn allow_on_this_server(&self, next: &str) -> Option<SignInRedirect> {
+        if next.starts_with('/') {
+            self.path_on_this_server(next)
+        } else {
+            None
+        }
+    }
+
     /// `next`, a path, resolved against this server: its path and query, when
     /// it still names this server's origin.
     fn path_on_this_server(&self, next: &str) -> Option<SignInRedirect> {
@@ -270,6 +281,33 @@ mod tests {
             "",
         ] {
             assert_eq!(allowed(next), None, "{next:?}");
+        }
+    }
+
+    /// A pairing's `next` is a path on this server, as a sign-in's may be,
+    /// and nothing else: not the launcher or Authorization app a sign-in may
+    /// also go on to, nor a path naming another host.
+    #[test]
+    fn only_a_path_on_this_server_is_allowed_on_this_server() {
+        let on_this_server = |next: &str| {
+            destinations()
+                .allow_on_this_server(next)
+                .map(|redirect| redirect.location().to_owned())
+        };
+        assert_eq!(
+            on_this_server("/oauth/authorize?client_id=app&state=s").as_deref(),
+            Some("/oauth/authorize?client_id=app&state=s")
+        );
+        for next in [
+            "https://site.example/launcher/",
+            "https://manage.example/authorization/",
+            "https://ruth.relay.example/oauth/authorize",
+            "//evil.example/oauth/authorize",
+            "/\\evil.example",
+            "javascript:alert(1)",
+            "",
+        ] {
+            assert_eq!(on_this_server(next), None, "{next:?}");
         }
     }
 }

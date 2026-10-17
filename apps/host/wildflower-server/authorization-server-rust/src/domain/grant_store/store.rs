@@ -277,6 +277,20 @@ pub trait GrantStore {
         self.with_connection(|tx| tx.record_device_poll(id, polled_at))
     }
 
+    /// See [`GrantTx::record_browser_pairing_poll`].
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`GrantTx::record_browser_pairing_poll`]'s error.
+    fn record_browser_pairing_poll(
+        &self,
+        id: &str,
+        polled_at: DateTime<Utc>,
+        browser_name: &str,
+    ) -> Result<(), AuthorizationServerError> {
+        self.with_connection(|tx| tx.record_browser_pairing_poll(id, polled_at, browser_name))
+    }
+
     /// See [`GrantTx::redeem_authorization_code`].
     ///
     /// # Errors

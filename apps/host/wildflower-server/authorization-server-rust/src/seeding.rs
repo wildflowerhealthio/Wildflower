@@ -110,13 +110,16 @@ fn ensure_some_active_signing_key(store: &SqliteGrantStore) -> anyhow::Result<()
 /// `wildflower_host_app_client_id` (the live app sources both from
 /// `tauri-shared-config.json`; see [`crate::default_host_app_client_scopes`] /
 /// [`crate::default_wildflower_host_app_client_id`]), and the browser-session
-/// client the Owner's scopes ([`crate::OWNER_SCOPES`]). This corrects a store
+/// client the Owner's scopes ([`crate::OWNER_SCOPES`]), the most any browser
+/// session may hold. This corrects a store
 /// seeded by an older build (registration time and any admin disable are
 /// preserved).
 ///
 /// Both are public with no redirect URIs. The host app's client is allowed
 /// every grant type; the browser-session client none, since its tokens are
-/// minted only at `/oauth/sign-in`, so no OAuth flow can be run as it.
+/// minted only at `/oauth/sign-in` (an Owner session) and by the pairing
+/// page's poll (an approved session), neither of them OAuth, so no OAuth flow
+/// can be run as it and `/oauth/token` never mints its token.
 fn ensure_essential_clients(
     store: &SqliteGrantStore,
     host_app_client_scopes: &[String],

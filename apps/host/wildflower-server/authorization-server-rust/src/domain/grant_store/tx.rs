@@ -226,6 +226,21 @@ pub trait GrantTx {
         polled_at: DateTime<Utc>,
     ) -> Result<(), AuthorizationServerError>;
 
+    /// Stamp a *pending* browser pairing `id`'s `last_polled_at` and record the
+    /// `browser_name` its page now gives, so the next poll can be slow-down
+    /// rate-limited and the Owner sees the browser's latest name. A request no
+    /// longer pending is left as it is.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the update fails.
+    fn record_browser_pairing_poll(
+        &mut self,
+        id: &str,
+        polled_at: DateTime<Utc>,
+        browser_name: &str,
+    ) -> Result<(), AuthorizationServerError>;
+
     // ----- authorization codes -------------------------------------------
 
     /// Atomically read-and-delete the authorization `code` (`DELETE …

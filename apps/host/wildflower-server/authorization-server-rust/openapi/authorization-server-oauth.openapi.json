@@ -333,6 +333,98 @@
         }
       }
     },
+    "/oauth/pair/poll": {
+      "post": {
+        "tags": [
+          "Browser pairing"
+        ],
+        "summary": "Poll a browser pairing. The poll that finds it approved starts the\nbrowser's approved session and sets it as the browser's\n`__Host-browser_session` cookie.",
+        "operationId": "handle_browser_pairing_poll",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrowserPairingPollBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Where the pairing stands",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserPairingStatusBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No pairing has the pairing code",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserPairingNotFound"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oauth/pair/start": {
+      "post": {
+        "tags": [
+          "Browser pairing"
+        ],
+        "summary": "Start a browser pairing for this browser, named after its `User-Agent`,\nand raise the Owner's notification.",
+        "operationId": "handle_browser_pairing_start",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrowserPairingStartBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The started pairing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartedBrowserPairingBody"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`next` is no path on this server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserPairingRefused"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The browser-session client is disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserPairingRefused"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/oauth/token": {
       "post": {
         "tags": [
@@ -488,6 +580,136 @@
           }
         ],
         "description": "Polling response for the launcher watching an authorization request as it\nmoves from `Pending` toward approval or denial."
+      },
+      "BrowserPairingNotFound": {
+        "type": "object",
+        "description": "No browser pairing has the presented pairing code\n(`BrowserPairingNotFound`, 404).",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "BrowserPairingPollBody": {
+        "type": "object",
+        "description": "`POST /oauth/pair/poll` body.",
+        "required": [
+          "pairingCode",
+          "browserName"
+        ],
+        "properties": {
+          "pairingCode": {
+            "type": "string",
+            "description": "The pairing code the start answered with."
+          },
+          "browserName": {
+            "type": "string",
+            "description": "The name the page now gives its browser. Recorded while the request\nis pending; blank keeps the name it has."
+          }
+        }
+      },
+      "BrowserPairingRefused": {
+        "type": "object",
+        "description": "Why a pairing didn't start: `next` is no path on this server\n(`BrowserPairingNextNotAllowed`, 400), or the browser-session client is\ndisabled (`BrowserSessionClientDisabled`, 403).",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "BrowserPairingStartBody": {
+        "type": "object",
+        "description": "`POST /oauth/pair/start` body.",
+        "required": [
+          "next"
+        ],
+        "properties": {
+          "next": {
+            "type": "string",
+            "description": "Where the browser goes once it holds its session: a path on this\nserver, in practice an `/oauth/authorize` URL."
+          }
+        }
+      },
+      "BrowserPairingStatusBody": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "slow_down"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "approved"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "denied"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "expired"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Where a pairing stands. `approved` carries the browser's session as its\n`Set-Cookie`; the page then goes on to its `next`. `slow_down` means the\npage polled sooner than its interval."
       },
       "ClientBody": {
         "type": "object",
@@ -742,6 +964,46 @@
           "e": {
             "type": "string",
             "description": "RSA public exponent `e`, base64url-encoded."
+          }
+        }
+      },
+      "StartedBrowserPairingBody": {
+        "type": "object",
+        "description": "A started pairing, for the pairing page.",
+        "required": [
+          "pairingCode",
+          "userCode",
+          "browserName",
+          "next",
+          "expiresIn",
+          "interval"
+        ],
+        "properties": {
+          "pairingCode": {
+            "type": "string",
+            "description": "The secret the page polls with. Only this page holds it."
+          },
+          "userCode": {
+            "type": "string",
+            "description": "The code the page shows, which the Owner confirms on the device page."
+          },
+          "browserName": {
+            "type": "string",
+            "description": "The name the browser goes by until the page names it, taken from its\nuser agent."
+          },
+          "next": {
+            "type": "string",
+            "description": "Where the page sends the browser once it holds its session: `next`,\nresolved against this server."
+          },
+          "expiresIn": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Seconds until the request expires."
+          },
+          "interval": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Seconds the page waits between polls."
           }
         }
       },
