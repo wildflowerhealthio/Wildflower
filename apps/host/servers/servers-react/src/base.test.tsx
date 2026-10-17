@@ -325,6 +325,52 @@ describe('the server list', () => {
     expect(notes).toEqual(note === null ? [] : [note])
   })
 
+  /** `golden.serverStatuses[statusName]` with its certificate's status set to `certificateStatus` and none held. */
+  const withNoCertificateHeld = (
+    statusName: 'runningAndReachable' | 'neverRun',
+    certificateStatus: string
+  ): unknown => {
+    const status = golden.serverStatuses[statusName]
+    return {
+      ...status,
+      certificate: { status: certificateStatus, issuer: status.certificate.issuer },
+    }
+  }
+
+  it.each([
+    [
+      'running, ordering with no certificate held',
+      withNoCertificateHeld('runningAndReachable', 'ordering'),
+      true,
+    ],
+    [
+      'running, its order failing',
+      withNoCertificateHeld('runningAndReachable', 'orderFailing'),
+      false,
+    ],
+    ['running, holding a valid certificate', golden.serverStatuses.runningAndReachable, false],
+    ['stopped, holding none', withNoCertificateHeld('neverRun', 'notIssued'), false],
+  ] as const)(
+    "should warn above the buttons that a server can't be reached until its certificate arrives only while it runs ordering with none held: %s",
+    async (_, status, warns) => {
+      // Act
+      renderListed([{ ...golden.listedServers[0], status }, golden.listedServers[1]])
+
+      // Assert
+      const ruth = await screen.findByRole('listitem', { name: 'ruth.relay.example.com' })
+      const warning = within(ruth).queryByText(
+        "This server can't be reached until its certificate arrives."
+      )
+      expect(warning !== null).toBe(warns)
+      if (warning !== null) {
+        const apps = within(ruth).getByRole('button', { name: 'Apps' })
+        expect(
+          warning.compareDocumentPosition(apps) & Node.DOCUMENT_POSITION_FOLLOWING
+        ).toBeTruthy()
+      }
+    }
+  )
+
   it.each([
     [{ kind: 'off' }, /^Off$/],
     [{ kind: 'whileOpen' }, /^On while Wildflower is open$/],

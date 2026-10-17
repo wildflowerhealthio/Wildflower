@@ -8,11 +8,17 @@ export {
   type HostCommandError,
 } from './host-commands.ts'
 export {
+  getServerCertificate,
+  orderNewServerCertificate,
+  readDuplicateCertificates,
+} from './certificate-commands.ts'
+export {
   enableBackgroundSessionRecovery,
   type BackgroundServiceStartConfig,
 } from './background-session-recovery.ts'
 export * as CertificateAuthority from './certificate-authority.ts'
 export * as CertificateState from './certificate-state.ts'
+export * as DuplicateCertificates from './duplicate-certificates.ts'
 export * as EnteredCredentials from './entered-credentials.ts'
 export * as EnteredRelay from './entered-relay.ts'
 export * as HealthReport from './health-report.ts'

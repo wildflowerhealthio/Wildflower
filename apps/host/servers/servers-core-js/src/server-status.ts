@@ -167,11 +167,22 @@ const pendingConsentOf = (status: Type): Option.Option<PendingConsent.Type> =>
 const lastStopOf = (status: Type): Option.Option<RunStop> =>
   status.runState === 'stopped' ? status.lastStop : Option.none()
 
+/**
+ * Whether the server is running while it orders a certificate with none to
+ * serve, as before its first certificate or after "Order a new certificate":
+ * visitors' TLS handshakes fail until one is deployed.
+ */
+const isOrderingWithoutCertificate = (status: Type): boolean =>
+  status.runState === 'running' &&
+  status.certificate.status === 'ordering' &&
+  Option.isNone(status.certificate.held)
+
 export {
   decodeEvent,
   EVENT,
   HealthSchema,
   healthOf,
+  isOrderingWithoutCertificate,
   lastStopOf,
   pendingConsentOf,
   PlatformStopReasonSchema,

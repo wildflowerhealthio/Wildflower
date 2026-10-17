@@ -1,0 +1,22 @@
+/* The tab: its list, then its note and its action, stacked. */
+.certificate {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* The action: its notes, its failure and its button, stacked. */
+.certificate__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.certificate__note {
+  margin: 0;
+  color: var(--color-neutral-3);
+}
+
+.certificate__action {
+  align-self: flex-start;
+}
