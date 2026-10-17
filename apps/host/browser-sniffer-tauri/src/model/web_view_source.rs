@@ -6,7 +6,9 @@ use tauri::WebviewUrl;
 /// carrying an `http(s)://`-only URL. We validate that invariant at decode
 /// time as defense-in-depth alongside the page-side schema check (which
 /// likewise accepts both schemes so a server reachable only over http — e.g.
-/// a local dev HAPI instance — can still be sniffed).
+/// a local dev HAPI instance — can still be sniffed). Pinned by
+/// `recorder-wire-golden.json`'s `webToHost.Open` source as well as by
+/// `RecorderBridge`.
 #[derive(Debug, PartialEq, Deserialize)]
 #[serde(tag = "_tag")]
 pub(crate) enum WebViewSourcePayload {

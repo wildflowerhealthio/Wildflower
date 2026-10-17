@@ -5,7 +5,8 @@
 
 /// Web→host tag literals this crate dispatches on. `Open` both builds the
 /// sniffer webview (when absent) and navigates it thereafter — there is no
-/// separate mount tag.
+/// separate mount tag. Both tags are pinned to `RecorderBridge` by
+/// `recorder-wire-golden.json` (see `crate::tests`).
 pub const OPEN: &str = "Open";
 pub const SNIFFING_COMPLETE: &str = "SniffingComplete";
 
@@ -15,7 +16,8 @@ pub const SNIFFING_COMPLETE: &str = "SniffingComplete";
 /// untrusted native-webview `Message` — control tags are deliberately excluded
 /// so a hostile page can't spoof them (see `native_webview_bridge`). Mirrors
 /// `browser-sniffer-core`'s `messages.ts` page→host set; drift-guarded in
-/// `native_webview_bridge::tests`.
+/// `native_webview_bridge::tests`, which also checks each against its
+/// `recorder-wire-golden.json` payload.
 pub const PAGE_LOADED: &str = "PageLoaded";
 /// Early page-arrival notification: emitted once per document at
 /// `DOMContentLoaded`, before (and even without) the settled `PAGE_LOADED`.
@@ -44,7 +46,8 @@ pub const CANCEL_SNIFFER_REQUEST: &str = "CancelSnifferRequest";
 /// [`crate::native_webview_bridge`]'s page→host data-plane allowlist — an
 /// untrusted page must not be able to forge it. Drift-guarded in
 /// [`crate::tests::bridge_tags_match_the_ts_convention`]; mirrors
-/// `recorder-core-js`'s `RecorderBridge` `UserDismissed` message.
+/// `recorder-core-js`'s `RecorderBridge` `UserDismissed` message, and the
+/// emitted envelope is pinned by `recorder-wire-golden.json`.
 pub const USER_DISMISSED: &str = "UserDismissed";
 
 /// Host→web control tag the crate *synthesizes* from a plugin `Disposed`
@@ -55,7 +58,8 @@ pub const USER_DISMISSED: &str = "UserDismissed";
 /// like `UserDismissed`, so it is likewise **excluded** from
 /// [`crate::native_webview_bridge`]'s page→host data-plane allowlist.
 /// Drift-guarded in [`crate::tests::bridge_tags_match_the_ts_convention`];
-/// mirrors `recorder-core-js`'s `RecorderBridge` `SnifferDisposed` message.
+/// mirrors `recorder-core-js`'s `RecorderBridge` `SnifferDisposed` message, and
+/// the emitted envelope is pinned by `recorder-wire-golden.json`.
 pub const SNIFFER_DISPOSED: &str = "SnifferDisposed";
 
 /// Window label assigned to the main React SPA webview by

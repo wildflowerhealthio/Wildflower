@@ -43,7 +43,9 @@ use crate::events;
 /// The web→host data-plane tags the sniffer's native-webview page may raise on
 /// the bridge. See [`crate::events`] for the security rationale — control tags
 /// are excluded so an untrusted page can't spoof them.
-/// [`tests::data_plane_tags_match_ts`] drift-guards the literals.
+/// [`tests::data_plane_tags_match_ts`] drift-guards the literals, and
+/// `tests::data_plane_tags_match_the_golden_file` checks each against
+/// `recorder-wire-golden.json`.
 const NATIVE_WEBVIEW_DATA_PLANE_TAGS: &[&str] = &[
     events::PAGE_LOADED,
     events::PAGE_REQUESTED,
@@ -244,6 +246,14 @@ fn classify_event(event: &NativeWebviewEvent) -> BridgeAction<'_> {
     }
 }
 
+/// The host-origin control envelope `{"_tag": tag}` that [`dispatch_body`]
+/// emits for a [`BridgeAction::EmitControl`]. Pinned to `RecorderBridge`'s
+/// `UserDismissed` / `SnifferDisposed` by
+/// `tests::control_envelopes_match_the_golden_file`.
+fn control_envelope(tag: &str) -> serde_json::Value {
+    serde_json::json!({ "_tag": tag })
+}
+
 /// Decode a channel body and dispatch to the bridge bus. Decode / emit
 /// failures log at warn — native-webview event delivery is best-effort, the
 /// listener loop continues.
@@ -275,7 +285,7 @@ fn dispatch_body(app: &AppHandle, body: &InvokeResponseBody) {
         }
         BridgeAction::LogOnly(line) => log::info!("[browser-sniffer] {line}"),
         BridgeAction::EmitControl(tag) => {
-            match app.emit(BRIDGE_EVENT, serde_json::json!({ "_tag": tag })) {
+            match app.emit(BRIDGE_EVENT, control_envelope(tag)) {
                 // Log the success too, not just the failure: these tags are the
                 // host's only trace of a webview lifecycle transition, and "did the
                 // host see the dismissal and emit it?" has to be answerable from a
@@ -423,10 +433,49 @@ mod tests {
     use wildflowerhealthio_shared_structures::bridge::BRIDGE_EVENT;
 
     use super::{
-        classify_event, data_plane_value_is_allowed, validate_native_webview_message, BridgeAction,
-        NATIVE_WEBVIEW_DATA_PLANE_TAGS,
+        classify_event, control_envelope, data_plane_value_is_allowed,
+        validate_native_webview_message, BridgeAction, NATIVE_WEBVIEW_DATA_PLANE_TAGS,
     };
-    use crate::events;
+    use crate::{events, recorder_wire_golden};
+
+    /// What the host emits for `Hidden` and `Disposed` is exactly what
+    /// `RecorderBridge` decodes for `UserDismissed` and `SnifferDisposed`.
+    #[test]
+    fn control_envelopes_match_the_golden_file() {
+        let golden = recorder_wire_golden();
+        assert_eq!(
+            control_envelope(events::USER_DISMISSED),
+            golden["hostToWeb"]["UserDismissed"]
+        );
+        assert_eq!(
+            control_envelope(events::SNIFFER_DISPOSED),
+            golden["hostToWeb"]["SnifferDisposed"]
+        );
+    }
+
+    /// Every tag the host re-emits from the page is one `RecorderBridge`
+    /// declares, and its golden payload passes the allowlist gate unchanged.
+    #[test]
+    fn data_plane_tags_match_the_golden_file() {
+        let golden = recorder_wire_golden();
+        let host_to_web = golden["hostToWeb"].as_object().expect("hostToWeb object");
+        for tag in NATIVE_WEBVIEW_DATA_PLANE_TAGS {
+            let payload = host_to_web
+                .get(*tag)
+                .unwrap_or_else(|| panic!("`{tag}` has no golden hostToWeb payload"));
+            assert_eq!(payload["_tag"], *tag);
+            let envelope =
+                serde_json::json!({ "event": BRIDGE_EVENT, "payload": payload }).to_string();
+            let forwarded = validate_native_webview_message(&envelope)
+                .unwrap_or_else(|reason| panic!("golden `{tag}` was rejected: {reason}"));
+            let forwarded: serde_json::Value =
+                serde_json::from_str(forwarded.get()).expect("forwarded payload is JSON");
+            assert_eq!(
+                &forwarded, payload,
+                "golden `{tag}` was not forwarded unchanged"
+            );
+        }
+    }
 
     /// Drift guard: the Rust allowlist must match the sniffer's web→host
     /// emit set (the seven page→host tags in `browser-sniffer-core`'s

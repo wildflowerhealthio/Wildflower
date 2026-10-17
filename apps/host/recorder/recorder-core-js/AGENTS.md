@@ -37,7 +37,8 @@ runtime.
 - `src/index.ts` — re-exports all six.
 - `../recorder-wire-golden.json` — one wire payload per `RecorderBridge` tag
   and the `recorder_save_folder` answer, read by `bridge.test.ts`,
-  `save-folder.test.ts` and `recorder-rust`'s tests.
+  `save-folder.test.ts`, `recorder-rust`'s and `browser-sniffer-tauri`'s
+  tests.
 
 ## Layering
 

@@ -1,6 +1,7 @@
 //! Serde mirror of `RecorderBridge`'s save channel: `SaveHar` and its two
-//! answers. The bridge's other tags are the sniffer's, which
-//! `browser-sniffer-tauri` routes.
+//! answers. The bridge's other tags are the sniffer's;
+//! `browser-sniffer-tauri`'s tests (`open_matches_the_golden_file` and its
+//! siblings) pin those against the same golden file.
 //!
 //! The TS schema in `apps/host/recorder/recorder-core-js/src/bridge.ts` is the
 //! contract; `apps/host/recorder/recorder-wire-golden.json`, which the TS tests

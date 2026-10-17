@@ -10,7 +10,8 @@ import { HarSaveFailed, HarSaved, HttpUrl, Open, RecorderBridge, SaveHar } from 
  * transport carries it: a structured value, checked against each schema's
  * struct side (`Schema.typeSchema`), as `PageDispatcher` checks an inbound
  * payload. `recorder-rust`'s serde mirror of the save channel reads the same
- * file, and `browser-sniffer-tauri` emits and routes the rest unchanged.
+ * file, and `browser-sniffer-tauri`'s tests read it for the sniffer tags it
+ * routes, emits and re-emits.
  */
 
 type HostToWebTag = keyof typeof golden.hostToWeb
