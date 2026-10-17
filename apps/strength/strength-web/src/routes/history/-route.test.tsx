@@ -6,7 +6,7 @@ import {
   type FakeFhirServer,
   resourceTypeOfQuery,
   searchParamsOf,
-} from '../fake-fhir-server.test-helpers.ts'
+} from '../../fake-fhir-server.test-helpers.ts'
 import {
   END_TO_END_TIMEOUT_MILLIS,
   endStrengthTest,
@@ -14,11 +14,12 @@ import {
   seedStartedLifter,
   seedWorkout,
   startStrengthTest,
-} from '../strength-app.test-helpers.ts'
+  tabLink,
+} from '../../strength-app.test-helpers.ts'
 
 /**
  * The History tab: completed workouts read and listed, driven through
- * `StrengthApp` over the in-memory FHIR server (see
+ * the app's router over the in-memory FHIR server (see
  * `strength-app.test-helpers.ts`).
  */
 
@@ -40,7 +41,7 @@ describe('HistoryTab', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
     await screen.findByRole('heading', { name: 'Workout B' })
 
     // Act
-    await user.click(screen.getByRole('button', { name: 'History' }))
+    await user.click(tabLink('History'))
 
     // Assert
     expect(await screen.findByText(/^Workout A · /)).toBeDefined()

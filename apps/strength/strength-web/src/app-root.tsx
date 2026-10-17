@@ -12,10 +12,17 @@ import { smartAppTelemetry, smartRegistration } from './config.ts'
  * Its telemetry goes to the app's own Sentry project (`smartAppTelemetry`),
  * and only once the visitor consents to it.
  *
+ * @param basepath - The served directory, the app's router's basepath.
  * @param launched - Whether the URL carries a SMART callback to complete; see
  *   `SmartAppRoot`. Defaults to the live URL check; tests pass it explicitly.
  */
-function AppRoot({ launched }: { readonly launched?: boolean }): JSX.Element {
+function AppRoot({
+  basepath,
+  launched,
+}: {
+  readonly basepath: string
+  readonly launched?: boolean
+}): JSX.Element {
   return (
     <SmartAppRoot
       app="strength"
@@ -23,7 +30,7 @@ function AppRoot({ launched }: { readonly launched?: boolean }): JSX.Element {
       telemetry={smartAppTelemetry}
       launched={launched}
     >
-      <App />
+      <App basepath={basepath} />
     </SmartAppRoot>
   )
 }

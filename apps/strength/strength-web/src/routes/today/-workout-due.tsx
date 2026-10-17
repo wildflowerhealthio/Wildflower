@@ -8,15 +8,15 @@ import {
 import { Array as Arr, Either, Option } from 'effect'
 import { type JSX, useMemo, useState } from 'react'
 
-import { now } from '../clock.ts'
-import { workoutIdMinter } from '../ids/workout-id-minter.ts'
-import type { CurrentTraining } from '../record/training-record.ts'
-import { type StrengthSession, subjectOf } from '../session/strength-session.ts'
-import { useStrengthWrite, useStrengthWriting } from '../session/use-strength-write.ts'
-import { currentLoadsOf } from '../start-program/current-loads.ts'
-import { StartProgram } from '../start-program/start-program.tsx'
-import { submittedWorkoutResources } from './submitted-workout-resources.ts'
-import styles from './today-tab.module.css'
+import { now } from '../../clock.ts'
+import { workoutIdMinter } from '../../ids/workout-id-minter.ts'
+import type { CurrentTraining } from '../../record/training-record.ts'
+import { type StrengthSession, subjectOf } from '../../session/strength-session.ts'
+import { useStrengthWrite, useStrengthWriting } from '../../session/use-strength-write.ts'
+import { currentLoadsOf } from '../../start-program/current-loads.ts'
+import { StartProgram } from '../../start-program/start-program.tsx'
+import { submittedWorkoutResources } from './-submitted-workout-resources.ts'
+import styles from './-workout-due.module.css'
 
 /**
  * What one submission writes from, fixed at its first attempt so a retry
@@ -28,8 +28,8 @@ interface WorkoutAttempt {
   readonly mintId: (idToMint: PlannedWorkout.IdToMint) => string
 }
 
-/** Props for {@link TodayTab}. */
-interface TodayTabProps {
+/** Props for {@link WorkoutDue}. */
+interface WorkoutDueProps {
   readonly session: StrengthSession
   /** The lifter's current program, as the record read found it. */
   readonly currentTraining: CurrentTraining
@@ -54,11 +54,11 @@ interface TodayTabProps {
  * `ExerciseRequest`, or several, the refusal is shown above a restart of the
  * program at the lifter's current loads.
  */
-const TodayTab = ({
+const WorkoutDue = ({
   session,
   currentTraining,
   activeExerciseRequests,
-}: TodayTabProps): JSX.Element => {
+}: WorkoutDueProps): JSX.Element => {
   const workoutWrite = useStrengthWrite(session, 'workout')
   const writing = useStrengthWriting(session)
   const [workoutAttempt, setWorkoutAttempt] = useState<Option.Option<WorkoutAttempt>>(Option.none())
@@ -68,7 +68,7 @@ const TodayTab = ({
 
   if (Option.isSome(submitted)) {
     return (
-      <div className={styles['today-tab__submitted']}>
+      <div className={styles['workout-due__submitted']}>
         <SubmittedWorkoutView submitted={submitted.value} />
         <button
           type="button"
@@ -150,4 +150,4 @@ const TodayTab = ({
   )
 }
 
-export { TodayTab, type TodayTabProps }
+export { WorkoutDue, type WorkoutDueProps }

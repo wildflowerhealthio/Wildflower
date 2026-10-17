@@ -26,6 +26,7 @@ import { DateTime, Option, Schema } from 'effect'
 import { createElement, type ReactNode, StrictMode } from 'react'
 import { vi } from 'vite-plus/test'
 
+import { StrengthRouter } from './app.tsx'
 import {
   ACCESS_TOKEN,
   type FakeFhirServer,
@@ -33,7 +34,6 @@ import {
   resourceTypeOfWire,
   SERVER_URL,
 } from './fake-fhir-server.test-helpers.ts'
-import { StrengthApp } from './strength-app/strength-app.tsx'
 
 /**
  * The app's own wiring, end to end, over an in-memory FHIR server
@@ -77,22 +77,46 @@ const seededTrainingPlanDefinition =
  */
 const END_TO_END_TIMEOUT_MILLIS = 20_000
 
+/** The directory the app is served from in these tests. */
+const BASEPATH = '/strength/'
+
 /**
- * Start a test: a server holding only the lifter's `Patient`, and the clock
- * stopped at {@link SUBMITTED_AT}.
+ * A `ResizeObserver` that never fires: jsdom has no layout, and nothing these
+ * tests check hangs on a resize (the page's `RouteTabs` observes its strip).
+ */
+class InertResizeObserver {
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+}
+
+/** `Element.scrollTo` as it was before each test, which jsdom leaves undefined. */
+const scrollToDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTo')
+
+/**
+ * Start a test: a server holding only the lifter's `Patient`, the clock
+ * stopped at {@link SUBMITTED_AT}, and the browser APIs the page's
+ * `RouteTabs` reads that jsdom lacks (`ResizeObserver`, `matchMedia`,
+ * `Element.scrollTo`) stubbed.
  */
 const startStrengthTest = (): FakeFhirServer => {
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date(SUBMITTED_AT))
+  vi.stubGlobal('ResizeObserver', InertResizeObserver)
+  vi.stubGlobal('matchMedia', () => ({ matches: false }))
+  Element.prototype.scrollTo = () => {}
   const server = fakeFhirServer()
   server.seedWire(PATIENT_WIRE)
   return server
 }
 
-/** End a test: unmount what it rendered and restart the clock. */
+/** End a test: unmount what it rendered, restart the clock and put the stubs back. */
 const endStrengthTest = (): void => {
   cleanup()
   vi.useRealTimers()
+  vi.unstubAllGlobals()
+  if (scrollToDescriptor === undefined) Reflect.deleteProperty(Element.prototype, 'scrollTo')
+  else Object.defineProperty(Element.prototype, 'scrollTo', scrollToDescriptor)
 }
 
 // ---------------------------------------------------------------------------
@@ -247,13 +271,18 @@ const testQueryClient = (): QueryClient =>
   new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
 /**
- * Mount the lifting screens over `server`, through the real runtime, for
- * `patientChoice` — the lifter {@link PATIENT_ID} unless told otherwise.
+ * Mount the lifting page's router over `server`, through the real runtime,
+ * for `patientChoice` — the lifter {@link PATIENT_ID} unless told otherwise —
+ * at `route` under {@link BASEPATH} (the app root unless told otherwise).
  */
 const mountStrengthApp = (
   server: FakeFhirServer,
-  patientChoice: PatientChoice = LIFTER_CHOICE
+  {
+    patientChoice = LIFTER_CHOICE,
+    route = '',
+  }: { readonly patientChoice?: PatientChoice; readonly route?: string } = {}
 ): void => {
+  window.history.replaceState(null, '', `${BASEPATH}${route}`)
   const queryClient = testQueryClient()
   const { runAuthed } = buildSmartRouterContext(
     { serverUrl: SERVER_URL, accessToken: ACCESS_TOKEN },
@@ -261,17 +290,28 @@ const mountStrengthApp = (
     queryClient
   )
   renderWithQueryClient(
-    createElement(StrengthApp, {
-      client: server.clientFor(PATIENT_ID),
-      runAuthed,
-      patientChoice,
-      onPatientChange: () => undefined,
+    createElement(StrengthRouter, {
+      basepath: BASEPATH,
+      context: {
+        client: server.clientFor(PATIENT_ID),
+        runAuthed,
+        patientChoice,
+        changePatient: () => undefined,
+      },
     }),
     queryClient
   )
 }
 
+/** The tab strip's link to `label`. */
+const tabLink = (label: string): HTMLElement => screen.getByRole('link', { name: label })
+
+/** The address bar's path under {@link BASEPATH}. */
+const currentRoute = (): string => window.location.pathname.slice(BASEPATH.length)
+
 export {
+  BASEPATH,
+  currentRoute,
   decodedOfType,
   END_TO_END_TIMEOUT_MILLIS,
   endStrengthTest,
@@ -290,6 +330,7 @@ export {
   startStrengthTest,
   SUBJECT,
   SUBMITTED_AT,
+  tabLink,
   tapEverySet,
   trainingPlanDefinitionWireSchema,
   workoutProcedureWireSchema,

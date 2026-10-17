@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { type FakeFhirServer, resourceTypeOfQuery } from './fake-fhir-server.test-helpers.ts'
 import {
+  BASEPATH,
   END_TO_END_TIMEOUT_MILLIS,
   endStrengthTest,
   PATIENT_ID,
@@ -37,7 +38,7 @@ let server: FakeFhirServer
 
 beforeEach(() => {
   server = startStrengthTest()
-  window.history.replaceState(null, '', '/lifting/')
+  window.history.replaceState(null, '', BASEPATH)
 })
 
 afterEach(() => {
@@ -51,7 +52,7 @@ describe('App', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
     handshakeMock.mockReturnValue({ kind: 'ready', client: server.clientFor(null) })
 
     // Act
-    renderWithQueryClient(<App />)
+    renderWithQueryClient(<App basepath={BASEPATH} />)
 
     // Assert — only patients are searched
     expect(await screen.findByRole('button', { name: /Ada Lovelace/ })).toBeDefined()
@@ -65,7 +66,7 @@ describe('App', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
     const user = userEvent.setup()
     seedStartedLifter(server)
     handshakeMock.mockReturnValue({ kind: 'ready', client: server.clientFor(null) })
-    renderWithQueryClient(<App />)
+    renderWithQueryClient(<App basepath={BASEPATH} />)
 
     // Act
     await user.click(await screen.findByRole('button', { name: /Ada Lovelace/ }))
@@ -80,7 +81,7 @@ describe('App', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
     const user = userEvent.setup()
     seedStartedLifter(server)
     handshakeMock.mockReturnValue({ kind: 'ready', client: server.clientFor(PATIENT_ID) })
-    renderWithQueryClient(<App />)
+    renderWithQueryClient(<App basepath={BASEPATH} />)
     await screen.findByRole('heading', { name: 'Workout A' })
 
     // Act
@@ -96,7 +97,7 @@ describe('App', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
     handshakeMock.mockReturnValue({ kind: 'ready', client: server.clientFor(PATIENT_ID) })
 
     // Act
-    renderWithQueryClient(<App />)
+    renderWithQueryClient(<App basepath={BASEPATH} />)
 
     // Assert
     expect(await screen.findByRole('heading', { name: 'Workout A' })).toBeDefined()

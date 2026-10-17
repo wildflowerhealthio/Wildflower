@@ -6,9 +6,14 @@ import { createRoot } from 'react-dom/client'
 // the app's own CSS modules so app styles win on tied specificity.
 import '@wildflowerhealthio/react-tundraish/styles'
 
-import { restoreRedirectedUrl } from '@wildflowerhealthio/branding-core'
+import { basenameOf, restoreRedirectedUrl } from '@wildflowerhealthio/branding-core'
 import { addOsColorSchemeListener } from '@wildflowerhealthio/react-tundraish'
 import { AppRoot } from './app-root.tsx'
+
+// The directory this build is served from, the router's basepath. Read before
+// `restoreRedirectedUrl` puts a deep route back in the address bar, after
+// which `basenameOf` would fold that route's segments into the answer.
+const basepath = basenameOf(window.location.pathname)
 
 // Complete a GitHub Pages 404 redirect before anything reads the URL — see
 // "The 404 redirect" in `slices/branding/AGENTS.md`.
@@ -22,7 +27,7 @@ const container = document.getElementById('root')
 if (container !== null) {
   createRoot(container).render(
     <StrictMode>
-      <AppRoot />
+      <AppRoot basepath={basepath} />
     </StrictMode>
   )
 }

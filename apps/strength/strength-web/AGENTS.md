@@ -13,15 +13,20 @@ Sentry DSN, and read-status lines.
 
 `src/` keeps the entry and the root at its top: `main.tsx` (the `index.html`
 entry), `config.ts`,
-`app-root.tsx` (the package export), `app.tsx`, and the app-wide `clock.ts`
-and `smart-client.ts`. Everything else is a folder per screen or concern:
+`app-root.tsx` (the package export), `app.tsx`, the router (`router.ts`, and
+`router-context.ts` with the hooks the routes read it through), and the
+app-wide `clock.ts` and `smart-client.ts`. Everything else is a folder per
+screen or concern:
 
-- `strength-app/` — `StrengthApp` (the header, with the patient chosen, and
-  the **Today | Plan | History** toggle), `TrainingRecordTab` (one lifter's
-  training record read, under Today and Plan) and `TabBody`, the tab shown
-  over it.
-- `today/`, `plan/`, `history/` — each tab, with the write it builds beside
-  it (`today/submitted-workout-resources.ts`).
+- `routes/` — the TanStack file routes (the tree is generated into the
+  git-ignored `src/routeTree.gen.ts`). `__root.tsx` is the page (the header,
+  with the patient chosen, over `RouteTabs`), `index.tsx` redirects `/` to a
+  tab, and `-lifter-tab.tsx`'s `LifterTab` is one lifter's training record
+  read, under Today and Plan. Each tab is a folder, `today/`, `plan/`,
+  `history/`: its `route.tsx`, the `-`-prefixed files only it uses (Today's
+  `-workout-due.tsx` and the write it builds,
+  `-submitted-workout-resources.ts`; Plan's `-plan-editor.tsx`), and its
+  `-route.test.tsx`.
 - `start-program/` — `StartProgram`, the start of a training plan definition
   the Today and Plan tabs share, with what it writes
   (`training-plan-definition-change-resources.ts`) and the current loads it
@@ -38,7 +43,8 @@ and `smart-client.ts`. Everything else is a folder per screen or concern:
   `exerciseSetObservationIdOf`, `workoutIdMinter` and
   `serviceRequestIdMinter`, one per file.
 
-One component per file, named after it in kebab-case. A styled component has
+One component per file, named after it in kebab-case (a route's component
+lives in its `route.tsx`). A styled component has
 its own CSS module beside it, BEM-named as `strength-react`'s are: the block is
 the file's name, read as `styles['block__element']`. Tests sit beside what
 they cover.
@@ -64,9 +70,16 @@ they cover.
   filtered before decoding and not counted.
 - **A write needs a lifter.** Only a chosen patient gets a
   `StrengthSession`, and every screen that writes takes one, so "All patients"
-  cannot reach a write: it reads unscoped (History) and shows a "Choose a
-  patient to train" card in place of Today and Plan. Queries sit under
+  cannot reach a write: it reads unscoped (History) and `LifterTab` shows a
+  "Choose a patient to train" card in place of Today and Plan. Queries sit under
   `strengthKeyOf` of the patient scope (`null` for All patients).
+- **Route only after the handshake.** The app root is the OAuth redirect
+  target, so `App` builds the router (`StrengthRouter`) only once
+  `useSmartHandshake` is ready and a patient is chosen, by when fhirclient
+  has taken `code` and `state` out of the URL: nothing the router does may
+  rewrite a URL the token exchange still reads. One router per patient
+  choice; its basepath is the served directory, read in `main.tsx` before
+  the 404 redirect is restored.
 - **Every write is one batch, to minted ids, and refetches when it settles.**
   `useStrengthWrite` writes through `persistBatchBundleOrFail` and invalidates
   the lifter's queries on success and failure alike; `useStrengthWriting`
@@ -87,23 +100,30 @@ they cover.
 
 ## Testing
 
-- The screens are driven end to end through `StrengthApp` over an in-memory
-  FHIR server: the real `fhir-r4-react/smart` readers over a stub client that
+- The screens are driven end to end through the app's router
+  (`StrengthRouter`) over an in-memory FHIR server: the real
+  `fhir-r4-react/smart` readers over a stub client that
   answers searches from the store, and the real `buildSmartRouterContext` and
   `persistBatchBundleOrFail` over a stub transport that applies batches to it
   (`fake-fhir-server.test-helpers.ts`, which also answers reads of one
   resource, such as the lifter's `Patient`). Seeded records are built through
   `strength-core-js`'s `make`s and `PlannedWorkout.submit`, and what lands is
-  decoded back through core's schemas (`strength-app.test-helpers.ts`). Each
-  feature's test sits in its folder (`today/today-tab.test.tsx`,
-  `record/training-record.test.tsx`, `session/use-strength-write.test.tsx`,
-  …); `strength-app/strength-app.test.tsx` drives every tab to check the scopes
-  cover each read and write, and All patients' read-only tabs; `app.test.tsx`
-  drives `App` over a stubbed handshake — the picker, a pick, the launch's
-  patient and a change.
+  decoded back through core's schemas (`strength-app.test-helpers.ts`, whose
+  `mountStrengthApp` opens the page at a route). Each tab's test sits in its
+  route folder (`routes/today/-route.test.tsx`, …) and each other feature's
+  in its folder (`record/training-record.test.tsx`,
+  `session/use-strength-write.test.tsx`, …); `routes/-root.test.tsx` drives
+  every tab to check the scopes cover each read and write, where the bare
+  app path opens, and All patients' read-only tabs; `app.test.tsx` drives
+  `App` over a stubbed handshake — the picker, a pick, the launch's patient
+  and a change.
 - `ids/*.test.ts` — property tests: set ids are FHIR ids and sort in set
   order, long exercise ids stay apart, and a minter names one resource with
   one id on every call.
+- `app-root-routing.test.tsx` — the real root, app and router over the
+  address bar, with fhirclient stubbed: a launch URL still launches, at the
+  root or a tab, and the callback URL is left alone until the exchange
+  completes, then the page opens on Today.
 - `app-root.test.tsx` — that `AppRoot` mounts the shared shell as Strength
   (the landing `h1` is `APP_DESCRIPTIONS.strength.name`), reporting to its own
   Sentry project; the shell itself is tested in `smart-app-react`.

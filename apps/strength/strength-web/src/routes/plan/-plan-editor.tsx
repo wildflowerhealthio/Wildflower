@@ -3,14 +3,14 @@ import { TrainingPlanDefinitionEditor } from '@wildflowerhealthio/strength-react
 import { Array as Arr, Option } from 'effect'
 import { type JSX, useState } from 'react'
 
-import { mintResourceId } from '../ids/mint-resource-id.ts'
-import type { StrengthSession } from '../session/strength-session.ts'
-import { useStrengthWrite, useStrengthWriting } from '../session/use-strength-write.ts'
-import { currentLoadsOf } from '../start-program/current-loads.ts'
-import { StartProgram } from '../start-program/start-program.tsx'
+import { mintResourceId } from '../../ids/mint-resource-id.ts'
+import type { StrengthSession } from '../../session/strength-session.ts'
+import { useStrengthWrite, useStrengthWriting } from '../../session/use-strength-write.ts'
+import { currentLoadsOf } from '../../start-program/current-loads.ts'
+import { StartProgram } from '../../start-program/start-program.tsx'
 
-/** Props for {@link PlanTab}. */
-interface PlanTabProps {
+/** Props for {@link PlanEditor}. */
+interface PlanEditorProps {
   readonly session: StrengthSession
   /** The training plan definition the lifter follows, which the editor begins from; `None` for an empty form. */
   readonly currentTrainingPlanDefinition: Option.Option<TrainingPlanDefinition.Type>
@@ -32,12 +32,12 @@ interface PlanTabProps {
  * workouts already performed instantiate the current one's url, and keep
  * reading against it. A retry of a failed save writes the same id.
  */
-const PlanTab = ({
+const PlanEditor = ({
   session,
   currentTrainingPlanDefinition,
   activeExerciseRequests,
   onStarted,
-}: PlanTabProps): JSX.Element => {
+}: PlanEditorProps): JSX.Element => {
   const trainingPlanDefinitionWrite = useStrengthWrite(session, 'training-plan-definition')
   const writing = useStrengthWriting(session)
   const [planDefinitionId] = useState(mintResourceId)
@@ -74,4 +74,4 @@ const PlanTab = ({
   )
 }
 
-export { PlanTab, type PlanTabProps }
+export { PlanEditor, type PlanEditorProps }

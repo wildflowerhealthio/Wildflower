@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
 
@@ -10,18 +10,21 @@ import {
   searchParamsOf,
 } from '../fake-fhir-server.test-helpers.ts'
 import {
+  currentRoute,
   END_TO_END_TIMEOUT_MILLIS,
   endStrengthTest,
   mountStrengthApp,
+  PATIENT_ID,
   seedStartedLifter,
   seedWorkout,
   startStrengthTest,
+  tabLink,
   tapEverySet,
 } from '../strength-app.test-helpers.ts'
 
 /**
- * The whole app, every tab, driven through `StrengthApp` over the in-memory FHIR
- * server (see `strength-app.test-helpers.ts`).
+ * The lifting page, every tab, driven through the app's router over the
+ * in-memory FHIR server (see `strength-app.test-helpers.ts`).
  */
 
 let server: FakeFhirServer
@@ -32,7 +35,7 @@ beforeEach(() => {
 
 afterEach(endStrengthTest)
 
-describe('StrengthApp', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
+describe('StrengthPage', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
   it('should search and write only the resource types its requested scopes grant', async () => {
     // Arrange — a start, a workout and the history: every read and write the app makes
     const user = userEvent.setup()
@@ -42,7 +45,7 @@ describe('StrengthApp', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
     await tapEverySet(user, 'Squat', 5)
     await user.click(screen.getByRole('button', { name: 'Submit workout' }))
     await user.click(await screen.findByRole('button', { name: 'Next workout' }))
-    await user.click(screen.getByRole('button', { name: 'History' }))
+    await user.click(tabLink('History'))
     await screen.findByText(/^Workout A · /)
 
     // Assert
@@ -61,6 +64,47 @@ describe('StrengthApp', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
     }
   })
 
+  it.each([
+    { case: 'a lifter', patientChoice: { kind: 'patient', patientId: PATIENT_ID }, tab: 'today' },
+    { case: 'All patients', patientChoice: { kind: 'all-patients' }, tab: 'history' },
+  ] as const)(
+    'should open the bare app path on $tab for $case, in its place in history',
+    async ({ patientChoice, tab }) => {
+      // Arrange
+      seedStartedLifter(server)
+      const historyLength = window.history.length
+
+      // Act
+      mountStrengthApp(server, { patientChoice })
+
+      // Assert
+      await waitFor(() => {
+        expect(currentRoute()).toBe(tab)
+      })
+      expect(window.history.length).toBe(historyLength)
+      expect(tabLink(tab === 'today' ? 'Today' : 'History').getAttribute('aria-current')).toBe(
+        'page'
+      )
+    }
+  )
+
+  it('should keep the chosen patient in the address bar across tabs', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    seedStartedLifter(server)
+    mountStrengthApp(server, { route: `?patient=${PATIENT_ID}` })
+    await screen.findByRole('heading', { name: 'Workout A' })
+
+    // Act
+    await user.click(tabLink('History'))
+
+    // Assert
+    await waitFor(() => {
+      expect(currentRoute()).toBe('history')
+    })
+    expect(new URLSearchParams(window.location.search).get('patient')).toBe(PATIENT_ID)
+  })
+
   it('should name the lifter under the title', async () => {
     // Act
     mountStrengthApp(server)
@@ -76,7 +120,7 @@ describe('StrengthApp', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
     seedWorkout(server, { squat: [5, 5, 5, 5, 5], 'bench-press': [5, 5, 5, 5, 5] })
 
     // Act
-    mountStrengthApp(server, { kind: 'all-patients' })
+    mountStrengthApp(server, { patientChoice: { kind: 'all-patients' } })
 
     // Assert — the history is listed, and no search named a patient
     expect(await screen.findByText(/^Workout A · /)).toBeDefined()
@@ -92,10 +136,10 @@ describe('StrengthApp', { timeout: END_TO_END_TIMEOUT_MILLIS }, () => {
       // Arrange
       const user = userEvent.setup()
       seedStartedLifter(server)
-      mountStrengthApp(server, { kind: 'all-patients' })
+      mountStrengthApp(server, { patientChoice: { kind: 'all-patients' } })
 
       // Act
-      await user.click(screen.getByRole('button', { name: tabLabel }))
+      await user.click(await screen.findByRole('link', { name: tabLabel }))
 
       // Assert
       expect(screen.getByText('Choose a patient to train')).toBeDefined()

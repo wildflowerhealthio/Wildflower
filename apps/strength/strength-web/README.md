@@ -21,13 +21,14 @@ boots through (see [slices/smart-app-react/AGENTS.md](../../../slices/smart-app-
 exactly as `apps/plots/plots-web` does.
 
 `src/main.tsx` is the `index.html` entry: it imports the design-system
-stylesheet module (`react-tundraish/styles`), completes a GitHub Pages 404
-redirect, wires the OS colour-scheme listener, and renders `<AppRoot />` inside
+stylesheet module (`react-tundraish/styles`), reads the served directory (the
+router's basepath), completes a GitHub Pages 404 redirect, wires the OS
+colour-scheme listener, and renders `<AppRoot basepath={basepath} />` inside
 `<StrictMode>`.
 
 `src/app-root.tsx` exports `AppRoot`: `<SmartAppRoot app="strength"
 registration={smartRegistration} telemetry={smartAppTelemetry}>` around
-`<App />`. `SmartAppRoot` shows the telemetry consent dialog first, then
+`<App basepath={basepath} />`. `SmartAppRoot` shows the telemetry consent dialog first, then
 starts a launch the URL carries under a loading line or renders one of the
 other two branches (`smartAppTelemetry` in `src/config.ts` names the app's Sentry project
 through the `VITE_SENTRY_DSN_STRENGTH_WEB` build variable; see `.env.example`),
@@ -43,10 +44,10 @@ when launched, the full Wildflower chrome with `APP_DESCRIPTIONS.strength`'s
 `smart-app-react`'s `usePatientChoice`: the URL's `?patient=`, else the
 launch's `client.patient.id`, else its `PatientPicker` ("All patients" first,
 then every patient by name and birth date), whose choice is written to the URL
-as `?patient=<id>` or `?patient=*`. Then
-`src/strength-app/strength-app.tsx`'s `StrengthApp`, remounted per choice, shows
-the record under a **Today | Plan | History** toggle, with the choice named
-under the title by `PatientChoiceLine` and a "Change patient" link back to the
+as `?patient=<id>` or `?patient=*`. Then the page's router, built per
+choice, shows the record under `react-tundraish`'s `RouteTabs` — **Today**,
+**Plan** and **History**, each a child route — with the choice named under
+the title by `PatientChoiceLine` and a "Change patient" link back to the
 picker.
 
 - **A lifter** (one patient): their training record, read and written as
@@ -56,6 +57,31 @@ picker.
   one lifter, so each shows a "Choose a patient to train" card whose action
   goes back to the picker; no write control mounts. Only a chosen lifter has a
   `StrengthSession` (`src/session/`), the one thing the writes take.
+
+### The router and the OAuth callback
+
+The router is TanStack's, over file routes under `src/routes/` (the tree is
+generated into the git-ignored `src/routeTree.gen.ts` by the router plugin in
+`vite.config.ts`). The root route (`routes/__root.tsx`) is the page: the
+title and the patient line over the tab strip. Each tab is a child route in
+its own folder with the files only it uses: `/today`, `/plan` and `/history`.
+`/` redirects, replacing itself in history, to Today for a lifter and to
+History for All patients. Every navigation keeps `?patient=`.
+
+The app root is the OAuth redirect target, so the router is built only once
+the SMART handshake has completed and a patient is chosen: by then fhirclient
+has taken `code` and `state` out of the address bar, and nothing the router
+does (the `/` redirect, a tab change) can rewrite a URL the token exchange
+still reads. A launch URL never reaches the router at all: `SmartAppRoot`
+starts its launch before the app mounts. Each patient choice gets its own
+router, opening on the tab in the address bar.
+
+The router's basepath is the served directory: `src/main.tsx` reads it with
+`branding-core`'s `basenameOf` before completing a GitHub Pages 404 redirect,
+so a deep link such as `/plan` (or `/pr-<n>/plan` in a preview) is served by
+the 404 page's redirect to the app root and restored there. The OAuth
+redirect URI is the same directory, so a launch from any tab returns to the
+app root, which opens Today (or History).
 
 ### Reads (`src/record/`)
 
@@ -89,8 +115,9 @@ withdrawn, not unreadable.
 
 ### The tabs
 
-- **Today** (`src/today/today-tab.tsx`). With a current program,
-  `PlannedWorkout.make` over it, shown by `PlannedWorkoutView`. "Submit workout" runs
+- **Today** (`src/routes/today/`). With a current program,
+  `PlannedWorkout.make` over it, shown by `PlannedWorkoutView`
+  (`-workout-due.tsx`). "Submit workout" runs
   `PlannedWorkout.submit` with the launch patient as `subject` and a `mintId`
   from `workoutIdMinter`, and writes the completed `Procedure`, every set's
   `Observation`, and each moved request's closed `current` and its `next` (a
@@ -101,14 +128,14 @@ withdrawn, not unreadable.
   `PlanDefinition` with its requests in one batch. When the day due has an
   exercise with no active request or several, the refusal is shown above a
   restart of the program at the current loads.
-- **Plan** (`src/plan/plan-tab.tsx`). `TrainingPlanDefinitionEditor` over the
+- **Plan** (`src/routes/plan/`). `TrainingPlanDefinitionEditor` over the
   current program (or an empty form, which offers StrongLifts 5×5). "Save"
   writes the made training plan definition as a new `PlanDefinition` — under an
   id minted when the tab opens, so workouts and closed requests of the old one
   keep reading against its url — then `StartProgram` starts it at the current
   loads: `ExerciseRequest.changeTrainingPlanDefinition`'s revoked and started
-  requests in one batch.
-- **History** (`src/history/history-tab.tsx`). `WorkoutHistoryView` over the
+  requests in one batch, and Today opens on it.
+- **History** (`src/routes/history/`). `WorkoutHistoryView` over the
   history read: the lifter's, or every patient's for All patients.
 
 ### Writes

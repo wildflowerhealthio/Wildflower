@@ -20,7 +20,7 @@ import {
 
 /**
  * Reading the training record and saying what it could not read, driven through
- * `StrengthApp` over the in-memory FHIR server (see
+ * the app's router over the in-memory FHIR server (see
  * `strength-app.test-helpers.ts`).
  */
 
