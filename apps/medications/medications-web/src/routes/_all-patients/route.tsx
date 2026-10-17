@@ -8,7 +8,6 @@ import { MedicationsPage } from '../-medications-page.tsx'
 function EveryPatientsMedications(): JSX.Element {
   return (
     <MedicationsPage
-      patientChoice={{ kind: 'all-patients' }}
       tabs={
         <RouteTabs
           tabs={[

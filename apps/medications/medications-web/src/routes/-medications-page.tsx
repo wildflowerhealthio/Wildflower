@@ -4,8 +4,8 @@ import { ChunkBar } from '@wildflowerhealthio/react-tundraish'
 import {
   LoadingLine,
   PatientChoiceLine,
-  type PatientChoice,
   ReadFailureLine,
+  usePathPatientChoice,
 } from '@wildflowerhealthio/smart-app-react'
 import { Match } from 'effect'
 import type { JSX } from 'react'
@@ -29,8 +29,6 @@ const chunkBarLabels = {
 
 /** Props for {@link MedicationsPage}. */
 interface MedicationsPageProps {
-  /** Whose medications the page reads: the open route's. */
-  readonly patientChoice: PatientChoice
   /** The tab strip, its links under the page's own path. */
   readonly tabs: JSX.Element
 }
@@ -48,7 +46,8 @@ const useMedicationsPage = (): MedicationRead => {
 }
 
 /**
- * The medications page, one patient's or every patient's: the patient line
+ * The medications page, one patient's or every patient's, whichever the
+ * path names (`usePathPatientChoice`, as the read): the patient line
  * (whose "Change patient" pushes the picker) and the chunk bar tracking the
  * paged read, over `tabs`, each a child route the strip links to:
  * Medications, the list; Calendar, the prescription calendar; Interactions,
@@ -56,8 +55,9 @@ const useMedicationsPage = (): MedicationRead => {
  * breakdown. Until the first page lands the tabs wait behind a loading line,
  * or the read's failure.
  */
-function MedicationsPage({ patientChoice, tabs }: MedicationsPageProps): JSX.Element {
+function MedicationsPage({ tabs }: MedicationsPageProps): JSX.Element {
   const client = useSmartClient()
+  const patientChoice = usePathPatientChoice()
   const navigate = useNavigate()
   const read = useMedicationsPage()
   const { pagedQuery, pagesReceived } = read

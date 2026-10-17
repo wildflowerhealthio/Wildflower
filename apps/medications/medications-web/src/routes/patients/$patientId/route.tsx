@@ -10,7 +10,6 @@ function PatientMedications(): JSX.Element {
   const { patientId } = Route.useParams()
   return (
     <MedicationsPage
-      patientChoice={{ kind: 'patient', patientId }}
       tabs={
         <RouteTabs
           tabs={[
