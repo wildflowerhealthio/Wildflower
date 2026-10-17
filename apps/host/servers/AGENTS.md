@@ -20,7 +20,9 @@ changing how servers run or what the host notifies about them.
   `ServerLaunchMinter` included,
   through which the host mints a running server's launches, and its
   `ServerSignInCodeMinter`, through which it mints the codes that sign the
-  browser in as the server's Owner; launching (`ensure_launchable`,
+  browser in as the server's Owner, and its run's `CertificateActions`; the
+  certificate actions (`running_certificate_actions`,
+  `ensure_below_duplicate_limit`, `CertificateActionError`); launching (`ensure_launchable`,
   `launch_url`, `authorization_app_url`, `sign_in_url`,
   `consent_sign_in_url`, `LaunchError`); `ServerStatus`, a server's status on
   `UnitRunner` as the base receives it, and `ListedServer`, with the
@@ -38,7 +40,9 @@ changing how servers run or what the host notifies about them.
     `ServerUpdate`, `remove_server`, `ServerChangeError`), `ServerDetail`,
     `ServerStatus` with `ServerStatusTracker`, `ListedServer`, the
     certificate state's wire shape (`certificate_state_wire`),
-    `PendingConsent` with `ConsentKey`, launching (`ensure_launchable`,
+    `PendingConsent` with `ConsentKey`, the certificate actions
+    (`running_certificate_actions`, `ensure_below_duplicate_limit`,
+    `CertificateActionError`), launching (`ensure_launchable`,
     `launch_url`, `authorization_app_url`, `sign_in_url`,
     `consent_sign_in_url`, `LaunchError`), and `notifications/`
     (`LocalNotification` with its `fnv1a` id hash,
@@ -66,7 +70,9 @@ changing how servers run or what the host notifies about them.
   commands' `ServersState`. The base's Tauri commands: `servers_list`, `server_add`,
   `server_set_credentials`, `server_set_run_policy`, `server_update` and
   `server_remove`, each writing the registry and then pushing what it wrote;
-  and `server_launch`, `server_open_authorization_app`,
+  `server_duplicate_certificates`, `server_get_certificate` and
+  `server_order_new_certificate`, which count a server's recent
+  certificates and restart a running server's certificate ordering; and `server_launch`, `server_open_authorization_app`,
   `server_open_pending_consent` and `server_open_notified_consent`, which open
   a server's launcher, its Authorization app and the consent waiting on it in
   the in-app browser, signed in as the Owner, behind the `LaunchBrowser` port,
@@ -78,11 +84,15 @@ changing how servers run or what the host notifies about them.
   Schema: the server commands (`listServers`, `addServer`,
   `setServerCredentials`, `setServerRunPolicy`, `updateServer`,
   `removeServer`, `launchServer`, `openServerAuthorizationApp`,
-  `openPendingConsent`, `openNotifiedConsent`), the background session's
+  `openPendingConsent`, `openNotifiedConsent`) and the certificate commands
+  (`readDuplicateCertificates`, `getServerCertificate`,
+  `orderNewServerCertificate`), the background session's
   recovery (`enableBackgroundSessionRecovery`), and the app's version and the
   notification permission; and the wire's namespaces, `ListedServer`,
-  `ServerStatus` (with the `server-status` event's name and decoder, and
-  `pendingConsentOf`), `RunPolicy`, `RunPolicyChoice`, `PendingConsent`, the
+  `ServerStatus` (with the `server-status` event's name and decoder,
+  `pendingConsentOf` and `isOrderingWithoutCertificate`), `DuplicateCertificates`, a CA's
+  duplicate-certificate count for a server (`isAtLimit`,
+  `nextReachesLimit`), `RunPolicy`, `RunPolicyChoice`, `PendingConsent`, the
   newest consent waiting on a server, `EnteredRelay` and
   `EnteredCredentials`, `server_add`'s relay and credentials, each a
   `Schema` and its `Type` with getters; and `LaunchError`'s
@@ -136,7 +146,9 @@ changing how servers run or what the host notifies about them.
   seconds, then only in short spells iOS allows); under it, what the
   status says beyond plain Running or Stopped, with the host's reason a
   running server isn't reachable, why its tunnel is reconnecting, or what to
-  do about a relay that rejected its token or has no tunnel of its name; why its latest run stopped; the latest failure of Launch or
+  do about a relay that rejected its token or has no tunnel of its name; why its latest run stopped; while a running server orders a
+  certificate with none held (`ServerStatus.isOrderingWithoutCertificate`), that it can't be reached until its
+  certificate arrives, the Certificate tab's wording too; the latest failure of Launch or
   Authorization, then why Launch can't launch when nothing above says, each
   across the card; then, in three equal columns, Launch, labelled Apps
   (`useLaunch` and `LaunchButton`);
@@ -185,7 +197,18 @@ changing how servers run or what the host notifies about them.
   App Launcher URL and Save Authorization Manager URL save unchanged), and the one the state is for (its `issuer`) when
   that differs, the held certificate's validity and SHA-256 fingerprint, and
   the latest error, described by its kind, a rate limit's retry time saying
-  so once it has passed (one timer, set for it). With no servers it says what
+  so once it has passed (one timer, set for it); under the list, while the
+  server runs, the card's warning that it can't be reached until its
+  certificate arrives, and its one certificate action (`useCertificateActions`,
+  beside the route): Get certificate while it holds none, Order a new
+  certificate while it holds one, each behind a confirm, the latter's saying
+  the server can't be reached until the new certificate arrives. While it
+  runs, the tab reads its CA's duplicate-certificate count
+  (`server_duplicate_certificates`), keyed by the certificate held; for
+  Let's Encrypt's production CA the confirm explains the limit once this
+  order would use it up, and at the limit the action is disabled, a note
+  above it saying when the CA issues another. The host's refusal shows
+  above the button. With no servers it says what
   a server is, beside Add new server; with servers, Add new server is under
   the cards, across the page. Add server goes a step at a time, in component state rather than
   the URL, so the token never reaches it: the relay, under what it can and
@@ -599,6 +622,22 @@ changing how servers run or what the host notifies about them.
   it deploys that the history doesn't record already to `certificates/history.json`
   (`wildflowerhealthio_wildflower_server::read_certificate_history`), so it is deleted with
   the server.
+- **A certificate action restarts a running server's ordering.**
+  `server_get_certificate` and `server_order_new_certificate` (`{domain}`)
+  read the record, count the history's certificates from the record's CA in
+  its duplicate-certificate window and refuse at the CA's limit
+  (`ensure_below_duplicate_limit`, kind `duplicateLimitReached`), then find
+  the run's `CertificateActions` in its detail (`running_certificate_actions`,
+  `serverNotRunning` for a server not running or not reporting yet) and
+  restart its ordering, the latter first dropping the cached certificate
+  (`cachedCertificateNotRemoved` when it can't, after which the run orders
+  again from it). They answer once the new ordering has started; its
+  progress is the run's certificate state. The run reorders from the CA the
+  record names, as the run's config does. `server_duplicate_certificates`
+  (`{domain}`) answers `{limit, count, oldestLeavesWindowAt?}`, or `null`
+  for a CA with no limit (staging). Errors are `CertificateActionError`s,
+  `{kind, message}`, `historyUnreadable` and the registry's included. The
+  golden file pins the errors and the counts.
 - **Notification decisions are pure.** A new rule goes in `servers-rust`'s
   `domain/notifications/` with its tests; `servers-tauri` only posts.
 - **Configuration only.** `ServerRecord::run_policy` is when the user wants
