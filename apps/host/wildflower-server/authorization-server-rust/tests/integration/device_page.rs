@@ -1,7 +1,7 @@
 //! The device verification page: `/oauth/device_authorization` sends the user
 //! to `/oauth/device` on the server's origin, which
 //! serves the page, and the page decides the request through the existing
-//! `/authorization/devices/{userCode}` API on the Owner browser's bearer, the
+//! `/authorization/devices/{userCode}` API on the browser session's bearer, the
 //! token its session cookie holds. The cookie→bearer layer that presents that
 //! token for the page is the host's (`wildflower-server-rust`), so these tests
 //! send it as the bearer themselves.
@@ -114,15 +114,15 @@ async fn verification_uri_complete_serves_the_device_page_on_the_server_origin()
 }
 
 #[tokio::test]
-async fn an_owner_browser_session_approves_the_code_and_the_device_poll_succeeds() {
+async fn a_browser_session_approves_the_code_and_the_device_poll_succeeds() {
     let (g, _host_owner_token, db) = spin_up();
     seed_test_client(&db);
     let started = start_device_flow(&g).await;
-    let owner_browser_token = signed_in_owner_browser_token(&g).await;
+    let owner_session_token = signed_in_owner_session_token(&g).await;
     let consent_path = format!("/authorization/devices/{}", started.user_code);
 
     let read =
-        device_consent_request(&g, "GET", &consent_path, Some(&owner_browser_token), "").await;
+        device_consent_request(&g, "GET", &consent_path, Some(&owner_session_token), "").await;
     assert_eq!(read.status(), StatusCode::OK);
     assert_eq!(
         body_json(read.into_body()).await["userCode"],
@@ -133,7 +133,7 @@ async fn an_owner_browser_session_approves_the_code_and_the_device_poll_succeeds
         &g,
         "POST",
         &format!("{consent_path}/approve"),
-        Some(&owner_browser_token),
+        Some(&owner_session_token),
         r#"{"approvedScopes":["system/*.cruds"]}"#,
     )
     .await;
@@ -179,16 +179,16 @@ async fn without_a_session_the_request_is_left_pending() {
 }
 
 #[tokio::test]
-async fn an_unknown_code_is_not_found_for_the_owner_browser_session() {
+async fn an_unknown_code_is_not_found_for_the_browser_session() {
     let (g, _host_owner_token, db) = spin_up();
     seed_test_client(&db);
-    let owner_browser_token = signed_in_owner_browser_token(&g).await;
+    let owner_session_token = signed_in_owner_session_token(&g).await;
 
     let read = device_consent_request(
         &g,
         "GET",
         "/authorization/devices/NOPE-NOPE",
-        Some(&owner_browser_token),
+        Some(&owner_session_token),
         "",
     )
     .await;

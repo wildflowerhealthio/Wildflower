@@ -135,19 +135,19 @@ only it composes. Rust-only, no `-core`.
     The forwarded-request report logs the probes like any other forwarded
     request.
   - **Session cookies.** A browser on the server's own pages carries a
-    cookie and no `Authorization`: an Owner browser's
-    `__Host-owner_browser_session`, whose value is the token `/oauth/sign-in`
-    issued to the `wildflower-owner-browser` client, or the FHIR web UI's
+    cookie and no `Authorization`: the browser session's
+    `__Host-browser_session`, whose value is the token `/oauth/sign-in`
+    issued to the browser-session client, or the FHIR web UI's
     `hfs_session`, which names a UI session holding a bearer. The inner
     router, under both listeners, is wrapped in one cookie→bearer layer per
     cookie, the UI's outermost
     (`http/middleware/session_cookie_bearer.rs`'s
     `present_session_cookie_bearers`): a request from the server's origin with
     no `Authorization` gets a live session's bearer, `hfs_session`'s when it
-    carries both, unless it sends `Wildflower-Session: owner-browser`
+    carries both, unless it sends `Wildflower-Session: browser`
     (the authorization server's `SESSION_HEADER` and
-    `OWNER_BROWSER_SESSION_HEADER_VALUE`), when it gets the Owner browser
-    session's bearer or none, never `hfs_session`'s; an Owner browser cookie whose token has expired or been
+    `BROWSER_SESSION_HEADER_VALUE`), when it gets the browser
+    session's bearer or none, never `hfs_session`'s; a browser session cookie whose token has expired or been
     revoked is skipped and cleared on the response; and a write carrying
     either cookie from any other origin gets `403`. No route is singled out;
     the gates check the token's scopes and revocation. The Wildflower host

@@ -76,7 +76,7 @@ const redirectHostOf = (redirectUri: string): string => {
  * itself (statements ⇄ grid, exclusions, flags) is `scopes-react`'s; this card
  * owns the draft and the result routing. What sends the decision and what
  * reads the patients come from its composer: the authorization server's own
- * consent page, on the Owner browser's session.
+ * consent page, on the browser session.
  */
 const OAuthConsentCard = ({
   consent,

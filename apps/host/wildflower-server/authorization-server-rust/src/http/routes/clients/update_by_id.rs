@@ -30,7 +30,7 @@ pub(crate) struct UpdateClientBody {
 /// answers with the client as stored. A disabled client is refused at
 /// `/oauth/authorize` and `/oauth/token`. Idempotent (a client that already
 /// has a `disabledAt` keeps it). Disabling an essential client — the host
-/// app's or the Owner-browser client — is refused with `409 EssentialClient`.
+/// app's or the browser-session client — is refused with `409 EssentialClient`.
 /// Acquired through [`LiveClientsDisabler`] (scope `wildflower/Client.u`).
 #[utoipa::path(
     patch,

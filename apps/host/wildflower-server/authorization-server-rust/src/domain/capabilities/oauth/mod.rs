@@ -16,7 +16,7 @@
 //!    launch hands out (for the host and the apps slice) and consumes them for
 //!    [`CodeAuthorizationStarter`];
 //!  - in-process minted: [`SameDeviceSignIn`] redeems a one-time same-device sign-in code the
-//!    base minted for an Owner browser's session token, on its way to an allowed `next`.
+//!    base minted for an Owner session's token, on its way to an allowed `next`.
 
 mod authorization_status_reader;
 mod client_authenticator;
@@ -41,7 +41,6 @@ pub(crate) use device_authorizer::{DeviceAuthorizationError, DeviceAuthorizer};
 pub(crate) use launch_contexts::LaunchContexts;
 pub(crate) use public_keys_reader::PublicKeysReader;
 pub(crate) use same_device_sign_in::{
-    OwnerBrowserSession, SameDeviceSignIn, SameDeviceSignInError, SignInRefusal,
-    OWNER_BROWSER_SESSION_TTL,
+    SameDeviceSignIn, SameDeviceSignInError, SignInRefusal, SignedIn, OWNER_SESSION_TTL,
 };
 pub(crate) use token_exchanger::{IssuedTokens, TokenExchanger};

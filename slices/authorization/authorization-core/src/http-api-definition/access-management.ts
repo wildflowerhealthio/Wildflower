@@ -78,7 +78,7 @@ const ClientNotFoundSchema = Schema.Struct({
 
 /**
  * `UpdateClient`'s `409` for disabling an essential client — the Wildflower
- * host app's or the Owner-browser client — which would leave the Owner no way
+ * host app's or the browser-session client — which would leave the Owner no way
  * in.
  */
 const EssentialClientSchema = Schema.Struct({

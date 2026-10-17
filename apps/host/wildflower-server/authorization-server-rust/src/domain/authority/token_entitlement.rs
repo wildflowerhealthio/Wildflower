@@ -12,7 +12,7 @@ use super::same_device_sign_in::RedeemedSameDeviceSignInCode;
 /// the [module docs](super).
 #[derive(Clone, Copy)]
 pub(crate) enum TokenEntitlement<'a> {
-    /// An Owner browser's session, signed in with a same-device sign-in code the base minted.
+    /// An Owner session, signed in with a same-device sign-in code the base minted.
     SameDeviceSignIn(&'a RedeemedSameDeviceSignInCode),
     /// An authorization code redeemed at `/oauth/token`.
     AuthorizationCode(&'a RedeemedAuthorizationCode),
@@ -59,7 +59,7 @@ impl TokenEntitlement<'_> {
     }
 
     /// SMART-on-FHIR patient context bound at approval, if any. An Owner
-    /// browser's token has none.
+    /// session's token has none.
     pub(crate) fn patient(&self) -> Option<&str> {
         match self {
             TokenEntitlement::SameDeviceSignIn(_) => None,

@@ -1,8 +1,8 @@
 //! The limit on starting authorization requests: every request to
 //! `/oauth/authorize` (`HEAD` included) and `/oauth/device_authorization`
 //! asks the host's `AuthorizationStartGate`, before it is parsed, and is
-//! answered `429`, uncached, when the gate refuses; a browser signed in as the
-//! Owner passes without asking, and no other route asks.
+//! answered `429`, uncached, when the gate refuses; a browser whose session
+//! can decide consents passes without asking, and no other route asks.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -121,7 +121,7 @@ async fn a_browser_signed_in_as_the_owner_passes_without_asking_the_gate() {
         "https://app.example/cb",
         &["patient/Observation.rs", "openid"],
     );
-    let owner_browser_token = signed_in_owner_browser_token(&g).await;
+    let owner_session_token = signed_in_owner_session_token(&g).await;
     let authorize = format!(
         "/oauth/authorize?{}",
         authorize_query("test-app", REQUESTED_SCOPES)
@@ -131,9 +131,7 @@ async fn a_browser_signed_in_as_the_owner_passes_without_asking_the_gate() {
         &g,
         Method::GET,
         &authorize,
-        Some(&format!(
-            "__Host-owner_browser_session={owner_browser_token}"
-        )),
+        Some(&format!("__Host-browser_session={owner_session_token}")),
     )
     .await;
     assert_eq!(res.status(), StatusCode::FOUND);
@@ -144,7 +142,33 @@ async fn a_browser_signed_in_as_the_owner_passes_without_asking_the_gate() {
         &g,
         Method::GET,
         &authorize,
-        Some("__Host-owner_browser_session=not-a-token"),
+        Some("__Host-browser_session=not-a-token"),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(gate.asked(), 1);
+}
+
+#[tokio::test]
+async fn a_browser_session_that_cannot_decide_consents_asks_the_gate() {
+    let gate = CountingGate::refusing();
+    let (g, _owner_token, db) = spin_up_with_authorization_start_gate(gate.clone());
+    seed_client_with_redirect(
+        &db,
+        "test-app",
+        "https://app.example/cb",
+        &["patient/Observation.rs", "openid"],
+    );
+    let session_token = signed_in_session_token_that_cannot_decide(&g, &db).await;
+
+    let res = send(
+        &g,
+        Method::GET,
+        &format!(
+            "/oauth/authorize?{}",
+            authorize_query("test-app", REQUESTED_SCOPES)
+        ),
+        Some(&format!("__Host-browser_session={session_token}")),
     )
     .await;
     assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);

@@ -89,9 +89,9 @@ async fn list_shows_seeded_and_trusted_on_first_use_clients_without_secrets() {
     let host =
         find_client(&clients, WILDFLOWER_HOST_APP_CLIENT_ID).expect("the host client is listed");
     assert_eq!(host["essential"], true);
-    let owner_browser =
-        find_client(&clients, OWNER_BROWSER_CLIENT_ID).expect("the Owner-browser client is listed");
-    assert_eq!(owner_browser["essential"], true);
+    let browser_session_client = find_client(&clients, BROWSER_SESSION_CLIENT_ID)
+        .expect("the browser-session client is listed");
+    assert_eq!(browser_session_client["essential"], true);
     assert!(find_client(&clients, "941de68e6b59eb9dcc32df8ede89e636").is_some());
 
     // Created by the TOFU approval, exactly as it was registered.
@@ -299,7 +299,7 @@ async fn a_body_without_disabled_at_is_rejected_and_writes_nothing() {
 async fn an_essential_client_cannot_be_disabled() {
     let (g, owner_token, db) = spin_up();
 
-    for essential_client_id in [WILDFLOWER_HOST_APP_CLIENT_ID, OWNER_BROWSER_CLIENT_ID] {
+    for essential_client_id in [WILDFLOWER_HOST_APP_CLIENT_ID, BROWSER_SESSION_CLIENT_ID] {
         let res = disable_client(&g, &owner_token, essential_client_id, Utc::now()).await;
         assert_eq!(res.status(), StatusCode::CONFLICT);
         assert_eq!(

@@ -64,10 +64,10 @@ pub use domain::{GrantStore, GrantTx};
 /// tests pin the set until then. See [`domain::capabilities`].
 pub use domain::capabilities::grantable_admin_scopes;
 pub use http::{
-    authorization_server_auth_middleware, client_allowed_scopes, ensure_bearer_header,
-    owner_browser_session_clearing_set_cookie, owner_browser_session_has_ended,
-    AuthorizationServerAuthMiddleware, AuthorizationServerState, OWNER_BROWSER_SESSION_COOKIE,
-    OWNER_BROWSER_SESSION_HEADER_VALUE, SESSION_HEADER,
+    authorization_server_auth_middleware, browser_session_clearing_set_cookie,
+    browser_session_has_ended, client_allowed_scopes, ensure_bearer_header,
+    AuthorizationServerAuthMiddleware, AuthorizationServerState, BROWSER_SESSION_COOKIE,
+    BROWSER_SESSION_HEADER_VALUE, SESSION_HEADER,
 };
 pub use live_bindings::{
     InProcessTokenVerifier, LaunchContextMinter, PendingConsentWatcher, SameDeviceSignInCodeMinter,
@@ -87,16 +87,16 @@ pub use wildflowerhealthio_persistence::DieselPool;
 /// [`default_wildflower_host_app_client_id`].
 pub const WILDFLOWER_HOST_APP_CLIENT_ID: &str = "c4e755b6a4c1abf2aae6d0d83f2545a5";
 
-/// `client_id` of the Owner-browser client: the browsers the host app has
-/// signed in as the Owner on its own device, with a same-device sign-in code at
-/// `/oauth/sign-in`. Each such browser holds a token issued to this client
-/// (its `sub`), so revoking the client's subject signs every Owner browser
-/// out, and one browser is signed out by revoking its browser session (its
-/// token's `sid`) or its token's `jti`. Like
+/// `client_id` of the browser-session client: the browsers the server has
+/// signed in, today the Owner's, signed in by the host app on its own device
+/// with a same-device sign-in code at `/oauth/sign-in`. Each such browser
+/// holds a token issued to this client (its `sub`), so revoking the client's
+/// subject signs every browser out, and one browser is signed out by revoking
+/// its browser session (its token's `sid`) or its token's `jti`. Like
 /// [`WILDFLOWER_HOST_APP_CLIENT_ID`], it is an essential client: it can't be
 /// disabled. Seeded at boot by [`crate::setup_authorization_server`] with
 /// [`OWNER_SCOPES`]; it takes part in no OAuth flow.
-pub const OWNER_BROWSER_CLIENT_ID: &str = "wildflower-owner-browser";
+pub const BROWSER_SESSION_CLIENT_ID: &str = "cb9bbe139845cae9654b7909d60d274f";
 
 /// The maximal-access scopes that mark an Owner: full system FHIR access
 /// (`system/*.cruds`) **and** full Wildflower-resource access
@@ -117,7 +117,7 @@ pub const WILDFLOWER_WIDEST_SCOPES: &[Scope] = &[
 ];
 
 /// The Owner's scopes: the authority the Owner approves consents with, what an
-/// Owner browser's session holds, and the Owner-browser client's
+/// Owner session holds, and the browser-session client's
 /// `allowed_scopes`.
 /// An approval can't delegate a resource scope these don't cover.
 ///
@@ -238,7 +238,7 @@ pub struct AuthorizationServer {
 /// `authorization_start_gate` says whether a request may start an
 /// authorization request (`GET /oauth/authorize`,
 /// `POST /oauth/device_authorization`): asked for every one that carries no
-/// live Owner browser session, which is answered `429` when it refuses. Pass
+/// live browser session, which is answered `429` when it refuses. Pass
 /// [`AdmitEveryAuthorizationStart`] where no visitor reaches the server.
 ///
 /// Every token this server mints carries the server's origin

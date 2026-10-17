@@ -2,7 +2,7 @@ use crate::common::*;
 
 // `GET /oauth/sign-in?code=…&next=…`: a code the base minted in-process signs
 // a browser in as the Owner, once, handing it an Owner token as its
-// `__Host-owner_browser_session` cookie and sending it on to an allowed `next`.
+// `__Host-browser_session` cookie and sending it on to an allowed `next`.
 
 /// A token's payload claims, unverified.
 fn claims_of(token: &str) -> Value {
@@ -33,7 +33,7 @@ async fn a_code_signs_in_once() {
     let signed_in = sign_in(&g, &code, "/").await;
     assert_eq!(signed_in.status(), StatusCode::SEE_OTHER);
     assert_cache_suppressed(&signed_in, "the sign-in");
-    owner_browser_session_token(&signed_in);
+    browser_session_token(&signed_in);
 
     assert_refused(sign_in(&g, &code, "/").await, "a spent code").await;
 }
@@ -117,19 +117,19 @@ async fn a_next_anywhere_else_is_refused_and_leaves_the_code_redeemable() {
     );
 }
 
-/// The cookie carries exactly the Owner browser session's attributes, and its
-/// value is an Owner token: the Owner-browser client holding the Owner's
+/// The cookie carries exactly the browser session cookie's attributes, and its
+/// value is an Owner token: the browser-session client holding the Owner's
 /// grant, for eight hours, which the gate accepts.
 #[tokio::test]
 async fn the_cookie_holds_an_eight_hour_owner_token() {
     let (g, _owner_token, _db) = spin_up();
     let res = sign_in(&g, &g.same_device_sign_in_code_minter.mint(), "/").await;
     let cookies = set_cookie_values(&res);
-    let owner_token = owner_browser_session_token(&res);
+    let owner_token = browser_session_token(&res);
     assert_eq!(
         cookies,
         [format!(
-            "__Host-owner_browser_session={owner_token}; Secure; HttpOnly; SameSite=Lax; Path=/; \
+            "__Host-browser_session={owner_token}; Secure; HttpOnly; SameSite=Lax; Path=/; \
              Max-Age=28800"
         )]
     );
@@ -137,7 +137,7 @@ async fn the_cookie_holds_an_eight_hour_owner_token() {
     let claims = claims_of(&owner_token);
     assert_eq!(
         claims["sub"],
-        wildflowerhealthio_authorization_server::OWNER_BROWSER_CLIENT_ID
+        wildflowerhealthio_authorization_server::BROWSER_SESSION_CLIENT_ID
     );
     assert_eq!(claims["iss"], SERVER_ORIGIN);
     assert_eq!(claims["aud"], SERVER_ORIGIN);
@@ -166,7 +166,7 @@ async fn the_cookie_holds_an_eight_hour_owner_token() {
 /// alone: `GET /authorization/session` answers as the Owner, and once the
 /// `jti` is revoked, `401`, while another sign-in's token still works.
 #[tokio::test]
-async fn an_owner_browser_session_is_revoked_by_its_jti() {
+async fn a_browser_session_is_revoked_by_its_jti() {
     let (g, owner_token, _db) = spin_up();
     let session = |token: String| {
         let router = g.router.clone();
@@ -181,12 +181,10 @@ async fn an_owner_browser_session_is_revoked_by_its_jti() {
                 .expect("oneshot")
         }
     };
-    let first = owner_browser_session_token(
-        &sign_in(&g, &g.same_device_sign_in_code_minter.mint(), "/").await,
-    );
-    let second = owner_browser_session_token(
-        &sign_in(&g, &g.same_device_sign_in_code_minter.mint(), "/").await,
-    );
+    let first =
+        browser_session_token(&sign_in(&g, &g.same_device_sign_in_code_minter.mint(), "/").await);
+    let second =
+        browser_session_token(&sign_in(&g, &g.same_device_sign_in_code_minter.mint(), "/").await);
     assert_ne!(jti_of(&first), jti_of(&second));
 
     let res = session(first.clone()).await;
@@ -214,18 +212,16 @@ async fn an_owner_browser_session_is_revoked_by_its_jti() {
     assert_eq!(session(second).await.status(), StatusCode::OK);
 }
 
-/// Revoking the Owner-browser client's subject is a `204`
-/// that signs every Owner browser out at once, while a token issued to
+/// Revoking the browser-session client's subject is a `204`
+/// that signs every browser out at once, while a token issued to
 /// another client keeps working.
 #[tokio::test]
-async fn revoking_the_owner_browser_subject_signs_every_owner_browser_out() {
+async fn revoking_the_browser_session_client_s_subject_signs_every_browser_out() {
     let (g, owner_token, _db) = spin_up();
-    let first = owner_browser_session_token(
-        &sign_in(&g, &g.same_device_sign_in_code_minter.mint(), "/").await,
-    );
-    let second = owner_browser_session_token(
-        &sign_in(&g, &g.same_device_sign_in_code_minter.mint(), "/").await,
-    );
+    let first =
+        browser_session_token(&sign_in(&g, &g.same_device_sign_in_code_minter.mint(), "/").await);
+    let second =
+        browser_session_token(&sign_in(&g, &g.same_device_sign_in_code_minter.mint(), "/").await);
     let grants_status = |token: String| {
         let router = g.router.clone();
         async move {
@@ -246,7 +242,7 @@ async fn revoking_the_owner_browser_subject_signs_every_owner_browser_out() {
         .oneshot(owner_revocation_request(
             &owner_token,
             serde_json::json!({
-                "subject": wildflowerhealthio_authorization_server::OWNER_BROWSER_CLIENT_ID,
+                "subject": wildflowerhealthio_authorization_server::BROWSER_SESSION_CLIENT_ID,
             }),
         ))
         .await
@@ -262,18 +258,19 @@ async fn revoking_the_owner_browser_subject_signs_every_owner_browser_out() {
     );
 }
 
-/// The Owner-browser client is essential, so the Owner can't disable it; one
+/// The browser-session client is essential, so the Owner can't disable it; one
 /// disabled out of band (direct SQL) still signs nobody in. A sign-in then
 /// renders the refusal page and sets no cookie, leaving the code unspent;
 /// re-enabling the client lets the same code sign in.
 #[tokio::test]
-async fn a_disabled_owner_browser_client_signs_nobody_in_until_re_enabled() {
+async fn a_disabled_browser_session_client_signs_nobody_in_until_re_enabled() {
     let (g, owner_token, db) = spin_up();
-    let owner_browser_client_id = wildflowerhealthio_authorization_server::OWNER_BROWSER_CLIENT_ID;
+    let browser_session_client_id =
+        wildflowerhealthio_authorization_server::BROWSER_SESSION_CLIENT_ID;
     let code = g.same_device_sign_in_code_minter.mint();
 
     assert!(store_handle(&db)
-        .set_client_disabled(owner_browser_client_id, Some(Utc::now()))
+        .set_client_disabled(browser_session_client_id, Some(Utc::now()))
         .expect("disable the client out of band"));
     let refused = sign_in(&g, &code, "/").await;
     assert_cache_suppressed(&refused, "the refusal");
@@ -287,12 +284,12 @@ async fn a_disabled_owner_browser_client_signs_nobody_in_until_re_enabled() {
     );
 
     assert_eq!(
-        enable_client(&g, &owner_token, owner_browser_client_id)
+        enable_client(&g, &owner_token, browser_session_client_id)
             .await
             .status(),
         StatusCode::OK
     );
     let signed_in = sign_in(&g, &code, "/").await;
     assert_eq!(signed_in.status(), StatusCode::SEE_OTHER);
-    owner_browser_session_token(&signed_in);
+    browser_session_token(&signed_in);
 }

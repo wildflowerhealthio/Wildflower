@@ -140,7 +140,7 @@ impl GrantTx for FakeGrantTx<'_> {
                 GrantType::AuthorizationCode => Some(NewestPendingConsent::OAuth {
                     id: r.id.clone(),
                     client_name,
-                    requested_by_owner_browser: r.requested_by_owner_browser,
+                    decidable_in_requesting_browser: r.decidable_in_requesting_browser,
                 }),
                 GrantType::DeviceCode => {
                     r.user_code

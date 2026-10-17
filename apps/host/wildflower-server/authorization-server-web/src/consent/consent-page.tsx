@@ -35,7 +35,7 @@ const UNEXPECTED_ANSWER = 'The authorization server returned an unexpected answe
 interface ConsentPageProps {
   /** The pending authorization request the page decides, read from its path. */
   readonly requestId: string
-  /** The runner over the Owner browser's session (see `ownerBrowserSessionRunner`). */
+  /** The runner over the browser session (see `browserSessionRunner`). */
   readonly runAuthed: AuthorizationRouterContext.RunAuthed
   /** The wait page for the same request, `…/authorize/{id}/wait`. */
   readonly waitPage: URL
@@ -112,7 +112,7 @@ const lookUpConsent = (
  * not this browser's to follow.
  *
  * @remarks
- * Everything goes through `runAuthed` on the Owner browser's session: the
+ * Everything goes through `runAuthed` on the browser session: the
  * consent read and the decision through the authorization API, and the
  * patient search through FHIR `GET /Patient`, so the search lists exactly the
  * patients the Owner's token may read.

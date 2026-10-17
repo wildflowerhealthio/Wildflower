@@ -84,7 +84,7 @@ pub struct AuthorizationServerState {
     /// the [`PendingConsentWatcher`](crate::PendingConsentWatcher) rereads its
     /// request on.
     pub(crate) pending_consents_recomputed_tx: watch::Sender<()>,
-    /// The Owner's grant, [`crate::OWNER_SCOPES`] — what an Owner browser's
+    /// The Owner's grant, [`crate::OWNER_SCOPES`] — what an Owner
     /// session holds, the authority it decides consents with.
     pub(crate) owner_grant: wildflowerhealthio_scopes::Grant,
     /// The outstanding same-device sign-in codes: minted in-process by the
@@ -105,18 +105,18 @@ pub struct AuthorizationServerState {
     /// The host's say over how fast authorization requests are started,
     /// handed to [`crate::setup_authorization_server`]: asked by the limit on
     /// `/oauth/authorize` and `/oauth/device_authorization` for each request
-    /// that carries no live Owner browser session.
+    /// that carries no live browser session.
     pub(crate) authorization_start_gate: Arc<dyn AuthorizationStartGate>,
 }
 
 impl AuthorizationServerState {
     /// The guard on the essential clients: the host app's,
     /// [`wildflower_host_app_client_id`](Self::wildflower_host_app_client_id),
-    /// and the Owner-browser client, [`crate::OWNER_BROWSER_CLIENT_ID`].
+    /// and the browser-session client, [`crate::BROWSER_SESSION_CLIENT_ID`].
     pub(crate) fn essential_client_guard(&self) -> EssentialClientGuard {
         EssentialClientGuard::new(
             self.wildflower_host_app_client_id.clone(),
-            crate::OWNER_BROWSER_CLIENT_ID.into(),
+            crate::BROWSER_SESSION_CLIENT_ID.into(),
         )
     }
 

@@ -97,11 +97,11 @@ const NOTIFIED_PER_SERVER: usize = 32;
 /// is decided doesn't notify again, nor does one still waiting when the
 /// server's run restarts.
 ///
-/// A request the Owner's own browser made (`requested_by_owner_browser`)
-/// never notifies: that browser already shows its consent card. It still
-/// counts as the server's newest, so it withdraws the server's notification
-/// for an older one, and counts as notified for, so it doesn't notify when it
-/// comes back either.
+/// A request that can be decided in the browser that made it
+/// (`decidable_in_requesting_browser`) never notifies: that browser already
+/// shows its consent card. It still counts as the server's newest, so it
+/// withdraws the server's notification for an older one, and counts as
+/// notified for, so it doesn't notify when it comes back either.
 ///
 /// A server's notification stays while the request it announced is the
 /// server's newest; once another that notified before is newest, or nothing
@@ -262,13 +262,13 @@ impl ConsentNotificationCoalescer {
                     seen_after: self.requests_seen,
                 });
                 self.requests_seen += 1;
-                if pending_consent.requested_by_owner_browser
+                if pending_consent.decidable_in_requesting_browser
                     && self.announced.remove(unit_id).is_some()
                 {
                     changes.withdrawn.push(unit_id.as_str().to_owned());
                 }
             }
-            if pending_consent.requested_by_owner_browser {
+            if pending_consent.decidable_in_requesting_browser {
                 continue;
             }
             let request = ConsentRequest {
@@ -361,7 +361,7 @@ impl ConsentNotificationCoalescer {
             .newest
             .iter()
             .filter(|(unit_id, newest)| {
-                units_to_run.contains(*unit_id) && !newest.requested_by_owner_browser
+                units_to_run.contains(*unit_id) && !newest.decidable_in_requesting_browser
             })
             .filter_map(|(unit_id, newest)| {
                 let seen_after = self
@@ -447,7 +447,7 @@ mod tests {
         NewestPendingConsent::OAuth {
             id: id.to_owned(),
             client_name: "Lifting".to_owned(),
-            requested_by_owner_browser: false,
+            decidable_in_requesting_browser: false,
         }
     }
 
@@ -613,50 +613,50 @@ mod tests {
         assert_eq!(removed.withdrawn, [RUTH]);
     }
 
-    fn oauth_from_owner_browser(id: &str) -> NewestPendingConsent {
+    fn oauth_decidable_in_requesting_browser(id: &str) -> NewestPendingConsent {
         NewestPendingConsent::OAuth {
             id: id.to_owned(),
             client_name: "Lifting".to_owned(),
-            requested_by_owner_browser: true,
+            decidable_in_requesting_browser: true,
         }
     }
 
     #[test]
-    fn a_request_the_owner_s_browser_made_does_not_notify() {
+    fn a_request_decidable_in_its_browser_does_not_notify() {
         let mut coalescer = notifying();
         let changes = coalescer.record(&statuses([(
             RUTH,
-            running_with(Some(oauth_from_owner_browser("a"))),
+            running_with(Some(oauth_decidable_in_requesting_browser("a"))),
         )]));
         assert_eq!(changes, ConsentNotificationChanges::default());
     }
 
     #[test]
-    fn a_request_the_owner_s_browser_made_withdraws_an_older_notification() {
+    fn a_request_decidable_in_its_browser_withdraws_an_older_notification() {
         let mut coalescer = notifying();
         coalescer.record(&statuses([(RUTH, running_with(Some(oauth("a"))))]));
 
         let newer = coalescer.record(&statuses([(
             RUTH,
-            running_with(Some(oauth_from_owner_browser("b"))),
+            running_with(Some(oauth_decidable_in_requesting_browser("b"))),
         )]));
         assert!(newer.posted.is_empty());
         assert_eq!(newer.withdrawn, [RUTH]);
     }
 
     #[test]
-    fn a_request_the_owner_s_browser_made_does_not_notify_when_it_comes_back() {
+    fn a_request_decidable_in_its_browser_does_not_notify_when_it_comes_back() {
         let mut coalescer = notifying();
         coalescer.record(&statuses([(
             RUTH,
-            running_with(Some(oauth_from_owner_browser("a"))),
+            running_with(Some(oauth_decidable_in_requesting_browser("a"))),
         )]));
         let newer = coalescer.record(&statuses([(RUTH, running_with(Some(oauth("b"))))]));
         assert_eq!(summary(&newer.posted), [(RUTH, oauth_key("b"))]);
 
         let back = coalescer.record(&statuses([(
             RUTH,
-            running_with(Some(oauth_from_owner_browser("a"))),
+            running_with(Some(oauth_decidable_in_requesting_browser("a"))),
         )]));
         assert!(back.posted.is_empty());
         assert_eq!(back.withdrawn, [RUTH], "b's notification goes");
@@ -667,14 +667,20 @@ mod tests {
         let mut coalescer = ConsentNotificationCoalescer::new(ConsentOpening::AsNotified);
         let start = coalescer.record(&statuses([
             (RUTH, running_with(Some(oauth("a")))),
-            (LAB, running_with(Some(oauth_from_owner_browser("b")))),
+            (
+                LAB,
+                running_with(Some(oauth_decidable_in_requesting_browser("b"))),
+            ),
         ]));
         assert_eq!(summary(&start.posted), [(RUTH, oauth_key("a"))]);
         assert_eq!(start.opened, start.posted);
 
         let later = coalescer.record(&statuses([
             (RUTH, running_with(Some(oauth("c")))),
-            (LAB, running_with(Some(oauth_from_owner_browser("b")))),
+            (
+                LAB,
+                running_with(Some(oauth_decidable_in_requesting_browser("b"))),
+            ),
         ]));
         assert_eq!(summary(&later.opened), [(RUTH, oauth_key("c"))]);
     }
@@ -826,7 +832,10 @@ mod tests {
         );
         let first = coalescer.record(&statuses([
             (RUTH, not_reporting(RunState::Starting)),
-            (LAB, running_with(Some(oauth_from_owner_browser("b")))),
+            (
+                LAB,
+                running_with(Some(oauth_decidable_in_requesting_browser("b"))),
+            ),
         ]));
         assert_eq!(first, ConsentNotificationChanges::default());
         coalescer.record(&statuses([
@@ -901,7 +910,10 @@ mod tests {
         let mut coalescer = notifying();
         let running = statuses([
             (RUTH, running_with(None)),
-            (LAB, running_with(Some(oauth_from_owner_browser("a")))),
+            (
+                LAB,
+                running_with(Some(oauth_decidable_in_requesting_browser("a"))),
+            ),
         ]);
         coalescer.record(&running);
 
@@ -911,7 +923,10 @@ mod tests {
         );
         let later = coalescer.record(&statuses([
             (RUTH, running_with(Some(oauth("b")))),
-            (LAB, running_with(Some(oauth_from_owner_browser("a")))),
+            (
+                LAB,
+                running_with(Some(oauth_decidable_in_requesting_browser("a"))),
+            ),
         ]));
         assert_eq!(summary(&later.posted), [(RUTH, oauth_key("b"))]);
         assert!(later.opened.is_empty());
@@ -1056,10 +1071,13 @@ mod tests {
     }
 
     #[test]
-    fn on_a_phone_a_request_the_owner_s_browser_made_does_not_open_at_an_arrival() {
+    fn on_a_phone_a_request_decidable_in_its_browser_does_not_open_at_an_arrival() {
         let mut coalescer = notifying();
         coalescer.record(&statuses([(RUTH, running_with(Some(oauth("a"))))]));
-        let running = statuses([(RUTH, running_with(Some(oauth_from_owner_browser("b"))))]);
+        let running = statuses([(
+            RUTH,
+            running_with(Some(oauth_decidable_in_requesting_browser("b"))),
+        )]);
         coalescer.record(&running);
 
         assert_eq!(
@@ -1165,7 +1183,10 @@ mod tests {
         );
         let start = coalescer.record(&statuses([
             (RUTH, running_with(Some(oauth("a")))),
-            (LAB, running_with(Some(oauth_from_owner_browser("b")))),
+            (
+                LAB,
+                running_with(Some(oauth_decidable_in_requesting_browser("b"))),
+            ),
         ]));
         assert!(start.posted.is_empty());
         assert_eq!(summary(&start.opened), [(RUTH, oauth_key("a"))]);

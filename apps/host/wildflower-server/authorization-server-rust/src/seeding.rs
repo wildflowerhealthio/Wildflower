@@ -1,5 +1,5 @@
 //! First-boot seeding for the grant store: the signing key and the essential
-//! clients (the host app's client and the Owner-browser client). Safe to call
+//! clients (the host app's client and the browser-session client). Safe to call
 //! on every boot — the signing key is inserted only when none exists (never
 //! rotated), and the two clients are *ensured* (re-applied as an upsert) so
 //! their definitions always match the host's granted scopes, correcting any
@@ -103,19 +103,19 @@ fn ensure_some_active_signing_key(store: &SqliteGrantStore) -> anyhow::Result<()
     Ok(())
 }
 
-/// Ensure the essential clients — the host app's client and the Owner-browser
-/// client ([`crate::OWNER_BROWSER_CLIENT_ID`]) — match the code's definitions.
+/// Ensure the essential clients — the host app's client and the browser-session
+/// client ([`crate::BROWSER_SESSION_CLIENT_ID`]) — match the code's definitions.
 /// Upserted on every boot so their policy always matches: the host app's
 /// client is allowed `host_app_client_scopes` under
 /// `wildflower_host_app_client_id` (the live app sources both from
 /// `tauri-shared-config.json`; see [`crate::default_host_app_client_scopes`] /
-/// [`crate::default_wildflower_host_app_client_id`]), and the Owner-browser
+/// [`crate::default_wildflower_host_app_client_id`]), and the browser-session
 /// client the Owner's scopes ([`crate::OWNER_SCOPES`]). This corrects a store
 /// seeded by an older build (registration time and any admin disable are
 /// preserved).
 ///
 /// Both are public with no redirect URIs. The host app's client is allowed
-/// every grant type; the Owner-browser client none, since its tokens are
+/// every grant type; the browser-session client none, since its tokens are
 /// minted only at `/oauth/sign-in`, so no OAuth flow can be run as it.
 fn ensure_essential_clients(
     store: &SqliteGrantStore,
@@ -136,9 +136,9 @@ fn ensure_essential_clients(
     store
         .upsert_client(&wildflower_host_app_client)
         .context("seed the host app's client")?;
-    let owner_browser_client = Client {
-        client_id: crate::OWNER_BROWSER_CLIENT_ID.to_string(),
-        name: "Wildflower (Owner browsers)".to_string(),
+    let browser_session_client = Client {
+        client_id: crate::BROWSER_SESSION_CLIENT_ID.to_string(),
+        name: "Wildflower Browsers".to_string(),
         kind: ClientKind::Public,
         redirect_uris: vec![],
         allowed_scopes: crate::owner_scopes(),
@@ -148,8 +148,8 @@ fn ensure_essential_clients(
         disabled_at: None,
     };
     store
-        .upsert_client(&owner_browser_client)
-        .context("seed the Owner-browser client")?;
+        .upsert_client(&browser_session_client)
+        .context("seed the browser-session client")?;
     Ok(())
 }
 
@@ -736,11 +736,11 @@ mod tests {
         assert_eq!(seeded.allowed_scopes, vec!["openid".to_string()]);
     }
 
-    /// The Owner-browser client is seeded as a public client with no redirect
+    /// The browser-session client is seeded as a public client with no redirect
     /// URIs and no grant type, allowed exactly the Owner's scopes, whatever the
     /// host app's client is allowed.
     #[test]
-    fn seeds_the_owner_browser_client_with_the_owner_s_scopes() {
+    fn seeds_the_browser_session_client_with_the_owner_s_scopes() {
         let pool =
             wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
         let store = open_and_seed_store(
@@ -753,9 +753,9 @@ mod tests {
         .expect("seed store");
 
         let seeded = store
-            .client_by_id(crate::OWNER_BROWSER_CLIENT_ID)
+            .client_by_id(crate::BROWSER_SESSION_CLIENT_ID)
             .expect("query client")
-            .expect("the Owner-browser client seeded");
+            .expect("the browser-session client seeded");
         assert_eq!(seeded.kind, ClientKind::Public);
         assert!(seeded.redirect_uris.is_empty());
         assert!(seeded.allowed_grant_types.is_empty());

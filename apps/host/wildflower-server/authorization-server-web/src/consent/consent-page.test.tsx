@@ -7,10 +7,7 @@ import { Effect, Layer, Option } from 'effect'
 import { type JSX, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
-import {
-  OWNER_BROWSER_SESSION_HEADER,
-  ownerBrowserSessionRunner,
-} from '../owner-browser-session.ts'
+import { BROWSER_SESSION_HEADER, browserSessionRunner } from '../browser-session.ts'
 import { ConsentPage } from './consent-page.tsx'
 
 /**
@@ -62,7 +59,7 @@ const stubServer: Layer.Layer<HttpClient.HttpClient> = Layer.succeed(
       path: url.pathname,
       query: UrlParams.toString(request.urlParams),
       body: bodyOf(request),
-      session: request.headers[OWNER_BROWSER_SESSION_HEADER.name.toLowerCase()],
+      session: request.headers[BROWSER_SESSION_HEADER.name.toLowerCase()],
     }
     seen.push(seenRequest)
     const reply = answer(seenRequest)
@@ -137,7 +134,7 @@ const renderPage = (
   render(
     <ConsentPage
       requestId="req-1"
-      runAuthed={ownerBrowserSessionRunner(SERVER_ORIGIN, stubServer)}
+      runAuthed={browserSessionRunner(SERVER_ORIGIN, stubServer)}
       waitPage={WAIT_PAGE}
       leaveFor={leaveFor}
       goBackOnceDecided={openedWith === 'then-back' ? Option.some(goBack) : Option.none()}
@@ -189,7 +186,7 @@ describe('ConsentPage — exit', () => {
     expect(
       seen.some((request) => request.path === '/authorization/oauth-consents/req-1/deny')
     ).toBe(true)
-    expect(new Set(sessionsAskedFor())).toEqual(new Set([OWNER_BROWSER_SESSION_HEADER.value]))
+    expect(new Set(sessionsAskedFor())).toEqual(new Set([BROWSER_SESSION_HEADER.value]))
   })
 
   test('the page refuses to leave for a callback that is not http(s)', async () => {
@@ -406,6 +403,6 @@ describe('ConsentPage — patient search', () => {
         '/authorization/oauth-consents/req-1/approve',
       ])
     )
-    expect(new Set(sessionsAskedFor())).toEqual(new Set([OWNER_BROWSER_SESSION_HEADER.value]))
+    expect(new Set(sessionsAskedFor())).toEqual(new Set([BROWSER_SESSION_HEADER.value]))
   })
 })

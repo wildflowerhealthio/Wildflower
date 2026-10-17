@@ -322,10 +322,10 @@ pub(crate) fn sign_in_error_html(refusal: SignInRefusal) -> String {
             "The sign-in link is unknown, already used, or expired. Sign in again from \
              the Wildflower app.",
         ),
-        SignInRefusal::OwnerBrowserClientDisabled => (
+        SignInRefusal::BrowserSessionClientDisabled => (
             "Browser sign-in disabled",
-            "Browsers can't be signed in as the Owner while the Wildflower (Owner browsers) \
-             client is disabled.",
+            "Browsers can't be signed in as the Owner while the Wildflower Browsers client \
+             is disabled.",
         ),
     };
     local_error_page(title, body)

@@ -1,7 +1,7 @@
 //! The consent card (#1099): `/oauth/authorize` sends a browser signed in as
 //! the Owner to `/oauth/authorize/{id}/consent` and any other to the wait page,
 //! and the card decides the request through the existing
-//! `/authorization/oauth-consents/{id}` API on the Owner browser's bearer, the
+//! `/authorization/oauth-consents/{id}` API on the browser session's bearer, the
 //! token its session cookie holds. The cookie→bearer layer that presents that
 //! token for the card is the host's (`wildflower-server-rust`), so these tests
 //! send it as the bearer themselves.
@@ -79,17 +79,14 @@ async fn status_of(g: &AuthorizationServer, request_id: &str) -> Value {
 }
 
 /// A request from a browser signed in as the Owner, parked on the consent
-/// card: the Owner browser token and the request id.
+/// card: the Owner session token and the request id.
 async fn parked_on_the_card(g: &AuthorizationServer) -> (String, String) {
-    let owner_browser_token = signed_in_owner_browser_token(g).await;
-    let res = authorize_with_cookie(
-        g,
-        &format!("__Host-owner_browser_session={owner_browser_token}"),
-    )
-    .await;
+    let owner_session_token = signed_in_owner_session_token(g).await;
+    let res =
+        authorize_with_cookie(g, &format!("__Host-browser_session={owner_session_token}")).await;
     let (page, request_id) = parked_page(&res);
     assert_eq!(page, "consent");
-    (owner_browser_token, request_id)
+    (owner_session_token, request_id)
 }
 
 #[tokio::test]
@@ -101,11 +98,11 @@ async fn a_browser_signed_in_as_the_owner_goes_to_the_consent_card() {
         "https://app.example/cb",
         &["patient/Observation.rs", "openid"],
     );
-    let owner_browser_token = signed_in_owner_browser_token(&g).await;
+    let owner_session_token = signed_in_owner_session_token(&g).await;
 
     for cookie in [
-        format!("__Host-owner_browser_session={owner_browser_token}"),
-        format!("theme=dark; __Host-owner_browser_session={owner_browser_token}"),
+        format!("__Host-browser_session={owner_session_token}"),
+        format!("theme=dark; __Host-browser_session={owner_session_token}"),
     ] {
         let res = authorize_with_cookie(&g, &cookie).await;
         assert_eq!(parked_page(&res).0, "consent", "{cookie}");
@@ -121,18 +118,20 @@ async fn any_other_browser_goes_to_the_wait_page() {
         "https://app.example/cb",
         &["patient/Observation.rs", "openid"],
     );
-    let revoked = signed_in_owner_browser_token(&g).await;
+    let revoked = signed_in_owner_session_token(&g).await;
     revocation_store_handle(&db)
-        .revoke_subject_as_of_now(wildflowerhealthio_authorization_server::OWNER_BROWSER_CLIENT_ID)
-        .expect("revoke the Owner browser's subject");
+        .revoke_subject_as_of_now(
+            wildflowerhealthio_authorization_server::BROWSER_SESSION_CLIENT_ID,
+        )
+        .expect("revoke the browser-session client's subject");
 
     for cookie in [
         String::new(),
         "theme=dark".to_owned(),
-        "__Host-owner_browser_session=not-a-token".to_owned(),
-        format!("__Host-owner_browser_session={revoked}"),
-        // The same token under another name is no Owner browser session.
-        format!("owner_browser_session={revoked}"),
+        "__Host-browser_session=not-a-token".to_owned(),
+        format!("__Host-browser_session={revoked}"),
+        // The same token under another name is no browser session.
+        format!("browser_session={revoked}"),
     ] {
         let res = authorize_with_cookie(&g, &cookie).await;
         assert_eq!(parked_page(&res).0, "wait", "{cookie:?}");
@@ -140,7 +139,31 @@ async fn any_other_browser_goes_to_the_wait_page() {
 }
 
 #[tokio::test]
-async fn the_newest_pending_consent_says_whether_the_owner_s_browser_made_it() {
+async fn a_browser_session_that_cannot_decide_consents_goes_to_the_wait_page() {
+    let (g, _host_owner_token, db) = spin_up();
+    seed_client_with_redirect(
+        &db,
+        "test-app",
+        "https://app.example/cb",
+        &["patient/Observation.rs", "openid"],
+    );
+    let session_token = signed_in_session_token_that_cannot_decide(&g, &db).await;
+
+    let res = authorize_with_cookie(&g, &format!("__Host-browser_session={session_token}")).await;
+    let (page, request_id) = parked_page(&res);
+    assert_eq!(page, "wait");
+    assert_eq!(
+        newest_pending_consent(&db),
+        Some(NewestPendingConsent::OAuth {
+            id: request_id,
+            client_name: "Integration Test Client".to_owned(),
+            decidable_in_requesting_browser: false,
+        }),
+    );
+}
+
+#[tokio::test]
+async fn the_newest_pending_consent_says_whether_its_browser_can_decide_it() {
     let (g, _host_owner_token, db) = spin_up();
     seed_client_with_redirect(
         &db,
@@ -155,7 +178,7 @@ async fn the_newest_pending_consent_says_whether_the_owner_s_browser_made_it() {
         Some(NewestPendingConsent::OAuth {
             id: request_id,
             client_name: "Integration Test Client".to_owned(),
-            requested_by_owner_browser: true,
+            decidable_in_requesting_browser: true,
         }),
     );
 
@@ -166,7 +189,7 @@ async fn the_newest_pending_consent_says_whether_the_owner_s_browser_made_it() {
         Some(NewestPendingConsent::OAuth {
             id: request_id,
             client_name: "Integration Test Client".to_owned(),
-            requested_by_owner_browser: false,
+            decidable_in_requesting_browser: false,
         }),
     );
 }
@@ -180,11 +203,11 @@ async fn approving_on_the_owner_s_bearer_sends_the_code_to_the_client_and_settle
         "https://app.example/cb",
         &["patient/Observation.rs", "openid"],
     );
-    let (owner_browser_token, request_id) = parked_on_the_card(&g).await;
+    let (owner_session_token, request_id) = parked_on_the_card(&g).await;
 
     let res = decide(
         &g,
-        &owner_browser_token,
+        &owner_session_token,
         &request_id,
         "approve",
         r#"{"approvedScopes":["patient/Observation.rs","openid"],"patient":null,"acknowledgedRegistration":false}"#,
@@ -217,13 +240,13 @@ async fn a_scope_that_was_not_requested_is_not_granted() {
         "https://app.example/cb",
         &["patient/Observation.rs", "openid"],
     );
-    let (owner_browser_token, request_id) = parked_on_the_card(&g).await;
+    let (owner_session_token, request_id) = parked_on_the_card(&g).await;
 
     // The card can't add scopes; a hand-made approval that does gets only
     // what was requested.
     let res = decide(
         &g,
-        &owner_browser_token,
+        &owner_session_token,
         &request_id,
         "approve",
         r#"{"approvedScopes":["patient/Observation.rs","patient/Condition.rs"],"patient":null,"acknowledgedRegistration":false}"#,
@@ -260,11 +283,11 @@ async fn a_scope_that_was_not_requested_is_not_granted() {
 async fn an_unacknowledged_new_registration_is_refused() {
     let (g, _host_owner_token, _db) = spin_up();
     // `test-app` is registered nowhere: the request is `new`.
-    let (owner_browser_token, request_id) = parked_on_the_card(&g).await;
+    let (owner_session_token, request_id) = parked_on_the_card(&g).await;
 
     let res = decide(
         &g,
-        &owner_browser_token,
+        &owner_session_token,
         &request_id,
         "approve",
         r#"{"approvedScopes":["patient/Observation.rs"],"patient":null,"acknowledgedRegistration":false}"#,
@@ -287,9 +310,9 @@ async fn denying_sends_access_denied_to_the_client_and_settles_the_wait_page() {
         "https://app.example/cb",
         &["patient/Observation.rs", "openid"],
     );
-    let (owner_browser_token, request_id) = parked_on_the_card(&g).await;
+    let (owner_session_token, request_id) = parked_on_the_card(&g).await;
 
-    let res = decide(&g, &owner_browser_token, &request_id, "deny", "").await;
+    let res = decide(&g, &owner_session_token, &request_id, "deny", "").await;
     assert_eq!(res.status(), StatusCode::OK);
     let decision = body_json(res.into_body()).await;
     assert_eq!(decision["status"], "denied");

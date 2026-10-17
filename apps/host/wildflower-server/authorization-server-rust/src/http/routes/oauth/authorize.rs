@@ -10,10 +10,10 @@ use crate::domain::capabilities::oauth::{
     AuthorizationStartError, AuthorizeNextStep, AuthorizeRequest, FreshIds,
 };
 use crate::domain::client_redirect::{build_client_error_redirect_url, build_client_redirect_url};
+use crate::http::browser_session_cookie::{can_decide_consents, carried_browser_session};
 use crate::http::errors::InternalError;
 use crate::http::errors::{oauth_error_html, OAuthErrorKind};
 use crate::http::extractors::Live;
-use crate::http::owner_browser_session_cookie::carried_owner_browser_session;
 
 use super::authorization_pages::consent_page_location;
 use super::wait_page::wait_page_location;
@@ -155,10 +155,11 @@ pub struct AuthorizeParams {
 ///    queue (raising the host webview's popup) and the browser is 302'd to a
 ///    page this authorization server serves beside the endpoint, on the origin
 ///    the browser used. A browser signed in as the Owner (it carries a live
-///    Owner browser session) goes to the consent card at
+///    browser session that can decide consents) goes to the consent card at
 ///    `/oauth/authorize/{id}/consent`, where the Owner decides in place; the
-///    request records that it was (`requested_by_owner_browser`), and the
-///    browser session it was made in (`sid`), which the code is issued under.
+///    request records that it can be decided there
+///    (`decidable_in_requesting_browser`), and the browser session it was made
+///    in (`sid`), which the code is issued under.
 ///    Any other goes to the wait page at `/oauth/authorize/{id}/wait`, which polls
 ///    `GET /oauth/authorize/{id}` (a custom extension, not part of any RFC)
 ///    until the Owner decides — in the popup, in a signed-in launcher, or on
@@ -196,15 +197,14 @@ pub(super) async fn handle_authorize_request(
     headers: HeaderMap,
     Query(params): Query<AuthorizeParams>,
 ) -> Result<Response, AuthorizeError> {
-    let owner_browser_session =
-        carried_owner_browser_session(&token_verifier, &headers).map_err(|error| {
-            AuthorizeError::Internal(InternalError::new(
-                "verify the Owner browser session at /oauth/authorize",
-                error,
-            ))
-        })?;
-    let requested_by_owner_browser = owner_browser_session.is_some();
-    let owner_browser_sid = owner_browser_session
+    let browser_session = carried_browser_session(&token_verifier, &headers).map_err(|error| {
+        AuthorizeError::Internal(InternalError::new(
+            "verify a browser session at /oauth/authorize",
+            error,
+        ))
+    })?;
+    let decidable_in_requesting_browser = browser_session.as_ref().is_some_and(can_decide_consents);
+    let browser_sid = browser_session
         .as_ref()
         .and_then(|claims| claims.sid.as_deref());
     let next_step = code_authorization_starter.start(
@@ -218,8 +218,8 @@ pub(super) async fn handle_authorize_request(
             client_state: &params.state,
             launch: params.launch.as_deref(),
             aud: params.aud.as_deref(),
-            requested_by_owner_browser,
-            sid: owner_browser_sid,
+            decidable_in_requesting_browser,
+            sid: browser_sid,
         },
         FreshIds {
             request_id: Uuid::new_v4().to_string(),
@@ -245,7 +245,7 @@ pub(super) async fn handle_authorize_request(
         // signed-in launcher's consent list, or the consent card — decides
         // first.
         AuthorizeNextStep::AwaitOwner { request_id } => {
-            if requested_by_owner_browser {
+            if decidable_in_requesting_browser {
                 found_redirect(&consent_page_location(&request_id))
             } else {
                 found_redirect(&wait_page_location(&request_id))

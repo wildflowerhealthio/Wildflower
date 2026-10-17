@@ -3,7 +3,7 @@
 Where the launcher holds its session, and why the store is not a cookie.
 
 The launcher authenticates by the `Authorization: Bearer` header alone. The
-server's only cookies, an Owner browser's `__Host-owner_browser_session` and the FHIR web UI's
+server's only cookies, the browser session's `__Host-browser_session` and the FHIR web UI's
 `hfs_session`, are for the server's own pages, and no other origin can use
 them: CORS never allows credentials. The launcher's entry (`main-web`) builds a
 `makeBearerAuthStateStore` and threads it through `buildAppTree`. The store has

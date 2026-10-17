@@ -514,9 +514,9 @@ pub async fn set_up(
         ));
 
     // A browser on the server's own pages carries a session cookie and no
-    // `Authorization`: an Owner browser's, which `/oauth/sign-in` set, or the
+    // `Authorization`: the browser session's, which `/oauth/sign-in` set, or the
     // FHIR web UI's. A live session's bearer is presented ahead of every gate,
-    // the UI's winning when both are sent; an ended Owner browser session is
+    // the UI's winning when both are sent; an ended browser session is
     // skipped and its cookie cleared; and a write carrying either cookie from
     // another origin is refused, before the UI's routes too
     // (`session_cookie_bearer`). The token's scopes decide what it reaches, so

@@ -42,7 +42,7 @@ const UNKNOWN_CODE =
 interface DevicePageProps {
   /** The code the page's query names, which fills the code box. */
   readonly initialUserCode: string
-  /** The runner over the Owner browser's session (see `ownerBrowserSessionRunner`). */
+  /** The runner over the browser session (see `browserSessionRunner`). */
   readonly runAuthed: AuthorizationRouterContext.RunAuthed
   /**
    * In `then=back` mode (see `goBackOnceDecidedOf`), the step back out of the
@@ -159,7 +159,7 @@ const requestView = (found: DeviceLookup | undefined, parts: RequestViewParts): 
  * request on the device-consent card.
  *
  * @remarks
- * Everything goes through `runAuthed` on the Owner browser's session. What the
+ * Everything goes through `runAuthed` on the browser session. What the
  * page shows follows the API's answers, not who the session is. On load it
  * reads the session's scopes: with none (`401`), or without the device
  * routes' scopes, it says to approve the request on the device running the

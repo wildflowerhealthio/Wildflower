@@ -61,7 +61,7 @@ impl TestAuthorizationServer {
                     pre_approved_scopes: Vec::new(),
                     ttl: chrono::Duration::minutes(5),
                     launch_context: None,
-                    requested_by_owner_browser: false,
+                    decidable_in_requesting_browser: false,
                     sid: None,
                 },
             ))

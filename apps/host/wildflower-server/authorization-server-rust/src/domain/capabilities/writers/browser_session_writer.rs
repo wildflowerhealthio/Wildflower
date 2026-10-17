@@ -1,7 +1,7 @@
 //! [`BrowserSessionWriter`] — the writer that starts browser sessions. A
 //! session holds a grant and is what the tokens minted under it name as their
 //! `sid`, so starting one takes the proof that the browser may hold it: for an
-//! Owner browser, a redeemed same-device sign-in code.
+//! Owner session, a redeemed same-device sign-in code.
 
 use crate::domain::authority::RedeemedSameDeviceSignInCode;
 use crate::domain::authorization_server_error::AuthorizationServerError;
@@ -19,7 +19,7 @@ impl<'a, S: GrantStore> BrowserSessionWriter<'a, S> {
         BrowserSessionWriter { store }
     }
 
-    /// Store the Owner browser session `redeemed_sign_in_code` starts.
+    /// Store the Owner session `redeemed_sign_in_code` starts.
     ///
     /// # Errors
     ///

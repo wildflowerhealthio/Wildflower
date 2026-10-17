@@ -4,7 +4,7 @@ pub use std::sync::Arc;
 pub use tokio::sync::watch;
 pub use wildflowerhealthio_authorization_server::{
     setup_authorization_server, AdmitEveryAuthorizationStart, AuthorizationServer,
-    AuthorizationServerConfig, AuthorizationStartGate, OWNER_BROWSER_CLIENT_ID,
+    AuthorizationServerConfig, AuthorizationStartGate, BROWSER_SESSION_CLIENT_ID,
     WILDFLOWER_HOST_APP_CLIENT_ID,
 };
 
@@ -145,6 +145,28 @@ pub fn mint_owner_token(db: &TestDb) -> String {
 /// Mint an access token issued to `client_id` carrying exactly `scopes`, signed
 /// by the seeded active key and naming [`SERVER_ORIGIN`] as `iss` and `aud`.
 pub fn mint_client_token(db: &TestDb, client_id: &str, scopes: &[&str]) -> String {
+    mint_token_under_session(db, client_id, scopes, None)
+}
+
+/// A token issued to the browser-session client under the browser session
+/// `sid`, carrying exactly `scopes`: a signed-in browser whose session holds
+/// those scopes rather than the Owner's.
+pub fn mint_browser_session_token(db: &TestDb, sid: &str, scopes: &[&str]) -> String {
+    mint_token_under_session(
+        db,
+        wildflowerhealthio_authorization_server::BROWSER_SESSION_CLIENT_ID,
+        scopes,
+        Some(sid),
+    )
+}
+
+/// [`mint_client_token`], minted under the browser session `sid` when given.
+fn mint_token_under_session(
+    db: &TestDb,
+    client_id: &str,
+    scopes: &[&str],
+    sid: Option<&str>,
+) -> String {
     let key = store_handle(db)
         .active_signing_key()
         .expect("signing-key query")
@@ -159,7 +181,7 @@ pub fn mint_client_token(db: &TestDb, client_id: &str, scopes: &[&str]) -> Strin
             issuer: SERVER_ORIGIN,
             audience: Some(SERVER_ORIGIN),
             patient: None,
-            sid: None,
+            sid,
         },
     )
     .expect("mint token")
@@ -340,7 +362,7 @@ pub fn plant_authorization_code(
             device_name: None,
             launch: None,
             launch_bound_patient: None,
-            requested_by_owner_browser: false,
+            decidable_in_requesting_browser: false,
             sid: None,
         })
         .expect("insert request");
@@ -394,7 +416,7 @@ pub fn plant_device_request(
             device_name: None,
             launch: None,
             launch_bound_patient: None,
-            requested_by_owner_browser: false,
+            decidable_in_requesting_browser: false,
             sid: None,
         })
         .expect("insert device request");
@@ -817,7 +839,7 @@ pub fn assert_cache_suppressed(res: &axum::response::Response, what: &str) {
 
 // ---------------------------------------------------------------------------
 // Owner sign-in (#1098): a code the base mints signs a browser in as the
-// Owner, handing it the Owner browser session cookie.
+// Owner, handing it the browser session cookie.
 // ---------------------------------------------------------------------------
 
 /// `GET /oauth/sign-in` with `code` and `next`, as the browser the base opened
@@ -838,21 +860,36 @@ pub async fn sign_in(g: &AuthorizationServer, code: &str, next: &str) -> axum::r
 }
 
 /// The Owner token a sign-in's `Set-Cookie` hands the browser.
-pub fn owner_browser_session_token(res: &axum::response::Response) -> String {
+pub fn browser_session_token(res: &axum::response::Response) -> String {
     let cookies = set_cookie_values(res);
     let [cookie] = cookies.as_slice() else {
         panic!("exactly one cookie, got {cookies:?}");
     };
     cookie
-        .strip_prefix("__Host-owner_browser_session=")
+        .strip_prefix("__Host-browser_session=")
         .and_then(|rest| rest.split(';').next())
-        .unwrap_or_else(|| panic!("the Owner browser session cookie, got {cookie}"))
+        .unwrap_or_else(|| panic!("the browser session cookie, got {cookie}"))
         .to_owned()
 }
 
-/// Sign a browser in as the Owner, returning the Owner browser token its
-/// `__Host-owner_browser_session` cookie holds.
-pub async fn signed_in_owner_browser_token(g: &AuthorizationServer) -> String {
+/// Sign a browser in as the Owner, returning the Owner session token its
+/// `__Host-browser_session` cookie holds.
+pub async fn signed_in_owner_session_token(g: &AuthorizationServer) -> String {
     let code = g.same_device_sign_in_code_minter.mint();
-    owner_browser_session_token(&sign_in(g, &code, "/").await)
+    browser_session_token(&sign_in(g, &code, "/").await)
+}
+
+/// The token of a signed-in browser whose session can't decide consents: it
+/// can read authorization requests but not update them, and deciding takes
+/// both.
+pub async fn signed_in_session_token_that_cannot_decide(
+    g: &AuthorizationServer,
+    db: &TestDb,
+) -> String {
+    let owner_session_token = signed_in_owner_session_token(g).await;
+    let sid = decode_jwt_payload(&owner_session_token)["sid"]
+        .as_str()
+        .expect("a browser session's token names its sid")
+        .to_owned();
+    mint_browser_session_token(db, &sid, &["wildflower/AuthorizationRequest.r"])
 }

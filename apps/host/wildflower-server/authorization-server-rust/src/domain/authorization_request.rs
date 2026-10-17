@@ -101,10 +101,11 @@ pub struct AuthorizationRequest {
     /// The patient the consumed launch context binds, if any. When set, an
     /// approval must name this patient (see [`Self::admits_patient`]).
     pub launch_bound_patient: Option<String>,
-    /// Whether the browser that made the request carried the Owner browser
-    /// session (auth-code flow only; `false` for a device request). That
-    /// browser is sent to the consent card itself.
-    pub requested_by_owner_browser: bool,
+    /// Whether the request can be decided in the browser that made it: that
+    /// browser carried a browser session that can decide consents, so it is
+    /// sent to the consent card itself (auth-code flow only; `false` for a
+    /// device request).
+    pub decidable_in_requesting_browser: bool,
     /// The browser session the request was made in (auth-code flow only),
     /// which the code it earns is issued under; `None` when the browser had
     /// none, and for a device request.
@@ -133,9 +134,9 @@ pub struct StartCodeAuthorizationArgs {
     /// The launch context `/authorize` consumed for this request, or `None` for
     /// a plain OAuth request.
     pub launch_context: Option<LaunchContext>,
-    /// Whether the browser calling `/authorize` carries the Owner browser
-    /// session.
-    pub requested_by_owner_browser: bool,
+    /// Whether the request can be decided in the browser calling
+    /// `/authorize`: it carries a browser session that can decide consents.
+    pub decidable_in_requesting_browser: bool,
     /// The browser session the browser calling `/authorize` holds, if any.
     pub sid: Option<String>,
 }
@@ -205,7 +206,7 @@ impl AuthorizationRequest {
             device_name: None,
             launch,
             launch_bound_patient,
-            requested_by_owner_browser: input.requested_by_owner_browser,
+            decidable_in_requesting_browser: input.decidable_in_requesting_browser,
             sid: input.sid,
         }
     }
@@ -233,7 +234,7 @@ impl AuthorizationRequest {
             device_name: input.device_name,
             launch: None,
             launch_bound_patient: None,
-            requested_by_owner_browser: false,
+            decidable_in_requesting_browser: false,
             sid: None,
         }
     }

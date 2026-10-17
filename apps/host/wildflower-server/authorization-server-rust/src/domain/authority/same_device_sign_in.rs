@@ -1,23 +1,23 @@
-//! [`RedeemedSameDeviceSignInCode`] — the authority an Owner browser's
-//! session token is minted under: a same-device sign-in code the base minted
+//! [`RedeemedSameDeviceSignInCode`] — the authority an Owner session's
+//! token is minted under: a same-device sign-in code the base minted
 //! in-process, presented once and in time at `GET /oauth/sign-in`. Only the
 //! base can mint a code, and the base runs on the device that runs the server,
 //! so redeeming one is proof of that device. The token it earns is the
-//! Owner's, issued to the Owner-browser client
-//! ([`OWNER_BROWSER_CLIENT_ID`]) and holding the Owner's grant
+//! Owner's, issued to the browser-session client
+//! ([`BROWSER_SESSION_CLIENT_ID`]) and holding the Owner's grant
 //! ([`OWNER_SCOPES`](crate::OWNER_SCOPES)), with which the Owner decides
 //! consents on the server's own consent pages. Redeeming a code starts an
-//! Owner browser session, which the token names as its `sid`.
+//! Owner session, which the token names as its `sid`.
 
 use chrono::{DateTime, Duration, Utc};
 use wildflowerhealthio_scopes::Grant;
 
 use crate::domain::browser_session::BrowserSession;
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
-use crate::OWNER_BROWSER_CLIENT_ID;
+use crate::BROWSER_SESSION_CLIENT_ID;
 
 /// A sign-in code taken out of the outstanding codes, unexpired. Carries the
-/// Owner browser session the sign-in starts, holding the Owner's grant, which
+/// Owner session the sign-in starts, holding the Owner's grant, which
 /// the minter records verbatim.
 pub(crate) struct RedeemedSameDeviceSignInCode {
     session: BrowserSession,
@@ -25,7 +25,7 @@ pub(crate) struct RedeemedSameDeviceSignInCode {
 
 impl RedeemedSameDeviceSignInCode {
     /// Take `presented` out of `codes` at `now`. When it was outstanding and
-    /// unexpired, the proof holds a new Owner browser session with
+    /// unexpired, the proof holds a new Owner session with
     /// `owner_grant`, lasting `session_ttl`; an unknown, spent or expired code
     /// is `None`, the three alike.
     pub(crate) fn redeem(
@@ -42,9 +42,9 @@ impl RedeemedSameDeviceSignInCode {
             })
     }
 
-    /// The Owner-browser client, the token's `sub`.
+    /// The browser-session client, the token's `sub`.
     pub(super) fn client_id(&self) -> &str {
-        OWNER_BROWSER_CLIENT_ID
+        BROWSER_SESSION_CLIENT_ID
     }
 
     /// The Owner's grant, the token's `scope`.
@@ -52,7 +52,7 @@ impl RedeemedSameDeviceSignInCode {
         &self.session.scopes
     }
 
-    /// The Owner browser session the sign-in starts: the token's `sid`, and
+    /// The Owner session the sign-in starts: the token's `sid`, and
     /// the row the session writer stores.
     pub(crate) fn session(&self) -> &BrowserSession {
         &self.session
@@ -71,7 +71,7 @@ mod tests {
     }
 
     #[test]
-    fn a_redeemed_code_names_the_owner_browser_client_and_the_owner_s_grant() {
+    fn a_redeemed_code_names_the_browser_session_client_and_the_owner_s_grant() {
         let codes = SameDeviceSignInCodes::new();
         let now = Utc::now();
         codes.insert("code-1", now);
@@ -83,7 +83,7 @@ mod tests {
             now,
         )
         .expect("an outstanding code redeems");
-        assert_eq!(redeemed.client_id(), "wildflower-owner-browser");
+        assert_eq!(redeemed.client_id(), BROWSER_SESSION_CLIENT_ID);
         assert_eq!(
             redeemed.token_scopes(),
             ["system/*.cruds".to_owned(), "wildflower/*.cruds".to_owned()]
