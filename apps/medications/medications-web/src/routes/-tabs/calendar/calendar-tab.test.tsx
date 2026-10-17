@@ -13,32 +13,32 @@ import {
   setUpEachAppTest,
   stubQuietIntersectionObserver,
   tabLink,
-} from '../../test-utils/app-fakes.ts'
-import { renderApp } from '../../test-utils/render-app.ts'
+} from '../../../test-utils/app-fakes.ts'
+import { renderApp } from '../../../test-utils/render-app.ts'
 
 vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async () =>
-  (await import('../../test-utils/app-fakes.ts')).smartModuleFake()
+  (await import('../../../test-utils/app-fakes.ts')).smartModuleFake()
 )
 vi.mock('../interactions/-interaction-catalog.ts', async () =>
-  (await import('../../test-utils/app-fakes.ts')).interactionCatalogModuleFake()
+  (await import('../../../test-utils/app-fakes.ts')).interactionCatalogModuleFake()
 )
 
 setUpEachAppTest()
 
 describe('Calendar tab', () => {
-  it('should open Calendar at /calendar', async () => {
+  it('should open Calendar at /patients/$patientId/calendar', async () => {
     // Arrange
     handshakeMock.mockReturnValue(readyHandshake)
     fetchMock.mockResolvedValue(lastPage)
 
     // Act
-    renderApp({ route: 'calendar' })
+    renderApp({ route: 'patients/p1/calendar' })
 
     // Assert
     await awaitFirstPage()
     expect(await screen.findByRole('button', { name: 'Next month' })).toBeDefined()
     expect(tabLink('Calendar').getAttribute('aria-current')).toBe('page')
-    expect(currentRoute()).toBe('calendar')
+    expect(currentRoute()).toBe('patients/p1/calendar')
   })
 
   it('should show the month grid without any partial banner once loaded', async () => {
@@ -53,7 +53,7 @@ describe('Calendar tab', () => {
 
     // Assert
     expect(await screen.findByRole('button', { name: 'Next month' })).toBeDefined()
-    expect(currentRoute()).toBe('calendar')
+    expect(currentRoute()).toBe('patients/p1/calendar')
     expect(screen.queryByText(/most recent medication requests/)).toBeNull()
   })
 
@@ -92,7 +92,7 @@ describe('Calendar tab', () => {
       .mockResolvedValueOnce(pageTo(2))
       .mockRejectedValueOnce(new Error('boom'))
       .mockResolvedValueOnce(lastPage)
-    renderApp({ route: 'calendar' })
+    renderApp({ route: 'patients/p1/calendar' })
     await awaitFirstPage()
 
     // Act: drain the rest — page 2 fails.

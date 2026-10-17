@@ -1,9 +1,8 @@
-import { createFileRoute } from '@tanstack/react-router'
 import { MedicationsView } from '@wildflowerhealthio/medication-sponsorship-react'
 import { LoadingMoreLine, ReadFailureLine } from '@wildflowerhealthio/smart-app-react'
 import { type JSX, type RefObject, useEffect, useRef } from 'react'
 
-import { type MedicationRead, useMedicationRead } from '../-medication-read.ts'
+import { type MedicationRead, useMedicationRead } from '../../-medication-read.ts'
 
 /**
  * A bottom-of-list sentinel that pulls the read's next page as it scrolls
@@ -54,9 +53,4 @@ function MedicationsTab(): JSX.Element {
   )
 }
 
-/** `/medications`, the Medications tab, which the page opens on. */
-const Route = createFileRoute('/medications')({
-  component: MedicationsTab,
-})
-
-export { Route }
+export { MedicationsTab }

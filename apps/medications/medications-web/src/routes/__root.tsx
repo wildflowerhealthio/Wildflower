@@ -1,154 +1,33 @@
-import { createRootRouteWithContext, retainSearchParams } from '@tanstack/react-router'
-import type { SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
-import { useFetchEveryPage } from '@wildflowerhealthio/react-kitchen-sink'
-import { ChunkBar, RouteTabs } from '@wildflowerhealthio/react-tundraish'
-import {
-  LoadingLine,
-  PATIENT_PARAM,
-  PatientChoiceLine,
-  type PatientChoice,
-  PatientPicker,
-  PatientSearch,
-  ReadFailureLine,
-} from '@wildflowerhealthio/smart-app-react'
-import { Match, Option, Schema } from 'effect'
+import { createRootRouteWithContext, Outlet, useLocation } from '@tanstack/react-router'
+import { RouteNotFound } from '@wildflowerhealthio/smart-app-react'
 import type { JSX } from 'react'
 
-import { type RouterContext, useSmartClient } from '../router-context.ts'
-import { useMedicationsPatientPicker } from './-chosen-patient.ts'
-import { type MedicationRead, useMedicationRead } from './-medication-read.ts'
-import { MedicationsNotFound } from './-medications-not-found.tsx'
-import styles from './-medications-page.module.css'
-
-/** The chunk bar's copy: the generic component with this app's wording. */
-const chunkBarLabels = {
-  ariaIdle: (pages: number) => `${pages} pages of your medication list loaded so far`,
-  ariaLoading: (pages: number) => `Loading your medication list — ${pages} pages in so far`,
-  ariaLocked: 'Your full medication list is loaded',
-  ariaError: (pages: number) =>
-    `Loading paused after a failed page — ${pages} pages of your medication list in so far`,
-  countSuffix: 'medication requests have been loaded.',
-  lockedNote: 'That is all of them. Everything below is checked against the full list.',
-  errorNote: 'A page of your medication list failed to load — the list is incomplete.',
-  retry: 'Retry',
-}
-
-/** Props for {@link MedicationsPage}. */
-interface MedicationsPageProps {
-  readonly client: SmartClient
-  /** Whose medications the page reads. */
-  readonly patientChoice: PatientChoice
-  /** Open the patient picker: the patient line's "Change patient". */
-  readonly onPatientChange: () => void
-}
+import { AppTitle } from '../app-title.tsx'
+import type { RouterContext } from '../router-context.ts'
 
 /**
- * The medications page's logic: the chosen patient's read, and the driver
- * that reads every remaining page while the reader has asked for them. The
- * driver runs here, once for the page, so it keeps going as the reader
- * changes tabs.
+ * Every page: the app's title over the open route, except on the
+ * introduction at `/`, which names the app itself.
  */
-const useMedicationsPage = (): MedicationRead => {
-  const read = useMedicationRead()
-  useFetchEveryPage(read.pagedQuery, { enabled: read.everyPageRequested })
-  return read
-}
-
-/**
- * The medications page: the patient line and the chunk bar tracking the
- * paged read, over the tabs, each a child route the strip links to:
- * Medications, the list; Calendar, the prescription calendar; Interactions,
- * the report over the current medications; Savings, the savings-program
- * breakdown. Until the first page lands the tabs wait behind a loading line,
- * or the read's failure.
- */
-function MedicationsPage({
-  client,
-  patientChoice,
-  onPatientChange,
-}: MedicationsPageProps): JSX.Element {
-  const read = useMedicationsPage()
-  const { pagedQuery, pagesReceived } = read
+function MedicationsRoot(): JSX.Element {
+  const onIntroduction = useLocation({ select: (location) => location.pathname === '/' })
   return (
     <>
-      <div className={styles['medications-page__status']}>
-        <PatientChoiceLine
-          client={client}
-          patientChoice={patientChoice}
-          onPatientChange={onPatientChange}
-        />
-        <ChunkBar
-          phase={read.barPhase}
-          pagesReceived={pagesReceived}
-          loadedCount={read.views.length}
-          onLoadAll={read.requestEveryPage}
-          labels={chunkBarLabels}
-        />
-      </div>
-      {Match.value({
-        firstPageError: pagedQuery.isError && pagesReceived === 0 ? pagedQuery.error : undefined,
-        hasPages: pagesReceived > 0,
-      }).pipe(
-        Match.when({ firstPageError: Match.defined }, ({ firstPageError }) => (
-          <ReadFailureLine subject="medications" error={firstPageError} />
-        )),
-        Match.when({ hasPages: false }, () => <LoadingLine subject="medications" />),
-        Match.orElse(() => (
-          <RouteTabs
-            tabs={[
-              { to: '/medications', label: 'Medications' },
-              { to: '/calendar', label: 'Calendar' },
-              { to: '/interactions', label: 'Interactions' },
-              { to: '/savings', label: 'Savings' },
-            ]}
-            aria-label="Medication views"
-          />
-        ))
-      )}
+      {onIntroduction ? null : <AppTitle />}
+      <Outlet />
     </>
   )
 }
 
 /**
- * The root route's page: the medications page for the patient chosen, or,
- * with none (or on the entry "Change patient" pushes), the patient picker.
- */
-function MedicationsRoot(): JSX.Element {
-  const client = useSmartClient()
-  const {
-    patientChoice: shownPatient,
-    choosePatient,
-    changePatient,
-  } = useMedicationsPatientPicker()
-  return Match.value({ patientChoice: Option.getOrUndefined(shownPatient) }).pipe(
-    Match.when({ patientChoice: Match.defined }, ({ patientChoice }): JSX.Element => (
-      <MedicationsPage
-        client={client}
-        patientChoice={patientChoice}
-        onPatientChange={changePatient}
-      />
-    )),
-    Match.orElse((): JSX.Element => (
-      <PatientPicker client={client} onPatientChoice={choosePatient} />
-    ))
-  )
-}
-
-/**
- * The root route: the patient picker or the medications page, each of whose
- * tabs is a child route, and in the tab panel for a path no tab names, the
- * not-found card.
- *
- * @remarks
- * Every navigation keeps `?patient=` (and only it), so changing tabs keeps
- * the patient and each history entry names the patient it showed; the
- * picker's `?picking-patient=` stays on the one entry that opened it.
+ * The root route: the introduction at `/`, the patient picker at
+ * `/patients`, every patient's tabs at the top level, one patient's under
+ * `/patients/$patientId`, and for a path none of them names, the not-found
+ * card.
  */
 const Route = createRootRouteWithContext<RouterContext>()({
-  validateSearch: Schema.standardSchemaV1(PatientSearch),
-  search: { middlewares: [retainSearchParams([PATIENT_PARAM])] },
   component: MedicationsRoot,
-  notFoundComponent: MedicationsNotFound,
+  notFoundComponent: () => <RouteNotFound appName="The Medication Viewer" />,
 })
 
 export { Route }

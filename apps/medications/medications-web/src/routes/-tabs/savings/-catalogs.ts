@@ -4,8 +4,8 @@ import {
   type SponsorCatalog,
 } from '@wildflowerhealthio/medication-sponsorship-core-js'
 
-import innovicaresData from '../../data/innovicares.json'
-import rxhelpData from '../../data/rxhelp.json'
+import innovicaresData from '../../../data/innovicares.json'
+import rxhelpData from '../../../data/rxhelp.json'
 
 /**
  * The bundled sponsor catalogs, decoded once at module load. Listed

@@ -85,7 +85,7 @@ afterEach(() => {
 describe('AppRoot over the address bar', () => {
   it.each([
     { case: 'at the app root', route: '' },
-    { case: 'at a tab', route: 'calendar' },
+    { case: 'at a patient’s tab, two directories deep', route: 'patients/p1/calendar' },
   ])('should start a launch URL’s launch $case, returning to the app root', async ({ route }) => {
     // Arrange: the authorize URL never arrives, so the page never leaves.
     authorizeMock.mockReturnValue(new Promise(() => {}))
@@ -105,7 +105,7 @@ describe('AppRoot over the address bar', () => {
     expect(addressBar()).toBe(launchUrl)
   })
 
-  it('should leave the callback URL alone through the exchange, then open Medications', async () => {
+  it('should leave the callback URL alone through the exchange, then open the launch’s patient', async () => {
     // Arrange: an exchange the test completes, taking `code` and `state` out
     // of the address bar as fhirclient does.
     let completeExchange: () => void = () => {}
@@ -130,15 +130,15 @@ describe('AppRoot over the address bar', () => {
 
     // Assert
     expect(await screen.findByText('No medications found.')).toBeDefined()
-    expect(addressBar()).toBe(`${BASEPATH}medications`)
+    expect(addressBar()).toBe(`${BASEPATH}patients/p1/medications`)
     expect(readyMock).toHaveBeenCalledTimes(1)
   })
 
   it('should open the tab a launch started on once its exchange completes', async () => {
-    // Arrange: a launch at the calendar, with a patient of the reader's own,
-    // leaves for the authorization server (the authorize URL never arrives).
+    // Arrange: a launch at a patient's calendar leaves for the authorization
+    // server (the authorize URL never arrives).
     authorizeMock.mockReturnValue(new Promise(() => {}))
-    window.history.replaceState(null, '', `${BASEPATH}calendar?patient=p1&${EHR_LAUNCH.slice(1)}`)
+    window.history.replaceState(null, '', `${BASEPATH}patients/p1/calendar${EHR_LAUNCH}`)
     renderAppRoot()
     await waitFor(() => {
       expect(authorizeMock).toHaveBeenCalledTimes(1)
@@ -157,6 +157,6 @@ describe('AppRoot over the address bar', () => {
 
     // Assert
     expect(await screen.findByRole('button', { name: 'Next month' })).toBeDefined()
-    expect(addressBar()).toBe(`${BASEPATH}calendar?patient=p1`)
+    expect(addressBar()).toBe(`${BASEPATH}patients/p1/calendar`)
   })
 })

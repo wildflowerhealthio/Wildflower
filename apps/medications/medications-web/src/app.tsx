@@ -2,12 +2,14 @@ import { useQueryClient } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
 import type { SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
+  launchPatientRoute,
   LoadingLine,
   type SmartAppPage,
   SmartHandshakeGate,
 } from '@wildflowerhealthio/smart-app-react'
 import { type JSX, useState } from 'react'
 
+import { AppTitle } from './app-title.tsx'
 import { makePageStore } from './page-state.ts'
 import { buildRouter } from './router.ts'
 import styles from './app.module.css'
@@ -35,8 +37,8 @@ type MedicationsRouterProps = AppProps & {
  * Its context is fixed for the visit: the page's query cache, the one client
  * the handshake hands out (its code is single-use, so there is never a second),
  * and a fresh {@link makePageStore}. Whose medications the page reads is the
- * root route's `?patient=`, so a patient change is a navigation and the
- * router lives as long as the page.
+ * path, so a patient change is a navigation and the router lives as long as
+ * the page.
  */
 function MedicationsRouter({ page, client }: MedicationsRouterProps): JSX.Element {
   const queryClient = useQueryClient()
@@ -48,9 +50,11 @@ function MedicationsRouter({ page, client }: MedicationsRouterProps): JSX.Elemen
 
 /**
  * The redirect-target app: completes the SMART handshake and then hands the
- * page to its router, whose root settles on whose medications to read and
- * whose tabs show them: the medications list, the prescription calendar, the
- * interactions report, and the savings-program breakdown.
+ * page to its router: the introduction at `/`, the patient picker at
+ * `/patients`, every patient's tabs at the top level (`/medications`,
+ * `/calendar`, `/interactions`, `/savings`) and one patient's under
+ * `/patients/$patientId`. A completed launch opens the route it started on,
+ * else its patient's page, else the picker (`launchPatientRoute`).
  *
  * @remarks
  * The token exchange (`useSmartHandshake`) is a TanStack Query on the page's
@@ -60,10 +64,16 @@ function MedicationsRouter({ page, client }: MedicationsRouterProps): JSX.Elemen
  */
 const App = ({ page }: AppProps): JSX.Element => (
   <main className={styles['app']}>
-    <header className={styles['app__header']}>
-      <h1 className="text-heading-3">Medications</h1>
-    </header>
-    <SmartHandshakeGate page={page} connecting={<LoadingLine subject="medications" />}>
+    <SmartHandshakeGate
+      page={page}
+      landsOn={launchPatientRoute}
+      connecting={
+        <>
+          <AppTitle />
+          <LoadingLine subject="medications" />
+        </>
+      }
+    >
       {(client) => <MedicationsRouter page={page} client={client} />}
     </SmartHandshakeGate>
   </main>

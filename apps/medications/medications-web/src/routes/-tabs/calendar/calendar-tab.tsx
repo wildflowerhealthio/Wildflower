@@ -1,9 +1,8 @@
-import { createFileRoute } from '@tanstack/react-router'
 import { CalendarView } from '@wildflowerhealthio/medication-calendar-react'
 import type { JSX } from 'react'
 
-import { useMedicationRead } from '../-medication-read.ts'
-import { PartialListBanner } from '../-partial-list-banner.tsx'
+import { useMedicationRead } from '../../-medication-read.ts'
+import { PartialListBanner } from '../../-partial-list-banner.tsx'
 
 /**
  * The Calendar tab: the prescription calendar over the medications landed
@@ -19,9 +18,4 @@ function CalendarTab(): JSX.Element {
   )
 }
 
-/** `/calendar`, the Calendar tab. */
-const Route = createFileRoute('/calendar')({
-  component: CalendarTab,
-})
-
-export { Route }
+export { CalendarTab }

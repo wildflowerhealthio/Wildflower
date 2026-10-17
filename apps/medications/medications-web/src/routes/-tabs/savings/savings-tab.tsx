@@ -1,11 +1,10 @@
-import { createFileRoute } from '@tanstack/react-router'
 import type { Medication, Province } from '@wildflowerhealthio/medication-sponsorship-core-js'
 import { SavingsView } from '@wildflowerhealthio/medication-sponsorship-react'
 import { type JSX, useMemo } from 'react'
 
-import { useCurrentMedications, useMedicationRead } from '../-medication-read.ts'
-import { PartialListBanner } from '../-partial-list-banner.tsx'
-import { usePageState } from '../../router-context.ts'
+import { useCurrentMedications, useMedicationRead } from '../../-medication-read.ts'
+import { PartialListBanner } from '../../-partial-list-banner.tsx'
+import { usePageState } from '../../../router-context.ts'
 import { catalogs } from './-catalogs.ts'
 import { pastEligibleMedications } from './-past-medications.ts'
 
@@ -56,9 +55,4 @@ function SavingsTab(): JSX.Element {
   )
 }
 
-/** `/savings`, the Savings tab. */
-const Route = createFileRoute('/savings')({
-  component: SavingsTab,
-})
-
-export { Route }
+export { SavingsTab }

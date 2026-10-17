@@ -15,14 +15,14 @@ import {
   setUpEachAppTest,
   stubQuietIntersectionObserver,
   tabLink,
-} from '../../test-utils/app-fakes.ts'
-import { renderApp } from '../../test-utils/render-app.ts'
+} from '../../../test-utils/app-fakes.ts'
+import { renderApp } from '../../../test-utils/render-app.ts'
 
 vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async () =>
-  (await import('../../test-utils/app-fakes.ts')).smartModuleFake()
+  (await import('../../../test-utils/app-fakes.ts')).smartModuleFake()
 )
 vi.mock('./-interaction-catalog.ts', async () =>
-  (await import('../../test-utils/app-fakes.ts')).interactionCatalogModuleFake()
+  (await import('../../../test-utils/app-fakes.ts')).interactionCatalogModuleFake()
 )
 
 setUpEachAppTest()
@@ -45,13 +45,13 @@ describe('Interactions tab', () => {
     })
   })
 
-  it('should load every page when opened straight from a link to /interactions', async () => {
+  it("should load every page when opened straight from a link to a patient's interactions", async () => {
     // Arrange
     stubQuietIntersectionObserver()
     arrangePages(4)
 
     // Act
-    renderApp({ route: 'interactions' })
+    renderApp({ route: 'patients/p1/interactions' })
 
     // Assert: the driver pulls pages 2..4, and the tab is the one open.
     await waitFor(() => {
@@ -66,7 +66,7 @@ describe('Interactions tab', () => {
     fetchMock.mockReturnValue(new Promise(() => {}))
 
     // Act
-    renderApp({ route: 'interactions' })
+    renderApp({ route: 'patients/p1/interactions' })
 
     // Assert: both downloads are in flight, the tab not yet rendered.
     await waitFor(() => {
@@ -89,7 +89,7 @@ describe('Interactions tab', () => {
         })
       )
       .mockResolvedValueOnce(lastPage)
-    renderApp({ route: 'interactions' })
+    renderApp({ route: 'patients/p1/interactions' })
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(2)
     })
@@ -148,7 +148,7 @@ describe('Interactions tab', () => {
         })
       )
       .mockResolvedValueOnce(lastPage)
-    renderApp({ route: 'interactions' })
+    renderApp({ route: 'patients/p1/interactions' })
     await awaitFirstPage()
 
     // Act: escape the gate into live partial results while page 2 is still in flight.
@@ -193,7 +193,7 @@ describe('Interactions tab', () => {
     fetchMock.mockResolvedValue(lastPage)
 
     // Act
-    renderApp({ route: 'calendar' })
+    renderApp({ route: 'patients/p1/calendar' })
     await awaitFirstPage()
 
     // Assert

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { createBrowserHistory } from '@tanstack/react-router'
+import { createBrowserHistory, type RouterHistory } from '@tanstack/react-router'
 import { render } from '@testing-library/react'
 import { createElement, type JSX, StrictMode } from 'react'
 import { onTestFinished } from 'vite-plus/test'
@@ -11,6 +11,8 @@ import { BASEPATH } from './app-fakes.ts'
 interface RenderedApp {
   /** Render the app again, as a change to the handshake's state would. */
   readonly rerenderApp: () => void
+  /** The page's history, which the router navigates. */
+  readonly history: RouterHistory
 }
 
 /**
@@ -40,6 +42,7 @@ const renderApp = ({ route = '' }: { readonly route?: string } = {}): RenderedAp
     rerenderApp: () => {
       rerender(app())
     },
+    history,
   }
 }
 

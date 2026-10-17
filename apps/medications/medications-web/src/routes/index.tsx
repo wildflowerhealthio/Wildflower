@@ -1,13 +1,29 @@
-import { createFileRoute, redirect } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
+import { AppLanding } from '@wildflowerhealthio/branding-react'
+import type { JSX } from 'react'
 
 /**
- * `/` itself, which opens the Medications tab, replacing the bare path in
- * history, so Back leaves the page rather than landing on it again.
+ * The introduction, connected: `AppLanding`'s introduction of the app, the
+ * one the standalone landing shows beside its connect menu, with the way
+ * into the app in its place, the patient picker.
+ */
+function MedicationsIntroduction(): JSX.Element {
+  return (
+    <AppLanding app="medications">
+      <Link to="/patients" className="button-2 filled">
+        Choose a patient
+      </Link>
+    </AppLanding>
+  )
+}
+
+/**
+ * `/`, the introduction. A completed launch never stays on it (the handshake
+ * gate opens the launch's route, its patient or the picker), so it is what a
+ * later visit to the app root inside the visit shows.
  */
 const Route = createFileRoute('/')({
-  beforeLoad: () => {
-    throw redirect({ to: '/medications', replace: true })
-  },
+  component: MedicationsIntroduction,
 })
 
 export { Route }

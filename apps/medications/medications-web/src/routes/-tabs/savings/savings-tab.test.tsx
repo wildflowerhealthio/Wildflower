@@ -9,14 +9,14 @@ import {
   readyHandshake,
   setUpEachAppTest,
   tabLink,
-} from '../../test-utils/app-fakes.ts'
-import { renderApp } from '../../test-utils/render-app.ts'
+} from '../../../test-utils/app-fakes.ts'
+import { renderApp } from '../../../test-utils/render-app.ts'
 
 vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async () =>
-  (await import('../../test-utils/app-fakes.ts')).smartModuleFake()
+  (await import('../../../test-utils/app-fakes.ts')).smartModuleFake()
 )
 vi.mock('../interactions/-interaction-catalog.ts', async () =>
-  (await import('../../test-utils/app-fakes.ts')).interactionCatalogModuleFake()
+  (await import('../../../test-utils/app-fakes.ts')).interactionCatalogModuleFake()
 )
 
 setUpEachAppTest()
@@ -43,7 +43,7 @@ describe('Savings tab', () => {
     // Arrange
     handshakeMock.mockReturnValue(readyHandshake)
     fetchMock.mockResolvedValue(lastPage)
-    renderApp({ route: 'savings' })
+    renderApp({ route: 'patients/p1/savings' })
     await awaitFirstPage()
     fireEvent.change(await screen.findByRole('combobox', { name: 'Province' }), {
       target: { value: 'QC' },

@@ -9,26 +9,26 @@ import {
   lastPage,
   readyHandshake,
   setUpEachAppTest,
-} from '../../test-utils/app-fakes.ts'
-import { renderApp } from '../../test-utils/render-app.ts'
+} from '../../../test-utils/app-fakes.ts'
+import { renderApp } from '../../../test-utils/render-app.ts'
 
 vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async () =>
-  (await import('../../test-utils/app-fakes.ts')).smartModuleFake()
+  (await import('../../../test-utils/app-fakes.ts')).smartModuleFake()
 )
 vi.mock('../interactions/-interaction-catalog.ts', async () =>
-  (await import('../../test-utils/app-fakes.ts')).interactionCatalogModuleFake()
+  (await import('../../../test-utils/app-fakes.ts')).interactionCatalogModuleFake()
 )
 
 setUpEachAppTest()
 
 describe('Medications tab', () => {
-  it('should open Medications at /medications', async () => {
+  it('should open Medications at /patients/$patientId/medications', async () => {
     // Arrange
     handshakeMock.mockReturnValue(readyHandshake)
     fetchMock.mockResolvedValue(lastPage)
 
     // Act
-    renderApp({ route: 'medications' })
+    renderApp({ route: 'patients/p1/medications' })
 
     // Assert
     await awaitFirstPage()

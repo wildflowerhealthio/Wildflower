@@ -4,8 +4,8 @@ import {
 } from '@wildflowerhealthio/medication-interaction-core-js'
 import { describe, expect, test } from 'vite-plus/test'
 
-import ddinterData from '../../data/ddinter/ddinter.json'
-import ddinterUrl from '../../data/ddinter/ddinter.json?url'
+import ddinterData from '../../../data/ddinter/ddinter.json'
+import ddinterUrl from '../../../data/ddinter/ddinter.json?url'
 
 // The data is decoded from a direct JSON import here rather than through
 // `getInteractionCatalog`, which fetches the file as a `?url` asset — a

@@ -9,19 +9,23 @@ import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import { MedicationRequest, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import type { InteractionCatalog } from '@wildflowerhealthio/medication-interaction-core-js'
 import { stubRouteTabsBrowserApis } from '@wildflowerhealthio/react-tundraish/test-helpers'
-import { Effect, Option, Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 import type Client from 'fhirclient/lib/Client'
 import { afterEach, beforeEach, expect, vi } from 'vite-plus/test'
 
 // The seams `App` composes: the handshake hook (its state is driven per
 // test), the paged MedicationRequest read (whose page / rejection is stubbed,
 // and whose cursor records the patient scope), the Patient reads behind the
-// patient picker and the patient line, and the DDInter catalog load
+// patient picker and the patient line (every id is a patient but
+// `MISSING_PATIENT_ID`), and the DDInter catalog load
 // (unresolved by default so interaction tests control it). The real
 // `useSmartHandshake` dedup is covered in the slice, and the picker in
 // `smart-app-react`; the tests drive their results to exercise the app's own
 // query wiring, routing, paging, the load-everything driver, and error
 // surfacing.
+
+/** The id of the one patient the fake server has none under: its read answers 404. */
+const MISSING_PATIENT_ID = 'bogus'
 
 /** The handshake each render sees. */
 const handshakeMock = vi.fn<() => SmartHandshake>()
@@ -56,7 +60,11 @@ const smartModuleFake = (): Record<string, unknown> => ({
     Effect.promise(() => fetchMock(cursor)),
   fetchPatientPage: () => Effect.promise(() => patientPageMock()),
   fetchPatient: (_client: unknown, patientId: string) =>
-    Effect.succeed(Option.some({ resourceType: 'Patient', id: patientId, name: [] })),
+    Effect.succeed(
+      patientId === MISSING_PATIENT_ID
+        ? { kind: 'missing' }
+        : { kind: 'found', patient: { resourceType: 'Patient', id: patientId, name: [] } }
+    ),
 })
 
 /** The test double of the routes' `-interaction-catalog.ts`, over {@link catalogMock}. */
@@ -193,6 +201,7 @@ export {
   interactionCatalogModuleFake,
   lastPage,
   launchFailureRedirectMock,
+  MISSING_PATIENT_ID,
   pageTo,
   patientPage,
   patientPageMock,

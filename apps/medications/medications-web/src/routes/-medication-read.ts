@@ -17,14 +17,17 @@ import {
   type Medication,
 } from '@wildflowerhealthio/medication-sponsorship-core-js'
 import type { ChunkBarPhase } from '@wildflowerhealthio/react-tundraish'
-import { patientChoiceKeyOf, patientScopeOf } from '@wildflowerhealthio/smart-app-react'
+import {
+  patientChoiceKeyOf,
+  patientScopeOf,
+  useRoutedPatientChoice,
+} from '@wildflowerhealthio/smart-app-react'
 import { Effect, Match } from 'effect'
 import { useCallback, useMemo } from 'react'
 
 import { usePageState, useSmartClient } from '../router-context.ts'
-import { useReadPatient } from './-chosen-patient.ts'
 
-/** The page's read of the chosen patient's MedicationRequests, as the header and every tab see it. */
+/** The page's read of the open route's MedicationRequests, as the header and every tab see it. */
 interface MedicationRead {
   /** The paged read itself: its pages, paging flags and `fetchNextPage`. */
   readonly pagedQuery: UseInfiniteQueryResult<InfiniteData<MedicationRequestPage>>
@@ -34,7 +37,7 @@ interface MedicationRead {
   readonly pagesReceived: number
   /** Whether the read has run to its last page. */
   readonly listComplete: boolean
-  /** Whether the reader has asked for every page; the root route's driver reads them while it holds. */
+  /** Whether the reader has asked for every page; the page's driver reads them while it holds. */
   readonly everyPageRequested: boolean
   /** What the chunk bar shows: locked, failed, loading or idle. */
   readonly barPhase: ChunkBarPhase
@@ -50,7 +53,7 @@ interface MedicationRead {
  * whole page.
  *
  * @remarks
- * Every caller of {@link useMedicationRead} (the root, the open tab, the
+ * Every caller of {@link useMedicationRead} (the page, the open tab, the
  * partial-list banner) observes the one read, whose `pages` array is the same
  * reference for all of them until a page lands. Keyed on that array, the
  * conversion runs once per landed page rather than once per caller.
@@ -70,24 +73,24 @@ const viewsOf = (pages: readonly MedicationRequestPage[]): readonly MedicationVi
 const noViews: readonly MedicationView[] = []
 
 /**
- * The chosen patient's MedicationRequests, read a page at a time, and what
- * has landed as views.
+ * The MedicationRequests of the patient the path names, or of every patient,
+ * read a page at a time, and what has landed as views.
  *
  * @remarks
- * A `useInfiniteQuery` keyed on the patient chosen, whose first cursor is its
+ * A `useInfiniteQuery` keyed on the patient choice, whose first cursor is its
  * scope and every later one the server's `next`-link URL, so every caller
  * shares the one read on the page's query cache. Pages arrive
  * newest-authored first (server `_sort`), so appending each one never
  * reorders rows already on screen, and none is read again for the visit.
  * Pages load on demand (the Medications tab's scroll sentinel), or every one
  * of them once the reader asks
- * ({@link MedicationRead.requestEveryPage}): the root route's driver then
+ * ({@link MedicationRead.requestEveryPage}): the page's driver then
  * requests each next page until the last lands, halting on a failed page,
  * which only the reader's retry resumes.
  */
 const useMedicationRead = (): MedicationRead => {
   const client = useSmartClient()
-  const patientChoice = useReadPatient()
+  const patientChoice = useRoutedPatientChoice()
   const firstPageCursor: MedicationRequestCursor = { patientId: patientScopeOf(patientChoice) }
   const pagedQuery = useInfiniteQuery({
     queryKey: ['medications', patientChoiceKeyOf(patientChoice)],

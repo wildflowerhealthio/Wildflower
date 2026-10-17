@@ -1,5 +1,4 @@
 import { queryOptions, useQuery } from '@tanstack/react-query'
-import { createFileRoute } from '@tanstack/react-router'
 import type { InteractionCatalog } from '@wildflowerhealthio/medication-interaction-core-js'
 import { InteractionsView } from '@wildflowerhealthio/medication-interaction-react'
 import type { Medication } from '@wildflowerhealthio/medication-sponsorship-core-js'
@@ -11,8 +10,8 @@ import {
   type MedicationRead,
   useCurrentMedications,
   useMedicationRead,
-} from '../-medication-read.ts'
-import { usePageState } from '../../router-context.ts'
+} from '../../-medication-read.ts'
+import { type RouterContext, usePageState } from '../../../router-context.ts'
 import { getInteractionCatalog } from './-interaction-catalog.ts'
 import styles from './-interactions.module.css'
 
@@ -210,24 +209,19 @@ function InteractionsTab(): JSX.Element | null {
 }
 
 /**
- * `/interactions`, the Interactions tab.
- *
- * @remarks
- * Opening it, by its tab or by a link straight to it, asks for every page of
- * the medication list: the report can't be computed from a partial list, so
- * the reader never has to ask for it here. The other tabs render from
- * whatever pages have landed. Entering it also starts the interaction
- * catalog's download, alongside the medication list's first page rather
- * than after it, when the tab first renders.
+ * Entering the Interactions tab, by its tab or by a link straight to it (its
+ * routes' `onEnter`): it asks for every page of the medication list, since
+ * the report can't be computed from a partial list, so the reader never has
+ * to ask for it here; the other tabs render from whatever pages have landed.
+ * It also starts the interaction catalog's download, alongside the
+ * medication list's first page rather than after it, when the tab first
+ * renders.
  */
-const Route = createFileRoute('/interactions')({
-  onEnter: ({ context }) => {
-    context.pageStore.update({ everyPageRequested: true })
-    // Not awaited: the tab renders as soon as the first medication page lands,
-    // and a failed download is the tab's to show, through its own observer.
-    context.queryClient.query(interactionCatalogQuery).catch(() => undefined)
-  },
-  component: InteractionsTab,
-})
+const enterInteractions = ({ pageStore, queryClient }: RouterContext): void => {
+  pageStore.update({ everyPageRequested: true })
+  // Not awaited: the tab renders as soon as the first medication page lands,
+  // and a failed download is the tab's to show, through its own observer.
+  queryClient.query(interactionCatalogQuery).catch(() => undefined)
+}
 
-export { Route }
+export { enterInteractions, InteractionsTab }
