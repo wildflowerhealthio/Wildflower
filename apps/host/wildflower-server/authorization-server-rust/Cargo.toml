@@ -89,6 +89,8 @@ include_dir = "0.7"
 workspace = true
 
 [dev-dependencies]
+# `source_guard`, for the textual source-guard tests.
+wildflowerhealthio-kitchen-sink = { path = "../../../../global/kitchen-sink-rust", features = ["test-support"] }
 wildflowerhealthio-persistence = { path = "../../../../slices/persistence-rust" }
 # The shared OpenAPI snapshot helper (assert/regenerate the committed spec). Only
 # the snapshot test uses it, so it's an extra dev-only feature on the existing

@@ -9,8 +9,14 @@ publish.workspace = true
 # module is copy-pastable into an unrelated project. Standard library only.
 # `rate_limit` backs the relay's `POST /claim` limits and the main server's
 # limits on starting authorization requests; `loopback_port` gives
-# the Rust tests' servers their ports.
+# the Rust tests' servers their ports; `source_guard` (behind `test-support`)
+# enumerates source files for textual guard tests.
 [dependencies]
+
+# `test-support` compiles the test-only modules (`source_guard`) for other
+# crates' tests: enable it from `[dev-dependencies]`, never `[dependencies]`.
+[features]
+test-support = []
 
 [lints]
 workspace = true
