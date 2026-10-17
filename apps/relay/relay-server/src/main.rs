@@ -3,7 +3,7 @@
 
 use anyhow::Context;
 use tokio::sync::broadcast;
-use wildflowerhealthio_relay_server::{run_relay, RelaySettings};
+use wildflowerhealthio_relay_server::{logging, run_relay, RelaySettings};
 
 /// Resolve on SIGINT or (on unix) SIGTERM. A signal that cannot be listened
 /// for is logged and never fires, rather than stopping the relay at once.
@@ -37,17 +37,14 @@ async fn shutdown_signal() {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // `RUST_LOG`-driven, mirroring the convention in the other Rust crates.
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .init();
-
     // Every setting comes from `WILDFLOWER_RELAY_*` env vars; `run_relay`
-    // builds the rathole `[server]` config from them before starting.
+    // builds the rathole `[server]` config from them before starting. They
+    // are read first, so the connection log knows the state directory.
     let settings = RelaySettings::from_env()?;
+    // The journal (stdout) and the connection log, both `RUST_LOG`-driven
+    // (see `logging`). The guard writes out the connection log's last lines
+    // when `main` returns.
+    let _connection_log = logging::init(&settings.state_dir)?;
 
     // rathole and the front shut down when `true` arrives on this broadcast
     // channel. Ctrl-C (SIGINT) and SIGTERM (systemd) are

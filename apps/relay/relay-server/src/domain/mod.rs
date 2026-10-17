@@ -13,10 +13,19 @@
 //! tunnel's name and token. The [`ClaimCodeStore`] port keeps each as a
 //! [`StoredClaimCode`], by its [`ClaimCodeHash`]; the admin sees it once, as
 //! an [`IssuedClaimCode`].
+//!
+//! A connection to the front ends with an [`Outcome`], or, routed to a
+//! tunnel, a [`TunnelOutcome`]. The [`ConnectionTotalsStore`] port keeps how
+//! many connections had each outcome per UTC hour, as [`HourlyCount`]s, and
+//! the admin API lists them as [`HourlyTotals`]. None of these carries an
+//! identifier.
 
 pub(crate) mod capabilities;
 mod claim_code;
 mod claim_code_store;
+mod connection_outcome;
+mod connection_totals_store;
+mod hourly_count;
 mod issued_claim_code;
 pub mod names;
 mod reissued_tunnel;
@@ -34,6 +43,9 @@ pub(crate) mod test_fake;
 
 pub use claim_code::{ClaimCode, ClaimCodeHash};
 pub use claim_code_store::ClaimCodeStore;
+pub use connection_outcome::{Outcome, TunnelOutcome};
+pub use connection_totals_store::ConnectionTotalsStore;
+pub use hourly_count::{hour_start, HourlyCount, HourlyTotals, HOUR_SECS};
 pub use issued_claim_code::IssuedClaimCode;
 pub use reissued_tunnel::ReissuedTunnel;
 pub use stored_claim_code::StoredClaimCode;

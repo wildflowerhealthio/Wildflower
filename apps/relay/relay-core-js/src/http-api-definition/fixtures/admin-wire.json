@@ -1,0 +1,46 @@
+{
+  "ListTunnels": [
+    {
+      "name": "alice",
+      "email": "alice@example.com",
+      "public_host": "alice.relay.example.com",
+      "created_at": 1700000000,
+      "last_outcome": "tunnel_down"
+    },
+    {
+      "name": "bob",
+      "email": "bob@example.com",
+      "public_host": "bob.relay.example.com",
+      "created_at": 1700000000,
+      "last_outcome": null
+    }
+  ],
+  "ListConnectionTotals": [
+    {
+      "hour": 1699999200,
+      "ok": 12,
+      "over_connection_limit": 0,
+      "hello_timeout": 0,
+      "not_a_hello": 0,
+      "no_server_name": 0,
+      "unknown_tunnel": 3,
+      "tunnel_down": 1,
+      "tunnel_busy": 0,
+      "tunnel_closed": 0,
+      "proxy_header_failed": 0
+    },
+    {
+      "hour": 1700002800,
+      "ok": 1,
+      "over_connection_limit": 2,
+      "hello_timeout": 3,
+      "not_a_hello": 4,
+      "no_server_name": 5,
+      "unknown_tunnel": 6,
+      "tunnel_down": 7,
+      "tunnel_busy": 8,
+      "tunnel_closed": 9,
+      "proxy_header_failed": 10
+    }
+  ]
+}

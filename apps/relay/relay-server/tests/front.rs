@@ -8,6 +8,8 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
+use std::sync::{Mutex, PoisonError};
+
 use rathole::{AsyncStream, ClientServiceEvent};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName};
 use rustls::sign::{CertifiedKey, SingleCertAndKey};
@@ -20,8 +22,9 @@ use tokio_rustls::TlsConnector;
 use wildflowerhealthio_kitchen_sink::loopback_port::free_loopback_port;
 use wildflowerhealthio_rathole_settings::{NoisePattern, PublicRatholeSettings, Transport};
 use wildflowerhealthio_relay_server::{
-    Front, Limits, RelaySettings, Router, Secret, ServedTunnels, Site, SqliteTunnelStore,
-    StoredTunnel, Tunnel, TunnelRegistry, TunnelStore, Tunnels, Verifier,
+    ConnectionOutcomes, Front, Limits, Outcome, RelaySettings, Router, Secret, ServedTunnels, Site,
+    SqliteTunnelStore, StoredTunnel, Tunnel, TunnelOutcome, TunnelRegistry, TunnelStore, Tunnels,
+    Verifier,
 };
 
 /// The tunnel every test that pipes bytes routes to, and its token.
@@ -48,9 +51,15 @@ fn client_hello(host: &str) -> Vec<u8> {
     hello
 }
 
+/// What the front routes by, and records each connection's outcome into.
+struct Routing {
+    router: Arc<Router>,
+    outcomes: Arc<ConnectionOutcomes>,
+}
+
 /// A router with the relay's domain as its one local hostname, serving the
-/// tunnels named `tunnel_names`.
-fn router(tunnel_names: &[&str]) -> Arc<Router> {
+/// tunnels named `tunnel_names`, and outcomes for them.
+fn router(tunnel_names: &[&str]) -> Routing {
     let tunnels: Vec<_> = tunnel_names
         .iter()
         .map(|name| Tunnel {
@@ -59,7 +68,14 @@ fn router(tunnel_names: &[&str]) -> Arc<Router> {
         })
         .collect();
     let tunnels = Arc::new(ServedTunnels::new(&tunnels));
-    Arc::new(Router::new(DOMAIN, [DOMAIN.to_owned()], tunnels))
+    Routing {
+        router: Arc::new(Router::new(
+            DOMAIN,
+            [DOMAIN.to_owned()],
+            Arc::clone(&tunnels),
+        )),
+        outcomes: Arc::new(ConnectionOutcomes::new(tunnels)),
+    }
 }
 
 /// The relay's site with a self-signed certificate for [`DOMAIN`], and that
@@ -99,6 +115,8 @@ struct Harness {
     http: SocketAddr,
     /// The site's certificate.
     site_cert: CertificateDer<'static>,
+    /// What the front recorded about each connection.
+    outcomes: Arc<ConnectionOutcomes>,
     shutdown_tx: broadcast::Sender<bool>,
 }
 
@@ -196,7 +214,19 @@ fn no_tunnels() -> Tunnels {
     Tunnels::default()
 }
 
-async fn start_front(router: Arc<Router>, tunnels: Tunnels) -> Harness {
+/// The limits the tests run the front with: a 2 s hello deadline.
+fn test_limits() -> Limits {
+    Limits {
+        hello_timeout: Duration::from_secs(2),
+        ..Limits::default()
+    }
+}
+
+async fn start_front(routing: Routing, tunnels: Tunnels) -> Harness {
+    start_front_with(routing, tunnels, test_limits()).await
+}
+
+async fn start_front_with(routing: Routing, tunnels: Tunnels, limits: Limits) -> Harness {
     let (shutdown_tx, shutdown_rx) = broadcast::channel(1);
     let https = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let http = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -205,17 +235,10 @@ async fn start_front(router: Arc<Router>, tunnels: Tunnels) -> Harness {
         https: https.local_addr().unwrap(),
         http: http.local_addr().unwrap(),
         site_cert,
+        outcomes: Arc::clone(&routing.outcomes),
         shutdown_tx,
     };
-    let front = Front::new(
-        router,
-        tunnels,
-        site,
-        Limits {
-            hello_timeout: Duration::from_secs(2),
-            ..Limits::default()
-        },
-    );
+    let front = Front::new(routing.router, tunnels, site, limits, routing.outcomes);
     tokio::spawn(Arc::clone(&front).serve_https(https, shutdown_rx.resubscribe()));
     tokio::spawn(front.serve_http(http, shutdown_rx));
     harness
@@ -255,6 +278,31 @@ async fn assert_closed_silently(mut stream: TcpStream) {
         // A reset (we sent bytes it never read) is also a silent close.
         Err(e) => assert_eq!(e.kind(), std::io::ErrorKind::ConnectionReset),
     }
+}
+
+/// How many connections `outcomes` has counted with `outcome`, not yet
+/// flushed.
+fn total(outcomes: &ConnectionOutcomes, outcome: Outcome) -> u64 {
+    outcomes
+        .pending()
+        .iter()
+        .filter(|counted| counted.outcome == outcome)
+        .map(|counted| counted.count)
+        .sum()
+}
+
+/// Wait until `holds` does, failing the test after [`WAIT`]. The front
+/// records a piped connection's outcome on its own task, as the bytes go
+/// through.
+async fn eventually(holds: impl Fn() -> bool) {
+    let waited = async {
+        while !holds() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    };
+    tokio::time::timeout(WAIT, waited)
+        .await
+        .expect("the condition should hold");
 }
 
 /// Connect a client, send the hello for `host` plus `extra`, and take the
@@ -299,6 +347,8 @@ async fn pipes_hello_and_bytes_both_ways_behind_a_proxy_header() {
 
     let (mut client, mut upstream) =
         pipe_through(&harness, &mut tunnel, "ABC.relay.example.com", b"early").await;
+    eventually(|| harness.outcomes.last_outcome(TUNNEL) == Some(TunnelOutcome::Ok)).await;
+    assert_eq!(total(&harness.outcomes, Outcome::Ok), 1);
 
     upstream.write_all(b"server bytes").await.unwrap();
     assert_eq!(read_exact(&mut client, 12).await, b"server bytes");
@@ -313,6 +363,8 @@ async fn pipes_hello_and_bytes_both_ways_behind_a_proxy_header() {
         .expect("client side should close")
         .unwrap();
     assert!(rest.is_empty());
+    // Bytes through the pipe are not counted.
+    assert_eq!(total(&harness.outcomes, Outcome::Ok), 1);
     let _ = harness.shutdown_tx.send(true);
 }
 
@@ -367,6 +419,8 @@ async fn unknown_tunnel_is_closed_without_a_byte_written() {
         client.write_all(&client_hello(host)).await.unwrap();
         assert_closed_silently(client).await;
     }
+    eventually(|| total(&harness.outcomes, Outcome::UnknownTunnel) == 3).await;
+    assert_eq!(harness.outcomes.last_outcome("nobody"), None);
 
     let mut garbage = TcpStream::connect(harness.https).await.unwrap();
     garbage
@@ -374,6 +428,36 @@ async fn unknown_tunnel_is_closed_without_a_byte_written() {
         .await
         .unwrap();
     assert_closed_silently(garbage).await;
+    eventually(|| total(&harness.outcomes, Outcome::NotAHello) == 1).await;
+}
+
+#[tokio::test]
+async fn a_hello_without_a_server_name_is_counted_and_closed() {
+    let harness = start_front(router(&[TUNNEL]), no_tunnels()).await;
+
+    // rustls sends no SNI for an IP literal.
+    let mut client = TcpStream::connect(harness.https).await.unwrap();
+    client.write_all(&client_hello("127.0.0.1")).await.unwrap();
+    assert_closed_silently(client).await;
+
+    eventually(|| total(&harness.outcomes, Outcome::NoServerName) == 1).await;
+    assert_eq!(harness.outcomes.last_outcome(TUNNEL), None);
+}
+
+#[tokio::test]
+async fn a_connection_over_the_limit_is_counted_and_closed() {
+    let limits = Limits {
+        max_connections: 1,
+        ..test_limits()
+    };
+    let harness = start_front_with(router(&[]), no_tunnels(), limits).await;
+
+    // The first connection holds the one slot until its hello deadline.
+    let _held = TcpStream::connect(harness.https).await.unwrap();
+    let over = TcpStream::connect(harness.https).await.unwrap();
+    assert_closed_silently(over).await;
+
+    eventually(|| total(&harness.outcomes, Outcome::OverConnectionLimit) == 1).await;
 }
 
 #[tokio::test]
@@ -387,6 +471,9 @@ async fn known_tunnel_that_is_down_is_closed_silently() {
         .await
         .unwrap();
     assert_closed_silently(client).await;
+
+    eventually(|| harness.outcomes.last_outcome(TUNNEL) == Some(TunnelOutcome::TunnelDown)).await;
+    assert_eq!(total(&harness.outcomes, Outcome::TunnelDown), 1);
 }
 
 #[tokio::test]
@@ -395,6 +482,7 @@ async fn silent_client_is_dropped_after_the_hello_deadline() {
     // Connect and send nothing; the 2 s test deadline closes it.
     let client = TcpStream::connect(harness.https).await.unwrap();
     assert_closed_silently(client).await;
+    eventually(|| total(&harness.outcomes, Outcome::HelloTimeout) == 1).await;
 }
 
 async fn http_get(addr: SocketAddr, request: &str) -> String {
@@ -448,6 +536,8 @@ async fn http_redirects_known_tunnels_and_404s_the_rest() {
             "unexpected response to {request:?}: {response}"
         );
     }
+    // `:80` is never counted.
+    assert!(harness.outcomes.pending().is_empty());
 }
 
 /// Complete a TLS handshake through the front for `host`, offering `alpn`
@@ -495,6 +585,8 @@ async fn own_hostname_is_served_by_the_site_over_tls() {
         "{response}"
     );
     assert!(response.ends_with(r#"{"status":"pass"}"#), "{response}");
+    // The relay's own site is not counted.
+    assert!(harness.outcomes.pending().is_empty());
 
     // The tunnel still routes alongside the site.
     let (_client, _upstream) =
@@ -559,7 +651,11 @@ async fn stored_tunnels_route_on_the_front_once_their_device_connects() {
         rathole.changes,
         shutdown_rx.resubscribe(),
     ));
-    let harness = start_front(registry.router(), tunnels.clone()).await;
+    let routing = Routing {
+        router: registry.router(),
+        outcomes: registry.outcomes(),
+    };
+    let harness = start_front(routing, tunnels.clone()).await;
     let public_host = format!("alice.{DOMAIN}");
 
     let mut offline = TcpStream::connect(harness.https).await.unwrap();
@@ -586,5 +682,71 @@ async fn stored_tunnels_route_on_the_front_once_their_device_connects() {
     };
     until_connected(&tunnel.tunnels, "alice", &mut tunnel.backend).await;
     let (_client, _upstream) = pipe_through(&harness, &mut tunnel, &public_host, b"").await;
+    let _ = harness.shutdown_tx.send(true);
+}
+
+/// Lines a log layer writes, kept in memory.
+#[derive(Clone, Default)]
+struct Captured(Arc<Mutex<Vec<u8>>>);
+
+impl Captured {
+    fn text(&self) -> String {
+        let bytes = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        String::from_utf8_lossy(&bytes).into_owned()
+    }
+}
+
+impl std::io::Write for Captured {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'writer> tracing_subscriber::fmt::MakeWriter<'writer> for Captured {
+    type Writer = Self;
+
+    fn make_writer(&'writer self) -> Self {
+        self.clone()
+    }
+}
+
+/// A refusal that names a tunnel reaches the connection log, and neither the
+/// tunnel's name nor the visitor's address reaches the journal. The test
+/// runtime runs every task on this thread, so the subscriber set here sees
+/// the front's events.
+#[tokio::test]
+async fn a_tunnel_down_refusal_names_the_tunnel_only_in_the_connection_log() {
+    use tracing_subscriber::layer::SubscriberExt;
+
+    let (journal, connection_log) = (Captured::default(), Captured::default());
+    let subscriber =
+        tracing_subscriber::registry().with(wildflowerhealthio_relay_server::logging::layers(
+            "debug",
+            journal.clone(),
+            connection_log.clone(),
+        ));
+    let _subscriber = tracing::subscriber::set_default(subscriber);
+    let harness = start_front(router(&[TUNNEL]), no_tunnels()).await;
+
+    let mut client = TcpStream::connect(harness.https).await.unwrap();
+    client
+        .write_all(&client_hello("abc.relay.example.com"))
+        .await
+        .unwrap();
+    assert_closed_silently(client).await;
+    eventually(|| connection_log.text().contains("refused: tunnel is down")).await;
+
+    let (journal, connection_log) = (journal.text(), connection_log.text());
+    assert!(connection_log.contains(TUNNEL), "{connection_log}");
+    assert!(!journal.contains(TUNNEL), "{journal}");
+    assert!(!journal.contains("127.0.0.1"), "{journal}");
     let _ = harness.shutdown_tx.send(true);
 }

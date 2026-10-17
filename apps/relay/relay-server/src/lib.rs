@@ -263,6 +263,8 @@ pub mod db;
 pub mod domain;
 pub mod front;
 pub mod live_bindings;
+pub mod logging;
+pub mod outcomes;
 pub mod route;
 pub mod served;
 pub mod settings;
@@ -279,9 +281,12 @@ use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 
 pub use db::SqliteTunnelStore;
-pub use domain::{StoredTunnel, Tunnel, TunnelStore};
+pub use domain::{
+    ConnectionTotalsStore, HourlyCount, Outcome, StoredTunnel, Tunnel, TunnelOutcome, TunnelStore,
+};
 pub use front::{Front, Limits};
 pub use live_bindings::state::{RatholeFeed, TunnelRegistry};
+pub use outcomes::ConnectionOutcomes;
 pub use route::{Route, Router};
 pub use served::ServedTunnels;
 pub use settings::{AcmeSettings, ControlSettings, FrontSettings, RelaySettings, Secret};
@@ -290,8 +295,9 @@ pub use site::Site;
 pub use tunnels::{TunnelDown, Tunnels};
 
 /// Load the stored tunnels, then run the relay — rathole on a config built
-/// for them, the `:443`/`:80` front and the site's certificate upkeep —
-/// until `shutdown_rx` receives `true`.
+/// for them, the `:443`/`:80` front, the site's certificate upkeep, the
+/// flush of the hourly connection totals and the pruning of the connection
+/// log — until `shutdown_rx` receives `true`.
 ///
 /// # Errors
 ///
@@ -321,10 +327,17 @@ pub async fn run_relay(
         registry.verifier(),
         admin,
     );
+    let connection_log_dir = logging::connection_log_dir(&settings.state_dir);
     let settings = settings.front;
     tracing::info!(domain = %settings.domain, "routes built");
     let tunnels = Tunnels::default();
-    let front = Front::new(registry.router(), tunnels.clone(), site, settings.limits);
+    let front = Front::new(
+        registry.router(),
+        tunnels.clone(),
+        site,
+        settings.limits,
+        registry.outcomes(),
+    );
 
     let https = TcpListener::bind(settings.https_addr)
         .await
@@ -338,14 +351,17 @@ pub async fn run_relay(
         Arc::clone(&front).serve_https(https, shutdown_rx.resubscribe()),
         front.serve_http(http, shutdown_rx.resubscribe()),
         site::acme::drive(acme, shutdown_rx.resubscribe()),
+        Arc::clone(&registry).flush_connection_totals(shutdown_rx.resubscribe()),
+        logging::prune_connection_log(connection_log_dir, shutdown_rx.resubscribe()),
         tunnels.serve(rathole.initial_config, rathole.changes, shutdown_rx),
     )?;
     Ok(())
 }
 
-/// Create the state directory, and any missing parents, readable by the
-/// owner only: it holds the ACME account key and the tunnel store. Under systemd,
-/// `StateDirectory=` has already created it.
+/// Create the state directory (or a directory in it), and any missing
+/// parents, readable by the owner only: it holds the ACME account key, the
+/// tunnel store and the connection log. Under systemd, `StateDirectory=` has
+/// already created the state directory itself.
 fn create_state_dir(path: &Path) -> std::io::Result<()> {
     let mut builder = std::fs::DirBuilder::new();
     builder.recursive(true);

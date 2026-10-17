@@ -9,9 +9,12 @@
 //!   at most one per tunnel, addressed by the tunnel's `tunnel_name`; the
 //!   code's SHA-256 is unique across rows. Deleting the tunnel deletes its
 //!   row (`ON DELETE CASCADE`).
+//! - `connection_totals` (`0003_connection_totals`): how many connections
+//!   had an outcome in a UTC hour, addressed by the `hour` and the
+//!   `outcome`'s name. No identifiers.
 //!
-//! `created_at` and `expires_at` are `BigInt` (i64, Unix epoch seconds),
-//! stored as SQLite `INTEGER`.
+//! `created_at`, `expires_at` and `hour` are `BigInt` (i64, Unix epoch
+//! seconds), stored as SQLite `INTEGER`, as is `count`.
 
 diesel::table! {
     tunnels (name) {
@@ -27,6 +30,14 @@ diesel::table! {
         tunnel_name -> Text,
         code_hash -> Binary,
         expires_at -> BigInt,
+    }
+}
+
+diesel::table! {
+    connection_totals (hour, outcome) {
+        hour -> BigInt,
+        outcome -> Text,
+        count -> BigInt,
     }
 }
 

@@ -35,6 +35,7 @@ use super::claim_limiter::{ClaimLimiter, GLOBAL, MAX_CLIENTS, PER_CLIENT};
 use crate::domain::TunnelError;
 use crate::live_bindings::state::TunnelRegistry;
 use crate::live_bindings::LiveClaimCodesRedeemer;
+use crate::logging::IDENTIFYING;
 
 /// The largest body `POST /claim` reads: a code is a few bytes.
 const MAX_BODY_BYTES: usize = 1024;
@@ -78,7 +79,7 @@ async fn claim(
         .limiter
         .admit(ClientKey::from(client.ip()), Instant::now())
     {
-        tracing::debug!(%client, "claim refused: rate limited");
+        tracing::debug!(target: IDENTIFYING, %client, "claim refused: rate limited");
         return (StatusCode::TOO_MANY_REQUESTS, RATE_LIMITED).into_response();
     }
     let body = match body {

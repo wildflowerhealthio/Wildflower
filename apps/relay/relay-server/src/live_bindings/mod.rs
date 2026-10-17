@@ -8,6 +8,10 @@
 //! those side effects stay here, out of `domain/`. Store calls block on
 //! SQLite, so the bindings run them on blocking threads.
 //!
+//! [`LiveConnectionTotalsReader`] reads the hourly connection totals, and
+//! `connection_totals_flush` holds the relay task that keeps them: it moves
+//! the counts the front records in memory into the store every minute.
+//!
 //! [`LiveClaimCodesRedeemer`] is the one binding not built through `Admin<…>`:
 //! it serves the unauthenticated `POST /claim`, which builds it once from the
 //! registry.
@@ -21,6 +25,8 @@
 mod admin;
 mod claim_codes_issuer;
 mod claim_codes_redeemer;
+mod connection_totals_flush;
+mod connection_totals_reader;
 pub mod state;
 mod tunnel_tokens_reissuer;
 mod tunnels_creator;
@@ -30,6 +36,7 @@ mod tunnels_reader;
 pub(crate) use admin::{Admin, AdminCapability};
 pub(crate) use claim_codes_issuer::LiveClaimCodesIssuer;
 pub(crate) use claim_codes_redeemer::LiveClaimCodesRedeemer;
+pub(crate) use connection_totals_reader::LiveConnectionTotalsReader;
 pub(crate) use tunnel_tokens_reissuer::LiveTunnelTokensReissuer;
 pub(crate) use tunnels_creator::LiveTunnelsCreator;
 pub(crate) use tunnels_deleter::LiveTunnelsDeleter;

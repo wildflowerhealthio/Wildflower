@@ -1,9 +1,11 @@
 //! The public TCP front: `:443` routes TLS by server name, `:80` redirects.
 //!
 //! This file holds what both listeners share: the [`Front`] (routes, the
-//! [`Tunnels`] it puts visitors into, the relay's own site, limits and the
-//! semaphores that enforce them) and the accept loops that hand each
-//! connection to its handler. The handlers and their helpers live in their
+//! [`Tunnels`] it puts visitors into, the relay's own site, limits, the
+//! semaphores that enforce them and the [`ConnectionOutcomes`] `:443`
+//! records into) and the accept loops that hand each connection to its
+//! handler. A `:443` connection dropped at the connection limit is counted
+//! as [`Outcome::OverConnectionLimit`]; `:80` is never counted. The handlers and their helpers live in their
 //! own files:
 //!
 //! - `tls`: one `:443` connection, from ClientHello to byte pipe, or to the
@@ -21,6 +23,8 @@ use std::time::Duration;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, OwnedSemaphorePermit, Semaphore};
 
+use crate::domain::Outcome;
+use crate::outcomes::ConnectionOutcomes;
 use crate::route::Router;
 use crate::site::Site;
 use crate::tunnels::Tunnels;
@@ -49,8 +53,8 @@ impl Default for Limits {
 }
 
 /// The shared state behind both listeners: routes, the tunnels, the site for
-/// local hostnames, limits and the semaphore that enforces the connection
-/// limit.
+/// local hostnames, limits, the semaphore that enforces the connection
+/// limit, and what `:443` records about each connection.
 #[derive(Debug)]
 pub struct Front {
     router: Arc<Router>,
@@ -59,17 +63,26 @@ pub struct Front {
     site: Site,
     limits: Limits,
     connections: Arc<Semaphore>,
+    /// Each `:443` connection's outcome, shared with the admin API.
+    outcomes: Arc<ConnectionOutcomes>,
 }
 
 impl Front {
     #[must_use]
-    pub fn new(router: Arc<Router>, tunnels: Tunnels, site: Site, limits: Limits) -> Arc<Self> {
+    pub fn new(
+        router: Arc<Router>,
+        tunnels: Tunnels,
+        site: Site,
+        limits: Limits,
+        outcomes: Arc<ConnectionOutcomes>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             router,
             tunnels,
             site,
             limits,
             connections: Arc::new(Semaphore::new(limits.max_connections)),
+            outcomes,
         })
     }
 
@@ -89,7 +102,11 @@ impl Front {
                 accepted = self.accept(&listener) => accepted,
                 _ = shutdown_rx.recv() => return Ok(()),
             };
-            let Some((stream, permit)) = accepted else {
+            let Some(stream) = accepted else {
+                continue;
+            };
+            let Some(permit) = self.permit() else {
+                self.outcomes.record(Outcome::OverConnectionLimit);
                 continue;
             };
             let front = Arc::clone(&self);
@@ -116,7 +133,7 @@ impl Front {
                 accepted = self.accept(&listener) => accepted,
                 _ = shutdown_rx.recv() => return Ok(()),
             };
-            let Some((stream, permit)) = accepted else {
+            let (Some(stream), Some(permit)) = (accepted, self.permit()) else {
                 continue;
             };
             let front = Arc::clone(&self);
@@ -127,22 +144,26 @@ impl Front {
         }
     }
 
-    /// Accept one connection and take a slot from the overall limit for it.
-    /// `None` if the accept failed or the front is full; a connection over
-    /// the limit is dropped here, which closes it unanswered.
-    async fn accept(&self, listener: &TcpListener) -> Option<(TcpStream, OwnedSemaphorePermit)> {
-        let stream = match listener.accept().await {
-            Ok((stream, _peer)) => stream,
+    /// Accept one connection, or `None` if the accept failed.
+    async fn accept(&self, listener: &TcpListener) -> Option<TcpStream> {
+        match listener.accept().await {
+            Ok((stream, _peer)) => Some(stream),
             Err(e) => {
                 tracing::warn!("front accept failed: {e}");
                 tokio::time::sleep(ACCEPT_BACKOFF).await;
-                return None;
+                None
             }
-        };
-        let Ok(permit) = Arc::clone(&self.connections).try_acquire_owned() else {
+        }
+    }
+
+    /// Take a slot from the overall limit for a connection just accepted, or
+    /// `None` if the front is full. A connection without one is dropped,
+    /// which closes it unanswered.
+    fn permit(&self) -> Option<OwnedSemaphorePermit> {
+        let permit = Arc::clone(&self.connections).try_acquire_owned().ok();
+        if permit.is_none() {
             tracing::warn!("front at its connection limit, refusing");
-            return None;
-        };
-        Some((stream, permit))
+        }
+        permit
     }
 }

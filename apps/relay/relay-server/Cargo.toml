@@ -113,6 +113,10 @@ tokio = { workspace = true, features = [
 # `rustls`'s `ring`.
 tokio-rustls = { version = "0.26", default-features = false }
 tracing = "0.1"
+# Writes the connection log (`<state dir>/connection-log/`, see `logging`):
+# one file per UTC hour, from a background thread, so a slow disk never
+# stalls the front. The relay prunes the files itself, by age.
+tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Opt into the workspace lints (notably `unsafe_code = "forbid"`). This crate
