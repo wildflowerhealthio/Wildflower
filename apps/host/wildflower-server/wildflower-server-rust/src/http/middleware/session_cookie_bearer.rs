@@ -348,6 +348,9 @@ mod tests {
     /// judges a browser session's token, and the revocation store it reads.
     struct AuthorizationServerFixture {
         state: Arc<AuthorizationServerState>,
+        /// The authorization server's own routes, `/oauth/sign-out` among
+        /// them.
+        router: Router,
         pool: DieselPool,
         revocation_store: RevocationStore,
     }
@@ -386,6 +389,7 @@ mod tests {
             .expect("set up the authorization server");
             AuthorizationServerFixture {
                 state: authorization_server.state,
+                router: authorization_server.router,
                 pool,
                 revocation_store,
             }
@@ -1132,5 +1136,79 @@ mod tests {
         let moved_to = chrono::DateTime::parse_from_str(&last_seen(), "%F %T%.f%:z")
             .expect("the diesel chrono text encoding");
         assert!(moved_to >= before, "{moved_to} is the request's time");
+    }
+
+    /// `POST /oauth/sign-out` through the composed layers over the
+    /// authorization server's own routes, carrying `cookie` and `headers`.
+    async fn sign_out_through_the_layers(
+        authorization_server: &AuthorizationServerFixture,
+        cookie: &str,
+        headers: &[(&str, &str)],
+    ) -> Response {
+        let router = present_session_cookie_bearers(
+            authorization_server.router.clone(),
+            authorization_server.state.clone(),
+            Arc::new(store_with_a_session()),
+            &server_origin(),
+        );
+        let mut request = Request::post("/oauth/sign-out").header(header::COOKIE, cookie);
+        for (name, value) in headers {
+            request = request.header(*name, *value);
+        }
+        router
+            .oneshot(request.body(Body::empty()).expect("request"))
+            .await
+            .expect("infallible")
+    }
+
+    /// The Sign out form's post is checked against the server's origin by the
+    /// layer: from another origin it is refused and the session stands; from
+    /// the server's own pages it revokes the session, clears the cookie and
+    /// goes on to the launcher.
+    #[tokio::test]
+    async fn signing_out_takes_a_post_from_the_server_s_own_origin() {
+        let authorization_server = AuthorizationServerFixture::new();
+        let token = authorization_server.browser_session_token(Duration::hours(8));
+        let cookie = format!("__Host-browser_session={token}");
+        let session_is_revoked = || {
+            let claims = wildflowerhealthio_authorization_server::standing_browser_session(
+                &authorization_server.state,
+                &token,
+            )
+            .expect("checked");
+            claims.is_none()
+        };
+
+        for foreign in [
+            &[("sec-fetch-site", "same-site"), ("origin", SIBLING_ORIGIN)][..],
+            &[("origin", SIBLING_ORIGIN)][..],
+            &[][..],
+        ] {
+            let response =
+                sign_out_through_the_layers(&authorization_server, &cookie, foreign).await;
+            assert_eq!(response.status(), StatusCode::FORBIDDEN, "{foreign:?}");
+            assert!(set_cookies(&response).is_empty(), "{foreign:?}");
+            assert!(!session_is_revoked(), "{foreign:?}");
+        }
+
+        let response = sign_out_through_the_layers(
+            &authorization_server,
+            &cookie,
+            &[("sec-fetch-site", "same-origin"), ("origin", SERVER_ORIGIN)],
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::LOCATION)
+                .and_then(|location| location.to_str().ok()),
+            Some("https://launcher.test/launcher/")
+        );
+        assert!(set_cookies(&response).contains(
+            &"__Host-browser_session=; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=0"
+                .to_owned()
+        ));
+        assert!(session_is_revoked());
     }
 }

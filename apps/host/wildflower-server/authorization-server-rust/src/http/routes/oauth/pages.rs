@@ -7,22 +7,41 @@
 use axum::http::header::{self, HeaderName};
 use url::form_urlencoded;
 
-/// Everything a page loads (its scripts, stylesheets and fonts) comes from
-/// this origin, it can only talk back to it, and nothing may frame it. The top-level navigation to the client's
-/// redirect is not a fetch, so `connect-src` doesn't constrain it.
-pub(super) const CONTENT_SECURITY_POLICY: &str = "default-src 'none'; script-src 'self'; \
-     style-src 'self'; font-src 'self'; connect-src 'self'; base-uri 'none'; \
-     form-action 'none'; frame-ancestors 'none'";
+/// The `form-action` sources of a page that submits no form.
+pub(super) const NO_FORM_TARGETS: &str = "'none'";
 
-/// The headers every file of a page carries: its `content_type`, the
-/// [`CONTENT_SECURITY_POLICY`], no `Referer` on anything it loads or leaves
-/// for, and no sniffing a type other than the one declared.
-pub(super) fn page_security_headers(content_type: &'static str) -> [(HeaderName, &'static str); 4] {
+/// The `Content-Security-Policy` of a page whose forms may submit to, and
+/// follow redirects to, `form_targets` (a `form-action` source list,
+/// [`NO_FORM_TARGETS`] for none). Everything a page loads (its scripts,
+/// stylesheets and fonts) comes from this origin, it can only talk back to it,
+/// and nothing may frame it. The top-level navigation to the client's redirect
+/// is not a fetch, so `connect-src` doesn't constrain it.
+pub(super) fn content_security_policy(form_targets: &str) -> String {
+    format!(
+        "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; \
+         connect-src 'self'; base-uri 'none'; form-action {form_targets}; \
+         frame-ancestors 'none'"
+    )
+}
+
+/// The headers every file of a page carries: its `content_type`, its
+/// [`content_security_policy`] for `form_targets`, no `Referer` on anything it
+/// loads from or leaves for another origin, and no sniffing a type other than
+/// the one declared. The referrer policy is `same-origin`, not `no-referrer`:
+/// under `no-referrer` a browser sends a form `POST` with `Origin: null`, which
+/// the host's cookie→bearer layer refuses, so the pages' Sign out would fail.
+pub(super) fn page_security_headers(
+    content_type: &'static str,
+    form_targets: &str,
+) -> [(HeaderName, String); 4] {
     [
-        (header::CONTENT_TYPE, content_type),
-        (header::CONTENT_SECURITY_POLICY, CONTENT_SECURITY_POLICY),
-        (header::REFERRER_POLICY, "no-referrer"),
-        (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
+        (header::CONTENT_TYPE, content_type.to_owned()),
+        (
+            header::CONTENT_SECURITY_POLICY,
+            content_security_policy(form_targets),
+        ),
+        (header::REFERRER_POLICY, "same-origin".to_owned()),
+        (header::X_CONTENT_TYPE_OPTIONS, "nosniff".to_owned()),
     ]
 }
 

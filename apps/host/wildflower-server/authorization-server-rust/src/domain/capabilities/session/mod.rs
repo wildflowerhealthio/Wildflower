@@ -4,6 +4,9 @@
 //!  - [`TokenVerifier`] — the access-token verification policy both authN
 //!    gates run (signature, `iss` and `aud` against the server's origin,
 //!    revocation last).
+//!  - [`BrowserSessionEnder`] — sign-out's self-revoke, ending the browser
+//!    session the browser's own cookie holds (acquired through `Live<…>`:
+//!    the cookie, not a bearer, is what it acts on).
 //!  - [`BrowserSessionUseRecorder`] — the host's cookie→bearer layer
 //!    recording that it accepted a browser session's cookie, which moves the
 //!    session's `last_seen_at`.
@@ -12,11 +15,13 @@
 //!    the shared `Authenticated<F>` extractor. A scope gate here would lock out
 //!    exactly the under-scoped callers who need them.
 
+mod browser_session_ender;
 mod browser_session_use_recorder;
 mod session_ender;
 mod session_reader;
 mod token_verifier;
 
+pub(crate) use browser_session_ender::BrowserSessionEnder;
 pub(crate) use browser_session_use_recorder::BrowserSessionUseRecorder;
 pub(crate) use session_ender::SessionEnder;
 pub(crate) use session_reader::SessionReader;

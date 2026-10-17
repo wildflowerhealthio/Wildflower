@@ -355,9 +355,11 @@ async fn the_consent_card_is_locked_down_and_uncached() {
     assert_eq!(
         header("content-security-policy"),
         "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; \
-         connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+         connect-src 'self'; base-uri 'none'; form-action 'self' https://launcher.test; \
+         frame-ancestors 'none'",
+        "its sign-out form posts here and follows the redirect to the launcher"
     );
-    assert_eq!(header("referrer-policy"), "no-referrer");
+    assert_eq!(header("referrer-policy"), "same-origin");
     assert_eq!(header("x-content-type-options"), "nosniff");
     assert_cache_suppressed(&res, "the consent card");
 }

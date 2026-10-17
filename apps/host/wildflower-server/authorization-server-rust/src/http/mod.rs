@@ -102,7 +102,10 @@ pub fn router(state: Arc<AuthorizationServerState>) -> Router {
 
     Router::new()
         .merge(documented)
-        .nest(routes::oauth::OAUTH_MOUNT, routes::oauth::page_router())
+        .nest(
+            routes::oauth::OAUTH_MOUNT,
+            routes::oauth::page_router(&state.launcher_base),
+        )
         .nest("/authorization", access)
         .with_state(state)
 }

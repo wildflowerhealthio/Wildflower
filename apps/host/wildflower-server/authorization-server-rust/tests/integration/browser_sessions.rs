@@ -424,3 +424,107 @@ async fn the_browsers_routes_are_scope_gated() {
         "the session stands"
     );
 }
+
+/// `POST /oauth/sign-out` with `cookie`, if any, as the pages' Sign out form
+/// sends it.
+async fn sign_out(g: &AuthorizationServer, cookie: Option<String>) -> axum::response::Response {
+    let mut request = Request::post("/oauth/sign-out").header("origin", SERVER_ORIGIN);
+    if let Some(cookie) = cookie {
+        request = request.header("cookie", cookie);
+    }
+    g.router
+        .clone()
+        .oneshot(build_request(request, Body::empty()))
+        .await
+        .expect("oneshot")
+}
+
+/// Signing out revokes the session the cookie holds, so its token is refused
+/// from then on, clears the cookie with the attributes it was set with, and
+/// `303`s to the launcher's root. Another browser's session stands.
+#[tokio::test]
+async fn signing_out_revokes_the_cookie_s_session_and_clears_it() {
+    let (g, _owner_token, db) = spin_up();
+    let signing_out = signed_in_owner_session_token(&g).await;
+    let other = signed_in_owner_session_token(&g).await;
+
+    let res = sign_out(&g, Some(format!("__Host-browser_session={signing_out}"))).await;
+
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    assert_eq!(location_of(&res), LAUNCHER_BASE);
+    assert_eq!(
+        set_cookie_values(&res),
+        vec!["__Host-browser_session=; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=0"]
+    );
+    assert_cache_suppressed(&res, "the sign-out");
+    let store = store_handle(&db);
+    assert!(store
+        .browser_session_is_revoked(&sid_of(&signing_out))
+        .expect("read"));
+    assert!(!store
+        .browser_session_is_revoked(&sid_of(&other))
+        .expect("read"));
+    assert!(matches!(
+        g.in_process_token_verifier.verify(&signing_out),
+        Err(VerifyError::Revoked)
+    ));
+}
+
+/// A browser with no cookie, or one whose session has already ended, has
+/// nothing to revoke, and is still sent on signed out with its cookie cleared.
+#[tokio::test]
+async fn signing_out_without_a_standing_session_still_clears_the_cookie() {
+    let (g, _owner_token, _db) = spin_up();
+    let ended = signed_in_owner_session_token(&g).await;
+    let res = sign_out(&g, Some(format!("__Host-browser_session={ended}"))).await;
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+
+    for cookie in [
+        None,
+        Some(format!("__Host-browser_session={ended}")),
+        Some("__Host-browser_session=not-a-token".to_owned()),
+    ] {
+        let res = sign_out(&g, cookie.clone()).await;
+        assert_eq!(res.status(), StatusCode::SEE_OTHER, "{cookie:?}");
+        assert_eq!(location_of(&res), LAUNCHER_BASE, "{cookie:?}");
+        assert_eq!(
+            set_cookie_values(&res),
+            vec!["__Host-browser_session=; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=0"],
+            "{cookie:?}"
+        );
+    }
+}
+
+/// `GET /authorization/session` on a browser session's token answers the
+/// session's expiry, which the server's pages show as "Signed in until"; a
+/// token under no browser session answers `null`.
+#[tokio::test]
+async fn the_session_read_answers_the_browser_session_s_expiry() {
+    let (g, _owner_token, db) = spin_up();
+    let session_token = signed_in_owner_session_token(&g).await;
+    let session = store_handle(&db)
+        .browser_session_by_sid(&sid_of(&session_token))
+        .expect("read")
+        .expect("stored");
+
+    let res = authorization_request(&g, "GET", "/authorization/session", &session_token).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let expires_at = body_json(res.into_body()).await["browserSessionExpiresAt"]
+        .as_str()
+        .expect("an expiry")
+        .parse::<chrono::DateTime<Utc>>()
+        .expect("an RFC 3339 time");
+    assert_eq!(expires_at, session.expires_at);
+
+    let res = authorization_request(
+        &g,
+        "GET",
+        "/authorization/session",
+        &mint_scoped_token(&db, &["wildflower/Grant.r"]),
+    )
+    .await;
+    assert_eq!(
+        body_json(res.into_body()).await["browserSessionExpiresAt"],
+        Value::Null
+    );
+}

@@ -9,6 +9,7 @@ mod internal;
 mod openapi;
 mod pages;
 mod sign_in;
+mod sign_out;
 mod token_exchange;
 mod token_request;
 mod token_revocation;
@@ -19,6 +20,7 @@ use std::sync::Arc;
 use axum::Router;
 use utoipa_axum::router::{OpenApiRouter, UtoipaMethodRouter};
 use utoipa_axum::routes;
+use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
 use crate::http::state::AuthorizationServerState;
 
@@ -30,13 +32,16 @@ pub(crate) const OAUTH_MOUNT: &str = "/oauth";
 
 /// The `/oauth/*` pages — the [`wait_page`] and its assets, the
 /// [`authorization_pages`] (the consent card, the device page, the pairing
-/// page) and theirs, and the Owner's
-/// [`sign_in`] — mounted under `/oauth` beside [`openapi_router`]. Kept out of
-/// the `OpenAPI` spec: they are a browser's pages, not API surface.
-pub(crate) fn page_router() -> Router<Arc<AuthorizationServerState>> {
+/// page) and theirs, the Owner's [`sign_in`], and a browser's [`sign_out`] —
+/// mounted under `/oauth` beside [`openapi_router`]. Kept out of the `OpenAPI`
+/// spec: they are a browser's pages, not API surface. `launcher_base` is where
+/// a sign-out sends the browser, which the authorization pages' policy lets
+/// their sign-out form follow.
+pub(crate) fn page_router(launcher_base: &LauncherBase) -> Router<Arc<AuthorizationServerState>> {
     wait_page::router()
-        .merge(authorization_pages::router())
+        .merge(authorization_pages::router(launcher_base))
         .merge(sign_in::router())
+        .merge(sign_out::router())
 }
 
 /// The `/oauth/*` routes as an `OpenApiRouter`, so the OpenAPI spec is collected

@@ -113,13 +113,17 @@ const RevocationRejectedSchema = Schema.Struct({
 })
 
 /**
- * What the caller's *current* access token carries — just the `scope` claim,
- * already split into scopes. Not the whole claim set: `jti`/`iss`/`aud`/`patient`
- * are session plumbing no caller has asked for, and leaving them off keeps
- * `GetSession` from drifting into a general introspection endpoint.
+ * What the caller's *current* access token carries: its `scope` claim, already
+ * split into scopes, and, when the token was minted under a browser session
+ * (its `sid`), when that session expires, which the server's own pages show
+ * as "Signed in until"; `null` for a token under no browser session. Not the
+ * whole claim set: `jti`/`iss`/`aud`/`patient` are session plumbing no caller
+ * has asked for, and leaving them off keeps `GetSession` from drifting into a
+ * general introspection endpoint.
  */
 const SessionSchema = Schema.Struct({
   scopes: Schema.Array(Schema.String),
+  browserSessionExpiresAt: Schema.NullOr(Schema.DateTimeUtc),
 })
 
 /**

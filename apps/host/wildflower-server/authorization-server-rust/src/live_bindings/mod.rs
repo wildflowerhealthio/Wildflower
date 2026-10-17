@@ -69,7 +69,8 @@ pub(crate) use oauth_front_door::{
 pub use pending_consent_watcher::PendingConsentWatcher;
 pub use same_device_sign_in_code_minter::SameDeviceSignInCodeMinter;
 pub(crate) use session::{
-    LiveBrowserSessionUseRecorder, LiveSessionEnder, LiveSessionReader, LiveTokenVerifier,
+    LiveBrowserSessionEnder, LiveBrowserSessionUseRecorder, LiveSessionEnder, LiveSessionReader,
+    LiveTokenVerifier,
 };
 pub use state::AuthorizationServerState;
 pub(crate) use token_exchanger::LiveTokenExchanger;
