@@ -38,25 +38,40 @@
 //! [certificate history](crate::adapters::certificate_history).
 //! [`cached_certificate_state`] reads what the cache says instead, for any
 //! server without a run's state.
+//!
+//! rustls-acme has no "order now": an [`AcmeState`] orders only when its
+//! cache holds no certificate, an expired one, or one due for renewal. So the
+//! host's [`CertificateActions`] restart the run's ordering: the run drops
+//! its `AcmeState`, ending any order or backoff it was waiting on, removes
+//! the server's cached certificate for "order a new certificate" (the
+//! install's account stays), and starts a fresh `AcmeState` from the same
+//! configuration, publishing on the same channel. The tunnel listener serves
+//! from [`CurrentAcmeResolver`], which each restart points at the new
+//! state's resolver. Until the new state deploys a certificate, it has none
+//! to serve, and visitors' handshakes fail. rustls-acme 0.15 can't revoke, so
+//! a replaced certificate stays valid until it expires.
 
 use std::fmt::Write as _;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError, RwLock};
 use std::time::Duration;
 
 use anyhow::Context;
 use async_trait::async_trait;
+use base64::prelude::{Engine as _, BASE64_URL_SAFE_NO_PAD};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use futures_util::StreamExt;
 use rustls::pki_types::{PrivateKeyDer, PrivatePkcs8KeyDer};
+use rustls::server::{ClientHello, ResolvesServerCert};
+use rustls::sign::CertifiedKey;
 use rustls_acme::acme::AcmeError;
 use rustls_acme::caches::DirCache;
 use rustls_acme::{
     AcmeConfig, AcmeState, CertCache, EventError, EventOk, OrderError, ResolvesServerCertAcme,
 };
 use sha2::{Digest, Sha256};
-use tokio::sync::watch;
+use tokio::sync::{mpsc, oneshot, watch};
 use tokio_util::sync::CancellationToken;
 
 use crate::adapters::certificate_history::record_in_certificate_history;
@@ -108,6 +123,49 @@ fn acme_config(
             certificate_cache,
             DirCache::new(config.acme_account_dir.clone()),
         )
+}
+
+/// The name of the file rustls-acme 0.15's [`DirCache`] caches the
+/// certificate for `domain` from the CA at `directory_url` in:
+/// `cached_cert_` and the unpadded URL-safe base64 of the SHA-256 of the
+/// domain, a NUL, and the directory URL.
+///
+/// # Remarks
+///
+/// `DirCache` keeps this name to itself, so it is mirrored here; a test
+/// removes an entry `DirCache` stored, so a change to its naming fails it.
+fn cached_certificate_file_name(domain: &str, directory_url: &str) -> String {
+    let digest = Sha256::new()
+        .chain_update(domain)
+        .chain_update([0])
+        .chain_update(directory_url)
+        .finalize();
+    format!("cached_cert_{}", BASE64_URL_SAFE_NO_PAD.encode(digest))
+}
+
+/// Remove the certificate the cache in `config`'s `certificate_dir` holds
+/// for `domain` from `config`'s CA, its key with it. The install's account,
+/// and the server's certificates from other CAs, stay. Nothing cached is
+/// fine.
+///
+/// # Errors
+///
+/// Returns an error if the cached certificate's file can't be removed.
+async fn remove_cached_certificate(
+    domain: &str,
+    config: &DeviceCertificateConfig,
+) -> io::Result<()> {
+    let path = config.certificate_dir.join(cached_certificate_file_name(
+        domain,
+        config.certificate_authority.directory_url().as_str(),
+    ));
+    let removed = tokio::task::spawn_blocking(move || std::fs::remove_file(path))
+        .await
+        .map_err(io::Error::other)?;
+    match removed {
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        removed => removed,
+    }
 }
 
 /// The certificate the cache entry rustls-acme last loaded or stored holds,
@@ -261,12 +319,135 @@ pub async fn cached_certificate_state(
     }
 }
 
+/// The resolver the tunnel listener serves certificates from: the resolver
+/// of the run's current [`AcmeState`], which serves the certificate it has
+/// deployed, and the CA's validation certificate while an order's challenge
+/// is pending. Each restart of the run's ordering points it at the new
+/// state's resolver, which holds no certificate until the state deploys one.
+#[derive(Debug)]
+pub(crate) struct CurrentAcmeResolver(RwLock<Arc<ResolvesServerCertAcme>>);
+
+impl CurrentAcmeResolver {
+    fn new(acme_resolver: Arc<ResolvesServerCertAcme>) -> Self {
+        Self(RwLock::new(acme_resolver))
+    }
+
+    /// Serve from `acme_resolver`, a new [`AcmeState`]'s, from now on.
+    fn replace(&self, acme_resolver: Arc<ResolvesServerCertAcme>) {
+        *self.0.write().unwrap_or_else(PoisonError::into_inner) = acme_resolver;
+    }
+}
+
+impl ResolvesServerCert for CurrentAcmeResolver {
+    fn resolve(&self, client_hello: ClientHello<'_>) -> Option<Arc<CertifiedKey>> {
+        let acme_resolver = Arc::clone(&self.0.read().unwrap_or_else(PoisonError::into_inner));
+        acme_resolver.resolve(client_hello)
+    }
+}
+
+/// What a restart of a run's ordering does with the server's cached
+/// certificate before it starts the new [`AcmeState`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CachedCertificate {
+    /// Kept: the new state deploys it if it is valid, and orders at once
+    /// otherwise.
+    Kept,
+    /// Removed, so the new state orders a new certificate at once.
+    Removed,
+}
+
+/// A request to restart a run's ordering, and where the run answers once
+/// the new [`AcmeState`] is in place: with the error removing the cached
+/// certificate failed with, if it did.
+struct RestartRequest {
+    cached_certificate: CachedCertificate,
+    restarted_tx: oneshot::Sender<io::Result<()>>,
+}
+
+/// The host's actions on a run's certificate: get one now, or order a new
+/// one in place of the one held. Each restarts the run's ordering (see the
+/// [module docs](self)). Clones reach the same run, and two are equal when
+/// they do.
+#[derive(Debug, Clone)]
+pub struct CertificateActions {
+    restart_tx: mpsc::Sender<RestartRequest>,
+}
+
+impl CertificateActions {
+    /// Order a certificate now, even while a failed order backs off: the run
+    /// starts its ordering again, deploying the cached certificate if it is
+    /// valid. Answers once the new ordering has started.
+    ///
+    /// # Errors
+    ///
+    /// [`CertificateRestartError::RunStopped`] if the run has stopped.
+    pub async fn get_certificate(&self) -> Result<(), CertificateRestartError> {
+        self.restart(CachedCertificate::Kept).await
+    }
+
+    /// Drop the cached certificate and its key and order a new one now: the
+    /// server has no certificate to serve until the new one is deployed.
+    /// The install's ACME account stays. Answers once the new ordering has
+    /// started.
+    ///
+    /// # Errors
+    ///
+    /// [`CertificateRestartError::RunStopped`] if the run has stopped, or
+    /// [`CertificateRestartError::CachedCertificateNotRemoved`] if the cached
+    /// certificate couldn't be removed, in which case the run has started
+    /// again from it, as [`get_certificate`](Self::get_certificate) does.
+    pub async fn order_new_certificate(&self) -> Result<(), CertificateRestartError> {
+        self.restart(CachedCertificate::Removed).await
+    }
+
+    async fn restart(
+        &self,
+        cached_certificate: CachedCertificate,
+    ) -> Result<(), CertificateRestartError> {
+        let (restarted_tx, restarted_rx) = oneshot::channel();
+        self.restart_tx
+            .send(RestartRequest {
+                cached_certificate,
+                restarted_tx,
+            })
+            .await
+            .map_err(|_| CertificateRestartError::RunStopped)?;
+        restarted_rx
+            .await
+            .map_err(|_| CertificateRestartError::RunStopped)?
+            .map_err(CertificateRestartError::CachedCertificateNotRemoved)
+    }
+}
+
+/// Why [`CertificateActions`] couldn't restart a run's ordering as asked.
+#[derive(Debug, thiserror::Error)]
+pub enum CertificateRestartError {
+    /// The run has stopped, so nothing orders the server's certificate.
+    #[error("the server's run has stopped")]
+    RunStopped,
+    /// The cached certificate couldn't be removed; the run started its
+    /// ordering again from it.
+    #[error("the cached certificate couldn't be removed: {0}")]
+    CachedCertificateNotRemoved(#[source] io::Error),
+}
+
+impl PartialEq for CertificateActions {
+    fn eq(&self, other: &Self) -> bool {
+        self.restart_tx.same_channel(&other.restart_tx)
+    }
+}
+
+impl Eq for CertificateActions {}
+
 /// The running certificate: the resolver serving whatever it has deployed,
-/// and the token that stops ordering and renewing when it's dropped.
+/// the host's actions on it, and the token that stops ordering and renewing
+/// when it's dropped.
 pub(crate) struct DeviceCertificate {
     /// Serves the deployed certificate, and the CA's validation certificate
     /// while an order's challenge is pending.
-    resolver: Arc<ResolvesServerCertAcme>,
+    resolver: Arc<CurrentAcmeResolver>,
+    /// Restarts the run's ordering.
+    actions: CertificateActions,
     /// Stops the task ordering and renewing the certificate.
     cancel: CancellationToken,
 }
@@ -293,14 +474,24 @@ impl DeviceCertificate {
             })?;
         }
         let cancel = CancellationToken::new();
-        let (resolver, task) = certificate_task(domain, config, certificate_tx, cancel.clone());
+        let (resolver, actions, task) =
+            certificate_task(domain, config, certificate_tx, cancel.clone());
         tokio::spawn(task);
-        Ok(Self { resolver, cancel })
+        Ok(Self {
+            resolver,
+            actions,
+            cancel,
+        })
     }
 
     /// The resolver the tunnel listener's TLS serves certificates from.
-    pub(crate) fn resolver(&self) -> Arc<ResolvesServerCertAcme> {
+    pub(crate) fn resolver(&self) -> Arc<CurrentAcmeResolver> {
         Arc::clone(&self.resolver)
+    }
+
+    /// The host's actions on the certificate, for as long as the run lasts.
+    pub(crate) fn actions(&self) -> CertificateActions {
+        self.actions.clone()
     }
 }
 
@@ -311,41 +502,82 @@ impl Drop for DeviceCertificate {
 }
 
 /// The resolver serving the certificate for `domain` that `config`
-/// describes, and the task that deploys, orders and renews it until `cancel`,
-/// publishing its state on `certificate_tx`: it reads the cached certificate
-/// first, then polls rustls-acme ([`order_and_renew`]).
+/// describes, the host's actions on it, and the task that deploys, orders
+/// and renews it until `cancel`, publishing its state on `certificate_tx`:
+/// it reads the cached certificate first, then polls rustls-acme
+/// ([`order_and_renew`]), starting again from the cache on each of the
+/// actions' restarts.
 fn certificate_task(
     domain: &str,
     config: &DeviceCertificateConfig,
     certificate_tx: watch::Sender<Option<CertificateState>>,
     cancel: CancellationToken,
 ) -> (
-    Arc<ResolvesServerCertAcme>,
+    Arc<CurrentAcmeResolver>,
+    CertificateActions,
     impl std::future::Future<Output = ()> + Send + 'static,
 ) {
-    let certificate_cache = LastEntryCertCache::new(config.certificate_dir.clone());
-    let reporter = CertificateReporter {
+    let (mut acme_state, last_entry_certificate) = new_acme_state(domain, config);
+    let resolver = Arc::new(CurrentAcmeResolver::new(acme_state.resolver()));
+    let (restart_tx, mut restart_rx) = mpsc::channel(1);
+    let mut reporter = CertificateReporter {
         issuer: config.certificate_authority,
         certificate_dir: config.certificate_dir.clone(),
-        last_entry_certificate: Arc::clone(&certificate_cache.last_entry_certificate),
+        last_entry_certificate,
         certificate_tx,
     };
-    let acme_state = acme_config(domain, config, certificate_cache).state();
-    let resolver = acme_state.resolver();
     let domain = domain.to_owned();
     let config = config.clone();
+    let current_resolver = Arc::clone(&resolver);
     let task = async move {
-        let observed = match cached_certificate(&domain, &config).await {
-            Ok(cached) => ObservedCertificate::starting_with(cached),
-            Err(error) => {
-                ObservedCertificate::starting_with(None).after(CertificateEvent::CacheFailed {
-                    message: format!("{error:#}"),
-                })
+        loop {
+            let observed = observed_at_start(&domain, &config).await;
+            let Some(request) =
+                order_and_renew(acme_state, &reporter, observed, &cancel, &mut restart_rx).await
+            else {
+                return;
+            };
+            let removed = match request.cached_certificate {
+                CachedCertificate::Kept => Ok(()),
+                CachedCertificate::Removed => remove_cached_certificate(&domain, &config).await,
+            };
+            if let Err(error) = &removed {
+                tracing::warn!("certificate: removing the cached certificate failed: {error}");
             }
-        };
-        order_and_renew(acme_state, reporter, observed, cancel).await;
+            (acme_state, reporter.last_entry_certificate) = new_acme_state(&domain, &config);
+            current_resolver.replace(acme_state.resolver());
+            let _ = request.restarted_tx.send(removed);
+        }
     };
-    (resolver, task)
+    (resolver, CertificateActions { restart_tx }, task)
+}
+
+/// A fresh [`AcmeState`] for the certificate for `domain` that `config`
+/// describes, over a cache of its own, and the certificate in the entry
+/// that cache last loads or stores.
+fn new_acme_state(
+    domain: &str,
+    config: &DeviceCertificateConfig,
+) -> (AcmeState<io::Error>, LastEntryCertificate) {
+    let certificate_cache = LastEntryCertCache::new(config.certificate_dir.clone());
+    let last_entry_certificate = Arc::clone(&certificate_cache.last_entry_certificate);
+    (
+        acme_config(domain, config, certificate_cache).state(),
+        last_entry_certificate,
+    )
+}
+
+/// What a run starting its ordering for the certificate for `domain` that
+/// `config` describes has observed of its cache, before rustls-acme reads it.
+async fn observed_at_start(domain: &str, config: &DeviceCertificateConfig) -> ObservedCertificate {
+    match cached_certificate(domain, config).await {
+        Ok(cached) => ObservedCertificate::starting_with(cached),
+        Err(error) => {
+            ObservedCertificate::starting_with(None).after(CertificateEvent::CacheFailed {
+                message: format!("{error:#}"),
+            })
+        }
+    }
 }
 
 /// Where a run reports its certificate: the host's channel, and the
@@ -407,17 +639,21 @@ impl CertificateReporter {
     }
 }
 
-/// Poll `acme_state` until `cancel`, logging each event and reporting the
-/// certificate through `reporter`, from what the run `observed` of its cache
-/// at start: polling is what makes rustls-acme deploy, order and renew the
-/// certificate. It retries a failed order itself, with backoff; until a
-/// certificate is deployed, the tunnel listener's handshakes fail.
+/// Poll `acme_state` until `cancel` or a request on `restart_rx`, logging
+/// each event and reporting the certificate through `reporter`, from what
+/// the run `observed` of its cache at start: polling is what makes
+/// rustls-acme deploy, order and renew the certificate. It retries a failed
+/// order itself, with backoff; until a certificate is deployed, the tunnel
+/// listener's handshakes fail. Answers with the restart request that ended
+/// it, dropping `acme_state` and any order or backoff it was waiting on;
+/// `None` once cancelled.
 async fn order_and_renew(
     mut acme_state: AcmeState<io::Error>,
-    reporter: CertificateReporter,
+    reporter: &CertificateReporter,
     mut observed: ObservedCertificate,
-    cancel: CancellationToken,
-) {
+    cancel: &CancellationToken,
+    restart_rx: &mut mpsc::Receiver<RestartRequest>,
+) -> Option<RestartRequest> {
     reporter.publish(&observed);
     loop {
         let next_status_change = observed.next_status_change(Utc::now());
@@ -428,11 +664,12 @@ async fn order_and_renew(
                 reporter.publish(&observed);
                 continue;
             }
-            () = cancel.cancelled() => return,
+            Some(request) = restart_rx.recv() => return Some(request),
+            () = cancel.cancelled() => return None,
         };
         let Some(event) = event else {
             // The state is an endless stream.
-            return;
+            return None;
         };
         match &event {
             Ok(event) => tracing::info!(?event, "certificate"),
@@ -900,7 +1137,7 @@ mod tests {
         )
         .await;
         let cancel = CancellationToken::new();
-        let (_, task) = certificate_task(
+        let (_, _, task) = certificate_task(
             DOMAIN,
             &data_root.config(&data_root.certificate_dir, certificate_authority),
             watch::channel(None).0,
@@ -1019,7 +1256,7 @@ mod tests {
 
         let (certificate_tx, mut certificate_rx) = watch::channel(None);
         let cancel = CancellationToken::new();
-        let (_, task) = certificate_task(DOMAIN, &config, certificate_tx, cancel.clone());
+        let (_, _, task) = certificate_task(DOMAIN, &config, certificate_tx, cancel.clone());
         let _task = tokio::spawn(task);
         let state = published(&mut certificate_rx, |_| true).await;
         cancel.cancel();
@@ -1114,7 +1351,7 @@ mod tests {
 
         let (certificate_tx, mut certificate_rx) = watch::channel(None);
         let cancel = CancellationToken::new();
-        let (_, task) = certificate_task(DOMAIN, &config, certificate_tx, cancel.clone());
+        let (_, _, task) = certificate_task(DOMAIN, &config, certificate_tx, cancel.clone());
         let _task = tokio::spawn(task);
         let state = published(&mut certificate_rx, |_| true).await;
         cancel.cancel();
@@ -1209,7 +1446,7 @@ mod tests {
         for start in 0..2 {
             let (certificate_tx, mut certificate_rx) = watch::channel(None);
             let cancel = CancellationToken::new();
-            let (_, task) = certificate_task(DOMAIN, &config, certificate_tx, cancel.clone());
+            let (_, _, task) = certificate_task(DOMAIN, &config, certificate_tx, cancel.clone());
             let task = tokio::spawn(task);
             let state = published(&mut certificate_rx, |state| {
                 state.status == CertificateStatus::NoRenewalNeeded
@@ -1242,7 +1479,7 @@ mod tests {
         let config = data_root.config(&data_root.certificate_dir, TEST_CA);
         let (certificate_tx, mut certificate_rx) = watch::channel(None);
         let cancel = CancellationToken::new();
-        let (_, task) = certificate_task(DOMAIN, &config, certificate_tx, cancel.clone());
+        let (_, _, task) = certificate_task(DOMAIN, &config, certificate_tx, cancel.clone());
         let _task = tokio::spawn(task);
 
         let state = published(&mut certificate_rx, |state| {
@@ -1471,6 +1708,399 @@ mod tests {
             ),
             "{error:?}"
         );
+    }
+
+    /// Removing the cached certificate removes the entry rustls-acme cached
+    /// for the server's domain and CA alone: its entry from another CA, its
+    /// history and the install's account stay.
+    #[tokio::test]
+    async fn removing_the_cached_certificate_removes_only_the_ca_s_entry() {
+        // Arrange
+        let data_root = data_root();
+        let (staging_entry, _) = self_signed_cache_entry(DOMAIN, (2099, 1, 1));
+        let (production_entry, _) = self_signed_cache_entry(DOMAIN, (2099, 1, 1));
+        for (certificate_authority, entry) in [
+            (CertificateAuthority::LetsEncryptStaging, &staging_entry),
+            (CertificateAuthority::LetsEncrypt, &production_entry),
+        ] {
+            cache_certificate(
+                &data_root.certificate_dir,
+                DOMAIN,
+                certificate_authority,
+                entry,
+            )
+            .await;
+        }
+        std::fs::create_dir_all(&data_root.acme_account_dir).unwrap();
+        std::fs::write(data_root.acme_account_dir.join("cached_account_x"), b"key").unwrap();
+        let staging = data_root.config(
+            &data_root.certificate_dir,
+            CertificateAuthority::LetsEncryptStaging,
+        );
+
+        // Act
+        remove_cached_certificate(DOMAIN, &staging)
+            .await
+            .expect("removed");
+
+        // Assert
+        let cache = DirCache::new(&data_root.certificate_dir);
+        let cached_from = |certificate_authority: CertificateAuthority| {
+            let cache = &cache;
+            async move {
+                cache
+                    .load_cert(
+                        &[DOMAIN.to_owned()],
+                        certificate_authority.directory_url().as_str(),
+                    )
+                    .await
+                    .expect("the cache reads")
+            }
+        };
+        assert_eq!(
+            cached_from(CertificateAuthority::LetsEncryptStaging).await,
+            None
+        );
+        assert_eq!(
+            cached_from(CertificateAuthority::LetsEncrypt).await,
+            Some(production_entry)
+        );
+        assert_eq!(
+            file_names(&data_root.acme_account_dir),
+            ["cached_account_x"]
+        );
+        remove_cached_certificate(DOMAIN, &staging)
+            .await
+            .expect("nothing cached is fine");
+    }
+
+    /// What the fake CA does with each request.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum FakeCaAnswer {
+        /// A `500` to every request, so every order fails.
+        Failure,
+        /// Every account and order accepted, and a certificate issued.
+        Issuing,
+    }
+
+    /// A fake ACME CA on this machine, over plain HTTP: it accepts every
+    /// account and order without checking a signature, an order needing no
+    /// challenge, and issues each a new self-signed certificate for
+    /// [`DOMAIN`]; or it fails every request. It counts the orders started,
+    /// as reads of its directory, which each order begins with.
+    struct FakeCa {
+        port: u16,
+        answer: Arc<Mutex<FakeCaAnswer>>,
+        orders_started: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl FakeCa {
+        async fn start(answer: FakeCaAnswer) -> Self {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+                .await
+                .expect("bind");
+            let port = listener.local_addr().expect("address").port();
+            let fake_ca = Self {
+                port,
+                answer: Arc::new(Mutex::new(answer)),
+                orders_started: Arc::default(),
+            };
+            let answer = Arc::clone(&fake_ca.answer);
+            let orders_started = Arc::clone(&fake_ca.orders_started);
+            tokio::spawn(async move {
+                while let Ok((mut connection, _)) = listener.accept().await {
+                    let mut request = Vec::new();
+                    let mut buffer = [0; 4096];
+                    let head_end = loop {
+                        if let Some(end) = request.windows(4).position(|w| w == b"\r\n\r\n") {
+                            break end + 4;
+                        }
+                        match connection.read(&mut buffer).await {
+                            Ok(0) | Err(_) => break request.len(),
+                            Ok(read) => request.extend_from_slice(&buffer[..read]),
+                        }
+                    };
+                    let head = String::from_utf8_lossy(&request[..head_end]).to_lowercase();
+                    let body_length = head
+                        .lines()
+                        .find_map(|line| line.strip_prefix("content-length:"))
+                        .and_then(|length| length.trim().parse::<usize>().ok())
+                        .unwrap_or(0);
+                    while request.len() < head_end + body_length {
+                        match connection.read(&mut buffer).await {
+                            Ok(0) | Err(_) => break,
+                            Ok(read) => request.extend_from_slice(&buffer[..read]),
+                        }
+                    }
+                    let path = head.split_whitespace().nth(1).unwrap_or("").to_owned();
+                    if path == "/directory" {
+                        orders_started.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    }
+                    let answer = *answer.lock().unwrap();
+                    let response = fake_ca_response(port, answer, &path);
+                    let _ = connection.write_all(response.as_bytes()).await;
+                }
+            });
+            fake_ca
+        }
+
+        /// The CA's config for the server in `certificate_dir`, ordering
+        /// with `data_root`'s account.
+        fn config(&self, data_root: &DataRoot) -> DeviceCertificateConfig {
+            data_root.config(
+                &data_root.certificate_dir,
+                CertificateAuthority::LocalForTests { port: self.port },
+            )
+        }
+
+        fn answer_with(&self, answer: FakeCaAnswer) {
+            *self.answer.lock().unwrap() = answer;
+        }
+
+        /// Wait until `count` orders have started.
+        async fn orders_started(&self, count: usize) {
+            tokio::time::timeout(Duration::from_secs(10), async {
+                while self
+                    .orders_started
+                    .load(std::sync::atomic::Ordering::SeqCst)
+                    < count
+                {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .expect("the orders in time");
+        }
+    }
+
+    /// The fake CA at `port`'s answer to a request for `path`.
+    fn fake_ca_response(port: u16, answer: FakeCaAnswer, path: &str) -> String {
+        let base = format!("http://127.0.0.1:{port}");
+        let (status, location, body) = match (answer, path) {
+            (FakeCaAnswer::Failure, _) => ("500 Internal Server Error", None, String::new()),
+            (FakeCaAnswer::Issuing, "/directory") => (
+                "200 OK",
+                None,
+                serde_json::json!({
+                    "newNonce": format!("{base}/nonce"),
+                    "newAccount": format!("{base}/account"),
+                    "newOrder": format!("{base}/order"),
+                })
+                .to_string(),
+            ),
+            (FakeCaAnswer::Issuing, "/nonce") => ("200 OK", None, String::new()),
+            (FakeCaAnswer::Issuing, "/account") => (
+                "201 Created",
+                Some(format!("{base}/account/1")),
+                "{}".to_owned(),
+            ),
+            (FakeCaAnswer::Issuing, "/order" | "/finalize") => (
+                if path == "/order" {
+                    "201 Created"
+                } else {
+                    "200 OK"
+                },
+                Some(format!("{base}/order/1")),
+                serde_json::json!({
+                    "status": if path == "/order" { "ready" } else { "valid" },
+                    "certificate": format!("{base}/certificate"),
+                    "authorizations": [],
+                    "finalize": format!("{base}/finalize"),
+                })
+                .to_string(),
+            ),
+            (FakeCaAnswer::Issuing, "/certificate") => {
+                let mut params = CertificateParams::new(vec![DOMAIN.to_owned()]).expect("params");
+                params.not_before = rcgen::date_time_ymd(2020, 1, 1);
+                params.not_after = rcgen::date_time_ymd(2099, 1, 1);
+                let key_pair =
+                    KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256).expect("key pair");
+                let certificate = params.self_signed(&key_pair).expect("self-signed");
+                ("200 OK", None, certificate.pem())
+            }
+            (FakeCaAnswer::Issuing, _) => ("404 Not Found", None, String::new()),
+        };
+        let location = location
+            .map(|location| format!("location: {location}\r\n"))
+            .unwrap_or_default();
+        format!(
+            "HTTP/1.1 {status}\r\nreplay-nonce: nonce\r\n{location}\
+             content-length: {}\r\nconnection: close\r\n\r\n{body}",
+            body.len()
+        )
+    }
+
+    /// Getting a certificate orders one at once, even while a failed order
+    /// backs off: here the third failure's 4 s backoff.
+    #[tokio::test]
+    async fn getting_a_certificate_orders_at_once_while_a_failed_order_backs_off() {
+        // Arrange: the CA fails the first orders, 0, 1 and 3 s in.
+        let data_root = data_root();
+        let fake_ca = FakeCa::start(FakeCaAnswer::Failure).await;
+        let (certificate_tx, mut certificate_rx) = watch::channel(None);
+        let cancel = CancellationToken::new();
+        let (_, actions, task) = certificate_task(
+            DOMAIN,
+            &fake_ca.config(&data_root),
+            certificate_tx,
+            cancel.clone(),
+        );
+        let _task = tokio::spawn(task);
+        published(&mut certificate_rx, |state| {
+            state.status == CertificateStatus::OrderFailing
+        })
+        .await;
+        fake_ca.orders_started(3).await;
+        fake_ca.answer_with(FakeCaAnswer::Issuing);
+
+        // Act
+        let asked_at = std::time::Instant::now();
+        actions.get_certificate().await.expect("ordering restarted");
+
+        // Assert
+        let state = published(&mut certificate_rx, |state| {
+            state.status == CertificateStatus::NoRenewalNeeded
+        })
+        .await;
+        cancel.cancel();
+        assert!(
+            asked_at.elapsed() < Duration::from_secs(3),
+            "deployed before the backoff ends"
+        );
+        assert!(state.held.is_some());
+        assert_eq!(state.last_error, None);
+    }
+
+    /// Ordering a new certificate replaces the cached one with a new one,
+    /// from the server's CA, recorded in the history, and leaves the
+    /// install's account as it was.
+    #[tokio::test]
+    async fn ordering_a_new_certificate_replaces_the_cached_one_and_keeps_the_account() {
+        // Arrange: the run orders its first certificate, creating the account.
+        let data_root = data_root();
+        let fake_ca = FakeCa::start(FakeCaAnswer::Issuing).await;
+        let config = fake_ca.config(&data_root);
+        let (certificate_tx, mut certificate_rx) = watch::channel(None);
+        let cancel = CancellationToken::new();
+        let (_, actions, task) = certificate_task(DOMAIN, &config, certificate_tx, cancel.clone());
+        let _task = tokio::spawn(task);
+        let first = published(&mut certificate_rx, |state| state.held.is_some())
+            .await
+            .held
+            .expect("a certificate")
+            .fingerprint;
+        history_of_length(&data_root.certificate_dir, 1).await;
+        let account_files = || {
+            file_names(&data_root.acme_account_dir)
+                .into_iter()
+                .map(|name| {
+                    let contents = std::fs::read(data_root.acme_account_dir.join(&name)).unwrap();
+                    (name, contents)
+                })
+                .collect::<Vec<_>>()
+        };
+        let account_before = account_files();
+        assert_eq!(account_before.len(), 1);
+
+        // Act
+        actions
+            .order_new_certificate()
+            .await
+            .expect("ordering restarted");
+
+        // Assert
+        let state = published(&mut certificate_rx, |state| {
+            state
+                .held
+                .as_ref()
+                .is_some_and(|held| held.fingerprint != first)
+        })
+        .await;
+        cancel.cancel();
+        assert_eq!(state.status, CertificateStatus::NoRenewalNeeded);
+        assert_eq!(state.issuer, config.certificate_authority);
+        let second = state.held.expect("the new certificate").fingerprint;
+        history_of_length(&data_root.certificate_dir, 2).await;
+        let history = read_certificate_history(&data_root.certificate_dir).unwrap();
+        assert_eq!(
+            history
+                .iter()
+                .map(|entry| &entry.fingerprint)
+                .collect::<Vec<_>>(),
+            [&first, &second]
+        );
+        assert_eq!(
+            cached_certificate(DOMAIN, &config)
+                .await
+                .unwrap()
+                .map(|cached| cached.fingerprint),
+            Some(second)
+        );
+        assert_eq!(account_files(), account_before);
+    }
+
+    /// Ordering a new certificate drops the held one at once: the run holds
+    /// none, and is `Ordering`, until the new one is deployed.
+    #[tokio::test]
+    async fn ordering_a_new_certificate_holds_none_until_the_new_one_arrives() {
+        // Arrange: a valid cached certificate, and a CA that fails.
+        let data_root = data_root();
+        let fake_ca = FakeCa::start(FakeCaAnswer::Failure).await;
+        let config = fake_ca.config(&data_root);
+        let (cache_entry, _) = self_signed_cache_entry(DOMAIN, (2099, 1, 1));
+        cache_certificate(
+            &data_root.certificate_dir,
+            DOMAIN,
+            config.certificate_authority,
+            &cache_entry,
+        )
+        .await;
+        let (certificate_tx, mut certificate_rx) = watch::channel(None);
+        let cancel = CancellationToken::new();
+        let (_, actions, task) = certificate_task(DOMAIN, &config, certificate_tx, cancel.clone());
+        let _task = tokio::spawn(task);
+        published(&mut certificate_rx, |state| {
+            state.status == CertificateStatus::NoRenewalNeeded
+        })
+        .await;
+
+        // Act
+        actions
+            .order_new_certificate()
+            .await
+            .expect("ordering restarted");
+
+        // Assert
+        let state = published(&mut certificate_rx, |state| state.held.is_none()).await;
+        cancel.cancel();
+        assert!(
+            matches!(
+                state.status,
+                CertificateStatus::Ordering | CertificateStatus::OrderFailing
+            ),
+            "{state:?}"
+        );
+        assert_eq!(cached_certificate(DOMAIN, &config).await.unwrap(), None);
+    }
+
+    /// A run that has stopped refuses both actions.
+    #[tokio::test]
+    async fn a_stopped_run_refuses_the_actions() {
+        let data_root = data_root();
+        let cancel = CancellationToken::new();
+        let (_, actions, task) = certificate_task(
+            DOMAIN,
+            &data_root.config(&data_root.certificate_dir, TEST_CA),
+            watch::channel(None).0,
+            cancel.clone(),
+        );
+        let task = tokio::spawn(task);
+        cancel.cancel();
+        task.await.expect("the task doesn't panic");
+
+        assert!(actions.get_certificate().await.is_err());
+        assert!(actions.order_new_certificate().await.is_err());
     }
 
     /// A CA that can't be reached at all, with no problem document, is
