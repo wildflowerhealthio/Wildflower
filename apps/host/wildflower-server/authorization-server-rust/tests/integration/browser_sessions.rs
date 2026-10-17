@@ -259,5 +259,9 @@ async fn approving_a_request_whose_session_was_revoked_denies_it() {
         Url::parse(decision["redirect"].as_str().expect("a redirect")).expect("redirect URL");
     let query: Vec<(String, String)> = redirect.query_pairs().into_owned().collect();
     assert!(query.contains(&("error".to_owned(), "access_denied".to_owned())));
+    assert!(query.contains(&(
+        "error_description".to_owned(),
+        "This browser was signed out before the sign-in finished.".to_owned()
+    )));
     assert!(query.iter().all(|(name, _)| name != "code"));
 }

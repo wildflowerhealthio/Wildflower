@@ -440,7 +440,7 @@
                   "string",
                   "null"
                 ],
-                "description": "Client callback URL carrying `error=access_denied&state=...` for\ncode-flow requests (RFC 6749 §4.1.2.1) so the wait page can\ncomplete the flow. Absent for device-flow denials, which have no\nclient `redirect_uri`."
+                "description": "Client callback URL carrying `error=access_denied`, an\n`error_description` and `state` for code-flow requests (RFC 6749\n§4.1.2.1) so the wait page can complete the flow. Absent for\ndevice-flow denials, which have no client `redirect_uri`."
               },
               "status": {
                 "type": "string",

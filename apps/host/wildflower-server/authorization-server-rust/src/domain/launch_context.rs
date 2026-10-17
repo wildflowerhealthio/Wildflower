@@ -95,6 +95,19 @@ impl LaunchContext {
     }
 }
 
+/// Why `/oauth/authorize` could not consume a presented `launch`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LaunchRefusal {
+    /// No launch has this nonce: never minted, or expired and pruned.
+    Unknown,
+    /// The launch is for a different client.
+    ForAnotherApp,
+    /// The launch was consumed already.
+    AlreadyUsed,
+    /// The launch is past its expiry.
+    Expired,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -392,7 +392,11 @@ mod tests {
         assert_eq!(
             outcome,
             ConsentOutcome::Denied {
-                redirect: Some("https://example.com/cb?error=access_denied&state=state".to_owned()),
+                redirect: Some(
+                    "https://example.com/cb?error=access_denied\
+                     &error_description=The+request+was+declined.&state=state"
+                        .to_owned()
+                ),
             }
         );
         assert_eq!(

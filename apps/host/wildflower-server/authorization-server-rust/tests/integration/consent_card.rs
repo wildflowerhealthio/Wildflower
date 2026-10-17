@@ -318,7 +318,8 @@ async fn denying_sends_access_denied_to_the_client_and_settles_the_wait_page() {
     assert_eq!(decision["status"], "denied");
     assert_eq!(
         decision["redirect"],
-        "https://app.example/cb?error=access_denied&state=xyz"
+        "https://app.example/cb?error=access_denied\
+         &error_description=The+request+was+declined.&state=xyz"
     );
 
     let status = status_of(&g, &request_id).await;

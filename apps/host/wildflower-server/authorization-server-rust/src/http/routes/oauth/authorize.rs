@@ -49,8 +49,9 @@ pub(super) enum AuthorizeError {
     LocalPage(OAuthErrorKind),
     /// A spec'd error once `redirect_uri` is validated — 302 back to the
     /// client. Carries the already-built `Location` (the client `redirect_uri`
-    /// merged with `error` + `state`, RFC 6749 §4.1.2.1) rather than the `Url`,
-    /// keeping the variant small enough to dodge `clippy::result_large_err`.
+    /// merged with `error` + `error_description` + `state`, RFC 6749
+    /// §4.1.2.1) rather than the `Url`, keeping the variant small enough to
+    /// dodge `clippy::result_large_err`.
     Redirect { location: String },
     /// No active signing key: without token-mint capability the endpoint can't
     /// proceed, so it 503s rather than parking a request it can never complete.
@@ -61,8 +62,8 @@ pub(super) enum AuthorizeError {
 
 /// Render the flow's failure vocabulary onto the endpoint's three response
 /// shapes: a local page while the redirect is untrusted, a 302 with `error` +
-/// `state` back to a validated redirect (RFC 6749 §4.1.2.1), a 503 with no
-/// signing key, and a logged opaque 500 for the rest.
+/// `error_description` + `state` back to a validated redirect (RFC 6749
+/// §4.1.2.1), a 503 with no signing key, and a logged opaque 500 for the rest.
 impl From<AuthorizationStartError> for AuthorizeError {
     fn from(error: AuthorizationStartError) -> Self {
         match error {
@@ -76,9 +77,15 @@ impl From<AuthorizationStartError> for AuthorizeError {
             AuthorizationStartError::Redirectable {
                 redirect_uri,
                 error,
+                description,
                 client_state,
             } => AuthorizeError::Redirect {
-                location: build_client_error_redirect_url(&redirect_uri, error, &client_state),
+                location: build_client_error_redirect_url(
+                    &redirect_uri,
+                    error,
+                    description,
+                    &client_state,
+                ),
             },
             AuthorizationStartError::RequestNotPending => {
                 AuthorizeError::Internal(InternalError::new(
@@ -97,7 +104,7 @@ impl From<AuthorizationStartError> for AuthorizeError {
 impl IntoResponse for AuthorizeError {
     fn into_response(self) -> Response {
         match self {
-            AuthorizeError::LocalPage(kind) => html_bad_request(oauth_error_html(&kind)),
+            AuthorizeError::LocalPage(kind) => html_bad_request(oauth_error_html(kind)),
             AuthorizeError::Redirect { location } => found_redirect(&location),
             AuthorizeError::ServiceUnavailable => StatusCode::SERVICE_UNAVAILABLE.into_response(),
             AuthorizeError::Internal(error) => error.into_response(),

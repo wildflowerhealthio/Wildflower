@@ -7,7 +7,7 @@
 use chrono::{DateTime, Utc};
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::launch_context::LaunchContext;
+use crate::domain::launch_context::{LaunchContext, LaunchRefusal};
 use crate::domain::{GrantStore, GrantTx};
 
 /// Mint and consume launch contexts. A borrowed view over the store, like the
@@ -72,9 +72,18 @@ impl<'a, S: GrantStore> LaunchContexts<'a, S> {
 
     /// Consume the launch `nonce` for `client_id` at `now`: the context, now
     /// stamped consumed, iff it was minted for `client_id` or for any client
-    /// and is unconsumed and unexpired; otherwise `None` and nothing changes. A
-    /// context presented by the wrong client therefore stays consumable by its
-    /// own.
+    /// and is unconsumed and unexpired. Otherwise nothing changes, and the
+    /// [`LaunchRefusal`] says why. A context presented by the wrong client
+    /// therefore stays consumable by its own.
+    ///
+    /// The consume is one conditional update, so of two racing consumes
+    /// exactly one wins. Only when it finds nothing is the row read back to
+    /// classify the refusal, checking in this order: no row is
+    /// [`Unknown`](LaunchRefusal::Unknown), another client's launch is
+    /// [`ForAnotherApp`](LaunchRefusal::ForAnotherApp) (so its state is never
+    /// told), then [`AlreadyUsed`](LaunchRefusal::AlreadyUsed), then
+    /// [`Expired`](LaunchRefusal::Expired). A launch pruned after expiring is
+    /// gone, so it reads as unknown.
     ///
     /// # Errors
     ///
@@ -84,9 +93,25 @@ impl<'a, S: GrantStore> LaunchContexts<'a, S> {
         nonce: &str,
         client_id: &str,
         now: DateTime<Utc>,
-    ) -> Result<Option<LaunchContext>, AuthorizationServerError> {
-        self.store
-            .with_connection(|tx| tx.consume_launch_context(nonce, client_id, now))
+    ) -> Result<Result<LaunchContext, LaunchRefusal>, AuthorizationServerError> {
+        self.store.with_connection(|tx| {
+            if let Some(consumed) = tx.consume_launch_context(nonce, client_id, now)? {
+                return Ok(Ok(consumed));
+            }
+            let refusal = match tx.launch_context_by_nonce(nonce)? {
+                None => LaunchRefusal::Unknown,
+                Some(stored) if !stored.admits_client(client_id) => LaunchRefusal::ForAnotherApp,
+                Some(stored) if stored.consumed_at.is_some() => LaunchRefusal::AlreadyUsed,
+                Some(stored) if stored.expires_at <= now => LaunchRefusal::Expired,
+                Some(_) => {
+                    return Err(AuthorizationServerError::infrastructure(
+                        "consume_launch_context",
+                        "refused a launch that is admitted, unconsumed and unexpired",
+                    ))
+                }
+            };
+            Ok(Err(refusal))
+        })
     }
 }
 
@@ -116,7 +141,7 @@ mod tests {
             launch_contexts
                 .consume("nonce-1", "other-app", now)
                 .unwrap(),
-            None,
+            Err(LaunchRefusal::ForAnotherApp),
             "another client can't consume it"
         );
         let consumed = launch_contexts
@@ -126,7 +151,7 @@ mod tests {
         assert_eq!(consumed.consumed_at, Some(now));
         assert_eq!(
             launch_contexts.consume("nonce-1", "app", now).unwrap(),
-            None,
+            Err(LaunchRefusal::AlreadyUsed),
             "a replay is refused"
         );
     }
@@ -152,7 +177,7 @@ mod tests {
         assert_eq!(consumed.consumed_at, Some(now));
         assert_eq!(
             launch_contexts.consume("nonce-1", "app", now).unwrap(),
-            None,
+            Err(LaunchRefusal::AlreadyUsed),
             "a second client is refused"
         );
     }
@@ -182,10 +207,55 @@ mod tests {
         assert!(launch_contexts
             .consume("recent", "app", now)
             .unwrap()
-            .is_some());
-        assert!(launch_contexts
-            .consume("old", "app", now)
+            .is_ok());
+        assert_eq!(
+            launch_contexts.consume("old", "app", now).unwrap(),
+            Err(LaunchRefusal::Unknown),
+            "a pruned launch reads as unknown"
+        );
+    }
+
+    /// Each refusal is told apart, checking another client's launch first:
+    /// its state is never told, and it stays consumable by its own client.
+    #[test]
+    fn a_refused_consume_says_why() {
+        let store = FakeGrantStore::default();
+        let launch_contexts = LaunchContexts::over(&store);
+        let now = Utc::now();
+        let expired_at = now + LAUNCH_CONTEXT_TTL;
+        launch_contexts
+            .mint("app", "live".to_owned(), now)
+            .expect("mint live");
+        launch_contexts
+            .mint("app", "used".to_owned(), now)
+            .expect("mint used");
+        launch_contexts
+            .consume("used", "app", now)
             .unwrap()
-            .is_none());
+            .expect("consume used");
+
+        for (nonce, client_id, at, refusal) in [
+            ("forged", "app", now, LaunchRefusal::Unknown),
+            ("live", "other-app", now, LaunchRefusal::ForAnotherApp),
+            ("used", "other-app", now, LaunchRefusal::ForAnotherApp),
+            (
+                "live",
+                "other-app",
+                expired_at,
+                LaunchRefusal::ForAnotherApp,
+            ),
+            ("used", "app", now, LaunchRefusal::AlreadyUsed),
+            ("live", "app", expired_at, LaunchRefusal::Expired),
+        ] {
+            assert_eq!(
+                launch_contexts.consume(nonce, client_id, at).unwrap(),
+                Err(refusal),
+                "{nonce} by {client_id}"
+            );
+        }
+        assert!(
+            launch_contexts.consume("live", "app", now).unwrap().is_ok(),
+            "the refusals left the live launch consumable by its own client"
+        );
     }
 }

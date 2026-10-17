@@ -14,7 +14,10 @@ use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::writers::{
     CodeApproval, CodeAuthority, GrantRecorder, RequestApprover,
 };
-use crate::domain::client_redirect::{build_client_error_redirect_url, build_client_redirect_url};
+use crate::domain::client_redirect::{
+    build_client_error_redirect_url, build_client_redirect_url, BROWSER_SIGNED_OUT_DESCRIPTION,
+    REQUEST_DECLINED_DESCRIPTION,
+};
 use crate::domain::client_registration::{classify_registration, PresentedClientRegistration};
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::GrantStore;
@@ -124,7 +127,7 @@ pub(crate) fn approve_oauth_consent(
     )?
     else {
         return deny_consent(store, owner_approval, id, make_consent_not_found)
-            .map(|()| denial_outcome(&pending_request));
+            .map(|()| denial_outcome(&pending_request, REQUEST_DECLINED_DESCRIPTION));
     };
 
     let code_approval = RequestApprover::over(store).approve_for_code(
@@ -140,7 +143,10 @@ pub(crate) fn approve_oauth_consent(
         // The approver denied the request instead: tell the client so.
         CodeApproval::BrowserSessionRevoked => {
             owner_approval.republish_active();
-            return Ok(denial_outcome(&pending_request));
+            return Ok(denial_outcome(
+                &pending_request,
+                BROWSER_SIGNED_OUT_DESCRIPTION,
+            ));
         }
     };
 
@@ -182,13 +188,16 @@ pub(crate) fn deny_oauth_consent(
     deny_consent(store, owner_approval, id, || {
         AuthorizationServerError::OAuthConsentNotFound { id: id.to_owned() }
     })?;
-    Ok(denial_outcome(&pending_request))
+    Ok(denial_outcome(
+        &pending_request,
+        REQUEST_DECLINED_DESCRIPTION,
+    ))
 }
 
 /// The outcome of denying `pending_request`: the client callback carrying
-/// `error=access_denied` and the client's `state` (RFC 6749 §4.1.2.1), the
-/// same one the status poll hands the wait page.
-fn denial_outcome(pending_request: &PendingCodeRequest) -> ConsentOutcome {
+/// `error=access_denied`, `description` as its `error_description`, and the
+/// client's `state` (RFC 6749 §4.1.2.1).
+fn denial_outcome(pending_request: &PendingCodeRequest, description: &str) -> ConsentOutcome {
     let client_callback_url =
         pending_request
             .request()
@@ -198,6 +207,7 @@ fn denial_outcome(pending_request: &PendingCodeRequest) -> ConsentOutcome {
                 build_client_error_redirect_url(
                     pending_request.redirect_uri(),
                     OAuthErrorCode::AccessDenied,
+                    description,
                     client_state,
                 )
             });

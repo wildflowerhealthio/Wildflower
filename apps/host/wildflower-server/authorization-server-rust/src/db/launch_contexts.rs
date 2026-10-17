@@ -62,6 +62,19 @@ pub(super) fn consume_launch_context(
     .map_err(|e| AuthorizationServerError::infrastructure("consume_launch_context failed", e))
 }
 
+/// The launch context `nonce`, as stored, or `None` when there is none.
+pub(super) fn launch_context_by_nonce(
+    conn: &mut SqliteConnection,
+    nonce: &str,
+) -> Result<Option<LaunchContext>, AuthorizationServerError> {
+    launch_contexts::table
+        .find(nonce)
+        .select(LaunchContext::as_select())
+        .first(conn)
+        .optional()
+        .map_err(|e| AuthorizationServerError::infrastructure("launch_context_by_nonce failed", e))
+}
+
 /// Delete every launch context that expired at or before `now`, consumed or
 /// not, returning how many rows went. An expired context can never be
 /// consumed, so nothing reads it again.
@@ -81,7 +94,8 @@ mod tests {
     use chrono::Duration;
 
     use crate::db::SqliteGrantStore;
-    use crate::domain::launch_context::{LaunchContext, LAUNCH_CONTEXT_TTL};
+    use crate::domain::capabilities::oauth::LaunchContexts;
+    use crate::domain::launch_context::{LaunchContext, LaunchRefusal, LAUNCH_CONTEXT_TTL};
     use crate::domain::{GrantStore as _, GrantTx as _};
 
     fn store() -> SqliteGrantStore {
@@ -180,6 +194,77 @@ mod tests {
         assert!(consume("forged", "app", now).is_none());
         assert!(consume("nonce-1", "app", now + LAUNCH_CONTEXT_TTL).is_none());
         assert!(consume("nonce-1", "app", now).is_some());
+    }
+
+    /// A context reads back by its nonce exactly as stored, and an unknown
+    /// nonce reads as nothing.
+    #[test]
+    fn a_context_reads_back_by_its_nonce() {
+        let store = store();
+        let now = chrono::Utc::now();
+        let context =
+            LaunchContext::for_client("nonce-1".to_owned(), "app", Some("pat-1".to_owned()), now);
+        store
+            .with_connection(|tx| tx.insert_launch_context(&context))
+            .expect("insert");
+        let read = |nonce: &str| {
+            store
+                .with_connection(|tx| tx.launch_context_by_nonce(nonce))
+                .expect("read")
+        };
+        assert_eq!(read("nonce-1"), Some(context));
+        assert_eq!(read("forged"), None);
+    }
+
+    /// Against the table, a refused consume says why: unknown, another
+    /// client's (checked first, so its state is never told), already used, or
+    /// expired. Another client's attempt leaves the launch consumable by its
+    /// own.
+    #[test]
+    fn a_refused_consume_says_why() {
+        let store = store();
+        let launch_contexts = LaunchContexts::over(&store);
+        let now = chrono::Utc::now();
+        let expired_at = now + LAUNCH_CONTEXT_TTL;
+        launch_contexts
+            .mint("app", "live".to_owned(), now)
+            .expect("mint live");
+        launch_contexts
+            .mint("app", "used".to_owned(), now)
+            .expect("mint used");
+        launch_contexts
+            .consume("used", "app", now)
+            .expect("consume")
+            .expect("its own client consumes it");
+
+        for (nonce, client_id, at, refusal) in [
+            ("forged", "app", now, LaunchRefusal::Unknown),
+            ("live", "other-app", now, LaunchRefusal::ForAnotherApp),
+            ("used", "other-app", now, LaunchRefusal::ForAnotherApp),
+            (
+                "live",
+                "other-app",
+                expired_at,
+                LaunchRefusal::ForAnotherApp,
+            ),
+            ("used", "app", now, LaunchRefusal::AlreadyUsed),
+            ("live", "app", expired_at, LaunchRefusal::Expired),
+        ] {
+            assert_eq!(
+                launch_contexts
+                    .consume(nonce, client_id, at)
+                    .expect("consume"),
+                Err(refusal),
+                "{nonce} by {client_id}"
+            );
+        }
+        assert!(
+            launch_contexts
+                .consume("live", "app", now)
+                .expect("consume")
+                .is_ok(),
+            "the refusals left the live launch consumable by its own client"
+        );
     }
 
     /// The prune deletes contexts expired at or before `now`, consumed or not,
