@@ -459,6 +459,12 @@ or the code request's `id`), each time the newest is recomputed, changed or not,
 sees the request decided or expired even while a newer one stays newest. On
 iOS the host closes the page it opened the request at once it settles.
 
+The host denies a request without opening a page, as the Deny on its
+notification does, through the `PendingConsentDenier` the authorization
+server hands it. That takes the consent pages' deny path with the Owner's own
+authority: a request already decided stays as it was decided, and the
+requesting browser's wait ends as denied.
+
 Leaving the consent page undecided decides nothing: the request stays pending
 and answerable from the server's page in the host until it expires, while the
 requesting browser keeps waiting (on the [wait page](#wait-page) for a code

@@ -71,7 +71,8 @@ pub use http::{
     BROWSER_SESSION_COOKIE, BROWSER_SESSION_HEADER_VALUE, SESSION_HEADER,
 };
 pub use live_bindings::{
-    InProcessTokenVerifier, LaunchContextMinter, PendingConsentWatcher, SameDeviceSignInCodeMinter,
+    InProcessTokenVerifier, LaunchContextMinter, PendingConsentDenier, PendingConsentWatcher,
+    SameDeviceSignInCodeMinter,
 };
 // The host's say over how fast authorization requests are started (see
 // `setup_authorization_server`).
@@ -190,7 +191,8 @@ const DEVICE_CONSENT_REAPER_INTERVAL: std::time::Duration = std::time::Duration:
 /// into the app's root router, the shared `Arc<AuthorizationServerState>` needed to
 /// gate fhir-r4-rust traffic, the minter app launches mint their `launch`
 /// values through, the minter the host mints same-device sign-in codes through,
-/// and the watcher it waits on for a pending consent to settle.
+/// the watcher it waits on for a pending consent to settle, and the denier it
+/// declines one through.
 pub struct AuthorizationServer {
     pub router: axum::Router,
     pub state: Arc<AuthorizationServerState>,
@@ -203,6 +205,9 @@ pub struct AuthorizationServer {
     /// Waits for a pending consent to be decided or expire — for the host,
     /// in-process, which closes the page it opened the request at.
     pub pending_consent_watcher: PendingConsentWatcher,
+    /// Declines a pending consent as the Owner — for the host, in-process,
+    /// whose request notifications offer a Deny.
+    pub pending_consent_denier: PendingConsentDenier,
     /// Verifies access tokens as the authorization server's own gates do —
     /// for the host's FHIR server, which verifies each bearer through it
     /// in-process.
@@ -236,6 +241,8 @@ pub struct AuthorizationServer {
 ///    same-device sign-in code through, which `/oauth/sign-in` then redeems;
 ///  - returns the [`PendingConsentWatcher`] the host waits on for a pending
 ///    consent it opened to be decided or expire;
+///  - returns the [`PendingConsentDenier`] the host declines a pending
+///    consent through, as the Owner, from its notification;
 ///  - returns the [`InProcessTokenVerifier`] the host's FHIR server verifies
 ///    each bearer through, in-process.
 ///
@@ -314,12 +321,14 @@ pub fn setup_authorization_server(
         SameDeviceSignInCodeMinter::new(same_device_sign_in_codes);
     let pending_consent_watcher =
         PendingConsentWatcher::new(state.store.clone(), pending_consents_recomputed_rx);
+    let pending_consent_denier = PendingConsentDenier::new(&state);
     Ok(AuthorizationServer {
         router,
         state,
         launch_context_minter,
         same_device_sign_in_code_minter,
         pending_consent_watcher,
+        pending_consent_denier,
         in_process_token_verifier,
     })
 }
