@@ -76,8 +76,11 @@ const leaveFor = (redirect) => {
  * the request's consent, `/authorization/oauth-consents/{id}`, on its browser
  * session, asked for with the `Wildflower-Session` header as the card
  * asks for it, so a browser also signed in to the FHIR web UI is judged as the
- * Owner. A browser not signed in as the Owner gets a `401`; one that can't
- * reach the server stays on this page and polls again.
+ * Owner. It can decide there only when the consent names no
+ * `missingApprovalScopes`; a browser that can read the request but not approve
+ * it stays here, so the card's "Ask the server's owner" doesn't send it
+ * straight back. A browser not signed in as the Owner gets a `401`; one that
+ * can't reach the server stays on this page and polls again.
  *
  * @returns {Promise<boolean>}
  */
@@ -94,7 +97,14 @@ const canOpenConsentCard = async () => {
       headers: { Accept: 'application/json', 'Wildflower-Session': 'browser' },
       cache: 'no-store',
     })
-    return response.ok
+    if (!response.ok) {
+      return false
+    }
+    /** @type {{ readonly missingApprovalScopes?: unknown }} */
+    const consent = await response.json()
+    return (
+      Array.isArray(consent.missingApprovalScopes) && consent.missingApprovalScopes.length === 0
+    )
   } catch {
     return false
   }
