@@ -515,8 +515,7 @@ describe('completeSignIn', () => {
     if (Either.isRight(result))
       throw new Error('expected the rejected authorization to fail sign-in')
     expect(result.left._tag).toBe('AuthorizationRejected')
-    expect(result.left.reason).toContain('access_denied')
-    expect(result.left.reason).toContain('Owner said no')
+    expect(result.left.reason).toBe('The server refused the sign-in. Owner said no')
   })
 
   it('never redeems a code whose state does not match the stashed one', async () => {

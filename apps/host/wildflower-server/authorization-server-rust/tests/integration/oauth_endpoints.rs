@@ -158,7 +158,8 @@ async fn authorize_unsupported_response_type_redirects_back() {
     let location = res.headers().get("location").expect("location header");
     assert_eq!(
         location,
-        "https://app.example/cb?error=unsupported_response_type&state=xyz"
+        "https://app.example/cb?error=unsupported_response_type&error_description=\
+         The+app+asked+for+a+kind+of+sign-in+this+server+doesn%27t+support.&state=xyz"
     );
 }
 
@@ -177,7 +178,9 @@ async fn authorize_unsupported_pkce_method_redirects_invalid_request() {
     let location = res.headers().get("location").expect("location header");
     assert_eq!(
         location,
-        "https://app.example/cb?error=invalid_request&state=xyz"
+        "https://app.example/cb?error=invalid_request&error_description=\
+         The+app%27s+sign-in+request+uses+a+security+method+this+server+doesn%27t+support.\
+         &state=xyz"
     );
 }
 
@@ -388,7 +391,8 @@ async fn authorize_host_app_disallowed_scope_still_redirects_invalid_scope() {
     assert_eq!(res.status(), StatusCode::FOUND);
     assert_eq!(
         location_of(&res),
-        "https://app.example/cb?error=invalid_scope&state=xyz"
+        "https://app.example/cb?error=invalid_scope&error_description=\
+         The+app+asked+for+access+it+isn%27t+registered+for.&state=xyz"
     );
 }
 
@@ -467,6 +471,11 @@ fn smart_launch_query(smart_params: &str) -> String {
     format!("{}&{smart_params}", authorize_query("test-app", "read"))
 }
 
+/// Where `/oauth/authorize` sends a replayed launch: back to the client,
+/// told the launch was already used.
+const ALREADY_USED_LOCATION: &str = "https://app.example/cb?error=invalid_request\
+     &error_description=This+launch+was+already+used.+Open+the+app+again.&state=xyz";
+
 /// A SMART App Launch round trip: a `launch` minted for the client and the FHIR
 /// base (the server's origin) as `aud` park a pending request the Owner can approve, and the request
 /// carries the consumed launch. The same `launch` is refused the second time.
@@ -502,7 +511,7 @@ async fn authorize_consumes_a_smart_launch_once() {
     assert_eq!(replay.status(), StatusCode::FOUND);
     assert_eq!(
         location_of(&replay),
-        "https://app.example/cb?error=invalid_request&state=xyz",
+        ALREADY_USED_LOCATION,
         "a consumed launch is refused"
     );
 }
@@ -529,7 +538,7 @@ async fn authorize_consumes_a_launch_for_any_client_once() {
     let replay = get_authorize(&g.router, &query).await;
     assert_eq!(
         location_of(&replay),
-        "https://app.example/cb?error=invalid_request&state=xyz",
+        ALREADY_USED_LOCATION,
         "a consumed launch is refused"
     );
 }
@@ -546,16 +555,26 @@ async fn authorize_refuses_a_bad_smart_launch_or_aud() {
         .launch_context_minter
         .mint("other-app")
         .expect("mint a launch");
-    for smart_params in [
-        "launch=forged-launch".to_owned(),
-        format!("launch={other_clients_launch}"),
-        "aud=https%3A%2F%2Fapp.example%2Ffhir-r4".to_owned(),
+    // The forged launch and the other client's read the same, so the redirect
+    // tells the two apart no more than it says anything about the other
+    // client's launch.
+    let not_recognized = "https://app.example/cb?error=invalid_request&error_description=\
+                          This+launch+isn%27t+recognized.+Open+the+app+again.&state=xyz";
+    let wrong_server = "https://app.example/cb?error=invalid_request&error_description=\
+                        The+app+asked+for+a+different+server+than+this+one.&state=xyz";
+    for (smart_params, expected_location) in [
+        ("launch=forged-launch".to_owned(), not_recognized),
+        (format!("launch={other_clients_launch}"), not_recognized),
+        (
+            "aud=https%3A%2F%2Fapp.example%2Ffhir-r4".to_owned(),
+            wrong_server,
+        ),
     ] {
         let res = get_authorize(&g.router, &smart_launch_query(&smart_params)).await;
         assert_eq!(res.status(), StatusCode::FOUND);
         assert_eq!(
             location_of(&res),
-            "https://app.example/cb?error=invalid_request&state=xyz",
+            expected_location,
             "{smart_params} is refused"
         );
     }
@@ -576,11 +595,8 @@ async fn authorize_refuses_a_bad_smart_launch_or_aud() {
 async fn authorize_renders_a_bad_smart_launch_locally_for_an_untrusted_redirect() {
     let (g, _owner_token, _db) = spin_up();
     for (smart_params, title) in [
-        ("launch=forged-launch", "Invalid launch"),
-        (
-            "aud=https%3A%2F%2Fapp.example%2Ffhir-r4",
-            "Invalid audience",
-        ),
+        ("launch=forged-launch", "Launch not recognized"),
+        ("aud=https%3A%2F%2Fapp.example%2Ffhir-r4", "Wrong server"),
     ] {
         let query = format!("{}&{smart_params}", authorize_query("ghost", "read"));
         let res = get_authorize(&g.router, &query).await;

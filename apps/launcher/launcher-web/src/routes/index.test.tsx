@@ -583,8 +583,7 @@ describe('Landing', () => {
     await mountLanding(`/?server=${encodeURIComponent(RUTH_SERVER_URL)}`, {
       signIn: signIn.stub,
       bootSignInProblem: {
-        reason:
-          'The server refused the sign-in: The supplied launch is unknown, already used, expired, or for another app.',
+        reason: 'The server refused the sign-in. This launch has expired. Open the app again.',
         serverUrl: RUTH_SERVER_URL,
       },
     })
@@ -592,7 +591,7 @@ describe('Landing', () => {
     // Assert — the reason shows beside a sign-in to that server, and nothing
     // starts on arrival.
     await waitFor(() => {
-      expect(screen.getByText(/The supplied launch is unknown/)).toBeDefined()
+      expect(screen.getByText(/This launch has expired/)).toBeDefined()
     })
     expect(screen.getByRole('button', { name: `Sign in to ${RUTH_SERVER_URL}` })).toBeDefined()
     expect(signIn.started).toEqual([])

@@ -312,6 +312,13 @@ impl GrantTx for SqliteGrantTx<'_> {
         launch_contexts::consume_launch_context(self.conn, nonce, client_id, now)
     }
 
+    fn launch_context_by_nonce(
+        &mut self,
+        nonce: &str,
+    ) -> Result<Option<LaunchContext>, AuthorizationServerError> {
+        launch_contexts::launch_context_by_nonce(self.conn, nonce)
+    }
+
     fn delete_launch_contexts_expired_by(
         &mut self,
         now: DateTime<Utc>,

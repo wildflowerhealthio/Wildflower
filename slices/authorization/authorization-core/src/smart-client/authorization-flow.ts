@@ -110,6 +110,16 @@ const decodeOAuthError = Schema.decodeUnknownOption(OAuthError)
 const describeOAuthError = ({ error, error_description }: OAuthError): string =>
   error_description === undefined ? error : `${error} (${error_description})`
 
+/**
+ * Why the server refused the sign-in: its own sentence when it gave one, and
+ * the bare `error` code only when it didn't. The code is never shown beside a
+ * sentence.
+ */
+const signInRefusalReason = ({ error, error_description }: OAuthError): string =>
+  error_description === undefined || error_description === ''
+    ? `The server refused the sign-in: ${error}.`
+    : `The server refused the sign-in. ${error_description}`
+
 /** Everything the authorization request carries beyond the endpoint itself. */
 interface AuthorizationRequestParameters {
   readonly clientId: string
@@ -190,7 +200,7 @@ const authorizationRedirectOutcome = (
   if (Option.isSome(refusal)) {
     return Either.left(
       new AuthorizationRejected({
-        reason: `The server refused the sign-in: ${describeOAuthError(refusal.value)}.`,
+        reason: signInRefusalReason(refusal.value),
       })
     )
   }

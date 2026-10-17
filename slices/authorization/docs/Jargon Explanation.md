@@ -239,8 +239,11 @@ app's launch URL; the app forwards it to `/oauth/authorize`.
   so of two racing authorizes only one wins. Expired rows are pruned when the
   next one is minted.
 - **Refusals:** an unknown, expired, consumed or other client's `launch` is
-  `invalid_request`, the same for every reason. A request with no `launch` is
-  plain OAuth.
+  `invalid_request`, and the `error_description` says why: a client is told
+  its own launch is not recognized, already used, or expired. Another
+  client's launch reads exactly like one that doesn't exist, and so does an
+  expired launch a later mint has pruned. A request with no `launch` is plain
+  OAuth.
 - **Patient:** when the context binds a patient, the consent approval must name
   the same patient (`409 LaunchPatientMismatch` otherwise), and a standing
   grant for another patient doesn't take the fast path.

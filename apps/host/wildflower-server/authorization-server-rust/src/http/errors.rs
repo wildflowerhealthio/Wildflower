@@ -260,54 +260,27 @@ impl IntoResponse for AuthorizationServerError {
 
 pub(crate) use crate::domain::oauth_error_kind::OAuthErrorKind;
 
-fn title_and_body(kind: &OAuthErrorKind) -> (&'static str, &'static str) {
+/// The local page's title for `kind`; its body is [`OAuthErrorKind::description`].
+fn title(kind: OAuthErrorKind) -> &'static str {
     match kind {
-        OAuthErrorKind::InvalidRedirectUri => (
-            "Invalid redirect URI",
-            "The supplied redirect_uri is not a well-formed URL.",
-        ),
-        OAuthErrorKind::InvalidScheme => (
-            "Invalid redirect URI scheme",
-            "The supplied redirect_uri must use http or https.",
-        ),
-        OAuthErrorKind::UnknownClient => (
-            "Unknown client",
-            "The supplied client_id is not registered.",
-        ),
-        OAuthErrorKind::DisabledClient => (
-            "Disabled client",
-            "The supplied client_id has been disabled.",
-        ),
-        OAuthErrorKind::RedirectUriNotAllowed => (
-            "Redirect URI not allowed",
-            "The supplied redirect_uri is not registered for this client.",
-        ),
-        OAuthErrorKind::UnsupportedResponseType => (
-            "Unsupported response type",
-            "Only the authorization-code flow (response_type=code) is supported.",
-        ),
-        OAuthErrorKind::UnsupportedCodeChallengeMethod => (
-            "Unsupported PKCE method",
-            "Only the S256 code_challenge_method is supported.",
-        ),
-        OAuthErrorKind::InvalidCodeChallenge => (
-            "Invalid PKCE code challenge",
-            "The supplied code_challenge is not a well-formed S256 challenge.",
-        ),
-        OAuthErrorKind::InvalidLaunch => (
-            "Invalid launch",
-            "The supplied launch is unknown, already used, expired, or for another app.",
-        ),
-        OAuthErrorKind::InvalidAudience => (
-            "Invalid audience",
-            "The supplied aud does not name this server's FHIR base URL.",
-        ),
+        OAuthErrorKind::InvalidRedirectUri => "Invalid redirect URI",
+        OAuthErrorKind::InvalidScheme => "Invalid redirect URI scheme",
+        OAuthErrorKind::UnknownClient => "Unknown client",
+        OAuthErrorKind::DisabledClient => "Disabled client",
+        OAuthErrorKind::RedirectUriNotAllowed => "Redirect URI not allowed",
+        OAuthErrorKind::UnsupportedResponseType => "Unsupported response type",
+        OAuthErrorKind::UnsupportedCodeChallengeMethod => "Unsupported PKCE method",
+        OAuthErrorKind::InvalidCodeChallenge => "Invalid PKCE code challenge",
+        OAuthErrorKind::LaunchUnknown => "Launch not recognized",
+        OAuthErrorKind::LaunchAlreadyUsed => "Launch already used",
+        OAuthErrorKind::LaunchExpired => "Launch expired",
+        OAuthErrorKind::InvalidAudience => "Wrong server",
     }
 }
 
-pub fn oauth_error_html(kind: &OAuthErrorKind) -> String {
-    let (title, body) = title_and_body(kind);
-    local_error_page(title, body)
+/// The local page `/oauth/authorize` renders for a refusal it may not redirect.
+pub fn oauth_error_html(kind: OAuthErrorKind) -> String {
+    local_error_page(title(kind), kind.description())
 }
 
 /// The page `/oauth/sign-in` renders for a request it refuses.
