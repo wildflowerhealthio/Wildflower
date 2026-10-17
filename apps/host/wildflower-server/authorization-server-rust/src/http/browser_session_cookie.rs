@@ -27,9 +27,12 @@ use axum::http::{header, HeaderMap};
 use cookie::Cookie;
 
 use crate::domain::capabilities::oauth::OWNER_SESSION_TTL;
+use crate::domain::capabilities::session::TokenVerifier;
 use crate::domain::token::{VerifiedClaims, VerifyError};
+use crate::domain::GrantStore;
 use crate::http::state::AuthorizationServerState;
 use crate::live_bindings::{FromState, LiveTokenVerifier};
+use crate::BROWSER_SESSION_CLIENT_ID;
 
 /// The browser session cookie. The `__Host-` prefix holds a browser to
 /// accepting it only `Secure`, with `Path=/` and no `Domain`, so it is this
@@ -72,10 +75,10 @@ fn browser_session_cookie(value: &str, max_age_seconds: i64) -> String {
 }
 
 /// Whether the session a browser session cookie holds has ended: the gates
-/// would refuse `session_token` as a bad, expired or revoked token (by
-/// its `jti`, its subject or its browser session), checked by the same
-/// [`TokenVerifier`](crate::domain::capabilities::session::TokenVerifier) the
-/// gates run.
+/// would refuse `session_token` as a bad, expired or revoked token (by its
+/// `jti`, its subject or its browser session), checked by the same
+/// [`TokenVerifier`] the gates run, or it is no browser session's token at
+/// all.
 ///
 /// # Errors
 ///
@@ -89,9 +92,9 @@ pub fn browser_session_has_ended(
 }
 
 /// The verified claims of the browser session `headers` carry, when the
-/// browser that sent them is signed in: its cookie holds a token the gates
-/// would accept. Its `sid` names the browser session. `None` when
-/// there is no cookie or its session has ended (see
+/// browser that sent them is signed in: its cookie holds a browser session's
+/// token the gates would accept. Its `sid` names the browser session. `None`
+/// when there is no cookie or its session has ended (see
 /// [`browser_session_has_ended`]).
 ///
 /// # Errors
@@ -108,19 +111,23 @@ pub(crate) fn carried_browser_session(
     standing_session_claims(token_verifier, &session_token)
 }
 
-/// The verified claims of `session_token`, or `None` when
-/// `token_verifier` refuses it for good: bad, expired or revoked.
+/// The verified claims of `session_token`, or `None` when it holds no
+/// standing browser session: `token_verifier` refuses it for good (bad,
+/// expired or revoked), or it is some other token, not issued to the
+/// browser-session client under a browser session (its `sid`).
 ///
 /// # Errors
 ///
 /// The server-side [`VerifyError`]s, when a store can't be read.
-fn standing_session_claims(
-    token_verifier: &LiveTokenVerifier,
+fn standing_session_claims<S: GrantStore>(
+    token_verifier: &TokenVerifier<S>,
     session_token: &str,
 ) -> Result<Option<VerifiedClaims>, VerifyError> {
     match token_verifier.verify(session_token) {
-        Ok(claims) => Ok(Some(claims)),
-        Err(VerifyError::TokenRejected | VerifyError::Revoked) => Ok(None),
+        Ok(claims) if claims.subject == BROWSER_SESSION_CLIENT_ID && claims.sid.is_some() => {
+            Ok(Some(claims))
+        }
+        Ok(_) | Err(VerifyError::TokenRejected | VerifyError::Revoked) => Ok(None),
         Err(error) => Err(error),
     }
 }
@@ -140,11 +147,93 @@ fn browser_session_token(headers: &HeaderMap) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use axum::http::{header, HeaderMap, HeaderValue};
+    use chrono::{DateTime, Duration, Utc};
 
     use super::{
         browser_session_clearing_set_cookie, browser_session_set_cookie, browser_session_token,
+        standing_session_claims,
     };
+    use crate::domain::browser_session::BrowserSession;
+    use crate::domain::capabilities::session::TokenVerifier;
+    use crate::domain::signing_key::SigningKey;
+    use crate::domain::test_fake::{seed_active_signing_key, FakeGrantStore};
+    use crate::domain::token::{mint_access_token, NewJwtArgs};
+    use crate::domain::GrantStore as _;
+    use crate::ports::RevocationCheck;
+    use crate::BROWSER_SESSION_CLIENT_ID;
+
+    const ORIGIN: &str = "https://ruth.relay.example";
+
+    /// A revocation check that revokes nothing.
+    struct NothingRevoked;
+
+    impl RevocationCheck for NothingRevoked {
+        fn is_revoked(
+            &self,
+            _jti: Option<&str>,
+            _issued_at: Option<DateTime<Utc>>,
+            _subject: &str,
+        ) -> Result<bool, String> {
+            Ok(false)
+        }
+    }
+
+    /// A token for this server, issued to `client_id` under `sid`.
+    fn mint(key: &SigningKey, client_id: &str, sid: Option<&str>) -> String {
+        mint_access_token(
+            key,
+            &NewJwtArgs {
+                client_id,
+                scopes: &["system/*.cruds".to_owned()],
+                ttl: Duration::minutes(5),
+                issuer: ORIGIN,
+                audience: Some(ORIGIN),
+                patient: None,
+                sid,
+            },
+        )
+        .expect("mint")
+    }
+
+    /// Only a token issued to the browser-session client under a standing
+    /// browser session is one: another client's token the gates would accept,
+    /// even under that session, and a browser-session client's token with no
+    /// session, hold no browser session.
+    #[test]
+    fn only_a_browser_session_token_holds_a_browser_session() {
+        let store = FakeGrantStore::default();
+        let key = seed_active_signing_key(&store);
+        let session = BrowserSession::new_owner(vec![], Duration::hours(8), Utc::now());
+        store.insert_browser_session(&session).expect("insert");
+        let verifier = TokenVerifier::new(store, Arc::new(NothingRevoked), ORIGIN.into());
+
+        let browser_session_token = mint(&key, BROWSER_SESSION_CLIENT_ID, Some(&session.sid));
+        let claims = standing_session_claims(&verifier, &browser_session_token)
+            .expect("checked")
+            .expect("a browser session");
+        assert_eq!(claims.sid.as_deref(), Some(session.sid.as_str()));
+        for (token, case) in [
+            (mint(&key, "another-client", None), "another client's token"),
+            (
+                mint(&key, "another-client", Some(&session.sid)),
+                "another client's token under the session",
+            ),
+            (
+                mint(&key, BROWSER_SESSION_CLIENT_ID, None),
+                "a browser-session client token without a sid",
+            ),
+        ] {
+            assert!(
+                standing_session_claims(&verifier, &token)
+                    .expect("checked")
+                    .is_none(),
+                "{case} holds no browser session"
+            );
+        }
+    }
 
     fn cookie_headers(cookie_headers: &[&'static str]) -> HeaderMap {
         let mut headers = HeaderMap::new();
