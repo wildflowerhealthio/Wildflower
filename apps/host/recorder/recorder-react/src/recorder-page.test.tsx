@@ -390,6 +390,30 @@ describe('RecorderPage', () => {
       expect(screen.getAllByRole('alert')).toHaveLength(1)
     })
 
+    it('should still show the read bookmarks when a stamp sent before they arrive is refused', async () => {
+      // Arrange
+      const read = Promise.withResolvers<unknown>()
+      const harness = renderPage({
+        bookmarkCommand: (command) =>
+          command === BOOKMARKS_COMMAND
+            ? read.promise
+            : Promise.reject('replacing recorder-bookmarks.json: disk full'),
+      })
+      await harness.user.type(screen.getByLabelText('URL'), 'https://example.com')
+      await harness.user.click(startButton())
+      expect((await screen.findByRole('alert')).textContent).toContain('disk full')
+
+      // Act
+      await act(async () => {
+        read.resolve([LIFELABS])
+        await read.promise
+      })
+
+      // Assert
+      expect(await screen.findByRole('button', { name: LIFELABS.name })).toBeDefined()
+      expect(screen.queryByText('Reading the bookmarks…')).toBeNull()
+    })
+
     it("should show the host's reason when it refuses a bookmark", async () => {
       // Arrange
       const harness = renderPage({

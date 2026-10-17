@@ -44,36 +44,45 @@ interface Bookmarks {
  * and replaced by the host's answer to each change.
  *
  * @remarks
- * Only the answer to the latest request lands, so a slow read or change
- * can't overwrite the list a later one answered with.
+ * An answer lands only if no later request's answer has landed already, so a
+ * slow read or change can't overwrite the list a later one answered with. A
+ * refused change lands nothing, so it never holds back an earlier answer: the
+ * read on mount still lands when a change made before it answers is refused.
  *
  * @param invoke - Tauri's `invoke`
  */
 const useBookmarks = (invoke: InvokeHostCommand): Bookmarks => {
   const [state, setState] = useState<BookmarksState>({ _tag: 'Reading' })
   const [changesInFlight, setChangesInFlight] = useState(0)
-  const latestRequest = useRef(0)
+  const requestsMade = useRef(0)
+  const lastLandedRequest = useRef(0)
   const mounted = useRef(true)
 
   /**
-   * Run `request`, and put its answer in place if no later request has been
-   * made: the bookmarks, or, for the read on mount, why there are none.
+   * Run `request`, and put its answer in place unless a later request's
+   * answer already has: the bookmarks, or, for the read on mount, why there
+   * are none. A refused change puts nothing in place.
    */
   const settle = useCallback(
     (
       request: Effect.Effect<readonly Bookmark[], BookmarksUnavailable>,
       refusal: 'leaves the list' | 'is unreadable'
     ): Promise<Either.Either<readonly Bookmark[], BookmarksUnavailable>> => {
-      latestRequest.current += 1
-      const thisRequest = latestRequest.current
+      requestsMade.current += 1
+      const thisRequest = requestsMade.current
       return Effect.runPromise(Effect.either(request)).then((answer) => {
-        if (mounted.current && thisRequest === latestRequest.current) {
-          Either.match(answer, {
-            onRight: (bookmarks) => setState({ _tag: 'Read', bookmarks }),
-            onLeft: ({ message }) => {
-              if (refusal === 'is unreadable') setState({ _tag: 'Unreadable', message })
-            },
-          })
+        const lands =
+          mounted.current &&
+          thisRequest > lastLandedRequest.current &&
+          (Either.isRight(answer) || refusal === 'is unreadable')
+        if (lands) {
+          lastLandedRequest.current = thisRequest
+          setState(
+            Either.match(answer, {
+              onRight: (bookmarks): BookmarksState => ({ _tag: 'Read', bookmarks }),
+              onLeft: ({ message }): BookmarksState => ({ _tag: 'Unreadable', message }),
+            })
+          )
         }
         return answer
       })

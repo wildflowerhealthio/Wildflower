@@ -24,8 +24,8 @@ const DAYS_PER_MONTH = 30.44
  *   - under 1 day → `N hr ago`
  *   - under 14 days → `N day ago` / `N days ago`
  *   - under 63 days → `N weeks ago`, whole weeks, so 2 to 8
- *   - otherwise   → `N months ago`, whole 30.44-day months, so from 2; a
- *     year reads `12 months ago`
+ *   - otherwise   → `N months ago`, whole 30.44-day months, so from 2;
+ *     there is no years bucket (365 days reads `11 months ago`)
  *
  * Future `from` values (clock skew, or a row authored just ahead of
  * the wall clock) clamp to `now` rather than rendering a "−5 min ago"
