@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 import { AppRoot } from './app-root.tsx'
 import {
   BASEPATH,
-  browserHistoryAt,
+  pageAt,
   restorePageBrowserApis,
   stubPageBrowserApis,
 } from './importer-app.test-helpers.ts'
@@ -80,9 +80,9 @@ describe('AppRoot over the address bar', () => {
         }
       })
     )
-    const history = browserHistoryAt('?code=abc&state=xyz')
+    const page = pageAt('?code=abc&state=xyz')
     const callbackUrl = addressBar()
-    render(<AppRoot basepath={BASEPATH} history={history} />)
+    render(<AppRoot page={page} />)
     await waitFor(() => {
       expect(readyMock).toHaveBeenCalledTimes(1)
     })

@@ -57,7 +57,7 @@ const renderAppRoot = (): void => {
   onTestFinished(() => {
     history.destroy()
   })
-  render(<AppRoot basepath={BASEPATH} history={history} />)
+  render(<AppRoot page={{ basepath: BASEPATH, history }} />)
 }
 
 /** The address bar's path and query. */

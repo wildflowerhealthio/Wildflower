@@ -32,7 +32,7 @@ Those identities are load-bearing — see
 
 `src/` keeps the entry and the root at its top: `main.tsx` (the `index.html`
 entry), `config.ts`, `app-root.tsx` (the package export), `app.tsx` (the
-handshake, then `ImporterApp`, which builds the router) and `router.ts`
+handshake gate, then `ImporterApp`, which builds the router) and `router.ts`
 (`buildRouter` and the router context type). `routes/` holds the TanStack
 file routes (the tree is generated into the git-ignored `src/routeTree.gen.ts`):
 
@@ -154,13 +154,10 @@ accepts the writes and the set has room to grow.
 
 ## Traps
 
-- **Route only after the handshake.** The app root is the OAuth redirect
-  target, so its URL carries `?code=…&state=…`. `App` builds the router (in
-  `ImporterApp`) only once `useSmartHandshake` is ready, by when fhirclient
-  has taken `code` and `state` out of the URL: nothing the router does may
-  rewrite a URL the token exchange still reads. The browser history is created
-  once in `main.tsx` (creating it touches no URL), and the basepath is the
-  served directory, read there before the 404 redirect is restored.
+- **Route only after the handshake.** The browser history, the basepath and
+  building the router under `SmartHandshakeGate` are `smart-app-react`'s;
+  the ordering rules are its
+  [Routing a SMART app](../../slices/smart-app-react/AGENTS.md#routing-a-smart-app).
 - **Plain `FetchHttpClient.layer`.** The importer's assets are served from
   wildflowerhealth.io and it writes to the FHIR base the handshake named; its
   only outbound traffic is that FHIR server and, once the visitor says yes in
@@ -238,7 +235,8 @@ the port.
 <https://importer.wildflowerhealth.io/>, and a PR preview's under
 `https://importer.wildflowerhealth.io/pr-<n>/`. The relative `base: './'` in
 `vite.config.ts` and the router's basepath (the served directory, which
-`main.tsx` reads) are the whole subpath mechanism. A deep link such as
+`smart-app-react`'s `openSmartAppPage` reads off the entry module's URL) are
+the whole subpath mechanism. A deep link such as
 `/anonymize` reaches the app through the site's 404 page, whose redirect
 `main.tsx` completes (`restoreRedirectedUrl`). The marketing site links there from its infrastructure section
 (`apps/wildflower-site/marketing-site-web/src/components/infrastructure.tsx`,
@@ -250,12 +248,12 @@ The entry runs on `smart-app-react`, the chrome every first-party SMART app
 boots through (see [slices/smart-app-react/AGENTS.md](../../slices/smart-app-react/AGENTS.md)).
 `main.tsx` imports the design-system stylesheet module (`react-tundraish/styles`:
 tundra → tundraish → fonts; branding's tokens arrive through `branding-react`'s
-JS entry), reads the served directory, completes a GitHub Pages 404 redirect,
+JS entry), completes a GitHub Pages 404 redirect,
 calls `addOsColorSchemeListener()`, and renders
-`<AppRoot basepath={…} history={createBrowserHistory()} />`. `AppRoot` (exported from `app-root.tsx` and from the
+`<AppRoot page={openSmartAppPage(import.meta.url)} />`. `AppRoot` (exported from `app-root.tsx` and from the
 package's `"."` export as a `source`-only seam) is
 `<SmartAppRoot app="importer" registration={smartRegistration} telemetry={smartAppTelemetry}>`
-around `<App basepath={…} history={…} />`; `SmartAppRoot` holds every branch behind the telemetry
+around `<App page={…} />`; `SmartAppRoot` holds every branch behind the telemetry
 consent dialog and owns the `QueryClientProvider` and the chrome gate:
 
 - **launch** (`arrivingSmartLaunchFrom`) → the launch page (`BrandBar` over

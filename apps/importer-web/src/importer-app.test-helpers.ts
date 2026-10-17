@@ -1,4 +1,5 @@
-import { createBrowserHistory, type RouterHistory } from '@tanstack/react-router'
+import { createBrowserHistory } from '@tanstack/react-router'
+import type { SmartAppPage } from '@wildflowerhealthio/smart-app-react'
 import { onTestFinished, vi } from 'vite-plus/test'
 
 /** The directory the app is served from in these tests. */
@@ -43,20 +44,20 @@ const restorePageBrowserApis = (): void => {
 }
 
 /**
- * Put `route` under {@link BASEPATH} in the address bar, and hand back a
- * browser history over it that the test destroys as it finishes, as a page
- * would never need to.
+ * Put `route` under {@link BASEPATH} in the address bar, and hand back the
+ * page over it: a browser history the test destroys as it finishes (as a page
+ * would never need to), under {@link BASEPATH}.
  */
-const browserHistoryAt = (route: string): RouterHistory => {
+const pageAt = (route: string): SmartAppPage => {
   window.history.replaceState(null, '', `${BASEPATH}${route}`)
   const history = createBrowserHistory()
   onTestFinished(() => {
     history.destroy()
   })
-  return history
+  return { history, basepath: BASEPATH }
 }
 
 /** The address bar's path under {@link BASEPATH}. */
 const currentRoute = (): string => window.location.pathname.slice(BASEPATH.length)
 
-export { BASEPATH, browserHistoryAt, currentRoute, restorePageBrowserApis, stubPageBrowserApis }
+export { BASEPATH, currentRoute, pageAt, restorePageBrowserApis, stubPageBrowserApis }

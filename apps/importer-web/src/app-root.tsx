@@ -1,5 +1,4 @@
-import type { RouterHistory } from '@tanstack/react-router'
-import { SmartAppRoot } from '@wildflowerhealthio/smart-app-react'
+import { type SmartAppPage, SmartAppRoot } from '@wildflowerhealthio/smart-app-react'
 import type { JSX } from 'react'
 
 import { App } from './app.tsx'
@@ -14,18 +13,15 @@ import { smartAppTelemetry, smartRegistration } from './config.ts'
  * Its telemetry goes to the app's own Sentry project (`smartAppTelemetry`),
  * and only once the visitor consents to it.
  *
- * @param basepath - The served directory, the app's router's basepath.
- * @param history - The window's history, which the app's router navigates.
+ * @param page - The page the app's router runs over.
  * @param launched - Whether the URL carries a SMART callback to complete; see
  *   `SmartAppRoot`. Defaults to the live URL check; tests pass it explicitly.
  */
 function AppRoot({
-  basepath,
-  history,
+  page,
   launched,
 }: {
-  readonly basepath: string
-  readonly history: RouterHistory
+  readonly page: SmartAppPage
   readonly launched?: boolean
 }): JSX.Element {
   return (
@@ -35,7 +31,7 @@ function AppRoot({
       telemetry={smartAppTelemetry}
       launched={launched}
     >
-      <App basepath={basepath} history={history} />
+      <App page={page} />
     </SmartAppRoot>
   )
 }

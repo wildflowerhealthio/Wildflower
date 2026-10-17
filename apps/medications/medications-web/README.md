@@ -14,15 +14,14 @@ boots through (see [slices/smart-app-react/AGENTS.md](../../../slices/smart-app-
 `src/main.tsx` is the `index.html` entry: it imports the design-system
 stylesheet module (`react-tundraish/styles` — tundra-css, react-tundraish and
 the self-hosted fonts, in that order),
-reads the served directory (the router's basepath), completes a GitHub Pages
-404 redirect, wires the OS colour-scheme listener, and renders
-`<AppRoot basepath={basepath} history={createBrowserHistory()} />` inside
-`<StrictMode>`: the page's one history, which the router navigates once it
-is built.
+completes a GitHub Pages 404 redirect, wires the OS colour-scheme listener,
+and renders `<AppRoot page={openSmartAppPage(import.meta.url)} />` inside
+`<StrictMode>`: the page's one history and the served directory, which the
+router navigates and runs under once it is built.
 
 `src/app-root.tsx` exports `AppRoot`: `<SmartAppRoot app="medications"
 registration={smartRegistration} telemetry={smartAppTelemetry}>` around
-`<App basepath={basepath} history={history} />`. `SmartAppRoot` shows the telemetry consent dialog first, then
+`<App page={page} />`. `SmartAppRoot` shows the telemetry consent dialog first, then
 latches on mount which of three cases the URL is:
 
 - **Launch** (`iss`, with or without an EHR's `launch`, and no callback) —
@@ -43,8 +42,7 @@ The launched and standalone branches share the root's single
 the `VITE_SENTRY_DSN_MEDICATIONS_WEB` build variable (see `.env.example`).
 Nothing is reported until the visitor says yes.
 
-`AppRoot` takes the `basepath` the app's router runs at, the `history` it
-navigates, and an optional
+`AppRoot` takes the `page` the app's router runs over and an optional
 `launched` prop (defaults to the live URL checks) so the launched and
 standalone branches are testable without URL manipulation. The package exports
 `AppRoot` via the `source` condition for future aggregator-shell composition.
@@ -105,22 +103,16 @@ context (`src/page-state.ts`, a `react-kitchen-sink` subscribable store).
 
 ### The router and the OAuth callback
 
-The page root is the OAuth redirect target, so the router is built only once
-the SMART handshake has completed: by then fhirclient has taken `code` and
-`state` out of the address bar, and nothing the router does (the `/`
-redirect, a tab change) can rewrite a URL the token exchange still reads. A
-launch URL never reaches the router at all: `SmartAppRoot` starts its launch
-before the app mounts. The history `src/main.tsx` creates first only tags the
-current entry's state, leaving the URL as it is. The router is built once,
-for the visit, with a context fixed for it: the page's query cache, the one
-client the handshake hands out, and the page store.
-
-The router's basepath is the served directory: `src/main.tsx` reads it with
-`branding-core`'s `basenameOf` before completing a GitHub Pages 404 redirect,
-so a deep link such as `/calendar` (or `/pr-<n>/calendar` in a preview) is
-served by the 404 page's redirect to the app root and restored there. The
-OAuth redirect URI is the same directory, so a launch from any tab returns to
-the app root, which opens Medications.
+The history, the basepath, and building the router only once the SMART
+handshake has completed are `smart-app-react`'s; the ordering rules are its
+[Routing a SMART app](../../../slices/smart-app-react/AGENTS.md#routing-a-smart-app).
+`<App />` builds the router under its `SmartHandshakeGate`, once, for the
+visit, with a context fixed for it: the page's query cache, the one client
+the handshake hands out, and the page store. A deep link such as `/calendar`
+(or `/pr-<n>/calendar` in a preview) is served by the 404 page's redirect to
+the app root and restored there. The OAuth redirect URI is the app root,
+where every launch starts, so a launch returns there, and the root opens
+Medications.
 
 ### Bundled catalogs
 

@@ -1,5 +1,6 @@
-import { createRouter, type Router, type RouterHistory } from '@tanstack/react-router'
+import { createRouter, type Router } from '@tanstack/react-router'
 import type { FhirR4ResourcesRouterContext } from '@wildflowerhealthio/fhir-r4-react'
+import type { SmartAppPage } from '@wildflowerhealthio/smart-app-react'
 
 import { routeTree } from './routeTree.gen.ts'
 
@@ -13,21 +14,12 @@ type RouterContext = FhirR4ResourcesRouterContext.RouterContext
 type ImporterRouter = Router<typeof routeTree, 'never', false>
 
 /**
- * The app's router, at `basepath` (the served directory: one build serves its
- * origin's root and a PR preview's `/pr-<n>/`) over `history`, giving every
+ * The app's router over `page` (its history, under the served directory: one
+ * build serves its origin's root and a PR preview's `/pr-<n>/`), giving every
  * route `context`.
  */
-const buildRouter = (options: {
-  readonly history: RouterHistory
-  readonly basepath: string
-  readonly context: RouterContext
-}): ImporterRouter =>
-  createRouter({
-    routeTree,
-    history: options.history,
-    basepath: options.basepath,
-    context: options.context,
-  })
+const buildRouter = ({ history, basepath }: SmartAppPage, context: RouterContext): ImporterRouter =>
+  createRouter({ routeTree, history, basepath, context })
 
 declare module '@tanstack/react-router' {
   // The app's is the only router on the page, so registering it types every

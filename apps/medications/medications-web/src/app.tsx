@@ -1,25 +1,25 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { RouterProvider, type RouterHistory } from '@tanstack/react-router'
+import { RouterProvider } from '@tanstack/react-router'
+import type { SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
-  type SmartClient,
-  useLaunchFailureRedirect,
-  useSmartHandshake,
-} from '@wildflowerhealthio/fhir-r4-react/smart'
-import { ErrorBanner } from '@wildflowerhealthio/react-tundraish'
-import { LoadingLine } from '@wildflowerhealthio/smart-app-react'
-import { Match } from 'effect'
+  LoadingLine,
+  type SmartAppPage,
+  SmartHandshakeGate,
+} from '@wildflowerhealthio/smart-app-react'
 import { type JSX, useState } from 'react'
 
 import { makePageStore } from './page-state.ts'
 import { buildRouter } from './router.ts'
 import styles from './app.module.css'
 
+/** Props for {@link App}. */
+interface AppProps {
+  /** The page the app's router runs over. */
+  readonly page: SmartAppPage
+}
+
 /** Props for {@link MedicationsRouter}. */
-interface MedicationsRouterProps {
-  /** The window's history, which the router navigates. */
-  readonly history: RouterHistory
-  /** The served directory, the router's basepath. */
-  readonly basepath: string
+type MedicationsRouterProps = AppProps & {
   /** The client the completed SMART handshake handed the app. */
   readonly client: SmartClient
 }
@@ -29,10 +29,8 @@ interface MedicationsRouterProps {
  * then.
  *
  * @remarks
- * Mounted only once the SMART handshake has completed, by when fhirclient has
- * taken `code` and `state` out of the address bar: the router reads the URL
- * and redirects `/` to a tab, so building it any earlier could rewrite the
- * callback URL the token exchange still reads.
+ * Mounted under `smart-app-react`'s `SmartHandshakeGate`, so never before the
+ * handshake is done with the callback URL.
  *
  * Its context is fixed for the visit: the page's query cache, the one client
  * the handshake hands out (its code is single-use, so there is never a second),
@@ -40,24 +38,12 @@ interface MedicationsRouterProps {
  * root route's `?patient=`, so a patient change is a navigation and the
  * router lives as long as the page.
  */
-function MedicationsRouter({ history, basepath, client }: MedicationsRouterProps): JSX.Element {
+function MedicationsRouter({ page, client }: MedicationsRouterProps): JSX.Element {
   const queryClient = useQueryClient()
   const [router] = useState(() =>
-    buildRouter({
-      history,
-      basepath,
-      context: { queryClient, client, pageStore: makePageStore() },
-    })
+    buildRouter(page, { queryClient, client, pageStore: makePageStore() })
   )
   return <RouterProvider router={router} />
-}
-
-/** Props for {@link App}. */
-interface AppProps {
-  /** The window's history, which the router navigates once the handshake completes. */
-  readonly history: RouterHistory
-  /** The served directory, the router's basepath. */
-  readonly basepath: string
 }
 
 /**
@@ -72,28 +58,15 @@ interface AppProps {
  * single-use code once; the routes read the MedicationRequests on the same
  * client.
  */
-const App = ({ history, basepath }: AppProps): JSX.Element => {
-  const handshake = useSmartHandshake()
-  // A failed exchange has nothing to retry here (the code is single-use), so
-  // carry the reason to the app root, which can offer the connect menu.
-  useLaunchFailureRedirect(handshake)
-
-  const body = Match.value(handshake).pipe(
-    Match.when({ kind: 'error' }, ({ error }): JSX.Element => <ErrorBanner error={error} />),
-    Match.when({ kind: 'ready' }, ({ client }): JSX.Element => (
-      <MedicationsRouter history={history} basepath={basepath} client={client} />
-    )),
-    Match.orElse((): JSX.Element => <LoadingLine subject="medications" />)
-  )
-
-  return (
-    <main className={styles['app']}>
-      <header className={styles['app__header']}>
-        <h1 className="text-heading-3">Medications</h1>
-      </header>
-      {body}
-    </main>
-  )
-}
+const App = ({ page }: AppProps): JSX.Element => (
+  <main className={styles['app']}>
+    <header className={styles['app__header']}>
+      <h1 className="text-heading-3">Medications</h1>
+    </header>
+    <SmartHandshakeGate connecting={<LoadingLine subject="medications" />}>
+      {(client) => <MedicationsRouter page={page} client={client} />}
+    </SmartHandshakeGate>
+  </main>
+)
 
 export { App, type AppProps }

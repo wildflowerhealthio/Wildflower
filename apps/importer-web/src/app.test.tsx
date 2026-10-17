@@ -19,9 +19,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { ImporterApp } from './app.tsx'
 import {
-  BASEPATH,
-  browserHistoryAt,
   currentRoute,
+  pageAt,
   restorePageBrowserApis,
   stubPageBrowserApis,
 } from './importer-app.test-helpers.ts'
@@ -560,19 +559,19 @@ const safeParseBundle = (body: string): RecordedBundleShape | undefined => {
 /**
  * Mount the app through the **real** `buildSmartRouterContext`, so the URL
  * prefixing and the bearer header under test are the production ones, at
- * `route` under {@link BASEPATH} (the app root unless told otherwise).
+ * `route` under the test basepath (the app root unless told otherwise).
  */
 const mount = (config: {
   readonly sourceFiles?: readonly ServerSourceFile[]
   readonly route?: string
 }): void => {
-  const history = browserHistoryAt(config.route ?? '')
+  const page = pageAt(config.route ?? '')
   historyLengthAtMount = window.history.length
   const context = buildSmartRouterContext(
     { serverUrl: SERVER_URL, accessToken: ACCESS_TOKEN },
     recordingServer(config.sourceFiles ?? [])
   )
-  render(<ImporterApp history={history} basepath={BASEPATH} context={context} />)
+  render(<ImporterApp page={page} context={context} />)
 }
 
 /** Drive the local-pick flow from an empty server all the way to a completed import. */
