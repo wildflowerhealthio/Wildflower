@@ -597,7 +597,8 @@ holds an expired or revoked token is served as if the cookie weren't sent, and
 the response clears it. The cookie needs `https`, as the server's origin,
 `https://<domain>`, is. `/oauth/authorize` reads the cookie too: a parked
 request from a browser whose session can decide consents (its scopes cover
-`wildflower/AuthorizationRequest.u`, as `OWNER_SCOPES` do) goes to the
+both `wildflower/AuthorizationRequest.r` and `wildflower/AuthorizationRequest.u`,
+as `OWNER_SCOPES` do) goes to the
 [consent card](#consent-card) rather than the [wait page](#wait-page), and
 records that it can be decided there (`decidable_in_requesting_browser`).
 Only a token issued to the browser-session client under a browser session

@@ -27,7 +27,9 @@ use axum::http::{header, HeaderMap};
 use cookie::Cookie;
 use wildflowerhealthio_scope_capabilities::GrantedScopes as _;
 
-use crate::domain::capabilities::access::consents::consent_decider_scopes;
+use crate::domain::capabilities::access::consents::{
+    consent_decider_scopes, consent_reader_scopes,
+};
 use crate::domain::capabilities::oauth::OWNER_SESSION_TTL;
 use crate::domain::capabilities::session::TokenVerifier;
 use crate::domain::token::{VerifiedClaims, VerifyError};
@@ -114,13 +116,15 @@ pub(crate) fn carried_browser_session(
 }
 
 /// Whether the browser session `claims` describe can decide consents: its
-/// grant covers what deciding one requires ([`consent_decider_scopes`]). A
-/// request such a browser starts is sent to the consent card and decided
+/// grant covers both loading a request on the consent card
+/// ([`consent_reader_scopes`]) and deciding it ([`consent_decider_scopes`]).
+/// A request such a browser starts is sent to the consent card and decided
 /// there, so the start spends nothing of the authorization start limit.
 pub(crate) fn can_decide_consents(claims: &VerifiedClaims) -> bool {
     let granted = claims.granted();
-    consent_decider_scopes()
+    consent_reader_scopes()
         .iter()
+        .chain(&consent_decider_scopes())
         .all(|required| granted.covers(required))
 }
 
@@ -167,7 +171,7 @@ mod tests {
 
     use super::{
         browser_session_clearing_set_cookie, browser_session_set_cookie, browser_session_token,
-        standing_session_claims,
+        can_decide_consents, standing_session_claims,
     };
     use crate::domain::browser_session::BrowserSession;
     use crate::domain::capabilities::session::TokenVerifier;
@@ -196,11 +200,22 @@ mod tests {
 
     /// A token for this server, issued to `client_id` under `sid`.
     fn mint(key: &SigningKey, client_id: &str, sid: Option<&str>) -> String {
+        mint_scoped(key, client_id, sid, &["system/*.cruds"])
+    }
+
+    /// A token for this server, issued to `client_id` under `sid` with `scopes`.
+    fn mint_scoped(
+        key: &SigningKey,
+        client_id: &str,
+        sid: Option<&str>,
+        scopes: &[&str],
+    ) -> String {
+        let scopes: Vec<String> = scopes.iter().map(|&scope| scope.to_owned()).collect();
         mint_access_token(
             key,
             &NewJwtArgs {
                 client_id,
-                scopes: &["system/*.cruds".to_owned()],
+                scopes: &scopes,
                 ttl: Duration::minutes(5),
                 issuer: ORIGIN,
                 audience: Some(ORIGIN),
@@ -245,6 +260,36 @@ mod tests {
                     .is_none(),
                 "{case} holds no browser session"
             );
+        }
+    }
+
+    /// A browser session decides consents only when it can both read a
+    /// request for the consent card and update it to decide it.
+    #[test]
+    fn deciding_consents_takes_reading_and_updating_requests() {
+        let store = FakeGrantStore::default();
+        let key = seed_active_signing_key(&store);
+        let session = BrowserSession::new_owner(vec![], Duration::hours(8), Utc::now());
+        store.insert_browser_session(&session).expect("insert");
+        let verifier = TokenVerifier::new(store, Arc::new(NothingRevoked), ORIGIN.into());
+
+        for (scopes, expected) in [
+            (
+                &[
+                    "wildflower/AuthorizationRequest.r",
+                    "wildflower/AuthorizationRequest.u",
+                ][..],
+                true,
+            ),
+            (&["wildflower/AuthorizationRequest.ru"][..], true),
+            (&["wildflower/AuthorizationRequest.r"][..], false),
+            (&["wildflower/AuthorizationRequest.u"][..], false),
+        ] {
+            let token = mint_scoped(&key, BROWSER_SESSION_CLIENT_ID, Some(&session.sid), scopes);
+            let claims = standing_session_claims(&verifier, &token)
+                .expect("checked")
+                .expect("a browser session");
+            assert_eq!(can_decide_consents(&claims), expected, "{scopes:?}");
         }
     }
 

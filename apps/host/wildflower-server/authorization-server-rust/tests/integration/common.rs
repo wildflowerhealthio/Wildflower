@@ -880,7 +880,8 @@ pub async fn signed_in_owner_session_token(g: &AuthorizationServer) -> String {
 }
 
 /// The token of a signed-in browser whose session can't decide consents: it
-/// can read authorization requests but not update them.
+/// can read authorization requests but not update them, and deciding takes
+/// both.
 pub async fn signed_in_session_token_that_cannot_decide(
     g: &AuthorizationServer,
     db: &TestDb,
