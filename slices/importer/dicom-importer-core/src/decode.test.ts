@@ -1,5 +1,6 @@
 import {
   dicomStudyArb,
+  withElementsSpliced,
   writeDicom,
   writeStudy,
   type StudyFixture,
@@ -454,6 +455,56 @@ describe('the DICOM batch decode', () => {
       { fileName: 'junk.dcm', bytes: new Uint8Array([0x00, 0x01, 0x02]) },
     ])
     expect(result.unreadableFiles.map((one) => one.title)).toEqual(['junk.dcm'])
+    expect(studiesOf(result)).toHaveLength(1)
+  })
+
+  it('reports a file in ISO 2022 code extensions on its own, leaving the study readable', async () => {
+    // `Yamada^Tarou=` then `山田^太郎` in ISO 2022 IR 87 — PS3.5 H.3.1.
+    const yamada = withElementsSpliced(
+      writeDicom({
+        ...TAGS,
+        PatientName: undefined,
+        SpecificCharacterSet: '\\ISO 2022 IR 87',
+        SeriesInstanceUID: '1.2.3.4.5.1',
+        SOPInstanceUID: 'I2',
+      }),
+      [
+        {
+          tag: 0x0010_0010,
+          vr: 'PN',
+          value: new Uint8Array([
+            ...new TextEncoder().encode('Yamada^Tarou='),
+            0x1b,
+            0x24,
+            0x42,
+            0x3b,
+            0x33,
+            0x45,
+            0x44,
+            0x1b,
+            0x28,
+            0x42,
+            0x5e,
+            0x1b,
+            0x24,
+            0x42,
+            0x42,
+            0x40,
+            0x4f,
+            0x3a,
+            0x1b,
+            0x28,
+            0x42,
+          ]),
+        },
+      ]
+    )
+    const result = await run([
+      file('1', { SOPInstanceUID: 'I1' }),
+      { fileName: 'yamada.dcm', bytes: yamada },
+    ])
+    expect(result.unreadableFiles.map((one) => one.title)).toEqual(['yamada.dcm'])
+    expect(result.unreadableFiles[0]?.error.message).toContain('ISO 2022')
     expect(studiesOf(result)).toHaveLength(1)
   })
 

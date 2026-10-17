@@ -217,6 +217,8 @@ const formatPersonName = (pn: PersonName.Type): string => {
 
 /** A map of DICOM tag hex → value for `writeDicom`. */
 type DicomTagMap = Partial<{
+  // SOP Common
+  SpecificCharacterSet: string
   // Patient
   PatientName: PersonName.Type
   PatientID: string
@@ -332,6 +334,10 @@ const writeDicom = (tags: DicomTagMap): Uint8Array => {
       datasetElements.push({ tag: tagHex, bytes: writeDsElement(tagHex, value) })
   }
 
+  // Specific Character Set (0008,0005), written as given. Every text value
+  // this writer emits is UTF-8, so non-ASCII text pairs with `ISO_IR 192`;
+  // another set's bytes go in through `withElementsSpliced`.
+  addString('x00080005', 'CS', tags.SpecificCharacterSet)
   // SOP Class UID (0008,0016)
   addString('x00080016', 'UI', tags.SOPClassUID)
   // SOP Instance UID (0008,0018)
@@ -503,7 +509,7 @@ const personNameArb = (): fc.Arbitrary<PersonName.Type> =>
       return { family: f, given: g, text }
     })
 
-/** A non-empty, non-whitespace-only string — matches what `readString` returns after trimming. */
+/** A non-empty, non-whitespace-only string — matches what `readText` returns after trimming. */
 const dicomTextArb = (maxLength: number): fc.Arbitrary<string> =>
   fc
     .tuple(
