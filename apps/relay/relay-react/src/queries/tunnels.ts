@@ -10,10 +10,16 @@ import type { Tunnels } from '@wildflowerhealthio/relay-core-js/http-api-definit
 import { Effect, type Schema } from 'effect'
 
 import { useRelayAdmin } from '../relay-admin-context.ts'
-import { TUNNELS_QUERY_KEY } from './keys.ts'
+import { CONNECTION_TOTALS_QUERY_KEY, TUNNELS_QUERY_KEY } from './keys.ts'
 
 /** A tunnel as the relay lists it: no token. */
 type TunnelInfo = Schema.Schema.Type<typeof Tunnels.TunnelInfoSchema>
+
+/** What became of the last connection to a tunnel. */
+type TunnelOutcome = Schema.Schema.Type<typeof Tunnels.TunnelOutcome>
+
+/** One UTC hour's connections, by outcome. */
+type ConnectionTotals = Schema.Schema.Type<typeof Tunnels.ConnectionTotalsSchema>
 
 /** A tunnel just created or reissued, with its token, which the relay shows only now. */
 type TunnelWithToken = Schema.Schema.Type<typeof Tunnels.TunnelWithTokenSchema>
@@ -31,6 +37,22 @@ const useTunnelsQuery = (): UseQueryResult<readonly TunnelInfo[]> => {
     queryKey: TUNNELS_QUERY_KEY,
     queryFn: () =>
       run(Effect.flatMap(RelayAdminHttpApiClient, (client) => client.tunnels.ListTunnels())),
+  })
+}
+
+/**
+ * The hourly connection totals of the last 30 days. Like every query here it
+ * refreshes when the page is focused again (TanStack Query's default); it is
+ * not polled.
+ */
+const useConnectionTotalsQuery = (): UseQueryResult<readonly ConnectionTotals[]> => {
+  const { run } = useRelayAdmin()
+  return useQuery({
+    queryKey: CONNECTION_TOTALS_QUERY_KEY,
+    queryFn: () =>
+      run(
+        Effect.flatMap(RelayAdminHttpApiClient, (client) => client.tunnels.ListConnectionTotals())
+      ),
   })
 }
 
@@ -113,10 +135,18 @@ const useReissueTokenMutation = (): UseMutationResult<TunnelWithToken, Error, st
 }
 
 export {
+  useConnectionTotalsQuery,
   useCreateTunnelMutation,
   useDeleteTunnelMutation,
   useIssueClaimCodeMutation,
   useReissueTokenMutation,
   useTunnelsQuery,
 }
-export type { CreateTunnelBody, IssuedClaimCode, TunnelInfo, TunnelWithToken }
+export type {
+  ConnectionTotals,
+  CreateTunnelBody,
+  IssuedClaimCode,
+  TunnelInfo,
+  TunnelOutcome,
+  TunnelWithToken,
+}

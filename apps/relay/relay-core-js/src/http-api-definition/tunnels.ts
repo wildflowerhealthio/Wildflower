@@ -12,6 +12,24 @@ const UnixSecondsUtc = Schema.transform(Schema.Int, Schema.DateTimeUtcFromSelf, 
 })
 
 /**
+ * What became of a connection routed to a tunnel — mirrors the Rust
+ * `TunnelOutcome` in `apps/relay/relay-server/src/domain/connection_outcome.rs`:
+ *
+ * - `ok`: it reached the device.
+ * - `tunnel_down`: the device is not connected.
+ * - `tunnel_busy`: the device is connected but not taking connections.
+ * - `tunnel_closed`: the tunnel closed it before it reached the device.
+ * - `proxy_header_failed`: the relay failed to send it on.
+ */
+const TunnelOutcome = Schema.Literal(
+  'ok',
+  'tunnel_down',
+  'tunnel_busy',
+  'tunnel_closed',
+  'proxy_header_failed'
+)
+
+/**
  * A tunnel as `GET /api/tunnels` lists it — mirrors the Rust `TunnelInfo` in
  * `apps/relay/relay-server/src/site/admin.rs`. No token: the relay shows a
  * token only once, when the tunnel is created or its token reissued.
@@ -22,6 +40,37 @@ const TunnelInfoSchema = Schema.Struct({
   /** `<tunnel name>.<domain>`. */
   public_host: Schema.String,
   created_at: UnixSecondsUtc,
+  /**
+   * What became of the last connection to the tunnel since the relay
+   * started, `null` before the first.
+   */
+  last_outcome: Schema.NullOr(TunnelOutcome),
+})
+
+/**
+ * One UTC hour as `GET /api/connection-totals` lists it — mirrors the Rust
+ * `ConnectionTotalsBody` in `apps/relay/relay-server/src/site/admin.rs`: how
+ * many connections had each outcome, zeros included. `ok` reached a device;
+ * every other field is a reason a connection was refused. No identifiers.
+ */
+const ConnectionTotalsSchema = Schema.Struct({
+  /** The hour's start. */
+  hour: UnixSecondsUtc,
+  ok: Schema.Int,
+  /** The relay was at its connection limit. */
+  over_connection_limit: Schema.Int,
+  /** No TLS ClientHello arrived in time. */
+  hello_timeout: Schema.Int,
+  /** The first bytes were not a TLS ClientHello. */
+  not_a_hello: Schema.Int,
+  /** The ClientHello named no host. */
+  no_server_name: Schema.Int,
+  /** The host named no tunnel. */
+  unknown_tunnel: Schema.Int,
+  tunnel_down: Schema.Int,
+  tunnel_busy: Schema.Int,
+  tunnel_closed: Schema.Int,
+  proxy_header_failed: Schema.Int,
 })
 
 /**
@@ -133,7 +182,8 @@ const TunnelNamesExhaustedFromText = plainTextReason(
  * - `CreateTunnel`: `201` with the token, shown only here; `409` for a name
  *   that is reserved or taken, `422` for a bad name or email, `503` when no
  *   name is left.
- * - `ListTunnels`: every tunnel, no tokens.
+ * - `ListTunnels`: every tunnel, no tokens, with its last connection's
+ *   outcome since the relay started.
  * - `DeleteTunnel`: `204`; `404` when no tunnel has the name.
  * - `IssueClaimCode`: `201` with a claim code for the tunnel, shown only
  *   here, and when it expires, replacing the tunnel's earlier code; `404`
@@ -141,6 +191,8 @@ const TunnelNamesExhaustedFromText = plainTextReason(
  * - `ReissueToken`: `200` with a new token for the tunnel, shown only here.
  *   The old token stops working at once, and the device connected with it
  *   drops until it is given the new one. `404` when no tunnel has the name.
+ * - `ListConnectionTotals`: one row per UTC hour of the last 30 days with any
+ *   connection, oldest first.
  */
 const httpApiGroup = HttpApiGroup.make('tunnels', { topLevel: false })
   .add(
@@ -172,9 +224,15 @@ const httpApiGroup = HttpApiGroup.make('tunnels', { topLevel: false })
       .addSuccess(TunnelWithTokenSchema)
       .addError(TunnelNotFoundFromText)
   )
+  .add(
+    HttpApiEndpoint.get('ListConnectionTotals', '/api/connection-totals').addSuccess(
+      Schema.Array(ConnectionTotalsSchema)
+    )
+  )
   .addError(HttpApiError.Unauthorized)
 
 export {
+  ConnectionTotalsSchema,
   CreateTunnelBodySchema,
   httpApiGroup,
   IssuedClaimCodeSchema,
@@ -182,6 +240,7 @@ export {
   TunnelNameConflict,
   TunnelNamesExhausted,
   TunnelNotFound,
+  TunnelOutcome,
   TunnelRejected,
   TunnelWithTokenSchema,
   UnixSecondsUtc,

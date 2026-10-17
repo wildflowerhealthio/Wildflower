@@ -3,6 +3,7 @@ import { Option } from 'effect'
 import type { JSX } from 'react'
 
 import { AdminKeyForm } from './admin-key-form.tsx'
+import { ConnectionTotalsTables } from './connection-totals.tsx'
 import { CreateTunnelForm } from './create-tunnel-form.tsx'
 import { useSignOutMutation, useStoredAdminKeyQuery } from './queries/index.ts'
 import { TunnelList } from './tunnel-list.tsx'
@@ -13,11 +14,15 @@ interface RelayAdminScreenProps {
   readonly host: string
 }
 
-/** Signed in: create a tunnel, and the list of every tunnel. */
+/**
+ * Signed in: create a tunnel, the list of every tunnel, and the connection
+ * totals.
+ */
 const SignedIn = (): JSX.Element => (
   <div className={styles['relay-admin-screen__signed-in']}>
     <CreateTunnelForm />
     <TunnelList />
+    <ConnectionTotalsTables />
   </div>
 )
 

@@ -1,8 +1,27 @@
+import { readFileSync } from 'node:fs'
+
 import { HttpClient, HttpClientRequest, HttpClientResponse } from '@effect/platform'
-import { DateTime, Effect, Either, Layer } from 'effect'
+import { DateTime, Effect, Either, Layer, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { RelayAdminHttpApiClient } from '../clients/index.ts'
+
+/**
+ * The admin API's list bodies as the relay serializes them:
+ * `apps/relay/relay-server`'s
+ * `the_admin_wire_fixture_matches_what_the_relay_serializes` test builds the
+ * same values and checks they serialize to exactly this file.
+ */
+const ADMIN_WIRE_URL = new URL('./fixtures/admin-wire.json', import.meta.url)
+
+const AdminWireFixture = Schema.Struct({
+  ListTunnels: Schema.Unknown,
+  ListConnectionTotals: Schema.Unknown,
+})
+
+const adminWire = Schema.decodeUnknownSync(Schema.parseJson(AdminWireFixture))(
+  readFileSync(ADMIN_WIRE_URL, 'utf8')
+)
 
 /** What the fake relay answers, and the requests it saw. */
 interface FakeRelay {
@@ -60,6 +79,7 @@ describe('RelayAdminApi over the relay wire', () => {
           email: 'alice@example.com',
           public_host: 'alice.relay.example.com',
           created_at: 1_700_000_000,
+          last_outcome: null,
         },
       ])
     )
@@ -77,9 +97,100 @@ describe('RelayAdminApi over the relay wire', () => {
           email: 'alice@example.com',
           public_host: 'alice.relay.example.com',
           created_at: DateTime.unsafeMake(1_700_000_000_000),
+          last_outcome: null,
         },
       ])
     )
+  })
+
+  it('decodes the relay’s tunnel list from the shared wire fixture', async () => {
+    // Arrange
+    const relay = fakeRelay(() => json(200, adminWire.ListTunnels))
+
+    // Act
+    const listed = await call(relay, (client) => client.tunnels.ListTunnels())
+
+    // Assert
+    expect(listed).toEqual(
+      Either.right([
+        {
+          name: 'alice',
+          email: 'alice@example.com',
+          public_host: 'alice.relay.example.com',
+          created_at: DateTime.unsafeMake(1_700_000_000_000),
+          last_outcome: 'tunnel_down',
+        },
+        {
+          name: 'bob',
+          email: 'bob@example.com',
+          public_host: 'bob.relay.example.com',
+          created_at: DateTime.unsafeMake(1_700_000_000_000),
+          last_outcome: null,
+        },
+      ])
+    )
+  })
+
+  it('decodes the relay’s connection totals from the shared wire fixture', async () => {
+    // Arrange
+    const relay = fakeRelay(() => json(200, adminWire.ListConnectionTotals))
+
+    // Act
+    const listed = await call(relay, (client) => client.tunnels.ListConnectionTotals())
+
+    // Assert
+    expect(relay.requests[0]?.url).toBe('https://admin.relay.example.com/api/connection-totals')
+    expect(listed).toEqual(
+      Either.right([
+        {
+          hour: DateTime.unsafeMake(1_699_999_200_000),
+          ok: 12,
+          over_connection_limit: 0,
+          hello_timeout: 0,
+          not_a_hello: 0,
+          no_server_name: 0,
+          unknown_tunnel: 3,
+          tunnel_down: 1,
+          tunnel_busy: 0,
+          tunnel_closed: 0,
+          proxy_header_failed: 0,
+        },
+        {
+          hour: DateTime.unsafeMake(1_700_002_800_000),
+          ok: 1,
+          over_connection_limit: 2,
+          hello_timeout: 3,
+          not_a_hello: 4,
+          no_server_name: 5,
+          unknown_tunnel: 6,
+          tunnel_down: 7,
+          tunnel_busy: 8,
+          tunnel_closed: 9,
+          proxy_header_failed: 10,
+        },
+      ])
+    )
+  })
+
+  it('refuses a last outcome the relay does not send', async () => {
+    // Arrange
+    const relay = fakeRelay(() =>
+      json(200, [
+        {
+          name: 'alice',
+          email: 'alice@example.com',
+          public_host: 'alice.relay.example.com',
+          created_at: 1_700_000_000,
+          last_outcome: 'unknown_tunnel',
+        },
+      ])
+    )
+
+    // Act
+    const listed = await call(relay, (client) => client.tunnels.ListTunnels())
+
+    // Assert
+    expect(Either.isLeft(listed)).toBe(true)
   })
 
   it('creates a tunnel, leaving out a name it was not given, and reads the token from the 201', async () => {
@@ -228,6 +339,7 @@ describe('RelayAdminApi over the relay wire', () => {
       await call(relay, (client) => client.tunnels.DeleteTunnel({ path: { name: 'bob' } })),
       await call(relay, (client) => client.tunnels.IssueClaimCode({ path: { name: 'bob' } })),
       await call(relay, (client) => client.tunnels.ReissueToken({ path: { name: 'bob' } })),
+      await call(relay, (client) => client.tunnels.ListConnectionTotals()),
     ]
 
     // Assert
