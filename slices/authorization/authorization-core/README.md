@@ -122,6 +122,13 @@ and 90 days respectively). See the
   browser-session client) can't be disabled (`409 EssentialClient`).
 - `/authorization/revocations` — revoke issued tokens now: every token a
   subject (`client_id`) holds, or one token by `jti`.
+- `/authorization/browser-sessions`, `/authorization/browser-sessions/:sid` —
+  list the live browser sessions, the caller's marked `heldByCaller`, and
+  revoke one, which ends everything minted under it.
+- `/oauth/sign-out` — a browser ending its own browser session (a form post
+  authenticated by its `__Host-browser_session` cookie): the session is
+  revoked, the cookie cleared, and the browser sent on to the launcher. See
+  [Browser session](../docs/Jargon%20Explanation.md#browser-session).
 
 ## The SMART sign-in client
 
