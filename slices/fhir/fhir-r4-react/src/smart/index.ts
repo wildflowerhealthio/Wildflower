@@ -112,6 +112,7 @@ export {
   useLaunchFailureRedirect,
   useSmartHandshake,
   whenSmartHandshakeReady,
+  type SmartClient,
   type SmartHandshake,
 } from './use-smart-handshake.ts'
 

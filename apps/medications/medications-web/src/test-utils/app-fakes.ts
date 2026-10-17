@@ -8,6 +8,7 @@ import type {
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import { MedicationRequest, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import type { InteractionCatalog } from '@wildflowerhealthio/medication-interaction-core-js'
+import { stubRouteTabsBrowserApis } from '@wildflowerhealthio/react-tundraish/test-helpers'
 import { Effect, Option, Schema } from 'effect'
 import type Client from 'fhirclient/lib/Client'
 import { afterEach, beforeEach, expect, vi } from 'vite-plus/test'
@@ -153,41 +154,23 @@ const tabLink = (label: string): HTMLElement => screen.getByRole('link', { name:
 const currentRoute = (): string => window.location.pathname.slice(BASEPATH.length)
 
 /**
- * A `ResizeObserver` that never fires: jsdom has no layout, and nothing these
- * tests check hangs on a resize (the page's `RouteTabs` observes its strip).
- */
-class InertResizeObserver {
-  observe(): void {}
-  unobserve(): void {}
-  disconnect(): void {}
-}
-
-/** `Element.scrollTo` as it was before each test, which jsdom leaves undefined. */
-const scrollToDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTo')
-
-/**
  * Register, for each test of the calling file, the browser APIs the page
- * needs that jsdom lacks (`ResizeObserver`, `matchMedia`, `Element.scrollTo`),
+ * needs that jsdom lacks (`RouteTabs`'s, from `react-tundraish/test-helpers`),
  * and afterwards unmount, put them back, and reset every fake to its default:
  * the catalog unresolved. Call it once at the top level of a file that renders
  * the app.
  */
 const setUpEachAppTest = (): void => {
   beforeEach(() => {
-    // `RouteTabs` scrolls its strip to the current tab, and asks whether
-    // motion is reduced, through APIs jsdom lacks.
-    vi.stubGlobal('ResizeObserver', InertResizeObserver)
-    vi.stubGlobal('matchMedia', () => ({ matches: false }))
-    Element.prototype.scrollTo = () => {}
     // Unresolved by default: interaction tests opt into a resolved catalog.
     catalogMock.mockReturnValue(new Promise(() => {}))
+    // `RouteTabs`'s browser APIs, put back as the test finishes.
+    return stubRouteTabsBrowserApis()
   })
 
   afterEach(() => {
     cleanup()
     vi.unstubAllGlobals()
-    if (scrollToDescriptor === undefined) Reflect.deleteProperty(Element.prototype, 'scrollTo')
-    else Object.defineProperty(Element.prototype, 'scrollTo', scrollToDescriptor)
     handshakeMock.mockReset()
     fetchMock.mockReset()
     patientPageMock.mockReset()

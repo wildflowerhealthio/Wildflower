@@ -1,4 +1,5 @@
 import { createRootRouteWithContext, retainSearchParams, useNavigate } from '@tanstack/react-router'
+import type { SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { useFetchEveryPage } from '@wildflowerhealthio/react-kitchen-sink'
 import { ChunkBar, RouteTabs } from '@wildflowerhealthio/react-tundraish'
 import {
@@ -13,7 +14,7 @@ import {
 import { Match, Option, Schema } from 'effect'
 import { type JSX, useState } from 'react'
 
-import { type RouterContext, type SmartClient, useSmartClient } from '../router-context.ts'
+import { type RouterContext, useSmartClient } from '../router-context.ts'
 import { useChosenPatient } from './-chosen-patient.ts'
 import { type MedicationRead, useMedicationRead } from './-medication-read.ts'
 import { MedicationsNotFound } from './-medications-not-found.tsx'

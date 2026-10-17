@@ -1,4 +1,4 @@
-import type { SmartClient } from './smart-client.ts'
+import type { SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
 
 /** The FHIR server behind a {@link stubSmartClient}: a response per request-URL prefix. */
 type FhirResponses = Readonly<Record<string, () => Promise<unknown>>>

@@ -1,4 +1,5 @@
-import { createRouter, type Router, type RouterHistory } from '@tanstack/react-router'
+import { createRouter, type Router } from '@tanstack/react-router'
+import type { SmartAppPage } from '@wildflowerhealthio/smart-app-react'
 
 import type { RouterContext } from './router-context.ts'
 import { routeTree } from './routeTree.gen.ts'
@@ -29,23 +30,15 @@ const stringifySearch = (search: Record<string, unknown>): string => {
 }
 
 /**
- * The app's router, at `basepath` (the served directory: one build serves its
- * origin's root and a PR preview's `/pr-<n>/`) over `history`, giving every
+ * The app's router over `page` (its history, under the served directory: one
+ * build serves its origin's root and a PR preview's `/pr-<n>/`), giving every
  * route `context`.
  */
-const buildRouter = (options: {
-  readonly history: RouterHistory
-  readonly basepath: string
-  readonly context: RouterContext
-}): MedicationsRouter =>
-  createRouter({
-    routeTree,
-    history: options.history,
-    basepath: options.basepath,
-    context: options.context,
-    parseSearch,
-    stringifySearch,
-  })
+const buildRouter = (
+  { history, basepath }: SmartAppPage,
+  context: RouterContext
+): MedicationsRouter =>
+  createRouter({ routeTree, history, basepath, context, parseSearch, stringifySearch })
 
 // The app's is the only router on the page, so registering it types every
 // `<Link to>` and `navigate` against its routes.

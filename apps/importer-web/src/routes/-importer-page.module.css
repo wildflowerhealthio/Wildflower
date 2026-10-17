@@ -1,0 +1,17 @@
+/*
+ * ImporterPage skin — the header over the tabs. Tokens only, so dark mode
+ * needs no rule here; the title uses tundra's built-in `text-heading-3` class
+ * and the subtitle `text-body-3`.
+ */
+
+/* The title, and under it what the open tab's screen does. */
+.importer-page__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-bottom: var(--space-9);
+}
+
+.importer-page__subtitle {
+  color: var(--color-neutral-5);
+}

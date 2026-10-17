@@ -31,6 +31,10 @@ offers the same choices; this package re-exports its preset groups.
   page's "Sign in to …" row (`chosenServer`) and sign-in on arrival
   (`autoConnect`). Either target shows the problem the page arrived with
   (`arrivalProblem`).
+- `openSmartAppPage(import.meta.url)`, its `SmartAppPage` (`history`,
+  `basepath`), and `SmartHandshakeGate({ connecting, children })` — what a
+  routed app's router runs over, and the gate it is built under; see
+  [Routing a SMART app](#routing-a-smart-app).
 - `LoadingLine`, `LoadingMoreLine` and `ReadFailureLine` — the read-status
   vocabulary an app's page speaks: `Loading…` (or `Loading <subject>…`)
   before anything lands, `Loading more…` while later pages arrive, and
@@ -84,6 +88,37 @@ standalone launch against that server), so there is no separate launch page.
 
 `branding-react`'s layout tokens arrive through its JS entry, so an app does not
 import `branding-react/styles.css` itself.
+
+## Routing a SMART app
+
+An app with a router (`apps/medications/medications-web`,
+`apps/importer-web`) boots it through this package, in an order that is
+load-bearing:
+
+- **`main.tsx` opens the page once.** `openSmartAppPage(import.meta.url)`
+  creates the window's browser history for the page's life (creating it
+  touches no URL; it only tags the current entry's state) and reads the
+  served directory, the router's basepath, off the entry module's URL
+  (`servedDirectoryOf`: the directory above `assets/` in a build, above
+  `src/` under the dev server). Never off the page's URL: a load can land on
+  a deep route (a dev or preview server's SPA fallback serving `/import/`),
+  and that route would become the basepath. `main.tsx` hands the
+  `SmartAppPage` to its `AppRoot`, which hands it to `App`.
+- **The router is built only under `SmartHandshakeGate`.** The app root is
+  the OAuth redirect target, so its URL carries `?code=…&state=…` until
+  fhirclient takes them out as the exchange completes. A router matches the
+  URL and redirects `/` to a tab, so it must not exist while the exchange
+  still reads that URL. The gate runs `useSmartHandshake`, shows the app's
+  `connecting` element meanwhile, shows a failed exchange and carries it to
+  the app root (`useLaunchFailureRedirect`), and renders `children(client)`
+  once ready; the app builds its router there, once (`useState` or a memo on
+  its context), so a tab change is a navigation inside it, never a rebuild.
+  A launch URL never reaches the router at all: `SmartAppRoot` starts the
+  launch before the app mounts.
+- **A deep link comes back through the 404 page.** On GitHub Pages a deep
+  route is served by the site's 404 page, whose redirect to the app root
+  `main.tsx` completes with `branding-core`'s `restoreRedirectedUrl` before
+  anything reads the URL. The basepath does not depend on it.
 
 ## Guardrails
 

@@ -32,7 +32,7 @@ const renderApp = ({ route = '' }: { readonly route?: string } = {}): RenderedAp
       createElement(
         QueryClientProvider,
         { client: queryClient },
-        createElement(App, { basepath: BASEPATH, history })
+        createElement(App, { page: { basepath: BASEPATH, history } })
       )
     )
   const { rerender } = render(app())

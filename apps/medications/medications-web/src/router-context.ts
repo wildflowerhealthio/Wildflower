@@ -1,12 +1,9 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { useRouteContext } from '@tanstack/react-router'
-import type { SmartHandshake } from '@wildflowerhealthio/fhir-r4-react/smart'
+import type { SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { useSubscribable } from '@wildflowerhealthio/react-kitchen-sink'
 
 import type { PageState, PageStore } from './page-state.ts'
-
-/** The SMART client a completed handshake hands the app. */
-type SmartClient = Extract<SmartHandshake, { readonly kind: 'ready' }>['client']
 
 /**
  * What every route reads from the router, fixed for the visit: the page's
@@ -36,4 +33,4 @@ const usePageState = <A>(select: (state: PageState) => A): readonly [A, PageStor
 }
 
 export { usePageState, useSmartClient }
-export type { RouterContext, SmartClient }
+export type { RouterContext }

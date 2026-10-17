@@ -11,14 +11,17 @@ import { useEffect } from 'react'
 import { launchErrorBodyFor, launchErrorRedirect } from './launch-error.ts'
 import { appRootRedirectUri, readySmartClient } from './smart-launch.ts'
 
+/** The SMART client a completed handshake hands the app: fhirclient's `Client`. */
+type SmartClient = Client
+
 /**
  * The state of completing the SMART handshake on the redirect page: still
- * exchanging, failed, or resolved to a ready {@link Client}.
+ * exchanging, failed, or resolved to a ready {@link SmartClient}.
  */
 type SmartHandshake =
   | { readonly kind: 'connecting' }
   | { readonly kind: 'error'; readonly error: unknown }
-  | { readonly kind: 'ready'; readonly client: Client }
+  | { readonly kind: 'ready'; readonly client: SmartClient }
 
 /**
  * The key the handshake query runs under. App-independent and constant so that
@@ -153,5 +156,6 @@ export {
   useLaunchFailureRedirect,
   useSmartHandshake,
   whenSmartHandshakeReady,
+  type SmartClient,
   type SmartHandshake,
 }

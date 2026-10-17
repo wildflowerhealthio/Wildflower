@@ -18,6 +18,7 @@ import { DateTime, Effect, Layer, Schema } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { ImporterApp } from './app.tsx'
+import { currentRoute, pageAt, stubPageBrowserApis } from './importer-app.test-helpers.ts'
 
 /**
  * The app's own wiring, end to end: its router context satisfies
@@ -26,7 +27,7 @@ import { ImporterApp } from './app.tsx'
  * mounts walks all the way from a picked HAR to a completed import.
  *
  * Only the transport is a stub. Everything above it — the real
- * `buildSmartRouterContext`, the router, the queries, the typed FHIR client, the
+ * `buildSmartRouterContext`, the router over the address bar, the queries, the typed FHIR client, the
  * HAR parser and the source file codec — is the production path, so a break in any
  * of them fails here rather than only on a device.
  *
@@ -69,11 +70,11 @@ class RealmSafeTextEncoder extends AmbientTextEncoder {
 beforeEach(() => {
   recorded = []
   vi.stubGlobal('TextEncoder', RealmSafeTextEncoder)
+  return stubPageBrowserApis()
 })
 
 afterEach(() => {
   cleanup()
-  vi.unstubAllGlobals()
 })
 
 describe('ImporterApp', () => {
@@ -172,65 +173,98 @@ describe('ImporterApp', () => {
     expect(sourceFileWrites).toHaveLength(1)
   })
 
-  it('should render the app shell around the slice screen it mounts, on the Import tab by default', async () => {
+  it('should open the bare path on the Import tab, in place of the bare path in history', async () => {
     // Arrange / Act
-    mount({})
+    const { historyLengthAtMount } = mount({})
 
-    // Assert — the app owns the title, the Import|Anonymize toggle (pressed on
-    // Import by default) and the subtitle for that tab; the picker below it is
-    // the slice's.
+    // Assert — the app owns the title, the Import | Anonymize tab strip (on
+    // Import) and the subtitle for that tab; the picker below it is the slice's.
     expect(await screen.findByRole('heading', { name: 'Importer', level: 1 })).toBeDefined()
-    expect(screen.getByRole('button', { name: 'Import' }).getAttribute('aria-pressed')).toBe('true')
-    expect(screen.getByRole('button', { name: 'Anonymize' }).getAttribute('aria-pressed')).toBe(
-      'false'
-    )
-    expect(screen.getByText('Import FHIR records from a captured browsing session.')).toBeDefined()
-    expect(screen.getByRole('region', { name: 'File source' })).toBeDefined()
+    expect(await screen.findByRole('region', { name: 'File source' })).toBeDefined()
+    expect(currentRoute()).toBe('import')
+    expect(window.history.length).toBe(historyLengthAtMount)
+    expect(tabLink('Import').getAttribute('aria-current')).toBe('page')
+    expect(tabLink('Anonymize').getAttribute('aria-current')).toBeNull()
+    expect(screen.getByText(IMPORT_SUBTITLE)).toBeDefined()
     // Nothing from the anonymize surface mounts on the Import tab.
-    expect(screen.queryByRole('region', { name: 'Anonymize' })).toBeNull()
+    expect(screen.queryByText(ANONYMIZE_SUBTITLE)).toBeNull()
+    expect(screen.queryByLabelText('File to anonymize')).toBeNull()
   })
 
-  it('should mount the Anonymize surface — and unmount the Import one — when the toggle flips', async () => {
+  it('should open Anonymize at /anonymize', async () => {
+    // Arrange / Act
+    mount({ route: 'anonymize' })
+
+    // Assert
+    expect(await screen.findByLabelText('File to anonymize')).toBeDefined()
+    expect(tabLink('Anonymize').getAttribute('aria-current')).toBe('page')
+    expect(screen.getByText(ANONYMIZE_SUBTITLE)).toBeDefined()
+    expect(screen.queryByLabelText('Import file')).toBeNull()
+  })
+
+  it('should show a path no tab names as not found, under the strip with no tab current', async () => {
+    // Arrange / Act
+    mount({ route: 'files' })
+
+    // Assert — the card names the path, and no tab is current
+    expect(await screen.findByText('The Importer has no page at /files.')).toBeDefined()
+    expect(tabLink('Import').getAttribute('aria-current')).toBeNull()
+    expect(tabLink('Anonymize').getAttribute('aria-current')).toBeNull()
+
+    // Act — the card's way out
+    await userEvent.click(screen.getByRole('button', { name: 'Open the Import tab' }))
+
+    // Assert
+    expect(await screen.findByLabelText('Import file')).toBeDefined()
+    expect(currentRoute()).toBe('import')
+  })
+
+  it('should mount the Anonymize surface — and unmount the Import one — when the tab changes', async () => {
     // Arrange
     mount({})
-    await screen.findByRole('heading', { name: 'Importer', level: 1 })
+    await screen.findByLabelText('Import file')
 
-    // Act — flip to Anonymize
-    await userEvent.click(screen.getByRole('button', { name: 'Anonymize' }))
+    // Act — open Anonymize
+    await userEvent.click(tabLink('Anonymize'))
 
-    // Assert — the subtitle updates, the anonymize picker is up, and the
-    // ImporterScreen's `<div class="screen">` is no longer in the tree (the
-    // identifying anchor is the tab-specific subtitle).
-    expect(
-      await screen.findByText(
-        'Replace every value in a capture with a pseudonym so its shape can be shared.'
-      )
-    ).toBeDefined()
-    expect(screen.getByRole('button', { name: 'Anonymize' }).getAttribute('aria-pressed')).toBe(
-      'true'
-    )
-    expect(screen.getByRole('button', { name: 'Import' }).getAttribute('aria-pressed')).toBe(
-      'false'
-    )
-    expect(screen.queryByText('Import FHIR records from a captured browsing session.')).toBeNull()
+    // Assert — the address bar and subtitle follow, the anonymize picker is up,
+    // and the Import screen's picker is gone from the tree.
+    expect(await screen.findByText(ANONYMIZE_SUBTITLE)).toBeDefined()
+    expect(currentRoute()).toBe('anonymize')
+    expect(tabLink('Anonymize').getAttribute('aria-current')).toBe('page')
+    expect(screen.getByLabelText('File to anonymize')).toBeDefined()
+    expect(screen.queryByLabelText('Import file')).toBeNull()
+    expect(screen.queryByText(IMPORT_SUBTITLE)).toBeNull()
 
-    // Flip back — the Import subtitle returns, confirming a re-mount fresh at
-    // the picker (the screen owns its own read state).
-    await userEvent.click(screen.getByRole('button', { name: 'Import' }))
-    expect(
-      await screen.findByText('Import FHIR records from a captured browsing session.')
-    ).toBeDefined()
-    expect(
-      screen.queryByText(
-        'Replace every value in a capture with a pseudonym so its shape can be shared.'
-      )
-    ).toBeNull()
+    // Act — back to Import
+    await userEvent.click(tabLink('Import'))
+
+    // Assert — a fresh mount at the picker (the screen owns its own read state)
+    expect(await screen.findByLabelText('Import file')).toBeDefined()
+    expect(currentRoute()).toBe('import')
+    expect(screen.queryByText(ANONYMIZE_SUBTITLE)).toBeNull()
+  })
+
+  it('should keep the router, and the query state under it, across a tab switch and back', async () => {
+    // Arrange — Import has listed the server's source files once
+    mount({ sourceFiles: [{ id: 'archive-1', fileName: 'server-session.har' }] })
+    expect(await screen.findByRole('checkbox', { name: 'Select server-session.har' })).toBeDefined()
+    const listingsOnOpen = sourceFileListings()
+    expect(listingsOnOpen).toBeGreaterThan(0)
+
+    // Act — to Anonymize, whose server source lists them too, and back
+    await userEvent.click(tabLink('Anonymize'))
+    await screen.findByLabelText('File to anonymize')
+    await userEvent.click(tabLink('Import'))
+
+    // Assert — the listing is still in the cache: no tab asked the server again
+    expect(await screen.findByRole('checkbox', { name: 'Select server-session.har' })).toBeDefined()
+    expect(sourceFileListings()).toBe(listingsOnOpen)
   })
 
   it('should reach an anonymize download from a picked HAR with zero writes on the wire', async () => {
     // Arrange
-    mount({})
-    await userEvent.click(await screen.findByRole('button', { name: 'Anonymize' }))
+    mount({ route: 'anonymize' })
 
     // Act — pick a recognized HAR through the Anonymize tab's own picker (the
     // anonymizer shell's format-blind input, not the importer's HAR picker)
@@ -251,10 +285,11 @@ describe('ImporterApp', () => {
 
 // Helpers
 
-/** One request the stub server saw: method, url, bearer header, and decoded body. */
+/** One request the stub server saw: method, url and query, bearer header, and decoded body. */
 interface RecordedRequest {
   readonly method: string
   readonly url: string
+  readonly urlParams: Readonly<Record<string, string>>
   readonly authorization: string | undefined
   readonly body: string
 }
@@ -264,6 +299,22 @@ interface ServerSourceFile {
   readonly id: string
   readonly fileName: string
 }
+
+/** The Import tab's subtitle. */
+const IMPORT_SUBTITLE = 'Import FHIR records from a captured browsing session.'
+
+/** The Anonymize tab's subtitle. */
+const ANONYMIZE_SUBTITLE =
+  'Replace every value in a capture with a pseudonym so its shape can be shared.'
+
+/** The tab strip's link to `label`. */
+const tabLink = (label: string): HTMLElement => screen.getByRole('link', { name: label })
+
+/** How many times the server has been asked for its list of source files. */
+const sourceFileListings = (): number =>
+  recorded.filter(
+    (request) => request.method === 'GET' && request.urlParams['category'] !== undefined
+  ).length
 
 /** The write requests recorded so far, in order. */
 const writes = (): readonly RecordedRequest[] =>
@@ -427,11 +478,14 @@ const recordingServer = (
               responseEntries.push({ response: { status: '400 Bad Request' } })
               continue
             }
-            const entryUrl = `${SERVER_URL}/${entryReq.url}`
+            // An entry's url is base-relative and may carry a query (a
+            // search): recorded split, as an unbatched request is.
+            const [entryPath, entryQuery = ''] = entryReq.url.split('?', 2)
             const entryBody = entry.resource === undefined ? '' : JSON.stringify(entry.resource)
             recorded.push({
               method: entryReq.method,
-              url: entryUrl,
+              url: `${SERVER_URL}/${entryPath}`,
+              urlParams: Object.fromEntries(new URLSearchParams(entryQuery)),
               authorization,
               body: entryBody,
             })
@@ -457,13 +511,14 @@ const recordingServer = (
         }
       }
 
+      const params = Object.fromEntries(request.urlParams)
       recorded.push({
         method: request.method,
         url: request.url,
+        urlParams: params,
         authorization,
         body,
       })
-      const params = Object.fromEntries(request.urlParams)
       if (request.method === 'GET' && params['category'] !== undefined) {
         return Effect.succeed(
           HttpClientResponse.fromWeb(
@@ -511,16 +566,29 @@ const safeParseBundle = (body: string): RecordedBundleShape | undefined => {
   return parsed
 }
 
+/** What {@link mount} hands the test. */
+interface MountedApp {
+  /** `window.history.length` as the mount found it. */
+  readonly historyLengthAtMount: number
+}
+
 /**
  * Mount the app through the **real** `buildSmartRouterContext`, so the URL
- * prefixing and the bearer header under test are the production ones.
+ * prefixing and the bearer header under test are the production ones, at
+ * `route` under the test basepath (the app root unless told otherwise).
  */
-const mount = (config: { readonly sourceFiles?: readonly ServerSourceFile[] }): void => {
+const mount = (config: {
+  readonly sourceFiles?: readonly ServerSourceFile[]
+  readonly route?: string
+}): MountedApp => {
+  const page = pageAt(config.route ?? '')
+  const historyLengthAtMount = window.history.length
   const context = buildSmartRouterContext(
     { serverUrl: SERVER_URL, accessToken: ACCESS_TOKEN },
     recordingServer(config.sourceFiles ?? [])
   )
-  render(<ImporterApp context={context} />)
+  render(<ImporterApp page={page} context={context} />)
+  return { historyLengthAtMount }
 }
 
 /** Drive the local-pick flow from an empty server all the way to a completed import. */
