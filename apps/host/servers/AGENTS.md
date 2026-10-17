@@ -169,7 +169,9 @@ changing how servers run or what the host notifies about them.
   Title Case (`healthCheckTitle`), read by the webview itself, with Refresh.
   Destructive actions holds its removal, said in full, behind a confirm that
   asks for the domain to be typed. Access holds, while a consent waits on the server, a Pending request row,
-  "‹client› wants access.", with Open (`server_open_pending_consent`), the
+  "‹client› wants access." (for a browser pairing "‹browser›, a remote
+  browser, wants to sign in.", `PendingConsent.askOf`), with Open
+  (`server_open_pending_consent`), the
   host's refusal taking the row's text, and otherwise "No requests
   waiting."; and an Authorization app row, which lists the apps and devices
   with access, with Open (`server_open_authorization_app`), disabled as the
@@ -454,8 +456,8 @@ changing how servers run or what the host notifies about them.
   pendingConsent?}`, `tunnel` `{kind}` of `connecting`, `connected`,
   `tokenRejected` or `tunnelUnknown`, or `{kind: "reconnecting", error}`,
   `certificate` always there, and `pendingConsent` `{kind: "device",
-  userCode, clientName}` or `{kind: "oauth", id, clientName}` while a
-  consent waits. A removed server gets no event; the
+  userCode, requesterName}`, `{kind: "oauth", id, requesterName}` or
+  `{kind: "browser", userCode, requesterName}` while a consent waits. A removed server gets no event; the
   base drops a server once `servers_list` no longer lists it, and reads the
   list again after `server_remove` and for a status of a server it doesn't
   list. `servers-wire-golden.json` pins the list and the event, and the
@@ -539,7 +541,9 @@ changing how servers run or what the host notifies about them.
   `pendingConsent`. Requests stack: a new one takes over, and deciding it
   brings back the one before. `ConsentNotificationCoalescer` picks, from
   `UnitRunner`'s statuses, each server whose newest request is one it hasn't
-  notified for, and the host posts "‹client› wants access to ‹domain›" under
+  notified for, and the host posts "‹client› wants access to ‹domain›" (for a
+  browser pairing "‹browser›, a remote browser, wants to sign in to
+  ‹domain›") under
   `consent-request:<domain>`, replacing the server's last. A request made by
   a browser signed in as the Owner (`decidable_in_requesting_browser`, which
   `/oauth/authorize` records when it sends that browser to the consent card),

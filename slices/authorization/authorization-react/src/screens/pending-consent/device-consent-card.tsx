@@ -1,6 +1,7 @@
 /**
- * The device-consent card: the RFC 8628 request a device made, for the Owner to
- * approve or decline.
+ * The device-consent card: the request decided by its code at the device page, for
+ * the Owner to approve or decline. Either the RFC 8628 request a device made, or a
+ * browser pairing: a remote browser that wants to sign in to the server.
  *
  * The device-code consent is **expandable**: the owner edits the request through
  * the shared {@link ScopePicker} in `expandable` mode, so they can add scopes the
@@ -13,9 +14,10 @@
  */
 
 import type { UseMutationResult } from '@tanstack/react-query'
-import { ErrorBanner, Field, FieldDescription } from '@wildflowerhealthio/react-tundraish'
+import { Chip, ErrorBanner, Field, FieldDescription } from '@wildflowerhealthio/react-tundraish'
 import { GrantDraft, ScopeRequest } from '@wildflowerhealthio/scopes-core'
 import { ScopePicker } from '@wildflowerhealthio/scopes-react'
+import { Match, Option } from 'effect'
 import type { JSX } from 'react'
 import { useMemo, useState } from 'react'
 
@@ -70,21 +72,9 @@ const DeviceConsentCard = ({
   // precedence over a stale "denied" flag; `ErrorBanner` renders whichever is set.
   const error = consentMutation.error ?? (denied ? 'Authorization request was denied.' : null)
 
-  // The statement subject: the name the device supplied at pairing, or the
+  // The statement subject: the name the device or browser supplied, or the
   // registered client name when it supplied none.
   const subjectName = (consent.deviceName ?? '') || consent.clientName
-
-  // The device's name, read only, when the device named itself.
-  const renderDeviceName = (): JSX.Element | null => {
-    if (consent.deviceName !== null && consent.deviceName !== undefined) {
-      return (
-        <Field label="Device name">
-          <span className={styles['app-name']}>{consent.deviceName}</span>
-        </Field>
-      )
-    }
-    return null
-  }
 
   const handleApprove = (): void => {
     setDenied(false)
@@ -123,20 +113,13 @@ const DeviceConsentCard = ({
 
   return (
     <>
-      <p className={styles['intro']}>A new device is requesting access to your account.</p>
+      <p className={styles['intro']}>{introOf(consent)}</p>
 
       <Field label="Pairing code">
         <div className={styles['code-box']}>{consent.userCode}</div>
       </Field>
 
-      {renderDeviceName()}
-
-      <Field label="Application">
-        <span className={styles['app-name']}>{consent.clientName}</span>
-        <FieldDescription>
-          <code>{consent.clientId}</code>
-        </FieldDescription>
-      </Field>
+      <WhatAsks consent={consent} />
 
       <ScopePicker
         subjectName={subjectName}
@@ -150,7 +133,7 @@ const DeviceConsentCard = ({
         forcedSubject="system"
       />
 
-      <p className={styles['footnote']}>Only approve devices you recognize.</p>
+      <p className={styles['footnote']}>{footnoteOf(consent)}</p>
 
       <ErrorBanner error={error} />
 
@@ -177,6 +160,56 @@ const DeviceConsentCard = ({
     </>
   )
 }
+
+/** The card's lead line: what asks, and for what. */
+const introOf = (consent: DeviceConsent): string =>
+  Match.value(consent.kind).pipe(
+    Match.when('device', () => 'A new device is requesting access to your account.'),
+    Match.when('browser', () => 'A browser wants to sign in to your server.'),
+    Match.exhaustive
+  )
+
+/** The reassurance line above the decision. */
+const footnoteOf = (consent: DeviceConsent): string =>
+  Match.value(consent.kind).pipe(
+    Match.when('device', () => 'Only approve devices you recognize.'),
+    Match.when('browser', () => 'Only approve a browser you recognize. It signs in for 24 hours.'),
+    Match.exhaustive
+  )
+
+/**
+ * Who asks: for a device, its name (read only, when it named itself) and the
+ * application it runs; for a browser, its name, marked remote, since a browser
+ * pairs only from off the server's device.
+ */
+const WhatAsks = ({ consent }: { readonly consent: DeviceConsent }): JSX.Element =>
+  Match.value(consent.kind).pipe(
+    Match.when('device', () => (
+      <>
+        {Option.fromNullable(consent.deviceName).pipe(
+          Option.map((deviceName) => (
+            <Field key="device-name" label="Device name">
+              <span className={styles['app-name']}>{deviceName}</span>
+            </Field>
+          )),
+          Option.getOrNull
+        )}
+        <Field label="Application">
+          <span className={styles['app-name']}>{consent.clientName}</span>
+          <FieldDescription>
+            <code>{consent.clientId}</code>
+          </FieldDescription>
+        </Field>
+      </>
+    )),
+    Match.when('browser', () => (
+      <Field label="Browser">
+        <span className={styles['app-name']}>{consent.deviceName ?? consent.clientName}</span>{' '}
+        <Chip>Remote</Chip>
+      </Field>
+    )),
+    Match.exhaustive
+  )
 
 export { DeviceConsentCard }
 export type { DeviceConsentCardProps, DeviceConsentMutation }

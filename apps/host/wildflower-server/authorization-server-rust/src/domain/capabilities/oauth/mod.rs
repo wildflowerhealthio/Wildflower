@@ -16,9 +16,14 @@
 //!    launch hands out (for the host and the apps slice) and consumes them for
 //!    [`CodeAuthorizationStarter`];
 //!  - in-process minted: [`SameDeviceSignIn`] redeems a one-time same-device sign-in code the
-//!    base minted for an Owner session's token, on its way to an allowed `next`.
+//!    base minted for an Owner session's token, on its way to an allowed `next`;
+//!  - bound to a pairing code: [`BrowserPairing`] starts a browser pairing for
+//!    a browser that isn't the Owner's, and its page's poll, holding the
+//!    request's secret pairing code, starts the approved session once the
+//!    Owner approves.
 
 mod authorization_status_reader;
+mod browser_pairing;
 mod client_authenticator;
 mod client_scopes_reader;
 mod code_authorization_starter;
@@ -30,6 +35,10 @@ mod token_exchanger;
 
 pub(crate) use authorization_status_reader::{
     AuthorizationStatusError, AuthorizationStatusReader, AuthorizationStatusView,
+};
+pub(crate) use browser_pairing::{
+    BrowserPairing, BrowserPairingPollError, BrowserPairingStartError, BrowserPairingStatus,
+    StartedBrowserPairing, APPROVED_SESSION_TTL,
 };
 pub(crate) use client_authenticator::ClientAuthenticator;
 pub(crate) use client_scopes_reader::ClientScopesReader;

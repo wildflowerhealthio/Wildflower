@@ -1,9 +1,10 @@
 //! [`RequestApprover`] — the writer that moves a pending authorization request
 //! to `approved` and, for the code flow, issues the authorization code the
-//! client redeems at `/oauth/token`. Both writes demand a proof — the device
-//! flow a [`DelegatedScopes`], the code flow a [`CodeAuthority`] (delegated
-//! scopes or standing-grant coverage) — so the scopes recorded on the request
-//! and the code are exactly the proof's, never a slice the flow assembled.
+//! client redeems at `/oauth/token`. Every write demands a proof — the device
+//! flow and a browser pairing a [`DelegatedScopes`], the code flow a
+//! [`CodeAuthority`] (delegated scopes or standing-grant coverage) — so the
+//! scopes recorded on the request and the code are exactly the proof's, never
+//! a slice the flow assembled.
 
 use chrono::{DateTime, Utc};
 
@@ -147,6 +148,29 @@ impl<'a, S: GrantStore> RequestApprover<'a, S> {
             delegated_scopes.scopes(),
             patient,
             device_name,
+        )
+    }
+
+    /// Approve the browser pairing request `request_id` under
+    /// `delegated_scopes`, recording `browser_name` (the approver's rename,
+    /// else the browser's own name). The approved session is started later,
+    /// when the pairing page's poll claims the request. Returns `false` when
+    /// the request was no longer pending, in which case nothing changed.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] on a store failure.
+    pub(crate) fn approve_browser_pairing(
+        &self,
+        delegated_scopes: &DelegatedScopes,
+        request_id: &str,
+        browser_name: &str,
+    ) -> Result<bool, AuthorizationServerError> {
+        self.store.approve_authorization_request(
+            request_id,
+            delegated_scopes.scopes(),
+            None,
+            Some(browser_name),
         )
     }
 }

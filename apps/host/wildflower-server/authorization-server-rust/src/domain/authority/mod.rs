@@ -27,6 +27,10 @@
 //!    in-process, redeemed at `/oauth/sign-in`: the authority an Owner
 //!    session is started and its token minted under, as the Owner's
 //!    client and grant.
+//!  - [`ClaimedBrowserPairing`] — a browser pairing the Owner approved,
+//!    claimed once by the poll of the page that started it: the authority an
+//!    approved browser session is started and its token minted under, with the
+//!    scopes the Owner granted.
 //!  - [`TokenEntitlement`] — the enum the minter mints under, one variant per
 //!    proof above that a token may be minted for; each carries its claims
 //!    privately, so a token's scopes are never a caller-assembled slice.
@@ -43,6 +47,7 @@
 //! deny), which grant no authority and stay on the ordinary store port.
 
 mod authenticated_client;
+mod browser_pairing;
 mod delegated_scopes;
 mod redemption;
 mod same_device_sign_in;
@@ -50,6 +55,7 @@ mod standing_grant;
 mod token_entitlement;
 
 pub(crate) use authenticated_client::{AuthenticatedClient, ClientAuthenticationError};
+pub(crate) use browser_pairing::ClaimedBrowserPairing;
 pub(crate) use delegated_scopes::{ApprovableScopes, DelegatedScopes};
 pub(crate) use redemption::{
     ConsumedDeviceRequest, GrantRedemption, PresentedAuthorizationCode, RedeemedAuthorizationCode,

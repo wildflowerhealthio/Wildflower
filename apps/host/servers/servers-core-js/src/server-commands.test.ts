@@ -76,7 +76,7 @@ describe('ServerStatus', () => {
 
     // Assert
     expect(ServerStatus.pendingConsentOf(status)).toEqual(
-      Option.some({ kind: 'oauth', id: 'req-1', clientName: 'Lifting' })
+      Option.some({ kind: 'oauth', id: 'req-1', requesterName: 'Lifting' })
     )
     expect(
       ServerStatus.pendingConsentOf(decode(golden.serverStatuses.runningAndReachable))

@@ -1,8 +1,9 @@
 //! The pre-auth `/oauth` front-door bindings — the public and client-gated
 //! capabilities over the concrete `SqliteGrantStore`. None is scope-gated
-//! (a browser arriving at `/authorize` or `/sign-in` holds no token; a device
-//! request is gated by its `AuthenticatedClient` proof, a sign-in by its
-//! code), so none has a `Capability` impl; the handlers acquire them through
+//! (a browser arriving at `/authorize`, `/sign-in` or `/pair` holds no token;
+//! a device request is gated by its `AuthenticatedClient` proof, a sign-in by
+//! its code, a pairing's poll by its pairing code), so none has a
+//! `Capability` impl; the handlers acquire them through
 //! `Live<…>` via [`FromState`].
 
 use std::sync::Arc;
@@ -11,8 +12,8 @@ use super::state::AuthorizationServerState;
 use super::FromState;
 use crate::db::SqliteGrantStore;
 use crate::domain::capabilities::oauth::{
-    AuthorizationStatusReader, CodeAuthorizationStarter, DeviceAuthorizer, PublicKeysReader,
-    SameDeviceSignIn,
+    AuthorizationStatusReader, BrowserPairing, CodeAuthorizationStarter, DeviceAuthorizer,
+    PublicKeysReader, SameDeviceSignIn,
 };
 use crate::ports::OwnerApproval;
 
@@ -46,6 +47,21 @@ impl FromState for LiveSameDeviceSignIn {
         )
     }
 }
+/// Start and poll browser pairings — built by the `/oauth/pair/*` handlers.
+pub(crate) type LiveBrowserPairing = BrowserPairing<SqliteGrantStore>;
+
+impl FromState for LiveBrowserPairing {
+    fn from_state(state: &Arc<AuthorizationServerState>) -> Self {
+        let owner_approval: Arc<dyn OwnerApproval> = state.clone();
+        BrowserPairing::new(
+            state.store.clone(),
+            owner_approval,
+            state.sign_in_destinations.clone(),
+            state.server_origin.clone(),
+        )
+    }
+}
+
 /// Start a device authorization — built by the `/oauth/device_authorization`
 /// handler.
 pub(crate) type LiveDeviceAuthorizer = DeviceAuthorizer<SqliteGrantStore>;

@@ -228,11 +228,68 @@ describe('DeviceConsentCard', () => {
       expect(screen.queryByRole('textbox', { name: /Device name/ })).toBeNull()
     })
   })
+
+  describe('a browser pairing', () => {
+    /** A remote browser's pairing: it starts from launching apps, and may be widened up to the Owner's scopes. */
+    const browserConsent = makeConsent({
+      kind: 'browser',
+      clientId: 'cb9bbe139845cae9654b7909d60d274f',
+      clientName: 'Wildflower Browsers',
+      deviceName: 'Firefox on Linux',
+      requestedScopes: ['wildflower/launch'],
+      allowedScopes: ['system/*.cruds', 'wildflower/*.cruds', 'wildflower/launch'],
+    })
+
+    test('says a browser wants to sign in, by its name, marked remote, with no application', () => {
+      renderCard(browserConsent, vi.fn())
+
+      expect(screen.getByText('A browser wants to sign in to your server.')).toBeDefined()
+      expect(screen.getByText('Firefox on Linux')).toBeDefined()
+      expect(screen.getByText('Remote')).toBeDefined()
+      expect(
+        screen.getByText('Only approve a browser you recognize. It signs in for 24 hours.')
+      ).toBeDefined()
+      expect(screen.queryByText('Wildflower Browsers')).toBeNull()
+      expect(screen.queryByText('A new device is requesting access to your account.')).toBeNull()
+    })
+
+    test('approves the ticks it starts from', async () => {
+      let capturedPayload: unknown
+      const clientLayer = Layer.succeed(AuthorizationServerHttpApiClient, {
+        devices: {
+          ApproveDeviceConsent: (input: { readonly payload: unknown }) => {
+            capturedPayload = input.payload
+            return Effect.succeed({ status: 'approved' })
+          },
+        },
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test stub: only `devices.ApproveDeviceConsent` is touched on this path
+      } as unknown as AuthorizationServerHttpApiClient['Type'])
+      runAuthedStub.mockImplementationOnce((effect) =>
+        Effect.runPromise(
+          Effect.provide(
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test runner: the mutation's Effect needs only the stubbed client
+            effect as Effect.Effect<unknown, never, AuthorizationServerHttpApiClient>,
+            clientLayer
+          )
+        )
+      )
+      const onDone = vi.fn()
+      const { user } = renderCard(browserConsent, onDone)
+
+      await user.click(screen.getByRole('button', { name: 'Approve' }))
+
+      await waitFor(() => {
+        expect(onDone).toHaveBeenCalledTimes(1)
+      })
+      expect(capturedPayload).toEqual({ approvedScopes: ['wildflower/launch'] })
+    })
+  })
 })
 
 // Helpers
 
 const makeConsent = (overrides?: Partial<DeviceConsent>): DeviceConsent => ({
+  kind: 'device',
   userCode: 'BCDF-GHJK',
   clientId: 'cli.acme.example',
   clientName: 'Acme CLI',

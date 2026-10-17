@@ -29,17 +29,26 @@ pub struct ConsentRequest {
 
 impl ConsentRequest {
     /// The notification for this request, under the server's own id
-    /// (`consent-request:<domain>`): "‹client› wants access to ‹domain›". A
-    /// tap opens the consent waiting on the server.
+    /// (`consent-request:<domain>`): "‹client› wants access to ‹domain›", or
+    /// for a browser pairing "‹browser›, a remote browser, wants to sign in
+    /// to ‹domain›". A tap opens the consent waiting on the server.
     #[must_use]
     pub fn notification(&self) -> LocalNotification {
         let domain = &self.domain;
-        LocalNotification {
-            title: "Access request".to_owned(),
-            body: format!(
-                "{} wants access to {domain}",
-                self.pending_consent.client_name
+        let requester_name = &self.pending_consent.requester_name;
+        let (title, body) = match self.pending_consent.key {
+            ConsentKey::Device { .. } | ConsentKey::OAuth { .. } => (
+                "Access request",
+                format!("{requester_name} wants access to {domain}"),
             ),
+            ConsentKey::Browser { .. } => (
+                "Sign-in request",
+                format!("{requester_name}, a remote browser, wants to sign in to {domain}"),
+            ),
+        };
+        LocalNotification {
+            title: title.to_owned(),
+            body,
             ..consent_notification_of(domain)
         }
     }
@@ -1205,6 +1214,28 @@ mod tests {
                 id: format!("consent-request:{RUTH}"),
                 title: "Access request".to_owned(),
                 body: format!("Lifting wants access to {RUTH}"),
+            }
+        );
+    }
+
+    /// A browser pairing's notification says a remote browser wants to sign
+    /// in, by its name, under the same per-server id.
+    #[test]
+    fn a_browser_pairing_s_notification_names_the_remote_browser() {
+        let request = ConsentRequest {
+            domain: RUTH.to_owned(),
+            pending_consent: NewestPendingConsent::BrowserPairing {
+                user_code: "WXYZ-BCDF".to_owned(),
+                browser_name: "Firefox on Linux".to_owned(),
+            }
+            .into(),
+        };
+        assert_eq!(
+            request.notification(),
+            LocalNotification {
+                id: format!("consent-request:{RUTH}"),
+                title: "Sign-in request".to_owned(),
+                body: format!("Firefox on Linux, a remote browser, wants to sign in to {RUTH}"),
             }
         );
     }

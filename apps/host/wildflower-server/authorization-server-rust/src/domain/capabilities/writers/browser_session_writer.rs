@@ -1,9 +1,10 @@
 //! [`BrowserSessionWriter`] — the writer that starts browser sessions. A
 //! session holds a grant and is what the tokens minted under it name as their
 //! `sid`, so starting one takes the proof that the browser may hold it: for an
-//! Owner session, a redeemed same-device sign-in code.
+//! Owner session, a redeemed same-device sign-in code; for an approved session,
+//! a claimed browser pairing.
 
-use crate::domain::authority::RedeemedSameDeviceSignInCode;
+use crate::domain::authority::{ClaimedBrowserPairing, RedeemedSameDeviceSignInCode};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::GrantStore;
 
@@ -30,6 +31,18 @@ impl<'a, S: GrantStore> BrowserSessionWriter<'a, S> {
     ) -> Result<(), AuthorizationServerError> {
         self.store
             .insert_browser_session(redeemed_sign_in_code.session())
+    }
+
+    /// Store the approved session `claimed_pairing` starts.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] on a store failure.
+    pub(crate) fn start_approved_session(
+        &self,
+        claimed_pairing: &ClaimedBrowserPairing,
+    ) -> Result<(), AuthorizationServerError> {
+        self.store.insert_browser_session(claimed_pairing.session())
     }
 }
 

@@ -15,7 +15,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use wildflowerhealthio_scopes::{Grant, Permission, Scope, WildflowerResource};
 
-use crate::domain::authorization_request::AuthorizationRequest;
+use crate::domain::authorization_request::{AuthorizationRequest, GrantType};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::client_registration::{
     classify_registration, ClientRegistrationVerdict, PresentedClientRegistration,
@@ -27,7 +27,7 @@ mod delegation;
 mod device;
 mod oauth;
 
-use device::{approve_device_consent, deny_device_consent, load_pending_device_request};
+use device::{approve_device_consent, deny_device_consent, load_pending_request_by_user_code};
 use oauth::{
     approve_oauth_consent, deny_oauth_consent, load_pending_code_request, ApprovalContext,
 };
@@ -68,13 +68,14 @@ pub struct OAuthConsentView {
     pub registration_verdict: ClientRegistrationVerdict,
 }
 
-/// A device-code consent prompt loaded for the launcher or the host — adds the
-/// client's full `allowed_scopes` (the expansion envelope the approver may
-/// grant up to).
+/// A device-page consent prompt (a device-code request or a browser pairing)
+/// loaded for the launcher or the host — adds the expansion envelope the
+/// approver may grant up to: a device client's full `allowed_scopes`, or for a
+/// browser pairing the Owner's scopes.
 pub struct DeviceConsentView {
     pub request: AuthorizationRequest,
     pub client_name: String,
-    pub registered_client_scopes: Vec<String>,
+    pub approvable_scopes: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -171,22 +172,26 @@ impl<S: GrantStore> ConsentReader<S> {
         })
     }
 
-    /// Load a pending device-code consent prompt for the launcher, with the
+    /// Load a pending device-page consent prompt for the launcher, with the
     /// client's name and expansion envelope resolved.
     pub(crate) fn device_consent(
         &self,
         user_code: &str,
     ) -> Result<DeviceConsentView, AuthorizationServerError> {
-        let request = load_pending_device_request(&self.store, user_code)?;
+        let request = load_pending_request_by_user_code(&self.store, user_code)?;
         let (client_name, registered_client_scopes) =
             match self.store.client_by_id(&request.client_id)? {
                 Some(existing_client) => (existing_client.name, existing_client.allowed_scopes),
                 None => (request.client_id.clone(), Vec::new()),
             };
+        let approvable_scopes = match request.grant_type {
+            GrantType::BrowserPairing => crate::owner_scopes(),
+            GrantType::AuthorizationCode | GrantType::DeviceCode => registered_client_scopes,
+        };
         Ok(DeviceConsentView {
             request,
             client_name,
-            registered_client_scopes,
+            approvable_scopes,
         })
     }
 }

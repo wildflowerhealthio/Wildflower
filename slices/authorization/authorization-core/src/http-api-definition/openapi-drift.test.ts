@@ -30,6 +30,8 @@ defineSpecDriftTest({
     ['/oauth/authorize/{id}', 'get'],
     ['/oauth/token', 'post'],
     ['/oauth/device_authorization', 'post'],
+    ['/oauth/pair/start', 'post'],
+    ['/oauth/pair/poll', 'post'],
     ['/authorization/clients', 'get'],
     ['/authorization/clients/{clientId}', 'patch'],
   ],

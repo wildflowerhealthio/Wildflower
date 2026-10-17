@@ -103,11 +103,17 @@ const lookUpDeviceConsent = (
     )
   )
 
+/** The Owner's decision, and what asked: a device or a browser. */
+interface Decision {
+  readonly result: DeviceConsentResult
+  readonly asker: DeviceConsent['kind']
+}
+
 interface RequestViewParts {
   /** The code entry, shown until a code names a request. */
   readonly codeEntry: JSX.Element
   readonly consentMutation: DeviceConsentMutation
-  readonly onDone: (result: DeviceConsentResult) => void
+  readonly onDone: (decision: Decision) => void
   /** Back to an empty code entry, once the request has expired. */
   readonly onEnterNewCode: () => void
 }
@@ -131,7 +137,9 @@ const decidableView = (
       key={consent.userCode}
       consent={consent}
       consentMutation={consentMutation}
-      onDone={onDone}
+      onDone={(result) => {
+        onDone({ result, asker: consent.kind })
+      }}
     />
   )
 }
@@ -192,7 +200,7 @@ const DevicePage = ({
     mutationFn: (userCode: string) => runAuthed(lookUpDeviceConsent(userCode)),
   })
   const consentMutation = useMutation(deviceConsentMutationOptions(runAuthed))
-  const [decision, setDecision] = useState<DeviceConsentResult | null>(null)
+  const [decision, setDecision] = useState<Decision | null>(null)
   // The code box's fill: the page's `user_code` until that code is spent.
   const [prefilledUserCode, setPrefilledUserCode] = useState(initialUserCode)
 
@@ -235,7 +243,7 @@ const DevicePage = ({
       ) : (
         goBackOnceDecided.pipe(
           Option.map((goBack) => (
-            <DecidedThenBack key="done" decision={decision.status} goBack={goBack} />
+            <DecidedThenBack key="done" decision={decision.result.status} goBack={goBack} />
           )),
           Option.getOrElse(() => <DeviceDecided key="decided" decision={decision} />)
         )
@@ -292,12 +300,16 @@ const ExpiredRequest = ({ expired, onEnterNewCode }: ExpiredRequestProps): JSX.E
 )
 
 /** What the page shows once the Owner has decided. */
-const DeviceDecided = ({ decision }: { readonly decision: DeviceConsentResult }): JSX.Element =>
-  Match.value(decision).pipe(
+const DeviceDecided = ({ decision }: { readonly decision: Decision }): JSX.Element =>
+  Match.value(decision.result).pipe(
     Match.discriminatorsExhaustive('status')({
       approved: () => (
         <p className={styles['device-page__message']}>
-          The device is approved. You can return to it now.
+          {Match.value(decision.asker).pipe(
+            Match.when('device', () => 'The device is approved. You can return to it now.'),
+            Match.when('browser', () => 'The browser is approved. It signs in on its own.'),
+            Match.exhaustive
+          )}
         </p>
       ),
       denied: () => <p className={styles['device-page__message']}>The request was declined.</p>,

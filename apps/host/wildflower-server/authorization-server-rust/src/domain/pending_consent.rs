@@ -1,5 +1,6 @@
 //! [`NewestPendingConsent`] — which pending authorization request the host is
-//! currently asking the Owner to decide: the newest, across both grant flows;
+//! currently asking the Owner to decide: the newest, across both grant flows
+//! and browser pairings;
 //! see `slices/authorization/docs/Jargon Explanation.md` ("Pending consents")
 //! for how the host learns of it. And [`ConsentKey`], which names one request
 //! by the key its consent surface looks it up by, and answers whether it is
@@ -15,9 +16,9 @@ use crate::domain::GrantStore;
 /// The newest pending authorization request, or absent when nothing is
 /// pending.
 ///
-/// Discriminated because the two flows share no lookup key: each variant
-/// carries the one its consent surface already fetches by, and the name of
-/// the client that asks, for the host's notification.
+/// Discriminated because the flows share no lookup key, nor what asks: each
+/// variant carries the key its consent surface already fetches by, and the
+/// name of what asks, for the host's notification.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NewestPendingConsent {
     /// An RFC 8628 device-code request. Decided at the device page,
@@ -46,13 +47,27 @@ pub enum NewestPendingConsent {
         /// shows the request's consent card itself.
         decidable_in_requesting_browser: bool,
     },
+    /// A browser pairing: a browser that wants a browser session. Decided at
+    /// the device page, `/oauth/device?user_code=…`, like a device. The
+    /// browser is always remote: a browser on the server's own device signs
+    /// in with a same-device sign-in instead.
+    BrowserPairing {
+        /// The code the pairing page shows. Never `NULL` in the row, as for
+        /// [`Device`](Self::Device).
+        user_code: String,
+        /// The name the browser goes by: one it gave itself, or one taken
+        /// from its user agent.
+        browser_name: String,
+    },
 }
 
 /// One authorization request, by the key its consent surface looks it up by:
-/// a device-code request's `user_code`, an authorization-code request's `id`.
+/// a device-code request's or browser pairing's `user_code`, an
+/// authorization-code request's `id`.
 ///
 /// `Serialize` writes the shape the host's server status carries it in,
-/// `{"kind": "device", "userCode": …}` or `{"kind": "oauth", "id": …}`.
+/// `{"kind": "device", "userCode": …}`, `{"kind": "browser", "userCode": …}`
+/// or `{"kind": "oauth", "id": …}`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind")]
 pub enum ConsentKey {
@@ -68,6 +83,12 @@ pub enum ConsentKey {
     OAuth {
         /// The authorization request's id.
         id: String,
+    },
+    /// A browser pairing, decided at the server's device page like a device.
+    #[serde(rename = "browser", rename_all = "camelCase")]
+    Browser {
+        /// The code the pairing page shows.
+        user_code: String,
     },
 }
 
@@ -85,7 +106,7 @@ impl ConsentKey {
         now: DateTime<Utc>,
     ) -> Result<bool, AuthorizationServerError> {
         let request = match self {
-            Self::Device { user_code } => {
+            Self::Device { user_code } | Self::Browser { user_code } => {
                 store.pending_authorization_request_by_user_code(user_code)?
             }
             Self::OAuth { id } => store.authorization_request_by_id(id)?,

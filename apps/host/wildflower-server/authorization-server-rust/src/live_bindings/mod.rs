@@ -57,8 +57,8 @@ pub(crate) use grants_revoker::LiveGrantsRevoker;
 pub use in_process_token_verifier::InProcessTokenVerifier;
 pub use launch_context_minter::LaunchContextMinter;
 pub(crate) use oauth_front_door::{
-    LiveAuthorizationStatusReader, LiveCodeAuthorizationStarter, LiveDeviceAuthorizer,
-    LivePublicKeysReader, LiveSameDeviceSignIn,
+    LiveAuthorizationStatusReader, LiveBrowserPairing, LiveCodeAuthorizationStarter,
+    LiveDeviceAuthorizer, LivePublicKeysReader, LiveSameDeviceSignIn,
 };
 pub use pending_consent_watcher::PendingConsentWatcher;
 pub use same_device_sign_in_code_minter::SameDeviceSignInCodeMinter;

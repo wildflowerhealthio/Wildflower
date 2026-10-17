@@ -124,6 +124,7 @@ impl GrantTx for FakeGrantTx<'_> {
                 // has no key the consent surface could fetch by, so it is not a
                 // candidate rather than a request with a missing key.
                 GrantType::DeviceCode => r.user_code.is_some(),
+                GrantType::BrowserPairing => r.user_code.is_some() && r.device_name.is_some(),
             })
             .collect();
         pending.sort_by_key(|r| std::cmp::Reverse(r.requested_at));
@@ -150,6 +151,12 @@ impl GrantTx for FakeGrantTx<'_> {
                             client_name,
                         })
                 }
+                GrantType::BrowserPairing => r.user_code.clone().zip(r.device_name.clone()).map(
+                    |(user_code, browser_name)| NewestPendingConsent::BrowserPairing {
+                        user_code,
+                        browser_name,
+                    },
+                ),
             }
         }))
     }
@@ -222,6 +229,28 @@ impl GrantTx for FakeGrantTx<'_> {
     ) -> Result<(), AuthorizationServerError> {
         if let Some(request) = self.store.authorization_requests.borrow_mut().get_mut(id) {
             request.last_polled_at = Some(polled_at);
+        }
+        Ok(())
+    }
+
+    fn record_browser_pairing_poll(
+        &mut self,
+        id: &str,
+        polled_at: DateTime<Utc>,
+        browser_name: &str,
+    ) -> Result<(), AuthorizationServerError> {
+        if let Some(request) = self
+            .store
+            .authorization_requests
+            .borrow_mut()
+            .get_mut(id)
+            .filter(|request| {
+                request.grant_type == GrantType::BrowserPairing
+                    && request.status == RequestStatus::Pending
+            })
+        {
+            request.last_polled_at = Some(polled_at);
+            request.device_name = Some(browser_name.to_owned());
         }
         Ok(())
     }

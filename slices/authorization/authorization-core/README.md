@@ -97,6 +97,12 @@ and 90 days respectively). See the
   `device_code` + `user_code` + verification URIs on the server's own origin
   (`/oauth/device`, and `/oauth/device?user_code=` for
   `verification_uri_complete`).
+- `/oauth/pair` — the **pairing page**, from the same bundle, where a browser
+  that isn't the Owner's shows a code the Owner approves on the device page.
+  It starts a browser pairing at `/oauth/pair/start` and polls
+  `/oauth/pair/poll`, whose answer once approved sets the browser's session
+  cookie. Pairing is no OAuth flow. See "Browser pairing" in the
+  [Jargon Explanation](../docs/Jargon%20Explanation.md).
 - `/oauth/token` — OAuth 2.0 token exchange. Accepts
   `grant_type=authorization_code` and
   `grant_type=urn:ietf:params:oauth:grant-type:device_code`.
@@ -107,7 +113,7 @@ and 90 days respectively). See the
   client's callback (`redirect`: the code on an approval, `access_denied` on a
   denial), for the consent card to leave for.
 - `/authorization/devices/:userCode` (+ `/approve`, `/deny`) — Owner actions
-  on a pending device-flow request.
+  on a pending device-flow request or browser pairing (`kind`).
 - `/authorization/grants`, `/authorization/grants/:id` — list / inspect / revoke
   standing grants.
 - `/authorization/clients`, `/authorization/clients/:clientId` — list every registered

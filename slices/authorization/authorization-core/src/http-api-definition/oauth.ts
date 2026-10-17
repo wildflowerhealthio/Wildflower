@@ -173,6 +173,53 @@ const DeviceAuthorizationPayloadSchema = Schema.Struct({
   })
 )
 
+/** `POST /oauth/pair/start`: where the browser goes once it holds its session. */
+const BrowserPairingStartPayloadSchema = Schema.Struct({
+  // A path on the server, in practice an `/oauth/authorize` URL.
+  next: Schema.String,
+})
+
+/** A started browser pairing, for the pairing page. */
+const StartedBrowserPairingSchema = Schema.Struct({
+  // The secret the page polls with; only the page that started the pairing holds it.
+  pairingCode: Schema.String,
+  // The code the page shows, which the Owner confirms on the device page.
+  userCode: Schema.String,
+  // The name the browser goes by until the page names it, from its user agent.
+  browserName: Schema.String,
+  // `next`, resolved against the server: where the page sends the browser once paired.
+  next: Schema.String,
+  expiresIn: Schema.Int,
+  interval: Schema.Int,
+})
+
+const BrowserPairingRefusedSchema = Schema.Struct({
+  error: Schema.Literal('BrowserPairingNextNotAllowed', 'BrowserSessionClientDisabled'),
+})
+
+/** `POST /oauth/pair/poll`: the pairing, and the name the page now gives its browser. */
+const BrowserPairingPollPayloadSchema = Schema.Struct({
+  pairingCode: Schema.String,
+  // Recorded while the pairing is pending; blank keeps the name it has.
+  browserName: Schema.String,
+})
+
+/**
+ * Where a browser pairing stands. `approved` comes with the browser's session as its
+ * `__Host-browser_session` cookie; `slow_down` means the page polled sooner than its interval.
+ */
+const BrowserPairingStatusSchema = Schema.Union(
+  Schema.Struct({ status: Schema.Literal('pending') }),
+  Schema.Struct({ status: Schema.Literal('slow_down') }),
+  Schema.Struct({ status: Schema.Literal('approved') }),
+  Schema.Struct({ status: Schema.Literal('denied') }),
+  Schema.Struct({ status: Schema.Literal('expired') })
+)
+
+const BrowserPairingNotFoundSchema = Schema.Struct({
+  error: Schema.Literal('BrowserPairingNotFound'),
+})
+
 const httpApiGroup = HttpApiGroup.make('oauth', { topLevel: false })
   .add(
     HttpApiEndpoint.get('Authorize', '/authorize')
@@ -201,6 +248,19 @@ const httpApiGroup = HttpApiGroup.make('oauth', { topLevel: false })
       .addError(OAuthError400Schema, { status: 400 })
       .addError(OAuthError401Schema, { status: 401 })
   )
+  .add(
+    HttpApiEndpoint.post('BrowserPairingStart', '/pair/start')
+      .setPayload(BrowserPairingStartPayloadSchema)
+      .addSuccess(StartedBrowserPairingSchema)
+      .addError(BrowserPairingRefusedSchema, { status: 400 })
+      .addError(BrowserPairingRefusedSchema, { status: 403 })
+  )
+  .add(
+    HttpApiEndpoint.post('BrowserPairingPoll', '/pair/poll')
+      .setPayload(BrowserPairingPollPayloadSchema)
+      .addSuccess(BrowserPairingStatusSchema)
+      .addError(BrowserPairingNotFoundSchema, { status: 404 })
+  )
   .prefix('/oauth')
 
 export {
@@ -217,4 +277,10 @@ export {
   OAuthError401Schema,
   OAuthError500Schema,
   AuthorizationStatusNotFoundSchema,
+  BrowserPairingStartPayloadSchema,
+  StartedBrowserPairingSchema,
+  BrowserPairingRefusedSchema,
+  BrowserPairingPollPayloadSchema,
+  BrowserPairingStatusSchema,
+  BrowserPairingNotFoundSchema,
 }

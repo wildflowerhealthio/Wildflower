@@ -262,6 +262,15 @@ impl GrantTx for SqliteGrantTx<'_> {
         authorization_requests::record_device_poll(self.conn, id, polled_at)
     }
 
+    fn record_browser_pairing_poll(
+        &mut self,
+        id: &str,
+        polled_at: DateTime<Utc>,
+        browser_name: &str,
+    ) -> Result<(), AuthorizationServerError> {
+        authorization_requests::record_browser_pairing_poll(self.conn, id, polled_at, browser_name)
+    }
+
     // ----- authorization codes -------------------------------------------
 
     fn redeem_authorization_code(

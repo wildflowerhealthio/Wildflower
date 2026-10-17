@@ -198,14 +198,16 @@ pub(super) fn pending_authorization_request_by_user_code(
 }
 
 /// Return the [`NewestPendingConsent`] of the newest pending, non-expired
-/// authorization request across **both** grant flows, or `None` when none
-/// exists. See `slices/authorization/docs/Jargon Explanation.md`
+/// authorization request across **both** grant flows and browser pairings, or
+/// `None` when none exists. See `slices/authorization/docs/Jargon Explanation.md`
 /// ("Pending consents") for what drives this and who consumes it.
 ///
-/// The `user_code IS NOT NULL` guard is scoped to the **device** branch, not
-/// applied to the whole query: a code row legitimately has no `user_code` (it is
-/// keyed by `id`), while a device row without one is a malformed half-row that
-/// would surface with no key the consent fetch could resolve.
+/// The `user_code IS NOT NULL` guard is scoped to the **device** and
+/// **pairing** branches, not applied to the whole query: a code row
+/// legitimately has no `user_code` (it is keyed by `id`), while a device or
+/// pairing row without one is a malformed half-row that would surface with no
+/// key the consent fetch could resolve. A pairing row is likewise always
+/// named.
 ///
 /// The client's name comes from its registration through a left join: a
 /// client trusted on first use has none until the Owner approves it, and is
@@ -222,7 +224,11 @@ pub(super) fn newest_pending_consent(
                 .eq(GrantType::AuthorizationCode)
                 .or(authorization_requests::grant_type
                     .eq(GrantType::DeviceCode)
-                    .and(authorization_requests::user_code.is_not_null())),
+                    .and(authorization_requests::user_code.is_not_null()))
+                .or(authorization_requests::grant_type
+                    .eq(GrantType::BrowserPairing)
+                    .and(authorization_requests::user_code.is_not_null())
+                    .and(authorization_requests::device_name.is_not_null())),
         )
         .order(authorization_requests::requested_at.desc())
         .select((
@@ -232,6 +238,7 @@ pub(super) fn newest_pending_consent(
             authorization_requests::client_id,
             clients::name.nullable(),
             authorization_requests::decidable_in_requesting_browser,
+            authorization_requests::device_name,
         ))
         .first::<PendingConsentRow>(conn)
         .optional()
@@ -241,8 +248,8 @@ pub(super) fn newest_pending_consent(
 
 /// The columns [`newest_pending_consent`] selects: the grant type, the
 /// request id, its `user_code`, its `client_id`, the registered client's
-/// name, if it has a registration, and whether it can be decided in the
-/// browser that made it.
+/// name, if it has a registration, whether it can be decided in the
+/// browser that made it, and the device's or browser's name.
 type PendingConsentRow = (
     GrantType,
     String,
@@ -250,6 +257,7 @@ type PendingConsentRow = (
     String,
     Option<String>,
     bool,
+    Option<String>,
 );
 
 /// Build the pending consent from the selected columns. The `None` arm is
@@ -257,7 +265,15 @@ type PendingConsentRow = (
 /// means the filter drifted, and dropping the request keeps the host from
 /// opening a key nothing can fetch.
 fn newest_pending_consent_from_row(
-    (grant_type, id, user_code, client_id, registered_name, decidable_in_requesting_browser): PendingConsentRow,
+    (
+        grant_type,
+        id,
+        user_code,
+        client_id,
+        registered_name,
+        decidable_in_requesting_browser,
+        device_name,
+    ): PendingConsentRow,
 ) -> Option<NewestPendingConsent> {
     let client_name = registered_name.unwrap_or(client_id);
     match grant_type {
@@ -269,6 +285,12 @@ fn newest_pending_consent_from_row(
         GrantType::DeviceCode => user_code.map(|user_code| NewestPendingConsent::Device {
             user_code,
             client_name,
+        }),
+        GrantType::BrowserPairing => user_code.zip(device_name).map(|(user_code, browser_name)| {
+            NewestPendingConsent::BrowserPairing {
+                user_code,
+                browser_name,
+            }
         }),
     }
 }
@@ -404,6 +426,32 @@ pub(super) fn record_device_poll(
     Ok(())
 }
 
+/// Stamp a *pending* browser pairing `id`'s `last_polled_at` and record its
+/// `browser_name` (in `device_name`, the column the device page reads). The
+/// `status = 'pending'` guard keeps the name an approval recorded.
+pub(super) fn record_browser_pairing_poll(
+    conn: &mut SqliteConnection,
+    id: &str,
+    polled_at: DateTime<Utc>,
+    browser_name: &str,
+) -> Result<(), AuthorizationServerError> {
+    diesel::update(
+        authorization_requests::table
+            .find(id)
+            .filter(authorization_requests::grant_type.eq(GrantType::BrowserPairing))
+            .filter(authorization_requests::status.eq(RequestStatus::Pending)),
+    )
+    .set((
+        authorization_requests::last_polled_at.eq(polled_at),
+        authorization_requests::device_name.eq(browser_name),
+    ))
+    .execute(conn)
+    .map_err(|e| {
+        AuthorizationServerError::infrastructure("record_browser_pairing_poll failed", e)
+    })?;
+    Ok(())
+}
+
 /// Delete every authorization request that expired before `cutoff`, returning
 /// how many rows went. Nothing transitions an abandoned request out of
 /// `pending`, so this is the only thing that reclaims one.
@@ -456,6 +504,7 @@ mod tests {
             grant_type in prop_oneof![
                 Just(GrantType::AuthorizationCode),
                 Just(GrantType::DeviceCode),
+                Just(GrantType::BrowserPairing),
             ],
             client_id in "[a-zA-Z0-9_-]{1,32}",
             requested_scopes in arb_scopes(),
@@ -939,6 +988,47 @@ mod tests {
         assert_eq!(
             store.newest_pending_consent().expect("query"),
             Some(unregistered_code_consent("code-1"))
+        );
+    }
+
+    // A browser pairing is a pending consent of its own, named by its browser
+    // and keyed by its `user_code`, and takes its turn by `requested_at` like
+    // the flows. A pairing row without a browser name is malformed and
+    // skipped.
+    #[test]
+    fn newest_pending_consent_includes_a_named_browser_pairing() {
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
+        let now = Utc::now();
+        let mut device_row = device_request("dev-1", "DEV-0001", RequestStatus::Pending);
+        device_row.requested_at = now - chrono::Duration::seconds(60);
+        let mut pairing = AuthorizationRequest {
+            grant_type: GrantType::BrowserPairing,
+            device_name: Some("Firefox on Linux".to_string()),
+            ..device_request("pairing-1", "PAIR-0001", RequestStatus::Pending)
+        };
+        pairing.requested_at = now;
+        let mut unnamed_pairing = AuthorizationRequest {
+            device_name: None,
+            ..device_request("pairing-2", "PAIR-0002", RequestStatus::Pending)
+        };
+        unnamed_pairing.grant_type = GrantType::BrowserPairing;
+        unnamed_pairing.requested_at = now + chrono::Duration::seconds(30);
+        for request in [&device_row, &pairing, &unnamed_pairing] {
+            store.insert_authorization_request(request).expect("insert");
+        }
+        assert_eq!(
+            store.newest_pending_consent().expect("query"),
+            Some(NewestPendingConsent::BrowserPairing {
+                user_code: "PAIR-0001".to_string(),
+                browser_name: "Firefox on Linux".to_string(),
+            })
+        );
+        store
+            .deny_authorization_request("pairing-1")
+            .expect("deny pairing");
+        assert_eq!(
+            store.newest_pending_consent().expect("query"),
+            Some(unregistered_device_consent("DEV-0001"))
         );
     }
 

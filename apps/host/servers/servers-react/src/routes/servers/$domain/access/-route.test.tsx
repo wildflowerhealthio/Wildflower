@@ -67,6 +67,31 @@ describe("the server page's Access tab", () => {
       expect(sectionTitled('Access').textContent).not.toContain('Lifting wants access.')
     })
 
+    it('should say a remote browser wants to sign in while a browser pairing waits', async () => {
+      // Arrange
+      const events = fakeEvents()
+      renderServerPage({
+        domain: RUTH,
+        tab: 'access',
+        servers: listedWithRuthStatus(golden.serverStatuses.runningWithAPendingConsent),
+        events,
+      })
+      expect(await screen.findByText('Lifting wants access.')).toBeDefined()
+
+      // Act
+      act(() => {
+        events.emit('server-status', {
+          ...golden.serverStatuses.runningWithAPendingConsent,
+          pendingConsent: golden.pendingConsents[2],
+        })
+      })
+
+      // Assert
+      expect(
+        await screen.findByText('Firefox on Linux, a remote browser, wants to sign in.')
+      ).toBeDefined()
+    })
+
     it('should say none waits for a server with nothing waiting', async () => {
       // Act
       renderServerPage({
@@ -127,7 +152,7 @@ describe("the server page's Access tab", () => {
       act(() => {
         events.emit('server-status', {
           ...golden.serverStatuses.runningWithAPendingConsent,
-          pendingConsent: { ...golden.pendingConsents[0], clientName: 'Plots' },
+          pendingConsent: { ...golden.pendingConsents[0], requesterName: 'Plots' },
         })
       })
 
