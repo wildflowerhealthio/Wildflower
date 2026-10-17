@@ -43,6 +43,9 @@ consumer slices.
   derive from a value rather than reading a tag, so they are functions beside
   the header, not fields in it — and they live here, not in a view, because
   what the standard says a value means is not a presentation choice.
+  Text VRs (PN, LO, SH) decode through `SpecificCharacterSet`, under the
+  file's (0008,0005); ISO 2022 code extensions fail the file with
+  `SpecificCharacterSet.UndecodableText`.
   `Part10` is the production writer: `Part10.tryFromBytes` reads a file whose data
   set is Explicit VR Little Endian (`TransferSyntax.encodesExplicitVrLittleEndianDataSet`)
   into its preamble, file meta group and top-level `DataElement.Type`s, their
