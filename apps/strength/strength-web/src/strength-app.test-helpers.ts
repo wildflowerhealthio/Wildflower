@@ -94,17 +94,34 @@ class InertResizeObserver {
 const scrollToDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTo')
 
 /**
+ * Stub the browser APIs the page's router and `RouteTabs` read that jsdom
+ * lacks (`window.scrollTo`, which the router resets the scroll with on each
+ * navigation, `ResizeObserver`, `matchMedia`, `Element.scrollTo`); undone by
+ * {@link restorePageBrowserApis}.
+ */
+const stubPageBrowserApis = (): void => {
+  vi.stubGlobal('scrollTo', () => {})
+  vi.stubGlobal('ResizeObserver', InertResizeObserver)
+  vi.stubGlobal('matchMedia', () => ({ matches: false }))
+  Element.prototype.scrollTo = () => {}
+}
+
+/** Put back what {@link stubPageBrowserApis} stubbed. */
+const restorePageBrowserApis = (): void => {
+  vi.unstubAllGlobals()
+  if (scrollToDescriptor === undefined) Reflect.deleteProperty(Element.prototype, 'scrollTo')
+  else Object.defineProperty(Element.prototype, 'scrollTo', scrollToDescriptor)
+}
+
+/**
  * Start a test: a server holding only the lifter's `Patient`, the clock
  * stopped at {@link SUBMITTED_AT}, and the browser APIs the page's
- * `RouteTabs` reads that jsdom lacks (`ResizeObserver`, `matchMedia`,
- * `Element.scrollTo`) stubbed.
+ * router and `RouteTabs` read that jsdom lacks stubbed ({@link stubPageBrowserApis}).
  */
 const startStrengthTest = (): FakeFhirServer => {
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date(SUBMITTED_AT))
-  vi.stubGlobal('ResizeObserver', InertResizeObserver)
-  vi.stubGlobal('matchMedia', () => ({ matches: false }))
-  Element.prototype.scrollTo = () => {}
+  stubPageBrowserApis()
   const server = fakeFhirServer()
   server.seedWire(PATIENT_WIRE)
   return server
@@ -114,9 +131,7 @@ const startStrengthTest = (): FakeFhirServer => {
 const endStrengthTest = (): void => {
   cleanup()
   vi.useRealTimers()
-  vi.unstubAllGlobals()
-  if (scrollToDescriptor === undefined) Reflect.deleteProperty(Element.prototype, 'scrollTo')
-  else Object.defineProperty(Element.prototype, 'scrollTo', scrollToDescriptor)
+  restorePageBrowserApis()
 }
 
 // ---------------------------------------------------------------------------
@@ -323,11 +338,13 @@ export {
   mountStrengthApp,
   PATIENT_ID,
   renderWithQueryClient,
+  restorePageBrowserApis,
   SEEDED_PLAN_DEFINITION_ID,
   seededExerciseRequests,
   seedStartedLifter,
   seedWorkout,
   startStrengthTest,
+  stubPageBrowserApis,
   SUBJECT,
   SUBMITTED_AT,
   tabLink,

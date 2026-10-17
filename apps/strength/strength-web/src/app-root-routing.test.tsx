@@ -5,6 +5,11 @@ import type * as TelemetryWeb from '@wildflowerhealthio/telemetry-web'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { AppRoot } from './app-root.tsx'
+import {
+  BASEPATH,
+  restorePageBrowserApis,
+  stubPageBrowserApis,
+} from './strength-app.test-helpers.ts'
 
 // The real app root, app and router over the real URL, with fhirclient's
 // OAuth calls stubbed at the module boundary: `authorize` is the redirect a
@@ -23,9 +28,6 @@ vi.mock('@wildflowerhealthio/telemetry-web', async (importOriginal) => ({
   ...(await importOriginal<typeof TelemetryWeb>()),
   initConsentedTelemetry: () => false,
 }))
-
-/** The directory the app is served from in these tests. */
-const BASEPATH = '/strength/'
 
 /** The FHIR server the stub client reads. */
 const FHIR_SERVER_URL = 'https://fhir.example/r4'
@@ -49,13 +51,6 @@ const readyClient = {
     ),
 }
 
-/** A `ResizeObserver` that never fires: the page's `RouteTabs` observes its strip. */
-class InertResizeObserver {
-  observe(): void {}
-  unobserve(): void {}
-  disconnect(): void {}
-}
-
 /** The address bar's path and query. */
 const addressBar = (): string => `${window.location.pathname}${window.location.search}`
 
@@ -67,16 +62,13 @@ beforeEach(() => {
     performance: false,
     decidedAt: '2026-09-29T12:00:00.000Z',
   })
-  vi.stubGlobal('ResizeObserver', InertResizeObserver)
-  vi.stubGlobal('matchMedia', () => ({ matches: false }))
-  Element.prototype.scrollTo = () => {}
+  stubPageBrowserApis()
 })
 
 afterEach(() => {
   cleanup()
   window.localStorage.clear()
-  vi.unstubAllGlobals()
-  Reflect.deleteProperty(Element.prototype, 'scrollTo')
+  restorePageBrowserApis()
   authorizeMock.mockReset()
   readyMock.mockReset()
 })
