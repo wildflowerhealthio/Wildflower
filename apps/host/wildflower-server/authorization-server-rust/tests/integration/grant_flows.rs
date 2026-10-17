@@ -18,7 +18,8 @@ async fn auth_code_grant_happy_path_end_to_end() {
         .router
         .clone()
         .oneshot(build_request(
-            Request::get(format!("/oauth/authorize?{query}")),
+            Request::get(format!("/oauth/authorize?{query}"))
+                .header("cookie", browser_session_cookie(&db.paired_browser_token)),
             Body::empty(),
         ))
         .await
@@ -72,15 +73,7 @@ async fn auth_code_grant_happy_path_end_to_end() {
     // 3. The status poll now reports Approved and hands back the client
     //    redirect carrying the redeemable `code`. It must agree with the code
     //    the approve response already returned.
-    let res = g
-        .router
-        .clone()
-        .oneshot(build_request(
-            Request::get(format!("/oauth/authorize/{request_id}")),
-            Body::empty(),
-        ))
-        .await
-        .expect("oneshot");
+    let res = get_authorization_status(&g.router, &db.paired_browser_token, &request_id).await;
     assert_eq!(res.status(), StatusCode::OK);
     // The Approved redirect carries a redeemable code, so no cache may keep it.
     assert_cache_suppressed(&res, "the Approved status poll");
@@ -143,7 +136,8 @@ async fn oauth_consent_prompt_carries_client_display_name() {
         .router
         .clone()
         .oneshot(build_request(
-            Request::get(format!("/oauth/authorize?{query}")),
+            Request::get(format!("/oauth/authorize?{query}"))
+                .header("cookie", browser_session_cookie(&db.paired_browser_token)),
             Body::empty(),
         ))
         .await
@@ -202,7 +196,8 @@ async fn auth_code_grant_owner_narrows_requested_scope() {
         .router
         .clone()
         .oneshot(build_request(
-            Request::get(format!("/oauth/authorize?{query}")),
+            Request::get(format!("/oauth/authorize?{query}"))
+                .header("cookie", browser_session_cookie(&db.paired_browser_token)),
             Body::empty(),
         ))
         .await
@@ -278,6 +273,7 @@ async fn an_approver_lacking_a_requested_resource_scope_is_refused_and_the_reque
     let request_id = parked_request_id(
         &get_authorize(
             &g.router,
+            &db.paired_browser_token,
             &authorize_query(
                 "test-app",
                 "patient%2FObservation.rs%20patient%2FCondition.rs",
@@ -306,15 +302,7 @@ async fn an_approver_lacking_a_requested_resource_scope_is_refused_and_the_reque
         body["missingScopes"],
         serde_json::json!(["patient/Condition.rs"])
     );
-    let res = g
-        .router
-        .clone()
-        .oneshot(build_request(
-            Request::get(format!("/oauth/authorize/{request_id}")),
-            Body::empty(),
-        ))
-        .await
-        .expect("oneshot");
+    let res = get_authorization_status(&g.router, &db.paired_browser_token, &request_id).await;
     assert_eq!(res.status(), StatusCode::OK);
     let status = body_json(res.into_body()).await;
     assert_eq!(status["status"], "pending", "no code was issued: {status}");
@@ -343,6 +331,7 @@ async fn minted_jwt_scope_claim_carries_alternate_canonical_forms() {
     let request_id = authorize_and_approve(
         &g,
         &owner_token,
+        &db.paired_browser_token,
         "test-app",
         "patient%2FObservation.read",
         r#"{"approvedScopes":["patient/Observation.read"],"acknowledgedRegistration":false}"#,
@@ -350,15 +339,7 @@ async fn minted_jwt_scope_claim_carries_alternate_canonical_forms() {
     .await;
 
     // Poll the approved request for the client redirect carrying the code.
-    let res = g
-        .router
-        .clone()
-        .oneshot(build_request(
-            Request::get(format!("/oauth/authorize/{request_id}")),
-            Body::empty(),
-        ))
-        .await
-        .expect("oneshot");
+    let res = get_authorization_status(&g.router, &db.paired_browser_token, &request_id).await;
     let status = body_json(res.into_body()).await;
     let redirect = status["redirect"].as_str().expect("redirect");
     let code = Url::parse(redirect)
@@ -410,6 +391,7 @@ async fn consent_approval_persists_grant() {
     authorize_and_approve(
         &g,
         &owner_token,
+        &db.paired_browser_token,
         "test-app",
         "read",
         r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#,
@@ -458,6 +440,7 @@ async fn pre_approved_scopes_skip_consent_on_reauthorize() {
     authorize_and_approve(
         &g,
         &owner_token,
+        &db.paired_browser_token,
         "test-app",
         "read",
         r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#,
@@ -473,7 +456,8 @@ async fn pre_approved_scopes_skip_consent_on_reauthorize() {
         .router
         .clone()
         .oneshot(build_request(
-            Request::get(format!("/oauth/authorize?{query}")),
+            Request::get(format!("/oauth/authorize?{query}"))
+                .header("cookie", browser_session_cookie(&db.paired_browser_token)),
             Body::empty(),
         ))
         .await
@@ -518,6 +502,7 @@ async fn a_narrower_request_is_pre_approved_by_a_broader_standing_grant() {
     authorize_and_approve(
         &g,
         &owner_token,
+        &db.paired_browser_token,
         "test-app",
         "patient%2FObservation.rs",
         r#"{"approvedScopes":["patient/Observation.rs"],"acknowledgedRegistration":false}"#,
@@ -535,7 +520,8 @@ async fn a_narrower_request_is_pre_approved_by_a_broader_standing_grant() {
         .router
         .clone()
         .oneshot(build_request(
-            Request::get(format!("/oauth/authorize?{query}")),
+            Request::get(format!("/oauth/authorize?{query}"))
+                .header("cookie", browser_session_cookie(&db.paired_browser_token)),
             Body::empty(),
         ))
         .await
@@ -570,6 +556,7 @@ async fn consent_approvals_union_scopes_into_grant() {
     authorize_and_approve(
         &g,
         &owner_token,
+        &db.paired_browser_token,
         "test-app",
         "read",
         r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#,
@@ -580,6 +567,7 @@ async fn consent_approvals_union_scopes_into_grant() {
     authorize_and_approve(
         &g,
         &owner_token,
+        &db.paired_browser_token,
         "test-app",
         "read%20write",
         r#"{"approvedScopes":["write"],"acknowledgedRegistration":false}"#,
@@ -616,6 +604,7 @@ async fn auth_code_grant_wrong_verifier_rejected() {
     let redirect = Url::parse("https://app.example/cb").unwrap();
     plant_authorization_code(
         &store_handle(&db),
+        &db.paired_browser_sid,
         "test-app",
         &redirect,
         &["read"],
@@ -647,6 +636,7 @@ async fn auth_code_grant_expired_code_rejected() {
     let redirect = Url::parse("https://app.example/cb").unwrap();
     plant_authorization_code(
         &store_handle(&db),
+        &db.paired_browser_sid,
         "test-app",
         &redirect,
         &["read"],
@@ -677,6 +667,7 @@ async fn auth_code_grant_replay_rejected() {
     let redirect = Url::parse("https://app.example/cb").unwrap();
     plant_authorization_code(
         &store_handle(&db),
+        &db.paired_browser_sid,
         "test-app",
         &redirect,
         &["read"],
@@ -714,6 +705,7 @@ async fn auth_code_replay_revokes_issued_refresh_family() {
     );
     plant_authorization_code(
         &store_handle(&db),
+        &db.paired_browser_sid,
         "test-app",
         &Url::parse("https://app.example/cb").unwrap(),
         &["read", "offline_access"],
@@ -768,7 +760,12 @@ async fn consent_prompt_reports_the_registration_verdict() {
     let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
 
-    let res = get_authorize(&g.router, &authorize_query("test-app", "read")).await;
+    let res = get_authorize(
+        &g.router,
+        &db.paired_browser_token,
+        &authorize_query("test-app", "read"),
+    )
+    .await;
     let known = parked_request_id(&res);
     let consent = get_oauth_consent(&g, &owner_token, &known).await;
     assert_eq!(
@@ -776,7 +773,12 @@ async fn consent_prompt_reports_the_registration_verdict() {
         serde_json::json!({ "status": "registered" })
     );
 
-    let res = get_authorize(&g.router, &authorize_query("brand-new-app", "read")).await;
+    let res = get_authorize(
+        &g.router,
+        &db.paired_browser_token,
+        &authorize_query("brand-new-app", "read"),
+    )
+    .await;
     let unknown = parked_request_id(&res);
     let consent = get_oauth_consent(&g, &owner_token, &unknown).await;
     assert_eq!(
@@ -793,7 +795,12 @@ async fn consent_prompt_reports_the_registration_verdict() {
 #[tokio::test]
 async fn approving_a_new_app_without_acknowledgement_is_rejected() {
     let (g, owner_token, db) = spin_up();
-    let res = get_authorize(&g.router, &authorize_query("brand-new-app", "read")).await;
+    let res = get_authorize(
+        &g.router,
+        &db.paired_browser_token,
+        &authorize_query("brand-new-app", "read"),
+    )
+    .await;
     let request_id = parked_request_id(&res);
 
     let res = approve_oauth_consent(
@@ -841,7 +848,12 @@ async fn approving_a_new_app_without_acknowledgement_is_rejected() {
 #[tokio::test]
 async fn approving_a_new_app_registers_it_and_the_next_request_fast_paths() {
     let (g, owner_token, db) = spin_up();
-    let res = get_authorize(&g.router, &authorize_query("brand-new-app", "read")).await;
+    let res = get_authorize(
+        &g.router,
+        &db.paired_browser_token,
+        &authorize_query("brand-new-app", "read"),
+    )
+    .await;
     let request_id = parked_request_id(&res);
 
     let res = approve_oauth_consent(
@@ -887,7 +899,12 @@ async fn approving_a_new_app_registers_it_and_the_next_request_fast_paths() {
 
     // Same client, same redirect, same scopes → `registered`, so the standing
     // grant pre-approves everything and `/authorize` 302s straight back.
-    let res = get_authorize(&g.router, &authorize_query("brand-new-app", "read")).await;
+    let res = get_authorize(
+        &g.router,
+        &db.paired_browser_token,
+        &authorize_query("brand-new-app", "read"),
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::FOUND);
     let location = location_of(&res);
     assert!(
@@ -910,6 +927,7 @@ async fn approving_a_changed_app_widens_its_registration() {
     // A different redirect AND two scopes the registration doesn't cover.
     let res = get_authorize(
         &g.router,
+        &db.paired_browser_token,
         &authorize_query("test-app", "read%20write%20pruned"),
     )
     .await;
@@ -955,7 +973,12 @@ async fn approving_a_changed_app_widens_its_registration() {
 #[tokio::test]
 async fn denying_a_new_app_registers_nothing() {
     let (g, owner_token, db) = spin_up();
-    let res = get_authorize(&g.router, &authorize_query("brand-new-app", "read")).await;
+    let res = get_authorize(
+        &g.router,
+        &db.paired_browser_token,
+        &authorize_query("brand-new-app", "read"),
+    )
+    .await;
     let request_id = parked_request_id(&res);
 
     let res = g
@@ -988,6 +1011,7 @@ async fn a_changed_request_never_takes_the_fast_path() {
     authorize_and_approve(
         &g,
         &owner_token,
+        &db.paired_browser_token,
         "test-app",
         "read",
         r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#,
@@ -1000,7 +1024,12 @@ async fn a_changed_request_never_takes_the_fast_path() {
     client.allowed_scopes = Vec::new();
     store.upsert_client(&client).expect("narrow the client");
 
-    let res = get_authorize(&g.router, &authorize_query("test-app", "read")).await;
+    let res = get_authorize(
+        &g.router,
+        &db.paired_browser_token,
+        &authorize_query("test-app", "read"),
+    )
+    .await;
     let request_id = parked_request_id(&res);
     let consent = get_oauth_consent(&g, &owner_token, &request_id).await;
     assert_eq!(consent["registration"]["status"], "changed");

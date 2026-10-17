@@ -135,8 +135,8 @@ mod tests {
     use super::*;
 
     use crate::domain::test_fake::{
-        authenticated_public_client, client, code_grant, redeemed_code, FakeGrantStore,
-        NothingRevoked,
+        authenticated_public_client, client, code_grant, redeemed_code,
+        seed_fixture_browser_session, FakeGrantStore, NothingRevoked,
     };
 
     /// Only a grant carrying `offline_access` earns a refresh token.
@@ -249,6 +249,7 @@ mod tests {
     #[test]
     fn rotate_consumes_then_replay_expires_the_family() {
         let store = FakeGrantStore::default();
+        seed_fixture_browser_session(&store);
         let writer = RefreshFamilyWriter::over(&store);
         let now = Utc::now();
         let redeemed_code = redeemed_code(&store, "client", &["offline_access"]);

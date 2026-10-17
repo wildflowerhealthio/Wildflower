@@ -1,4 +1,4 @@
-use axum::extract::Query;
+use axum::extract::{OriginalUri, Query};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
 use axum::Extension;
@@ -18,7 +18,7 @@ use crate::http::errors::{oauth_error_html, OAuthErrorKind};
 use crate::http::extractors::Live;
 use crate::http::middleware::{start_limited_response, DeferredStartLimit};
 
-use super::authorization_pages::consent_page_location;
+use super::authorization_pages::{consent_page_location, pairing_page_location};
 use super::wait_page::wait_page_location;
 use crate::live_bindings::{LiveCodeAuthorizationStarter, LiveTokenVerifier};
 
@@ -140,7 +140,9 @@ pub struct AuthorizeParams {
     /// `client_id` that is unused and unexpired (five minutes); it is consumed,
     /// so it works once, and the request carries the launch's context
     /// (including any patient it binds) to the consent. Any other value is
-    /// `invalid_request`. Absent, the request is plain OAuth.
+    /// `invalid_request`. A browser without a session is sent to pairing
+    /// before the launch is read, so pairing never spends it. Absent, the
+    /// request is plain OAuth.
     #[serde(default)]
     pub launch: Option<String>,
     /// SMART App Launch audience: the FHIR server the app expects to call with
@@ -152,9 +154,11 @@ pub struct AuthorizeParams {
 }
 
 /// The authorization endpoint (RFC 6749 §3.1), the public front door of the
-/// OAuth flow. Validates the request, then either auto-issues an authorization
-/// code (when an existing grant pre-approves every requested scope) or parks
-/// the user-agent on the authorization server's wait page while the Owner decides.
+/// OAuth flow. It issues nothing to a browser without a browser session: such
+/// a browser is sent to the pairing page first. For a browser with one it
+/// validates the request, then either auto-issues an authorization code (when
+/// an existing grant pre-approves every requested scope) or parks the
+/// user-agent on the consent card or the wait page while the Owner decides.
 ///
 /// Nothing in-process calls this route. Registered clients (e.g.
 /// SMART-on-FHIR apps) discover it via the FHIR server's
@@ -162,24 +166,30 @@ pub struct AuthorizeParams {
 /// *user's browser* here with PKCE params to start an authorization-code
 /// flow:
 ///
-/// 1. Browser lands here; the request is parked as an `AuthorizationRequest`
-///    (5-minute TTL). A SMART App Launch's `aud` and `launch` are checked
-///    first (see their fields), and the launch is consumed onto the request.
+/// 1. Browser lands here. The browser session cookie is read before anything
+///    else: a browser without a live browser session is 302'd to the pairing
+///    page, `/oauth/pair?next=<this request's path and query>`, and nothing is
+///    parked, notified or consumed. Once the Owner approves the pairing, the
+///    page sends the browser back here with its new session. A browser with a
+///    session has its request parked as an `AuthorizationRequest` (5-minute
+///    TTL), made in that session (`sid`). A SMART App Launch's `aud` and
+///    `launch` are checked first (see their fields), and the launch is
+///    consumed onto the request.
 /// 2. Unless every requested scope is pre-approved by an existing grant for
 ///    this (client, `redirect_uri`) pair, the request joins the pending-consent
-///    queue (raising the host webview's popup) and the browser is 302'd to a
-///    page this authorization server serves beside the endpoint, on the origin
-///    the browser used. A browser signed in as the Owner (it carries a live
-///    browser session that can decide consents, and holds the request's
-///    approval scopes) goes to the consent card at
-///    `/oauth/authorize/{id}/consent`, where the Owner decides in place; the
-///    request records that it can be decided there
-///    (`decidable_in_requesting_browser`), and the browser session it was made
-///    in (`sid`), which the code is issued under.
-///    Any other goes to the wait page at `/oauth/authorize/{id}/wait`, which polls
-///    `GET /oauth/authorize/{id}` (a custom extension, not part of any RFC)
-///    until the Owner decides — in the popup, in a signed-in launcher, or on
-///    the consent card once that browser signs in.
+///    queue and the browser is 302'd to a page this authorization server
+///    serves beside the endpoint, on the origin the browser used. A browser
+///    whose session can decide consents and holds the request's approval
+///    scopes goes to the consent card at `/oauth/authorize/{id}/consent`, where
+///    it decides in place; the request records that it can be decided there
+///    (`decidable_in_requesting_browser`). Any other goes to the wait page at
+///    `/oauth/authorize/{id}/wait`, and the Owner is notified (the host
+///    webview's popup). The wait page polls `GET /oauth/authorize/{id}` (a
+///    custom extension, not part of any RFC), which answers only the browser
+///    session the request was made in, until the Owner decides — in the
+///    popup, in a signed-in launcher, or on the consent card once that
+///    browser can decide it. Either way the code is issued under the session
+///    the request was made in, not the approver's.
 ///    RFC 6749 leaves the owner-interaction mechanism unspecified, so both
 ///    pages are spec-legal; likewise §4.1 explicitly allows skipping consent
 ///    on a previously established authorization decision, which is what the
@@ -202,7 +212,7 @@ pub struct AuthorizeParams {
     path = "/authorize",
     params(AuthorizeParams),
     responses(
-        (status = 302, description = "Redirect to the client redirect_uri, or to the authorization server's consent card (a browser signed in as the Owner) or wait page"),
+        (status = 302, description = "Redirect to the pairing page (a browser without a browser session), the client redirect_uri, or the authorization server's consent card (a session that can approve the request) or wait page"),
         (status = 400, description = "Local HTML error page (untrusted redirect_uri)"),
         (status = 429, description = "The authorization start limit refused the request"),
         (status = 503, description = "No active signing key")
@@ -213,6 +223,7 @@ pub(super) async fn handle_authorize_request(
     token_verifier: Live<LiveTokenVerifier>,
     deferred_start_limit: Option<Extension<DeferredStartLimit>>,
     headers: HeaderMap,
+    OriginalUri(authorize_uri): OriginalUri,
     Query(params): Query<AuthorizeParams>,
 ) -> Result<Response, AuthorizeError> {
     // The start limit's layer deferred it for a browser that can decide
@@ -228,13 +239,22 @@ pub(super) async fn handle_authorize_request(
             error,
         ))
     })?;
-    let requesting_browser_grant = browser_session
+    // No browser session, no authorization: pair this browser first, then
+    // come back to this very request. Nothing is parked, notified or consumed.
+    let Some((browser_session, browser_sid)) = browser_session
         .as_ref()
-        .filter(|claims| can_decide_consents(claims))
-        .map(GrantedScopes::granted);
-    let browser_sid = browser_session
-        .as_ref()
-        .and_then(|claims| claims.sid.as_deref());
+        .and_then(|claims| Some((claims, claims.sid.as_deref()?)))
+    else {
+        return Ok(found_redirect(&pairing_page_location(
+            authorize_uri
+                .path_and_query()
+                .map_or(authorize_uri.path(), |path_and_query| {
+                    path_and_query.as_str()
+                }),
+        )));
+    };
+    let requesting_browser_grant =
+        can_decide_consents(browser_session).then(|| browser_session.granted());
     let next_step = code_authorization_starter.start(
         &AuthorizeRequest {
             response_type: &params.response_type,

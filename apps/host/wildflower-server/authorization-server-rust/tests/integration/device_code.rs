@@ -508,6 +508,7 @@ async fn offline_access_issues_rotating_refresh_token() {
     let request_id = authorize_and_approve(
         &g,
         &owner_token,
+        &db.paired_browser_token,
         "test-app",
         "read%20offline_access",
         r#"{"approvedScopes":["read","offline_access"],"acknowledgedRegistration":false}"#,
@@ -515,15 +516,7 @@ async fn offline_access_issues_rotating_refresh_token() {
     .await;
 
     // Pull the redeemable code off the status poll, then redeem it.
-    let res = g
-        .router
-        .clone()
-        .oneshot(build_request(
-            Request::get(format!("/oauth/authorize/{request_id}")),
-            Body::empty(),
-        ))
-        .await
-        .expect("oneshot");
+    let res = get_authorization_status(&g.router, &db.paired_browser_token, &request_id).await;
     assert_eq!(res.status(), StatusCode::OK);
     let status = body_json(res.into_body()).await;
     let redirect = status["redirect"].as_str().expect("redirect");
@@ -736,6 +729,7 @@ async fn revoking_grant_revokes_refresh_tokens() {
     authorize_and_approve(
         &g,
         &owner_token,
+        &db.paired_browser_token,
         "test-app",
         "read",
         r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#,

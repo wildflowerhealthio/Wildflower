@@ -48,7 +48,12 @@ async fn device_prompt_is_cache_suppressed() {
 async fn oauth_consent_prompt_is_cache_suppressed() {
     let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
-    let res = get_authorize(&g.router, &authorize_query("test-app", "read")).await;
+    let res = get_authorize(
+        &g.router,
+        &db.paired_browser_token,
+        &authorize_query("test-app", "read"),
+    )
+    .await;
     let request_id = parked_request_id(&res);
 
     let res = g
@@ -113,19 +118,16 @@ async fn unknown_device_404_is_cache_suppressed() {
 /// `Pending` is pinned here, `Approved` in the auth-code happy path.
 #[tokio::test]
 async fn pending_authorization_status_is_cache_suppressed() {
-    let (g, _owner_token, _db) = spin_up();
-    let res = get_authorize(&g.router, &authorize_query("ghost", "read")).await;
+    let (g, _owner_token, db) = spin_up();
+    let res = get_authorize(
+        &g.router,
+        &db.paired_browser_token,
+        &authorize_query("ghost", "read"),
+    )
+    .await;
     let request_id = parked_request_id(&res);
 
-    let res = g
-        .router
-        .clone()
-        .oneshot(build_request(
-            Request::get(format!("/oauth/authorize/{request_id}")),
-            Body::empty(),
-        ))
-        .await
-        .expect("oneshot");
+    let res = get_authorization_status(&g.router, &db.paired_browser_token, &request_id).await;
     assert_eq!(res.status(), StatusCode::OK);
     assert_cache_suppressed(&res, "the pending status poll");
 }

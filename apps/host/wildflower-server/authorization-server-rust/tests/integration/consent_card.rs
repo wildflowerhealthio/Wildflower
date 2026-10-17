@@ -1,5 +1,6 @@
 //! The consent card (#1099): `/oauth/authorize` sends a browser signed in as
-//! the Owner to `/oauth/authorize/{id}/consent` and any other to the wait page,
+//! the Owner to `/oauth/authorize/{id}/consent`, any other browser with a
+//! session to the wait page, and a browser without one to pairing,
 //! and the card decides the request through the existing
 //! `/authorization/oauth-consents/{id}` API on the browser session's bearer, the
 //! token its session cookie holds. The cookie→bearer layer that presents that
@@ -63,17 +64,10 @@ async fn decide(
         .expect("oneshot")
 }
 
-/// The wait page's status poll for `request_id`, as JSON.
-async fn status_of(g: &AuthorizationServer, request_id: &str) -> Value {
-    let res = g
-        .router
-        .clone()
-        .oneshot(build_request(
-            Request::get(format!("/oauth/authorize/{request_id}")),
-            Body::empty(),
-        ))
-        .await
-        .expect("oneshot");
+/// The wait page's status poll for `request_id`, from the browser holding
+/// `session_token`, as JSON.
+async fn status_of(g: &AuthorizationServer, session_token: &str, request_id: &str) -> Value {
+    let res = get_authorization_status(&g.router, session_token, request_id).await;
     assert_eq!(res.status(), StatusCode::OK);
     body_json(res.into_body()).await
 }
@@ -110,7 +104,7 @@ async fn a_browser_signed_in_as_the_owner_goes_to_the_consent_card() {
 }
 
 #[tokio::test]
-async fn any_other_browser_goes_to_the_wait_page() {
+async fn a_browser_without_a_session_goes_to_pairing() {
     let (g, _host_owner_token, db) = spin_up();
     seed_client_with_redirect(
         &db,
@@ -134,8 +128,14 @@ async fn any_other_browser_goes_to_the_wait_page() {
         format!("browser_session={revoked}"),
     ] {
         let res = authorize_with_cookie(&g, &cookie).await;
-        assert_eq!(parked_page(&res).0, "wait", "{cookie:?}");
+        assert_eq!(res.status(), StatusCode::FOUND, "{cookie:?}");
+        assert!(
+            location_of(&res).starts_with("pair?next="),
+            "{cookie:?} goes to pairing, got {}",
+            location_of(&res)
+        );
     }
+    assert_eq!(newest_pending_consent(&db), None, "nothing was parked");
 }
 
 #[tokio::test]
@@ -182,7 +182,9 @@ async fn the_newest_pending_consent_says_whether_its_browser_can_decide_it() {
         }),
     );
 
-    let (page, request_id) = parked_page(&authorize_with_cookie(&g, "").await);
+    let (page, request_id) = parked_page(
+        &authorize_with_cookie(&g, &browser_session_cookie(&db.paired_browser_token)).await,
+    );
     assert_eq!(page, "wait");
     assert_eq!(
         newest_pending_consent(&db),
@@ -226,7 +228,7 @@ async fn approving_on_the_owner_s_bearer_sends_the_code_to_the_client_and_settle
     assert!(query.contains_key("code"), "{redirect}");
 
     // A wait page left open on the request settles on the same callback.
-    let status = status_of(&g, &request_id).await;
+    let status = status_of(&g, &owner_session_token, &request_id).await;
     assert_eq!(status["status"], "approved");
     assert_eq!(status["redirect"], decision["redirect"]);
 }
@@ -298,7 +300,10 @@ async fn an_unacknowledged_new_registration_is_refused() {
         body_json(res.into_body()).await["error"],
         "RegistrationNotAcknowledged"
     );
-    assert_eq!(status_of(&g, &request_id).await["status"], "pending");
+    assert_eq!(
+        status_of(&g, &owner_session_token, &request_id).await["status"],
+        "pending"
+    );
 }
 
 #[tokio::test]
@@ -322,7 +327,7 @@ async fn denying_sends_access_denied_to_the_client_and_settles_the_wait_page() {
          &error_description=The+request+was+declined.&state=xyz"
     );
 
-    let status = status_of(&g, &request_id).await;
+    let status = status_of(&g, &owner_session_token, &request_id).await;
     assert_eq!(status["status"], "denied");
     assert_eq!(status["redirect"], decision["redirect"]);
 }

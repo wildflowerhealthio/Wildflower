@@ -13,9 +13,12 @@
 //! token as the request's bearer, so the bearer gates check it like any other
 //! token, records the use, which moves the session's `last_seen_at`, and
 //! clears an ended one.
-//! `/oauth/authorize` reads it too, on the navigation a client starts, to send
-//! a browser signed in as the Owner to the consent card rather than the wait
-//! page, and to issue the request's code under that browser session.
+//! `/oauth/authorize` reads it too, first, on the navigation a client starts:
+//! a browser without a standing session is sent to pairing; one with a session
+//! that can approve the request goes to the consent card rather than the wait
+//! page; and the request's code is issued under the session either way. The
+//! wait page's status poll reads it to answer only the browser that made the
+//! request.
 //!
 //! A browser can hold the FHIR web UI's `hfs_session` beside it, and the layer
 //! presents `hfs_session`'s token when both ride a request. A page that acts

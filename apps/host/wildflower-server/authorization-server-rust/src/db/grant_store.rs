@@ -1758,10 +1758,10 @@ mod tests {
                      '2026-10-16 00:00:00+00:00', '2026-10-16 00:10:00+00:00', 'pending'); \
              INSERT INTO authorization_codes \
              (code, request_id, client_id, redirect_uri, code_challenge, granted_scopes, \
-              issued_at, expires_at) \
+              issued_at, expires_at, sid) \
              VALUES ('browser-row', 'browser-row', '{OLD_ID}', 'https://example/', \
                      'challenge', '[]', '2026-10-16 00:00:00+00:00', \
-                     '2026-10-16 00:01:00+00:00'); \
+                     '2026-10-16 00:01:00+00:00', 'standing'); \
              INSERT INTO authorization_code_grants \
              (id, client_id, scopes, granted_at, redirect_uri) \
              VALUES ('browser-row', '{OLD_ID}', '[]', '2026-10-16T00:00:00Z', \
@@ -2053,6 +2053,153 @@ mod tests {
         assert_eq!(
             allowed_scopes_of(&mut changed, AUTHORIZATION_WEB),
             r#"["openid"]"#
+        );
+    }
+
+    /// An install already at `0041`, holding what the code flow minted with no
+    /// browser session, has it ended when `0042` runs: a live sessionless
+    /// code-flow family expires now and its unconsumed token is stamped
+    /// consumed, a sessionless code is dropped and a sessionless pending
+    /// code-flow request expires. A family already dead keeps its times, and a
+    /// family made in a session or by the device flow keeps going, as do the
+    /// code and requests made in a session or by a device. Reverting `0042`
+    /// makes a code's `sid` nullable again.
+    #[test]
+    fn an_install_already_at_0041_ends_its_sessionless_code_flow() {
+        use diesel::connection::SimpleConnection as _;
+        const FUTURE: &str = "2999-01-01 00:00:00+00:00";
+        const PAST: &str = "2026-01-01 00:00:00+00:00";
+        const EARLIER: &str = "2025-12-01 00:00:00+00:00";
+
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0041"),
+        )
+        .expect("migrate to 0041");
+        conn.batch_execute(&format!(
+            "INSERT INTO refresh_token_families \
+             (family_id, client_id, scopes, issued_at, expires_at, authorization_code_hash, sid) \
+             VALUES ('code-sessionless', 'app', '[]', '{EARLIER}', '{FUTURE}', 'hash-1', NULL), \
+                    ('code-dead', 'app', '[]', '{EARLIER}', '{PAST}', 'hash-2', NULL), \
+                    ('code-in-session', 'app', '[]', '{EARLIER}', '{FUTURE}', 'hash-3', 'sid-1'), \
+                    ('device', 'device-app', '[]', '{EARLIER}', '{FUTURE}', NULL, NULL); \
+             INSERT INTO refresh_tokens (token_hash, family_id, issued_at, consumed_at) \
+             VALUES ('spent', 'code-sessionless', '{EARLIER}', '{EARLIER}'), \
+                    ('live', 'code-sessionless', '{EARLIER}', NULL), \
+                    ('dead', 'code-dead', '{EARLIER}', NULL), \
+                    ('in-session', 'code-in-session', '{EARLIER}', NULL), \
+                    ('device', 'device', '{EARLIER}', NULL); \
+             INSERT INTO authorization_codes \
+             (code, request_id, client_id, redirect_uri, code_challenge, granted_scopes, \
+              issued_at, expires_at, sid) \
+             VALUES ('sessionless', 'sessionless', 'app', 'https://example/', 'challenge', \
+                     '[]', '{EARLIER}', '{FUTURE}', NULL), \
+                    ('in-session', 'in-session', 'app', 'https://example/', 'challenge', \
+                     '[]', '{EARLIER}', '{FUTURE}', 'sid-1'); \
+             INSERT INTO authorization_requests \
+             (id, grant_type, client_id, requested_scopes, requested_at, expires_at, status, sid) \
+             VALUES ('sessionless', 'authorization_code', 'app', '[]', '{EARLIER}', '{FUTURE}', \
+                     'pending', NULL), \
+                    ('in-session', 'authorization_code', 'app', '[]', '{EARLIER}', '{FUTURE}', \
+                     'pending', 'sid-1'), \
+                    ('device', 'device_code', 'device-app', '[]', '{EARLIER}', '{FUTURE}', \
+                     'pending', NULL)"
+        ))
+        .expect("families, tokens, codes and requests at 0041");
+        let read = |conn: &mut SqliteConnection, query: &str| {
+            diesel::sql_query(query)
+                .load::<OptionalName>(conn)
+                .expect("read")
+                .into_iter()
+                .map(|row| row.name)
+                .collect::<Vec<_>>()
+        };
+        let family_expiry = |conn: &mut SqliteConnection, family_id: &str| {
+            read(
+                conn,
+                &format!(
+                    "SELECT expires_at AS name FROM refresh_token_families \
+                     WHERE family_id = '{family_id}'"
+                ),
+            )
+            .remove(0)
+            .expect("an expiry")
+        };
+        let consumed_at = |conn: &mut SqliteConnection, token_hash: &str| {
+            read(
+                conn,
+                &format!(
+                    "SELECT consumed_at AS name FROM refresh_tokens \
+                     WHERE token_hash = '{token_hash}'"
+                ),
+            )
+            .remove(0)
+        };
+
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MIGRATIONS,
+        )
+        .expect("upgrade through 0042");
+
+        let ended_at = family_expiry(&mut conn, "code-sessionless");
+        let ended_at_time = chrono::DateTime::parse_from_str(&ended_at, "%F %T%.f%:z")
+            .unwrap_or_else(|_| panic!("{ended_at} is in the diesel chrono text encoding"));
+        assert!(ended_at_time <= chrono::Utc::now(), "the family ended");
+        assert_eq!(consumed_at(&mut conn, "live"), Some(ended_at));
+        assert_eq!(consumed_at(&mut conn, "spent").as_deref(), Some(EARLIER));
+        assert_eq!(family_expiry(&mut conn, "code-dead"), PAST);
+        assert_eq!(consumed_at(&mut conn, "dead"), None);
+        for (family_id, token_hash) in [("code-in-session", "in-session"), ("device", "device")] {
+            assert_eq!(family_expiry(&mut conn, family_id), FUTURE, "{family_id}");
+            assert_eq!(consumed_at(&mut conn, token_hash), None, "{token_hash}");
+        }
+        assert_eq!(
+            read(&mut conn, "SELECT code AS name FROM authorization_codes"),
+            [Some("in-session".to_owned())]
+        );
+        assert_eq!(
+            read(
+                &mut conn,
+                "SELECT id || ':' || status AS name FROM authorization_requests ORDER BY id"
+            ),
+            [
+                Some("device:pending".to_owned()),
+                Some("in-session:pending".to_owned()),
+                Some("sessionless:expired".to_owned()),
+            ]
+        );
+        let insert_sessionless_code = |conn: &mut SqliteConnection| {
+            conn.batch_execute(&format!(
+                "INSERT INTO authorization_codes \
+                 (code, request_id, client_id, redirect_uri, code_challenge, granted_scopes, \
+                  issued_at, expires_at, sid) \
+                 VALUES ('another', 'another', 'app', 'https://example/', 'challenge', '[]', \
+                         '{EARLIER}', '{FUTURE}', NULL)"
+            ))
+        };
+        assert!(
+            insert_sessionless_code(&mut conn).is_err(),
+            "a code names its session"
+        );
+
+        let migration_0042 = MIGRATIONS
+            .migrations()
+            .expect("embedded migrations")
+            .into_iter()
+            .find(|migration| migration.name().version() == MigrationVersion::from("0042"))
+            .expect("0042 is embedded");
+        migration_0042.revert(&mut conn).expect("revert 0042");
+        insert_sessionless_code(&mut conn).expect("a code's sid is nullable again");
+        assert_eq!(
+            read(
+                &mut conn,
+                "SELECT code AS name FROM authorization_codes ORDER BY code"
+            ),
+            [Some("another".to_owned()), Some("in-session".to_owned())]
         );
     }
 

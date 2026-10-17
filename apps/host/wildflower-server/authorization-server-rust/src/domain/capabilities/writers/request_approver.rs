@@ -68,13 +68,14 @@ impl<'a, S: GrantStore> RequestApprover<'a, S> {
 
     /// Approve the pending code-flow request under `authority` and issue
     /// `code` for it, bound to the request's client, redirect, and PKCE
-    /// challenge, to the browser session the request was made in (if any), and
+    /// challenge, to the browser session the request was made in (not the
+    /// approver's, so revoking the browser the app runs in ends it), and
     /// to the SMART-on-FHIR `patient` context (if any), expiring
     /// [`AUTHORIZATION_CODE_TTL`] after `now`. The flow generates `code` (a
     /// CSPRNG opaque token) so tests can inject a known value.
     ///
     /// The approval and the code land in one transaction, which first checks
-    /// that the request's browser session (if any) still stands. A request
+    /// that the request's browser session still stands. A request
     /// whose session was revoked meanwhile is denied rather than approved
     /// ([`CodeApproval::BrowserSessionRevoked`]), so the client hears
     /// `access_denied` instead of redeeming a code whose tokens are refused on
@@ -105,19 +106,17 @@ impl<'a, S: GrantStore> RequestApprover<'a, S> {
             patient: patient.map(str::to_owned),
             issued_at: now,
             expires_at: now + AUTHORIZATION_CODE_TTL,
-            sid: request.sid.clone(),
+            sid: pending_request.sid().to_owned(),
         };
         // One transaction, so an approved request never exists without its code,
         // and its session can't be revoked between the check and the approval.
         self.store.transaction(|tx| {
-            if let Some(sid) = request.sid.as_deref() {
-                if tx.browser_session_is_revoked(sid)? {
-                    return Ok(if tx.deny_authorization_request(&request.id)? {
-                        CodeApproval::BrowserSessionRevoked
-                    } else {
-                        CodeApproval::RequestNotPending
-                    });
-                }
+            if tx.browser_session_is_revoked(pending_request.sid())? {
+                return Ok(if tx.deny_authorization_request(&request.id)? {
+                    CodeApproval::BrowserSessionRevoked
+                } else {
+                    CodeApproval::RequestNotPending
+                });
             }
             if !tx.approve_authorization_request(&request.id, authorized_scopes, patient, None)? {
                 return Ok(CodeApproval::RequestNotPending);
@@ -187,24 +186,27 @@ mod tests {
         code_request, delegated_scopes, device_request, FakeGrantStore,
     };
 
-    /// The fixture code request `id`, in `status`, as the approver takes it.
+    /// The fixture code request `id`, in `status`, as the approver takes it,
+    /// made in a browser session that stands.
     fn pending_request(
         store: &FakeGrantStore,
         id: &str,
         status: RequestStatus,
     ) -> PendingCodeRequest {
-        pending_request_in_session(store, id, status, None)
+        let standing = BrowserSession::new_owner(vec![], Duration::hours(8), Utc::now());
+        store.insert_browser_session(&standing).unwrap();
+        pending_request_in_session(store, id, status, &standing.sid)
     }
 
-    /// [`pending_request`], made in the browser session `sid` (if any).
+    /// [`pending_request`], made in the browser session `sid`.
     fn pending_request_in_session(
         store: &FakeGrantStore,
         id: &str,
         status: RequestStatus,
-        sid: Option<&str>,
+        sid: &str,
     ) -> PendingCodeRequest {
         let request = AuthorizationRequest {
-            sid: sid.map(str::to_owned),
+            sid: Some(sid.to_owned()),
             ..code_request(id, status, Utc::now() + Duration::minutes(5))
         };
         store.insert_authorization_request(&request).unwrap();
@@ -299,7 +301,7 @@ mod tests {
             ("req-missing", "no-such-sid"),
         ] {
             let pending_request =
-                pending_request_in_session(&store, id, RequestStatus::Pending, Some(sid));
+                pending_request_in_session(&store, id, RequestStatus::Pending, sid);
             assert_eq!(
                 approve(&store, &pending_request),
                 CodeApproval::BrowserSessionRevoked,
@@ -321,11 +323,11 @@ mod tests {
             &store,
             "req-standing",
             RequestStatus::Pending,
-            Some(&standing.sid),
+            &standing.sid,
         );
         assert!(matches!(
             approve(&store, &pending_request),
-            CodeApproval::Issued(issued_code) if issued_code.sid.as_deref() == Some(standing.sid.as_str())
+            CodeApproval::Issued(issued_code) if issued_code.sid == standing.sid
         ));
     }
 

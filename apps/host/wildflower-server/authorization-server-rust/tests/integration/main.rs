@@ -16,6 +16,7 @@ mod request_caller;
 mod revocation;
 mod same_device_sign_in;
 mod scope_gating;
+mod session_required;
 mod smoke;
 mod token_revocation;
 mod wait_page;

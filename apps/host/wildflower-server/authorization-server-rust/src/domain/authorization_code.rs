@@ -42,17 +42,20 @@ pub struct IssuedAuthorizationCode {
     pub issued_at: DateTime<Utc>,
     /// Instant after which `/token` redemption is rejected as expired.
     pub expires_at: DateTime<Utc>,
-    /// The browser session the code was issued under — the one the
-    /// `/authorize` request was made in — or `None` when there was none.
-    /// The tokens and refresh family the code earns record it too.
-    pub sid: Option<String>,
+    /// The browser session the code was issued under: the one the
+    /// `/authorize` request was made in, not the approver's. The tokens and
+    /// refresh family the code earns record it too, so revoking that browser
+    /// session ends them.
+    pub sid: String,
 }
 
 /// A pending authorization-code request that is known to be well formed: it's
 /// `Pending`, an `AuthorizationCode` grant flow, unexpired, and carries both a
 /// `redirect_uri` and a PKCE `code_challenge`. Those two are unwrapped once so
 /// callers never re-prove them (parse-don't-validate), and the fields are
-/// private so the unwrapped copies can't drift from the request. It is what
+/// private so the unwrapped copies can't drift from the request. Its browser
+/// session (`sid`) is unwrapped the same way: every code-flow request is made
+/// in one. It is what
 /// [`RequestApprover::approve_for_code`](crate::domain::capabilities::writers::RequestApprover::approve_for_code)
 /// approves.
 ///
@@ -67,34 +70,39 @@ pub struct PendingCodeRequest {
     request: AuthorizationRequest,
     redirect_uri: Url,
     code_challenge: String,
+    sid: String,
 }
 
 impl PendingCodeRequest {
     /// Unwrap `request`'s code-flow fields, or `None` when it lacks a
-    /// `redirect_uri` or a `code_challenge`. The caller has already checked the
-    /// grant type, status, and expiry.
+    /// `redirect_uri`, a `code_challenge` or a browser session (`sid`). The
+    /// caller has already checked the grant type, status, and expiry.
     #[must_use]
     pub fn from_request(request: AuthorizationRequest) -> Option<Self> {
         let redirect_uri = request.redirect_uri.clone()?;
         let code_challenge = request.code_challenge.clone()?;
+        let sid = request.sid.clone()?;
         Some(PendingCodeRequest {
             request,
             redirect_uri,
             code_challenge,
+            sid,
         })
     }
 
     /// A new pending code-flow request built from `args` — the `/authorize`
-    /// flow's request to park. Its redirect and challenge are present by
-    /// construction.
+    /// flow's request to park. Its redirect, challenge and browser session are
+    /// present by construction.
     #[must_use]
     pub fn new_code_authorization(args: StartCodeAuthorizationArgs) -> Self {
         let redirect_uri = args.redirect_uri.clone();
         let code_challenge = args.code_challenge.clone();
+        let sid = args.sid.clone();
         PendingCodeRequest {
             request: AuthorizationRequest::new_code_authorization(args),
             redirect_uri,
             code_challenge,
+            sid,
         }
     }
 
@@ -114,6 +122,12 @@ impl PendingCodeRequest {
     #[must_use]
     pub fn code_challenge(&self) -> &str {
         &self.code_challenge
+    }
+
+    /// The browser session the request was made in.
+    #[must_use]
+    pub fn sid(&self) -> &str {
+        &self.sid
     }
 
     /// The stored request, giving up the unwrapped fields.
