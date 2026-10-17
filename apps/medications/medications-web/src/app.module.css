@@ -12,36 +12,7 @@
   padding: var(--space-9) var(--space-7) var(--space-13);
 }
 
-/* The title row (title + view toggle) with the page-chunk progress bar on its
- * own full-width row directly beneath it. */
-.header {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-6);
-  margin-bottom: var(--space-9);
-}
-
-/* Top row: the H1 and the view toggle share one line, the toggle pushed to the
- * far end; both drop to their own lines when the row is too narrow. */
-.topRow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-7);
-}
-
-/* Header controls: the view toggle. */
-.controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: var(--space-5);
-}
-
-/* The interaction catalogue's failure line, sized and coloured like
- * `smart-app-react`'s read-status lines. */
-.error {
-  font-size: var(--font-size-3);
-  color: var(--color-red-3);
+/* The page title, above the patient line and the tabs. */
+.app__header {
+  margin-bottom: var(--space-6);
 }

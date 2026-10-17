@@ -152,7 +152,7 @@ a single commit (mocked fetches in tests; a fast server in prod): no committed
 render ever observes `isFetchingNextPage === true`, so the dep array is
 identical before and after the page lands and the effect never re-fires. Add
 `data.pages.length` to the dependencies — it is the one input guaranteed to
-change once per page. See the driver in `apps/medications/medications-web/src/app.tsx`.
+change once per page. See `useFetchEveryPage` in `global/react-kitchen-sink/src/paged-query/use-fetch-every-page.ts`.
 
 ## A `freeText` pseudonym breaks any consumer that parses the value with a regex
 

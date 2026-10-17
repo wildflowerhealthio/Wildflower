@@ -9,6 +9,7 @@ import {
   PATIENT_PARAM,
   type PatientChoice,
   patientChoiceKeyOf,
+  patientChoiceOfKey,
   patientScopeOf,
   withPatientChoice,
 } from './patient-choice.ts'
@@ -110,5 +111,22 @@ describe('patientChoiceKeyOf', () => {
       }),
       { numRuns: RUNS }
     )
+  })
+})
+
+describe('patientChoiceOfKey', () => {
+  test('reads back every choice patientChoiceKeyOf wrote', () => {
+    fc.assert(
+      fc.property(patientChoiceArb, (patientChoice) => {
+        expect(patientChoiceOfKey(patientChoiceKeyOf(patientChoice))).toEqual(
+          Option.some(patientChoice)
+        )
+      }),
+      { numRuns: RUNS }
+    )
+  })
+
+  test('is no choice for the empty string', () => {
+    expect(patientChoiceOfKey('')).toEqual(Option.none())
   })
 })

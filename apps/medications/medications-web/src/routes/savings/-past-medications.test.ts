@@ -2,7 +2,7 @@ import type { MedicationView } from '@wildflowerhealthio/medication-core/fhir'
 import type { Medication } from '@wildflowerhealthio/medication-sponsorship-core-js'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { pastEligibleMedications } from './past-medications.ts'
+import { pastEligibleMedications } from './-past-medications.ts'
 
 describe('pastEligibleMedications', () => {
   it('returns completed medications not covered by an active prescription', () => {

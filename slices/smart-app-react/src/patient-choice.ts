@@ -33,19 +33,25 @@ const patientChoiceKeyOf = (patientChoice: PatientChoice): string =>
   patientChoice.kind === 'patient' ? patientChoice.patientId : ALL_PATIENTS_PARAM_VALUE
 
 /**
+ * The choice {@link patientChoiceKeyOf} made `key`: `*` is every patient, any
+ * other id that patient, and the empty string no choice yet. Never throws.
+ */
+const patientChoiceOfKey = (key: string): Option.Option<PatientChoice> => {
+  if (key === '') return Option.none()
+  return Option.some(
+    key === ALL_PATIENTS_PARAM_VALUE
+      ? { kind: 'all-patients' }
+      : { kind: 'patient', patientId: key }
+  )
+}
+
+/**
  * Read the choice back out of query parameters: `?patient=*` is every
  * patient, `?patient=<id>` that patient, and an absent or empty `patient` is
  * no choice yet. Never throws.
  */
-const decodePatientChoice = (params: URLSearchParams): Option.Option<PatientChoice> => {
-  const patientParam = params.get(PATIENT_PARAM)
-  if (patientParam === null || patientParam === '') return Option.none()
-  return Option.some(
-    patientParam === ALL_PATIENTS_PARAM_VALUE
-      ? { kind: 'all-patients' }
-      : { kind: 'patient', patientId: patientParam }
-  )
-}
+const decodePatientChoice = (params: URLSearchParams): Option.Option<PatientChoice> =>
+  patientChoiceOfKey(params.get(PATIENT_PARAM) ?? '')
 
 /**
  * A copy of `params` with `patientChoice` as its `patient`, and every other
@@ -66,6 +72,7 @@ export {
   PATIENT_PARAM,
   type PatientChoice,
   patientChoiceKeyOf,
+  patientChoiceOfKey,
   patientScopeOf,
   withPatientChoice,
 }

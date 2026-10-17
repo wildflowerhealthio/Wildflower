@@ -1,3 +1,4 @@
+import { createMemoryHistory } from '@tanstack/react-router'
 import { cleanup, render, screen } from '@testing-library/react'
 import { APP_DESCRIPTIONS, TELEMETRY_CONSENT_COPY } from '@wildflowerhealthio/branding-core'
 import { writeConsent } from '@wildflowerhealthio/telemetry-core'
@@ -50,7 +51,7 @@ afterEach(() => {
 describe('AppRoot', () => {
   it('should mount the shell as the Medication Viewer when not launched', () => {
     // Arrange / Act
-    render(<AppRoot launched={false} />)
+    render(<AppRoot basepath="/" history={createMemoryHistory()} launched={false} />)
 
     // Assert — the landing introduces this app, not another
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
@@ -61,7 +62,7 @@ describe('AppRoot', () => {
 
   it('should start telemetry with this app’s own DSN and name', () => {
     // Arrange / Act
-    render(<AppRoot launched={false} />)
+    render(<AppRoot basepath="/" history={createMemoryHistory()} launched={false} />)
 
     // Assert
     expect(initConsentedTelemetryMock).toHaveBeenCalledTimes(1)
