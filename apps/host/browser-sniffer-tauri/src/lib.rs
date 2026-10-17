@@ -75,6 +75,16 @@ pub fn attach_browser_sniffer(app: &AppHandle) {
     });
 }
 
+/// `apps/host/recorder/recorder-wire-golden.json`, the `RecorderBridge`
+/// payloads the TS side (`recorder-core-js`'s `bridge.test.ts`) and
+/// `recorder-rust` read too. This crate's tests check the messages it routes
+/// and emits against it.
+#[cfg(test)]
+pub(crate) fn recorder_wire_golden() -> serde_json::Value {
+    serde_json::from_str(include_str!("../../recorder/recorder-wire-golden.json"))
+        .expect("recorder-wire-golden.json is JSON")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -82,7 +92,9 @@ mod tests {
     /// Drift guard for this crate's sniffer-specific tag literals. The
     /// shared `BRIDGE_EVENT` is drift-guarded in
     /// `wildflowerhealthio_shared_structures::bridge::tests`; this crate only owns
-    /// the per-tag literals on the multiplexed channel.
+    /// the per-tag literals on the multiplexed channel. The golden tests check
+    /// the tags `recorder-wire-golden.json` carries; this one also covers
+    /// `PageAction` and `CancelSnifferRequest`, which it does not.
     #[test]
     fn bridge_tags_match_the_ts_convention() {
         assert_eq!(events::OPEN, "Open");
@@ -92,6 +104,30 @@ mod tests {
         assert_eq!(events::USER_DISMISSED, "UserDismissed");
         assert_eq!(events::SNIFFER_DISPOSED, "SnifferDisposed");
         assert_eq!(events::PAGE_REQUESTED, "PageRequested");
+    }
+
+    /// What the Recorder sends for `Open` decodes here, and its source
+    /// resolves to a webview URL.
+    #[test]
+    fn open_matches_the_golden_file() {
+        let golden = recorder_wire_golden();
+        let open: model::open::OpenPayload =
+            serde_json::from_value(golden["webToHost"][events::OPEN].clone())
+                .expect("golden Open decodes");
+        model::web_view_source::resolve_source(open.source).expect("golden Open source resolves");
+    }
+
+    /// The listener routes `Open` and `SniffingComplete` by `_tag`, so both
+    /// must be golden web→host tags whose payload carries that tag.
+    #[test]
+    fn routed_tags_match_the_golden_file() {
+        let golden = recorder_wire_golden();
+        for tag in [events::OPEN, events::SNIFFING_COMPLETE] {
+            let payload = golden["webToHost"]
+                .get(tag)
+                .unwrap_or_else(|| panic!("`{tag}` has no golden webToHost payload"));
+            assert_eq!(payload["_tag"], tag);
+        }
     }
 
     /// The bootstrap IIFE is generated at build time. An empty file

@@ -122,6 +122,9 @@ const OUTSIDE_INPUTS: ReadonlyMap<string, string> = new Map([
   ['slices/browser-sniffer/browser-sniffer-tauri-js/', 'wildflowerhealthio-browser-sniffer-tauri'],
   // The signed request wildflowerhealthio-relay-server's signature test verifies.
   ['apps/relay/relay-core-js/src/signing/fixtures/', 'wildflowerhealthio-relay-server'],
+  // The Recorder's wire golden file, which wildflowerhealthio-browser-sniffer-tauri
+  // reads from beside the recorder crates.
+  ['apps/host/recorder/recorder-wire-golden.json', 'wildflowerhealthio-browser-sniffer-tauri'],
 ])
 
 /** Which shards a branch's test run covers. */
@@ -207,23 +210,24 @@ const withDependents = (seed: ReadonlySet<string>, crates: readonly Crate[]): Se
 
 /**
  * The crates `file` is an input to: the crate whose directory holds it; else
- * its {@link OUTSIDE_INPUTS} owner; else, for a file sitting beside crate
- * directories (`apps/host/servers/servers-wire-golden.json`, which
- * `servers-rust` includes from its parent), every crate under that directory.
- * Any other file — TypeScript, docs, the repo root's other config — is no
- * crate's input.
+ * every crate under the file's directory (a file sitting beside crate
+ * directories, as `servers-rust` includes
+ * `apps/host/servers/servers-wire-golden.json` from its parent) together with
+ * its {@link OUTSIDE_INPUTS} owners. Any other file — TypeScript, docs, the
+ * repo root's other config — is no crate's input.
  */
 const cratesReading = (file: string, crates: readonly Crate[]): readonly string[] => {
   const owner = crates
     .filter((c) => file.startsWith(`${c.dir}/`))
     .toSorted((a, b) => b.dir.length - a.dir.length)[0]
   if (owner !== undefined) return [owner.name]
-  for (const [prefix, name] of OUTSIDE_INPUTS) {
-    if (file.startsWith(prefix)) return [name]
-  }
   const parent = posix.dirname(file)
-  if (parent === '.') return []
-  return crates.filter((c) => c.dir.startsWith(`${parent}/`)).map((c) => c.name)
+  const beside =
+    parent === '.' ? [] : crates.filter((c) => c.dir.startsWith(`${parent}/`)).map((c) => c.name)
+  const outside = [...OUTSIDE_INPUTS]
+    .filter(([prefix]) => file.startsWith(prefix))
+    .map(([, name]) => name)
+  return [...new Set([...beside, ...outside])]
 }
 
 /**

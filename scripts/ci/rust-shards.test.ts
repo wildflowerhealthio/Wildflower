@@ -91,6 +91,20 @@ describe('rust-shards / cratesReading', () => {
     ])
   })
 
+  it('adds the crates reading a file from outside to the crates beside it', () => {
+    const withRecorder = [
+      ...crates,
+      crate('wildflowerhealthio-recorder', 'apps/host/recorder/recorder-rust'),
+      crate('wildflowerhealthio-recorder-tauri', 'apps/host/recorder/recorder-tauri'),
+      crate('wildflowerhealthio-browser-sniffer-tauri', 'apps/host/browser-sniffer-tauri'),
+    ]
+    expect(cratesReading('apps/host/recorder/recorder-wire-golden.json', withRecorder)).toEqual([
+      'wildflowerhealthio-recorder',
+      'wildflowerhealthio-recorder-tauri',
+      'wildflowerhealthio-browser-sniffer-tauri',
+    ])
+  })
+
   it('gives files no crate reads nothing, the repo root included', () => {
     for (const file of [
       'apps/launcher/src/index.ts',

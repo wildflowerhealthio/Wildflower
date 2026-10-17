@@ -44,8 +44,9 @@ its layout holds around every route, and attaches `recorder-tauri` in its
   the `recorder_save_folder` command, granted to the `main` webview by
   `host-app`'s `allow-recorder` permission.
 - **`recorder-wire-golden.json`** — one wire payload per `RecorderBridge`
-  tag and the `recorder_save_folder` answer, read by `recorder-core-js`'s and
-  `recorder-rust`'s tests: change both sides with it.
+  tag and the `recorder_save_folder` answer, read by `recorder-core-js`'s,
+  `recorder-rust`'s and `browser-sniffer-tauri`'s tests: change both sides
+  with it.
 
 ## Rules
 
