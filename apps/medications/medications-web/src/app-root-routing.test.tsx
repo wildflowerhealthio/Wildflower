@@ -1,11 +1,12 @@
 import { createBrowserHistory } from '@tanstack/react-router'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { TELEMETRY_CONSENT_COPY } from '@wildflowerhealthio/branding-core'
 import { writeConsent } from '@wildflowerhealthio/telemetry-core'
 import type * as TelemetryWeb from '@wildflowerhealthio/telemetry-web'
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vite-plus/test'
 
 import { AppRoot } from './app-root.tsx'
+import { BASEPATH, setUpEachAppTest } from './test-utils/app-fakes.ts'
 
 // The real app root, app and router over the real URL, with fhirclient's
 // OAuth calls stubbed at the module boundary: `authorize` is the redirect a
@@ -24,9 +25,6 @@ vi.mock('@wildflowerhealthio/telemetry-web', async (importOriginal) => ({
   ...(await importOriginal<typeof TelemetryWeb>()),
   initConsentedTelemetry: () => false,
 }))
-
-/** The directory the app is served from in these tests. */
-const BASEPATH = '/medications/'
 
 /** The FHIR server the stub client reads. */
 const FHIR_SERVER_URL = 'https://fhir.example/r4'
@@ -50,13 +48,6 @@ const readyClient = {
     ),
 }
 
-/** jsdom APIs the page's `RouteTabs` reads, which jsdom lacks. */
-class InertResizeObserver {
-  observe(): void {}
-  unobserve(): void {}
-  disconnect(): void {}
-}
-
 /**
  * Render the app root at the address bar as it is, over a browser history the
  * test destroys as it finishes.
@@ -72,6 +63,8 @@ const renderAppRoot = (): void => {
 /** The address bar's path and query. */
 const addressBar = (): string => `${window.location.pathname}${window.location.search}`
 
+setUpEachAppTest()
+
 beforeEach(() => {
   // A returning visitor's answer, so the page is past the consent dialog.
   writeConsent(window.localStorage, {
@@ -80,16 +73,10 @@ beforeEach(() => {
     performance: false,
     decidedAt: '2026-09-29T12:00:00.000Z',
   })
-  vi.stubGlobal('ResizeObserver', InertResizeObserver)
-  vi.stubGlobal('matchMedia', () => ({ matches: false }))
-  Element.prototype.scrollTo = () => {}
 })
 
 afterEach(() => {
-  cleanup()
   window.localStorage.clear()
-  vi.unstubAllGlobals()
-  Reflect.deleteProperty(Element.prototype, 'scrollTo')
   authorizeMock.mockReset()
   readyMock.mockReset()
 })
