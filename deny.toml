@@ -43,16 +43,20 @@ ignore = [
   # `advisory-not-detected` once these stop matching, which is the cue to drop.
   "RUSTSEC-2026-0194",
   "RUSTSEC-2026-0195",
-  # zip — upstream yanked every release but the latest 9.x ahead of publishing
-  # security advisories (zip-rs/zip2#1075), so no semver-compatible version is
-  # left for helios 0.2.4 (the newest release), which asks for `zip = "0.6"`
-  # and `zip = "2.2"`. helios-fhir's 0.6 is a build-dependency whose build
-  # script only touches it with the `R6` feature, which we don't enable.
+  # zip < 9.0.0 — extraction keeps SUID/SGID bits (0367), creates symlinks whose
+  # targets leave the destination (0368), and applies permissions through
+  # symlinks (0369). All three are in `ZipArchive::extract` /
+  # `ZipStreamReader::extract`. zip enters only through helios 0.2.4 (the newest
+  # release), which asks for `zip = "0.6"` and `zip = "2.2"`, and helios never
+  # calls either `extract`: helios-fhir's 0.6 is a build-dependency whose build
+  # script only touches it with the `R6` feature, which we don't enable (and
+  # even then unpacks entry by entry through `mangled_name`), and
   # helios-sof's 2.x only *writes* zips (`ZipWriter` over bulk-export Parquet
-  # buffers it built itself) and never parses an archive. Reviewed, low-risk,
-  # temporary until helios moves to zip 9.
-  { crate = "zip@0.6.6", reason = "yanked; helios-fhir R6-only build-dependency, unused for R4" },
-  { crate = "zip@2.4.2", reason = "yanked; helios-sof only writes zips from its own buffers" },
+  # buffers it built itself). Reviewed, low-risk, temporary until helios ships
+  # zip 9 (HeliosSoftware/hfs#2102, merged but unreleased).
+  "RUSTSEC-2026-0367",
+  "RUSTSEC-2026-0368",
+  "RUSTSEC-2026-0369",
 ]
 # Only fail on "unmaintained" advisories for crates we depend on directly; deep
 # transitive ones (e.g. the gtk3/atk chain pulled in by Tauri, or unic-* and
@@ -80,14 +84,6 @@ allow = [
   "CC0-1.0",
   "MPL-2.0",
   "CDLA-Permissive-2.0",
-  # The original bzip2/libbzip2 license (Julian Seward), carried by the Rust
-  # translation in `libbz2-rs-sys` <- `bzip2` <- `zip` <- `apps-rust`. It is a
-  # hybrid of two licenses already allowed above: retain-the-notice and
-  # no-endorsement from BSD-3-Clause, don't-misrepresent-the-origin and
-  # mark-altered-sources from Zlib. Permissive — no copyleft, no
-  # source-disclosure obligation, and the two Zlib-derived clauses only bind
-  # someone redistributing *modified source*, which we do not do.
-  "bzip2-1.0.6",
 ]
 confidence-threshold = 0.8
 exceptions = []
