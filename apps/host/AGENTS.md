@@ -77,3 +77,4 @@ stores, and the packages beside it that only the host uses. The app itself is
 - [apps/AGENTS.md](../AGENTS.md) — the rules every app follows
 - [Architecture / slice layering](../../slices/AGENTS.md)
 - [Bridge Explanation](../../docs/Messaging/Bridge%20Explanation.md) — the webview ↔ host bridge
+- [Threat Model Explanation](./host-app/Threat%20Model%20Explanation.md) — data at rest, which code reaches it, and what is left to the platform

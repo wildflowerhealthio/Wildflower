@@ -76,5 +76,7 @@ admin screen.
   many devices
 - [Relay Explanation](../../docs/Relay/Explanation.md) — what the relay's
   operator can and can't see
+- [Threat Model Explanation](./docs/Threat%20Model%20Explanation.md) — the
+  relay's assets, entry points and threats
 - [Testing Reference](../../docs/Testing/Testing%20Reference.md) — the
   cross-language fixture pattern

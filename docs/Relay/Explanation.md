@@ -129,3 +129,8 @@ domain, run wildflower-relay yourself:
   wildflower-relay
 
 Either way, the operator is you.
+
+## See also
+
+- [Relay Threat Model Explanation](../../apps/relay/docs/Threat%20Model%20Explanation.md):
+  the relay's assets, entry points and threats.
