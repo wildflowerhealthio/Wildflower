@@ -91,6 +91,7 @@ Before pushing, reconcile the doc comments of every touched module against the d
 
 ## See Also
 
+- [Style Guide Reference](../Style/Style%20Guide%20Reference.md) — the broader picture these rules sit in: structure, types, naming, Effect style, UI and PR practice
 - [Testing Reference](../Testing/Testing%20Reference.md) — how to write the parity, round-trip, and can-fail tests these rules require
 - [Doc Comments Reference](../Documentation/Doc%20Comments%20Reference.md) — present-tense and doc-vs-code reconciliation rules for TSDoc
 - [CLAUDE.md](../../CLAUDE.md) — the guardrails reviewers cite by name

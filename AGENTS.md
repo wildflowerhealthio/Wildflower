@@ -24,6 +24,8 @@ Read [AGENTS Explanation](./docs/Agents/Explanation.md) for what this file is an
 
 - [Review Standards](./docs/Agents/Review%20Standards%20Reference.md) — **MUST read before opening any PR**
 
+- [Style Guide](./docs/Style/Style%20Guide%20Reference.md) — **MUST read before designing or writing code**; how the maintainer wants structure, types, names, Effect code, UI and PRs to look, distilled from her review comments
+
 ### Agents SHOULD Clarify before building or planning
 
 Before starting any task, pause and think about the request, then ask clarifying questions to minimize guessing and confirm shared understanding. The last question should be: "Do you think I understand well enough to start?" If the user says to ask more, do another think-and-ask cycle. Err on the side of asking too many questions.
@@ -61,7 +63,7 @@ There do exist some, narrow exceptions to the rule:
 
 ### Agents SHOULD write code that reads the way the maintainer reviews it
 
-Recurring review cues — the reasoning and examples are in [Review Standards](./docs/Agents/Review%20Standards%20Reference.md).
+Recurring review cues — the reasoning and examples are in [Review Standards](./docs/Agents/Review%20Standards%20Reference.md); the full picture, from package placement down to naming, is the [Style Guide](./docs/Style/Style%20Guide%20Reference.md).
 
 - **Names carry their context.** A parameter or local names the domain thing it holds, not just its role in the function — it should read correctly deep in the body with the signature out of view. When two values of the same kind are in scope, name each by where it came from.
 - **Types name what they hold; functions name what they do.** A type is a noun for its contents, not the event that produced it. A function's name says what it does to its input (converts, filters, starts), not what comes out.

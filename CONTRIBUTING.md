@@ -77,6 +77,8 @@ itself. The Rust side embeds the same file in `apps-rust/src/dev_seed.rs`. See
 
 ## Code Style and Conventions
 
+The [Style Guide](./docs/Style/Style%20Guide%20Reference.md) is the full statement of how code, designs and PRs are expected to look, from where a package lives down to how a boolean is named. The rules below are the mechanical subset.
+
 ### TypeScript
 
 - **Strict mode enabled**: All packages use TypeScript strict mode
