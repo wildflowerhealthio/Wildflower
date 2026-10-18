@@ -45,8 +45,7 @@ pub fn grantable_admin_scopes() -> Vec<Scope> {
         consents::consent_reader_scopes(),
         consents::consent_decider_scopes(),
         consents::grant_creating_approval_scopes(),
-        consents::client_creating_approval_scopes(),
-        consents::client_widening_approval_scopes(),
+        consents::client_registering_approval_scopes(),
         tokens::token_revoker_scopes(),
     ];
     let mut seen = HashSet::new();
@@ -115,7 +114,7 @@ mod tests {
             .sum();
         // One `declared` entry per scope function. Update BOTH when adding a
         // checked scope: its `*_scopes()` fn and the `declared` array.
-        let declared_entries = 10;
+        let declared_entries = 9;
         assert_eq!(
             scope_fns, declared_entries,
             "found {scope_fns} capability scope functions but grantable_admin_scopes() declares \

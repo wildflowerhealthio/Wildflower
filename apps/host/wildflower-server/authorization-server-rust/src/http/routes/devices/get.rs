@@ -37,6 +37,11 @@ pub(crate) struct DeviceConsent {
     pub(crate) device_name: Option<String>,
     pub(crate) requested_scopes: Vec<String>,
     pub(crate) allowed_scopes: Vec<String>,
+    /// The approval scopes the caller's own token lacks to approve this
+    /// request (`wildflower/AuthorizationRequest.u`, and `wildflower/Grant.c`
+    /// for a device's standing grant). Empty when it may approve; otherwise
+    /// the device page sends the Owner to the device running the server.
+    pub(crate) missing_approval_scopes: Vec<String>,
 }
 
 /// `GET /devices/{userCode}` — load a pending device-code consent prompt for
@@ -53,6 +58,7 @@ async fn handle_get_device_consent(
         request,
         client_name,
         approvable_scopes,
+        missing_approval_scopes,
     } = consents.device_consent(&user_code)?;
     let kind = match request.grant_type {
         GrantType::BrowserPairing => DeviceConsentKind::Browser,
@@ -66,5 +72,6 @@ async fn handle_get_device_consent(
         device_name: request.device_name,
         requested_scopes: request.requested_scopes,
         allowed_scopes: approvable_scopes,
+        missing_approval_scopes,
     }))
 }

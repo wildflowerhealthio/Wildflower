@@ -6,9 +6,7 @@
 use chrono::{DateTime, Utc};
 
 use super::delegation::deny_consent;
-use super::{
-    registration_to_widen, require_approval_scopes, ApproveOAuthConsentInput, ConsentOutcome,
-};
+use super::{ApproveOAuthConsentInput, ConsentOutcome};
 use crate::domain::authority::{ApprovableScopes, DelegatedScopes};
 use crate::domain::authorization_code::PendingCodeRequest;
 use crate::domain::authorization_request::{GrantType, RequestStatus};
@@ -29,8 +27,8 @@ use wildflowerhealthio_scopes::Grant;
 /// [`approve_oauth_consent`]'s signature stays readable.
 pub(crate) struct ApprovalContext<'a> {
     /// The deciding Owner's own granted scopes — checked for the request's
-    /// [approval scopes](super::approval_scopes), and the bound on what the
-    /// approval may delegate (see [`DelegatedScopes::clamp`]).
+    /// approval scopes, and the bound on what the approval may delegate (see
+    /// [`DelegatedScopes::clamp`]).
     pub(crate) approver_grant: &'a Grant,
     /// The host app's `client_id` — the one client whose registration is
     /// fixed: defined by the server, never trusted on first use, never
@@ -63,17 +61,16 @@ pub(crate) fn load_pending_code_request(
     }
 }
 
-/// Approve an authorization-code consent prompt: require the approver's
-/// [approval scopes](super::approval_scopes), clamp the Owner's ticks into a
-/// [`DelegatedScopes`] proof, issue the code, record the standing grant and,
-/// for a client trusted on first use, its registration, republish the popup
-/// head, and return the client callback URL.
+/// Approve an authorization-code consent prompt: clamp the Owner's ticks into a
+/// [`DelegatedScopes`] proof (which requires the approver's approval scopes),
+/// issue the code, record the standing grant and, for a client trusted on
+/// first use, its registration, republish the popup head, and return the
+/// client callback URL.
 /// An approval that grants nothing is applied as a **deny**, and so is one
 /// for a request whose browser session has been revoked since it was made.
 ///
-/// An approver lacking an approval scope (`wildflower/Grant.c`, and
-/// `wildflower/Client.c` or `wildflower/Client.u` for a client this approval
-/// would register or widen) fails with
+/// An approver lacking an approval scope (see
+/// [`ApprovableScopes::missing_approval_scopes`]) fails with
 /// [`InsufficientScope`](AuthorizationServerError::InsufficientScope) naming
 /// them, and nothing is written. A request the
 /// [registration verdict](crate::domain::client_registration::ClientRegistrationVerdict)
@@ -112,22 +109,11 @@ pub(crate) fn approve_oauth_consent(
         redirect_uri: requested_redirect_uri,
         scopes: &request.requested_scopes,
     });
-    let registration_to_widen = registration_to_widen(
-        &request.client_id,
-        ctx.wildflower_host_app_client_id,
-        &registration_verdict,
-    );
-    require_approval_scopes(ctx.approver_grant, registration_to_widen)?;
-    if registration_verdict.needs_acknowledgement() && !input.acknowledged_registration {
-        return Err(AuthorizationServerError::RegistrationNotAcknowledged { id: id.to_owned() });
-    }
-    if !request.admits_patient(input.patient.as_deref()) {
-        return Err(AuthorizationServerError::LaunchPatientMismatch { id: id.to_owned() });
-    }
-
-    // The proof every write below demands: the Owner's approval clamped to
-    // what this prompt may grant and covered by the approver's own grant.
-    let Some(delegated_scopes) = DelegatedScopes::clamp(
+    // The proof every write below demands: the approver holds this prompt's
+    // approval scopes, and the Owner's approval is clamped to what this prompt
+    // may grant and covered by the approver's own grant. Taken first, so an
+    // approver lacking an approval scope is refused before anything else.
+    let maybe_delegated_scopes = DelegatedScopes::clamp(
         ctx.approver_grant,
         input.owner_approved_scopes,
         &ApprovableScopes::for_code(
@@ -135,8 +121,14 @@ pub(crate) fn approve_oauth_consent(
             maybe_existing_client.as_ref(),
             registration_is_fixed,
         ),
-    )?
-    else {
+    )?;
+    if registration_verdict.needs_acknowledgement() && !input.acknowledged_registration {
+        return Err(AuthorizationServerError::RegistrationNotAcknowledged { id: id.to_owned() });
+    }
+    if !request.admits_patient(input.patient.as_deref()) {
+        return Err(AuthorizationServerError::LaunchPatientMismatch { id: id.to_owned() });
+    }
+    let Some(delegated_scopes) = maybe_delegated_scopes else {
         return deny_consent(store, owner_approval, id, make_consent_not_found)
             .map(|()| denial_outcome(&pending_request));
     };
@@ -166,7 +158,6 @@ pub(crate) fn approve_oauth_consent(
         &delegated_scopes,
         input.patient.as_deref(),
         now,
-        registration_to_widen,
     )?;
 
     // This request was pending until the approval above flipped it out of

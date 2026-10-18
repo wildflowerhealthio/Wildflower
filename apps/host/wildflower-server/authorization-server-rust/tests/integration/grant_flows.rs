@@ -290,6 +290,7 @@ async fn an_approver_lacking_a_requested_resource_scope_is_refused_and_the_reque
         &[
             "wildflower/AuthorizationRequest.u",
             "wildflower/Grant.c",
+            "wildflower/Client.cu",
             "patient/Observation.rs",
         ],
     );

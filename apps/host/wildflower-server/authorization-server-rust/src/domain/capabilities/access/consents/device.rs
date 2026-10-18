@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 use wildflowerhealthio_scopes::Grant;
 
 use super::delegation::deny_consent;
-use super::{require_approval_scopes, ApproveDeviceConsentInput, ConsentOutcome};
+use super::{ApproveDeviceConsentInput, ConsentOutcome};
 use crate::domain::authority::{ApprovableScopes, DelegatedScopes};
 use crate::domain::authorization_request::{
     device_grant_name, AuthorizationRequest, GrantType, RequestStatus,
@@ -48,11 +48,12 @@ pub(super) fn load_pending_request_by_user_code(
 /// republish the popup head. An approval that grants nothing is applied as a
 /// **deny**.
 ///
-/// A device request's approver must hold its
-/// [approval scopes](super::approval_scopes) (`wildflower/Grant.c`, for the
-/// standing device grant), else the approval fails with
+/// The approver must hold the request's approval scopes (see
+/// [`ApprovableScopes::missing_approval_scopes`]: `wildflower/Grant.c` for a
+/// device's standing grant, which a browser pairing doesn't record), else the
+/// approval fails with
 /// [`InsufficientScope`](AuthorizationServerError::InsufficientScope) and
-/// nothing is written. A browser pairing records no grant, so it takes none.
+/// nothing is written.
 pub(super) fn approve_device_consent(
     store: &impl GrantStore,
     owner_approval: &dyn OwnerApproval,
@@ -75,17 +76,17 @@ pub(super) fn approve_device_consent(
             make_consent_not_found,
         );
     }
-    require_approval_scopes(approver_grant, None)?;
     let client = store
         .client_by_id(&device_request.client_id)?
         .ok_or_else(make_consent_not_found)?;
 
-    // The proof every write below demands: the Owner's approval clamped to
-    // what a device prompt may grant and covered by the approver's own grant.
+    // The proof every write below demands: the approver holds a device
+    // prompt's approval scopes, and the Owner's approval is clamped to what it
+    // may grant and covered by the approver's own grant.
     let Some(delegated_scopes) = DelegatedScopes::clamp(
         approver_grant,
         input.owner_approved_scopes,
-        &ApprovableScopes::for_device(&client),
+        &ApprovableScopes::for_device(&client.allowed_scopes),
     )?
     else {
         return deny_consent(

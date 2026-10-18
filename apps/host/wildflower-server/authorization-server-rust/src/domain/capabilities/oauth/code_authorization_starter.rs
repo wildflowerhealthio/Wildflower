@@ -15,13 +15,10 @@ use wildflowerhealthio_scopes::Grant;
 
 use super::LaunchContexts;
 use crate::crypto_util::pkce::is_valid_s256_code_challenge;
-use crate::domain::authority::{GrantCoverage, StandingGrantCoverage};
+use crate::domain::authority::{ApprovableScopes, GrantCoverage, StandingGrantCoverage};
 use crate::domain::authorization_code::PendingCodeRequest;
 use crate::domain::authorization_request::StartCodeAuthorizationArgs;
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::capabilities::access::consents::{
-    missing_approval_scopes, registration_to_widen,
-};
 use crate::domain::capabilities::writers::{CodeApproval, CodeAuthority, RequestApprover};
 use crate::domain::client::Client;
 use crate::domain::client_registration::{classify_registration, PresentedClientRegistration};
@@ -52,9 +49,9 @@ pub(crate) struct AuthorizeRequest<'a> {
     /// The grant of the browser session the browser making the request
     /// holds, when that session can decide consents. The request can be
     /// decided in that browser when the grant also holds the request's
-    /// [approval scopes](crate::domain::capabilities::access::consents::approval_scopes),
-    /// as its registration verdict calls for; that is recorded on a parked
-    /// request.
+    /// approval scopes
+    /// ([`ApprovableScopes::missing_approval_scopes`], as the consent card and
+    /// the approval check them); that is recorded on a parked request.
     pub(crate) requesting_browser_grant: Option<&'a Grant>,
     /// The browser session the browser making the request holds, if any,
     /// recorded on the parked request and on the code it earns.
@@ -221,19 +218,18 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
             redirect_uri: &requested_redirect_uri,
             scopes: &requested_scopes,
         });
+        let approvable = ApprovableScopes::for_code(
+            &requested_scopes,
+            maybe_existing_client.as_ref(),
+            registration_is_fixed,
+        );
         let decidable_in_requesting_browser =
             authorize_query
                 .requesting_browser_grant
                 .is_some_and(|requesting_browser_grant| {
-                    missing_approval_scopes(
-                        requesting_browser_grant,
-                        registration_to_widen(
-                            authorize_query.client_id,
-                            &self.wildflower_host_app_client_id,
-                            &registration_verdict,
-                        ),
-                    )
-                    .is_empty()
+                    approvable
+                        .missing_approval_scopes(requesting_browser_grant)
+                        .is_empty()
                 });
         let coverage = GrantCoverage::resolve(
             &self.store,
@@ -270,7 +266,6 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
             }
         };
 
-        // Park the request — every path from here on references it by id.
         let parked_request =
             PendingCodeRequest::new_code_authorization(StartCodeAuthorizationArgs {
                 id: ids.request_id.clone(),
@@ -285,29 +280,36 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
                 decidable_in_requesting_browser,
                 sid: authorize_query.sid.map(str::to_owned),
             });
+        // The fast path: the standing grant is the authority, as long as its
+        // patient is one the launch admits.
+        let fast_path_coverage = match coverage {
+            GrantCoverage::Full(standing_grant_coverage)
+                if parked_request
+                    .request()
+                    .admits_patient(standing_grant_coverage.patient()) =>
+            {
+                Some(standing_grant_coverage)
+            }
+            _ => None,
+        };
+        // Park the request — every path from here on references it by id.
         self.store
             .insert_authorization_request(parked_request.request())?;
 
-        if let GrantCoverage::Full(standing_grant_coverage) = coverage {
-            // The fast path: the standing grant is the authority, as long as
-            // its patient is one the launch admits. The insert above parked
-            // this request as pending for the width of the approval, so the
-            // popup head is recomputed afterwards rather than left on a
-            // request the consent surface now 404s for; recomputing can only
-            // publish the genuinely-pending head, never this one.
-            if parked_request
-                .request()
-                .admits_patient(standing_grant_coverage.patient())
-            {
-                return self.issue_under_standing_grant(
-                    &standing_grant_coverage,
-                    &parked_request,
-                    requested_redirect_uri,
-                    authorize_query.client_state,
-                    ids.code,
-                    now,
-                );
-            }
+        if let Some(standing_grant_coverage) = fast_path_coverage {
+            // The insert above parked this request as pending for the width
+            // of the approval, so the popup head is recomputed afterwards
+            // rather than left on a request the consent surface now 404s for;
+            // recomputing can only publish the genuinely-pending head, never
+            // this one.
+            return self.issue_under_standing_grant(
+                &standing_grant_coverage,
+                &parked_request,
+                requested_redirect_uri,
+                authorize_query.client_state,
+                ids.code,
+                now,
+            );
         }
 
         // This request needs a human: raise the host popup (after the fast-path
@@ -982,5 +984,46 @@ mod tests {
             parked_request.launch_bound_patient.as_deref(),
             Some("pat-2")
         );
+    }
+
+    /// Whether the requesting browser decides a request turns on the
+    /// request's approval scopes, the resource scopes it asks for among them:
+    /// a browser that decides consents and creates grants and registrations,
+    /// but holds no `patient/` scope, can't approve a request for
+    /// `patient/Observation.rs`, so the request is raised for the Owner.
+    #[test]
+    fn the_requesting_browser_decides_only_a_request_it_can_approve_as_asked() {
+        let deciding = [
+            "wildflower/AuthorizationRequest.ru",
+            "wildflower/Grant.c",
+            "wildflower/Client.cu",
+        ];
+        for (extra_scopes, expected) in [(&[][..], false), (&["patient/Observation.rs"][..], true)]
+        {
+            let store = FakeGrantStore::default();
+            store
+                .upsert_client(&client("app", &["patient/Observation.rs"]))
+                .unwrap();
+            let (code_authorization_starter, _) = starter(store);
+            let requesting_browser_grant = Grant::parse(deciding.iter().chain(extra_scopes));
+            let outcome = code_authorization_starter
+                .start(
+                    &AuthorizeRequest {
+                        requesting_browser_grant: Some(&requesting_browser_grant),
+                        ..request("app", "patient/Observation.rs")
+                    },
+                    ids(),
+                    Utc::now(),
+                )
+                .expect("starts");
+            assert_eq!(
+                outcome,
+                AuthorizeNextStep::AwaitOwner {
+                    request_id: "req-1".to_owned(),
+                    decidable_in_requesting_browser: expected,
+                },
+                "{extra_scopes:?}"
+            );
+        }
     }
 }

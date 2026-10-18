@@ -29,7 +29,9 @@ use chrono::Duration;
 use cookie::Cookie;
 use wildflowerhealthio_scope_capabilities::GrantedScopes as _;
 
-use crate::domain::capabilities::access::consents::{approval_scopes, consent_reader_scopes};
+use crate::domain::capabilities::access::consents::{
+    consent_decider_scopes, consent_reader_scopes,
+};
 use crate::domain::capabilities::session::TokenVerifier;
 use crate::domain::token::{VerifiedClaims, VerifyError};
 use crate::domain::GrantStore;
@@ -116,18 +118,17 @@ pub(crate) fn carried_browser_session(
 
 /// Whether the browser session `claims` describe can decide consents: its
 /// grant covers both loading a request on the consent card
-/// ([`consent_reader_scopes`]) and approving one that registers or widens no
-/// client ([`approval_scopes`]: `wildflower/AuthorizationRequest.u` and
-/// `wildflower/Grant.c`). A request such a browser starts is sent to the
-/// consent card and decided there, so the start spends nothing of the
-/// authorization start limit; one that also takes `wildflower/Client.c` or
-/// `wildflower/Client.u` the session lacks goes to the wait page and is raised
-/// for the Owner instead, still spending nothing.
+/// ([`consent_reader_scopes`]) and deciding it ([`consent_decider_scopes`]).
+/// A request such a browser starts is sent to the consent card and decided
+/// there when the session also holds that request's approval scopes (as
+/// `/oauth/authorize` works out per request); otherwise it goes to the wait
+/// page and is raised for the Owner, and only then does its start spend from
+/// the authorization start limit.
 pub(crate) fn can_decide_consents(claims: &VerifiedClaims) -> bool {
     let granted = claims.granted();
     consent_reader_scopes()
         .iter()
-        .chain(&approval_scopes(None))
+        .chain(&consent_decider_scopes())
         .all(|required| granted.covers(required))
 }
 
@@ -266,11 +267,10 @@ mod tests {
         }
     }
 
-    /// A browser session decides consents only when it can read a request for
-    /// the consent card, update it to decide it, and create the grant an
-    /// approval records.
+    /// A browser session decides consents only when it can both read a
+    /// request for the consent card and update it to decide it.
     #[test]
-    fn deciding_consents_takes_reading_and_updating_requests_and_creating_grants() {
+    fn deciding_consents_takes_reading_and_updating_requests() {
         let store = FakeGrantStore::default();
         let key = seed_active_signing_key(&store);
         let session = BrowserSession::new_owner(vec![], Duration::hours(8), Utc::now());
@@ -282,30 +282,12 @@ mod tests {
                 &[
                     "wildflower/AuthorizationRequest.r",
                     "wildflower/AuthorizationRequest.u",
-                    "wildflower/Grant.c",
                 ][..],
                 true,
             ),
-            (
-                &["wildflower/AuthorizationRequest.ru", "wildflower/Grant.c"][..],
-                true,
-            ),
-            (&["wildflower/*.cruds"][..], true),
-            (
-                &[
-                    "wildflower/AuthorizationRequest.r",
-                    "wildflower/AuthorizationRequest.u",
-                ][..],
-                false,
-            ),
-            (
-                &["wildflower/AuthorizationRequest.r", "wildflower/Grant.c"][..],
-                false,
-            ),
-            (
-                &["wildflower/AuthorizationRequest.u", "wildflower/Grant.c"][..],
-                false,
-            ),
+            (&["wildflower/AuthorizationRequest.ru"][..], true),
+            (&["wildflower/AuthorizationRequest.r"][..], false),
+            (&["wildflower/AuthorizationRequest.u"][..], false),
         ] {
             let token = mint_scoped(&key, BROWSER_SESSION_CLIENT_ID, Some(&session.sid), scopes);
             let claims = standing_session_claims(&verifier, &token)
