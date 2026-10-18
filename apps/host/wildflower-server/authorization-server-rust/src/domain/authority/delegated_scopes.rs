@@ -29,6 +29,28 @@ enum ApprovalFlow {
     BrowserPairing,
 }
 
+impl ApprovalFlow {
+    /// Whether approving records a standing grant: a code or device approval.
+    fn records_grant(self) -> bool {
+        self != ApprovalFlow::BrowserPairing
+    }
+
+    /// Whether approving creates or widens the client's registration: a code
+    /// approval for a client trusted on first use.
+    fn writes_registration(self) -> bool {
+        self == ApprovalFlow::Code {
+            registration_is_fixed: false,
+        }
+    }
+
+    /// Whether the approver must hold every resource scope the request asks
+    /// for: a code approval, which approves the request as asked. Device and
+    /// pairing consent is expandable instead.
+    fn approves_as_asked(self) -> bool {
+        matches!(self, ApprovalFlow::Code { .. })
+    }
+}
+
 /// The scopes one consent prompt may grant at most, decided by its flow. An
 /// Owner-approved scope must be covered by a scope of the request **and** by a
 /// scope of the registration ceiling (the most the client's registration
@@ -112,15 +134,6 @@ impl ApprovableScopes {
         grantable_scopes(owner_approved_scopes, &requested, &ceiling)
     }
 
-    /// Whether approving this prompt creates or widens its client's
-    /// registration: a code prompt from a client trusted on first use.
-    fn writes_registration(&self) -> bool {
-        self.flow
-            == ApprovalFlow::Code {
-                registration_is_fixed: false,
-            }
-    }
-
     /// The prompt's **approval scopes** the `approver_grant` does not cover,
     /// rendered, in order; empty when it may approve. Shared by the approve
     /// paths (through [`DelegatedScopes::clamp`]), the consent read
@@ -142,18 +155,11 @@ impl ApprovableScopes {
     /// prompt is expandable, so its approver may grant whatever it holds, and
     /// [`DelegatedScopes::clamp`] bounds that per scope instead.
     pub(crate) fn missing_approval_scopes(&self, approver_grant: &Grant) -> Vec<String> {
-        let (takes_grant, takes_registration, takes_requested_resources) = match self.flow {
-            ApprovalFlow::Code {
-                registration_is_fixed,
-            } => (true, !registration_is_fixed, true),
-            ApprovalFlow::Device => (true, false, false),
-            ApprovalFlow::BrowserPairing => (false, false, false),
-        };
         let mut approval_scopes = consent_decider_scopes();
-        if takes_grant {
+        if self.flow.records_grant() {
             approval_scopes.extend(grant_creating_approval_scopes());
         }
-        if takes_registration {
+        if self.flow.writes_registration() {
             approval_scopes.extend(client_registering_approval_scopes());
         }
         let uncovered_approval_scopes: Vec<Scope> = approval_scopes
@@ -161,7 +167,7 @@ impl ApprovableScopes {
             .filter(|required| !approver_grant.covers(required))
             .collect();
         let mut missing = render_scopes(&uncovered_approval_scopes);
-        if takes_requested_resources {
+        if self.flow.approves_as_asked() {
             missing.extend(uncovered_resource_scopes(
                 &self.grantable_subset(self.requested_scopes.clone()),
                 approver_grant,
@@ -220,7 +226,7 @@ impl DelegatedScopes {
         if approver_missing_scopes.is_empty() {
             Ok(Some(DelegatedScopes {
                 scopes: grantable,
-                writes_registration: approvable.writes_registration(),
+                writes_registration: approvable.flow.writes_registration(),
             }))
         } else {
             Err(AuthorizationServerError::InsufficientApproverScope {
