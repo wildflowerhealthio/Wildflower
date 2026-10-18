@@ -12,7 +12,7 @@
 //! fallback (see [`lib.rs`](crate)). The advertised endpoints are the
 //! authorization server URLs on the server's origin, so the SMART app fetches
 //! discovery here, then follows links straight to the authorization server for
-//! the authorize/token dance.
+//! the authorize/token dance and, to sign out, revocation.
 //!
 //! The document advertises only what is served: every endpoint URL in it is a
 //! route this server answers, apart from `management_endpoint`, the hosted
@@ -43,6 +43,9 @@ pub(crate) struct SmartConfiguration {
     jwks_uri: String,
     authorization_endpoint: String,
     token_endpoint: String,
+    /// RFC 7009 token revocation, where an app revokes its own access or
+    /// refresh token.
+    revocation_endpoint: String,
     /// The Wildflower Authorization app, pointed at this server's `issuer`.
     management_endpoint: String,
     /// A Wildflower extension field: the base of the authorization server's
@@ -106,6 +109,7 @@ fn build_smart_configuration(
         jwks_uri: format!("{server_origin}/.well-known/jwks.json"),
         authorization_endpoint: format!("{server_origin}/oauth/authorize"),
         token_endpoint: format!("{server_origin}/oauth/token"),
+        revocation_endpoint: format!("{server_origin}/oauth/revoke"),
         management_endpoint: authorization_app_base
             .management_url(server_origin)
             .to_string(),
@@ -193,6 +197,10 @@ mod tests {
         assert_eq!(
             doc.token_endpoint,
             "https://ruth.wildflowerhealth.io/oauth/token"
+        );
+        assert_eq!(
+            doc.revocation_endpoint,
+            "https://ruth.wildflowerhealth.io/oauth/revoke"
         );
         assert_eq!(
             doc.jwks_uri,

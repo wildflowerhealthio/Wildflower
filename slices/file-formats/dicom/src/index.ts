@@ -2,10 +2,11 @@
  * Pure DICOM Part 10 tag reader and element-stream writer:
  * {@link DicomHeader.tryFromDicomFile} wraps `dicom-parser` into a typed
  * {@link DicomHeader.Type}; {@link Part10} reads a file's top-level
- * {@link DataElement}s as raw bytes and writes them back; and the
+ * {@link DataElement}s as raw bytes and writes them back; the
  * {@link TransferSyntax} / {@link SopClass} / {@link PlanarConfiguration} /
  * {@link PixelRepresentation} namespaces put a human-readable name to the
- * enumerated values it carries.
+ * enumerated values it carries; and {@link SpecificCharacterSet} decodes its
+ * text values under the character set the file declares.
  *
  * @packageDocumentation
  */
@@ -17,4 +18,5 @@ export * as PixelDataDescription from './pixel-data-description.ts'
 export * as PixelRepresentation from './pixel-representation.ts'
 export * as PlanarConfiguration from './planar-configuration.ts'
 export * as SopClass from './sop-class.ts'
+export * as SpecificCharacterSet from './specific-character-set.ts'
 export * as TransferSyntax from './transfer-syntax.ts'

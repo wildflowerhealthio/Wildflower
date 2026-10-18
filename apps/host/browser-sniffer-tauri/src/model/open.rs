@@ -5,7 +5,9 @@ use super::web_view_source::WebViewSourcePayload;
 /// Wire shape of `RecorderBridge`'s web→host `Open`: the source the sniffer
 /// webview should load. Its own struct (rather than a bare
 /// `WebViewSourcePayload`) so future envelope fields — e.g. a
-/// `clearStateFirst` flag — have somewhere to land.
+/// `clearStateFirst` flag — have somewhere to land. Pinned by
+/// `recorder-wire-golden.json`'s `webToHost.Open` as well as by
+/// `RecorderBridge` (see `crate::tests::open_matches_the_golden_file`).
 #[derive(Debug, PartialEq, Deserialize)]
 pub(crate) struct OpenPayload {
     pub(crate) source: WebViewSourcePayload,

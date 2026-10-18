@@ -68,4 +68,24 @@ describe('PersonName.tryFromPnString', () => {
     const result = PersonName.tryFromPnString(' Smith ^ John ')
     expect(result).toEqual({ family: 'Smith', given: 'John', text: 'Smith John' })
   })
+
+  it('reads the alphabetic group of a value with all three', () => {
+    expect(PersonName.tryFromPnString('Yamada^Tarou=山田^太郎=やまだ^たろう')).toEqual({
+      family: 'Yamada',
+      given: 'Tarou',
+      text: 'Yamada Tarou',
+    })
+  })
+
+  it('reads the ideographic group when the alphabetic one is empty', () => {
+    expect(PersonName.tryFromPnString('=山田^太郎')).toEqual({
+      family: '山田',
+      given: '太郎',
+      text: '山田 太郎',
+    })
+  })
+
+  it('returns undefined when every group is delimiters only', () => {
+    expect(PersonName.tryFromPnString('^^=^')).toBeUndefined()
+  })
 })

@@ -21,7 +21,11 @@ use crate::domain::authorization_request::StartCodeAuthorizationArgs;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::writers::{CodeApproval, CodeAuthority, RequestApprover};
 use crate::domain::client::Client;
+use crate::domain::client_redirect::{
+    BROWSER_SIGNED_OUT_DESCRIPTION, SCOPES_NOT_REGISTERED_DESCRIPTION,
+};
 use crate::domain::client_registration::{classify_registration, PresentedClientRegistration};
+use crate::domain::launch_context::LaunchRefusal;
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::oauth_error_kind::OAuthErrorKind;
 use crate::domain::GrantStore;
@@ -103,10 +107,13 @@ pub(crate) enum AuthorizationStartError {
     NoActiveSigningKey,
     /// A failure on a request whose `redirect_uri` is not trusted.
     LocalPage(OAuthErrorKind),
-    /// A spec'd error once `redirect_uri` is validated.
+    /// A spec'd error once `redirect_uri` is validated, with the sentence the
+    /// redirect carries as its `error_description`. The URL is boxed to keep
+    /// the error small enough for `clippy::result_large_err`.
     Redirectable {
-        redirect_uri: Url,
+        redirect_uri: Box<Url>,
         error: OAuthErrorCode,
+        description: &'static str,
         client_state: String,
     },
     /// The request this flow just parked was no longer pending when the fast
@@ -169,9 +176,11 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
     ///
     /// A declared `aud` must be this server's origin (its FHIR base). A
     /// `launch` must name an unconsumed, unexpired launch context minted for
-    /// this client; it is consumed (so it never works twice) and carried onto
-    /// the parked request. Either failure is `invalid_request`, the same for
-    /// every reason a launch is refused. A request with no `launch` is plain
+    /// this client or for any client; it is consumed (so it never works twice)
+    /// and carried onto the parked request. Either failure is
+    /// `invalid_request`, and its description says why: a client sees its own
+    /// launch's state (not recognized, already used, expired), and another
+    /// app's launch looks unknown. A request with no `launch` is plain
     /// OAuth. When the launch binds a patient, the fast path applies only if
     /// the standing grant names the same one; otherwise the Owner decides.
     ///
@@ -218,8 +227,9 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
         {
             if !fixed_client.allows_scopes(&requested_scopes) {
                 return Err(AuthorizationStartError::Redirectable {
-                    redirect_uri: requested_redirect_uri,
+                    redirect_uri: Box::new(requested_redirect_uri),
                     error: OAuthErrorCode::InvalidScope,
+                    description: SCOPES_NOT_REGISTERED_DESCRIPTION,
                     client_state: authorize_query.client_state.to_owned(),
                 });
             }
@@ -255,25 +265,27 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
         let launch_context = match authorize_query.launch {
             None => None,
             Some(launch) => {
-                let Some(launch_context) = LaunchContexts::over(&self.store).consume(
+                match LaunchContexts::over(&self.store).consume(
                     launch,
                     authorize_query.client_id,
                     now,
-                )?
-                else {
-                    tracing::warn!(
-                        client_id = authorize_query.client_id,
-                        "refused a launch that is unknown, consumed, expired, or for another client",
-                    );
-                    return Err(start_error(
-                        authorize_query,
-                        &requested_redirect_uri,
-                        redirect_allowlisted,
-                        OAuthErrorCode::InvalidRequest,
-                        OAuthErrorKind::InvalidLaunch,
-                    ));
-                };
-                Some(launch_context)
+                )? {
+                    Ok(launch_context) => Some(launch_context),
+                    Err(launch_refusal) => {
+                        tracing::warn!(
+                            client_id = authorize_query.client_id,
+                            ?launch_refusal,
+                            "refused a launch",
+                        );
+                        return Err(start_error(
+                            authorize_query,
+                            &requested_redirect_uri,
+                            redirect_allowlisted,
+                            OAuthErrorCode::InvalidRequest,
+                            launch_refusal_kind(launch_refusal),
+                        ));
+                    }
+                }
             }
         };
 
@@ -370,8 +382,9 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
             }),
             CodeApproval::RequestNotPending => Err(AuthorizationStartError::RequestNotPending),
             CodeApproval::BrowserSessionRevoked => Err(AuthorizationStartError::Redirectable {
-                redirect_uri: requested_redirect_uri,
+                redirect_uri: Box::new(requested_redirect_uri),
                 error: OAuthErrorCode::AccessDenied,
+                description: BROWSER_SIGNED_OUT_DESCRIPTION,
                 client_state: client_state.to_owned(),
             }),
         }
@@ -477,8 +490,20 @@ fn validate_code_params(
     Ok(())
 }
 
-/// A refusal of `authorize_query`: back to the client as `error` once its
-/// redirect is trusted, else the `local` page (RFC 6749 §4.1.2.1).
+/// The reason a client is told for `launch_refusal`. Another app's launch
+/// reads exactly like one that doesn't exist, so a client learns nothing about
+/// it; only the server's own log tells the two apart.
+fn launch_refusal_kind(launch_refusal: LaunchRefusal) -> OAuthErrorKind {
+    match launch_refusal {
+        LaunchRefusal::Unknown | LaunchRefusal::ForAnotherApp => OAuthErrorKind::LaunchUnknown,
+        LaunchRefusal::AlreadyUsed => OAuthErrorKind::LaunchAlreadyUsed,
+        LaunchRefusal::Expired => OAuthErrorKind::LaunchExpired,
+    }
+}
+
+/// A refusal of `authorize_query`: back to the client as `error`, with the
+/// `local` kind's sentence as its `error_description`, once its redirect is
+/// trusted; else the `local` page (RFC 6749 §4.1.2.1).
 fn start_error(
     authorize_query: &AuthorizeRequest<'_>,
     redirect_uri: &Url,
@@ -488,8 +513,9 @@ fn start_error(
 ) -> AuthorizationStartError {
     if redirect_trusted {
         AuthorizationStartError::Redirectable {
-            redirect_uri: redirect_uri.clone(),
+            redirect_uri: Box::new(redirect_uri.clone()),
             error,
+            description: local.description(),
             client_state: authorize_query.client_state.to_owned(),
         }
     } else {
@@ -626,6 +652,7 @@ mod tests {
             outcome,
             Err(AuthorizationStartError::Redirectable {
                 error: OAuthErrorCode::AccessDenied,
+                description: BROWSER_SIGNED_OUT_DESCRIPTION,
                 ..
             })
         ));
@@ -742,6 +769,7 @@ mod tests {
             ),
             Err(AuthorizationStartError::Redirectable {
                 error: OAuthErrorCode::InvalidScope,
+                description: SCOPES_NOT_REGISTERED_DESCRIPTION,
                 ..
             })
         ));
@@ -868,6 +896,7 @@ mod tests {
             code_authorization_starter.start(&authorize_query, replay, now),
             Err(AuthorizationStartError::Redirectable {
                 error: OAuthErrorCode::InvalidRequest,
+                description: "This launch was already used. Open the app again.",
                 ..
             })
         ));
@@ -881,57 +910,132 @@ mod tests {
         );
     }
 
-    /// A launch minted for another client, a forged one, and an expired one are
-    /// all the same `invalid_request`; the other client's launch is left for
-    /// its own client to consume. No `launch` at all is plain OAuth.
+    /// The `invalid_request` for a launch `launch` presented by "app" at
+    /// `now`, back to its trusted redirect: the description it carries, or
+    /// `None` when the request was not refused that way.
+    fn launch_refusal_description(
+        code_authorization_starter: &CodeAuthorizationStarter<FakeGrantStore>,
+        launch: &str,
+        now: DateTime<Utc>,
+    ) -> Option<&'static str> {
+        let authorize_query = AuthorizeRequest {
+            launch: Some(launch),
+            ..request("app", "openid")
+        };
+        match code_authorization_starter.start(&authorize_query, ids(), now) {
+            Err(AuthorizationStartError::Redirectable {
+                error: OAuthErrorCode::InvalidRequest,
+                description,
+                ..
+            }) => Some(description),
+            _ => None,
+        }
+    }
+
+    /// The local page for a launch `launch` presented at `now` by a client
+    /// whose redirect is untrusted, or `None` when it is not a local page.
+    fn launch_refusal_page(
+        code_authorization_starter: &CodeAuthorizationStarter<FakeGrantStore>,
+        launch: &str,
+        now: DateTime<Utc>,
+    ) -> Option<OAuthErrorKind> {
+        let untrusted_query = AuthorizeRequest {
+            launch: Some(launch),
+            ..request("newcomer", "openid")
+        };
+        match code_authorization_starter.start(&untrusted_query, ids(), now) {
+            Err(AuthorizationStartError::LocalPage(kind)) => Some(kind),
+            _ => None,
+        }
+    }
+
+    /// A launch minted for another client and a forged one are both "not
+    /// recognized", so the two can't be told apart; the other client's launch
+    /// is left for its own client to consume. No `launch` at all is plain
+    /// OAuth.
     #[test]
-    fn a_launch_for_another_client_forged_or_expired_is_refused() {
+    fn a_launch_for_another_client_reads_like_a_forged_one() {
         let code_authorization_starter = registered_app_starter();
         let now = Utc::now();
         let launch_contexts = launch_contexts_of(&code_authorization_starter);
         launch_contexts
             .mint("other-app", "for-other-app".to_owned(), now)
             .unwrap();
-        launch_contexts
-            .mint("app", "expired".to_owned(), now - LAUNCH_CONTEXT_TTL)
-            .unwrap();
-        for launch in ["for-other-app", "forged", "expired"] {
-            let authorize_query = AuthorizeRequest {
-                launch: Some(launch),
-                ..request("app", "openid")
-            };
-            assert!(
-                matches!(
-                    code_authorization_starter.start(&authorize_query, ids(), now),
-                    Err(AuthorizationStartError::Redirectable {
-                        error: OAuthErrorCode::InvalidRequest,
-                        ..
-                    })
-                ),
+        for launch in ["for-other-app", "forged"] {
+            assert_eq!(
+                launch_refusal_description(&code_authorization_starter, launch, now),
+                Some(OAuthErrorKind::LaunchUnknown.description()),
                 "{launch} is refused",
             );
-            let untrusted_query = AuthorizeRequest {
-                launch: Some(launch),
-                ..request("newcomer", "openid")
-            };
-            assert!(matches!(
-                code_authorization_starter.start(&untrusted_query, ids(), now),
-                Err(AuthorizationStartError::LocalPage(
-                    OAuthErrorKind::InvalidLaunch
-                ))
-            ));
+            assert_eq!(
+                launch_refusal_page(&code_authorization_starter, launch, now),
+                Some(OAuthErrorKind::LaunchUnknown),
+            );
         }
         assert!(
             launch_contexts
                 .consume("for-other-app", "other-app", now)
                 .unwrap()
-                .is_some(),
+                .is_ok(),
             "a mismatched client doesn't spend the launch"
         );
         assert!(matches!(
             code_authorization_starter.start(&request("app", "openid"), ids(), now),
             Ok(AuthorizeNextStep::AwaitOwner { .. })
         ));
+    }
+
+    /// A launch presented once its TTL has run out is refused as expired,
+    /// back to a trusted redirect or as the local page.
+    #[test]
+    fn an_expired_launch_is_refused_as_expired() {
+        let code_authorization_starter = registered_app_starter();
+        let minted_at = Utc::now();
+        launch_contexts_of(&code_authorization_starter)
+            .mint("app", "launch-1".to_owned(), minted_at)
+            .unwrap();
+        let past_the_ttl = minted_at + LAUNCH_CONTEXT_TTL;
+        assert_eq!(
+            launch_refusal_description(&code_authorization_starter, "launch-1", past_the_ttl),
+            Some("This launch has expired. Open the app again."),
+        );
+
+        launch_contexts_of(&code_authorization_starter)
+            .mint_for_any_client("launch-2".to_owned(), minted_at)
+            .unwrap();
+        assert_eq!(
+            launch_refusal_page(&code_authorization_starter, "launch-2", past_the_ttl),
+            Some(OAuthErrorKind::LaunchExpired),
+        );
+    }
+
+    /// A launch presented a second time is refused as already used, back to a
+    /// trusted redirect or as the local page.
+    #[test]
+    fn a_consumed_launch_is_refused_as_already_used() {
+        let code_authorization_starter = registered_app_starter();
+        let now = Utc::now();
+        let launch_contexts = launch_contexts_of(&code_authorization_starter);
+        launch_contexts
+            .mint("app", "launch-1".to_owned(), now)
+            .unwrap();
+        launch_contexts
+            .mint_for_any_client("launch-2".to_owned(), now)
+            .unwrap();
+        for launch in ["launch-1", "launch-2"] {
+            launch_contexts
+                .consume(launch, "app", now)
+                .unwrap()
+                .expect("the first consume wins");
+        }
+        assert_eq!(
+            launch_refusal_description(&code_authorization_starter, "launch-1", now),
+            Some(OAuthErrorKind::LaunchAlreadyUsed.description()),
+        );
+        assert_eq!(
+            launch_refusal_page(&code_authorization_starter, "launch-2", now),
+            Some(OAuthErrorKind::LaunchAlreadyUsed),
+        );
     }
 
     /// A request refused for another reason leaves its launch unspent.
@@ -953,7 +1057,7 @@ mod tests {
         assert!(launch_contexts_of(&code_authorization_starter)
             .consume("launch-1", "app", now)
             .unwrap()
-            .is_some());
+            .is_ok());
     }
 
     /// When the launch binds a patient, a standing grant for a different

@@ -1,0 +1,193 @@
+{
+  "version": 1,
+  "apps": [
+    {
+      "id": "medications",
+      "name": "Wildflower Medications",
+      "description": "Every prescription on a patient's FHIR record, arranged around refill day, from any server that speaks SMART on FHIR.",
+      "launchUrl": "https://medications.wildflowerhealth.io/",
+      "publisher": {
+        "kind": "first-party",
+        "name": "Wildflower Health"
+      },
+      "tags": ["medications"],
+      "scopes": [
+        "launch",
+        "openid",
+        "fhirUser",
+        "system/MedicationRequest.rs",
+        "system/Medication.rs",
+        "system/Patient.rs"
+      ],
+      "oauthClient": {
+        "clientId": "9769f8b274370708d0d3ebb2e3e59b7c",
+        "redirectUris": ["https://medications.wildflowerhealth.io/"],
+        "grantTypes": ["authorization_code", "refresh_token"],
+        "tokenEndpointAuthMethod": "none"
+      }
+    },
+    {
+      "id": "plots",
+      "name": "Wildflower Plots",
+      "description": "Plots labs, vitals and prescribed doses from a patient's FHIR record on one chart, so a dose change can be read against the numbers it is meant to move.",
+      "launchUrl": "https://plots.wildflowerhealth.io/",
+      "publisher": {
+        "kind": "first-party",
+        "name": "Wildflower Health"
+      },
+      "tags": ["charts", "lab-results", "vitals", "medications"],
+      "scopes": [
+        "launch",
+        "openid",
+        "fhirUser",
+        "system/Observation.rs",
+        "system/MedicationRequest.rs",
+        "system/Patient.rs"
+      ],
+      "oauthClient": {
+        "clientId": "474e103de61f9141c4b640d59bfa130e",
+        "redirectUris": ["https://plots.wildflowerhealth.io/"],
+        "grantTypes": ["authorization_code", "refresh_token"],
+        "tokenEndpointAuthMethod": "none"
+      }
+    },
+    {
+      "id": "strength",
+      "name": "Wildflower Strength",
+      "description": "A strength-training program, the workout due today and every set you lift, kept on your own FHIR record.",
+      "launchUrl": "https://strength.wildflowerhealth.io/",
+      "publisher": {
+        "kind": "first-party",
+        "name": "Wildflower Health"
+      },
+      "tags": ["fitness"],
+      "scopes": [
+        "launch",
+        "openid",
+        "fhirUser",
+        "system/Patient.rs",
+        "system/PlanDefinition.crus",
+        "system/ServiceRequest.crus",
+        "system/Procedure.crus",
+        "system/Observation.crus"
+      ],
+      "oauthClient": {
+        "clientId": "bdf9fc5cb5a28c6683b49896b0ef8a75",
+        "redirectUris": ["https://strength.wildflowerhealth.io/"],
+        "grantTypes": ["authorization_code", "refresh_token"],
+        "tokenEndpointAuthMethod": "none"
+      }
+    },
+    {
+      "id": "importer",
+      "name": "Wildflower Importer",
+      "description": "Turns what your browser saw on a pharmacy, lab, or patient-portal website into FHIR records on a server you control.",
+      "launchUrl": "https://importer.wildflowerhealth.io/",
+      "publisher": {
+        "kind": "first-party",
+        "name": "Wildflower Health"
+      },
+      "tags": ["data-import", "medications", "lab-results"],
+      "scopes": [
+        "launch",
+        "openid",
+        "fhirUser",
+        "system/DocumentReference.cruds",
+        "system/Patient.cruds",
+        "system/Observation.cruds",
+        "system/Practitioner.cruds",
+        "system/DiagnosticReport.cruds",
+        "system/Medication.cruds",
+        "system/MedicationRequest.cruds",
+        "system/MedicationDispense.cruds",
+        "system/ServiceRequest.cruds",
+        "system/ImagingStudy.cruds"
+      ],
+      "oauthClient": {
+        "clientId": "165cd26573e5ac72378e6ad2d2198330",
+        "redirectUris": ["https://importer.wildflowerhealth.io/"],
+        "grantTypes": ["authorization_code", "refresh_token"],
+        "tokenEndpointAuthMethod": "none"
+      }
+    },
+    {
+      "id": "synthetic-data",
+      "name": "Wildflower Synthetic Data Loader",
+      "description": "Loads a published snapshot of synthetic health records into a FHIR server, so the other apps have a realistic record to show.",
+      "launchUrl": "https://synthetic-data.wildflowerhealth.io/",
+      "publisher": {
+        "kind": "first-party",
+        "name": "Wildflower Health"
+      },
+      "tags": ["test-data", "developer"],
+      "scopes": [
+        "launch",
+        "openid",
+        "fhirUser",
+        "system/Patient.cu",
+        "system/Practitioner.cu",
+        "system/DocumentReference.cu",
+        "system/Observation.cu",
+        "system/DiagnosticReport.cu",
+        "system/Medication.cu",
+        "system/MedicationRequest.cu",
+        "system/MedicationDispense.cu",
+        "system/ServiceRequest.cu",
+        "system/ImagingStudy.cu"
+      ],
+      "oauthClient": {
+        "clientId": "225ba6af034a3acec6be7ff8010df67f",
+        "redirectUris": ["https://synthetic-data.wildflowerhealth.io/"],
+        "grantTypes": ["authorization_code", "refresh_token"],
+        "tokenEndpointAuthMethod": "none"
+      }
+    },
+    {
+      "id": "ohif-viewer",
+      "name": "OHIF Imaging Viewer",
+      "description": "Views a patient's imaging studies and scanned documents in the OHIF viewer.",
+      "launchUrl": "https://ohif-viewer.wildflowerhealth.io/fhir-viewer",
+      "publisher": {
+        "kind": "first-party",
+        "name": "Wildflower Health"
+      },
+      "tags": ["imaging"],
+      "scopes": [
+        "launch",
+        "openid",
+        "fhirUser",
+        "system/Patient.rs",
+        "system/ImagingStudy.rs",
+        "system/DocumentReference.rs"
+      ],
+      "oauthClient": {
+        "clientId": "941de68e6b59eb9dcc32df8ede89e636",
+        "redirectUris": ["https://ohif-viewer.wildflowerhealth.io/fhir-viewer"],
+        "grantTypes": ["authorization_code", "refresh_token"],
+        "tokenEndpointAuthMethod": "none"
+      }
+    },
+    {
+      "id": "precise-hbr",
+      "name": "SMART - PreciseHBR calculator",
+      "description": "Estimates the risk of major bleeding after a percutaneous coronary intervention.",
+      "launchUrl": "https://hbr.alumicoin.cloud/launch",
+      "publisher": {
+        "kind": "third-party",
+        "name": "Chang Gung University"
+      },
+      "tags": ["cardiology", "risk-calculator"],
+      "scopes": [
+        "openid",
+        "fhirUser",
+        "launch",
+        "profile",
+        "patient/Patient.rs",
+        "patient/Observation.rs",
+        "patient/Condition.rs",
+        "patient/MedicationRequest.rs",
+        "patient/Procedure.rs"
+      ]
+    }
+  ]
+}

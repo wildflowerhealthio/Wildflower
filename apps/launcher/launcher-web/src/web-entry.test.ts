@@ -92,7 +92,8 @@ describe('ehrLaunchIn', () => {
 describe('searchAfterReturnLeg', () => {
   it('should point a failed return leg back at the server it was signing in to', () => {
     // Arrange — the authorization server refused the launch and redirected back.
-    const returnSearch = '?error=invalid_request&error_description=Invalid+launch&state=s'
+    const returnSearch =
+      '?error=invalid_request&error_description=This+launch+has+expired.+Open+the+app+again.&state=s'
 
     // Act
     const settled = searchAfterReturnLeg(returnSearch, RUTH_SERVER_URL)

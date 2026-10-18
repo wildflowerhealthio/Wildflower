@@ -168,7 +168,7 @@ fn dev_apps() -> [DevApp; 7] {
         DevApp {
             id: "strength-dev",
             client_id: STRENGTH_DEV_CLIENT_ID,
-            name: "Strength (Dev)",
+            name: "Wildflower Strength (Dev)",
             subtitle: "Local vite dev server for apps/strength/strength-web",
             url: dev_launch_url(ports.strength_dev),
         },
@@ -407,7 +407,7 @@ mod tests {
         let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON).unwrap();
         let port = ports.strength_dev;
         let registration = dev_row(&store, "strength-dev");
-        assert_eq!(registration.name, "Strength (Dev)");
+        assert_eq!(registration.name, "Wildflower Strength (Dev)");
         assert_eq!(
             registration.subtitle.as_deref(),
             Some("Local vite dev server for apps/strength/strength-web"),

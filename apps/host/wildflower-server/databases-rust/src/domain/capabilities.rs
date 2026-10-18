@@ -165,6 +165,7 @@ impl<F: DatabaseFiles> DatabasesDeleter<F> {
 mod tests {
     use std::collections::HashSet;
 
+    use wildflowerhealthio_kitchen_sink::source_guard::{relative_to, rs_files_under};
     use wildflowerhealthio_scopes::Permission;
 
     use super::*;
@@ -373,12 +374,8 @@ mod tests {
         let routes_dir =
             std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src/http/routes"));
         let mut checked = 0;
-        for path in rs_files_under(routes_dir) {
-            let relative = path
-                .strip_prefix(routes_dir)
-                .expect("enumerated under routes_dir")
-                .to_string_lossy()
-                .replace('\\', "/");
+        for path in rs_files_under(routes_dir).expect("enumerate routes_dir") {
+            let relative = relative_to(&path, routes_dir).expect("enumerated under routes_dir");
             // Module glue and test-support files only — every operation handler
             // is gated.
             if relative.ends_with("mod.rs") || relative.ends_with("tests.rs") {
@@ -399,21 +396,5 @@ mod tests {
             checked >= 3,
             "only {checked} handler files enumerated — did src/http/routes move?",
         );
-    }
-
-    fn rs_files_under(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
-        let mut files = Vec::new();
-        let entries =
-            std::fs::read_dir(dir).unwrap_or_else(|e| panic!("enumerate {}: {e}", dir.display()));
-        for entry in entries {
-            let path = entry.expect("readable dir entry").path();
-            if path.is_dir() {
-                files.extend(rs_files_under(&path));
-            } else if path.extension().is_some_and(|ext| ext == "rs") {
-                files.push(path);
-            }
-        }
-        files.sort();
-        files
     }
 }

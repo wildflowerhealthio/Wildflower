@@ -120,7 +120,7 @@ describe('App', () => {
       'https://synthetic-data.wildflowerhealth.io/'
     )
     expect(hrefOf(/Open Plots/)).toBe('https://plots.wildflowerhealth.io/')
-    expect(hrefOf(/Open Strength/)).toBe('https://strength.wildflowerhealth.io/')
+    expect(hrefOf(/Open Wildflower Strength/)).toBe('https://strength.wildflowerhealth.io/')
   })
 
   it('should render Wildflower FHIR server download links pulled from versions.json', () => {

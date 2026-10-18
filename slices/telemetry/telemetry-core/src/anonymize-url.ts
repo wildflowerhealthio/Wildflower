@@ -153,13 +153,19 @@ const isReadableSegment = (segment: string): boolean =>
   segment === INVALID_URL_PLACEHOLDER
 
 /**
+ * The route segment a routed SMART app names a patient's pages under
+ * (`/patients/$patientId`), whose next segment is a FHIR patient id.
+ */
+const PATIENTS_ROUTE_SEGMENT = 'patients'
+
+/**
  * The anonymized form of the path segment at `index` of `segments`.
  *
  * @remarks
  * An operation or interaction stays wherever it stands. Otherwise the segment
- * after `_history` becomes `{vid}` and the segment after a resource type
- * becomes `{id}`, whatever its own shape, since a FHIR id can
- * be a plain word. Any other segment stays only if it is readable (see
+ * after `_history` becomes `{vid}` and the segment after a resource type, or
+ * after a SMART app's `patients` route (`/patients/<id>/today`), becomes
+ * `{id}`, whatever its own shape, since a FHIR id can be a plain word. Any other segment stays only if it is readable (see
  * `isReadableSegment`) and becomes `{id}` if not.
  *
  * Decided from the segment and the one before it in the input, never from an
@@ -178,7 +184,9 @@ const anonymizePathSegment = (
   if (isInteractionSegment(decoded)) return readable
   const previous = decodeAsciiOctets(segments[index - 1] ?? '')
   if (previous === '_history') return VERSION_ID_PLACEHOLDER
-  if (isResourceTypeSegment(previous)) return RESOURCE_ID_PLACEHOLDER
+  if (isResourceTypeSegment(previous) || previous === PATIENTS_ROUTE_SEGMENT) {
+    return RESOURCE_ID_PLACEHOLDER
+  }
   return isReadableSegment(decoded) ? readable : RESOURCE_ID_PLACEHOLDER
 }
 
@@ -230,8 +238,9 @@ const asPathRelativeReference = (relativePath: string): string =>
  * subdomain included, becomes {@link HOST_PLACEHOLDER} and its port is
  * dropped.
  *
- * In the path, the segment after a FHIR resource type becomes
- * `{id}`, and the segment after `_history` becomes `{vid}`. Every other
+ * In the path, the segment after a FHIR resource type, or after a SMART app's
+ * `patients` route, becomes `{id}`, and the segment after `_history` becomes
+ * `{vid}`. Every other
  * segment stays only if it is shaped like a fixed route word (`servers`,
  * `oauth-consent`, `.well-known`), or is a FHIR resource type, operation
  * (`$everything`), interaction (`_search`) or base-path name (`R4`, `FHIR`); anything else — a domain, a UUID, a number, a user code, a file

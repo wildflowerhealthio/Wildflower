@@ -1,91 +1,99 @@
-import { FetchHttpClient } from '@effect/platform'
+import { FetchHttpClient, type HttpClient } from '@effect/platform'
 import { useQueryClient } from '@tanstack/react-query'
-import {
-  buildSmartRouterContext,
-  useLaunchFailureRedirect,
-  useSmartHandshake,
-} from '@wildflowerhealthio/fhir-r4-react/smart'
-import { ErrorBanner } from '@wildflowerhealthio/react-tundraish'
+import { RouterProvider } from '@tanstack/react-router'
+import { buildSmartRouterContext } from '@wildflowerhealthio/fhir-r4-react/smart'
 import {
   LoadingLine,
-  PatientPicker,
-  patientChoiceKeyOf,
-  usePatientChoice,
+  type SmartAppPage,
+  SmartHandshakeGate,
 } from '@wildflowerhealthio/smart-app-react'
-import { Match, Option } from 'effect'
-import { type JSX, useMemo } from 'react'
+import type { Layer } from 'effect'
+import { type JSX, useState } from 'react'
 
+import { AppTitle } from './app-title.tsx'
+import { strongLiftsPlanDefinitionIdMinter } from './ids/strong-lifts-plan-definition-id-minter.ts'
+import { buildRouter } from './router.ts'
 import type { SmartClient } from './smart-client.ts'
-import { StrengthApp } from './strength-app/strength-app.tsx'
 import styles from './app.module.css'
 
+/** Props for {@link App}. */
+interface AppProps {
+  /** The page the app's router runs over. */
+  readonly page: SmartAppPage
+}
+
+/** Props for {@link StrengthRouter}. */
+type StrengthRouterProps = AppProps & {
+  /** The client the completed SMART handshake handed the app. */
+  readonly client: SmartClient
+  /** What the writes are sent over: `FetchHttpClient.layer`, or a test's stub. */
+  readonly transport: Layer.Layer<HttpClient.HttpClient>
+}
+
 /**
- * The lifting screens over a completed handshake: the patient picker until a
- * patient is chosen, then {@link StrengthApp} for the choice, remounted per
- * choice.
+ * The lifting page's router, built once, on mount, from the URL as it is
+ * then.
  *
  * @remarks
- * Whose record is `smart-app-react`'s `usePatientChoice`: the URL's
- * `?patient=`, else the launch's patient (`client.patient.id`), else the
- * picker. Writes go through `runAuthed`, the typed client that
- * `buildSmartRouterContext` builds over `FetchHttpClient.layer` — the one
- * shared function that prefixes the FHIR base and sets the bearer header.
+ * Mounted under `smart-app-react`'s `SmartHandshakeGate`, so never before the
+ * handshake is done with the callback URL.
+ *
+ * Its context is fixed for the visit: the page's query cache, the one client
+ * the handshake hands out (its code is single-use, so there is never a
+ * second), the write runner `buildSmartRouterContext` builds over it and
+ * `transport` (the one shared function that prefixes the FHIR base and sets
+ * the bearer header, on the page's query cache), and the StrongLifts template
+ * ids. Whose record the page shows is the path, so a patient change is a
+ * navigation and the router lives as long as the page.
  */
-const LaunchedStrength = ({ client }: { readonly client: SmartClient }): JSX.Element => {
+function StrengthRouter({ page, client, transport }: StrengthRouterProps): JSX.Element {
   const queryClient = useQueryClient()
-  // Memoised on the (stable) resolved client, so a re-render does not rebuild
-  // the runtime underneath an in-flight write.
-  const runAuthed = useMemo(
-    () =>
-      buildSmartRouterContext(
+  const [router] = useState(() =>
+    buildRouter(page, {
+      queryClient,
+      client,
+      runAuthed: buildSmartRouterContext(
         {
           serverUrl: client.state.serverUrl,
           accessToken: client.state.tokenResponse?.access_token,
         },
-        FetchHttpClient.layer,
+        transport,
         queryClient
       ).runAuthed,
-    [client, queryClient]
+      strongLiftsPlanDefinitionIdFor: strongLiftsPlanDefinitionIdMinter(),
+    })
   )
-  const { patientChoice, choosePatient, changePatient } = usePatientChoice(client.patient.id)
-
-  return Option.match(patientChoice, {
-    onNone: () => <PatientPicker client={client} onPatientChoice={choosePatient} />,
-    onSome: (chosenPatient) => (
-      <StrengthApp
-        key={patientChoiceKeyOf(chosenPatient)}
-        client={client}
-        runAuthed={runAuthed}
-        patientChoice={chosenPatient}
-        onPatientChange={changePatient}
-      />
-    ),
-  })
+  return <RouterProvider router={router} />
 }
 
 /**
- * The redirect-target app: completes the SMART handshake, then mounts the
- * lifting screens over it.
+ * The redirect-target app: completes the SMART handshake and then hands the
+ * page to its router: the patient picker at `/patients`, one lifter's
+ * Today, Plan and Workouts under `/patients/$patientId`, and every patient's
+ * workouts at `/workouts`. The callback lands on `/`, which opens the route
+ * the launch started on, else its patient's page, else the picker.
  *
  * @remarks
- * Reads go through the fhirclient client the handshake yields (its `request`
- * already carries the token and the server base). There is no router: the
- * lifting screens take plain props.
+ * The token exchange (`useSmartHandshake`) is a TanStack Query on the page's
+ * shared client, keyed and deduped so StrictMode's double-mount exchanges the
+ * single-use code once; the routes read the lifter's record on the same
+ * client. Reads go through the fhirclient client the handshake yields (its
+ * `request` already carries the token and the server base); writes go
+ * through `fetch`.
  */
-const App = (): JSX.Element => {
-  const handshake = useSmartHandshake()
-  // A failed exchange has nothing to retry here (the code is single-use), so
-  // carry the reason to the app root, which can offer the connect menu.
-  useLaunchFailureRedirect(handshake)
+const App = ({ page }: AppProps): JSX.Element => (
+  <main className={styles['app']}>
+    <SmartHandshakeGate
+      connecting={
+        <>
+          <AppTitle />
+          <LoadingLine />
+        </>
+      }
+    >
+      {(client) => <StrengthRouter page={page} client={client} transport={FetchHttpClient.layer} />}
+    </SmartHandshakeGate>
+  </main>
+)
 
-  const body = Match.value(handshake).pipe(
-    Match.when({ kind: 'error' }, ({ error }) => <ErrorBanner error={error} />),
-    Match.when({ kind: 'connecting' }, () => <LoadingLine />),
-    Match.when({ kind: 'ready' }, ({ client }) => <LaunchedStrength client={client} />),
-    Match.exhaustive
-  )
-
-  return <main className={styles['app']}>{body}</main>
-}
-
-export { App }
+export { App, type AppProps, StrengthRouter, type StrengthRouterProps }

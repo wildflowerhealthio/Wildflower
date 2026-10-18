@@ -1057,7 +1057,8 @@ async fn a_smart_launch_is_minted_for_its_client_and_consumed_once() {
     );
     assert_eq!(
         authorize_plots_launch(&tunnel, &launch, &iss).await,
-        "https://plots.wildflowerhealth.io/?error=invalid_request&state=xyz",
+        "https://plots.wildflowerhealth.io/?error=invalid_request\
+         &error_description=This+launch+was+already+used.+Open+the+app+again.&state=xyz",
         "the launch works once"
     );
 
@@ -1112,6 +1113,7 @@ async fn every_endpoint_smart_discovery_advertises_is_routed() {
         [
             "authorization_endpoint",
             "jwks_uri",
+            "revocation_endpoint",
             "token_endpoint",
             "wildflower_authorization_api"
         ]

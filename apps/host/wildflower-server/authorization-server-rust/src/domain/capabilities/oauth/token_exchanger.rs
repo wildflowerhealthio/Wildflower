@@ -18,6 +18,7 @@ use crate::domain::client::AllowedGrantType;
 use crate::domain::token::ACCESS_TOKEN_TTL;
 use crate::domain::token_exchange_error::TokenExchangeError;
 use crate::domain::GrantStore;
+use crate::ports::RevocationCheck;
 
 /// The tokens a successful exchange issued: what the RFC 6749 §5.1 token
 /// response carries.
@@ -36,16 +37,23 @@ pub(crate) struct IssuedTokens {
 /// instantiates it over the concrete `SqliteGrantStore`.
 pub(crate) struct TokenExchanger<S: GrantStore> {
     store: S,
+    /// The revocation check a refresh runs against its client's epoch.
+    revocation: Arc<dyn RevocationCheck>,
     /// The server's bare origin, every minted token's `iss` and `aud`.
     server_origin: Arc<str>,
 }
 
 impl<S: GrantStore> TokenExchanger<S> {
-    /// Build the exchanger over a store handle and the server's origin, both
-    /// lifted from the state.
-    pub(crate) fn new(store: S, server_origin: Arc<str>) -> Self {
+    /// Build the exchanger over a store handle, the revocation-check port and
+    /// the server's origin, all lifted from the state.
+    pub(crate) fn new(
+        store: S,
+        revocation: Arc<dyn RevocationCheck>,
+        server_origin: Arc<str>,
+    ) -> Self {
         TokenExchanger {
             store,
+            revocation,
             server_origin,
         }
     }
@@ -111,6 +119,7 @@ impl<S: GrantStore> TokenExchanger<S> {
         self.ensure_grant_type_allowed(authenticated_client, AllowedGrantType::RefreshToken)?;
         let validated_refresh_token = ValidatedRefreshToken::validate(
             &self.store,
+            self.revocation.as_ref(),
             authenticated_client,
             presented_refresh_token,
             now,
@@ -185,6 +194,7 @@ mod tests {
 
     use crate::domain::test_fake::{
         authenticated_public_client, client, seed_active_signing_key, FakeGrantStore,
+        NothingRevoked,
     };
 
     const VERIFIER: &str = "verifier-verifier-verifier-verifier-verifier-1";
@@ -193,7 +203,7 @@ mod tests {
     fn exchanger() -> TokenExchanger<FakeGrantStore> {
         let store = FakeGrantStore::default();
         seed_active_signing_key(&store);
-        TokenExchanger::new(store, SERVER_ORIGIN.into())
+        TokenExchanger::new(store, Arc::new(NothingRevoked), SERVER_ORIGIN.into())
     }
 
     fn authenticated(

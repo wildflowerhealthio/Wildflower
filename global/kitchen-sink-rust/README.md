@@ -27,6 +27,13 @@ or any slice, so each module can be copied into an unrelated project.
   - `ClientKey`: a network client as it is limited, `From<IpAddr>`: its IPv4
     address, or its IPv6 address's `/64`, with IPv4-mapped IPv6 addresses
     taken as IPv4.
+- `source_guard` — test-only, behind the `test-support` feature, for tests
+  that enumerate a crate's source and assert a textual invariant over it.
+  Enable it from `[dev-dependencies]`.
+  - `rs_files_under(dir)`: every `.rs` file under `dir`, recursively, sorted
+    for stable failures.
+  - `relative_to(path, root)`: `path` relative to `root`, with forward
+    slashes.
 
 ## Usage
 

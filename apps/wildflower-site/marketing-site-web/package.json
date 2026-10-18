@@ -28,6 +28,8 @@
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "@wildflowerhealthio/suggested-apps-core-js": "workspace:*",
+    "effect": "catalog:",
     "fast-check": "catalog:",
     "jsdom": "catalog:",
     "typescript": "catalog:",

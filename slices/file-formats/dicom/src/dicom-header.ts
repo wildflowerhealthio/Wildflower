@@ -10,6 +10,7 @@ import { Either } from 'effect'
 
 import * as PersonName from './person-name.ts'
 import * as PixelDataDescription from './pixel-data-description.ts'
+import * as SpecificCharacterSet from './specific-character-set.ts'
 
 /**
  * The DICOM tag each {@link Type} field is read from, under the standard's own
@@ -17,6 +18,8 @@ import * as PixelDataDescription from './pixel-data-description.ts'
  * standard defines.
  */
 const Tag = {
+  // SOP Common — read first, since it says how every text value is decoded
+  SpecificCharacterSet: 'x00080005',
   // Patient
   PatientName: 'x00100010',
   PatientID: 'x00100020',
@@ -154,19 +157,29 @@ interface ParseError {
 }
 
 /**
- * How one {@link Type} field is filled from a parsed dataset.
+ * How one {@link Type} field is filled from a parsed dataset, under the file's
+ * Specific Character Set (0008,0005).
  *
  * @remarks
  * A `Left` is fatal for the whole header, not for the field — an absent
- * optional tag is a `Right(undefined)`. Only the required tags, which a file
- * that is a DICOM instance at all must carry, can fail.
+ * optional tag is a `Right(undefined)`. Only a required tag the file lacks, or
+ * a text value its declared character set cannot decode, fails. A reader of a
+ * VR held to the default repertoire ignores the character set.
  */
-type Reader<A> = (dataSet: DataSet) => Either.Either<A, ParseError>
+type Reader<A> = (
+  dataSet: DataSet,
+  characterSet: SpecificCharacterSet.Type
+) => Either.Either<A, ParseError | SpecificCharacterSet.UndecodableText>
 
 /**
- * A tag's value as a trimmed string, or `undefined`.
+ * A tag's value as a trimmed string, or `undefined`, read byte for byte as
+ * `dicom-parser` does.
  *
  * @remarks
+ * Only for the VRs PS3.5 6.1.2.3 holds to the default repertoire — AE, AS,
+ * CS, DA, DS, DT, IS, TM and UI — whose bytes mean the same under every
+ * character set. Text VRs go through {@link decodedText}.
+ *
  * DICOM pads a value to an even length with a space, so a writer holding no
  * value for an attribute it still emits leaves the padding alone behind. A
  * blank value is absence, not an empty string.
@@ -176,17 +189,61 @@ const trimmedString = (dataSet: DataSet, tag: string): string | undefined => {
   return value === undefined ? undefined : value.trim() || undefined
 }
 
-/** Read a plain string tag, trimmed. */
-const readString =
+/** Read a default-repertoire string tag (CS, DS), trimmed. */
+const readDefaultRepertoire =
   (tag: string): Reader<string | undefined> =>
   (dataSet) =>
     Either.right(trimmedString(dataSet, tag))
 
 // DA (Date) and TM (Time) are carried as their raw strings — `'19800101'`,
-// `'143000.000'` — so they read exactly as a plain string does. They are named
-// apart so the table below says which VR each tag carries.
-const readDa = readString
-const readTm = readString
+// `'143000.000'` — so they read exactly as any other default-repertoire value
+// does. They are named apart so the table below says which VR each tag carries.
+const readDa = readDefaultRepertoire
+const readTm = readDefaultRepertoire
+
+/** NUL, which some writers pad a text value with; nothing after it is read. */
+const NUL = 0x00
+
+/**
+ * A text tag's value (LO, SH, PN), decoded under the file's character set and
+ * trimmed, or `undefined`.
+ *
+ * @remarks
+ * The whole value is decoded before anything splits it, so a multi-byte
+ * character whose trail byte is `\` or `^` stays whole. Bytes from the
+ * first NUL on are dropped, as `dicom-parser` drops them; no supported set
+ * uses 0x00 inside a character. A blank value is absence, as in
+ * {@link trimmedString}.
+ *
+ * @param label - How the tag is named in a decode failure, e.g.
+ *   `'PatientName (0010,0010)'`
+ */
+const decodedText = (
+  dataSet: DataSet,
+  characterSet: SpecificCharacterSet.Type,
+  tag: string,
+  label: string
+): Either.Either<string | undefined, SpecificCharacterSet.UndecodableText> => {
+  const element = dataSet.elements[tag]
+  if (element === undefined) return Either.right(undefined)
+  const value = dataSet.byteArray.subarray(element.dataOffset, element.dataOffset + element.length)
+  const end = value.indexOf(NUL)
+  return Either.map(
+    SpecificCharacterSet.decode(characterSet, end === -1 ? value : value.subarray(0, end), label),
+    (text) => text.trim() || undefined
+  )
+}
+
+/**
+ * Read a text tag (LO, SH) under the file's character set.
+ *
+ * @param label - How the tag is named in a decode failure, e.g.
+ *   `'InstitutionName (0008,0080)'`
+ */
+const readText =
+  (tag: string, label: string): Reader<string | undefined> =>
+  (dataSet, characterSet) =>
+    decodedText(dataSet, characterSet, tag, label)
 
 /** A UI (UID) tag's value, trimmed of the null bytes the spec pads UIDs with. */
 const uid = (dataSet: DataSet, tag: string): string | undefined => {
@@ -259,13 +316,18 @@ const readUs =
   (dataSet) =>
     Either.right(dataSet.uint16(tag) ?? undefined)
 
-/** Read a PN (Person Name) tag. */
+/**
+ * Read a PN (Person Name) tag under the file's character set.
+ *
+ * @param label - How the tag is named in a decode failure, e.g.
+ *   `'PatientName (0010,0010)'`
+ */
 const readPn =
-  (tag: string): Reader<PersonName.Type | undefined> =>
-  (dataSet) => {
-    const value = dataSet.string(tag)
-    return Either.right(value === undefined ? undefined : PersonName.tryFromPnString(value))
-  }
+  (tag: string, label: string): Reader<PersonName.Type | undefined> =>
+  (dataSet, characterSet) =>
+    Either.map(decodedText(dataSet, characterSet, tag, label), (value) =>
+      value === undefined ? undefined : PersonName.tryFromPnString(value)
+    )
 
 /** Report whether a tag is present at all, without reading its value. */
 const readPresence =
@@ -285,28 +347,31 @@ const readPresence =
  */
 const READERS = {
   // Patient module
-  patientName: readPn(Tag.PatientName),
-  patientId: readString(Tag.PatientID),
-  issuerOfPatientId: readString(Tag.IssuerOfPatientID),
+  patientName: readPn(Tag.PatientName, 'PatientName (0010,0010)'),
+  patientId: readText(Tag.PatientID, 'PatientID (0010,0020)'),
+  issuerOfPatientId: readText(Tag.IssuerOfPatientID, 'IssuerOfPatientID (0010,0021)'),
   patientBirthDate: readDa(Tag.PatientBirthDate),
-  patientSex: readString(Tag.PatientSex),
+  patientSex: readDefaultRepertoire(Tag.PatientSex),
 
   // Study module
   studyInstanceUid: readRequiredUi(Tag.StudyInstanceUID, 'StudyInstanceUID (0020,000D)'),
   studyDate: readDa(Tag.StudyDate),
   studyTime: readTm(Tag.StudyTime),
-  studyDescription: readString(Tag.StudyDescription),
-  accessionNumber: readString(Tag.AccessionNumber),
-  referringPhysicianName: readPn(Tag.ReferringPhysicianName),
-  requestedProcedureDescription: readString(Tag.RequestedProcedureDescription),
+  studyDescription: readText(Tag.StudyDescription, 'StudyDescription (0008,1030)'),
+  accessionNumber: readText(Tag.AccessionNumber, 'AccessionNumber (0008,0050)'),
+  referringPhysicianName: readPn(Tag.ReferringPhysicianName, 'ReferringPhysicianName (0008,0090)'),
+  requestedProcedureDescription: readText(
+    Tag.RequestedProcedureDescription,
+    'RequestedProcedureDescription (0032,1060)'
+  ),
   hasRequestAttributesSequence: readPresence(Tag.RequestAttributesSequence),
 
   // Series module
   seriesInstanceUid: readRequiredUi(Tag.SeriesInstanceUID, 'SeriesInstanceUID (0020,000E)'),
   seriesNumber: readIs(Tag.SeriesNumber),
-  seriesDescription: readString(Tag.SeriesDescription),
+  seriesDescription: readText(Tag.SeriesDescription, 'SeriesDescription (0008,103E)'),
   modality: readRequiredString(Tag.Modality, 'Modality (0008,0060)'),
-  bodyPartExamined: readString(Tag.BodyPartExamined),
+  bodyPartExamined: readDefaultRepertoire(Tag.BodyPartExamined),
 
   // Instance module
   sopInstanceUid: readRequiredUi(Tag.SOPInstanceUID, 'SOPInstanceUID (0008,0018)'),
@@ -319,7 +384,7 @@ const READERS = {
 
   // Image Pixel module
   samplesPerPixel: readUs(Tag.SamplesPerPixel),
-  photometricInterpretation: readString(Tag.PhotometricInterpretation),
+  photometricInterpretation: readDefaultRepertoire(Tag.PhotometricInterpretation),
   planarConfiguration: readUs(Tag.PlanarConfiguration),
   bitsAllocated: readUs(Tag.BitsAllocated),
   bitsStored: readUs(Tag.BitsStored),
@@ -327,14 +392,14 @@ const READERS = {
   pixelRepresentation: readUs(Tag.PixelRepresentation),
   rescaleIntercept: readDs(Tag.RescaleIntercept),
   rescaleSlope: readDs(Tag.RescaleSlope),
-  windowCenter: readString(Tag.WindowCenter),
-  windowWidth: readString(Tag.WindowWidth),
+  windowCenter: readDefaultRepertoire(Tag.WindowCenter),
+  windowWidth: readDefaultRepertoire(Tag.WindowWidth),
   pixelData: (dataSet) => Either.right(PixelDataDescription.tryFromDataSet(dataSet)),
 
   // Equipment module
-  manufacturer: readString(Tag.Manufacturer),
-  manufacturerModelName: readString(Tag.ManufacturerModelName),
-  institutionName: readString(Tag.InstitutionName),
+  manufacturer: readText(Tag.Manufacturer, 'Manufacturer (0008,0070)'),
+  manufacturerModelName: readText(Tag.ManufacturerModelName, 'ManufacturerModelName (0008,1090)'),
+  institutionName: readText(Tag.InstitutionName, 'InstitutionName (0008,0080)'),
 
   parserWarnings: (dataSet) => Either.right([...dataSet.warnings]),
 } satisfies { readonly [K in keyof Type]: Reader<Type[K]> }
@@ -351,13 +416,17 @@ const READERS = {
  * property in `dicom-header.test.ts` asserts the whole parsed value against a
  * generated header, so a field read into the wrong shape fails there.
  */
-const readHeader = (dataSet: DataSet): Either.Either<Type, ParseError> => {
+const readHeader = (
+  dataSet: DataSet
+): Either.Either<Type, ParseError | SpecificCharacterSet.UndecodableText> => {
+  const characterSet = SpecificCharacterSet.fromValue(dataSet.string(Tag.SpecificCharacterSet))
+  if (Either.isLeft(characterSet)) return Either.left(characterSet.left)
   // Widened to `Reader<unknown>` so the loop reads one reader type rather than
   // the 40-way union `Object.entries` hands back, which no narrowing survives.
   const readers: readonly (readonly [string, Reader<unknown>])[] = Object.entries(READERS)
   const header: Record<string, unknown> = {}
   for (const [field, read] of readers) {
-    const value = read(dataSet)
+    const value = read(dataSet, characterSet.right)
     if (Either.isLeft(value)) return Either.left(value.left)
     header[field] = value.right
   }
@@ -369,10 +438,14 @@ const readHeader = (dataSet: DataSet): Either.Either<Type, ParseError> => {
  * Parse a DICOM Part 10 file's raw bytes into a typed {@link Type}.
  *
  * @param bytes - The raw bytes of a `.dcm` file, preamble included
- * @returns `Right(DicomHeader.Type)` on success, `Left(ParseError)` when the
- *   file cannot be parsed or is missing a required UID
+ * @returns `Right(DicomHeader.Type)` on success; `Left(ParseError)` when the
+ *   file cannot be parsed or is missing a required tag; and
+ *   `Left(SpecificCharacterSet.UndecodableText)` when its Specific Character
+ *   Set (0008,0005) is unsupported or a text value cannot be decoded under it
  */
-const tryFromDicomFile = (bytes: Uint8Array): Either.Either<Type, ParseError> => {
+const tryFromDicomFile = (
+  bytes: Uint8Array
+): Either.Either<Type, ParseError | SpecificCharacterSet.UndecodableText> => {
   let dataSet: DataSet
   try {
     dataSet = parseDicom(bytes)

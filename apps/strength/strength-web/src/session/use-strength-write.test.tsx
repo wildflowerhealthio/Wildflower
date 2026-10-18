@@ -12,7 +12,7 @@ import {
 
 /**
  * The writes: where they go, and every control waiting on them, driven through
- * `StrengthApp` over the in-memory FHIR server (see
+ * the app's router over the in-memory FHIR server (see
  * `strength-app.test-helpers.ts`).
  */
 

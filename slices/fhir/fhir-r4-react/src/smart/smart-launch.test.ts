@@ -326,6 +326,16 @@ describe('appRootRedirectUri', () => {
     expect(appRootRedirectUri('http://192.168.1.20:5191/')).toBe('http://192.168.1.20:5191/')
   })
 
+  it('should name the served directory from a deep route of a routed app', () => {
+    // Act / Assert — a launch at a nested route returns to the app root
+    expect(
+      appRootRedirectUri('https://apps.example/pr-7/patients/123/today?iss=x&launch=y#z', '/pr-7/')
+    ).toBe('https://apps.example/pr-7/')
+    expect(appRootRedirectUri('https://u:p@apps.example/patients/1.50/plan', '/')).toBe(
+      'https://u:p@apps.example/'
+    )
+  })
+
   it('should give every page in one directory, whatever it carries, the same root', () => {
     fc.assert(
       fc.property(

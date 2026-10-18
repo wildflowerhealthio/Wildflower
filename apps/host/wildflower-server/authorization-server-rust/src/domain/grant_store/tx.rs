@@ -321,6 +321,17 @@ pub trait GrantTx {
         now: DateTime<Utc>,
     ) -> Result<Option<LaunchContext>, AuthorizationServerError>;
 
+    /// The launch context `nonce`, as stored, or `None` when there is none.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the query fails or the row
+    /// cannot be mapped to a [`LaunchContext`].
+    fn launch_context_by_nonce(
+        &mut self,
+        nonce: &str,
+    ) -> Result<Option<LaunchContext>, AuthorizationServerError>;
+
     /// Delete every launch context that expired at or before `now`, returning
     /// how many went — the opportunistic prune a mint runs.
     ///

@@ -20,7 +20,9 @@
 //! It carries no auth policy and no helios dependency. The host builds it on
 //! the shared database and hands it to `authorization-server-rust`, which
 //! enforces it in its token verifier (behind its gates and, in process, the
-//! FHIR server's bearer auth) and writes it from its revoke control surface.
+//! FHIR server's bearer auth) and in refresh redemption (a family that began
+//! before its client's epoch is refused), and writes it from its revoke
+//! control surface.
 
 use chrono::{DateTime, Duration, Utc};
 use rusqlite::{params, OptionalExtension};

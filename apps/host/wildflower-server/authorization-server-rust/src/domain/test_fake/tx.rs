@@ -340,6 +340,13 @@ impl GrantTx for FakeGrantTx<'_> {
         Ok(Some(context.clone()))
     }
 
+    fn launch_context_by_nonce(
+        &mut self,
+        nonce: &str,
+    ) -> Result<Option<LaunchContext>, AuthorizationServerError> {
+        Ok(self.store.launch_contexts.borrow().get(nonce).cloned())
+    }
+
     fn delete_launch_contexts_expired_by(
         &mut self,
         now: DateTime<Utc>,

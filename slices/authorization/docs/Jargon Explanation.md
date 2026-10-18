@@ -241,8 +241,11 @@ app's launch URL; the app forwards it to `/oauth/authorize`.
   so of two racing authorizes only one wins. Expired rows are pruned when the
   next one is minted.
 - **Refusals:** an unknown, expired, consumed or other client's `launch` is
-  `invalid_request`, the same for every reason. A request with no `launch` is
-  plain OAuth.
+  `invalid_request`, and the `error_description` says why: a client is told
+  its own launch is not recognized, already used, or expired. Another
+  client's launch reads exactly like one that doesn't exist, and so does an
+  expired launch a later mint has pruned. A request with no `launch` is plain
+  OAuth.
 - **Patient:** when the context binds a patient, the consent approval must name
   the same patient (`409 LaunchPatientMismatch` otherwise), and a standing
   grant for another patient doesn't take the fast path.
@@ -970,11 +973,16 @@ semantics. Issued at `/oauth/token` only when the granted scopes include
 - **Lifetime:** the family has an absolute 90-day deadline
   (`REFRESH_TOKEN_FAMILY_TTL`) measured from the original authorization;
   rotation never extends it.
-- **Revocation:** soft — killing a family (replay detection, or
-  `DELETE /authorization/grants/{id}` revoking the client's standing consent)
+- **Revocation:** soft — killing a family (replay detection,
+  `DELETE /authorization/grants/{id}` revoking the client's standing consent,
+  or the client revoking one of the family's tokens at `POST /oauth/revoke`)
   pulls the family's `expires_at` back to the revocation instant and
   stamps its live token consumed. Rows are never deleted, so the lineage
   stays auditable.
+- **Client epoch:** redemption refuses a family that began before its
+  client's [revocation epoch](#access-token-revocation-jti-denylist--subject-epoch),
+  so bumping the epoch ends the client's refresh families along with its
+  access tokens.
 - **Browser session:** a family minted under a
   [browser session](#browser-session) records its `sid`, and redemption
   refuses it once that session is revoked. A family with no `sid` (the device
@@ -991,11 +999,13 @@ its own `token_revocation` migration namespace on the same database) holds two
 levers:
 
 - **`revoked_jtis`** — a per-token denylist. `POST /authorization/revocations` with a
-  `jti`, and logout of the presented token, add rows here.
+  `jti`, logout of the presented token, and a client revoking its own access
+  token at `POST /oauth/revoke` (RFC 7009) add rows here.
 - **`revocation_epochs`** — a per-subject `not_before`. Bumping it (via
   `POST /authorization/revocations` with a `subject`, or a grant revoke) invalidates
-  every token that subject holds whose `iat` predates the bump — cheap bulk
-  revocation with no per-issued-`jti` registry. `subject` is the `sub` claim
+  every token that subject holds whose `iat` predates the bump, and every
+  refresh family it holds that began before it — cheap bulk revocation with no
+  per-issued-`jti` registry. `subject` is the `sub` claim
   (today the `client_id`), so revocation is per-client; per-device needs a
   device handle in the token (future work).
 

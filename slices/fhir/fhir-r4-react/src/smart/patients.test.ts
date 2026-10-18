@@ -1,9 +1,11 @@
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, Option } from 'effect'
 import * as fc from 'fast-check'
+import type Client from 'fhirclient/lib/Client'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { fetchPatient, fetchPatientPage } from './patients.ts'
+import { BundleDecodeError, ResourcePageRequestError } from './resource-page.ts'
 import { stubSmartClient } from './stub-smart-client.test-helpers.ts'
 
 /** A searchset bundle wrapping `resources`, with no `next` link. */
@@ -15,6 +17,11 @@ const bundle = (resources: readonly unknown[]): unknown => ({
 })
 
 const patientWire = (id: string): unknown => ({ resourceType: 'Patient', id })
+
+/** A client whose every request rejects with `cause`, as fhirclient's `request` rejects. */
+const rejectingClient = (cause: unknown): Client =>
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test-only stub, only `request` is exercised
+  ({ request: () => Promise.reject(cause) }) as unknown as Client
 
 describe('fetchPatientPage', () => {
   test('opens the picker sorted by family name, 200 to a page', async () => {
@@ -52,13 +59,33 @@ describe('fetchPatient', () => {
     const patient = await Effect.runPromise(fetchPatient(client, 'pat-1'))
 
     expect(queries).toEqual(['Patient/pat-1'])
-    expect(Option.getOrNull(patient)?.id).toBe('pat-1')
+    expect(Option.map(patient, ({ id }) => id)).toEqual(Option.some('pat-1'))
   })
 
-  test('returns None when the answer does not decode as a Patient', async () => {
-    const { client } = stubSmartClient({ resourceType: 'Observation', id: 'obs-1', code: {} })
+  test('fails the read when the answer does not decode as a Patient', async () => {
+    const answer = { resourceType: 'Observation', id: 'obs-1', code: {} }
+    const { client } = stubSmartClient(answer)
 
-    expect(Option.isNone(await Effect.runPromise(fetchPatient(client, 'pat-1')))).toBe(true)
+    const failure = await Effect.runPromise(Effect.flip(fetchPatient(client, 'pat-1')))
+
+    expect(failure).toBeInstanceOf(BundleDecodeError)
+    expect(failure instanceof BundleDecodeError ? failure.response : null).toBe(answer)
+  })
+
+  test.each([404, 410])('reads no patient when the server answers %i', async (status) => {
+    const client = rejectingClient(Object.assign(new Error(`${status}`), { status }))
+
+    expect(await Effect.runPromise(fetchPatient(client, 'pat-1'))).toEqual(Option.none())
+  })
+
+  test.each([
+    { case: 'another HTTP status', cause: Object.assign(new Error('500'), { status: 500 }) },
+    { case: 'no response at all', cause: new TypeError('Failed to fetch') },
+  ])('fails the read on $case', async ({ cause }) => {
+    const failure = await Effect.runPromise(Effect.flip(fetchPatient(rejectingClient(cause), 'p')))
+
+    expect(failure).toBeInstanceOf(ResourcePageRequestError)
+    expect(failure.cause).toBe(cause)
   })
 
   test('property: any patient id survives the read path as itself', async () => {

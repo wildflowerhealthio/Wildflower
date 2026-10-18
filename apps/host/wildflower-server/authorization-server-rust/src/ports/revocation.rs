@@ -38,7 +38,8 @@ pub(crate) trait Revocation: Send + Sync + 'static {
 /// The token verifier runs the full check here (the per-`jti` denylist and the
 /// per-subject epoch), behind the authorization server's gates and, through
 /// [`InProcessTokenVerifier`](crate::InProcessTokenVerifier), HFS's bearer
-/// auth. It fails closed on a store error.
+/// auth. Refresh redemption asks it whether a family began before its
+/// client's epoch. Both fail closed on a store error.
 pub(crate) trait RevocationCheck: Send + Sync + 'static {
     /// Whether the token identified by `jti` (denylisted individually) or
     /// issued to `subject` at `issued_at` (before the subject's revocation

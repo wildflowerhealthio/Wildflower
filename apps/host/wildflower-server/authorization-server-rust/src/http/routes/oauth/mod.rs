@@ -11,6 +11,7 @@ mod pages;
 mod sign_in;
 mod token_exchange;
 mod token_request;
+mod token_revocation;
 mod wait_page;
 
 use std::sync::Arc;
@@ -62,6 +63,7 @@ pub(crate) fn openapi_router(
             authorization_status::handle_authorization_status_request
         ))
         .routes(routes!(token_exchange::handle_token_request))
+        .routes(routes!(token_revocation::handle_token_revocation_request))
         .routes(limit_authorization_starts(routes!(
             device_authorization::handle_device_authorization_request
         )))

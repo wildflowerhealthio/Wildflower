@@ -46,7 +46,7 @@ export {
 
 export { redirectUriForPage, redirectUriForRoute } from './redirect-target.ts'
 
-export { arrivingSmartLaunchFrom } from './arriving-launch.ts'
+export { arrivingSmartLaunchFrom, SMART_LAUNCH_PARAMS } from './arriving-launch.ts'
 export type { ArrivingSmartLaunch } from './arriving-launch.ts'
 
 export { browserSignInEnvironment } from './browser-environment.ts'

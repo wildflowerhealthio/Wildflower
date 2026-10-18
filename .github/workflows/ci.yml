@@ -90,6 +90,9 @@ jobs:
               # check, so match the generated JSON. Snapshots sit in `slices/`
               # and in `apps/host/wildflower-server/`.
               - '**/*-rust/openapi/*.openapi.json'
+              # Wire golden files the Rust tests `include_str!` alongside the
+              # TS tests, so a golden-only change still runs the Rust side.
+              - 'apps/host/**/*-wire-golden.json'
               # Tauri bootstrap inputs (not *.rs): browser-sniffer-tauri
               # `include_str!`s a JS bundle generated from this TS package, and
               # the lockfiles affect that bootstrap build — a change to either

@@ -188,13 +188,22 @@ describe('launchErrorFrom', () => {
     )
   })
 
-  it('reads the OAuth error return the app root would otherwise ignore', () => {
+  it('reads the OAuth error return as the headline and the server’s sentence, not the code', () => {
     const reported = launchErrorFrom(
-      '?error=access_denied&error_description=The+user+declined&state=xyz'
+      '?error=invalid_request&error_description=This+launch+has+expired.+Open+the+app+again.&state=xyz'
     )
     expect(reported).toBeInstanceOf(Error)
-    expect(reported?.message).toContain(LAUNCH_ERROR_MESSAGES['AuthorizationDenied'] ?? '')
-    expect(reported?.message).toContain('The user declined')
+    expect(reported?.message).toBe(
+      'The authorization server refused the launch. This launch has expired. Open the app again.'
+    )
+    expect(Object.values(reported ?? {})).not.toContain('invalid_request')
+  })
+
+  it('reads an OAuth error return with no description as the headline and the bare code', () => {
+    const reported = launchErrorFrom('?error=access_denied&state=xyz')
+    expect(reported?.message).toBe(
+      `${LAUNCH_ERROR_MESSAGES['AuthorizationDenied'] ?? ''} access_denied`
+    )
   })
 
   it('attaches the diagnostics as own fields, where the details block reads them', () => {

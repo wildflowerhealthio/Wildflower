@@ -76,8 +76,8 @@ mod source_guards {
         let routes_dir =
             std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src/http/routes"));
         let mut checked = 0;
-        for path in rs_files_under(routes_dir) {
-            let relative = relative_to(&path, routes_dir);
+        for path in rs_files_under(routes_dir).expect("enumerate routes_dir") {
+            let relative = relative_to(&path, routes_dir).expect("enumerated under routes_dir");
             if relative.ends_with("mod.rs") {
                 continue;
             }
@@ -110,8 +110,9 @@ mod source_guards {
         let middleware_dir =
             std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src/http/middleware"));
         let mut checked = 0;
-        for path in rs_files_under(middleware_dir) {
-            let relative = relative_to(&path, middleware_dir);
+        for path in rs_files_under(middleware_dir).expect("enumerate middleware_dir") {
+            let relative =
+                relative_to(&path, middleware_dir).expect("enumerated under middleware_dir");
             let source = std::fs::read_to_string(&path)
                 .unwrap_or_else(|e| panic!("read middleware source {relative}: {e}"));
             for (n, line) in production_lines(&source) {

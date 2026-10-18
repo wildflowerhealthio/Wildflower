@@ -8,6 +8,7 @@ import {
 } from '@wildflowerhealthio/smart-app-react'
 import { type JSX, useState } from 'react'
 
+import { AppTitle } from './app-title.tsx'
 import { makePageStore } from './page-state.ts'
 import { buildRouter } from './router.ts'
 import styles from './app.module.css'
@@ -35,8 +36,8 @@ type MedicationsRouterProps = AppProps & {
  * Its context is fixed for the visit: the page's query cache, the one client
  * the handshake hands out (its code is single-use, so there is never a second),
  * and a fresh {@link makePageStore}. Whose medications the page reads is the
- * root route's `?patient=`, so a patient change is a navigation and the
- * router lives as long as the page.
+ * path, so a patient change is a navigation and the router lives as long as
+ * the page.
  */
 function MedicationsRouter({ page, client }: MedicationsRouterProps): JSX.Element {
   const queryClient = useQueryClient()
@@ -48,9 +49,11 @@ function MedicationsRouter({ page, client }: MedicationsRouterProps): JSX.Elemen
 
 /**
  * The redirect-target app: completes the SMART handshake and then hands the
- * page to its router, whose root settles on whose medications to read and
- * whose tabs show them: the medications list, the prescription calendar, the
- * interactions report, and the savings-program breakdown.
+ * page to its router: the patient picker at `/patients`, every patient's
+ * tabs at the top level (`/medications`, `/calendar`, `/savings`), and one
+ * patient's, Interactions among them, under `/patients/$patientId`. The
+ * callback lands on `/`, which opens the route the launch started on, else
+ * its patient's page, else the picker.
  *
  * @remarks
  * The token exchange (`useSmartHandshake`) is a TanStack Query on the page's
@@ -60,10 +63,14 @@ function MedicationsRouter({ page, client }: MedicationsRouterProps): JSX.Elemen
  */
 const App = ({ page }: AppProps): JSX.Element => (
   <main className={styles['app']}>
-    <header className={styles['app__header']}>
-      <h1 className="text-heading-3">Medications</h1>
-    </header>
-    <SmartHandshakeGate connecting={<LoadingLine subject="medications" />}>
+    <SmartHandshakeGate
+      connecting={
+        <>
+          <AppTitle />
+          <LoadingLine subject="medications" />
+        </>
+      }
+    >
       {(client) => <MedicationsRouter page={page} client={client} />}
     </SmartHandshakeGate>
   </main>
