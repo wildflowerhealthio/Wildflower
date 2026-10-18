@@ -120,23 +120,28 @@ impl SessionCookie {
     /// cookie's own token, unless its session has ended, or the bearer of the
     /// UI session it names, while that session lives. A standing browser
     /// session's use is recorded with the authorization server, which moves
-    /// the session's last-seen time at most once every five minutes.
+    /// the session's last-seen time at most once every five minutes. A use it
+    /// can't record is logged, and the request goes on.
     ///
     /// # Errors
     ///
     /// The authorization server's server-side `VerifyError`s, when it can't
-    /// check whether a browser session has ended, and its store error when it
-    /// can't record the use.
+    /// check whether a browser session has ended.
     async fn session(&self, value: String) -> anyhow::Result<CookieSession> {
         Ok(match self {
             SessionCookie::Browser(authorization_server) => {
                 match standing_browser_session(authorization_server, &value)? {
                     Some(session_claims) => {
-                        record_browser_session_cookie_use(
+                        if let Err(error) = record_browser_session_cookie_use(
                             authorization_server,
                             &session_claims,
                             Utc::now(),
-                        )?;
+                        ) {
+                            tracing::warn!(
+                                error = %error,
+                                "couldn't record a browser session cookie's use"
+                            );
+                        }
                         CookieSession::Live(value)
                     }
                     None => CookieSession::Ended,
@@ -227,7 +232,7 @@ pub(crate) async fn present_session_cookie_bearer(
             tracing::error!(
                 cookie = config.session_cookie.name(),
                 error = format!("{error:#}"),
-                "couldn't check a session cookie's session, or record its use"
+                "couldn't check a session cookie's session"
             );
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }

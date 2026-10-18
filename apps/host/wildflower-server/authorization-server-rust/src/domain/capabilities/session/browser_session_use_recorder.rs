@@ -1,7 +1,8 @@
 //! [`BrowserSessionUseRecorder`] — moves a browser session's `last_seen_at`
 //! when the server accepts its cookie, at most once every
 //! [`LAST_SEEN_RESOLUTION`] per session: a [`LastSeenThrottle`] lets one use
-//! per window on to a conditional update, so most requests write nothing.
+//! per window on to a conditional update, so most requests write nothing. An
+//! update that fails lifts the throttle's note, so the next use tries again.
 
 use std::sync::Arc;
 
@@ -42,10 +43,12 @@ impl<S: GrantStore> BrowserSessionUseRecorder<S> {
         let Some(sid) = session_claims.sid.as_deref() else {
             return Ok(());
         };
-        if self.throttle.admit(sid, now) {
-            self.store
-                .touch_browser_session_last_seen(sid, now, now - LAST_SEEN_RESOLUTION)?;
+        if !self.throttle.admit(sid, now) {
+            return Ok(());
         }
+        self.store
+            .touch_browser_session_last_seen(sid, now, now - LAST_SEEN_RESOLUTION)
+            .inspect_err(|_| self.throttle.forget(sid))?;
         Ok(())
     }
 }

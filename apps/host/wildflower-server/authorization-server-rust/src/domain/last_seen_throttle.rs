@@ -46,6 +46,12 @@ impl LastSeenThrottle {
         true
     }
 
+    /// Drop session `sid`'s note, so its next use goes on: the update the use
+    /// let through failed.
+    pub(crate) fn forget(&self, sid: &str) {
+        self.admitted_at_by_sid.lock().remove(sid);
+    }
+
     /// How many sessions the throttle holds a note for.
     #[cfg(test)]
     fn noted_sessions(&self) -> usize {
@@ -88,5 +94,15 @@ mod tests {
         assert_eq!(throttle.noted_sessions(), 3);
         assert!(throttle.admit("d", now + Duration::minutes(6)));
         assert_eq!(throttle.noted_sessions(), 1);
+    }
+
+    /// A forgotten session's next use goes on inside the window.
+    #[test]
+    fn a_forgotten_session_goes_on_again() {
+        let throttle = LastSeenThrottle::new();
+        let now = Utc::now();
+        assert!(throttle.admit("a", now));
+        throttle.forget("a");
+        assert!(throttle.admit("a", now + Duration::minutes(1)));
     }
 }
