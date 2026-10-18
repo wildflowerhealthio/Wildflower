@@ -11,6 +11,9 @@ name: Deploy GitHub Pages
 # app's old apex path, so those only ever redirect to an app that is already
 # live.
 #
+# The code index (/code-index/ on the apex) is built here too, on main
+# only: indexing needs the whole Rust toolchain, so PR previews leave it out.
+#
 # Runs on every push to main and on manual dispatch, and deploys every app
 # each time: the apps depend on much of the workspace, so a path filter would
 # only ever be wrong about which changes can alter a published site.
@@ -93,12 +96,76 @@ jobs:
       target: production
     secrets: inherit
 
+  # The code index, published under the apex at /code-index/
+  # (apps/wildflower-site/code-index-web/README.md): rust-analyzer indexes the
+  # Rust workspace, the TypeScript checker the TS packages, and the pages are
+  # built from that. It runs beside the apps and hands its pages to the
+  # marketing job as an artifact; when it fails, the apex still deploys,
+  # without a fresh index.
+  code-index:
+    name: Build the code index
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # rust-analyzer builds the workspace's build scripts and proc macros,
+      # so the Tauri crates need their system libraries and the embedded
+      # bundles their placeholders, as in ci-rust.yml.
+      - name: Install Tauri system dependencies
+        uses: ./.github/actions/setup-tauri-linux-deps
+
+      - name: Stub the embedded web bundles
+        run: ./scripts/ci/stub-embedded-bundles.sh all
+
+      # Restores the warm `main` build cache, never saves: rust-cache-warm.yml
+      # owns that entry.
+      - name: Set up Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          components: rust-analyzer
+          cache-shared-key: workspace-linux-dev
+          cache-save-if: 'false'
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1.21.2
+        with:
+          cache: true
+          cache-save: false
+
+      - name: Install dependencies
+        run: vp install
+
+      - name: Index the Rust workspace
+        run: rust-analyzer scip . --output "$RUNNER_TEMP/rust.scip"
+
+      - name: Extract every package
+        working-directory: apps/wildflower-site/code-index-web
+        run: >-
+          vp run extract --all
+          --repo-root "$GITHUB_WORKSPACE"
+          --rust-scip "$RUNNER_TEMP/rust.scip"
+          --out "$RUNNER_TEMP/code-index-data"
+
+      - name: Build the pages
+        working-directory: apps/wildflower-site/code-index-web
+        run: vp run build-pages --data "$RUNNER_TEMP/code-index-data" --out "$RUNNER_TEMP/code-index"
+
+      - name: Upload the pages
+        uses: actions/upload-artifact@v7
+        with:
+          name: code-index
+          path: ${{ runner.temp }}/code-index
+          retention-days: 1
+
   # After every app, whether or not each one published: the apex deploys
   # even when an app's build fails, so a broken app never holds back the
   # homepage or the policy pages.
   marketing:
     name: Build the marketing site
-    needs: apps
+    needs: [apps, code-index]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     # configure-pages reads this repository's Pages settings.
@@ -130,6 +197,13 @@ jobs:
 
       - name: Check the build holds its required files
         run: node scripts/ci/pages-sites.ts check marketing
+
+      - name: Add the code index
+        if: ${{ needs.code-index.result == 'success' }}
+        uses: actions/download-artifact@v8
+        with:
+          name: code-index
+          path: apps/wildflower-site/marketing-site-web/dist/code-index
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5

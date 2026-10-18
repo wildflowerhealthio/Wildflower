@@ -15,6 +15,12 @@ only what the apex serves.
   keeps the custom domain, the `versions.json` the Tauri release workflow
   writes, and `suggested_apps.json`, the SMART apps worth trying with a
   Wildflower server, hand-edited, whose schema is `suggested-apps-core-js`.
+- [`code-index-web`](./code-index-web/README.md) — the code index at
+  `/code-index/`: every crate and TS package, each with its files and items,
+  their doc comments, a what-uses-what graph and simplification hints,
+  extracted from rust-analyzer's SCIP index and the TypeScript checker. Built
+  on `main` only, by `deploy-github-pages.yml`'s `code-index` job, into the
+  marketing build.
 - [`suggested-apps-core-js`](./suggested-apps-core-js/) — the schema of
   `suggested_apps.json`. The site is its only consumer, decoding its file
   with it in a test.
