@@ -268,6 +268,49 @@ impl<S: GrantStore> ConsentReader<S> {
     }
 }
 
+/// Raise pending code-flow consent prompts for the Owner — the `ask-owner`
+/// side of `/authorization/oauth-consents/{id}`, what the consent card's "Ask
+/// the server's owner" sends. Statically gated by `AuthorizationRequest.r`,
+/// as reading the prompt is: raising one decides nothing, it only stops the
+/// prompt counting as decided in the browser that made it
+/// (`decidable_in_requesting_browser`), so the host notifies the Owner for
+/// it. Holds the [`OwnerApproval`] port, to republish the newest pending
+/// consent with the change.
+pub(crate) struct ConsentRaiser<S: GrantStore> {
+    store: S,
+    owner_approval: Arc<dyn OwnerApproval>,
+}
+
+impl<S: GrantStore> ConsentRaiser<S> {
+    /// Build the raiser over a store handle and the republish port, lifted
+    /// from the state.
+    pub(crate) fn new(store: S, owner_approval: Arc<dyn OwnerApproval>) -> Self {
+        ConsentRaiser {
+            store,
+            owner_approval,
+        }
+    }
+
+    /// Raise the pending authorization-code prompt `id` for the Owner and
+    /// republish the newest pending consent. Raising one already raised
+    /// changes nothing.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::OAuthConsentNotFound`] when `id` names no
+    /// live code-flow prompt.
+    pub(crate) fn raise_for_owner(&self, id: &str) -> Result<(), AuthorizationServerError> {
+        load_pending_code_request(&self.store, id)?;
+        let raised = self.store.raise_authorization_request_for_owner(id)?;
+        self.owner_approval.republish_active();
+        if raised {
+            Ok(())
+        } else {
+            Err(AuthorizationServerError::OAuthConsentNotFound { id: id.to_owned() })
+        }
+    }
+}
+
 /// Decide (approve/deny) pending consent prompts — the `approve`/`deny` sides of
 /// both consent surfaces. Statically gated by `AuthorizationRequest.u`, and it
 /// additionally holds the caller's own [`Grant`] (the approve paths require the
@@ -1378,5 +1421,46 @@ mod tests {
             reader.device_consent("USER-CODE"),
             Err(AuthorizationServerError::Infrastructure { .. })
         ));
+    }
+
+    /// Raising a prompt for the Owner clears what made it decidable in the
+    /// requesting browser and republishes; it decides nothing, and a prompt no
+    /// longer pending is not found.
+    #[test]
+    fn raising_a_prompt_for_the_owner_leaves_it_pending_and_republishes() {
+        let store = FakeGrantStore::default();
+        let mut request = code_request(
+            "req-1",
+            RequestStatus::Pending,
+            Utc::now() + Duration::minutes(5),
+        );
+        request.decidable_in_requesting_browser = true;
+        store.insert_authorization_request(&request).unwrap();
+        store
+            .insert_authorization_request(&code_request(
+                "req-2",
+                RequestStatus::Denied,
+                Utc::now() + Duration::minutes(5),
+            ))
+            .unwrap();
+        let owner_approval = Arc::new(RecordingOwnerApproval::default());
+        let raiser = ConsentRaiser::new(store, owner_approval.clone());
+
+        raiser.raise_for_owner("req-1").expect("raised");
+        let raised = raiser
+            .store
+            .authorization_request_by_id("req-1")
+            .unwrap()
+            .unwrap();
+        assert!(!raised.decidable_in_requesting_browser);
+        assert_eq!(raised.status, RequestStatus::Pending);
+        assert_eq!(owner_approval.count(), 1);
+
+        assert_eq!(
+            raiser.raise_for_owner("req-2"),
+            Err(AuthorizationServerError::OAuthConsentNotFound {
+                id: "req-2".to_owned()
+            }),
+        );
     }
 }

@@ -20,7 +20,7 @@ pub use consents::{
     ApproveDeviceConsentInput, ApproveOAuthConsentInput, ConsentOutcome, DeviceConsentView,
     OAuthConsentView,
 };
-pub(crate) use consents::{ConsentDecider, ConsentReader};
+pub(crate) use consents::{ConsentDecider, ConsentRaiser, ConsentReader};
 pub(crate) use grants::{GrantsReader, GrantsRevoker};
 pub(crate) use tokens::TokenRevoker;
 

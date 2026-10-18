@@ -397,3 +397,81 @@ async fn a_browser_session_lacking_a_requested_resource_scope_waits_for_the_owne
         serde_json::json!(["patient/Observation.rs"])
     );
 }
+
+/// `POST /authorization/oauth-consents/{id}/ask-owner` from `token`.
+async fn ask_owner(g: &AuthorizationServer, token: &str, request_id: &str) -> StatusCode {
+    g.router
+        .clone()
+        .oneshot(build_request(
+            Request::post(format!(
+                "/authorization/oauth-consents/{request_id}/ask-owner"
+            ))
+            .header("authorization", format!("Bearer {token}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot")
+        .status()
+}
+
+/// "Ask the server's owner" really raises the request: one made by a browser
+/// that could decide it there stops counting as decidable in that browser, so
+/// the host notifies the Owner, and it stays pending. A browser that can only
+/// read requests may ask; once decided, there's nothing to ask about.
+#[tokio::test]
+async fn asking_the_owner_raises_a_request_decidable_in_the_requesting_browser() {
+    let (g, owner_token, db) = spin_up();
+    let deciding_browser = approved_browser_token(&g, &db, APPROVER_SCOPES).await;
+    let res = g
+        .router
+        .clone()
+        .oneshot(build_request(
+            Request::get(format!(
+                "/oauth/authorize?{}",
+                authorize_query("new-app", REQUESTED_SCOPES)
+            ))
+            .header(
+                "cookie",
+                format!("__Host-browser_session={deciding_browser}"),
+            ),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    let location = location_of(&res);
+    assert!(location.ends_with("/consent"), "{location}");
+    let request_id = location
+        .trim_start_matches("authorize/")
+        .trim_end_matches("/consent")
+        .to_owned();
+    assert!(matches!(
+        newest_pending_consent(&db),
+        Some(NewestPendingConsent::OAuth {
+            decidable_in_requesting_browser: true,
+            ..
+        })
+    ));
+
+    let reading_browser =
+        approved_browser_token(&g, &db, &["wildflower/AuthorizationRequest.r"]).await;
+    assert_eq!(
+        ask_owner(&g, &reading_browser, &request_id).await,
+        StatusCode::NO_CONTENT
+    );
+    assert!(matches!(
+        newest_pending_consent(&db),
+        Some(NewestPendingConsent::OAuth {
+            decidable_in_requesting_browser: false,
+            ..
+        })
+    ));
+    assert_eq!(request_status(&g, &request_id).await, "pending");
+
+    let res =
+        approve_oauth_consent(&g, &owner_token, &request_id, APPROVE_REQUESTED.to_owned()).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(
+        ask_owner(&g, &reading_browser, &request_id).await,
+        StatusCode::NOT_FOUND
+    );
+}

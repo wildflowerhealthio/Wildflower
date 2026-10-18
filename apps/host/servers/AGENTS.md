@@ -549,7 +549,9 @@ changing how servers run or what the host notifies about them.
   `/oauth/authorize` records when it sends that browser to the consent card),
   as one a launch opened, neither notifies nor opens: the Owner is already
   looking at its consent card. It still counts as the server's newest, and
-  the server's page still shows it as the pending request. On a phone the
+  the server's page still shows it as the pending request. Once that browser
+  asks the server's owner (`/authorization/oauth-consents/{id}/ask-owner`
+  clears the flag), it notifies once, as a new request does. On a phone the
   host withdraws it once the request is no longer the server's newest
   (decided or expired, or another it notified for is newest again), or the
   server is removed. A tap opens it on a phone. On a phone each arrival of

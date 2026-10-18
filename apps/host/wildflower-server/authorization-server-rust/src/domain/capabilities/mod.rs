@@ -36,8 +36,8 @@ pub use access::{
     OAuthConsentView,
 };
 pub(crate) use access::{
-    Capability, ClientView, ClientsDisabler, ClientsReader, ConsentDecider, ConsentReader,
-    FixedScopeCapability, GrantsReader, GrantsRevoker, Scoped, TokenRevoker,
+    Capability, ClientView, ClientsDisabler, ClientsReader, ConsentDecider, ConsentRaiser,
+    ConsentReader, FixedScopeCapability, GrantsReader, GrantsRevoker, Scoped, TokenRevoker,
 };
 
 #[cfg(test)]

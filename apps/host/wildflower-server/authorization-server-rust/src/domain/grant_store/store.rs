@@ -251,6 +251,18 @@ pub trait GrantStore {
         self.with_connection(|tx| tx.deny_authorization_request(id))
     }
 
+    /// See [`GrantTx::raise_authorization_request_for_owner`].
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`GrantTx::raise_authorization_request_for_owner`]'s error.
+    fn raise_authorization_request_for_owner(
+        &self,
+        id: &str,
+    ) -> Result<bool, AuthorizationServerError> {
+        self.with_connection(|tx| tx.raise_authorization_request_for_owner(id))
+    }
+
     /// See [`GrantTx::consume_approved_authorization_request`].
     ///
     /// # Errors
