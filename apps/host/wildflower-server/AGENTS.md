@@ -76,3 +76,6 @@ in a slice because more than one product uses them (`slices/authorization`,
   built from.
 - [apps/AGENTS.md](../../AGENTS.md) — what folds into a product folder.
 - [slices/AGENTS.md](../../../slices/AGENTS.md) — slice layering rules.
+- [Wildflower Server Threat Model](./wildflower-server-rust/docs/Threat%20Model%20Explanation.md)
+  and [Authorization Server Threat Model](./authorization-server-rust/docs/Threat%20Model%20Explanation.md)
+  — what the edge and the credentials defend against.

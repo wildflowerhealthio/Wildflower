@@ -178,6 +178,8 @@ restate the grammar.
   — `iss` / `aud` / Owner / Client / SMART terms.
 - [Relay Explanation](../Relay/Explanation.md) — the relay between a visitor
   and the tunnel listener, and what its operator is trusted with.
+- [Threat Model Explanation](../Security/Threat%20Model%20Explanation.md): what
+  the listener and the origin are defending, and what they leave undefended.
 
 [`origin_string`]: ../../slices/shared-structures/shared-structures-rust/src/lib.rs
 [`AuthorizationServerConfig::server_origin`]: ../../apps/host/wildflower-server/authorization-server-rust/src/config.rs

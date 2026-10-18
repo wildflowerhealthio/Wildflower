@@ -121,6 +121,7 @@ All docs follow the [four-kinds convention](./docs/Documentation/Explanation.md)
 - [docs/Testing/](./docs/Testing/Testing%20Reference.md) — Property testing, unit testing, React testing, integration testing
 - [Documentation Reference](./docs/Documentation/Reference.md) — Naming rules for docs
 - [Relay Explanation](./docs/Relay/Explanation.md) — How visitors reach a device through the relay, and what the relay's operator can and can't see
+- [Threat Model Explanation](./docs/Security/Threat%20Model%20Explanation.md) — Assets, parties, trust boundaries, what Wildflower defends against and what it doesn't; links the relay, host, authorization server and server models
 - [Bridge Explanation](./docs/Messaging/Bridge%20Explanation.md) — The webview ↔ host bridge; [Wire Pinning How-To](./docs/Messaging/Wire%20Pinning%20How-To.md) for TS ⇄ Rust wire shapes
 - [Version Override Explanation](./docs/Dependencies/Version%20Override%20Explanation.md) — Why the pnpm `overrides:` exist and when to add/remove one
 - [Required Check Explanation](./docs/CI/Required%20Check%20Explanation.md) — Why every PR's checks funnel into one required `Required` check; [Adding a Check Area How-To](./docs/CI/Adding%20a%20Check%20Area%20How-To.md) to add one
