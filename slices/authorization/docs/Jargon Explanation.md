@@ -433,7 +433,10 @@ to the consent card, and records on the request that it can be decided there
 Once that browser asks the server's owner from the card, the request is
 raised (`POST /authorization/oauth-consents/{id}/ask-owner`, gated like the
 read on `wildflower/AuthorizationRequest.r`, clears the flag and republishes)
-and notifies once, as a new request does.
+and notifies once, as a new request does. Raising one spends from the
+authorization start limit, as a start the Owner is asked about does (`429`
+when refused, the request left as it was); asking about a request already
+raised spends nothing.
 The base's server page shows it as a pending request; Open, a tap on the
 notification on a phone, or the notification itself on the desktop opens its
 page in a browser signed in as the Owner, with `then=back` (see
@@ -677,7 +680,8 @@ them goes to the wait page, and the request is raised for the Owner like any
 other. Such a session's starts spend from the authorization start limit only
 when they are raised for the Owner (every device start is), so a request it
 decides on its own card spends nothing, and it can't flood the Owner with
-notifications either.
+notifications either: asking the Owner about such a request afterwards
+(`…/ask-owner`) spends then.
 Only a token issued to the browser-session client under a browser session
 (its `sid`) counts: any other token in the cookie is served as no session.
 

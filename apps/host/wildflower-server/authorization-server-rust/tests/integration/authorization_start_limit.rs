@@ -3,8 +3,9 @@
 //! asks the host's `AuthorizationStartGate`, before it is parsed, and is
 //! answered `429`, uncached, when the gate refuses; a browser whose session
 //! can decide consents asks only once its request is to be raised for the
-//! Owner, so one it decides on its own consent card passes without asking,
-//! and no other route asks.
+//! Owner, so one it decides on its own consent card passes without asking.
+//! Asking the Owner about a request (`…/ask-owner`) asks the gate when it
+//! raises one, and no other route asks.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -254,4 +255,103 @@ async fn a_device_start_asks_the_gate_whatever_the_browser_session() {
     .await;
     assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);
     assert_eq!(gate.asked(), 1);
+}
+
+/// A browser signed in as the Owner starts a code request for `new-app`,
+/// which it decides on its own consent card: the session's token and the
+/// request's id.
+async fn owner_decided_request(g: &AuthorizationServer) -> (String, String) {
+    let owner_session_token = signed_in_owner_session_token(g).await;
+    let res = send(
+        g,
+        Method::GET,
+        &format!(
+            "/oauth/authorize?{}",
+            authorize_query("new-app", REQUESTED_SCOPES)
+        ),
+        Some(&format!("__Host-browser_session={owner_session_token}")),
+    )
+    .await;
+    let location = location_of(&res);
+    assert!(location.ends_with("/consent"), "{location}");
+    let request_id = location
+        .trim_start_matches("authorize/")
+        .trim_end_matches("/consent")
+        .to_owned();
+    (owner_session_token, request_id)
+}
+
+/// `POST /authorization/oauth-consents/{request_id}/ask-owner` as `token`.
+async fn ask_owner(g: &AuthorizationServer, token: &str, request_id: &str) -> StatusCode {
+    g.router
+        .clone()
+        .oneshot(build_request(
+            Request::post(format!(
+                "/authorization/oauth-consents/{request_id}/ask-owner"
+            ))
+            .header(header::AUTHORIZATION, format!("Bearer {token}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot")
+        .status()
+}
+
+/// Whether the newest pending consent, the code request, is decidable in
+/// its requesting browser.
+fn decidable_in_requesting_browser(db: &TestDb) -> bool {
+    match newest_pending_consent(db) {
+        Some(NewestPendingConsent::OAuth {
+            decidable_in_requesting_browser,
+            ..
+        }) => decidable_in_requesting_browser,
+        other => panic!("expected the code request pending, got {other:?}"),
+    }
+}
+
+/// Asking the Owner about a request raises it for the Owner, so it spends
+/// from the limit like a start the Owner is asked about: refused, it is
+/// `429` and the request stays decidable in its browser.
+#[tokio::test]
+async fn asking_the_owner_is_refused_by_the_limit_and_raises_nothing() {
+    let gate = CountingGate::refusing();
+    let (g, _owner_token, db) = spin_up_with_authorization_start_gate(gate.clone());
+    let (owner_session_token, request_id) = owner_decided_request(&g).await;
+    assert_eq!(
+        gate.asked(),
+        0,
+        "a request decided in its browser spends nothing"
+    );
+
+    assert_eq!(
+        ask_owner(&g, &owner_session_token, &request_id).await,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    assert_eq!(gate.asked(), 1);
+    assert!(decidable_in_requesting_browser(&db), "left as it was");
+}
+
+/// Admitted, asking the Owner raises the request; asking again about the
+/// request already raised spends nothing.
+#[tokio::test]
+async fn asking_the_owner_spends_only_when_it_raises_a_request() {
+    let gate = Arc::new(CountingGate {
+        admitted: 1,
+        asked: AtomicUsize::new(0),
+    });
+    let (g, _owner_token, db) = spin_up_with_authorization_start_gate(gate.clone());
+    let (owner_session_token, request_id) = owner_decided_request(&g).await;
+
+    assert_eq!(
+        ask_owner(&g, &owner_session_token, &request_id).await,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(gate.asked(), 1);
+    assert!(!decidable_in_requesting_browser(&db), "raised");
+
+    assert_eq!(
+        ask_owner(&g, &owner_session_token, &request_id).await,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(gate.asked(), 1, "already raised: nothing spent");
 }

@@ -274,8 +274,9 @@ impl<S: GrantStore> ConsentReader<S> {
 /// as reading the prompt is: raising one decides nothing, it only stops the
 /// prompt counting as decided in the browser that made it
 /// (`decidable_in_requesting_browser`), so the host notifies the Owner for
-/// it. Holds the [`OwnerApproval`] port, to republish the newest pending
-/// consent with the change.
+/// it, which spends from the authorization start limit the caller hands in.
+/// Holds the [`OwnerApproval`] port, to republish the newest pending consent
+/// with the change.
 pub(crate) struct ConsentRaiser<S: GrantStore> {
     store: S,
     owner_approval: Arc<dyn OwnerApproval>,
@@ -292,23 +293,49 @@ impl<S: GrantStore> ConsentRaiser<S> {
     }
 
     /// Raise the pending authorization-code prompt `id` for the Owner and
-    /// republish the newest pending consent. Raising one already raised
-    /// changes nothing.
+    /// republish the newest pending consent, once `may_raise_for_owner`
+    /// admits it: the authorization start limit, as for a request
+    /// `/oauth/authorize` raises, so asking the Owner about request after
+    /// request costs what starting them would have. A prompt not decidable in
+    /// its requesting browser is already raised: nothing changes and the limit
+    /// isn't asked.
     ///
     /// # Errors
     ///
     /// [`AuthorizationServerError::OAuthConsentNotFound`] when `id` names no
     /// live code-flow prompt.
-    pub(crate) fn raise_for_owner(&self, id: &str) -> Result<(), AuthorizationServerError> {
-        load_pending_code_request(&self.store, id)?;
+    pub(crate) fn raise_for_owner(
+        &self,
+        id: &str,
+        may_raise_for_owner: impl FnOnce() -> bool,
+    ) -> Result<OwnerRaising, AuthorizationServerError> {
+        let pending_request = load_pending_code_request(&self.store, id)?;
+        if !pending_request.request().decidable_in_requesting_browser {
+            return Ok(OwnerRaising::AlreadyRaised);
+        }
+        if !may_raise_for_owner() {
+            return Ok(OwnerRaising::StartLimited);
+        }
         let raised = self.store.raise_authorization_request_for_owner(id)?;
         self.owner_approval.republish_active();
         if raised {
-            Ok(())
+            Ok(OwnerRaising::Raised)
         } else {
             Err(AuthorizationServerError::OAuthConsentNotFound { id: id.to_owned() })
         }
     }
+}
+
+/// What [`ConsentRaiser::raise_for_owner`] did with a prompt.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum OwnerRaising {
+    /// The prompt is raised for the Owner now, and the host notifies.
+    Raised,
+    /// The prompt was raised already (or never decidable in its requesting
+    /// browser): nothing changed.
+    AlreadyRaised,
+    /// The authorization start limit refused: the prompt is left as it was.
+    StartLimited,
 }
 
 /// Decide (approve/deny) pending consent prompts — the `approve`/`deny` sides of
@@ -1423,9 +1450,10 @@ mod tests {
         ));
     }
 
-    /// Raising a prompt for the Owner clears what made it decidable in the
-    /// requesting browser and republishes; it decides nothing, and a prompt no
-    /// longer pending is not found.
+    /// Raising a prompt for the Owner asks the start limit, and once admitted
+    /// clears what made it decidable in the requesting browser and
+    /// republishes; it decides nothing. Raising it again spends nothing, and
+    /// a prompt no longer pending is not found.
     #[test]
     fn raising_a_prompt_for_the_owner_leaves_it_pending_and_republishes() {
         let store = FakeGrantStore::default();
@@ -1446,7 +1474,25 @@ mod tests {
         let owner_approval = Arc::new(RecordingOwnerApproval::default());
         let raiser = ConsentRaiser::new(store, owner_approval.clone());
 
-        raiser.raise_for_owner("req-1").expect("raised");
+        assert_eq!(
+            raiser.raise_for_owner("req-1", || false),
+            Ok(OwnerRaising::StartLimited),
+        );
+        assert!(
+            raiser
+                .store
+                .authorization_request_by_id("req-1")
+                .unwrap()
+                .unwrap()
+                .decidable_in_requesting_browser,
+            "a refused raise leaves the prompt as it was"
+        );
+        assert_eq!(owner_approval.count(), 0);
+
+        assert_eq!(
+            raiser.raise_for_owner("req-1", || true),
+            Ok(OwnerRaising::Raised),
+        );
         let raised = raiser
             .store
             .authorization_request_by_id("req-1")
@@ -1455,9 +1501,15 @@ mod tests {
         assert!(!raised.decidable_in_requesting_browser);
         assert_eq!(raised.status, RequestStatus::Pending);
         assert_eq!(owner_approval.count(), 1);
+        assert_eq!(
+            raiser.raise_for_owner("req-1", || panic!(
+                "an already-raised prompt spends nothing"
+            )),
+            Ok(OwnerRaising::AlreadyRaised),
+        );
 
         assert_eq!(
-            raiser.raise_for_owner("req-2"),
+            raiser.raise_for_owner("req-2", || true),
             Err(AuthorizationServerError::OAuthConsentNotFound {
                 id: "req-2".to_owned()
             }),

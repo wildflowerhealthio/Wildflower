@@ -19,6 +19,12 @@
 //! parsed, so every attempt counts, however malformed; one it refuses is
 //! answered `429 Too Many Requests`.
 //!
+//! `POST /authorization/oauth-consents/{id}/ask-owner` raises a request for
+//! the Owner too, without starting one, so it spends from the same limit:
+//! [`defer_authorization_start_limit`] hands it a [`DeferredStartLimit`],
+//! which it asks only when it actually raises a request (not one raised
+//! already).
+//!
 //! The authorization server knows nothing of who is asking beyond the
 //! request; the host, which knows the connection a request arrived on, says
 //! whether to admit it (`wildflower-server-rust`'s
@@ -83,6 +89,23 @@ impl<S: Send + Sync> FromRequestParts<S> for StartLimitAskedNow {
             _ => Ok(StartLimitAskedNow),
         }
     }
+}
+
+/// Hand `request` a [`DeferredStartLimit`] for its route to ask, whoever
+/// sends it: the layer on `POST /authorization/oauth-consents/{id}/ask-owner`,
+/// which raises a request for the Owner without starting one, and asks the
+/// limit only when it actually raises one.
+pub(crate) async fn defer_authorization_start_limit(
+    State(state): State<Arc<AuthorizationServerState>>,
+    mut request: Request,
+    next: Next,
+) -> Response {
+    let deferred_start_limit = DeferredStartLimit {
+        gate: state.authorization_start_gate.clone(),
+        request_extensions: request.extensions().clone(),
+    };
+    request.extensions_mut().insert(deferred_start_limit);
+    next.run(request).await
 }
 
 /// Pass `request` on when it carries a live browser session that can decide

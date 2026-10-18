@@ -138,7 +138,9 @@ const httpApiGroup = HttpApiGroup.make('oauth-consent', { topLevel: false })
       .addError(OAuthConsentNotFoundSchema, { status: 404 })
   )
   // "Ask the server's owner": raise the request for the Owner, so the host
-  // notifies. Decides nothing; gated, like the read, on `.r`.
+  // notifies. Decides nothing; gated, like the read, on `.r`. Raising spends
+  // from the authorization start limit, a `429` (undeclared, so a failure
+  // here) when refused; asking about a request already raised spends nothing.
   .add(
     HttpApiEndpoint.post('AskOwnerOAuthConsent', '/oauth-consents/:id/ask-owner')
       .setPath(Schema.Struct({ id: Schema.String }))
