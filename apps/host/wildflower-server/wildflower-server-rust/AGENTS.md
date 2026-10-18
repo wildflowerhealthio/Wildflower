@@ -157,9 +157,11 @@ only it composes. Rust-only, no `-core`.
     check on the pages' `POST /oauth/sign-out`. No route is singled out;
     the gates check the token's scopes and revocation. The Wildflower host
     app mints the one-time same-device sign-in codes through
-    `WildflowerServer::same_device_sign_in_code_minter`, and waits for a
+    `WildflowerServer::same_device_sign_in_code_minter`, waits for a
     consent it opened to settle through
-    `WildflowerServer::pending_consent_watcher`, in-process.
+    `WildflowerServer::pending_consent_watcher`, and denies a consent from
+    its notification through `WildflowerServer::pending_consent_denier`,
+    in-process.
   - Layout: `config.rs` at the crate root, the host's inputs
     (`WildflowerServerConfig` with its `DeviceCertificateConfig`, and
     `ServerObservers`); `domain/`

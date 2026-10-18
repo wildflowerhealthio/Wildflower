@@ -19,6 +19,7 @@ export * as HealthReport from './health-report.ts'
 export * as HostPlatform from './host-platform.ts'
 export * as LaunchError from './launch-error.ts'
 export * as ListedServer from './listed-server.ts'
+export * as NotificationAction from './notification-action.ts'
 export {
   NotificationPermission,
   readNotificationPermission,
@@ -29,6 +30,7 @@ export * as RunPolicy from './run-policy.ts'
 export * as RunPolicyChoice from './run-policy-choice.ts'
 export {
   addServer,
+  denyNotifiedConsent,
   launchServer,
   listServers,
   openNotifiedConsent,

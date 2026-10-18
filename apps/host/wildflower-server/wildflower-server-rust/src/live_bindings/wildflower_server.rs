@@ -16,7 +16,7 @@ use wildflowerhealthio_apps::ports::{AppLaunchScopes, LaunchContextMinter};
 use wildflowerhealthio_apps::{setup_apps, AppsConfig};
 use wildflowerhealthio_authorization_server::{
     authorization_server_auth_middleware, setup_authorization_server, AuthorizationServerConfig,
-    PendingConsentWatcher, SameDeviceSignInCodeMinter,
+    PendingConsentDenier, PendingConsentWatcher, SameDeviceSignInCodeMinter,
 };
 use wildflowerhealthio_fhir_r4::{setup_fhir_r4, ui_login_config, BulkExportWorker, FhirR4Config};
 use wildflowerhealthio_tunnel::{TunnelDaemon, TunnelStream};
@@ -82,6 +82,8 @@ pub struct WildflowerServer {
     same_device_sign_in_code_minter: SameDeviceSignInCodeMinter,
     /// Waits for a pending consent of this server's to be decided or expire.
     pending_consent_watcher: PendingConsentWatcher,
+    /// Declines a pending consent of this server's as the Owner.
+    pending_consent_denier: PendingConsentDenier,
     /// The tunnel listener's certificate, ordered and renewed until it's
     /// dropped. Held for the same reason.
     device_certificate: DeviceCertificate,
@@ -119,6 +121,15 @@ impl WildflowerServer {
     #[must_use]
     pub fn pending_consent_watcher(&self) -> PendingConsentWatcher {
         self.pending_consent_watcher.clone()
+    }
+
+    /// A handle that declines a pending consent of this server's as the
+    /// Owner, for the host to deny a request from its notification. Clone it
+    /// before [`serve`](Self::serve); it denies for as long as the server's
+    /// database is open.
+    #[must_use]
+    pub fn pending_consent_denier(&self) -> PendingConsentDenier {
+        self.pending_consent_denier.clone()
     }
 
     /// A sender onto the tunnel listener, as the tunnel holds: each stream
@@ -565,6 +576,7 @@ pub async fn set_up(
         launch_context_minter: authorization_server.launch_context_minter,
         same_device_sign_in_code_minter: authorization_server.same_device_sign_in_code_minter,
         pending_consent_watcher: authorization_server.pending_consent_watcher,
+        pending_consent_denier: authorization_server.pending_consent_denier,
         device_certificate,
         bulk_export_worker: fhir_routers.bulk_export_worker,
     })
