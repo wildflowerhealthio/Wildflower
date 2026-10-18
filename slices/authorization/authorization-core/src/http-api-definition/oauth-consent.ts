@@ -48,6 +48,18 @@ const OAuthConsentSchema = Schema.Struct({
    * is required.
    */
   registration: OAuthConsentRegistrationSchema,
+  /**
+   * The approval scopes the reader's own token lacks to approve this request
+   * as asked: `wildflower/AuthorizationRequest.u` to decide it at all,
+   * `wildflower/Grant.c` for the grant every approval records, both
+   * `wildflower/Client.c` and `wildflower/Client.u` for the registration of
+   * any client but the host app's (whatever its
+   * {@link OAuthConsentRegistrationSchema}), and each resource scope the
+   * request asks for. Empty when the reader may approve; otherwise an
+   * approval answers `403 InsufficientScope` naming them, and the consent UI
+   * asks the server's Owner in place of Allow.
+   */
+  missingApprovalScopes: Schema.Array(Schema.String),
 })
 
 const ApproveOAuthConsentBody = Schema.Struct({
@@ -125,9 +137,20 @@ const httpApiGroup = HttpApiGroup.make('oauth-consent', { topLevel: false })
       .addSuccess(OAuthConsentResultSchema)
       .addError(OAuthConsentNotFoundSchema, { status: 404 })
   )
+  // "Ask the server's owner": raise the request for the Owner, so the host
+  // notifies. Decides nothing; gated, like the read, on `.r`. Raising spends
+  // from the authorization start limit, a `429` (undeclared, so a failure
+  // here) when refused; asking about a request already raised spends nothing.
+  .add(
+    HttpApiEndpoint.post('AskOwnerOAuthConsent', '/oauth-consents/:id/ask-owner')
+      .setPath(Schema.Struct({ id: Schema.String }))
+      .addSuccess(Schema.Void, { status: 204 })
+      .addError(OAuthConsentNotFoundSchema, { status: 404 })
+  )
   // Every endpoint here is scope-gated (`wildflower/AuthorizationRequest.r` to
-  // read, `.u` to decide), and an approval additionally answers the same `403`
-  // when it names a resource scope the approver's own token doesn't cover. So
+  // read or ask the owner, `.u` to decide), and an approval additionally
+  // answers the same `403` when the approver's own token lacks one of its
+  // `missingApprovalScopes` or a resource scope it names. So
   // the shared `403 InsufficientScope` is declared once at the group level: the
   // generated client decodes it, naming the missing scopes, and the consent
   // form's error surface can offer the step-up instead of an opaque failure.

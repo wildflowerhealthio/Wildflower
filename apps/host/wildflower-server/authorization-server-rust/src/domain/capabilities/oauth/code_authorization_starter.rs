@@ -11,10 +11,11 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Duration, Utc};
 use url::Url;
+use wildflowerhealthio_scopes::Grant;
 
 use super::LaunchContexts;
 use crate::crypto_util::pkce::is_valid_s256_code_challenge;
-use crate::domain::authority::{GrantCoverage, StandingGrantCoverage};
+use crate::domain::authority::{ApprovableScopes, GrantCoverage, StandingGrantCoverage};
 use crate::domain::authorization_code::PendingCodeRequest;
 use crate::domain::authorization_request::StartCodeAuthorizationArgs;
 use crate::domain::authorization_server_error::AuthorizationServerError;
@@ -49,10 +50,20 @@ pub(crate) struct AuthorizeRequest<'a> {
     /// The SMART App Launch `aud`: the FHIR server the app means to call with
     /// the token, or `None` when the app doesn't declare one.
     pub(crate) aud: Option<&'a str>,
-    /// Whether the request can be decided in the browser making it (it
-    /// carries a browser session that can decide consents), recorded on a
-    /// parked request.
-    pub(crate) decidable_in_requesting_browser: bool,
+    /// The grant of the browser session the browser making the request
+    /// holds, when that session can decide consents. The request can be
+    /// decided in that browser when the grant also holds the request's
+    /// approval scopes
+    /// ([`ApprovableScopes::missing_approval_scopes`], as the consent card and
+    /// the approval check them); that is recorded on a parked request.
+    pub(crate) requesting_browser_grant: Option<&'a Grant>,
+    /// Whether this start may raise a request for the Owner, asked once, only
+    /// when the request is about to be: not decided in the requesting browser,
+    /// and not issued on the standing-grant fast path. The authorization
+    /// start limit, deferred to here for a browser that can decide consents
+    /// so that the requests it decides itself spend nothing; `true` for a
+    /// start the limit already admitted.
+    pub(crate) may_raise_for_owner: &'a dyn Fn() -> bool,
     /// The browser session the browser making the request holds, if any,
     /// recorded on the parked request and on the code it earns.
     pub(crate) sid: Option<&'a str>,
@@ -77,9 +88,13 @@ pub(crate) enum AuthorizeNextStep {
         code: String,
         client_state: String,
     },
-    /// The request is parked and the Owner has been asked; the user-agent
-    /// polls for the decision.
-    AwaitOwner { request_id: String },
+    /// The request is parked for the Owner: decided in the browser making it
+    /// when `decidable_in_requesting_browser`, and otherwise raised for the
+    /// Owner while the user-agent polls for the decision.
+    AwaitOwner {
+        request_id: String,
+        decidable_in_requesting_browser: bool,
+    },
 }
 
 /// The ways starting an authorization can fail. `LocalPage` failures render
@@ -104,6 +119,10 @@ pub(crate) enum AuthorizationStartError {
     /// The request this flow just parked was no longer pending when the fast
     /// path approved it — an unexpected concurrent transition.
     RequestNotPending,
+    /// The request would be raised for the Owner, and
+    /// [`may_raise_for_owner`](AuthorizeRequest::may_raise_for_owner) refused:
+    /// the authorization start limit. Nothing is parked.
+    StartLimited,
     Store(AuthorizationServerError),
 }
 
@@ -220,6 +239,19 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
             redirect_uri: &requested_redirect_uri,
             scopes: &requested_scopes,
         });
+        let approvable = ApprovableScopes::for_code(
+            &requested_scopes,
+            maybe_existing_client.as_ref(),
+            registration_is_fixed,
+        );
+        let decidable_in_requesting_browser =
+            authorize_query
+                .requesting_browser_grant
+                .is_some_and(|requesting_browser_grant| {
+                    approvable
+                        .missing_approval_scopes(requesting_browser_grant)
+                        .is_empty()
+                });
         let coverage = GrantCoverage::resolve(
             &self.store,
             &registration_verdict,
@@ -257,7 +289,6 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
             }
         };
 
-        // Park the request — every path from here on references it by id.
         let parked_request =
             PendingCodeRequest::new_code_authorization(StartCodeAuthorizationArgs {
                 id: ids.request_id.clone(),
@@ -269,32 +300,48 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
                 pre_approved_scopes: coverage.pre_approved_scopes().to_vec(),
                 ttl: AUTHORIZATION_REQUEST_TTL,
                 launch_context,
-                decidable_in_requesting_browser: authorize_query.decidable_in_requesting_browser,
+                decidable_in_requesting_browser,
                 sid: authorize_query.sid.map(str::to_owned),
             });
+        // The fast path: the standing grant is the authority, as long as its
+        // patient is one the launch admits.
+        let fast_path_coverage = match coverage {
+            GrantCoverage::Full(standing_grant_coverage)
+                if parked_request
+                    .request()
+                    .admits_patient(standing_grant_coverage.patient()) =>
+            {
+                Some(standing_grant_coverage)
+            }
+            _ => None,
+        };
+        // A request about to be raised for the Owner asks the start limit
+        // first (the launch is spent by then, as by any later refusal).
+        if fast_path_coverage.is_none()
+            && !decidable_in_requesting_browser
+            && !(authorize_query.may_raise_for_owner)()
+        {
+            return Err(AuthorizationStartError::StartLimited);
+        }
+
+        // Park the request — every path from here on references it by id.
         self.store
             .insert_authorization_request(parked_request.request())?;
 
-        if let GrantCoverage::Full(standing_grant_coverage) = coverage {
-            // The fast path: the standing grant is the authority, as long as
-            // its patient is one the launch admits. The insert above parked
-            // this request as pending for the width of the approval, so the
-            // popup head is recomputed afterwards rather than left on a
-            // request the consent surface now 404s for; recomputing can only
-            // publish the genuinely-pending head, never this one.
-            if parked_request
-                .request()
-                .admits_patient(standing_grant_coverage.patient())
-            {
-                return self.issue_under_standing_grant(
-                    &standing_grant_coverage,
-                    &parked_request,
-                    requested_redirect_uri,
-                    authorize_query.client_state,
-                    ids.code,
-                    now,
-                );
-            }
+        if let Some(standing_grant_coverage) = fast_path_coverage {
+            // The insert above parked this request as pending for the width
+            // of the approval, so the popup head is recomputed afterwards
+            // rather than left on a request the consent surface now 404s for;
+            // recomputing can only publish the genuinely-pending head, never
+            // this one.
+            return self.issue_under_standing_grant(
+                &standing_grant_coverage,
+                &parked_request,
+                requested_redirect_uri,
+                authorize_query.client_state,
+                ids.code,
+                now,
+            );
         }
 
         // This request needs a human: raise the host popup (after the fast-path
@@ -302,6 +349,7 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
         self.owner_approval.republish_active();
         Ok(AuthorizeNextStep::AwaitOwner {
             request_id: ids.request_id,
+            decidable_in_requesting_browser,
         })
     }
 
@@ -503,7 +551,8 @@ mod tests {
             client_state: "xyz",
             launch: None,
             aud: None,
-            decidable_in_requesting_browser: false,
+            requesting_browser_grant: None,
+            may_raise_for_owner: &|| true,
             sid: None,
         }
     }
@@ -647,7 +696,8 @@ mod tests {
         assert_eq!(
             outcome,
             AuthorizeNextStep::AwaitOwner {
-                request_id: "req-1".to_owned()
+                request_id: "req-1".to_owned(),
+                decidable_in_requesting_browser: false,
             }
         );
         let parked_request = code_authorization_starter
@@ -1045,7 +1095,8 @@ mod tests {
                 .start(&authorize_query, ids(), now)
                 .expect("starts"),
             AuthorizeNextStep::AwaitOwner {
-                request_id: "req-1".to_owned()
+                request_id: "req-1".to_owned(),
+                decidable_in_requesting_browser: false,
             }
         );
         let parked_request = code_authorization_starter
@@ -1057,6 +1108,95 @@ mod tests {
         assert_eq!(
             parked_request.launch_bound_patient.as_deref(),
             Some("pat-2")
+        );
+    }
+
+    /// Whether the requesting browser decides a request turns on the
+    /// request's approval scopes, the resource scopes it asks for among them:
+    /// a browser that decides consents and creates grants and registrations,
+    /// but holds no `patient/` scope, can't approve a request for
+    /// `patient/Observation.rs`, so the request is raised for the Owner.
+    #[test]
+    fn the_requesting_browser_decides_only_a_request_it_can_approve_as_asked() {
+        let deciding = [
+            "wildflower/AuthorizationRequest.ru",
+            "wildflower/Grant.c",
+            "wildflower/Client.cu",
+        ];
+        for (extra_scopes, expected) in [(&[][..], false), (&["patient/Observation.rs"][..], true)]
+        {
+            let store = FakeGrantStore::default();
+            store
+                .upsert_client(&client("app", &["patient/Observation.rs"]))
+                .unwrap();
+            let (code_authorization_starter, _) = starter(store);
+            let requesting_browser_grant = Grant::parse(deciding.iter().chain(extra_scopes));
+            let outcome = code_authorization_starter
+                .start(
+                    &AuthorizeRequest {
+                        requesting_browser_grant: Some(&requesting_browser_grant),
+                        ..request("app", "patient/Observation.rs")
+                    },
+                    ids(),
+                    Utc::now(),
+                )
+                .expect("starts");
+            assert_eq!(
+                outcome,
+                AuthorizeNextStep::AwaitOwner {
+                    request_id: "req-1".to_owned(),
+                    decidable_in_requesting_browser: expected,
+                },
+                "{extra_scopes:?}"
+            );
+        }
+    }
+
+    /// A request about to be raised for the Owner asks whether it may be,
+    /// and parks nothing when refused; one decided in the requesting browser
+    /// never asks.
+    #[test]
+    fn only_a_request_raised_for_the_owner_asks_the_start_limit() {
+        let (code_authorization_starter, owner_approval) = starter(FakeGrantStore::default());
+        let refused = code_authorization_starter.start(
+            &AuthorizeRequest {
+                may_raise_for_owner: &|| false,
+                ..request("newcomer", "openid")
+            },
+            ids(),
+            Utc::now(),
+        );
+        assert!(matches!(
+            refused,
+            Err(AuthorizationStartError::StartLimited)
+        ));
+        assert_eq!(
+            code_authorization_starter
+                .store
+                .authorization_request_by_id("req-1")
+                .unwrap(),
+            None
+        );
+        assert_eq!(owner_approval.count(), 0);
+
+        let owner_session_grant = Grant::parse(crate::owner_scopes());
+        let outcome = code_authorization_starter
+            .start(
+                &AuthorizeRequest {
+                    requesting_browser_grant: Some(&owner_session_grant),
+                    may_raise_for_owner: &|| panic!("decided in the requesting browser"),
+                    ..request("newcomer", "openid")
+                },
+                ids(),
+                Utc::now(),
+            )
+            .expect("starts");
+        assert_eq!(
+            outcome,
+            AuthorizeNextStep::AwaitOwner {
+                request_id: "req-1".to_owned(),
+                decidable_in_requesting_browser: true,
+            }
         );
     }
 }

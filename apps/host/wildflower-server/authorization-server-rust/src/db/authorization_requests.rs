@@ -386,6 +386,27 @@ pub(super) fn deny_authorization_request(
     Ok(affected == 1)
 }
 
+/// Raise the *pending* request `id` for the Owner: clear its
+/// `decidable_in_requesting_browser`, so the host notifies for it. Returns
+/// `true` iff a pending row was found (whether or not it was decidable
+/// there). A request in a terminal state is left as it is.
+pub(super) fn raise_authorization_request_for_owner(
+    conn: &mut SqliteConnection,
+    id: &str,
+) -> Result<bool, AuthorizationServerError> {
+    let affected = diesel::update(
+        authorization_requests::table
+            .find(id)
+            .filter(authorization_requests::status.eq(RequestStatus::Pending)),
+    )
+    .set(authorization_requests::decidable_in_requesting_browser.eq(false))
+    .execute(conn)
+    .map_err(|e| {
+        AuthorizationServerError::infrastructure("raise_authorization_request_for_owner failed", e)
+    })?;
+    Ok(affected == 1)
+}
+
 /// Atomically claim an `approved` request for single-use redemption,
 /// transitioning `approved` → `expired` only if it is still `approved`, and
 /// return `true` iff this call won the race.
@@ -1143,6 +1164,38 @@ mod tests {
         assert!(!store
             .deny_authorization_request("unknown")
             .expect("deny query"));
+    }
+
+    /// Raising a pending request for the Owner clears only its
+    /// `decidable_in_requesting_browser`; a decided one is left as it is.
+    #[test]
+    fn raise_for_owner_clears_decidable_on_a_pending_row_only() {
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
+        for (id, status) in [
+            ("req-pending", RequestStatus::Pending),
+            ("req-denied", RequestStatus::Denied),
+        ] {
+            store
+                .insert_authorization_request(&AuthorizationRequest {
+                    decidable_in_requesting_browser: true,
+                    ..code_request(id, status)
+                })
+                .expect("insert");
+            let raised = store
+                .raise_authorization_request_for_owner(id)
+                .expect("raise query");
+            assert_eq!(raised, status == RequestStatus::Pending, "{id}");
+            let after = store
+                .authorization_request_by_id(id)
+                .expect("query")
+                .expect("row present");
+            assert_eq!(after.status, status, "{id}");
+            assert_eq!(
+                after.decidable_in_requesting_browser,
+                status != RequestStatus::Pending,
+                "{id}"
+            );
+        }
     }
 
     /// The [`RequestStatus`] and [`GrantType`] text-enum mappings reject an unknown

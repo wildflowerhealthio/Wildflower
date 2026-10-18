@@ -247,6 +247,13 @@ impl GrantTx for SqliteGrantTx<'_> {
         authorization_requests::deny_authorization_request(self.conn, id)
     }
 
+    fn raise_authorization_request_for_owner(
+        &mut self,
+        id: &str,
+    ) -> Result<bool, AuthorizationServerError> {
+        authorization_requests::raise_authorization_request_for_owner(self.conn, id)
+    }
+
     fn consume_approved_authorization_request(
         &mut self,
         id: &str,

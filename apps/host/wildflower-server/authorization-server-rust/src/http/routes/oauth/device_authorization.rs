@@ -12,6 +12,7 @@ use super::token_request::TokenRequest;
 use crate::domain::capabilities::oauth::DeviceAuthorizationError;
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::http::extractors::Live;
+use crate::http::middleware::StartLimitAskedNow;
 use crate::http::wire_representations::{CacheSuppressed, OAuthError};
 use crate::live_bindings::LiveDeviceAuthorizer;
 
@@ -66,6 +67,10 @@ impl IntoResponse for DeviceAuthorizationResponse {
 )]
 pub(super) async fn handle_device_authorization_request(
     authorizer: Live<LiveDeviceAuthorizer>,
+    // Every device request is raised for the Owner, so a start limit the
+    // layer deferred (for a browser that can decide consents) is asked now,
+    // before the body is parsed.
+    _start_limit: StartLimitAskedNow,
     headers: HeaderMap,
     request: TokenRequest<DeviceAuthorizationPayload>,
 ) -> Response {

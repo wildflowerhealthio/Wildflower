@@ -19,6 +19,13 @@ const DeviceConsentSchema = Schema.Struct({
   // `granted ⊆ allowed`, not clamped to `requestedScopes`): a device client's full
   // `allowed_scopes`, or for a browser the Owner's scopes.
   allowedScopes: Schema.Array(Schema.String),
+  // The approval scopes the reader's own token lacks to approve this request:
+  // `wildflower/AuthorizationRequest.u` to decide it at all, and for a device
+  // `wildflower/Grant.c`, for the standing grant approving it records (a
+  // browser pairing records none). Empty when the reader may approve;
+  // otherwise an approval answers `403 InsufficientScope` naming them, and
+  // the device page sends the Owner to the device running the server.
+  missingApprovalScopes: Schema.Array(Schema.String),
 })
 
 const DeviceConsentResultSchema = Schema.Union(
@@ -43,9 +50,12 @@ const DeviceConsentBodySchema = Schema.Struct({
 })
 
 /**
- * The scopes a session needs to read and decide device requests here:
- * `GetDeviceConsent` is gated on `wildflower/AuthorizationRequest.r`,
- * `ApproveDeviceConsent` / `DenyDeviceConsent` on `.u`. The server's gates are
+ * The scopes the device routes are gated on: `GetDeviceConsent` on
+ * `wildflower/AuthorizationRequest.r`, `ApproveDeviceConsent` /
+ * `DenyDeviceConsent` on `.u`. A session without them can't open a request
+ * here at all. Approving one can take more, the request's approval scopes
+ * (`wildflower/Grant.c` for a device), which the read reports in
+ * {@link DeviceConsentSchema}'s `missingApprovalScopes`. The server's gates are
  * `authorization-server-rust`'s `consent_reader_scopes` and
  * `consent_decider_scopes`, which `devices.test.ts` reads this list from.
  */

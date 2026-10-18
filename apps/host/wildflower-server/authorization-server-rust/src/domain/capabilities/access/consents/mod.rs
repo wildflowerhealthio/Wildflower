@@ -9,12 +9,25 @@
 //!
 //! The code-flow surfaces also carry the **registration verdict** (see
 //! [`crate::domain::client_registration`]).
+//!
+//! Approving a request takes its **approval scopes**, the power to decide it
+//! and to create what approving it creates (see
+//! [`ApprovableScopes::missing_approval_scopes`]): `wildflower/Grant.c` for a
+//! standing grant, `wildflower/Client.c` and `wildflower/Client.u` for a
+//! registration trusted on first use, and for a code-flow request the
+//! resource scopes it asks for. They depend on the request, so
+//! [`ConsentDecider`] is a data-dependent capability: it holds the approver's
+//! [`Grant`] and checks them per call (inside [`DelegatedScopes::clamp`]), and
+//! [`ConsentReader`] reports the ones its caller lacks with the prompt.
 
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use wildflowerhealthio_scopes::{Grant, Permission, Scope, WildflowerResource};
 
+use crate::domain::authority::ApprovableScopes;
+#[cfg(doc)]
+use crate::domain::authority::DelegatedScopes;
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::client_registration::{
@@ -48,6 +61,26 @@ pub(crate) fn consent_decider_scopes() -> Vec<Scope> {
     )]
 }
 
+/// The scope approving a code-flow or device-flow request also takes, for the
+/// standing grant the approval records — `wildflower/Grant.c`.
+pub(crate) fn grant_creating_approval_scopes() -> Vec<Scope> {
+    vec![Scope::wildflower(
+        WildflowerResource::Grant,
+        Permission::CREATE,
+    )]
+}
+
+/// The scopes approving a code-flow request from a client trusted on first
+/// use also takes, for the registration the approval creates or widens —
+/// `wildflower/Client.c` and `wildflower/Client.u`, both, so what an approval
+/// may write never turns on how the row stands when it lands.
+pub(crate) fn client_registering_approval_scopes() -> Vec<Scope> {
+    vec![
+        Scope::wildflower(WildflowerResource::Client, Permission::CREATE),
+        Scope::wildflower(WildflowerResource::Client, Permission::UPDATE),
+    ]
+}
+
 // ---------------------------------------------------------------------------
 // Read models the consent pages render — the shapes the `GET` consent
 // handlers return. Pure domain data (no axum), produced by `ConsentReader`.
@@ -66,6 +99,10 @@ pub struct OAuthConsentView {
     /// redirect, or its scopes are new to the Owner. Recomputed on every read,
     /// never stored.
     pub registration_verdict: ClientRegistrationVerdict,
+    /// The approval scopes the reader's own grant does not cover, rendered
+    /// ([`ApprovableScopes::missing_approval_scopes`]): what it lacks to
+    /// approve this request as asked. Empty when it may approve.
+    pub missing_approval_scopes: Vec<String>,
 }
 
 /// A device-page consent prompt (a device-code request or a browser pairing)
@@ -76,6 +113,10 @@ pub struct DeviceConsentView {
     pub request: AuthorizationRequest,
     pub client_name: String,
     pub approvable_scopes: Vec<String>,
+    /// The approval scopes the reader's own grant does not cover, rendered
+    /// ([`ApprovableScopes::missing_approval_scopes`]): what it lacks to
+    /// approve this request. Empty when it may approve.
+    pub missing_approval_scopes: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -132,19 +173,35 @@ pub struct ApproveDeviceConsentInput {
 
 /// Read access to pending consent prompts — the `GET` sides of
 /// `/authorization/oauth-consents/{id}` and `/authorization/devices/{userCode}`.
+/// Statically gated by `AuthorizationRequest.r`, and it additionally holds the
+/// caller's own [`Grant`], to say which approval scopes a prompt takes that
+/// the caller lacks.
 pub(crate) struct ConsentReader<S: GrantStore> {
     store: S,
+    reader_grant: Grant,
+    wildflower_host_app_client_id: Arc<str>,
 }
 
 impl<S: GrantStore> ConsentReader<S> {
-    /// Build the reader over a store handle lifted from the state.
-    pub(crate) fn new(store: S) -> Self {
-        ConsentReader { store }
+    /// Build the reader over a store handle, the reader's own granted scopes,
+    /// and the host app's `client_id` (whose registration is fixed, so
+    /// approving its requests writes none) — all lifted from the state +
+    /// claims.
+    pub(crate) fn new(
+        store: S,
+        reader_grant: Grant,
+        wildflower_host_app_client_id: Arc<str>,
+    ) -> Self {
+        ConsentReader {
+            store,
+            reader_grant,
+            wildflower_host_app_client_id,
+        }
     }
 
     /// Load a pending authorization-code consent prompt for the launcher, with
     /// the client's display name and its registration verdict resolved against
-    /// the current row.
+    /// the current row, and the approval scopes the reader lacks.
     pub(crate) fn oauth_consent(
         &self,
         id: &str,
@@ -164,16 +221,24 @@ impl<S: GrantStore> ConsentReader<S> {
             redirect_uri: &requested_redirect_uri,
             scopes: &request.requested_scopes,
         });
+        let missing_approval_scopes = ApprovableScopes::for_code(
+            &request.requested_scopes,
+            maybe_existing_client.as_ref(),
+            request.client_id == *self.wildflower_host_app_client_id,
+        )
+        .missing_approval_scopes(&self.reader_grant);
         Ok(OAuthConsentView {
             request,
             requested_redirect_uri,
             client_name,
             registration_verdict,
+            missing_approval_scopes,
         })
     }
 
     /// Load a pending device-page consent prompt for the launcher, with the
-    /// client's name and expansion envelope resolved.
+    /// client's name and expansion envelope resolved, and the approval scopes
+    /// the reader lacks.
     pub(crate) fn device_consent(
         &self,
         user_code: &str,
@@ -184,23 +249,101 @@ impl<S: GrantStore> ConsentReader<S> {
                 Some(existing_client) => (existing_client.name, existing_client.allowed_scopes),
                 None => (request.client_id.clone(), Vec::new()),
             };
-        let approvable_scopes = match request.grant_type {
-            GrantType::BrowserPairing => crate::owner_scopes(),
-            GrantType::AuthorizationCode | GrantType::DeviceCode => registered_client_scopes,
+        let (approvable, approvable_scopes) = match request.grant_type {
+            GrantType::BrowserPairing => (
+                ApprovableScopes::for_browser_pairing(),
+                crate::owner_scopes(),
+            ),
+            GrantType::AuthorizationCode | GrantType::DeviceCode => (
+                ApprovableScopes::for_device(&registered_client_scopes),
+                registered_client_scopes,
+            ),
         };
         Ok(DeviceConsentView {
             request,
             client_name,
             approvable_scopes,
+            missing_approval_scopes: approvable.missing_approval_scopes(&self.reader_grant),
         })
     }
 }
 
+/// Raise pending code-flow consent prompts for the Owner — the `ask-owner`
+/// side of `/authorization/oauth-consents/{id}`, what the consent card's "Ask
+/// the server's owner" sends. Statically gated by `AuthorizationRequest.r`,
+/// as reading the prompt is: raising one decides nothing, it only stops the
+/// prompt counting as decided in the browser that made it
+/// (`decidable_in_requesting_browser`), so the host notifies the Owner for
+/// it, which spends from the authorization start limit the caller hands in.
+/// Holds the [`OwnerApproval`] port, to republish the newest pending consent
+/// with the change.
+pub(crate) struct ConsentRaiser<S: GrantStore> {
+    store: S,
+    owner_approval: Arc<dyn OwnerApproval>,
+}
+
+impl<S: GrantStore> ConsentRaiser<S> {
+    /// Build the raiser over a store handle and the republish port, lifted
+    /// from the state.
+    pub(crate) fn new(store: S, owner_approval: Arc<dyn OwnerApproval>) -> Self {
+        ConsentRaiser {
+            store,
+            owner_approval,
+        }
+    }
+
+    /// Raise the pending authorization-code prompt `id` for the Owner and
+    /// republish the newest pending consent, once `may_raise_for_owner`
+    /// admits it: the authorization start limit, as for a request
+    /// `/oauth/authorize` raises, so asking the Owner about request after
+    /// request costs what starting them would have. A prompt not decidable in
+    /// its requesting browser is already raised: nothing changes and the limit
+    /// isn't asked.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::OAuthConsentNotFound`] when `id` names no
+    /// live code-flow prompt.
+    pub(crate) fn raise_for_owner(
+        &self,
+        id: &str,
+        may_raise_for_owner: impl FnOnce() -> bool,
+    ) -> Result<OwnerRaising, AuthorizationServerError> {
+        let pending_request = load_pending_code_request(&self.store, id)?;
+        if !pending_request.request().decidable_in_requesting_browser {
+            return Ok(OwnerRaising::AlreadyRaised);
+        }
+        if !may_raise_for_owner() {
+            return Ok(OwnerRaising::StartLimited);
+        }
+        let raised = self.store.raise_authorization_request_for_owner(id)?;
+        self.owner_approval.republish_active();
+        if raised {
+            Ok(OwnerRaising::Raised)
+        } else {
+            Err(AuthorizationServerError::OAuthConsentNotFound { id: id.to_owned() })
+        }
+    }
+}
+
+/// What [`ConsentRaiser::raise_for_owner`] did with a prompt.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum OwnerRaising {
+    /// The prompt is raised for the Owner now, and the host notifies.
+    Raised,
+    /// The prompt was raised already (or never decidable in its requesting
+    /// browser): nothing changed.
+    AlreadyRaised,
+    /// The authorization start limit refused: the prompt is left as it was.
+    StartLimited,
+}
+
 /// Decide (approve/deny) pending consent prompts — the `approve`/`deny` sides of
 /// both consent surfaces. Statically gated by `AuthorizationRequest.u`, and it
-/// additionally holds the caller's own [`Grant`] (the approve paths reject any
-/// delegation beyond the approver's authority) plus the
-/// [`OwnerApproval`] port — both lifted from the state.
+/// additionally holds the caller's own [`Grant`] (the approve paths require the
+/// request's approval scopes and reject any delegation beyond the
+/// approver's authority) plus the [`OwnerApproval`] port — both lifted from
+/// the state.
 pub(crate) struct ConsentDecider<S: GrantStore> {
     store: S,
     owner_approval: Arc<dyn OwnerApproval>,
@@ -228,8 +371,8 @@ impl<S: GrantStore> ConsentDecider<S> {
         }
     }
 
-    /// Approve an authorization-code consent; a resource scope beyond the
-    /// approver's own authority fails the approval with a `403`, and an
+    /// Approve an authorization-code consent; an approver lacking one of its
+    /// approval scopes fails the approval with a `403`, and an
     /// unacknowledged [`New`](ClientRegistrationVerdict::New) /
     /// [`WouldWiden`](ClientRegistrationVerdict::WouldWiden) registration fails it with a
     /// `409`.
@@ -260,8 +403,9 @@ impl<S: GrantStore> ConsentDecider<S> {
         deny_oauth_consent(&self.store, self.owner_approval.as_ref(), id)
     }
 
-    /// Approve a device-code consent; a resource scope beyond the approver's own
-    /// authority fails the approval with a `403`.
+    /// Approve a device-page consent; an approver lacking one of its approval
+    /// scopes, or a resource scope beyond the approver's own authority, fails
+    /// the approval with a `403`.
     pub(crate) fn approve_device(
         &self,
         user_code: &str,
@@ -290,9 +434,9 @@ mod tests {
     use chrono::Duration;
 
     use super::*;
-    use crate::domain::authorization_request::{AuthorizationRequest, RequestStatus};
+    use crate::domain::authorization_request::RequestStatus;
     use crate::domain::test_fake::{
-        client, code_request, device_request, FakeGrantStore, RecordingOwnerApproval,
+        client, code_request, device_request, owned_scopes, FakeGrantStore, RecordingOwnerApproval,
     };
 
     /// Approve a code-flow consent with the real
@@ -332,6 +476,22 @@ mod tests {
     /// An owner-equivalent approver grant — the two universal resource wildcards.
     fn owner_grant() -> Grant {
         Grant::parse(["wildflower/*.cruds", "system/*.cruds"])
+    }
+
+    /// An approved browser's grant: every approval scope a request from a
+    /// client trusted on first use takes beyond its resource scopes (it
+    /// decides requests, creates grants, creates and updates clients), plus
+    /// `resource_scopes`.
+    fn approver_grant_with(resource_scopes: &[&str]) -> Grant {
+        Grant::parse(
+            [
+                "wildflower/AuthorizationRequest.u",
+                "wildflower/Grant.c",
+                "wildflower/Client.cu",
+            ]
+            .iter()
+            .chain(resource_scopes),
+        )
     }
 
     fn live_code_store() -> (FakeGrantStore, RecordingOwnerApproval) {
@@ -804,10 +964,12 @@ mod tests {
         (store, RecordingOwnerApproval::default())
     }
 
+    /// A code request's resource scopes are among its approval scopes: an
+    /// approver lacking one is refused whole, naming it, however it ticked.
     #[test]
-    fn approve_oauth_consent_rejects_a_resource_scope_the_approver_cannot_delegate() {
+    fn approve_oauth_consent_rejects_a_requested_resource_scope_the_approver_lacks() {
         let (store, owner_approval) = resource_scope_code_store("system/Patient.r");
-        let approver_grant = Grant::parse(["system/Observation.r"]);
+        let approver_grant = approver_grant_with(&["system/Observation.r"]);
         let result = approve_code(
             &store,
             &owner_approval,
@@ -818,8 +980,8 @@ mod tests {
         );
         assert_eq!(
             result,
-            Err(AuthorizationServerError::InsufficientApproverScope {
-                approver_missing_scopes: vec!["system/Patient.r".to_owned()],
+            Err(AuthorizationServerError::InsufficientScope {
+                missing_scopes: vec!["system/Patient.r".to_owned()],
             }),
         );
         assert_eq!(
@@ -843,7 +1005,7 @@ mod tests {
         store
             .insert_authorization_request(&device_request("dev-1", "UC-1", RequestStatus::Pending))
             .unwrap();
-        let approver_grant = Grant::parse(["system/Observation.r"]);
+        let approver_grant = approver_grant_with(&["system/Observation.r"]);
         let result = approve_device_consent(
             &store,
             &owner_approval,
@@ -875,7 +1037,7 @@ mod tests {
         store
             .insert_authorization_request(&device_request("dev-1", "UC-1", RequestStatus::Pending))
             .unwrap();
-        let approver_grant = Grant::parse(["system/*.cruds"]);
+        let approver_grant = approver_grant_with(&["system/*.cruds"]);
         let outcome = approve_device_consent(
             &store,
             &owner_approval,
@@ -890,6 +1052,305 @@ mod tests {
         )
         .unwrap();
         assert_eq!(outcome, ConsentOutcome::Approved { redirect: None });
+    }
+
+    /// An approved browser holding every approval scope approves a
+    /// registered app within its own scopes.
+    #[test]
+    fn an_approver_holding_the_approval_scopes_approves_a_registered_app() {
+        let (store, owner_approval) = resource_scope_code_store("system/Patient.r");
+        let outcome = approve_code(
+            &store,
+            &owner_approval,
+            "req-1",
+            approved(&["system/Patient.r"]),
+            &approver_grant_with(&["system/Patient.r"]),
+            || "the-code".to_owned(),
+        )
+        .unwrap();
+        assert!(matches!(outcome, ConsentOutcome::Approved { .. }));
+    }
+
+    /// Without `wildflower/Grant.c` an approval of a code request is refused
+    /// whole, naming it, and writes nothing.
+    #[test]
+    fn approve_oauth_consent_requires_creating_the_grant() {
+        let (store, owner_approval) = resource_scope_code_store("system/Patient.r");
+        let result = approve_code(
+            &store,
+            &owner_approval,
+            "req-1",
+            approved(&["system/Patient.r"]),
+            &Grant::parse([
+                "wildflower/AuthorizationRequest.u",
+                "wildflower/Client.cu",
+                "system/Patient.r",
+            ]),
+            || panic!("must not mint a code without the power to create the grant"),
+        );
+        assert_eq!(
+            result,
+            Err(AuthorizationServerError::InsufficientScope {
+                missing_scopes: vec!["wildflower/Grant.c".to_owned()],
+            }),
+        );
+        assert!(store
+            .grant_by_client_and_redirect(
+                "client",
+                &url::Url::parse("https://example.com/cb").unwrap(),
+            )
+            .unwrap()
+            .is_none());
+        assert_eq!(
+            store
+                .authorization_request_by_id("req-1")
+                .unwrap()
+                .unwrap()
+                .status,
+            RequestStatus::Pending,
+        );
+        assert_eq!(owner_approval.count(), 0);
+    }
+
+    /// A code approval for a client trusted on first use writes its
+    /// registration, so it takes both `wildflower/Client.c` and
+    /// `wildflower/Client.u`, whether the row is missing, needs widening, or
+    /// already matches: one alone is refused, naming the other, and no client
+    /// row is written or changed.
+    #[test]
+    fn approve_oauth_consent_requires_both_client_scopes_whatever_the_row() {
+        let registered = client("client", &["read"]);
+        for (maybe_registered_client, requested_scopes) in [
+            (None, &["read"][..]),
+            (Some(&registered), &["read", "write"][..]),
+            (Some(&registered), &["read"][..]),
+        ] {
+            for (client_scope, missing) in [
+                ("wildflower/Client.c", "wildflower/Client.u"),
+                ("wildflower/Client.u", "wildflower/Client.c"),
+            ] {
+                let store = FakeGrantStore::default();
+                let owner_approval = RecordingOwnerApproval::default();
+                if let Some(registered_client) = maybe_registered_client {
+                    store.upsert_client(registered_client).unwrap();
+                }
+                let mut request = code_request(
+                    "req-1",
+                    RequestStatus::Pending,
+                    Utc::now() + Duration::minutes(5),
+                );
+                request.requested_scopes = owned_scopes(requested_scopes);
+                store.insert_authorization_request(&request).unwrap();
+
+                let result = approve_code(
+                    &store,
+                    &owner_approval,
+                    "req-1",
+                    approved(requested_scopes),
+                    &Grant::parse([
+                        "wildflower/AuthorizationRequest.u",
+                        "wildflower/Grant.c",
+                        client_scope,
+                    ]),
+                    || panic!("must not mint a code without the power to write the client"),
+                );
+                assert_eq!(
+                    result,
+                    Err(AuthorizationServerError::InsufficientScope {
+                        missing_scopes: vec![missing.to_owned()],
+                    }),
+                    "{maybe_registered_client:?} {requested_scopes:?} {client_scope}",
+                );
+                assert_eq!(
+                    store.client_by_id("client").unwrap().as_ref(),
+                    maybe_registered_client,
+                );
+            }
+        }
+    }
+
+    /// With both client scopes the approval registers a new client.
+    #[test]
+    fn approve_oauth_consent_with_both_client_scopes_registers_a_new_client() {
+        let store = FakeGrantStore::default();
+        let owner_approval = RecordingOwnerApproval::default();
+        store
+            .insert_authorization_request(&code_request(
+                "req-1",
+                RequestStatus::Pending,
+                Utc::now() + Duration::minutes(5),
+            ))
+            .unwrap();
+        approve_code(
+            &store,
+            &owner_approval,
+            "req-1",
+            approved(&["read"]),
+            &approver_grant_with(&[]),
+            || "the-code".to_owned(),
+        )
+        .expect("the power to register the client approves");
+        assert!(store.client_by_id("client").unwrap().is_some());
+    }
+
+    /// The host app's registration is fixed, so approving its changed
+    /// request writes none and takes no client scope.
+    #[test]
+    fn approving_for_a_fixed_registration_takes_no_client_scope() {
+        let store = FakeGrantStore::default();
+        let owner_approval = RecordingOwnerApproval::default();
+        store
+            .upsert_client(&client(crate::WILDFLOWER_HOST_APP_CLIENT_ID, &["read"]))
+            .unwrap();
+        let mut request = code_request(
+            "req-1",
+            RequestStatus::Pending,
+            Utc::now() + Duration::minutes(5),
+        );
+        request.client_id = crate::WILDFLOWER_HOST_APP_CLIENT_ID.to_owned();
+        request.requested_scopes = vec!["read".to_owned(), "write".to_owned()];
+        store.insert_authorization_request(&request).unwrap();
+
+        let outcome = approve_code(
+            &store,
+            &owner_approval,
+            "req-1",
+            approved(&["read"]),
+            &Grant::parse(["wildflower/AuthorizationRequest.u", "wildflower/Grant.c"]),
+            || "the-code".to_owned(),
+        )
+        .expect("no client scope is needed");
+        assert!(matches!(outcome, ConsentOutcome::Approved { .. }));
+    }
+
+    /// Without `wildflower/Grant.c` an approval of a device request is
+    /// refused, naming it, and writes nothing; a browser pairing, which
+    /// records no grant, needs none.
+    #[test]
+    fn approve_device_consent_requires_creating_the_grant_but_a_pairing_does_not() {
+        let store = FakeGrantStore::default();
+        let owner_approval = RecordingOwnerApproval::default();
+        store.upsert_client(&client("client", &["read"])).unwrap();
+        store
+            .insert_authorization_request(&device_request("dev-1", "UC-1", RequestStatus::Pending))
+            .unwrap();
+        let deciding_only =
+            Grant::parse(["wildflower/AuthorizationRequest.u", "wildflower/launch"]);
+        let result = approve_device_consent(
+            &store,
+            &owner_approval,
+            "UC-1",
+            ApproveDeviceConsentInput {
+                owner_approved_scopes: vec!["read".to_owned()],
+                patient: None,
+                device_name: Some("My Phone".to_owned()),
+            },
+            &deciding_only,
+            Utc::now(),
+        );
+        assert_eq!(
+            result,
+            Err(AuthorizationServerError::InsufficientScope {
+                missing_scopes: vec!["wildflower/Grant.c".to_owned()],
+            }),
+        );
+        assert!(store
+            .device_grant_by_client_and_device_name("client", "My Phone")
+            .unwrap()
+            .is_none());
+        assert_eq!(owner_approval.count(), 0);
+
+        store
+            .insert_authorization_request(&AuthorizationRequest {
+                grant_type: GrantType::BrowserPairing,
+                user_code: Some("UC-2".to_owned()),
+                device_name: Some("Laptop".to_owned()),
+                ..device_request("pair-1", "UC-2", RequestStatus::Pending)
+            })
+            .unwrap();
+        let outcome = approve_device_consent(
+            &store,
+            &owner_approval,
+            "UC-2",
+            ApproveDeviceConsentInput {
+                owner_approved_scopes: vec!["wildflower/launch".to_owned()],
+                patient: None,
+                device_name: None,
+            },
+            &deciding_only,
+            Utc::now(),
+        )
+        .expect("a pairing takes no grant-creating scope");
+        assert_eq!(outcome, ConsentOutcome::Approved { redirect: None });
+    }
+
+    /// The prompt a reader loads says which approval scopes it lacks for
+    /// this request, and nothing for a reader holding them all.
+    #[test]
+    fn consent_reader_says_which_approval_scopes_the_reader_lacks() {
+        let read_by = |reader_grant: Grant| {
+            let store = FakeGrantStore::default();
+            store
+                .insert_authorization_request(&code_request(
+                    "req-1",
+                    RequestStatus::Pending,
+                    Utc::now() + Duration::minutes(5),
+                ))
+                .unwrap();
+            ConsentReader::new(
+                store,
+                reader_grant,
+                crate::WILDFLOWER_HOST_APP_CLIENT_ID.into(),
+            )
+            .oauth_consent("req-1")
+            .expect("view")
+            .missing_approval_scopes
+        };
+        assert_eq!(
+            read_by(Grant::parse(["wildflower/AuthorizationRequest.r"])),
+            [
+                "wildflower/AuthorizationRequest.u",
+                "wildflower/Grant.c",
+                "wildflower/Client.c",
+                "wildflower/Client.u",
+            ],
+        );
+        assert_eq!(read_by(owner_grant()), Vec::<String>::new());
+    }
+
+    /// A device prompt's read says the same: a device request takes
+    /// `wildflower/Grant.c`, a browser pairing only deciding it.
+    #[test]
+    fn consent_reader_says_which_approval_scopes_a_device_prompt_takes() {
+        let store = FakeGrantStore::default();
+        store
+            .insert_authorization_request(&device_request("dev-1", "UC-1", RequestStatus::Pending))
+            .unwrap();
+        store
+            .insert_authorization_request(&AuthorizationRequest {
+                grant_type: GrantType::BrowserPairing,
+                ..device_request("pair-1", "UC-2", RequestStatus::Pending)
+            })
+            .unwrap();
+        let reader = ConsentReader::new(
+            store,
+            Grant::parse(["wildflower/AuthorizationRequest.ru"]),
+            crate::WILDFLOWER_HOST_APP_CLIENT_ID.into(),
+        );
+        assert_eq!(
+            reader
+                .device_consent("UC-1")
+                .expect("view")
+                .missing_approval_scopes,
+            ["wildflower/Grant.c"],
+        );
+        assert_eq!(
+            reader
+                .device_consent("UC-2")
+                .expect("view")
+                .missing_approval_scopes,
+            Vec::<String>::new(),
+        );
     }
 
     #[test]
@@ -934,7 +1395,11 @@ mod tests {
                 Utc::now() + Duration::minutes(5),
             ))
             .unwrap();
-        let reader = ConsentReader::new(store);
+        let reader = ConsentReader::new(
+            store,
+            owner_grant(),
+            crate::WILDFLOWER_HOST_APP_CLIENT_ID.into(),
+        );
         let view = reader.oauth_consent("req-1").expect("view");
         assert_eq!(view.request.id, "req-1");
         assert_eq!(
@@ -974,7 +1439,11 @@ mod tests {
         .expect("corrupt the stored row");
         drop(conn);
 
-        let reader = ConsentReader::new(store);
+        let reader = ConsentReader::new(
+            store,
+            owner_grant(),
+            crate::WILDFLOWER_HOST_APP_CLIENT_ID.into(),
+        );
         assert!(matches!(
             reader.oauth_consent("req-1"),
             Err(AuthorizationServerError::Infrastructure { .. })
@@ -983,5 +1452,71 @@ mod tests {
             reader.device_consent("USER-CODE"),
             Err(AuthorizationServerError::Infrastructure { .. })
         ));
+    }
+
+    /// Raising a prompt for the Owner asks the start limit, and once admitted
+    /// clears what made it decidable in the requesting browser and
+    /// republishes; it decides nothing. Raising it again spends nothing, and
+    /// a prompt no longer pending is not found.
+    #[test]
+    fn raising_a_prompt_for_the_owner_leaves_it_pending_and_republishes() {
+        let store = FakeGrantStore::default();
+        let mut request = code_request(
+            "req-1",
+            RequestStatus::Pending,
+            Utc::now() + Duration::minutes(5),
+        );
+        request.decidable_in_requesting_browser = true;
+        store.insert_authorization_request(&request).unwrap();
+        store
+            .insert_authorization_request(&code_request(
+                "req-2",
+                RequestStatus::Denied,
+                Utc::now() + Duration::minutes(5),
+            ))
+            .unwrap();
+        let owner_approval = Arc::new(RecordingOwnerApproval::default());
+        let raiser = ConsentRaiser::new(store, owner_approval.clone());
+
+        assert_eq!(
+            raiser.raise_for_owner("req-1", || false),
+            Ok(OwnerRaising::StartLimited),
+        );
+        assert!(
+            raiser
+                .store
+                .authorization_request_by_id("req-1")
+                .unwrap()
+                .unwrap()
+                .decidable_in_requesting_browser,
+            "a refused raise leaves the prompt as it was"
+        );
+        assert_eq!(owner_approval.count(), 0);
+
+        assert_eq!(
+            raiser.raise_for_owner("req-1", || true),
+            Ok(OwnerRaising::Raised),
+        );
+        let raised = raiser
+            .store
+            .authorization_request_by_id("req-1")
+            .unwrap()
+            .unwrap();
+        assert!(!raised.decidable_in_requesting_browser);
+        assert_eq!(raised.status, RequestStatus::Pending);
+        assert_eq!(owner_approval.count(), 1);
+        assert_eq!(
+            raiser.raise_for_owner("req-1", || panic!(
+                "an already-raised prompt spends nothing"
+            )),
+            Ok(OwnerRaising::AlreadyRaised),
+        );
+
+        assert_eq!(
+            raiser.raise_for_owner("req-2", || true),
+            Err(AuthorizationServerError::OAuthConsentNotFound {
+                id: "req-2".to_owned()
+            }),
+        );
     }
 }

@@ -332,10 +332,17 @@ lets a guard test assert `domain/` never imports `crate::http`.
 ## Worked examples
 
 - **Fixed:** `apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/` — the
-  `/authorization` admin surface (`GrantsReader`, `GrantsRevoker`, `ConsentReader`,
-  `ConsentDecider`, `TokenRevoker`), generic over `GrantStore`, bound to the
+  `/authorization` admin surface (`GrantsReader`, `GrantsRevoker`, `ConsentRaiser`,
+  `TokenRevoker`), generic over `GrantStore`, bound to the
   concrete store in `authorization-server-rust/src/live_bindings/`. Their privileged writes
   go through the writers under an authority proof (see the section above).
+- **Static gate plus a per-call check:** the same surface's `ConsentReader` and
+  `ConsentDecider` implement `Capability` directly with a non-empty
+  `required_scopes()` (`AuthorizationRequest.r` / `.u`) and store the caller's
+  `Grant`: approving a request also takes that request's approval scopes
+  (`wildflower/Grant.c`, `wildflower/Client.c` and `.u`, a code request's
+  resource scopes), which the decider checks per call, inside the
+  `DelegatedScopes` proof, and the reader reports.
 - **Data-dependent:** `apps/host/wildflower-server/databases-rust/src/domain/capabilities.rs` —
   `DatabasesReader` / `DatabasesDeleter`, gated per database by the `read_scope` /
   `delete_scope` the host declares on each `DatabaseDescriptor`, operating through

@@ -196,7 +196,19 @@ pub(crate) fn delegated_scopes(scopes: &[&str]) -> DelegatedScopes {
     DelegatedScopes::clamp(
         &Grant::parse(["system/*.cruds", "wildflower/*.cruds"]),
         owned_scopes(scopes),
-        &ApprovableScopes::for_device(&client("delegate", scopes)),
+        &ApprovableScopes::for_device(&owned_scopes(scopes)),
+    )
+    .expect("the owner covers everything")
+    .expect("non-empty")
+}
+
+/// `scopes` as delegated by an owner-equivalent approver to a code-flow client
+/// trusted on first use, so recording them writes its registration.
+pub(crate) fn registering_delegated_scopes(scopes: &[&str]) -> DelegatedScopes {
+    DelegatedScopes::clamp(
+        &Grant::parse(["system/*.cruds", "wildflower/*.cruds"]),
+        owned_scopes(scopes),
+        &ApprovableScopes::for_code(&owned_scopes(scopes), None, false),
     )
     .expect("the owner covers everything")
     .expect("non-empty")

@@ -48,19 +48,6 @@ impl ClientRegistrationVerdict {
         matches!(self, ClientRegistrationVerdict::Registered)
     }
 
-    /// Whether the presented `redirect_uri` is outside the registration — always
-    /// for a [`New`](Self::New) client, which has no allowlist yet.
-    pub(crate) fn redirect_uri_is_new(&self) -> bool {
-        match self {
-            ClientRegistrationVerdict::Registered => false,
-            ClientRegistrationVerdict::New => true,
-            ClientRegistrationVerdict::WouldWiden {
-                redirect_uri_is_new,
-                ..
-            } => *redirect_uri_is_new,
-        }
-    }
-
     /// Whether approving this request needs the Owner's explicit acknowledgement
     /// that the app (or its redirect / scopes) is new to them.
     pub(crate) fn needs_acknowledgement(&self) -> bool {
@@ -193,25 +180,6 @@ mod tests {
                 unregistered_requested_scopes: Vec::new(),
             }
         );
-    }
-
-    /// The redirect is new for an unknown client (it has no allowlist yet) and
-    /// for a `WouldWiden` verdict that says so — never for a `Registered` one or
-    /// a `WouldWiden` one that only added scopes.
-    #[test]
-    fn redirect_uri_is_new_follows_the_verdict() {
-        assert!(ClientRegistrationVerdict::New.redirect_uri_is_new());
-        assert!(!ClientRegistrationVerdict::Registered.redirect_uri_is_new());
-        assert!(ClientRegistrationVerdict::WouldWiden {
-            redirect_uri_is_new: true,
-            unregistered_requested_scopes: Vec::new(),
-        }
-        .redirect_uri_is_new());
-        assert!(!ClientRegistrationVerdict::WouldWiden {
-            redirect_uri_is_new: false,
-            unregistered_requested_scopes: vec!["write".to_owned()],
-        }
-        .redirect_uri_is_new());
     }
 
     /// The uncovered scopes are reported in **request** order (not registration

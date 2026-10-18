@@ -107,10 +107,12 @@ const NOTIFIED_PER_SERVER: usize = 32;
 /// server's run restarts.
 ///
 /// A request that can be decided in the browser that made it
-/// (`decidable_in_requesting_browser`) never notifies: that browser already
+/// (`decidable_in_requesting_browser`) doesn't notify: that browser already
 /// shows its consent card. It still counts as the server's newest, so it
 /// withdraws the server's notification for an older one, and counts as
-/// notified for, so it doesn't notify when it comes back either.
+/// notified for, so it doesn't notify when it comes back either, unless it
+/// comes back raised for the Owner (that browser asked the server's owner,
+/// no longer decidable there): then it notifies once, as a new request does.
 ///
 /// A server's notification stays while the request it announced is the
 /// server's newest; once another that notified before is newest, or nothing
@@ -173,6 +175,9 @@ struct NotifiedRequest {
     /// How many requests every server had seen before it, so the latest seen
     /// has the highest.
     seen_after: u64,
+    /// Whether it was decidable in the browser that made it when last seen,
+    /// so it didn't notify; once it is raised for the Owner it notifies.
+    decidable_in_requesting_browser: bool,
 }
 
 /// Which consent requests open, besides notifying.
@@ -250,33 +255,51 @@ impl ConsentNotificationCoalescer {
             let pending_consent = PendingConsent::from(newest);
             self.newest.insert(unit_id.clone(), pending_consent.clone());
             let notified = self.notified.entry(unit_id.clone()).or_default();
-            let notified_before = notified
-                .iter()
-                .any(|notified_request| notified_request.key == pending_consent.key);
-            if notified_before {
-                if self
-                    .announced
-                    .get(unit_id)
-                    .is_some_and(|announced| *announced != pending_consent.key)
+            let remembered = notified
+                .iter_mut()
+                .find(|notified_request| notified_request.key == pending_consent.key);
+            let notified_before = match remembered {
+                // Raised for the Owner since it was seen: it notifies now, as
+                // a request first seen does.
+                Some(remembered)
+                    if remembered.decidable_in_requesting_browser
+                        && !pending_consent.decidable_in_requesting_browser =>
                 {
-                    self.announced.remove(unit_id);
-                    changes.withdrawn.push(unit_id.as_str().to_owned());
+                    remembered.decidable_in_requesting_browser = false;
+                    remembered.seen_after = self.requests_seen;
+                    self.requests_seen += 1;
+                    false
                 }
-            } else {
-                if notified.len() == NOTIFIED_PER_SERVER {
-                    notified.pop_front();
+                Some(_) => {
+                    if self
+                        .announced
+                        .get(unit_id)
+                        .is_some_and(|announced| *announced != pending_consent.key)
+                    {
+                        self.announced.remove(unit_id);
+                        changes.withdrawn.push(unit_id.as_str().to_owned());
+                    }
+                    true
                 }
-                notified.push_back(NotifiedRequest {
-                    key: pending_consent.key.clone(),
-                    seen_after: self.requests_seen,
-                });
-                self.requests_seen += 1;
-                if pending_consent.decidable_in_requesting_browser
-                    && self.announced.remove(unit_id).is_some()
-                {
-                    changes.withdrawn.push(unit_id.as_str().to_owned());
+                None => {
+                    if notified.len() == NOTIFIED_PER_SERVER {
+                        notified.pop_front();
+                    }
+                    notified.push_back(NotifiedRequest {
+                        key: pending_consent.key.clone(),
+                        seen_after: self.requests_seen,
+                        decidable_in_requesting_browser: pending_consent
+                            .decidable_in_requesting_browser,
+                    });
+                    self.requests_seen += 1;
+                    if pending_consent.decidable_in_requesting_browser
+                        && self.announced.remove(unit_id).is_some()
+                    {
+                        changes.withdrawn.push(unit_id.as_str().to_owned());
+                    }
+                    false
                 }
-            }
+            };
             if pending_consent.decidable_in_requesting_browser {
                 continue;
             }
@@ -669,6 +692,22 @@ mod tests {
         )]));
         assert!(back.posted.is_empty());
         assert_eq!(back.withdrawn, [RUTH], "b's notification goes");
+    }
+
+    /// A request its browser hands to the Owner ("Ask the server's owner")
+    /// stops being decidable there, and notifies once then.
+    #[test]
+    fn a_request_raised_for_the_owner_notifies_once() {
+        let mut coalescer = notifying();
+        coalescer.record(&statuses([(
+            RUTH,
+            running_with(Some(oauth_decidable_in_requesting_browser("a"))),
+        )]));
+
+        let raised = coalescer.record(&statuses([(RUTH, running_with(Some(oauth("a"))))]));
+        assert_eq!(summary(&raised.posted), [(RUTH, oauth_key("a"))]);
+        let again = coalescer.record(&statuses([(RUTH, running_with(Some(oauth("a"))))]));
+        assert_eq!(again, ConsentNotificationChanges::default());
     }
 
     #[test]

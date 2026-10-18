@@ -8,9 +8,12 @@
 //! server's limit on them asks one [`AuthorizationStartLimit`] for every
 //! request to either, and answers `429 Too Many Requests` when it refuses. It
 //! asks before the request is parsed, so every attempt counts, however
-//! malformed. A request from a browser signed in as the Owner (a live browser
-//! session that can decide consents) is never asked about, so it spends
-//! nothing.
+//! malformed. A request from a browser whose live browser session can decide
+//! consents, as the Owner's can, is asked about only once it is to be raised
+//! for the Owner (every device request is), so a launch that browser decides
+//! on its own consent card spends nothing. Asking the Owner about a parked
+//! request (`POST /authorization/oauth-consents/{id}/ask-owner`) raises it,
+//! so it spends from the same allowances.
 //!
 //! The limit is two allowances, each a [`Rate`]: a burst of attempts at once,
 //! refilled one attempt per interval, [`PER_CLIENT`] for each visitor and

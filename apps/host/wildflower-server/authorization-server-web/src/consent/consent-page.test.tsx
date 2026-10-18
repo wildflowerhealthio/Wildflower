@@ -34,7 +34,7 @@ interface SeenRequest {
 
 /**
  * How the stub server answers one request, by method and path: a JSON `body`,
- * or a `text` body sent as it is.
+ * or a `text` body sent as it is (none for a `204`).
  */
 type Answer = (
   request: SeenRequest
@@ -50,6 +50,21 @@ const bodyOf = (request: HttpClientRequest.HttpClientRequest): unknown =>
     ? JSON.parse(new TextDecoder().decode(request.body.body))
     : undefined
 
+/** The web response for `reply`: no body for a `204`, else its text or JSON. */
+const responseTo = (reply: ReturnType<Answer>): Response => {
+  if (reply.status === 204) return new Response(null, { status: 204 })
+  if ('text' in reply) {
+    return new Response(reply.text, {
+      status: reply.status,
+      headers: { 'content-type': 'text/plain' },
+    })
+  }
+  return new Response(JSON.stringify(reply.body), {
+    status: reply.status,
+    headers: { 'content-type': 'application/json' },
+  })
+}
+
 const stubServer: Layer.Layer<HttpClient.HttpClient> = Layer.succeed(
   HttpClient.HttpClient,
   HttpClient.make((request) => {
@@ -62,26 +77,18 @@ const stubServer: Layer.Layer<HttpClient.HttpClient> = Layer.succeed(
       session: request.headers[BROWSER_SESSION_HEADER.name.toLowerCase()],
     }
     seen.push(seenRequest)
-    const reply = answer(seenRequest)
-    return Effect.succeed(
-      HttpClientResponse.fromWeb(
-        request,
-        'text' in reply
-          ? new Response(reply.text, {
-              status: reply.status,
-              headers: { 'content-type': 'text/plain' },
-            })
-          : new Response(JSON.stringify(reply.body), {
-              status: reply.status,
-              headers: { 'content-type': 'application/json' },
-            })
-      )
-    )
+    return Effect.succeed(HttpClientResponse.fromWeb(request, responseTo(answer(seenRequest))))
   })
 )
 
-/** The pending request the stub server holds for `scopes`. */
-const consentFor = (scopes: readonly string[]): unknown => ({
+/**
+ * The pending request the stub server holds for `scopes`, read by a browser
+ * lacking `missingApprovalScopes` (none by default).
+ */
+const consentFor = (
+  scopes: readonly string[],
+  missingApprovalScopes: readonly string[] = []
+): unknown => ({
   id: 'req-1',
   clientId: 'fitbit-sync',
   clientName: 'Fitbit Sync',
@@ -90,6 +97,7 @@ const consentFor = (scopes: readonly string[]): unknown => ({
   preApprovedScopes: [],
   patient: null,
   registration: { status: 'registered' },
+  missingApprovalScopes,
 })
 
 /** A stub server holding `consent`, deciding with `decision`, and finding `patients`. */
@@ -98,6 +106,9 @@ const serverHolding =
   (request) => {
     if (request.path === '/authorization/oauth-consents/req-1') {
       return { status: 200, body: consent }
+    }
+    if (request.path === '/authorization/oauth-consents/req-1/ask-owner') {
+      return { status: 204, body: null }
     }
     if (request.path.startsWith('/authorization/oauth-consents/req-1/')) {
       return { status: 200, body: decision }
@@ -200,6 +211,61 @@ describe('ConsentPage — exit', () => {
 
     expect(
       await screen.findByText('The authorization server returned an unexpected answer.')
+    ).toBeDefined()
+    expect(leaveFor).not.toHaveBeenCalled()
+  })
+})
+
+describe("ConsentPage — asking the server's owner", () => {
+  test('a browser lacking an approval scope asks the owner: the request is raised on the server, nothing is approved, and the page leaves for the wait page', async () => {
+    answer = serverHolding(consentFor(['user/Observation.rs'], ['wildflower/Grant.c']), {
+      status: 'approved',
+    })
+    const { user } = renderPage()
+
+    await user.click(await screen.findByRole('button', { name: "Ask the server's owner" }))
+
+    await waitFor(() => {
+      expect(leaveFor).toHaveBeenCalledWith(WAIT_PAGE)
+    })
+    expect(
+      seen.filter((request) => request.method === 'POST').map((request) => request.path)
+    ).toEqual(['/authorization/oauth-consents/req-1/ask-owner'])
+  })
+
+  test('a request decided meanwhile needs no asking: the page leaves for the wait page', async () => {
+    const holding = serverHolding(consentFor(['user/Observation.rs'], ['wildflower/Grant.c']), {
+      status: 'approved',
+    })
+    answer = (request) =>
+      request.path === '/authorization/oauth-consents/req-1/ask-owner'
+        ? { status: 404, body: { error: 'OAuthConsentNotFound', id: 'req-1' } }
+        : holding(request)
+    const { user } = renderPage()
+
+    await user.click(await screen.findByRole('button', { name: "Ask the server's owner" }))
+
+    await waitFor(() => {
+      expect(leaveFor).toHaveBeenCalledWith(WAIT_PAGE)
+    })
+  })
+
+  test("asking the owner that fails says so and doesn't leave", async () => {
+    const holding = serverHolding(consentFor(['user/Observation.rs'], ['wildflower/Grant.c']), {
+      status: 'approved',
+    })
+    answer = (request) =>
+      request.path === '/authorization/oauth-consents/req-1/ask-owner'
+        ? { status: 500, text: 'boom' }
+        : holding(request)
+    const { user } = renderPage()
+
+    await user.click(await screen.findByRole('button', { name: "Ask the server's owner" }))
+
+    expect(
+      await screen.findByText(
+        "Couldn't ask the server's owner. Approve it on the device running your server instead."
+      )
     ).toBeDefined()
     expect(leaveFor).not.toHaveBeenCalled()
   })

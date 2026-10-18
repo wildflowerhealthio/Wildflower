@@ -1,8 +1,9 @@
 //! The consent bindings — where the store-generic [`ConsentReader`] /
 //! [`ConsentDecider`] capabilities meet the concrete `SqliteGrantStore` and
-//! the `Arc<AuthorizationServerState>` router state. [`LiveConsentDecider`] is the
-//! variable-scope flavour ([`Capability`], built with the caller's [`Grant`]);
-//! [`LiveConsentReader`] is fixed-scope. See the [module docs](super) for the
+//! the `Arc<AuthorizationServerState>` router state. Both are the
+//! variable-scope flavour ([`Capability`], built with the caller's [`Grant`]):
+//! the decider checks a request's approval scopes against it, and the reader
+//! says which of them its caller lacks. See the [module docs](super) for the
 //! binding seam.
 
 use std::sync::Arc;

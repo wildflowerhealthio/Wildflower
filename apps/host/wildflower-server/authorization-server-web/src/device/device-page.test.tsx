@@ -76,8 +76,14 @@ const stubServer: Layer.Layer<HttpClient.HttpClient> = Layer.succeed(
   })
 )
 
-/** The pending device request the stub server holds for `userCode`. */
-const deviceConsentFor = (userCode: string): unknown => ({
+/**
+ * The pending device request the stub server holds for `userCode`, read by a
+ * browser lacking `missingApprovalScopes` (none by default).
+ */
+const deviceConsentFor = (
+  userCode: string,
+  missingApprovalScopes: readonly string[] = []
+): unknown => ({
   kind: 'device',
   userCode,
   clientId: 'pebble-watch',
@@ -85,6 +91,7 @@ const deviceConsentFor = (userCode: string): unknown => ({
   deviceName: null,
   requestedScopes: ['system/Observation.rs'],
   allowedScopes: ['system/Observation.rs'],
+  missingApprovalScopes,
 })
 
 /** The path of the session read the page makes on load. */
@@ -258,6 +265,7 @@ describe('DevicePage — deciding', () => {
               deviceName: 'Firefox on Linux',
               requestedScopes: ['wildflower/launch'],
               allowedScopes: ['system/*.cruds', 'wildflower/*.cruds', 'wildflower/launch'],
+              missingApprovalScopes: [],
             },
           }
         : holding(request)
@@ -432,4 +440,18 @@ describe('DevicePage — a browser that cannot decide here', () => {
       expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
     }
   )
+
+  test('a session lacking an approval scope the request takes is told to approve on the server', async () => {
+    answer = (request) =>
+      request.path === '/authorization/devices/WDJB-MJHT'
+        ? { status: 200, body: deviceConsentFor('WDJB-MJHT', ['wildflower/Grant.c']) }
+        : serverHolding('WDJB-MJHT', { status: 'approved' })(request)
+    const { user } = renderPage('WDJB-MJHT')
+
+    await user.click(await screen.findByRole('button', { name: 'Continue' }))
+
+    expect(await screen.findByText(APPROVE_ON_SERVER)).toBeDefined()
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
+    expect(decisions()).toEqual([])
+  })
 })

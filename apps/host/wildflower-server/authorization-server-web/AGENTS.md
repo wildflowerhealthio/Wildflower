@@ -49,7 +49,14 @@ Security Policy (below).
   consent (`401`, `403`) goes to the wait page, `then=back` or not; a
   request no longer pending (`404`) goes there too, except with `then=back`,
   where the page says it was already decided or expired and steps back out;
-  any other failed read says so in plain words, never the error's text.
+  any other failed read says so in plain words, never the error's text. A
+  consent whose `missingApprovalScopes` isn't empty (the session can't approve
+  it as asked) gets "Ask the server's owner" in place of Allow, and none of
+  the card's decision controls; asking posts `…/ask-owner`, which raises the
+  request so the host notifies the Owner, then leaves for the wait page, and a
+  failed post says so in plain words. A device request whose
+  `missingApprovalScopes` isn't empty says to approve it on the server's
+  device.
 - `device.html` + `src/device/main.tsx` — the device page's entry: reads the
   `user_code` (`user-code-query.ts`) and `then` (`src/then-query.ts`) from its
   query and mounts `DevicePage`, with `SessionFooter` under it, over the same

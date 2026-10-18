@@ -88,7 +88,12 @@ pub fn router(state: Arc<AuthorizationServerState>) -> Router {
         .merge(clients)
         .merge(routes::grants::router())
         .merge(routes::browser_sessions::router())
-        .merge(routes::oauth_consents::router())
+        .merge(routes::oauth_consents::router(|route| {
+            route.layer(axum_middleware::from_fn_with_state(
+                state.clone(),
+                middleware::defer_authorization_start_limit,
+            ))
+        }))
         .merge(routes::devices::router())
         .merge(routes::logout::router())
         .merge(routes::revocations::router())

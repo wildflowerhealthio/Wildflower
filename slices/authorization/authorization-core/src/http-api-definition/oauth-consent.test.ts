@@ -112,6 +112,7 @@ describe('OAuthConsentSchema', () => {
       preApprovedScopes: [],
       patient: null,
       registration: { status: 'changed', redirectUriIsNew: false, newScopes: [] },
+      missingApprovalScopes: ['wildflower/Client.u'],
     }
 
     // Act
@@ -123,6 +124,24 @@ describe('OAuthConsentSchema', () => {
       redirectUriIsNew: false,
       newScopes: [],
     })
+    expect(decoded.missingApprovalScopes).toEqual(['wildflower/Client.u'])
+  })
+
+  it('requires missingApprovalScopes', () => {
+    // Arrange
+    const wire = {
+      id: 'consent-1',
+      clientId: 'app.example',
+      clientName: 'App Example',
+      scopes: ['patient/Observation.r'],
+      redirectUri: 'https://app.example/cb',
+      preApprovedScopes: [],
+      patient: null,
+      registration: { status: 'registered' },
+    }
+
+    // Act / Assert
+    expect(() => Schema.decodeUnknownSync(OAuthConsentSchema)(wire)).toThrow()
   })
 })
 

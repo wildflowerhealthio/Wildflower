@@ -261,9 +261,9 @@ async fn auth_code_grant_owner_narrows_requested_scope() {
 }
 
 /// The approver must hold every resource scope they approve: a token that may
-/// decide consents (`wildflower/AuthorizationRequest.u`) but lacks one of the
-/// requested resource scopes — a narrower device grant — is refused with a
-/// `403 InsufficientScope` naming the uncovered scope. No code is issued: the
+/// approve (`wildflower/AuthorizationRequest.u` and `wildflower/Grant.c`) but
+/// lacks one of the requested resource scopes — a narrower device grant — is
+/// refused with a `403 InsufficientScope` naming the uncovered scope. No code is issued: the
 /// request stays `pending`, so the status poll keeps waiting and an approver
 /// whose token does cover it (here the Owner) can still answer it.
 #[tokio::test]
@@ -289,6 +289,8 @@ async fn an_approver_lacking_a_requested_resource_scope_is_refused_and_the_reque
         &db,
         &[
             "wildflower/AuthorizationRequest.u",
+            "wildflower/Grant.c",
+            "wildflower/Client.cu",
             "patient/Observation.rs",
         ],
     );

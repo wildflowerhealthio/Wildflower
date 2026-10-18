@@ -12,7 +12,6 @@ use wildflowerhealthio_scopes::widened_scopes;
 use crate::domain::authority::DelegatedScopes;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::client::{AllowedGrantType, Client, ClientKind};
-use crate::domain::client_registration::ClientRegistrationVerdict;
 use crate::domain::grant::{AuthorizationCodeGrant, CumulativeConsent, DeviceGrant};
 use crate::domain::{GrantStore, GrantTx};
 
@@ -30,20 +29,22 @@ impl<'a, S: GrantStore> GrantRecorder<'a, S> {
 
     /// Register (or widen) the client and insert or cumulatively update the
     /// standing authorization-code grant for `(client_id, redirect_uri)`, all
-    /// inside one `BEGIN IMMEDIATE` transaction: widen the `clients` row by the
-    /// `registration_to_widen` verdict (if any), then read the standing grant — if present, fold the
+    /// inside one `BEGIN IMMEDIATE` transaction: write the `clients` row when
+    /// the proof [writes the registration](DelegatedScopes::writes_registration),
+    /// then read the standing grant — if present, fold the
     /// re-approval in via [`CumulativeConsent::absorb_reapproval`] and write it
     /// back; otherwise mint a fresh grant. `BEGIN IMMEDIATE` takes the write lock
     /// before the read, so two concurrent approvals serialise at the read rather
     /// than both reading the pre-merge row and one losing its scope union — and
     /// the registration lands with the grant it justifies or not at all.
     ///
-    /// `registration_to_widen` is the verdict the Owner acknowledged, for a
-    /// client trusted on first use: the `clients` row is created when absent,
-    /// otherwise widened in place, and the approved redirect joins its
-    /// allowlist exactly when the verdict found it new. `None` — a
-    /// fixed registration, which an approval never widens — writes
-    /// no `clients` row at all.
+    /// For a client trusted on first use the `clients` row, as read inside the
+    /// transaction, is created when absent, otherwise widened in place, and the
+    /// approved redirect joins its allowlist exactly when the row doesn't
+    /// already allow it. The proof's approver held both `wildflower/Client.c`
+    /// and `wildflower/Client.u`, so whichever the row calls for is covered. A
+    /// fixed registration, which an approval never writes, gets no `clients`
+    /// row at all.
     ///
     /// The grant (and any widened registration) records exactly the proof's
     /// scopes, so a scope the Owner pruned is never added to either.
@@ -59,19 +60,11 @@ impl<'a, S: GrantStore> GrantRecorder<'a, S> {
         delegated_scopes: &DelegatedScopes,
         patient: Option<&str>,
         now: DateTime<Utc>,
-        registration_to_widen: Option<&ClientRegistrationVerdict>,
     ) -> Result<(), AuthorizationServerError> {
         let delegated = delegated_scopes.scopes();
         self.store.immediate_transaction(|tx| {
-            if let Some(registration_verdict) = registration_to_widen {
-                write_registration(
-                    tx,
-                    client_id,
-                    redirect_uri,
-                    delegated,
-                    now,
-                    registration_verdict,
-                )?;
+            if delegated_scopes.writes_registration() {
+                write_registration(tx, client_id, redirect_uri, delegated, now)?;
             }
             match tx.grant_by_client_and_redirect(client_id, redirect_uri)? {
                 Some(mut grant) => {
@@ -130,23 +123,21 @@ impl<'a, S: GrantStore> GrantRecorder<'a, S> {
 }
 
 /// Create the `clients` row for `client_id`, or widen the existing one, by the
-/// `delegated` scopes and (when the verdict found it new) the redirect — inside
-/// the caller's transaction, after reading the row under its write lock.
+/// `delegated` scopes and (when the row doesn't allow it yet) the redirect —
+/// inside the caller's transaction, after reading the row under its write lock,
+/// so the write follows the row as it stands, not as an earlier read saw it.
 fn write_registration<T: GrantTx>(
     tx: &mut T,
     client_id: &str,
     redirect_uri: &Url,
     delegated: &[String],
     now: DateTime<Utc>,
-    registration_verdict: &ClientRegistrationVerdict,
 ) -> Result<(), AuthorizationServerError> {
     let row = match tx.client_by_id(client_id)? {
-        Some(existing_client) => widen_registration(
-            existing_client,
-            redirect_uri,
-            delegated,
-            registration_verdict.redirect_uri_is_new(),
-        ),
+        Some(existing_client) => {
+            let adds_redirect = !existing_client.allows_redirect_uri(redirect_uri);
+            widen_registration(existing_client, redirect_uri, delegated, adds_redirect)
+        }
         None => new_registration(client_id, redirect_uri, delegated, now),
     };
     // `upsert_client` updates in place, preserving `registered_at` and any admin
@@ -216,7 +207,9 @@ mod tests {
 
     use super::*;
     use crate::domain::client_registration::uncovered_scopes;
-    use crate::domain::test_fake::{client, delegated_scopes, FakeGrantStore};
+    use crate::domain::test_fake::{
+        client, delegated_scopes, registering_delegated_scopes, FakeGrantStore,
+    };
 
     fn redirect() -> Url {
         Url::parse("https://example.com/cb").expect("a valid redirect")
@@ -236,7 +229,6 @@ mod tests {
                 &delegated_scopes(&["patient/Patient.r"]),
                 Some("pat-1"),
                 Utc::now(),
-                None,
             )
             .unwrap();
         let first = store
@@ -252,7 +244,6 @@ mod tests {
                 &delegated_scopes(&["patient/Patient.r", "patient/Observation.r"]),
                 Some("pat-2"),
                 Utc::now(),
-                None,
             )
             .unwrap();
         let merged = store
@@ -270,8 +261,9 @@ mod tests {
         assert_eq!(merged.patient.as_deref(), Some("pat-2"));
     }
 
-    /// No registration to widen writes no client row at all, even when none exists — a
-    /// fixed registration is never registered by an approval.
+    /// A proof that writes no registration writes no client row at all, even
+    /// when none exists — a fixed registration is never registered by an
+    /// approval.
     #[test]
     fn record_code_grant_without_widening_never_creates_a_client() {
         let store = FakeGrantStore::default();
@@ -282,14 +274,14 @@ mod tests {
                 &delegated_scopes(&["openid"]),
                 None,
                 Utc::now(),
-                None,
             )
             .unwrap();
         assert_eq!(store.client_by_id("host").unwrap(), None);
     }
 
-    /// Widening an unknown client's `New` verdict creates the trust-on-first-use row
-    /// holding exactly the delegated scopes and the approved redirect.
+    /// Recording a registering approval for an unknown client creates the
+    /// trust-on-first-use row holding exactly the delegated scopes and the
+    /// approved redirect.
     #[test]
     fn record_code_grant_widen_registers_a_new_client_with_the_delegated_scopes() {
         let store = FakeGrantStore::default();
@@ -297,10 +289,9 @@ mod tests {
             .record_code_grant(
                 "newcomer",
                 &redirect(),
-                &delegated_scopes(&["patient/Patient.r", "openid"]),
+                &registering_delegated_scopes(&["patient/Patient.r", "openid"]),
                 None,
                 Utc::now(),
-                Some(&ClientRegistrationVerdict::New),
             )
             .unwrap();
         let row = store
@@ -312,30 +303,25 @@ mod tests {
         assert_eq!(row.kind, ClientKind::Public);
     }
 
-    /// Widening a known client by a verdict whose redirect is already
-    /// allowlisted widens the scopes but leaves the allowlist alone; one whose
-    /// redirect is new appends it.
+    /// Widening a known client by an approval whose redirect the row already
+    /// allows widens the scopes but leaves the allowlist alone; one whose
+    /// redirect is new to the row appends it.
     #[test]
     fn record_code_grant_widening_appends_only_a_new_redirect() {
         let elsewhere = Url::parse("https://other.example/cb").unwrap();
-        for (redirect_uri_is_new, expected_redirects) in [
-            (false, vec![redirect()]),
-            (true, vec![redirect(), elsewhere.clone()]),
+        for (approved_redirect, expected_redirects) in [
+            (redirect(), vec![redirect()]),
+            (elsewhere.clone(), vec![redirect(), elsewhere.clone()]),
         ] {
             let store = FakeGrantStore::default();
             store.upsert_client(&client("app", &["openid"])).unwrap();
-            let verdict = ClientRegistrationVerdict::WouldWiden {
-                redirect_uri_is_new,
-                unregistered_requested_scopes: vec!["patient/Patient.r".to_owned()],
-            };
             GrantRecorder::over(&store)
                 .record_code_grant(
                     "app",
-                    &elsewhere,
-                    &delegated_scopes(&["patient/Patient.r"]),
+                    &approved_redirect,
+                    &registering_delegated_scopes(&["patient/Patient.r"]),
                     None,
                     Utc::now(),
-                    Some(&verdict),
                 )
                 .unwrap();
             let row = store.client_by_id("app").unwrap().expect("present");

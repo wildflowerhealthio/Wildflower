@@ -24,7 +24,7 @@ pub use consents::{
     ApproveDeviceConsentInput, ApproveOAuthConsentInput, ConsentOutcome, DeviceConsentView,
     OAuthConsentView,
 };
-pub(crate) use consents::{ConsentDecider, ConsentReader};
+pub(crate) use consents::{ConsentDecider, ConsentRaiser, ConsentReader, OwnerRaising};
 pub(crate) use grants::{GrantsReader, GrantsRevoker};
 pub(crate) use tokens::TokenRevoker;
 
@@ -48,6 +48,8 @@ pub fn grantable_admin_scopes() -> Vec<Scope> {
         clients::clients_disabler_scopes(),
         consents::consent_reader_scopes(),
         consents::consent_decider_scopes(),
+        consents::grant_creating_approval_scopes(),
+        consents::client_registering_approval_scopes(),
         tokens::token_revoker_scopes(),
         browser_sessions::browser_sessions_reader_scopes(),
         browser_sessions::browser_sessions_revoker_scopes(),
@@ -77,6 +79,8 @@ mod tests {
                 "wildflower/Client.u".to_owned(),
                 "wildflower/AuthorizationRequest.r".to_owned(),
                 "wildflower/AuthorizationRequest.u".to_owned(),
+                "wildflower/Grant.c".to_owned(),
+                "wildflower/Client.c".to_owned(),
                 "wildflower/Token.d".to_owned(),
                 "wildflower/BrowserSession.r".to_owned(),
                 "wildflower/BrowserSession.d".to_owned(),
@@ -97,11 +101,13 @@ mod tests {
         }
     }
 
-    /// Registry-completeness guard: every capability declares exactly one
-    /// `*_scopes()` function, and [`grantable_admin_scopes`]'s `declared` array
-    /// must list all of them. A capability added without registering enforces a
-    /// scope the grantable vocabulary never offers — a silent lock-out. Counting
-    /// the scope functions textually keeps honest additions honest.
+    /// Registry-completeness guard: every scope a capability checks is declared
+    /// by one `*_scopes()` function (a capability's gate, or a per-call
+    /// requirement such as the consent approval scopes), and
+    /// [`grantable_admin_scopes`]'s `declared` array must list all of them. A
+    /// scope checked without registering is one the grantable vocabulary never
+    /// offers — a silent lock-out. Counting the scope functions textually keeps
+    /// honest additions honest.
     #[test]
     fn every_capability_scope_fn_is_registered_in_the_grantable_vocabulary() {
         const CAPABILITY_SOURCES: &[&str] = &[
@@ -115,9 +121,9 @@ mod tests {
             .iter()
             .map(|source| source.matches("_scopes() -> Vec<Scope>").count())
             .sum();
-        // One `declared` entry per capability's scope function. Update BOTH when
-        // adding a capability: its `*_scopes()` fn and the `declared` array.
-        let declared_entries = 9;
+        // One `declared` entry per scope function. Update BOTH when adding a
+        // checked scope: its `*_scopes()` fn and the `declared` array.
+        let declared_entries = 11;
         assert_eq!(
             scope_fns, declared_entries,
             "found {scope_fns} capability scope functions but grantable_admin_scopes() declares \

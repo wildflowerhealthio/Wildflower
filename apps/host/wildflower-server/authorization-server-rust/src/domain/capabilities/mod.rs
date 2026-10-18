@@ -37,8 +37,8 @@ pub use access::{
 };
 pub(crate) use access::{
     BrowserSessionView, BrowserSessionsReader, BrowserSessionsRevoker, Capability, ClientView,
-    ClientsDisabler, ClientsReader, ConsentDecider, ConsentReader, FixedScopeCapability,
-    GrantsReader, GrantsRevoker, Scoped, TokenRevoker,
+    ClientsDisabler, ClientsReader, ConsentDecider, ConsentRaiser, ConsentReader,
+    FixedScopeCapability, GrantsReader, GrantsRevoker, OwnerRaising, Scoped, TokenRevoker,
 };
 
 #[cfg(test)]

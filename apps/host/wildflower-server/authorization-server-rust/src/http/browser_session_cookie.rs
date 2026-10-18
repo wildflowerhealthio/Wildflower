@@ -140,7 +140,10 @@ pub(crate) fn carried_browser_session(
 /// grant covers both loading a request on the consent card
 /// ([`consent_reader_scopes`]) and deciding it ([`consent_decider_scopes`]).
 /// A request such a browser starts is sent to the consent card and decided
-/// there, so the start spends nothing of the authorization start limit.
+/// there when the session also holds that request's approval scopes (as
+/// `/oauth/authorize` works out per request); otherwise it goes to the wait
+/// page and is raised for the Owner, and only then does its start spend from
+/// the authorization start limit.
 pub(crate) fn can_decide_consents(claims: &VerifiedClaims) -> bool {
     let granted = claims.granted();
     consent_reader_scopes()

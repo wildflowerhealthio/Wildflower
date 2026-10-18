@@ -207,6 +207,21 @@ impl GrantTx for FakeGrantTx<'_> {
         Ok(true)
     }
 
+    fn raise_authorization_request_for_owner(
+        &mut self,
+        id: &str,
+    ) -> Result<bool, AuthorizationServerError> {
+        let mut requests = self.store.authorization_requests.borrow_mut();
+        let Some(request) = requests.get_mut(id) else {
+            return Ok(false);
+        };
+        if request.status != RequestStatus::Pending {
+            return Ok(false);
+        }
+        request.decidable_in_requesting_browser = false;
+        Ok(true)
+    }
+
     fn consume_approved_authorization_request(
         &mut self,
         id: &str,

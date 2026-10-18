@@ -47,6 +47,13 @@ pub(super) fn load_pending_request_by_user_code(
 /// request, for a device mint (or refresh) the standing device grant, and
 /// republish the popup head. An approval that grants nothing is applied as a
 /// **deny**.
+///
+/// The approver must hold the request's approval scopes (see
+/// [`ApprovableScopes::missing_approval_scopes`]: `wildflower/Grant.c` for a
+/// device's standing grant, which a browser pairing doesn't record), else the
+/// approval fails with
+/// [`InsufficientScope`](AuthorizationServerError::InsufficientScope) and
+/// nothing is written.
 pub(super) fn approve_device_consent(
     store: &impl GrantStore,
     owner_approval: &dyn OwnerApproval,
@@ -73,12 +80,13 @@ pub(super) fn approve_device_consent(
         .client_by_id(&device_request.client_id)?
         .ok_or_else(make_consent_not_found)?;
 
-    // The proof every write below demands: the Owner's approval clamped to
-    // what a device prompt may grant and covered by the approver's own grant.
+    // The proof every write below demands: the approver holds a device
+    // prompt's approval scopes, and the Owner's approval is clamped to what it
+    // may grant and covered by the approver's own grant.
     let Some(delegated_scopes) = DelegatedScopes::clamp(
         approver_grant,
         input.owner_approved_scopes,
-        &ApprovableScopes::for_device(&client),
+        &ApprovableScopes::for_device(&client.allowed_scopes),
     )?
     else {
         return deny_consent(

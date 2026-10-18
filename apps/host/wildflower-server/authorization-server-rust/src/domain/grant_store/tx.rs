@@ -202,6 +202,18 @@ pub trait GrantTx {
     /// [`AuthorizationServerError::Infrastructure`] if the update fails.
     fn deny_authorization_request(&mut self, id: &str) -> Result<bool, AuthorizationServerError>;
 
+    /// Raise a *pending* `id` for the Owner: it no longer counts as
+    /// decidable in the browser that made it, so the host notifies for it.
+    /// Returns `true` iff a pending row was found. Decides nothing.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the update fails.
+    fn raise_authorization_request_for_owner(
+        &mut self,
+        id: &str,
+    ) -> Result<bool, AuthorizationServerError>;
+
     /// Atomically claim an `approved` request for single-use redemption
     /// (`approved` → `expired` only if still `approved`), returning `true` iff
     /// this call won the race (RFC 8628 §3.4).
