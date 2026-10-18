@@ -1,0 +1,23 @@
+{
+  "name": "@wildflowerhealthio/code-index-web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The code index at `wildflowerhealth.io/code-index`: for each package, its files and top-level items with their doc comments, a what-uses-what graph, and the simplification hints those uses imply. `scripts/extract.ts` reads Rust from rust-analyzer's SCIP index and TypeScript from the TypeScript checker; `scripts/build-page.ts` inlines the data into `viewer/template.html`.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build-page": "node scripts/build-page.ts",
+    "check": "vp check",
+    "extract": "node --max-old-space-size=12000 scripts/extract.ts"
+  },
+  "dependencies": {
+    "effect": "catalog:",
+    "protobufjs": "catalog:",
+    "typescript": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript-7": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}
