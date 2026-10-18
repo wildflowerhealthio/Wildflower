@@ -320,7 +320,7 @@ async fn listed_browser_sessions(g: &AuthorizationServer, token: &str) -> Vec<(S
 /// takes it off the list and ends its token; revoking it again is a `404`.
 #[tokio::test]
 async fn the_browsers_list_shows_live_sessions_and_revokes_one() {
-    let (g, _owner_token, _db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     let caller = signed_in_owner_session_token(&g).await;
     let other = signed_in_owner_session_token(&g).await;
     let (caller_sid, other_sid) = (sid_of(&caller), sid_of(&other));
@@ -346,7 +346,11 @@ async fn the_browsers_list_shows_live_sessions_and_revokes_one() {
     }
     assert_eq!(
         listed_browser_sessions(&g, &caller).await,
-        vec![(other_sid.clone(), false), (caller_sid.clone(), true)]
+        vec![
+            (other_sid.clone(), false),
+            (caller_sid.clone(), true),
+            (db.paired_browser_sid.clone(), false),
+        ]
     );
 
     let path = format!("/authorization/browser-sessions/{other_sid}");
@@ -354,7 +358,10 @@ async fn the_browsers_list_shows_live_sessions_and_revokes_one() {
     assert_eq!(res.status(), StatusCode::NO_CONTENT);
     assert_eq!(
         listed_browser_sessions(&g, &caller).await,
-        vec![(caller_sid.clone(), true)]
+        vec![
+            (caller_sid.clone(), true),
+            (db.paired_browser_sid.clone(), false),
+        ]
     );
     assert_eq!(
         g.router
@@ -424,7 +431,7 @@ async fn the_browsers_routes_are_scope_gated() {
             .into_iter()
             .map(|(sid, _)| sid)
             .collect::<Vec<_>>(),
-        vec![sid_of(&session_token)],
+        vec![sid_of(&session_token), db.paired_browser_sid.clone()],
         "the session stands"
     );
 }

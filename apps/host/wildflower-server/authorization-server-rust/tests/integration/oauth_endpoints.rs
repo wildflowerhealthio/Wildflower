@@ -7,18 +7,15 @@ use crate::common::*;
 #[tokio::test]
 async fn authorize_unknown_client_parks_a_pending_request() {
     let (g, _owner_token, db) = spin_up();
-    let res = get_authorize(&g.router, &authorize_query("ghost", "read")).await;
+    let res = get_authorize(
+        &g.router,
+        &db.paired_browser_token,
+        &authorize_query("ghost", "read"),
+    )
+    .await;
     let request_id = parked_request_id(&res);
 
-    let res = g
-        .router
-        .clone()
-        .oneshot(build_request(
-            Request::get(format!("/oauth/authorize/{request_id}")),
-            Body::empty(),
-        ))
-        .await
-        .expect("oneshot");
+    let res = get_authorization_status(&g.router, &db.paired_browser_token, &request_id).await;
     assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(body_json(res.into_body()).await["status"], "pending");
     assert!(
@@ -36,7 +33,7 @@ async fn authorize_unknown_client_parks_a_pending_request() {
 /// page instead.
 #[tokio::test]
 async fn authorize_unknown_client_renders_later_failures_locally() {
-    let (g, _owner_token, _db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     let challenge = compute_code_challenge(CODE_VERIFIER);
     for (query, expected) in [
         (
@@ -59,7 +56,7 @@ async fn authorize_unknown_client_renders_later_failures_locally() {
             "Unsupported response type",
         ),
     ] {
-        let res = get_authorize(&g.router, &query).await;
+        let res = get_authorize(&g.router, &db.paired_browser_token, &query).await;
         assert_eq!(res.status(), StatusCode::BAD_REQUEST, "query = {query}");
         let body = body_string(res.into_body()).await;
         assert!(body.contains(expected), "body = {body}");
@@ -74,12 +71,17 @@ async fn authorize_unknown_client_renders_later_failures_locally() {
 async fn authorize_unregistered_redirect_parks_and_keeps_the_redirect_untrusted() {
     let (g, _owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://elsewhere.example/cb", &["read"]);
-    let res = get_authorize(&g.router, &authorize_query("test-app", "read")).await;
+    let res = get_authorize(
+        &g.router,
+        &db.paired_browser_token,
+        &authorize_query("test-app", "read"),
+    )
+    .await;
     parked_request_id(&res);
 
     let query = "response_type=code&code_challenge_method=S256&client_id=test-app&scope=read&\
                  code_challenge=abc&redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz";
-    let res = get_authorize(&g.router, query).await;
+    let res = get_authorize(&g.router, &db.paired_browser_token, query).await;
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
     let body = body_string(res.into_body()).await;
     assert!(
@@ -109,7 +111,12 @@ async fn authorize_disabled_client_is_still_rejected() {
         })
         .expect("register a disabled client");
 
-    let res = get_authorize(&g.router, &authorize_query("test-app", "read")).await;
+    let res = get_authorize(
+        &g.router,
+        &db.paired_browser_token,
+        &authorize_query("test-app", "read"),
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
     let body = body_string(res.into_body()).await;
     assert!(body.contains("Disabled client"), "body = {body}");
@@ -125,13 +132,14 @@ async fn authorize_validates_redirect_uri_before_pkce_method() {
     // redirect-uri validation and renders the local "Redirect URI not allowed"
     // page rather than redirecting. (The redirect-path tests below seed a
     // client with an allowlisted redirect_uri via `seed_client_with_redirect`.)
-    let (g, _owner_token, _db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     let query = format!(
         "response_type=code&code_challenge_method=plain&client_id={WILDFLOWER_HOST_APP_CLIENT_ID}&\
          scope=owner&code_challenge=abc&redirect_uri=http%3A%2F%2Fexample.com%2Fcb&state=xyz"
     );
     let req = build_request(
-        Request::get(format!("/oauth/authorize?{query}")),
+        Request::get(format!("/oauth/authorize?{query}"))
+            .header("cookie", browser_session_cookie(&db.paired_browser_token)),
         Body::empty(),
     );
     let res = g.router.oneshot(req).await.expect("oneshot");
@@ -150,7 +158,8 @@ async fn authorize_unsupported_response_type_redirects_back() {
     let query = "response_type=token&code_challenge_method=S256&client_id=test-app&scope=read&\
                  code_challenge=abc&redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz";
     let req = build_request(
-        Request::get(format!("/oauth/authorize?{query}")),
+        Request::get(format!("/oauth/authorize?{query}"))
+            .header("cookie", browser_session_cookie(&db.paired_browser_token)),
         Body::empty(),
     );
     let res = g.router.oneshot(req).await.expect("oneshot");
@@ -170,7 +179,8 @@ async fn authorize_unsupported_pkce_method_redirects_invalid_request() {
     let query = "response_type=code&code_challenge_method=plain&client_id=test-app&scope=read&\
                  code_challenge=abc&redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz";
     let req = build_request(
-        Request::get(format!("/oauth/authorize?{query}")),
+        Request::get(format!("/oauth/authorize?{query}"))
+            .header("cookie", browser_session_cookie(&db.paired_browser_token)),
         Body::empty(),
     );
     let res = g.router.oneshot(req).await.expect("oneshot");
@@ -193,7 +203,12 @@ async fn authorize_unsupported_pkce_method_redirects_invalid_request() {
 async fn authorize_disallowed_scope_parks_a_pending_request() {
     let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
-    let res = get_authorize(&g.router, &authorize_query("test-app", "read%20write")).await;
+    let res = get_authorize(
+        &g.router,
+        &db.paired_browser_token,
+        &authorize_query("test-app", "read%20write"),
+    )
+    .await;
     let request_id = parked_request_id(&res);
 
     let consent = get_oauth_consent(&g, &owner_token, &request_id).await;
@@ -222,7 +237,12 @@ async fn authorize_publishes_the_parked_request_as_the_newest_pending_consent() 
         "no request has been parked yet"
     );
 
-    let res = get_authorize(&g.router, &authorize_query("test-app", "read")).await;
+    let res = get_authorize(
+        &g.router,
+        &db.paired_browser_token,
+        &authorize_query("test-app", "read"),
+    )
+    .await;
     let request_id = parked_request_id(&res);
 
     assert_eq!(
@@ -244,7 +264,12 @@ async fn deciding_an_oauth_consent_clears_the_newest_pending_consent() {
     for decision in ["approve", "deny"] {
         let (g, owner_token, db) = spin_up();
         seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
-        let res = get_authorize(&g.router, &authorize_query("test-app", "read")).await;
+        let res = get_authorize(
+            &g.router,
+            &db.paired_browser_token,
+            &authorize_query("test-app", "read"),
+        )
+        .await;
         let request_id = parked_request_id(&res);
         assert!(
             newest_pending_consent(&db).is_some(),
@@ -283,10 +308,22 @@ async fn deciding_an_oauth_consent_clears_the_newest_pending_consent() {
 async fn the_pending_consent_watcher_sees_an_older_request_decided_under_a_newer_one() {
     let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
-    let older_id =
-        parked_request_id(&get_authorize(&g.router, &authorize_query("test-app", "read")).await);
-    let newer_id =
-        parked_request_id(&get_authorize(&g.router, &authorize_query("test-app", "read")).await);
+    let older_id = parked_request_id(
+        &get_authorize(
+            &g.router,
+            &db.paired_browser_token,
+            &authorize_query("test-app", "read"),
+        )
+        .await,
+    );
+    let newer_id = parked_request_id(
+        &get_authorize(
+            &g.router,
+            &db.paired_browser_token,
+            &authorize_query("test-app", "read"),
+        )
+        .await,
+    );
     let watcher = g.pending_consent_watcher.clone();
     let older_key = ConsentKey::OAuth {
         id: older_id.clone(),
@@ -341,6 +378,7 @@ async fn a_fast_pathed_authorize_never_becomes_the_newest_pending_consent() {
     authorize_and_approve(
         &g,
         &owner_token,
+        &db.paired_browser_token,
         "test-app",
         "read",
         r#"{"approvedScopes":["read"],"acknowledgedRegistration":true}"#,
@@ -354,7 +392,12 @@ async fn a_fast_pathed_authorize_never_becomes_the_newest_pending_consent() {
 
     // Second pass: the grant now pre-approves every requested scope, so
     // /authorize issues a code and 302s straight back to the client.
-    let res = get_authorize(&g.router, &authorize_query("test-app", "read")).await;
+    let res = get_authorize(
+        &g.router,
+        &db.paired_browser_token,
+        &authorize_query("test-app", "read"),
+    )
+    .await;
     assert_eq!(res.status(), StatusCode::FOUND);
     let location = location_of(&res);
     assert!(
@@ -385,6 +428,7 @@ async fn authorize_host_app_disallowed_scope_still_redirects_invalid_scope() {
 
     let res = get_authorize(
         &g.router,
+        &db.paired_browser_token,
         &authorize_query(WILDFLOWER_HOST_APP_CLIENT_ID, "definitely_not_granted"),
     )
     .await;
@@ -418,7 +462,8 @@ async fn authorize_allows_scope_covered_by_a_broader_allowed_scope() {
     let res = g
         .router
         .oneshot(build_request(
-            Request::get(format!("/oauth/authorize?{query}")),
+            Request::get(format!("/oauth/authorize?{query}"))
+                .header("cookie", browser_session_cookie(&db.paired_browser_token)),
             Body::empty(),
         ))
         .await
@@ -454,7 +499,7 @@ async fn authorize_treats_a_cross_grammar_scope_request_as_new() {
          scope=patient%2FObservation.rs&code_challenge={challenge}&\
          redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz"
     );
-    let res = get_authorize(&g.router, &query).await;
+    let res = get_authorize(&g.router, &db.paired_browser_token, &query).await;
     // Not covered → not `registered`; the request is parked for the Owner rather
     // than rejected, and the prompt names the uncovered spelling.
     let request_id = parked_request_id(&res);
@@ -491,7 +536,8 @@ async fn authorize_consumes_a_smart_launch_once() {
         "launch={launch}&aud=https%3A%2F%2Fruth.relay.example"
     ));
 
-    let request_id = parked_request_id(&get_authorize(&g.router, &query).await);
+    let request_id =
+        parked_request_id(&get_authorize(&g.router, &db.paired_browser_token, &query).await);
     let parked = store_handle(&db)
         .authorization_request_by_id(&request_id)
         .expect("query")
@@ -507,7 +553,7 @@ async fn authorize_consumes_a_smart_launch_once() {
     .await;
     assert_eq!(res.status(), StatusCode::OK);
 
-    let replay = get_authorize(&g.router, &query).await;
+    let replay = get_authorize(&g.router, &db.paired_browser_token, &query).await;
     assert_eq!(replay.status(), StatusCode::FOUND);
     assert_eq!(
         location_of(&replay),
@@ -517,7 +563,8 @@ async fn authorize_consumes_a_smart_launch_once() {
 }
 
 /// A launch minted for any client is consumed by the first client to present
-/// it at `/oauth/authorize`; a replay is refused.
+/// it at `/oauth/authorize`; a replay renders the local page that asks for a
+/// new launch.
 #[tokio::test]
 async fn authorize_consumes_a_launch_for_any_client_once() {
     let (g, _owner_token, db) = spin_up();
@@ -528,14 +575,15 @@ async fn authorize_consumes_a_launch_for_any_client_once() {
         .expect("mint a launch");
     let query = smart_launch_query(&format!("launch={launch}"));
 
-    let request_id = parked_request_id(&get_authorize(&g.router, &query).await);
+    let request_id =
+        parked_request_id(&get_authorize(&g.router, &db.paired_browser_token, &query).await);
     let parked = store_handle(&db)
         .authorization_request_by_id(&request_id)
         .expect("query")
         .expect("parked");
     assert_eq!(parked.launch.as_deref(), Some(launch.as_str()));
 
-    let replay = get_authorize(&g.router, &query).await;
+    let replay = get_authorize(&g.router, &db.paired_browser_token, &query).await;
     assert_eq!(
         location_of(&replay),
         ALREADY_USED_LOCATION,
@@ -570,7 +618,12 @@ async fn authorize_refuses_a_bad_smart_launch_or_aud() {
             wrong_server,
         ),
     ] {
-        let res = get_authorize(&g.router, &smart_launch_query(&smart_params)).await;
+        let res = get_authorize(
+            &g.router,
+            &db.paired_browser_token,
+            &smart_launch_query(&smart_params),
+        )
+        .await;
         assert_eq!(res.status(), StatusCode::FOUND);
         assert_eq!(
             location_of(&res),
@@ -579,10 +632,18 @@ async fn authorize_refuses_a_bad_smart_launch_or_aud() {
         );
     }
 
-    parked_request_id(&get_authorize(&g.router, &authorize_query("test-app", "read")).await);
     parked_request_id(
         &get_authorize(
             &g.router,
+            &db.paired_browser_token,
+            &authorize_query("test-app", "read"),
+        )
+        .await,
+    );
+    parked_request_id(
+        &get_authorize(
+            &g.router,
+            &db.paired_browser_token,
             &smart_launch_query("aud=https%3A%2F%2Fruth.relay.example"),
         )
         .await,
@@ -593,13 +654,13 @@ async fn authorize_refuses_a_bad_smart_launch_or_aud() {
 /// renders the local error page rather than redirecting.
 #[tokio::test]
 async fn authorize_renders_a_bad_smart_launch_locally_for_an_untrusted_redirect() {
-    let (g, _owner_token, _db) = spin_up();
+    let (g, _owner_token, db) = spin_up();
     for (smart_params, title) in [
         ("launch=forged-launch", "Launch not recognized"),
         ("aud=https%3A%2F%2Fapp.example%2Ffhir-r4", "Wrong server"),
     ] {
         let query = format!("{}&{smart_params}", authorize_query("ghost", "read"));
-        let res = get_authorize(&g.router, &query).await;
+        let res = get_authorize(&g.router, &db.paired_browser_token, &query).await;
         assert_eq!(res.status(), StatusCode::BAD_REQUEST);
         assert!(
             body_string(res.into_body()).await.contains(title),

@@ -1,14 +1,50 @@
-//! [`AuthorizationStatusReader`] — `GET /oauth/authorize/{id}`, the launcher's
+//! [`AuthorizationStatusReader`] — `GET /oauth/authorize/{id}`, the wait page's
 //! polling view of an authorization request as it moves from pending toward
-//! approval or denial. Public (the request id is the secret); its only power
-//! is this one read.
+//! approval or denial. It answers the browser session the request was made
+//! in, and a browser session whose grant covers [`any_request_status_scopes`],
+//! so a leaked request id alone can't collect the code; its only power is this
+//! one read.
 
 use chrono::{DateTime, Utc};
 use url::Url;
+use wildflowerhealthio_scopes::{Grant, Scope};
 
-use crate::domain::authorization_request::RequestStatus;
+use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::capabilities::access::consents::{
+    consent_decider_scopes, consent_reader_scopes,
+};
 use crate::domain::GrantStore;
+
+/// The scopes that let a browser session read the status of a code-flow
+/// request made in another browser session: the ones that load the request on
+/// the consent card and decide it there, `wildflower/AuthorizationRequest.r`
+/// and `wildflower/AuthorizationRequest.u`. A session holding them could
+/// approve the request itself, and the code its status carries is bound by
+/// PKCE to the client that asked, so the read gives it nothing new.
+pub(crate) fn any_request_status_scopes() -> Vec<Scope> {
+    [consent_reader_scopes(), consent_decider_scopes()].concat()
+}
+
+/// The browser session a status poll arrives in: its `sid`, and the grant its
+/// verified token carries.
+#[derive(Debug)]
+pub(crate) struct PollingBrowserSession {
+    pub(crate) sid: String,
+    pub(crate) grant: Grant,
+}
+
+impl PollingBrowserSession {
+    /// Whether this session may read `request`'s status: the request was made
+    /// in it, or it is a code-flow request and this session's grant covers
+    /// [`any_request_status_scopes`]. A device request or a browser pairing
+    /// has its own poll, so no grant reads it here.
+    fn may_read(&self, request: &AuthorizationRequest) -> bool {
+        request.sid.as_deref() == Some(self.sid.as_str())
+            || (request.grant_type == GrantType::AuthorizationCode
+                && self.grant.covers_all(&any_request_status_scopes()))
+    }
+}
 
 /// Where a polled request stands.
 #[derive(Debug, PartialEq, Eq)]
@@ -60,9 +96,16 @@ impl<S: GrantStore> AuthorizationStatusReader<S> {
         AuthorizationStatusReader { store }
     }
 
-    /// The current status of request `id`. Nothing actively transitions
-    /// code-flow requests from pending to expired, so a pending request past
-    /// its TTL is reported expired here rather than left polling forever.
+    /// The current status of request `id`, for the browser holding the
+    /// browser session `poller` (`None` when it holds none). Nothing
+    /// actively transitions code-flow requests from pending to expired, so a
+    /// pending request past its TTL is reported expired here rather than left
+    /// polling forever.
+    ///
+    /// A request `poller` may not read (see [`PollingBrowserSession`]), and
+    /// any request when there is no `poller`, is
+    /// [`AuthorizationStatusError::NotFound`], the same as an unknown id, so
+    /// the read says nothing about whether `id` exists.
     ///
     /// # Errors
     ///
@@ -70,11 +113,13 @@ impl<S: GrantStore> AuthorizationStatusReader<S> {
     pub(crate) fn status(
         &self,
         id: &str,
+        poller: Option<&PollingBrowserSession>,
         now: DateTime<Utc>,
     ) -> Result<AuthorizationStatusView, AuthorizationStatusError> {
         let request = self
             .store
             .authorization_request_by_id(id)?
+            .filter(|request| poller.is_some_and(|poller| poller.may_read(request)))
             .ok_or_else(|| AuthorizationStatusError::NotFound { id: id.to_owned() })?;
         if request.status == RequestStatus::Pending && request.expires_at < now {
             return Ok(AuthorizationStatusView::Expired);
@@ -109,10 +154,24 @@ impl<S: GrantStore> AuthorizationStatusReader<S> {
 #[cfg(test)]
 mod tests {
     use chrono::Duration;
+    use wildflowerhealthio_scopes::{render_scopes, Permission, WildflowerResource};
 
     use super::*;
     use crate::domain::authorization_code::{IssuedAuthorizationCode, AUTHORIZATION_CODE_TTL};
-    use crate::domain::test_fake::{code_request, FakeGrantStore};
+    use crate::domain::test_fake::{code_request, device_request, FakeGrantStore, FIXTURE_SID};
+
+    /// A browser session `sid` holding `scopes`.
+    fn session(sid: &str, scopes: Vec<Scope>) -> PollingBrowserSession {
+        PollingBrowserSession {
+            sid: sid.to_owned(),
+            grant: Grant::new(scopes),
+        }
+    }
+
+    /// The browser session the fixture requests were made in, holding nothing.
+    fn requester() -> PollingBrowserSession {
+        session(FIXTURE_SID, Vec::new())
+    }
 
     /// Each stored status maps to its view; a pending request past its TTL
     /// reads as expired; an unknown id is not found.
@@ -159,28 +218,29 @@ mod tests {
                 patient: None,
                 issued_at: now,
                 expires_at: now + AUTHORIZATION_CODE_TTL,
-                sid: None,
+                sid: FIXTURE_SID.to_owned(),
             })
             .unwrap();
         let reader = AuthorizationStatusReader::new(store);
+        let requester = requester();
 
         assert_eq!(
-            reader.status("pending", now).unwrap(),
+            reader.status("pending", Some(&requester), now).unwrap(),
             AuthorizationStatusView::Pending
         );
         assert_eq!(
-            reader.status("stale", now).unwrap(),
+            reader.status("stale", Some(&requester), now).unwrap(),
             AuthorizationStatusView::Expired
         );
         assert!(matches!(
-            reader.status("denied", now).unwrap(),
+            reader.status("denied", Some(&requester), now).unwrap(),
             AuthorizationStatusView::Denied {
                 redirect_uri: Some(_),
                 client_state: Some(_),
             }
         ));
         assert_eq!(
-            reader.status("approved", now).unwrap(),
+            reader.status("approved", Some(&requester), now).unwrap(),
             AuthorizationStatusView::Approved {
                 redirect_uri: Url::parse("https://example.com/cb").unwrap(),
                 code: "the-code".to_owned(),
@@ -188,8 +248,79 @@ mod tests {
             }
         );
         assert!(matches!(
-            reader.status("ghost", now),
+            reader.status("ghost", Some(&requester), now),
             Err(AuthorizationStatusError::NotFound { .. })
         ));
+    }
+
+    /// The browser session a request was made in reads its status, and so
+    /// does a session whose grant covers [`any_request_status_scopes`]. A
+    /// session lacking either of them, no session, and anyone polling a
+    /// request made in no session (a device request) get the same not-found
+    /// as an unknown id.
+    #[test]
+    fn status_answers_the_requesting_session_and_sessions_that_decide_consents() {
+        let store = FakeGrantStore::default();
+        let now = Utc::now();
+        store
+            .insert_authorization_request(&code_request(
+                "parked",
+                RequestStatus::Pending,
+                now + Duration::minutes(5),
+            ))
+            .unwrap();
+        store
+            .insert_authorization_request(&device_request("device", "CODE", RequestStatus::Pending))
+            .unwrap();
+        let reader = AuthorizationStatusReader::new(store);
+        let request_reader =
+            Scope::wildflower(WildflowerResource::AuthorizationRequest, Permission::READ);
+        let request_decider =
+            Scope::wildflower(WildflowerResource::AuthorizationRequest, Permission::UPDATE);
+        let decider = session("owner-sid", any_request_status_scopes());
+
+        for poller in [&requester(), &decider] {
+            assert_eq!(
+                reader.status("parked", Some(poller), now).unwrap(),
+                AuthorizationStatusView::Pending,
+                "{poller:?}"
+            );
+        }
+        for (id, poller) in [
+            ("parked", Some(session("another-sid", Vec::new()))),
+            ("parked", Some(session("reader-sid", vec![request_reader]))),
+            (
+                "parked",
+                Some(session("decider-sid", vec![request_decider])),
+            ),
+            ("parked", None),
+            ("device", Some(requester())),
+            (
+                "device",
+                Some(session("owner-sid", any_request_status_scopes())),
+            ),
+            ("device", None),
+        ] {
+            assert!(
+                matches!(
+                    reader.status(id, poller.as_ref(), now),
+                    Err(AuthorizationStatusError::NotFound { .. })
+                ),
+                "{id} polled from {poller:?}"
+            );
+        }
+    }
+
+    /// The scopes that read any code-flow request's status are the consent
+    /// card's: `AuthorizationRequest.r` and `.u`.
+    #[test]
+    fn any_request_status_scopes_are_authorization_request_read_and_update() {
+        assert_eq!(
+            render_scopes(&any_request_status_scopes()),
+            [
+                "wildflower/AuthorizationRequest.r",
+                "wildflower/AuthorizationRequest.u"
+            ]
+        );
     }
 }

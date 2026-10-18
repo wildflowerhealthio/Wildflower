@@ -118,9 +118,10 @@ pub struct AuthorizationRequest {
     /// sent to the consent card itself (auth-code flow only; `false` for a
     /// device request).
     pub decidable_in_requesting_browser: bool,
-    /// The browser session the request was made in (auth-code flow only),
-    /// which the code it earns is issued under; `None` when the browser had
-    /// none, and for a device request.
+    /// The browser session the request was made in, which the code it earns
+    /// is issued under. Every auth-code request has one (`/oauth/authorize`
+    /// sends a browser without a session to pairing instead);
+    /// `None` for a device request and a browser pairing.
     pub sid: Option<String>,
 }
 
@@ -149,8 +150,8 @@ pub struct StartCodeAuthorizationArgs {
     /// Whether the request can be decided in the browser calling
     /// `/authorize`: it carries a browser session that can decide consents.
     pub decidable_in_requesting_browser: bool,
-    /// The browser session the browser calling `/authorize` holds, if any.
-    pub sid: Option<String>,
+    /// The browser session the browser calling `/authorize` holds.
+    pub sid: String,
 }
 
 /// Inputs to start a device-code flow request.
@@ -237,7 +238,7 @@ impl AuthorizationRequest {
             launch,
             launch_bound_patient,
             decidable_in_requesting_browser: input.decidable_in_requesting_browser,
-            sid: input.sid,
+            sid: Some(input.sid),
         }
     }
 

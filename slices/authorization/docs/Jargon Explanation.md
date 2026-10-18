@@ -239,7 +239,9 @@ app's launch URL; the app forwards it to `/oauth/authorize`.
 - **Single use:** `/oauth/authorize` consumes it with one conditional `UPDATE`
   (unconsumed, unexpired, minted for the presenting client or for any client),
   so of two racing authorizes only one wins. Expired rows are pruned when the
-  next one is minted.
+  next one is minted. A browser without a [browser session](#browser-session)
+  is sent to [pairing](#browser-pairing) before the launch is read, so pairing
+  never spends it.
 - **Refusals:** an unknown, expired, consumed or other client's `launch` is
   `invalid_request`, and the `error_description` says why: a client is told
   its own launch is not recognized, already used, or expired. Another
@@ -271,6 +273,13 @@ Device-flow does not use `AuthorizationCode`; the device-code branch of
 A standing consent record: "OAuth client X is allowed to ask for scopes
 Y at redirect URI Z without re-prompting the Owner." Used to fast-path
 re-authorizations.
+
+The **fast path** is `/oauth/authorize` issuing a code on a standing grant
+that covers every requested scope, with no human in the loop. It runs only
+for a browser that holds a [browser session](#browser-session): a browser
+without one is sent to [pairing](#browser-pairing) first, whatever grant
+stands. The code, and the tokens and refresh family it earns, name that
+browser's session, so revoking the session ends them.
 
 - **Table:** `grants`
 - **Identifier:** plain string.
@@ -408,7 +417,11 @@ those still pending.
 Starting a request is rate-limited on the tunnel, per visitor address and
 overall, and a request over either limit is `429` (the host's
 `authorization_start_limit`). A browser whose session can decide consents,
-as one signed in as the Owner can, is never limited.
+as one signed in as the Owner can, is limited only when its request is raised
+for the Owner (every device request is), so one it decides on its own consent
+card is never limited. Nor is a browser without a session at
+`/oauth/authorize`, which is only sent to [pairing](#browser-pairing) and
+parks nothing.
 
 The newest is a `NewestPendingConsent`, discriminated because the flows have
 no shared lookup key, with the name of what asks: the client's (its registered
@@ -466,22 +479,34 @@ request).
 
 ### Wait page
 
-The page `/oauth/authorize` parks a browser that carries no
-[browser session](#browser-session) on while the Owner decides:
+The page `/oauth/authorize` parks a browser on while the Owner decides, when
+its [browser session](#browser-session) can't approve the request itself:
 `/oauth/authorize/{id}/wait`, served by the authorization server itself at the
 server's origin, `https://<domain>`. The `Location` is relative to
 `/oauth/authorize`, so no launcher address is involved. The page is static
 HTML, CSS and JS (`authorization-server-rust/src/http/routes/oauth/wait_page/`). It polls
-`GET /oauth/authorize/{id}` and, once the request is decided, leaves for the
+`GET /oauth/authorize/{id}` (the **status poll**), which reads the browser
+session the browser's cookie holds (the cookie rides the same-origin poll).
+It answers the session the request was made in, and a session whose grant
+covers `wildflower/AuthorizationRequest.r` and `wildflower/AuthorizationRequest.u`,
+the scopes that load and decide the request on the
+[consent card](#consent-card), as the Owner's does once the Owner signs in at
+`/oauth/sign-in` in this browser and the new session's cookie replaces the old
+one. Such a session could approve the request itself, and the code is bound by
+PKCE to the app that asked, so the read gives it nothing new. Any other
+caller, with another session or none, gets the same `404` as an unknown id, so
+a leaked request id can't collect the code. Once the request is decided, the
+page leaves for the
 redirect the status carries, which the authorization server built from the client's
 allowlisted or just-approved `redirect_uri`. That makes this redirect the only
 address a sign-in ever leaves the authorization server for, and no request parameter can
 name a different one. The page takes no decision itself: the Owner answers on
-the [consent card](#consent-card), in this browser once it signs in, or in one
-the host opens. While the request is pending, the page also
-reads `GET /authorization/oauth-consents/{id}` on the browser's browser
-session, asked for with `Wildflower-Session: browser`; once that
-succeeds (the browser has signed in as the Owner since), it switches to the consent card beside it.
+the [consent card](#consent-card), in this browser once it can decide the
+request, or in one the host opens. While the request is pending, the page
+also reads `GET /authorization/oauth-consents/{id}` on the browser's browser
+session, asked for with `Wildflower-Session: browser`; once that succeeds
+(the browser has signed in as the Owner since), it switches to the consent
+card beside it.
 
 It interpolates nothing (the script reads the request id from its own path),
 loads only from its own origin under a strict CSP, and follows only an
@@ -623,7 +648,12 @@ and no refresh family. The session row is its only record.
 1. A browser opens `https://<domain>/oauth/pair?next=…`, the **pairing page**,
    from the same **authorization pages** bundle and with the same headers as
    the [consent card](#consent-card). `next` must be a path on the server
-   (starting with `/`, not `//`); in practice it is an `/oauth/authorize` URL.
+   (starting with `/`, not `//`). `/oauth/authorize` sends a browser without
+   a session here with a `302` to `pair?next=<its own path and query>` (the
+   **pairing redirect**), parking, notifying and consuming nothing, so the
+   paired browser comes back to the same request. A SMART app's `launch`
+   lives 5 minutes; one that lapsed while the Owner approved the pairing goes
+   back to the app told it expired (see [LaunchContext](#launchcontext)).
 2. The page posts `/oauth/pair/start`. The server parks a `browser_pairing`
    [`AuthorizationRequest`](#authorizationrequest) for the browser-session
    client, keyed by a 256-bit **pairing code**, with a `userCode` and a name
@@ -672,19 +702,28 @@ by revoking its browser session or its token's `jti`; every browser is signed
 out by revoking the browser-session client's subject. A request whose cookie
 holds an expired or revoked token is served as if the cookie weren't sent, and
 the response clears it. The cookie needs `https`, as the server's origin,
-`https://<domain>`, is. `/oauth/authorize` reads the cookie too: a parked
-request from a browser whose session can decide consents (its scopes cover
-both `wildflower/AuthorizationRequest.r` and `wildflower/AuthorizationRequest.u`,
-as `OWNER_SCOPES` do) and that holds the request's
-[approval scopes](#approval-scopes) goes to the [consent card](#consent-card)
-rather than the [wait page](#wait-page), and records that it can be decided
-there (`decidable_in_requesting_browser`). One whose session lacks any of
-them goes to the wait page, and the request is raised for the Owner like any
-other. Such a session's starts spend from the authorization start limit only
-when they are raised for the Owner (every device start is), so a request it
-decides on its own card spends nothing, and it can't flood the Owner with
-notifications either: asking the Owner about such a request afterwards
-(`…/ask-owner`) spends then.
+`https://<domain>`, is. A session belongs to the cookie store it was set in:
+an iOS in-app browser (`SFSafariViewController`) keeps its own, separate from
+Safari's, so a browser paired in Safari pairs again in an app's in-app browser
+(see `tauri-plugin-native-page-browser`'s
+[Explanation](../../../apps/host/tauri-plugin-native-page-browser/docs/Explanation.md)). `/oauth/authorize` reads the cookie before anything
+else: a browser without a live session is sent to
+[pairing](#browser-pairing), and nothing is issued to it, the
+[fast path](#grant) included; that spends nothing from the authorization start
+limit. A parked request from a browser whose session can decide consents (its
+scopes cover both `wildflower/AuthorizationRequest.r` and
+`wildflower/AuthorizationRequest.u`, as `OWNER_SCOPES` do) and that holds the
+request's [approval scopes](#approval-scopes) goes to the
+[consent card](#consent-card) rather than the [wait page](#wait-page), and
+records that it can be decided there (`decidable_in_requesting_browser`). One
+whose session lacks any of them goes to the wait page, and the request is
+raised for the Owner like any other; so is every request from a session that
+can't decide consents. A session that can decide consents spends from the
+authorization start limit only when its start is raised for the Owner (every
+device start is), so a request it decides on its own card spends nothing, and
+it can't flood the Owner with notifications either: asking the Owner about
+such a request afterwards (`…/ask-owner`) spends then. Any other session's
+start spends before it is parsed.
 Only a token issued to the browser-session client under a browser session
 (its `sid`) counts: any other token in the cookie is served as no session.
 
@@ -700,7 +739,11 @@ allows credentials, that request carries neither cookie.
 
 Everything minted under a session names it as its [`sid`](#sid-session-id):
 the browser's own token, and an authorization request made in that browser,
-the code it earns, and that code's access tokens and refresh family.
+the code it earns, and that code's access tokens and refresh family. Every
+authorization-code request is made in a session, so its code and family
+always name one: the session of the browser that made the request, not of
+whichever browser approved it, so revoking the browser the app runs in is
+what ends it.
 **Revoking** a session sets its `revoked_at` and ends all of them: the token
 verifier refuses a token whose `sid` names a revoked session, on the
 `/authorization` gates and the FHIR server alike, and refresh redemption
@@ -708,8 +751,8 @@ refuses a family whose `sid` does. A request still pending when its session
 is revoked is denied when it is approved, so the app gets `access_denied`
 rather than a code. A `sid` that names no row is treated as revoked. Whether a session's _expiry_ ends a refresh family is the client's
 refresh policy; today it doesn't. Tokens, requests and families with no
-`sid` (the host app's in-process tokens, the device flow, a browser with no
-session) have no session to check.
+`sid` (the host app's in-process tokens, the device flow) have no session to
+check.
 
 **Last seen** (`last_seen_at`) is when the session was last in use. Signing in,
 or pairing, sets it, and two uses move it: the host's cookie→bearer layer accepting the
@@ -934,9 +977,9 @@ not-our-issuer".
 ### `sid` (session id)
 
 JWT claim naming the [browser session](#browser-session) the token was minted
-under (the OpenID Connect spelling). Absent when there was none. Authorization
-codes and refresh families record it too, so a token minted from either names
-the same session. A token whose `sid` names a revoked session is refused.
+under (the OpenID Connect spelling). Absent when there was none, as for the
+device flow. Every authorization code records it, as does the refresh family
+the code starts, so a token minted from either names the same session. A token whose `sid` names a revoked session is refused.
 
 ### `exp`, `iat`
 
@@ -963,16 +1006,17 @@ endpoint dispatches on `grant_type`; the `authorization_code` branch
 verifies PKCE + redirect_uri + client_id match the issued code, then
 mints a JWT.
 
+A browser without a [browser session](#browser-session) is sent to
+[pairing](#browser-pairing) first and comes back once the Owner approves it.
 Unless an existing [grant](#grant) pre-approves every requested scope, the
-request is parked for the Owner: it joins the
+request is then parked for the Owner: it joins the
 [pending consents](#pending-consents), so the host app notifies
-it and its server's page offers it. A browser signed in as
-the Owner lands on the [consent card](#consent-card) and decides there; any
+it and its server's page offers it. A browser whose session can approve the
+request lands on the [consent card](#consent-card) and decides there; any
 other lands on the [wait page](#wait-page), which redirects the client once
-its poll observes the outcome, whichever surface decides it. The browser that
-started the flow is usually not signed in — a SMART app launched from another
-device, one reaching the tunnel origin, or the launcher signing in to begin
-with — so it waits rather than decides.
+its poll observes the outcome, whichever surface decides it. A browser paired
+for launching apps (`wildflower/launch`) can't approve, so it waits rather
+than decides.
 
 ### Device authorization flow / `grant_type=urn:ietf:params:oauth:grant-type:device_code`
 

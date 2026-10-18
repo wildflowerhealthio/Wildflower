@@ -436,7 +436,8 @@ mod tests {
     use super::*;
     use crate::domain::authorization_request::RequestStatus;
     use crate::domain::test_fake::{
-        client, code_request, device_request, owned_scopes, FakeGrantStore, RecordingOwnerApproval,
+        client, code_request, device_request, owned_scopes, seed_fixture_browser_session,
+        FakeGrantStore, RecordingOwnerApproval,
     };
 
     /// Approve a code-flow consent with the real
@@ -496,6 +497,7 @@ mod tests {
 
     fn live_code_store() -> (FakeGrantStore, RecordingOwnerApproval) {
         let store = FakeGrantStore::default();
+        seed_fixture_browser_session(&store);
         store.upsert_client(&client("client", &["read"])).unwrap();
         store
             .insert_authorization_request(&code_request(
@@ -709,6 +711,7 @@ mod tests {
     #[test]
     fn approve_oauth_consent_registers_an_acknowledged_new_client() {
         let store = FakeGrantStore::default();
+        seed_fixture_browser_session(&store);
         let owner_approval = RecordingOwnerApproval::default();
         store
             .insert_authorization_request(&code_request(
@@ -749,6 +752,7 @@ mod tests {
     #[test]
     fn approve_oauth_consent_widens_a_changed_registration() {
         let store = FakeGrantStore::default();
+        seed_fixture_browser_session(&store);
         let owner_approval = RecordingOwnerApproval::default();
         let elsewhere = url::Url::parse("https://other.example/cb").unwrap();
         let registered_at = Utc::now() - Duration::days(30);
@@ -795,6 +799,7 @@ mod tests {
     #[test]
     fn approve_oauth_consent_may_grant_a_scope_outside_the_registration() {
         let store = FakeGrantStore::default();
+        seed_fixture_browser_session(&store);
         let owner_approval = RecordingOwnerApproval::default();
         store.upsert_client(&client("client", &["read"])).unwrap();
         let mut request = code_request(
@@ -953,6 +958,7 @@ mod tests {
 
     fn resource_scope_code_store(scope: &str) -> (FakeGrantStore, RecordingOwnerApproval) {
         let store = FakeGrantStore::default();
+        seed_fixture_browser_session(&store);
         store.upsert_client(&client("client", &[scope])).unwrap();
         let mut request = code_request(
             "req-1",
@@ -1173,6 +1179,7 @@ mod tests {
     #[test]
     fn approve_oauth_consent_with_both_client_scopes_registers_a_new_client() {
         let store = FakeGrantStore::default();
+        seed_fixture_browser_session(&store);
         let owner_approval = RecordingOwnerApproval::default();
         store
             .insert_authorization_request(&code_request(
@@ -1198,6 +1205,7 @@ mod tests {
     #[test]
     fn approving_for_a_fixed_registration_takes_no_client_scope() {
         let store = FakeGrantStore::default();
+        seed_fixture_browser_session(&store);
         let owner_approval = RecordingOwnerApproval::default();
         store
             .upsert_client(&client(crate::WILDFLOWER_HOST_APP_CLIENT_ID, &["read"]))

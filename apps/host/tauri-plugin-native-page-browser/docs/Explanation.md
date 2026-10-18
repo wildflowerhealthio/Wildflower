@@ -29,6 +29,14 @@ Launches open in the system's in-app browser so the app can't script the pages w
 
 `tauri-plugin-native-webview` is the other way the host shows external pages. It is the app's own web view, which injects script into the page; this plugin is for the pages the app must not be able to see into.
 
+## Whose cookies a view holds
+
+A server's authorization server issues nothing to a browser without a browser session (its `__Host-browser_session` cookie): it sends that browser to pair first. Which session a view has depends on whose cookies it holds.
+
+- **iOS:** each app's `SFSafariViewController` keeps its own cookies and website data, separate from Safari's. A browser paired in Safari isn't paired in the app's views, and a session the app's views hold isn't in Safari. The host's launches and consent opens go through the server's `/oauth/sign-in`, which hands the view an Owner session first, so they never meet the pairing page.
+- **Android:** a Custom Tab shares its browser's cookies, so a session the browser holds rides the tab, and one the tab gets stays in the browser.
+- **Desktop:** the default browser's own tab, with that browser's cookies.
+
 ## One view, or a stack
 
 What an `open` does while a view is showing is its mode's, and differs by platform. `replace` keeps one view at a time, as a launch wants; `stack` keeps the views showing under the new one, so a page opened over an app's page (a consent, while the app waits for it) can go away and leave the app's page where it was.

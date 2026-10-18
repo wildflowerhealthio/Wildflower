@@ -1,5 +1,6 @@
-//! The **wait page**: the page `/oauth/authorize` parks a browser that isn't
-//! signed in as the Owner on while the Owner decides. Served by the
+//! The **wait page**: the page `/oauth/authorize` parks a browser on while the
+//! Owner decides, when its browser session can't approve the request itself.
+//! Served by the
 //! authorization server itself, on the server's origin, so the only address a
 //! sign-in ever leaves the authorization server for is the one the status poll
 //! hands back — a redirect built from the client's allowlisted (or
@@ -54,7 +55,7 @@ pub(crate) fn router() -> Router<Arc<AuthorizationServerState>> {
 }
 
 /// The `Location` `/oauth/authorize` parks a browser at for pending request
-/// `request_id` when it isn't signed in as the Owner: relative, so the browser
+/// `request_id` when its session can't approve it: relative, so the browser
 /// resolves it against the `…/oauth/authorize` it just requested.
 pub(crate) fn wait_page_location(request_id: &str) -> String {
     request_page_location(request_id, "wait")

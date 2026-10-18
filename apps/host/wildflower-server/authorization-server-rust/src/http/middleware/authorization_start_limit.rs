@@ -4,20 +4,24 @@
 //! [`AuthorizationStartGate`](crate::AuthorizationStartGate).
 //!
 //! Anyone who knows the server's domain can start a request, and each one
-//! parks a request and raises the Owner's approval popup on the server's
-//! device. The layer sits on those two routes alone, so it covers every
-//! method axum serves them on (`HEAD /oauth/authorize` too) and no other
-//! route. A request from a browser whose session can decide consents (it
-//! carries a live browser session, as [`carried_browser_session`] reads it,
-//! that [`can_decide_consents`]) passes without asking the gate yet: the layer
-//! hands the route a [`DeferredStartLimit`] instead, and the route asks the
-//! gate only once it knows the request will be raised for the Owner. So a
-//! request the browser decides on its own consent card spends nothing, and
-//! one it can't decide, as every device request, spends like any other. A
-//! session the store can't vouch for doesn't defer; it asks the gate like any
-//! other request. Every other request asks the gate, before the request is
-//! parsed, so every attempt counts, however malformed; one it refuses is
-//! answered `429 Too Many Requests`.
+//! the server parks raises the Owner's approval popup on the server's device.
+//! The layer sits on those two routes alone, so it covers every method axum
+//! serves them on (`HEAD /oauth/authorize` too) and no other route. Two kinds
+//! of request pass without asking the gate yet: the layer hands the route a
+//! [`DeferredStartLimit`] instead, and the route asks the gate only once it
+//! knows the request will be raised for the Owner. One is a request from a
+//! browser whose session can decide consents (it carries a live browser
+//! session, as [`carried_browser_session`] reads it, that
+//! [`can_decide_consents`]): a request it decides on its own consent card
+//! spends nothing, and one it can't decide, as every device request, spends
+//! like any other. The other is a request to `/oauth/authorize` that carries
+//! no live browser session: the endpoint sends it to pairing and parks
+//! nothing, so it costs the Owner no popup, and a flood of them can't spend
+//! the allowance a paired browser's requests need. A session the store can't
+//! vouch for doesn't defer; it asks the gate like any other request. Every
+//! other request asks the gate, before the request is parsed, so every
+//! attempt counts, however malformed; one it refuses is answered
+//! `429 Too Many Requests`.
 //!
 //! `POST /authorization/oauth-consents/{id}/ask-owner` raises a request for
 //! the Owner too, without starting one, so it spends from the same limit:
@@ -47,15 +51,28 @@ use crate::AuthorizationStartGate;
 /// What a request the gate refuses is answered.
 const RATE_LIMITED: &str = "too many authorization requests; try again later";
 
+/// The route an authorization request is started on, which decides whether a
+/// request with no browser session asks the gate.
+#[derive(Clone, Copy)]
+pub(crate) enum AuthorizationStartRoute {
+    /// `/oauth/authorize`, which sends a browser without a browser session to
+    /// pairing and parks nothing for it.
+    Authorize,
+    /// `/oauth/device_authorization`, which parks every request it accepts.
+    DeviceAuthorization,
+}
+
 /// The answer to a start the gate refuses: `429 Too Many Requests`, uncached.
 pub(crate) fn start_limited_response() -> Response {
     CacheSuppressed((StatusCode::TOO_MANY_REQUESTS, RATE_LIMITED)).into_response()
 }
 
 /// The authorization start limit, deferred by [`limit_authorization_starts`]
-/// for a request carrying a browser session that can decide consents, as the
-/// request's extension: the route asks it once the request is to be raised
-/// for the Owner.
+/// for a request carrying a browser session that can decide consents, or an
+/// `/oauth/authorize` request carrying no browser session, and by
+/// [`defer_authorization_start_limit`] for every ask-owner request, as the
+/// request's extension: the route asks it once a request is to be raised for
+/// the Owner.
 #[derive(Clone)]
 pub(crate) struct DeferredStartLimit {
     gate: Arc<dyn AuthorizationStartGate>,
@@ -108,20 +125,24 @@ pub(crate) async fn defer_authorization_start_limit(
     next.run(request).await
 }
 
-/// Pass `request` on when it carries a live browser session that can decide
-/// consents, with a [`DeferredStartLimit`] for the route to ask, or when the
-/// state's [`AuthorizationStartGate`] admits it, and answer it
+/// Pass `request` on with a [`DeferredStartLimit`] for the route to ask when
+/// it carries a live browser session that can decide consents, or when it is
+/// a `start_route` of [`AuthorizationStartRoute::Authorize`] that carries no
+/// live browser session; pass it on when the state's
+/// [`AuthorizationStartGate`] admits it; answer it
 /// `429 Too Many Requests`, uncached, otherwise.
 pub(crate) async fn limit_authorization_starts(
-    State(state): State<Arc<AuthorizationServerState>>,
+    State((state, start_route)): State<(Arc<AuthorizationServerState>, AuthorizationStartRoute)>,
     mut request: Request,
     next: Next,
 ) -> Response {
     let token_verifier = LiveTokenVerifier::from_state(&state);
-    if matches!(
-        carried_browser_session(&token_verifier, request.headers()),
-        Ok(Some(claims)) if can_decide_consents(&claims)
-    ) {
+    let defers = match carried_browser_session(&token_verifier, request.headers()) {
+        Ok(Some(claims)) => can_decide_consents(&claims),
+        Ok(None) => matches!(start_route, AuthorizationStartRoute::Authorize),
+        Err(_) => false,
+    };
+    if defers {
         let deferred_start_limit = DeferredStartLimit {
             gate: state.authorization_start_gate.clone(),
             request_extensions: request.extensions().clone(),

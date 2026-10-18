@@ -23,7 +23,7 @@ diesel::table! {
         patient -> Nullable<Text>,
         issued_at -> TimestamptzSqlite,
         expires_at -> TimestamptzSqlite,
-        sid -> Nullable<Text>,
+        sid -> Text,
     }
 }
 
@@ -114,6 +114,7 @@ mod tests {
             prop::option::of("[a-zA-Z0-9-]{1,32}"),
             arb_timestamp(),
             arb_timestamp(),
+            "[a-zA-Z0-9-]{1,36}",
         )
             .prop_map(
                 |(
@@ -126,6 +127,7 @@ mod tests {
                     patient,
                     issued_at,
                     expires_at,
+                    sid,
                 )| IssuedAuthorizationCode {
                     code,
                     request_id,
@@ -136,7 +138,7 @@ mod tests {
                     patient,
                     issued_at,
                     expires_at,
-                    sid: None,
+                    sid,
                 },
             )
     }
@@ -172,7 +174,7 @@ mod tests {
             patient: None,
             issued_at: now,
             expires_at: now + chrono::Duration::seconds(60),
-            sid: None,
+            sid: "sid-1".to_owned(),
         };
         store.issue_authorization_code(&code).expect("issue");
         let first = store
@@ -207,7 +209,7 @@ mod tests {
             patient: None,
             issued_at: now - chrono::Duration::minutes(1),
             expires_at,
-            sid: None,
+            sid: "sid-1".to_owned(),
         };
         for code in [
             sample("old", now - chrono::Duration::days(8)),
@@ -255,7 +257,7 @@ mod tests {
             patient: None,
             issued_at: now,
             expires_at: now + chrono::Duration::seconds(60),
-            sid: None,
+            sid: "sid-1".to_owned(),
         };
         store.issue_authorization_code(&code).expect("issue");
         let mut conn = store.pool().get().expect("check out a connection");

@@ -50,6 +50,7 @@ struct ApiDoc;
 fn documented_public_router(
     limit_authorization_starts: impl Fn(
         UtoipaMethodRouter<Arc<AuthorizationServerState>>,
+        middleware::AuthorizationStartRoute,
     ) -> UtoipaMethodRouter<Arc<AuthorizationServerState>>,
 ) -> OpenApiRouter<Arc<AuthorizationServerState>> {
     OpenApiRouter::with_openapi(ApiDoc::openapi())
@@ -66,7 +67,7 @@ fn documented_public_router(
 /// mounts the `/authorization` half behind the session gate.
 #[cfg(test)]
 fn documented_router() -> OpenApiRouter<Arc<AuthorizationServerState>> {
-    documented_public_router(std::convert::identity)
+    documented_public_router(|routes, _start_route| routes)
         .nest("/authorization", routes::clients::openapi_router())
 }
 
@@ -76,9 +77,9 @@ fn documented_router() -> OpenApiRouter<Arc<AuthorizationServerState>> {
 /// `.merge()`s. The host's tunnel listener serves it to remote visitors,
 /// behind these bearer and session gates.
 pub fn router(state: Arc<AuthorizationServerState>) -> Router {
-    let (documented, _spec) = documented_public_router(|routes| {
+    let (documented, _spec) = documented_public_router(|routes, start_route| {
         routes.layer(axum_middleware::from_fn_with_state(
-            state.clone(),
+            (state.clone(), start_route),
             middleware::limit_authorization_starts,
         ))
     })

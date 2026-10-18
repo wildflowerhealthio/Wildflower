@@ -37,7 +37,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
 use include_dir::{include_dir, Dir};
-use url::Url;
+use url::{form_urlencoded, Url};
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
 use super::pages::{content_security_policy, page_security_headers, request_page_location};
@@ -62,6 +62,10 @@ const DEVICE_PAGE_ROUTE: &str = "/device";
 
 /// The pairing page in the build.
 const PAIR_PAGE: &str = "pair.html";
+
+/// The pairing page's query parameter that names where the browser goes once
+/// paired.
+const NEXT_PARAM: &str = "next";
 
 /// The device page's query parameter that carries the code it fills in.
 const USER_CODE_PARAM: &str = "user_code";
@@ -91,6 +95,17 @@ fn sign_out_form_targets(launcher_base: &LauncherBase) -> String {
 /// for pending request `request_id`: the consent card, beside the endpoint.
 pub(crate) fn consent_page_location(request_id: &str) -> String {
     request_page_location(request_id, "consent")
+}
+
+/// The `Location` `/oauth/authorize` sends a browser without a browser session
+/// to: the pairing page, beside the endpoint, with `next` (the path and query
+/// of the authorize request it made, on this origin) in its query, so the
+/// page sends the paired browser back to it.
+pub(crate) fn pairing_page_location(next: &str) -> String {
+    let query = form_urlencoded::Serializer::new(String::new())
+        .append_pair(NEXT_PARAM, next)
+        .finish();
+    format!("pair?{query}")
 }
 
 /// The RFC 8628 `verification_uri` of the server at `server_origin`: the
@@ -351,6 +366,30 @@ mod tests {
                 b"<!doctype html><title>Sign in this browser</title>",
                 "{uri}"
             );
+        }
+    }
+
+    /// The pairing redirect resolves beside `/oauth/authorize` to the pairing
+    /// page, and its `next` decodes back to the authorize request's own path
+    /// and query, whatever they hold.
+    #[test]
+    fn the_pairing_location_resolves_to_the_pairing_page_carrying_next() {
+        let authorize =
+            Url::parse("https://ruth.relay.example/oauth/authorize?x=1").expect("valid url");
+        for next in [
+            "/oauth/authorize?client_id=app&scope=a%20b&redirect_uri=https%3A%2F%2Fapp%2Fcb",
+            "/oauth/authorize?state=a&b#c+d",
+        ] {
+            let resolved = authorize
+                .join(&pairing_page_location(next))
+                .expect("resolves");
+            assert_eq!(resolved.path(), "/oauth/pair");
+            let nexts: Vec<String> = resolved
+                .query_pairs()
+                .filter(|(name, _)| name == NEXT_PARAM)
+                .map(|(_, value)| value.into_owned())
+                .collect();
+            assert_eq!(nexts, [next]);
         }
     }
 
