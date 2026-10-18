@@ -1,0 +1,1777 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{TITLE}} · Wildflower Code Index</title>
+    <link rel="stylesheet" href="../fonts/next/wght.css" />
+    <link rel="stylesheet" href="../fonts/mono/wght.css" />
+    <style>
+      /* The site pins the dark scheme; the index follows it. */
+      :root {
+        color-scheme: dark;
+        --canvas: #161616;
+        --surface: #1e1e1e;
+        --raised: #262626;
+        --line: #353535;
+        --line-strong: #4a4a4a;
+        --text: #ededed;
+        --text-dim: #a8a8a8;
+        --text-faint: #7a7a7a;
+        --uses: #59a0f9;
+        --uses-soft: rgba(89, 160, 249, 0.16);
+        --used-by: #f2994a;
+        --used-by-soft: rgba(242, 153, 74, 0.16);
+        --warn: #e5c15a;
+        --bad: #f0706a;
+        --ok: #5fc48a;
+        --dir: #2a2a2a;
+        --dir-line: #3e3e3e;
+        --font-ui: 'Atkinson Hyperlegible Next Variable', ui-sans-serif, system-ui, sans-serif;
+        --font-code:
+          'Atkinson Hyperlegible Mono Variable', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        background: var(--canvas);
+        color: var(--text);
+        font-family: var(--font-ui);
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      button,
+      input,
+      select {
+        font: inherit;
+        color: inherit;
+      }
+      :focus-visible {
+        outline: 2px solid var(--uses);
+        outline-offset: 2px;
+      }
+      code,
+      .mono {
+        font-family: var(--font-code);
+        font-size: 0.92em;
+      }
+      a {
+        color: var(--uses);
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+        text-underline-offset: 3px;
+      }
+
+      .app {
+        height: 100%;
+        display: grid;
+        grid-template-rows: auto 1fr;
+      }
+      .bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px 20px;
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--line);
+        background: var(--surface);
+      }
+      .bar__name {
+        font-weight: 700;
+        letter-spacing: 0.01em;
+      }
+      .bar__back {
+        color: var(--text-dim);
+      }
+      .bar__back::before {
+        content: '← ';
+      }
+      .bar__group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .bar__label {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-faint);
+      }
+      .bar select {
+        background: var(--raised);
+        border: 1px solid var(--line-strong);
+        border-radius: 6px;
+        padding: 4px 8px;
+      }
+      .toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+        color: var(--text-dim);
+      }
+      .toggle input {
+        accent-color: var(--uses);
+      }
+      .bar__meta {
+        margin-left: auto;
+        color: var(--text-faint);
+        font-size: 12px;
+      }
+
+      .panes {
+        min-height: 0;
+        display: grid;
+        grid-template-columns: minmax(240px, 300px) 1fr minmax(300px, 380px);
+      }
+      .pane {
+        min-height: 0;
+        overflow: auto;
+      }
+      .pane--left {
+        border-right: 1px solid var(--line);
+        background: var(--surface);
+        display: grid;
+        grid-template-rows: auto 1fr;
+      }
+      .pane--right {
+        border-left: 1px solid var(--line);
+        background: var(--surface);
+        padding: 16px;
+      }
+
+      .tabs {
+        display: flex;
+        border-bottom: 1px solid var(--line);
+      }
+      .tabs button {
+        flex: 1;
+        background: none;
+        border: 0;
+        border-bottom: 2px solid transparent;
+        padding: 10px 8px;
+        cursor: pointer;
+        color: var(--text-dim);
+        font-weight: 600;
+      }
+      .tabs button[aria-selected='true'] {
+        color: var(--text);
+        border-bottom-color: var(--uses);
+      }
+      .tabs .count {
+        font-weight: 400;
+        color: var(--text-faint);
+        font-variant-numeric: tabular-nums;
+      }
+      .tabpanel {
+        overflow: auto;
+        min-height: 0;
+        padding: 8px 0 24px;
+      }
+      .filter {
+        margin: 4px 12px 8px;
+        width: calc(100% - 24px);
+        background: var(--raised);
+        border: 1px solid var(--line-strong);
+        border-radius: 6px;
+        padding: 6px 10px;
+      }
+
+      .tree {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .tree .tree {
+        padding-left: 14px;
+      }
+      .row {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        padding: 2px 12px 2px 8px;
+        cursor: pointer;
+        border-radius: 4px;
+        margin: 0 4px;
+      }
+      .row:hover {
+        background: var(--raised);
+      }
+      .row[aria-current='true'] {
+        background: var(--uses-soft);
+      }
+      .row__caret {
+        width: 14px;
+        flex: none;
+        color: var(--text-faint);
+        font-size: 11px;
+        text-align: center;
+        background: none;
+        border: 0;
+        padding: 0;
+        cursor: pointer;
+      }
+      .row__name {
+        font-family: var(--font-code);
+        font-size: 13px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .row__kind {
+        margin-left: auto;
+        flex: none;
+        font-size: 11px;
+        color: var(--text-faint);
+      }
+      .row--dir > .row__name {
+        color: var(--text-dim);
+      }
+      .row--test .row__name {
+        color: var(--text-faint);
+        font-style: italic;
+      }
+
+      .hints {
+        padding: 0 12px;
+        display: grid;
+        gap: 14px;
+      }
+      .hint {
+        display: grid;
+        gap: 4px;
+      }
+      .hint summary {
+        cursor: pointer;
+        font-weight: 600;
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+        list-style: none;
+      }
+      .hint summary::-webkit-details-marker {
+        display: none;
+      }
+      .hint summary::before {
+        content: '▸';
+        color: var(--text-faint);
+        font-size: 11px;
+      }
+      .hint[open] summary::before {
+        content: '▾';
+      }
+      .hint__count {
+        margin-left: auto;
+        font-variant-numeric: tabular-nums;
+        color: var(--text-faint);
+        font-weight: 400;
+      }
+      .hint__why {
+        color: var(--text-dim);
+        font-size: 12.5px;
+        margin: 2px 0 6px 18px;
+      }
+      .hint__list {
+        list-style: none;
+        margin: 0 0 0 10px;
+        padding: 0;
+      }
+      .hint__list li {
+        padding: 2px 6px;
+        border-radius: 4px;
+        cursor: pointer;
+        display: grid;
+        gap: 0;
+      }
+      .hint__list li:hover {
+        background: var(--raised);
+      }
+      .hint__list .where {
+        font-size: 11.5px;
+        color: var(--text-faint);
+      }
+      .sev {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex: none;
+        align-self: center;
+      }
+      .sev--bad {
+        background: var(--bad);
+      }
+      .sev--warn {
+        background: var(--warn);
+      }
+      .sev--info {
+        background: var(--text-faint);
+      }
+
+      .graph {
+        position: relative;
+        min-height: 0;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 1px 1px, #232323 1px, transparent 0) 0 0 / 22px 22px,
+          var(--canvas);
+        cursor: grab;
+        touch-action: none;
+      }
+      .graph:active {
+        cursor: grabbing;
+      }
+      .graph svg {
+        width: 100%;
+        height: 100%;
+        display: block;
+        user-select: none;
+      }
+      .graph__status {
+        position: absolute;
+        left: 16px;
+        bottom: 12px;
+        font-size: 12px;
+        color: var(--text-faint);
+        pointer-events: none;
+      }
+      .graph__tools {
+        position: absolute;
+        right: 12px;
+        top: 12px;
+        display: flex;
+        gap: 6px;
+      }
+      .graph__tools button,
+      .btn {
+        background: var(--raised);
+        border: 1px solid var(--line-strong);
+        border-radius: 6px;
+        padding: 4px 10px;
+        cursor: pointer;
+        color: var(--text);
+      }
+      .graph__tools button:hover,
+      .btn:hover {
+        border-color: var(--text-faint);
+      }
+      .legend {
+        position: absolute;
+        left: 16px;
+        top: 12px;
+        display: flex;
+        gap: 14px;
+        font-size: 12px;
+        color: var(--text-dim);
+        pointer-events: none;
+      }
+      .legend i {
+        display: inline-block;
+        width: 18px;
+        height: 2px;
+        vertical-align: middle;
+        margin-right: 6px;
+      }
+
+      .n-dir rect.box {
+        fill: var(--dir);
+        stroke: var(--dir-line);
+      }
+      .n-dir.collapsed rect.box {
+        fill: #242424;
+        stroke: var(--line-strong);
+        stroke-dasharray: 4 3;
+      }
+      .n-file rect.box {
+        fill: var(--raised);
+        stroke: var(--line-strong);
+      }
+      .n-file.expanded rect.box {
+        fill: #1c1c1c;
+        stroke: var(--line-strong);
+      }
+      .n-item rect.box {
+        fill: #303030;
+        stroke: #444;
+      }
+      .node text {
+        fill: var(--text);
+        font-family: var(--font-code);
+        font-size: 12px;
+      }
+      .node text.sub {
+        fill: var(--text-faint);
+        font-size: 10.5px;
+        font-family: var(--font-ui);
+      }
+      .n-dir text.title {
+        fill: var(--text-dim);
+      }
+      .node {
+        cursor: pointer;
+      }
+      .node.selected > rect.box {
+        stroke: var(--text);
+        stroke-width: 2;
+      }
+      .node.uses > rect.box {
+        stroke: var(--uses);
+        stroke-width: 1.5;
+      }
+      .node.used-by > rect.box {
+        stroke: var(--used-by);
+        stroke-width: 1.5;
+      }
+      .node.dim {
+        opacity: 0.35;
+      }
+      .node.cycle > rect.box {
+        stroke: var(--bad);
+      }
+      .edge {
+        fill: none;
+        stroke: #5a5a5a;
+      }
+      .edge.uses {
+        stroke: var(--uses);
+      }
+      .edge.used-by {
+        stroke: var(--used-by);
+      }
+      .edge.dim {
+        opacity: 0.12;
+      }
+
+      .detail h2 {
+        font-size: 17px;
+        line-height: 1.3;
+        margin: 0 0 4px;
+        font-family: var(--font-code);
+        font-weight: 600;
+        word-break: break-word;
+        text-wrap: balance;
+      }
+      .detail .eyebrow {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-faint);
+      }
+      .detail .loc {
+        font-size: 12.5px;
+        color: var(--text-dim);
+        word-break: break-all;
+      }
+      .detail .sig {
+        background: var(--canvas);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 8px 10px;
+        font-family: var(--font-code);
+        font-size: 12px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        margin: 10px 0;
+      }
+      .doc {
+        color: var(--text);
+        font-size: 13.5px;
+        max-width: 65ch;
+      }
+      .doc p {
+        margin: 0 0 8px;
+      }
+      .doc ul {
+        margin: 0 0 8px;
+        padding-left: 18px;
+      }
+      .doc code {
+        background: var(--raised);
+        border-radius: 3px;
+        padding: 0 3px;
+      }
+      .doc--empty {
+        color: var(--text-faint);
+        font-style: italic;
+      }
+      .detail section {
+        margin-top: 18px;
+      }
+      .detail h3 {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin: 0 0 6px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .detail h3 .swatch {
+        width: 14px;
+        height: 3px;
+        border-radius: 2px;
+      }
+      .detail h3 .n {
+        color: var(--text-faint);
+        font-weight: 400;
+        font-variant-numeric: tabular-nums;
+      }
+      .reflist {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .reflist li {
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+        padding: 2px 6px;
+        margin: 0 -6px;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .reflist li:hover {
+        background: var(--raised);
+      }
+      .reflist .name {
+        font-family: var(--font-code);
+        font-size: 12.5px;
+        word-break: break-word;
+      }
+      .reflist .where {
+        color: var(--text-faint);
+        font-size: 11.5px;
+        word-break: break-all;
+      }
+      .reflist .x {
+        margin-left: auto;
+        color: var(--text-faint);
+        font-size: 11.5px;
+        font-variant-numeric: tabular-nums;
+        flex: none;
+      }
+      .reflist--static li {
+        cursor: default;
+      }
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 8px;
+      }
+      .chip {
+        font-size: 11.5px;
+        padding: 1px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--line-strong);
+        color: var(--text-dim);
+      }
+      .chip--warn {
+        border-color: var(--warn);
+        color: var(--warn);
+      }
+      .chip--bad {
+        border-color: var(--bad);
+        color: var(--bad);
+      }
+      .actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+      }
+      .empty {
+        color: var(--text-dim);
+        max-width: 40ch;
+      }
+      .empty h2 {
+        font-family: var(--font-ui);
+      }
+
+      @media (max-width: 900px) {
+        .app {
+          height: auto;
+        }
+        html,
+        body {
+          height: auto;
+        }
+        .panes {
+          grid-template-columns: 1fr;
+        }
+        .graph {
+          height: 62vh;
+          order: -1;
+        }
+        .pane--left {
+          max-height: 60vh;
+          border-right: 0;
+          border-top: 1px solid var(--line);
+        }
+        .pane--right {
+          border-left: 0;
+          border-top: 1px solid var(--line);
+        }
+        .legend {
+          display: none;
+        }
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        .graph g.viewport.animate {
+          transition: transform 0.25s ease;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header class="bar">
+        <a class="bar__back" href="../">All packages</a>
+        <div class="bar__name" id="pkg"></div>
+        <label class="toggle"
+          ><input type="checkbox" id="focus" /> Only the selection’s neighbours</label
+        >
+        <label class="toggle"><input type="checkbox" id="tests" /> Include tests</label>
+        <div class="bar__meta" id="meta"></div>
+      </header>
+      <div class="panes">
+        <aside class="pane pane--left">
+          <div class="tabs" role="tablist">
+            <button role="tab" id="tab-structure" aria-selected="true">Structure</button>
+            <button role="tab" id="tab-hints" aria-selected="false">
+              Hints <span class="count" id="hint-count"></span>
+            </button>
+          </div>
+          <div class="tabpanel" id="panel-structure">
+            <input
+              class="filter"
+              id="filter"
+              placeholder="Filter files and items"
+              autocomplete="off"
+            />
+            <ul class="tree" id="tree"></ul>
+          </div>
+          <div class="tabpanel" id="panel-hints" hidden><div class="hints" id="hints"></div></div>
+        </aside>
+        <main class="graph" id="graph">
+          <svg id="svg">
+            <defs>
+              <marker
+                id="arrow"
+                viewBox="0 0 10 10"
+                refX="9"
+                refY="5"
+                markerWidth="7"
+                markerHeight="7"
+                orient="auto-start-reverse"
+              >
+                <path d="M0,0 L10,5 L0,10 z" fill="#6a6a6a" />
+              </marker>
+              <marker
+                id="arrow-uses"
+                viewBox="0 0 10 10"
+                refX="9"
+                refY="5"
+                markerWidth="7"
+                markerHeight="7"
+                orient="auto-start-reverse"
+              >
+                <path d="M0,0 L10,5 L0,10 z" fill="#59a0f9" />
+              </marker>
+              <marker
+                id="arrow-used-by"
+                viewBox="0 0 10 10"
+                refX="9"
+                refY="5"
+                markerWidth="7"
+                markerHeight="7"
+                orient="auto-start-reverse"
+              >
+                <path d="M0,0 L10,5 L0,10 z" fill="#f2994a" />
+              </marker>
+            </defs>
+            <g class="viewport" id="viewport"></g>
+          </svg>
+          <div class="legend">
+            <span><i style="background: var(--uses)"></i>uses</span
+            ><span><i style="background: var(--used-by)"></i>used by</span
+            ><span>arrows point at what’s used</span>
+          </div>
+          <div class="graph__tools">
+            <button id="fit" title="Fit the graph to the view">Fit</button>
+            <button id="collapse-all" title="Collapse every folder">Collapse all</button>
+          </div>
+          <div class="graph__status" id="status">Laying out…</div>
+        </main>
+        <aside class="pane pane--right detail" id="detail"></aside>
+      </div>
+    </div>
+
+    <script src="../elk.bundled.js"></script>
+    <script id="data" type="application/json">
+      /*DATA*/
+    </script>
+    <script>
+      ;(() => {
+        const DATA = JSON.parse(document.getElementById('data').textContent)
+        const PACKAGE_BY_PATH = new Map(DATA.packages.map((p) => [p.path, p]))
+        const elk = new ELK()
+        const $ = (id) => document.getElementById(id)
+        const esc = (s) =>
+          String(s).replace(
+            /[&<>"']/g,
+            (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
+          )
+        const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
+        const NS = 'http://www.w3.org/2000/svg'
+
+        // ---------------------------------------------------------------- model
+        let P // current package, indexed
+        const state = {
+          expandedDirs: new Set(),
+          expandedFiles: new Set(),
+          selected: null,
+          focus: false,
+          tests: false,
+        }
+
+        const dirsOf = (file) => {
+          const parts = file.split('/')
+          const out = []
+          for (let i = 1; i < parts.length; i++) out.push(parts.slice(0, i).join('/'))
+          return out
+        }
+        const baseName = (p) => p.split('/').pop()
+
+        const index = (raw) => {
+          const items = new Map(raw.items.map((i) => [i.id, i]))
+          const files = new Map(raw.files.map((f) => [f.path, { ...f, items: [] }]))
+          for (const i of raw.items) files.get(i.file)?.items.push(i)
+          for (const f of files.values()) f.items.sort((a, b) => a.line - b.line)
+          const dirs = new Map()
+          for (const f of files.values())
+            for (const d of dirsOf(f.path)) {
+              if (!dirs.has(d)) dirs.set(d, { path: d, files: [], dirs: new Set(), test: true })
+              const parent = d.includes('/') ? d.slice(0, d.lastIndexOf('/')) : null
+              if (parent) dirs.get(parent)?.dirs.add(d)
+            }
+          for (const f of files.values()) {
+            const ds = dirsOf(f.path)
+            if (ds.length) dirs.get(ds.at(-1)).files.push(f)
+            if (!f.test) for (const d of ds) dirs.get(d).test = false
+          }
+          const out = new Map()
+          const inn = new Map()
+          for (const e of raw.edges) {
+            if (!out.has(e.from)) out.set(e.from, [])
+            if (!inn.has(e.to)) inn.set(e.to, [])
+            out.get(e.from).push(e)
+            inn.get(e.to).push(e)
+          }
+          const P = { raw, items, files, dirs, out, inn }
+          P.hints = computeHints(P)
+          return P
+        }
+
+        const shown = (i) => state.tests || !i.test
+        const fileShown = (f) => state.tests || !f.test
+
+        // The node an item is drawn as, given what is expanded.
+        const visibleOf = (item) => {
+          for (const d of dirsOf(item.file)) if (!state.expandedDirs.has(d)) return 'd:' + d
+          return state.expandedFiles.has(item.file) ? 'i:' + item.id : 'f:' + item.file
+        }
+
+        // ---------------------------------------------------------------- hints
+        function computeHints(P) {
+          const internalIn = (id) => (P.inn.get(id) ?? []).filter((e) => !P.items.get(e.from)?.test)
+          const ext = (id) => P.raw.externalUses[id] ?? {}
+          const extCount = (id) => Object.values(ext(id)).reduce((a, b) => a + b, 0)
+          const tests = (id) => P.raw.testUses[id] ?? 0
+          const lang = P.raw.package.language
+          const candidates = P.raw.items.filter(
+            (i) => !i.test && i.kind !== 'Module' && i.kind !== 'Impl'
+          )
+          const unused = []
+          const testOnly = []
+          const widerThanNeeded = []
+          const oneUser = []
+          const undocumented = []
+          for (const i of candidates) {
+            const ins = internalIn(i.id)
+            const users = new Set(ins.map((e) => e.from))
+            const isEntry = /^(main|run)$/.test(i.name) && /(^|\/)(main|lib)\.rs$/.test(i.file)
+            if (!ins.length && !extCount(i.id) && !tests(i.id) && !isEntry) unused.push(i)
+            else if (!ins.length && !extCount(i.id) && tests(i.id)) testOnly.push(i)
+            if (lang === 'rust' && i.exported && !extCount(i.id) && ins.length)
+              widerThanNeeded.push(i)
+            const lines = i.endLine - i.line + 1
+            if (
+              /Function|StaticMethod|Method/.test(i.kind) &&
+              users.size === 1 &&
+              !extCount(i.id) &&
+              lines <= 15 &&
+              !i.exported
+            )
+              oneUser.push({ ...i, via: [...users][0] })
+            if (i.exported && !i.doc) undocumented.push(i)
+          }
+          // Cycles: strongly connected file groups.
+          const fileEdges = new Map()
+          for (const e of P.raw.edges) {
+            const a = P.items.get(e.from)
+            const b = P.items.get(e.to)
+            if (!a || !b || a.test || b.test || a.file === b.file) continue
+            if (!fileEdges.has(a.file)) fileEdges.set(a.file, new Set())
+            fileEdges.get(a.file).add(b.file)
+          }
+          const cycles = tarjan([...P.files.keys()], (f) => [...(fileEdges.get(f) ?? [])]).filter(
+            (c) => c.length > 1
+          )
+          const cycleOf = new Map()
+          cycles.forEach((c, n) => c.forEach((f) => cycleOf.set(f, n)))
+          return {
+            groups: [
+              {
+                key: 'cycles',
+                sev: 'bad',
+                title: 'Files that depend on each other',
+                why: 'Each group is a cycle: every file in it reaches every other through its uses. Breaking a cycle usually means moving the shared piece into its own file.',
+                rows: cycles.map((c) => ({
+                  label: `${c.length} files`,
+                  where: c.map(baseName).join(' · '),
+                  target: 'f:' + c[0],
+                  files: c,
+                })),
+              },
+              {
+                key: 'unused',
+                sev: 'bad',
+                title: 'No references found',
+                why: 'Nothing in the workspace refers to these, tests included. Uses through macros, routers or string names are invisible to the index, so check before deleting.',
+                rows: unused.map(itemRow),
+              },
+              {
+                key: 'test-only',
+                sev: 'warn',
+                title: 'Only tests use these',
+                why: 'Production code never reaches them. Either they’re test helpers living in the wrong place, or the code that needed them is gone.',
+                rows: testOnly.map(itemRow),
+              },
+              {
+                key: 'one-user',
+                sev: 'info',
+                title: 'Small functions with one caller',
+                why: 'Private, at most 15 lines, called from exactly one item. Inlining them can make the caller read straighter, when the name isn’t carrying meaning.',
+                rows: oneUser.map((i) => ({
+                  ...itemRow(i),
+                  where: `${i.file} → ${P.items.get(i.via)?.name ?? i.via}`,
+                })),
+              },
+              ...(lang === 'rust'
+                ? [
+                    {
+                      key: 'wider',
+                      sev: 'info',
+                      title: '`pub`, but used only inside this crate',
+                      why: 'No other crate in the workspace uses these. `pub(crate)` would say so, and the compiler would then flag them when they fall out of use.',
+                      rows: widerThanNeeded.map(itemRow),
+                    },
+                  ]
+                : []),
+              {
+                key: 'undocumented',
+                sev: 'info',
+                title: 'Exported without a doc comment',
+                why: 'Part of the file’s surface, with nothing saying what it’s for.',
+                rows: undocumented.map(itemRow),
+              },
+            ],
+            cycleOf,
+            unused: new Set(unused.map((i) => i.id)),
+            testOnly: new Set(testOnly.map((i) => i.id)),
+          }
+        }
+        const itemRow = (i) => ({
+          label: i.name,
+          where: `${i.file}:${i.line}`,
+          target: 'i:' + i.id,
+        })
+
+        function tarjan(nodes, next) {
+          let n = 0
+          const idx = new Map(),
+            low = new Map(),
+            on = new Set(),
+            stack = [],
+            out = []
+          const visit = (v) => {
+            idx.set(v, n)
+            low.set(v, n++)
+            stack.push(v)
+            on.add(v)
+            for (const w of next(v)) {
+              if (!idx.has(w)) {
+                visit(w)
+                low.set(v, Math.min(low.get(v), low.get(w)))
+              } else if (on.has(w)) low.set(v, Math.min(low.get(v), idx.get(w)))
+            }
+            if (low.get(v) === idx.get(v)) {
+              const c = []
+              let w
+              do {
+                w = stack.pop()
+                on.delete(w)
+                c.push(w)
+              } while (w !== v)
+              out.push(c)
+            }
+          }
+          for (const v of nodes) if (!idx.has(v)) visit(v)
+          return out
+        }
+
+        // ---------------------------------------------------------------- graph
+        const CHAR = 7.3
+        let layoutToken = 0
+        let lastGraph = null
+
+        const visibleEdges = () => {
+          const agg = new Map()
+          for (const e of P.raw.edges) {
+            const a = P.items.get(e.from)
+            const b = P.items.get(e.to)
+            if (!a || !b || !shown(a) || !shown(b)) continue
+            const va = visibleOf(a)
+            const vb = visibleOf(b)
+            if (va === vb) continue
+            const k = va + '\u0000' + vb
+            agg.set(k, (agg.get(k) ?? 0) + e.count)
+          }
+          return [...agg].map(([k, count]) => {
+            const [from, to] = k.split('\u0000')
+            return { from, to, count }
+          })
+        }
+
+        // The visible node a selection is drawn as.
+        const visibleOfKey = (key) => {
+          if (!key) return null
+          if (key.startsWith('i:')) return visibleOf(P.items.get(key.slice(2)))
+          if (key.startsWith('f:')) {
+            const f = key.slice(2)
+            for (const d of dirsOf(f)) if (!state.expandedDirs.has(d)) return 'd:' + d
+            return key
+          }
+          const d = key.slice(2)
+          for (const a of dirsOf(d + '/x'))
+            if (a !== d && !state.expandedDirs.has(a)) return 'd:' + a
+          return key
+        }
+
+        // Folders are drawn flat: an open folder's files sit in the graph
+        // directly, each striped by its top folder; a closed folder is one node.
+        // Only a file opened into its items is drawn as a box around them.
+        const STRIPES = [
+          '#59a0f9',
+          '#5fc48a',
+          '#e5c15a',
+          '#c58af0',
+          '#f2994a',
+          '#4fd1c5',
+          '#f07aa8',
+          '#a3b86c',
+          '#8aa4f0',
+          '#d9a066',
+        ]
+        const groupOf = (path) => {
+          const parts = path.split('/')
+          const i = parts[0] === 'src' && parts.length > 2 ? 1 : 0
+          return parts.length > i + 1 ? parts[i] : ''
+        }
+        const stripeOf = (path) => {
+          const g = groupOf(path)
+          if (!g) return '#555'
+          const groups = [...new Set([...P.files.keys()].map(groupOf).filter(Boolean))].sort()
+          return STRIPES[groups.indexOf(g) % STRIPES.length]
+        }
+        const parentLabel = (path) => {
+          const ds = dirsOf(path)
+          return ds.length ? ds.at(-1).replace(/^src\//, '') + '/' : ''
+        }
+
+        const buildElk = (edges) => {
+          let keep = null
+          const sel = visibleOfKey(state.selected)
+          if (state.focus && sel) {
+            keep = new Set([sel])
+            for (const e of edges) {
+              if (e.from === sel) keep.add(e.to)
+              if (e.to === sel) keep.add(e.from)
+            }
+          }
+          const keepLeaf = (id) => !keep || keep.has(id)
+          const leaf = (id, label, sub, stripe) => ({
+            id,
+            width: Math.max(label.length * CHAR, (sub ?? '').length * 6.2) + 26,
+            height: sub ? 40 : 28,
+            labels: [{ text: label }],
+            sub,
+            stripe,
+          })
+          const nodes = []
+          const seen = new Set()
+          for (const f of P.files.values()) {
+            if (!fileShown(f)) continue
+            const closed = dirsOf(f.path).find((d) => !state.expandedDirs.has(d))
+            if (closed) {
+              const id = 'd:' + closed
+              if (seen.has(id) || !keepLeaf(id)) continue
+              const d = P.dirs.get(closed)
+              if (!state.tests && d.test) continue
+              seen.add(id)
+              nodes.push({
+                ...leaf(
+                  id,
+                  baseName(closed) + '/',
+                  `folder · ${plural(countFiles(d), 'file')}`,
+                  stripeOf(closed + '/x')
+                ),
+                folder: true,
+              })
+              continue
+            }
+            const id = 'f:' + f.path
+            const n = f.items.filter((i) => shown(i) && i.kind !== 'Module').length
+            if (state.expandedFiles.has(f.path)) {
+              const kids = f.items
+                .filter((i) => shown(i) && (i.kind !== 'Module' || hasEdges('i:' + i.id, edges)))
+                .filter((i) => keepLeaf('i:' + i.id))
+              if (!kids.length && keep) continue
+              nodes.push({
+                id,
+                labels: [{ text: baseName(f.path) }],
+                sub: parentLabel(f.path),
+                stripe: stripeOf(f.path),
+                layoutOptions: {
+                  'elk.padding': '[top=34,left=10,bottom=10,right=10]',
+                  'elk.direction': 'DOWN',
+                },
+                children: kids.map((i) => leaf('i:' + i.id, i.name, i.kind)),
+              })
+              continue
+            }
+            if (!keepLeaf(id)) continue
+            nodes.push(
+              leaf(
+                id,
+                baseName(f.path),
+                `${parentLabel(f.path)}${parentLabel(f.path) ? ' · ' : ''}${plural(n, 'item')}`,
+                stripeOf(f.path)
+              )
+            )
+          }
+          const present = new Set()
+          const walk = (n) => {
+            present.add(n.id)
+            n.children?.forEach(walk)
+          }
+          nodes.forEach(walk)
+          edges = edges.filter((e) => present.has(e.from) && present.has(e.to))
+          return {
+            id: 'root',
+            layoutOptions: {
+              'elk.algorithm': 'layered',
+              'elk.direction': 'DOWN',
+              'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
+              'elk.layered.spacing.nodeNodeBetweenLayers': '56',
+              'elk.spacing.nodeNode': '18',
+              'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
+              'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
+              'elk.edgeRouting': 'SPLINES',
+              'elk.layered.wrapping.strategy': 'MULTI_EDGE',
+              'elk.aspectRatio': '1.6',
+              'elk.json.edgeCoords': 'ROOT',
+              'elk.json.shapeCoords': 'ROOT',
+            },
+            children: nodes,
+            edges: edges.map((e, n) => ({
+              id: 'e' + n,
+              sources: [e.from],
+              targets: [e.to],
+              count: e.count,
+            })),
+          }
+        }
+        const hasEdges = (id, edges) => edges.some((e) => e.from === id || e.to === id)
+        const countFiles = (d) =>
+          d.files.filter(fileShown).length +
+          [...d.dirs].reduce((a, x) => a + countFiles(P.dirs.get(x)), 0)
+
+        const nodeCount = () => {
+          let n = 0
+          const g = buildElk([])
+          const walk = (x) => {
+            n++
+            x.children?.forEach(walk)
+          }
+          g.children.forEach(walk)
+          return n
+        }
+
+        async function layout({ fit = false } = {}) {
+          const token = ++layoutToken
+          $('status').textContent = 'Laying out…'
+          const edges = visibleEdges()
+          const g = buildElk(edges)
+          // ELK lays out what's connected; files that neither use nor are used
+          // by another drawn node would otherwise make one endless row, so they
+          // sit in a grid below it.
+          const linked = new Set(g.edges.flatMap((e) => [...e.sources, ...e.targets]))
+          const connected = (n) => linked.has(n.id) || (n.children ?? []).some(connected)
+          const loose = g.children.filter((n) => !connected(n))
+          g.children = g.children.filter(connected)
+          let res
+          try {
+            res = await elk.layout(g)
+          } catch (err) {
+            $('status').textContent = 'Layout failed: ' + err.message
+            return
+          }
+          if (token !== layoutToken) return
+          placeLoose(res, loose)
+          lastGraph = res
+          draw(res)
+          const leaves = countLeaves(res)
+          $('status').textContent =
+            `${leaves} nodes · ${res.edges.length} edges · scroll to zoom, drag to pan, double-click to expand`
+          if (fit) fitView()
+          else if (state.selected) revealInView(visibleOfKey(state.selected))
+        }
+        // Rows of loose nodes under the graph, as wide as it (or a screen, at least).
+        function placeLoose(res, loose) {
+          const gap = 16
+          const rowWidth = Math.max(res.width || 0, ($('graph').clientWidth - 48) / 0.85)
+          let x = 0
+          let y = res.children.length ? (res.height || 0) + 48 : 0
+          let rowHeight = 0
+          for (const n of loose) {
+            if (x > 0 && x + n.width > rowWidth) {
+              x = 0
+              y += rowHeight + gap
+              rowHeight = 0
+            }
+            n.x = x
+            n.y = y
+            x += n.width + gap
+            rowHeight = Math.max(rowHeight, n.height)
+            res.children.push(n)
+          }
+          if (loose.length) {
+            res.width = Math.max(res.width || 0, rowWidth)
+            res.height = y + rowHeight
+          }
+        }
+        const countLeaves = (g) => {
+          let n = 0
+          const walk = (x) => (x.children?.length ? x.children.forEach(walk) : n++)
+          g.children.forEach(walk)
+          return n
+        }
+
+        function draw(g) {
+          const vp = $('viewport')
+          vp.replaceChildren()
+          const nodesLayer = document.createElementNS(NS, 'g')
+          const edgesLayer = document.createElementNS(NS, 'g')
+          const walk = (n, depth) => {
+            const kind = n.id[0]
+            const el = document.createElementNS(NS, 'g')
+            const compound = !!n.children?.length
+            el.setAttribute(
+              'class',
+              `node n-${kind === 'd' ? 'dir' : kind === 'f' ? 'file' : 'item'}${compound ? ' expanded' : ' collapsed'}`
+            )
+            el.dataset.id = n.id
+            el.setAttribute('transform', `translate(${n.x},${n.y})`)
+            const r = document.createElementNS(NS, 'rect')
+            r.setAttribute('class', 'box')
+            r.setAttribute('width', n.width)
+            r.setAttribute('height', n.height)
+            r.setAttribute('rx', kind === 'd' ? 8 : 5)
+            el.appendChild(r)
+            if (n.stripe) {
+              const st = document.createElementNS(NS, 'rect')
+              st.setAttribute('width', 4)
+              st.setAttribute('height', compound ? 26 : n.height - 8)
+              st.setAttribute('x', 4)
+              st.setAttribute('y', 4)
+              st.setAttribute('rx', 2)
+              st.setAttribute('fill', n.stripe)
+              el.appendChild(st)
+            }
+            const t = document.createElementNS(NS, 'text')
+            t.setAttribute('x', 14)
+            t.setAttribute('y', compound ? 19 : n.sub ? 17 : 18)
+            if (kind === 'd') t.setAttribute('class', 'title')
+            t.textContent = n.labels?.[0]?.text ?? ''
+            el.appendChild(t)
+            if (!compound && n.sub) {
+              const s = document.createElementNS(NS, 'text')
+              s.setAttribute('class', 'sub')
+              s.setAttribute('x', 14)
+              s.setAttribute('y', 32)
+              s.textContent = n.sub
+              el.appendChild(s)
+            }
+            if (compound) {
+              const s = document.createElementNS(NS, 'text')
+              s.setAttribute('class', 'sub')
+              s.setAttribute('x', n.width - 10)
+              s.setAttribute('y', 19)
+              s.setAttribute('text-anchor', 'end')
+              s.textContent = n.sub ?? ''
+              el.appendChild(s)
+            }
+            nodesLayer.appendChild(el)
+            n.children?.forEach((c) => walk(c, depth + 1))
+          }
+          g.children.forEach((c) => walk(c, 0))
+          const maxCount = Math.max(1, ...g.edges.map((e) => e.count))
+          for (const e of g.edges) {
+            for (const s of e.sections ?? []) {
+              const pts = [s.startPoint, ...(s.bendPoints ?? []), s.endPoint]
+              const p = document.createElementNS(NS, 'path')
+              p.setAttribute('d', splinePath(pts))
+              p.setAttribute('class', 'edge')
+              p.setAttribute(
+                'stroke-width',
+                (1 + (2.2 * Math.log(e.count)) / Math.log(maxCount + 1)).toFixed(2)
+              )
+              p.setAttribute('marker-end', 'url(#arrow)')
+              p.dataset.from = e.sources[0]
+              p.dataset.to = e.targets[0]
+              edgesLayer.appendChild(p)
+            }
+          }
+          vp.appendChild(nodesLayer)
+          vp.appendChild(edgesLayer)
+          paintSelection()
+        }
+        // ELK's spline sections are cubic Bézier control points after the start.
+        const splinePath = (pts) => {
+          if (pts.length < 4 || (pts.length - 1) % 3 !== 0)
+            return 'M' + pts.map((p) => `${p.x},${p.y}`).join(' L')
+          let d = `M${pts[0].x},${pts[0].y}`
+          for (let i = 1; i < pts.length; i += 3)
+            d += ` C${pts[i].x},${pts[i].y} ${pts[i + 1].x},${pts[i + 1].y} ${pts[i + 2].x},${pts[i + 2].y}`
+          return d
+        }
+
+        function paintSelection() {
+          const sel = visibleOfKey(state.selected)
+          const uses = new Set()
+          const usedBy = new Set()
+          document.querySelectorAll('#viewport .edge').forEach((p) => {
+            const f = p.dataset.from
+            const t = p.dataset.to
+            let cls = 'edge'
+            let marker = 'url(#arrow)'
+            if (sel && f === sel) {
+              cls += ' uses'
+              marker = 'url(#arrow-uses)'
+              uses.add(t)
+            } else if (sel && t === sel) {
+              cls += ' used-by'
+              marker = 'url(#arrow-used-by)'
+              usedBy.add(f)
+            } else if (sel) cls += ' dim'
+            p.setAttribute('class', cls)
+            p.setAttribute('marker-end', marker)
+          })
+          const ancestorsOfSel = new Set()
+          if (sel) {
+            let el = [...document.querySelectorAll('#viewport .node')].find(
+              (n) => n.dataset.id === sel
+            )
+            if (el) ancestorsOfSel.add(sel)
+          }
+          document.querySelectorAll('#viewport .node').forEach((n) => {
+            const id = n.dataset.id
+            n.classList.toggle('selected', id === sel)
+            n.classList.toggle('uses', uses.has(id))
+            n.classList.toggle('used-by', usedBy.has(id))
+            const isCompound = n.classList.contains('expanded')
+            n.classList.toggle(
+              'dim',
+              !!sel && !isCompound && id !== sel && !uses.has(id) && !usedBy.has(id)
+            )
+            n.classList.toggle('cycle', id.startsWith('f:') && P.hints.cycleOf.has(id.slice(2)))
+          })
+        }
+
+        // ---------------------------------------------------------------- pan / zoom
+        const view = { x: 20, y: 40, k: 1 }
+        const applyView = (animate) => {
+          const vp = $('viewport')
+          vp.classList.toggle('animate', !!animate)
+          vp.setAttribute('transform', `translate(${view.x},${view.y}) scale(${view.k})`)
+          vp.style.transform = `translate(${view.x}px,${view.y}px) scale(${view.k})`
+        }
+        function fitView() {
+          if (!lastGraph) return
+          const box = $('graph').getBoundingClientRect()
+          const w = lastGraph.width || 1
+          const h = lastGraph.height || 1
+          // Never shrink text past legibility: a big graph opens at its top, centred, to pan from.
+          view.k = Math.max(0.8, Math.min(1.2, (box.width - 40) / w, (box.height - 80) / h))
+          view.x = (box.width - w * view.k) / 2
+          view.y = h * view.k > box.height - 80 ? 50 : 44 + (box.height - 60 - h * view.k) / 2
+          applyView(true)
+        }
+        function revealInView(id) {
+          const n = findNode(lastGraph, id)
+          if (!n) return
+          const box = $('graph').getBoundingClientRect()
+          const sx = n.x * view.k + view.x
+          const sy = n.y * view.k + view.y
+          if (
+            sx < 0 ||
+            sy < 30 ||
+            sx + n.width * view.k > box.width ||
+            sy + n.height * view.k > box.height
+          ) {
+            view.x = box.width / 2 - (n.x + n.width / 2) * view.k
+            view.y = box.height / 2 - (n.y + n.height / 2) * view.k
+            applyView(true)
+          }
+        }
+        const findNode = (g, id) => {
+          let hit = null
+          const walk = (x) => {
+            if (x.id === id) hit = x
+            x.children?.forEach(walk)
+          }
+          g?.children.forEach(walk)
+          return hit
+        }
+        {
+          const svg = $('svg')
+          let drag = null
+          svg.addEventListener('pointerdown', (e) => {
+            drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, moved: false }
+            svg.setPointerCapture(e.pointerId)
+          })
+          svg.addEventListener('pointermove', (e) => {
+            if (!drag) return
+            const dx = e.clientX - drag.x
+            const dy = e.clientY - drag.y
+            if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true
+            view.x = drag.vx + dx
+            view.y = drag.vy + dy
+            applyView(false)
+          })
+          svg.addEventListener('pointerup', (e) => {
+            const wasDrag = drag?.moved
+            drag = null
+            if (wasDrag) return
+            const node = document
+              .elementsFromPoint(e.clientX, e.clientY)
+              .map((el) => el.closest?.('.node'))
+              .find(Boolean)
+            if (node) select(node.dataset.id, { fromGraph: true })
+          })
+          svg.addEventListener('dblclick', (e) => {
+            const node = document
+              .elementsFromPoint(e.clientX, e.clientY)
+              .map((el) => el.closest?.('.node'))
+              .find(Boolean)
+            if (node) toggleExpand(node.dataset.id)
+          })
+          svg.addEventListener(
+            'wheel',
+            (e) => {
+              e.preventDefault()
+              const r = svg.getBoundingClientRect()
+              const mx = e.clientX - r.left
+              const my = e.clientY - r.top
+              const k = Math.min(3, Math.max(0.08, view.k * Math.exp(-e.deltaY * 0.0015)))
+              view.x = mx - ((mx - view.x) * k) / view.k
+              view.y = my - ((my - view.y) * k) / view.k
+              view.k = k
+              applyView(false)
+            },
+            { passive: false }
+          )
+        }
+
+        // ---------------------------------------------------------------- selection
+        function toggleExpand(key) {
+          if (key.startsWith('d:')) {
+            const d = key.slice(2)
+            state.expandedDirs.has(d) ? state.expandedDirs.delete(d) : state.expandedDirs.add(d)
+          } else if (key.startsWith('f:')) {
+            const f = key.slice(2)
+            state.expandedFiles.has(f) ? state.expandedFiles.delete(f) : state.expandedFiles.add(f)
+          } else if (key.startsWith('i:')) {
+            state.expandedFiles.delete(P.items.get(key.slice(2)).file)
+            state.selected = 'f:' + P.items.get(key.slice(2)).file
+          }
+          renderTree()
+          renderDetail()
+          layout()
+        }
+        function reveal(key) {
+          const file = key.startsWith('i:')
+            ? P.items.get(key.slice(2))?.file
+            : key.startsWith('f:')
+              ? key.slice(2)
+              : null
+          const path = file ?? key.slice(2) + '/x'
+          for (const d of dirsOf(path)) if (d !== key.slice(2)) state.expandedDirs.add(d)
+          if (key.startsWith('i:')) state.expandedFiles.add(file)
+        }
+        function select(key, { fromGraph = false } = {}) {
+          state.selected = key
+          let relayout = false
+          if (!fromGraph) {
+            const before = visibleOfKey(key)
+            reveal(key)
+            relayout = before !== visibleOfKey(key)
+          }
+          if (state.focus) relayout = true
+          renderDetail()
+          renderTree()
+          if (relayout) layout()
+          else {
+            paintSelection()
+            revealInView(visibleOfKey(key))
+          }
+        }
+
+        // ---------------------------------------------------------------- docs
+        const renderDoc = (text) => {
+          if (!text) return '<p class="doc doc--empty">No doc comment.</p>'
+          const inline = (s) =>
+            esc(s)
+              .replace(/\[`([^`]+)`\]\([^)]*\)/g, '<code>$1</code>')
+              .replace(/\[`([^`]+)`\]/g, '<code>$1</code>')
+              .replace(/\{@link\s+([^}]+)\}/g, '<code>$1</code>')
+              .replace(/`([^`]+)`/g, '<code>$1</code>')
+              .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+              .replace(
+                /\[([^\]]+)\]\((https?:[^)]+)\)/g,
+                '<a href="$2" target="_blank" rel="noopener">$1</a>'
+              )
+          const blocks = text.replace(/```[\s\S]*?```/g, '').split(/\n\s*\n/)
+          return (
+            '<div class="doc">' +
+            blocks
+              .map((b) => {
+                const lines = b.split('\n')
+                if (
+                  lines.every((l) => /^\s*[-*] |^\s{2,}\S/.test(l)) &&
+                  /^\s*[-*] /.test(lines[0])
+                ) {
+                  const items = []
+                  for (const l of lines)
+                    /^\s*[-*] /.test(l)
+                      ? items.push(l.replace(/^\s*[-*] /, ''))
+                      : (items[items.length - 1] += ' ' + l.trim())
+                  return '<ul>' + items.map((i) => `<li>${inline(i)}</li>`).join('') + '</ul>'
+                }
+                return `<p>${inline(b.replace(/\n/g, ' '))}</p>`
+              })
+              .join('') +
+            '</div>'
+          )
+        }
+        const firstSentence = (t) =>
+          (t || '')
+            .replace(/```[\s\S]*?```/g, '')
+            .split(/\n\s*\n/)[0]
+            .replace(/\s+/g, ' ')
+            .split(/(?<=[.!?])\s/)[0]
+
+        // ---------------------------------------------------------------- detail
+        const ghUrl = (file, a, b) =>
+          `https://github.com/${P.raw.package.repository}/blob/${P.raw.package.commit}/${P.raw.package.path}/${file}${a ? `#L${a}${b && b !== a ? `-L${b}` : ''}` : ''}`
+
+        function refList(rows, cls) {
+          if (!rows.length) return '<p class="doc doc--empty">None.</p>'
+          return (
+            `<ul class="reflist ${cls ?? ''}">` +
+            rows
+              .map(
+                (r) =>
+                  `<li ${r.key ? `data-key="${esc(r.key)}"` : ''}><span><span class="name">${r.href ? `<a href="${esc(r.href)}">${esc(r.name)}</a>` : esc(r.name)}</span><br><span class="where">${esc(r.where ?? '')}</span></span><span class="x">${r.x ?? ''}</span></li>`
+              )
+              .join('') +
+            '</ul>'
+          )
+        }
+        const section = (title, color, n, body) =>
+          `<section><h3>${color ? `<span class="swatch" style="background:${color}"></span>` : ''}${title} <span class="n">${n}</span></h3>${body}</section>`
+
+        // Aggregate a set of item-level edges to their other ends, grouped as wanted.
+        const groupEnds = (edges, end, by) => {
+          const m = new Map()
+          for (const e of edges) {
+            const it = P.items.get(e[end])
+            if (!it || !shown(it)) continue
+            const k = by(it)
+            if (!k) continue
+            const cur = m.get(k.key) ?? { ...k, count: 0 }
+            cur.count += e.count
+            m.set(k.key, cur)
+          }
+          return [...m.values()].sort((a, b) => b.count - a.count)
+        }
+        const itemEnd = (it) => ({
+          key: 'i:' + it.id,
+          name: it.name,
+          where: `${it.file}:${it.line}`,
+        })
+        const fileEnd = (it) => ({ key: 'f:' + it.file, name: baseName(it.file), where: it.file })
+        const times = (n) => `${n}×`
+
+        function externalRows(ids) {
+          const m = new Map()
+          for (const id of ids)
+            for (const [pkg, n] of Object.entries(P.raw.externalUses[id] ?? {}))
+              m.set(pkg, (m.get(pkg) ?? 0) + n)
+          return [...m]
+            .sort((a, b) => b[1] - a[1])
+            .map(([path, n]) => {
+              const other = PACKAGE_BY_PATH.get(path)
+              return {
+                name: other?.name ?? path,
+                where: path,
+                href: other ? `../${other.slug}/` : null,
+                x: times(n),
+              }
+            })
+        }
+
+        function renderDetail() {
+          const el = $('detail')
+          const key = state.selected
+          if (!key) {
+            const p = P.raw.package
+            el.innerHTML = `<div class="empty"><p class="eyebrow">${esc(p.language === 'rust' ? 'Rust crate' : 'TypeScript package')}</p><h2>${esc(p.name)}</h2>
+          <p class="loc">${esc(p.path)}</p>
+          <p>Pick a folder, file or item in the graph or the structure list to see its doc comment, what it uses and what uses it.</p>
+          <p>Double-click a folder to open it, and a file to show its items. The Hints tab lists places that look simplifiable.</p></div>`
+            return
+          }
+          const kind = key[0]
+          const id = key.slice(2)
+          let html = ''
+          if (kind === 'i') {
+            const it = P.items.get(id)
+            const outs = P.out.get(id) ?? []
+            const ins = P.inn.get(id) ?? []
+            const chips = []
+            if (it.exported) chips.push('<span class="chip">exported</span>')
+            if (it.test) chips.push('<span class="chip">test</span>')
+            if (P.hints.unused.has(id))
+              chips.push('<span class="chip chip--bad">no references found</span>')
+            if (P.hints.testOnly.has(id))
+              chips.push('<span class="chip chip--warn">only tests use it</span>')
+            const tests = P.raw.testUses[id] ?? 0
+            const ext = externalRows([id])
+            html = `<p class="eyebrow">${esc(it.kind)}</p><h2>${esc(it.name)}</h2>
+          <p class="loc"><a href="${ghUrl(it.file, it.line, it.endLine)}" target="_blank" rel="noopener">${esc(it.file)}:${it.line}</a> · ${it.endLine - it.line + 1} lines</p>
+          ${chips.length ? `<div class="chips">${chips.join('')}</div>` : ''}
+          ${it.signature ? `<div class="sig">${esc(it.signature)}</div>` : ''}
+          ${renderDoc(it.doc)}
+          ${section('Uses', 'var(--uses)', outs.length, refList(groupEnds(outs, 'to', itemEnd).map((r) => ({ ...r, x: times(r.count) }))))}
+          ${section('Used by', 'var(--used-by)', ins.length, refList(groupEnds(ins, 'from', itemEnd).map((r) => ({ ...r, x: times(r.count) }))))}
+          ${ext.length ? section('Used by other packages', null, ext.length, refList(ext, 'reflist--static')) : ''}
+          ${tests ? `<section><h3>Tests <span class="n">${tests} references</span></h3></section>` : ''}`
+          } else if (kind === 'f') {
+            const f = P.files.get(id)
+            const ids = new Set(f.items.map((i) => i.id))
+            const outs = f.items.flatMap((i) => P.out.get(i.id) ?? []).filter((e) => !ids.has(e.to))
+            const ins = f.items
+              .flatMap((i) => P.inn.get(i.id) ?? [])
+              .filter((e) => !ids.has(e.from))
+            const ext = externalRows([...ids])
+            const items = f.items.filter((i) => shown(i) && i.kind !== 'Module')
+            const expanded = state.expandedFiles.has(id)
+            html = `<p class="eyebrow">File${f.test ? ' · test' : ''}${P.hints.cycleOf.has(id) ? ' · <span style="color:var(--bad)">in a cycle</span>' : ''}</p><h2>${esc(baseName(id))}</h2>
+          <p class="loc"><a href="${ghUrl(id)}" target="_blank" rel="noopener">${esc(id)}</a> · ${f.lines} lines</p>
+          <div class="actions"><button class="btn" data-expand="${esc(key)}">${expanded ? 'Collapse items' : 'Show items in the graph'}</button></div>
+          <section>${renderDoc(f.doc)}</section>
+          ${section('Uses files', 'var(--uses)', '', refList(groupEnds(outs, 'to', fileEnd).map((r) => ({ ...r, x: times(r.count) }))))}
+          ${section('Used by files', 'var(--used-by)', '', refList(groupEnds(ins, 'from', fileEnd).map((r) => ({ ...r, x: times(r.count) }))))}
+          ${ext.length ? section('Used by other packages', null, ext.length, refList(ext, 'reflist--static')) : ''}
+          ${section('Items', null, items.length, refList(items.map((i) => ({ key: 'i:' + i.id, name: i.name, where: `${i.kind} · ${firstSentence(i.doc) || 'no doc comment'}`, x: 'L' + i.line }))))}`
+          } else {
+            const d = P.dirs.get(id)
+            const inside = (it) => it.file.startsWith(id + '/')
+            const all = P.raw.items.filter(inside)
+            const outs = all
+              .flatMap((i) => P.out.get(i.id) ?? [])
+              .filter((e) => !inside(P.items.get(e.to)))
+            const ins = all
+              .flatMap((i) => P.inn.get(i.id) ?? [])
+              .filter((e) => !inside(P.items.get(e.from)))
+            const modFile =
+              d.files.find((f) => /(^|\/)(mod\.rs|index\.tsx?)$/.test(f.path)) ??
+              P.files.get(id + '.rs')
+            const expanded = state.expandedDirs.has(id)
+            html = `<p class="eyebrow">Folder</p><h2>${esc(id)}/</h2>
+          <p class="loc">${countFiles(d)} files</p>
+          <div class="actions"><button class="btn" data-expand="${esc(key)}">${expanded ? 'Collapse folder' : 'Open folder in the graph'}</button></div>
+          ${modFile ? `<section>${renderDoc(modFile.doc)}</section>` : ''}
+          ${section('Uses files outside it', 'var(--uses)', '', refList(groupEnds(outs, 'to', fileEnd).map((r) => ({ ...r, x: times(r.count) }))))}
+          ${section('Used by files outside it', 'var(--used-by)', '', refList(groupEnds(ins, 'from', fileEnd).map((r) => ({ ...r, x: times(r.count) }))))}`
+          }
+          el.innerHTML = html
+          el.scrollTop = 0
+        }
+        $('detail').addEventListener('click', (e) => {
+          const b = e.target.closest('[data-expand]')
+          if (b) return toggleExpand(b.dataset.expand)
+          const li = e.target.closest('li[data-key]')
+          if (li) select(li.dataset.key)
+        })
+
+        // ---------------------------------------------------------------- tree
+        function renderTree() {
+          const q = $('filter').value.trim().toLowerCase()
+          const match = (s) => !q || s.toLowerCase().includes(q)
+          const fileMatches = (f) => match(f.path) || f.items.some((i) => match(i.name))
+          const dirMatches = (d) =>
+            d.files.some((f) => fileShown(f) && fileMatches(f)) ||
+            [...d.dirs].some((x) => dirMatches(P.dirs.get(x)))
+          const row = (key, name, cls, caret, kind) =>
+            `<div class="row ${cls}" data-key="${esc(key)}" ${state.selected === key ? 'aria-current="true"' : ''}>${caret === null ? '<span class="row__caret"></span>' : `<button class="row__caret" data-toggle="${esc(key)}" aria-label="Expand">${caret ? '▾' : '▸'}</button>`}<span class="row__name">${esc(name)}</span>${kind ? `<span class="row__kind">${esc(kind)}</span>` : ''}</div>`
+          const fileLi = (f) => {
+            const open =
+              state.expandedFiles.has(f.path) ||
+              (q && f.items.some((i) => match(i.name)) && !match(f.path))
+            const items = f.items.filter(
+              (i) => shown(i) && i.kind !== 'Module' && (!q || match(i.name) || match(f.path))
+            )
+            return `<li>${row('f:' + f.path, baseName(f.path), f.test ? 'row--test' : '', items.length ? open : null, f.items.length ? '' : '')}${
+              open
+                ? `<ul class="tree">${items.map((i) => `<li>${row('i:' + i.id, i.name, i.test ? 'row--test' : '', null, i.kind)}</li>`).join('')}</ul>`
+                : ''
+            }</li>`
+          }
+          const dirLi = (d) => {
+            const open = state.expandedDirs.has(d.path) || !!q
+            return `<li>${row('d:' + d.path, baseName(d.path) + '/', 'row--dir' + (d.test ? ' row--test' : ''), open, `${countFiles(d)}`)}${open ? `<ul class="tree">${children(d)}</ul>` : ''}</li>`
+          }
+          const children = (d) =>
+            [...d.dirs]
+              .map((x) => P.dirs.get(x))
+              .filter((x) => (state.tests || !x.test) && dirMatches(x))
+              .sort((a, b) => a.path.localeCompare(b.path))
+              .map(dirLi)
+              .join('') +
+            d.files
+              .filter((f) => fileShown(f) && fileMatches(f))
+              .map(fileLi)
+              .join('')
+          const root = {
+            dirs: new Set([...P.dirs.keys()].filter((k) => !k.includes('/'))),
+            files: [...P.files.values()].filter((f) => !f.path.includes('/')),
+          }
+          $('tree').innerHTML = children(root)
+        }
+        $('tree').addEventListener('click', (e) => {
+          const t = e.target.closest('[data-toggle]')
+          if (t) {
+            e.stopPropagation()
+            return toggleExpand(t.dataset.toggle)
+          }
+          const r = e.target.closest('.row')
+          if (r) select(r.dataset.key)
+        })
+        $('filter').addEventListener('input', () => renderTree())
+
+        // ---------------------------------------------------------------- hints
+        function renderHints() {
+          const groups = P.hints.groups
+          $('hint-count').textContent = groups.reduce((a, g) => a + g.rows.length, 0)
+          $('hints').innerHTML = groups
+            .map(
+              (g) => `<details class="hint" ${g.rows.length && g.sev !== 'info' ? 'open' : ''}>
+          <summary><span class="sev sev--${g.sev}"></span>${esc(g.title).replace(/`([^`]+)`/g, '<code>$1</code>')}<span class="hint__count">${g.rows.length}</span></summary>
+          <p class="hint__why">${esc(g.why).replace(/`([^`]+)`/g, '<code>$1</code>')}</p>
+          ${g.rows.length ? `<ul class="hint__list">${g.rows.map((r) => `<li data-key="${esc(r.target)}"><span class="mono">${esc(r.label)}</span><span class="where">${esc(r.where)}</span></li>`).join('')}</ul>` : '<p class="hint__why">None found.</p>'}
+        </details>`
+            )
+            .join('')
+        }
+        $('hints').addEventListener('click', (e) => {
+          const li = e.target.closest('li[data-key]')
+          if (li) select(li.dataset.key)
+        })
+        const showTab = (which) => {
+          $('tab-structure').setAttribute('aria-selected', which === 'structure')
+          $('tab-hints').setAttribute('aria-selected', which === 'hints')
+          $('panel-structure').hidden = which !== 'structure'
+          $('panel-hints').hidden = which !== 'hints'
+        }
+        $('tab-structure').addEventListener('click', () => showTab('structure'))
+        $('tab-hints').addEventListener('click', () => showTab('hints'))
+
+        // ---------------------------------------------------------------- package
+        function openPackage(raw) {
+          P = index(raw)
+          state.expandedDirs = new Set()
+          state.expandedFiles = new Set()
+          state.selected = null
+          // Open folders breadth-first while the graph stays readable.
+          const queue = [...P.dirs.keys()].filter((k) => !k.includes('/'))
+          while (queue.length) {
+            const d = queue.shift()
+            state.expandedDirs.add(d)
+            if (nodeCount() > 40) {
+              state.expandedDirs.delete(d)
+              continue
+            }
+            queue.push(...P.dirs.get(d).dirs)
+          }
+          const p = P.raw.package
+          $('pkg').textContent = p.name
+          $('meta').textContent =
+            `${P.files.size} files · ${P.raw.items.filter((i) => i.kind !== 'Module').length} items · indexed at ${p.commit.slice(0, 9)}`
+          renderTree()
+          renderHints()
+          renderDetail()
+          layout({ fit: true })
+        }
+        $('focus').addEventListener('change', (e) => {
+          state.focus = e.target.checked
+          layout({ fit: true })
+        })
+        $('tests').addEventListener('change', (e) => {
+          state.tests = e.target.checked
+          P.hints = computeHints(P)
+          renderTree()
+          renderDetail()
+          layout({ fit: true })
+        })
+        $('fit').addEventListener('click', fitView)
+        $('collapse-all').addEventListener('click', () => {
+          state.expandedDirs.clear()
+          state.expandedFiles.clear()
+          renderTree()
+          layout({ fit: true })
+        })
+        openPackage(DATA.package)
+      })()
+    </script>
+  </body>
+</html>

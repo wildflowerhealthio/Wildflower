@@ -118,9 +118,7 @@ const owningPackage = (repoRoot: string, path: string): string | undefined => {
 /** The parts of a `package.json` the index reads. */
 const PackageJson = Schema.Struct({
   name: Schema.optional(Schema.String),
-  dependencies: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
-  devDependencies: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
-  peerDependencies: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
+  description: Schema.optional(Schema.String),
 })
 const readPackageJson = (path: string): typeof PackageJson.Type =>
   Schema.decodeUnknownSync(Schema.parseJson(PackageJson))(readFileSync(path, 'utf8'))
@@ -132,7 +130,15 @@ const packageName = (repoRoot: string, pkg: string): string => {
   return readPackageJson(join(repoRoot, pkg, 'package.json')).name ?? pkg
 }
 
+/** A package's own one-paragraph description: `package.json`'s or `Cargo.toml`'s `description`. */
+const packageDescription = (repoRoot: string, pkg: string): string => {
+  const cargo = join(repoRoot, pkg, 'Cargo.toml')
+  if (existsSync(cargo))
+    return readFileSync(cargo, 'utf8').match(/^description\s*=\s*"((?:[^"\\]|\\.)*)"/m)?.[1] ?? ''
+  return readPackageJson(join(repoRoot, pkg, 'package.json')).description ?? ''
+}
+
 const trimDoc = (text: string): string => text.trim().slice(0, 4000)
 
 export type { Edge, FileEntry, Item, PackageIndex }
-export { Uses, isTestPath, owningPackage, packageName, readPackageJson, trimDoc }
+export { Uses, isTestPath, owningPackage, packageDescription, packageName, trimDoc }
