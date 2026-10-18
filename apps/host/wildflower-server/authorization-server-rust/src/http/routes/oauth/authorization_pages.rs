@@ -32,7 +32,7 @@ use std::path::Path as FilePath;
 use std::sync::Arc;
 
 use axum::extract::Path;
-use axum::http::{header, StatusCode};
+use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
@@ -40,7 +40,7 @@ use include_dir::{include_dir, Dir};
 use url::Url;
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
-use super::pages::{page_security_headers, request_page_location};
+use super::pages::{content_security_policy, page_security_headers, request_page_location};
 use super::OAUTH_MOUNT;
 use crate::http::state::AuthorizationServerState;
 use crate::http::wire_representations::CacheSuppressed;
@@ -112,49 +112,50 @@ pub(crate) fn device_page_url_with_code(device_page: &Url, user_code: &str) -> U
 }
 
 /// The routes above, serving `pages`, whose forms may submit to
-/// `form_targets`. They read no router state.
+/// `form_targets`. The policy is built once, here. They read no router state.
 fn router_for<S: Clone + Send + Sync + 'static>(
     pages: &'static Dir<'static>,
     form_targets: &str,
 ) -> Router<S> {
-    let form_targets: Arc<str> = form_targets.into();
-    let consent_form_targets = form_targets.clone();
-    let device_form_targets = form_targets.clone();
-    let pair_form_targets = form_targets.clone();
+    let policy = content_security_policy(form_targets);
+    let consent_policy = policy.clone();
+    let device_policy = policy.clone();
+    let pair_policy = policy.clone();
     Router::new()
         .route(
             "/authorize/{id}/consent",
-            get(move || async move { page(pages, CONSENT_PAGE, &consent_form_targets) }),
+            get(move || async move { page(pages, CONSENT_PAGE, &consent_policy) }),
         )
         .route(
             DEVICE_PAGE_ROUTE,
-            get(move || async move { page(pages, DEVICE_PAGE, &device_form_targets) }),
+            get(move || async move { page(pages, DEVICE_PAGE, &device_policy) }),
         )
         .route(
             "/pair",
-            get(move || async move { page(pages, PAIR_PAGE, &pair_form_targets) }),
+            get(move || async move { page(pages, PAIR_PAGE, &pair_policy) }),
         )
         .route(
             "/assets/{*file}",
-            get(move |Path(file): Path<String>| async move { asset(pages, &file, &form_targets) }),
+            get(move |Path(file): Path<String>| async move { asset(pages, &file, &policy) }),
         )
 }
 
-/// The page `name` from `pages`, uncached, or `404` when the build has none.
-fn page(pages: &'static Dir<'static>, name: &str, form_targets: &str) -> Response {
+/// The page `name` from `pages`, uncached, under `policy`, or `404` when the
+/// build has none.
+fn page(pages: &'static Dir<'static>, name: &str, policy: &HeaderValue) -> Response {
     let Some(page) = pages.get_file(name) else {
         return StatusCode::NOT_FOUND.into_response();
     };
     CacheSuppressed((
-        page_security_headers("text/html; charset=utf-8", form_targets),
+        page_security_headers("text/html; charset=utf-8", policy),
         page.contents(),
     ))
     .into_response()
 }
 
 /// The hashed script, stylesheet or font `file` under `pages`' `assets/`,
-/// cached as immutable, or `404`.
-fn asset(pages: &'static Dir<'static>, file: &str, form_targets: &str) -> Response {
+/// cached as immutable, under `policy`, or `404`.
+fn asset(pages: &'static Dir<'static>, file: &str, policy: &HeaderValue) -> Response {
     let Some(content_type) = asset_content_type(file) else {
         return StatusCode::NOT_FOUND.into_response();
     };
@@ -163,7 +164,7 @@ fn asset(pages: &'static Dir<'static>, file: &str, form_targets: &str) -> Respon
     };
     (
         [(header::CACHE_CONTROL, IMMUTABLE)],
-        page_security_headers(content_type, form_targets),
+        page_security_headers(content_type, policy),
         asset.contents(),
     )
         .into_response()
