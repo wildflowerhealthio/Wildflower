@@ -223,6 +223,9 @@
           "400": {
             "description": "Local HTML error page (untrusted redirect_uri)"
           },
+          "429": {
+            "description": "The authorization start limit refused the request"
+          },
           "503": {
             "description": "No active signing key"
           }

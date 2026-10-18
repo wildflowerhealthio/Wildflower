@@ -2,7 +2,9 @@
 //! `/oauth/authorize` (`HEAD` included) and `/oauth/device_authorization`
 //! asks the host's `AuthorizationStartGate`, before it is parsed, and is
 //! answered `429`, uncached, when the gate refuses; a browser whose session
-//! can decide consents passes without asking, and no other route asks.
+//! can decide consents asks only once its request is to be raised for the
+//! Owner, so one it decides on its own consent card passes without asking,
+//! and no other route asks.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -190,4 +192,66 @@ async fn no_other_route_asks_the_gate() {
         assert_ne!(res.status(), StatusCode::TOO_MANY_REQUESTS, "{path}");
     }
     assert_eq!(gate.asked(), 0);
+}
+
+/// A browser whose session can decide consents but lacks a request's
+/// approval scopes can't decide that request in place, so it is raised for
+/// the Owner, and the start asks the gate then: refused, nothing is parked.
+#[tokio::test]
+async fn a_deciding_browser_s_request_raised_for_the_owner_asks_the_gate() {
+    let gate = CountingGate::refusing();
+    let (g, _owner_token, db) = spin_up_with_authorization_start_gate(gate.clone());
+    seed_client_with_redirect(
+        &db,
+        "test-app",
+        "https://app.example/cb",
+        &["patient/Observation.rs", "openid"],
+    );
+    let owner_session_token = signed_in_owner_session_token(&g).await;
+    let sid = decode_jwt_payload(&owner_session_token)["sid"]
+        .as_str()
+        .expect("a browser session's token names its sid")
+        .to_owned();
+    // Decides consents, but can't create the grant an approval records.
+    let session_token = mint_browser_session_token(
+        &db,
+        &sid,
+        &[
+            "wildflower/AuthorizationRequest.r",
+            "wildflower/AuthorizationRequest.u",
+        ],
+    );
+
+    let res = send(
+        &g,
+        Method::GET,
+        &format!(
+            "/oauth/authorize?{}",
+            authorize_query("test-app", REQUESTED_SCOPES)
+        ),
+        Some(&format!("__Host-browser_session={session_token}")),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(gate.asked(), 1);
+    assert!(newest_pending_consent(&db).is_none(), "nothing was parked");
+}
+
+/// Every device request is raised for the Owner, so even a browser signed in
+/// as the Owner asks the gate to start one.
+#[tokio::test]
+async fn a_device_start_asks_the_gate_whatever_the_browser_session() {
+    let gate = CountingGate::refusing();
+    let (g, _owner_token, _db) = spin_up_with_authorization_start_gate(gate.clone());
+    let owner_session_token = signed_in_owner_session_token(&g).await;
+
+    let res = send(
+        &g,
+        Method::POST,
+        "/oauth/device_authorization",
+        Some(&format!("__Host-browser_session={owner_session_token}")),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(gate.asked(), 1);
 }

@@ -53,6 +53,13 @@ pub(crate) struct AuthorizeRequest<'a> {
     /// ([`ApprovableScopes::missing_approval_scopes`], as the consent card and
     /// the approval check them); that is recorded on a parked request.
     pub(crate) requesting_browser_grant: Option<&'a Grant>,
+    /// Whether this start may raise a request for the Owner, asked once, only
+    /// when the request is about to be: not decided in the requesting browser,
+    /// and not issued on the standing-grant fast path. The authorization
+    /// start limit, deferred to here for a browser that can decide consents
+    /// so that the requests it decides itself spend nothing; `true` for a
+    /// start the limit already admitted.
+    pub(crate) may_raise_for_owner: &'a dyn Fn() -> bool,
     /// The browser session the browser making the request holds, if any,
     /// recorded on the parked request and on the code it earns.
     pub(crate) sid: Option<&'a str>,
@@ -105,6 +112,10 @@ pub(crate) enum AuthorizationStartError {
     /// The request this flow just parked was no longer pending when the fast
     /// path approved it — an unexpected concurrent transition.
     RequestNotPending,
+    /// The request would be raised for the Owner, and
+    /// [`may_raise_for_owner`](AuthorizeRequest::may_raise_for_owner) refused:
+    /// the authorization start limit. Nothing is parked.
+    StartLimited,
     Store(AuthorizationServerError),
 }
 
@@ -292,6 +303,15 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
             }
             _ => None,
         };
+        // A request about to be raised for the Owner asks the start limit
+        // first (the launch is spent by then, as by any later refusal).
+        if fast_path_coverage.is_none()
+            && !decidable_in_requesting_browser
+            && !(authorize_query.may_raise_for_owner)()
+        {
+            return Err(AuthorizationStartError::StartLimited);
+        }
+
         // Park the request — every path from here on references it by id.
         self.store
             .insert_authorization_request(parked_request.request())?;
@@ -506,6 +526,7 @@ mod tests {
             launch: None,
             aud: None,
             requesting_browser_grant: None,
+            may_raise_for_owner: &|| true,
             sid: None,
         }
     }
@@ -1025,5 +1046,53 @@ mod tests {
                 "{extra_scopes:?}"
             );
         }
+    }
+
+    /// A request about to be raised for the Owner asks whether it may be,
+    /// and parks nothing when refused; one decided in the requesting browser
+    /// never asks.
+    #[test]
+    fn only_a_request_raised_for_the_owner_asks_the_start_limit() {
+        let (code_authorization_starter, owner_approval) = starter(FakeGrantStore::default());
+        let refused = code_authorization_starter.start(
+            &AuthorizeRequest {
+                may_raise_for_owner: &|| false,
+                ..request("newcomer", "openid")
+            },
+            ids(),
+            Utc::now(),
+        );
+        assert!(matches!(
+            refused,
+            Err(AuthorizationStartError::StartLimited)
+        ));
+        assert_eq!(
+            code_authorization_starter
+                .store
+                .authorization_request_by_id("req-1")
+                .unwrap(),
+            None
+        );
+        assert_eq!(owner_approval.count(), 0);
+
+        let owner_session_grant = Grant::parse(crate::owner_scopes());
+        let outcome = code_authorization_starter
+            .start(
+                &AuthorizeRequest {
+                    requesting_browser_grant: Some(&owner_session_grant),
+                    may_raise_for_owner: &|| panic!("decided in the requesting browser"),
+                    ..request("newcomer", "openid")
+                },
+                ids(),
+                Utc::now(),
+            )
+            .expect("starts");
+        assert_eq!(
+            outcome,
+            AuthorizeNextStep::AwaitOwner {
+                request_id: "req-1".to_owned(),
+                decidable_in_requesting_browser: true,
+            }
+        );
     }
 }

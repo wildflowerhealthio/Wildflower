@@ -1,6 +1,7 @@
 use axum::extract::Query;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
+use axum::Extension;
 use serde::Deserialize;
 use utoipa::IntoParams;
 use uuid::Uuid;
@@ -15,6 +16,7 @@ use crate::http::browser_session_cookie::{can_decide_consents, carried_browser_s
 use crate::http::errors::InternalError;
 use crate::http::errors::{oauth_error_html, OAuthErrorKind};
 use crate::http::extractors::Live;
+use crate::http::middleware::{start_limited_response, DeferredStartLimit};
 
 use super::authorization_pages::consent_page_location;
 use super::wait_page::wait_page_location;
@@ -56,6 +58,9 @@ pub(super) enum AuthorizeError {
     /// No active signing key: without token-mint capability the endpoint can't
     /// proceed, so it 503s rather than parking a request it can never complete.
     ServiceUnavailable,
+    /// The authorization start limit refused a request that would be raised
+    /// for the Owner — the `429` the limit's layer answers.
+    StartLimited,
     /// A logged, opaque 500 (e.g. a store read failed) — see [`InternalError`].
     Internal(InternalError),
 }
@@ -68,6 +73,7 @@ impl From<AuthorizationStartError> for AuthorizeError {
     fn from(error: AuthorizationStartError) -> Self {
         match error {
             AuthorizationStartError::NoActiveSigningKey => AuthorizeError::ServiceUnavailable,
+            AuthorizationStartError::StartLimited => AuthorizeError::StartLimited,
             AuthorizationStartError::LocalPage(kind) => {
                 if kind == OAuthErrorKind::RedirectUriNotAllowed {
                     tracing::warn!("redirect_uri not allowed for the host app's client");
@@ -101,6 +107,7 @@ impl IntoResponse for AuthorizeError {
             AuthorizeError::LocalPage(kind) => html_bad_request(oauth_error_html(&kind)),
             AuthorizeError::Redirect { location } => found_redirect(&location),
             AuthorizeError::ServiceUnavailable => StatusCode::SERVICE_UNAVAILABLE.into_response(),
+            AuthorizeError::StartLimited => start_limited_response(),
             AuthorizeError::Internal(error) => error.into_response(),
         }
     }
@@ -190,15 +197,24 @@ pub struct AuthorizeParams {
     responses(
         (status = 302, description = "Redirect to the client redirect_uri, or to the authorization server's consent card (a browser signed in as the Owner) or wait page"),
         (status = 400, description = "Local HTML error page (untrusted redirect_uri)"),
+        (status = 429, description = "The authorization start limit refused the request"),
         (status = 503, description = "No active signing key")
     )
 )]
 pub(super) async fn handle_authorize_request(
     code_authorization_starter: Live<LiveCodeAuthorizationStarter>,
     token_verifier: Live<LiveTokenVerifier>,
+    deferred_start_limit: Option<Extension<DeferredStartLimit>>,
     headers: HeaderMap,
     Query(params): Query<AuthorizeParams>,
 ) -> Result<Response, AuthorizeError> {
+    // The start limit's layer deferred it for a browser that can decide
+    // consents: asked only if the request is raised for the Owner.
+    let may_raise_for_owner = || {
+        deferred_start_limit
+            .as_ref()
+            .is_none_or(|Extension(deferred_start_limit)| deferred_start_limit.admits())
+    };
     let browser_session = carried_browser_session(&token_verifier, &headers).map_err(|error| {
         AuthorizeError::Internal(InternalError::new(
             "verify a browser session at /oauth/authorize",
@@ -224,6 +240,7 @@ pub(super) async fn handle_authorize_request(
             launch: params.launch.as_deref(),
             aud: params.aud.as_deref(),
             requesting_browser_grant: requesting_browser_grant.as_ref(),
+            may_raise_for_owner: &may_raise_for_owner,
             sid: browser_sid,
         },
         FreshIds {
