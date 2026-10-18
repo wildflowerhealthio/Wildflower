@@ -96,12 +96,13 @@ interface BrowsersListProps {
  * the error banner rather than behind the modal. The list only changes once
  * the server confirms, via the browsers-list invalidation.
  */
-const BrowsersList = ({ browserSessions }: BrowsersListProps): JSX.Element | null => {
+const BrowsersList = ({ browserSessions }: BrowsersListProps): JSX.Element => {
   const mutation = useRevokeBrowserSessionMutation()
   const [confirmRevokeSid, setConfirmRevokeSid] = useState<string | null>(null)
   const sessionToRevoke = browserSessions.find((session) => session.sid === confirmRevokeSid)
 
-  if (browserSessions.length === 0) return null
+  // A revoke's failure still shows once the list is empty.
+  if (browserSessions.length === 0) return <ErrorBanner error={mutation.error} />
 
   const revoke = (sid: string): void => {
     mutation.mutate(

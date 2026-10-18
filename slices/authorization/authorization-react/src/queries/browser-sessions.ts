@@ -8,8 +8,8 @@ import {
   type UseSuspenseQueryResult,
 } from '@tanstack/react-query'
 import { AuthorizationServerHttpApiClient } from '@wildflowerhealthio/authorization-core/clients'
-import type { AccessManagement } from '@wildflowerhealthio/authorization-core/http-api-definition'
-import { Effect, type Schema } from 'effect'
+import { AccessManagement } from '@wildflowerhealthio/authorization-core/http-api-definition'
+import { Effect, Schema } from 'effect'
 
 import type { RunAuthed } from '../router-context.ts'
 import { BROWSER_SESSIONS_QUERY_KEY } from './keys.ts'
@@ -51,10 +51,15 @@ interface RevokeBrowserSessionVariables {
   readonly sid: string
 }
 
+/** True for `RevokeBrowserSession`'s `404` for a session that already ended. */
+const isBrowserSessionNotFound = Schema.is(AccessManagement.BrowserSessionNotFoundSchema)
+
 /**
  * `RevokeBrowserSession` (DELETE): end the session, and with it everything
- * minted under it. Invalidates the browsers list once it settles, on failure
- * too, so the list never keeps showing a session that ended.
+ * minted under it. A session that already ended (`404`) has nothing left to
+ * revoke, so that counts as done. Invalidates the browsers list once it
+ * settles, on failure too, so the list never keeps showing a session that
+ * ended.
  */
 const useRevokeBrowserSessionMutation = (): UseMutationResult<
   void,
@@ -67,7 +72,9 @@ const useRevokeBrowserSessionMutation = (): UseMutationResult<
     mutationFn: ({ sid }) =>
       runAuthed(
         Effect.flatMap(AuthorizationServerHttpApiClient, (c) =>
-          c['access-management'].RevokeBrowserSession({ path: { sid } })
+          c['access-management']
+            .RevokeBrowserSession({ path: { sid } })
+            .pipe(Effect.catchIf(isBrowserSessionNotFound, () => Effect.void))
         )
       ),
     onSettled: async () => {

@@ -183,7 +183,7 @@ describe('useRevokeBrowserSessionMutation', () => {
     })
   })
 
-  test('a session already gone still refreshes the browsers list', async () => {
+  test('a session already gone counts as revoked, and refreshes the browsers list', async () => {
     // Arrange — the session ended elsewhere since the list was read.
     routeRunAuthedThroughRecordingHttpClient(DateTime.unsafeMake(0), () =>
       Response.json({ error: 'BrowserSessionNotFound', sid: 'session-1' }, { status: 404 })
@@ -192,7 +192,7 @@ describe('useRevokeBrowserSessionMutation', () => {
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
 
     // Act
-    await expect(result.current.mutateAsync({ sid: 'session-1' })).rejects.toBeDefined()
+    await result.current.mutateAsync({ sid: 'session-1' })
 
     // Assert
     await waitFor(() => {

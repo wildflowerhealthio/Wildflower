@@ -238,6 +238,69 @@ describe('the access page', () => {
     })
   })
 
+  it('takes a session that already ended as revoked, with no error', async () => {
+    // Arrange — the session ended elsewhere: the revoke answers 404, and the
+    // list read after it no longer holds the session.
+    let otherSessionEnded = false
+    const server = stubServer(
+      undefined,
+      () =>
+        Response.json(
+          otherSessionEnded
+            ? [thisBrowserSession, approvedBrowserSession]
+            : [thisBrowserSession, otherBrowserSession, approvedBrowserSession]
+        ),
+      () => {
+        otherSessionEnded = true
+        return Response.json(
+          { error: 'BrowserSessionNotFound', sid: otherBrowserSession.sid },
+          { status: 404 }
+        )
+      }
+    )
+    mountAccessPages(server)
+    const browsers = await sectionTitled('Browsers')
+    const [, otherRow] = within(browsers).getAllByRole('listitem')
+    fireEvent.click(within(otherRow).getByRole('button', { name: 'Actions for Owner browser' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Revoke' }))
+
+    // Act
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Revoke' }))
+
+    // Assert
+    await waitFor(() => {
+      expect(within(browsers).getAllByRole('listitem')).toHaveLength(2)
+    })
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('still shows a failed revoke once the list is empty', async () => {
+    // Arrange — the revoke fails, and the list read after it is empty.
+    let revokeFailed = false
+    const server = stubServer(
+      undefined,
+      () => Response.json(revokeFailed ? [] : [thisBrowserSession, otherBrowserSession]),
+      () => {
+        revokeFailed = true
+        return new Response(null, { status: 500 })
+      }
+    )
+    mountAccessPages(server)
+    const browsers = await sectionTitled('Browsers')
+    const [, otherRow] = within(browsers).getAllByRole('listitem')
+    fireEvent.click(within(otherRow).getByRole('button', { name: 'Actions for Owner browser' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Revoke' }))
+
+    // Act
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Revoke' }))
+
+    // Assert
+    await waitFor(() => {
+      expect(screen.queryByRole('heading', { name: 'Browsers' })).toBeNull()
+    })
+    expect(await screen.findByRole('alert')).toBeTruthy()
+  })
+
   it('offers a Revoke on this browser too, warning that it signs this browser out', async () => {
     // Arrange
     const server = stubServer()
@@ -422,7 +485,8 @@ const stubServer = (
   answerGrants: () => Response = () =>
     Response.json([medicationsGrant, hostGrant, ownGrant, pebbleGrant]),
   answerBrowserSessions: () => Response = () =>
-    Response.json([thisBrowserSession, otherBrowserSession, approvedBrowserSession])
+    Response.json([thisBrowserSession, otherBrowserSession, approvedBrowserSession]),
+  answerRevokeBrowserSession: () => Response = () => new Response(null, { status: 204 })
 ): StubServer => {
   const requests: RecordedRequest[] = []
   const answer = (method: string, url: string): Response => {
@@ -438,6 +502,9 @@ const stubServer = (
     }
     if (method === 'GET' && path === '/authorization/browser-sessions') {
       return answerBrowserSessions()
+    }
+    if (method === 'DELETE' && path.startsWith('/authorization/browser-sessions/')) {
+      return answerRevokeBrowserSession()
     }
     if (method === 'PATCH') {
       return Response.json({ ...medicationsClient, disabledAt: '2026-10-13T12:00:00.000Z' })
