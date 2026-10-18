@@ -22,7 +22,7 @@ use wildflowerhealthio_fhir_r4::{setup_fhir_r4, ui_login_config, BulkExportWorke
 use wildflowerhealthio_tunnel::{TunnelDaemon, TunnelStream};
 
 use crate::adapters::access_token_verifier::AuthorizationServerAccessTokenVerifier;
-use crate::adapters::acme_certificate::DeviceCertificate;
+use crate::adapters::acme_certificate::{CertificateActions, DeviceCertificate};
 use crate::adapters::app_launch_scopes::AuthorizationServerAppLaunchScopes;
 use crate::adapters::authorization_start_limit::AuthorizationStartLimit;
 use crate::adapters::health_probe::ReqwestHealthProbe;
@@ -121,6 +121,15 @@ impl WildflowerServer {
         self.pending_consent_watcher.clone()
     }
 
+    /// A handle to the host's actions on the server's certificate: get one
+    /// now, or order a new one in place of the one held (see
+    /// [`CertificateActions`]). Clone it before [`serve`](Self::serve); it
+    /// acts for as long as this run serves.
+    #[must_use]
+    pub fn certificate_actions(&self) -> CertificateActions {
+        self.device_certificate.actions()
+    }
+
     /// A sender onto the tunnel listener, as the tunnel holds: each stream
     /// sent is served as a visitor's connection through the tunnel. Test
     /// support only (the `test-support` feature).
@@ -150,6 +159,8 @@ impl WildflowerServer {
             bulk_export_worker,
             // The launch context and sign-in code minters, the pending consent
             // watcher, and the `test-support` feature's `tunnel_stream_tx`.
+            // The certificate actions handed out stop acting once
+            // `device_certificate` drops.
             ..
         } = self;
         let tunnel = axum::serve(

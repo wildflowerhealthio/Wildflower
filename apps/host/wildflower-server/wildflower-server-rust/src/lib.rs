@@ -25,7 +25,9 @@
 //! monitor reads from the server's own `/health` through its public origin,
 //! the [`TunnelState`](wildflowerhealthio_tunnel::TunnelState) the tunnel
 //! publishes as it dials the relay, and the [`CertificateState`] the run
-//! publishes as its certificate is deployed, ordered and renewed. What a
+//! publishes as its certificate is deployed, ordered and renewed, and
+//! [`CertificateActions`], through which the host gets a certificate now or
+//! orders a new one in place of the one held. What a
 //! server's certificate cache says, the state of any server without a run's
 //! state, is read by [`cached_certificate_state`], and the certificates its
 //! runs deployed by [`read_certificate_history`].
@@ -56,11 +58,13 @@ mod domain;
 mod http;
 mod live_bindings;
 
-pub use adapters::acme_certificate::cached_certificate_state;
+pub use adapters::acme_certificate::{
+    cached_certificate_state, CertificateActions, CertificateRestartError,
+};
 pub use adapters::certificate_history::read_certificate_history;
 pub use config::{DeviceCertificateConfig, ServerObservers, WildflowerServerConfig};
 pub use domain::certificate_authority::CertificateAuthority;
-pub use domain::certificate_history::CertificateHistoryEntry;
+pub use domain::certificate_history::{CertificateHistoryEntry, DuplicateCertificates};
 pub use domain::certificate_state::{
     CertificateOrderError, CertificateState, CertificateStatus, IssuedCertificate,
 };
