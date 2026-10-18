@@ -7,6 +7,7 @@ import { afterEach, describe, expect, test } from 'vite-plus/test'
 
 import { browserSessionRunner } from './browser-session.ts'
 import { SessionFooter } from './session-footer.tsx'
+import { SESSION_QUERY_KEY } from './session-query.ts'
 
 /**
  * The footer against a stub server answering `GET /authorization/session`
@@ -69,7 +70,7 @@ describe('SessionFooter', () => {
 
     // The session read has settled, so nothing is still to render.
     await waitFor(() => {
-      expect(queryClient.getQueryState(['session-footer', 'session'])?.status).not.toBe('pending')
+      expect(queryClient.getQueryState(SESSION_QUERY_KEY)?.status).not.toBe('pending')
     })
     expect(screen.queryByRole('button', { name: 'Sign out' })).toBeNull()
     expect(screen.queryByText(/Signed in until/)).toBeNull()

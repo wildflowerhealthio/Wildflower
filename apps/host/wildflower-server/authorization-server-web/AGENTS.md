@@ -73,8 +73,9 @@ Security Policy (below).
   place of the decision's own, then steps back out; the "approve on the
   server" cases stay as they are.
 - `pair.html` + `src/pair/main.tsx` — the pairing page's entry: reads `next`
-  from its query (`next-query.ts`) and mounts `PairPage`, with `SessionFooter`
-  under it, over the same runner, leaving with `window.location.assign`.
+  from its query (`next-query.ts`) and mounts `PairPage` over the same runner,
+  leaving with `window.location.assign`. It has no `SessionFooter`: a browser
+  there is not signed in.
 - `src/pair/pair-page.tsx` — on load posts `/oauth/pair/start` with `next`
   (one start per attempt: a `useQuery` that never refetches), then shows the
   code, a name field filled from the start's `browserName`, and polls
@@ -85,12 +86,17 @@ Security Policy (below).
   (`BrowserPairingNextNotAllowed`, `BrowserSessionClientDisabled`) says why in
   plain words. The page judges no `next` itself: the server allows only a
   path on its own origin.
-- `src/session-footer.tsx` — `SessionFooter`, under every page: reads
-  `GET /authorization/session` and, when its `browserSessionExpiresAt` names
-  this browser's session, says "Signed in until" that time over a **Sign out**
-  button, a plain form `POST` to `/oauth/sign-out`, which revokes the session,
-  clears its cookie and redirects to the launcher. A browser with no session
-  (`401`), or a token under none, gets no footer.
+- `src/session-query.ts` — `sessionQueryOptions`: the page's one read of
+  `GET /authorization/session`, `None` for a browser that isn't signed in
+  (`401`). The device page and `SessionFooter` share its key, so a page sends
+  it once.
+- `src/session-footer.tsx` — `SessionFooter`, under the consent card and the
+  device page: reads the session (`sessionQueryOptions`) and, when its
+  `browserSessionExpiresAt` names this browser's session, says "Signed in
+  until" that time over a **Sign out** button, a plain form `POST` to
+  `/oauth/sign-out`, which revokes the session, clears its cookie and
+  redirects to the launcher. A browser with no session (`401`), or a token
+  under none, gets no footer.
 - `src/then-query.ts` — `goBackOnceDecidedOf`: the query's `then`, decoded at
   the entry into `Some` step back out of the window for `then=back` and
   `None` for anything else. The pages take it as the `goBackOnceDecided`

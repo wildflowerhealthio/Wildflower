@@ -1,12 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
-import { AuthorizationServerHttpApiClient } from '@wildflowerhealthio/authorization-core/clients'
 import {
   formatInstant,
   type AuthorizationRouterContext,
 } from '@wildflowerhealthio/authorization-react'
-import { Effect, Option } from 'effect'
+import { Option } from 'effect'
 import type { JSX } from 'react'
 
+import { sessionQueryOptions } from './session-query.ts'
 import styles from './session-footer.module.css'
 
 /**
@@ -22,29 +22,19 @@ interface SessionFooterProps {
 }
 
 /**
- * The footer every authorization page shows under its content: "Signed in
- * until" this browser's session expires, and a Sign out button, a plain form
- * post to {@link SIGN_OUT_PATH}. It reads the expiry from
- * `GET /authorization/session` on the browser session, and shows nothing for a
- * browser that isn't signed in (`401`), whose session can't be read, or whose
- * token is under no browser session.
+ * The footer the consent card and the device page show under their content:
+ * "Signed in until" this browser's session expires, and a Sign out button, a
+ * plain form post to {@link SIGN_OUT_PATH}. It reads the expiry from the
+ * page's own session read ({@link sessionQueryOptions}), and shows nothing for
+ * a browser that isn't signed in (`401`), whose session can't be read, or
+ * whose token is under no browser session. The pairing page has none: a
+ * browser there is not signed in.
  */
 const SessionFooter = ({ runAuthed }: SessionFooterProps): JSX.Element | null => {
-  const sessionQuery = useQuery({
-    queryKey: ['session-footer', 'session'],
-    queryFn: () =>
-      runAuthed(
-        Effect.flatMap(AuthorizationServerHttpApiClient, (client) =>
-          client['access-management'].GetSession()
-        )
-      ),
-    // One read for the page's life, as the pages' own session read.
-    staleTime: Infinity,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-    retry: false,
-  })
-  return Option.fromNullable(sessionQuery.data?.browserSessionExpiresAt).pipe(
+  const sessionQuery = useQuery(sessionQueryOptions(runAuthed))
+  return Option.fromNullable(sessionQuery.data).pipe(
+    Option.flatten,
+    Option.flatMapNullable(({ browserSessionExpiresAt }) => browserSessionExpiresAt),
     Option.map((expiresAt) => (
       <footer key="session-footer" className={styles['session-footer']}>
         <p className={styles['session-footer__expiry']}>

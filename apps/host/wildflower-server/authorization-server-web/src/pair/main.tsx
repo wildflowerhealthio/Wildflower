@@ -11,7 +11,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { addOsColorSchemeListener, pageLayoutStyles } from '@wildflowerhealthio/react-tundraish'
 
 import { browserSessionRunner } from '../browser-session.ts'
-import { SessionFooter } from '../session-footer.tsx'
 import { nextOf } from './next-query.ts'
 import { PairPage } from './pair-page.tsx'
 
@@ -34,7 +33,6 @@ if (container !== null) {
       <QueryClientProvider client={queryClient}>
         <main className={pageLayoutStyles['page']}>
           <PairPage next={nextOf(window.location.search)} runAuthed={runAuthed} goTo={goTo} />
-          <SessionFooter runAuthed={runAuthed} />
         </main>
       </QueryClientProvider>
     </StrictMode>
