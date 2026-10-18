@@ -200,7 +200,7 @@
           {
             "name": "launch",
             "in": "query",
-            "description": "SMART App Launch `launch` value, handed to the app in its launch URL\nand forwarded here. It must name a launch this server minted for this\n`client_id` that is unused and unexpired (five minutes); it is consumed,\nso it works once, and the request carries the launch's context\n(including any patient it binds) to the consent. A launch for this\nclient that is already used or expired renders a local page asking the\nuser to launch the app again; any other value is `invalid_request`. A\nbrowser without a session is sent to pairing before the launch is\nread, so pairing never spends it. Absent, the request is plain OAuth.",
+            "description": "SMART App Launch `launch` value, handed to the app in its launch URL\nand forwarded here. It must name a launch this server minted for this\n`client_id` that is unused and unexpired (five minutes); it is consumed,\nso it works once, and the request carries the launch's context\n(including any patient it binds) to the consent. Any other value is\n`invalid_request`, its `error_description` saying why. A browser\nwithout a session is sent to pairing before the launch is\nread, so pairing never spends it. Absent, the request is plain OAuth.",
             "required": false,
             "schema": {
               "type": "string"

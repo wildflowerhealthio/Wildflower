@@ -417,9 +417,11 @@ those still pending.
 Starting a request is rate-limited on the tunnel, per visitor address and
 overall, and a request over either limit is `429` (the host's
 `authorization_start_limit`). A browser whose session can decide consents,
-as one signed in as the Owner can, is never limited, nor is a browser
-without a session at `/oauth/authorize`, which is only sent to
-[pairing](#browser-pairing) and parks nothing.
+as one signed in as the Owner can, is limited only when its request is raised
+for the Owner (every device request is), so one it decides on its own consent
+card is never limited. Nor is a browser without a session at
+`/oauth/authorize`, which is only sent to [pairing](#browser-pairing) and
+parks nothing.
 
 The newest is a `NewestPendingConsent`, discriminated because the flows have
 no shared lookup key, with the name of what asks: the client's (its registered
@@ -650,8 +652,8 @@ and no refresh family. The session row is its only record.
    a session here with a `302` to `pair?next=<its own path and query>` (the
    **pairing redirect**), parking, notifying and consuming nothing, so the
    paired browser comes back to the same request. A SMART app's `launch`
-   lives 5 minutes; one that lapsed while the Owner approved the pairing gets
-   the "launch again" page (see [LaunchContext](#launchcontext)).
+   lives 5 minutes; one that lapsed while the Owner approved the pairing goes
+   back to the app told it expired (see [LaunchContext](#launchcontext)).
 2. The page posts `/oauth/pair/start`. The server parks a `browser_pairing`
    [`AuthorizationRequest`](#authorizationrequest) for the browser-session
    client, keyed by a 256-bit **pairing code**, with a `userCode` and a name
@@ -705,20 +707,23 @@ an iOS in-app browser (`SFSafariViewController`) keeps its own, separate from
 Safari's, so a browser paired in Safari pairs again in an app's in-app browser
 (see `tauri-plugin-native-page-browser`'s
 [Explanation](../../../apps/host/tauri-plugin-native-page-browser/docs/Explanation.md)). `/oauth/authorize` reads the cookie before anything
-else: a browser without a standing session is sent to
+else: a browser without a live session is sent to
 [pairing](#browser-pairing), and nothing is issued to it, the
-[fast path](#grant) included. A parked request from a browser whose session
-can decide consents (its scopes cover both `wildflower/AuthorizationRequest.r`
-and `wildflower/AuthorizationRequest.u`, as `OWNER_SCOPES` do) and that holds
-the request's [approval scopes](#approval-scopes) goes to the
+[fast path](#grant) included; that spends nothing from the authorization start
+limit. A parked request from a browser whose session can decide consents (its
+scopes cover both `wildflower/AuthorizationRequest.r` and
+`wildflower/AuthorizationRequest.u`, as `OWNER_SCOPES` do) and that holds the
+request's [approval scopes](#approval-scopes) goes to the
 [consent card](#consent-card) rather than the [wait page](#wait-page), and
 records that it can be decided there (`decidable_in_requesting_browser`). One
 whose session lacks any of them goes to the wait page, and the request is
-raised for the Owner like any other. Such a session's starts spend from the
-authorization start limit only when they are raised for the Owner (every
+raised for the Owner like any other; so is every request from a session that
+can't decide consents. A session that can decide consents spends from the
+authorization start limit only when its start is raised for the Owner (every
 device start is), so a request it decides on its own card spends nothing, and
 it can't flood the Owner with notifications either: asking the Owner about
-such a request afterwards (`…/ask-owner`) spends then.
+such a request afterwards (`…/ask-owner`) spends then. Any other session's
+start spends before it is parsed.
 Only a token issued to the browser-session client under a browser session
 (its `sid`) counts: any other token in the cookie is served as no session.
 

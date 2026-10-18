@@ -411,10 +411,11 @@ async fn the_wait_page_reads_the_status_after_the_owner_signs_in_in_the_same_bro
 }
 
 /// A launch for this client that expired (as one may while the Owner approves
-/// the browser's pairing) goes back to the app as `invalid_request` saying it
-/// expired; a launch this server never minted says it isn't recognized.
+/// the browser's pairing) goes back to the app as `invalid_request`, told to
+/// open the app again; a launch this server never minted is told it isn't
+/// recognized.
 #[tokio::test]
-async fn an_expired_launch_says_it_expired_and_an_unknown_one_is_not_recognized() {
+async fn an_expired_launch_and_an_unknown_one_go_back_to_the_app_saying_why() {
     let (g, _owner_token, db) = spin_up();
     seed_app(&db);
     store_handle(&db)
@@ -428,25 +429,29 @@ async fn an_expired_launch_says_it_expired_and_an_unknown_one_is_not_recognized(
         })
         .expect("plant a lapsed launch");
 
-    for (launch, location) in [
-        (
-            "lapsed",
-            "https://app.example/cb?error=invalid_request\
-             &error_description=This+launch+has+expired.+Open+the+app+again.&state=xyz",
-        ),
-        (
-            "never-minted",
-            "https://app.example/cb?error=invalid_request\
-             &error_description=This+launch+isn%27t+recognized.+Open+the+app+again.&state=xyz",
-        ),
-    ] {
-        let res = get_authorize(
-            &g.router,
-            &db.paired_browser_token,
-            &format!("{}&launch={launch}", app_query()),
-        )
-        .await;
-        assert_eq!(res.status(), StatusCode::FOUND, "{launch}");
-        assert_eq!(location_of(&res), location, "{launch}");
-    }
+    let res = get_authorize(
+        &g.router,
+        &db.paired_browser_token,
+        &format!("{}&launch=lapsed", app_query()),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::FOUND);
+    assert_eq!(
+        location_of(&res),
+        "https://app.example/cb?error=invalid_request\
+         &error_description=This+launch+has+expired.+Open+the+app+again.&state=xyz"
+    );
+
+    let res = get_authorize(
+        &g.router,
+        &db.paired_browser_token,
+        &format!("{}&launch=never-minted", app_query()),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::FOUND);
+    assert_eq!(
+        location_of(&res),
+        "https://app.example/cb?error=invalid_request&error_description=\
+         This+launch+isn%27t+recognized.+Open+the+app+again.&state=xyz"
+    );
 }

@@ -523,8 +523,7 @@ const ALREADY_USED_LOCATION: &str = "https://app.example/cb?error=invalid_reques
 
 /// A SMART App Launch round trip: a `launch` minted for the client and the FHIR
 /// base (the server's origin) as `aud` park a pending request the Owner can approve, and the request
-/// carries the consumed launch. The same `launch` the second time renders the
-/// local page that asks for a new launch.
+/// carries the consumed launch. The same `launch` is refused the second time.
 #[tokio::test]
 async fn authorize_consumes_a_smart_launch_once() {
     let (g, owner_token, db) = spin_up();

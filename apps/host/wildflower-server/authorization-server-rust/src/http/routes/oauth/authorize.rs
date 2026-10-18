@@ -140,9 +140,9 @@ pub struct AuthorizeParams {
     /// `client_id` that is unused and unexpired (five minutes); it is consumed,
     /// so it works once, and the request carries the launch's context
     /// (including any patient it binds) to the consent. Any other value is
-    /// `invalid_request`. A browser without a session is sent to pairing
-    /// before the launch is read, so pairing never spends it. Absent, the
-    /// request is plain OAuth.
+    /// `invalid_request`, its `error_description` saying why. A browser
+    /// without a session is sent to pairing before the launch is
+    /// read, so pairing never spends it. Absent, the request is plain OAuth.
     #[serde(default)]
     pub launch: Option<String>,
     /// SMART App Launch audience: the FHIR server the app expects to call with
@@ -228,7 +228,8 @@ pub(super) async fn handle_authorize_request(
     Query(params): Query<AuthorizeParams>,
 ) -> Result<Response, AuthorizeError> {
     // The start limit's layer deferred it for a browser that can decide
-    // consents: asked only if the request is raised for the Owner.
+    // consents, and for one without a session (sent to pairing below, so it
+    // never asks): asked only if the request is raised for the Owner.
     let may_raise_for_owner = || {
         deferred_start_limit
             .as_ref()

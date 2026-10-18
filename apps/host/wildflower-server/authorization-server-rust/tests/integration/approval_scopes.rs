@@ -462,7 +462,9 @@ async fn asking_the_owner_raises_a_request_decidable_in_the_requesting_browser()
             ..
         })
     ));
-    assert_eq!(request_status(&g, &db, &request_id).await, "pending");
+    let res = get_authorization_status(&g.router, &deciding_browser, &request_id).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(body_json(res.into_body()).await["status"], "pending");
 
     let res =
         approve_oauth_consent(&g, &owner_token, &request_id, APPROVE_REQUESTED.to_owned()).await;

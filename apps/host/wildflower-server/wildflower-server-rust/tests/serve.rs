@@ -1031,8 +1031,8 @@ async fn authorize_plots_launch(
 /// answers its launch URL with the FHIR base as `iss` and a `launch` the authorization server
 /// minted for the app's client. A browser without a session is sent to
 /// pairing and leaves the launch unspent; the signed-in browser's request
-/// parks one authorization request with it, and a second use is refused as
-/// already used.
+/// parks one authorization request with it, and a second use goes back to
+/// the app, told the launch was already used.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_smart_launch_is_minted_for_its_client_and_consumed_once() {
     let server = UiServer::start().await;
