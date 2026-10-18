@@ -138,7 +138,7 @@ When a review asks "what is this for", answer with a rename table (old â†’ new â
 
 - **Mutations are honest.** Optimistic updates roll back on error, errors render in a banner, sibling writers are disabled while a request is in flight (PR #258). Don't clobber a user's dirty field on an unrelated revision bump: "If the state on server hasn't changed for a field, don't replace it, is a general rule." (PR #191)
 - **Errors and notes go above the buttons, full width.** "I never want to see a message below the buttons." (PR #1095) "Please use the full width above that button to display any error or info." (PRs #1162, #1270) Each fact has one wording in one place; an action's reason never restates a status shown nearby.
-- **Do both, not a mode.** Show a button for folders *and* a button for files; always render the multipicker; "Rather than a mode, I think we should always have a great multipicker." (PR #712) Infinite scroll, not "Show more", matching the other apps (PR #712).
+- **Do both, not a mode.** Show a button for folders _and_ a button for files; always render the multipicker; "Rather than a mode, I think we should always have a great multipicker." (PR #712) Infinite scroll, not "Show more", matching the other apps (PR #712).
 - **First paint is real.** Prefetch so the page has data on first render, "hiding the web app nature of these pages" (PR #121); redirect in a way that avoids a flash rather than rendering a transient page (PR #304). Banners and content sit inside the safe-area padding (PR #888).
 - **Status is served, not polled.** Manual refresh until a live stream exists; health comes from the server's `/health`, not a separate status slice (PRs #980, #1000, #1004).
 
