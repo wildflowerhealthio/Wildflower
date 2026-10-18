@@ -187,12 +187,17 @@ const fakeFhirServer = (): FakeFhirServer => {
     }
   }
 
-  /** A read of one resource, `Type/id`: what the store holds under it, or a refusal. */
+  /**
+   * A read of one resource, `Type/id`: what the store holds under it, or a
+   * 404, as fhirclient rejects one (an error carrying the `status`).
+   */
   const read = (reference: string): Promise<unknown> => {
     reads.push(reference)
     const wire = store.get(reference)
     return wire === undefined
-      ? Promise.reject(new Error(`${reference} not found on the test server`))
+      ? Promise.reject(
+          Object.assign(new Error(`${reference} not found on the test server`), { status: 404 })
+        )
       : Promise.resolve(wire)
   }
 

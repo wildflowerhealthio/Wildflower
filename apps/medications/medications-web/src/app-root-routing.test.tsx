@@ -1,5 +1,5 @@
 import { createBrowserHistory } from '@tanstack/react-router'
-import { render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { TELEMETRY_CONSENT_COPY } from '@wildflowerhealthio/branding-core'
 import { writeConsent } from '@wildflowerhealthio/telemetry-core'
 import type * as TelemetryWeb from '@wildflowerhealthio/telemetry-web'
@@ -77,6 +77,7 @@ beforeEach(() => {
 
 afterEach(() => {
   window.localStorage.clear()
+  window.sessionStorage.clear()
   authorizeMock.mockReset()
   readyMock.mockReset()
 })
@@ -84,7 +85,7 @@ afterEach(() => {
 describe('AppRoot over the address bar', () => {
   it.each([
     { case: 'at the app root', route: '' },
-    { case: 'at a tab', route: 'calendar' },
+    { case: 'at a patient’s tab, two directories deep', route: 'patients/p1/calendar' },
   ])('should start a launch URL’s launch $case, returning to the app root', async ({ route }) => {
     // Arrange: the authorize URL never arrives, so the page never leaves.
     authorizeMock.mockReturnValue(new Promise(() => {}))
@@ -104,7 +105,7 @@ describe('AppRoot over the address bar', () => {
     expect(addressBar()).toBe(launchUrl)
   })
 
-  it('should leave the callback URL alone through the exchange, then open Medications', async () => {
+  it('should leave the callback URL alone through the exchange, then open the launch’s patient', async () => {
     // Arrange: an exchange the test completes, taking `code` and `state` out
     // of the address bar as fhirclient does.
     let completeExchange: () => void = () => {}
@@ -129,7 +130,33 @@ describe('AppRoot over the address bar', () => {
 
     // Assert
     expect(await screen.findByText('No medications found.')).toBeDefined()
-    expect(addressBar()).toBe(`${BASEPATH}medications`)
+    expect(addressBar()).toBe(`${BASEPATH}patients/p1/medications`)
     expect(readyMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('should open the tab a launch started on once its exchange completes', async () => {
+    // Arrange: a launch at a patient's calendar leaves for the authorization
+    // server (the authorize URL never arrives).
+    authorizeMock.mockReturnValue(new Promise(() => {}))
+    window.history.replaceState(null, '', `${BASEPATH}patients/p1/calendar${EHR_LAUNCH}`)
+    renderAppRoot()
+    await waitFor(() => {
+      expect(authorizeMock).toHaveBeenCalledTimes(1)
+    })
+    cleanup()
+    // The callback returns to the app root, and the exchange takes `code`
+    // and `state` out of the address bar as fhirclient does.
+    readyMock.mockImplementation(() => {
+      window.history.replaceState(window.history.state, '', BASEPATH)
+      return Promise.resolve(readyClient)
+    })
+    window.history.replaceState(null, '', `${BASEPATH}?code=abc&state=xyz`)
+
+    // Act
+    renderAppRoot()
+
+    // Assert
+    expect(await screen.findByRole('button', { name: 'Next month' })).toBeDefined()
+    expect(addressBar()).toBe(`${BASEPATH}patients/p1/calendar`)
   })
 })

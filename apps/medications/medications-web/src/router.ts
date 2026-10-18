@@ -8,37 +8,23 @@ import { routeTree } from './routeTree.gen.ts'
 type MedicationsRouter = Router<typeof routeTree, 'never', false>
 
 /**
- * The page's query as flat strings, every value as the address bar holds it.
- *
- * @remarks
- * The router's default reads `?patient=123` as the number `123` and writes
- * the string `'123'` back as `?patient=%22123%22`. The app's only query is
- * `?patient=`, a FHIR id or `*` in `smart-app-react`'s plain form, so it is
- * read and written with `URLSearchParams` as it stands.
- */
-const parseSearch = (searchStr: string): Record<string, string> =>
-  Object.fromEntries(new URLSearchParams(searchStr))
-
-/** The inverse of {@link parseSearch}: every string value, leaving out unset keys. */
-const stringifySearch = (search: Record<string, unknown>): string => {
-  const params = new URLSearchParams()
-  for (const [key, value] of Object.entries(search)) {
-    if (typeof value === 'string') params.set(key, value)
-  }
-  const query = params.toString()
-  return query === '' ? '' : `?${query}`
-}
-
-/**
  * The app's router over `page` (its history, under the served directory: one
  * build serves its origin's root and a PR preview's `/pr-<n>/`), giving every
- * route `context`.
+ * route `context`. A path no route names goes to the root's no-page card
+ * wherever it sits (`notFoundMode: 'root'`), so a patient route's
+ * not-found card only ever means the server has no such patient.
  */
 const buildRouter = (
   { history, basepath }: SmartAppPage,
   context: RouterContext
 ): MedicationsRouter =>
-  createRouter({ routeTree, history, basepath, context, parseSearch, stringifySearch })
+  createRouter({
+    routeTree,
+    history,
+    basepath,
+    context,
+    notFoundMode: 'root',
+  })
 
 // The app's is the only router on the page, so registering it types every
 // `<Link to>` and `navigate` against its routes.

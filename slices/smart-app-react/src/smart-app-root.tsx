@@ -30,6 +30,7 @@ import {
 import { authorizeFromLaunchPage } from './authorize-from-launch-page.ts'
 import { ConnectMenu } from './connect-menu.tsx'
 import { LaunchPage } from './launch-page.tsx'
+import { clearReturnRoute } from './return-route.ts'
 
 /**
  * Where a SMART app's telemetry goes, once the visitor consents to it: the
@@ -79,6 +80,14 @@ interface SmartAppRootProps {
   /** Where the app's telemetry goes once the visitor consents to it. */
   readonly telemetry: SmartAppTelemetry
   /**
+   * The directory the app is served from, slash-suffixed: a routed app's
+   * `SmartAppPage.basepath`. The OAuth redirect URI is this directory on the
+   * page's origin (`appRootRedirectUri`), whichever of the app's routes the
+   * page was opened at. Omitted, it is the page URL's own directory, right
+   * for an app that is only ever opened at its root.
+   */
+  readonly servedDirectory?: string
+  /**
    * Whether the URL carries a SMART callback to complete. Read once, on mount:
    * defaults to the live URL checks (`shouldCompleteSmartLaunch`, then
    * `arrivingSmartLaunchFrom`); tests pass it explicitly, and then no launch is
@@ -119,28 +128,33 @@ function ConsentStatusControl(): JSX.Element {
 function LaunchingApp({
   app,
   registration,
+  servedDirectory,
   replaceLocation,
-}: Pick<SmartAppRootProps, 'app' | 'registration'> & {
+}: Pick<SmartAppRootProps, 'app' | 'registration' | 'servedDirectory'> & {
   readonly replaceLocation: (url: string) => void
 }): JSX.Element {
   const launchAuthorized = useRef(false)
   useEffect(() => {
     if (launchAuthorized.current) return
     launchAuthorized.current = true
-    void authorizeFromLaunchPage(registration, window.location.href).then((failure) => {
-      if (failure !== null) replaceLocation(failure)
-    })
-  }, [registration, replaceLocation])
+    void authorizeFromLaunchPage(registration, window.location.href, servedDirectory).then(
+      (failure) => {
+        if (failure !== null) replaceLocation(failure)
+      }
+    )
+  }, [registration, servedDirectory, replaceLocation])
 
   useEffect(() => {
     const onPageShow = (event: PageTransitionEvent): void => {
-      if (event.persisted) replaceLocation(appRootRedirectUri(window.location.href))
+      if (event.persisted) {
+        replaceLocation(appRootRedirectUri(window.location.href, servedDirectory))
+      }
     }
     window.addEventListener('pageshow', onPageShow)
     return (): void => {
       window.removeEventListener('pageshow', onPageShow)
     }
-  }, [replaceLocation])
+  }, [servedDirectory, replaceLocation])
 
   return <LaunchPage message={`Launching ${APP_DESCRIPTIONS[app].name}…`} />
 }
@@ -197,6 +211,7 @@ function SmartAppRoot({
   app,
   registration,
   telemetry,
+  servedDirectory,
   launched,
   replaceLocation = replaceWindowLocation,
   children,
@@ -206,6 +221,13 @@ function SmartAppRoot({
     if (shouldCompleteSmartLaunch()) return 'callback'
     return Option.isSome(arrivingSmartLaunchFrom(window.location.search)) ? 'launch' : 'visit'
   })
+
+  // A plain visit (a fresh one, a failed launch sent back here, a page back
+  // from the back-forward cache) completes no launch, so the route a launch
+  // saved to return to is cleared: it must not hijack a later callback.
+  useEffect(() => {
+    if (arrival === 'visit') clearReturnRoute(window.sessionStorage)
+  }, [arrival])
 
   // A failed launch lands back here carrying its reason — our own `?launchError`
   // from the launch page or the token exchange, or the authorization server's
@@ -264,15 +286,20 @@ function SmartAppRoot({
     })
   }, [telemetryStarted, queryClient])
 
-  // The page root is also the OAuth redirect target. Derived in render, not at
+  // The app root is also the OAuth redirect target. Derived in render, not at
   // module load, so importing this module never reads `window`.
-  const redirectUri = appRootRedirectUri(window.location.href)
+  const redirectUri = appRootRedirectUri(window.location.href, servedDirectory)
 
   return (
     <TelemetryConsentGate copy={TELEMETRY_CONSENT_COPY} onDecided={startTelemetry}>
       {arrival === 'launch' ? (
         <CrashReportingBoundary extraContext={{ app: telemetry.app }}>
-          <LaunchingApp app={app} registration={registration} replaceLocation={replaceLocation} />
+          <LaunchingApp
+            app={app}
+            registration={registration}
+            servedDirectory={servedDirectory}
+            replaceLocation={replaceLocation}
+          />
         </CrashReportingBoundary>
       ) : (
         <QueryClientProvider client={queryClient}>

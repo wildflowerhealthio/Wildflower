@@ -18,7 +18,7 @@ import {
 
 /**
  * Starting a program: the template and its requests written in one batch,
- * driven through `StrengthApp` over the in-memory FHIR server (see `strength-
+ * driven through the app's router over the in-memory FHIR server (see `strength-
  * app.test-helpers.ts`).
  */
 

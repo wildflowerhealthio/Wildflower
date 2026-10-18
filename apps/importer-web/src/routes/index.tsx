@@ -1,12 +1,14 @@
-import { createFileRoute, redirect } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
+import { appRootRedirect } from '@wildflowerhealthio/smart-app-react'
 
 /**
- * `/` itself, which opens the Import tab, replacing the bare path in history,
- * so Back leaves the page rather than landing on it again.
+ * `/` itself, which replaces itself in history with the route the launch
+ * started on, else the Import tab, so Back leaves the page rather than
+ * landing on it again.
  */
 const Route = createFileRoute('/')({
   beforeLoad: () => {
-    throw redirect({ to: '/import', replace: true })
+    throw appRootRedirect('/import')
   },
 })
 

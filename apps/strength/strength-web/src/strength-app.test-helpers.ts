@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { createBrowserHistory } from '@tanstack/react-router'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import type userEvent from '@testing-library/user-event'
-import { buildSmartRouterContext } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
   Observation,
@@ -9,7 +9,8 @@ import {
   Procedure,
   ServiceRequest,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import type { PatientChoice } from '@wildflowerhealthio/smart-app-react'
+import { stubRouteTabsBrowserApis } from '@wildflowerhealthio/react-tundraish/test-helpers'
+import type { SmartAppPage } from '@wildflowerhealthio/smart-app-react'
 import {
   ExerciseConcept,
   ExerciseRequest,
@@ -24,16 +25,14 @@ import {
 import { made } from '@wildflowerhealthio/strength-core-js/test-helpers'
 import { DateTime, Option, Schema } from 'effect'
 import { createElement, type ReactNode, StrictMode } from 'react'
-import { vi } from 'vite-plus/test'
+import { onTestFinished, vi } from 'vite-plus/test'
 
+import { StrengthRouter } from './app.tsx'
 import {
-  ACCESS_TOKEN,
   type FakeFhirServer,
   fakeFhirServer,
   resourceTypeOfWire,
-  SERVER_URL,
 } from './fake-fhir-server.test-helpers.ts'
-import { StrengthApp } from './strength-app/strength-app.tsx'
 
 /**
  * The app's own wiring, end to end, over an in-memory FHIR server
@@ -60,8 +59,6 @@ const PATIENT_WIRE = {
   name: [{ given: ['Ada'], family: 'Lovelace' }],
   birthDate: '1990-01-01',
 }
-/** The lifter's choice, as `usePatientChoice` hands it over. */
-const LIFTER_CHOICE: PatientChoice = { kind: 'patient', patientId: PATIENT_ID }
 /** When every workout in these tests is submitted. */
 const SUBMITTED_AT = '2026-09-28T18:30:00.000Z'
 
@@ -77,22 +74,32 @@ const seededTrainingPlanDefinition =
  */
 const END_TO_END_TIMEOUT_MILLIS = 20_000
 
+/** The directory the app is served from in these tests. */
+const BASEPATH = '/strength/'
+
+/** Put back the browser APIs the running test stubbed. */
+let restoreBrowserApis: () => void = () => undefined
+
 /**
- * Start a test: a server holding only the lifter's `Patient`, and the clock
- * stopped at {@link SUBMITTED_AT}.
+ * Start a test: a server holding only the lifter's `Patient`, the clock
+ * stopped at {@link SUBMITTED_AT}, and the browser APIs the page's
+ * `RouteTabs` reads that jsdom lacks stubbed (`react-tundraish`'s
+ * `stubRouteTabsBrowserApis`).
  */
 const startStrengthTest = (): FakeFhirServer => {
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date(SUBMITTED_AT))
+  restoreBrowserApis = stubRouteTabsBrowserApis()
   const server = fakeFhirServer()
   server.seedWire(PATIENT_WIRE)
   return server
 }
 
-/** End a test: unmount what it rendered and restart the clock. */
+/** End a test: unmount what it rendered, restart the clock and put the stubs back. */
 const endStrengthTest = (): void => {
   cleanup()
   vi.useRealTimers()
+  restoreBrowserApis()
 }
 
 // ---------------------------------------------------------------------------
@@ -247,31 +254,59 @@ const testQueryClient = (): QueryClient =>
   new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
 /**
- * Mount the lifting screens over `server`, through the real runtime, for
- * `patientChoice` — the lifter {@link PATIENT_ID} unless told otherwise.
+ * The page the app's router runs over in a test: the window's history at the
+ * address bar as it is, under {@link BASEPATH}, destroyed as the test
+ * finishes, as a page never needs to.
+ */
+const openTestPage = (): SmartAppPage => {
+  const history = createBrowserHistory()
+  onTestFinished(() => {
+    history.destroy()
+  })
+  return { basepath: BASEPATH, history }
+}
+
+/**
+ * Mount the app's router over `server`, through the real runtime, for a
+ * launch naming the lifter {@link PATIENT_ID}, at `route` under
+ * {@link BASEPATH}: the lifter's page unless told otherwise. Returns the
+ * page the router runs over.
  */
 const mountStrengthApp = (
   server: FakeFhirServer,
-  patientChoice: PatientChoice = LIFTER_CHOICE
-): void => {
-  const queryClient = testQueryClient()
-  const { runAuthed } = buildSmartRouterContext(
-    { serverUrl: SERVER_URL, accessToken: ACCESS_TOKEN },
-    server.transport,
-    queryClient
-  )
+  { route = `patients/${PATIENT_ID}` }: { readonly route?: string } = {}
+): SmartAppPage => {
+  window.history.replaceState(null, '', `${BASEPATH}${route}`)
+  const page = openTestPage()
   renderWithQueryClient(
-    createElement(StrengthApp, {
+    createElement(StrengthRouter, {
+      page,
       client: server.clientFor(PATIENT_ID),
-      runAuthed,
-      patientChoice,
-      onPatientChange: () => undefined,
-    }),
-    queryClient
+      transport: server.transport,
+    })
   )
+  return page
 }
 
+/** Seed a second patient, Grace Hopper, under `id`. */
+const seedPatient = (server: FakeFhirServer, id: string): void => {
+  server.seedWire({
+    resourceType: 'Patient',
+    id,
+    name: [{ given: ['Grace'], family: 'Hopper' }],
+    birthDate: '1906-12-09',
+  })
+}
+
+/** The tab strip's link to `label`. */
+const tabLink = (label: string): HTMLElement => screen.getByRole('link', { name: label })
+
+/** The address bar's path under {@link BASEPATH}. */
+const currentRoute = (): string => window.location.pathname.slice(BASEPATH.length)
+
 export {
+  BASEPATH,
+  currentRoute,
   decodedOfType,
   END_TO_END_TIMEOUT_MILLIS,
   endStrengthTest,
@@ -282,14 +317,17 @@ export {
   loadsOf,
   mountStrengthApp,
   PATIENT_ID,
+  openTestPage,
   renderWithQueryClient,
   SEEDED_PLAN_DEFINITION_ID,
   seededExerciseRequests,
+  seedPatient,
   seedStartedLifter,
   seedWorkout,
   startStrengthTest,
   SUBJECT,
   SUBMITTED_AT,
+  tabLink,
   tapEverySet,
   trainingPlanDefinitionWireSchema,
   workoutProcedureWireSchema,

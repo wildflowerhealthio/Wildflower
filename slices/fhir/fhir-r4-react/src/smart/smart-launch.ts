@@ -1,6 +1,7 @@
 import {
   arrivingSmartLaunchFrom,
   endpointUrlFrom,
+  SMART_LAUNCH_PARAMS,
   type ArrivingSmartLaunch,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 import { Either } from 'effect'
@@ -140,9 +141,18 @@ const shouldCompleteSmartLaunch = (search: string = window.location.search): boo
 }
 
 /**
- * The OAuth redirect URI for a SMART app, from the URL of any page
- * served at its root: `href`'s directory (`new URL('.', href)`), without the
- * page's query or fragment.
+ * The OAuth redirect URI for a SMART app, from the URL of any of its pages:
+ * the app's served directory, `servedDirectory`, on `href`'s origin,
+ * without the page's query or fragment. Without `servedDirectory` it is
+ * `href`'s own directory (`new URL('.', href)`), right for an app whose every
+ * page sits at its root.
+ *
+ * @param href - The page's URL.
+ * @param servedDirectory - The directory the app is served from, as an
+ *   absolute, slash-suffixed path (a routed app's basepath, e.g. `/pr-7/`). A
+ *   routed app passes it, since a launch can open one of its deep routes
+ *   (`/patients/123/today?iss=…`), whose own directory is no registered
+ *   redirect URI.
  *
  * @remarks
  * The app root, which serves `index.html`, is the one redirect target for every
@@ -151,8 +161,8 @@ const shouldCompleteSmartLaunch = (search: string = window.location.search): boo
  * `launchErrorRedirect`. It is
  * the page that completes the handshake ({@link readySmartClient}) and the page
  * that can show a failure, so a launch always returns there. Every such page
- * sits in that directory, so each derives the same value, and the value is the
- * same on the way out and on the callback whatever query the page carries.
+ * derives the same value, and the value is the same on the way out and on the
+ * callback whatever query the page carries.
  *
  * Derived from the page URL rather than configured, so the bundle works at
  * whatever origin and path it is served from. It is not `authorization-core`'s
@@ -160,7 +170,8 @@ const shouldCompleteSmartLaunch = (search: string = window.location.search): boo
  * client's redirect URIs decide where a launch may return, and any userinfo the
  * page URL carries is kept.
  */
-const appRootRedirectUri = (href: string): string => new URL('.', href).href
+const appRootRedirectUri = (href: string, servedDirectory = '.'): string =>
+  new URL(servedDirectory, href).href
 
 export {
   appRootRedirectUri,
@@ -176,6 +187,8 @@ export {
   authorizeSmartLaunch,
   readySmartClient,
   shouldCompleteSmartLaunch,
+  /** Re-exported with `arrivingSmartLaunchFrom`: the parameters it reads a launch from. */
+  SMART_LAUNCH_PARAMS,
   type ArrivingSmartLaunch,
   type OpenServerConfig,
   type SmartLaunchConfig,

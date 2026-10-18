@@ -12,6 +12,7 @@ import {
   handshakeMock,
   lastPage,
   launchFailureRedirectMock,
+  MISSING_PATIENT_ID,
   patientPage,
   patientPageMock,
   readyHandshake,
@@ -24,7 +25,7 @@ import { renderApp } from './test-utils/render-app.ts'
 vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async () =>
   (await import('./test-utils/app-fakes.ts')).smartModuleFake()
 )
-vi.mock('./routes/interactions/-interaction-catalog.ts', async () =>
+vi.mock('./routes/-tabs/interactions/-interaction-catalog.ts', async () =>
   (await import('./test-utils/app-fakes.ts')).interactionCatalogModuleFake()
 )
 
@@ -45,10 +46,11 @@ describe('App', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it("should read the launch's patient's MedicationRequests, filtered by patient", async () => {
+  it("should open the launch's patient's page, in the app root's place, reading their MedicationRequests", async () => {
     // Arrange
     handshakeMock.mockReturnValue(readyHandshake)
     fetchMock.mockResolvedValue(lastPage)
+    const historyLength = window.history.length
 
     // Act
     renderApp()
@@ -57,9 +59,11 @@ describe('App', () => {
     await awaitFirstPage()
     expect(fetchMock).toHaveBeenCalledWith({ patientId: 'p1' })
     expect(screen.getByRole('button', { name: 'Change patient' })).toBeDefined()
+    expect(currentRoute()).toBe('patients/p1/medications')
+    expect(window.history.length).toBe(historyLength)
   })
 
-  it('should offer the patient picker with no patient in context, reading no MedicationRequests', async () => {
+  it('should open the patient picker with no patient in context, reading no MedicationRequests', async () => {
     // Arrange
     handshakeMock.mockReturnValue(handshakeLaunchedWith(null))
     patientPageMock.mockResolvedValue(patientPage)
@@ -70,15 +74,16 @@ describe('App', () => {
     // Assert
     expect(await screen.findByRole('button', { name: /All patients/ })).toBeDefined()
     expect(screen.getByRole('button', { name: /Ada Lovelace/ })).toBeDefined()
+    expect(currentRoute()).toBe('patients')
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it.each([
-    { pick: /Ada Lovelace/, patientParam: 'p2', cursor: { patientId: 'p2' } },
-    { pick: /All patients/, patientParam: '*', cursor: { patientId: null } },
+    { pick: /Ada Lovelace/, route: 'patients/p2/medications', cursor: { patientId: 'p2' } },
+    { pick: /All patients/, route: 'medications', cursor: { patientId: null } },
   ])(
-    'should read the MedicationRequests of the choice $patientParam, and write it to the URL',
-    async ({ pick, patientParam, cursor }) => {
+    'should read the MedicationRequests of the choice, at $route',
+    async ({ pick, route, cursor }) => {
       // Arrange
       handshakeMock.mockReturnValue(handshakeLaunchedWith(null))
       patientPageMock.mockResolvedValue(patientPage)
@@ -92,16 +97,33 @@ describe('App', () => {
       await awaitFirstPage()
       expect(fetchMock).toHaveBeenCalledWith(cursor)
       expect(fetchMock).toHaveBeenCalledTimes(1)
-      expect(new URLSearchParams(window.location.search).get('patient')).toBe(patientParam)
+      await waitFor(() => {
+        expect(currentRoute()).toBe(route)
+      })
     }
   )
 
-  it('should go back to the picker on Change patient', async () => {
+  it('should link every patient’s tabs at the top level', async () => {
+    // Arrange
+    handshakeMock.mockReturnValue(readyHandshake)
+    fetchMock.mockResolvedValue(lastPage)
+
+    // Act
+    renderApp({ route: 'calendar' })
+
+    // Assert
+    await awaitFirstPage()
+    expect(screen.getByText('All patients')).toBeDefined()
+    expect(fetchMock).toHaveBeenCalledWith({ patientId: null })
+    expect(tabLink('Savings').getAttribute('href')).toBe(`${BASEPATH}savings`)
+  })
+
+  it('should push the picker on Change patient, closing it on Back over the tab open and reopening it on Forward', async () => {
     // Arrange
     handshakeMock.mockReturnValue(readyHandshake)
     fetchMock.mockResolvedValue(lastPage)
     patientPageMock.mockResolvedValue(patientPage)
-    renderApp()
+    renderApp({ route: 'patients/p1/calendar' })
     await awaitFirstPage()
 
     // Act
@@ -109,50 +131,26 @@ describe('App', () => {
 
     // Assert
     expect(await screen.findByRole('heading', { name: 'Choose a patient' })).toBeDefined()
-  })
-
-  it('should keep the tab open when the patient changes', async () => {
-    // Arrange
-    handshakeMock.mockReturnValue(readyHandshake)
-    fetchMock.mockResolvedValue(lastPage)
-    patientPageMock.mockResolvedValue(patientPage)
-    renderApp({ route: 'calendar' })
-    await awaitFirstPage()
+    expect(currentRoute()).toBe('patients')
 
     // Act
-    fireEvent.click(screen.getByRole('button', { name: 'Change patient' }))
-    fireEvent.click(await screen.findByRole('button', { name: /Ada Lovelace/ }))
+    window.history.back()
 
     // Assert
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith({ patientId: 'p2' })
+      expect(screen.queryByRole('heading', { name: 'Choose a patient' })).toBeNull()
     })
     await awaitFirstPage()
-    expect(tabLink('Calendar').getAttribute('aria-current')).toBe('page')
-    expect(currentRoute()).toBe('calendar')
-    expect(new URLSearchParams(window.location.search).get('patient')).toBe('p2')
-  })
-
-  it('should keep the chosen patient in the URL across tab changes', async () => {
-    // Arrange
-    handshakeMock.mockReturnValue(handshakeLaunchedWith(null))
-    patientPageMock.mockResolvedValue(patientPage)
-    fetchMock.mockResolvedValue(lastPage)
-    renderApp()
-    fireEvent.click(await screen.findByRole('button', { name: /Ada Lovelace/ }))
-    await awaitFirstPage()
+    expect(currentRoute()).toBe('patients/p1/calendar')
 
     // Act
-    fireEvent.click(tabLink('Savings'))
+    window.history.forward()
 
     // Assert
-    await waitFor(() => {
-      expect(currentRoute()).toBe('savings')
-    })
-    expect(new URLSearchParams(window.location.search).get('patient')).toBe('p2')
+    expect(await screen.findByRole('heading', { name: 'Choose a patient' })).toBeDefined()
   })
 
-  it('should bring back the patient before, on their tab, on Back after a patient change', async () => {
+  it('should bring back the patient before, on their tab, on Back through the picker after a patient change', async () => {
     // Arrange: the launch's patient p1 takes atorvastatin; Ada (p2) takes nothing.
     handshakeMock.mockReturnValue(readyHandshake)
     fetchMock.mockImplementation((cursor) =>
@@ -163,62 +161,31 @@ describe('App', () => {
       )
     )
     patientPageMock.mockResolvedValue(patientPage)
-    renderApp({ route: 'calendar' })
+    renderApp({ route: 'patients/p1/calendar' })
     await awaitFirstPage()
     fireEvent.click(tabLink('Medications'))
     expect(await screen.findByText(/Atorvastatin/)).toBeDefined()
     fireEvent.click(screen.getByRole('button', { name: 'Change patient' }))
     fireEvent.click(await screen.findByRole('button', { name: /Ada Lovelace/ }))
     expect(await screen.findByText('No medications found.')).toBeDefined()
-    expect(new URLSearchParams(window.location.search).get('patient')).toBe('p2')
+    expect(currentRoute()).toBe('patients/p2/medications')
 
-    // Act
+    // Act: Back to the picker's entry, then past it.
+    window.history.back()
+    expect(await screen.findByRole('heading', { name: 'Choose a patient' })).toBeDefined()
     window.history.back()
 
-    // Assert: the entry before names no patient, so the launch's, as it showed.
+    // Assert: p1's page, on the tab it showed, read from the cache.
     expect(await screen.findByText(/Atorvastatin/)).toBeDefined()
-    expect(currentRoute()).toBe('medications')
-    expect(window.location.search).toBe('')
+    expect(currentRoute()).toBe('patients/p1/medications')
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
-  it('should close the picker for the patient an entry names, on Back with the picker up', async () => {
-    // Arrange: Ada (p2) chosen over the launch's p1, then the picker opened.
+  it('should read a numeric-looking patient id in the path as the id it is', async () => {
+    // Arrange — `1.50` would read as the number 1.5 under a JSON parser
     handshakeMock.mockReturnValue(readyHandshake)
     fetchMock.mockResolvedValue(lastPage)
-    patientPageMock.mockResolvedValue(patientPage)
-    renderApp()
-    await awaitFirstPage()
-    fireEvent.click(screen.getByRole('button', { name: 'Change patient' }))
-    fireEvent.click(await screen.findByRole('button', { name: /Ada Lovelace/ }))
-    await awaitFirstPage()
-    fireEvent.click(screen.getByRole('button', { name: 'Change patient' }))
-    expect(await screen.findByRole('heading', { name: 'Choose a patient' })).toBeDefined()
-
-    // Act
-    window.history.back()
-
-    // Assert
-    await awaitFirstPage()
-    expect(screen.queryByRole('heading', { name: 'Choose a patient' })).toBeNull()
-    expect(window.location.search).toBe('')
-
-    // Act: Forward, to the entry the picker was opened on.
-    window.history.forward()
-
-    // Assert: Ada's page, the picker closed for good.
-    await waitFor(() => {
-      expect(new URLSearchParams(window.location.search).get('patient')).toBe('p2')
-    })
-    await awaitFirstPage()
-    expect(screen.queryByRole('heading', { name: 'Choose a patient' })).toBeNull()
-  })
-
-  it('should read the patient a numeric `?patient=` names, keeping it as written across tabs', async () => {
-    // Arrange
-    handshakeMock.mockReturnValue(readyHandshake)
-    fetchMock.mockResolvedValue(lastPage)
-    renderApp({ route: 'medications?patient=123' })
+    renderApp({ route: 'patients/1.50/medications' })
     await awaitFirstPage()
 
     // Act
@@ -226,10 +193,10 @@ describe('App', () => {
 
     // Assert
     await waitFor(() => {
-      expect(currentRoute()).toBe('savings')
+      expect(currentRoute()).toBe('patients/1.50/savings')
     })
-    expect(fetchMock).toHaveBeenCalledWith({ patientId: '123' })
-    expect(window.location.search).toBe('?patient=123')
+    expect(fetchMock).toHaveBeenCalledWith({ patientId: '1.50' })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('should not read MedicationRequests until the handshake resolves', () => {
@@ -244,7 +211,7 @@ describe('App', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('should leave the callback URL alone until the handshake completes, then open Medications', async () => {
+  it('should leave the callback URL alone until the handshake completes, then open the launch’s patient', async () => {
     // Arrange: the OAuth callback, its code and state still to be exchanged.
     handshakeMock.mockReturnValue({ kind: 'connecting' })
     fetchMock.mockResolvedValue(lastPage)
@@ -263,7 +230,7 @@ describe('App', () => {
     // Assert
     await awaitFirstPage()
     await waitFor(() => {
-      expect(currentRoute()).toBe('medications')
+      expect(currentRoute()).toBe('patients/p1/medications')
     })
     expect(window.location.search).toBe('')
   })
@@ -306,7 +273,7 @@ describe('App', () => {
     const historyLength = window.history.length
 
     // Act
-    renderApp()
+    renderApp({ route: 'patients/p1' })
 
     // Assert
     await awaitFirstPage()
@@ -316,30 +283,53 @@ describe('App', () => {
     await waitFor(() => {
       expect(tabLink('Medications').getAttribute('aria-current')).toBe('page')
     })
-    expect(currentRoute()).toBe('medications')
+    expect(currentRoute()).toBe('patients/p1/medications')
     expect(window.history.length).toBe(historyLength)
     expect(screen.queryByRole('combobox', { name: 'Province' })).toBeNull()
     expect(await screen.findByText('No medications found.')).toBeDefined()
   })
 
-  it('should say a path no tab names has no page, offering the list for the same patient', async () => {
+  it.each([
+    { case: 'a path no route names', route: 'index.html', pathname: '/index.html' },
+    {
+      case: 'every patient’s interactions, between different people’s medications',
+      route: 'interactions',
+      pathname: '/interactions',
+    },
+    {
+      case: 'a path under a patient no tab names',
+      route: 'patients/p1/nowhere',
+      pathname: '/patients/p1/nowhere',
+    },
+  ])('should say $case has no page, offering the picker', async ({ route, pathname }) => {
     // Arrange
     handshakeMock.mockReturnValue(readyHandshake)
     fetchMock.mockResolvedValue(lastPage)
-    renderApp({ route: 'index.html?patient=p2' })
-    await awaitFirstPage()
-    expect(
-      await screen.findByText('The Medication Viewer has no page at /index.html.')
-    ).toBeDefined()
+    patientPageMock.mockResolvedValue(patientPage)
+    renderApp({ route })
+    expect(await screen.findByText(`There's no page at ${pathname}.`)).toBeDefined()
 
     // Act
-    fireEvent.click(screen.getByRole('button', { name: 'Open the medications list' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Choose a patient' }))
 
     // Assert
-    expect(await screen.findByText('No medications found.')).toBeDefined()
-    expect(currentRoute()).toBe('medications')
-    expect(fetchMock).toHaveBeenCalledWith({ patientId: 'p2' })
-    expect(new URLSearchParams(window.location.search).get('patient')).toBe('p2')
+    expect(await screen.findByRole('heading', { name: 'Choose a patient' })).toBeDefined()
+    expect(currentRoute()).toBe('patients')
+  })
+
+  it('should say the server has no patient for an id it does not hold, reading nothing of theirs', async () => {
+    // Arrange
+    handshakeMock.mockReturnValue(readyHandshake)
+
+    // Act
+    renderApp({ route: `patients/${MISSING_PATIENT_ID}/calendar` })
+
+    // Assert
+    expect(
+      await screen.findByText(`This server has no patient ${MISSING_PATIENT_ID}.`)
+    ).toBeDefined()
+    expect(screen.queryByRole('navigation', { name: 'Medication views' })).toBeNull()
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('should render the chunk bar only from four pages, locked once every page has arrived', async () => {

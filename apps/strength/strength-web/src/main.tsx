@@ -8,6 +8,7 @@ import '@wildflowerhealthio/react-tundraish/styles'
 
 import { restoreRedirectedUrl } from '@wildflowerhealthio/branding-core'
 import { addOsColorSchemeListener } from '@wildflowerhealthio/react-tundraish'
+import { openSmartAppPage } from '@wildflowerhealthio/smart-app-react'
 import { AppRoot } from './app-root.tsx'
 
 // Complete a GitHub Pages 404 redirect before anything reads the URL — see
@@ -20,9 +21,12 @@ addOsColorSchemeListener()
 
 const container = document.getElementById('root')
 if (container !== null) {
+  // The page the app's router runs over, opened once for the page's life; see
+  // "Routing a SMART app" in `slices/smart-app-react/AGENTS.md`.
+  const page = openSmartAppPage(import.meta.url)
   createRoot(container).render(
     <StrictMode>
-      <AppRoot />
+      <AppRoot page={page} />
     </StrictMode>
   )
 }
