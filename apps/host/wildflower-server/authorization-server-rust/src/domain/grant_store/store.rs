@@ -363,6 +363,18 @@ pub trait GrantStore {
         self.with_connection(|tx| tx.browser_session_by_sid(sid))
     }
 
+    /// See [`GrantTx::live_browser_sessions`].
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`GrantTx::live_browser_sessions`]'s error.
+    fn live_browser_sessions(
+        &self,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<BrowserSession>, AuthorizationServerError> {
+        self.with_connection(|tx| tx.live_browser_sessions(now))
+    }
+
     /// See [`GrantTx::browser_session_is_revoked`].
     ///
     /// # Errors
@@ -383,6 +395,20 @@ pub trait GrantStore {
         now: DateTime<Utc>,
     ) -> Result<bool, AuthorizationServerError> {
         self.with_connection(|tx| tx.revoke_browser_session(sid, now))
+    }
+
+    /// See [`GrantTx::touch_browser_session_last_seen`].
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`GrantTx::touch_browser_session_last_seen`]'s error.
+    fn touch_browser_session_last_seen(
+        &self,
+        sid: &str,
+        seen_at: DateTime<Utc>,
+        seen_before: DateTime<Utc>,
+    ) -> Result<bool, AuthorizationServerError> {
+        self.with_connection(|tx| tx.touch_browser_session_last_seen(sid, seen_at, seen_before))
     }
 
     /// See [`GrantTx::insert_refresh_token_family_row`].

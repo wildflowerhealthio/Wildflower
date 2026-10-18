@@ -3,18 +3,22 @@
 //! the [`Capability`]/[`FixedScopeCapability`] traits) lives in
 //! [`wildflowerhealthio_scope_capabilities`]; this module supplies one capability per
 //! (resource, permission) the surface gates, split by resource: [`grants`],
-//! [`clients`], [`consents`], [`tokens`]. Their privileged writes go through the sibling
+//! [`clients`], [`consents`], [`tokens`], [`browser_sessions`]. Their privileged writes go through the sibling
 //! [`writers`](crate::domain::capabilities::writers) under an authority proof.
 //!
 //! The (resource, permission) → required-scope mapping lives in one place — each
 //! capability's `*_scopes()` function — read by **both** its `Capability` binding
 //! and [`grantable_admin_scopes`], so *enforced* and *grantable* can't drift.
 
+pub(crate) mod browser_sessions;
 pub(crate) mod clients;
 pub(crate) mod consents;
 pub(crate) mod grants;
 pub(crate) mod tokens;
 
+pub(crate) use browser_sessions::{
+    BrowserSessionView, BrowserSessionsReader, BrowserSessionsRevoker,
+};
 pub(crate) use clients::{ClientView, ClientsDisabler, ClientsReader};
 pub use consents::{
     ApproveDeviceConsentInput, ApproveOAuthConsentInput, ConsentOutcome, DeviceConsentView,
@@ -47,6 +51,8 @@ pub fn grantable_admin_scopes() -> Vec<Scope> {
         consents::grant_creating_approval_scopes(),
         consents::client_registering_approval_scopes(),
         tokens::token_revoker_scopes(),
+        browser_sessions::browser_sessions_reader_scopes(),
+        browser_sessions::browser_sessions_revoker_scopes(),
     ];
     let mut seen = HashSet::new();
     declared
@@ -76,6 +82,8 @@ mod tests {
                 "wildflower/Grant.c".to_owned(),
                 "wildflower/Client.c".to_owned(),
                 "wildflower/Token.d".to_owned(),
+                "wildflower/BrowserSession.r".to_owned(),
+                "wildflower/BrowserSession.d".to_owned(),
             ],
         );
     }
@@ -107,6 +115,7 @@ mod tests {
             include_str!("clients.rs"),
             include_str!("consents/mod.rs"),
             include_str!("tokens.rs"),
+            include_str!("browser_sessions.rs"),
         ];
         let scope_fns: usize = CAPABILITY_SOURCES
             .iter()
@@ -114,7 +123,7 @@ mod tests {
             .sum();
         // One `declared` entry per scope function. Update BOTH when adding a
         // checked scope: its `*_scopes()` fn and the `declared` array.
-        let declared_entries = 9;
+        let declared_entries = 11;
         assert_eq!(
             scope_fns, declared_entries,
             "found {scope_fns} capability scope functions but grantable_admin_scopes() declares \

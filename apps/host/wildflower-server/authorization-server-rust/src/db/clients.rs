@@ -706,7 +706,7 @@ mod tests {
     /// Wildflower Authorization's client (`0031`) is a public PKCE client
     /// returning to the app's published root (its own origin, added by `0037`,
     /// and its path on `wildflowerhealth.io`), allowed exactly the scopes the
-    /// app asks for. Its id and scope string are read out of the app's
+    /// app asks for (widened by `0041`). Its id and scope string are read out of the app's
     /// `src/config.ts`, the one place the app writes them, so the row can't
     /// drift from it unnoticed: a scope the app asks for that the row doesn't
     /// allow fails `/oauth/authorize`.
@@ -752,6 +752,7 @@ mod tests {
                 "wildflower/Grant.rd".to_string(),
                 "wildflower/Client.ru".to_string(),
                 "wildflower/Token.d".to_string(),
+                "wildflower/BrowserSession.rd".to_string(),
             ],
         );
         assert_eq!(

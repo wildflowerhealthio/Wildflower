@@ -29,6 +29,8 @@
 //!   `crate::http` and the concrete adapter types. The `Live…` aliases are what
 //!   the handlers name in `Scoped<…>`, `Authenticated<…>`, or `Live<…>`.
 
+mod browser_sessions_reader;
+mod browser_sessions_revoker;
 mod client_authenticator;
 mod client_token_revoker;
 mod clients_disabler;
@@ -49,6 +51,8 @@ pub mod state;
 mod token_exchanger;
 mod token_revoker;
 
+pub(crate) use browser_sessions_reader::LiveBrowserSessionsReader;
+pub(crate) use browser_sessions_revoker::LiveBrowserSessionsRevoker;
 pub(crate) use client_authenticator::LiveClientAuthenticator;
 pub(crate) use client_token_revoker::LiveClientTokenRevoker;
 pub(crate) use clients_disabler::LiveClientsDisabler;
@@ -66,7 +70,10 @@ pub(crate) use oauth_front_door::{
 };
 pub use pending_consent_watcher::PendingConsentWatcher;
 pub use same_device_sign_in_code_minter::SameDeviceSignInCodeMinter;
-pub(crate) use session::{LiveSessionEnder, LiveSessionReader, LiveTokenVerifier};
+pub(crate) use session::{
+    LiveBrowserSessionEnder, LiveBrowserSessionUseRecorder, LiveSessionEnder, LiveSessionReader,
+    LiveTokenVerifier,
+};
 pub use state::AuthorizationServerState;
 pub(crate) use token_exchanger::LiveTokenExchanger;
 pub(crate) use token_revoker::LiveTokenRevoker;

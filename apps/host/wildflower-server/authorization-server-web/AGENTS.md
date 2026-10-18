@@ -37,8 +37,8 @@ Security Policy (below).
 
 - `consent.html` + `src/consent/main.tsx` — the consent card's entry: reads
   the request id from its path and `then` from its query
-  (`src/then-query.ts`), and mounts `ConsentPage` over
-  `browserSessionRunner(location.origin, FetchHttpClient.layer)`.
+  (`src/then-query.ts`), and mounts `ConsentPage`, with `SessionFooter` under
+  it, over `browserSessionRunner(location.origin, FetchHttpClient.layer)`.
 - `src/consent/consent-page.tsx` — reads the consent, renders the card with a
   patient search (`patient-search.ts`, FHIR `GET /Patient?name=`, each hit
   read as a `PatientMinimal`), and leaves
@@ -59,7 +59,8 @@ Security Policy (below).
   device.
 - `device.html` + `src/device/main.tsx` — the device page's entry: reads the
   `user_code` (`user-code-query.ts`) and `then` (`src/then-query.ts`) from its
-  query and mounts `DevicePage` over the same runner.
+  query and mounts `DevicePage`, with `SessionFooter` under it, over the same
+  runner.
 - `src/device/device-page.tsx` — on load reads `GET /authorization/session`:
   with no session (`401`), or one whose scopes don't cover
   `Devices.DEVICE_CONSENT_SCOPES` (authorization-core), it says to approve the
@@ -80,7 +81,8 @@ Security Policy (below).
   server" cases stay as they are.
 - `pair.html` + `src/pair/main.tsx` — the pairing page's entry: reads `next`
   from its query (`next-query.ts`) and mounts `PairPage` over the same runner,
-  leaving with `window.location.assign`.
+  leaving with `window.location.assign`. It has no `SessionFooter`: a browser
+  there is not signed in.
 - `src/pair/pair-page.tsx` — on load posts `/oauth/pair/start` with `next`
   (one start per attempt: a `useQuery` that never refetches), then shows the
   code, a name field filled from the start's `browserName`, and polls
@@ -91,6 +93,17 @@ Security Policy (below).
   (`BrowserPairingNextNotAllowed`, `BrowserSessionClientDisabled`) says why in
   plain words. The page judges no `next` itself: the server allows only a
   path on its own origin.
+- `src/session-query.ts` — `sessionQueryOptions`: the page's one read of
+  `GET /authorization/session`, `None` for a browser that isn't signed in
+  (`401`). The device page and `SessionFooter` share its key, so a page sends
+  it once.
+- `src/session-footer.tsx` — `SessionFooter`, under the consent card and the
+  device page: reads the session (`sessionQueryOptions`) and, when its
+  `browserSessionExpiresAt` names this browser's session, says "Signed in
+  until" that time over a **Sign out** button, a plain form `POST` to
+  `/oauth/sign-out`, which revokes the session, clears its cookie and
+  redirects to the launcher. A browser with no session (`401`), or a token
+  under none, gets no footer.
 - `src/then-query.ts` — `goBackOnceDecidedOf`: the query's `then`, decoded at
   the entry into `Some` step back out of the window for `then=back` and
   `None` for anything else. The pages take it as the `goBackOnceDecided`
@@ -113,8 +126,13 @@ Security Policy (below).
 ## Traps
 
 - **The server serves every file under
-  `default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`.**
-  No inline `<script>` or `<style>`, no `data:` URLs and no images. Fonts load
+  `default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self' <launcher origin>; frame-ancestors 'none'`.**
+  No inline `<script>` or `<style>`, no `data:` URLs and no images. The only
+  form is the footer's Sign out, which posts to this origin and is redirected
+  to the launcher's. The referrer policy, the header's and each page's
+  `<meta name="referrer">`, is `same-origin`: under `no-referrer` a browser
+  sends the form's `POST` with `Origin: null`, and the host's cookie→bearer
+  layer refuses it. Fonts load
   from `/oauth/assets/`: `main.tsx` imports `react-tundraish/styles`, which
   brings the Atkinson Hyperlegible faces.
 - **Only `/oauth/assets/*.js`, `*.css` and `*.woff2` are served.** An asset of
@@ -132,7 +150,8 @@ Security Policy (below).
   a placeholder. The crate's `build.rs` rebuilds it when `dist/` changes.
 - **The APIs are same-origin only.** `vp dev` serves the page with no server
   behind it; the pages' behaviour is covered by `consent-page.test.tsx`,
-  `device-page.test.tsx` and `pair-page.test.tsx` against a stub server.
+  `device-page.test.tsx`, `pair-page.test.tsx` and `session-footer.test.tsx`
+  against a stub server.
 
 ## References
 

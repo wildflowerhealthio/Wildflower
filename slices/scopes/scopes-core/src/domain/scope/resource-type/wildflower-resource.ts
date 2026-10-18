@@ -30,6 +30,7 @@ const RESOURCE_LABELS: Readonly<
   Token: { label: 'Token', plural: 'Tokens' },
   Apps: { label: 'App', plural: 'Apps' },
   RequestLog: { label: 'Request log', plural: 'Request log' },
+  BrowserSession: { label: 'Browser session', plural: 'Browser sessions' },
 }
 
 // oxlint-disable import/group-exports
@@ -98,6 +99,7 @@ namespace WildflowerResourceType {
     | 'Token'
     | 'Apps'
     | 'RequestLog'
+    | 'BrowserSession'
 
   namespace Resource {
     export const all: readonly Resource[] = [
@@ -107,6 +109,7 @@ namespace WildflowerResourceType {
       'Token',
       'Apps',
       'RequestLog',
+      'BrowserSession',
     ]
 
     /** Whether a string is one of the closed set of Wildflower admin resources. */

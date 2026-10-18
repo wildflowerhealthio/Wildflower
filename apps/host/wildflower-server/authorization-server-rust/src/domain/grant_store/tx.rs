@@ -367,6 +367,18 @@ pub trait GrantTx {
         sid: &str,
     ) -> Result<Option<BrowserSession>, AuthorizationServerError>;
 
+    /// Every browser session live at `now`: not revoked, and expiring after
+    /// `now`. Newest first.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the read fails or a row
+    /// cannot be mapped to a [`BrowserSession`].
+    fn live_browser_sessions(
+        &mut self,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<BrowserSession>, AuthorizationServerError>;
+
     /// Whether the browser session `sid` has been revoked, without loading
     /// it. A `sid` that names no session counts as revoked: a session is
     /// pruned only once nothing it minted can still be live, so a missing row
@@ -387,6 +399,20 @@ pub trait GrantTx {
         &mut self,
         sid: &str,
         now: DateTime<Utc>,
+    ) -> Result<bool, AuthorizationServerError>;
+
+    /// Move the browser session `sid`'s `last_seen_at` to `seen_at`, unless
+    /// it was last seen after `seen_before`, returning `true` iff it
+    /// moved. A `sid` with no row moves nothing.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the update fails.
+    fn touch_browser_session_last_seen(
+        &mut self,
+        sid: &str,
+        seen_at: DateTime<Utc>,
+        seen_before: DateTime<Utc>,
     ) -> Result<bool, AuthorizationServerError>;
 
     // ----- retention ------------------------------------------------------

@@ -1,4 +1,3 @@
-import { HttpApiError, HttpClientError } from '@effect/platform'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { AuthorizationServerHttpApiClient } from '@wildflowerhealthio/authorization-core/clients'
 import { Devices } from '@wildflowerhealthio/authorization-core/http-api-definition'
@@ -20,6 +19,7 @@ import { Effect, Match, Option, Schema } from 'effect'
 import { useEffect, useState, type JSX } from 'react'
 
 import { DecidedThenBack } from '../decided-then-back.tsx'
+import { isSignedOut, sessionQueryOptions, type Session } from '../session-query.ts'
 
 import { withoutUserCode } from './user-code-query.ts'
 import styles from './device-page.module.css'
@@ -68,26 +68,20 @@ type DeviceLookup =
  * isn't signed in (`401`), or its session can't read device consents (`403`).
  */
 const isUndecidableHere = (error: unknown): boolean =>
-  error instanceof HttpApiError.Unauthorized ||
-  (error instanceof HttpClientError.ResponseError && error.response.status === 401) ||
-  isInsufficientScopeBody(error)
+  isSignedOut(error) || isInsufficientScopeBody(error)
 
 /** The scopes the device routes need, as a grant to check a session against. */
 const deviceConsentGrant = Grant.parse(Devices.DEVICE_CONSENT_SCOPES)
 
 /**
  * Whether this browser's session can read and decide device requests here:
- * `GET /authorization/session` (authN-only) answers its scopes, which must
- * cover {@link Devices.DEVICE_CONSENT_SCOPES}. No session (`401`) can't.
+ * `GET /authorization/session` (authN-only, {@link sessionQueryOptions})
+ * answers its scopes, which must cover {@link Devices.DEVICE_CONSENT_SCOPES}.
+ * No session (`401`) can't.
  */
-const sessionDecidesDevices: Effect.Effect<boolean, unknown, AuthorizationServerHttpApiClient> =
-  Effect.flatMap(AuthorizationServerHttpApiClient, (client) =>
-    client['access-management'].GetSession()
-  ).pipe(
-    Effect.map((session) =>
-      Scope.MultiScope.within(deviceConsentGrant, Grant.parse(session.scopes))
-    ),
-    Effect.catchIf(isUndecidableHere, () => Effect.succeed(false))
+const sessionDecidesDevices = (session: Option.Option<Session>): boolean =>
+  Option.exists(session, ({ scopes }) =>
+    Scope.MultiScope.within(deviceConsentGrant, Grant.parse(scopes))
   )
 
 /** The pending device request `userCode` names, as a {@link DeviceLookup}. */
@@ -193,15 +187,8 @@ const DevicePage = ({
   goBackOnceDecided,
 }: DevicePageProps): JSX.Element => {
   const sessionQuery = useQuery({
-    queryKey: ['device-page', 'session'],
-    queryFn: () => runAuthed(sessionDecidesDevices),
-    // One read for the page's life: a refetch on focus could swap an open
-    // card for another view and lose the Owner's draft. The read is the
-    // page's first; a retry only delays the answer.
-    staleTime: Infinity,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-    retry: false,
+    ...sessionQueryOptions(runAuthed),
+    select: sessionDecidesDevices,
   })
   // The read runs when the Owner confirms a code, not on render, so it is a
   // mutation: each confirmation is a fresh read with its own answer.

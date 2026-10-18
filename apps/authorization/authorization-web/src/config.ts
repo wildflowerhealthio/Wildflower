@@ -16,9 +16,14 @@ const AUTHORIZATION_CLIENT_ID = '7277e898bee8ac81ea44788236e619a5'
  * - `wildflower/Grant.rd` lists the grants and revokes one;
  * - `wildflower/Client.ru` lists the trusted apps and disables or enables one;
  * - `wildflower/Token.d` revokes every token a revoked grant's client holds
- *   (`POST /authorization/revocations`).
+ *   (`POST /authorization/revocations`);
+ * - `wildflower/BrowserSession.rd` lists the signed-in browsers and revokes
+ *   one.
+ *
+ * The seeded row is widened to match by `0041_widen_authorization_web_client_scopes`.
  */
-const AUTHORIZATION_SCOPE = 'openid wildflower/Grant.rd wildflower/Client.ru wildflower/Token.d'
+const AUTHORIZATION_SCOPE =
+  'openid wildflower/Grant.rd wildflower/Client.ru wildflower/Token.d wildflower/BrowserSession.rd'
 
 /**
  * The redirect URI of the published build, on the app's own origin, and the

@@ -107,7 +107,8 @@ const OWNER_SCOPES = ['system/*.cruds', 'wildflower/*.cruds']
 const serverHolding =
   (userCode: string, decision: unknown, sessionScopes: readonly string[] = OWNER_SCOPES): Answer =>
   (request) => {
-    if (request.path === SESSION_PATH) return { status: 200, body: { scopes: sessionScopes } }
+    if (request.path === SESSION_PATH)
+      return { status: 200, body: { scopes: sessionScopes, browserSessionExpiresAt: null } }
     if (request.path === `/authorization/devices/${userCode}`) {
       return { status: 200, body: deviceConsentFor(userCode) }
     }
@@ -410,7 +411,7 @@ describe('DevicePage — a browser that cannot decide here', () => {
     async (_case, status, body) => {
       answer = (request) =>
         request.path === SESSION_PATH
-          ? { status: 200, body: { scopes: OWNER_SCOPES } }
+          ? { status: 200, body: { scopes: OWNER_SCOPES, browserSessionExpiresAt: null } }
           : { status, body }
       const { user } = renderPage('WDJB-MJHT')
 

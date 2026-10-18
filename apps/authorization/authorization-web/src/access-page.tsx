@@ -24,6 +24,7 @@ import {
 import type { JSX } from 'react'
 import { useState } from 'react'
 
+import { BrowsersSection } from './browsers-section.tsx'
 import { AUTHORIZATION_CLIENT_ID } from './config.ts'
 import type { RouterContext } from './router-context.ts'
 import styles from './access-page.module.css'
@@ -34,14 +35,16 @@ interface AccessPageBodyProps {
 }
 
 /**
- * The server's access, in three lists:
+ * The server's access, in four lists:
  *
  * - **Approved Apps**: the authorization-code grants, each with a Revoke
  *   (confirmed), which deletes the grant and then revokes every token its
  *   client holds;
  * - **Trusted Apps**: every client the server trusts, with the switch that
  *   disables or enables one ({@link TrustedAppsSection});
- * - **Authorized Devices**: the device-code grants, read only.
+ * - **Authorized Devices**: the device-code grants, read only;
+ * - **Browsers**: every browser the server has signed in, with the Revoke
+ *   that ends its session ({@link BrowsersSection}).
  *
  * No Revoke is offered for this app's own grant, which would revoke the
  * bearer the page is signed in with.
@@ -144,6 +147,11 @@ const AccessPageBody = ({ serverUrl, grants }: AccessPageBodyProps): JSX.Element
           }))}
         />
       ) : null}
+
+      {/* Every browser the server has signed in, this one marked, with the
+          Revoke that signs it out. Loads and fails on its own, like the
+          trusted apps. */}
+      <BrowsersSection />
 
       <ConfirmDialog
         open={grantToRevoke !== null}

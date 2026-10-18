@@ -68,7 +68,7 @@ async fn the_wait_page_is_static_and_locked_down() {
     ] {
         assert!(csp.contains(directive), "{directive} in {csp}");
     }
-    assert_eq!(header(&ordinary, "referrer-policy"), "no-referrer");
+    assert_eq!(header(&ordinary, "referrer-policy"), "same-origin");
     assert_eq!(header(&ordinary, "x-content-type-options"), "nosniff");
     assert_eq!(header(&ordinary, "cache-control"), "no-store");
 
