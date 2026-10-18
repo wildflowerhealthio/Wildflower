@@ -109,6 +109,15 @@ pub(crate) struct GrantNotFoundBody {
     pub(crate) id: String,
 }
 
+/// Wire shape for `BrowserSessionNotFound` (404) — no standing browser
+/// session has this `sid`.
+#[derive(Debug, Serialize)]
+pub(crate) struct BrowserSessionNotFoundBody {
+    /// Always `"BrowserSessionNotFound"`.
+    pub(crate) error: &'static str,
+    pub(crate) sid: String,
+}
+
 /// Wire shape for `ClientNotFound` (404) — no registered client has this
 /// `client_id`.
 #[derive(Debug, Serialize, ToSchema)]
@@ -202,6 +211,14 @@ impl IntoResponse for AuthorizationServerError {
                 Json(GrantNotFoundBody {
                     error: "GrantNotFound",
                     id,
+                }),
+            )
+                .into_response(),
+            AuthorizationServerError::BrowserSessionNotFound { sid } => (
+                StatusCode::NOT_FOUND,
+                Json(BrowserSessionNotFoundBody {
+                    error: "BrowserSessionNotFound",
+                    sid,
                 }),
             )
                 .into_response(),

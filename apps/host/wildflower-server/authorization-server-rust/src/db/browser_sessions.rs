@@ -21,6 +21,7 @@ diesel::table! {
         created_at -> TimestamptzSqlite,
         expires_at -> TimestamptzSqlite,
         revoked_at -> Nullable<TimestamptzSqlite>,
+        last_seen_at -> TimestamptzSqlite,
     }
 }
 
@@ -57,6 +58,21 @@ pub(super) fn browser_session_by_sid(
         .map_err(|e| AuthorizationServerError::infrastructure("browser_session_by_sid failed", e))
 }
 
+/// Every browser session live at `now` (not revoked, `expires_at` after
+/// `now`), newest first.
+pub(super) fn live_browser_sessions(
+    conn: &mut SqliteConnection,
+    now: DateTime<Utc>,
+) -> Result<Vec<BrowserSession>, AuthorizationServerError> {
+    browser_sessions::table
+        .filter(browser_sessions::revoked_at.is_null())
+        .filter(browser_sessions::expires_at.gt(now))
+        .order(browser_sessions::created_at.desc())
+        .select(BrowserSession::as_select())
+        .load(conn)
+        .map_err(|e| AuthorizationServerError::infrastructure("live_browser_sessions failed", e))
+}
+
 /// Whether the browser session `sid` is revoked or missing: no row with that
 /// `sid` and `revoked_at IS NULL` exists.
 pub(super) fn browser_session_is_revoked(
@@ -88,6 +104,29 @@ pub(super) fn revoke_browser_session(
     .set(browser_sessions::revoked_at.eq(now))
     .execute(conn)
     .map_err(|e| AuthorizationServerError::infrastructure("revoke_browser_session failed", e))?;
+    Ok(affected == 1)
+}
+
+/// Move the browser session `sid`'s `last_seen_at` to `seen_at`, unless it was
+/// last seen after `seen_before`, returning `true` iff it moved. The
+/// guard keeps the column from moving backwards, and from moving more than
+/// once inside a window that ends at `seen_at`.
+pub(super) fn touch_browser_session_last_seen(
+    conn: &mut SqliteConnection,
+    sid: &str,
+    seen_at: DateTime<Utc>,
+    seen_before: DateTime<Utc>,
+) -> Result<bool, AuthorizationServerError> {
+    let affected = diesel::update(
+        browser_sessions::table
+            .find(sid)
+            .filter(browser_sessions::last_seen_at.le(seen_before)),
+    )
+    .set(browser_sessions::last_seen_at.eq(seen_at))
+    .execute(conn)
+    .map_err(|e| {
+        AuthorizationServerError::infrastructure("touch_browser_session_last_seen failed", e)
+    })?;
     Ok(affected == 1)
 }
 
@@ -199,6 +238,77 @@ mod tests {
         assert!(!store
             .revoke_browser_session("no-such-sid", now)
             .expect("revoke"));
+    }
+
+    /// Only sessions neither revoked nor expired at `now` are live, newest
+    /// first.
+    #[test]
+    fn live_sessions_are_the_unrevoked_unexpired_ones_newest_first() {
+        let store = store();
+        let now = chrono::Utc::now();
+        let older = BrowserSession::new_owner(vec![], Duration::hours(8), now - Duration::hours(2));
+        let newer = BrowserSession::new_owner(vec![], Duration::hours(8), now - Duration::hours(1));
+        let expired =
+            BrowserSession::new_owner(vec![], Duration::hours(8), now - Duration::hours(9));
+        let revoked = BrowserSession::new_owner(vec![], Duration::hours(8), now);
+        for session in [&older, &newer, &expired, &revoked] {
+            store
+                .with_connection(|tx| tx.insert_browser_session(session))
+                .expect("insert");
+        }
+        store
+            .revoke_browser_session(&revoked.sid, now)
+            .expect("revoke");
+
+        let live: Vec<String> = store
+            .live_browser_sessions(now)
+            .expect("read")
+            .into_iter()
+            .map(|session| session.sid)
+            .collect();
+        assert_eq!(live, vec![newer.sid, older.sid]);
+    }
+
+    /// A touch moves `last_seen_at` only when it was last seen before the
+    /// guard, so a second touch inside the window and a touch from the past
+    /// leave it; a `sid` with no row moves nothing.
+    #[test]
+    fn a_touch_moves_last_seen_only_past_the_guard() {
+        let store = store();
+        let signed_in_at = chrono::Utc::now();
+        let session = BrowserSession::new_owner(vec![], Duration::hours(8), signed_in_at);
+        store
+            .with_connection(|tx| tx.insert_browser_session(&session))
+            .expect("insert");
+        let last_seen = |store: &SqliteGrantStore| {
+            store
+                .browser_session_by_sid(&session.sid)
+                .expect("read")
+                .expect("stored")
+                .last_seen_at
+        };
+
+        let seen_at = signed_in_at + Duration::minutes(6);
+        assert!(store
+            .touch_browser_session_last_seen(&session.sid, seen_at, seen_at - Duration::minutes(5))
+            .expect("touch"));
+        assert_eq!(last_seen(&store), seen_at);
+
+        let soon_after = seen_at + Duration::minutes(1);
+        assert!(!store
+            .touch_browser_session_last_seen(
+                &session.sid,
+                soon_after,
+                soon_after - Duration::minutes(5)
+            )
+            .expect("touch inside the window"));
+        assert!(!store
+            .touch_browser_session_last_seen(&session.sid, signed_in_at, signed_in_at)
+            .expect("touch from the past"));
+        assert_eq!(last_seen(&store), seen_at);
+        assert!(!store
+            .touch_browser_session_last_seen("no-such-sid", soon_after, soon_after)
+            .expect("touch"));
     }
 
     /// The prune takes a session that expired or was revoked before the

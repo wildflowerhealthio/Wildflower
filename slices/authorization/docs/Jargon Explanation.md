@@ -684,7 +684,30 @@ refresh policy; today it doesn't. Tokens, requests and families with no
 `sid` (the host app's in-process tokens, the device flow, a browser with no
 session) have no session to check.
 
-Revoking is done through the store; no route revokes a session.
+**Last seen** (`last_seen_at`) is when the session was last in use. Signing in,
+or pairing, sets it, and two uses move it: the host's cookie→bearer layer accepting the
+session's cookie, at most once every five minutes per session
+(`LAST_SEEN_RESOLUTION`; an in-memory per-`sid` throttle sits in front of a
+conditional update, so most requests write nothing), and a refresh
+family that names the session rotating, so a browser whose apps only refresh
+still shows as in use. An access token presented to the FHIR server doesn't
+move it.
+
+The Owner lists the live sessions, neither revoked nor expired, with
+`GET /authorization/browser-sessions` (`wildflower/BrowserSession.r`), each
+marked `heldByCaller` when the caller's token names it as its `sid`, and
+revokes one with `DELETE /authorization/browser-sessions/{sid}`
+(`wildflower/BrowserSession.d`); Wildflower Authorization's Browsers section
+shows the first as "This browser", and revoking it signs that browser out. A
+browser signs itself out with `POST /oauth/sign-out`, the **Sign out** button
+in the footer of the server's own pages, under "Signed in until" the session's
+expiry, which `GET /authorization/session` answers as
+`browserSessionExpiresAt`. Sign-out is authenticated by the cookie alone, and
+the host's cookie→bearer layer refuses it from any origin but the server's.
+It revokes the session, clears the cookie and sends the browser `303` to the
+launcher's root; a browser with no standing session is sent there too, its
+cookie cleared.
+
 The retention sweep deletes a session 24 hours after it expired or was
 revoked, unless a refresh family alive by then still names it.
 

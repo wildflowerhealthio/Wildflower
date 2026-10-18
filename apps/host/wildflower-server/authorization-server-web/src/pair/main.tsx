@@ -19,6 +19,7 @@ import { PairPage } from './pair-page.tsx'
 addOsColorSchemeListener()
 
 const queryClient = new QueryClient()
+const runAuthed = browserSessionRunner(window.location.origin, FetchHttpClient.layer)
 
 /** Leave for the `next` the server resolved, a path on its own origin. */
 const goTo = (location: string): void => {
@@ -31,11 +32,7 @@ if (container !== null) {
     <StrictMode>
       <QueryClientProvider client={queryClient}>
         <main className={pageLayoutStyles['page']}>
-          <PairPage
-            next={nextOf(window.location.search)}
-            runAuthed={browserSessionRunner(window.location.origin, FetchHttpClient.layer)}
-            goTo={goTo}
-          />
+          <PairPage next={nextOf(window.location.search)} runAuthed={runAuthed} goTo={goTo} />
         </main>
       </QueryClientProvider>
     </StrictMode>

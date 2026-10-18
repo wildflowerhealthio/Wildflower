@@ -31,6 +31,9 @@
 //!   that brings its own `Authorization` keeps it. A read from anywhere else
 //!   passes without one: a `/ui` page a link opens still renders, and the gates
 //!   refuse whatever else it asks for;
+//! - records a browser session cookie's use with the authorization server,
+//!   which moves the session's last-seen time at most once every five minutes
+//!   per session;
 //! - passes a request whose cookie stands for no live session as if the cookie
 //!   weren't sent. A browser session has ended once the gates would
 //!   refuse its token (expired, or revoked by `jti` or subject); the response
@@ -63,12 +66,13 @@ use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::Router;
+use chrono::Utc;
 use helios_auth::{cookie_value, AccessOutcome, SessionStore, SESSION_COOKIE};
 use url::Url;
-use wildflowerhealthio_authorization_server::domain::token::VerifyError;
 use wildflowerhealthio_authorization_server::{
-    browser_session_clearing_set_cookie, browser_session_has_ended, ensure_bearer_header,
-    AuthorizationServerState, BROWSER_SESSION_COOKIE, BROWSER_SESSION_HEADER_VALUE, SESSION_HEADER,
+    browser_session_clearing_set_cookie, ensure_bearer_header, record_browser_session_cookie_use,
+    standing_browser_session, AuthorizationServerState, BROWSER_SESSION_COOKIE,
+    BROWSER_SESSION_HEADER_VALUE, SESSION_HEADER,
 };
 use wildflowerhealthio_shared_structures::origin_string;
 
@@ -114,19 +118,33 @@ impl SessionCookie {
 
     /// The session the cookie's `value` stands for: a browser session
     /// cookie's own token, unless its session has ended, or the bearer of the
-    /// UI session it names, while that session lives.
+    /// UI session it names, while that session lives. A standing browser
+    /// session's use is recorded with the authorization server, which moves
+    /// the session's last-seen time at most once every five minutes. A use it
+    /// can't record is logged, and the request goes on.
     ///
     /// # Errors
     ///
-    /// The authorization server's server-side [`VerifyError`]s, when it can't
+    /// The authorization server's server-side `VerifyError`s, when it can't
     /// check whether a browser session has ended.
-    async fn session(&self, value: String) -> Result<CookieSession, VerifyError> {
+    async fn session(&self, value: String) -> anyhow::Result<CookieSession> {
         Ok(match self {
             SessionCookie::Browser(authorization_server) => {
-                if browser_session_has_ended(authorization_server, &value)? {
-                    CookieSession::Ended
-                } else {
-                    CookieSession::Live(value)
+                match standing_browser_session(authorization_server, &value)? {
+                    Some(session_claims) => {
+                        if let Err(error) = record_browser_session_cookie_use(
+                            authorization_server,
+                            &session_claims,
+                            Utc::now(),
+                        ) {
+                            tracing::warn!(
+                                error = %error,
+                                "couldn't record a browser session cookie's use"
+                            );
+                        }
+                        CookieSession::Live(value)
+                    }
+                    None => CookieSession::Ended,
                 }
             }
             SessionCookie::FhirUi(ui_sessions) => match ui_sessions.access_token(&value).await {
@@ -181,8 +199,8 @@ pub(crate) fn present_session_cookie_bearers(
 /// from the server's origin carrying a cookie that stands for a live session
 /// gets `Authorization: Bearer <its token>`, and one whose browser
 /// session has ended passes without it and has the cookie cleared. One whose
-/// browser session can't be judged, because the authorization server's
-/// stores can't be read, is a 500. One that asks for another session than the
+/// browser session can't be judged, or whose use can't be recorded, because
+/// the authorization server's stores can't be read or written, is a 500. One that asks for another session than the
 /// cookie's passes without it. Anything else passes as it came, for the gates
 /// to judge.
 pub(crate) async fn present_session_cookie_bearer(
@@ -213,8 +231,8 @@ pub(crate) async fn present_session_cookie_bearer(
         Err(error) => {
             tracing::error!(
                 cookie = config.session_cookie.name(),
-                error = %error,
-                "couldn't check whether a session cookie's session has ended"
+                error = format!("{error:#}"),
+                "couldn't check a session cookie's session"
             );
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
@@ -335,6 +353,9 @@ mod tests {
     /// judges a browser session's token, and the revocation store it reads.
     struct AuthorizationServerFixture {
         state: Arc<AuthorizationServerState>,
+        /// The authorization server's own routes, `/oauth/sign-out` among
+        /// them.
+        router: Router,
         pool: DieselPool,
         revocation_store: RevocationStore,
     }
@@ -373,6 +394,7 @@ mod tests {
             .expect("set up the authorization server");
             AuthorizationServerFixture {
                 state: authorization_server.state,
+                router: authorization_server.router,
                 pool,
                 revocation_store,
             }
@@ -387,9 +409,10 @@ mod tests {
             static SESSIONS: AtomicUsize = AtomicUsize::new(0);
             let sid = format!("session-{}", SESSIONS.fetch_add(1, Ordering::Relaxed));
             diesel::sql_query(
-                "INSERT INTO browser_sessions (sid, kind, name, scopes, created_at, expires_at) \
+                "INSERT INTO browser_sessions \
+                 (sid, kind, name, scopes, created_at, expires_at, last_seen_at) \
                  VALUES (?, 'owner', NULL, '[]', '2026-01-01 00:00:00+00:00', \
-                         '2099-01-01 00:00:00+00:00')",
+                         '2099-01-01 00:00:00+00:00', '2026-01-01 00:00:00+00:00')",
             )
             .bind::<diesel::sql_types::Text, _>(&sid)
             .execute(&mut self.pool.get().expect("connection"))
@@ -1072,5 +1095,125 @@ mod tests {
                 Some(format!("Bearer {browser_session_token}"))
             )
         );
+    }
+
+    /// Accepting a browser session's cookie records its use: the session's
+    /// last-seen time, `2026-01-01` when the fixture stored it, moves to the
+    /// request's time. A cookie the layer passes over (a read from another
+    /// origin) records nothing.
+    #[tokio::test]
+    async fn an_accepted_browser_session_cookie_moves_its_last_seen_time() {
+        use diesel::RunQueryDsl as _;
+
+        #[derive(diesel::QueryableByName)]
+        struct LastSeen {
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            last_seen_at: String,
+        }
+        let authorization_server = AuthorizationServerFixture::new();
+        let token = authorization_server.browser_session_token(Duration::hours(8));
+        let cookie = format!("__Host-browser_session={token}");
+        let last_seen = || {
+            diesel::sql_query("SELECT last_seen_at FROM browser_sessions")
+                .load::<LastSeen>(&mut authorization_server.pool.get().expect("connection"))
+                .expect("read the session")
+                .remove(0)
+                .last_seen_at
+        };
+        let config = authorization_server.browser_session_config();
+
+        respond(
+            config.clone(),
+            Method::GET,
+            &[("cookie", &cookie), ("sec-fetch-site", "cross-site")],
+        )
+        .await;
+        assert_eq!(last_seen(), "2026-01-01 00:00:00+00:00");
+
+        let before = Utc::now();
+        let (status, _) = respond(
+            config,
+            Method::GET,
+            &[("cookie", &cookie), ("sec-fetch-site", "same-origin")],
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let moved_to = chrono::DateTime::parse_from_str(&last_seen(), "%F %T%.f%:z")
+            .expect("the diesel chrono text encoding");
+        assert!(moved_to >= before, "{moved_to} is the request's time");
+    }
+
+    /// `POST /oauth/sign-out` through the composed layers over the
+    /// authorization server's own routes, carrying `cookie` and `headers`.
+    async fn sign_out_through_the_layers(
+        authorization_server: &AuthorizationServerFixture,
+        cookie: &str,
+        headers: &[(&str, &str)],
+    ) -> Response {
+        let router = present_session_cookie_bearers(
+            authorization_server.router.clone(),
+            authorization_server.state.clone(),
+            Arc::new(store_with_a_session()),
+            &server_origin(),
+        );
+        let mut request = Request::post("/oauth/sign-out").header(header::COOKIE, cookie);
+        for (name, value) in headers {
+            request = request.header(*name, *value);
+        }
+        router
+            .oneshot(request.body(Body::empty()).expect("request"))
+            .await
+            .expect("infallible")
+    }
+
+    /// The Sign out form's post is checked against the server's origin by the
+    /// layer: from another origin it is refused and the session stands; from
+    /// the server's own pages it revokes the session, clears the cookie and
+    /// goes on to the launcher.
+    #[tokio::test]
+    async fn signing_out_takes_a_post_from_the_server_s_own_origin() {
+        let authorization_server = AuthorizationServerFixture::new();
+        let token = authorization_server.browser_session_token(Duration::hours(8));
+        let cookie = format!("__Host-browser_session={token}");
+        let session_is_revoked = || {
+            let claims = wildflowerhealthio_authorization_server::standing_browser_session(
+                &authorization_server.state,
+                &token,
+            )
+            .expect("checked");
+            claims.is_none()
+        };
+
+        for foreign in [
+            &[("sec-fetch-site", "same-site"), ("origin", SIBLING_ORIGIN)][..],
+            &[("origin", SIBLING_ORIGIN)][..],
+            &[][..],
+        ] {
+            let response =
+                sign_out_through_the_layers(&authorization_server, &cookie, foreign).await;
+            assert_eq!(response.status(), StatusCode::FORBIDDEN, "{foreign:?}");
+            assert!(set_cookies(&response).is_empty(), "{foreign:?}");
+            assert!(!session_is_revoked(), "{foreign:?}");
+        }
+
+        let response = sign_out_through_the_layers(
+            &authorization_server,
+            &cookie,
+            &[("sec-fetch-site", "same-origin"), ("origin", SERVER_ORIGIN)],
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::LOCATION)
+                .and_then(|location| location.to_str().ok()),
+            Some("https://launcher.test/launcher/")
+        );
+        assert!(set_cookies(&response).contains(
+            &"__Host-browser_session=; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=0"
+                .to_owned()
+        ));
+        assert!(session_is_revoked());
     }
 }

@@ -5,7 +5,13 @@ import { Effect, Layer, pipe } from 'effect'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
 import { sliceRuntimeLayer } from '../router-context.ts'
-import { GRANTS_QUERY_KEY, grantsQueryOptions, type RunAuthed } from './index.ts'
+import {
+  BROWSER_SESSIONS_QUERY_KEY,
+  browserSessionsQueryOptions,
+  GRANTS_QUERY_KEY,
+  grantsQueryOptions,
+  type RunAuthed,
+} from './index.ts'
 
 /**
  * Drives the authorization server `queryOptions` over the real
@@ -109,5 +115,39 @@ describe('grantsQueryOptions', () => {
 
     await expect(queryClient.query({ ...options, staleTime: 'static' })).rejects.toThrow()
     expect(queryClient.getQueryData(GRANTS_QUERY_KEY)).toBeUndefined()
+  })
+})
+
+// Wire shape mirrors `AccessManagement.BrowserSessionSchema`.
+const BROWSER_SESSION_BODY = [
+  {
+    sid: 'session-1',
+    kind: 'owner',
+    name: null,
+    createdAt: '2026-10-17T08:00:00.000Z',
+    expiresAt: '2026-10-17T16:00:00.000Z',
+    lastSeenAt: '2026-10-17T09:30:00.000Z',
+    heldByCaller: true,
+  },
+]
+
+describe('browserSessionsQueryOptions', () => {
+  test('exposes the canonical BROWSER_SESSIONS_QUERY_KEY', () => {
+    const options = browserSessionsQueryOptions(makeRunAuthed(stubHttpClientLayer()))
+    expect(options.queryKey).toEqual(BROWSER_SESSIONS_QUERY_KEY)
+  })
+
+  test('queryFn reads the browser sessions through the authed runner', async () => {
+    const options = browserSessionsQueryOptions(
+      makeRunAuthed(stubHttpClientLayer({ body: BROWSER_SESSION_BODY }))
+    )
+    const queryClient = freshQueryClient()
+
+    const sessions = await queryClient.query({ ...options, staleTime: 'static' })
+
+    expect(sessions).toHaveLength(1)
+    expect(sessions[0]?.sid).toBe('session-1')
+    expect(sessions[0]?.name).toBeNull()
+    expect(sessions[0]?.heldByCaller).toBe(true)
   })
 })

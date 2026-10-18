@@ -396,6 +396,22 @@ impl GrantTx for FakeGrantTx<'_> {
         Ok(self.store.browser_sessions.borrow().get(sid).cloned())
     }
 
+    fn live_browser_sessions(
+        &mut self,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<BrowserSession>, AuthorizationServerError> {
+        let mut live: Vec<BrowserSession> = self
+            .store
+            .browser_sessions
+            .borrow()
+            .values()
+            .filter(|session| session.revoked_at.is_none() && session.expires_at > now)
+            .cloned()
+            .collect();
+        live.sort_by_key(|session| std::cmp::Reverse(session.created_at));
+        Ok(live)
+    }
+
     fn browser_session_is_revoked(&mut self, sid: &str) -> Result<bool, AuthorizationServerError> {
         Ok(self
             .store
@@ -414,6 +430,23 @@ impl GrantTx for FakeGrantTx<'_> {
             match self.store.browser_sessions.borrow_mut().get_mut(sid) {
                 Some(session) if session.revoked_at.is_none() => {
                     session.revoked_at = Some(now);
+                    true
+                }
+                _ => false,
+            },
+        )
+    }
+
+    fn touch_browser_session_last_seen(
+        &mut self,
+        sid: &str,
+        seen_at: DateTime<Utc>,
+        seen_before: DateTime<Utc>,
+    ) -> Result<bool, AuthorizationServerError> {
+        Ok(
+            match self.store.browser_sessions.borrow_mut().get_mut(sid) {
+                Some(session) if session.last_seen_at <= seen_before => {
+                    session.last_seen_at = seen_at;
                     true
                 }
                 _ => false,

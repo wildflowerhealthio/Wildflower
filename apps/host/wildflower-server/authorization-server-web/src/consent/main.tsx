@@ -11,6 +11,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { addOsColorSchemeListener, pageLayoutStyles } from '@wildflowerhealthio/react-tundraish'
 
 import { browserSessionRunner } from '../browser-session.ts'
+import { SessionFooter } from '../session-footer.tsx'
 import { goBackOnceDecidedOf } from '../then-query.ts'
 import { ConsentPage } from './consent-page.tsx'
 import { requestIdOf } from './request-path.ts'
@@ -20,6 +21,7 @@ import { requestIdOf } from './request-path.ts'
 addOsColorSchemeListener()
 
 const queryClient = new QueryClient()
+const runAuthed = browserSessionRunner(window.location.origin, FetchHttpClient.layer)
 
 const leaveFor = (destination: URL): void => {
   window.location.replace(destination.href)
@@ -33,11 +35,12 @@ if (container !== null) {
         <main className={pageLayoutStyles['page']}>
           <ConsentPage
             requestId={requestIdOf(window.location.pathname)}
-            runAuthed={browserSessionRunner(window.location.origin, FetchHttpClient.layer)}
+            runAuthed={runAuthed}
             waitPage={new URL('wait', window.location.href)}
             leaveFor={leaveFor}
             goBackOnceDecided={goBackOnceDecidedOf(window.location.search, window)}
           />
+          <SessionFooter runAuthed={runAuthed} />
         </main>
       </QueryClientProvider>
     </StrictMode>

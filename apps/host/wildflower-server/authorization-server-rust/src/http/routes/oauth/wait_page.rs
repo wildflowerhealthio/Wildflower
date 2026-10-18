@@ -16,11 +16,14 @@
 
 use std::sync::Arc;
 
+use axum::http::HeaderValue;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
 
-use super::pages::{page_security_headers, request_page_location};
+use super::pages::{
+    content_security_policy, page_security_headers, request_page_location, NO_FORM_TARGETS,
+};
 use crate::http::state::AuthorizationServerState;
 use crate::http::wire_representations::CacheSuppressed;
 
@@ -32,12 +35,21 @@ const WAIT_PAGE_STYLESHEET: &str = include_str!("wait_page/wait.css");
 /// its assets as `../wait.js` and `../wait.css`, which resolve to these two
 /// siblings whatever prefix the authorization server is mounted under.
 pub(crate) fn router() -> Router<Arc<AuthorizationServerState>> {
+    let policy = content_security_policy(NO_FORM_TARGETS);
+    let script_policy = policy.clone();
+    let stylesheet_policy = policy.clone();
     Router::new()
-        .route("/authorize/{id}/wait", get(|| async { wait_page() }))
-        .route("/authorize/wait.js", get(|| async { wait_page_script() }))
+        .route(
+            "/authorize/{id}/wait",
+            get(move || async move { wait_page(&policy) }),
+        )
+        .route(
+            "/authorize/wait.js",
+            get(move || async move { wait_page_script(&script_policy) }),
+        )
         .route(
             "/authorize/wait.css",
-            get(|| async { wait_page_stylesheet() }),
+            get(move || async move { wait_page_stylesheet(&stylesheet_policy) }),
         )
 }
 
@@ -48,21 +60,21 @@ pub(crate) fn wait_page_location(request_id: &str) -> String {
     request_page_location(request_id, "wait")
 }
 
-fn wait_page() -> Response {
-    page_file("text/html; charset=utf-8", WAIT_PAGE_HTML)
+fn wait_page(policy: &HeaderValue) -> Response {
+    page_file("text/html; charset=utf-8", WAIT_PAGE_HTML, policy)
 }
 
-fn wait_page_script() -> Response {
-    page_file("text/javascript; charset=utf-8", WAIT_PAGE_SCRIPT)
+fn wait_page_script(policy: &HeaderValue) -> Response {
+    page_file("text/javascript; charset=utf-8", WAIT_PAGE_SCRIPT, policy)
 }
 
-fn wait_page_stylesheet() -> Response {
-    page_file("text/css; charset=utf-8", WAIT_PAGE_STYLESHEET)
+fn wait_page_stylesheet(policy: &HeaderValue) -> Response {
+    page_file("text/css; charset=utf-8", WAIT_PAGE_STYLESHEET, policy)
 }
 
-/// One of the page's files, with the page's security headers. Cache-suppressed
+/// One of the page's files, with the page's security headers and `policy`. Cache-suppressed
 /// like the status poll it drives, so an authorization server update never leaves a stale
 /// script polling a changed endpoint.
-fn page_file(content_type: &'static str, body: &'static str) -> Response {
-    CacheSuppressed((page_security_headers(content_type), body)).into_response()
+fn page_file(content_type: &'static str, body: &'static str, policy: &HeaderValue) -> Response {
+    CacheSuppressed((page_security_headers(content_type, policy), body)).into_response()
 }

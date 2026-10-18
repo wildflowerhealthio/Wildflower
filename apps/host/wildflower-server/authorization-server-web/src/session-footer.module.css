@@ -1,0 +1,23 @@
+/*
+ * The footer under every authorization page: until when this browser is
+ * signed in, and the button that signs it out.
+ */
+
+.session-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  margin: var(--space-9) auto 0;
+  max-width: 560px;
+  color: var(--color-neutral-4);
+}
+
+.session-footer__expiry {
+  margin: 0;
+}
+
+.session-footer__sign-out {
+  margin: 0;
+}

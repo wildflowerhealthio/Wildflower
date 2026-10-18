@@ -365,6 +365,13 @@ impl GrantTx for SqliteGrantTx<'_> {
         browser_sessions::browser_session_by_sid(self.conn, sid)
     }
 
+    fn live_browser_sessions(
+        &mut self,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<BrowserSession>, AuthorizationServerError> {
+        browser_sessions::live_browser_sessions(self.conn, now)
+    }
+
     fn browser_session_is_revoked(&mut self, sid: &str) -> Result<bool, AuthorizationServerError> {
         browser_sessions::browser_session_is_revoked(self.conn, sid)
     }
@@ -375,6 +382,15 @@ impl GrantTx for SqliteGrantTx<'_> {
         now: DateTime<Utc>,
     ) -> Result<bool, AuthorizationServerError> {
         browser_sessions::revoke_browser_session(self.conn, sid, now)
+    }
+
+    fn touch_browser_session_last_seen(
+        &mut self,
+        sid: &str,
+        seen_at: DateTime<Utc>,
+        seen_before: DateTime<Utc>,
+    ) -> Result<bool, AuthorizationServerError> {
+        browser_sessions::touch_browser_session_last_seen(self.conn, sid, seen_at, seen_before)
     }
 
     fn delete_browser_sessions_ended_before(
@@ -1778,7 +1794,7 @@ mod tests {
         wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
-            MIGRATIONS,
+            MigrationsThrough("0038"),
         )
         .expect("upgrade through 0038");
 
@@ -1881,6 +1897,156 @@ mod tests {
             assert_eq!(name_of(&mut conn, STRENGTH), "Strength");
             assert_eq!(name_of(&mut conn, STRENGTH_DEV), dev_name);
         }
+    }
+
+    /// An install already at `0039` gains `browser_sessions.last_seen_at` when
+    /// `0040` runs, each session's backfilled to its `created_at` and the rest
+    /// of the row kept, `revoked_at` included. The rebuilt table still takes
+    /// only the two kinds. Reverting `0040` drops the column again.
+    #[test]
+    fn an_install_already_at_0039_backfills_browser_session_last_seen() {
+        use diesel::connection::SimpleConnection as _;
+        const CREATED_AT: &str = "2026-10-16 00:00:00+00:00";
+        const REVOKED_AT: &str = "2026-10-16 01:00:00+00:00";
+
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0039"),
+        )
+        .expect("migrate to 0039");
+        conn.batch_execute(&format!(
+            "INSERT INTO browser_sessions \
+             (sid, kind, name, scopes, created_at, expires_at, revoked_at) \
+             VALUES ('standing', 'owner', NULL, '[\"system/*.cruds\"]', '{CREATED_AT}', \
+                     '2026-10-16 08:00:00+00:00', NULL), \
+                    ('revoked', 'approved', 'A tablet', '[]', '2026-10-01 00:00:00+00:00', \
+                     '2026-11-01 00:00:00+00:00', '{REVOKED_AT}')"
+        ))
+        .expect("two sessions at 0039");
+
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0040"),
+        )
+        .expect("upgrade through 0040");
+
+        let column_of = |conn: &mut SqliteConnection, column: &str, sid: &str| {
+            diesel::sql_query(format!(
+                "SELECT {column} AS name FROM browser_sessions WHERE sid = ?"
+            ))
+            .bind::<diesel::sql_types::Text, _>(sid)
+            .load::<OptionalName>(conn)
+            .expect("read the session")
+            .remove(0)
+            .name
+        };
+        assert_eq!(
+            column_of(&mut conn, "last_seen_at", "standing").as_deref(),
+            Some(CREATED_AT)
+        );
+        assert_eq!(
+            column_of(&mut conn, "last_seen_at", "revoked").as_deref(),
+            Some("2026-10-01 00:00:00+00:00")
+        );
+        assert_eq!(
+            column_of(&mut conn, "revoked_at", "revoked").as_deref(),
+            Some(REVOKED_AT)
+        );
+        assert_eq!(
+            column_of(&mut conn, "name", "revoked").as_deref(),
+            Some("A tablet")
+        );
+        assert!(
+            conn.batch_execute(&format!(
+                "INSERT INTO browser_sessions \
+                 (sid, kind, name, scopes, created_at, expires_at, last_seen_at) \
+                 VALUES ('odd', 'other', NULL, '[]', '{CREATED_AT}', '{CREATED_AT}', \
+                         '{CREATED_AT}')"
+            ))
+            .is_err(),
+            "the kind CHECK survives the rebuild"
+        );
+
+        let migration_0040 = MIGRATIONS
+            .migrations()
+            .expect("embedded migrations")
+            .into_iter()
+            .find(|migration| migration.name().version() == MigrationVersion::from("0040"))
+            .expect("0040 is embedded");
+        migration_0040.revert(&mut conn).expect("revert 0040");
+        assert!(
+            diesel::sql_query("SELECT last_seen_at FROM browser_sessions")
+                .execute(&mut conn)
+                .is_err(),
+            "the column is gone"
+        );
+        assert_eq!(
+            column_of(&mut conn, "created_at", "standing").as_deref(),
+            Some(CREATED_AT)
+        );
+    }
+
+    /// An install already at `0040` widens Wildflower Authorization's client
+    /// to the browser-session scopes when `0041` runs; one whose scopes the
+    /// Owner changed keeps them. Reverting `0041` restores `0031`'s set.
+    #[test]
+    fn an_install_already_at_0040_widens_the_authorization_web_client() {
+        use diesel::connection::SimpleConnection as _;
+        const AUTHORIZATION_WEB: &str = "7277e898bee8ac81ea44788236e619a5";
+        const AT_0040: &str =
+            r#"["openid","wildflower/Grant.rd","wildflower/Client.ru","wildflower/Token.d"]"#;
+        let migrated_through_0040 = || {
+            let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+            wildflowerhealthio_persistence::run_diesel_migrations(
+                &mut conn,
+                MIGRATION_NAMESPACE,
+                MigrationsThrough("0040"),
+            )
+            .expect("migrate to 0040");
+            conn
+        };
+
+        let mut conn = migrated_through_0040();
+        assert_eq!(allowed_scopes_of(&mut conn, AUTHORIZATION_WEB), AT_0040);
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MIGRATIONS,
+        )
+        .expect("upgrade through 0041");
+        assert_eq!(
+            allowed_scopes_of(&mut conn, AUTHORIZATION_WEB),
+            r#"["openid","wildflower/Grant.rd","wildflower/Client.ru","wildflower/Token.d","wildflower/BrowserSession.rd"]"#,
+        );
+        let migration_0041 = MIGRATIONS
+            .migrations()
+            .expect("embedded migrations")
+            .into_iter()
+            .find(|migration| migration.name().version() == MigrationVersion::from("0041"))
+            .expect("0041 is embedded");
+        migration_0041.revert(&mut conn).expect("revert 0041");
+        assert_eq!(allowed_scopes_of(&mut conn, AUTHORIZATION_WEB), AT_0040);
+
+        let mut changed = migrated_through_0040();
+        changed
+            .batch_execute(&format!(
+                "UPDATE clients SET allowed_scopes = '[\"openid\"]' \
+                 WHERE client_id = '{AUTHORIZATION_WEB}'"
+            ))
+            .expect("the Owner changed the scopes at 0040");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut changed,
+            MIGRATION_NAMESPACE,
+            MIGRATIONS,
+        )
+        .expect("upgrade through 0041");
+        assert_eq!(
+            allowed_scopes_of(&mut changed, AUTHORIZATION_WEB),
+            r#"["openid"]"#
+        );
     }
 
     /// Running the migrations twice is a no-op the second time (the namespaced

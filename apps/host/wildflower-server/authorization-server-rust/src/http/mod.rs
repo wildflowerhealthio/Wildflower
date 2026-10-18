@@ -21,8 +21,8 @@ pub use middleware::ensure_bearer_header;
 // The layerable bearer gate the host composes its router from, in `middleware/`.
 pub(crate) use browser_session_cookie::browser_session_set_cookie;
 pub use browser_session_cookie::{
-    browser_session_clearing_set_cookie, browser_session_has_ended, BROWSER_SESSION_COOKIE,
-    BROWSER_SESSION_HEADER_VALUE, SESSION_HEADER,
+    browser_session_clearing_set_cookie, record_browser_session_cookie_use,
+    standing_browser_session, BROWSER_SESSION_COOKIE, BROWSER_SESSION_HEADER_VALUE, SESSION_HEADER,
 };
 pub use middleware::{authorization_server_auth_middleware, AuthorizationServerAuthMiddleware};
 pub use state::AuthorizationServerState;
@@ -87,6 +87,7 @@ pub fn router(state: Arc<AuthorizationServerState>) -> Router {
     let access = Router::new()
         .merge(clients)
         .merge(routes::grants::router())
+        .merge(routes::browser_sessions::router())
         .merge(routes::oauth_consents::router())
         .merge(routes::devices::router())
         .merge(routes::logout::router())
@@ -101,7 +102,10 @@ pub fn router(state: Arc<AuthorizationServerState>) -> Router {
 
     Router::new()
         .merge(documented)
-        .nest(routes::oauth::OAUTH_MOUNT, routes::oauth::page_router())
+        .nest(
+            routes::oauth::OAUTH_MOUNT,
+            routes::oauth::page_router(&state.launcher_base),
+        )
         .nest("/authorization", access)
         .with_state(state)
 }

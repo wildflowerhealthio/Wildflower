@@ -144,7 +144,10 @@ async fn access_session_reports_the_callers_own_scopes_without_an_admin_scope() 
     assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(
         body_json(res.into_body()).await,
-        serde_json::json!({ "scopes": ["patient/Observation.rs", "wildflower/Grant.r"] }),
+        serde_json::json!({
+            "scopes": ["patient/Observation.rs", "wildflower/Grant.r"],
+            "browserSessionExpiresAt": null,
+        }),
     );
 }
 

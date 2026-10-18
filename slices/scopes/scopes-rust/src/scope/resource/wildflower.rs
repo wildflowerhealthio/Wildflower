@@ -49,6 +49,10 @@ pub enum WildflowerResource {
     /// The request log (`/requests`): each forwarded request the server served,
     /// through the tunnel or relayed by a front. Read it (`.r`).
     RequestLog,
+    /// A browser the server has signed in, keyed by its `sid`
+    /// (`/authorization/browser-sessions`): list the live ones (`.r`) and
+    /// revoke one (`.d`), which ends everything minted under it.
+    BrowserSession,
 }
 
 impl WildflowerResourceScope {
@@ -126,6 +130,7 @@ impl WildflowerResource {
             "Token" => Some(WildflowerResource::Token),
             "Apps" => Some(WildflowerResource::Apps),
             "RequestLog" => Some(WildflowerResource::RequestLog),
+            "BrowserSession" => Some(WildflowerResource::BrowserSession),
             _ => None,
         }
     }
@@ -138,6 +143,7 @@ impl WildflowerResource {
             WildflowerResource::Token => "Token",
             WildflowerResource::Apps => "Apps",
             WildflowerResource::RequestLog => "RequestLog",
+            WildflowerResource::BrowserSession => "BrowserSession",
         }
     }
 }

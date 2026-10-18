@@ -11,6 +11,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { addOsColorSchemeListener, pageLayoutStyles } from '@wildflowerhealthio/react-tundraish'
 
 import { browserSessionRunner } from '../browser-session.ts'
+import { SessionFooter } from '../session-footer.tsx'
 import { goBackOnceDecidedOf } from '../then-query.ts'
 import { DevicePage } from './device-page.tsx'
 import { userCodeOf } from './user-code-query.ts'
@@ -20,6 +21,7 @@ import { userCodeOf } from './user-code-query.ts'
 addOsColorSchemeListener()
 
 const queryClient = new QueryClient()
+const runAuthed = browserSessionRunner(window.location.origin, FetchHttpClient.layer)
 
 const container = document.getElementById('root')
 if (container !== null) {
@@ -29,9 +31,10 @@ if (container !== null) {
         <main className={pageLayoutStyles['page']}>
           <DevicePage
             initialUserCode={userCodeOf(window.location.search)}
-            runAuthed={browserSessionRunner(window.location.origin, FetchHttpClient.layer)}
+            runAuthed={runAuthed}
             goBackOnceDecided={goBackOnceDecidedOf(window.location.search, window)}
           />
+          <SessionFooter runAuthed={runAuthed} />
         </main>
       </QueryClientProvider>
     </StrictMode>

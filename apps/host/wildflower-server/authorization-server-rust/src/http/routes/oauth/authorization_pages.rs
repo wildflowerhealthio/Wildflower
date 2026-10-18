@@ -20,23 +20,27 @@
 //!   served; anything else is `404`.
 //!
 //! Every file carries the wait page's security headers
-//! ([`page_security_headers`]). The consent card and the device page call
-//! `/authorization/*` and FHIR `GET /Patient`, on the browser session's
-//! bearer, which the host's cookie→bearer layer presents for them; the pairing
-//! page calls `/oauth/pair/*`, which needs no session.
+//! ([`page_security_headers`]), but for `form-action`: the pages' footer posts
+//! its **Sign out** form to `/oauth/sign-out`, on this origin, which redirects
+//! to the hosted launcher, so their policy lets a form submit to this origin
+//! and follow a redirect to the launcher's. The consent card and the device
+//! page call `/authorization/*` and FHIR `GET /Patient`, on the browser
+//! session's bearer, which the host's cookie→bearer layer presents for them;
+//! the pairing page calls `/oauth/pair/*`, which needs no session.
 
 use std::path::Path as FilePath;
 use std::sync::Arc;
 
 use axum::extract::Path;
-use axum::http::{header, StatusCode};
+use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
 use include_dir::{include_dir, Dir};
 use url::Url;
+use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
-use super::pages::{page_security_headers, request_page_location};
+use super::pages::{content_security_policy, page_security_headers, request_page_location};
 use super::OAUTH_MOUNT;
 use crate::http::state::AuthorizationServerState;
 use crate::http::wire_representations::CacheSuppressed;
@@ -68,9 +72,19 @@ const ASSETS_DIR: &str = "assets";
 /// How long a browser may keep a hashed asset: a year, without revalidating.
 const IMMUTABLE: &str = "public, max-age=31536000, immutable";
 
-/// The pages' routes, relative to the `/oauth` mount.
-pub(crate) fn router() -> Router<Arc<AuthorizationServerState>> {
-    router_for(&AUTHORIZATION_PAGES)
+/// The pages' routes, relative to the `/oauth` mount. `launcher_base` is
+/// where the sign-out the pages' form posts to sends the browser.
+pub(crate) fn router(launcher_base: &LauncherBase) -> Router<Arc<AuthorizationServerState>> {
+    router_for(&AUTHORIZATION_PAGES, &sign_out_form_targets(launcher_base))
+}
+
+/// The `form-action` sources of a page whose sign-out form posts to this
+/// origin, and is redirected on to the launcher at `launcher_base`.
+fn sign_out_form_targets(launcher_base: &LauncherBase) -> String {
+    format!(
+        "'self' {}",
+        launcher_base.as_url().origin().ascii_serialization()
+    )
 }
 
 /// The `Location` `/oauth/authorize` sends a browser signed in as the Owner to
@@ -97,39 +111,51 @@ pub(crate) fn device_page_url_with_code(device_page: &Url, user_code: &str) -> U
     url
 }
 
-/// The routes above, serving `pages`. They read no router state.
-fn router_for<S: Clone + Send + Sync + 'static>(pages: &'static Dir<'static>) -> Router<S> {
+/// The routes above, serving `pages`, whose forms may submit to
+/// `form_targets`. The policy is built once, here. They read no router state.
+fn router_for<S: Clone + Send + Sync + 'static>(
+    pages: &'static Dir<'static>,
+    form_targets: &str,
+) -> Router<S> {
+    let policy = content_security_policy(form_targets);
+    let consent_policy = policy.clone();
+    let device_policy = policy.clone();
+    let pair_policy = policy.clone();
     Router::new()
         .route(
             "/authorize/{id}/consent",
-            get(move || async move { page(pages, CONSENT_PAGE) }),
+            get(move || async move { page(pages, CONSENT_PAGE, &consent_policy) }),
         )
         .route(
             DEVICE_PAGE_ROUTE,
-            get(move || async move { page(pages, DEVICE_PAGE) }),
+            get(move || async move { page(pages, DEVICE_PAGE, &device_policy) }),
         )
-        .route("/pair", get(move || async move { page(pages, PAIR_PAGE) }))
+        .route(
+            "/pair",
+            get(move || async move { page(pages, PAIR_PAGE, &pair_policy) }),
+        )
         .route(
             "/assets/{*file}",
-            get(move |Path(file): Path<String>| async move { asset(pages, &file) }),
+            get(move |Path(file): Path<String>| async move { asset(pages, &file, &policy) }),
         )
 }
 
-/// The page `name` from `pages`, uncached, or `404` when the build has none.
-fn page(pages: &'static Dir<'static>, name: &str) -> Response {
+/// The page `name` from `pages`, uncached, under `policy`, or `404` when the
+/// build has none.
+fn page(pages: &'static Dir<'static>, name: &str, policy: &HeaderValue) -> Response {
     let Some(page) = pages.get_file(name) else {
         return StatusCode::NOT_FOUND.into_response();
     };
     CacheSuppressed((
-        page_security_headers("text/html; charset=utf-8"),
+        page_security_headers("text/html; charset=utf-8", policy),
         page.contents(),
     ))
     .into_response()
 }
 
 /// The hashed script, stylesheet or font `file` under `pages`' `assets/`,
-/// cached as immutable, or `404`.
-fn asset(pages: &'static Dir<'static>, file: &str) -> Response {
+/// cached as immutable, under `policy`, or `404`.
+fn asset(pages: &'static Dir<'static>, file: &str, policy: &HeaderValue) -> Response {
     let Some(content_type) = asset_content_type(file) else {
         return StatusCode::NOT_FOUND.into_response();
     };
@@ -138,7 +164,7 @@ fn asset(pages: &'static Dir<'static>, file: &str) -> Response {
     };
     (
         [(header::CACHE_CONTROL, IMMUTABLE)],
-        page_security_headers(content_type),
+        page_security_headers(content_type, policy),
         asset.contents(),
     )
         .into_response()
@@ -200,8 +226,13 @@ mod tests {
         ],
     );
 
+    /// The launcher a sign-out sends the browser to: a path on its own origin.
+    fn launcher_base() -> LauncherBase {
+        LauncherBase::parse("https://launcher.test/launcher/").expect("launcher base")
+    }
+
     async fn get(uri: &str) -> Response {
-        router_for::<()>(&PAGES)
+        router_for::<()>(&PAGES, &sign_out_form_targets(&launcher_base()))
             .oneshot(Request::get(uri).body(Body::empty()).expect("request"))
             .await
             .expect("infallible")
@@ -229,12 +260,13 @@ mod tests {
         assert_eq!(
             header_of(response, header::CONTENT_SECURITY_POLICY),
             "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; \
-             connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+             connect-src 'self'; base-uri 'none'; form-action 'self' https://launcher.test; \
+             frame-ancestors 'none'",
             "{uri}"
         );
         assert_eq!(
             header_of(response, header::REFERRER_POLICY),
-            "no-referrer",
+            "same-origin",
             "{uri}"
         );
         assert_eq!(

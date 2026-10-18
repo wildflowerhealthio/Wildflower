@@ -6,6 +6,8 @@ export {
 export * as AuthorizationRouterContext from './router-context.ts'
 
 export {
+  BROWSER_SESSIONS_QUERY_KEY,
+  browserSessionsQueryOptions,
   CLIENTS_QUERY_KEY,
   clientsQueryOptions,
   deviceConsentMutationOptions,
@@ -19,9 +21,12 @@ export {
   useClientsQuery,
   useUpdateClientMutation,
   useRevokeGrantMutation,
+  useBrowserSessionsQuery,
+  useRevokeBrowserSessionMutation,
   useRunAuthed,
   type ApproveOAuthPayload,
   type AppGrant,
+  type BrowserSession,
   type DeviceConsent,
   type DeviceConsentDecision,
   type DeviceConsentResult,
@@ -30,6 +35,7 @@ export {
   type OAuthConsentDecision,
   type OAuthConsentResource,
   type OAuthConsentResult,
+  type RevokeBrowserSessionVariables,
   type RevokeGrantVariables,
   type RunAuthed,
 } from './queries/index.ts'

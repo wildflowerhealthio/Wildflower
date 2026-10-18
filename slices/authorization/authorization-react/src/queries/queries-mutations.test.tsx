@@ -22,7 +22,7 @@ import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 import { sliceRuntimeLayer } from '../router-context.ts'
 import { EssentialClientDisableRefusal, useUpdateClientMutation } from './clients.ts'
 import { ExpiredDeviceConsent, foldExpiredDeviceConsent } from './device-consent.ts'
-import { useRevokeGrantMutation } from './grants.ts'
+import { useRevokeBrowserSessionMutation, useRevokeGrantMutation } from './index.ts'
 import { foldExpiredConsent, oauthConsentMutationOptions } from './oauth-consent.ts'
 import { useRunAuthed } from './use-run-authed.ts'
 
@@ -155,6 +155,50 @@ describe('useRevokeGrantMutation after a half-failed revoke', () => {
     // Assert
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['authorization', 'grants'] })
+    })
+  })
+})
+
+describe('useRevokeBrowserSessionMutation', () => {
+  test('deletes the browser session and refreshes the browsers list', async () => {
+    // Arrange
+    const requests = routeRunAuthedThroughRecordingHttpClient(
+      DateTime.unsafeMake(0),
+      () => new Response(null, { status: 204 })
+    )
+    const { result, queryClient } = renderWithClient(() => useRevokeBrowserSessionMutation())
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    // Act
+    await result.current.mutateAsync({ sid: 'session-1' })
+
+    // Assert
+    expect(requests.map(({ method, url }) => ({ method, url }))).toEqual([
+      { method: 'DELETE', url: '/authorization/browser-sessions/session-1' },
+    ])
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ['authorization', 'browser-sessions'],
+      })
+    })
+  })
+
+  test('a session already gone counts as revoked, and refreshes the browsers list', async () => {
+    // Arrange — the session ended elsewhere since the list was read.
+    routeRunAuthedThroughRecordingHttpClient(DateTime.unsafeMake(0), () =>
+      Response.json({ error: 'BrowserSessionNotFound', sid: 'session-1' }, { status: 404 })
+    )
+    const { result, queryClient } = renderWithClient(() => useRevokeBrowserSessionMutation())
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    // Act
+    await result.current.mutateAsync({ sid: 'session-1' })
+
+    // Assert
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ['authorization', 'browser-sessions'],
+      })
     })
   })
 })
