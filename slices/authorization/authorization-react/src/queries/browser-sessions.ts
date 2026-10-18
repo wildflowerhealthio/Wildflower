@@ -17,7 +17,13 @@ import { useRunAuthed } from './use-run-authed.ts'
 
 type BrowserSession = Schema.Schema.Type<typeof AccessManagement.BrowserSessionSchema>
 
-/** Shared by the route `loader` and {@link useBrowserSessionsQuery}. */
+/**
+ * Shared by the route `loader` and {@link useBrowserSessionsQuery}. Browsers
+ * sign in on the server's own pages, outside this React tree, and their
+ * last-seen times move as they're used, so the access page's loader reads the
+ * list afresh on every visit (`staleTime: 0`); the section then renders that
+ * read without fetching again on mount.
+ */
 const browserSessionsQueryOptions = (
   runAuthed: RunAuthed
 ): UseSuspenseQueryOptions<
@@ -34,10 +40,6 @@ const browserSessionsQueryOptions = (
           c['access-management'].ListBrowserSessions()
         )
       ),
-    // Browsers sign in on the server's own pages, outside this React tree, and
-    // their last-seen times move as they're used: refetch on mount, for the
-    // same reason the grants list does.
-    refetchOnMount: 'always',
   })
 
 /** Reads synchronously from cache when the route loader has already warmed it. */

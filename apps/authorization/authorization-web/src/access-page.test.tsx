@@ -191,6 +191,21 @@ describe('the access page', () => {
     ).toBe('Bearer tok_owner')
   })
 
+  it('reads the browsers once for a page load', async () => {
+    // Arrange — the app's own query client, with its staleTime.
+    const server = stubServer()
+
+    // Act
+    mountAccessPages(server, buildSessionQueryClient(vi.fn()))
+    await sectionTitled('Browsers')
+    await sectionTitled('Approved Apps')
+
+    // Assert
+    expect(
+      server.requests.filter((request) => request.url.endsWith('/authorization/browser-sessions'))
+    ).toHaveLength(1)
+  })
+
   it('revokes a browser’s session, then reads the list again', async () => {
     // Arrange
     const server = stubServer()

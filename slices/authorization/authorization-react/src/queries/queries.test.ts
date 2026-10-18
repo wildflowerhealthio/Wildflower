@@ -132,10 +132,9 @@ const BROWSER_SESSION_BODY = [
 ]
 
 describe('browserSessionsQueryOptions', () => {
-  test('re-fetches on mount under its own key, so a new sign-in shows up', () => {
+  test('exposes the canonical BROWSER_SESSIONS_QUERY_KEY', () => {
     const options = browserSessionsQueryOptions(makeRunAuthed(stubHttpClientLayer()))
     expect(options.queryKey).toEqual(BROWSER_SESSIONS_QUERY_KEY)
-    expect(options.refetchOnMount).toBe('always')
   })
 
   test('queryFn reads the browser sessions through the authed runner', async () => {
