@@ -37,7 +37,7 @@ async fn the_denier_denies_a_code_request_and_settles_its_wait_page() {
     assert_eq!(status["status"], "denied");
     assert_eq!(
         status["redirect"],
-        "https://app.example/cb?error=access_denied&state=xyz"
+        "https://app.example/cb?error=access_denied&error_description=The+request+was+declined.&state=xyz"
     );
     assert_eq!(newest_pending_consent(&db), None);
 }

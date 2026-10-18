@@ -16,7 +16,8 @@ use crate::ports::OwnerApproval;
 /// [`AuthorizationServer::pending_consent_denier`](crate::AuthorizationServer::pending_consent_denier).
 ///
 /// A denial takes the same path as the consent pages' Deny
-/// (`/authorization/oauth-consents/{id}/deny`, `/authorization/devices/{userCode}/deny`):
+/// (`/authorization/oauth-consents/{id}/deny`, `/authorization/devices/{userCode}/deny`,
+/// which a browser pairing shares with a device):
 /// the request is marked denied, the newest pending consent is republished,
 /// and the requester's wait page or device poll ends as denied.
 #[derive(Clone)]
@@ -53,7 +54,10 @@ impl PendingConsentDenier {
         let consent_decider = Arc::clone(&self.consent_decider);
         tokio::task::spawn_blocking(move || match consent {
             ConsentKey::OAuth { id } => consent_decider.deny_oauth(&id).map(|_| ()),
-            ConsentKey::Device { user_code } => consent_decider.deny_device(&user_code),
+            // A browser pairing is decided at the device page, as a device is.
+            ConsentKey::Device { user_code } | ConsentKey::Browser { user_code } => {
+                consent_decider.deny_device(&user_code)
+            }
         })
         .await
         .map_err(|error| {
