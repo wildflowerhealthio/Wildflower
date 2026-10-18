@@ -510,6 +510,19 @@ describe("OAuthConsentCard — asking the server's owner", () => {
     expect(mutate.mock.calls.at(-1)?.[0]).toEqual({ kind: 'deny', id: 'consent-1' })
     expect(onDone).toHaveBeenCalledWith({ status: 'denied' })
   })
+
+  test("a reader that can't decide the request at all gets no Deny, only Ask the server's owner", () => {
+    renderCard(
+      makeConsent({
+        scopes: ['system/Observation.r'],
+        missingApprovalScopes: ['wildflower/AuthorizationRequest.u', 'wildflower/Grant.c'],
+      }),
+      vi.fn()
+    )
+
+    expect(screen.queryByRole('button', { name: 'Deny' })).toBeNull()
+    expect(screen.getByRole('button', { name: "Ask the server's owner" })).toBeDefined()
+  })
 })
 
 describe('OAuthConsentCard — registration warning', () => {

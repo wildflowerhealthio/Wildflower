@@ -12,10 +12,12 @@
 //!  - [`AuthenticatedClient`] — an OAuth client that exists, is enabled, and
 //!    (if confidential) presented its secret. Everything a client does on its
 //!    own behalf takes one.
-//!  - [`DelegatedScopes`] — what an approving Owner may delegate: clamped to
-//!    the approvable scopes (requested ∩ allowed) **and** covered by the
-//!    approver's own grant. No grant, code, or widened registration can carry a
-//!    scope the approver did not hold.
+//!  - [`DelegatedScopes`] — what an approving Owner may delegate: its approver
+//!    held the prompt's approval scopes, and it is clamped to the approvable
+//!    scopes (requested ∩ allowed) **and** covered by the approver's own
+//!    grant. No grant, code, or widened registration can carry a scope the
+//!    approver did not hold, and only a proof whose approver could write the
+//!    client registration writes it.
 //!  - [`RedeemedAuthorizationCode`], [`ConsumedDeviceRequest`],
 //!    [`ValidatedRefreshToken`] — the redemptions an access token is minted
 //!    under at `/oauth/token`; each carries the scopes of the record it
@@ -43,8 +45,9 @@
 //! new source of authority has to be added there.
 //!
 //! Not proofs: the registration-acknowledgement check (a consent-UI rule run
-//! before any clamp) and the pending-request bookkeeping writes (park, poll,
-//! deny), which grant no authority and stay on the ordinary store port.
+//! before anything is written) and the pending-request bookkeeping writes
+//! (park, poll, deny, raise for the Owner), which grant no authority and stay
+//! on the ordinary store port.
 
 mod authenticated_client;
 mod browser_pairing;

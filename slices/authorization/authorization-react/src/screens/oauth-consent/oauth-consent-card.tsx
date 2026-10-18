@@ -61,7 +61,8 @@ interface OAuthConsentCardProps {
   /**
    * Hand the request to the server's Owner, for a reader whose token lacks
    * some of the consent's `missingApprovalScopes`: the card offers it in place
-   * of Allow.
+   * of Allow, and in place of Deny too when the reader can't decide the
+   * request at all.
    */
   readonly onAskOwner: () => void
 }
@@ -79,12 +80,20 @@ const redirectHostOf = (redirectUri: string): string => {
 const CANNOT_ALLOW = "This browser can't allow this app."
 
 /**
+ * The approval scope that decides a request at all, approving or denying it
+ * (`authorization-server-rust`'s `consent_decider_scopes`): a reader missing it
+ * can't deny either.
+ */
+const DECIDING_SCOPE = 'wildflower/AuthorizationRequest.u'
+
+/**
  * The OAuth consent card: the app-identity header with where it sends the
  * browser back to, the launch-patient bar, the shared {@link ScopePicker}
  * editing surface, and the approve/deny decision wiring. A reader lacking
  * some of the consent's `missingApprovalScopes` gets none of the patient bar,
  * registration warning or scope editing, and "Ask the server's owner" in place
- * of Allow. The scope editing
+ * of Allow, with no Deny when what it lacks includes deciding the request at
+ * all. The scope editing
  * itself (statements ⇄ grid, exclusions, flags) is `scopes-react`'s; this card
  * owns the draft and the result routing. What sends the decision and what
  * reads the patients come from its composer: the authorization server's own
@@ -120,10 +129,12 @@ const OAuthConsentCard = ({
   // shown) for `registered`, so it always sends `false` in that case.
   const [registrationAcknowledged, setRegistrationAcknowledged] = useState(false)
   const registrationNeedsAcknowledgment = consent.registration.status !== 'registered'
-  // A reader whose token lacks an approval scope (the power to create the
-  // grant, or the client registration this approval would create or widen)
-  // can't allow; the server would refuse it.
+  // A reader whose token lacks an approval scope (to decide the request, to
+  // create the grant or write the client registration, or a resource scope
+  // the request asks for) can't allow; the server would refuse it. One that
+  // can't decide the request at all can't deny it either.
   const canAllow = consent.missingApprovalScopes.length === 0
+  const canDeny = !consent.missingApprovalScopes.includes(DECIDING_SCOPE)
   const { options: patients, loading: patientsLoading, error: patientsError } = patientOptions
   // The patient the Owner picked, kept so the picker still names them once a
   // later name search no longer lists them.
@@ -328,14 +339,16 @@ const OAuthConsentCard = ({
           </p>
         )}
         <div className={styles['buttons']}>
-          <button
-            type="button"
-            className={cn('button-2 outline accent-red', styles['deny'])}
-            disabled={submitting}
-            onClick={handleDecline}
-          >
-            Deny
-          </button>
+          {canDeny ? (
+            <button
+              type="button"
+              className={cn('button-2 outline accent-red', styles['deny'])}
+              disabled={submitting}
+              onClick={handleDecline}
+            >
+              Deny
+            </button>
+          ) : null}
           {canAllow ? (
             <button
               type="button"

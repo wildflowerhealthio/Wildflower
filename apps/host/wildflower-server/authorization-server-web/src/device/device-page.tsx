@@ -55,7 +55,10 @@ interface DevicePageProps {
 /** What reading the request a code names answered. */
 type DeviceLookup =
   | { readonly kind: 'decidable'; readonly consent: DeviceConsent }
-  /** This browser's session can't decide device requests here. */
+  /**
+   * This browser's session can't decide this request here: it can't read
+   * device requests, or lacks one of the request's approval scopes.
+   */
   | { readonly kind: 'undecidable-here' }
   /** No pending request has the code: mistyped, decided, or expired. */
   | { readonly kind: 'unknown-code' }
@@ -94,7 +97,13 @@ const lookUpDeviceConsent = (
   Effect.flatMap(AuthorizationServerHttpApiClient, (client) =>
     client.devices.GetDeviceConsent({ path: { userCode } })
   ).pipe(
-    Effect.map((consent): DeviceLookup => ({ kind: 'decidable', consent })),
+    // A session lacking one of the request's approval scopes can read it but
+    // not approve it, so it decides it on the server's device instead.
+    Effect.map((consent): DeviceLookup =>
+      consent.missingApprovalScopes.length === 0
+        ? { kind: 'decidable', consent }
+        : { kind: 'undecidable-here' }
+    ),
     Effect.catchIf(isUndecidableHere, () =>
       Effect.succeed<DeviceLookup>({ kind: 'undecidable-here' })
     ),

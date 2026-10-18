@@ -32,6 +32,10 @@ const REQUEST_UNREADABLE =
 /** What the page says once a decision has no callback it can leave for. */
 const UNEXPECTED_ANSWER = 'The authorization server returned an unexpected answer.'
 
+/** What the page says when asking the server's owner failed. */
+const OWNER_UNASKED =
+  "Couldn't ask the server's owner. Approve it on the device running your server instead."
+
 interface ConsentPageProps {
   /** The pending authorization request the page decides, read from its path. */
   readonly requestId: string
@@ -65,6 +69,8 @@ type Exit =
     }
   | { readonly kind: 'declined' }
   | { readonly kind: 'unexpected' }
+  /** Asking the server's owner failed, so nobody was told. */
+  | { readonly kind: 'owner-unasked' }
 
 /** What reading the pending request answered. */
 type ConsentLookup =
@@ -101,6 +107,17 @@ const lookUpConsent = (
   )
 
 /**
+ * Raise the pending request `requestId` for the server's Owner, so the host
+ * notifies them. A request no longer pending needs no asking.
+ */
+const askOwner = (
+  requestId: string
+): Effect.Effect<void, unknown, AuthorizationServerHttpApiClient> =>
+  Effect.flatMap(AuthorizationServerHttpApiClient, (client) =>
+    client['oauth-consent'].AskOwnerOAuthConsent({ path: { id: requestId } })
+  ).pipe(Effect.catchIf(Schema.is(OAuthConsent.OAuthConsentNotFoundSchema), () => Effect.void))
+
+/**
  * The consent card on the authorization server's own origin, for the browser
  * signed in as the Owner: it reads the pending request, lets the Owner narrow
  * and decide it, and leaves for the client callback the decision's answer
@@ -111,7 +128,9 @@ const lookUpConsent = (
  * longer pending says so and steps back out instead, since that callback is
  * not this browser's to follow. A browser whose session lacks an approval
  * scope this request takes (`missingApprovalScopes`) is offered "Ask the
- * server's owner" in place of Allow, which leaves for the wait page too.
+ * server's owner" in place of Allow, which raises the request for the Owner
+ * (so the host notifies them, `POST …/ask-owner`) and then leaves for the
+ * wait page too; if the server can't be asked, the page says so.
  *
  * @remarks
  * Everything goes through `runAuthed` on the browser session: the
@@ -134,6 +153,15 @@ const ConsentPage = ({
   })
   const consentMutation = useMutation(oauthConsentMutationOptions(runAuthed))
   const [exit, setExit] = useState<Exit | null>(null)
+  const askOwnerMutation = useMutation({
+    mutationFn: () => runAuthed(askOwner(requestId)),
+    onSuccess: () => {
+      leaveFor(waitPage)
+    },
+    onError: () => {
+      setExit({ kind: 'owner-unasked' })
+    },
+  })
 
   // In `then=back` mode a request no longer pending is settled as far as
   // this page goes; otherwise the wait page takes over.
@@ -194,7 +222,7 @@ const ConsentPage = ({
       runAuthed={runAuthed}
       onDone={leaveWith}
       onAskOwner={() => {
-        leaveFor(waitPage)
+        askOwnerMutation.mutate()
       }}
     />
   )
@@ -205,7 +233,7 @@ interface DecidableConsentProps {
   readonly consentMutation: OAuthConsentMutation
   readonly runAuthed: AuthorizationRouterContext.RunAuthed
   readonly onDone: (result: OAuthConsentResult) => void
-  /** Leave for the wait page, where the Owner's decision arrives. */
+  /** Raise the request for the Owner, then leave for the wait page. */
   readonly onAskOwner: () => void
 }
 
@@ -261,6 +289,7 @@ const ConsentExit = ({ exit }: { readonly exit: Exit }): JSX.Element =>
       done: ({ decision, goBack }) => <DecidedThenBack decision={decision} goBack={goBack} />,
       declined: () => <p className={styles['consent-page__message']}>The request was declined.</p>,
       unexpected: () => <ErrorBanner error={new Error(UNEXPECTED_ANSWER)} />,
+      'owner-unasked': () => <p className={styles['consent-page__message']}>{OWNER_UNASKED}</p>,
     })
   )
 

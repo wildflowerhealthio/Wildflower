@@ -297,6 +297,7 @@ const makeConsent = (overrides?: Partial<DeviceConsent>): DeviceConsent => ({
   requestedScopes: ['patient/Observation.rs'],
   // The client is allowed a wider set — device consent is expandable.
   allowedScopes: ['patient/*.cruds'],
+  missingApprovalScopes: [],
   ...overrides,
 })
 
