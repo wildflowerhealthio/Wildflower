@@ -1,5 +1,7 @@
 # Wildflower Monorepo
 
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/wildflowerhealthio/Wildflower/badge)](https://scorecard.dev/viewer/?uri=github.com/wildflowerhealthio/Wildflower)
+
 A monorepo.
 
 ## Development
