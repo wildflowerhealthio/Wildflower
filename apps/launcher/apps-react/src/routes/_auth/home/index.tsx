@@ -67,7 +67,8 @@ const validateHomeSearch = (search: Record<string, unknown>): HomeSearch => {
  * against the shared `QueryClient`; by the time the component renders,
  * `useAppsListQuery` resolves synchronously from cache. The router's own
  * pending UI covers the load window — no inline `<Suspense>` fallback, no
- * `<CatchBoundary>`; read failures propagate to the route's `errorComponent`.
+ * `<CatchBoundary>`; read failures propagate to the route's `errorComponent`,
+ * {@link AppsHomeError}.
  * The home-screen `PUT`s (reorder + hide) auto-invalidate the list query;
  * catalogue management (add / remove / configure / re-enable) lives under
  * `/settings/apps`.
@@ -337,15 +338,29 @@ const AppsHomeBody = ({
   )
 }
 
+/**
+ * Home when the apps list can't be read: the header, so Settings stays in
+ * reach, over the error body. A `403` because the session lacks
+ * `wildflower/Apps.r` (a browser the Owner paired with less than the launcher
+ * asks for) renders through the app's ambient error renderer, which says this
+ * browser isn't allowed to list apps and offers to sign in again.
+ */
+const AppsHomeError = ({ error }: { readonly error: unknown }): JSX.Element => (
+  <>
+    <PageHeader title="Apps" actions={<SettingsLink href="/settings" label="Settings" />} />
+    <AsyncErrorView error={error} />
+  </>
+)
+
 const Route = createFileRoute('/_auth/home/')({
   validateSearch: validateHomeSearch,
   loader: ({ context }) =>
     context.queryClient.query({ ...appsListQueryOptions(context.runAuthed), staleTime: 'static' }),
   component: AppsHomeScreen,
-  errorComponent: ({ error }) => <AsyncErrorView error={error} title="Apps" />,
+  errorComponent: AppsHomeError,
 })
 
-// `AppsHomeBody` and `validateHomeSearch` are exported for unit tests (the body
-// renders independently of the route loader); grouped with `Route` into one
-// declaration for `import/group-exports`.
-export { AppsHomeBody, Route, validateHomeSearch }
+// `AppsHomeBody`, `AppsHomeError` and `validateHomeSearch` are exported for
+// unit tests (the body renders independently of the route loader); grouped
+// with `Route` into one declaration for `import/group-exports`.
+export { AppsHomeBody, AppsHomeError, Route, validateHomeSearch }

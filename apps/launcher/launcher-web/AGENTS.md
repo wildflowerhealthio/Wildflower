@@ -38,8 +38,12 @@ the base opens a server's launcher.
   and a launch's `iss` choose only where the landing signs in
   (`web-entry.ts`'s `chosenServerUrl`). The settings screen's Logout row
   (`web-entry.ts`'s `logoutSettingsItem`) revokes the bearer at the session's
-  server and clears the tab's `sessionStorage`. A 401, or a 403's "Request
-  access", signs in again (`session/sign-in-again.ts`): the session goes
+  server and clears the tab's `sessionStorage`. A 403 renders in place
+  (`scope-error-surface.tsx`); one for `wildflower/Apps.r` alone, which a
+  browser paired with less than the launcher asks for gets on Home, leads
+  with "This browser isn't allowed to list apps", under Home's header. A
+  401, or a 403's "Request access", signs in again
+  (`session/sign-in-again.ts`): the session goes
   `Unauthed`, keeping its server, and the landing signs back in to it with
   the page as `returnTo`. Tests:
   `authorization-react`'s `bearer-auth-state-store.test.ts`,

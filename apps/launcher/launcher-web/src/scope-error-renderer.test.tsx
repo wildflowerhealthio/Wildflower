@@ -115,6 +115,21 @@ describe('renderScopeError', () => {
     renderErrorAt(insufficientScopeBody(['wildflower/Grant.d']))
     expect(await screen.findByText('delete Grants')).toBeTruthy()
   })
+
+  test('says this browser isn’t allowed to list apps when it lacks wildflower/Apps.r', async () => {
+    renderErrorAt(insufficientScopeBody(['wildflower/Apps.r']))
+    expect(
+      await screen.findByRole('heading', { name: 'This browser isn’t allowed to list apps' })
+    ).toBeTruthy()
+    expect(screen.getByRole('button', { name: /request access/i })).toBeTruthy()
+  })
+
+  test('keeps the generic heading for any other denial', async () => {
+    renderErrorAt(insufficientScopeBody(['wildflower/Apps.r', 'wildflower/Grant.d']))
+    expect(
+      await screen.findByRole('heading', { name: 'You don’t have permission to do that' })
+    ).toBeTruthy()
+  })
 })
 
 describe('step-up action', () => {
