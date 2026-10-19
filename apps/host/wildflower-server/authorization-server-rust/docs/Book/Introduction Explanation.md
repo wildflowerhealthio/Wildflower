@@ -62,6 +62,16 @@ Hold on to three rules while you read. Most of the code exists to enforce one of
 
 The rest of the part reads the code twice, from opposite ends.
 
-**[Domain](<Domain Explanation.md>)** goes bottom up. Each entity in `src/domain/` gets a page: what it is and why it exists, its types, and then a section per method saying what the method means for the Owner, the app or the person at the browser, with the method and the unit tests that exercise it. The pages are ordered so that each one needs only the ones before it.
+The first pass goes bottom up, one layer per chapter, each needing only the ones before it. Every source file has one page, and every method one section: what it means for the Owner, the app or the person at the browser, then the method, then the unit tests that exercise it.
 
-**[Integration Tests](<Integration Tests Explanation.md>)** goes top down. Each file in `tests/integration/` gets a page, and each test a section: the promise the test holds the server to, the test itself, and links back to the domain sections the promise rests on. The first page, [Grant Flows](<Integration Tests/Grant Flows Explanation.md>), follows one app's request from the front door to its token.
+1. **[Domain](<Domain Explanation.md>)**: the entities and the rules they own.
+2. **[Grant Store](<Grant Store Explanation.md>)**: what persistence looks like from the domain, one scope per operation.
+3. **[Authority](<Authority Explanation.md>)**: the proofs every privileged write demands.
+4. **[Writers](<Writers Explanation.md>)**: the only places those writes happen.
+5. **[Capabilities](<Capabilities Explanation.md>)**: the operations, split by what unlocks them.
+6. **[HTTP](<HTTP Explanation.md>)**: the gates, the extractors and every route.
+7. **[Assembly](<Assembly Explanation.md>)**: how the crate is put together and handed to the host.
+8. **[Persistence](<Persistence Explanation.md>)**: the SQLite behind the Grant Store.
+9. **[Utilities](<Utilities Explanation.md>)**: the small cryptographic helpers.
+
+The second pass, **[Integration Tests](<Integration Tests Explanation.md>)**, goes top down. Each file in `tests/integration/` gets a page, and each test a section: the promise the test holds the server to, the test itself, and links back to the sections the promise rests on. The first page, [Grant Flows](<Integration Tests/Grant Flows Explanation.md>), follows one app's request from the front door to its token.

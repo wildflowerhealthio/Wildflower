@@ -91,6 +91,12 @@ describe('Rust items', () => {
     expect(loop.text).toBe('for _ in 0..steps {\n    let _ = counter.bump();\n}')
   })
 
+  it('finds a `proptest!` function whose parameter is a pattern over several lines', async () => {
+    const shown = await rustExcerpt('tests::tags_pair_up')
+    expect(shown.text.split('\n')[0]).toBe('fn tags_pair_up(')
+    expect(shown.text.split('\n').at(-2)).toBe('    prop_assert_ne!(a, b);')
+  })
+
   it('refuses a name nothing declares', async () => {
     await expect(locateRustItem(rust, 'Counter::missing')).rejects.toThrow(ItemNotFound)
     await expect(locateRustItem(rust, 'Missing')).rejects.toThrow('no Rust item named Missing')

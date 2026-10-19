@@ -98,6 +98,31 @@ interface ParsedRust {
 /** `text` as spaces, its line breaks kept, so what follows keeps its rows and columns. */
 const blank = (text: string): string => text.replace(/[^\n]/g, ' ')
 
+/**
+ * `body` with each `fn`'s parameter list blanked. A proptest parameter is a
+ * pattern `in` a strategy (`(a, b) in (…).prop_filter(…)`), which isn't Rust
+ * and can leave the reparsed `fn` inside an error node; with the list blank it
+ * parses as `fn name() { … }`, at the same offsets, and an excerpt still
+ * reads the parameters from the source.
+ */
+const blankParameterLists = (body: string): string => {
+  let out = ''
+  let at = 0
+  for (const match of body.matchAll(/\bfn\s+[A-Za-z_]\w*\s*\(/g)) {
+    const open = match.index + match[0].length - 1
+    if (open < at) continue
+    let depth = 0
+    let close = open
+    for (; close < body.length; close++) {
+      if (body[close] === '(') depth++
+      else if (body[close] === ')' && --depth === 0) break
+    }
+    out += body.slice(at, open + 1) + blank(body.slice(open + 1, close))
+    at = close
+  }
+  return out + body.slice(at)
+}
+
 const parseRust = async (source: string): Promise<ParsedRust> => {
   const rust = await rustParser()
   const tree = rust.parse(source)
@@ -109,7 +134,9 @@ const parseRust = async (source: string): Promise<ParsedRust> => {
       const start = body.startIndex + 1
       const end = body.endIndex - 1
       const reparsed = rust.parse(
-        blank(source.slice(0, start)) + source.slice(start, end) + blank(source.slice(end))
+        blank(source.slice(0, start)) +
+          blankParameterLists(source.slice(start, end)) +
+          blank(source.slice(end))
       )
       if (reparsed === null) return []
       parsed = reparsed

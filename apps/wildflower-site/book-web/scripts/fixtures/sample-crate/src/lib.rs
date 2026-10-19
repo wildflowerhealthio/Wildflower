@@ -103,5 +103,15 @@ mod tests {
         fn new_starts_at_zero(tag in any::<u8>()) {
             prop_assert_eq!(super::Counter::new(tag).count, 0);
         }
+
+        #[test]
+        fn tags_pair_up(
+            (a, b) in (
+                any::<u8>(),
+                any::<u8>(),
+            ).prop_filter("distinct", |(a, b)| a != b)
+        ) {
+            prop_assert_ne!(a, b);
+        }
     }
 }
