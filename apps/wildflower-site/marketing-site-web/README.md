@@ -113,12 +113,15 @@ published to its own origin. It is served at the custom domain in
 `public/CNAME` (`wildflowerhealth.io`), which the build copies to the root of
 `dist/`, the only place Pages reads it from. Its links into the apps go to
 each app's published origin, from a preview too. The Vite `base` is relative
-(`./`) so the same build serves the apex and a PR preview's subpath.
+(`./`) so the same build serves the apex and a PR preview's subpath. The
+deploy adds two builds of other packages under `dist/`: the code index at
+`/code-index/` (`code-index-web`) and the book at `/book/` (`book-web`).
 
 A PR that changes this site gets a preview at
 `https://wildflowerhealthio.github.io/staging/pr-<n>/`, published by
 `pr-preview.yml` to `pr-<n>/` of `wildflowerhealthio/staging` and removed
-when the PR closes.
+when the PR closes. The preview carries the book too, and a PR that changes
+only the book previews this site for it.
 
 One-time setup: repo Settings → Pages → Source = "GitHub Actions", then set the
 custom domain to `wildflowerhealth.io`.

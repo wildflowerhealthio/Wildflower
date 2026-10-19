@@ -51,6 +51,13 @@ on:
         description: '`production`, or the PR number whose preview this is.'
         type: string
         required: true
+      book:
+        description: >-
+          Whether the site carries the book (apps/wildflower-site/book-web) at
+          `book/`: the marketing site's preview. The apex deploy adds the book
+          itself.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -114,6 +121,22 @@ jobs:
         env:
           SLUG: ${{ inputs.slug }}
         run: node scripts/ci/pages-sites.ts check "$SLUG"
+
+      # The book's `{{#code}}` directives name source by file and symbol, so a
+      # PR whose chapters or excerpted code no longer match fails here.
+      # Its links name GITHUB_SHA, the commit checked out.
+      - name: Install mdbook
+        if: inputs.book
+        uses: taiki-e/install-action@v2.87.27
+        with:
+          tool: mdbook@0.5.4
+
+      - name: Build the book into the site
+        if: inputs.book
+        working-directory: apps/wildflower-site/book-web
+        env:
+          BUILD_DIR: ${{ inputs.build-dir }}
+        run: vp run build-book --out "$GITHUB_WORKSPACE/$BUILD_DIR/book"
 
       # Registers the release the build names and uploads the app's source
       # maps to it; the maps are published with the build either way. Needs

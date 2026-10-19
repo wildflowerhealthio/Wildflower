@@ -33,6 +33,12 @@ import { selectionFor } from './test-shards.ts'
 /** scripts/ci/ sits two levels under the repo root. */
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
+/**
+ * The book (apps/wildflower-site/book-web), which the marketing site's build
+ * carries at `book/`.
+ */
+const BOOK_PACKAGE = '@wildflowerhealthio/book-web'
+
 /** The GitHub organization every Pages repository belongs to. */
 const PAGES_OWNER = 'wildflowerhealthio'
 
@@ -60,6 +66,12 @@ interface PagesSite {
   readonly pagesBranch: string
   /** The slash-terminated URL the branch's root is served at; a preview is `<siteUrl>pr-<n>/`. */
   readonly siteUrl: string
+  /**
+   * Whether the site's preview carries the book at `book/`, built from
+   * {@link BOOK_PACKAGE} after the site's own build, so a change reaching the
+   * book previews the site too. (The apex deploy adds the book itself.)
+   */
+  readonly includesBook: boolean
 }
 
 /** What differs between the hosted apps' sites. */
@@ -150,6 +162,7 @@ const APP_PAGES_SITES: readonly PagesSite[] = HOSTED_APP_IDS.map((app) => ({
   pagesRepository: `${APP_SLUGS[app]}-web`,
   pagesBranch: 'gh-pages',
   siteUrl: sectionUrl(app),
+  includesBook: false,
 }))
 
 /**
@@ -184,6 +197,7 @@ const MARKETING_PAGES_SITE: PagesSite = {
   pagesRepository: 'staging',
   pagesBranch: 'main',
   siteUrl: `https://${PAGES_OWNER}.github.io/staging/`,
+  includesBook: true,
 }
 
 /** Every site, apps first. */
@@ -192,10 +206,10 @@ const PAGES_SITES: readonly PagesSite[] = [...APP_PAGES_SITES, MARKETING_PAGES_S
 /**
  * The sites a branch's changes can affect: every site when `selectionFor`
  * (the TypeScript test shards' rule) would run every area — a root config or
- * lockfile change, or a change outside every package, such as this script or
- * the deploy workflows — and otherwise the sites whose package the changes
- * reach through the workspace dependency graph. Pure — exported for unit
- * testing.
+ * lockfile change, or a change outside every package, such as this script,
+ * the deploy workflows, or a book chapter and the Rust it excerpts — and
+ * otherwise the sites whose package, or whose book, the changes reach through
+ * the workspace dependency graph. Pure — exported for unit testing.
  */
 const affectedSites = (
   affected: AffectedPackages,
@@ -203,7 +217,11 @@ const affectedSites = (
 ): readonly PagesSite[] =>
   selectionFor(affected, packages)._tag === 'AllAreas'
     ? PAGES_SITES
-    : PAGES_SITES.filter((site) => affected.affected.has(site.packageName))
+    : PAGES_SITES.filter(
+        (site) =>
+          affected.affected.has(site.packageName) ||
+          (site.includesBook && affected.affected.has(BOOK_PACKAGE))
+      )
 
 /** The required files of `site` missing from its build, as repo-root-relative paths. */
 const missingRequiredFiles = (
@@ -267,6 +285,7 @@ export type { PagesSite }
 export {
   affectedSites,
   APP_PAGES_SITES,
+  BOOK_PACKAGE,
   MARKETING_PAGES_SITE,
   missingRequiredFiles,
   PAGES_OWNER,

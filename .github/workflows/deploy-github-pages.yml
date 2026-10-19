@@ -13,6 +13,7 @@ name: Deploy GitHub Pages
 #
 # The code index (/code-index/ on the apex) is built here too, on main
 # only: indexing needs the whole Rust toolchain, so PR previews leave it out.
+# So is the book (/book/), which the marketing site's PR previews carry too.
 #
 # Runs on every push to main and on manual dispatch, and deploys every app
 # each time: the apps depend on much of the workspace, so a path filter would
@@ -160,12 +161,51 @@ jobs:
           path: ${{ runner.temp }}/code-index
           retention-days: 1
 
+  # The book, published under the apex at /book/
+  # (apps/wildflower-site/book-web/README.md): mdbook, with the chapters'
+  # `{{#code}}` excerpts read from this checkout. Like the code index, it hands
+  # its pages to the marketing job as an artifact; when it fails, the apex
+  # still deploys, without the book.
+  book:
+    name: Build the book
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1.21.2
+        with:
+          cache: true
+          cache-save: false
+
+      - name: Install dependencies
+        run: vp install
+
+      - name: Install mdbook
+        uses: taiki-e/install-action@v2.87.27
+        with:
+          tool: mdbook@0.5.4
+
+      - name: Build the book
+        working-directory: apps/wildflower-site/book-web
+        run: vp run build-book --out "$RUNNER_TEMP/book"
+
+      - name: Upload the book
+        uses: actions/upload-artifact@v7
+        with:
+          name: book
+          path: ${{ runner.temp }}/book
+          retention-days: 1
+
   # After every app, whether or not each one published: the apex deploys
   # even when an app's build fails, so a broken app never holds back the
   # homepage or the policy pages.
   marketing:
     name: Build the marketing site
-    needs: [apps, code-index]
+    needs: [apps, code-index, book]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     # configure-pages reads this repository's Pages settings.
@@ -204,6 +244,13 @@ jobs:
         with:
           name: code-index
           path: apps/wildflower-site/marketing-site-web/dist/code-index
+
+      - name: Add the book
+        if: ${{ needs.book.result == 'success' }}
+        uses: actions/download-artifact@v8
+        with:
+          name: book
+          path: apps/wildflower-site/marketing-site-web/dist/book
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
