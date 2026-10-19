@@ -36,7 +36,6 @@
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "@wildflowerhealthio/lifelabs-pdf-importer": "workspace:*",
     "effect": "catalog:",
-    "fast-check": "catalog:",
     "jsdom": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",

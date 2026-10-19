@@ -9,7 +9,6 @@
     "test": "vp test"
   },
   "devDependencies": {
-    "@wildflowerhealthio/branding-core": "workspace:*",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "fast-check": "catalog:",
     "typescript": "catalog:",

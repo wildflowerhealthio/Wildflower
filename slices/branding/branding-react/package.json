@@ -24,12 +24,10 @@
   "devDependencies": {
     "@testing-library/dom": "catalog:",
     "@testing-library/react": "catalog:",
-    "@testing-library/user-event": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@wildflowerhealthio/branding-core": "workspace:*",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
-    "@wildflowerhealthio/react-tundraish": "workspace:*",
     "fast-check": "catalog:",
     "jsdom": "catalog:",
     "react": "catalog:",
@@ -40,7 +38,6 @@
   },
   "peerDependencies": {
     "@wildflowerhealthio/branding-core": "workspace:*",
-    "@wildflowerhealthio/react-tundraish": "workspace:*",
     "react": "catalog:"
   }
 }
