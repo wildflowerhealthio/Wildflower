@@ -102,7 +102,9 @@ interface LimitedPageProps {
  * consent card or the wait page) and **Cancel** sends the browser back to the
  * app with `access_denied`; either way it leaves for where the server's answer
  * says. A request no longer waiting here (decided, expired, or not this
- * browser's) goes to the wait page, which says how it ended.
+ * browser's) goes to the wait page, which says how it ended. A request this
+ * browser's session no longer falls short of (its grant was widened since)
+ * goes on at once, with nothing to say.
  */
 const LimitedPage = ({
   requestId,
@@ -139,6 +141,16 @@ const LimitedPage = ({
     if (gone) leaveFor(waitPage)
   }, [gone, leaveFor, waitPage])
 
+  // The session lacks nothing the request asks for any more (its grant was
+  // widened since the request parked), so there is nothing to say: go on.
+  const lacksNothing =
+    shortfallQuery.data?.kind === 'waiting' &&
+    shortfallQuery.data.shortfall.missingScopes.length === 0
+  const { mutate: answer, isIdle: unanswered } = answerMutation
+  useEffect(() => {
+    if (lacksNothing && unanswered) answer('continue')
+  }, [lacksNothing, unanswered, answer])
+
   const view = ((): JSX.Element => {
     if (shortfallQuery.isError) {
       return <p className={styles['limited-page__message']}>{REQUEST_UNREADABLE}</p>
@@ -146,7 +158,18 @@ const LimitedPage = ({
     if (shortfallQuery.data?.kind !== 'waiting') {
       return <PageLoading message="Loading the request…" />
     }
+    if (lacksNothing) {
+      return answerMutation.isError ? (
+        <p role="alert" className={styles['limited-page__message']}>
+          {ANSWER_FAILED}
+        </p>
+      ) : (
+        <PageLoading message="Continuing…" />
+      )
+    }
     const { clientName, missingScopes } = shortfallQuery.data.shortfall
+    // Two scopes can read as the same words; each is said once.
+    const phrases = [...new Set(missingScopes.map(scopePhrase))]
     const answered = answerMutation.data
     const failure = answerMutation.isError ? ANSWER_FAILED : null
     const leaving =
@@ -154,8 +177,8 @@ const LimitedPage = ({
     return (
       <>
         <p className={styles['limited-page__message']}>
-          This browser isn&apos;t allowed to {listOf(missingScopes.map(scopePhrase))}, which{' '}
-          {clientName} expects. {clientName} may not be able to do everything.
+          This browser isn&apos;t allowed to {listOf(phrases)}, which {clientName} expects.{' '}
+          {clientName} may not be able to do everything.
         </p>
         {failure === null ? null : (
           <p role="alert" className={styles['limited-page__message']}>

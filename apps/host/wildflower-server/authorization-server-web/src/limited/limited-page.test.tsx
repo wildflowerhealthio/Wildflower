@@ -135,6 +135,30 @@ describe('LimitedPage — what it says', () => {
     )
   })
 
+  test('says each phrase once when two scopes read the same', async () => {
+    answer = serverHolding(['patient/Observation.rs', 'user/Observation.rs'])
+    renderPage()
+
+    const message = await screen.findByText(/This browser isn't allowed to/)
+    expect(message.textContent).toBe(
+      "This browser isn't allowed to read and search Observations, which Strength expects. Strength may not be able to do everything."
+    )
+  })
+
+  test('a request the session no longer falls short of goes on at once', async () => {
+    answer = serverHolding([], {
+      status: 200,
+      body: { location: 'https://app.example/cb?code=c&state=s' },
+    })
+    renderPage()
+
+    await waitFor(() => {
+      expect(leaveFor).toHaveBeenCalledWith(new URL('https://app.example/cb?code=c&state=s'))
+    })
+    expect(posted()).toEqual(['/oauth/authorize/req-1/continue'])
+    expect(screen.queryByText(/This browser isn't allowed to/)).toBeNull()
+  })
+
   test('a request no longer waiting here leaves for the wait page', async () => {
     answer = () => NOT_FOUND
     renderPage()

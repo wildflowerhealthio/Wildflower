@@ -70,7 +70,10 @@ Security Policy (below).
   `GET /oauth/authorize/{id}/session-shortfall` and says "This browser isn't
   allowed to …, which ‹app› expects. ‹app› may not be able to do
   everything." above **Cancel** and **Continue**, naming each scope with
-  `scopes-react`'s `fluentScope` (a known scope with its own explanation).
+  `scopes-react`'s `fluentScope` (a known scope with its own explanation),
+  each phrase once. A request the session no longer lacks anything of (its
+  grant was widened since it parked) posts Continue at once and says
+  nothing.
   The buttons post `…/cancel` and `…/continue` and leave for the `location`
   the answer carries, a path on this origin or the client callback, only an
   http(s) one. A `404` on any of the three (the request is no longer waiting
