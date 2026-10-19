@@ -3,12 +3,14 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
+  codeIndexPage,
   codeIndexSlug,
   DirectiveError,
   expandDirectives,
   findDirectives,
   includeChapters,
   type LinkTargets,
+  type OwningPackage,
 } from './directives.ts'
 
 /** The fixtures folder stands in for the repository root. */
@@ -36,6 +38,7 @@ describe('findDirectives', () => {
     expect(() => findDirectives('{{#code a.rs A to="x"}}')).toThrow(/to= must follow its own from=/)
     expect(() => findDirectives('{{#code a.rs A colour=red}}')).toThrow(/unknown option colour=red/)
     expect(() => findDirectives('{{#code a.rs A\n')).toThrow(DirectiveError)
+    expect(() => findDirectives('{{#code a.rs AB')).toThrow('{{#code a.rs AB: no closing }}')
   })
 })
 
@@ -113,5 +116,22 @@ describe('codeIndexSlug', () => {
   it('drops the npm scope and the crates’ prefix', () => {
     expect(codeIndexSlug('@wildflowerhealthio/book-web')).toBe('book-web')
     expect(codeIndexSlug('wildflowerhealthio-authorization-server')).toBe('authorization-server')
+  })
+})
+
+describe('codeIndexPage', () => {
+  it('gives a crate sharing a TypeScript package’s slug `-rust`, as the code index does', () => {
+    const takenByTypeScript = new Set(['fhir-r4'])
+    const crate = (name: string): OwningPackage => ({ dir: 'x', name, isCrate: true })
+    expect(codeIndexPage(crate('wildflowerhealthio-fhir-r4'), takenByTypeScript)).toBe(
+      'fhir-r4-rust'
+    )
+    expect(codeIndexPage(crate('wildflowerhealthio-relay'), takenByTypeScript)).toBe('relay')
+    expect(
+      codeIndexPage(
+        { dir: 'x', name: '@wildflowerhealthio/fhir-r4', isCrate: false },
+        takenByTypeScript
+      )
+    ).toBe('fhir-r4')
   })
 })

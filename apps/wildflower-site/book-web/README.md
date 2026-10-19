@@ -50,6 +50,9 @@ link to the same lines, labelled with the symbol.
 | `Name`              | a function, class, interface, type alias, enum, namespace or `const` at the top of the file |
 | `Name.member`       | a member of that class or interface, or a declaration in that namespace                     |
 
+A type alias derived from the value of its name (`type Foo = typeof Foo.Type`)
+gives way to that value, so `Foo` names the schema.
+
 | Option           | Effect                                                                                                  |
 | ---------------- | ------------------------------------------------------------------------------------------------------- |
 | `from="text"`    | Start a fragment at the item's first line holding `text` (after the previous fragment).                 |
@@ -75,12 +78,12 @@ leaves a chapter behind fails the PR's preview build, not the reader.
 
 Diagrams are ` ```mermaid ` blocks, drawn in the browser by mermaid, which the
 build copies out of `node_modules` into the book, so the pages load nothing
-from another origin.
+from another origin. Only a page with a diagram loads it.
 
 ## How it's built
 
-`vp run build-book` (`scripts/build-book.ts`) copies mermaid into `vendor/`
-and runs `mdbook build`. `book.toml` runs `scripts/code-preprocessor.ts`, an
+`vp run build-book` (`scripts/build-book.ts`) copies mermaid into
+`src/vendor/` and runs `mdbook build`. `book.toml` runs `scripts/code-preprocessor.ts`, an
 [mdbook preprocessor](https://rust-lang.github.io/mdBook/for_developers/preprocessors.html)
 run by Node, which includes the chapters and expands their directives, so the
 build needs mdbook but no Rust toolchain. Links between pages are relative, so

@@ -4,6 +4,9 @@
 //                 or variable statement at the top of the file
 //   Name.member   a member of that class or interface, or a declaration in
 //                 that namespace
+//
+// A type alias derived from the value of its name (`type X = typeof X.Type`)
+// gives way to that value.
 import ts from 'typescript'
 
 import type { LocatedItem } from './excerpt.ts'
@@ -42,13 +45,38 @@ const statementsIn = (scope: ts.SourceFile | ts.ModuleDeclaration): readonly ts.
   return body && ts.isModuleBlock(body) ? body.statements : []
 }
 
+/** The leftmost name of `a.b.c`. */
+const leftmostName = (name: ts.EntityName): string =>
+  ts.isIdentifier(name) ? name.text : leftmostName(name.left)
+
+/** `node` holds a `typeof name` (or `typeof name.…`) anywhere in it. */
+const queriesValue = (node: ts.Node, name: string): boolean =>
+  (ts.isTypeQueryNode(node) && leftmostName(node.exprName) === name) ||
+  (ts.forEachChild(node, (child) => queriesValue(child, name) || undefined) ?? false)
+
+/**
+ * The declarations `name` names in `scope`, leaving out a type alias derived
+ * from the value beside it (`type X = typeof X.Type`, the schema convention),
+ * which only restates that value's type: `X` means the value.
+ */
+const declarationsNamed = (
+  scope: ts.SourceFile | ts.ModuleDeclaration,
+  name: string
+): readonly ts.Node[] => {
+  const named = statementsIn(scope).filter((node) => declaredName(node) === name)
+  const withoutDerived = named.filter(
+    (node) => !(ts.isTypeAliasDeclaration(node) && queriesValue(node.type, name))
+  )
+  return withoutDerived.length > 0 ? withoutDerived : named
+}
+
 const resolve = (
   scope: ts.SourceFile | ts.ModuleDeclaration,
   segments: readonly string[]
 ): readonly ts.Node[] => {
   const [first, ...rest] = segments
   if (first === undefined) return []
-  const named = statementsIn(scope).filter((node) => declaredName(node) === first)
+  const named = declarationsNamed(scope, first)
   if (rest.length === 0) return named
   return named.flatMap((node) => {
     if (ts.isModuleDeclaration(node)) return resolve(node, rest)
@@ -84,7 +112,8 @@ const locate = (file: ts.SourceFile, item: ts.Node): LocatedItem => {
   const itemStart = item.getStart(file)
   const docRows = new Set<number>()
   const attributeRows = new Set<number>()
-  const statementEnds = new Map<number, number>()
+  // The item itself, so a `from=` on its first line takes all of it.
+  const statementEnds = new Map<number, number>([[itemStart, rowOf(item.end)]])
   for (const node of descendants(item)) {
     for (const range of ts.getLeadingCommentRanges(source, node.pos) ?? []) {
       if (range.pos >= itemStart && source.startsWith('/**', range.pos))

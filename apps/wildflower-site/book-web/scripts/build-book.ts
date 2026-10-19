@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// Builds the book: copies mermaid in from node_modules (book.toml's
-// `additional-js` names it), then runs `mdbook build`, whose `code`
-// preprocessor expands the chapters' directives.
+// Builds the book: copies mermaid in from node_modules into src/vendor/
+// (which mdbook copies into the book, for assets/mermaid-init.js to load),
+// then runs `mdbook build`, whose `code` preprocessor expands the chapters'
+// directives.
 //
 //   build-book.ts [--out <dir>]   default: book/ in this package
 //
@@ -21,10 +22,10 @@ const require = createRequire(import.meta.url)
 const { values } = parseArgs({ options: { out: { type: 'string' } } })
 const out = resolve(values.out ?? join(packageRoot, 'book'))
 
-mkdirSync(join(packageRoot, 'vendor'), { recursive: true })
+mkdirSync(join(packageRoot, 'src', 'vendor'), { recursive: true })
 copyFileSync(
   require.resolve('mermaid/dist/mermaid.min.js'),
-  join(packageRoot, 'vendor', 'mermaid.min.js')
+  join(packageRoot, 'src', 'vendor', 'mermaid.min.js')
 )
 
 const mdbook = spawnSync('mdbook', ['build', '--dest-dir', out], {

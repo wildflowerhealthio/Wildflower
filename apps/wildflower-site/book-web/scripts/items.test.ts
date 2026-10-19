@@ -99,6 +99,18 @@ describe('fragments', () => {
     )
   })
 
+  it('takes the whole item from a `from` alone on its first line', async () => {
+    const whole = await rustExcerpt('Counter::bump')
+    const fromSignature = await rustExcerpt('Counter::bump', {
+      fragments: [{ from: 'pub fn bump' }],
+      keepDocs: false,
+    })
+    expect(fromSignature).toEqual(whole)
+    expect(
+      tsExcerpt('twice', { fragments: [{ from: 'function twice' }], keepDocs: false })
+    ).toEqual(tsExcerpt('twice'))
+  })
+
   it('marks skipped lines with `// …` at the next line’s indentation', async () => {
     const shown = await rustExcerpt('Counter::bump', {
       fragments: [
@@ -148,6 +160,10 @@ describe('TypeScript items', () => {
     expect(tsExcerpt('twice', { fragments: [{ from: 'return' }], keepDocs: false }).text).toBe(
       'return value * 2'
     )
+  })
+
+  it('takes a value over the type alias derived from it', () => {
+    expect(tsExcerpt('Point').text).toBe('const Point = { x: 0, y: 0 }')
   })
 
   it('refuses a name nothing declares', () => {

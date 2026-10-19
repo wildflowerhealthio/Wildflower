@@ -30,5 +30,8 @@ function twice(value: number): number {
   return value * 2
 }
 
+const Point = { x: 0, y: 0 }
+type Point = typeof Point
+
 export type { Shape }
-export { Counter, LIMIT, Shapes, twice }
+export { Counter, LIMIT, Point, Shapes, twice }

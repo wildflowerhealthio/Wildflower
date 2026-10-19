@@ -19,7 +19,8 @@ command = "node scripts/code-preprocessor.ts"
 default-theme = "navy"
 preferred-dark-theme = "navy"
 git-repository-url = "https://github.com/wildflowerhealthio/Wildflower"
-# Mermaid, copied in from node_modules by scripts/build-book.ts, so the pages
-# load nothing from another origin.
-additional-js = ["vendor/mermaid.min.js", "assets/mermaid-init.js"]
+# Loads src/vendor/mermaid.min.js, copied in from node_modules by
+# scripts/build-book.ts so the pages load nothing from another origin, on the
+# pages with a diagram.
+additional-js = ["assets/mermaid-init.js"]
 additional-css = ["assets/book.css"]

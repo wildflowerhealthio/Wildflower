@@ -4,6 +4,7 @@
 //   {{#chapter "<path>"}}   a stub in src/: the chapter's whole text
 //   {{#code <path> <symbol> [keep-docs] [from="…" [to="…" | through="…"]]…}}
 //   {{#code-link <path> <symbol> [from=… …]}}   a link to the lines {{#code}} would show
+import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, extname, join, relative } from 'node:path'
 
@@ -119,8 +120,13 @@ const findDirectives = (markdown: string): readonly FoundDirective[] => {
         break
       }
     }
-    const raw = markdown.slice(start, end < 0 ? markdown.indexOf('\n', start) : end)
-    if (end < 0) throw new DirectiveError(`${raw}: no closing }}`)
+    if (end < 0) {
+      const lineEnd = markdown.indexOf('\n', start)
+      throw new DirectiveError(
+        `${markdown.slice(start, lineEnd < 0 ? undefined : lineEnd)}: no closing }}`
+      )
+    }
+    const raw = markdown.slice(start, end)
     const kind = match[1] === 'code-link' ? 'code-link' : 'code'
     found.push({
       start,
@@ -141,34 +147,78 @@ const stringAt = (value: unknown, ...keys: readonly string[]): string | undefine
   return typeof at === 'string' ? at : undefined
 }
 
-/** The package holding `path` (repo-root-relative): its directory and name. */
-const owningPackage = (
-  repoRoot: string,
-  path: string
-): { dir: string; name: string } | undefined => {
+/** A package holding an excerpted file. */
+interface OwningPackage {
+  /** Repo-root-relative. */
+  readonly dir: string
+  readonly name: string
+  readonly isCrate: boolean
+}
+
+/** The package holding `path` (repo-root-relative). */
+const owningPackage = (repoRoot: string, path: string): OwningPackage | undefined => {
   for (let dir = dirname(path); dir !== '.' && dir !== '/'; dir = dirname(dir)) {
     const cargo = join(repoRoot, dir, 'Cargo.toml')
     if (existsSync(cargo)) {
       const name = stringAt(parseToml(readFileSync(cargo, 'utf8')), 'package', 'name')
-      if (name !== undefined) return { dir, name }
+      if (name !== undefined) return { dir, name, isCrate: true }
     }
     const npm = join(repoRoot, dir, 'package.json')
     if (existsSync(npm)) {
       const name = stringAt(JSON.parse(readFileSync(npm, 'utf8')), 'name')
-      if (name !== undefined) return { dir, name }
+      if (name !== undefined) return { dir, name, isCrate: false }
     }
   }
   return undefined
 }
 
 /**
- * The code index's page for a package: its name without the npm scope or the
- * crates' `wildflowerhealthio-` prefix, as `code-index-web/scripts/extract.ts`
- * names it. (A crate whose name a TypeScript package shares takes `-rust`
- * there; no such pair exists.)
+ * A package's name without the npm scope or the crates' `wildflowerhealthio-`
+ * prefix: its page in the code index, unless a crate's collides.
  */
 const codeIndexSlug = (packageName: string): string =>
   packageName.replace(/^@[^/]+\//, '').replace(/^wildflowerhealthio-/, '')
+
+/**
+ * The slugs the code index's TypeScript packages take, which a crate of the
+ * same name gives way to: every tracked `package.json` beside a
+ * `tsconfig.json` and not a crate, as `code-index-web/scripts/extract.ts`
+ * lists them. Read once per repository root.
+ */
+const typeScriptSlugsByRoot = new Map<string, ReadonlySet<string>>()
+const typeScriptSlugs = (repoRoot: string): ReadonlySet<string> => {
+  const known = typeScriptSlugsByRoot.get(repoRoot)
+  if (known !== undefined) return known
+  const slugs = new Set(
+    execFileSync('git', ['-C', repoRoot, 'ls-files', '*package.json'], { encoding: 'utf8' })
+      .split('\n')
+      .filter((file) => file !== '' && file !== 'package.json' && !file.includes('node_modules'))
+      .map(dirname)
+      .filter(
+        (dir) =>
+          existsSync(join(repoRoot, dir, 'tsconfig.json')) &&
+          !existsSync(join(repoRoot, dir, 'Cargo.toml'))
+      )
+      .flatMap((dir) => {
+        const name = stringAt(
+          JSON.parse(readFileSync(join(repoRoot, dir, 'package.json'), 'utf8')),
+          'name'
+        )
+        return name === undefined ? [] : [codeIndexSlug(name)]
+      })
+  )
+  typeScriptSlugsByRoot.set(repoRoot, slugs)
+  return slugs
+}
+
+/**
+ * `pkg`'s page in the code index, given the slugs its TypeScript packages
+ * take: a crate sharing one takes `-rust`.
+ */
+const codeIndexPage = (pkg: OwningPackage, takenByTypeScript: ReadonlySet<string>): string => {
+  const slug = codeIndexSlug(pkg.name)
+  return pkg.isCrate && takenByTypeScript.has(slug) ? `${slug}-rust` : slug
+}
 
 const escapeHtml = (text: string): string =>
   text
@@ -238,10 +288,12 @@ const renderDirective = async (
   const links = [
     `<a href="${escapeHtml(github)}"><code>${escapeHtml(shownPath)}</code> ${lines}</a>`,
   ]
-  if (pkg)
+  if (pkg) {
+    const page = codeIndexPage(pkg, typeScriptSlugs(repoRoot))
     links.push(
-      `<a href="${escapeHtml(`${targets.codeIndexUrl}${codeIndexSlug(pkg.name)}/`)}">${escapeHtml(codeIndexSlug(pkg.name))} in the code index</a>`
+      `<a href="${escapeHtml(`${targets.codeIndexUrl}${page}/`)}">${escapeHtml(page)} in the code index</a>`
     )
+  }
   const fence = '`'.repeat(
     Math.max(3, ...[...shown.text.matchAll(/`+/g)].map((m) => m[0].length + 1))
   )
@@ -327,9 +379,10 @@ const expandDirectives = async (
   }
 }
 
-export type { CodeDirective, Expanded, FoundDirective, LinkTargets }
+export type { CodeDirective, Expanded, FoundDirective, LinkTargets, OwningPackage }
 export {
   DirectiveError,
+  codeIndexPage,
   codeIndexSlug,
   expandDirectives,
   findDirectives,

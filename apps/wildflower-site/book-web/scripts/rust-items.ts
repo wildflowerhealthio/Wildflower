@@ -108,19 +108,19 @@ const resolve = (scope: Node, segments: readonly string[]): readonly Node[] => {
   return [...inModules, ...inImpls, ...inTraits]
 }
 
+/** The node's last row, not counting a trailing newline it ends with. */
+const lastRow = (node: Node): number => {
+  const end = node.endPosition
+  return end.column === 0 && end.row > node.startPosition.row ? end.row - 1 : end.row
+}
+
 /** The text on `row` outside `[startColumn, endColumn)` is blank. */
 const aloneOnRows = (lines: readonly string[], node: Node): boolean => {
   const start = node.startPosition
   const end = node.endPosition
-  const endRow = end.column === 0 && end.row > start.row ? end.row - 1 : end.row
   const before = lines[start.row].slice(0, start.column)
-  const after = endRow === end.row ? lines[endRow].slice(end.column) : ''
+  const after = lastRow(node) === end.row ? lines[end.row].slice(end.column) : ''
   return before.trim() === '' && after.trim() === ''
-}
-
-const lastRow = (node: Node): number => {
-  const end = node.endPosition
-  return end.column === 0 && end.row > node.startPosition.row ? end.row - 1 : end.row
 }
 
 const rowsOf = (node: Node): readonly number[] =>
@@ -147,7 +147,10 @@ const descendants = function* (node: Node): Generator<Node> {
 const locate = (lines: readonly string[], item: Node): LocatedItem => {
   const docRows = new Set<number>()
   const attributeRows = new Set<number>()
-  const statementEnds = new Map<string, number>()
+  // The item itself, so a `from=` on its first line takes all of it.
+  const statementEnds = new Map<string, number>([
+    [`${item.startPosition.row}:${item.startPosition.column}`, lastRow(item)],
+  ])
   for (const node of descendants(item)) {
     if (isDocComment(node) && aloneOnRows(lines, node)) rowsOf(node).forEach((r) => docRows.add(r))
     if (isAttribute(node) && aloneOnRows(lines, node))
@@ -176,20 +179,26 @@ const locate = (lines: readonly string[], item: Node): LocatedItem => {
 const locateRustItem = async (source: string, symbol: string): Promise<LocatedItem> => {
   const tree = (await rustParser()).parse(source)
   if (tree === null) throw new ItemNotFound('tree-sitter could not parse the file')
-  const root = tree.rootNode
-  const qualified = QUALIFIED_SELF.exec(symbol)
-  const matches = qualified
-    ? implsFor(root, qualified[1], qualified[2].split('::').at(-1)).flatMap((impl) =>
-        membersOf(impl, qualified[3])
+  // The tree lives in the WebAssembly heap until deleted; what `locate`
+  // returns holds rows, not nodes.
+  try {
+    const root = tree.rootNode
+    const qualified = QUALIFIED_SELF.exec(symbol)
+    const matches = qualified
+      ? implsFor(root, qualified[1], qualified[2].split('::').at(-1)).flatMap((impl) =>
+          membersOf(impl, qualified[3])
+        )
+      : resolve(root, symbol.split('::'))
+    const [only, ...others] = matches
+    if (only === undefined) throw new ItemNotFound(`no Rust item named ${symbol}`)
+    if (others.length > 0)
+      throw new ItemNotFound(
+        `${symbol} is ambiguous: it names the items at lines ${matches.map((n) => n.startPosition.row + 1).join(', ')}; qualify it, as <Type as Trait>::member or module::Item`
       )
-    : resolve(root, symbol.split('::'))
-  const [only, ...others] = matches
-  if (only === undefined) throw new ItemNotFound(`no Rust item named ${symbol}`)
-  if (others.length > 0)
-    throw new ItemNotFound(
-      `${symbol} is ambiguous: it names the items at lines ${matches.map((n) => n.startPosition.row + 1).join(', ')}; qualify it, as <Type as Trait>::member or module::Item`
-    )
-  return locate(source.split('\n'), only)
+    return locate(source.split('\n'), only)
+  } finally {
+    tree.delete()
+  }
 }
 
 export { locateRustItem }
