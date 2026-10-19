@@ -65,6 +65,32 @@ describe('Rust items', () => {
     )
   })
 
+  it('finds a function in a `proptest!` block, without its doc comment, attribute or the block’s config', async () => {
+    const shown = await rustExcerpt('doubling_is_even')
+    expect(shown.text).toBe(
+      'fn doubling_is_even(n in 0u32..100) {\n    prop_assert_eq!((n * 2) % 2, 0);\n}'
+    )
+    expect(shown.firstRow + 1).toBe(
+      rust.split('\n').indexOf('    fn doubling_is_even(n in 0u32..100) {') + 1
+    )
+  })
+
+  it('finds a function in a module’s `proptest!` block, and fragments of it', async () => {
+    const shown = await rustExcerpt('tests::bump_stays_within_the_limit')
+    expect(shown.text.split('\n')[0]).toBe(
+      'fn bump_stays_within_the_limit(steps in 0usize..10, tag in "é[a-z]{0,4}") {'
+    )
+    expect(shown.text.split('\n').at(-1)).toBe('}')
+    expect((await rustExcerpt('tests::new_starts_at_zero')).text).toBe(
+      'fn new_starts_at_zero(tag in any::<u8>()) {\n    prop_assert_eq!(super::Counter::new(tag).count, 0);\n}'
+    )
+    const loop = await rustExcerpt('tests::bump_stays_within_the_limit', {
+      fragments: [{ from: 'for _ in' }],
+      keepDocs: false,
+    })
+    expect(loop.text).toBe('for _ in 0..steps {\n    let _ = counter.bump();\n}')
+  })
+
   it('refuses a name nothing declares', async () => {
     await expect(locateRustItem(rust, 'Counter::missing')).rejects.toThrow(ItemNotFound)
     await expect(locateRustItem(rust, 'Missing')).rejects.toThrow('no Rust item named Missing')

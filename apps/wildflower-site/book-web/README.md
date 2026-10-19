@@ -49,6 +49,9 @@ link to the same lines, labelled with the symbol.
 | `Type::member`              | a `fn`, `const` or `type` in `impl Type` or `impl Trait for Type`, or a `fn` in `trait Type`                 |
 | `"<Type as Trait>::member"` | only the one in `impl Trait for Type`; quoted, as it holds spaces                                            |
 
+A `proptest! { … }` block's functions are items of the scope the block is
+in, so a property test in `mod tests` is `tests::name`, as a `#[test]` is.
+
 | Symbol (TypeScript) | Names                                                                                       |
 | ------------------- | ------------------------------------------------------------------------------------------- |
 | `Name`              | a function, class, interface, type alias, enum, namespace or `const` at the top of the file |
@@ -104,8 +107,8 @@ book shows what's in it:
 **coverable items** are its `pub` and `pub(crate)` functions, types, traits,
 consts and statics, the `pub` and `pub(crate)` functions and consts of its
 inherent `impl` blocks, and every test function (an attribute whose path ends
-in `test`: `#[test]`, `#[tokio::test]`), inline modules included, so a unit
-test is `tests::name`. Only `.rs` files can be covered.
+in `test`: `#[test]`, `#[tokio::test]`), inline modules and `proptest!` blocks
+included, so a unit test or a property test is `tests::name`. Only `.rs` files can be covered.
 
 An item is in the book when any `{{#code}}` or `{{#code-link}}` on any page
 names it, however its symbol is spelt. `{{#covered}}` renders nothing: it

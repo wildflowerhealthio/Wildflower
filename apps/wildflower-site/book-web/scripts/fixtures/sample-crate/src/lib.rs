@@ -73,3 +73,35 @@ pub mod nested {
 fn helper() -> u32 {
     2
 }
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(8))]
+
+    /// A property at the top of the file.
+    #[test]
+    fn doubling_is_even(n in 0u32..100) {
+        prop_assert_eq!((n * 2) % 2, 0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use proptest::prelude::*;
+
+    proptest! {
+        /// Bumping stops at the limit, however often it's asked.
+        #[test]
+        fn bump_stays_within_the_limit(steps in 0usize..10, tag in "é[a-z]{0,4}") {
+            let mut counter = super::Counter::new(tag);
+            for _ in 0..steps {
+                let _ = counter.bump();
+            }
+            prop_assert!(counter.count <= super::LIMIT);
+        }
+
+        #[test]
+        fn new_starts_at_zero(tag in any::<u8>()) {
+            prop_assert_eq!(super::Counter::new(tag).count, 0);
+        }
+    }
+}

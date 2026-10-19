@@ -18,7 +18,7 @@ const targets: LinkTargets = {
 }
 
 describe('coverableItems', () => {
-  it('lists public items, inherent public methods and every test, in file order', async () => {
+  it('lists public items, inherent public methods and every test, property tests too, in file order', async () => {
     const items = await coverableItems(source)
     expect(items.map(({ symbol }) => symbol)).toEqual([
       'Ticket',
@@ -28,6 +28,7 @@ describe('coverableItems', () => {
       'an_integration_style_test',
       'tests::a_ticket_keeps_its_id',
       'tests::an_async_unit_test',
+      'tests::a_ticket_keeps_any_id',
     ])
   })
 })
@@ -40,7 +41,7 @@ describe('coverageReport', () => {
         `{{#covers ${path}}}`,
         `{{#code ${path} Ticket::new}}`,
         `See {{#code-link ${path} tests::a_ticket_keeps_its_id}}.`,
-        `{{#covered ${path} LIMIT Ticket::id}}`,
+        `{{#covered ${path} LIMIT Ticket::id tests::a_ticket_keeps_any_id}}`,
       ].join('\n'),
       repoRoot,
       targets
@@ -49,8 +50,8 @@ describe('coverageReport', () => {
     expect(covers).toEqual([path])
     const report = coverageReport([{ path, items }], references)
     expect(report).toEqual({
-      total: 7,
-      referenced: 4,
+      total: 8,
+      referenced: 5,
       missing: [
         { path, symbol: 'Ticket' },
         { path, symbol: 'an_integration_style_test' },
@@ -59,7 +60,7 @@ describe('coverageReport', () => {
     })
     expect(formatCoverage(report)).toBe(
       [
-        'coverage: 4/7 items; 3 not in the book:',
+        'coverage: 5/8 items; 3 not in the book:',
         `  WARNING: ${path} Ticket`,
         `  WARNING: ${path} an_integration_style_test`,
         `  WARNING: ${path} tests::an_async_unit_test`,

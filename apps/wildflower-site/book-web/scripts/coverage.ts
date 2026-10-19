@@ -8,10 +8,11 @@
 // types, traits, consts and statics; the `pub` and `pub(crate)` functions and
 // consts of its inherent `impl` blocks; and every `#[test]` function (any
 // attribute whose path ends in `test`, as `#[tokio::test]`). Inline modules
-// are read the same way, so a unit test is `tests::name`.
+// are read the same way, so a unit test is `tests::name`, and so are the
+// functions of a `proptest!` block, each of which carries its `#[test]`.
 import type { Node } from 'web-tree-sitter'
 
-import { rustParser } from './rust-items.ts'
+import { parseRust, type ParsedRust } from './rust-items.ts'
 
 /** An item a covered file holds: its symbol, as a directive names it, and its first row. */
 interface CoverableItem {
@@ -74,11 +75,10 @@ const baseTypeName = (node: Node | null): string | undefined =>
     ?.trim()
 
 /** The coverable items directly in `scope` (a file or a module's body), named under `prefix`. */
-const itemsIn = (scope: Node, prefix: string): CoverableItem[] => {
+const itemsIn = (parsed: ParsedRust, scope: Node, prefix: string): CoverableItem[] => {
   const items: CoverableItem[] = []
   let attributes: Node[] = []
-  for (const node of scope.namedChildren) {
-    if (node === null) continue
+  for (const node of parsed.itemsIn(scope)) {
     if (node.type === 'attribute_item') {
       attributes.push(node)
       continue
@@ -89,7 +89,8 @@ const itemsIn = (scope: Node, prefix: string): CoverableItem[] => {
     const row = node.startPosition.row
     if (node.type === 'mod_item') {
       const body = node.childForFieldName('body')
-      if (body !== null && name !== undefined) items.push(...itemsIn(body, `${prefix}${name}::`))
+      if (body !== null && name !== undefined)
+        items.push(...itemsIn(parsed, body, `${prefix}${name}::`))
     } else if (node.type === 'impl_item' && node.childForFieldName('trait') === null) {
       const type = baseTypeName(node.childForFieldName('type'))
       const body = node.childForFieldName('body')
@@ -110,12 +111,11 @@ const itemsIn = (scope: Node, prefix: string): CoverableItem[] => {
 
 /** The coverable items in the Rust `source`, in file order. */
 const coverableItems = async (source: string): Promise<readonly CoverableItem[]> => {
-  const tree = (await rustParser()).parse(source)
-  if (tree === null) throw new Error('tree-sitter could not parse the file')
+  const parsed = await parseRust(source)
   try {
-    return itemsIn(tree.rootNode, '')
+    return itemsIn(parsed, parsed.root, '')
   } finally {
-    tree.delete()
+    parsed.delete()
   }
 }
 

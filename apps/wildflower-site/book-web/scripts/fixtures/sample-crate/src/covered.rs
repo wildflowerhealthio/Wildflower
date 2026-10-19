@@ -53,4 +53,14 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn an_async_unit_test() {}
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(8))]
+
+        /// Listed: a property test.
+        #[test]
+        fn a_ticket_keeps_any_id(id in any::<u32>()) {
+            prop_assert_eq!(at(id).id(), id);
+        }
+    }
 }

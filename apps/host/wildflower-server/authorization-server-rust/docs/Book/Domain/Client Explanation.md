@@ -154,7 +154,7 @@ A new redirect with registered scopes would widen the redirect list only.
 
 An unparseable scope is `Registered` when listed verbatim, and new when anything else is listed.
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/client_registration.rs tests from="fn verdict_agrees_with_what_it_reports" to="/// Widening the registration"}}
+{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/client_registration.rs tests::verdict_agrees_with_what_it_reports}}
 
 For any registered and requested scopes, with the redirect on the list or off it: a known app is never `New`, `Registered` means nothing stepped outside, and `WouldWiden` reports exactly the new redirect and the uncovered scopes, in request order, with at least one of them set.
 
@@ -170,7 +170,7 @@ The requested scopes no allowed scope covers, in the order the request gave them
 
 Of `write`, `read`, `admin` against a registration of `read`, the verdict reports `write` then `admin`.
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/client_registration.rs tests from="fn unioning_the_requested_scopes_makes_the_next_request_registered" to="ClientRegistrationVerdict::Registered," from=");" to="}"}}
+{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/client_registration.rs tests::unioning_the_requested_scopes_makes_the_next_request_registered}}
 
 Adding everything requested to the allowed scopes, as an approval does, leaves nothing uncovered, so the next identical request is `Registered` and may use the standing grant.
 

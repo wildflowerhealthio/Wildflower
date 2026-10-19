@@ -8,9 +8,12 @@
 //                             `impl Trait for Type` block, or a fn in
 //                             `trait Type`
 //   <Type as Trait>::member   only in `impl Trait for Type`
+//
+// A `proptest! { … }` block's functions count as items of the scope the block
+// is in, so a property test in `mod tests` is `tests::name`, as a `#[test]` is.
 import { createRequire } from 'node:module'
 
-import { Language, Parser, type Node } from 'web-tree-sitter'
+import { Language, Parser, type Node, type Tree } from 'web-tree-sitter'
 
 import type { LocatedItem } from './excerpt.ts'
 import { ItemNotFound } from './item-not-found.ts'
@@ -66,19 +69,83 @@ const baseTypeName = (node: Node | null): string | undefined => {
     ?.trim()
 }
 
-/** The items directly inside a source file or a `mod`'s body. */
-const itemsIn = (scope: Node): readonly Node[] => scope.namedChildren.filter((n) => n !== null)
+/** Macros whose bodies hold items: `proptest! { #[test] fn name(x in 0..9) { … } }`. */
+const ITEM_MACROS: ReadonlySet<string> = new Set(['proptest'])
+
+/** The body of a `proptest! { … }` (or `proptest::proptest! { … }`), if `node` is one. */
+const itemMacroBody = (node: Node): Node | undefined => {
+  const invocation =
+    node.type === 'expression_statement' ? (node.namedChildren[0] ?? undefined) : node
+  if (invocation?.type !== 'macro_invocation') return undefined
+  const name = invocation.childForFieldName('macro')?.text.split('::').at(-1)?.trim()
+  if (name === undefined || !ITEM_MACROS.has(name)) return undefined
+  return invocation.namedChildren.find((n) => n?.type === 'token_tree') ?? undefined
+}
+
+/**
+ * A parsed Rust file. tree-sitter reads a macro's body as tokens, so each
+ * item-holding macro's body is parsed again as items, from a copy of the file
+ * with everything outside the body blanked: its nodes keep the file's rows
+ * and columns. The trees live in the WebAssembly heap until `delete`.
+ */
+interface ParsedRust {
+  readonly root: Node
+  /** The items directly in a file or a `mod`'s body, those in its `proptest!` blocks in place of the block. */
+  readonly itemsIn: (scope: Node) => readonly Node[]
+  readonly delete: () => void
+}
+
+/** `text` as spaces, its line breaks kept, so what follows keeps its rows and columns. */
+const blank = (text: string): string => text.replace(/[^\n]/g, ' ')
+
+const parseRust = async (source: string): Promise<ParsedRust> => {
+  const rust = await rustParser()
+  const tree = rust.parse(source)
+  if (tree === null) throw new ItemNotFound('tree-sitter could not parse the file')
+  const bodies = new Map<number, Tree>()
+  const bodyItems = (body: Node): readonly Node[] => {
+    let parsed = bodies.get(body.id)
+    if (parsed === undefined) {
+      const start = body.startIndex + 1
+      const end = body.endIndex - 1
+      const reparsed = rust.parse(
+        blank(source.slice(0, start)) + source.slice(start, end) + blank(source.slice(end))
+      )
+      if (reparsed === null) return []
+      parsed = reparsed
+      bodies.set(body.id, parsed)
+    }
+    return parsed.rootNode.namedChildren.filter((n) => n !== null)
+  }
+  return {
+    root: tree.rootNode,
+    itemsIn: (scope) =>
+      scope.namedChildren.flatMap((n) => {
+        if (n === null) return []
+        const body = itemMacroBody(n)
+        return body === undefined ? [n] : bodyItems(body)
+      }),
+    delete: () => {
+      bodies.forEach((body) => body.delete())
+      tree.delete()
+    },
+  }
+}
+
+type ItemsIn = ParsedRust['itemsIn']
 
 const modBody = (mod: Node): Node | null => mod.childForFieldName('body')
 
 const membersOf = (block: Node, name: string): readonly Node[] => {
   const body = block.childForFieldName('body')
   if (body === null) return []
-  return itemsIn(body).filter((n) => MEMBER_ITEMS.has(n.type) && nameOf(n) === name)
+  return body.namedChildren
+    .filter((n): n is Node => n !== null)
+    .filter((n) => MEMBER_ITEMS.has(n.type) && nameOf(n) === name)
 }
 
 /** The `impl` blocks in `scope` for `type`, optionally only those of `trait`. */
-const implsFor = (scope: Node, type: string, trait?: string): readonly Node[] =>
+const implsFor = (itemsIn: ItemsIn, scope: Node, type: string, trait?: string): readonly Node[] =>
   itemsIn(scope).filter(
     (n) =>
       n.type === 'impl_item' &&
@@ -88,7 +155,7 @@ const implsFor = (scope: Node, type: string, trait?: string): readonly Node[] =>
 
 const QUALIFIED_SELF = /^<\s*([A-Za-z_][\w]*)\s+as\s+([A-Za-z_][\w:]*)\s*>::([A-Za-z_]\w*)$/
 
-const resolve = (scope: Node, segments: readonly string[]): readonly Node[] => {
+const resolve = (itemsIn: ItemsIn, scope: Node, segments: readonly string[]): readonly Node[] => {
   const [first, ...rest] = segments
   if (first === undefined) return []
   if (rest.length === 0)
@@ -97,11 +164,11 @@ const resolve = (scope: Node, segments: readonly string[]): readonly Node[] => {
     .filter((n) => n.type === 'mod_item' && nameOf(n) === first)
     .flatMap((mod) => {
       const body = modBody(mod)
-      return body === null ? [] : resolve(body, rest)
+      return body === null ? [] : resolve(itemsIn, body, rest)
     })
   const [member, ...deeper] = rest
   if (member === undefined || deeper.length > 0) return inModules
-  const inImpls = implsFor(scope, first).flatMap((impl) => membersOf(impl, member))
+  const inImpls = implsFor(itemsIn, scope, first).flatMap((impl) => membersOf(impl, member))
   const inTraits = itemsIn(scope)
     .filter((n) => n.type === 'trait_item' && nameOf(n) === first)
     .flatMap((trait) => membersOf(trait, member))
@@ -177,18 +244,16 @@ const locate = (lines: readonly string[], item: Node): LocatedItem => {
  * @throws {@link ItemNotFound} when no item or more than one matches.
  */
 const locateRustItem = async (source: string, symbol: string): Promise<LocatedItem> => {
-  const tree = (await rustParser()).parse(source)
-  if (tree === null) throw new ItemNotFound('tree-sitter could not parse the file')
-  // The tree lives in the WebAssembly heap until deleted; what `locate`
-  // returns holds rows, not nodes.
+  const parsed = await parseRust(source)
+  // What `locate` returns holds rows, not nodes, so the trees can go.
   try {
-    const root = tree.rootNode
+    const { root, itemsIn } = parsed
     const qualified = QUALIFIED_SELF.exec(symbol)
     const matches = qualified
-      ? implsFor(root, qualified[1], qualified[2].split('::').at(-1)).flatMap((impl) =>
+      ? implsFor(itemsIn, root, qualified[1], qualified[2].split('::').at(-1)).flatMap((impl) =>
           membersOf(impl, qualified[3])
         )
-      : resolve(root, symbol.split('::'))
+      : resolve(itemsIn, root, symbol.split('::'))
     const [only, ...others] = matches
     if (only === undefined) throw new ItemNotFound(`no Rust item named ${symbol}`)
     if (others.length > 0)
@@ -197,8 +262,9 @@ const locateRustItem = async (source: string, symbol: string): Promise<LocatedIt
       )
     return locate(source.split('\n'), only)
   } finally {
-    tree.delete()
+    parsed.delete()
   }
 }
 
-export { locateRustItem, rustParser }
+export type { ParsedRust }
+export { locateRustItem, parseRust }

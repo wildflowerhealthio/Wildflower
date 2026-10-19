@@ -51,7 +51,9 @@ Signing a token from the caller's choices. The `jti` and the times are the mint'
 
 ### What it looks like
 
-[`each_mint_carries_a_unique_jti`](../../../src/domain/token/tests.rs), a property test (in a `proptest!` block, so linked rather than shown): minting the same inputs over and over yields a different, non-empty `jti` every time, so two live tokens never share a revocation handle.
+{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/token/tests.rs each_mint_carries_a_unique_jti}}
+
+Minting the same inputs over and over yields a different, non-empty `jti` every time, so two live tokens never share a revocation handle.
 
 ## `MintError`
 
@@ -99,7 +101,9 @@ Checking a presented token against the keys the server holds. When the token's h
 
 ### What it looks like
 
-[`mint_and_verify_round_trip`](../../../src/domain/token/tests.rs), the other property test in that file: across generated apps, scopes, lifetimes, origins, audiences, patients and sessions, a minted token verifies to exactly the claims it was minted with, with `exp - iat` equal to the lifetime and `iat` within two seconds of the mint.
+{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/token/tests.rs mint_and_verify_round_trip}}
+
+Across generated apps, scopes, lifetimes, origins, audiences, patients and sessions, a minted token verifies to exactly the claims it was minted with, with `exp - iat` equal to the lifetime and `iat` within two seconds of the mint.
 
 {{#code apps/host/wildflower-server/authorization-server-rust/src/domain/token/tests.rs verify_rejects_wrong_issuer}}
 
