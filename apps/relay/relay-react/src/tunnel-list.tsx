@@ -15,6 +15,7 @@ import {
   useReissueTokenMutation,
   useTunnelsQuery,
   type TunnelInfo,
+  type TunnelOutcome,
 } from './queries/index.ts'
 import { TunnelTokenPanel } from './tunnel-token-panel.tsx'
 import styles from './tunnel-list.module.css'
@@ -28,7 +29,19 @@ interface TunnelRowActions {
   readonly onDelete: (name: string) => void
 }
 
-/** One row: the name, where visitors reach it, whose it is and since when. */
+/** What became of a tunnel's last connection, in words. */
+const LAST_OUTCOME_WORDS: Readonly<Record<TunnelOutcome, string>> = {
+  ok: 'Last connection reached the device',
+  tunnel_down: 'Last connection refused: device offline',
+  tunnel_busy: 'Last connection refused: device not taking connections',
+  tunnel_closed: 'Last connection refused: closed by the tunnel',
+  proxy_header_failed: 'Last connection refused: relay error',
+}
+
+/**
+ * One row: the name, where visitors reach it, whose it is, what became of its
+ * last connection and since when it exists.
+ */
 const tunnelRow = (tunnel: TunnelInfo, actions: TunnelRowActions): ItemListItem => ({
   id: tunnel.name,
   title: tunnel.name,
@@ -36,6 +49,12 @@ const tunnelRow = (tunnel: TunnelInfo, actions: TunnelRowActions): ItemListItem 
     <span className={styles['tunnel-list__details']}>
       <span>{tunnel.public_host}</span>
       <span>{tunnel.email}</span>
+      <span>
+        {Option.fromNullable(tunnel.last_outcome).pipe(
+          Option.map((outcome) => LAST_OUTCOME_WORDS[outcome]),
+          Option.getOrElse(() => 'No connections since the relay started')
+        )}
+      </span>
     </span>
   ),
   meta: (

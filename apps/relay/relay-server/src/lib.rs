@@ -57,6 +57,28 @@
 //! device is connected: a tunnel with none is how the front knows a device
 //! is offline, and it closes the visitor without a byte written.
 //!
+//! ## Connection outcomes
+//!
+//! The front records what became of each `:443` connection that is not for
+//! the relay's own hostnames, in [`ConnectionOutcomes`], once, where it is
+//! known. A connection routed to a tunnel ends in a [`TunnelOutcome`]: `ok`
+//! once the PROXY header and hello are in the tunnel's pipe (whatever the
+//! pipe does after), or `tunnel_down`, `tunnel_busy` (its visitor queue
+//! stayed full past the hello deadline), `tunnel_closed` (rathole dropped
+//! the visitor first) or `proxy_header_failed`. Before a tunnel is known, a
+//! connection can be refused as `over_connection_limit`, `hello_timeout`,
+//! `not_a_hello`, `no_server_name` or `unknown_tunnel` ([`Outcome`]).
+//! `:80` is not counted, and nothing reads or counts the bytes after the
+//! hello.
+//!
+//! - Each tunnel's last [`TunnelOutcome`] is kept in memory only, with no
+//!   time or count: one value per served tunnel, dropped when the tunnel is
+//!   deleted, and cleared by a restart.
+//! - Every [`Outcome`] is counted per UTC hour, with no identifier, and the
+//!   counts are added to the `connection_totals` table every minute and on
+//!   shutdown (see [`TunnelRegistry::flush_connection_totals`]). Hours older
+//!   than 30 days are deleted.
+//!
 //! ## Signed requests
 //!
 //! A device authenticates to the relay's site with its tunnel token without
@@ -119,8 +141,10 @@
 //!   Transparency logs. A given name must be a lowercase DNS label (`422`
 //!   otherwise), and not reserved or in use (`409`). `admin` is reserved.
 //! - `GET /api/tunnels` lists every tunnel as `{"name", "email",
-//!   "public_host", "created_at"}`, without tokens. `created_at` is Unix
-//!   epoch seconds.
+//!   "public_host", "created_at", "last_outcome"}`, without tokens.
+//!   `created_at` is Unix epoch seconds; `last_outcome` is the tunnel's last
+//!   [`TunnelOutcome`] (`"ok"`, `"tunnel_down"`, …) since the relay started,
+//!   or `null` before its first connection.
 //! - `DELETE /api/tunnels/{name}` deletes a tunnel (`204`), or is `404` when
 //!   no tunnel has the name.
 //! - `POST /api/tunnels/{name}/claim-codes`, without a body, issues a claim
@@ -132,6 +156,13 @@
 //!   token with a new random one and answers `200 {"name", "token",
 //!   "public_host"}`, or is `404` when no tunnel has the name. The new token
 //!   is shown only in this answer.
+//! - `GET /api/connection-totals` lists the hourly connection totals of the
+//!   last 30 days, one object per UTC hour with any connection, oldest
+//!   first: `{"hour": <Unix epoch seconds>, "ok": n,
+//!   "over_connection_limit": n, "hello_timeout": n, "not_a_hello": n,
+//!   "no_server_name": n, "unknown_tunnel": n, "tunnel_down": n,
+//!   "tunnel_busy": n, "tunnel_closed": n, "proxy_header_failed": n}`, every
+//!   field present, counts not yet flushed included.
 //!
 //! A created tunnel's device can connect and sign at once. A deleted one can
 //! no longer sign or be routed to, and rathole drops its tunnel. A reissued
@@ -153,7 +184,10 @@
 //! forgets it on Sign out. The page lists the tunnels, creates one (showing
 //! its token once, to hand to the tunnel's owner), issues a claim code for
 //! one (showing it once, with its expiry), reissues one's token (after a
-//! confirmation, showing the new one once) and deletes one. A `401`
+//! confirmation, showing the new one once) and deletes one. Each tunnel's
+//! row says what became of its last connection, and under the list two
+//! tables show the connection totals: the last 24 hours by UTC hour and the
+//! last 30 days by UTC day. A `401`
 //! there means the key is wrong or the operator's clock is more than a
 //! minute off the relay's. The relay keeps no session: without the key the
 //! page can do nothing.
@@ -197,16 +231,28 @@
 //! routes by and the site verifies signatures against (see
 //! [`TunnelRegistry`]).
 //!
+//! The same database holds the hourly connection totals, in
+//! `connection_totals`: an hour, an outcome and a count, nothing else.
+//!
+//! The relay writes two logs (see [`logging`]), both filtered by `RUST_LOG`
+//! (default `info`). The journal (stdout) names no one: no tunnel names,
+//! SNI, IP addresses, emails or claim codes, though the relay's own domain
+//! and hostnames appear. The lines that need an identifier, those with
+//! `target: logging::IDENTIFYING` and all of rathole's, go to the
+//! connection log instead, `<WILDFLOWER_RELAY_STATE_DIR>/connection-log/`,
+//! one file per UTC hour, each deleted 24 hours after its last entry.
+//!
 //! The tunnels are layered like the slices' stores:
 //!
 //!  - [`domain`] — pure: the [`Tunnel`] and [`StoredTunnel`] types, the
 //!    [`TunnelStore`] persistence *port*, the claim-code types and their
-//!    [`ClaimCodeStore`](domain::ClaimCodeStore) port, the failure vocabulary
+//!    [`ClaimCodeStore`](domain::ClaimCodeStore) port, the outcomes and the
+//!    [`ConnectionTotalsStore`] port, the failure vocabulary
 //!    ([`TunnelError`](domain::TunnelError)), and the capabilities
 //!    (`domain::capabilities`) that decide a read, create, delete or token
-//!    reissue, issue or redeem a claim code, and drive the store through the
-//!    ports.
-//!  - [`db`] — the [`SqliteTunnelStore`] adapter implementing both ports with
+//!    reissue, issue or redeem a claim code, or read the connection totals,
+//!    and drive the store through the ports.
+//!  - [`db`] — the [`SqliteTunnelStore`] adapter implementing the ports with
 //!    Diesel over a `wildflowerhealthio_persistence::DieselPool` onto `tunnels.db`, and its
 //!    migrations (`migrations/`).
 //!  - [`live_bindings`] — the [`TunnelRegistry`] router state that holds the
@@ -263,6 +309,8 @@ pub mod db;
 pub mod domain;
 pub mod front;
 pub mod live_bindings;
+pub mod logging;
+pub mod outcomes;
 pub mod route;
 pub mod served;
 pub mod settings;
@@ -279,9 +327,10 @@ use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 
 pub use db::SqliteTunnelStore;
-pub use domain::{StoredTunnel, Tunnel, TunnelStore};
+pub use domain::{Outcome, StoredTunnel, Tunnel, TunnelOutcome, TunnelStore};
 pub use front::{Front, Limits};
 pub use live_bindings::state::{RatholeFeed, TunnelRegistry};
+pub use outcomes::ConnectionOutcomes;
 pub use route::{Route, Router};
 pub use served::ServedTunnels;
 pub use settings::{AcmeSettings, ControlSettings, FrontSettings, RelaySettings, Secret};
@@ -290,8 +339,9 @@ pub use site::Site;
 pub use tunnels::{TunnelDown, Tunnels};
 
 /// Load the stored tunnels, then run the relay — rathole on a config built
-/// for them, the `:443`/`:80` front and the site's certificate upkeep —
-/// until `shutdown_rx` receives `true`.
+/// for them, the `:443`/`:80` front, the site's certificate upkeep, the
+/// flush of the hourly connection totals and the pruning of the connection
+/// log — until `shutdown_rx` receives `true`.
 ///
 /// # Errors
 ///
@@ -321,10 +371,17 @@ pub async fn run_relay(
         registry.verifier(),
         admin,
     );
+    let connection_log_dir = logging::connection_log_dir(&settings.state_dir);
     let settings = settings.front;
     tracing::info!(domain = %settings.domain, "routes built");
     let tunnels = Tunnels::default();
-    let front = Front::new(registry.router(), tunnels.clone(), site, settings.limits);
+    let front = Front::new(
+        registry.router(),
+        tunnels.clone(),
+        site,
+        settings.limits,
+        registry.outcomes(),
+    );
 
     let https = TcpListener::bind(settings.https_addr)
         .await
@@ -338,14 +395,17 @@ pub async fn run_relay(
         Arc::clone(&front).serve_https(https, shutdown_rx.resubscribe()),
         front.serve_http(http, shutdown_rx.resubscribe()),
         site::acme::drive(acme, shutdown_rx.resubscribe()),
+        Arc::clone(&registry).flush_connection_totals(shutdown_rx.resubscribe()),
+        logging::prune_connection_log(connection_log_dir, shutdown_rx.resubscribe()),
         tunnels.serve(rathole.initial_config, rathole.changes, shutdown_rx),
     )?;
     Ok(())
 }
 
-/// Create the state directory, and any missing parents, readable by the
-/// owner only: it holds the ACME account key and the tunnel store. Under systemd,
-/// `StateDirectory=` has already created it.
+/// Create the state directory (or a directory in it), and any missing
+/// parents, readable by the owner only: it holds the ACME account key, the
+/// tunnel store and the connection log. Under systemd, `StateDirectory=` has
+/// already created the state directory itself.
 fn create_state_dir(path: &Path) -> std::io::Result<()> {
     let mut builder = std::fs::DirBuilder::new();
     builder.recursive(true);

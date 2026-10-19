@@ -12,6 +12,7 @@ use super::AdminCapability;
 use crate::db::SqliteTunnelStore;
 use crate::domain::capabilities::TunnelTokensReissuer;
 use crate::domain::{StoredTunnel, TunnelError};
+use crate::logging::IDENTIFYING;
 
 /// Reissue a tunnel's token — `Admin<LiveTunnelTokensReissuer>` in the
 /// reissue handler.
@@ -55,7 +56,11 @@ impl LiveTunnelTokensReissuer {
                 "token stored but not served",
             )
             .await?;
-        tracing::info!(tunnel = %reissued.stored.tunnel.name, "tunnel token reissued");
+        tracing::info!(
+            target: IDENTIFYING,
+            tunnel = %reissued.stored.tunnel.name,
+            "tunnel token reissued"
+        );
         Ok(reissued.stored)
     }
 

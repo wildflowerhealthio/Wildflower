@@ -6,5 +6,6 @@
 const RELAY_QUERY_KEY = ['relay'] as const
 const ADMIN_KEY_QUERY_KEY = ['relay', 'admin-key'] as const
 const TUNNELS_QUERY_KEY = ['relay', 'tunnels'] as const
+const CONNECTION_TOTALS_QUERY_KEY = ['relay', 'connection-totals'] as const
 
-export { ADMIN_KEY_QUERY_KEY, RELAY_QUERY_KEY, TUNNELS_QUERY_KEY }
+export { ADMIN_KEY_QUERY_KEY, CONNECTION_TOTALS_QUERY_KEY, RELAY_QUERY_KEY, TUNNELS_QUERY_KEY }

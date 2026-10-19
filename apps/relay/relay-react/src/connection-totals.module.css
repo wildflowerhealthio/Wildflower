@@ -1,0 +1,41 @@
+/*
+ * The connection totals: a heading, then the hourly and daily tables one
+ * above the other, each scrolling sideways on a narrow screen rather than
+ * widening the page.
+ */
+.connection-totals {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.connection-totals__scroll {
+  overflow-x: auto;
+}
+
+.connection-totals__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.connection-totals__table caption {
+  text-align: left;
+  padding-bottom: var(--space-2);
+}
+
+.connection-totals__table th,
+.connection-totals__table td {
+  padding: var(--space-2) var(--space-4);
+  text-align: left;
+  border-bottom: 1px solid var(--color-divider);
+  white-space: nowrap;
+}
+
+.connection-totals__table thead th {
+  color: var(--color-neutral-4);
+}
+
+.connection-totals__count {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}

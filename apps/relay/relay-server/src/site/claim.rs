@@ -28,13 +28,14 @@ use axum::routing::post;
 use axum::Json;
 use wildflowerhealthio_kitchen_sink::rate_limit::ClientKey;
 use wildflowerhealthio_rathole_settings::{
-    ClaimRequest, ClaimedTunnel, PublicRatholeSettings, TunnelName,
+    ClaimRequest, ClaimedTunnel, InvalidTunnelName, PublicRatholeSettings, TunnelName,
 };
 
 use super::claim_limiter::{ClaimLimiter, GLOBAL, MAX_CLIENTS, PER_CLIENT};
 use crate::domain::TunnelError;
 use crate::live_bindings::state::TunnelRegistry;
 use crate::live_bindings::LiveClaimCodesRedeemer;
+use crate::logging::IDENTIFYING;
 
 /// The largest body `POST /claim` reads: a code is a few bytes.
 const MAX_BODY_BYTES: usize = 1024;
@@ -78,7 +79,7 @@ async fn claim(
         .limiter
         .admit(ClientKey::from(client.ip()), Instant::now())
     {
-        tracing::debug!(%client, "claim refused: rate limited");
+        tracing::debug!(target: IDENTIFYING, %client, "claim refused: rate limited");
         return (StatusCode::TOO_MANY_REQUESTS, RATE_LIMITED).into_response();
     }
     let body = match body {
@@ -91,8 +92,17 @@ async fn claim(
     };
     let tunnel_name = match TunnelName::parse(tunnel.name) {
         Ok(tunnel_name) => tunnel_name,
-        Err(e) => {
-            return TunnelError::infrastructure("a stored tunnel name is invalid", e)
+        // The reason without the name, which the error carries: this is
+        // logged to the journal.
+        Err(InvalidTunnelName::NotDnsLabel { .. }) => {
+            return TunnelError::infrastructure(
+                "a stored tunnel name is invalid",
+                "not a lowercase DNS label",
+            )
+            .into_response()
+        }
+        Err(InvalidTunnelName::Reserved { .. }) => {
+            return TunnelError::infrastructure("a stored tunnel name is invalid", "reserved")
                 .into_response()
         }
     };

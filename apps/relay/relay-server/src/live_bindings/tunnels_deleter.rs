@@ -9,6 +9,7 @@ use super::AdminCapability;
 use crate::db::SqliteTunnelStore;
 use crate::domain::capabilities::TunnelsDeleter;
 use crate::domain::TunnelError;
+use crate::logging::IDENTIFYING;
 
 /// Delete a tunnel — `Admin<LiveTunnelsDeleter>` in the delete handler.
 pub(crate) struct LiveTunnelsDeleter {
@@ -45,7 +46,7 @@ impl LiveTunnelsDeleter {
                 "tunnel served but no longer stored",
             )
             .await?;
-        tracing::info!(tunnel = %deleted.tunnel.name, "tunnel deleted");
+        tracing::info!(target: IDENTIFYING, tunnel = %deleted.tunnel.name, "tunnel deleted");
         Ok(())
     }
 }

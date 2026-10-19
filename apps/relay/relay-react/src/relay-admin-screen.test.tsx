@@ -27,11 +27,19 @@ const DOMAIN = 'relay.example.com'
 interface StoredTunnel {
   readonly email: string
   readonly created_at: number
+  readonly last_outcome: typeof Tunnels.TunnelOutcome.Type | null
 }
 
-/** The relay's tunnels and what it was asked; `refuse` answers every call `401`. */
+/** One hour of `GET /api/connection-totals`, as the relay sends it. */
+type HourTotals = typeof Tunnels.ConnectionTotalsSchema.Encoded
+
+/**
+ * The relay's tunnels, its connection totals and what it was asked; `refuse`
+ * answers every call `401`.
+ */
 interface FakeRelay {
   readonly tunnels: Map<string, StoredTunnel>
+  totals: readonly HourTotals[]
   readonly requests: string[]
   refuse: boolean
 }
@@ -61,8 +69,12 @@ const answer = (
         email: tunnel.email,
         public_host: `${tunnelName}.${DOMAIN}`,
         created_at: tunnel.created_at,
+        last_outcome: tunnel.last_outcome,
       }))
     )
+  }
+  if (request.method === 'GET' && url.pathname === '/api/connection-totals') {
+    return json(200, relay.totals)
   }
   if (request.method === 'POST' && url.pathname === '/api/tunnels') {
     const { email, name: chosen } = decodeCreateBody(
@@ -71,7 +83,7 @@ const answer = (
     const tunnelName = chosen ?? 'calm-otter'
     if (tunnelName === 'admin') return text(409, 'the name is reserved')
     if (relay.tunnels.has(tunnelName)) return text(409, 'a tunnel already has the name')
-    relay.tunnels.set(tunnelName, { email, created_at: 1_700_000_000 })
+    relay.tunnels.set(tunnelName, { email, created_at: 1_700_000_000, last_outcome: null })
     return json(201, {
       name: tunnelName,
       token: `token-for-${tunnelName}`,
@@ -136,11 +148,37 @@ const renderScreen = (runtime: RelayAdminRuntime): QueryClient => {
 
 const relayWith = (names: readonly string[]): FakeRelay => ({
   tunnels: new Map(
-    names.map((name) => [name, { email: `${name}@example.com`, created_at: 1_700_000_000 }])
+    names.map((name) => [
+      name,
+      { email: `${name}@example.com`, created_at: 1_700_000_000, last_outcome: null },
+    ])
   ),
+  totals: [],
   requests: [],
   refuse: false,
 })
+
+/** An hour of totals starting at `hour` (Unix seconds), zero but for `counts`. */
+const hourTotals = (hour: number, counts: Partial<Omit<HourTotals, 'hour'>>): HourTotals => ({
+  hour,
+  ok: 0,
+  over_connection_limit: 0,
+  hello_timeout: 0,
+  not_a_hello: 0,
+  no_server_name: 0,
+  unknown_tunnel: 0,
+  tunnel_down: 0,
+  tunnel_busy: 0,
+  tunnel_closed: 0,
+  proxy_header_failed: 0,
+  ...counts,
+})
+
+/** The text of each cell of each row of `table`, header row first. */
+const cellsOf = (table: HTMLElement): string[][] =>
+  within(table)
+    .getAllByRole('row')
+    .map((row) => [...row.querySelectorAll('th, td')].map((cell) => cell.textContent ?? ''))
 
 // jsdom has no native `<dialog>`; model `showModal`/`close` as the `open`
 // attribute and a `close` event, as react-tundraish's own tests do.
@@ -184,6 +222,73 @@ describe('RelayAdminScreen', () => {
     expect(alice.getByText('alice.relay.example.com')).toBeDefined()
     expect(alice.getByText('alice@example.com')).toBeDefined()
     expect(alice.getByText('Created 2023-11-14')).toBeDefined()
+  })
+
+  it.each([
+    ['ok', 'Last connection reached the device'],
+    ['tunnel_down', 'Last connection refused: device offline'],
+    ['tunnel_busy', 'Last connection refused: device not taking connections'],
+    ['tunnel_closed', 'Last connection refused: closed by the tunnel'],
+    ['proxy_header_failed', 'Last connection refused: relay error'],
+    [null, 'No connections since the relay started'],
+  ] as const)('shows a last outcome of %s as “%s”', async (lastOutcome, words) => {
+    // Arrange
+    const relay = relayWith([])
+    relay.tunnels.set('alice', {
+      email: 'alice@example.com',
+      created_at: 1_700_000_000,
+      last_outcome: lastOutcome,
+    })
+
+    // Act
+    renderScreen(await runtimeFor(relay, true))
+
+    // Assert
+    const [alice] = await screen.findAllByRole('listitem')
+    expect(within(alice).getByText(words)).toBeDefined()
+  })
+
+  it('shows the last day by hour and the last 30 days by day, newest first', async () => {
+    // Arrange
+    const relay = relayWith(['alice'])
+    const thisHour = Math.floor(Date.now() / 3_600_000) * 3600
+    const today = Math.floor(Date.now() / 86_400_000) * 86_400
+    const twoDaysAgo = today - 2 * 86_400
+    relay.totals = [
+      hourTotals(twoDaysAgo + 3600, { ok: 1, unknown_tunnel: 3 }),
+      hourTotals(twoDaysAgo + 7200, { ok: 1, unknown_tunnel: 1 }),
+      hourTotals(thisHour, { ok: 2, tunnel_down: 1 }),
+    ]
+    const isoDate = (seconds: number): string => new Date(seconds * 1000).toISOString().slice(0, 10)
+
+    // Act
+    renderScreen(await runtimeFor(relay, true))
+
+    // Assert
+    const hourly = await screen.findByRole('table', { name: 'Last 24 hours' })
+    const hour = new Date(thisHour * 1000).toISOString()
+    expect(cellsOf(hourly)).toEqual([
+      ['Hour (UTC)', 'Reached device', 'Refused', 'Device offline'],
+      [`${hour.slice(0, 10)} ${hour.slice(11, 13)}:00`, '2', '1', '1'],
+    ])
+    const daily = screen.getByRole('table', { name: 'Last 30 days' })
+    expect(cellsOf(daily)).toEqual([
+      ['Day (UTC)', 'Reached device', 'Refused', 'Unknown tunnel', 'Device offline'],
+      [isoDate(thisHour), '2', '1', '0', '1'],
+      [isoDate(twoDaysAgo), '2', '4', '4', '0'],
+    ])
+  })
+
+  it('says so when there were no connections in the last 30 days', async () => {
+    // Arrange
+    const relay = relayWith(['alice'])
+
+    // Act
+    renderScreen(await runtimeFor(relay, true))
+
+    // Assert
+    expect(await screen.findByText('No connections in the last 30 days.')).toBeDefined()
+    expect(screen.queryByRole('table')).toBeNull()
   })
 
   it('signs in with the pasted key, then reads the tunnels', async () => {
