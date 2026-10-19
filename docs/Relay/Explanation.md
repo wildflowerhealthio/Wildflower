@@ -44,8 +44,11 @@ Whoever runs the relay sees routing metadata:
 - **The hostname of each connection.** SNI is cleartext, so the relay sees
   which server every connection is for.
 - **Visitors' IP addresses, and the timing and volume of their connections.**
-  wildflower-relay doesn't log visitor addresses or byte counts, but it
-  handles both, and a modified relay could record them.
+  wildflower-relay doesn't log the address or byte count of a connection
+  that reaches a device, but it handles both, and a modified relay could
+  record them. It logs each connection it refuses, with the visitor's
+  address, the hostname asked for, and the first bytes sent if they weren't
+  TLS, to its connection log.
 - **When each device is online.** wildflower-relay logs each tunnel going up
   and down, and the rathole library logs the IP address each device's control
   channel comes from. Both go to its connection log, which it deletes after

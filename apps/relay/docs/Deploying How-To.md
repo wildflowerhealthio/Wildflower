@@ -100,10 +100,15 @@ both.
   claim codes.
 - **The connection log**, in `/var/lib/wildflower-relay/connection-log/`
   (`<state dir>/connection-log/`), holds the lines that name someone: tunnels
-  going up and down, connections refused because a tunnel is down or busy,
-  tunnels created, deleted or given a new token, claim codes issued and
-  redeemed, and every line from rathole, which names each device's IP
-  address. It is one file per UTC hour, such as
+  going up and down, tunnels created, deleted or given a new token, claim
+  codes issued and redeemed, every line from rathole, which names each
+  device's IP address, and every refused `:443` connection. A refusal's
+  line has the visitor's `ip:port`, the outcome (`unknown_tunnel`,
+  `not_a_hello`, …), how long the connection lasted, and its detail: the
+  tunnel or the server name asked for, the IP and ALPN protocols a hello
+  without a server name offered, the bytes received before the hello
+  deadline, or the first 32 bytes, escaped, of a connection that wasn't a
+  TLS ClientHello. It is one file per UTC hour, such as
   `connection.2026-10-16-13.log`, and the relay deletes each file 24 hours
   after its last entry. Successful connections aren't logged.
 

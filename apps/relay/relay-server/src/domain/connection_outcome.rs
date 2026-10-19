@@ -3,7 +3,9 @@
 //! come before any tunnel is known. Neither carries an identifier: the
 //! tunnel an outcome was for is kept beside it only in memory (see
 //! [`crate::outcomes`]), and the hourly totals are keyed by the outcome
-//! alone.
+//! alone. What identifies a refused connection, its visitor's address and
+//! what it sent or asked for, goes only to the connection log (see
+//! [`crate::logging`]).
 
 /// What became of a connection routed to a known tunnel. Its name as an
 /// [`Outcome`] ([`Outcome::as_str`]) is what `GET /api/tunnels` reports as a

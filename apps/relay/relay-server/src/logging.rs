@@ -7,10 +7,11 @@
 //! - **The connection log**: `<state dir>/connection-log/`, one file per UTC
 //!   hour (`connection.2026-10-16-13.log`), each deleted 24 hours after its
 //!   last entry. It holds only the events that need an identifier: those
-//!   logged with `target: IDENTIFYING`, which name a tunnel (or, for a
-//!   rate-limited claim, a client's address), and every event of rathole's
-//!   (`rathole::…`), which puts each device's IP address in its
-//!   `connection` span and names tunnels in its messages.
+//!   logged with `target: IDENTIFYING`, which name a tunnel or an address
+//!   (each refused `:443` connection, with its visitor's address and what
+//!   it sent or asked for, and a rate-limited claim's client address), and
+//!   every event of rathole's (`rathole::…`), which puts each device's IP
+//!   address in its `connection` span and names tunnels in its messages.
 //!
 //! `RUST_LOG` (default `info`) sets the level for both. An event goes to
 //! exactly one of them.
@@ -198,44 +199,10 @@ fn is_connection_log_file(file_name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex, PoisonError};
-
     use tracing_subscriber::layer::SubscriberExt;
 
     use super::*;
-
-    /// Lines a layer writes, kept in memory.
-    #[derive(Clone, Default)]
-    struct Captured(Arc<Mutex<Vec<u8>>>);
-
-    impl Captured {
-        fn text(&self) -> String {
-            let bytes = self.0.lock().unwrap_or_else(PoisonError::into_inner);
-            String::from_utf8_lossy(&bytes).into_owned()
-        }
-    }
-
-    impl io::Write for Captured {
-        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-            self.0
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .extend_from_slice(buf);
-            Ok(buf.len())
-        }
-
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(())
-        }
-    }
-
-    impl<'writer> MakeWriter<'writer> for Captured {
-        type Writer = Self;
-
-        fn make_writer(&'writer self) -> Self {
-            self.clone()
-        }
-    }
+    use crate::test_support::Captured;
 
     #[test]
     fn the_journal_gets_what_names_no_one_and_the_connection_log_the_rest() {

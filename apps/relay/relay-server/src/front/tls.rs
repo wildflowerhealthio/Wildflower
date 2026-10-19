@@ -13,11 +13,13 @@
 //!
 //! Each connection not for a local hostname is recorded in the
 //! [`ConnectionOutcomes`](crate::outcomes::ConnectionOutcomes) once, where
-//! its outcome is known: a refusal before routing as an [`Outcome`], and a
-//! routed connection as its tunnel's [`TunnelOutcome`], `ok` once the PROXY
-//! header and hello are written. The visitor's address goes only into that
-//! header, and is never logged. A refusal that names a tunnel is logged to
-//! the connection log ([`IDENTIFYING`]), not the journal.
+//! its outcome is known: a refusal before routing as an
+//! [`Outcome`](crate::domain::Outcome), and a routed connection as its
+//! tunnel's [`TunnelOutcome`], `ok` once the PROXY header and hello are
+//! written. Each refusal is also logged to the connection log, with the
+//! visitor's address and what it sent or asked for (see `refusal`). A
+//! connection that reaches its tunnel is not logged: its visitor's address
+//! goes only into the PROXY header.
 
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -30,57 +32,58 @@ use tokio::sync::broadcast;
 
 use wildflowerhealthio_rathole_settings::proxy_header::proxy_header;
 
-use super::hello::{read_client_hello, ClientHello};
+use super::hello::{read_client_hello, ClientHello, HelloParser};
+use super::refusal::{FirstBytes, NotAHello, Refusal, TunnelRefusal, Visitor};
 use super::Front;
-use crate::domain::{Outcome, TunnelOutcome};
-use crate::logging::IDENTIFYING;
+use crate::domain::TunnelOutcome;
 use crate::route::{Destination, Route};
 use crate::tunnels::TunnelDown;
 
 impl Front {
-    /// Route one `:443` connection.
+    /// Route one `:443` connection, from `visitor`.
     pub(super) async fn handle_tls(
         &self,
         mut client: TcpStream,
+        visitor: Visitor,
         shutdown_rx: broadcast::Receiver<bool>,
     ) {
-        let (Ok(visitor), Ok(relay)) = (client.peer_addr(), client.local_addr()) else {
+        let Ok(relay) = client.local_addr() else {
             return;
         };
         let (hello_bytes, server_name) = match self.read_server_name(&mut client).await {
             Ok(read) => read,
             Err(refusal) => {
-                self.outcomes.record(refusal);
+                self.refuse(&visitor, refusal);
                 return;
             }
         };
         let route = match self.router.resolve(&server_name) {
             Some(Destination::Tunnel(route)) => route,
             Some(Destination::Local(_)) => {
-                self.serve_site(client, visitor, hello_bytes, shutdown_rx)
+                self.serve_site(client, visitor.address, hello_bytes, shutdown_rx)
                     .await;
                 return;
             }
             None => {
-                // The name is logged nowhere, only counted.
-                tracing::debug!("refused: unknown tunnel");
-                self.outcomes.record(Outcome::UnknownTunnel);
+                self.refuse(&visitor, Refusal::UnknownTunnel { server_name });
                 return;
             }
         };
         let mut backend = match self.connect_to_tunnel(&route).await {
             Ok(backend) => backend,
             Err(refusal) => {
-                self.outcomes.record_for_tunnel(&route.tunnel_name, refusal);
+                self.refuse(&visitor, Refusal::at(route, refusal));
                 return;
             }
         };
         tune(&client);
-        let sent = send_preface(&mut backend, visitor, relay, &hello_bytes, &route).await;
-        self.outcomes.record_for_tunnel(&route.tunnel_name, sent);
-        if sent != TunnelOutcome::Ok {
+        if let Err(refusal) = send_preface(&mut backend, visitor.address, relay, &hello_bytes).await
+        {
+            self.refuse(&visitor, Refusal::at(route, refusal));
             return;
         }
+        self.outcomes
+            .record_for_tunnel(&route.tunnel_name, TunnelOutcome::Ok);
         self.pipe(client, backend, shutdown_rx).await;
     }
 
@@ -106,27 +109,32 @@ impl Front {
     }
 
     /// The ClientHello's bytes (to replay) and its server name, or, if the
-    /// visitor sent no usable hello in time, the refusal to count.
-    async fn read_server_name(&self, client: &mut TcpStream) -> Result<(Vec<u8>, String), Outcome> {
-        let read = tokio::time::timeout(self.limits.hello_timeout, read_client_hello(client)).await;
-        let (bytes, hello) = match read {
-            Ok(Ok(read)) => read,
-            Ok(Err(e)) => {
-                tracing::debug!("refused: reading ClientHello failed: {e}");
-                return Err(Outcome::NotAHello);
-            }
-            Err(_) => {
-                tracing::debug!("refused: no ClientHello within the deadline");
-                return Err(Outcome::HelloTimeout);
-            }
+    /// visitor sent no usable hello in time, the refusal, with what it did
+    /// send.
+    async fn read_server_name(&self, client: &mut TcpStream) -> Result<(Vec<u8>, String), Refusal> {
+        let mut parser = HelloParser::default();
+        let read = tokio::time::timeout(
+            self.limits.hello_timeout,
+            read_client_hello(client, &mut parser),
+        )
+        .await;
+        let not_a_hello = |ended| Refusal::NotAHello {
+            first_bytes: FirstBytes::of(parser.received()),
+            ended,
         };
-        let refusal = match hello {
-            ClientHello::ServerName(name) => return Ok((bytes, name)),
-            ClientHello::NoServerName => Outcome::NoServerName,
+        let refusal = match read {
+            Ok(Ok(ClientHello::ServerName(name))) => return Ok((parser.into_received(), name)),
+            Ok(Ok(ClientHello::NoServerName(hello))) => Refusal::NoServerName(hello),
             // `read_client_hello` gives a verdict, so never `Incomplete`.
-            ClientHello::Incomplete | ClientHello::Invalid => Outcome::NotAHello,
+            Ok(Ok(ClientHello::Incomplete | ClientHello::Invalid)) => {
+                not_a_hello(NotAHello::Invalid)
+            }
+            Ok(Ok(ClientHello::Closed)) => not_a_hello(NotAHello::Closed),
+            Ok(Err(e)) => not_a_hello(NotAHello::ReadFailed(e)),
+            Err(_) => Refusal::HelloTimeout {
+                bytes_received: parser.received().len(),
+            },
         };
-        tracing::debug!(hello = ?hello, "refused: no usable server name");
         Err(refusal)
     }
 
@@ -137,27 +145,13 @@ impl Front {
     /// to tell the device (wake-up push, #918). It waits only while the
     /// tunnel's queue of visitors is full, so running out of time means the
     /// device is connected but not taking visitors, not that it is down.
-    async fn connect_to_tunnel(&self, route: &Route) -> Result<DuplexStream, TunnelOutcome> {
+    async fn connect_to_tunnel(&self, route: &Route) -> Result<DuplexStream, TunnelRefusal> {
         let (backend, visitor) = tokio::io::duplex(PIPE_BUFFER_SIZE);
         let connect = self.tunnels.connect(&route.tunnel_name, visitor);
         match tokio::time::timeout(self.limits.hello_timeout, connect).await {
             Ok(Ok(())) => Ok(backend),
-            Ok(Err(TunnelDown)) => {
-                tracing::info!(
-                    target: IDENTIFYING,
-                    tunnel = %route.tunnel_name,
-                    "refused: tunnel is down"
-                );
-                Err(TunnelOutcome::TunnelDown)
-            }
-            Err(_) => {
-                tracing::warn!(
-                    target: IDENTIFYING,
-                    tunnel = %route.tunnel_name,
-                    "refused: the tunnel's visitor queue stayed full past the deadline"
-                );
-                Err(TunnelOutcome::TunnelBusy)
-            }
+            Ok(Err(TunnelDown)) => Err(TunnelRefusal::Down),
+            Err(_) => Err(TunnelRefusal::Busy),
         }
     }
 
@@ -207,31 +201,17 @@ fn tune(stream: &TcpStream) {
 }
 
 /// Write the PROXY header and then the visitor's hello bytes to the tunnel,
-/// as one write. [`TunnelOutcome::Ok`] if that worked, otherwise why not.
+/// as one write, or say why that failed.
 async fn send_preface(
     backend: &mut (impl AsyncWrite + Unpin),
     visitor: SocketAddr,
     relay: SocketAddr,
     hello_bytes: &[u8],
-    route: &Route,
-) -> TunnelOutcome {
-    let mut preface = match proxy_header(visitor, relay) {
-        Ok(header) => header,
-        Err(e) => {
-            tracing::warn!("refused: building PROXY header failed: {e}");
-            return TunnelOutcome::ProxyHeaderFailed;
-        }
-    };
+) -> Result<(), TunnelRefusal> {
+    let mut preface = proxy_header(visitor, relay).map_err(TunnelRefusal::ProxyHeaderFailed)?;
     preface.extend_from_slice(hello_bytes);
-    match backend.write_all(&preface).await {
-        Ok(()) => TunnelOutcome::Ok,
-        Err(e) => {
-            tracing::debug!(
-                target: IDENTIFYING,
-                tunnel = %route.tunnel_name,
-                "tunnel closed before the hello was sent: {e}"
-            );
-            TunnelOutcome::TunnelClosed
-        }
-    }
+    backend
+        .write_all(&preface)
+        .await
+        .map_err(TunnelRefusal::Closed)
 }
