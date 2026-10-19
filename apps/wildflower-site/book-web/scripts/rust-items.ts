@@ -201,4 +201,4 @@ const locateRustItem = async (source: string, symbol: string): Promise<LocatedIt
   }
 }
 
-export { locateRustItem }
+export { locateRustItem, rustParser }

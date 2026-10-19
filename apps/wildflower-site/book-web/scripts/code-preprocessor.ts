@@ -8,10 +8,21 @@
 //
 // Every directive that fails is reported on stderr, naming its chapter, and
 // the build fails. GitHub links name `GITHUB_SHA` (CI's checkout), or HEAD.
+// Then the coverage of the files the chapters' `{{#covers}}` name
+// (coverage.ts) goes to stderr: a count, and a warning per item the book
+// doesn't show.
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
-import { expandDirectives, includeChapters, type LinkTargets } from './directives.ts'
+import {
+  coverableItems,
+  coverageReport,
+  formatCoverage,
+  type CoveredFile,
+  type ItemReference,
+} from './coverage.ts'
+import { chaptersOf, expandDirectives, includeChapters, type LinkTargets } from './directives.ts'
 
 interface Chapter {
   name: string
@@ -52,16 +63,28 @@ const main = async (): Promise<void> => {
     // Previews have no code index of their own, so every build links production's.
     codeIndexUrl: 'https://wildflowerhealth.io/code-index/',
   }
+  const chapters = chaptersIn(book)
+  // Each included chapter → its page, so chapters' links to each other land.
+  const pages = new Map(
+    chapters.flatMap((chapter) =>
+      chaptersOf(chapter.content).map((path) => [path, chapter.source_path ?? ''] as const)
+    )
+  )
+  const references: ItemReference[] = []
+  const covers = new Set<string>()
   const failures = (
     await Promise.all(
-      chaptersIn(book).map(async (chapter) => {
+      chapters.map(async (chapter) => {
         const page = `src/${chapter.source_path ?? '?'}`
-        const withChapters = includeChapters(chapter.content, repoRoot)
-        const { markdown, errors } = await expandDirectives(
-          withChapters.markdown,
-          repoRoot,
-          targets
-        )
+        const withChapters = includeChapters(chapter.content, repoRoot, {
+          page: chapter.source_path ?? '',
+          pages,
+          targets,
+        })
+        const expanded = await expandDirectives(withChapters.markdown, repoRoot, targets)
+        const { markdown, errors } = expanded
+        references.push(...expanded.references)
+        expanded.covers.forEach((path) => covers.add(path))
         chapter.content = markdown
         const where = withChapters.included.length > 0 ? withChapters.included.join(', ') : page
         return [
@@ -77,6 +100,14 @@ const main = async (): Promise<void> => {
     )
     process.exit(1)
   }
+  const coveredFiles: CoveredFile[] = await Promise.all(
+    [...covers].toSorted().map(async (path) => ({
+      path,
+      items: await coverableItems(readFileSync(join(repoRoot, path), 'utf8')),
+    }))
+  )
+  if (coveredFiles.length > 0)
+    process.stderr.write(formatCoverage(coverageReport(coveredFiles, references)))
   process.stdout.write(JSON.stringify(book))
 }
 

@@ -1,19 +1,23 @@
 # book-web
 
 The book at `wildflowerhealth.io/book/`: the code read in domain order. Each
-part takes one component, opens with a map of who is involved and how the code
-is layered, and then follows a story through it, with the source the story
-depends on inlined where it does. [mdbook](https://rust-lang.github.io/mdBook/)
-renders it, in its stock look: the sidebar, search, and previous and next.
+part takes one component and opens with an introduction to who is involved and
+how the code is layered. Its domain chapters then give each entity a page, a
+section per method with the unit tests that exercise it, in the order the
+concepts build on each other; its integration-test chapters give each test a
+section, saying what the test holds the server to and linking the domain
+sections it relies on. [mdbook](https://rust-lang.github.io/mdBook/) renders
+it, in its stock look: the sidebar, search, and previous and next.
 
 ## Where the pages come from
 
 - **The chapters live beside their code**, in a `docs/Book/` folder of the
   package they explain (`apps/host/wildflower-server/authorization-server-rust/docs/Book/`),
   so a change to the code and to its chapter land in the same diff. They are
-  Explanation docs, named as the docs are (`Map Explanation.md`).
+  Explanation docs, named as the docs are (`Introduction Explanation.md`,
+  `Domain/Grant Explanation.md`).
 - **`src/SUMMARY.md` sets the reading order**: a part per component, a
-  chapter per page.
+  chapter per page, nested as the chapters' folders are.
 - **`src/<part>/<chapter>.md` is a stub** holding one
   `{{#chapter "<path>"}}`, which the build replaces with the chapter's text.
   The stub's path is the page's URL.
@@ -71,6 +75,12 @@ Values take `\"` and `\\` escapes.
 {{#code apps/host/wildflower-server/authorization-server-rust/src/domain/authority/redemption.rs RedeemedAuthorizationCode::redeem from="// A concurrent redemption" through="let Some(code)"}}
 ```
 
+Chapters link each other as files in the repository, by relative path, with
+angle brackets around a path with spaces
+(`[the grant](<../Domain/Grant Explanation.md#covers>)`), so the links work on
+GitHub too. The build points each at the page that includes that chapter,
+anchor kept, and a relative link to any other file at the file on GitHub.
+
 **A directive that can't be resolved fails the build**: a missing file, a
 symbol naming nothing or more than one item, or a fragment's text matching no
 line. The error names the chapter file and the directive. So a rename that
@@ -79,6 +89,38 @@ leaves a chapter behind fails the PR's preview build, not the reader.
 Diagrams are ` ```mermaid ` blocks, drawn in the browser by mermaid, which the
 build copies out of `node_modules` into the book, so the pages load nothing
 from another origin. Only a page with a diagram loads it.
+
+## Coverage
+
+A chapter that explains a file says so at its top, and the build checks the
+book shows what's in it:
+
+```text
+{{#covers <path>}}
+{{#covered <path> <symbol>…}}
+```
+
+`{{#covers}}` becomes a line linking the file on GitHub. The file's
+**coverable items** are its `pub` and `pub(crate)` functions, types, traits,
+consts and statics, the `pub` and `pub(crate)` functions and consts of its
+inherent `impl` blocks, and every test function (an attribute whose path ends
+in `test`: `#[test]`, `#[tokio::test]`), inline modules included, so a unit
+test is `tests::name`. Only `.rs` files can be covered.
+
+An item is in the book when any `{{#code}}` or `{{#code-link}}` on any page
+names it, however its symbol is spelt. `{{#covered}}` renders nothing: it
+counts items as in the book without showing them, for what the prose names
+another way (getters grouped in a sentence, say). Its symbols must resolve,
+as `{{#code}}`'s must.
+
+After expanding every page, the build prints the count, and a warning per
+coverable item no directive names. It doesn't fail: the list says where the
+book has fallen behind the code.
+
+```text
+coverage: 212/230 items; 18 not in the book:
+  WARNING: apps/…/src/domain/grant.rs Grant::covers
+```
 
 ## How it's built
 
@@ -113,5 +155,5 @@ vp run build-book --out /tmp/site/book
 python3 -m http.server -d /tmp/site   # then open /book/
 ```
 
-`vp test` covers the directive parser and the item finders, against the
-sources in `scripts/fixtures/`.
+`vp test` covers the directive parser, the item finders and the coverage
+listing, against the sources in `scripts/fixtures/`.

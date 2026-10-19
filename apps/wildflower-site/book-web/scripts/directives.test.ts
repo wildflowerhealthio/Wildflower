@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
+  chaptersOf,
   codeIndexPage,
   codeIndexSlug,
   DirectiveError,
@@ -133,5 +134,32 @@ describe('codeIndexPage', () => {
         takenByTypeScript
       )
     ).toBe('fhir-r4')
+  })
+})
+
+describe('chapter links', () => {
+  it('sends a link to another chapter to its page, and one to any other file to GitHub', () => {
+    const pages = new Map([
+      ['chapters/One Explanation.md', 'part/one.md'],
+      ['chapters/Sub/Two Explanation.md', 'part/sub/two.md'],
+    ])
+    const one = includeChapters('{{#chapter "chapters/One Explanation.md"}}', repoRoot, {
+      page: 'part/one.md',
+      pages,
+      targets,
+    })
+    expect(one.markdown).toContain(
+      'See [two](sub/two.md#a-heading), [two again](sub/two.md),\n[the crate](https://github.com/owner/repo/blob/abc123/sample-crate/src/lib.rs), [the web](https://example.org/) and [below](#one).'
+    )
+    const two = includeChapters('{{#chapter "chapters/Sub/Two Explanation.md"}}', repoRoot, {
+      page: 'part/sub/two.md',
+      pages,
+      targets,
+    })
+    expect(two.markdown).toContain('Back to [one](../one.md).')
+  })
+
+  it('lists the chapters a page includes', () => {
+    expect(chaptersOf('{{#chapter "a b.md"}} and {{#chapter "c.md"}}')).toEqual(['a b.md', 'c.md'])
   })
 })
