@@ -267,8 +267,6 @@ pub(super) async fn handle_authorize_request(
         )));
     };
     let browser_session_grant = browser_session.granted();
-    let requesting_browser_grant =
-        can_decide_consents(browser_session).then_some(&browser_session_grant);
     let next_step = code_authorization_starter.start(
         &AuthorizeRequest {
             response_type: &params.response_type,
@@ -281,7 +279,7 @@ pub(super) async fn handle_authorize_request(
             launch: params.launch.as_deref(),
             aud: params.aud.as_deref(),
             browser_session_grant: &browser_session_grant,
-            requesting_browser_grant,
+            can_decide_consents: can_decide_consents(browser_session),
             may_raise_for_owner: &may_raise_for_owner,
             sid: browser_sid,
         },

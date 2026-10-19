@@ -67,13 +67,13 @@ pub(crate) struct AuthorizeRequest<'a> {
     /// so a request asking for more waits on that browser's limited page
     /// first.
     pub(crate) browser_session_grant: &'a Grant,
-    /// [`browser_session_grant`](Self::browser_session_grant), when that
-    /// session can decide consents. The request can be
-    /// decided in that browser when the grant also holds the request's
-    /// approval scopes
+    /// Whether that browser session can decide consents. The request can be
+    /// decided in that browser when it can and
+    /// [`browser_session_grant`](Self::browser_session_grant) also holds the
+    /// request's approval scopes
     /// ([`ApprovableScopes::missing_approval_scopes`], as the consent card and
     /// the approval check them); that is recorded on a parked request.
-    pub(crate) requesting_browser_grant: Option<&'a Grant>,
+    pub(crate) can_decide_consents: bool,
     /// Whether this start may raise a request for the Owner, asked once, only
     /// when the request is about to be (not decided in the requesting browser,
     /// and not issued on the standing-grant fast path) or about to park for
@@ -278,14 +278,10 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
             maybe_existing_client.as_ref(),
             registration_is_fixed,
         );
-        let decidable_in_requesting_browser =
-            authorize_query
-                .requesting_browser_grant
-                .is_some_and(|requesting_browser_grant| {
-                    approvable
-                        .missing_approval_scopes(requesting_browser_grant)
-                        .is_empty()
-                });
+        let decidable_in_requesting_browser = authorize_query.can_decide_consents
+            && approvable
+                .missing_approval_scopes(authorize_query.browser_session_grant)
+                .is_empty();
         let coverage = GrantCoverage::resolve(
             &self.store,
             &registration_verdict,
@@ -718,7 +714,7 @@ mod tests {
             launch: None,
             aud: None,
             browser_session_grant: &OWNER_SESSION_GRANT,
-            requesting_browser_grant: None,
+            can_decide_consents: false,
             may_raise_for_owner: &|| true,
             sid: REQUESTING_SID,
         }
@@ -1302,29 +1298,31 @@ mod tests {
     }
 
     /// Whether the requesting browser decides a request turns on the
-    /// request's approval scopes, the resource scopes it asks for among them:
-    /// a browser that decides consents and creates grants and registrations,
-    /// but holds no `patient/` scope, can't approve a request for
-    /// `patient/Observation.rs`, so the request is raised for the Owner.
+    /// request's approval scopes: a browser that decides consents and holds
+    /// `patient/Observation.rs`, but can't create the grant and registration
+    /// an approval records, can't approve a request for it, so the request is
+    /// raised for the Owner.
     #[test]
     fn the_requesting_browser_decides_only_a_request_it_can_approve_as_asked() {
         let deciding = [
             "wildflower/AuthorizationRequest.ru",
-            "wildflower/Grant.c",
-            "wildflower/Client.cu",
+            "patient/Observation.rs",
         ];
-        for (extra_scopes, expected) in [(&[][..], false), (&["patient/Observation.rs"][..], true)]
-        {
+        for (extra_scopes, expected) in [
+            (&[][..], false),
+            (&["wildflower/Grant.c", "wildflower/Client.cu"][..], true),
+        ] {
             let store = FakeGrantStore::default();
             store
                 .upsert_client(&client("app", &["patient/Observation.rs"]))
                 .unwrap();
             let (code_authorization_starter, _) = starter(store);
-            let requesting_browser_grant = Grant::parse(deciding.iter().chain(extra_scopes));
+            let browser_session_grant = Grant::parse(deciding.iter().chain(extra_scopes));
             let outcome = code_authorization_starter
                 .start(
                     &AuthorizeRequest {
-                        requesting_browser_grant: Some(&requesting_browser_grant),
+                        browser_session_grant: &browser_session_grant,
+                        can_decide_consents: true,
                         ..request("app", "patient/Observation.rs")
                     },
                     ids(),
@@ -1369,11 +1367,10 @@ mod tests {
         );
         assert_eq!(owner_approval.count(), 0);
 
-        let owner_session_grant = Grant::parse(crate::owner_scopes());
         let outcome = code_authorization_starter
             .start(
                 &AuthorizeRequest {
-                    requesting_browser_grant: Some(&owner_session_grant),
+                    can_decide_consents: true,
                     may_raise_for_owner: &|| panic!("decided in the requesting browser"),
                     ..request("newcomer", "openid")
                 },
