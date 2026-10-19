@@ -332,7 +332,7 @@
         "tags": [
           "OAuth 2.0"
         ],
-        "summary": "Go on with request `id` although this browser's session holds less than it\nasks for: issue a code under a standing grant that covers it, or else ask\nthe Owner, on the consent card when this browser can decide it and on the\nwait page otherwise, with the request's five minutes started again.\nRaising the request for the Owner spends from the authorization start\nlimit when `/oauth/authorize` deferred it (a browser whose session can\ndecide consents). This browser session's later requests for the same app\nskip the limited page.",
+        "summary": "Go on with request `id` although this browser's session holds less than it\nasks for: issue a code under a standing grant that covers it, or else ask\nthe Owner, on the consent card when this browser can decide it and on the\nwait page otherwise, with the request's five minutes started again. The\nrequest spent from the authorization start limit when `/oauth/authorize`\nparked it, so going on spends nothing. This browser session's later\nrequests for the same app skip the limited page.",
         "operationId": "handle_session_shortfall_continue",
         "parameters": [
           {
@@ -368,9 +368,6 @@
                 }
               }
             }
-          },
-          "429": {
-            "description": "The authorization start limit refused the request"
           },
           "503": {
             "description": "No active signing key"

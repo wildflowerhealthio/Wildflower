@@ -1,4 +1,3 @@
-import { HttpClientError } from '@effect/platform'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { AuthorizationServerHttpApiClient } from '@wildflowerhealthio/authorization-core/clients'
 import { OAuth } from '@wildflowerhealthio/authorization-core/http-api-definition'
@@ -18,10 +17,6 @@ const REQUEST_UNREADABLE = "Couldn't read this request. Go back to the app and t
 /** What the page says when Continue or Cancel failed some other way. */
 const ANSWER_FAILED = "Couldn't finish this request. Go back to the app and try again."
 
-/** What the page says when the authorization start limit refused Continue. */
-const START_LIMITED =
-  'This server has had too many sign-in requests. Wait a few minutes, then press Continue again.'
-
 /** What the limited page says, as `GET …/session-shortfall` answers it. */
 type SessionShortfall = typeof OAuth.SessionShortfallSchema.Type
 
@@ -37,12 +32,6 @@ type ShortfallAnswer =
   | { readonly kind: 'next'; readonly location: string }
   /** The request no longer waits on this page. */
   | { readonly kind: 'gone' }
-  /** The authorization start limit refused Continue; the request still waits. */
-  | { readonly kind: 'start-limited' }
-
-/** Whether `error` is the start limit's `429`. */
-const isStartLimited = (error: unknown): boolean =>
-  error instanceof HttpClientError.ResponseError && error.response.status === 429
 
 /** The request `requestId` as this browser's limited page reads it. */
 const lookUpShortfall = (
@@ -70,8 +59,7 @@ const answerShortfall = (
     Effect.map(({ location }): ShortfallAnswer => ({ kind: 'next', location })),
     Effect.catchIf(Schema.is(OAuth.AuthorizationStatusNotFoundSchema), () =>
       Effect.succeed<ShortfallAnswer>({ kind: 'gone' })
-    ),
-    Effect.catchIf(isStartLimited, () => Effect.succeed<ShortfallAnswer>({ kind: 'start-limited' }))
+    )
   )
 
 /**
@@ -160,11 +148,7 @@ const LimitedPage = ({
     }
     const { clientName, missingScopes } = shortfallQuery.data.shortfall
     const answered = answerMutation.data
-    const failure = ((): string | null => {
-      if (answerMutation.isError) return ANSWER_FAILED
-      if (answered?.kind === 'start-limited') return START_LIMITED
-      return null
-    })()
+    const failure = answerMutation.isError ? ANSWER_FAILED : null
     const leaving =
       answerMutation.isPending || answered?.kind === 'next' || answered?.kind === 'gone'
     return (

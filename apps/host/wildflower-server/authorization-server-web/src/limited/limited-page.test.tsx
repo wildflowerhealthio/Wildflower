@@ -204,24 +204,6 @@ describe('LimitedPage — Continue and Cancel', () => {
     expect(posted()).toEqual(['/oauth/authorize/req-1/cancel'])
   })
 
-  test('a Continue the start limit refuses says to wait, and leaves the buttons', async () => {
-    answer = serverHolding(['patient/Observation.rs'], {
-      status: 429,
-      text: 'too many authorization requests; try again later',
-    })
-    const { user } = renderPage()
-
-    await user.click(await screen.findByRole('button', { name: 'Continue' }))
-
-    expect(
-      await screen.findByText(
-        'This server has had too many sign-in requests. Wait a few minutes, then press Continue again.'
-      )
-    ).toBeDefined()
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Continue' }).disabled).toBe(false)
-    expect(leaveFor).not.toHaveBeenCalled()
-  })
-
   test('a Continue on a request no longer waiting leaves for the wait page', async () => {
     answer = serverHolding(['patient/Observation.rs'])
     const { user } = renderPage()

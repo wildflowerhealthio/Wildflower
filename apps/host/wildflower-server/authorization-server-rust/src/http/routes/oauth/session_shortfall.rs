@@ -32,9 +32,8 @@ use crate::domain::capabilities::oauth::{
     AuthorizationStartError, PollingBrowserSession, SessionShortfallView,
 };
 use crate::domain::token::VerifiedClaims;
-use crate::http::browser_session_cookie::{can_decide_consents, carried_browser_session};
+use crate::http::browser_session_cookie::carried_browser_session;
 use crate::http::extractors::Live;
-use crate::http::middleware::{start_limited_response, DeferredStartLimit};
 use crate::http::wire_representations::CacheSuppressed;
 use crate::live_bindings::{LiveCodeAuthorizationStarter, LiveSessionShortfall, LiveTokenVerifier};
 
@@ -122,11 +121,10 @@ pub(super) async fn handle_session_shortfall_read(
 /// Go on with request `id` although this browser's session holds less than it
 /// asks for: issue a code under a standing grant that covers it, or else ask
 /// the Owner, on the consent card when this browser can decide it and on the
-/// wait page otherwise, with the request's five minutes started again.
-/// Raising the request for the Owner spends from the authorization start
-/// limit when `/oauth/authorize` deferred it (a browser whose session can
-/// decide consents). This browser session's later requests for the same app
-/// skip the limited page.
+/// wait page otherwise, with the request's five minutes started again. The
+/// request spent from the authorization start limit when `/oauth/authorize`
+/// parked it, so going on spends nothing. This browser session's later
+/// requests for the same app skip the limited page.
 #[utoipa::path(
     post,
     tag = "OAuth 2.0",
@@ -136,26 +134,19 @@ pub(super) async fn handle_session_shortfall_read(
         (status = 200, description = "Where the browser goes next", body = SessionShortfallNextBody),
         (status = 400, description = "Local HTML error page (the client was disabled since)"),
         (status = 404, description = "No request with that id waits on this browser's limited page", body = AuthorizationRequestNotFound),
-        (status = 429, description = "The authorization start limit refused the request"),
         (status = 503, description = "No active signing key")
     )
 )]
 pub(super) async fn handle_session_shortfall_continue(
     code_authorization_starter: Live<LiveCodeAuthorizationStarter>,
     token_verifier: Live<LiveTokenVerifier>,
-    start_limit: DeferredStartLimit,
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Response, AuthorizationServerError> {
-    let (claims, sid) = requesting_browser_session(&token_verifier, &headers, &id)?;
-    // `/oauth/authorize`'s layer counted this start already, unless it
-    // deferred it for a session that can decide consents.
-    let start_was_deferred = can_decide_consents(&claims);
-    let may_raise_for_owner = || !start_was_deferred || start_limit.admits();
+    let (_, sid) = requesting_browser_session(&token_verifier, &headers, &id)?;
     let next_step = code_authorization_starter.continue_past_session_shortfall(
         &id,
         &sid,
-        &may_raise_for_owner,
         generate_authorization_code(),
         Utc::now(),
     );
@@ -169,7 +160,6 @@ pub(super) async fn handle_session_shortfall_continue(
         Err(AuthorizationStartError::RequestNotPending) => {
             return Err(AuthorizationServerError::AuthorizationRequestNotFound { id })
         }
-        Err(AuthorizationStartError::StartLimited) => return Ok(start_limited_response()),
         Err(error) => match AuthorizeError::from(error) {
             AuthorizeError::Redirect { location } => location,
             other => return Ok(other.into_response()),

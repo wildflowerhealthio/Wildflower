@@ -423,9 +423,11 @@ Starting a request is rate-limited on the tunnel, per visitor address and
 overall, and a request over either limit is `429` (the host's
 `authorization_start_limit`). A browser whose session can decide consents,
 as one signed in as the Owner can, is limited only when its request is raised
-for the Owner (every device request is), so one it decides on its own consent
-card is never limited; one that stops at the [limited page](#limited-page) is
-limited when it goes on and is raised. Nor is a browser without a session at
+for the Owner (every device request is) or parks for the
+[limited page](#limited-page), so one it decides on its own consent card is
+never limited. A request parked for the limited page has spent from the limit
+whichever browser made it, so going on from there asks nothing. Nor is a
+browser without a session at
 `/oauth/authorize`, which is only sent to [pairing](#browser-pairing) and
 parks nothing.
 
@@ -554,9 +556,8 @@ uses (`scopes-react`'s `fluentScope`), and the message sits above two buttons:
   that still covers the request issues a code, narrowed to the session.
   Otherwise the request is raised for the Owner, and the browser goes to the
   consent card or the [wait page](#wait-page), as recorded at the start.
-  Raising it spends from the authorization start limit only when the start
-  deferred it (a session that can decide consents); a refusal is `429` and
-  leaves the request waiting on the page.
+  It spends nothing from the authorization start limit: the request spent
+  from it when it parked.
 - **Cancel** posts `/oauth/authorize/{id}/cancel`, which denies the request,
   and the browser goes back to the app with `access_denied`.
 

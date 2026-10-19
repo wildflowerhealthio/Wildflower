@@ -6,9 +6,9 @@
 //! Owner, so one it decides on its own consent card passes without asking. A
 //! browser without a session at `/oauth/authorize`, which is only sent to
 //! pairing, never asks. Asking the Owner about a request (`…/ask-owner`) asks
-//! the gate when it raises one. Going on past the limited page
-//! (`…/continue`) asks the gate only for a start `/oauth/authorize` deferred,
-//! and no other route asks.
+//! the gate when it raises one. A request parked for the limited page asks
+//! the gate before it parks, deferred or not, so going on past the page
+//! (`…/continue`) asks nothing, and no other route asks.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -283,13 +283,16 @@ async fn a_deciding_browser_s_request_raised_for_the_owner_asks_the_gate() {
     assert!(newest_pending_consent(&db).is_none(), "nothing was parked");
 }
 
-/// A deciding browser whose session falls short of the request stops at the
-/// limited page without asking the gate, which its start deferred; going on
-/// asks it once the request is to be raised for the Owner, and a refusal
-/// leaves the request waiting on the page.
+/// A deciding browser whose session falls short of the request asks the
+/// gate, which its start deferred, before the request parks for the limited
+/// page; admitted, going on past the page raises the request for the Owner
+/// without asking again. Refused, a request for another app parks nothing.
 #[tokio::test]
-async fn a_deciding_browser_s_continue_past_the_limited_page_asks_the_gate() {
-    let gate = CountingGate::refusing();
+async fn a_deciding_browser_s_request_parked_for_the_limited_page_asks_the_gate() {
+    let gate = Arc::new(CountingGate {
+        admitted: 1,
+        asked: AtomicUsize::new(0),
+    });
     let (g, _owner_token, db) = spin_up_with_authorization_start_gate(gate.clone());
     seed_client_with_redirect(
         &db,
@@ -310,23 +313,28 @@ async fn a_deciding_browser_s_continue_past_the_limited_page_asks_the_gate() {
             "wildflower/AuthorizationRequest.u",
         ],
     );
+    let query = authorize_query("test-app", REQUESTED_SCOPES);
 
-    let request_id = limited_request_id(
-        &get_authorize(
-            &g.router,
-            &session_token,
-            &authorize_query("test-app", REQUESTED_SCOPES),
-        )
-        .await,
-    );
-    assert_eq!(gate.asked(), 0);
-
-    let res = post_session_shortfall(&g.router, &session_token, &request_id, "continue").await;
-    assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);
+    let request_id = limited_request_id(&get_authorize(&g.router, &session_token, &query).await);
     assert_eq!(gate.asked(), 1);
-    assert!(newest_pending_consent(&db).is_none(), "nothing was raised");
-    let res = get_session_shortfall(&g.router, &session_token, &request_id).await;
-    assert_eq!(res.status(), StatusCode::OK, "it still waits on the page");
+    let location = continue_past_session_shortfall(&g.router, &session_token, &request_id).await;
+    assert_eq!(location, format!("/oauth/authorize/{request_id}/wait"));
+    assert_eq!(gate.asked(), 1, "going on asks nothing");
+
+    seed_client_with_redirect(
+        &db,
+        "other-app",
+        "https://app.example/cb",
+        &["patient/Observation.rs", "openid"],
+    );
+    let res = get_authorize(
+        &g.router,
+        &session_token,
+        &authorize_query("other-app", REQUESTED_SCOPES),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(gate.asked(), 2);
 }
 
 /// A browser that can't decide consents spent its start at

@@ -74,8 +74,8 @@ Security Policy (below).
   The buttons post `…/cancel` and `…/continue` and leave for the `location`
   the answer carries, a path on this origin or the client callback, only an
   http(s) one. A `404` on any of the three (the request is no longer waiting
-  here, or isn't this browser's) goes to the wait page; a `429` on Continue
-  says to wait and press it again; any other failure says so in plain words.
+  here, or isn't this browser's) goes to the wait page; any other failure
+  says so in plain words.
 - `device.html` + `src/device/main.tsx` — the device page's entry: reads the
   `user_code` (`user-code-query.ts`) and `then` (`src/then-query.ts`) from its
   query and mounts `DevicePage`, with `SessionFooter` under it, over the same
