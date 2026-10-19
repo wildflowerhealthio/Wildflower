@@ -131,7 +131,7 @@ describe('DeviceConsentCard', () => {
   test('disables Approve when nothing is granted (empty request, nothing to add)', () => {
     // A request with no scopes and an empty expansion envelope has an empty draft,
     // which the backend treats as a deny — so Approve is blocked.
-    renderCard(makeConsent({ requestedScopes: [], allowedScopes: [] }), vi.fn())
+    renderCard(makeConsent({ startingScopes: [], allowedScopes: [] }), vi.fn())
     expect(screen.getByRole('button', { name: 'Approve' }).hasAttribute('disabled')).toBe(true)
   })
 
@@ -239,7 +239,7 @@ describe('DeviceConsentCard', () => {
       clientId: 'cb9bbe139845cae9654b7909d60d274f',
       clientName: 'Wildflower Browsers',
       deviceName: 'Firefox on Linux',
-      requestedScopes: ownerScopes,
+      startingScopes: ownerScopes,
       allowedScopes: ownerScopes,
     })
 
@@ -297,7 +297,7 @@ const makeConsent = (overrides?: Partial<DeviceConsent>): DeviceConsent => ({
   clientId: 'cli.acme.example',
   clientName: 'Acme CLI',
   deviceName: null,
-  requestedScopes: ['patient/Observation.rs'],
+  startingScopes: ['patient/Observation.rs'],
   // The client is allowed a wider set — device consent is expandable.
   allowedScopes: ['patient/*.cruds'],
   missingApprovalScopes: [],

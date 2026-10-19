@@ -174,7 +174,7 @@ async fn a_browser_pairs_and_holds_a_day_long_session_with_the_approved_scopes()
     assert_eq!(card["deviceName"], "Ruth's laptop", "the poll renamed it");
     assert_eq!(card["clientId"], BROWSER_SESSION_CLIENT_ID);
     assert_eq!(
-        card["requestedScopes"],
+        card["startingScopes"],
         serde_json::json!(wildflowerhealthio_authorization_server::owner_scopes()),
         "the Owner's card opens with everything ticked"
     );
@@ -325,7 +325,7 @@ async fn a_narrower_approver_s_card_opens_with_what_it_may_delegate() {
         "wildflower/AuthorizationRequest.u",
         "system/Patient.rs",
     ]);
-    assert_eq!(card["requestedScopes"], ticks);
+    assert_eq!(card["startingScopes"], ticks);
     assert!(card["allowedScopes"]
         .as_array()
         .expect("an array")

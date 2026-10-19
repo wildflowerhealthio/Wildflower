@@ -89,7 +89,7 @@ const deviceConsentFor = (
   clientId: 'pebble-watch',
   clientName: 'Pebble Watch',
   deviceName: null,
-  requestedScopes: ['system/Observation.rs'],
+  startingScopes: ['system/Observation.rs'],
   allowedScopes: ['system/Observation.rs'],
   missingApprovalScopes,
 })
@@ -263,7 +263,7 @@ describe('DevicePage — deciding', () => {
               clientId: 'cb9bbe139845cae9654b7909d60d274f',
               clientName: 'Wildflower Browsers',
               deviceName: 'Firefox on Linux',
-              requestedScopes: ['wildflower/launch'],
+              startingScopes: ['wildflower/launch'],
               allowedScopes: ['system/*.cruds', 'wildflower/*.cruds', 'wildflower/launch'],
               missingApprovalScopes: [],
             },
