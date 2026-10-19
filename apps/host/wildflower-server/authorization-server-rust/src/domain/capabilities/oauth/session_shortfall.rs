@@ -263,7 +263,8 @@ mod tests {
     }
 
     /// Cancel denies the request and hands back the client's `access_denied`
-    /// callback; a second cancel finds nothing.
+    /// callback, and remembers nothing for the session; a second cancel finds
+    /// nothing.
     #[test]
     fn cancel_denies_the_request_and_answers_access_denied() {
         let store = FakeGrantStore::default();
@@ -289,6 +290,10 @@ mod tests {
             RequestStatus::Denied
         );
         assert_eq!(owner_approval.count(), 1);
+        assert!(!session_shortfall
+            .store
+            .session_shortfall_acknowledged_for_client(FIXTURE_SID, "client")
+            .unwrap());
         assert!(session_shortfall
             .cancel("req-1", FIXTURE_SID, Utc::now())
             .is_err());

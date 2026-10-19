@@ -11,7 +11,8 @@ the server's own origin, so the address bar names the server being approved:
 - the **limited page**, `limited.html`, served at
   `/oauth/authorize/{id}/limited`: where `/oauth/authorize` sends a browser
   whose session holds less than the app asks for, to say so and go on or
-  cancel.
+  cancel. Once a browser session goes on for an app, the server skips the
+  page for that session's later requests for the same app.
 - the **device page**, `device.html`, served at `/oauth/device`: the RFC 8628
   `verification_uri`, and with `?user_code=` its `verification_uri_complete`.
   The code box and the card are `authorization-react`'s `DeviceCodeEntryForm`

@@ -1,6 +1,7 @@
 //! `browser_sessions` queries — the browsers the server has signed in
 //! ([`BrowserSession`]), keyed by the `sid` the tokens, codes and refresh
-//! families minted under each record.
+//! families minted under each record — and the apps each session has gone on
+//! past its limited page for (`session_shortfall_acknowledgements`).
 
 use chrono::{DateTime, Utc};
 use diesel::dsl::{exists, not};
@@ -25,7 +26,15 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    session_shortfall_acknowledgements (sid, client_id) {
+        sid -> Text,
+        client_id -> Text,
+    }
+}
+
 diesel::allow_tables_to_appear_in_same_query!(browser_sessions, refresh_token_families);
+diesel::allow_tables_to_appear_in_same_query!(browser_sessions, session_shortfall_acknowledgements);
 
 // The session `kind` discriminant, stored as its strum wire string. Only the
 // browser session binds it, so its mapping lives here.
@@ -130,9 +139,52 @@ pub(super) fn touch_browser_session_last_seen(
     Ok(affected == 1)
 }
 
+/// Whether the browser session `sid` has gone on past its limited page for
+/// `client_id` before.
+pub(super) fn session_shortfall_acknowledged_for_client(
+    conn: &mut SqliteConnection,
+    sid: &str,
+    client_id: &str,
+) -> Result<bool, AuthorizationServerError> {
+    diesel::select(exists(
+        session_shortfall_acknowledgements::table.find((sid, client_id)),
+    ))
+    .get_result(conn)
+    .map_err(|e| {
+        AuthorizationServerError::infrastructure(
+            "session_shortfall_acknowledged_for_client failed",
+            e,
+        )
+    })
+}
+
+/// Record that the browser session `sid` went on past its limited page for
+/// `client_id`. Recording it again changes nothing.
+pub(super) fn record_session_shortfall_acknowledgement(
+    conn: &mut SqliteConnection,
+    sid: &str,
+    client_id: &str,
+) -> Result<(), AuthorizationServerError> {
+    diesel::insert_into(session_shortfall_acknowledgements::table)
+        .values((
+            session_shortfall_acknowledgements::sid.eq(sid),
+            session_shortfall_acknowledgements::client_id.eq(client_id),
+        ))
+        .on_conflict_do_nothing()
+        .execute(conn)
+        .map_err(|e| {
+            AuthorizationServerError::infrastructure(
+                "record_session_shortfall_acknowledgement failed",
+                e,
+            )
+        })?;
+    Ok(())
+}
+
 /// Delete every browser session that expired or was revoked before `cutoff`
 /// and that no refresh-token family alive at `cutoff` names, returning how
-/// many went. A family that outlives its session's expiry keeps the row, so
+/// many went, and with them every limited-page acknowledgement whose session
+/// is gone. A family that outlives its session's expiry keeps the row, so
 /// its refresh still finds the session it was minted under. The family probe
 /// is correlated on `sid`, so `refresh_token_families_sid_idx` answers it.
 pub(super) fn delete_browser_sessions_ended_before(
@@ -144,7 +196,7 @@ pub(super) fn delete_browser_sessions_ended_before(
             .filter(refresh_token_families::sid.eq(browser_sessions::sid.nullable()))
             .filter(refresh_token_families::expires_at.ge(cutoff)),
     );
-    diesel::delete(
+    let pruned = diesel::delete(
         browser_sessions::table
             .filter(
                 browser_sessions::expires_at
@@ -156,7 +208,20 @@ pub(super) fn delete_browser_sessions_ended_before(
     .execute(conn)
     .map_err(|e| {
         AuthorizationServerError::infrastructure("delete_browser_sessions_ended_before failed", e)
-    })
+    })?;
+    diesel::delete(session_shortfall_acknowledgements::table.filter(
+        not(exists(browser_sessions::table.filter(
+            browser_sessions::sid.eq(session_shortfall_acknowledgements::sid),
+        ))),
+    ))
+    .execute(conn)
+    .map_err(|e| {
+        AuthorizationServerError::infrastructure(
+            "delete session_shortfall_acknowledgements without a session failed",
+            e,
+        )
+    })?;
+    Ok(pruned)
 }
 
 #[cfg(test)]
@@ -311,8 +376,37 @@ mod tests {
             .expect("touch"));
     }
 
+    /// A session's limited-page acknowledgement is per client, and recording
+    /// it twice is no error.
+    #[test]
+    fn a_session_shortfall_acknowledgement_is_per_session_and_client() {
+        let store = store();
+        assert!(!store
+            .session_shortfall_acknowledged_for_client("sid-1", "app")
+            .expect("read"));
+        for _ in 0..2 {
+            store
+                .with_connection(|tx| tx.record_session_shortfall_acknowledgement("sid-1", "app"))
+                .expect("record");
+        }
+        for (sid, client_id, acknowledged) in [
+            ("sid-1", "app", true),
+            ("sid-1", "other-app", false),
+            ("sid-2", "app", false),
+        ] {
+            assert_eq!(
+                store
+                    .session_shortfall_acknowledged_for_client(sid, client_id)
+                    .expect("read"),
+                acknowledged,
+                "{sid} {client_id}"
+            );
+        }
+    }
+
     /// The prune takes a session that expired or was revoked before the
-    /// cutoff, unless a family alive at the cutoff names it; a session
+    /// cutoff, unless a family alive at the cutoff names it, and the
+    /// limited-page acknowledgements of every session it takes; a session
     /// that ended after the cutoff stays.
     #[test]
     fn the_prune_takes_only_sessions_ended_before_the_cutoff_that_no_live_family_names() {
@@ -358,6 +452,12 @@ mod tests {
                 ))
             })
             .expect("families");
+        store
+            .with_connection(|tx| {
+                tx.record_session_shortfall_acknowledgement(&expired_long_ago.sid, "app")?;
+                tx.record_session_shortfall_acknowledgement(&expired_recently.sid, "app")
+            })
+            .expect("acknowledgements");
 
         let pruned = store
             .with_connection(|tx| tx.delete_browser_sessions_ended_before(cutoff))
@@ -378,6 +478,16 @@ mod tests {
                     .is_some(),
                 kept,
                 "session created {}",
+                session.created_at
+            );
+        }
+        for (session, kept) in [(&expired_long_ago, false), (&expired_recently, true)] {
+            assert_eq!(
+                store
+                    .session_shortfall_acknowledged_for_client(&session.sid, "app")
+                    .expect("read"),
+                kept,
+                "acknowledgement of the session created {}",
                 session.created_at
             );
         }

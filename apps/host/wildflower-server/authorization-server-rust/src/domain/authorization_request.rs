@@ -127,8 +127,9 @@ pub struct AuthorizationRequest {
     /// browser session holds less than the request asks for (auth-code flow
     /// only). `false` while the request waits on that browser's limited page:
     /// the Owner isn't asked about it and nothing decides it. `true` for a
-    /// request whose session holds all it asks for, and for a device request
-    /// and a browser pairing.
+    /// request whose session holds all it asks for, one whose session went on
+    /// for the same client before, and a device request and a browser
+    /// pairing.
     pub session_shortfall_acknowledged: bool,
 }
 
@@ -160,8 +161,9 @@ pub struct StartCodeAuthorizationArgs {
     /// The browser session the browser calling `/authorize` holds.
     pub sid: String,
     /// Whether the request may go on as it is: `false` when the browser
-    /// session falls short of the requested scopes, so the request waits for
-    /// that browser to say to go on.
+    /// session falls short of the requested scopes and hasn't gone on for
+    /// this client before, so the request waits for that browser to say to go
+    /// on.
     pub session_shortfall_acknowledged: bool,
 }
 

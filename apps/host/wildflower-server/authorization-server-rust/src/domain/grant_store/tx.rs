@@ -426,6 +426,31 @@ pub trait GrantTx {
         seen_before: DateTime<Utc>,
     ) -> Result<bool, AuthorizationServerError>;
 
+    /// Whether the browser session `sid` has gone on past its limited page
+    /// for `client_id` before.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the read fails.
+    fn session_shortfall_acknowledged_for_client(
+        &mut self,
+        sid: &str,
+        client_id: &str,
+    ) -> Result<bool, AuthorizationServerError>;
+
+    /// Record that the browser session `sid` went on past its limited page
+    /// for `client_id`, so its later requests for that client skip the page.
+    /// Recording it again changes nothing.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the insert fails.
+    fn record_session_shortfall_acknowledgement(
+        &mut self,
+        sid: &str,
+        client_id: &str,
+    ) -> Result<(), AuthorizationServerError>;
+
     // ----- retention ------------------------------------------------------
     //
     // The three reclaiming deletes, each taking an already-computed *cutoff*

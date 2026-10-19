@@ -183,7 +183,9 @@ pub struct AuthorizeParams {
 ///    session lacks and offers Continue or Cancel:
 ///    `POST /oauth/authorize/{id}/continue` goes on as below,
 ///    `POST /oauth/authorize/{id}/cancel` answers the client
-///    `access_denied`. Until then the Owner isn't asked about it.
+///    `access_denied`. Until then the Owner isn't asked about it. Once a
+///    browser session has pressed Continue for a client, its later requests
+///    for that client skip the page, whatever the session then lacks.
 /// 3. Unless every requested scope is pre-approved by an existing grant for
 ///    this (client, `redirect_uri`) pair, the request joins the pending-consent
 ///    queue and the browser is 302'd to a page this authorization server

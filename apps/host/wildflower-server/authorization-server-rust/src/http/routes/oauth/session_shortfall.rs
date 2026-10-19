@@ -122,9 +122,10 @@ pub(super) async fn handle_session_shortfall_read(
 /// Go on with request `id` although this browser's session holds less than it
 /// asks for: issue a code under a standing grant that covers it, or else ask
 /// the Owner, on the consent card when this browser can decide it and on the
-/// wait page otherwise. Raising the request for the Owner spends from the
-/// authorization start limit when `/oauth/authorize` deferred it (a browser
-/// whose session can decide consents).
+/// wait page otherwise. Raising the request for the Owner spends from the authorization start
+/// limit when `/oauth/authorize` deferred it (a browser whose session can
+/// decide consents). This browser session's later requests for the same app
+/// skip the limited page.
 #[utoipa::path(
     post,
     tag = "OAuth 2.0",

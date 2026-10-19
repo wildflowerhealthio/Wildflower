@@ -414,6 +414,22 @@ impl GrantTx for SqliteGrantTx<'_> {
         browser_sessions::delete_browser_sessions_ended_before(self.conn, cutoff)
     }
 
+    fn session_shortfall_acknowledged_for_client(
+        &mut self,
+        sid: &str,
+        client_id: &str,
+    ) -> Result<bool, AuthorizationServerError> {
+        browser_sessions::session_shortfall_acknowledged_for_client(self.conn, sid, client_id)
+    }
+
+    fn record_session_shortfall_acknowledgement(
+        &mut self,
+        sid: &str,
+        client_id: &str,
+    ) -> Result<(), AuthorizationServerError> {
+        browser_sessions::record_session_shortfall_acknowledgement(self.conn, sid, client_id)
+    }
+
     fn insert_refresh_token_family_row(
         &mut self,
         family: &RefreshTokenFamily,
@@ -2213,7 +2229,8 @@ mod tests {
     /// An install already at `0042` gains
     /// `authorization_requests.session_shortfall_acknowledged` when `0043`
     /// runs: every existing request, of either flow, reads as acknowledged,
-    /// so none is hidden from the Owner. Reverting `0043` drops the column.
+    /// so none is hidden from the Owner. Reverting `0043` drops the column and
+    /// `session_shortfall_acknowledgements`.
     #[test]
     fn an_install_already_at_0042_acknowledges_every_existing_request() {
         use diesel::connection::SimpleConnection as _;
@@ -2266,6 +2283,12 @@ mod tests {
                 .is_err(),
             "the column is gone"
         );
+        assert!(
+            diesel::sql_query("SELECT sid FROM session_shortfall_acknowledgements")
+                .execute(&mut conn)
+                .is_err(),
+            "the table is gone"
+        );
     }
 
     /// Running the migrations twice is a no-op the second time (the namespaced
@@ -2306,6 +2329,7 @@ mod tests {
             "launch_contexts",
             "refresh_token_families",
             "refresh_tokens",
+            "session_shortfall_acknowledgements",
             "signing_keys",
         ] {
             assert!(names.iter().any(|n| n == expected), "missing {expected}");

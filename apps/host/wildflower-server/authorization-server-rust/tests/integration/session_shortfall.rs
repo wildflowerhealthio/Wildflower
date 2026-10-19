@@ -5,7 +5,8 @@
 //! goes on, the Owner isn't asked about it and nothing decides it. Going on
 //! takes the branch the start would have: the fast path under a standing
 //! grant, or the consent card or the wait page. Only the browser that made the
-//! request can read, continue or cancel it.
+//! request can read, continue or cancel it. Once a browser session has gone on
+//! for an app, its later requests for that app skip the page.
 
 use wildflowerhealthio_authorization_server::domain::authorization_request::AuthorizationRequest;
 
@@ -132,8 +133,51 @@ async fn the_fast_path_stops_at_the_limited_page_then_issues_the_narrowed_code()
     );
 }
 
+/// Once a browser session has gone on past the limited page for an app, its
+/// next request for that app goes straight on (here the fast path); another
+/// session, and the same session asking for another app, still stop at it.
+#[tokio::test]
+async fn a_session_that_went_on_for_an_app_skips_the_limited_page_for_it() {
+    let (g, owner_token, db) = spin_up();
+    seed_app(&db);
+    seed_client_with_redirect(
+        &db,
+        "other-app",
+        "https://app.example/cb",
+        &[
+            "patient/Patient.rs",
+            "patient/Observation.rs",
+            "offline_access",
+        ],
+    );
+    approve_a_standing_grant(&g, &owner_token, &db).await;
+    let (_, session_token) = limited_browser(&db);
+    let request_id =
+        limited_request_id(&get_authorize(&g.router, &session_token, &app_query()).await);
+    continue_past_session_shortfall(&g.router, &session_token, &request_id).await;
+
+    let res = get_authorize(&g.router, &session_token, &app_query()).await;
+    assert_eq!(res.status(), StatusCode::FOUND);
+    let callback = location_of(&res);
+    assert!(
+        callback.starts_with("https://app.example/cb?code="),
+        "{callback}"
+    );
+    let issued = redeem(&g, &code_of(&callback)).await;
+    assert_eq!(issued["scope"], "patient/Patient.rs offline_access");
+
+    let (_, other_session_token) = limited_browser(&db);
+    limited_request_id(&get_authorize(&g.router, &other_session_token, &app_query()).await);
+    let other_app_query = authorize_query(
+        "other-app",
+        "patient%2FPatient.rs%20patient%2FObservation.rs%20offline_access",
+    );
+    limited_request_id(&get_authorize(&g.router, &session_token, &other_app_query).await);
+}
+
 /// Cancel sends the browser back to the app with `access_denied`, and the
-/// request can't be continued or read after.
+/// request can't be continued or read after. The next request from that
+/// browser stops at the limited page again.
 #[tokio::test]
 async fn cancel_answers_the_app_access_denied() {
     let (g, owner_token, db) = spin_up();
@@ -158,6 +202,7 @@ async fn cancel_answers_the_app_access_denied() {
     }
     let status = get_authorization_status(&g.router, &session_token, &request_id).await;
     assert_eq!(body_json(status.into_body()).await["status"], "denied");
+    limited_request_id(&get_authorize(&g.router, &session_token, &app_query()).await);
 }
 
 /// A request waiting on its limited page isn't the Owner's to see or decide:

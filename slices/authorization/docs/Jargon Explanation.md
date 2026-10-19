@@ -221,7 +221,8 @@ started by a SMART App Launch also carries the consumed `launch` and the
 patient its [LaunchContext](#launchcontext) binds (`launch_bound_patient`).
 A code-flow row whose browser session falls short of what it asks for parks
 with `session_shortfall_acknowledged` unset until its browser goes on from the
-[limited page](#limited-page). Device-flow rows leave those columns null.
+[limited page](#limited-page), unless that session went on for the same app
+before. Device-flow rows leave those columns null.
 
 ### LaunchContext
 
@@ -537,8 +538,9 @@ holds, each named as the request spells it. `/oauth/authorize` works it out
 once the request is validated and its launch consumed, before the
 [fast path](#grant), the start limit and the Owner. When it isn't empty, it
 parks the request with `session_shortfall_acknowledged` unset and sends the
-browser here, on every launch that falls short. An Owner session, holding
-`OWNER_SCOPES`, falls short of nothing and never sees the page.
+browser here, unless that browser session has pressed Continue for the same
+app before. An Owner session, holding `OWNER_SCOPES`, falls short of nothing
+and never sees the page.
 
 The page reads `GET /oauth/authorize/{id}/session-shortfall` (the app's name
 and the scopes the session lacks) and says, for example, "This browser isn't
@@ -556,6 +558,16 @@ uses (`scopes-react`'s `fluentScope`), and the message sits above two buttons:
   leaves the request waiting on the page.
 - **Cancel** posts `/oauth/authorize/{id}/cancel`, which denies the request,
   and the browser goes back to the app with `access_denied`.
+
+Continue also remembers the (browser session, app) pair, one row in
+`session_shortfall_acknowledgements` keyed by `sid` and `client_id`. A later
+request from that session for that app skips the page and goes on as if
+acknowledged, whatever the session then lacks of it; another session, or the
+same session for another app, still stops here. The launcher is an app like
+any other: a browser paired with less than it asks for sees the page on its
+first sign-in and not again for that session. Cancel remembers nothing. The
+rows end with their session: the retention sweep deletes them when it
+deletes the session.
 
 Both answer `{ location }`, where the page sends the browser, which it follows
 only for `http:`/`https:`. Until Continue the request is the browser's alone:
@@ -859,7 +871,8 @@ launcher's root; a browser with no standing session is sent there too, its
 cookie cleared.
 
 The retention sweep deletes a session 24 hours after it expired or was
-revoked, unless a refresh family alive by then still names it.
+revoked, unless a refresh family alive by then still names it, and the apps it
+went on past the [limited page](#limited-page) for with it.
 
 - **Table:** `browser_sessions`
 - **Identifier:** `sid` (a random UUID).

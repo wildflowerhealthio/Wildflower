@@ -263,15 +263,6 @@ pub trait GrantStore {
         self.with_connection(|tx| tx.raise_authorization_request_for_owner(id))
     }
 
-    /// See [`GrantTx::acknowledge_session_shortfall`].
-    ///
-    /// # Errors
-    ///
-    /// Propagates [`GrantTx::acknowledge_session_shortfall`]'s error.
-    fn acknowledge_session_shortfall(&self, id: &str) -> Result<bool, AuthorizationServerError> {
-        self.with_connection(|tx| tx.acknowledge_session_shortfall(id))
-    }
-
     /// See [`GrantTx::consume_approved_authorization_request`].
     ///
     /// # Errors
@@ -404,6 +395,20 @@ pub trait GrantStore {
         now: DateTime<Utc>,
     ) -> Result<bool, AuthorizationServerError> {
         self.with_connection(|tx| tx.revoke_browser_session(sid, now))
+    }
+
+    /// See [`GrantTx::session_shortfall_acknowledged_for_client`].
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`GrantTx::session_shortfall_acknowledged_for_client`]'s
+    /// error.
+    fn session_shortfall_acknowledged_for_client(
+        &self,
+        sid: &str,
+        client_id: &str,
+    ) -> Result<bool, AuthorizationServerError> {
+        self.with_connection(|tx| tx.session_shortfall_acknowledged_for_client(sid, client_id))
     }
 
     /// See [`GrantTx::touch_browser_session_last_seen`].

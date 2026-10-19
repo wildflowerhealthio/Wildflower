@@ -506,7 +506,35 @@ impl GrantTx for FakeGrantTx<'_> {
                     .is_some_and(|revoked_at| revoked_at < cutoff);
             !ended_before_cutoff || named_by_a_family_alive_at_cutoff.contains(sid)
         });
+        self.store
+            .session_shortfall_acknowledgements
+            .borrow_mut()
+            .retain(|(sid, _)| sessions.contains_key(sid));
         Ok(before - sessions.len())
+    }
+
+    fn session_shortfall_acknowledged_for_client(
+        &mut self,
+        sid: &str,
+        client_id: &str,
+    ) -> Result<bool, AuthorizationServerError> {
+        Ok(self
+            .store
+            .session_shortfall_acknowledgements
+            .borrow()
+            .contains(&(sid.to_owned(), client_id.to_owned())))
+    }
+
+    fn record_session_shortfall_acknowledgement(
+        &mut self,
+        sid: &str,
+        client_id: &str,
+    ) -> Result<(), AuthorizationServerError> {
+        self.store
+            .session_shortfall_acknowledgements
+            .borrow_mut()
+            .insert((sid.to_owned(), client_id.to_owned()));
+        Ok(())
     }
 
     fn insert_refresh_token_family_row(
