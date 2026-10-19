@@ -92,7 +92,7 @@ impl<S: GrantStore> ClientsDisabler<S> {
         }
     }
 
-    /// Set `client_id`'s `disabled_at` in one transaction and return the row as
+    /// Set `client_id`'s `disabled_at` in one write scope and return the row as
     /// stored.
     ///
     /// - `Some(stamp)` disables the client, stamped `stamp` (the handler passes

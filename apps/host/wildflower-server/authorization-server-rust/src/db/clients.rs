@@ -1,10 +1,5 @@
-//! `clients` query bodies — the `pub(super)` free functions the
-//! [`SqliteGrantStore`](super::SqliteGrantStore) port impl delegates
-//! to for [`Client`] lookup and registration/seeding upserts, each running on a
-//! connection the store has already checked out of the pool. They return the
-//! port's primitive shapes and raise only
-//! [`AuthorizationServerError::Infrastructure`](crate::domain::authorization_server_error::AuthorizationServerError::Infrastructure)
-//! on a real db failure.
+//! `clients` — the registered OAuth clients, loaded and stored as
+//! [`Client`]: the [`ClientsTx`] primitives on [`SqliteGrantTx`].
 
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;

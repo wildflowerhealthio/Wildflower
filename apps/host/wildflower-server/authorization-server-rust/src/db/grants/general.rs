@@ -3,8 +3,8 @@
 //! — shared columns + kind tag + NULLable payload columns) backs the two
 //! Wildflower Authorization reads ([`all_grants`], [`grant_by_id`]); the two id-keyed deletes
 //! ([`delete_authorization_code_grant`], [`delete_device_grant`]) are the halves
-//! the `revoke_grant` action composes with
-//! the client's refresh-family expiry in one transaction. Single-kind operations
+//! `GrantsRevoker::revoke` composes with
+//! the client's refresh-family expiry in one write scope. Single-kind operations
 //! live in the sibling [`authorization_code`](super::authorization_code) /
 //! [`device`](super::device) files.
 
@@ -133,8 +133,8 @@ pub(super) fn grant_by_id(
 /// Delete the authorization-code grant `id`, returning `true` iff a row was
 /// removed. One half of a revoke; grant ids are UUIDs unique across both tables,
 /// so at most one of this and [`delete_device_grant`] hits a row. The
-/// `revoke_grant` action runs both plus
-/// the client's refresh-family expiry inside one transaction, so standing consent
+/// `GrantsRevoker::revoke` runs both plus
+/// the client's refresh-family expiry in one write scope, so standing consent
 /// and standing credentials die together or not at all.
 pub(super) fn delete_authorization_code_grant(
     conn: &mut SqliteConnection,
@@ -176,7 +176,7 @@ mod tests {
     /// The grant-revoke cascade (delete the grant + expire the client's
     /// refresh-token families in one transaction), inlined so the db test drives
     /// the real adapter directly rather than reaching up into a domain capability.
-    /// Mirrors `domain::capabilities::access::grants::revoke_grant`.
+    /// Mirrors `GrantsRevoker::revoke`'s write scope.
     fn revoke_grant(
         store: &SqliteGrantStore,
         grant_id: &str,

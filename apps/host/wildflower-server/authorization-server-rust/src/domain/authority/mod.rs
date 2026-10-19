@@ -44,10 +44,15 @@
 //! `CodeAuthority`): a closed list in one place is what an audit reads, and a
 //! new source of authority has to be added there.
 //!
+//! Each constructor that reads the store takes the calling capability's scope
+//! (`&mut impl GrantTx`), so the proof is checked against the rows the
+//! operation then writes, under the same lock.
+//!
 //! Not proofs: the registration-acknowledgement check (a consent-UI rule run
-//! before anything is written) and the pending-request bookkeeping writes
-//! (park, poll, deny, raise for the Owner), which grant no authority and stay
-//! on the ordinary store port.
+//! before anything is written) and the request transitions that grant no
+//! authority (park, poll stamps, deny, raise for the Owner, the limited
+//! page's Continue and Cancel), which any flow writes through the guarded
+//! replace.
 
 mod authenticated_client;
 mod browser_pairing;

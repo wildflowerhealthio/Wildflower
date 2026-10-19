@@ -12,8 +12,9 @@
 //!    and [`PublicKeysReader`] (the JWKS). Each exposes exactly one operation, so a handler
 //!    holding one can do nothing else with the store;
 //!  - in-process: [`LaunchContexts`] mints the SMART App Launch contexts an app
-//!    launch hands out (for the host and the apps slice) and consumes them for
-//!    [`CodeAuthorizationStarter`];
+//!    launch hands out (for the host and the apps slice), and
+//!    [`CodeAuthorizationStarter`] consumes one inside its scope
+//!    ([`consume_launch`]);
 //!  - in-process minted: [`SameDeviceSignIn`] redeems a one-time same-device sign-in code the
 //!    base minted for an Owner session's token, on its way to an allowed `next`;
 //!  - bound to a browser session: [`SessionShortfall`] reads and cancels a

@@ -60,7 +60,7 @@ pub trait GrantsTx {
     /// insert). The caller hands the concrete grant — which table a write lands
     /// in is decided in the domain, not by the store re-inspecting a polymorphic
     /// value. The scope-union re-approval path is
-    /// `upsert_authorization_code_grant`,
+    /// `GrantRecorder::record_code_grant`,
     /// which reads then chooses this or [`Self::update_authorization_code_grant`].
     ///
     /// # Errors

@@ -1,14 +1,19 @@
 //! Consent capabilities — the `wildflower/AuthorizationRequest.*` capabilities
 //! behind `/authorization/oauth-consents/*` and `/authorization/devices/*`. The
 //! capabilities are declared here and their methods live with their flow, in
-//! [`oauth`] and [`device`]; an approval's privileged writes go through the
-//! [`writers`](crate::domain::capabilities::writers) under the
+//! [`oauth`] (the code-flow prompt) and [`device`] (the device page's prompt,
+//! a device request or a browser pairing). Each decision runs in one write
+//! scope: an approval's privileged writes go through the
+//! [`writers`](crate::domain::capabilities::writers) inside it, under the
 //! [`DelegatedScopes`](crate::domain::authority::DelegatedScopes) proof it
 //! obtains, so what the Owner clicked is never recorded wider than what the
-//! Owner holds.
+//! Owner holds, and the newest pending consent is republished once it has
+//! committed.
 //!
-//! The code-flow surfaces also carry the **registration verdict** (see
-//! [`crate::domain::client_registration`]).
+//! A code-flow prompt is resolved against its client's registration once
+//! ([`ResolvedCodeRequest`](crate::domain::client_registration::ResolvedCodeRequest)):
+//! the read and the approval carry its **registration verdict**, and neither
+//! goes on for a disabled client.
 //!
 //! Approving a request takes its **approval scopes**, the power to decide it
 //! and to create what approving it creates (see

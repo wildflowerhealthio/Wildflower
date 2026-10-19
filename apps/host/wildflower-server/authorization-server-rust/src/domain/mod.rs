@@ -1,17 +1,30 @@
-//! The authorization server's domain vocabulary — pure types and business rules
-//! shared by every other layer. No `crate::http` dependency runs here — the
-//! domain types carry diesel derives that name their [`crate::db`] `table!` for
-//! the bind/read mapping, but no transport code lives in this layer: the
-//! [`GrantStore`] port abstracts persistence ([`crate::db`]'s
-//! `SqliteGrantStore` owns the SQL behind it); the store-touching logic
-//! lives with each entity module (the refresh-token rotation, the session
-//! revoke) or inside a [`capabilities`] capability (the scope-gated `/authorization`
-//! operations, generic over the store port); and everything fails with the
-//! domain's own [`authorization_server_error`] vocabulary. Persistence mappings live in
-//! [`crate::db`], transport in [`crate::http`], the router state (which builds
-//! the capabilities) in [`crate::live_bindings`].
+//! The authorization server's domain: its entities, the rules over them, and
+//! the capabilities the transport layer calls. Nothing here depends on
+//! `crate::http`; the entities carry diesel derives that name their
+//! [`crate::db`] `table!`, and that is the only reach into the adapter.
+//!
+//! - The **entities** (one module each) own their rules. An
+//!   [`AuthorizationRequest`](authorization_request::AuthorizationRequest)
+//!   owns its lifecycle: each change is a transition on the entity, and the
+//!   store writes a transition back only where the row is still in the phase
+//!   it was read in.
+//! - The **port**, [`grant_store`], is what persistence looks like from here:
+//!   a [`GrantStore`] opens one scope per operation, read or write, and hands
+//!   out a [`GrantTx`] of single-statement primitives, one trait per table.
+//! - The **capabilities** ([`capabilities`]) are the operations, each opening
+//!   its one scope at its top, running the flow inside it to an outcome, and
+//!   acting on the outcome (republishing, signing, the revocation store) once
+//!   the scope has closed.
+//! - The **authority proofs** ([`authority`]) are what every privileged write
+//!   demands, and the **writers** (`capabilities::writers`) are the one place
+//!   those writes happen.
+//!
+//! Everything fails with the domain's own [`authorization_server_error`]
+//! vocabulary. Persistence mappings live in [`crate::db`], transport in
+//! [`crate::http`], and the router state that builds the capabilities in
+//! [`crate::live_bindings`].
 
-// The persistence port. Mirrors apps' `apps_store`.
+// The persistence port: the two scopes and the per-table primitives.
 pub mod grant_store;
 
 // The authority proofs every privileged write demands — the typed answer to "on
@@ -22,8 +35,8 @@ pub(crate) mod authority;
 // The capabilities, generic over the store port: the scope-gated `/authorization`
 // surface (`access/`), the pre-auth `/oauth` front door (`oauth/`), the
 // caller's own session (`session/`), and the proof-gated privileged writers
-// (`writers/`). The bindings to the concrete state live in
-// `crate::live_bindings`.
+// (`writers/`), which run inside a capability's scope. The bindings to the
+// concrete state live in `crate::live_bindings`.
 pub(crate) mod capabilities;
 
 // The in-memory `FakeGrantStore` + fixtures the domain unit tests share.
@@ -43,9 +56,10 @@ pub mod client_credentials;
 // + `state`) — no axum/store coupling, so the `/oauth` surface and the Owner
 // consent action can return the same URL.
 pub mod client_redirect;
-// The trust-on-first-use registration verdict: how a pending authorization-code
-// request compares against the `clients` row it names right now. Derived on every
-// read, never stored, so `/authorize` and the consent surfaces agree.
+// A code request resolved against its client's registration as it stands now:
+// the client's name, whether it is disabled, the registration verdict, the
+// approvable scopes. Derived on every read, never stored, so `/authorize`, the
+// limited page's Continue and the consent surfaces agree.
 pub(crate) mod client_registration;
 // The domain's failure vocabulary (shaped like apps' `AppsError`):
 // semantic client-facing variants plus the opaque `Infrastructure`.

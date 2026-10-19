@@ -134,7 +134,7 @@ fn insert_refresh_token_rejects_orphan_without_family() {
 }
 
 /// Seed a family and its first token — the two store primitives the
-/// `insert_refresh_token_family` action sequences. Expressed as the
+/// `RefreshFamilyWriter::start_family` sequences. Expressed as the
 /// primitives here so these store-level tests don't reach up into the domain
 /// layer for setup. (Rotation's own consume-then-insert orchestration is
 /// tested against the action, in `domain::refresh_token`.)

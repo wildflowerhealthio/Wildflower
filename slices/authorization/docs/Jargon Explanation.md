@@ -178,10 +178,12 @@ endpoints (RFC 6749 §4.1.2.1's open-redirect rule). Scope strings are not
 validated against a grammar on this path: an unparseable scope is carried to
 the prompt as an opaque named scope that matches only itself.
 
-The host app's client is exempt: its registration is
-**fixed** (defined by the server; approvals can't create or widen it), so an
-unregistered redirect or scope for it is rejected at the boundary, and
-approval never widens its row. Disabled clients are rejected on every endpoint regardless of verdict,
+The clients the server defines are exempt — the host app's, the
+browser-session client and the FHIR server UI's, marked `server_defined` in
+the client's `registrationSource` by boot-time seeding. Their registration is
+**fixed** (approvals can't create or widen it), so an unregistered redirect or
+scope for one is rejected at the boundary, and approval never widens its
+row. Disabled clients are rejected on every endpoint regardless of verdict,
 and a widening never clears `disabledAt` — trust the Owner took back stays
 taken back until they re-enable the app.
 
@@ -206,7 +208,9 @@ which is no OAuth grant.
 - **Table:** `authorizationRequests`
 - **Discriminator:** `grantType: 'authorization_code' | 'device_code' | 'browser_pairing'`
   (the two OAuth flows match the OAuth `grant_type` request parameter).
-- **Status field:** `'pending' | 'approved' | 'denied' | 'expired'`.
+- **Status field:** `'pending' | 'approved' | 'denied' | 'claimed'`. Expiry
+  is read from `expiresAt`, never stored as a status; `claimed` is an approved
+  device request or pairing whose poll redeemed the approval.
 - **TTL:** 5 minutes.
 - **Identifier:** `id` (UUID — for code flow, the request id; for
   device flow, the `device_code`; for a pairing, its pairing code).
@@ -389,7 +393,7 @@ The host app's path to becoming an Owner-authenticated client. Flow:
    `slow_down` if polled faster than the advertised `interval` (5s),
    `access_denied` / `expired_token` on terminal failure.
 
-The device_code is single-use: the row's status flips to `expired` on
+The device_code is single-use: the row's status flips to `claimed` on
 the first successful token mint so a second poll returns `expired_token`.
 
 ### Device name
@@ -753,7 +757,8 @@ and no refresh family. The session row is its only record.
    and lasting 24 hours (`APPROVED_SESSION_TTL`), and mints the session's token
    for the browser-session client, for 24 hours. It answers `approved`,
    setting `__Host-browser_session=<the token>; …; Max-Age=86400`, and the page
-   goes on to `next`. Later polls find the request `expired`.
+   goes on to `next`. Later polls find the request claimed and answer
+   `expired`.
 
 The request expires 5 minutes after it starts, like any authorization request.
 Starting one is not rate-limited. The poll's JSON body needs a preflight from
@@ -941,8 +946,8 @@ The client scopes come as a pair, whatever the registration verdict says:
 an approval creates the row when it is missing and widens it otherwise,
 deciding which from the row as it reads it inside the write, so what an
 approver must hold never turns on a row a sibling approval just changed. The
-host app's client has a fixed registration, so approving its requests takes
-no client scope, and of the resource scopes only those its registration
+server-defined clients have fixed registrations, so approving their requests
+takes no client scope, and of the resource scopes only those the registration
 allows. A code approval takes the requested resource scopes because the card
 offers its approver no narrowing it can't make: a browser that can't approve
 the request as asked asks the Owner instead. A [browser pairing](#browser-pairing)
@@ -1012,7 +1017,7 @@ Where the OAuth client wants the authorization code delivered after
 approval. Validated to be `http(s)`; matched against the client's
 `redirectUris` allowlist (exact match — no prefix games). A miss is not a
 rejection but a `changed` [registration verdict](#trust-on-first-use)
-(the host app's client excepted), and until the Owner approves, the URI is
+(the server-defined clients excepted), and until the Owner approves, the URI is
 untrusted — no error redirects to it.
 
 ### `scope`
@@ -1020,8 +1025,8 @@ untrusted — no error redirects to it.
 Space-delimited list of permission strings the OAuth client is asking
 for. Compared against `client.allowedScopes`; a scope outside that set makes
 the request a `changed` [registration verdict](#trust-on-first-use) that the
-Owner is warned about (the host app's client excepted — its requests are
-rejected with `invalid_scope`). Stored on
+Owner is warned about (the server-defined clients excepted — their requests
+are rejected with `invalid_scope`). Stored on
 `AuthorizationRequest.requestedScopes`,
 `AuthorizationCode.grantedScopes`, and `Grant.scopes`.
 
@@ -1044,8 +1049,8 @@ holds.
 - **`code_challenge`** — `BASE64URL(SHA-256(code_verifier))` per RFC 7636
   §4.2. Sent on `/oauth/authorize` and persisted on the
   `AuthorizationRequest` and `AuthorizationCode` rows.
-- **`code_challenge_method`** — `S256` is the only value accepted.
-  RFC 7636 also defines `plain` but we reject it.
+- **`code_challenge_method`** — `S256` is the only value accepted, so it
+  isn't stored. RFC 7636 also defines `plain` but we reject it.
 - **Verification** — `internal/pkce.ts:computeCodeChallenge` recomputes
   the challenge from the verifier at token exchange and compares with
   `timingSafeEqual`.

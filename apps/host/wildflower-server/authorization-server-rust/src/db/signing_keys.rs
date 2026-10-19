@@ -1,8 +1,6 @@
-//! `signing_keys` query bodies — the RSA keys backing JWS signatures and the
-//! JWKS endpoint, loaded/stored as [`SigningKey`]. The `pub(super)` free
-//! functions the [`SqliteGrantStore`](super::SqliteGrantStore) port
-//! impl delegates to, each running on a connection the store has already checked
-//! out of the pool.
+//! `signing_keys` — the RSA keys backing JWS signatures and the JWKS
+//! endpoint, loaded and stored as [`SigningKey`]: the [`SigningKeysTx`]
+//! primitives on [`SqliteGrantTx`].
 
 use diesel::prelude::*;
 

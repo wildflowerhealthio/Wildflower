@@ -282,7 +282,6 @@ fn title(kind: OAuthErrorKind) -> &'static str {
     match kind {
         OAuthErrorKind::InvalidRedirectUri => "Invalid redirect URI",
         OAuthErrorKind::InvalidScheme => "Invalid redirect URI scheme",
-        OAuthErrorKind::UnknownClient => "Unknown client",
         OAuthErrorKind::DisabledClient => "Disabled client",
         OAuthErrorKind::RedirectUriNotAllowed => "Redirect URI not allowed",
         OAuthErrorKind::UnsupportedResponseType => "Unsupported response type",

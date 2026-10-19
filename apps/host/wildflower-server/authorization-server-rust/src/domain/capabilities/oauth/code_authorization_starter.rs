@@ -1013,7 +1013,7 @@ mod tests {
     }
 
     /// Once the redirect is trusted, a spec'd failure goes back to the client,
-    /// and the host app's client is held to its scope allowlist.
+    /// and a server-defined registration holds the request to its scopes.
     #[test]
     fn trusted_redirects_get_redirectable_errors_and_the_host_is_clamped() {
         let store = FakeGrantStore::default();

@@ -13,17 +13,29 @@
 //!    (acquired through the shared `Authenticated<…>` extractor).
 //!  - [`writers`] — the privileged writes themselves (approve a request, issue a
 //!    code, record a grant, mint a token), each gated on an **authority proof**
-//!    from [`crate::domain::authority`]. Flow capabilities in every other group
-//!    compose these rather than calling the privileged store methods directly;
-//!    a source-guard test makes that structural.
+//!    from [`crate::domain::authority`] and run inside the calling
+//!    capability's scope. Capabilities in every other group compose these
+//!    rather than calling the privileged primitives directly; a source-guard
+//!    test makes that structural.
+//!
+//! Every public method of a capability has one shape: open one
+//! [`GrantStore`](crate::domain::GrantStore) scope at its top — a read scope
+//! for an operation that only reads, a write scope for one that writes — run
+//! the flow inside it to an outcome value, then act on the outcome once the
+//! scope has closed (republish the newest pending consent, sign a token,
+//! write to the revocation store). The flows, proofs and writers beneath take
+//! the scope's [`GrantTx`](crate::domain::GrantTx), never the store. A refusal
+//! that must keep what the scope wrote (a spent code, a stamped poll, a
+//! request denied for a reason the client is told) is an outcome, not an
+//! error, so the scope commits it.
 //!
 //! Every capability is generic over the [`GrantStore`](crate::domain::GrantStore)
 //! port and holds its dependencies lifted from the state (never an
-//! `Arc<AuthorizationServerState>` it reaches into), so its logic is unit-testable
-//! against the in-memory fake. The bindings that name the concrete
-//! `SqliteGrantStore` and build a capability from the router state live in
-//! [`crate::live_bindings`], so nothing here depends on a concrete adapter or on
-//! `crate::http`.
+//! `Arc<AuthorizationServerState>` it reaches into), so its logic is
+//! unit-testable against the in-memory fake. The bindings that name the
+//! concrete `SqliteGrantStore` and build a capability from the router state
+//! live in [`crate::live_bindings`], so nothing here depends on a concrete
+//! adapter or on `crate::http`.
 
 pub(crate) mod access;
 pub(crate) mod oauth;

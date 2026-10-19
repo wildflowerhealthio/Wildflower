@@ -46,8 +46,8 @@ fn found_redirect(location: &str) -> Response {
 /// `clippy::result_large_err`.
 pub(super) enum AuthorizeError {
     /// A failure on a request whose `redirect_uri` is not trusted — a disabled
-    /// client, a malformed or non-http(s) URI, an unregistered redirect for the
-    /// host app's client, or (because the client is new to this authorization server or
+    /// client, a malformed or non-http(s) URI, an unregistered redirect for a
+    /// server-defined registration, or (because the client is new to this authorization server or
     /// the redirect is not on its registration) any later validation failure.
     /// Renders a local HTML page — redirecting to an unvouched-for URI would be
     /// an open redirect (RFC 6749 §4.1.2.1).
@@ -79,7 +79,7 @@ impl From<AuthorizationStartError> for AuthorizeError {
             AuthorizationStartError::StartLimited => AuthorizeError::StartLimited,
             AuthorizationStartError::LocalPage(kind) => {
                 if kind == OAuthErrorKind::RedirectUriNotAllowed {
-                    tracing::warn!("redirect_uri not allowed for the host app's client");
+                    tracing::warn!("redirect_uri not on a server-defined registration");
                 }
                 AuthorizeError::LocalPage(kind)
             }
@@ -210,14 +210,15 @@ pub struct AuthorizeParams {
 ///    `code` + `state` (§4.1.2); the client then redeems the short-lived
 ///    code at `POST /oauth/token` (§4.1.3) with its PKCE verifier.
 ///
-/// Clients other than the host app's are **trusted on first use**: an
+/// Clients without a server-defined registration are **trusted on first use**: an
 /// unknown `client_id`, an unregistered `redirect_uri`, and scopes outside the
 /// registration are all carried to the Owner's prompt as a registration warning
 /// rather than rejected here, and nothing is written to the `clients` table
 /// until the Owner approves. Such a request never takes the grant fast path,
 /// and while its redirect is untrusted every other failure renders the local
-/// HTML page instead of redirecting. The host app's client keeps the strict
-/// treatment, and a disabled client is rejected either way.
+/// HTML page instead of redirecting. A server-defined registration (the host
+/// app's, the FHIR server UI's) keeps the strict treatment, and a disabled
+/// client is rejected either way.
 #[utoipa::path(
     get,
     tag = "OAuth 2.0",

@@ -15,11 +15,9 @@ pub enum OAuthErrorKind {
     InvalidRedirectUri,
     /// The `redirect_uri` is not `http` or `https`.
     InvalidScheme,
-    /// The host app's `client_id` has no registration.
-    UnknownClient,
     /// The client has been disabled.
     DisabledClient,
-    /// The host app's client's `redirect_uri` is not registered.
+    /// The `redirect_uri` is not on a server-defined registration.
     RedirectUriNotAllowed,
     /// `response_type` is not `code`.
     UnsupportedResponseType,
@@ -51,7 +49,6 @@ impl OAuthErrorKind {
                 "The supplied redirect_uri is not a well-formed URL."
             }
             OAuthErrorKind::InvalidScheme => "The supplied redirect_uri must use http or https.",
-            OAuthErrorKind::UnknownClient => "The supplied client_id is not registered.",
             OAuthErrorKind::DisabledClient => "The supplied client_id has been disabled.",
             OAuthErrorKind::RedirectUriNotAllowed => {
                 "The supplied redirect_uri is not registered for this client."

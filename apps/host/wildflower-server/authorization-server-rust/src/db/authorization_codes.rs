@@ -1,9 +1,6 @@
-//! `authorization_codes` query bodies — issue, look up, and atomically redeem
-//! the single-use codes ([`IssuedAuthorizationCode`]) minted at `/authorize`. The
-//! `pub(super)` free functions the
-//! [`SqliteGrantStore`](super::SqliteGrantStore) port impl delegates
-//! to, each running on a connection the store has already checked out of the
-//! pool.
+//! `authorization_codes` — the single-use codes ([`IssuedAuthorizationCode`])
+//! an approval issues and `/oauth/token` redeems: the [`AuthorizationCodesTx`]
+//! primitives on [`SqliteGrantTx`].
 
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;

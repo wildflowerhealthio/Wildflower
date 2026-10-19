@@ -27,7 +27,7 @@ diesel::table! {
 /// Insert a brand-new device grant row — a plain single-table insert. The
 /// insert branch of a first-time pairing, and a test/seed helper; the
 /// scope-union re-pairing flow is
-/// `upsert_device_grant`, which
+/// `GrantRecorder::record_device_grant`, which
 /// reads then chooses this or [`update_device_grant`]. The caller hands the
 /// concrete grant, so the store never inspects a polymorphic value to choose the
 /// table.
@@ -68,12 +68,10 @@ pub(super) fn device_grant_by_client_and_device_name(
 /// Overwrite the mutable fields (`scopes`, `granted_at`, `patient`) of the
 /// device grant identified by `grant.id` — the write half of a device
 /// re-pairing, after
-/// `upsert_device_grant` has read
+/// `GrantRecorder::record_device_grant` has read
 /// the standing grant and folded the re-approval into it via
-/// [`absorb_reapproval`](crate::domain::grant::CumulativeConsent). The action
-/// runs the read + this write inside one `BEGIN IMMEDIATE` transaction (the
-/// concurrency rationale it shares with the authorization-code upsert); this
-/// body is just the `UPDATE`.
+/// [`absorb_reapproval`](crate::domain::grant::CumulativeConsent), in the same
+/// write scope as that read; this body is just the `UPDATE`.
 pub(super) fn update_device_grant(
     conn: &mut SqliteConnection,
     grant: &DeviceGrant,
@@ -131,7 +129,7 @@ mod tests {
             .expect("upsert device grant");
     }
 
-    /// The `upsert_device_grant` action over the real `SQLite` adapter: a first
+    /// The `GrantRecorder::record_device_grant` action over the real `SQLite` adapter: a first
     /// pairing mints a durable device grant (via `create_device_grant`), and
     /// re-pairing under the same `(client_id, device_name)` reads then unions
     /// scopes onto the same row through `update_device_grant` — all inside the

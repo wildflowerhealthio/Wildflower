@@ -18,8 +18,8 @@ use crate::domain::client::Client;
 /// whether approving it writes the client registration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ApprovalFlow {
-    /// An authorization-code prompt. `registration_is_fixed` for the host
-    /// app's client, whose registration an approval never writes; any other
+    /// An authorization-code prompt. `registration_is_fixed` for a
+    /// server-defined registration, which an approval never writes; any other
     /// client is trusted on first use, so approving creates or widens its
     /// registration.
     Code { registration_is_fixed: bool },
@@ -93,7 +93,7 @@ impl ApprovableScopes {
     }
 
     /// An authorization-code prompt for `requested_scopes`. A fixed
-    /// registration (the host app's client) is its own ceiling; any other client
+    /// (server-defined) registration is its own ceiling; any other client
     /// is trusted on first use, so its ceiling also takes in what this request
     /// asked for — its registration is widened with the grant.
     pub(crate) fn for_code(
@@ -167,7 +167,7 @@ impl ApprovableScopes {
     /// code approval for a client trusted on first use writes its
     /// registration (creating the row, or widening it in place), so it also
     /// takes both `wildflower/Client.c` and `wildflower/Client.u`, whatever
-    /// the row looks like when the approval lands; the host app's fixed
+    /// the row looks like when the approval lands; a server-defined
     /// registration takes neither.
     ///
     /// A code approval also takes every held access ([`is_held_access`]) the

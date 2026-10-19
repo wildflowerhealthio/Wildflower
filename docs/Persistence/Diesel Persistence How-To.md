@@ -180,43 +180,49 @@ then-expire, a three-state consume) and you don't want that business logic
 trapped inside the SQLite adapter and re-implemented in the in-memory fake.
 
 The authorization server is the worked example
-(`authorization-server-rust/src/domain/grant_store/{mod,store,tx}.rs`). Split the port
-into two traits:
+(`authorization-server-rust/src/domain/grant_store/`). Split the port into:
 
-- **`GrantTx`** — single-statement primitives taking `&mut self`
-  (`tx.rs`).
-- **`GrantStore`** — a seam with a GAT `type Tx<'a>: GrantTx` plus
-  `with_connection` / `transaction` / `immediate_transaction`, each taking
-  `impl FnOnce(&mut Self::Tx<'_>) -> Result<T, AuthorizationServerError>` (`store.rs`).
+- **One trait per table** (`ClientsTx`, `AuthorizationRequestsTx`, …, one
+  file each), of single-statement primitives taking `&mut self`, bundled as
+  **`GrantTx`** (a supertrait with a blanket impl). The SQLite adapter
+  implements each on `SqliteGrantTx` in that table's `db/` file.
+- **`GrantStore`** — a seam with a GAT `type Tx<'a>: GrantTx` and exactly two
+  scopes: `read` (autocommit, for an operation that only reads) and `write`
+  (`BEGIN IMMEDIATE`, for one that writes), each taking
+  `impl FnOnce(&mut Self::Tx<'_>) -> Result<T, E>` for any
+  `E: From<AuthorizationServerError>` (`store.rs`).
 
-Compose the compound operations in `domain/capabilities/*` inside those
-closures, so their logic runs against the fast in-memory fake as well as SQLite.
-Load-bearing details:
+Every capability method opens exactly one scope at its top and runs its flow
+inside it; the flows, proofs and writers beneath take `&mut impl GrantTx`,
+never the store, so their logic runs against the fast in-memory fake as well
+as SQLite. Load-bearing details:
 
 - **Pass closures, not fn-item paths.** The elided `&mut Self::Tx<'_>` bound is
   higher-ranked (`for<'a>`), so `|tx| tx.foo()` unifies where a bare
-  `GrantTx::foo` does not.
-- **`immediate_transaction` (BEGIN IMMEDIATE) takes the write lock at read
-  time.** A read-merge-write (scope-union grant upsert) must use it, or a
-  concurrent writer can lose the union; a plain `transaction` is deferred and
-  regresses silently. The authorization server's consent upserts call `immediate_transaction`
-  (`domain/capabilities/consents/{oauth,device}.rs`); the revoke path uses
-  `transaction` (`domain/capabilities/grants.rs`).
-- **diesel's `transaction`/`immediate_transaction` require `E: From<diesel::result::Error>`**
-  (BEGIN/COMMIT can fail even when the closure maps its own query errors), so add
-  `impl From<diesel::result::Error> for AuthorizationServerError` in the `db` layer
-  (`db/grant_store.rs`) to keep `domain::error` diesel-free.
+  `ClientsTx::foo` does not.
+- **Anything that writes uses the write scope.** `BEGIN IMMEDIATE` takes the
+  write lock before the first read, so a read-merge-write (a scope-union grant
+  upsert) can't lose a concurrent writer's union, and an upgrade from a read
+  snapshot can't fail with a busy-snapshot error no busy timeout retries.
+- **Side effects follow the commit.** Republishing state another connection
+  reads, signing, and writes to another store happen after the scope closes,
+  on the outcome the scope returned: inside it, another pooled connection
+  would still see the rows as they stood before.
+- **A refusal that must keep its writes is an outcome, not an `Err`.** An
+  `Err` rolls the scope back; a spent code or a stamped poll is returned as an
+  `Ok` refusal (a nested `Result`) and mapped to the error after the commit.
+- **diesel's transaction runner requires `E: From<diesel::result::Error>`**
+  (BEGIN/COMMIT can fail even when the closure maps its own query errors), so
+  the adapter wraps the closure's error and diesel's in a private enum and
+  converts a BEGIN/COMMIT failure into the closure's `E` through
+  `AuthorizationServerError` (`db/grant_store.rs`).
 - **The concrete `Tx` type is public interface.** `type Tx<'a>` on a `pub` trait
   makes the SQLite adapter's `SqliteGrantTx` a public type (E0446) — it must
   be `pub`.
-- **Keep the default methods** (each `self.with_connection(|tx| tx.op())`) so
-  lone reads stay autocommit (no write lock) and existing single-statement call
-  sites are untouched.
-- **The fake rolls back by snapshotting** its maps before
-  `transaction`/`immediate_transaction` and restoring on `Err`
-  (`domain/test_fake/`). It can't model real lock contention, so concurrency
-  tests (lost-update, guarded-update) stay SQLite-backed while the
-  orchestration/merge logic gains fast fake coverage in `domain/capabilities`.
+- **The fake rolls back by snapshotting** its maps before a `write` scope and
+  restoring on `Err` (`domain/test_fake/`). It can't model real lock
+  contention, so concurrency tests (lost-update, guarded-update) stay
+  SQLite-backed while the orchestration/merge logic gains fast fake coverage.
 
 ## See also
 

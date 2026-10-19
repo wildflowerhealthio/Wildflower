@@ -130,8 +130,7 @@ impl Client {
     /// Coverage-aware ([`wildflowerhealthio_scopes::allowed_scope_covers`]), not exact
     /// membership: a client allowed a broad scope (`patient/*.rs`) also admits
     /// a narrower request it covers (`patient/Observation.r`). Read at
-    /// `/authorize` (the host app's client) and `/device_authorization` (every
-    /// client).
+    /// `/device_authorization`.
     #[must_use]
     pub fn allows_scopes(&self, requested: &[String]) -> bool {
         requested

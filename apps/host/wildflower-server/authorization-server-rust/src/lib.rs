@@ -48,11 +48,11 @@ pub use db::SqliteGrantStore;
 // contains no code that could write them.
 #[cfg(debug_assertions)]
 pub use seeding::seed_dev_app_clients;
-// The persistence port traits, re-exported so out-of-crate callers (e.g. the
-// integration test) can bring the store methods into scope on the concrete
-// `SqliteGrantStore` adapter. `GrantStore` is the transaction seam
-// (and carries the standalone-convenience default methods); `GrantTx` is
-// the primitive contract a composed transaction hands out.
+// The persistence port, re-exported so out-of-crate callers (the host, the
+// integration tests) can open a scope on the concrete `SqliteGrantStore`:
+// `GrantStore` is the seam with its read and write scopes, `GrantTx` the
+// bundle of per-table primitives a scope hands out (each concern's trait is
+// in `domain::grant_store`).
 pub use domain::pending_consent::{ConsentKey, NewestPendingConsent};
 pub use domain::{GrantStore, GrantTx};
 

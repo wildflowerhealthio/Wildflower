@@ -45,8 +45,8 @@ pub(crate) struct ApproveOAuthConsentBody {
 /// outside the current registration without
 /// [`acknowledged_registration`](ApproveOAuthConsentBody::acknowledged_registration)
 /// is rejected with a `409` and writes nothing, as is an approval naming a
-/// patient other than the one the request's SMART launch binds. The transaction
-/// lives in the consent capability's `approve_oauth`.
+/// patient other than the one the request's SMART launch binds. The write
+/// scope lives in the consent capability's `approve_oauth`.
 pub(super) fn route() -> MethodRouter<Arc<AuthorizationServerState>> {
     post(handle_approve_oauth_consent)
 }

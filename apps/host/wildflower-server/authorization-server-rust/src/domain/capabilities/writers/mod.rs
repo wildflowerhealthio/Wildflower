@@ -1,24 +1,25 @@
-//! The **writers** — one capability per privileged store write, each method
-//! taking an authority proof from [`crate::domain::authority`] as the price of
+//! The **writers** — one per kind of privileged write, each method taking an
+//! authority proof from [`crate::domain::authority`] as the price of
 //! admission:
 //!
-//!  - [`RequestApprover`] — approve a pending request and, for the code flow,
-//!    issue its authorization code (under a [`CodeAuthority`]: the Owner's
-//!    `DelegatedScopes` or a `StandingGrantCoverage`).
+//!  - [`RequestApprover`] — approve a pending request (the request's own
+//!    `approve` transition) and, for the code flow, issue its authorization
+//!    code (under a [`CodeAuthority`]: the Owner's `DelegatedScopes` or a
+//!    `StandingGrantCoverage`).
 //!  - [`GrantRecorder`] — insert or widen the standing grant and, for a client
-//!    trusted on first use, its registration, in one transaction; or the
-//!    registration alone, for an approval that is not remembered (under
-//!    `DelegatedScopes`).
-//!  - [`AccessTokenMinter`] — read the active signing key and mint a JWT (under
-//!    a `TokenEntitlement` proof).
+//!    trusted on first use, its registration (under `DelegatedScopes`).
+//!  - [`AccessTokenMinter`] — read the active signing key, then sign a JWT
+//!    under a `TokenEntitlement` proof.
 //!  - [`RefreshFamilyWriter`] — start a refresh-token family or rotate a token
 //!    into its successor (under a redemption proof).
 //!  - [`BrowserSessionWriter`] — start a browser session (under a
 //!    `RedeemedSameDeviceSignInCode` or a `ClaimedBrowserPairing`).
 //!
-//! A writer is a borrowed view over a store, not a gate in itself; the gate is
-//! the proof each method demands. The source-guard test below keeps the
-//! privileged store methods from being called *around* the writers.
+//! A writer runs inside the caller's transaction, under its proof: it is built
+//! over the scope's `GrantTx` (`within(tx)`), so what it writes lands with the
+//! rest of the operation or not at all. It is not a gate in itself; the gate
+//! is the proof each method demands. The source-guard test below keeps the
+//! privileged calls from being made *around* the writers.
 
 mod access_token_minter;
 mod browser_session_writer;

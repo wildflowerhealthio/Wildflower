@@ -1,20 +1,16 @@
-//! Grant query bodies — ONE TABLE PER CONCRETE KIND, split by kind/context so each
-//! kind's `table!` and single-kind queries sit together. Every body here is a
-//! single-table statement (insert / keyed lookup / update / delete); cross-kind
-//! reads ([`all_grants`], [`grant_by_id`]) come off the `grants` SQL VIEW. The
-//! multi-statement flows that used to live here — the scope-union upserts and the
-//! delete-both-then-expire revoke — moved to `domain::capabilities`, which
-//! composes these primitives inside a
-//! [`GrantStore`](crate::domain::GrantStore) transaction.
+//! The grants — one table per concrete kind, each kind's `table!` and
+//! single-kind statements in its own file, and the [`GrantsTx`] primitives on
+//! [`SqliteGrantTx`] here, each one statement in its kind's file. Cross-kind
+//! reads come off the `grants` SQL view.
 //!
-//!  - [`authorization_code`] — the `authorization_code_grants` `table!` + its keyed
-//!    lookup, insert, and update (`/authorize`'s standing consent per `redirect_uri`);
-//!  - [`device`] — the `device_grants` `table!` + its keyed lookup, insert, and
+//!  - [`authorization_code`] — the `authorization_code_grants` table: its keyed
+//!    lookup, insert, and update (`/authorize`'s standing consent per
+//!    `redirect_uri`);
+//!  - [`device`] — the `device_grants` table: its keyed lookup, insert, and
 //!    update (the durable device-code pairing per `device_name`);
-//!  - [`general`] — the cross-kind pieces: the `grants` VIEW + its `Grant` decoder,
-//!    the two launcher reads, and the two id-keyed deletes a revoke composes.
-//!    Concrete-typed inserts live with their kind (the store never inspects a
-//!    polymorphic value to pick a table).
+//!  - `general` — the cross-kind pieces: the `grants` view and its `Grant`
+//!    decoder, the two launcher reads, and the two id-keyed deletes a revoke
+//!    composes.
 
 use url::Url;
 

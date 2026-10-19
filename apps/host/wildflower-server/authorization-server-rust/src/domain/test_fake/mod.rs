@@ -1,17 +1,12 @@
-//! The in-memory [`FakeGrantStore`] and the request/grant fixtures the
-//! per-entity action tests share. Modelling the primitive port semantics with no
-//! diesel and no database is enough to exercise the actions' semantic mapping (the
-//! `*NotFound` decisions, the consent-loader validation, and now the composed
-//! transaction scripts — grant upserts, the three-state consume, revoke). The
-//! primitives live on [`FakeGrantTx`] (the fake's [`GrantTx`](crate::domain::GrantTx)); the
-//! [`GrantStore`] seam hands one out and, for
-//! [`transaction`](GrantStore::transaction) /
-//! [`immediate_transaction`](GrantStore::immediate_transaction), snapshots
-//! the maps up front and restores them if the closure returns `Err`, so a failed
-//! composed action rolls back exactly as diesel would. The `SQLite` adapter's own
-//! SQL-level coverage (and its real lock semantics) live in `crate::db`, so the
-//! operations the semantic tests never reach are simple in-memory stand-ins
-//! rather than faithful SQL replicas.
+//! The in-memory [`FakeGrantStore`] and the fixtures the domain unit tests
+//! share. It models the port's semantics with no diesel and no database:
+//! every primitive lives on [`FakeGrantTx`], implemented per table in `tx`,
+//! and the [`GrantStore`] scopes hand one out. Its
+//! [`write`](GrantStore::write) scope snapshots the tables first and restores
+//! them when the closure returns `Err`, so a failed operation rolls back
+//! exactly as the `SQLite` adapter's would; its [`read`](GrantStore::read)
+//! scope runs the closure as it is. The adapter's own SQL coverage (and its
+//! real lock semantics) live in `crate::db`.
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -63,7 +58,7 @@ pub(crate) struct FakeTables {
     session_shortfall_acknowledgements: RefCell<HashSet<(String, String)>>,
 }
 
-/// A clone of every map, taken before a transaction runs so it can be restored
+/// A clone of every map, taken before a write scope runs so it can be restored
 /// on rollback.
 struct Snapshot {
     clients: HashMap<String, Client>,

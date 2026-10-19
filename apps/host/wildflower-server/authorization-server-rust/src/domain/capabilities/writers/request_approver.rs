@@ -1,5 +1,7 @@
 //! [`RequestApprover`] — the writer that moves a pending authorization request
-//! to `approved` and, for the code flow, issues the authorization code the
+//! to `approved` (the request's own
+//! [`approve`](AuthorizationRequest::approve) transition, written with the
+//! guarded replace) and, for the code flow, issues the authorization code the
 //! client redeems at `/oauth/token`. Every write demands a proof — the device
 //! flow and a browser pairing a [`DelegatedScopes`], the code flow a
 //! [`CodeAuthority`] (delegated scopes or standing-grant coverage) — so the

@@ -1,7 +1,8 @@
-//! `browser_sessions` queries — the browsers the server has signed in
+//! `browser_sessions` — the browsers the server has signed in
 //! ([`BrowserSession`]), keyed by the `sid` the tokens, codes and refresh
 //! families minted under each record — and the apps each session has gone on
-//! past its limited page for (`session_shortfall_acknowledgements`).
+//! past its limited page for (`session_shortfall_acknowledgements`): the
+//! [`BrowserSessionsTx`] primitives on [`SqliteGrantTx`].
 
 use chrono::{DateTime, Utc};
 use diesel::dsl::{exists, not};

@@ -10,9 +10,10 @@ use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 /// [`GrantStore`](super::GrantStore) scope.
 pub trait RefreshTokensTx {
     /// Persist a new refresh-token family **row only** — a single-table insert.
-    /// Pairing it with its first token (so a family never persists tokenless) is
-    /// the [`insert_refresh_token_family`](crate::domain::refresh_token::insert_refresh_token_family)
-    /// action's job, sequencing this then [`Self::insert_refresh_token`].
+    /// Pairing it with its first token in the same scope (so a family never
+    /// persists tokenless) is
+    /// [`RefreshFamilyWriter::start_family`](crate::domain::capabilities::writers::RefreshFamilyWriter::start_family)'s
+    /// job.
     ///
     /// # Errors
     ///
@@ -50,9 +51,9 @@ pub trait RefreshTokensTx {
     /// Stamp the live token `token_hash` consumed at `now`, returning `true` iff
     /// a live (un-consumed) row was actually transitioned — the guarded half of
     /// a refresh-token consume. The `consumed_at IS NULL` guard makes a replay a
-    /// `false`, and pairing this with [`Self::refresh_token_exists`] inside one
-    /// transaction is how
-    /// [`rotate_refresh_token`](crate::domain::refresh_token::rotate_refresh_token)
+    /// `false`, and pairing this with [`Self::refresh_token_exists`] in one
+    /// write scope is how
+    /// [`consume_refresh_token`](crate::domain::refresh_token::consume_refresh_token)
     /// resolves the three-state consume without a dedicated store method.
     ///
     /// # Errors
@@ -75,10 +76,8 @@ pub trait RefreshTokensTx {
 
     /// End a token family (pull its `expires_at` back to `now` and stamp its
     /// still-live token consumed at the same instant). Rows are kept, not
-    /// deleted, so the lineage stays auditable. Self-contained: the two updates
-    /// run in this method's own (possibly nested) transaction, so it is atomic
-    /// whether invoked standalone or composed inside a larger domain
-    /// transaction.
+    /// deleted, so the lineage stays auditable. The two updates land together
+    /// or not at all.
     ///
     /// # Errors
     ///
@@ -123,8 +122,7 @@ pub trait RefreshTokensTx {
     /// `cutoff`, together with the tokens descended from it, returning how many
     /// **families** went — the counterpart to
     /// [`Self::expire_refresh_token_family`], which keeps the lineage readable.
-    /// Self-contained: children before parents in its own (possibly nested)
-    /// transaction, so the foreign key holds either way.
+    /// Children go before parents, together, so the foreign key holds.
     ///
     /// # Errors
     ///

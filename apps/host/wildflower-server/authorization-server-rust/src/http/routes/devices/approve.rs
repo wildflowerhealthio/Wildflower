@@ -16,7 +16,7 @@ use crate::live_bindings::LiveConsentDecider;
 /// device grant. Gated by [`LiveConsentDecider`] (scope
 /// `wildflower/AuthorizationRequest.u`), which also carries the approver's own
 /// scopes: an approval delegating a resource scope beyond them is rejected with
-/// a `403`. The transaction lives in the consent capability's `approve_device`.
+/// a `403`. The write scope lives in the consent capability's `approve_device`.
 pub(super) fn route() -> MethodRouter<Arc<AuthorizationServerState>> {
     post(handle_approve_device_consent)
 }

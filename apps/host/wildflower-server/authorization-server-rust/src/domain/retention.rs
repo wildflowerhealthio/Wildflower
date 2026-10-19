@@ -71,7 +71,7 @@ impl PurgedCounts {
 ///
 /// # Errors
 ///
-/// [`AuthorizationServerError::Infrastructure`] if the transaction or any of the four
+/// [`AuthorizationServerError::Infrastructure`] if the scope or any of the four
 /// deletes fails — rolled back, so a failure leaves the retained set as it was.
 pub(crate) fn purge_expired(
     store: &impl GrantStore,

@@ -27,7 +27,7 @@ diesel::table! {
 /// Insert a brand-new authorization-code grant row — a plain single-table
 /// insert. The insert branch of a first-time approval, and a test/seed helper;
 /// the scope-union re-approval flow is
-/// `upsert_authorization_code_grant`,
+/// `GrantRecorder::record_code_grant`,
 /// which reads then chooses this or [`update_authorization_code_grant`]. The
 /// caller hands the concrete grant, so the store never inspects a polymorphic
 /// value to choose the table.
@@ -68,12 +68,12 @@ pub(super) fn grant_by_client_and_redirect(
 /// Overwrite the mutable fields (`scopes`, `granted_at`, `patient`) of the
 /// authorization-code grant identified by `grant.id` — the write half of a
 /// re-approval, after
-/// `upsert_authorization_code_grant`
+/// `GrantRecorder::record_code_grant`
 /// has read the standing grant and folded the re-approval into it via
-/// [`absorb_reapproval`](crate::domain::grant::CumulativeConsent). The action
-/// runs the read + this write inside one `BEGIN IMMEDIATE` transaction so two
-/// concurrent approvals serialise at the read rather than both reading the
-/// pre-merge row and one losing its scope union; this body is just the `UPDATE`.
+/// [`absorb_reapproval`](crate::domain::grant::CumulativeConsent), in the same
+/// write scope as that read, so two concurrent approvals serialise at the read
+/// rather than both reading the pre-merge row and one losing its scope union;
+/// this body is just the `UPDATE`.
 pub(super) fn update_authorization_code_grant(
     conn: &mut SqliteConnection,
     grant: &AuthorizationCodeGrant,
@@ -138,7 +138,7 @@ mod tests {
         Url::parse(url).expect("valid url")
     }
 
-    /// The `upsert_authorization_code_grant` action, driven end-to-end against
+    /// The `GrantRecorder::record_code_grant` action, driven end-to-end against
     /// the real `SQLite` adapter: a first approval inserts (via
     /// `create_authorization_code_grant`), a re-approval reads the standing
     /// grant, unions scopes (cumulative consent) and writes it back through

@@ -1,6 +1,6 @@
-//! `launch_contexts` queries — the SMART App Launch contexts
-//! ([`LaunchContext`]) minted at an app launch and consumed single-use at
-//! `/oauth/authorize`.
+//! `launch_contexts` — the SMART App Launch contexts ([`LaunchContext`])
+//! minted at an app launch and consumed single-use at `/oauth/authorize`: the
+//! [`LaunchContextsTx`] primitives on [`SqliteGrantTx`].
 
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;

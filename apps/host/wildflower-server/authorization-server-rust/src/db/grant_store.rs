@@ -1,12 +1,11 @@
 //! The `SqliteGrantStore` adapter — the `SQLite` implementation of the
-//! [`GrantStore`](crate::domain::GrantStore) port. Holds the app-wide
-//! r2d2 pool of Diesel `SqliteConnection`s (`wildflowerhealthio_persistence::DieselPool`) onto
-//! the shared database file, applies the embedded authorization server migrations once on
-//! construction (under this slice's [`MIGRATION_NAMESPACE`]), and implements the
-//! port by checking a connection out of the pool and delegating to the
-//! per-concern query bodies in the sibling `db/*` modules. Mirrors
-//! `apps-rust`'s `SqliteAppsStore`, scaled to the authorization server's six persistence
-//! concerns.
+//! [`GrantStore`](crate::domain::GrantStore) port. Holds the app-wide r2d2
+//! pool of diesel `SqliteConnection`s (`wildflowerhealthio_persistence::DieselPool`)
+//! onto the shared database file, applies the embedded authorization server
+//! migrations once on construction (under this slice's [`MIGRATION_NAMESPACE`]),
+//! and opens the port's two scopes on a checked-out connection: a read scope
+//! in autocommit, a write scope in `BEGIN IMMEDIATE`. The primitives the
+//! scopes hand out are implemented per concern, in the sibling `db/*` files.
 
 use anyhow::Context;
 use diesel::sqlite::SqliteConnection;

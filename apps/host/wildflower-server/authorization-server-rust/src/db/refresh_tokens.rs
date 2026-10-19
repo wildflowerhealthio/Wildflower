@@ -1,6 +1,7 @@
-//! `refresh_token_families` / `refresh_tokens` queries — the rotating
-//! refresh-token lineage (RFC 6749 §6, OAuth 2.1 rotation semantics), loaded
-//! and stored as [`RefreshTokenFamily`] / [`RefreshToken`].
+//! `refresh_token_families` / `refresh_tokens` — the rotating refresh-token
+//! lineage (RFC 6749 §6, OAuth 2.1 rotation semantics), loaded and stored as
+//! [`RefreshTokenFamily`] / [`RefreshToken`]: the [`RefreshTokensTx`]
+//! primitives on [`SqliteGrantTx`].
 
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
@@ -37,10 +38,8 @@ diesel::joinable!(refresh_tokens -> refresh_token_families (family_id));
 diesel::allow_tables_to_appear_in_same_query!(refresh_tokens, refresh_token_families);
 
 impl RefreshTokensTx for SqliteGrantTx<'_> {
-    /// Persist a new refresh-token family **row only** — a single-table insert. The
-    /// [`insert_refresh_token_family`](crate::domain::refresh_token::insert_refresh_token_family)
-    /// action sequences this then [`Self::insert_refresh_token`] so a family never persists
-    /// tokenless; the store stays a primitive with no transaction.
+    /// A single-table insert; the writer pairs it with the family's first
+    /// token in the same scope.
     fn insert_refresh_token_family_row(
         &mut self,
         family: &RefreshTokenFamily,
@@ -60,7 +59,7 @@ impl RefreshTokensTx for SqliteGrantTx<'_> {
 
     /// Persist a single refresh-token row into an existing family — a rotation
     /// successor, or the family's first token (sequenced after the family row by the
-    /// [`insert_refresh_token_family`](crate::domain::refresh_token::insert_refresh_token_family)
+    /// [`RefreshFamilyWriter::start_family`](crate::domain::capabilities::writers::RefreshFamilyWriter::start_family)
     /// action).
     fn insert_refresh_token(
         &mut self,
@@ -98,14 +97,9 @@ impl RefreshTokensTx for SqliteGrantTx<'_> {
             })
     }
 
-    /// Stamp the live token `token_hash` consumed at `now`, returning `true` iff a
-    /// live (un-consumed) row was actually transitioned. The `consumed_at IS NULL`
-    /// guard is the whole atomicity of the consume: a concurrent redeemer of the
-    /// same live token loses the affected-row count and gets `false`. The
-    /// three-state consume decision (`Consumed` / `Replayed` / `NotFound`) is
-    /// assembled from this plus [`Self::refresh_token_exists`] in
-    /// [`rotate_refresh_token`](crate::domain::refresh_token::rotate_refresh_token), which
-    /// runs both inside one domain transaction so the pair reads a single snapshot.
+    /// The `consumed_at IS NULL` guard is the whole atomicity of the consume:
+    /// a concurrent redeemer of the same live token loses the affected-row
+    /// count and gets `false`.
     fn stamp_refresh_token_consumed_if_live(
         &mut self,
         token_hash: &str,
