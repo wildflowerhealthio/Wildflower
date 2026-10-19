@@ -7,76 +7,47 @@
 //! - [`state`] holds the [`AuthorizationServerState`](state::AuthorizationServerState) struct.
 //! - [`crate::adapters`] holds the port trait impls that adapt the state /
 //!   revocation store to the domain seams.
-//! - [`FromState`] is how a capability that no principal unlocks (the
-//!   pre-auth front door, the token verifier) is built: the `Live<F>` extractor
-//!   in `http` calls it, so a handler never names the state itself.
-//! - [`LaunchContextMinter`] is the mint-only face of the launch-context
-//!   capability, handed out by [`crate::setup_authorization_server`] to the in-process
-//!   launchers outside the authorization server.
-//! - [`SameDeviceSignInCodeMinter`] is the in-process mint of the one-time codes
-//!   `/oauth/sign-in` signs a browser in as the Owner with, handed out the
-//!   same way, to the host.
-//! - [`PendingConsentWatcher`] waits for one pending consent to be decided or
-//!   expire, handed out the same way, to the host, which closes the page it
-//!   opened the request at.
-//! - [`InProcessTokenVerifier`] is the token verifier both authN gates run,
-//!   handed out the same way, for the host's FHIR server to verify bearers
-//!   with in-process.
-//! - The remaining modules hold one binding each (the `/authorization` ones implement
-//!   `FixedScopeCapability`/`Capability`, the session ones
-//!   `AuthenticatedCapability`); each lifts the store + port handles out of the
-//!   state (never the whole state), so `domain/` stays free of both
-//!   `crate::http` and the concrete adapter types. The `Live…` aliases are what
-//!   the handlers name in `Scoped<…>`, `Authenticated<…>`, or `Live<…>`.
+//! - `access` binds the scope-gated `/authorization` capabilities
+//!   (`FixedScopeCapability` / `Capability`), acquired through `Scoped<…>`.
+//! - `oauth` binds the pre-auth `/oauth` front door ([`FromState`], acquired
+//!   through `Live<…>`), and holds the in-process faces
+//!   [`crate::setup_authorization_server`] hands out: the
+//!   [`LaunchContextMinter`] (the launchers outside the authorization server
+//!   mint launches through it), the [`SameDeviceSignInCodeMinter`] (the host
+//!   mints `/oauth/sign-in` codes through it) and the
+//!   [`PendingConsentWatcher`] (the host waits on a consent through it).
+//! - `session` binds the token verifier both authN gates run (and its
+//!   in-process face, the [`InProcessTokenVerifier`] the host's FHIR server
+//!   verifies bearers with) and the caller's-own-session capabilities
+//!   (`AuthenticatedCapability`, acquired through `Authenticated<…>`).
+//!
+//! Each binding lifts the store and port handles out of the state (never the
+//! whole state), so `domain/` stays free of both `crate::http` and the
+//! concrete adapter types. The `Live…` aliases are what the handlers name in
+//! `Scoped<…>`, `Authenticated<…>`, or `Live<…>`.
 
-mod browser_sessions_reader;
-mod browser_sessions_revoker;
-mod client_authenticator;
-mod client_token_revoker;
-mod clients_disabler;
-mod clients_reader;
-mod consents_decider;
-mod consents_raiser;
-mod consents_reader;
-mod grants_reader;
-mod grants_revoker;
-mod in_process_token_verifier;
-mod launch_context_minter;
-mod oauth_front_door;
-mod pending_consent_watcher;
-mod same_device_sign_in_code_minter;
+mod access;
+mod oauth;
 mod session;
-
 pub mod state;
-mod token_exchanger;
-mod token_revoker;
 
-pub(crate) use browser_sessions_reader::LiveBrowserSessionsReader;
-pub(crate) use browser_sessions_revoker::LiveBrowserSessionsRevoker;
-pub(crate) use client_authenticator::LiveClientAuthenticator;
-pub(crate) use client_token_revoker::LiveClientTokenRevoker;
-pub(crate) use clients_disabler::LiveClientsDisabler;
-pub(crate) use clients_reader::LiveClientsReader;
-pub(crate) use consents_decider::LiveConsentDecider;
-pub(crate) use consents_raiser::LiveConsentRaiser;
-pub(crate) use consents_reader::LiveConsentReader;
-pub(crate) use grants_reader::LiveGrantsReader;
-pub(crate) use grants_revoker::LiveGrantsRevoker;
-pub use in_process_token_verifier::InProcessTokenVerifier;
-pub use launch_context_minter::LaunchContextMinter;
-pub(crate) use oauth_front_door::{
-    LiveAuthorizationStatusReader, LiveBrowserPairing, LiveCodeAuthorizationStarter,
-    LiveDeviceAuthorizer, LivePublicKeysReader, LiveSameDeviceSignIn, LiveSessionShortfall,
+pub(crate) use access::{
+    LiveBrowserSessionsReader, LiveBrowserSessionsRevoker, LiveClientsDisabler, LiveClientsReader,
+    LiveConsentDecider, LiveConsentRaiser, LiveConsentReader, LiveGrantsReader, LiveGrantsRevoker,
+    LiveTokenRevoker,
 };
-pub use pending_consent_watcher::PendingConsentWatcher;
-pub use same_device_sign_in_code_minter::SameDeviceSignInCodeMinter;
+pub use oauth::{LaunchContextMinter, PendingConsentWatcher, SameDeviceSignInCodeMinter};
+pub(crate) use oauth::{
+    LiveAuthorizationStatusReader, LiveBrowserPairing, LiveClientAuthenticator,
+    LiveClientTokenRevoker, LiveCodeAuthorizationStarter, LiveDeviceAuthorizer,
+    LivePublicKeysReader, LiveSameDeviceSignIn, LiveSessionShortfall, LiveTokenExchanger,
+};
+pub use session::InProcessTokenVerifier;
 pub(crate) use session::{
     LiveBrowserSessionEnder, LiveBrowserSessionUseRecorder, LiveSessionEnder, LiveSessionReader,
     LiveTokenVerifier,
 };
 pub use state::AuthorizationServerState;
-pub(crate) use token_exchanger::LiveTokenExchanger;
-pub(crate) use token_revoker::LiveTokenRevoker;
 
 /// A live capability built from the router state alone — the pre-auth
 /// front-door bindings and the token verifier, which no claims unlock (their
