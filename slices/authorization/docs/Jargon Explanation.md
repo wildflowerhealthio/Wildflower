@@ -219,10 +219,14 @@ Code-flow rows carry the OAuth client's PKCE `code_challenge`,
 `redirect_uri`, requested `scope`, and the `state` parameter. A code-flow row
 started by a SMART App Launch also carries the consumed `launch` and the
 patient its [LaunchContext](#launchcontext) binds (`launch_bound_patient`).
-A code-flow row whose browser session falls short of what it asks for parks
-with `session_shortfall_acknowledged` unset until its browser goes on from the
-[limited page](#limited-page), unless that session went on for the same app
-before. Device-flow rows leave those columns null.
+Device-flow rows leave those columns null.
+
+`session_shortfall_acknowledged` is never null. A code-flow row whose browser
+session falls short of what it asks for parks with it unset until its browser
+goes on from the [limited page](#limited-page), unless that session went on
+for the same app before (a row in `session_shortfall_acknowledgements`).
+Every other row, device-flow rows and browser pairings included, has it
+set.
 
 ### LaunchContext
 
