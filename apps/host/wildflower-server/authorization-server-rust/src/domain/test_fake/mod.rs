@@ -32,10 +32,10 @@ mod fixtures;
 mod tx;
 
 pub(crate) use fixtures::{
-    authenticated_public_client, client, code_grant, code_request, delegated_scopes,
-    device_request, owned_scopes, redeemed_code, registering_delegated_scopes,
-    seed_active_signing_key, seed_fixture_browser_session, NothingRevoked, RecordingOwnerApproval,
-    FIXTURE_SID,
+    approve_stored, authenticated_public_client, client, code_grant, code_request,
+    code_request_for, delegated_scopes, device_request, fixture_code, owned_scopes,
+    pending_request, redeemed_code, registering_delegated_scopes, seed_active_signing_key,
+    seed_fixture_browser_session, with_status, NothingRevoked, RecordingOwnerApproval, FIXTURE_SID,
 };
 
 /// An in-memory [`GrantStore`] modelling the primitive port semantics with

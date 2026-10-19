@@ -14,8 +14,7 @@ use super::{
     OAuthConsentView, OwnerRaising,
 };
 use crate::domain::authority::{ApprovableScopes, DelegatedScopes};
-use crate::domain::authorization_code::PendingCodeRequest;
-use crate::domain::authorization_request::{GrantType, RequestStatus};
+use crate::domain::authorization_request::PendingCodeRequest;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::writers::{
     CodeApproval, CodeAuthority, GrantRecorder, RequestApprover,
@@ -25,7 +24,7 @@ use crate::domain::client_redirect::{
     REQUEST_DECLINED_DESCRIPTION,
 };
 use crate::domain::client_registration::{classify_registration, PresentedClientRegistration};
-use crate::domain::grant_store::{AuthorizationRequestsTx, ClientsTx as _};
+use crate::domain::grant_store::{write_transition, AuthorizationRequestsTx, ClientsTx as _};
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::{GrantStore, GrantTx};
 
@@ -41,32 +40,31 @@ impl<S: GrantStore> ConsentReader<S> {
     pub(crate) fn oauth_consent(
         &self,
         id: &str,
+        now: DateTime<Utc>,
     ) -> Result<OAuthConsentView, AuthorizationServerError> {
         self.store.read(|tx| {
-            let pending_request = load_pending_code_request(tx, id, Utc::now())?;
-            let requested_redirect_uri = pending_request.redirect_uri().clone();
-            let request = pending_request.into_request();
+            let pending_request = load_pending_code_request(tx, id, now)?;
+            let request = pending_request.request();
             // A missing row is the `New` verdict, and its name falls back to the
             // raw `client_id`.
-            let maybe_existing_client = tx.client_by_id(&request.client_id)?;
+            let maybe_existing_client = tx.client_by_id(request.client_id())?;
             let client_name = maybe_existing_client.as_ref().map_or_else(
-                || request.client_id.clone(),
+                || request.client_id().to_owned(),
                 |existing_client| existing_client.name.clone(),
             );
             let registration_verdict = classify_registration(&PresentedClientRegistration {
                 maybe_existing_client: maybe_existing_client.as_ref(),
-                redirect_uri: &requested_redirect_uri,
-                scopes: &request.requested_scopes,
+                redirect_uri: &pending_request.code().redirect_uri,
+                scopes: request.requested_scopes(),
             });
             let missing_approval_scopes = ApprovableScopes::for_code(
-                &request.requested_scopes,
+                request.requested_scopes(),
                 maybe_existing_client.as_ref(),
-                request.client_id == *self.wildflower_host_app_client_id,
+                request.client_id() == &*self.wildflower_host_app_client_id,
             )
             .missing_approval_scopes(&self.reader_grant);
             Ok(OAuthConsentView {
-                request,
-                requested_redirect_uri,
+                pending_request,
                 client_name,
                 registration_verdict,
                 missing_approval_scopes,
@@ -92,16 +90,17 @@ impl<S: GrantStore> ConsentRaiser<S> {
         &self,
         id: &str,
         may_raise_for_owner: impl FnOnce() -> bool,
+        now: DateTime<Utc>,
     ) -> Result<OwnerRaising, AuthorizationServerError> {
         let raising = self.store.write(|tx| {
-            let pending_request = load_pending_code_request(tx, id, Utc::now())?;
-            if !pending_request.request().decidable_in_requesting_browser {
+            let pending_request = load_pending_code_request(tx, id, now)?;
+            if !pending_request.code().decidable_in_requesting_browser {
                 return Ok(OwnerRaising::AlreadyRaised);
             }
             if !may_raise_for_owner() {
                 return Ok(OwnerRaising::StartLimited);
             }
-            if tx.raise_authorization_request_for_owner(id)? {
+            if write_transition(tx, pending_request.request().raise_for_owner(now))? {
                 Ok(OwnerRaising::Raised)
             } else {
                 Err(AuthorizationServerError::OAuthConsentNotFound { id: id.to_owned() })
@@ -155,10 +154,14 @@ impl<S: GrantStore> ConsentDecider<S> {
     ///
     /// [`AuthorizationServerError::OAuthConsentNotFound`] when `id` names no
     /// live code-flow prompt.
-    pub(crate) fn deny_oauth(&self, id: &str) -> Result<ConsentOutcome, AuthorizationServerError> {
+    pub(crate) fn deny_oauth(
+        &self,
+        id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<ConsentOutcome, AuthorizationServerError> {
         self.decide_and_republish(|tx| {
-            let pending_request = load_pending_code_request(tx, id, Utc::now())?;
-            deny_pending_request(tx, id, || consent_not_found(id))?;
+            let pending_request = load_pending_code_request(tx, id, now)?;
+            deny_pending_request(tx, pending_request.request(), now, || consent_not_found(id))?;
             Ok(denial_outcome(
                 &pending_request,
                 REQUEST_DECLINED_DESCRIPTION,
@@ -178,20 +181,20 @@ impl<S: GrantStore> ConsentDecider<S> {
     ) -> Result<ConsentOutcome, AuthorizationServerError> {
         let pending_request = load_pending_code_request(tx, id, now)?;
         let request = pending_request.request();
-        let requested_redirect_uri = pending_request.redirect_uri();
+        let requested_redirect_uri = &pending_request.code().redirect_uri;
 
         // The host app's client is held to its fixed registration; every other
         // client is trusted on first use, so its registration may be created or
         // widened.
-        let registration_is_fixed = request.client_id == *self.wildflower_host_app_client_id;
-        let maybe_existing_client = tx.client_by_id(&request.client_id)?;
+        let registration_is_fixed = request.client_id() == &*self.wildflower_host_app_client_id;
+        let maybe_existing_client = tx.client_by_id(request.client_id())?;
         if registration_is_fixed && maybe_existing_client.is_none() {
             return Err(consent_not_found(id));
         }
         let registration_verdict = classify_registration(&PresentedClientRegistration {
             maybe_existing_client: maybe_existing_client.as_ref(),
             redirect_uri: requested_redirect_uri,
-            scopes: &request.requested_scopes,
+            scopes: request.requested_scopes(),
         });
         // The proof every write below demands: the approver holds this prompt's
         // approval scopes, and the Owner's approval is clamped to what this
@@ -202,7 +205,7 @@ impl<S: GrantStore> ConsentDecider<S> {
             &self.approver_grant,
             input.owner_approved_scopes,
             &ApprovableScopes::for_code(
-                &request.requested_scopes,
+                request.requested_scopes(),
                 maybe_existing_client.as_ref(),
                 registration_is_fixed,
             ),
@@ -212,11 +215,14 @@ impl<S: GrantStore> ConsentDecider<S> {
                 id: id.to_owned(),
             });
         }
-        if !request.admits_patient(input.patient.as_deref()) {
+        if !pending_request
+            .code()
+            .admits_patient(input.patient.as_deref())
+        {
             return Err(AuthorizationServerError::LaunchPatientMismatch { id: id.to_owned() });
         }
         let Some(delegated_scopes) = maybe_delegated_scopes else {
-            deny_pending_request(tx, id, || consent_not_found(id))?;
+            deny_pending_request(tx, request, now, || consent_not_found(id))?;
             return Ok(denial_outcome(
                 &pending_request,
                 REQUEST_DECLINED_DESCRIPTION,
@@ -241,7 +247,7 @@ impl<S: GrantStore> ConsentDecider<S> {
             }
         };
         GrantRecorder::within(tx).record_code_grant(
-            &request.client_id,
+            request.client_id(),
             requested_redirect_uri,
             &delegated_scopes,
             input.patient.as_deref(),
@@ -251,36 +257,25 @@ impl<S: GrantStore> ConsentDecider<S> {
             redirect: Some(build_client_redirect_url(
                 requested_redirect_uri,
                 &issued_code.code,
-                pending_request.client_state(),
+                &pending_request.code().client_state,
             )),
         })
     }
 }
 
-/// Load the authorization request for `id` and verify it's a pending, unexpired
-/// authorization-code flow carrying both a `redirect_uri` and a PKCE
-/// `code_challenge`. On success the two optional fields are unwrapped into the
-/// returned [`PendingCodeRequest`]. A request whose `expires_at` has passed at
-/// `now` is treated as not found — the deadline is enforced here at read time.
-/// So is one still waiting on its browser's limited page
-/// (`session_shortfall_acknowledged` unset): the Owner can't read, approve,
-/// deny or be asked about a request its own browser hasn't gone on with.
+/// The code-flow prompt `id`, pending at `now` and past its browser's
+/// limited page (`session_shortfall_acknowledged`): the Owner can't read,
+/// approve, deny or be asked about a request its own browser hasn't gone on
+/// with. Anything else is not found.
 pub(super) fn load_pending_code_request(
     tx: &mut impl AuthorizationRequestsTx,
     id: &str,
     now: DateTime<Utc>,
 ) -> Result<PendingCodeRequest, AuthorizationServerError> {
-    match tx.authorization_request_by_id(id)? {
-        Some(request)
-            if request.status == RequestStatus::Pending
-                && request.grant_type == GrantType::AuthorizationCode
-                && request.session_shortfall_acknowledged
-                && request.expires_at > now =>
-        {
-            PendingCodeRequest::from_request(request).ok_or_else(|| consent_not_found(id))
-        }
-        _ => Err(consent_not_found(id)),
-    }
+    tx.authorization_request_by_id(id)?
+        .and_then(|request| request.into_pending_code(now))
+        .filter(|pending_request| pending_request.code().session_shortfall_acknowledged)
+        .ok_or_else(|| consent_not_found(id))
 }
 
 /// The code-flow prompt `id` is not (or no longer) a live prompt.
@@ -292,12 +287,13 @@ fn consent_not_found(id: &str) -> AuthorizationServerError {
 /// `error=access_denied`, `description` as its `error_description`, and the
 /// client's `state` (RFC 6749 §4.1.2.1).
 fn denial_outcome(pending_request: &PendingCodeRequest, description: &str) -> ConsentOutcome {
+    let code_request = pending_request.code();
     ConsentOutcome::Denied {
         redirect: Some(build_client_error_redirect_url(
-            pending_request.redirect_uri(),
+            &code_request.redirect_uri,
             OAuthErrorCode::AccessDenied,
             description,
-            pending_request.client_state(),
+            &code_request.client_state,
         )),
     }
 }

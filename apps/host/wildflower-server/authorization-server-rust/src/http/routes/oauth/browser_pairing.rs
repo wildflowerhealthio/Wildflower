@@ -131,7 +131,7 @@ pub(super) async fn handle_browser_pairing_start(
         .get(header::USER_AGENT)
         .and_then(|value| value.to_str().ok())
         .and_then(device_name_from_user_agent);
-    let response = match pairing.start(&body.next, user_agent_name) {
+    let response = match pairing.start(&body.next, user_agent_name, Utc::now()) {
         Ok(started) => Json(StartedBrowserPairingBody::from(started)).into_response(),
         Err(BrowserPairingStartError::NextNotAllowed) => (
             StatusCode::BAD_REQUEST,

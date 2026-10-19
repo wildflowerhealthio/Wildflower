@@ -9,7 +9,7 @@
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
-use crate::domain::authorization_request::RequestStatus;
+use crate::domain::authorization_request::{AuthorizationRequest, RequestKind};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::grant_store::AuthorizationRequestsTx as _;
 use crate::domain::GrantStore;
@@ -25,9 +25,7 @@ pub enum NewestPendingConsent {
     /// An RFC 8628 device-code request. Decided at the device page,
     /// `/oauth/device?user_code=…`.
     Device {
-        /// The pairing code the device shows its user. Never `NULL` in the
-        /// row — the query skips a device row missing one rather than
-        /// surfacing an unfetchable key.
+        /// The pairing code the device shows its user.
         user_code: String,
         /// The name of the client that asks: its registered name, or its
         /// `client_id` while it has no registration, as the consent card
@@ -53,13 +51,41 @@ pub enum NewestPendingConsent {
     /// browser is always remote: a browser on the server's own device signs
     /// in with a same-device sign-in instead.
     BrowserPairing {
-        /// The code the pairing page shows. Never `NULL` in the row, as for
-        /// [`Device`](Self::Device).
+        /// The code the pairing page shows.
         user_code: String,
         /// The name the browser goes by: one it gave itself, or one taken
         /// from its user agent.
         browser_name: String,
     },
+}
+
+impl NewestPendingConsent {
+    /// How the host asks the Owner about `request`, whose client's registered
+    /// name is `registered_client_name` (`None` for a client trusted on first
+    /// use that has no registration yet, which goes by its `client_id`, as the
+    /// consent card names it).
+    #[must_use]
+    pub fn for_request(
+        request: &AuthorizationRequest,
+        registered_client_name: Option<String>,
+    ) -> Self {
+        let client_name = registered_client_name.unwrap_or_else(|| request.client_id().to_owned());
+        match request.kind() {
+            RequestKind::AuthorizationCode(code_request) => NewestPendingConsent::OAuth {
+                id: request.id().to_owned(),
+                client_name,
+                decidable_in_requesting_browser: code_request.decidable_in_requesting_browser,
+            },
+            RequestKind::DeviceCode(device_request) => NewestPendingConsent::Device {
+                user_code: device_request.user_code.clone(),
+                client_name,
+            },
+            RequestKind::BrowserPairing(pairing_request) => NewestPendingConsent::BrowserPairing {
+                user_code: pairing_request.user_code.clone(),
+                browser_name: pairing_request.browser_name.clone(),
+            },
+        }
+    }
 }
 
 /// One authorization request, by the key its consent surface looks it up by:
@@ -112,9 +138,7 @@ impl ConsentKey {
             }
             Self::OAuth { id } => tx.authorization_request_by_id(id),
         })?;
-        Ok(request.is_some_and(|request| {
-            request.status == RequestStatus::Pending && request.expires_at > now
-        }))
+        Ok(request.is_some_and(|request| request.pending_at(now)))
     }
 }
 
@@ -124,6 +148,7 @@ mod tests {
     use chrono::Duration;
 
     use super::*;
+    use crate::domain::authorization_request::RequestStatus;
     use crate::domain::test_fake::{code_request, device_request, FakeGrantStore};
 
     fn oauth(id: &str) -> ConsentKey {

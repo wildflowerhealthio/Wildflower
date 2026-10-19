@@ -456,11 +456,16 @@ async fn an_expired_request_on_the_limited_page_goes_no_further() {
         .expect("parked");
     store_handle(&db)
         .write(|tx| {
-            tx.insert_authorization_request(&AuthorizationRequest {
-                id: "lapsed".to_owned(),
-                expires_at: Utc::now() - Duration::seconds(1),
-                ..parked
-            })
+            tx.insert_authorization_request(&AuthorizationRequest::new(
+                NewAuthorizationRequest {
+                    id: "lapsed".to_owned(),
+                    client_id: parked.client_id().to_owned(),
+                    requested_scopes: parked.requested_scopes().to_vec(),
+                    ttl: Duration::minutes(5),
+                    kind: parked.kind().clone(),
+                },
+                Utc::now() - Duration::minutes(5) - Duration::seconds(1),
+            ))
         })
         .expect("plant a lapsed copy");
 

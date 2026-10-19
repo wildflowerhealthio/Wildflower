@@ -230,7 +230,7 @@ async fn an_approved_browser_without_grant_create_cannot_approve_a_device_reques
             .read(|tx| tx.authorization_request_by_id("dev-1"))
             .expect("read")
             .expect("the request")
-            .status,
+            .status(),
         RequestStatus::Pending,
     );
 }

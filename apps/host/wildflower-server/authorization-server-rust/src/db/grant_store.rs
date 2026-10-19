@@ -1721,7 +1721,7 @@ mod tests {
         wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
-            MIGRATIONS,
+            MigrationsThrough("0042"),
         )
         .expect("upgrade through 0042");
 
@@ -1846,6 +1846,80 @@ mod tests {
                 .is_err(),
             "the table is gone"
         );
+    }
+
+    /// An install already at `0043` loses its stored `expired` status when
+    /// `0044` runs: an approved request a poll redeemed (it carries its
+    /// `granted_scopes`) becomes `claimed`, and any other `expired` row (a
+    /// request `0042` ended) is deleted. The `code_challenge_method` column,
+    /// always `S256`, goes. Reverting `0044` brings the column back as `S256`
+    /// on every code row and stores a claim as `expired` again.
+    #[test]
+    fn an_install_already_at_0043_claims_redeemed_requests_and_drops_the_rest() {
+        use diesel::connection::SimpleConnection as _;
+        const AT: &str = "2026-10-18 00:00:00+00:00";
+
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0043"),
+        )
+        .expect("migrate to 0043");
+        conn.batch_execute(&format!(
+            "INSERT INTO authorization_requests \
+             (id, grant_type, client_id, requested_scopes, requested_at, expires_at, status, \
+              granted_scopes, user_code, code_challenge, code_challenge_method, sid) \
+             VALUES ('redeemed', 'device_code', 'device-app', '[]', '{AT}', '{AT}', 'expired', \
+                     '[\"openid\"]', 'UC-1', NULL, NULL, NULL), \
+                    ('ended', 'authorization_code', 'app', '[]', '{AT}', '{AT}', 'expired', \
+                     NULL, NULL, 'challenge', 'S256', NULL), \
+                    ('pending', 'authorization_code', 'app', '[]', '{AT}', '{AT}', 'pending', \
+                     NULL, NULL, 'challenge', 'S256', 'sid-1')"
+        ))
+        .expect("requests at 0043");
+
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0044"),
+        )
+        .expect("upgrade through 0044");
+        let statuses = |conn: &mut SqliteConnection| {
+            diesel::sql_query(
+                "SELECT id || ':' || status AS name FROM authorization_requests ORDER BY id",
+            )
+            .load::<Name>(conn)
+            .expect("read")
+            .into_iter()
+            .map(|row| row.name)
+            .collect::<Vec<_>>()
+        };
+        assert_eq!(statuses(&mut conn), ["pending:pending", "redeemed:claimed"]);
+        assert!(
+            diesel::sql_query("SELECT code_challenge_method FROM authorization_requests")
+                .execute(&mut conn)
+                .is_err(),
+            "the method column is gone"
+        );
+
+        let migration_0044 = MIGRATIONS
+            .migrations()
+            .expect("embedded migrations")
+            .into_iter()
+            .find(|migration| migration.name().version() == MigrationVersion::from("0044"))
+            .expect("0044 is embedded");
+        migration_0044.revert(&mut conn).expect("revert 0044");
+        assert_eq!(statuses(&mut conn), ["pending:pending", "redeemed:expired"]);
+        let methods = diesel::sql_query(
+            "SELECT code_challenge_method AS name FROM authorization_requests ORDER BY id",
+        )
+        .load::<OptionalName>(&mut conn)
+        .expect("read the method column")
+        .into_iter()
+        .map(|row| row.name)
+        .collect::<Vec<_>>();
+        assert_eq!(methods, [Some("S256".to_owned()), None]);
     }
 
     /// Running the migrations twice is a no-op the second time (the namespaced

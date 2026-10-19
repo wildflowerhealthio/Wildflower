@@ -14,7 +14,7 @@ use super::{
 };
 use crate::domain::authority::{ApprovableScopes, DelegatedScopes};
 use crate::domain::authorization_request::{
-    device_grant_name, AuthorizationRequest, GrantType, RequestStatus,
+    device_grant_name, AuthorizationRequest, DeviceRequest, RequestKind,
 };
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::writers::{GrantRecorder, RequestApprover};
@@ -33,25 +33,26 @@ impl<S: GrantStore> ConsentReader<S> {
     pub(crate) fn device_consent(
         &self,
         user_code: &str,
+        now: DateTime<Utc>,
     ) -> Result<DeviceConsentView, AuthorizationServerError> {
         let (request, maybe_existing_client) = self.store.read(|tx| {
-            let request = load_pending_request_by_user_code(tx, user_code, Utc::now())?;
-            let maybe_existing_client = tx.client_by_id(&request.client_id)?;
+            let request = load_pending_request_by_user_code(tx, user_code, now)?;
+            let maybe_existing_client = tx.client_by_id(request.client_id())?;
             Ok::<_, AuthorizationServerError>((request, maybe_existing_client))
         })?;
         let (client_name, registered_client_scopes) = match maybe_existing_client {
             Some(existing_client) => (existing_client.name, existing_client.allowed_scopes),
-            None => (request.client_id.clone(), Vec::new()),
+            None => (request.client_id().to_owned(), Vec::new()),
         };
-        let (approvable, starting_scopes, approvable_scopes) = match request.grant_type {
-            GrantType::BrowserPairing => {
+        let (approvable, starting_scopes, approvable_scopes) = match request.kind() {
+            RequestKind::BrowserPairing(_) => {
                 let approvable = ApprovableScopes::for_browser_pairing();
                 let starting_scopes = approvable.delegable_scopes(&self.reader_grant);
                 (approvable, starting_scopes, crate::owner_scopes())
             }
-            GrantType::AuthorizationCode | GrantType::DeviceCode => (
+            RequestKind::DeviceCode(_) | RequestKind::AuthorizationCode(_) => (
                 ApprovableScopes::for_device(&registered_client_scopes),
-                request.requested_scopes.clone(),
+                request.requested_scopes().to_vec(),
                 registered_client_scopes,
             ),
         };
@@ -90,14 +91,15 @@ impl<S: GrantStore> ConsentDecider<S> {
         now: DateTime<Utc>,
     ) -> Result<ConsentOutcome, AuthorizationServerError> {
         self.decide_and_republish(|tx| {
-            let device_request = load_pending_request_by_user_code(tx, user_code, now)?;
-            match device_request.grant_type {
-                GrantType::BrowserPairing => {
-                    self.approve_browser_pairing_in(tx, user_code, &device_request, input)
+            let request = load_pending_request_by_user_code(tx, user_code, now)?;
+            match request.kind() {
+                RequestKind::BrowserPairing(_) => {
+                    self.approve_browser_pairing_in(tx, user_code, &request, input, now)
                 }
-                GrantType::AuthorizationCode | GrantType::DeviceCode => {
-                    self.approve_device_in(tx, user_code, &device_request, input, now)
+                RequestKind::DeviceCode(device_request) => {
+                    self.approve_device_in(tx, user_code, &request, device_request, input, now)
                 }
+                RequestKind::AuthorizationCode(_) => Err(consent_not_found(user_code)),
             }
         })
     }
@@ -109,25 +111,30 @@ impl<S: GrantStore> ConsentDecider<S> {
     ///
     /// [`AuthorizationServerError::DeviceConsentNotFound`] when `user_code`
     /// names no live prompt.
-    pub(crate) fn deny_device(&self, user_code: &str) -> Result<(), AuthorizationServerError> {
+    pub(crate) fn deny_device(
+        &self,
+        user_code: &str,
+        now: DateTime<Utc>,
+    ) -> Result<(), AuthorizationServerError> {
         self.decide_and_republish(|tx| {
-            let device_request = load_pending_request_by_user_code(tx, user_code, Utc::now())?;
-            deny_pending_request(tx, &device_request.id, || consent_not_found(user_code))
+            let request = load_pending_request_by_user_code(tx, user_code, now)?;
+            deny_pending_request(tx, &request, now, || consent_not_found(user_code))
         })
     }
 
-    /// Approve the pending device request `device_request`, inside the
-    /// approval's write scope `tx`.
+    /// Approve the pending device request `request`, carrying
+    /// `device_request`, inside the approval's write scope `tx`.
     fn approve_device_in(
         &self,
         tx: &mut impl GrantTx,
         user_code: &str,
-        device_request: &AuthorizationRequest,
+        request: &AuthorizationRequest,
+        device_request: &DeviceRequest,
         input: ApproveDeviceConsentInput,
         now: DateTime<Utc>,
     ) -> Result<ConsentOutcome, AuthorizationServerError> {
         let client = tx
-            .client_by_id(&device_request.client_id)?
+            .client_by_id(request.client_id())?
             .ok_or_else(|| consent_not_found(user_code))?;
         // The proof every write below demands: the approver holds a device
         // prompt's approval scopes, and the Owner's approval is clamped to what
@@ -138,24 +145,25 @@ impl<S: GrantStore> ConsentDecider<S> {
             &ApprovableScopes::for_device(&client.allowed_scopes),
         )?
         else {
-            deny_pending_request(tx, &device_request.id, || consent_not_found(user_code))?;
+            deny_pending_request(tx, request, now, || consent_not_found(user_code))?;
             return Ok(ConsentOutcome::Denied { redirect: None });
         };
+        if !RequestApprover::within(tx).approve_for_device(
+            &delegated_scopes,
+            request,
+            input.patient.as_deref(),
+            input.device_name.as_deref(),
+            now,
+        )? {
+            return Err(consent_not_found(user_code));
+        }
         let request_device_name = input
             .device_name
             .as_deref()
             .or(device_request.device_name.as_deref());
-        if !RequestApprover::within(tx).approve_for_device(
-            &delegated_scopes,
-            &device_request.id,
-            input.patient.as_deref(),
-            request_device_name,
-        )? {
-            return Err(consent_not_found(user_code));
-        }
         let grant_name = device_grant_name(request_device_name, &client.name);
         GrantRecorder::within(tx).record_device_grant(
-            &device_request.client_id,
+            request.client_id(),
             grant_name,
             &delegated_scopes,
             input.patient.as_deref(),
@@ -164,8 +172,8 @@ impl<S: GrantStore> ConsentDecider<S> {
         Ok(ConsentOutcome::Approved { redirect: None })
     }
 
-    /// Approve the pending browser pairing `pairing_request`, inside the
-    /// approval's write scope `tx`: clamp the Owner's ticks to
+    /// Approve the pending browser pairing `request`, inside the approval's
+    /// write scope `tx`: clamp the Owner's ticks to
     /// [`ApprovableScopes::for_browser_pairing`] and the approver's own grant,
     /// and transition the request under the browser name the approver left.
     /// Nothing granted is a deny.
@@ -173,8 +181,9 @@ impl<S: GrantStore> ConsentDecider<S> {
         &self,
         tx: &mut impl GrantTx,
         user_code: &str,
-        pairing_request: &AuthorizationRequest,
+        request: &AuthorizationRequest,
         input: ApproveDeviceConsentInput,
+        now: DateTime<Utc>,
     ) -> Result<ConsentOutcome, AuthorizationServerError> {
         let Some(delegated_scopes) = DelegatedScopes::clamp(
             &self.approver_grant,
@@ -182,18 +191,14 @@ impl<S: GrantStore> ConsentDecider<S> {
             &ApprovableScopes::for_browser_pairing(),
         )?
         else {
-            deny_pending_request(tx, &pairing_request.id, || consent_not_found(user_code))?;
+            deny_pending_request(tx, request, now, || consent_not_found(user_code))?;
             return Ok(ConsentOutcome::Denied { redirect: None });
         };
-        let browser_name = input
-            .device_name
-            .as_deref()
-            .or(pairing_request.device_name.as_deref())
-            .ok_or_else(|| consent_not_found(user_code))?;
         if !RequestApprover::within(tx).approve_browser_pairing(
             &delegated_scopes,
-            &pairing_request.id,
-            browser_name,
+            request,
+            input.device_name.as_deref(),
+            now,
         )? {
             return Err(consent_not_found(user_code));
         }
@@ -201,25 +206,16 @@ impl<S: GrantStore> ConsentDecider<S> {
     }
 }
 
-/// Load the authorization request for `user_code` and verify it's a pending
-/// device-code flow or browser pairing, unexpired at `now`.
+/// The device-page prompt `user_code` — a device request or a browser
+/// pairing — pending at `now`. Anything else is not found.
 fn load_pending_request_by_user_code(
     tx: &mut impl AuthorizationRequestsTx,
     user_code: &str,
     now: DateTime<Utc>,
 ) -> Result<AuthorizationRequest, AuthorizationServerError> {
-    match tx.pending_authorization_request_by_user_code(user_code)? {
-        Some(request)
-            if matches!(
-                request.grant_type,
-                GrantType::DeviceCode | GrantType::BrowserPairing
-            ) && request.status == RequestStatus::Pending
-                && request.expires_at > now =>
-        {
-            Ok(request)
-        }
-        _ => Err(consent_not_found(user_code)),
-    }
+    tx.pending_authorization_request_by_user_code(user_code)?
+        .filter(|request| request.pending_at(now) && request.code().is_none())
+        .ok_or_else(|| consent_not_found(user_code))
 }
 
 /// The device-page prompt `user_code` is not (or no longer) a live prompt.

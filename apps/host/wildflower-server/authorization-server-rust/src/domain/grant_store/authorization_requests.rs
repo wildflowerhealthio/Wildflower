@@ -3,7 +3,9 @@
 
 use chrono::{DateTime, Utc};
 
-use crate::domain::authorization_request::AuthorizationRequest;
+use crate::domain::authorization_request::{
+    AuthorizationRequest, RequestTransition, TransitionRefused,
+};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::pending_consent::NewestPendingConsent;
 
@@ -48,28 +50,28 @@ pub trait AuthorizationRequestsTx {
         user_code: &str,
     ) -> Result<Option<AuthorizationRequest>, AuthorizationServerError>;
 
-    /// The newest pending, non-expired authorization request across both grant
-    /// flows — the one the host notifies and opens — or `None` when none
-    /// exists. A device row is admitted only with a `user_code` (its lookup key
-    /// on the consent surface); a code row is keyed by `id`.
+    /// The newest request still awaiting the Owner at `now` — pending,
+    /// unexpired, and (for a code request) past its browser's limited page —
+    /// as the host notifies and opens it, or `None` when there is none.
     ///
     /// # Errors
     ///
-    /// [`AuthorizationServerError::Infrastructure`] if the read fails or the selected
-    /// columns can't be decoded.
+    /// [`AuthorizationServerError::Infrastructure`] if the read fails or the
+    /// row is malformed.
     fn newest_pending_consent(
         &mut self,
+        now: DateTime<Utc>,
     ) -> Result<Option<NewestPendingConsent>, AuthorizationServerError>;
 
-    /// Persist a freshly-constructed `AuthorizationRequest`.
+    /// Persist a freshly started request.
     ///
     /// Bulk reclamation of expired rows belongs to
     /// [`domain::retention::purge_expired`](crate::domain::retention::purge_expired),
     /// not here — an insert leaves unrelated expired rows alone so the retention
     /// window is the only thing that decides when they go. Implementations may
-    /// still clear an *already-expired* `status = 'pending'` row holding this
-    /// request's `user_code`, since that row occupies the partial unique index
-    /// this insert would otherwise collide with.
+    /// still clear a pending row holding this request's `user_code` that had
+    /// expired by the time this request started, since that row occupies the
+    /// partial unique index this insert would otherwise collide with.
     ///
     /// # Errors
     ///
@@ -81,110 +83,19 @@ pub trait AuthorizationRequestsTx {
         request: &AuthorizationRequest,
     ) -> Result<(), AuthorizationServerError>;
 
-    /// Mark a *pending* `id` approved with `granted_scopes`, an optional patient
-    /// context, and an optional adjusted `device_name`, returning `true` iff a
-    /// pending row was actually transitioned (the `status = 'pending'` guard
-    /// makes a terminal row unflippable, and the affected-row count exposes a
-    /// concurrent transition as `false`).
+    /// Write `transition`'s request over its row, but only where the row is
+    /// still in the phase the request was read in (its status, and a code
+    /// request's session-shortfall acknowledgement), returning whether it
+    /// landed. A row another transition moved on since the read is left as
+    /// it is.
     ///
     /// # Errors
     ///
     /// [`AuthorizationServerError::Infrastructure`] if the update fails.
-    fn approve_authorization_request(
+    fn replace_authorization_request(
         &mut self,
-        id: &str,
-        granted_scopes: &[String],
-        patient: Option<&str>,
-        device_name: Option<&str>,
+        transition: &RequestTransition,
     ) -> Result<bool, AuthorizationServerError>;
-
-    /// Mark a *pending* `id` denied, returning `true` iff a pending row was
-    /// transitioned. A request already in a terminal state is left as it is,
-    /// so the first decision on a request wins.
-    ///
-    /// # Errors
-    ///
-    /// [`AuthorizationServerError::Infrastructure`] if the update fails.
-    fn deny_authorization_request(&mut self, id: &str) -> Result<bool, AuthorizationServerError>;
-
-    /// Raise a *pending* `id` for the Owner: it no longer counts as
-    /// decidable in the browser that made it, so the host notifies for it.
-    /// Returns `true` iff a pending row was found. Decides nothing.
-    ///
-    /// # Errors
-    ///
-    /// [`AuthorizationServerError::Infrastructure`] if the update fails.
-    fn raise_authorization_request_for_owner(
-        &mut self,
-        id: &str,
-    ) -> Result<bool, AuthorizationServerError>;
-
-    /// Record that the browser that made the *pending* code-flow request `id`
-    /// goes on although its browser session falls short of what it asks for,
-    /// and move the request's `expires_at` to `expires_at`. Returns `true` iff
-    /// a pending row still waiting on that acknowledgement was transitioned.
-    /// Decides nothing.
-    ///
-    /// # Errors
-    ///
-    /// [`AuthorizationServerError::Infrastructure`] if the update fails.
-    fn acknowledge_session_shortfall(
-        &mut self,
-        id: &str,
-        expires_at: DateTime<Utc>,
-    ) -> Result<bool, AuthorizationServerError>;
-
-    /// Deny the *pending* code-flow request `id` only while it still waits on
-    /// its browser's limited page (its session shortfall unacknowledged).
-    /// Returns `true` iff such a row was transitioned, so a Cancel and a
-    /// concurrent Continue race to one winner.
-    ///
-    /// # Errors
-    ///
-    /// [`AuthorizationServerError::Infrastructure`] if the update fails.
-    fn deny_unacknowledged_authorization_request(
-        &mut self,
-        id: &str,
-    ) -> Result<bool, AuthorizationServerError>;
-
-    /// Atomically claim an `approved` request for single-use redemption
-    /// (`approved` → `expired` only if still `approved`), returning `true` iff
-    /// this call won the race (RFC 8628 §3.4).
-    ///
-    /// # Errors
-    ///
-    /// [`AuthorizationServerError::Infrastructure`] if the update fails.
-    fn consume_approved_authorization_request(
-        &mut self,
-        id: &str,
-    ) -> Result<bool, AuthorizationServerError>;
-
-    /// Stamp `last_polled_at` so the next device-flow poll can be slow-down
-    /// rate-limited.
-    ///
-    /// # Errors
-    ///
-    /// [`AuthorizationServerError::Infrastructure`] if the update fails.
-    fn record_device_poll(
-        &mut self,
-        id: &str,
-        polled_at: DateTime<Utc>,
-    ) -> Result<(), AuthorizationServerError>;
-
-    /// Stamp a *pending* browser pairing `id`'s `last_polled_at` and record the
-    /// `browser_name` its page now gives, so the next poll can be slow-down
-    /// rate-limited and the Owner sees the browser's latest name. A request no
-    /// longer pending is left as it is.
-    ///
-    /// # Errors
-    ///
-    /// [`AuthorizationServerError::Infrastructure`] if the update fails.
-    fn record_browser_pairing_poll(
-        &mut self,
-        id: &str,
-        polled_at: DateTime<Utc>,
-        browser_name: &str,
-    ) -> Result<(), AuthorizationServerError>;
 
     /// Delete every authorization request whose `expires_at` fell before
     /// `cutoff`, returning how many rows went.
@@ -196,4 +107,21 @@ pub trait AuthorizationRequestsTx {
         &mut self,
         cutoff: DateTime<Utc>,
     ) -> Result<usize, AuthorizationServerError>;
+}
+
+/// Write the outcome of a transition in `tx`: the transitioned request when
+/// the transition applied and its row is still in the phase it was read in.
+/// Returns whether it was written; a refused transition writes nothing.
+///
+/// # Errors
+///
+/// [`AuthorizationServerError::Infrastructure`] if the update fails.
+pub fn write_transition(
+    tx: &mut (impl AuthorizationRequestsTx + ?Sized),
+    transition: Result<RequestTransition, TransitionRefused>,
+) -> Result<bool, AuthorizationServerError> {
+    match transition {
+        Ok(transition) => tx.replace_authorization_request(&transition),
+        Err(_) => Ok(false),
+    }
 }

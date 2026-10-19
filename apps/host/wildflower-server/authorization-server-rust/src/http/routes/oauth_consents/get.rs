@@ -1,3 +1,4 @@
+use chrono::Utc;
 use std::sync::Arc;
 
 use axum::extract::Path;
@@ -92,20 +93,23 @@ async fn handle_get_oauth_consent(
     Path(id): Path<String>,
 ) -> Result<Json<OAuthConsent>, AuthorizationServerError> {
     let OAuthConsentView {
-        request,
-        requested_redirect_uri,
+        pending_request,
         client_name,
         registration_verdict,
         missing_approval_scopes,
-    } = consents.oauth_consent(&id)?;
+    } = consents.oauth_consent(&id, Utc::now())?;
+    let request = pending_request.request();
+    let code_request = pending_request.code();
     Ok(Json(OAuthConsent {
         id: id.clone(),
-        client_id: request.client_id,
+        client_id: request.client_id().to_owned(),
         client_name,
-        scopes: request.requested_scopes,
-        redirect_uri: requested_redirect_uri,
-        pre_approved_scopes: request.pre_approved_scopes,
-        patient: request.patient,
+        scopes: request.requested_scopes().to_vec(),
+        redirect_uri: code_request.redirect_uri.clone(),
+        pre_approved_scopes: code_request.pre_approved_scopes.clone(),
+        patient: request
+            .approval()
+            .and_then(|approval| approval.patient.clone()),
         registration: registration_verdict.into(),
         missing_approval_scopes,
     }))

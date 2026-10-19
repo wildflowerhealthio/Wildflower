@@ -150,8 +150,13 @@ async fn device_consent_threads_patient_onto_request() {
         .read(|tx| tx.authorization_request_by_id("dev-patient"))
         .expect("query request")
         .expect("request present");
-    assert_eq!(request.status, RequestStatus::Approved);
-    assert_eq!(request.patient.as_deref(), Some("Patient/123"));
+    assert_eq!(request.status(), RequestStatus::Approved);
+    assert_eq!(
+        request
+            .approval()
+            .and_then(|approval| approval.patient.as_deref()),
+        Some("Patient/123")
+    );
 }
 
 /// Device-flow consent is EXPANDABLE: the Owner pairing a device may grant
@@ -199,7 +204,7 @@ async fn device_consent_allows_expansion_beyond_requested() {
         .read(|tx| tx.authorization_request_by_id("dev-expand"))
         .expect("query request")
         .expect("request present");
-    let granted = request.granted_scopes.expect("granted scopes");
+    let granted = &request.approval().expect("granted scopes").granted_scopes;
     assert!(granted.contains(&"read".to_string()));
     assert!(granted.contains(&"write".to_string()));
 }
@@ -345,7 +350,12 @@ async fn device_consent_approver_can_adjust_device_name() {
         .read(|tx| tx.authorization_request_by_id("dev-rename"))
         .expect("query request")
         .expect("request present");
-    assert_eq!(request.device_name.as_deref(), Some("Reception iPad"));
+    assert_eq!(
+        request
+            .device()
+            .and_then(|device_request| device_request.device_name.as_deref()),
+        Some("Reception iPad")
+    );
 }
 
 /// The headline behavior of this ticket: approving a device-code consent mints a

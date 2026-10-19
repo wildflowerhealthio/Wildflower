@@ -1,6 +1,7 @@
 use axum::http::{header, HeaderMap};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -114,7 +115,12 @@ fn device_authorization(
         .map(str::to_string)
         .or_else(|| user_agent.and_then(device_name_from_user_agent));
     let device_codes = authorizer
-        .start(&authenticated_client, requested_scopes, device_name)
+        .start(
+            &authenticated_client,
+            requested_scopes,
+            device_name,
+            Utc::now(),
+        )
         .map_err(|error| match error {
             DeviceAuthorizationError::ScopeNotAllowed => TokenError::bad_request(
                 OAuthErrorCode::InvalidScope,

@@ -1,3 +1,4 @@
+use chrono::Utc;
 use std::sync::Arc;
 
 use axum::extract::Path;
@@ -31,7 +32,7 @@ async fn handle_ask_owner(
     Path(id): Path<String>,
 ) -> Result<Response, AuthorizationServerError> {
     Ok(
-        match consents.raise_for_owner(&id, || deferred_start_limit.admits())? {
+        match consents.raise_for_owner(&id, || deferred_start_limit.admits(), Utc::now())? {
             OwnerRaising::Raised | OwnerRaising::AlreadyRaised => {
                 StatusCode::NO_CONTENT.into_response()
             }

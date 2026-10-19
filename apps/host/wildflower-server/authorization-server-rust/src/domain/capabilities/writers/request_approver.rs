@@ -12,10 +12,10 @@ use chrono::{DateTime, Utc};
 use wildflowerhealthio_scopes::Grant;
 
 use crate::domain::authority::{session_bounded_scopes, DelegatedScopes, StandingGrantCoverage};
-use crate::domain::authorization_code::{
-    IssuedAuthorizationCode, PendingCodeRequest, AUTHORIZATION_CODE_TTL,
-};
+use crate::domain::authorization_code::{IssuedAuthorizationCode, AUTHORIZATION_CODE_TTL};
+use crate::domain::authorization_request::{Approval, AuthorizationRequest, PendingCodeRequest};
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::grant_store::write_transition;
 use crate::domain::GrantTx;
 
 /// On whose authority a code-flow request is approved — the two proofs that
@@ -104,29 +104,31 @@ impl<'a, T: GrantTx> RequestApprover<'a, T> {
     ) -> Result<CodeApproval, AuthorizationServerError> {
         let authorized_scopes = authority.authorized_scopes();
         let request = pending_request.request();
+        let code_request = pending_request.code();
         let Some(browser_session) = self
             .tx
-            .browser_session_by_sid(pending_request.sid())?
+            .browser_session_by_sid(&code_request.sid)?
             .filter(|browser_session| browser_session.is_live(now))
         else {
-            return Ok(if self.tx.deny_authorization_request(&request.id)? {
+            return Ok(if write_transition(self.tx, request.deny(now))? {
                 CodeApproval::BrowserSessionEnded
             } else {
                 CodeApproval::RequestNotPending
             });
         };
-        if !self
-            .tx
-            .approve_authorization_request(&request.id, authorized_scopes, patient, None)?
-        {
+        let approval = Approval {
+            granted_scopes: authorized_scopes.to_vec(),
+            patient: patient.map(str::to_owned),
+        };
+        if !write_transition(self.tx, request.approve(approval, None, now))? {
             return Ok(CodeApproval::RequestNotPending);
         }
         let authorization_code = IssuedAuthorizationCode {
             code,
-            request_id: request.id.clone(),
-            client_id: request.client_id.clone(),
-            redirect_uri: pending_request.redirect_uri().clone(),
-            code_challenge: pending_request.code_challenge().to_owned(),
+            request_id: request.id().to_owned(),
+            client_id: request.client_id().to_owned(),
+            redirect_uri: code_request.redirect_uri.clone(),
+            code_challenge: code_request.code_challenge.clone(),
             granted_scopes: session_bounded_scopes(
                 authorized_scopes,
                 &Grant::parse(&browser_session.scopes),
@@ -140,10 +142,10 @@ impl<'a, T: GrantTx> RequestApprover<'a, T> {
         Ok(CodeApproval::Issued(Box::new(authorization_code)))
     }
 
-    /// Approve the device-flow request `request_id` under `delegated_scopes`,
-    /// binding the SMART-on-FHIR `patient` context (if any) and recording
-    /// `device_name` (the approver's rename, else the device's own name; `None`
-    /// leaves the request's name as is). Returns `false` when the request was no
+    /// Approve the device request `device_request`, as read, under
+    /// `delegated_scopes` at `now`, binding the SMART-on-FHIR `patient` context
+    /// (if any) and recording `device_name` (the approver's rename; `None`
+    /// keeps the device's own name). Returns `false` when the request was no
     /// longer pending, in which case nothing changed.
     ///
     /// # Errors
@@ -152,23 +154,27 @@ impl<'a, T: GrantTx> RequestApprover<'a, T> {
     pub(crate) fn approve_for_device(
         &mut self,
         delegated_scopes: &DelegatedScopes,
-        request_id: &str,
+        device_request: &AuthorizationRequest,
         patient: Option<&str>,
         device_name: Option<&str>,
+        now: DateTime<Utc>,
     ) -> Result<bool, AuthorizationServerError> {
-        self.tx.approve_authorization_request(
-            request_id,
-            delegated_scopes.scopes(),
-            patient,
-            device_name,
+        let approval = Approval {
+            granted_scopes: delegated_scopes.scopes().to_vec(),
+            patient: patient.map(str::to_owned),
+        };
+        write_transition(
+            self.tx,
+            device_request.approve(approval, device_name.map(str::to_owned), now),
         )
     }
 
-    /// Approve the browser pairing request `request_id` under
-    /// `delegated_scopes`, recording `browser_name` (the approver's rename,
-    /// else the browser's own name). The approved session is started later,
-    /// when the pairing page's poll claims the request. Returns `false` when
-    /// the request was no longer pending, in which case nothing changed.
+    /// Approve the browser pairing `pairing_request`, as read, under
+    /// `delegated_scopes` at `now`, recording `browser_name` (the approver's
+    /// rename; `None` keeps the browser's own name). The approved session is
+    /// started later, when the pairing page's poll claims the request.
+    /// Returns `false` when the request was no longer pending, in which case
+    /// nothing changed.
     ///
     /// # Errors
     ///
@@ -176,57 +182,70 @@ impl<'a, T: GrantTx> RequestApprover<'a, T> {
     pub(crate) fn approve_browser_pairing(
         &mut self,
         delegated_scopes: &DelegatedScopes,
-        request_id: &str,
-        browser_name: &str,
+        pairing_request: &AuthorizationRequest,
+        browser_name: Option<&str>,
+        now: DateTime<Utc>,
     ) -> Result<bool, AuthorizationServerError> {
-        self.tx.approve_authorization_request(
-            request_id,
-            delegated_scopes.scopes(),
-            None,
-            Some(browser_name),
+        let approval = Approval {
+            granted_scopes: delegated_scopes.scopes().to_vec(),
+            patient: None,
+        };
+        write_transition(
+            self.tx,
+            pairing_request.approve(approval, browser_name.map(str::to_owned), now),
         )
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::domain::grant_store::*;
-
     use chrono::Duration;
 
     use super::*;
-    use crate::domain::authorization_request::{AuthorizationRequest, RequestStatus};
+    use crate::domain::authorization_request::{CodeRequest, RequestKind, RequestStatus};
     use crate::domain::browser_session::BrowserSession;
+    use crate::domain::grant_store::*;
     use crate::domain::test_fake::{
-        code_request, delegated_scopes, device_request, owned_scopes, FakeGrantStore,
+        delegated_scopes, device_request, fixture_code, owned_scopes, pending_request,
+        FakeGrantStore,
     };
 
-    /// The fixture code request `id`, in `status`, as the approver takes it,
-    /// made in an Owner session that stands.
-    fn pending_request(
-        store: &FakeGrantStore,
-        id: &str,
-        status: RequestStatus,
-    ) -> PendingCodeRequest {
+    /// A pending code request `id`, as the approver takes it, made in an
+    /// Owner session that stands.
+    fn pending_code_request(store: &FakeGrantStore, id: &str) -> PendingCodeRequest {
         let standing =
             BrowserSession::new_owner(crate::owner_scopes(), Duration::hours(8), Utc::now());
         store.tx().insert_browser_session(&standing).unwrap();
-        pending_request_in_session(store, id, status, &standing.sid)
+        pending_code_request_in_session(store, id, &standing.sid)
     }
 
-    /// [`pending_request`], made in the browser session `sid`.
-    fn pending_request_in_session(
+    /// [`pending_code_request`], made in the browser session `sid`.
+    fn pending_code_request_in_session(
         store: &FakeGrantStore,
         id: &str,
-        status: RequestStatus,
         sid: &str,
     ) -> PendingCodeRequest {
-        let request = AuthorizationRequest {
-            sid: Some(sid.to_owned()),
-            ..code_request(id, status, Utc::now() + Duration::minutes(5))
-        };
+        let request = pending_request(
+            id,
+            &["read"],
+            Utc::now() + Duration::minutes(5),
+            RequestKind::AuthorizationCode(CodeRequest {
+                sid: sid.to_owned(),
+                ..fixture_code()
+            }),
+        );
         store.tx().insert_authorization_request(&request).unwrap();
-        PendingCodeRequest::from_request(request).expect("a code request")
+        request
+            .into_pending_code(Utc::now())
+            .expect("a pending code request")
+    }
+
+    fn stored(store: &FakeGrantStore, id: &str) -> AuthorizationRequest {
+        store
+            .tx()
+            .authorization_request_by_id(id)
+            .unwrap()
+            .expect("present")
     }
 
     /// Approve `pending_request` on the Owner's authority, issuing `the-code`.
@@ -242,13 +261,13 @@ mod tests {
             .unwrap()
     }
 
-    /// The code flow: the request flips to approved carrying the proof's scopes,
-    /// and the issued_code code is bound to the request's client, redirect, and
-    /// challenge with the same scopes.
+    /// The code flow: the request is approved with the proof's scopes and the
+    /// patient, and the issued code is bound to the request's client,
+    /// redirect, and challenge with the same scopes.
     #[test]
     fn approve_for_code_records_the_proofs_scopes_on_request_and_code() {
         let store = FakeGrantStore::default();
-        let pending_request = pending_request(&store, "req-1", RequestStatus::Pending);
+        let pending_request = pending_code_request(&store, "req-1");
         let now = Utc::now();
         let CodeApproval::Issued(issued_code) = RequestApprover::within(&mut store.tx())
             .approve_for_code(
@@ -262,34 +281,47 @@ mod tests {
         else {
             panic!("request was pending");
         };
-        assert_eq!(issued_code.granted_scopes, ["patient/Patient.r"]);
-        assert_eq!(issued_code.expires_at, now + AUTHORIZATION_CODE_TTL);
-        assert_eq!(issued_code.code_challenge, pending_request.code_challenge());
-        let request = store
-            .tx()
-            .authorization_request_by_id("req-1")
-            .unwrap()
-            .expect("present");
-        assert_eq!(request.status, RequestStatus::Approved);
         assert_eq!(
-            request.granted_scopes.as_deref(),
-            Some(&["patient/Patient.r".to_owned()][..])
+            *issued_code,
+            IssuedAuthorizationCode {
+                code: "the-code".to_owned(),
+                request_id: "req-1".to_owned(),
+                client_id: "client".to_owned(),
+                redirect_uri: pending_request.code().redirect_uri.clone(),
+                code_challenge: pending_request.code().code_challenge.clone(),
+                granted_scopes: owned_scopes(&["patient/Patient.r"]),
+                patient: Some("pat-1".to_owned()),
+                issued_at: now,
+                expires_at: now + AUTHORIZATION_CODE_TTL,
+                sid: pending_request.code().sid.clone(),
+            }
         );
-        let stored = store
-            .tx()
-            .authorization_code_by_request_id("req-1")
-            .unwrap()
-            .expect("code issued_code");
-        assert_eq!(stored.code, "the-code");
-        assert_eq!(stored.patient.as_deref(), Some("pat-1"));
+        let request = stored(&store, "req-1");
+        assert_eq!(request.status(), RequestStatus::Approved);
+        assert_eq!(
+            request.approval(),
+            Some(&Approval {
+                granted_scopes: owned_scopes(&["patient/Patient.r"]),
+                patient: Some("pat-1".to_owned()),
+            })
+        );
+        assert_eq!(
+            store
+                .tx()
+                .authorization_code_by_request_id("req-1")
+                .unwrap(),
+            Some(*issued_code)
+        );
     }
 
-    /// A request that is no longer pending issues nothing — the outcome the
+    /// A request decided since it was read issues nothing — the outcome the
     /// flow maps to not-found — and leaves no code behind.
     #[test]
-    fn approve_for_code_issues_nothing_when_the_request_is_not_pending() {
+    fn approve_for_code_issues_nothing_when_the_request_is_no_longer_pending() {
         let store = FakeGrantStore::default();
-        let pending_request = pending_request(&store, "req-1", RequestStatus::Denied);
+        let pending_request = pending_code_request(&store, "req-1");
+        let denied = pending_request.request().deny(Utc::now()).unwrap();
+        assert!(store.tx().replace_authorization_request(&denied).unwrap());
         assert_eq!(
             approve(&store, &pending_request),
             CodeApproval::RequestNotPending
@@ -327,19 +359,13 @@ mod tests {
             ("req-expired", expired.sid.as_str()),
             ("req-missing", "no-such-sid"),
         ] {
-            let pending_request =
-                pending_request_in_session(&store, id, RequestStatus::Pending, sid);
+            let pending_request = pending_code_request_in_session(&store, id, sid);
             assert_eq!(
                 approve(&store, &pending_request),
                 CodeApproval::BrowserSessionEnded,
                 "{id}"
             );
-            let request = store
-                .tx()
-                .authorization_request_by_id(id)
-                .unwrap()
-                .expect("present");
-            assert_eq!(request.status, RequestStatus::Denied, "{id}");
+            assert_eq!(stored(&store, id).status(), RequestStatus::Denied, "{id}");
             assert_eq!(
                 store.tx().authorization_code_by_request_id(id).unwrap(),
                 None,
@@ -347,12 +373,8 @@ mod tests {
             );
         }
 
-        let pending_request = pending_request_in_session(
-            &store,
-            "req-standing",
-            RequestStatus::Pending,
-            &standing.sid,
-        );
+        let pending_request =
+            pending_code_request_in_session(&store, "req-standing", &standing.sid);
         assert!(matches!(
             approve(&store, &pending_request),
             CodeApproval::Issued(issued_code) if issued_code.sid == standing.sid
@@ -374,8 +396,7 @@ mod tests {
             Utc::now(),
         );
         store.tx().insert_browser_session(&paired).unwrap();
-        let pending_request =
-            pending_request_in_session(&store, "req-1", RequestStatus::Pending, &paired.sid);
+        let pending_request = pending_code_request_in_session(&store, "req-1", &paired.sid);
         let approved = ["openid", "patient/Patient.read", "patient/Observation.rs"];
         let CodeApproval::Issued(issued_code) = RequestApprover::within(&mut store.tx())
             .approve_for_code(
@@ -393,45 +414,43 @@ mod tests {
             issued_code.granted_scopes,
             ["openid", "patient/Patient.read"]
         );
-        let request = store
-            .tx()
-            .authorization_request_by_id("req-1")
-            .unwrap()
-            .expect("present");
         assert_eq!(
-            request.granted_scopes.as_deref(),
-            Some(&owned_scopes(&approved)[..])
+            stored(&store, "req-1").approval(),
+            Some(&Approval {
+                granted_scopes: owned_scopes(&approved),
+                patient: None,
+            })
         );
     }
 
-    /// The device flow: the request flips to approved carrying the proof's
-    /// scopes and the recorded device name; a non-pending request reports
-    /// `false`.
+    /// The device flow: the request is approved carrying the proof's scopes
+    /// and the recorded device name; approving the same read again lands
+    /// nowhere.
     #[test]
     fn approve_for_device_records_scopes_and_name_only_while_pending() {
         let store = FakeGrantStore::default();
-        store
-            .tx()
-            .insert_authorization_request(&device_request("dev-1", "CODE", RequestStatus::Pending))
-            .unwrap();
+        let read = device_request("dev-1", "CODE", RequestStatus::Pending);
+        store.tx().insert_authorization_request(&read).unwrap();
         let mut tx = store.tx();
         let mut approver = RequestApprover::within(&mut tx);
         let scopes = delegated_scopes(&["patient/Patient.r"]);
-        let approved = approver
-            .approve_for_device(&scopes, "dev-1", None, Some("Kitchen iPad"))
-            .unwrap();
-        assert!(approved);
-        let request = store
-            .tx()
-            .authorization_request_by_id("dev-1")
-            .unwrap()
-            .expect("present");
-        assert_eq!(request.status, RequestStatus::Approved);
-        assert_eq!(request.device_name.as_deref(), Some("Kitchen iPad"));
-
-        let again = approver
-            .approve_for_device(&scopes, "dev-1", None, None)
-            .unwrap();
-        assert!(!again, "an already-approved request is not approved twice");
+        let now = Utc::now();
+        assert!(approver
+            .approve_for_device(&scopes, &read, None, Some("Kitchen iPad"), now)
+            .unwrap());
+        let request = stored(&store, "dev-1");
+        assert_eq!(request.status(), RequestStatus::Approved);
+        assert_eq!(
+            request
+                .device()
+                .and_then(|device| device.device_name.as_deref()),
+            Some("Kitchen iPad")
+        );
+        assert!(
+            !approver
+                .approve_for_device(&scopes, &read, None, None, now)
+                .unwrap(),
+            "an already-approved request is not approved twice"
+        );
     }
 }

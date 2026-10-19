@@ -546,8 +546,9 @@ async fn authorize_consumes_a_smart_launch_once() {
         .read(|tx| tx.authorization_request_by_id(&request_id))
         .expect("query")
         .expect("parked");
-    assert_eq!(parked.launch.as_deref(), Some(launch.as_str()));
-    assert_eq!(parked.launch_bound_patient, None);
+    let parked_code = parked.code().expect("a code request");
+    assert_eq!(parked_code.launch.as_deref(), Some(launch.as_str()));
+    assert_eq!(parked_code.launch_bound_patient, None);
     let res = approve_oauth_consent(
         &g,
         &owner_token,
@@ -585,7 +586,10 @@ async fn authorize_consumes_a_launch_for_any_client_once() {
         .read(|tx| tx.authorization_request_by_id(&request_id))
         .expect("query")
         .expect("parked");
-    assert_eq!(parked.launch.as_deref(), Some(launch.as_str()));
+    assert_eq!(
+        parked.code().and_then(|code| code.launch.as_deref()),
+        Some(launch.as_str())
+    );
 
     let replay = get_authorize(&g.router, &db.paired_browser_token, &query).await;
     assert_eq!(

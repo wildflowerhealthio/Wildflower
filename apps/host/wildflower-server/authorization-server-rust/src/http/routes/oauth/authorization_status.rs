@@ -99,12 +99,6 @@ pub(super) async fn handle_authorization_status_request(
                 AuthorizationStatusError::NotFound { id } => {
                     AuthorizationServerError::AuthorizationRequestNotFound { id }.into()
                 }
-                AuthorizationStatusError::ApprovedWithoutRedirect => {
-                    OAuthErrorResponse::server_error(
-                        "Authorization request is not a code-flow request",
-                    )
-                    .into()
-                }
                 AuthorizationStatusError::ApprovedWithoutCode => {
                     OAuthErrorResponse::server_error("Authorization code missing").into()
                 }
@@ -121,21 +115,17 @@ pub(super) async fn handle_authorization_status_request(
         // redirect_uri receives `error=access_denied`, an `error_description`
         // and `state`, and stops hanging. The poll can't tell an Owner's
         // decline from a revoked browser session, so every denial reads as
-        // declined. Device-flow denials have no redirect_uri / client_state,
-        // so they fall back to a bare `denied`.
+        // declined.
         AuthorizationStatusView::Denied {
             redirect_uri,
             client_state,
         } => AuthorizationStatus::Denied {
-            redirect: match (redirect_uri, client_state) {
-                (Some(redirect_uri), Some(client_state)) => Some(build_client_error_redirect_url(
-                    &redirect_uri,
-                    OAuthErrorCode::AccessDenied,
-                    REQUEST_DECLINED_DESCRIPTION,
-                    &client_state,
-                )),
-                _ => None,
-            },
+            redirect: Some(build_client_error_redirect_url(
+                &redirect_uri,
+                OAuthErrorCode::AccessDenied,
+                REQUEST_DECLINED_DESCRIPTION,
+                &client_state,
+            )),
         },
         AuthorizationStatusView::Approved {
             redirect_uri,

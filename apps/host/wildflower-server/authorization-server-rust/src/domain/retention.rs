@@ -97,7 +97,9 @@ pub(crate) fn purge_expired(
 mod tests {
     use super::*;
     use crate::domain::authorization_code::IssuedAuthorizationCode;
-    use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
+    use crate::domain::authorization_request::{
+        AuthorizationRequest, DeviceRequest, NewAuthorizationRequest, RequestKind,
+    };
     use crate::domain::browser_session::{BrowserSession, BrowserSessionKind};
     use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
     use crate::domain::test_fake::FakeGrantStore;
@@ -135,30 +137,20 @@ mod tests {
     }
 
     fn request(id: &str, expires_at: DateTime<Utc>) -> AuthorizationRequest {
-        AuthorizationRequest {
-            id: id.to_string(),
-            grant_type: GrantType::DeviceCode,
-            client_id: "client-1".to_string(),
-            requested_scopes: vec!["openid".to_string()],
-            code_challenge: None,
-            code_challenge_method: None,
-            redirect_uri: None,
-            client_state: None,
-            user_code: Some(format!("UC-{id}")),
-            pre_approved_scopes: vec![],
-            requested_at: expires_at - Duration::minutes(5),
-            expires_at,
-            last_polled_at: None,
-            status: RequestStatus::Pending,
-            granted_scopes: None,
-            patient: None,
-            device_name: None,
-            launch: None,
-            launch_bound_patient: None,
-            decidable_in_requesting_browser: false,
-            sid: None,
-            session_shortfall_acknowledged: true,
-        }
+        AuthorizationRequest::new(
+            NewAuthorizationRequest {
+                id: id.to_string(),
+                client_id: "client-1".to_string(),
+                requested_scopes: vec!["openid".to_string()],
+                ttl: Duration::minutes(5),
+                kind: RequestKind::DeviceCode(DeviceRequest {
+                    user_code: format!("UC-{id}"),
+                    device_name: None,
+                    last_polled_at: None,
+                }),
+            },
+            expires_at - Duration::minutes(5),
+        )
     }
 
     fn code(code: &str, expires_at: DateTime<Utc>) -> IssuedAuthorizationCode {

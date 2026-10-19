@@ -38,7 +38,8 @@ pub use wildflowerhealthio_authorization_server::crypto_util::pkce::compute_code
 pub use wildflowerhealthio_authorization_server::crypto_util::random_token::token_storage_hash;
 pub use wildflowerhealthio_authorization_server::domain::authorization_code::IssuedAuthorizationCode;
 pub use wildflowerhealthio_authorization_server::domain::authorization_request::{
-    AuthorizationRequest, GrantType, RequestStatus,
+    Approval, AuthorizationRequest, CodeRequest, DeviceRequest, NewAuthorizationRequest,
+    RequestKind, RequestStatus,
 };
 pub use wildflowerhealthio_authorization_server::domain::browser_session::BrowserSession;
 pub use wildflowerhealthio_authorization_server::domain::client::{
@@ -398,33 +399,39 @@ pub fn plant_authorization_code(
     let scope_vec: Vec<String> = scopes.iter().map(ToString::to_string).collect();
     let challenge = compute_code_challenge(CODE_VERIFIER);
     let now = Utc::now();
-    store
-        .write(|tx| {
-            tx.insert_authorization_request(&AuthorizationRequest {
-                id: request_id.clone(),
-                grant_type: GrantType::AuthorizationCode,
-                client_id: client_id.to_string(),
-                requested_scopes: scope_vec.clone(),
-                code_challenge: Some(challenge.clone()),
-                code_challenge_method: Some("S256".to_string()),
-                redirect_uri: Some(redirect_uri.clone()),
-                client_state: Some("state".to_string()),
-                user_code: None,
-                pre_approved_scopes: Vec::new(),
-                requested_at: now,
-                expires_at,
-                last_polled_at: None,
-                status: RequestStatus::Approved,
-                granted_scopes: Some(scope_vec.clone()),
-                patient: None,
-                device_name: None,
+    let requested_at = expires_at.min(now) - Duration::seconds(1);
+    let request = AuthorizationRequest::new(
+        NewAuthorizationRequest {
+            id: request_id.clone(),
+            client_id: client_id.to_string(),
+            requested_scopes: scope_vec.clone(),
+            ttl: expires_at - requested_at,
+            kind: RequestKind::AuthorizationCode(CodeRequest {
+                redirect_uri: redirect_uri.clone(),
+                code_challenge: challenge.clone(),
+                client_state: "state".to_string(),
+                sid: sid.to_owned(),
                 launch: None,
                 launch_bound_patient: None,
+                pre_approved_scopes: Vec::new(),
                 decidable_in_requesting_browser: false,
-                sid: Some(sid.to_owned()),
                 session_shortfall_acknowledged: true,
-            })
-        })
+            }),
+        },
+        requested_at,
+    )
+    .approve(
+        Approval {
+            granted_scopes: scope_vec.clone(),
+            patient: None,
+        },
+        None,
+        requested_at,
+    )
+    .expect("a pending request approves")
+    .into_request();
+    store
+        .write(|tx| tx.insert_authorization_request(&request))
         .expect("insert request");
     store
         .write(|tx| {
@@ -444,9 +451,11 @@ pub fn plant_authorization_code(
         .expect("issue code");
 }
 
-/// Plant a device-flow request directly, returning its `device_code`. `status`
-/// and `expires_at` are caller-controlled so the device state-machine tests can
-/// stand up Approved/expired rows the public surface can't mint on demand.
+/// Plant a device-flow request directly, keyed by `WILD-FLWR`. `status` and
+/// `expires_at` are caller-controlled so the device state-machine tests can
+/// stand up approved or expired rows the public surface can't mint on demand:
+/// the request starts pending just before it would expire (or now) and moves
+/// to `status`, an approval granting the requested `scopes`.
 pub fn plant_device_request(
     store: &SqliteGrantStore,
     client_id: &str,
@@ -456,34 +465,48 @@ pub fn plant_device_request(
     expires_at: chrono::DateTime<Utc>,
 ) {
     let scope_vec: Vec<String> = scopes.iter().map(ToString::to_string).collect();
-    let granted = matches!(status, RequestStatus::Approved).then(|| scope_vec.clone());
-    store
-        .write(|tx| {
-            tx.insert_authorization_request(&AuthorizationRequest {
-                id: device_code.to_string(),
-                grant_type: GrantType::DeviceCode,
-                client_id: client_id.to_string(),
-                requested_scopes: scope_vec,
-                code_challenge: None,
-                code_challenge_method: None,
-                redirect_uri: None,
-                client_state: None,
-                user_code: Some("WILD-FLWR".to_string()),
-                pre_approved_scopes: Vec::new(),
-                requested_at: Utc::now(),
-                expires_at,
-                last_polled_at: None,
-                status,
-                granted_scopes: granted,
-                patient: None,
+    let requested_at = expires_at.min(Utc::now()) - Duration::seconds(1);
+    let pending = AuthorizationRequest::new(
+        NewAuthorizationRequest {
+            id: device_code.to_string(),
+            client_id: client_id.to_string(),
+            requested_scopes: scope_vec.clone(),
+            ttl: expires_at - requested_at,
+            kind: RequestKind::DeviceCode(DeviceRequest {
+                user_code: "WILD-FLWR".to_string(),
                 device_name: None,
-                launch: None,
-                launch_bound_patient: None,
-                decidable_in_requesting_browser: false,
-                sid: None,
-                session_shortfall_acknowledged: true,
-            })
-        })
+                last_polled_at: None,
+            }),
+        },
+        requested_at,
+    );
+    let approve = |request: &AuthorizationRequest| {
+        request
+            .approve(
+                Approval {
+                    granted_scopes: scope_vec.clone(),
+                    patient: None,
+                },
+                None,
+                requested_at,
+            )
+            .expect("a pending request approves")
+            .into_request()
+    };
+    let request = match status {
+        RequestStatus::Pending => pending,
+        RequestStatus::Approved => approve(&pending),
+        RequestStatus::Denied => pending
+            .deny(requested_at)
+            .expect("a pending request denies")
+            .into_request(),
+        RequestStatus::Claimed => approve(&pending)
+            .claim(requested_at)
+            .expect("an approved request is claimed")
+            .into_request(),
+    };
+    store
+        .write(|tx| tx.insert_authorization_request(&request))
         .expect("insert device request");
 }
 

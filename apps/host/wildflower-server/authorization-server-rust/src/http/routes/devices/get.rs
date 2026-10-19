@@ -1,3 +1,4 @@
+use chrono::Utc;
 use std::sync::Arc;
 
 use axum::extract::Path;
@@ -5,7 +6,7 @@ use axum::routing::{get, MethodRouter};
 use axum::Json;
 use serde::Serialize;
 
-use crate::domain::authorization_request::GrantType;
+use crate::domain::authorization_request::RequestKind;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::{DeviceConsentView, Scoped};
 use crate::http::state::AuthorizationServerState;
@@ -62,17 +63,24 @@ async fn handle_get_device_consent(
         starting_scopes,
         approvable_scopes,
         missing_approval_scopes,
-    } = consents.device_consent(&user_code)?;
-    let kind = match request.grant_type {
-        GrantType::BrowserPairing => DeviceConsentKind::Browser,
-        GrantType::AuthorizationCode | GrantType::DeviceCode => DeviceConsentKind::Device,
+    } = consents.device_consent(&user_code, Utc::now())?;
+    let (kind, device_name) = match request.kind() {
+        RequestKind::BrowserPairing(pairing_request) => (
+            DeviceConsentKind::Browser,
+            Some(pairing_request.browser_name.clone()),
+        ),
+        RequestKind::DeviceCode(device_request) => (
+            DeviceConsentKind::Device,
+            device_request.device_name.clone(),
+        ),
+        RequestKind::AuthorizationCode(_) => (DeviceConsentKind::Device, None),
     };
     Ok(Json(DeviceConsent {
         kind,
         user_code,
-        client_id: request.client_id,
+        client_id: request.client_id().to_owned(),
         client_name,
-        device_name: request.device_name,
+        device_name,
         starting_scopes,
         allowed_scopes: approvable_scopes,
         missing_approval_scopes,

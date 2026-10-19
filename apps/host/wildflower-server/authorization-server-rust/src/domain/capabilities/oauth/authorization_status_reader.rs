@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 use url::Url;
 use wildflowerhealthio_scopes::{Grant, Scope};
 
-use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
+use crate::domain::authorization_request::{CodeRequest, RequestStatus};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::access::consents::{
     consent_decider_scopes, consent_reader_scopes,
@@ -36,14 +36,11 @@ pub(crate) struct PollingBrowserSession {
 }
 
 impl PollingBrowserSession {
-    /// Whether this session may read `request`'s status: the request was made
-    /// in it, or it is a code-flow request and this session's grant covers
-    /// [`any_request_status_scopes`]. A device request or a browser pairing
-    /// has its own poll, so no grant reads it here.
-    fn may_read(&self, request: &AuthorizationRequest) -> bool {
-        request.sid.as_deref() == Some(self.sid.as_str())
-            || (request.grant_type == GrantType::AuthorizationCode
-                && self.grant.covers_all(&any_request_status_scopes()))
+    /// Whether this session may read the status of the code request
+    /// `code_request`: it was made in this session, or this session's grant
+    /// covers [`any_request_status_scopes`].
+    fn may_read(&self, code_request: &CodeRequest) -> bool {
+        code_request.sid == self.sid || self.grant.covers_all(&any_request_status_scopes())
     }
 }
 
@@ -51,11 +48,11 @@ impl PollingBrowserSession {
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum AuthorizationStatusView {
     Pending,
-    /// Denied; for a code-flow request the client callback carrying
-    /// `error=access_denied` so the wait page can complete the flow.
+    /// Denied: the client callback, which carries `error=access_denied` so the
+    /// wait page can complete the flow.
     Denied {
-        redirect_uri: Option<Url>,
-        client_state: Option<String>,
+        redirect_uri: Url,
+        client_state: String,
     },
     /// Approved: the client callback carrying the issued code.
     Approved {
@@ -68,12 +65,11 @@ pub(crate) enum AuthorizationStatusView {
 }
 
 /// The ways the status read can fail. `NotFound` is the polling endpoint's
-/// 404; the two `Approved*` variants are invariant violations (an approved
-/// code-flow request always has a redirect, state, and code).
+/// 404; `ApprovedWithoutCode` is an invariant violation (an approved code
+/// request always has its code).
 #[derive(Debug)]
 pub(crate) enum AuthorizationStatusError {
     NotFound { id: String },
-    ApprovedWithoutRedirect,
     ApprovedWithoutCode,
     Store(AuthorizationServerError),
 }
@@ -97,14 +93,13 @@ impl<S: GrantStore> AuthorizationStatusReader<S> {
         AuthorizationStatusReader { store }
     }
 
-    /// The current status of request `id`, for the browser holding the
-    /// browser session `poller` (`None` when it holds none). Nothing
-    /// actively transitions code-flow requests from pending to expired, so a
-    /// pending request past its TTL is reported expired here rather than left
-    /// polling forever.
+    /// The current status of the code request `id`, for the browser holding
+    /// the browser session `poller` (`None` when it holds none). A pending
+    /// request past its expiry reads as expired, and so does a claimed one.
     ///
-    /// A request `poller` may not read (see [`PollingBrowserSession`]), and
-    /// any request when there is no `poller`, is
+    /// A request `poller` may not read (see [`PollingBrowserSession`]), a
+    /// device request or a browser pairing (each has its own poll), and any
+    /// request when there is no `poller`, is
     /// [`AuthorizationStatusError::NotFound`], the same as an unknown id, so
     /// the read says nothing about whether `id` exists.
     ///
@@ -120,31 +115,33 @@ impl<S: GrantStore> AuthorizationStatusReader<S> {
         self.store.read(|tx| {
             let request = tx
                 .authorization_request_by_id(id)?
-                .filter(|request| poller.is_some_and(|poller| poller.may_read(request)))
+                .filter(|request| {
+                    request.code().is_some_and(|code_request| {
+                        poller.is_some_and(|poller| poller.may_read(code_request))
+                    })
+                })
                 .ok_or_else(|| AuthorizationStatusError::NotFound { id: id.to_owned() })?;
-            if request.status == RequestStatus::Pending && request.expires_at < now {
-                return Ok(AuthorizationStatusView::Expired);
-            }
-            Ok(match request.status {
+            let Some(code_request) = request.code() else {
+                return Err(AuthorizationStatusError::NotFound { id: id.to_owned() });
+            };
+            Ok(match request.status() {
+                RequestStatus::Pending if request.is_expired_at(now) => {
+                    AuthorizationStatusView::Expired
+                }
                 RequestStatus::Pending => AuthorizationStatusView::Pending,
-                RequestStatus::Expired => AuthorizationStatusView::Expired,
+                RequestStatus::Claimed => AuthorizationStatusView::Expired,
                 RequestStatus::Denied => AuthorizationStatusView::Denied {
-                    redirect_uri: request.redirect_uri,
-                    client_state: request.client_state,
+                    redirect_uri: code_request.redirect_uri.clone(),
+                    client_state: code_request.client_state.clone(),
                 },
                 RequestStatus::Approved => {
-                    let (Some(redirect_uri), Some(client_state)) =
-                        (request.redirect_uri, request.client_state)
-                    else {
-                        return Err(AuthorizationStatusError::ApprovedWithoutRedirect);
-                    };
                     let code = tx
                         .authorization_code_by_request_id(id)?
                         .ok_or(AuthorizationStatusError::ApprovedWithoutCode)?;
                     AuthorizationStatusView::Approved {
-                        redirect_uri,
+                        redirect_uri: code_request.redirect_uri.clone(),
                         code: code.code,
-                        client_state,
+                        client_state: code_request.client_state.clone(),
                     }
                 }
             })
@@ -241,10 +238,7 @@ mod tests {
         );
         assert!(matches!(
             reader.status("denied", Some(&requester), now).unwrap(),
-            AuthorizationStatusView::Denied {
-                redirect_uri: Some(_),
-                client_state: Some(_),
-            }
+            AuthorizationStatusView::Denied { .. }
         ));
         assert_eq!(
             reader.status("approved", Some(&requester), now).unwrap(),

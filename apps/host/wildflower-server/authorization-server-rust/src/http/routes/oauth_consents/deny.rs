@@ -1,3 +1,4 @@
+use chrono::Utc;
 use std::sync::Arc;
 
 use axum::extract::Path;
@@ -21,5 +22,5 @@ async fn handle_deny_oauth_consent(
     consents: Scoped<LiveConsentDecider>,
     Path(id): Path<String>,
 ) -> Result<Json<ConsentResult>, AuthorizationServerError> {
-    Ok(Json(consents.deny_oauth(&id)?.into()))
+    Ok(Json(consents.deny_oauth(&id, Utc::now())?.into()))
 }

@@ -7,7 +7,7 @@ use tokio::sync::watch;
 use url::Url;
 use wildflowerhealthio_authorization_server::domain::grant_store::AuthorizationRequestsTx as _;
 use wildflowerhealthio_authorization_server::domain::authorization_request::{
-    AuthorizationRequest, StartCodeAuthorizationArgs,
+    AuthorizationRequest, CodeRequest, NewAuthorizationRequest, RequestKind,
 };
 use wildflowerhealthio_authorization_server::{
     setup_authorization_server, AdmitEveryAuthorizationStart, AuthorizationServerConfig,
@@ -51,22 +51,28 @@ impl TestAuthorizationServer {
         .unwrap();
         SqliteGrantStore::new(pool)
             .unwrap()
-            .write(|tx| tx.insert_authorization_request(&AuthorizationRequest::new_code_authorization(
-                StartCodeAuthorizationArgs {
-                    id: id.to_owned(),
-                    client_id: "lifting".to_owned(),
-                    requested_scopes: vec!["openid".to_owned()],
-                    code_challenge: "c".repeat(43),
-                    redirect_uri: Url::parse("https://lifting.example/callback").unwrap(),
-                    client_state: "state".to_owned(),
-                    pre_approved_scopes: Vec::new(),
-                    ttl: chrono::Duration::minutes(5),
-                    launch_context: None,
-                    decidable_in_requesting_browser: false,
-                    session_shortfall_acknowledged: true,
-                    sid: "requesting-browser".to_owned(),
-                },
-            ))
+            .write(|tx| {
+                tx.insert_authorization_request(&AuthorizationRequest::new(
+                    NewAuthorizationRequest {
+                        id: id.to_owned(),
+                        client_id: "lifting".to_owned(),
+                        requested_scopes: vec!["openid".to_owned()],
+                        ttl: chrono::Duration::minutes(5),
+                        kind: RequestKind::AuthorizationCode(CodeRequest {
+                            redirect_uri: Url::parse("https://lifting.example/callback").unwrap(),
+                            code_challenge: "c".repeat(43),
+                            client_state: "state".to_owned(),
+                            sid: "requesting-browser".to_owned(),
+                            launch: None,
+                            launch_bound_patient: None,
+                            pre_approved_scopes: Vec::new(),
+                            decidable_in_requesting_browser: false,
+                            session_shortfall_acknowledged: true,
+                        }),
+                    },
+                    chrono::Utc::now(),
+                ))
+            })
             .unwrap();
     }
 }

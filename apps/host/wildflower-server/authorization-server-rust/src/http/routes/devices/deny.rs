@@ -1,3 +1,4 @@
+use chrono::Utc;
 use std::sync::Arc;
 
 use axum::extract::Path;
@@ -20,6 +21,6 @@ async fn handle_deny_device_consent(
     consents: Scoped<LiveConsentDecider>,
     Path(user_code): Path<String>,
 ) -> Result<Json<ConsentResult>, AuthorizationServerError> {
-    consents.deny_device(&user_code)?;
+    consents.deny_device(&user_code, Utc::now())?;
     Ok(Json(ConsentResult::Denied { redirect: None }))
 }

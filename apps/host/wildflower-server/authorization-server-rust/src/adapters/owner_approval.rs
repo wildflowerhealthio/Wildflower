@@ -1,6 +1,8 @@
 //! The newest-pending-consent republish seam ([`crate::ports`]) adapted onto the bare
 //! [`AuthorizationServerState`]. See the [module docs](super) for the composition layer.
 
+use chrono::Utc;
+
 use crate::domain::grant_store::AuthorizationRequestsTx as _;
 use crate::live_bindings::state::AuthorizationServerState;
 use crate::ports::OwnerApproval;
@@ -44,7 +46,7 @@ impl OwnerApproval for AuthorizationServerState {
     /// changes nothing on the watch above.
     fn republish_active(&self) {
         self.owner_approval_tx.send_if_modified(|current| {
-            let next = match self.store.read(|tx| tx.newest_pending_consent()) {
+            let next = match self.store.read(|tx| tx.newest_pending_consent(Utc::now())) {
                 Ok(next) => next,
                 Err(error) => {
                     tracing::warn!(

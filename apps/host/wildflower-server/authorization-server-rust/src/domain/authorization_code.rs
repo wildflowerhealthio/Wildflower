@@ -4,7 +4,6 @@ use url::Url;
 
 use crate::db::authorization_codes::authorization_codes;
 use crate::db::shared::{JsonStrings, UrlText};
-use crate::domain::authorization_request::{AuthorizationRequest, StartCodeAuthorizationArgs};
 
 /// Lifetime of an `authorization_code`, from issuance (the `/authorize`
 /// fast path or an Owner's consent approval) to the client redeeming it at
@@ -47,104 +46,4 @@ pub struct IssuedAuthorizationCode {
     /// refresh family the code earns record it too, so revoking that browser
     /// session ends them.
     pub sid: String,
-}
-
-/// A pending authorization-code request that is known to be well formed: it's
-/// `Pending`, an `AuthorizationCode` grant flow, unexpired, and carries both a
-/// `redirect_uri` and a PKCE `code_challenge`. Those two are unwrapped once so
-/// callers never re-prove them (parse-don't-validate), and the fields are
-/// private so the unwrapped copies can't drift from the request. Its browser
-/// session (`sid`) is unwrapped the same way: every code-flow request is made
-/// in one. It is what
-/// [`RequestApprover::approve_for_code`](crate::domain::capabilities::writers::RequestApprover::approve_for_code)
-/// approves.
-///
-/// Built by the consent flow's `load_pending_code_request`
-/// ([`from_request`](Self::from_request)) and by the `/authorize` flow when it
-/// parks a new request ([`new_code_authorization`](Self::new_code_authorization))
-/// — the sibling of
-/// the [`IssuedAuthorizationCode`] it exists to mint, so it lives beside it
-/// rather than in a file of its own.
-#[derive(Debug, PartialEq)]
-pub struct PendingCodeRequest {
-    request: AuthorizationRequest,
-    redirect_uri: Url,
-    code_challenge: String,
-    client_state: String,
-    sid: String,
-}
-
-impl PendingCodeRequest {
-    /// Unwrap `request`'s code-flow fields, or `None` when it lacks a
-    /// `redirect_uri`, a `code_challenge`, the client's `state` or a browser
-    /// session (`sid`). The
-    /// caller has already checked the grant type, status, and expiry.
-    #[must_use]
-    pub fn from_request(request: AuthorizationRequest) -> Option<Self> {
-        let redirect_uri = request.redirect_uri.clone()?;
-        let code_challenge = request.code_challenge.clone()?;
-        let client_state = request.client_state.clone()?;
-        let sid = request.sid.clone()?;
-        Some(PendingCodeRequest {
-            request,
-            redirect_uri,
-            code_challenge,
-            client_state,
-            sid,
-        })
-    }
-
-    /// A new pending code-flow request built from `args` — the `/authorize`
-    /// flow's request to park. Its redirect, challenge, client `state` and
-    /// browser session are present by construction.
-    #[must_use]
-    pub fn new_code_authorization(args: StartCodeAuthorizationArgs) -> Self {
-        let redirect_uri = args.redirect_uri.clone();
-        let code_challenge = args.code_challenge.clone();
-        let client_state = args.client_state.clone();
-        let sid = args.sid.clone();
-        PendingCodeRequest {
-            request: AuthorizationRequest::new_code_authorization(args),
-            redirect_uri,
-            code_challenge,
-            client_state,
-            sid,
-        }
-    }
-
-    /// The stored request.
-    #[must_use]
-    pub fn request(&self) -> &AuthorizationRequest {
-        &self.request
-    }
-
-    /// The redirect the request was made with.
-    #[must_use]
-    pub fn redirect_uri(&self) -> &Url {
-        &self.redirect_uri
-    }
-
-    /// The request's PKCE S256 challenge.
-    #[must_use]
-    pub fn code_challenge(&self) -> &str {
-        &self.code_challenge
-    }
-
-    /// The `state` the client sent, which its callback carries back.
-    #[must_use]
-    pub fn client_state(&self) -> &str {
-        &self.client_state
-    }
-
-    /// The browser session the request was made in.
-    #[must_use]
-    pub fn sid(&self) -> &str {
-        &self.sid
-    }
-
-    /// The stored request, giving up the unwrapped fields.
-    #[must_use]
-    pub fn into_request(self) -> AuthorizationRequest {
-        self.request
-    }
 }

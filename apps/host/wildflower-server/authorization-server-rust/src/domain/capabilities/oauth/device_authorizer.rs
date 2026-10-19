@@ -6,14 +6,15 @@
 
 use std::sync::Arc;
 
-use chrono::Duration;
+use chrono::{DateTime, Duration, Utc};
 use url::Url;
 
 use crate::crypto_util::oauth_user_code::generate_oauth_user_code;
 use crate::crypto_util::random_token::generate_authorization_code;
 use crate::domain::authority::AuthenticatedClient;
 use crate::domain::authorization_request::{
-    AuthorizationRequest, StartDeviceAuthorizationArgs, DEVICE_CODE_POLL_INTERVAL,
+    AuthorizationRequest, DeviceRequest, NewAuthorizationRequest, RequestKind,
+    DEVICE_CODE_POLL_INTERVAL,
 };
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::grant_store::AuthorizationRequestsTx;
@@ -100,6 +101,7 @@ impl<S: GrantStore> DeviceAuthorizer<S> {
         authenticated_client: &AuthenticatedClient,
         requested_scopes: Vec<String>,
         device_name: Option<String>,
+        now: DateTime<Utc>,
     ) -> Result<DeviceCodes, DeviceAuthorizationError> {
         if !authenticated_client.allows_scopes(&requested_scopes) {
             return Err(DeviceAuthorizationError::ScopeNotAllowed);
@@ -112,15 +114,19 @@ impl<S: GrantStore> DeviceAuthorizer<S> {
             .write(|tx| -> Result<_, DeviceAuthorizationError> {
                 let user_code = generate_unique_user_code(tx)?
                     .ok_or(DeviceAuthorizationError::UserCodeExhausted)?;
-                tx.insert_authorization_request(&AuthorizationRequest::new_device_authorization(
-                    StartDeviceAuthorizationArgs {
+                tx.insert_authorization_request(&AuthorizationRequest::new(
+                    NewAuthorizationRequest {
                         id: device_code.clone(),
                         client_id: authenticated_client.client_id().to_owned(),
                         requested_scopes,
-                        user_code: user_code.clone(),
-                        device_name,
                         ttl: DEVICE_AUTHORIZATION_TTL,
+                        kind: RequestKind::DeviceCode(DeviceRequest {
+                            user_code: user_code.clone(),
+                            device_name,
+                            last_polled_at: None,
+                        }),
                     },
+                    now,
                 ))?;
                 Ok(user_code)
             })?;
@@ -164,7 +170,6 @@ mod tests {
     use crate::domain::grant_store::*;
 
     use super::*;
-    use crate::domain::authorization_request::{GrantType, RequestStatus};
 
     use crate::domain::test_fake::{
         authenticated_public_client, client, owned_scopes, FakeGrantStore, RecordingOwnerApproval,
@@ -188,11 +193,13 @@ mod tests {
         let client = authenticated(&store);
         let owner_approval = Arc::new(RecordingOwnerApproval::default());
         let authorizer = DeviceAuthorizer::new(store, owner_approval.clone(), device_page());
+        let now = Utc::now();
         let device_codes = authorizer
             .start(
                 &client,
                 owned_scopes(&["patient/Patient.r", "openid"]),
                 Some("Kitchen iPad".to_owned()),
+                now,
             )
             .expect("starts");
         assert_eq!(
@@ -209,14 +216,23 @@ mod tests {
             .authorization_request_by_user_code(&device_codes.user_code)
             .unwrap()
             .expect("parked_request under the user code");
-        assert_eq!(parked_request.id, device_codes.device_code);
-        assert_eq!(parked_request.grant_type, GrantType::DeviceCode);
-        assert_eq!(parked_request.status, RequestStatus::Pending);
         assert_eq!(
-            parked_request.requested_scopes,
-            ["patient/Patient.r", "openid"]
+            parked_request,
+            AuthorizationRequest::new(
+                NewAuthorizationRequest {
+                    id: device_codes.device_code,
+                    client_id: "app".to_owned(),
+                    requested_scopes: owned_scopes(&["patient/Patient.r", "openid"]),
+                    ttl: DEVICE_AUTHORIZATION_TTL,
+                    kind: RequestKind::DeviceCode(DeviceRequest {
+                        user_code: device_codes.user_code,
+                        device_name: Some("Kitchen iPad".to_owned()),
+                        last_polled_at: None,
+                    }),
+                },
+                now,
+            )
         );
-        assert_eq!(parked_request.device_name.as_deref(), Some("Kitchen iPad"));
         assert_eq!(owner_approval.count(), 1);
     }
 
@@ -229,7 +245,7 @@ mod tests {
         let owner_approval = Arc::new(RecordingOwnerApproval::default());
         let authorizer = DeviceAuthorizer::new(store, owner_approval.clone(), device_page());
         assert!(matches!(
-            authorizer.start(&client, owned_scopes(&["system/*.cruds"]), None),
+            authorizer.start(&client, owned_scopes(&["system/*.cruds"]), None, Utc::now()),
             Err(DeviceAuthorizationError::ScopeNotAllowed)
         ));
         assert_eq!(owner_approval.count(), 0);

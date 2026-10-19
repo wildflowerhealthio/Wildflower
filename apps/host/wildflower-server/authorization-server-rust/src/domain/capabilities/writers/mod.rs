@@ -36,15 +36,17 @@ pub(crate) use request_approver::{CodeApproval, CodeAuthority, RequestApprover};
 mod tests {
     use crate::domain::source_guard::{production_lines, relative_to, rs_files_under};
 
-    /// The store methods that grant authority — approving a request, issuing a
-    /// code, recording or widening a grant, widening a client registration,
-    /// reading private key material to sign with, seeding a key, issuing a
-    /// refresh token, starting a browser session. Each is written
-    /// with a leading `.` so `store.x(` and `tx.x(` match while a differently
-    /// named method that merely ends the same way (`has_active_signing_key(`)
-    /// does not.
+    /// The calls that grant authority — approving a request (its entity
+    /// transition, [`AuthorizationRequest::approve`]), issuing a code,
+    /// recording or widening a grant, widening a client registration, reading
+    /// private key material to sign with, seeding a key, issuing a refresh
+    /// token, starting a browser session. Each is written with a leading `.`
+    /// so `request.x(` and `tx.x(` match while a differently named method
+    /// that merely ends the same way (`has_active_signing_key(`) does not.
+    ///
+    /// [`AuthorizationRequest::approve`]: crate::domain::authorization_request::AuthorizationRequest::approve
     const PRIVILEGED_CALLS: &[&str] = &[
-        ".approve_authorization_request(",
+        ".approve(",
         ".issue_authorization_code(",
         ".create_authorization_code_grant(",
         ".update_authorization_code_grant(",
@@ -62,7 +64,8 @@ mod tests {
     /// the `SQLite` adapter and port definition that implement and declare the
     /// methods, the in-memory fake, and the boot-time seeding (the signing-key
     /// seed and the essential client rows come from configuration, not from a
-    /// delegation).
+    /// delegation). The entity defining the approve transition declares it
+    /// (`fn approve(`) and calls it nowhere.
     const ALLOWED_PREFIXES: &[&str] = &[
         "domain/capabilities/writers/",
         "db/",
