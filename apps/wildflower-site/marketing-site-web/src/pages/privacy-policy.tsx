@@ -161,7 +161,7 @@ function PrivacyPolicy(): JSX.Element {
           <PolicyDataCard
             title="Connection log"
             where="On the relay server, hosted by DigitalOcean."
-            when="When your device connects to or disconnects from the relay, the relay refuses a connection, or your tunnel is created, changed or deleted. It names your tunnel and the network address your device connects from. For a refused connection, such as one to your tunnel while your device is offline, it holds the visitor's network address and the address they asked for, or the first few bytes they sent if the connection wasn't encrypted. It never holds anything from a connection that reaches your device."
+            when="When your device connects to or disconnects from the relay, the relay refuses a connection, or your tunnel is created, changed or deleted. It names your tunnel and the network address your device connects from. For a refused connection, such as one to your tunnel while your device is offline, it holds the visitor's network address and the hostname they asked for, or the first few bytes they sent if the connection wasn't encrypted. It never holds anything from a connection that reaches your device."
             keptFor="24 hours. The relay deletes each hour's file a day after its last entry."
             delete="It deletes itself within 24 hours."
           />
