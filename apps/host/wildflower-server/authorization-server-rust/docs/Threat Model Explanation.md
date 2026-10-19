@@ -15,8 +15,8 @@ which this doc assumes rather than repeats.
 | Same-device sign-in code            | The host app, in a URL, briefly                 | 60 s, single use                | Becomes an Owner session.                                                         |
 | Owner browser session               | `__Host-browser_session` on the Owner's browser | 8 h                             | `OWNER_SCOPES`: all records, all approvals, all client management.                |
 | Launcher / Authorization app bearer | Page memory                                     | 15 min, refreshed under a `sid` | `system/*.cruds` + `wildflower/*.cruds`: Owner-equivalent for data and approvals. |
-| Approved browser session            | A paired browser                                | 24 h                            | Exactly the scopes the Owner ticked, `wildflower/launch` by default.              |
-| A SMART app's access token          | The app                                         | 15 min                          | The granted resource scopes, on this origin only.                                 |
+| Approved browser session            | A paired browser                                | 24 h                            | Exactly the scopes the Owner ticked, all of `OWNER_SCOPES` unless unticked.       |
+| A SMART app's access token          | The app                                         | 15 min                          | The granted resource scopes its browser session holds, on this origin only.       |
 | A refresh token                     | The app, if granted `offline_access`            | Family 90 days, rotating        | New access tokens for the same grant.                                             |
 | An authorization code               | The redirect                                    | 60 s, single use                | One token exchange, with the PKCE verifier.                                       |
 | A pairing or request id             | The requesting page                             | 5 min                           | Polls one request's state.                                                        |
@@ -36,6 +36,11 @@ which this doc assumes rather than repeats.
   to the client's registration or `OWNER_SCOPES`; every approval needs the
   approval scopes, and a client trusted on first use needs an explicit
   acknowledgment plus `Client.c` and `Client.u`.
+- **Codes carry no more than the browser's session.** An authorization code
+  holds its approval's resource scopes and `wildflower/launch` only where the
+  session of the browser that made the request covers them, whoever approved,
+  fast path included
+  ([Jargon Explanation](../../../../../slices/authorization/docs/Jargon%20Explanation.md#browser-session)).
 - **Codes and refresh tokens resist theft.** PKCE S256 only, constant-time
   compares, codes bound to client and redirect; refresh families rotate and a
   replay revokes the family; only hashes are stored.
