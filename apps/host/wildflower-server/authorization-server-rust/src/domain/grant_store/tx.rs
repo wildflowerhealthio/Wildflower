@@ -229,6 +229,19 @@ pub trait GrantTx {
         expires_at: DateTime<Utc>,
     ) -> Result<bool, AuthorizationServerError>;
 
+    /// Deny the *pending* code-flow request `id` only while it still waits on
+    /// its browser's limited page (its session shortfall unacknowledged).
+    /// Returns `true` iff such a row was transitioned, so a Cancel and a
+    /// concurrent Continue race to one winner.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the update fails.
+    fn deny_unacknowledged_authorization_request(
+        &mut self,
+        id: &str,
+    ) -> Result<bool, AuthorizationServerError>;
+
     /// Atomically claim an `approved` request for single-use redemption
     /// (`approved` → `expired` only if still `approved`), returning `true` iff
     /// this call won the race (RFC 8628 §3.4).

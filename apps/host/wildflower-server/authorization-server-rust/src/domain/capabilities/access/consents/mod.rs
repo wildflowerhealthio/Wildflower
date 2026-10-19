@@ -41,7 +41,6 @@ mod device;
 mod oauth;
 
 use device::{approve_device_consent, deny_device_consent, load_pending_request_by_user_code};
-pub(crate) use oauth::deny_pending_code_request;
 use oauth::{
     approve_oauth_consent, deny_oauth_consent, load_pending_code_request, ApprovalContext,
 };

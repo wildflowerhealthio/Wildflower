@@ -194,28 +194,11 @@ pub(crate) fn deny_oauth_consent(
     id: &str,
 ) -> Result<ConsentOutcome, AuthorizationServerError> {
     let pending_request = load_pending_code_request(store, id)?;
-    deny_pending_code_request(store, owner_approval, &pending_request, || {
+    deny_consent(store, owner_approval, id, || {
         AuthorizationServerError::OAuthConsentNotFound { id: id.to_owned() }
-    })
-}
-
-/// Deny `pending_request`, a code-flow request its caller loaded, republish
-/// the popup head, and return the client's `error=access_denied` callback. A
-/// request no longer pending by the write is `make_not_found`'s error.
-pub(crate) fn deny_pending_code_request(
-    store: &impl GrantStore,
-    owner_approval: &dyn OwnerApproval,
-    pending_request: &PendingCodeRequest,
-    make_not_found: impl FnOnce() -> AuthorizationServerError,
-) -> Result<ConsentOutcome, AuthorizationServerError> {
-    deny_consent(
-        store,
-        owner_approval,
-        &pending_request.request().id,
-        make_not_found,
-    )?;
+    })?;
     Ok(denial_outcome(
-        pending_request,
+        &pending_request,
         REQUEST_DECLINED_DESCRIPTION,
     ))
 }

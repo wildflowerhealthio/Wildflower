@@ -445,6 +445,31 @@ pub(super) fn acknowledge_session_shortfall(
     Ok(affected == 1)
 }
 
+/// Deny the *pending* request `id` only while its session shortfall is
+/// unacknowledged (it waits on its browser's limited page). Returns `true`
+/// iff such a row was transitioned: a Continue that acknowledged it first
+/// wins, and the request is left as it is.
+pub(super) fn deny_unacknowledged_authorization_request(
+    conn: &mut SqliteConnection,
+    id: &str,
+) -> Result<bool, AuthorizationServerError> {
+    let affected = diesel::update(
+        authorization_requests::table
+            .find(id)
+            .filter(authorization_requests::status.eq(RequestStatus::Pending))
+            .filter(authorization_requests::session_shortfall_acknowledged.eq(false)),
+    )
+    .set(authorization_requests::status.eq(RequestStatus::Denied))
+    .execute(conn)
+    .map_err(|e| {
+        AuthorizationServerError::infrastructure(
+            "deny_unacknowledged_authorization_request failed",
+            e,
+        )
+    })?;
+    Ok(affected == 1)
+}
+
 /// Atomically claim an `approved` request for single-use redemption,
 /// transitioning `approved` → `expired` only if it is still `approved`, and
 /// return `true` iff this call won the race.
@@ -1206,6 +1231,43 @@ mod tests {
         assert!(!store
             .deny_authorization_request("unknown")
             .expect("deny query"));
+    }
+
+    /// The limited page's Cancel denies only a pending request whose session
+    /// shortfall is still unacknowledged; one a Continue acknowledged, or one
+    /// decided, is left as it is.
+    #[test]
+    fn deny_unacknowledged_transitions_only_a_pending_unacknowledged_row() {
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
+        for (id, status, acknowledged, denied) in [
+            ("waiting", RequestStatus::Pending, false, true),
+            ("acknowledged", RequestStatus::Pending, true, false),
+            ("approved", RequestStatus::Approved, false, false),
+        ] {
+            store
+                .insert_authorization_request(&AuthorizationRequest {
+                    session_shortfall_acknowledged: acknowledged,
+                    ..code_request(id, status)
+                })
+                .expect("insert");
+            assert_eq!(
+                store
+                    .deny_unacknowledged_authorization_request(id)
+                    .expect("deny query"),
+                denied,
+                "{id}"
+            );
+            let after = store
+                .authorization_request_by_id(id)
+                .expect("query")
+                .expect("row present");
+            let expected = if denied {
+                RequestStatus::Denied
+            } else {
+                status
+            };
+            assert_eq!(after.status, expected, "{id}");
+        }
     }
 
     /// Raising a pending request for the Owner clears only its

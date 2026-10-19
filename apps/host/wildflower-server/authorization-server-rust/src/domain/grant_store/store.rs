@@ -263,6 +263,19 @@ pub trait GrantStore {
         self.with_connection(|tx| tx.raise_authorization_request_for_owner(id))
     }
 
+    /// See [`GrantTx::deny_unacknowledged_authorization_request`].
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`GrantTx::deny_unacknowledged_authorization_request`]'s
+    /// error.
+    fn deny_unacknowledged_authorization_request(
+        &self,
+        id: &str,
+    ) -> Result<bool, AuthorizationServerError> {
+        self.with_connection(|tx| tx.deny_unacknowledged_authorization_request(id))
+    }
+
     /// See [`GrantTx::consume_approved_authorization_request`].
     ///
     /// # Errors

@@ -240,6 +240,21 @@ impl GrantTx for FakeGrantTx<'_> {
         Ok(true)
     }
 
+    fn deny_unacknowledged_authorization_request(
+        &mut self,
+        id: &str,
+    ) -> Result<bool, AuthorizationServerError> {
+        let mut requests = self.store.authorization_requests.borrow_mut();
+        let Some(request) = requests.get_mut(id) else {
+            return Ok(false);
+        };
+        if request.status != RequestStatus::Pending || request.session_shortfall_acknowledged {
+            return Ok(false);
+        }
+        request.status = RequestStatus::Denied;
+        Ok(true)
+    }
+
     fn consume_approved_authorization_request(
         &mut self,
         id: &str,

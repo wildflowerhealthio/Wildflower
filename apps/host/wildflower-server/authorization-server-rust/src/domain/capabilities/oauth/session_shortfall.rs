@@ -9,8 +9,6 @@
 //! [`CodeAuthorizationStarter::continue_past_session_shortfall`]:
 //! super::CodeAuthorizationStarter::continue_past_session_shortfall
 
-use std::sync::Arc;
-
 use chrono::{DateTime, Utc};
 
 use super::PollingBrowserSession;
@@ -18,9 +16,11 @@ use crate::domain::authority::session_shortfall;
 use crate::domain::authorization_code::PendingCodeRequest;
 use crate::domain::authorization_request::{GrantType, RequestStatus};
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::capabilities::access::consents::{deny_pending_code_request, ConsentOutcome};
+use crate::domain::client_redirect::{
+    build_client_error_redirect_url, REQUEST_DECLINED_DESCRIPTION,
+};
+use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::GrantStore;
-use crate::ports::OwnerApproval;
 
 /// What the limited page says: the app, and the requested scopes the browser's
 /// session lacks.
@@ -65,17 +65,12 @@ pub(crate) fn load_unacknowledged_code_request(
 /// browser session), so its only powers are these two.
 pub(crate) struct SessionShortfall<S: GrantStore> {
     store: S,
-    owner_approval: Arc<dyn OwnerApproval>,
 }
 
 impl<S: GrantStore> SessionShortfall<S> {
-    /// Build it over a store handle and the republish port, lifted from the
-    /// state.
-    pub(crate) fn new(store: S, owner_approval: Arc<dyn OwnerApproval>) -> Self {
-        SessionShortfall {
-            store,
-            owner_approval,
-        }
+    /// Build it over a store handle lifted from the state.
+    pub(crate) fn new(store: S) -> Self {
+        SessionShortfall { store }
     }
 
     /// What request `id` asks for that `browser_session`'s grant doesn't
@@ -104,7 +99,11 @@ impl<S: GrantStore> SessionShortfall<S> {
     }
 
     /// Deny request `id`, made in the browser session `sid`, and return the
-    /// client callback carrying `error=access_denied`.
+    /// client callback carrying `error=access_denied`. The denial holds only
+    /// while the request still waits on the page, so a Continue that
+    /// acknowledged it meanwhile wins and this answers not found. The Owner
+    /// was never told of a request still waiting here, so nothing is
+    /// republished.
     ///
     /// # Errors
     ///
@@ -115,25 +114,18 @@ impl<S: GrantStore> SessionShortfall<S> {
         sid: &str,
         now: DateTime<Utc>,
     ) -> Result<String, AuthorizationServerError> {
-        let not_found =
-            || AuthorizationServerError::AuthorizationRequestNotFound { id: id.to_owned() };
         let pending_request = load_unacknowledged_code_request(&self.store, id, sid, now)?;
-        match deny_pending_code_request(
-            &self.store,
-            self.owner_approval.as_ref(),
-            &pending_request,
-            not_found,
-        )? {
-            ConsentOutcome::Denied {
-                redirect: Some(client_callback),
-            } => Ok(client_callback),
-            ConsentOutcome::Denied { redirect: None } | ConsentOutcome::Approved { .. } => {
-                Err(AuthorizationServerError::infrastructure(
-                    "cancel a request waiting on its limited page",
-                    "a code-flow request carries its client's state",
-                ))
-            }
+        if !self.store.deny_unacknowledged_authorization_request(id)? {
+            return Err(AuthorizationServerError::AuthorizationRequestNotFound {
+                id: id.to_owned(),
+            });
         }
+        Ok(build_client_error_redirect_url(
+            pending_request.redirect_uri(),
+            OAuthErrorCode::AccessDenied,
+            REQUEST_DECLINED_DESCRIPTION,
+            pending_request.client_state(),
+        ))
     }
 }
 
@@ -144,9 +136,8 @@ mod tests {
 
     use super::*;
     use crate::domain::authorization_request::AuthorizationRequest;
-    use crate::domain::test_fake::{
-        client, code_request, FakeGrantStore, RecordingOwnerApproval, FIXTURE_SID,
-    };
+    use crate::domain::test_fake::{client, code_request, FakeGrantStore, FIXTURE_SID};
+    use crate::domain::GrantTx as _;
 
     /// The fixture code request `id`, asking for `patient/Patient.r` and
     /// `patient/Observation.r`, waiting on its limited page.
@@ -173,19 +164,6 @@ mod tests {
         }
     }
 
-    fn session_shortfall_over(
-        store: FakeGrantStore,
-    ) -> (
-        SessionShortfall<FakeGrantStore>,
-        Arc<RecordingOwnerApproval>,
-    ) {
-        let owner_approval = Arc::new(RecordingOwnerApproval::default());
-        (
-            SessionShortfall::new(store, owner_approval.clone()),
-            owner_approval,
-        )
-    }
-
     /// The page reads the app's name and what the session lacks of the
     /// request, in the request's order.
     #[test]
@@ -197,7 +175,7 @@ mod tests {
         store
             .insert_authorization_request(&unacknowledged("req-1"))
             .unwrap();
-        let (session_shortfall, _) = session_shortfall_over(store);
+        let session_shortfall = SessionShortfall::new(store);
         let view = session_shortfall
             .read(
                 "req-1",
@@ -241,7 +219,7 @@ mod tests {
                 ..unacknowledged("denied")
             })
             .unwrap();
-        let (session_shortfall, _) = session_shortfall_over(store);
+        let session_shortfall = SessionShortfall::new(store);
         for (id, sid) in [
             ("waiting", "another-sid"),
             ("acknowledged", FIXTURE_SID),
@@ -271,7 +249,7 @@ mod tests {
         store
             .insert_authorization_request(&unacknowledged("req-1"))
             .unwrap();
-        let (session_shortfall, owner_approval) = session_shortfall_over(store);
+        let session_shortfall = SessionShortfall::new(store);
         let callback = session_shortfall
             .cancel("req-1", FIXTURE_SID, Utc::now())
             .expect("cancels");
@@ -289,7 +267,6 @@ mod tests {
                 .status,
             RequestStatus::Denied
         );
-        assert_eq!(owner_approval.count(), 1);
         assert!(!session_shortfall
             .store
             .session_shortfall_acknowledged_for_client(FIXTURE_SID, "client")
@@ -297,5 +274,36 @@ mod tests {
         assert!(session_shortfall
             .cancel("req-1", FIXTURE_SID, Utc::now())
             .is_err());
+    }
+
+    /// A Cancel that read the request before a Continue acknowledged it
+    /// doesn't deny it after: the Continue wins and the Cancel finds nothing.
+    #[test]
+    fn a_cancel_racing_a_continue_leaves_the_acknowledged_request_alone() {
+        let store = FakeGrantStore::default();
+        store
+            .insert_authorization_request(&unacknowledged("req-1"))
+            .unwrap();
+        let session_shortfall = SessionShortfall::new(store);
+        let now = Utc::now();
+        load_unacknowledged_code_request(&session_shortfall.store, "req-1", FIXTURE_SID, now)
+            .expect("the Cancel reads it first");
+        assert!(session_shortfall
+            .store
+            .with_connection(|tx| tx.acknowledge_session_shortfall("req-1", now))
+            .unwrap());
+        assert!(!session_shortfall
+            .store
+            .deny_unacknowledged_authorization_request("req-1")
+            .unwrap());
+        assert_eq!(
+            session_shortfall
+                .store
+                .authorization_request_by_id("req-1")
+                .unwrap()
+                .expect("present")
+                .status,
+            RequestStatus::Pending
+        );
     }
 }

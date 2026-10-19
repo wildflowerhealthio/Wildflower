@@ -53,11 +53,9 @@ pub(crate) type LiveSessionShortfall = SessionShortfall<SqliteGrantStore>;
 
 impl FromState for LiveSessionShortfall {
     fn from_state(state: &Arc<AuthorizationServerState>) -> Self {
-        let owner_approval: Arc<dyn OwnerApproval> = state.clone();
-        SessionShortfall::new(state.store.clone(), owner_approval)
+        SessionShortfall::new(state.store.clone())
     }
 }
-
 /// Start and poll browser pairings — built by the `/oauth/pair/*` handlers.
 pub(crate) type LiveBrowserPairing = BrowserPairing<SqliteGrantStore>;
 

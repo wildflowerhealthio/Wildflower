@@ -262,6 +262,13 @@ impl GrantTx for SqliteGrantTx<'_> {
         authorization_requests::acknowledge_session_shortfall(self.conn, id, expires_at)
     }
 
+    fn deny_unacknowledged_authorization_request(
+        &mut self,
+        id: &str,
+    ) -> Result<bool, AuthorizationServerError> {
+        authorization_requests::deny_unacknowledged_authorization_request(self.conn, id)
+    }
+
     fn consume_approved_authorization_request(
         &mut self,
         id: &str,
