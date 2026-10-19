@@ -43,7 +43,9 @@ which this doc assumes rather than repeats.
   ([Jargon Explanation](../../../../../slices/authorization/docs/Jargon%20Explanation.md#browser-session)).
   A request asking for more stops at that browser's limited page: nothing is
   issued and the Owner isn't asked until it presses Continue, and only the
-  session that made the request can read, continue or cancel it.
+  session that made the request can read, continue or cancel it. Once a
+  session has pressed Continue for an app, its later requests for that app
+  skip the page; the bound on the code still applies.
 - **Codes and refresh tokens resist theft.** PKCE S256 only, constant-time
   compares, codes bound to client and redirect; refresh families rotate and a
   replay revokes the family; only hashes are stored.
