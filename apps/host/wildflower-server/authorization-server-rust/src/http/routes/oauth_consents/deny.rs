@@ -22,5 +22,5 @@ async fn handle_deny_oauth_consent(
     consents: Scoped<LiveConsentDecider>,
     Path(id): Path<String>,
 ) -> Result<Json<ConsentResult>, AuthorizationServerError> {
-    Ok(Json(consents.deny_oauth(&id, Utc::now())?.into()))
+    Ok(Json(consents.deny_oauth_consent(&id, Utc::now())?.into()))
 }

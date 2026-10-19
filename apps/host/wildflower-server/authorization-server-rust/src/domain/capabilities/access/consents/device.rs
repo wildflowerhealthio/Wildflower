@@ -1,8 +1,8 @@
 //! The device page's consent prompt, keyed by its `user_code`: a device-flow
 //! request, or a browser pairing — [`ConsentReader::device_consent`] and
-//! [`ConsentDecider`]'s `approve_device` / `deny_device`. An approval obtains
-//! a [`DelegatedScopes`] proof and hands it to the writers in the same scope —
-//! the [`RequestApprover`] transitions the request, and for a device the
+//! [`ConsentDecider`]'s `approve_device_consent` / `deny_device_consent`. An
+//! approval obtains a [`DelegatedScopes`] proof and hands it to the writers in
+//! the same scope — the [`RequestApprover`] transitions the request, and for a device the
 //! [`GrantRecorder`] records the standing device grant. A browser pairing
 //! records no grant: the pairing page's poll starts the approved session.
 
@@ -84,7 +84,7 @@ impl<S: GrantStore> ConsentDecider<S> {
     /// for a resource scope beyond the approver's own authority, both writing
     /// nothing; [`DeviceConsentNotFound`](AuthorizationServerError::DeviceConsentNotFound)
     /// when `user_code` names no live prompt.
-    pub(crate) fn approve_device(
+    pub(crate) fn approve_device_consent(
         &self,
         user_code: &str,
         input: ApproveDeviceConsentInput,
@@ -111,7 +111,7 @@ impl<S: GrantStore> ConsentDecider<S> {
     ///
     /// [`AuthorizationServerError::DeviceConsentNotFound`] when `user_code`
     /// names no live prompt.
-    pub(crate) fn deny_device(
+    pub(crate) fn deny_device_consent(
         &self,
         user_code: &str,
         now: DateTime<Utc>,

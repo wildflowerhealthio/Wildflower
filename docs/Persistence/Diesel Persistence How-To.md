@@ -205,9 +205,11 @@ as SQLite. Load-bearing details:
   upsert) can't lose a concurrent writer's union, and an upgrade from a read
   snapshot can't fail with a busy-snapshot error no busy timeout retries.
 - **Side effects follow the commit.** Republishing state another connection
-  reads, signing, and writes to another store happen after the scope closes,
-  on the outcome the scope returned: inside it, another pooled connection
-  would still see the rows as they stood before.
+  reads and writes to another store happen after the scope closes, on the
+  outcome the scope returned: inside it, another pooled connection would still
+  see the rows as they stood before. Pure computation over what the scope read
+  (signing a token with the loaded key) is not a side effect: it runs inside
+  the scope, so its failure rolls the scope back.
 - **A refusal that must keep its writes is an outcome, not an `Err`.** An
   `Err` rolls the scope back; a spent code or a stamped poll is returned as an
   `Ok` refusal (a nested `Result`) and mapped to the error after the commit.

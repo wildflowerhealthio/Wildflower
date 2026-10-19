@@ -703,7 +703,7 @@ mod tests {
             patient: Some("Patient/1".to_owned()),
         };
         let approved = read
-            .approve(approval, Some("Kitchen iPad".to_owned()), now)
+            .approve_device(approval, Some("Kitchen iPad".to_owned()), now)
             .expect("approves");
         assert!(replace(&store, &approved));
         assert_eq!(stored(&store, "dev-1").as_ref(), Some(approved.request()));
@@ -763,7 +763,7 @@ mod tests {
         ));
         assert!(replace(
             &store,
-            &read.approve(approval, None, now).expect("approves")
+            &read.approve_device(approval, None, now).expect("approves")
         ));
         assert!(!replace(
             &store,

@@ -422,12 +422,11 @@ pub fn plant_authorization_code(
         },
         requested_at,
     )
-    .approve(
+    .approve_code(
         Approval {
             granted_scopes: scope_vec.clone(),
             patient: None,
         },
-        None,
         requested_at,
     )
     .expect("a pending request approves")
@@ -484,7 +483,7 @@ pub fn plant_device_request(
     );
     let approve = |request: &AuthorizationRequest| {
         request
-            .approve(
+            .approve_device(
                 Approval {
                     granted_scopes: scope_vec.clone(),
                     patient: None,

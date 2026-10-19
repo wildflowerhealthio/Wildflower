@@ -1,8 +1,8 @@
 //! The authorization-code consent prompt: [`ConsentReader::oauth_consent`],
 //! [`ConsentRaiser::raise_for_owner`], and [`ConsentDecider`]'s
-//! `approve_oauth` / `deny_oauth`. An approval obtains a [`DelegatedScopes`]
-//! proof and hands it to the writers in the same scope — the
-//! [`RequestApprover`] issues the code, the [`GrantRecorder`] records the
+//! `approve_oauth_consent` / `deny_oauth_consent`. An approval obtains a
+//! [`DelegatedScopes`] proof and hands it to the writers in the same scope —
+//! the [`RequestApprover`] issues the code, the [`GrantRecorder`] records the
 //! standing grant and (for a client trusted on first use) the registration —
 //! so the code and the grant land together or not at all.
 
@@ -127,7 +127,7 @@ impl<S: GrantStore> ConsentDecider<S> {
     /// when the request's SMART launch bound another patient;
     /// [`OAuthConsentNotFound`](AuthorizationServerError::OAuthConsentNotFound)
     /// when `id` names no live code-flow prompt.
-    pub(crate) fn approve_oauth(
+    pub(crate) fn approve_oauth_consent(
         &self,
         id: &str,
         input: ApproveOAuthConsentInput,
@@ -144,7 +144,7 @@ impl<S: GrantStore> ConsentDecider<S> {
     ///
     /// [`AuthorizationServerError::OAuthConsentNotFound`] when `id` names no
     /// live code-flow prompt.
-    pub(crate) fn deny_oauth(
+    pub(crate) fn deny_oauth_consent(
         &self,
         id: &str,
         now: DateTime<Utc>,
@@ -159,7 +159,7 @@ impl<S: GrantStore> ConsentDecider<S> {
         })
     }
 
-    /// [`approve_oauth`](Self::approve_oauth)'s flow, inside its write scope
+    /// [`approve_oauth_consent`](Self::approve_oauth_consent)'s flow, inside its write scope
     /// `tx`.
     fn approve_oauth_in(
         &self,

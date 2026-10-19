@@ -14,9 +14,10 @@ use crate::domain::token::{mint_access_token, NewJwtArgs, TokenIssuanceError};
 
 /// Mint access tokens for one server with the signing key that was active
 /// when the minter was loaded; the gate is the [`TokenEntitlement`] proof
-/// [`mint`](Self::mint) takes. Loaded inside the caller's scope (reading the
-/// key's private material is the privileged read) and used after it closes,
-/// so the signing itself holds no lock.
+/// [`mint`](Self::mint) takes. Loaded and used inside the caller's scope:
+/// reading the key's private material is the privileged read, and signing is
+/// pure computation over it, so a signing failure rolls the scope back with
+/// everything else.
 pub(crate) struct AccessTokenMinter<'a> {
     signing_key: SigningKey,
     /// The server's bare origin: both the `iss` and the `aud` claim.

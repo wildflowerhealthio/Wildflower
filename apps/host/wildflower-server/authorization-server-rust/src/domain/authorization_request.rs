@@ -448,38 +448,68 @@ impl AuthorizationRequest {
         })
     }
 
-    /// Approve the request at `now` with `approval`. `requester_name` is the
-    /// device's or browser's name the approver settled on (`None` keeps the
-    /// one the request has); a code request has none.
+    /// Approve the code request at `now` with `approval`.
     ///
     /// # Errors
     ///
-    /// [`TransitionRefused::NotPending`] for a request no longer pending.
-    pub fn approve(
+    /// [`TransitionRefused::NotPending`]; [`TransitionRefused::OtherKind`]
+    /// for a device request or a pairing.
+    pub fn approve_code(
         &self,
         approval: Approval,
-        requester_name: Option<String>,
         now: DateTime<Utc>,
     ) -> Result<RequestTransition, TransitionRefused> {
         self.require_pending(now)?;
-        let mut kind = self.kind.clone();
-        if let Some(requester_name) = requester_name {
-            match &mut kind {
-                RequestKind::DeviceCode(device_request) => {
-                    device_request.device_name = Some(requester_name);
-                }
-                RequestKind::BrowserPairing(pairing_request) => {
-                    pairing_request.browser_name = requester_name;
-                }
-                RequestKind::AuthorizationCode(_) => {}
-            }
-        }
-        Ok(self.transition(AuthorizationRequest {
-            status: RequestStatus::Approved,
-            approval: Some(approval),
-            kind,
-            ..self.clone()
-        }))
+        self.code().ok_or(TransitionRefused::OtherKind)?;
+        Ok(self.approved(approval, self.kind.clone()))
+    }
+
+    /// Approve the device request at `now` with `approval`, naming the device
+    /// `device_name` (`None` keeps the name it has).
+    ///
+    /// # Errors
+    ///
+    /// [`TransitionRefused::NotPending`]; [`TransitionRefused::OtherKind`]
+    /// for another kind.
+    pub fn approve_device(
+        &self,
+        approval: Approval,
+        device_name: Option<String>,
+        now: DateTime<Utc>,
+    ) -> Result<RequestTransition, TransitionRefused> {
+        self.require_pending(now)?;
+        let device_request = self.device().ok_or(TransitionRefused::OtherKind)?;
+        Ok(self.approved(
+            approval,
+            RequestKind::DeviceCode(DeviceRequest {
+                device_name: device_name.or_else(|| device_request.device_name.clone()),
+                ..device_request.clone()
+            }),
+        ))
+    }
+
+    /// Approve the pairing at `now` with `approval`, naming the browser
+    /// `browser_name` (`None` keeps the name it has).
+    ///
+    /// # Errors
+    ///
+    /// [`TransitionRefused::NotPending`]; [`TransitionRefused::OtherKind`]
+    /// for another kind.
+    pub fn approve_pairing(
+        &self,
+        approval: Approval,
+        browser_name: Option<String>,
+        now: DateTime<Utc>,
+    ) -> Result<RequestTransition, TransitionRefused> {
+        self.require_pending(now)?;
+        let pairing_request = self.pairing().ok_or(TransitionRefused::OtherKind)?;
+        Ok(self.approved(
+            approval,
+            RequestKind::BrowserPairing(PairingRequest {
+                browser_name: browser_name.unwrap_or_else(|| pairing_request.browser_name.clone()),
+                ..pairing_request.clone()
+            }),
+        ))
     }
 
     /// Deny the request at `now`.
@@ -633,6 +663,16 @@ impl AuthorizationRequest {
         }
     }
 
+    /// The approved request with `approval`, its kind's payload `kind`.
+    fn approved(&self, approval: Approval, kind: RequestKind) -> RequestTransition {
+        self.transition(AuthorizationRequest {
+            status: RequestStatus::Approved,
+            approval: Some(approval),
+            kind,
+            ..self.clone()
+        })
+    }
+
     /// What the code request carries, when it is pending at `now` and still
     /// waits on its browser's limited page.
     fn waiting_on_limited_page(
@@ -778,17 +818,36 @@ mod tests {
         assert_eq!(request.approval(), None);
     }
 
-    /// Approving records the approval and the requester's settled name, and
-    /// is read in the pending phase; past expiry, or once decided, it is
-    /// refused.
+    /// Approving a code request records the approval, and is read in the
+    /// pending phase; past expiry, or once decided, it is refused.
     #[test]
-    fn approve_records_the_approval_and_the_requester_s_name() {
-        let request = started(device());
-        let approved = request
-            .approve(approval(), Some("Reception iPad".to_owned()), at(1))
-            .expect("approves");
+    fn approve_code_records_the_approval() {
+        let request = started(code(true));
+        let approved = request.approve_code(approval(), at(1)).expect("approves");
         assert_eq!(approved.read_in(), phase(RequestStatus::Pending, true));
         let approved = approved.into_request();
+        assert_eq!(approved.status(), RequestStatus::Approved);
+        assert_eq!(approved.approval(), Some(&approval()));
+        assert_eq!(approved.kind(), request.kind());
+        assert_eq!(
+            request.approve_code(approval(), at(5)),
+            Err(TransitionRefused::NotPending)
+        );
+        assert_eq!(
+            approved.approve_code(approval(), at(1)),
+            Err(TransitionRefused::NotPending)
+        );
+    }
+
+    /// Approving a device request records the approval and the device's
+    /// settled name; `None` keeps the name it has.
+    #[test]
+    fn approve_device_records_the_approval_and_the_device_s_name() {
+        let request = started(device());
+        let approved = request
+            .approve_device(approval(), Some("Reception iPad".to_owned()), at(1))
+            .expect("approves")
+            .into_request();
         assert_eq!(approved.status(), RequestStatus::Approved);
         assert_eq!(approved.approval(), Some(&approval()));
         assert_eq!(
@@ -797,25 +856,53 @@ mod tests {
                 .and_then(|device| device.device_name.as_deref()),
             Some("Reception iPad")
         );
-        let kept_name = request.approve(approval(), None, at(1)).expect("approves");
-        assert_eq!(kept_name.request().kind(), request.kind());
-        let renamed_pairing = started(pairing())
-            .approve(approval(), Some("Ruth's laptop".to_owned()), at(1))
+        let kept_name = request
+            .approve_device(approval(), None, at(1))
             .expect("approves");
+        assert_eq!(kept_name.request().kind(), request.kind());
         assert_eq!(
-            renamed_pairing
-                .request()
+            approved.approve_device(approval(), None, at(1)),
+            Err(TransitionRefused::NotPending)
+        );
+    }
+
+    /// Approving a pairing records the approval and the browser's settled
+    /// name; `None` keeps the name it has.
+    #[test]
+    fn approve_pairing_records_the_approval_and_the_browser_s_name() {
+        let request = started(pairing());
+        let renamed = request
+            .approve_pairing(approval(), Some("Ruth's laptop".to_owned()), at(1))
+            .expect("approves")
+            .into_request();
+        assert_eq!(renamed.status(), RequestStatus::Approved);
+        assert_eq!(renamed.approval(), Some(&approval()));
+        assert_eq!(
+            renamed
                 .pairing()
                 .map(|pairing| pairing.browser_name.as_str()),
             Some("Ruth's laptop")
         );
+        let kept_name = request
+            .approve_pairing(approval(), None, at(1))
+            .expect("approves");
+        assert_eq!(kept_name.request().kind(), request.kind());
+    }
+
+    /// Each kind's approval refuses the other kinds.
+    #[test]
+    fn approvals_refuse_another_kind() {
         assert_eq!(
-            request.approve(approval(), None, at(5)),
-            Err(TransitionRefused::NotPending)
+            started(device()).approve_code(approval(), at(1)),
+            Err(TransitionRefused::OtherKind)
         );
         assert_eq!(
-            approved.approve(approval(), None, at(1)),
-            Err(TransitionRefused::NotPending)
+            started(pairing()).approve_device(approval(), None, at(1)),
+            Err(TransitionRefused::OtherKind)
+        );
+        assert_eq!(
+            started(code(true)).approve_pairing(approval(), None, at(1)),
+            Err(TransitionRefused::OtherKind)
         );
     }
 
@@ -892,7 +979,7 @@ mod tests {
     fn claim_redeems_an_approved_request_once() {
         let request = started(device());
         let approved = request
-            .approve(approval(), None, at(1))
+            .approve_device(approval(), None, at(1))
             .expect("approves")
             .into_request();
         let claimed = approved.claim(at(2)).expect("claims");

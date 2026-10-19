@@ -77,43 +77,52 @@ impl<S: GrantStore> GrantsRevoker<S> {
         GrantsRevoker { store, revocation }
     }
 
-    /// Revoke the grant `id`: delete it and expire its client's refresh-token
-    /// families in one write scope, so standing consent and standing
-    /// credentials die together or not at all, then bump the client's
-    /// revocation epoch, killing its live access tokens — the whole cascade,
-    /// so no `offline_access` client outlives its revoked consent. The epoch
-    /// lives on the revocation store, so its bump follows the scope's commit.
-    /// Runs under this capability's own `Grant.d` gate; the token-kill is part
-    /// of revoking a grant, so it does not additionally require `Token.d`.
+    /// Revoke the grant `id`: bump its client's revocation epoch, killing its
+    /// live access tokens, then delete the grant and expire the client's
+    /// refresh-token families in one write scope, so standing consent and
+    /// standing credentials die together — the whole cascade, so no
+    /// `offline_access` client outlives its revoked consent. Runs under this
+    /// capability's own `Grant.d` gate; the token-kill is part of revoking a
+    /// grant, so it does not additionally require `Token.d`.
+    ///
+    /// The one capability with two scopes: a `read` scope loads the grant for
+    /// its client, the epoch is bumped, and a `write` scope deletes. The epoch
+    /// lives on the revocation store, so its bump can't sit inside this
+    /// store's write lock, and it goes first: a bump that over-revokes on a
+    /// failed delete is recoverable (a retry finds the grant and finishes),
+    /// while a delete that commits without its bump leaves live access tokens
+    /// and a retry that answers 404.
     ///
     /// Both concrete grant tables are hit (grant ids are UUIDs unique across
     /// them, so at most one deletes a row).
     ///
     /// # Errors
     ///
-    /// [`AuthorizationServerError::GrantNotFound`] when no grant has `id`; a
-    /// store or revocation-store failure.
+    /// [`AuthorizationServerError::GrantNotFound`] when no grant has `id`, or
+    /// it vanished between the read and the delete; a store or
+    /// revocation-store failure.
     pub(crate) fn revoke(
         &self,
         id: &str,
         now: DateTime<Utc>,
     ) -> Result<(), AuthorizationServerError> {
-        let client_id = self.store.write(|tx| {
-            let grant = tx.grant_by_id(id)?.ok_or_else(|| grant_not_found(id))?;
-            let removed_code = tx.delete_authorization_code_grant(id)?;
-            let removed_device = tx.delete_device_grant(id)?;
-            tx.expire_refresh_token_families_for_client(grant.client_id(), now)?;
-            if removed_code || removed_device {
-                Ok(grant.client_id().to_owned())
-            } else {
-                Err(grant_not_found(id))
-            }
-        })?;
+        let grant = self
+            .store
+            .read(|tx| tx.grant_by_id(id))?
+            .ok_or_else(|| grant_not_found(id))?;
         self.revocation
-            .revoke_subject_as_of_now(&client_id)
+            .revoke_subject_as_of_now(grant.client_id())
             .map_err(|e| {
                 AuthorizationServerError::infrastructure("revoke_subject_as_of_now failed", e)
-            })
+            })?;
+        self.store.write(|tx| {
+            let removed_code = tx.delete_authorization_code_grant(id)?;
+            let removed_device = tx.delete_device_grant(id)?;
+            if !(removed_code || removed_device) {
+                return Err(grant_not_found(id));
+            }
+            tx.expire_refresh_token_families_for_client(grant.client_id(), now)
+        })
     }
 }
 

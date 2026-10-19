@@ -38,16 +38,22 @@ mod tests {
     use crate::domain::source_guard::{production_lines, relative_to, rs_files_under};
 
     /// The calls that grant authority — approving a request (its entity
-    /// transition, [`AuthorizationRequest::approve`]), issuing a code,
+    /// transitions, one per kind: [`AuthorizationRequest::approve_code`],
+    /// [`AuthorizationRequest::approve_device`],
+    /// [`AuthorizationRequest::approve_pairing`]), issuing a code,
     /// recording or widening a grant, widening a client registration, reading
     /// private key material to sign with, seeding a key, issuing a refresh
     /// token, starting a browser session. Each is written with a leading `.`
     /// so `request.x(` and `tx.x(` match while a differently named method
     /// that merely ends the same way (`has_active_signing_key(`) does not.
     ///
-    /// [`AuthorizationRequest::approve`]: crate::domain::authorization_request::AuthorizationRequest::approve
+    /// [`AuthorizationRequest::approve_code`]: crate::domain::authorization_request::AuthorizationRequest::approve_code
+    /// [`AuthorizationRequest::approve_device`]: crate::domain::authorization_request::AuthorizationRequest::approve_device
+    /// [`AuthorizationRequest::approve_pairing`]: crate::domain::authorization_request::AuthorizationRequest::approve_pairing
     const PRIVILEGED_CALLS: &[&str] = &[
-        ".approve(",
+        ".approve_code(",
+        ".approve_device(",
+        ".approve_pairing(",
         ".issue_authorization_code(",
         ".create_authorization_code_grant(",
         ".update_authorization_code_grant(",
@@ -65,8 +71,8 @@ mod tests {
     /// the `SQLite` adapter and port definition that implement and declare the
     /// methods, the in-memory fake, and the boot-time seeding (the signing-key
     /// seed and the essential client rows come from configuration, not from a
-    /// delegation). The entity defining the approve transition declares it
-    /// (`fn approve(`) and calls it nowhere.
+    /// delegation). The entity defining the approve transitions declares them
+    /// (`fn approve_code(`, …) and calls them nowhere.
     const ALLOWED_PREFIXES: &[&str] = &[
         "domain/capabilities/writers/",
         "db/",

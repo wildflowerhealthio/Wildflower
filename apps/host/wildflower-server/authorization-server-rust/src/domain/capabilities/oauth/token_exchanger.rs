@@ -2,9 +2,11 @@
 //! §3.4, RFC 6749 §6). Each runs in one write scope: check the client may use
 //! the grant type, obtain the redemption proof, load the signing key, and (for
 //! the two session-establishing grants) start a refresh family, or (for a
-//! refresh) rotate. The token is signed after the scope commits. The proof is
-//! the hand-off between the validation half and the writers, so a token is
-//! never minted for a grant that didn't redeem.
+//! refresh) rotate, then sign the token. Signing runs inside the scope, so a
+//! signing failure rolls it back: the code stays unspent, the device request
+//! unclaimed, the refresh token un-rotated. The proof is the hand-off between
+//! the validation half and the writers, so a token is never minted for a grant
+//! that didn't redeem.
 
 use std::sync::Arc;
 
@@ -33,20 +35,9 @@ pub(crate) struct IssuedTokens {
     pub(crate) patient: Option<String>,
 }
 
-/// What an exchange's write scope committed: the proof the token is minted
-/// under, the minter holding the signing key, and the refresh token the
-/// exchange issued, if any. Signed into [`IssuedTokens`] once the scope has
-/// closed.
-struct CommittedExchange<'a, P> {
-    proof: P,
-    minter: AccessTokenMinter<'a>,
-    refresh_token: Option<String>,
-}
-
-/// A write scope's answer: the committed exchange, or the refusal (the inner
+/// A write scope's answer: the issued tokens, or the refusal (the inner
 /// `Err`) whose writes the scope keeps. The outer `Err` rolls the scope back.
-type ExchangeOutcome<'a, P> =
-    Result<Result<CommittedExchange<'a, P>, TokenExchangeError>, TokenExchangeError>;
+type ExchangeOutcome = Result<Result<IssuedTokens, TokenExchangeError>, TokenExchangeError>;
 
 /// Exchange grants for tokens on behalf of an [`AuthenticatedClient`]. Generic
 /// over the store port so it's unit-testable against the fake; the binding
@@ -89,15 +80,8 @@ impl<S: GrantStore> TokenExchanger<S> {
         now: DateTime<Utc>,
     ) -> Result<IssuedTokens, TokenExchangeError> {
         ensure_grant_type_allowed(authenticated_client, AllowedGrantType::AuthorizationCode)?;
-        let committed = self
-            .store
-            .write(|tx| self.redeem_code_in(tx, authenticated_client, presented, now))??;
-        sign(
-            &committed,
-            TokenEntitlement::AuthorizationCode(&committed.proof),
-            GrantRedemption::AuthorizationCode(&committed.proof).granted_scopes(),
-            committed.proof.patient(),
-        )
+        self.store
+            .write(|tx| self.redeem_code_in(tx, authenticated_client, presented, now))?
     }
 
     /// Poll a device request (RFC 8628 §3.4) and, once it is approved and this
@@ -115,15 +99,8 @@ impl<S: GrantStore> TokenExchanger<S> {
         now: DateTime<Utc>,
     ) -> Result<IssuedTokens, TokenExchangeError> {
         ensure_grant_type_allowed(authenticated_client, AllowedGrantType::DeviceCode)?;
-        let committed = self.store.write(|tx| {
-            self.claim_device_request_in(tx, authenticated_client, device_code, now)
-        })??;
-        sign(
-            &committed,
-            TokenEntitlement::DeviceCode(&committed.proof),
-            committed.proof.granted_scopes(),
-            committed.proof.patient(),
-        )
+        self.store
+            .write(|tx| self.claim_device_request_in(tx, authenticated_client, device_code, now))?
     }
 
     /// Trade a live refresh token for a fresh access token and the refresh
@@ -143,15 +120,9 @@ impl<S: GrantStore> TokenExchanger<S> {
         now: DateTime<Utc>,
     ) -> Result<IssuedTokens, TokenExchangeError> {
         ensure_grant_type_allowed(authenticated_client, AllowedGrantType::RefreshToken)?;
-        let committed = self.store.write(|tx| {
+        self.store.write(|tx| {
             self.rotate_refresh_token_in(tx, authenticated_client, presented_refresh_token, now)
-        })??;
-        sign(
-            &committed,
-            TokenEntitlement::RefreshToken(&committed.proof),
-            committed.proof.granted_scopes(),
-            committed.proof.patient(),
-        )
+        })?
     }
 
     /// [`exchange_authorization_code`](Self::exchange_authorization_code)'s
@@ -163,19 +134,21 @@ impl<S: GrantStore> TokenExchanger<S> {
         authenticated_client: &AuthenticatedClient,
         presented: &PresentedAuthorizationCode<'_>,
         now: DateTime<Utc>,
-    ) -> ExchangeOutcome<'_, RedeemedAuthorizationCode> {
+    ) -> ExchangeOutcome {
         let redeemed_code =
             match RedeemedAuthorizationCode::redeem(tx, authenticated_client, presented, now)? {
                 Ok(redeemed_code) => redeemed_code,
                 Err(refusal) => return Ok(Err(refusal)),
             };
-        let (minter, refresh_token) =
-            self.prepare_issuance(tx, GrantRedemption::AuthorizationCode(&redeemed_code), now)?;
-        Ok(Ok(CommittedExchange {
-            proof: redeemed_code,
-            minter,
+        let redemption = GrantRedemption::AuthorizationCode(&redeemed_code);
+        let (minter, refresh_token) = self.prepare_issuance(tx, redemption, now)?;
+        issue(
+            &minter,
+            TokenEntitlement::AuthorizationCode(&redeemed_code),
+            redemption.granted_scopes(),
+            redeemed_code.patient(),
             refresh_token,
-        }))
+        )
     }
 
     /// [`exchange_device_code`](Self::exchange_device_code)'s flow, inside its
@@ -187,7 +160,7 @@ impl<S: GrantStore> TokenExchanger<S> {
         authenticated_client: &AuthenticatedClient,
         device_code: &str,
         now: DateTime<Utc>,
-    ) -> ExchangeOutcome<'_, ConsumedDeviceRequest> {
+    ) -> ExchangeOutcome {
         let consumed_device_request =
             match ConsumedDeviceRequest::consume(tx, authenticated_client, device_code, now)? {
                 Ok(consumed_device_request) => consumed_device_request,
@@ -198,11 +171,13 @@ impl<S: GrantStore> TokenExchanger<S> {
             GrantRedemption::DeviceCode(&consumed_device_request),
             now,
         )?;
-        Ok(Ok(CommittedExchange {
-            proof: consumed_device_request,
-            minter,
+        issue(
+            &minter,
+            TokenEntitlement::DeviceCode(&consumed_device_request),
+            consumed_device_request.granted_scopes(),
+            consumed_device_request.patient(),
             refresh_token,
-        }))
+        )
     }
 
     /// [`exchange_refresh_token`](Self::exchange_refresh_token)'s flow, inside
@@ -214,7 +189,7 @@ impl<S: GrantStore> TokenExchanger<S> {
         authenticated_client: &AuthenticatedClient,
         presented_refresh_token: &str,
         now: DateTime<Utc>,
-    ) -> ExchangeOutcome<'_, ValidatedRefreshToken> {
+    ) -> ExchangeOutcome {
         let validated_refresh_token = match ValidatedRefreshToken::validate(
             tx,
             self.revocation.as_ref(),
@@ -232,11 +207,13 @@ impl<S: GrantStore> TokenExchanger<S> {
                 Ok(successor) => successor,
                 Err(refusal) => return Ok(Err(refusal)),
             };
-        Ok(Ok(CommittedExchange {
-            proof: validated_refresh_token,
-            minter,
-            refresh_token: Some(successor),
-        }))
+        issue(
+            &minter,
+            TokenEntitlement::RefreshToken(&validated_refresh_token),
+            validated_refresh_token.granted_scopes(),
+            validated_refresh_token.patient(),
+            Some(successor),
+        )
     }
 
     /// Load the signing key, then start `redemption`'s refresh family if the
@@ -269,23 +246,25 @@ fn ensure_grant_type_allowed(
     }
 }
 
-/// Sign `committed`'s access token under `entitlement` (its `iss` and `aud`
-/// are both the server's origin; see `docs/Origins/Explanation.md`), and
-/// answer with it, the exchange's refresh token, and the `granted_scopes` and
-/// `patient` the response reports.
-fn sign<P>(
-    committed: &CommittedExchange<'_, P>,
+/// Sign the access token under `entitlement` (its `iss` and `aud` are both
+/// the server's origin; see `docs/Origins/Explanation.md`), and answer with
+/// it, the exchange's `refresh_token`, and the `granted_scopes` and `patient`
+/// the response reports. A signing failure is the outer `Err`, rolling the
+/// exchange's scope back.
+fn issue(
+    minter: &AccessTokenMinter<'_>,
     entitlement: TokenEntitlement<'_>,
     granted_scopes: &[String],
     patient: Option<&str>,
-) -> Result<IssuedTokens, TokenExchangeError> {
-    Ok(IssuedTokens {
-        access_token: committed.minter.mint(entitlement)?,
+    refresh_token: Option<String>,
+) -> ExchangeOutcome {
+    Ok(Ok(IssuedTokens {
+        access_token: minter.mint(entitlement)?,
         expires_in: ACCESS_TOKEN_TTL.num_seconds(),
         granted_scopes: granted_scopes.to_vec(),
-        refresh_token: committed.refresh_token.clone(),
+        refresh_token,
         patient: patient.map(str::to_owned),
-    })
+    }))
 }
 
 #[cfg(test)]

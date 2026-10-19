@@ -122,7 +122,7 @@ impl<'a, T: GrantTx> RequestApprover<'a, T> {
             granted_scopes: authorized_scopes.to_vec(),
             patient: patient.map(str::to_owned),
         };
-        if !write_transition(self.tx, request.approve(approval, None, now))? {
+        if !write_transition(self.tx, request.approve_code(approval, now))? {
             return Ok(CodeApproval::RequestNotPending);
         }
         let authorization_code = IssuedAuthorizationCode {
@@ -167,7 +167,7 @@ impl<'a, T: GrantTx> RequestApprover<'a, T> {
         };
         write_transition(
             self.tx,
-            device_request.approve(approval, device_name.map(str::to_owned), now),
+            device_request.approve_device(approval, device_name.map(str::to_owned), now),
         )
     }
 
@@ -194,7 +194,7 @@ impl<'a, T: GrantTx> RequestApprover<'a, T> {
         };
         write_transition(
             self.tx,
-            pairing_request.approve(approval, browser_name.map(str::to_owned), now),
+            pairing_request.approve_pairing(approval, browser_name.map(str::to_owned), now),
         )
     }
 }

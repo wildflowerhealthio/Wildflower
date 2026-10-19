@@ -46,7 +46,8 @@ pub(crate) enum SameDeviceSignInError {
     /// The Owner session couldn't be stored. The code is spent.
     SessionNotStored(AuthorizationServerError),
     /// The token couldn't be minted (no signing key, a signing or store
-    /// failure). The code is spent.
+    /// failure). The session was rolled back with it; the code, held in
+    /// memory, is spent.
     Issuance(TokenIssuanceError),
 }
 
@@ -98,8 +99,7 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
     /// token, both lasting [`OWNER_SESSION_TTL`], to go on to `next`.
     /// A `next` that isn't allowed, or a disabled browser-session client, is
     /// refused before the code is touched, so the code stays redeemable. The
-    /// session is stored in one write scope, and its token signed once that
-    /// has committed.
+    /// session is stored and its token signed in one write scope.
     ///
     /// # Errors
     ///
@@ -122,7 +122,7 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
             .ok_or(SameDeviceSignInError::Refused(
                 SignInRefusal::RedirectNotAllowed,
             ))?;
-        let (redeemed_sign_in_code, minter) = self.store.write(|tx| {
+        let session_token = self.store.write(|tx| {
             if browser_session_client_is_disabled(tx)? {
                 return Err(SameDeviceSignInError::Refused(
                     SignInRefusal::BrowserSessionClientDisabled,
@@ -141,14 +141,12 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
             BrowserSessionWriter::within(tx)
                 .start_owner_session(&redeemed_sign_in_code)
                 .map_err(SameDeviceSignInError::SessionNotStored)?;
-            let minter =
-                AccessTokenMinter::with_active_key(tx, &self.server_origin, OWNER_SESSION_TTL)
-                    .map_err(SameDeviceSignInError::Issuance)?;
-            Ok((redeemed_sign_in_code, minter))
+            AccessTokenMinter::with_active_key(tx, &self.server_origin, OWNER_SESSION_TTL)
+                .and_then(|minter| {
+                    minter.mint(TokenEntitlement::SameDeviceSignIn(&redeemed_sign_in_code))
+                })
+                .map_err(SameDeviceSignInError::Issuance)
         })?;
-        let session_token = minter
-            .mint(TokenEntitlement::SameDeviceSignIn(&redeemed_sign_in_code))
-            .map_err(SameDeviceSignInError::Issuance)?;
         Ok(SignedIn {
             session_token,
             redirect,

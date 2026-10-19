@@ -16,7 +16,7 @@ use crate::domain::authority::{
 use crate::domain::authorization_code::{IssuedAuthorizationCode, AUTHORIZATION_CODE_TTL};
 use crate::domain::authorization_request::{
     Approval, AuthorizationRequest, CodeRequest, DeviceRequest, NewAuthorizationRequest,
-    RequestKind, RequestStatus,
+    RequestKind, RequestStatus, RequestTransition, TransitionRefused,
 };
 use crate::domain::browser_session::BrowserSession;
 use crate::domain::client::{AllowedGrantType, Client, ClientKind, RegistrationSource};
@@ -99,17 +99,17 @@ pub(crate) fn with_status(
 ) -> AuthorizationRequest {
     let decided_at = request.expires_at() - Duration::milliseconds(1);
     let approve = |request: &AuthorizationRequest| {
-        request
-            .approve(
-                Approval {
-                    granted_scopes: request.requested_scopes().to_vec(),
-                    patient: None,
-                },
-                None,
-                decided_at,
-            )
-            .expect("a pending fixture approves")
-            .into_request()
+        approve_as_its_kind(
+            request,
+            Approval {
+                granted_scopes: request.requested_scopes().to_vec(),
+                patient: None,
+            },
+            None,
+            decided_at,
+        )
+        .expect("a pending fixture approves")
+        .into_request()
     };
     match status {
         RequestStatus::Pending => request,
@@ -162,16 +162,16 @@ pub(crate) fn approve_stored(
         .authorization_request_by_id(id)
         .unwrap()
         .expect("the request is stored");
-    let approved = request
-        .approve(
-            Approval {
-                granted_scopes: owned_scopes(granted_scopes),
-                patient: None,
-            },
-            requester_name.map(str::to_owned),
-            Utc::now(),
-        )
-        .expect("the stored request is pending");
+    let approved = approve_as_its_kind(
+        &request,
+        Approval {
+            granted_scopes: owned_scopes(granted_scopes),
+            patient: None,
+        },
+        requester_name.map(str::to_owned),
+        Utc::now(),
+    )
+    .expect("the stored request is pending");
     assert!(store.tx().replace_authorization_request(&approved).unwrap());
 }
 
@@ -374,5 +374,21 @@ impl RevocationCheck for NothingRevoked {
         _subject: &str,
     ) -> Result<bool, String> {
         Ok(false)
+    }
+}
+
+/// Approve `request` at `now` with `approval` through its own kind's
+/// transition, naming its device or browser `requester_name` (`None` keeps
+/// its own; a code request has none).
+fn approve_as_its_kind(
+    request: &AuthorizationRequest,
+    approval: Approval,
+    requester_name: Option<String>,
+    now: DateTime<Utc>,
+) -> Result<RequestTransition, TransitionRefused> {
+    match request.kind() {
+        RequestKind::AuthorizationCode(_) => request.approve_code(approval, now),
+        RequestKind::DeviceCode(_) => request.approve_device(approval, requester_name, now),
+        RequestKind::BrowserPairing(_) => request.approve_pairing(approval, requester_name, now),
     }
 }

@@ -313,7 +313,7 @@ mod tests {
         approver_grant: &Grant,
         generate_code: impl FnOnce() -> String,
     ) -> Result<ConsentOutcome, AuthorizationServerError> {
-        decider(store, owner_approval, approver_grant).approve_oauth(
+        decider(store, owner_approval, approver_grant).approve_oauth_consent(
             id,
             input,
             generate_code,
@@ -330,7 +330,7 @@ mod tests {
         approver_grant: &Grant,
         now: DateTime<Utc>,
     ) -> Result<ConsentOutcome, AuthorizationServerError> {
-        decider(store, owner_approval, approver_grant).approve_device(user_code, input, now)
+        decider(store, owner_approval, approver_grant).approve_device_consent(user_code, input, now)
     }
 
     /// Deny a device-page consent through [`decider`].
@@ -339,7 +339,7 @@ mod tests {
         owner_approval: &Arc<RecordingOwnerApproval>,
         user_code: &str,
     ) -> Result<(), AuthorizationServerError> {
-        decider(store, owner_approval, &owner_grant()).deny_device(user_code, Utc::now())
+        decider(store, owner_approval, &owner_grant()).deny_device_consent(user_code, Utc::now())
     }
 
     /// A pending browser pairing `id` from the browser-session client, keyed

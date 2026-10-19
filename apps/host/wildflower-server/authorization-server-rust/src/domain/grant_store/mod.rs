@@ -14,11 +14,14 @@
 //!   error; what an outcome means is decided in `domain::capabilities`.
 //!
 //! A capability method reads as: open the scope, run the flow inside it to an
-//! outcome value, then act on the outcome outside it (republish the newest
-//! pending consent, sign a token, revoke on the revocation store). A side
-//! effect inside the scope would run before the commit: a republish reads the
-//! store on another pooled connection, which in WAL would still see the rows
-//! as they stood before this scope.
+//! outcome value, then act on the outcome outside it. What acts outside is a
+//! side effect: republishing the newest pending consent, and writing to
+//! another store (the revocation store's epochs). A side effect inside the
+//! scope would run before the commit: a republish reads the store on another
+//! pooled connection, which in WAL would still see the rows as they stood
+//! before this scope. Signing a token is not a side effect — it is pure
+//! computation over the key the scope loaded — so it runs inside the scope,
+//! and a signing failure rolls the scope back.
 //!
 //! The `SQLite` adapter is `crate::db`'s `SqliteGrantStore`, which implements
 //! each concern trait in that concern's `db/` file; the in-memory

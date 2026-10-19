@@ -5,7 +5,9 @@
 //! it records no grant and no refresh family. Once the Owner approves, the
 //! poll claims the request ([`ClaimedBrowserPairing`]), stores the approved
 //! session it starts, and mints that session's token, which the browser holds
-//! as its browser session cookie.
+//! as its browser session cookie — all in the poll's one write scope, so a
+//! session that can't be stored or a token that can't be minted leaves the
+//! pairing unclaimed for the next poll.
 //!
 //! The poll is bound to the request by its pairing code, a 256-bit secret
 //! that only the page that started the request holds, as a device holds its
@@ -112,8 +114,8 @@ pub(crate) enum BrowserPairingPollError {
     /// The approved session couldn't be stored; the claim was rolled back
     /// with it.
     SessionNotStored(AuthorizationServerError),
-    /// The session's token couldn't be minted: before the claim committed
-    /// when no signing key could be loaded, after it when signing failed.
+    /// The session's token couldn't be minted (no signing key, or signing
+    /// failed); the claim was rolled back with it.
     Issuance(TokenIssuanceError),
 }
 
@@ -211,8 +213,8 @@ impl<S: GrantStore> BrowserPairing<S> {
     /// names its browser `browser_name` (blank keeps the name it has). While
     /// it is pending the poll is stamped, throttled to the poll interval, and
     /// the name recorded; once approved, the first poll claims it and stores
-    /// the approved session it starts, and the session's token is minted once
-    /// that has committed.
+    /// the approved session it starts, and mints the session's token, in the
+    /// same scope.
     ///
     /// # Errors
     ///
@@ -249,28 +251,22 @@ impl<S: GrantStore> BrowserPairing<S> {
                 self.owner_approval.republish_active();
                 Ok(BrowserPairingStatus::Pending)
             }
-            PolledPairing::Claimed {
-                claimed_pairing,
-                minter,
-            } => {
-                let session_token = minter
-                    .mint(TokenEntitlement::BrowserPairing(&claimed_pairing))
-                    .map_err(BrowserPairingPollError::Issuance)?;
+            PolledPairing::Claimed { session_token } => {
                 Ok(BrowserPairingStatus::Approved { session_token })
             }
         }
     }
 
     /// Claim the approved `pairing_request` and store the approved session it
-    /// starts, inside the poll's scope `tx`, and load the key its token is
-    /// signed with. A request another poll claimed first is
+    /// starts, and mint its token, inside the poll's scope `tx`. A request
+    /// another poll claimed first is
     /// [`Expired`](BrowserPairingStatus::Expired).
     fn claim_approved_session(
         &self,
         tx: &mut impl GrantTx,
         pairing_request: &AuthorizationRequest,
         now: DateTime<Utc>,
-    ) -> Result<PolledPairing<'_>, BrowserPairingPollError> {
+    ) -> Result<PolledPairing, BrowserPairingPollError> {
         let Some(claimed_pairing) =
             ClaimedBrowserPairing::claim(tx, pairing_request, APPROVED_SESSION_TTL, now)?
         else {
@@ -279,40 +275,35 @@ impl<S: GrantStore> BrowserPairing<S> {
         BrowserSessionWriter::within(tx)
             .start_approved_session(&claimed_pairing)
             .map_err(BrowserPairingPollError::SessionNotStored)?;
-        let minter =
+        let session_token =
             AccessTokenMinter::with_active_key(tx, &self.server_origin, APPROVED_SESSION_TTL)
+                .and_then(|minter| minter.mint(TokenEntitlement::BrowserPairing(&claimed_pairing)))
                 .map_err(BrowserPairingPollError::Issuance)?;
-        Ok(PolledPairing::Claimed {
-            claimed_pairing,
-            minter: Box::new(minter),
-        })
+        Ok(PolledPairing::Claimed { session_token })
     }
 }
 
 /// What a poll's scope did with a pairing.
-enum PolledPairing<'a> {
+enum PolledPairing {
     /// The poll's answer needs nothing more.
     Answered(BrowserPairingStatus),
     /// The pending pairing was stamped and took a new name, which the newest
     /// pending consent is republished for.
     Renamed,
-    /// The approved pairing was claimed and its session stored: the session's
-    /// token is signed with `minter`.
-    Claimed {
-        claimed_pairing: ClaimedBrowserPairing,
-        minter: Box<AccessTokenMinter<'a>>,
-    },
+    /// The approved pairing was claimed, its session stored, and the
+    /// session's token minted.
+    Claimed { session_token: String },
 }
 
 /// Throttle and stamp a poll of the pending pairing `request` in `tx`,
 /// recording `browser_name` when it is a new one (blank keeps the name it
 /// has).
-fn record_poll<'a>(
+fn record_poll(
     tx: &mut impl AuthorizationRequestsTx,
     request: &AuthorizationRequest,
     browser_name: &str,
     now: DateTime<Utc>,
-) -> Result<PolledPairing<'a>, BrowserPairingPollError> {
+) -> Result<PolledPairing, BrowserPairingPollError> {
     let Some(pairing_request) = request.pairing() else {
         return Err(BrowserPairingPollError::NotFound);
     };

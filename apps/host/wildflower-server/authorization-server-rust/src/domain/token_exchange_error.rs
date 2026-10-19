@@ -85,7 +85,8 @@ pub(crate) enum TokenExchangeError {
     AuthorizationPending,
     AccessDenied,
     SlowDown,
-    /// The token could not be minted after the grant was accepted.
+    /// The token could not be minted after the grant was accepted; the
+    /// exchange's scope was rolled back with it, so nothing was consumed.
     Issuance(TokenIssuanceError),
     /// A store read or write failed.
     Store(AuthorizationServerError),
