@@ -750,18 +750,6 @@ always name one: the session of the browser that made the request, not of
 whichever browser approved it, so revoking the browser the app runs in is
 what ends it.
 
-A code carries only what both its approval and that session allow: the
-approval's scopes (the Owner's ticks, or the standing grant's coverage on the
-[fast path](#grant)) less every resource scope and `wildflower/launch` the
-session doesn't cover. Coverage is the rule an approver is held to: either
-SMART spelling, and `system/*` covering `patient/*` and `user/*`. Identity and
-session markers (`openid`, `fhirUser`, `launch`, `launch/patient`,
-`offline_access`) pass through. The request and the standing grant record the
-approval as made; the code's tokens and refresh family take the code's
-scopes. So a browser paired without `patient/Observation.rs` earns no app a
-code for it, whoever approves, and an Owner session, holding `OWNER_SCOPES`,
-bounds nothing. A browser's launch from Home asks only for `wildflower/launch`:
-what the app may then do is bounded here, at its own `/oauth/authorize`.
 **Revoking** a session sets its `revoked_at` and ends all of them: the token
 verifier refuses a token whose `sid` names a revoked session, on the
 `/authorization` gates and the FHIR server alike, and refresh redemption
@@ -771,6 +759,19 @@ rather than a code. A `sid` that names no row is treated as revoked. Whether a s
 refresh policy; today it doesn't. Tokens, requests and families with no
 `sid` (the host app's in-process tokens, the device flow) have no session to
 check.
+
+A code carries only what both its approval and the session of the browser
+that made its request allow: the approval's scopes (the Owner's ticks, or the standing grant's coverage on the
+[fast path](#grant)) less every resource scope and `wildflower/launch` the
+session doesn't cover. Coverage is the rule an approver is held to: either
+SMART spelling, and `system/*` covering `patient/*` and `user/*`. Identity and
+session markers (`openid`, `fhirUser`, `launch`, `launch/patient`,
+`offline_access`) pass through. The request and the standing grant record the
+approval as made; the code's tokens and refresh family take the code's
+scopes. So a browser paired without `patient/Observation.rs` earns no app a
+code for it, whoever approves, and an Owner session, holding `OWNER_SCOPES`,
+bounds nothing. Launching an app from Home needs only `wildflower/launch`:
+what the app may then do is bounded here, at its own `/oauth/authorize`.
 
 **Last seen** (`last_seen_at`) is when the session was last in use. Signing in,
 or pairing, sets it, and two uses move it: the host's cookie→bearer layer accepting the
