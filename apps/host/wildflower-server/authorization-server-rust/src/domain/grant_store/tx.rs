@@ -215,15 +215,19 @@ pub trait GrantTx {
     ) -> Result<bool, AuthorizationServerError>;
 
     /// Record that the browser that made the *pending* code-flow request `id`
-    /// goes on although its browser session falls short of what it asks for.
-    /// Returns `true` iff a pending row still waiting on that acknowledgement
-    /// was transitioned. Decides nothing.
+    /// goes on although its browser session falls short of what it asks for,
+    /// and move the request's `expires_at` to `expires_at`. Returns `true` iff
+    /// a pending row still waiting on that acknowledgement was transitioned.
+    /// Decides nothing.
     ///
     /// # Errors
     ///
     /// [`AuthorizationServerError::Infrastructure`] if the update fails.
-    fn acknowledge_session_shortfall(&mut self, id: &str)
-        -> Result<bool, AuthorizationServerError>;
+    fn acknowledge_session_shortfall(
+        &mut self,
+        id: &str,
+        expires_at: DateTime<Utc>,
+    ) -> Result<bool, AuthorizationServerError>;
 
     /// Atomically claim an `approved` request for single-use redemption
     /// (`approved` → `expired` only if still `approved`), returning `true` iff

@@ -370,7 +370,8 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
 
     /// Go on with request `id`, which waits on the limited page of the
     /// browser holding the browser session `sid`: acknowledge its session
-    /// shortfall, remember that `sid` went on for the request's client (so its later
+    /// shortfall, give it a fresh [`AUTHORIZATION_REQUEST_TTL`] from `now`,
+    /// remember that `sid` went on for the request's client (so its later
     /// requests for that client skip the page), and take the branch
     /// [`start`](Self::start) would have taken had the session held all it
     /// asks for. Its standing-grant coverage is
@@ -420,7 +421,7 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
             now,
             || {
                 let acknowledged = self.store.transaction(|tx| {
-                    if !tx.acknowledge_session_shortfall(id)? {
+                    if !tx.acknowledge_session_shortfall(id, now + AUTHORIZATION_REQUEST_TTL)? {
                         return Ok(false);
                     }
                     tx.record_session_shortfall_acknowledgement(sid, &request.client_id)?;
@@ -1529,8 +1530,8 @@ mod tests {
     }
 
     /// With no standing grant, going on raises the request for the Owner once
-    /// the start limit admits it; refused, the request still waits on the
-    /// limited page and nothing is raised.
+    /// the start limit admits it, with its expiry restarted; refused, the
+    /// request still waits on the limited page and nothing is raised.
     #[test]
     fn continuing_without_a_standing_grant_raises_for_the_owner_once_admitted() {
         let store = FakeGrantStore::default();
@@ -1564,13 +1565,14 @@ mod tests {
         );
         assert_eq!(owner_approval.count(), 0);
 
+        let continued_at = Utc::now() + Duration::minutes(4);
         let outcome = code_authorization_starter
             .continue_past_session_shortfall(
                 "req-1",
                 REQUESTING_SID,
                 &|| true,
                 "the-code".to_owned(),
-                Utc::now(),
+                continued_at,
             )
             .expect("continues");
         assert_eq!(
@@ -1579,6 +1581,16 @@ mod tests {
                 request_id: "req-1".to_owned(),
                 decidable_in_requesting_browser: false,
             }
+        );
+        assert_eq!(
+            code_authorization_starter
+                .store
+                .authorization_request_by_id("req-1")
+                .unwrap()
+                .expect("present")
+                .expires_at,
+            continued_at + AUTHORIZATION_REQUEST_TTL,
+            "the Owner gets the request with a fresh five minutes"
         );
         assert_eq!(owner_approval.count(), 1);
         assert!(matches!(

@@ -257,8 +257,9 @@ impl GrantTx for SqliteGrantTx<'_> {
     fn acknowledge_session_shortfall(
         &mut self,
         id: &str,
+        expires_at: DateTime<Utc>,
     ) -> Result<bool, AuthorizationServerError> {
-        authorization_requests::acknowledge_session_shortfall(self.conn, id)
+        authorization_requests::acknowledge_session_shortfall(self.conn, id, expires_at)
     }
 
     fn consume_approved_authorization_request(

@@ -549,7 +549,8 @@ not be able to do everything." The scopes are in the words the scope picker
 uses (`scopes-react`'s `fluentScope`), and the message sits above two buttons:
 
 - **Continue** posts `/oauth/authorize/{id}/continue`, which acknowledges the
-  shortfall and takes the branch the start would have taken. A standing grant
+  shortfall, gives the request a fresh five minutes, and takes the branch the
+  start would have taken. A standing grant
   that still covers the request issues a code, narrowed to the session.
   Otherwise the request is raised for the Owner, and the browser goes to the
   consent card or the [wait page](#wait-page), as recorded at the start.

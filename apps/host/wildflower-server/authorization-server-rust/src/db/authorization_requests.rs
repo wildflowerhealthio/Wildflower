@@ -419,12 +419,14 @@ pub(super) fn raise_authorization_request_for_owner(
 
 /// Record that the browser that made the *pending* request `id` goes on
 /// although its browser session falls short of it: set its
-/// `session_shortfall_acknowledged`. Returns `true` iff a pending row still
-/// waiting on that acknowledgement was transitioned, so two Continues race to
-/// one winner. A request in a terminal state is left as it is.
+/// `session_shortfall_acknowledged`, and move its `expires_at` to
+/// `expires_at`. Returns `true` iff a pending row still waiting on that
+/// acknowledgement was transitioned, so two Continues race to one winner. A
+/// request in a terminal state is left as it is.
 pub(super) fn acknowledge_session_shortfall(
     conn: &mut SqliteConnection,
     id: &str,
+    expires_at: DateTime<Utc>,
 ) -> Result<bool, AuthorizationServerError> {
     let affected = diesel::update(
         authorization_requests::table
@@ -432,7 +434,10 @@ pub(super) fn acknowledge_session_shortfall(
             .filter(authorization_requests::status.eq(RequestStatus::Pending))
             .filter(authorization_requests::session_shortfall_acknowledged.eq(false)),
     )
-    .set(authorization_requests::session_shortfall_acknowledged.eq(true))
+    .set((
+        authorization_requests::session_shortfall_acknowledged.eq(true),
+        authorization_requests::expires_at.eq(expires_at),
+    ))
     .execute(conn)
     .map_err(|e| {
         AuthorizationServerError::infrastructure("acknowledge_session_shortfall failed", e)

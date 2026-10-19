@@ -226,6 +226,7 @@ impl GrantTx for FakeGrantTx<'_> {
     fn acknowledge_session_shortfall(
         &mut self,
         id: &str,
+        expires_at: DateTime<Utc>,
     ) -> Result<bool, AuthorizationServerError> {
         let mut requests = self.store.authorization_requests.borrow_mut();
         let Some(request) = requests.get_mut(id) else {
@@ -235,6 +236,7 @@ impl GrantTx for FakeGrantTx<'_> {
             return Ok(false);
         }
         request.session_shortfall_acknowledged = true;
+        request.expires_at = expires_at;
         Ok(true)
     }
 
