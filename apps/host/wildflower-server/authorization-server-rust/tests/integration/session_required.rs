@@ -249,6 +249,20 @@ async fn a_paired_browser_takes_the_fast_path_under_its_own_session_until_it_is_
         family_sid(&db, refresh_token).as_deref(),
         Some(sid.as_str())
     );
+    let res = post_token(
+        &g,
+        format!("grant_type=refresh_token&client_id=test-app&refresh_token={refresh_token}"),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let refreshed = body_json(res.into_body()).await;
+    assert_eq!(
+        refreshed["scope"], "patient/Patient.rs offline_access",
+        "the refresh family keeps the code's bounded scopes"
+    );
+    let refresh_token = refreshed["refresh_token"]
+        .as_str()
+        .expect("a rotated refresh token");
 
     assert!(store_handle(&db)
         .revoke_browser_session(&sid, Utc::now())
