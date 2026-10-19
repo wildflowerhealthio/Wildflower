@@ -51,10 +51,10 @@ pub(crate) enum CodeApproval {
     /// The request was no longer pending (a concurrent decision or expiry
     /// won); nothing changed.
     RequestNotPending,
-    /// The browser session the request was made in has been revoked, or no
-    /// longer exists, so every token the code earned would be refused: the
-    /// request was denied instead, and no code issued.
-    BrowserSessionRevoked,
+    /// The browser session the request was made in has ended — revoked,
+    /// expired, or no longer stored — so it bounds no code: the request was
+    /// denied instead, and no code issued.
+    BrowserSessionEnded,
 }
 
 /// Approve pending requests. A borrowed view over the store; the gate is the
@@ -83,9 +83,9 @@ impl<'a, S: GrantStore> RequestApprover<'a, S> {
     /// Owner holds earns no app more than it holds, whoever approved.
     ///
     /// The approval and the code land in one transaction, which first loads
-    /// the request's browser session. A request whose session was revoked
-    /// meanwhile, or no longer exists, is denied rather than approved
-    /// ([`CodeApproval::BrowserSessionRevoked`]), so the client hears
+    /// the request's browser session. A request whose session is no longer
+    /// live at `now` (revoked, expired, or no longer stored) is denied rather
+    /// than approved ([`CodeApproval::BrowserSessionEnded`]), so the client hears
     /// `access_denied` instead of redeeming a code whose tokens are refused on
     /// arrival. A request no longer pending issues nothing
     /// ([`CodeApproval::RequestNotPending`]); the flow maps that to its own
@@ -110,10 +110,10 @@ impl<'a, S: GrantStore> RequestApprover<'a, S> {
         self.store.transaction(|tx| {
             let Some(browser_session) = tx
                 .browser_session_by_sid(pending_request.sid())?
-                .filter(|browser_session| browser_session.revoked_at.is_none())
+                .filter(|browser_session| browser_session.is_live(now))
             else {
                 return Ok(if tx.deny_authorization_request(&request.id)? {
-                    CodeApproval::BrowserSessionRevoked
+                    CodeApproval::BrowserSessionEnded
                 } else {
                     CodeApproval::RequestNotPending
                 });
@@ -298,29 +298,32 @@ mod tests {
         );
     }
 
-    /// A request made in a browser session that has since been revoked, or
-    /// that names no session, is denied and earns no code; one whose session
-    /// stands is approved.
+    /// A request made in a browser session that has since been revoked, that
+    /// has expired without being revoked, or that names no session, is denied
+    /// and earns no code; one whose session stands is approved.
     #[test]
-    fn approve_for_code_denies_a_request_whose_browser_session_is_revoked() {
+    fn approve_for_code_denies_a_request_whose_browser_session_has_ended() {
         let store = FakeGrantStore::default();
         let now = Utc::now();
         let standing = BrowserSession::new_owner(vec![], Duration::hours(8), now);
         let revoked = BrowserSession::new_owner(vec![], Duration::hours(8), now);
-        for session in [&standing, &revoked] {
+        let expired =
+            BrowserSession::new_owner(vec![], Duration::hours(8), now - Duration::hours(9));
+        for session in [&standing, &revoked, &expired] {
             store.insert_browser_session(session).unwrap();
         }
         assert!(store.revoke_browser_session(&revoked.sid, now).unwrap());
 
         for (id, sid) in [
             ("req-revoked", revoked.sid.as_str()),
+            ("req-expired", expired.sid.as_str()),
             ("req-missing", "no-such-sid"),
         ] {
             let pending_request =
                 pending_request_in_session(&store, id, RequestStatus::Pending, sid);
             assert_eq!(
                 approve(&store, &pending_request),
-                CodeApproval::BrowserSessionRevoked,
+                CodeApproval::BrowserSessionEnded,
                 "{id}"
             );
             let request = store

@@ -117,6 +117,13 @@ impl BrowserSession {
             last_seen_at: now,
         }
     }
+
+    /// Whether the session is live at `now`: not revoked, and `expires_at`
+    /// after `now`.
+    #[must_use]
+    pub fn is_live(&self, now: DateTime<Utc>) -> bool {
+        self.revoked_at.is_none() && self.expires_at > now
+    }
 }
 
 #[cfg(test)]
@@ -155,6 +162,21 @@ mod tests {
         assert_eq!(session.scopes, ["wildflower/launch"]);
         assert_eq!(session.expires_at - session.created_at, Duration::hours(24));
         assert_eq!(session.revoked_at, None);
+    }
+
+    /// A session is live until it expires or is revoked, whichever comes
+    /// first.
+    #[test]
+    fn a_session_is_live_until_it_expires_or_is_revoked() {
+        let now = Utc::now();
+        let session = BrowserSession::new_owner(vec![], Duration::hours(8), now);
+        assert!(session.is_live(now));
+        assert!(!session.is_live(session.expires_at));
+        let revoked = BrowserSession {
+            revoked_at: Some(now),
+            ..session
+        };
+        assert!(!revoked.is_live(now));
     }
 
     /// Each session is no longer than the longest session, which the

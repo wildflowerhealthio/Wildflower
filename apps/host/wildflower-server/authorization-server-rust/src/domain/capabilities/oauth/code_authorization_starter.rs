@@ -359,7 +359,7 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
     /// The fast path's approval: issue `code` for `parked_request` under the
     /// standing grant, recompute the popup head, and send the user-agent back
     /// to the client with the code, or with `access_denied` when the browser
-    /// session the request was made in was revoked meanwhile.
+    /// session the request was made in ended meanwhile.
     fn issue_under_standing_grant(
         &self,
         standing_grant_coverage: &StandingGrantCoverage,
@@ -384,7 +384,7 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
                 client_state: client_state.to_owned(),
             }),
             CodeApproval::RequestNotPending => Err(AuthorizationStartError::RequestNotPending),
-            CodeApproval::BrowserSessionRevoked => Err(AuthorizationStartError::Redirectable {
+            CodeApproval::BrowserSessionEnded => Err(AuthorizationStartError::Redirectable {
                 redirect_uri: Box::new(requested_redirect_uri),
                 error: OAuthErrorCode::AccessDenied,
                 description: BROWSER_SIGNED_OUT_DESCRIPTION,

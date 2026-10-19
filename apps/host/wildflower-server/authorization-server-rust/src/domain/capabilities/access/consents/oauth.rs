@@ -147,7 +147,7 @@ pub(crate) fn approve_oauth_consent(
         CodeApproval::Issued(issued_code) => issued_code,
         CodeApproval::RequestNotPending => return Err(make_consent_not_found()),
         // The approver denied the request instead: tell the client so.
-        CodeApproval::BrowserSessionRevoked => {
+        CodeApproval::BrowserSessionEnded => {
             owner_approval.republish_active();
             return Ok(denial_outcome(
                 &pending_request,

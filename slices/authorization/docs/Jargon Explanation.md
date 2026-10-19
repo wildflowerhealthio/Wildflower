@@ -755,8 +755,8 @@ what ends it.
 verifier refuses a token whose `sid` names a revoked session, on the
 `/authorization` gates and the FHIR server alike, and refresh redemption
 refuses a family whose `sid` does. A request still pending when its session
-is revoked is denied when it is approved, so the app gets `access_denied`
-rather than a code. A `sid` that names no row is treated as revoked. Whether a session's _expiry_ ends a refresh family is the client's
+is revoked, or expires, is denied when it is approved, so the app gets
+`access_denied` rather than a code. A `sid` that names no row is treated as revoked. Whether a session's _expiry_ ends a refresh family is the client's
 refresh policy; today it doesn't. Tokens, requests and families with no
 `sid` (the host app's in-process tokens, the device flow) have no session to
 check.
