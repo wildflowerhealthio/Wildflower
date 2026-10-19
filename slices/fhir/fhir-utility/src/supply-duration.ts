@@ -44,7 +44,7 @@ type PartBuilder = (amount: number) => Partial<DateTime.DateTime.PartsForMath>
 const toDays: PartBuilder = (n) => ({ days: n })
 
 /**
- * UCUM time codes -> a builder for the matching `DateTime.add` part. Supply
+ * UCUM time codes -\> a builder for the matching `DateTime.add` part. Supply
  * durations are almost always days, but weeks/months are valid; an
  * unrecognized or absent unit falls back to days (see
  * {@link supplyDurationToParts}). `Partial` keeps index access
@@ -59,7 +59,7 @@ const UCUM_UNIT: Partial<Record<string, PartBuilder>> = {
   mo: (n) => ({ months: n }),
   a: (n) => ({ years: n }),
 }
-/** Spelled-out `unit` names -> the same builders as {@link UCUM_UNIT}, matched lowercased. */
+/** Spelled-out `unit` names -\> the same builders as {@link UCUM_UNIT}, matched lowercased. */
 const SPELLED_UNIT: Partial<Record<string, PartBuilder>> = {
   second: UCUM_UNIT.s,
   seconds: UCUM_UNIT.s,

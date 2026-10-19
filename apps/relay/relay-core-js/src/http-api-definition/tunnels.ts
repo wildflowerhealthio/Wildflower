@@ -106,8 +106,8 @@ const IssuedClaimCodeSchema = Schema.Struct({
 })
 
 /**
- * A refused change, with the relay's short plain-text reason (e.g. `a tunnel
- * already has the name`).
+ * A refused change, with the relay's short plain-text reason (e.g.
+ * `a tunnel already has the name`).
  */
 const plainTextReason = <Self extends { readonly reason: string }, Tag extends string>(
   errorClass: Schema.Schema<Self, { readonly _tag: Tag; readonly reason: string }>,

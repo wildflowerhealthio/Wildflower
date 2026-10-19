@@ -161,7 +161,7 @@ async function renderInstance(bytes: Uint8Array, element: HTMLDivElement): Promi
  * re-reads the box, so without this the image is permanently stretched
  * whenever the two disagree. Why that is the normal case, and why the
  * arguments are `keepCamera: false`, is in the
- * {@link ../../docs/Cornerstone Rendering Explanation.md | Cornerstone Rendering Explanation}.
+ * [Cornerstone Rendering Explanation](../../docs/Cornerstone%20Rendering%20Explanation.md).
  *
  * @returns A disposer; calling it stops the observation.
  */

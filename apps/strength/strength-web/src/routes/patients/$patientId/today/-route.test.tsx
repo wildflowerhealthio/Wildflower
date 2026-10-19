@@ -22,8 +22,8 @@ import {
 
 /**
  * The Today tab: a submitted workout written and read back as the next one,
- * driven through the app's router over the in-memory FHIR server (see `strength-
- * app.test-helpers.ts`).
+ * driven through the app's router over the in-memory FHIR server (see
+ * `strength-app.test-helpers.ts`).
  */
 
 let server: FakeFhirServer
