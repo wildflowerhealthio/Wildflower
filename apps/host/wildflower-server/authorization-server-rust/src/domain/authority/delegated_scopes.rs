@@ -80,10 +80,10 @@ impl ApprovableScopes {
         }
     }
 
-    /// A browser pairing prompt. Like device consent it is **expandable**:
-    /// whatever the pairing's ticks start from, the Owner may grant anything
-    /// up to [`OWNER_SCOPES`](crate::OWNER_SCOPES), which fill both halves, so
-    /// no approved browser session can hold more than an Owner session.
+    /// A browser pairing prompt. It requests the Owner's scopes, and like
+    /// device consent it is **expandable**: the Owner may grant anything up to
+    /// [`OWNER_SCOPES`](crate::OWNER_SCOPES), which fill both halves, so no
+    /// approved browser session can hold more than an Owner session.
     pub(crate) fn for_browser_pairing() -> Self {
         ApprovableScopes {
             requested_scopes: crate::owner_scopes(),
@@ -132,6 +132,28 @@ impl ApprovableScopes {
             .map(String::as_str)
             .collect();
         grantable_scopes(owner_approved_scopes, &requested, &ceiling)
+    }
+
+    /// Everything the approver holding `approver_grant` may delegate on this
+    /// prompt, for its card's ticks to start from: each requested scope and
+    /// each of the approver's own scopes the prompt may grant, less any
+    /// resource scope the approver does not cover. Approving it untouched
+    /// passes [`DelegatedScopes::clamp`]'s approver check, so a pairing card
+    /// that starts from the Owner's scopes starts an approver holding less
+    /// from all it holds instead.
+    pub(crate) fn delegable_scopes(&self, approver_grant: &Grant) -> Vec<String> {
+        let candidates = self
+            .requested_scopes
+            .iter()
+            .cloned()
+            .chain(approver_grant.render())
+            .collect();
+        let grantable = self.grantable_subset(candidates);
+        let uncovered = uncovered_resource_scopes(&grantable, approver_grant);
+        grantable
+            .into_iter()
+            .filter(|scope| !uncovered.contains(scope))
+            .collect()
     }
 
     /// The prompt's **approval scopes** the `approver_grant` does not cover,
@@ -600,6 +622,36 @@ mod tests {
                 "patient/Observation.rs"
             ])),
             ["system/Patient.r"]
+        );
+    }
+
+    /// A pairing prompt's delegable scopes are the Owner's for the Owner, and
+    /// everything a narrower approver holds that an Owner could grant (its
+    /// `openid` is no Owner scope), so approving them passes the clamp.
+    #[test]
+    fn a_pairing_prompt_s_delegable_scopes_are_what_the_approver_holds() {
+        let approvable = ApprovableScopes::for_browser_pairing();
+        assert_eq!(
+            approvable.delegable_scopes(&Grant::parse(crate::owner_scopes())),
+            crate::owner_scopes(),
+        );
+        let narrower = grant(&["system/Patient.rs", "wildflower/launch", "openid"]);
+        let delegable = approvable.delegable_scopes(&narrower);
+        assert_eq!(
+            delegable,
+            [
+                "wildflower/launch",
+                "wildflower/AuthorizationRequest.u",
+                "wildflower/Grant.c",
+                "system/Patient.rs",
+            ],
+        );
+        assert_eq!(
+            DelegatedScopes::clamp(&narrower, delegable.clone(), &approvable)
+                .expect("the approver covers what it may delegate")
+                .expect("granted")
+                .scopes(),
+            delegable,
         );
     }
 

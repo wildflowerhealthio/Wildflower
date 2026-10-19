@@ -137,8 +137,8 @@ fn approved_session_token(cookies: &[String]) -> String {
 }
 
 /// The whole pairing: the Owner is notified of a remote browser by name, sees
-/// it on the device page starting from launching apps only and expandable up
-/// to the Owner's scopes, and approves; the browser's next poll hands it a
+/// it on the device page with the Owner's scopes all ticked, unticks some,
+/// and approves; the browser's next poll hands it a
 /// 24 h approved session holding exactly the approved scopes, which the gates
 /// accept and which writes no grant.
 #[tokio::test]
@@ -175,7 +175,8 @@ async fn a_browser_pairs_and_holds_a_day_long_session_with_the_approved_scopes()
     assert_eq!(card["clientId"], BROWSER_SESSION_CLIENT_ID);
     assert_eq!(
         card["requestedScopes"],
-        serde_json::json!(["wildflower/launch"])
+        serde_json::json!(wildflowerhealthio_authorization_server::owner_scopes()),
+        "the Owner's card opens with everything ticked"
     );
     assert_eq!(
         card["allowedScopes"],
@@ -284,6 +285,63 @@ async fn an_approval_grants_nothing_past_the_owner_s_scopes_or_the_approver_s() 
     assert_eq!(res.status(), StatusCode::FORBIDDEN);
     let (status, _) = poll_status(&g, &started.pairing_code, "").await;
     assert_eq!(status, "pending", "the refused approval left it pending");
+}
+
+/// An approver holding less than the Owner opens the card with everything it
+/// may delegate ticked, not the Owner's scopes, so approving it as it opened
+/// starts the session.
+#[tokio::test]
+async fn a_narrower_approver_s_card_opens_with_what_it_may_delegate() {
+    let (g, _owner_token, db) = spin_up();
+    let owner_session_token = signed_in_owner_session_token(&g).await;
+    let narrow_approver = mint_browser_session_token(
+        &db,
+        decode_jwt_payload(&owner_session_token)["sid"]
+            .as_str()
+            .expect("sid"),
+        &[
+            "wildflower/AuthorizationRequest.r",
+            "wildflower/AuthorizationRequest.u",
+            "system/Patient.rs",
+            "openid",
+        ],
+    );
+    let started = start_pairing(&g).await;
+    let res = g
+        .router
+        .clone()
+        .oneshot(build_request(
+            Request::get(format!("/authorization/devices/{}", started.user_code))
+                .header("authorization", format!("Bearer {narrow_approver}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    let card = body_json(res.into_body()).await;
+    let ticks = serde_json::json!([
+        "wildflower/launch",
+        "wildflower/AuthorizationRequest.r",
+        "wildflower/AuthorizationRequest.u",
+        "system/Patient.rs",
+    ]);
+    assert_eq!(card["requestedScopes"], ticks);
+
+    let ticks: Vec<&str> = ticks
+        .as_array()
+        .expect("an array")
+        .iter()
+        .map(|tick| tick.as_str().expect("a scope"))
+        .collect();
+    let res = approve(&g, &narrow_approver, &started.user_code, &ticks).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let (status, cookies) = poll_status(&g, &started.pairing_code, "").await;
+    assert_eq!(status, "approved");
+    assert_eq!(
+        decode_jwt_payload(&approved_session_token(&cookies))["scope"],
+        "wildflower/launch wildflower/AuthorizationRequest.r \
+         wildflower/AuthorizationRequest.u system/Patient.rs"
+    );
 }
 
 /// A declined pairing tells the page so and sets no cookie.

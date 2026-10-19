@@ -177,7 +177,7 @@ pub struct StartBrowserPairingArgs {
     pub id: String,
     /// The client every browser session's token is issued to.
     pub client_id: String,
-    /// The scopes the Owner's ticks start from.
+    /// The scopes the pairing requests: the Owner's.
     pub requested_scopes: Vec<String>,
     /// The code the pairing page shows, which the Owner confirms at the device
     /// page.

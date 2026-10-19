@@ -23,7 +23,8 @@ pub(crate) enum DeviceConsentKind {
 
 /// Body returned to the launcher when it loads a pending device-page consent
 /// prompt — what asks, the requesting client, the device's or browser's
-/// name, its requested scopes, and the *expansion envelope* the approver may
+/// name, the scopes its ticks start from (a device's requested scopes, a
+/// browser's everything the caller may delegate), and the *expansion envelope* the approver may
 /// grant up to (device consent is expandable): a device client's full
 /// allowed-scope set, a browser's the Owner's scopes. Local to this one route
 /// (its only reader).
@@ -57,6 +58,7 @@ async fn handle_get_device_consent(
     let DeviceConsentView {
         request,
         client_name,
+        starting_scopes,
         approvable_scopes,
         missing_approval_scopes,
     } = consents.device_consent(&user_code)?;
@@ -70,7 +72,7 @@ async fn handle_get_device_consent(
         client_id: request.client_id,
         client_name,
         device_name: request.device_name,
-        requested_scopes: request.requested_scopes,
+        requested_scopes: starting_scopes,
         allowed_scopes: approvable_scopes,
         missing_approval_scopes,
     }))

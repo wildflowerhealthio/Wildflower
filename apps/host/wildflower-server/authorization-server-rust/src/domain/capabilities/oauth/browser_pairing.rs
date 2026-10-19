@@ -14,7 +14,6 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Duration, Utc};
-use wildflowerhealthio_scopes::{render_scopes, KnownScope, Scope};
 
 use super::device_authorizer::{generate_unique_user_code, DEVICE_AUTHORIZATION_TTL};
 use crate::crypto_util::random_token::generate_authorization_code;
@@ -39,11 +38,12 @@ pub(crate) const APPROVED_SESSION_TTL: Duration = Duration::hours(24);
 /// recognizable, until the browser names itself.
 const UNRECOGNIZED_BROWSER_NAME: &str = "Browser";
 
-/// The scopes the Owner's ticks start from on a pairing's card: launching
-/// apps, and nothing of the Owner's own access. The Owner may tick more, up to
-/// [`OWNER_SCOPES`](crate::OWNER_SCOPES).
-fn pairing_starting_scopes() -> Vec<String> {
-    render_scopes(&[Scope::Known(KnownScope::AnyScopedAppLaunch)])
+/// The scopes a pairing requests: the Owner's
+/// ([`OWNER_SCOPES`](crate::OWNER_SCOPES)), the most a browser session may
+/// hold. Its card opens with everything the approver may delegate ticked, so
+/// the approver unticks what the browser shouldn't have.
+fn pairing_requested_scopes() -> Vec<String> {
+    crate::owner_scopes()
 }
 
 /// A started pairing: what the pairing page shows and polls with.
@@ -180,7 +180,7 @@ impl<S: GrantStore> BrowserPairing<S> {
                 StartBrowserPairingArgs {
                     id: pairing_code.clone(),
                     client_id: BROWSER_SESSION_CLIENT_ID.to_owned(),
-                    requested_scopes: pairing_starting_scopes(),
+                    requested_scopes: pairing_requested_scopes(),
                     user_code: user_code.clone(),
                     browser_name: browser_name.clone(),
                     ttl: DEVICE_AUTHORIZATION_TTL,
@@ -357,8 +357,8 @@ mod tests {
     }
 
     /// A start parks a pending pairing for the browser-session client under
-    /// its user code, named after the user agent, starting from launching
-    /// apps only, and raises the Owner's notification.
+    /// its user code, named after the user agent, requesting the Owner's
+    /// scopes, and raises the Owner's notification.
     #[test]
     fn a_start_parks_a_pending_pairing_and_notifies() {
         let (pairing, owner_approval, _) = pairing();
@@ -379,7 +379,7 @@ mod tests {
         assert_eq!(parked.grant_type, GrantType::BrowserPairing);
         assert_eq!(parked.client_id, BROWSER_SESSION_CLIENT_ID);
         assert_eq!(parked.status, RequestStatus::Pending);
-        assert_eq!(parked.requested_scopes, ["wildflower/launch"]);
+        assert_eq!(parked.requested_scopes, crate::owner_scopes());
         assert_eq!(parked.device_name.as_deref(), Some("Firefox on Linux"));
         assert_eq!(owner_approval.count(), 1);
     }
