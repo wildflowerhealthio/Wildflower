@@ -69,6 +69,17 @@ impl FhirResourceScope {
             && self.permission.contains(other.permission)
     }
 
+    /// The broadest scope both `self` and `other` cover, or `None` when they
+    /// share no access: the narrower context, the narrower resource type, and
+    /// the shared interactions ([`Permission::intersection`](super::Permission::intersection)).
+    pub(in crate::scope) fn intersection(&self, other: &FhirResourceScope) -> Option<Self> {
+        Some(FhirResourceScope {
+            context: self.context.intersection(other.context)?,
+            resource: self.resource.intersection(&other.resource)?,
+            permission: self.permission.intersection(other.permission)?,
+        })
+    }
+
     /// The single scope granting everything `self` and `other` do, or `None`
     /// when they can't be stated as one. Both must name the **same** context and
     /// resource type — `system` covering `user` is subsumption, not a merge, and
@@ -109,6 +120,16 @@ impl ContextLevel {
     pub(in crate::scope) fn covers(self, other: ContextLevel) -> bool {
         self == ContextLevel::System || self == other
     }
+
+    /// The context both `self` and `other` cover — the narrower one — or
+    /// `None` for `user` and `patient`, which share none.
+    pub(in crate::scope) fn intersection(self, other: ContextLevel) -> Option<Self> {
+        if self.covers(other) {
+            Some(other)
+        } else {
+            other.covers(self).then_some(self)
+        }
+    }
 }
 
 impl ResourceType {
@@ -132,6 +153,16 @@ impl ResourceType {
     /// A wildcard covers any resource type; otherwise types must match exactly.
     pub(in crate::scope) fn covers(&self, other: &ResourceType) -> bool {
         *self == ResourceType::Wildcard || self == other
+    }
+
+    /// The resource type both `self` and `other` cover — the named one under
+    /// a wildcard — or `None` for two different named types.
+    pub(in crate::scope) fn intersection(&self, other: &ResourceType) -> Option<Self> {
+        if self.covers(other) {
+            Some(other.clone())
+        } else {
+            other.covers(self).then(|| self.clone())
+        }
     }
 }
 

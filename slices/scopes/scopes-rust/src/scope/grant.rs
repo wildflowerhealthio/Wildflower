@@ -51,8 +51,8 @@ impl Grant {
 
     /// The `required` scopes this grant does **not** cover, preserving the order
     /// given — empty iff the grant covers every one. The list a per-resource gate
-    /// renders into an `InsufficientScope` 403's `missingScopes`. Pairs with [`covers_all`](Grant::covers_all), which is the
-    /// same test as a bool.
+    /// renders into an `InsufficientScope` 403's `missingScopes`. Pairs with
+    /// [`covers_all`](Grant::covers_all), which is the same test as a bool.
     pub fn missing_scopes(&self, required: &[Scope]) -> Vec<Scope> {
         required
             .iter()
@@ -108,9 +108,7 @@ impl Grant {
 
     /// The structured FHIR/Wildflower resource scopes in the grant.
     pub fn resource_scopes(&self) -> impl Iterator<Item = &Scope> + '_ {
-        self.scopes
-            .iter()
-            .filter(|s| matches!(s, Scope::FhirResource(_) | Scope::WildflowerResource(_)))
+        self.scopes.iter().filter(|scope| scope.is_resource())
     }
 
     /// The broadly-known (flag) scopes in the grant, e.g. `openid` / `offline_access`.

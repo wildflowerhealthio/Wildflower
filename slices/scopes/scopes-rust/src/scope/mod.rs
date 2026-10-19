@@ -124,6 +124,36 @@ impl Scope {
         }
     }
 
+    /// Whether this is a resource scope, FHIR or Wildflower: access to data,
+    /// rather than an identity or session marker.
+    pub fn is_resource(&self) -> bool {
+        matches!(self, Scope::FhirResource(_) | Scope::WildflowerResource(_))
+    }
+
+    /// The broadest single scope both `self` and `other` cover, or `None` when
+    /// they share no access. Two resource scopes of one kind narrow part by
+    /// part — context, resource type, and interactions:
+    /// `system/*.cruds` ∩ `patient/Observation.rs` = `patient/Observation.rs`,
+    /// `patient/Observation.rs` ∩ `patient/*.r` = `patient/Observation.r`. A v1
+    /// word covers only word requests, so a pair with a word side intersects
+    /// to a word (`patient/*.cruds` ∩ `patient/Observation.read` =
+    /// `patient/Observation.read`). Known and unknown scopes — and any
+    /// cross-kind pair — intersect only with an identical twin.
+    ///
+    /// A SMART v2 `?` search-parameter suffix is dropped at parse, so it plays
+    /// no part here.
+    pub fn intersection(&self, other: &Scope) -> Option<Scope> {
+        match (self, other) {
+            (Scope::FhirResource(a), Scope::FhirResource(b)) => {
+                a.intersection(b).map(Scope::FhirResource)
+            }
+            (Scope::WildflowerResource(a), Scope::WildflowerResource(b)) => {
+                a.intersection(b).map(Scope::WildflowerResource)
+            }
+            (a, b) => (a == b).then(|| a.clone()),
+        }
+    }
+
     /// The single scope granting everything `self` and `other` do, or `None`
     /// when the two cannot be stated as one and must both be kept.
     ///
