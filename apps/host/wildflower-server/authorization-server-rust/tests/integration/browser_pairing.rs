@@ -289,7 +289,8 @@ async fn an_approval_grants_nothing_past_the_owner_s_scopes_or_the_approver_s() 
 
 /// An approver holding less than the Owner opens the card with everything it
 /// may delegate ticked, not the Owner's scopes, so approving it as it opened
-/// starts the session.
+/// starts the session. An approver without `wildflower/launch` can't hand the
+/// browser launch: it isn't ticked, and ticking it is refused.
 #[tokio::test]
 async fn a_narrower_approver_s_card_opens_with_what_it_may_delegate() {
     let (g, _owner_token, db) = spin_up();
@@ -320,12 +321,15 @@ async fn a_narrower_approver_s_card_opens_with_what_it_may_delegate() {
     assert_eq!(res.status(), StatusCode::OK);
     let card = body_json(res.into_body()).await;
     let ticks = serde_json::json!([
-        "wildflower/launch",
         "wildflower/AuthorizationRequest.r",
         "wildflower/AuthorizationRequest.u",
         "system/Patient.rs",
     ]);
     assert_eq!(card["requestedScopes"], ticks);
+    assert!(card["allowedScopes"]
+        .as_array()
+        .expect("an array")
+        .contains(&serde_json::json!("wildflower/launch")));
 
     let ticks: Vec<&str> = ticks
         .as_array()
@@ -333,14 +337,19 @@ async fn a_narrower_approver_s_card_opens_with_what_it_may_delegate() {
         .iter()
         .map(|tick| tick.as_str().expect("a scope"))
         .collect();
+    let with_launch: Vec<&str> = ["wildflower/launch"]
+        .into_iter()
+        .chain(ticks.clone())
+        .collect();
+    let res = approve(&g, &narrow_approver, &started.user_code, &with_launch).await;
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
     let res = approve(&g, &narrow_approver, &started.user_code, &ticks).await;
     assert_eq!(res.status(), StatusCode::OK);
     let (status, cookies) = poll_status(&g, &started.pairing_code, "").await;
     assert_eq!(status, "approved");
     assert_eq!(
         decode_jwt_payload(&approved_session_token(&cookies))["scope"],
-        "wildflower/launch wildflower/AuthorizationRequest.r \
-         wildflower/AuthorizationRequest.u system/Patient.rs"
+        "wildflower/AuthorizationRequest.r wildflower/AuthorizationRequest.u system/Patient.rs"
     );
 }
 
