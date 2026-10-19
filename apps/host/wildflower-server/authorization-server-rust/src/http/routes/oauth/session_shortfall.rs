@@ -45,8 +45,8 @@ use crate::live_bindings::{LiveCodeAuthorizationStarter, LiveSessionShortfall, L
 pub(super) struct SessionShortfallBody {
     /// The app's registered name, or its `client_id` when it has none yet.
     client_name: String,
-    /// The requested scopes a code issued in this browser's session would
-    /// leave out, in the request's order.
+    /// The requested scopes, as the app asked for them, that a code issued in
+    /// this browser's session would not carry in full, in the request's order.
     missing_scopes: Vec<String>,
 }
 

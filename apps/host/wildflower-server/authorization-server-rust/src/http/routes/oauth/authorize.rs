@@ -178,11 +178,12 @@ pub struct AuthorizeParams {
 ///    `launch` are checked first (see their fields), and the launch is
 ///    consumed onto the request.
 /// 2. A request asking for more than the browser's session holds (scopes a
-///    code issued in that session would leave out) waits on the limited page
-///    at `/oauth/authorize/{id}/limited`, which says what the session lacks
-///    and offers Continue or Cancel: `POST /oauth/authorize/{id}/continue`
-///    goes on as below, `POST /oauth/authorize/{id}/cancel` answers the
-///    client `access_denied`. Until then the Owner isn't asked about it.
+///    code issued in that session would not carry in full) waits on the
+///    limited page at `/oauth/authorize/{id}/limited`, which says what the
+///    session lacks and offers Continue or Cancel:
+///    `POST /oauth/authorize/{id}/continue` goes on as below,
+///    `POST /oauth/authorize/{id}/cancel` answers the client
+///    `access_denied`. Until then the Owner isn't asked about it.
 /// 3. Unless every requested scope is pre-approved by an existing grant for
 ///    this (client, `redirect_uri`) pair, the request joins the pending-consent
 ///    queue and the browser is 302'd to a page this authorization server

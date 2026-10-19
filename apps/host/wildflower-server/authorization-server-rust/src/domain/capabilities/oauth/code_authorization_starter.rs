@@ -10,9 +10,9 @@
 //! is consumed and carried onto the parked request.
 //!
 //! A request asking for more than the browser's session holds (its **session
-//! shortfall**: what a code issued in that session would leave out) waits on
-//! that browser's limited page first, and goes on from there only when the
-//! browser says to ([`CodeAuthorizationStarter::continue_past_session_shortfall`]).
+//! shortfall**: what a code issued in that session would not carry in full)
+//! waits on that browser's limited page first, and goes on from there only
+//! when the browser says to ([`CodeAuthorizationStarter::continue_past_session_shortfall`]).
 
 use std::sync::Arc;
 

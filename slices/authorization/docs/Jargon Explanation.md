@@ -529,9 +529,11 @@ The page `/oauth/authorize` sends a browser to when its
 [browser session](#browser-session) holds less than the request asks for:
 `/oauth/authorize/{id}/limited`, on the server's own origin, from the same
 **authorization pages** bundle and with the same headers as the
-[consent card](#consent-card). The request's **session shortfall** is what a
-code issued in that session would leave out, by the rule that bounds every
-code (see [Browser session](#browser-session)). `/oauth/authorize` works it out
+[consent card](#consent-card). The request's **session shortfall** is every
+requested scope a code issued in that session would not carry in full, by the
+rule that bounds every code (see [Browser session](#browser-session)): those
+the session holds none of, and those it narrows to the part the session
+holds, each named as the request spells it. `/oauth/authorize` works it out
 once the request is validated and its launch consumed, before the
 [fast path](#grant), the start limit and the Owner. When it isn't empty, it
 parks the request with `session_shortfall_acknowledged` unset and sends the

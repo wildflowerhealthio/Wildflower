@@ -29,8 +29,8 @@ pub(crate) struct SessionShortfallView {
     /// The client's registered name, or its `client_id` when it has no
     /// registration yet.
     pub(crate) client_name: String,
-    /// The requested scopes a code issued in this session would leave out
-    /// ([`session_shortfall`]), in the request's order.
+    /// The requested scopes a code issued in this session would not carry in
+    /// full ([`session_shortfall`]), in the request's order.
     pub(crate) missing_scopes: Vec<String>,
 }
 

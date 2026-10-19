@@ -37,9 +37,9 @@ which this doc assumes rather than repeats.
   approval scopes, and a client trusted on first use needs an explicit
   acknowledgment plus `Client.c` and `Client.u`.
 - **Codes carry no more than the browser's session.** An authorization code
-  holds its approval's resource scopes and `wildflower/launch` only where the
-  session of the browser that made the request covers them, whoever approved,
-  fast path included
+  holds its approval's resource scopes narrowed to what the session of the
+  browser that made the request holds, and `wildflower/launch` only if that
+  session holds it, whoever approved, fast path included
   ([Jargon Explanation](../../../../../slices/authorization/docs/Jargon%20Explanation.md#browser-session)).
   A request asking for more stops at that browser's limited page: nothing is
   issued and the Owner isn't asked until it presses Continue, and only the

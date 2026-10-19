@@ -222,7 +222,7 @@ const BrowserPairingNotFoundSchema = Schema.Struct({
 
 /**
  * `GET /oauth/authorize/:id/session-shortfall`: what the limited page says. The app, and the
- * requested scopes this browser's session lacks, which a code issued in it would leave out.
+ * requested scopes this browser's session lacks, which a code issued in it would not carry in full.
  */
 const SessionShortfallSchema = Schema.Struct({
   clientName: Schema.String,
