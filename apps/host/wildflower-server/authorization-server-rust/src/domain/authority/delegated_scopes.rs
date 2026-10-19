@@ -288,13 +288,13 @@ fn may_pass_on(holder: &Grant) -> impl Fn(&Scope) -> bool {
     move |scope: &Scope| !is_held_access(scope) || holder_covers(scope)
 }
 
-/// The held access in `granted` the `approver_grant` may not pass on
+/// The held access in `granted` the `holder` may not pass on
 /// ([`may_pass_on`]), rendered, in order.
-fn uncovered_held_access(granted: &[String], approver_grant: &Grant) -> Vec<String> {
-    let approver_may_pass_on = may_pass_on(approver_grant);
+fn uncovered_held_access(granted: &[String], holder: &Grant) -> Vec<String> {
+    let holder_may_pass_on = may_pass_on(holder);
     granted
         .iter()
-        .filter(|rendered| !approver_may_pass_on(&Scope::from(rendered.as_str())))
+        .filter(|rendered| !holder_may_pass_on(&Scope::from(rendered.as_str())))
         .cloned()
         .collect()
 }
@@ -378,15 +378,12 @@ fn intersection_in_either_spelling(
 }
 
 /// The `requested` scopes a code issued in the browser session holding
-/// `session_grant` would leave out, in order: those [`session_bounded_scopes`]
-/// drops. Empty when the session holds all the request asks for.
+/// `session_grant` would not carry in full, as the request spells them, in
+/// order: each held access ([`is_held_access`]) the session does not cover,
+/// whether [`session_bounded_scopes`] drops it or narrows it to the part the
+/// session holds. Empty when the session holds all the request asks for.
 pub(crate) fn session_shortfall(requested: &[String], session_grant: &Grant) -> Vec<String> {
-    let bounded = session_bounded_scopes(requested, session_grant);
-    requested
-        .iter()
-        .filter(|scope| !bounded.contains(scope))
-        .cloned()
-        .collect()
+    uncovered_held_access(requested, session_grant)
 }
 
 /// Whether `holder` covers a scope in either SMART spelling: each held scope
@@ -951,20 +948,40 @@ mod tests {
         );
     }
 
-    /// The shortfall is what the session bound drops, in the request's order:
-    /// nothing for a session that holds all the request asks for.
+    /// The shortfall is every requested scope the session bound drops or
+    /// narrows, spelled as requested, in the request's order: nothing for a
+    /// session that holds all the request asks for.
     #[test]
-    fn the_session_shortfall_is_what_the_session_bound_drops() {
+    fn the_session_shortfall_is_what_the_session_bound_drops_or_narrows() {
         let requested = owned_scopes(&[
             "openid",
             "patient/Patient.read",
             "patient/Observation.rs",
+            "patient/Condition.rs",
+            "system/*.cruds",
             "wildflower/launch",
             "offline_access",
         ]);
+        let session_grant = Grant::parse(["patient/Patient.rs", "patient/Observation.r"]);
         assert_eq!(
-            session_shortfall(&requested, &Grant::parse(["patient/Patient.rs"])),
-            ["patient/Observation.rs", "wildflower/launch"],
+            session_shortfall(&requested, &session_grant),
+            [
+                "patient/Observation.rs",
+                "patient/Condition.rs",
+                "system/*.cruds",
+                "wildflower/launch",
+            ],
+        );
+        // Of those, the session bound narrows two and drops the rest.
+        assert_eq!(
+            session_bounded_scopes(&requested, &session_grant),
+            [
+                "openid",
+                "patient/Patient.read",
+                "patient/Observation.r",
+                "patient/Patient.rs",
+                "offline_access",
+            ],
         );
         assert!(session_shortfall(&requested, &Grant::parse(crate::owner_scopes())).is_empty());
     }

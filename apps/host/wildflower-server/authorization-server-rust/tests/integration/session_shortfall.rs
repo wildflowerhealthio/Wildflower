@@ -298,12 +298,13 @@ async fn an_owner_session_never_sees_the_limited_page() {
     );
 }
 
-/// With no standing grant, going on takes the request to the Owner: the
-/// consent card for a browser that can decide it (whose shortfall is
-/// `wildflower/launch` alone, no approval scope), and the wait page, raised
-/// for the Owner, for one that can't.
+/// With no standing grant, going on raises the request for the Owner on the
+/// wait page, even from a browser that can decide consents: a code approval
+/// takes every held access the request asks for, and the shortfall is held
+/// access its session lacks (here `wildflower/launch` alone), so it can't
+/// approve the request on its own card.
 #[tokio::test]
-async fn without_a_standing_grant_continue_goes_to_the_consent_card_or_the_wait_page() {
+async fn without_a_standing_grant_continue_raises_the_request_for_the_owner() {
     let (g, _owner_token, db) = spin_up();
     seed_app(&db);
     let launch_query = authorize_query(
@@ -338,10 +339,21 @@ async fn without_a_standing_grant_continue_goes_to_the_consent_card_or_the_wait_
     );
     assert_eq!(
         continue_past_session_shortfall(&g.router, &deciding_without_launch, &request_id).await,
-        format!("/oauth/authorize/{request_id}/consent")
+        format!("/oauth/authorize/{request_id}/wait")
     );
     let consent = get_oauth_consent(&g, &deciding_without_launch, &request_id).await;
-    assert_eq!(consent["missingApprovalScopes"], serde_json::json!([]));
+    assert_eq!(
+        consent["missingApprovalScopes"],
+        serde_json::json!(["wildflower/launch"])
+    );
+    assert!(matches!(
+        newest_pending_consent(&db),
+        Some(NewestPendingConsent::OAuth {
+            ref id,
+            decidable_in_requesting_browser: false,
+            ..
+        }) if *id == request_id
+    ));
 
     let (_, session_token) = limited_browser(&db);
     let request_id =
