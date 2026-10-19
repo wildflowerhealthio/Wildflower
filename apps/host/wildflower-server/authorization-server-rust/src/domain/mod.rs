@@ -11,18 +11,20 @@
 //! - The **port**, [`grant_store`], is what persistence looks like from here:
 //!   a [`GrantStore`] opens one scope per operation, read or write, and hands
 //!   out a [`GrantTx`] of single-statement primitives, one trait per table.
-//! - The **capabilities** ([`capabilities`]) are the operations, each opening
+//! - The **capabilities** (`capabilities`) are the operations, each opening
 //!   its one scope at its top, running the flow inside it to an outcome, and
-//!   acting on the outcome (republishing, signing, the revocation store) once
-//!   the scope has closed.
-//! - The **authority proofs** ([`authority`]) are what every privileged write
+//!   acting on the outcome (republishing, the revocation store) once the
+//!   scope has closed. Two take a `read` scope before their `write` scope,
+//!   because they touch the revocation store, which can't be reached under
+//!   the write lock: revoking a grant and exchanging a refresh token.
+//! - The **authority proofs** (`authority`) are what every privileged write
 //!   demands, and the **writers** (`capabilities::writers`) are the one place
 //!   those writes happen.
 //!
 //! Everything fails with the domain's own [`authorization_server_error`]
 //! vocabulary. Persistence mappings live in [`crate::db`], transport in
 //! [`crate::http`], and the router state that builds the capabilities in
-//! [`crate::live_bindings`].
+//! `crate::live_bindings`.
 
 // The persistence port: the two scopes and the per-table primitives.
 pub mod grant_store;

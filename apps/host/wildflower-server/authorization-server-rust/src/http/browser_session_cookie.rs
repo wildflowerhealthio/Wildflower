@@ -88,7 +88,7 @@ fn browser_session_cookie(value: &str, max_age_seconds: i64) -> String {
 /// The verified claims of the browser session a browser session cookie holds,
 /// or `None` once the session has ended: the gates would refuse
 /// `session_token` as a bad, expired or revoked token (by its `jti`, its
-/// subject or its browser session), checked by the same [`TokenVerifier`] the
+/// subject or its browser session), checked by the same `TokenVerifier` the
 /// gates run, or it is no browser session's token at all. Their `sid` names
 /// the browser session.
 ///

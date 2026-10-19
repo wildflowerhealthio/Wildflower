@@ -12,7 +12,7 @@ pub trait RefreshTokensTx {
     /// Persist a new refresh-token family **row only** — a single-table insert.
     /// Pairing it with its first token in the same scope (so a family never
     /// persists tokenless) is
-    /// [`RefreshFamilyWriter::start_family`](crate::domain::capabilities::writers::RefreshFamilyWriter::start_family)'s
+    /// `RefreshFamilyWriter::start_family`'s
     /// job.
     ///
     /// # Errors
@@ -53,7 +53,7 @@ pub trait RefreshTokensTx {
     /// a refresh-token consume. The `consumed_at IS NULL` guard makes a replay a
     /// `false`, and pairing this with [`Self::refresh_token_exists`] in one
     /// write scope is how
-    /// [`consume_refresh_token`](crate::domain::refresh_token::consume_refresh_token)
+    /// `consume_refresh_token`
     /// resolves the three-state consume without a dedicated store method.
     ///
     /// # Errors

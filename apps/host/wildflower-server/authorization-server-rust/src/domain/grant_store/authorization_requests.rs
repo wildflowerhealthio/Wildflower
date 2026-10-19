@@ -66,7 +66,7 @@ pub trait AuthorizationRequestsTx {
     /// Persist a freshly started request.
     ///
     /// Bulk reclamation of expired rows belongs to
-    /// [`domain::retention::purge_expired`](crate::domain::retention::purge_expired),
+    /// `domain::retention::purge_expired`,
     /// not here — an insert leaves unrelated expired rows alone so the retention
     /// window is the only thing that decides when they go. Implementations may
     /// still clear a pending row holding this request's `user_code` that had

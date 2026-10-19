@@ -11,11 +11,18 @@ use serde::Serialize;
 
 use crate::domain::authorization_request::{AuthorizationRequest, RequestKind};
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::grant_store::AuthorizationRequestsTx as _;
+use crate::domain::grant_store::{AuthorizationRequestsTx as _, ClientsTx};
 use crate::domain::GrantStore;
 
 /// The newest pending authorization request, or absent when nothing is
 /// pending.
+///
+/// A request whose client is disabled is not a pending consent: its consent
+/// prompt answers not found, so the host is never asked about it (a client
+/// with no row, trusted on first use, stays a candidate). The store's
+/// `newest_pending_consent`, `ConsentKey::is_pending_in` and raising a
+/// prompt for the Owner all apply this rule through
+/// `client_is_disabled`.
 ///
 /// Discriminated because the flows share no lookup key, nor what asks: each
 /// variant carries the key its consent surface already fetches by, and the
@@ -121,8 +128,9 @@ pub enum ConsentKey {
 
 impl ConsentKey {
     /// Whether the request this key names still waits for the Owner in
-    /// `store` at `now`: pending, and not past its expiry. A request that
-    /// isn't there, or is decided or expired, doesn't.
+    /// `store` at `now`: pending, not past its expiry, and its client not
+    /// disabled (the rule on [`NewestPendingConsent`]). A request that isn't
+    /// there, or is decided or expired, doesn't.
     ///
     /// # Errors
     ///
@@ -132,14 +140,36 @@ impl ConsentKey {
         store: &impl GrantStore,
         now: DateTime<Utc>,
     ) -> Result<bool, AuthorizationServerError> {
-        let request = store.read(|tx| match self {
-            Self::Device { user_code } | Self::Browser { user_code } => {
-                tx.pending_authorization_request_by_user_code(user_code)
+        store.read(|tx| {
+            let request = match self {
+                Self::Device { user_code } | Self::Browser { user_code } => {
+                    tx.pending_authorization_request_by_user_code(user_code)?
+                }
+                Self::OAuth { id } => tx.authorization_request_by_id(id)?,
+            };
+            match request {
+                Some(request) if request.pending_at(now) => {
+                    Ok(!client_is_disabled(tx, request.client_id())?)
+                }
+                _ => Ok(false),
             }
-            Self::OAuth { id } => tx.authorization_request_by_id(id),
-        })?;
-        Ok(request.is_some_and(|request| request.pending_at(now)))
+        })
     }
+}
+
+/// Whether `client_id`'s client is disabled, by the rule on
+/// [`NewestPendingConsent`]: a client with no row is not.
+///
+/// # Errors
+///
+/// The store's, when reading the client fails.
+pub(crate) fn client_is_disabled(
+    tx: &mut impl ClientsTx,
+    client_id: &str,
+) -> Result<bool, AuthorizationServerError> {
+    Ok(tx
+        .client_by_id(client_id)?
+        .is_some_and(|client| client.disabled_at.is_some()))
 }
 
 #[cfg(test)]
@@ -210,5 +240,46 @@ mod tests {
         assert!(!pending(device("WXYZ-WXYZ")));
         assert!(!pending(oauth("ghost")));
         assert!(!pending(device("GHST-GHST")));
+    }
+
+    /// A disabled client's request is no pending consent: the fake's
+    /// `newest_pending_consent` skips it, as the SQL does, and its key isn't
+    /// pending; a client with no row stays a candidate.
+    #[test]
+    fn a_disabled_client_s_request_is_no_pending_consent() {
+        use crate::domain::client::Client;
+        use crate::domain::test_fake::{client, code_request_for};
+
+        let store = FakeGrantStore::default();
+        let now = Utc::now();
+        store
+            .tx()
+            .insert_authorization_request(&code_request_for(
+                "unregistered",
+                "stranger",
+                vec!["read".to_owned()],
+            ))
+            .unwrap();
+        assert!(oauth("unregistered").is_pending_in(&store, now).unwrap());
+        store
+            .tx()
+            .upsert_client(&Client {
+                disabled_at: Some(now),
+                ..client("disabled-app", &["read"])
+            })
+            .unwrap();
+        store
+            .tx()
+            .insert_authorization_request(&code_request_for(
+                "disabled",
+                "disabled-app",
+                vec!["read".to_owned()],
+            ))
+            .unwrap();
+        assert!(!oauth("disabled").is_pending_in(&store, now).unwrap());
+        assert!(matches!(
+            store.tx().newest_pending_consent(now).unwrap(),
+            Some(NewestPendingConsent::OAuth { id, .. }) if id == "unregistered"
+        ));
     }
 }

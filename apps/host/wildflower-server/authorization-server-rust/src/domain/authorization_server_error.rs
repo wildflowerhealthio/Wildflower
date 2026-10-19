@@ -1,7 +1,7 @@
 //! [`AuthorizationServerError`] — the authorization server domain's failure vocabulary, shaped like
 //! apps' `AppsError`: a small set of **semantic**, client-facing
 //! outcomes plus one opaque infrastructure variant. The HTTP layer
-//! ([`crate::http::errors`]) renders each to a status and wire body; nothing
+//! (`crate::http::errors`) renders each to a status and wire body; nothing
 //! here knows about HTTP, and the store ([`crate::db`]) produces
 //! [`Infrastructure`](AuthorizationServerError::Infrastructure) without leaking its
 //! database error types up to the routes. The semantic `*NotFound` outcomes are
@@ -34,7 +34,7 @@ pub enum AuthorizationServerError {
     /// The Owner tried to disable an essential client — the
     /// `PATCH /authorization/clients/{clientId}` **409**. Disabling it would
     /// leave the Owner no way in (see
-    /// [`EssentialClientGuard`](crate::domain::essential_client_guard::EssentialClientGuard)).
+    /// `EssentialClientGuard`).
     /// Nothing is written when it is raised.
     EssentialClient { client_id: String },
     /// No authorization request has this id — the `/oauth/authorize/{id}`

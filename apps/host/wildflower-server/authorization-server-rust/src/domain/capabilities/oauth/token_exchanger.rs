@@ -1,5 +1,7 @@
 //! [`TokenExchanger`] — the `/oauth/token` flows (RFC 6749 §4.1.3, RFC 8628
-//! §3.4, RFC 6749 §6). Each runs in one write scope: check the client may use
+//! §3.4, RFC 6749 §6). Each runs in one write scope (a refresh is first
+//! validated in a `read` scope; see
+//! [`exchange_refresh_token`](TokenExchanger::exchange_refresh_token)): check the client may use
 //! the grant type, obtain the redemption proof, load the signing key, and (for
 //! the two session-establishing grants) start a refresh family, or (for a
 //! refresh) rotate, then sign the token. Signing runs inside the scope, so a
@@ -107,6 +109,13 @@ impl<S: GrantStore> TokenExchanger<S> {
     /// token's successor (RFC 6749 §6, OAuth 2.1 rotation). The family keeps
     /// its scopes and absolute deadline — rotation never extends its life.
     ///
+    /// The one exchange with two scopes. A `read` scope validates the token,
+    /// its client's revocation epoch included: the epoch lives on the
+    /// revocation store, another connection to the same file, so reading it
+    /// under our write lock could stall both connections for the busy
+    /// timeout. The `write` scope then re-validates the store-only facts,
+    /// since the family may have ended between the two, rotates, and mints.
+    ///
     /// # Errors
     ///
     /// [`TokenExchangeError::UnauthorizedGrantType`], the validation's
@@ -120,8 +129,17 @@ impl<S: GrantStore> TokenExchanger<S> {
         now: DateTime<Utc>,
     ) -> Result<IssuedTokens, TokenExchangeError> {
         ensure_grant_type_allowed(authenticated_client, AllowedGrantType::RefreshToken)?;
+        let validated_refresh_token = self.store.read(|tx| {
+            ValidatedRefreshToken::validate(
+                tx,
+                self.revocation.as_ref(),
+                authenticated_client,
+                presented_refresh_token,
+                now,
+            )
+        })?;
         self.store.write(|tx| {
-            self.rotate_refresh_token_in(tx, authenticated_client, presented_refresh_token, now)
+            self.rotate_refresh_token_in(tx, authenticated_client, validated_refresh_token, now)
         })?
     }
 
@@ -180,27 +198,23 @@ impl<S: GrantStore> TokenExchanger<S> {
         )
     }
 
-    /// [`exchange_refresh_token`](Self::exchange_refresh_token)'s flow, inside
-    /// its write scope `tx`. A refusal is the inner `Err`, so the scope keeps
-    /// a replayed family's end.
+    /// [`exchange_refresh_token`](Self::exchange_refresh_token)'s write half,
+    /// inside its write scope `tx`: re-validate the token validated in the
+    /// read scope, rotate it, and mint. A refusal is the inner `Err`, so the
+    /// scope keeps a replayed family's end.
     fn rotate_refresh_token_in(
         &self,
         tx: &mut impl GrantTx,
         authenticated_client: &AuthenticatedClient,
-        presented_refresh_token: &str,
+        validated_refresh_token: ValidatedRefreshToken,
         now: DateTime<Utc>,
     ) -> ExchangeOutcome {
-        let validated_refresh_token = match ValidatedRefreshToken::validate(
-            tx,
-            self.revocation.as_ref(),
-            authenticated_client,
-            presented_refresh_token,
-            now,
-        ) {
-            Ok(validated_refresh_token) => validated_refresh_token,
-            Err(TokenExchangeError::Store(error)) => return Err(error.into()),
-            Err(refusal) => return Ok(Err(refusal)),
-        };
+        let validated_refresh_token =
+            match validated_refresh_token.revalidate(tx, authenticated_client, now) {
+                Ok(validated_refresh_token) => validated_refresh_token,
+                Err(TokenExchangeError::Store(error)) => return Err(error.into()),
+                Err(refusal) => return Ok(Err(refusal)),
+            };
         let minter = AccessTokenMinter::with_active_key(tx, &self.server_origin, ACCESS_TOKEN_TTL)?;
         let successor =
             match RefreshFamilyWriter::within(tx).rotate(&validated_refresh_token, now)? {

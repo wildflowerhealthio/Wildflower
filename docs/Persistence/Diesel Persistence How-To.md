@@ -193,7 +193,11 @@ The authorization server is the worked example
   `E: From<AuthorizationServerError>` (`store.rs`).
 
 Every capability method opens exactly one scope at its top and runs its flow
-inside it; the flows, proofs and writers beneath take `&mut impl GrantTx`,
+inside it. The exceptions touch another store that shares the database file
+(the token revocation store): reading or writing it under our write lock could
+stall both connections, so such a method does that part between a `read`
+scope and its `write` scope, and the write scope re-checks what may have
+changed meanwhile. The flows, proofs and writers beneath take `&mut impl GrantTx`,
 never the store, so their logic runs against the fast in-memory fake as well
 as SQLite. Load-bearing details:
 

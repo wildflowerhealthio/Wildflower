@@ -15,7 +15,9 @@
 //! family (a refresh can only rotate the family it belongs to). Every proof
 //! is minted under through its [`TokenEntitlement`] variant.
 //!
-//! Each constructor runs inside the token exchange's write scope. A refusal
+//! Each constructor runs inside the token exchange's write scope, but for
+//! [`ValidatedRefreshToken`], validated in a `read` scope first and
+//! re-validated in the write scope (see its doc). A refusal
 //! that follows a write (a code consumed and then found bound elsewhere, a
 //! device poll stamped) is the inner `Err` of a nested result, so the scope
 //! commits what it wrote rather than rolling it back.
@@ -361,7 +363,15 @@ impl ConsumedDeviceRequest {
 
 /// A refresh token that resolved to a live family owned by the presenting
 /// client (RFC 6749 §6). Not yet consumed: the refresh-family writer rotates
-/// it in the same scope.
+/// it.
+///
+/// Built in two scopes. [`validate`](Self::validate) runs the whole
+/// validation in a `read` scope, the client's revocation epoch included: the
+/// epoch lives on the revocation store, another connection to the same file,
+/// so it can't be read under the exchange's write lock without risking a
+/// lock-order stall. [`revalidate`](Self::revalidate) then re-runs the
+/// store-only half inside the `write` scope that rotates, because the family
+/// may have ended between the two.
 pub(crate) struct ValidatedRefreshToken {
     family: RefreshTokenFamily,
     presented_hash: String,
@@ -374,7 +384,8 @@ impl ValidatedRefreshToken {
     /// earlier than its client's revocation epoch. A valid token presented by
     /// the wrong client is answered exactly like an unknown one so a stranger
     /// can't probe validity, and is refused before any consume so it can't
-    /// burn the rightful client's token.
+    /// burn the rightful client's token. Runs in a `read` scope, outside the
+    /// write lock (see the type's doc).
     ///
     /// # Errors
     ///
@@ -388,7 +399,65 @@ impl ValidatedRefreshToken {
         presented_refresh_token: &str,
         now: DateTime<Utc>,
     ) -> Result<Self, TokenExchangeError> {
-        let presented_hash = token_storage_hash(presented_refresh_token);
+        let validated = Self::live_family(
+            tx,
+            authenticated_client,
+            token_storage_hash(presented_refresh_token),
+            now,
+        )?;
+        // Bumping a client's revocation epoch revokes every token it held at
+        // that instant, refresh families included: a family begun before the
+        // epoch is refused like an access token issued before it. The family
+        // has no `jti` of its own, so only the epoch applies.
+        let family_predates_client_epoch = revocation
+            .is_revoked(
+                None,
+                Some(validated.family.issued_at),
+                &validated.family.client_id,
+            )
+            .map_err(|error| {
+                AuthorizationServerError::infrastructure(
+                    "refresh-token revocation epoch check failed",
+                    error,
+                )
+            })?;
+        if family_predates_client_epoch {
+            return Err(TokenExchangeError::InvalidGrant(
+                InvalidGrantReason::RefreshTokenClientRevoked {
+                    family_id: validated.family.family_id,
+                },
+            ));
+        }
+        Ok(validated)
+    }
+
+    /// Re-load this token's family inside the rotating `write` scope `tx` and
+    /// re-check the store-only facts — this client's, unexpired, its browser
+    /// session not revoked — since the family may have ended after
+    /// [`validate`](Self::validate)'s scope closed. The epoch was checked
+    /// there and is not re-read here (see the type's doc).
+    ///
+    /// # Errors
+    ///
+    /// As [`validate`](Self::validate), less the epoch check.
+    pub(crate) fn revalidate(
+        self,
+        tx: &mut (impl RefreshTokensTx + BrowserSessionsTx),
+        authenticated_client: &AuthenticatedClient,
+        now: DateTime<Utc>,
+    ) -> Result<Self, TokenExchangeError> {
+        Self::live_family(tx, authenticated_client, self.presented_hash, now)
+    }
+
+    /// The store-only half of validation: the family `presented_hash`
+    /// belongs to, required to be `authenticated_client`'s, unexpired at
+    /// `now`, and not minted under a revoked browser session.
+    fn live_family(
+        tx: &mut (impl RefreshTokensTx + BrowserSessionsTx),
+        authenticated_client: &AuthenticatedClient,
+        presented_hash: String,
+        now: DateTime<Utc>,
+    ) -> Result<Self, TokenExchangeError> {
         let Some((_, family)) = tx.refresh_token_with_family_by_hash(&presented_hash)? else {
             return Err(TokenExchangeError::InvalidGrant(
                 InvalidGrantReason::RefreshTokenNotFound,
@@ -420,25 +489,6 @@ impl ValidatedRefreshToken {
                     },
                 ));
             }
-        }
-        // Bumping a client's revocation epoch revokes every token it held at
-        // that instant, refresh families included: a family begun before the
-        // epoch is refused like an access token issued before it. The family
-        // has no `jti` of its own, so only the epoch applies.
-        let family_predates_client_epoch = revocation
-            .is_revoked(None, Some(family.issued_at), &family.client_id)
-            .map_err(|error| {
-                AuthorizationServerError::infrastructure(
-                    "refresh-token revocation epoch check failed",
-                    error,
-                )
-            })?;
-        if family_predates_client_epoch {
-            return Err(TokenExchangeError::InvalidGrant(
-                InvalidGrantReason::RefreshTokenClientRevoked {
-                    family_id: family.family_id,
-                },
-            ));
         }
         Ok(ValidatedRefreshToken {
             token_scopes: token_scope_spellings(&family.scopes),

@@ -55,7 +55,7 @@ pub struct SqliteGrantStore {
 impl SqliteGrantStore {
     /// Wrap the host-owned connection `pool` and apply pending authorization server
     /// migrations once, on a single checked-out connection, under
-    /// [`MIGRATION_NAMESPACE`]. The host builds the app-wide pool (via
+    /// `MIGRATION_NAMESPACE`. The host builds the app-wide pool (via
     /// `wildflowerhealthio_persistence::open_pool`) on the same file its rusqlite connection
     /// opens for the other slices; both coexist (see the `pool` field).
     ///
@@ -1856,7 +1856,8 @@ mod tests {
     /// An install already at `0043` loses its stored `expired` status when
     /// `0044` runs: an approved request a poll redeemed (it carries its
     /// `granted_scopes`) becomes `claimed`, and any other `expired` row (a
-    /// request `0042` ended) is deleted. The `code_challenge_method` column,
+    /// request `0042` ended) is deleted, as is a code request from before the
+    /// browser-session flow (no `sid`). The `code_challenge_method` column,
     /// always `S256`, goes. Reverting `0044` brings the column back as `S256`
     /// on every code row and stores a claim as `expired` again.
     #[test]
@@ -1874,13 +1875,17 @@ mod tests {
         conn.batch_execute(&format!(
             "INSERT INTO authorization_requests \
              (id, grant_type, client_id, requested_scopes, requested_at, expires_at, status, \
-              granted_scopes, user_code, code_challenge, code_challenge_method, sid) \
+              granted_scopes, user_code, code_challenge, code_challenge_method, sid, \
+              redirect_uri, client_state) \
              VALUES ('redeemed', 'device_code', 'device-app', '[]', '{AT}', '{AT}', 'expired', \
-                     '[\"openid\"]', 'UC-1', NULL, NULL, NULL), \
+                     '[\"openid\"]', 'UC-1', NULL, NULL, NULL, NULL, NULL), \
                     ('ended', 'authorization_code', 'app', '[]', '{AT}', '{AT}', 'expired', \
-                     NULL, NULL, 'challenge', 'S256', NULL), \
+                     NULL, NULL, 'challenge', 'S256', NULL, 'https://app.example/cb', 's'), \
+                    ('pre-session', 'authorization_code', 'app', '[]', '{AT}', '{AT}', \
+                     'approved', '[\"openid\"]', NULL, 'challenge', 'S256', NULL, \
+                     'https://app.example/cb', 's'), \
                     ('pending', 'authorization_code', 'app', '[]', '{AT}', '{AT}', 'pending', \
-                     NULL, NULL, 'challenge', 'S256', 'sid-1')"
+                     NULL, NULL, 'challenge', 'S256', 'sid-1', 'https://app.example/cb', 's')"
         ))
         .expect("requests at 0043");
 

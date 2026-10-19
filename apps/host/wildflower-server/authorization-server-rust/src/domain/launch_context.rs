@@ -9,7 +9,7 @@ pub const LAUNCH_CONTEXT_TTL: Duration = Duration::minutes(5);
 
 /// One SMART App Launch `launch` value this server handed out, and what it
 /// binds. Minted in-process (the apps launch route, the base's launch) through
-/// the [`LaunchContexts`](crate::domain::capabilities::oauth::LaunchContexts)
+/// the `LaunchContexts`
 /// capability, and consumed single-use by the `/oauth/authorize` request that
 /// presents it. Diesel-mapped 1:1 to the `launch_contexts` table.
 ///

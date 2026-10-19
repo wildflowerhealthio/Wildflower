@@ -28,7 +28,7 @@ pub struct AuthorizationServerConfig {
     /// The `client_id` of the FHIR server's web UI (`helios-ui`), which signs
     /// its users in here with the authorization-code flow. Seeded on every boot
     /// with `{server_origin}/ui/callback` as its one redirect URI (see
-    /// [`crate::seeding`]). The host owns the id and hands the same one to
+    /// `crate::seeding`). The host owns the id and hands the same one to
     /// `fhir-r4-rust`, which sends it as the UI's `client_id`.
     pub fhir_ui_client_id: String,
 

@@ -74,7 +74,7 @@ pub struct BrowserSession {
     /// while it stands.
     pub revoked_at: Option<DateTime<Utc>>,
     /// When the session was last seen in use: its sign-in, then the server
-    /// accepting its cookie (at most once every [`LAST_SEEN_RESOLUTION`])
+    /// accepting its cookie (at most once every `LAST_SEEN_RESOLUTION`)
     /// and a refresh-token family that names it rotating.
     pub last_seen_at: DateTime<Utc>,
 }

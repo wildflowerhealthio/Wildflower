@@ -27,6 +27,7 @@ use crate::domain::client_registration::ResolvedCodeRequest;
 use crate::domain::grant_store::{write_transition, AuthorizationRequestsTx, ClientsTx};
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::oauth_error_kind::OAuthErrorKind;
+use crate::domain::pending_consent::client_is_disabled;
 use crate::domain::{GrantStore, GrantTx};
 
 impl<S: GrantStore> ConsentReader<S> {
@@ -73,7 +74,8 @@ impl<S: GrantStore> ConsentRaiser<S> {
     /// # Errors
     ///
     /// [`AuthorizationServerError::OAuthConsentNotFound`] when `id` names no
-    /// live code-flow prompt.
+    /// live code-flow prompt, or its client is disabled (the rule on
+    /// [`NewestPendingConsent`](crate::domain::pending_consent::NewestPendingConsent)).
     pub(crate) fn raise_for_owner(
         &self,
         id: &str,
@@ -82,6 +84,9 @@ impl<S: GrantStore> ConsentRaiser<S> {
     ) -> Result<OwnerRaising, AuthorizationServerError> {
         let raising = self.store.write(|tx| {
             let pending_request = load_pending_code_request(tx, id, now)?;
+            if client_is_disabled(tx, pending_request.request().client_id())? {
+                return Err(consent_not_found(id));
+            }
             if !pending_request.code().decidable_in_requesting_browser {
                 return Ok(OwnerRaising::AlreadyRaised);
             }

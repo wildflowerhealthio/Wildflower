@@ -212,7 +212,7 @@ pub enum VerifyError {
     NoSigningKeysConfigured,
     /// The signing-key store could not be read (e.g. the database query
     /// failed) — distinct from a key whose material is corrupt. Surface as 500.
-    /// Wraps the domain [`AuthorizationServerError`](crate::domain::authorization_server_error::AuthorizationServerError)
+    /// Wraps the domain [`AuthorizationServerError`]
     /// the store surfaced, so no database error type appears here.
     #[error("signing-key store unavailable")]
     KeyStoreUnavailable(

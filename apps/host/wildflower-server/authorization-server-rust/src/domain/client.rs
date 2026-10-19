@@ -84,8 +84,8 @@ pub enum RegistrationSource {
 
 /// A registered OAuth client — the identity and policy bundle that `/authorize` and `/token` look up by `client_id`.
 /// Diesel-mapped 1:1 to the `clients` table; the JSON list columns convert
-/// through the column newtypes in [`crate::db::clients`] and
-/// [`crate::db::shared`] at the bind/read boundary.
+/// through the column newtypes in `crate::db::clients` and
+/// `crate::db::shared` at the bind/read boundary.
 #[derive(Debug, Clone, PartialEq, Eq, Queryable, Selectable, Insertable)]
 #[diesel(table_name = clients)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]

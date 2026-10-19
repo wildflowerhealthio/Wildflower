@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use tokio::sync::watch;
 use url::Url;
-use wildflowerhealthio_authorization_server::domain::grant_store::AuthorizationRequestsTx as _;
 use wildflowerhealthio_authorization_server::domain::authorization_request::{
     AuthorizationRequest, CodeRequest, NewAuthorizationRequest, RequestKind,
 };
+use wildflowerhealthio_authorization_server::domain::grant_store::AuthorizationRequestsTx as _;
 use wildflowerhealthio_authorization_server::{
     setup_authorization_server, AdmitEveryAuthorizationStart, AuthorizationServerConfig,
     GrantStore, LaunchContextMinter, NewestPendingConsent, PendingConsentWatcher,

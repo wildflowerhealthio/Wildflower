@@ -41,8 +41,20 @@ pub fn open_and_seed_store(
     server_origin: &url::Url,
 ) -> anyhow::Result<SqliteGrantStore> {
     let store = SqliteGrantStore::new(pool).context("failed to open grant store")?;
+    // RSA key generation is slow, so it runs before the write lock is taken,
+    // and only on a boot that finds no active key.
+    let candidate_signing_key = if store
+        .read(|tx| tx.active_signing_key())
+        .context("failed to read signing keys")?
+        .is_none()
+    {
+        Some(SigningKey::generate().context("failed to generate signing key")?)
+    } else {
+        None
+    };
     store.write(|tx| -> anyhow::Result<()> {
-        ensure_some_active_signing_key(tx).context("failed to seed signing key")?;
+        ensure_some_active_signing_key(tx, candidate_signing_key)
+            .context("failed to seed signing key")?;
         ensure_essential_clients(tx, host_app_client_scopes, wildflower_host_app_client_id)
             .context("failed to seed the essential clients")?;
         ensure_fhir_ui_client(tx, fhir_ui_client_id, server_origin)
@@ -83,15 +95,18 @@ fn ensure_fhir_ui_client(
     Ok(())
 }
 
-/// Generate and insert an active signing key if the table is empty;
-/// otherwise leave the existing keys alone. Idempotent — safe to call on
-/// every boot.
-fn ensure_some_active_signing_key(tx: &mut impl SigningKeysTx) -> anyhow::Result<()> {
+/// Insert `candidate`, generated before the scope opened, as the active
+/// signing key if none is active; otherwise leave the existing keys alone.
+/// Idempotent — safe to call on every boot.
+fn ensure_some_active_signing_key(
+    tx: &mut impl SigningKeysTx,
+    candidate: Option<SigningKey>,
+) -> anyhow::Result<()> {
     let existing = tx.active_signing_key().context("read signing keys")?;
     if existing.is_some() {
         return Ok(());
     }
-    let mut key = SigningKey::generate().context("generate signing key")?;
+    let mut key = candidate.context("the active signing key vanished during seeding")?;
     key.is_active = true;
     tx.insert_signing_key(&key).context("insert signing key")?;
     Ok(())
@@ -315,7 +330,7 @@ const DEV_ROOT_REDIRECT_PATH: &str = "/";
 /// is its single call site in the Tauri host.
 ///
 /// Upserted (not insert-if-missing) so a definition change lands on the next boot
-/// — the same treatment [`ensure_essential_clients`] gets, and safe here because
+/// — the same treatment `ensure_essential_clients` gets, and safe here because
 /// nothing but this code owns these rows.
 ///
 /// # Errors

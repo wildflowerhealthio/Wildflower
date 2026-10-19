@@ -30,7 +30,7 @@ pub type AuthorizationServerAuthMiddleware =
 /// stamps the response with the verified [`RequestCaller`] (an
 /// exempt path's response carries none; a `401` carries the
 /// [`RequestRefusal`](wildflowerhealthio_shared_structures::request_caller::RequestRefusal)
-/// [`verify_request_claims`] stamped instead).
+/// `verify_request_claims` stamped instead).
 /// `Clone` — build once, clone per router. See
 /// `docs/Authorization/Scope-Gated Endpoints How-To.md`.
 pub fn authorization_server_auth_middleware(

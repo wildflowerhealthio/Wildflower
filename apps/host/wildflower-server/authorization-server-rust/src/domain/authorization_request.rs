@@ -698,7 +698,7 @@ impl AuthorizationRequest {
 
 /// A code request that was pending when it was read: what the consent and
 /// limited-page flows load, and what
-/// [`RequestApprover::approve_for_code`](crate::domain::capabilities::writers::RequestApprover::approve_for_code)
+/// `RequestApprover::approve_for_code`
 /// approves. Holding the code payload beside the request (a copy, built only
 /// by [`AuthorizationRequest::into_pending_code`]) answers the code-only
 /// questions without a kind check at every use.

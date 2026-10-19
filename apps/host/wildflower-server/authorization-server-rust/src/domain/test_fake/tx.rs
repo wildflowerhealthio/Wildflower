@@ -125,19 +125,26 @@ impl AuthorizationRequestsTx for FakeGrantTx<'_> {
         now: DateTime<Utc>,
     ) -> Result<Option<NewestPendingConsent>, AuthorizationServerError> {
         let requests = self.store.authorization_requests.borrow();
+        let clients = self.store.clients.borrow();
+        // Mirrors the SQL: a disabled client's request is skipped, a client
+        // with no row's kept.
+        let client_disabled = |client_id: &str| {
+            clients
+                .get(client_id)
+                .is_some_and(|client| client.disabled_at.is_some())
+        };
         let newest = requests
             .values()
             .filter(|request| {
-                request.pending_at(now) && request.phase().session_shortfall_acknowledged
+                request.pending_at(now)
+                    && request.phase().session_shortfall_acknowledged
+                    && !client_disabled(request.client_id())
             })
             .max_by_key(|request| request.requested_at());
         Ok(newest.map(|request| {
             // Mirrors the SQL left join: a client with no registration has no
             // registered name.
-            let registered_client_name = self
-                .store
-                .clients
-                .borrow()
+            let registered_client_name = clients
                 .get(request.client_id())
                 .map(|client| client.name.clone());
             NewestPendingConsent::for_request(request, registered_client_name)

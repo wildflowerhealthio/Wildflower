@@ -63,7 +63,7 @@ pub use domain::{GrantStore, GrantTx};
 /// couple *enforced* (the scope-gated capability extractors) with *grantable*
 /// (the vocabulary the consent surfaces will offer). Re-exported for the host
 /// and the resource-authz epic's consent UI; nothing consumes it yet — its
-/// tests pin the set until then. See [`domain::capabilities`].
+/// tests pin the set until then. See `domain::capabilities`.
 pub use domain::capabilities::grantable_admin_scopes;
 pub use http::{
     authorization_server_auth_middleware, browser_session_clearing_set_cookie,

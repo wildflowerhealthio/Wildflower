@@ -7,9 +7,9 @@
 //! `grant_store` holds the pool, the migrations and the two scopes. Each
 //! concern's file holds its `table!`, its row and column mappings, and its
 //! port trait implemented on `SqliteGrantTx` (the scope's handle on one
-//! checked-out connection). [`shared`] holds the two column-mapping macros
+//! checked-out connection). `shared` holds the two column-mapping macros
 //! and the column types more than one concern binds (`JsonStrings`,
-//! `UrlText`, the `GrantType` mapping). [`grants`] is a folder split by kind
+//! `UrlText`, the `GrantType` mapping). `grants` is a folder split by kind
 //! (its `authorization_code_grants` / `device_grants` tables, and the
 //! cross-kind `grants` view).
 

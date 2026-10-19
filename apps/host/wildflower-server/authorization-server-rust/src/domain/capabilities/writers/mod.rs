@@ -3,7 +3,7 @@
 //! admission:
 //!
 //!  - [`RequestApprover`] — approve a pending request (the request's own
-//!    `approve` transition) and, for the code flow, issue its authorization
+//!    `approve_code` / `approve_device` / `approve_pairing` transition) and, for the code flow, issue its authorization
 //!    code (under a [`CodeAuthority`]: the Owner's `DelegatedScopes` or a
 //!    `StandingGrantCoverage`).
 //!  - [`GrantRecorder`] — insert or widen the standing grant and, for a client
@@ -43,17 +43,22 @@ mod tests {
     /// [`AuthorizationRequest::approve_pairing`]), issuing a code,
     /// recording or widening a grant, widening a client registration, reading
     /// private key material to sign with, seeding a key, issuing a refresh
-    /// token, starting a browser session. Each is written with a leading `.`
-    /// so `request.x(` and `tx.x(` match while a differently named method
-    /// that merely ends the same way (`has_active_signing_key(`) does not.
+    /// token, starting a browser session — and rebuilding a request from its
+    /// stored parts ([`AuthorizationRequest::restore`]), which can make an
+    /// approved request from nothing and is the store adapter's alone. Each is
+    /// written with a leading `.` (or `::`) so `request.x(`, `tx.x(` and
+    /// `Type::x(` match while a differently named method that merely ends the
+    /// same way (`has_active_signing_key(`) does not.
     ///
     /// [`AuthorizationRequest::approve_code`]: crate::domain::authorization_request::AuthorizationRequest::approve_code
     /// [`AuthorizationRequest::approve_device`]: crate::domain::authorization_request::AuthorizationRequest::approve_device
     /// [`AuthorizationRequest::approve_pairing`]: crate::domain::authorization_request::AuthorizationRequest::approve_pairing
+    /// [`AuthorizationRequest::restore`]: crate::domain::authorization_request::AuthorizationRequest::restore
     const PRIVILEGED_CALLS: &[&str] = &[
         ".approve_code(",
         ".approve_device(",
         ".approve_pairing(",
+        "::restore(",
         ".issue_authorization_code(",
         ".create_authorization_code_grant(",
         ".update_authorization_code_grant(",
@@ -71,8 +76,9 @@ mod tests {
     /// the `SQLite` adapter and port definition that implement and declare the
     /// methods, the in-memory fake, and the boot-time seeding (the signing-key
     /// seed and the essential client rows come from configuration, not from a
-    /// delegation). The entity defining the approve transitions declares them
-    /// (`fn approve_code(`, …) and calls them nowhere.
+    /// delegation). The entity defining the approve transitions and `restore`
+    /// declares them (`fn approve_code(`, …, `fn restore(`) and calls them
+    /// nowhere.
     const ALLOWED_PREFIXES: &[&str] = &[
         "domain/capabilities/writers/",
         "db/",

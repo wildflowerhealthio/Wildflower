@@ -275,7 +275,9 @@ impl AuthorizationRequestsTx for SqliteGrantTx<'_> {
     }
 
     /// The client's name comes from its registration through a left join: a
-    /// client trusted on first use has none until the Owner approves it.
+    /// client trusted on first use has none until the Owner approves it. A
+    /// disabled client's request is skipped, a client with no row's kept (the
+    /// rule on [`NewestPendingConsent`]).
     fn newest_pending_consent(
         &mut self,
         now: DateTime<Utc>,
@@ -285,6 +287,7 @@ impl AuthorizationRequestsTx for SqliteGrantTx<'_> {
             .filter(authorization_requests::status.eq(RequestStatus::Pending))
             .filter(authorization_requests::expires_at.gt(now))
             .filter(authorization_requests::session_shortfall_acknowledged.eq(true))
+            .filter(clients::disabled_at.is_null())
             .order(authorization_requests::requested_at.desc())
             .select((Row::as_select(), clients::name.nullable()))
             .first::<(Row, Option<String>)>(self.conn)
@@ -924,6 +927,39 @@ mod tests {
             ),
         );
         assert_eq!(newest(&store), None);
+    }
+
+    /// A disabled client's request is no candidate; a client with no row
+    /// stays one.
+    #[test]
+    fn newest_pending_consent_skips_a_disabled_client() {
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
+        let now = Utc::now();
+        insert(
+            &store,
+            &device_request_at(
+                "dev-1",
+                "UC-1",
+                now - Duration::seconds(3),
+                Duration::minutes(5),
+            ),
+        );
+        store
+            .write(|tx| {
+                tx.upsert_client(&Client {
+                    disabled_at: Some(now),
+                    ..client("app", &["read"])
+                })
+            })
+            .expect("register disabled");
+        insert(&store, &code_request("req-1"));
+        assert_eq!(
+            newest(&store),
+            Some(NewestPendingConsent::Device {
+                user_code: "UC-1".to_owned(),
+                client_name: "device-client".to_owned(),
+            })
+        );
     }
 
     /// A registered client is named by its registered name.
