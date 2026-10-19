@@ -42,7 +42,6 @@
     "@wildflowerhealthio/request-log-core-js": "workspace:*",
     "@wildflowerhealthio/shared-structures-react": "workspace:*",
     "effect": "catalog:",
-    "fast-check": "catalog:",
     "jsdom": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",

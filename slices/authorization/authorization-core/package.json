@@ -47,10 +47,8 @@
     "@types/node": "catalog:",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "@wildflowerhealthio/shared-structures-core": "workspace:*",
-    "bumpp": "catalog:",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "jose": "catalog:",
     "jsdom": "catalog:",
     "openapi-to-effect": "^0.9.3",
     "prettier": "^3.9.10",
@@ -58,14 +56,12 @@
     "typescript": "catalog:",
     "typescript-7": "catalog:",
     "vite": "catalog:",
-    "vite-plus": "catalog:",
-    "why-is-node-running": "catalog:"
+    "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "@effect/platform": "catalog:",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "@wildflowerhealthio/shared-structures-core": "workspace:*",
-    "effect": "catalog:",
-    "jose": "catalog:"
+    "effect": "catalog:"
   }
 }

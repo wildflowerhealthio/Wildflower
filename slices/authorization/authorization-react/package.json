@@ -32,7 +32,6 @@
     "@wildflowerhealthio/scopes-core": "workspace:*",
     "@wildflowerhealthio/scopes-react": "workspace:*",
     "@wildflowerhealthio/shared-structures-react": "workspace:*",
-    "@wildflowerhealthio/telemetry-react": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "jsdom": "catalog:",
@@ -53,7 +52,6 @@
     "@wildflowerhealthio/scopes-core": "workspace:*",
     "@wildflowerhealthio/scopes-react": "workspace:*",
     "@wildflowerhealthio/shared-structures-react": "workspace:*",
-    "@wildflowerhealthio/telemetry-react": "workspace:*",
     "effect": "catalog:",
     "react": "catalog:"
   }

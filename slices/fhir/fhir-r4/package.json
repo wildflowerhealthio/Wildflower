@@ -51,7 +51,6 @@
     "@types/fhir": "catalog:",
     "@types/node": "catalog:",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
-    "@wildflowerhealthio/navigation-core": "workspace:*",
     "@wildflowerhealthio/shared-structures-core": "workspace:*",
     "bumpp": "catalog:",
     "effect": "catalog:",
@@ -64,7 +63,6 @@
   "peerDependencies": {
     "@effect/platform": "catalog:",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
-    "@wildflowerhealthio/navigation-core": "workspace:*",
     "@wildflowerhealthio/shared-structures-core": "workspace:*",
     "effect": "catalog:"
   }

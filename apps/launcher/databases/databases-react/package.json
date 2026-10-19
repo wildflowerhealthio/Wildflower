@@ -40,9 +40,7 @@
     "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
     "@wildflowerhealthio/react-tundraish": "workspace:*",
     "@wildflowerhealthio/shared-structures-react": "workspace:*",
-    "@wildflowerhealthio/telemetry-react": "workspace:*",
     "effect": "catalog:",
-    "fast-check": "catalog:",
     "jsdom": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
@@ -59,7 +57,6 @@
     "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
     "@wildflowerhealthio/react-tundraish": "workspace:*",
     "@wildflowerhealthio/shared-structures-react": "workspace:*",
-    "@wildflowerhealthio/telemetry-react": "workspace:*",
     "effect": "catalog:",
     "react": "catalog:"
   }
