@@ -515,11 +515,7 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
         now: DateTime<Utc>,
     ) -> Result<AuthorizeNextStep, AuthorizationStartError> {
         let requested_redirect_uri = parked_request.redirect_uri().clone();
-        let client_state = parked_request
-            .request()
-            .client_state
-            .as_deref()
-            .unwrap_or_default();
+        let client_state = parked_request.client_state();
         let code_approval = RequestApprover::over(&self.store).approve_for_code(
             CodeAuthority::StandingGrant(standing_grant_coverage),
             parked_request,
