@@ -12,7 +12,7 @@ use diesel::prelude::*;
 use crate::db::grant_store::SqliteGrantTx;
 use crate::db::shared::{json_text_column, text_enum_column};
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::client::{AllowedGrantType, Client, ClientKind};
+use crate::domain::client::{AllowedGrantType, Client, ClientKind, RegistrationSource};
 use crate::domain::grant_store::ClientsTx;
 
 diesel::table! {
@@ -26,6 +26,7 @@ diesel::table! {
         secret_hash -> Nullable<Text>,
         registered_at -> TimestamptzSqlite,
         disabled_at -> Nullable<TimestamptzSqlite>,
+        registration_source -> Text,
     }
 }
 
@@ -45,6 +46,9 @@ json_text_column!(
 // The client `kind` discriminant, stored as its strum wire string. Only the
 // client binds it, so its mapping lives here rather than in `db::shared`.
 text_enum_column!(ClientKind);
+
+// Who defines the registration, stored as its strum wire string.
+text_enum_column!(RegistrationSource);
 
 impl ClientsTx for SqliteGrantTx<'_> {
     /// Look up a registered client by its `client_id`, or `None` when absent.
@@ -110,6 +114,7 @@ impl ClientsTx for SqliteGrantTx<'_> {
                 clients::allowed_scopes.eq(excluded(clients::allowed_scopes)),
                 clients::allowed_grant_types.eq(excluded(clients::allowed_grant_types)),
                 clients::secret_hash.eq(excluded(clients::secret_hash)),
+                clients::registration_source.eq(excluded(clients::registration_source)),
             ))
             .execute(conn)
             .map_err(|e| AuthorizationServerError::infrastructure("upsert_client failed", e))?;
@@ -136,6 +141,10 @@ mod tests {
             prop::option::of("[0-9a-f]{64}"),
             arb_timestamp(),
             arb_opt_timestamp(),
+            prop_oneof![
+                Just(RegistrationSource::ServerDefined),
+                Just(RegistrationSource::TrustedOnFirstUse)
+            ],
         )
             .prop_map(
                 |(
@@ -147,6 +156,7 @@ mod tests {
                     secret_hash,
                     registered_at,
                     disabled_at,
+                    registration_source,
                 )| Client {
                     client_id,
                     name,
@@ -157,6 +167,7 @@ mod tests {
                     secret_hash,
                     registered_at,
                     disabled_at,
+                    registration_source,
                 },
             )
     }
@@ -269,6 +280,7 @@ mod tests {
             secret_hash: None,
             registered_at,
             disabled_at: Some(disabled_at),
+            registration_source: RegistrationSource::TrustedOnFirstUse,
         };
         store.write(|tx| tx.upsert_client(&client)).expect("insert");
 
@@ -279,6 +291,7 @@ mod tests {
         client.allowed_scopes = vec!["system/*.cruds".to_string()];
         client.registered_at = chrono::DateTime::from_timestamp(2_000, 0).unwrap();
         client.disabled_at = None;
+        client.registration_source = RegistrationSource::ServerDefined;
         store.write(|tx| tx.upsert_client(&client)).expect("update");
 
         let fetched = store
@@ -289,6 +302,11 @@ mod tests {
         assert_eq!(fetched.allowed_scopes, vec!["system/*.cruds".to_string()]);
         assert_eq!(fetched.registered_at, registered_at);
         assert_eq!(fetched.disabled_at, Some(disabled_at));
+        assert_eq!(
+            fetched.registration_source,
+            RegistrationSource::ServerDefined,
+            "seeding marks the rows it owns server-defined"
+        );
     }
 
     /// Every SMART client is seeded by a migration (not Rust) — the sample apps by

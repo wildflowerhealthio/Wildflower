@@ -11,7 +11,7 @@ use wildflowerhealthio_scopes::widened_scopes;
 
 use crate::domain::authority::DelegatedScopes;
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::client::{AllowedGrantType, Client, ClientKind};
+use crate::domain::client::{AllowedGrantType, Client, ClientKind, RegistrationSource};
 use crate::domain::grant::{AuthorizationCodeGrant, CumulativeConsent, DeviceGrant};
 use crate::domain::GrantTx;
 
@@ -174,6 +174,7 @@ fn new_registration(
         secret_hash: None,
         registered_at: now,
         disabled_at: None,
+        registration_source: RegistrationSource::TrustedOnFirstUse,
     }
 }
 

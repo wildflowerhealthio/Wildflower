@@ -175,23 +175,15 @@ pub struct ApproveDeviceConsentInput {
 pub(crate) struct ConsentReader<S: GrantStore> {
     store: S,
     reader_grant: Grant,
-    wildflower_host_app_client_id: Arc<str>,
 }
 
 impl<S: GrantStore> ConsentReader<S> {
-    /// Build the reader over a store handle, the reader's own granted scopes,
-    /// and the host app's `client_id` (whose registration is fixed, so
-    /// approving its requests writes none) — all lifted from the state +
-    /// claims.
-    pub(crate) fn new(
-        store: S,
-        reader_grant: Grant,
-        wildflower_host_app_client_id: Arc<str>,
-    ) -> Self {
+    /// Build the reader over a store handle and the reader's own granted
+    /// scopes, lifted from the state and claims.
+    pub(crate) fn new(store: S, reader_grant: Grant) -> Self {
         ConsentReader {
             store,
             reader_grant,
-            wildflower_host_app_client_id,
         }
     }
 }
@@ -244,26 +236,20 @@ pub(crate) struct ConsentDecider<S: GrantStore> {
     store: S,
     owner_approval: Arc<dyn OwnerApproval>,
     approver_grant: Grant,
-    wildflower_host_app_client_id: Arc<str>,
 }
 
 impl<S: GrantStore> ConsentDecider<S> {
-    /// Build the decider over a store handle, the republish port, the approver's
-    /// own granted scopes, and the host app's `client_id` — all lifted from the
-    /// state + claims. The last decides which client's registration is fixed
-    /// when a code-flow approval is checked against its
-    /// [registration verdict](ClientRegistrationVerdict).
+    /// Build the decider over a store handle, the republish port, and the
+    /// approver's own granted scopes — all lifted from the state and claims.
     pub(crate) fn new(
         store: S,
         owner_approval: Arc<dyn OwnerApproval>,
         approver_grant: Grant,
-        wildflower_host_app_client_id: Arc<str>,
     ) -> Self {
         ConsentDecider {
             store,
             owner_approval,
             approver_grant,
-            wildflower_host_app_client_id,
         }
     }
 
@@ -289,6 +275,10 @@ mod tests {
     use crate::domain::authorization_request::{
         CodeRequest, NewAuthorizationRequest, PairingRequest, RequestKind, RequestStatus,
     };
+    use crate::domain::client::{Client, RegistrationSource};
+    use crate::domain::client_redirect::build_client_error_redirect_url;
+    use crate::domain::oauth_error_code::OAuthErrorCode;
+    use crate::domain::oauth_error_kind::OAuthErrorKind;
     use crate::domain::test_fake::{
         client, code_request, code_request_for, device_request, fixture_code, owned_scopes,
         pending_request, seed_fixture_browser_session, FakeGrantStore, RecordingOwnerApproval,
@@ -306,7 +296,6 @@ mod tests {
             store.clone(),
             owner_approval.clone(),
             approver_grant.clone(),
-            crate::WILDFLOWER_HOST_APP_CLIENT_ID.into(),
         )
     }
 
@@ -413,6 +402,61 @@ mod tests {
             ))
             .unwrap();
         (store, Arc::new(RecordingOwnerApproval::default()))
+    }
+
+    /// A prompt whose client was disabled since it was made isn't read, and
+    /// approving it denies it instead, sending the app `access_denied` with the
+    /// disabled-client sentence: no code, no grant, the popup head
+    /// republished.
+    #[test]
+    fn a_prompt_whose_client_was_disabled_is_denied_not_approved() {
+        let (store, owner_approval) = live_code_store();
+        assert!(store
+            .tx()
+            .set_client_disabled("client", Some(Utc::now()))
+            .unwrap());
+        let reader = ConsentReader::new(store.clone(), owner_grant());
+        assert!(matches!(
+            reader.oauth_consent("req-1", Utc::now()),
+            Err(AuthorizationServerError::OAuthConsentNotFound { .. })
+        ));
+        let outcome = approve_code(
+            &store,
+            &owner_approval,
+            "req-1",
+            approved(&["read"]),
+            &owner_grant(),
+            || panic!("a disabled client is issued no code"),
+        )
+        .unwrap();
+        assert_eq!(
+            outcome,
+            ConsentOutcome::Denied {
+                redirect: Some(build_client_error_redirect_url(
+                    &url::Url::parse("https://example.com/cb").unwrap(),
+                    OAuthErrorCode::AccessDenied,
+                    OAuthErrorKind::DisabledClient.description(),
+                    "state",
+                )),
+            }
+        );
+        assert_eq!(
+            store
+                .tx()
+                .authorization_request_by_id("req-1")
+                .unwrap()
+                .map(|request| request.status()),
+            Some(RequestStatus::Denied)
+        );
+        assert!(store
+            .tx()
+            .grant_by_client_and_redirect(
+                "client",
+                &url::Url::parse("https://example.com/cb").unwrap(),
+            )
+            .unwrap()
+            .is_none());
+        assert_eq!(owner_approval.count(), 1);
     }
 
     #[test]
@@ -774,7 +818,10 @@ mod tests {
     fn approve_oauth_consent_clamps_a_fixed_registration_to_itself() {
         let store = FakeGrantStore::default();
         let owner_approval = Arc::new(RecordingOwnerApproval::default());
-        let host = client(crate::WILDFLOWER_HOST_APP_CLIENT_ID, &["read"]);
+        let host = Client {
+            registration_source: RegistrationSource::ServerDefined,
+            ..client(crate::WILDFLOWER_HOST_APP_CLIENT_ID, &["read"])
+        };
         store.tx().upsert_client(&host).unwrap();
         let request = code_request_for(
             "req-1",
@@ -1139,7 +1186,10 @@ mod tests {
         let owner_approval = Arc::new(RecordingOwnerApproval::default());
         store
             .tx()
-            .upsert_client(&client(crate::WILDFLOWER_HOST_APP_CLIENT_ID, &["read"]))
+            .upsert_client(&Client {
+                registration_source: RegistrationSource::ServerDefined,
+                ..client(crate::WILDFLOWER_HOST_APP_CLIENT_ID, &["read"])
+            })
             .unwrap();
         let request = code_request_for(
             "req-1",
@@ -1236,14 +1286,10 @@ mod tests {
                     Utc::now() + Duration::minutes(5),
                 ))
                 .unwrap();
-            ConsentReader::new(
-                store,
-                reader_grant,
-                crate::WILDFLOWER_HOST_APP_CLIENT_ID.into(),
-            )
-            .oauth_consent("req-1", Utc::now())
-            .expect("view")
-            .missing_approval_scopes
+            ConsentReader::new(store, reader_grant)
+                .oauth_consent("req-1", Utc::now())
+                .expect("view")
+                .missing_approval_scopes
         };
         assert_eq!(
             read_by(Grant::parse(["wildflower/AuthorizationRequest.r"])),
@@ -1270,11 +1316,8 @@ mod tests {
             .tx()
             .insert_authorization_request(&pairing_request("pair-1", "UC-2", "Laptop"))
             .unwrap();
-        let reader = ConsentReader::new(
-            store,
-            Grant::parse(["wildflower/AuthorizationRequest.ru"]),
-            crate::WILDFLOWER_HOST_APP_CLIENT_ID.into(),
-        );
+        let reader =
+            ConsentReader::new(store, Grant::parse(["wildflower/AuthorizationRequest.ru"]));
         assert_eq!(
             reader
                 .device_consent("UC-1", Utc::now())
@@ -1351,11 +1394,7 @@ mod tests {
                 Utc::now() + Duration::minutes(5),
             ))
             .unwrap();
-        let reader = ConsentReader::new(
-            store,
-            owner_grant(),
-            crate::WILDFLOWER_HOST_APP_CLIENT_ID.into(),
-        );
+        let reader = ConsentReader::new(store, owner_grant());
         let view = reader.oauth_consent("req-1", Utc::now()).expect("view");
         assert_eq!(view.pending_request.request().id(), "req-1");
         assert_eq!(
@@ -1401,11 +1440,7 @@ mod tests {
         .expect("corrupt the stored row");
         drop(conn);
 
-        let reader = ConsentReader::new(
-            store,
-            owner_grant(),
-            crate::WILDFLOWER_HOST_APP_CLIENT_ID.into(),
-        );
+        let reader = ConsentReader::new(store, owner_grant());
         assert!(matches!(
             reader.oauth_consent("req-1", Utc::now()),
             Err(AuthorizationServerError::Infrastructure { .. })

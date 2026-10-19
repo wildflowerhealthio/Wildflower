@@ -18,7 +18,7 @@ use wildflowerhealthio_persistence::DieselPool;
 use wildflowerhealthio_scopes::{Permission, Scope};
 
 use crate::db::SqliteGrantStore;
-use crate::domain::client::{AllowedGrantType, Client, ClientKind};
+use crate::domain::client::{AllowedGrantType, Client, ClientKind, RegistrationSource};
 use crate::domain::grant_store::{ClientsTx, SigningKeysTx};
 use crate::domain::signing_key::SigningKey;
 use crate::domain::GrantStore as _;
@@ -76,6 +76,7 @@ fn ensure_fhir_ui_client(
         secret_hash: None,
         registered_at: Utc::now(),
         disabled_at: None,
+        registration_source: RegistrationSource::ServerDefined,
     };
     tx.upsert_client(&client)
         .context("seed the FHIR server UI client")?;
@@ -128,6 +129,7 @@ fn ensure_essential_clients(
         secret_hash: None,
         registered_at: Utc::now(),
         disabled_at: None,
+        registration_source: RegistrationSource::ServerDefined,
     };
     tx.upsert_client(&wildflower_host_app_client)
         .context("seed the host app's client")?;
@@ -141,6 +143,7 @@ fn ensure_essential_clients(
         secret_hash: None,
         registered_at: Utc::now(),
         disabled_at: None,
+        registration_source: RegistrationSource::ServerDefined,
     };
     tx.upsert_client(&browser_session_client)
         .context("seed the browser-session client")?;
@@ -458,6 +461,7 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             secret_hash: None,
             registered_at: Utc::now(),
             disabled_at: None,
+            registration_source: RegistrationSource::TrustedOnFirstUse,
         };
         store
             .write(|tx| tx.upsert_client(&client))
@@ -705,6 +709,43 @@ mod tests {
                 .expect("query fallback id")
                 .is_none(),
             "seeding must use the configured id, not the hardcoded fallback",
+        );
+    }
+
+    /// The three clients seeding owns are server-defined, so a request is held
+    /// to their registrations; every other client is trusted on first use.
+    #[test]
+    fn the_clients_seeding_owns_are_server_defined() {
+        let pool =
+            wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
+        let store = open_and_seed_store(
+            pool,
+            &crate::default_host_app_client_scopes(),
+            "custom-host-client",
+            "fhir-ui-client",
+            &url::Url::parse("https://ruth.relay.example").expect("origin"),
+        )
+        .expect("seed store");
+        let source_of = |client_id: &str| {
+            store
+                .read(|tx| tx.client_by_id(client_id))
+                .expect("query client")
+                .map(|client| client.registration_source)
+        };
+        for client_id in [
+            "custom-host-client",
+            crate::BROWSER_SESSION_CLIENT_ID,
+            "fhir-ui-client",
+        ] {
+            assert_eq!(
+                source_of(client_id),
+                Some(RegistrationSource::ServerDefined),
+                "{client_id}"
+            );
+        }
+        assert_eq!(
+            source_of("growth_chart"),
+            Some(RegistrationSource::TrustedOnFirstUse)
         );
     }
 

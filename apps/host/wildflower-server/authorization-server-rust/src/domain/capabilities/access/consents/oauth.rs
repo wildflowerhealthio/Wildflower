@@ -13,7 +13,7 @@ use super::{
     ApproveOAuthConsentInput, ConsentDecider, ConsentOutcome, ConsentRaiser, ConsentReader,
     OAuthConsentView, OwnerRaising,
 };
-use crate::domain::authority::{ApprovableScopes, DelegatedScopes};
+use crate::domain::authority::DelegatedScopes;
 use crate::domain::authorization_request::PendingCodeRequest;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::writers::{
@@ -23,9 +23,10 @@ use crate::domain::client_redirect::{
     build_client_error_redirect_url, build_client_redirect_url, BROWSER_SIGNED_OUT_DESCRIPTION,
     REQUEST_DECLINED_DESCRIPTION,
 };
-use crate::domain::client_registration::{classify_registration, PresentedClientRegistration};
-use crate::domain::grant_store::{write_transition, AuthorizationRequestsTx, ClientsTx as _};
+use crate::domain::client_registration::ResolvedCodeRequest;
+use crate::domain::grant_store::{write_transition, AuthorizationRequestsTx, ClientsTx};
 use crate::domain::oauth_error_code::OAuthErrorCode;
+use crate::domain::oauth_error_kind::OAuthErrorKind;
 use crate::domain::{GrantStore, GrantTx};
 
 impl<S: GrantStore> ConsentReader<S> {
@@ -36,7 +37,7 @@ impl<S: GrantStore> ConsentReader<S> {
     /// # Errors
     ///
     /// [`AuthorizationServerError::OAuthConsentNotFound`] when `id` names no
-    /// live code-flow prompt; a store failure.
+    /// live code-flow prompt, or its client is disabled; a store failure.
     pub(crate) fn oauth_consent(
         &self,
         id: &str,
@@ -44,30 +45,17 @@ impl<S: GrantStore> ConsentReader<S> {
     ) -> Result<OAuthConsentView, AuthorizationServerError> {
         self.store.read(|tx| {
             let pending_request = load_pending_code_request(tx, id, now)?;
-            let request = pending_request.request();
-            // A missing row is the `New` verdict, and its name falls back to the
-            // raw `client_id`.
-            let maybe_existing_client = tx.client_by_id(request.client_id())?;
-            let client_name = maybe_existing_client.as_ref().map_or_else(
-                || request.client_id().to_owned(),
-                |existing_client| existing_client.name.clone(),
-            );
-            let registration_verdict = classify_registration(&PresentedClientRegistration {
-                maybe_existing_client: maybe_existing_client.as_ref(),
-                redirect_uri: &pending_request.code().redirect_uri,
-                scopes: request.requested_scopes(),
-            });
-            let missing_approval_scopes = ApprovableScopes::for_code(
-                request.requested_scopes(),
-                maybe_existing_client.as_ref(),
-                request.client_id() == &*self.wildflower_host_app_client_id,
-            )
-            .missing_approval_scopes(&self.reader_grant);
+            let resolved = resolve(tx, &pending_request)?;
+            if resolved.client_disabled() {
+                return Err(consent_not_found(id));
+            }
             Ok(OAuthConsentView {
+                missing_approval_scopes: resolved
+                    .approvable_scopes()
+                    .missing_approval_scopes(&self.reader_grant),
+                client_name: resolved.client_name().to_owned(),
+                registration_verdict: resolved.registration_verdict().clone(),
                 pending_request,
-                client_name,
-                registration_verdict,
-                missing_approval_scopes,
             })
         })
     }
@@ -118,16 +106,18 @@ impl<S: GrantStore> ConsentDecider<S> {
     /// ticks into a [`DelegatedScopes`] proof (which requires the approver's
     /// approval scopes), issue the code, record the standing grant and, for a
     /// client trusted on first use, its registration, then republish the
-    /// popup head and return the client callback URL. An approval that grants
-    /// nothing is applied as a **deny**, and so is one for a request whose
-    /// browser session has ended since it was made.
+    /// popup head and return the client callback URL, all in one write scope,
+    /// so the code, the grant and the registration land together or not at
+    /// all. An approval that grants nothing is applied as a **deny**, and so is
+    /// one for a request whose browser session has ended or whose client was
+    /// disabled since it was made.
     ///
     /// # Errors
     ///
     /// Each refusal writes nothing.
     /// [`InsufficientScope`](AuthorizationServerError::InsufficientScope) names
     /// the approval scopes the approver lacks (see
-    /// [`ApprovableScopes::missing_approval_scopes`]);
+    /// [`ApprovableScopes::missing_approval_scopes`](crate::domain::authority::ApprovableScopes::missing_approval_scopes));
     /// [`RegistrationNotAcknowledged`](AuthorizationServerError::RegistrationNotAcknowledged)
     /// when the
     /// [registration verdict](crate::domain::client_registration::ClientRegistrationVerdict)
@@ -182,20 +172,16 @@ impl<S: GrantStore> ConsentDecider<S> {
         let pending_request = load_pending_code_request(tx, id, now)?;
         let request = pending_request.request();
         let requested_redirect_uri = &pending_request.code().redirect_uri;
-
-        // The host app's client is held to its fixed registration; every other
-        // client is trusted on first use, so its registration may be created or
-        // widened.
-        let registration_is_fixed = request.client_id() == &*self.wildflower_host_app_client_id;
-        let maybe_existing_client = tx.client_by_id(request.client_id())?;
-        if registration_is_fixed && maybe_existing_client.is_none() {
-            return Err(consent_not_found(id));
+        let resolved = resolve(tx, &pending_request)?;
+        // The client was disabled since the request was made: it can't be
+        // approved, so it ends here, and the app hears why.
+        if resolved.client_disabled() {
+            deny_pending_request(tx, request, now, || consent_not_found(id))?;
+            return Ok(denial_outcome(
+                &pending_request,
+                OAuthErrorKind::DisabledClient.description(),
+            ));
         }
-        let registration_verdict = classify_registration(&PresentedClientRegistration {
-            maybe_existing_client: maybe_existing_client.as_ref(),
-            redirect_uri: requested_redirect_uri,
-            scopes: request.requested_scopes(),
-        });
         // The proof every write below demands: the approver holds this prompt's
         // approval scopes, and the Owner's approval is clamped to what this
         // prompt may grant and covered by the approver's own grant. Taken
@@ -204,13 +190,11 @@ impl<S: GrantStore> ConsentDecider<S> {
         let maybe_delegated_scopes = DelegatedScopes::clamp(
             &self.approver_grant,
             input.owner_approved_scopes,
-            &ApprovableScopes::for_code(
-                request.requested_scopes(),
-                maybe_existing_client.as_ref(),
-                registration_is_fixed,
-            ),
+            resolved.approvable_scopes(),
         )?;
-        if registration_verdict.needs_acknowledgement() && !input.acknowledged_registration {
+        if resolved.registration_verdict().needs_acknowledgement()
+            && !input.acknowledged_registration
+        {
             return Err(AuthorizationServerError::RegistrationNotAcknowledged {
                 id: id.to_owned(),
             });
@@ -276,6 +260,22 @@ pub(super) fn load_pending_code_request(
         .and_then(|request| request.into_pending_code(now))
         .filter(|pending_request| pending_request.code().session_shortfall_acknowledged)
         .ok_or_else(|| consent_not_found(id))
+}
+
+/// `pending_request` resolved against its client's registration as `tx`
+/// holds it now.
+fn resolve(
+    tx: &mut impl ClientsTx,
+    pending_request: &PendingCodeRequest,
+) -> Result<ResolvedCodeRequest, AuthorizationServerError> {
+    let request = pending_request.request();
+    let maybe_existing_client = tx.client_by_id(request.client_id())?;
+    Ok(ResolvedCodeRequest::resolve(
+        request.client_id(),
+        &pending_request.code().redirect_uri,
+        request.requested_scopes(),
+        maybe_existing_client.as_ref(),
+    ))
 }
 
 /// The code-flow prompt `id` is not (or no longer) a live prompt.

@@ -62,6 +62,26 @@ impl AllowedGrantType {
     ];
 }
 
+/// Who defines a client's registration, stored in the `registration_source`
+/// column (`strum` derives the `snake_case` wire strings, `server_defined`
+/// and `trusted_on_first_use`).
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, EnumString, AsRefStr, Display, AsExpression, FromSqlRow,
+)]
+#[strum(serialize_all = "snake_case")]
+#[diesel(sql_type = diesel::sql_types::Text)]
+pub enum RegistrationSource {
+    /// The server defines it, and boot-time seeding rewrites it every boot:
+    /// the host app's client, the browser-session client, and the FHIR
+    /// server UI's client. A request is held to it, and an approval never
+    /// writes it.
+    ServerDefined,
+    /// The Owner's approvals define it: created by the first approval of an
+    /// unknown client, and widened by any later approval of a request outside
+    /// it.
+    TrustedOnFirstUse,
+}
+
 /// A registered OAuth client — the identity and policy bundle that `/authorize` and `/token` look up by `client_id`.
 /// Diesel-mapped 1:1 to the `clients` table; the JSON list columns convert
 /// through the column newtypes in [`crate::db::clients`] and
@@ -93,9 +113,19 @@ pub struct Client {
     pub registered_at: DateTime<Utc>,
     /// Set when the client has been disabled; `/authorize` and `/token` reject if `Some`.
     pub disabled_at: Option<DateTime<Utc>>,
+    /// Who defines the registration.
+    pub registration_source: RegistrationSource,
 }
 
 impl Client {
+    /// Whether the registration is fixed: a request is held to it as it
+    /// stands, and approving one never widens it. True for a registration the
+    /// server defines.
+    #[must_use]
+    pub fn registration_is_fixed(&self) -> bool {
+        self.registration_source == RegistrationSource::ServerDefined
+    }
+
     /// Whether every requested scope is inside this client's `allowed_scopes`.
     /// Coverage-aware ([`wildflowerhealthio_scopes::allowed_scope_covers`]), not exact
     /// membership: a client allowed a broad scope (`patient/*.rs`) also admits

@@ -1,21 +1,24 @@
-//! The **registration verdict** — how a pending authorization-code request
-//! compares against the [`clients`](crate::domain::client::Client) row it names,
-//! right now.
+//! An authorization-code request **resolved against its client's
+//! registration** as it stands now: [`ResolvedCodeRequest`], the one place
+//! `/oauth/authorize`, the limited page's Continue, and the consent read and
+//! approval learn what the [`clients`](crate::domain::client::Client) row says
+//! about a request — its client's name, whether the client is disabled, the
+//! **registration verdict**, and the scopes an approval may grant.
 //!
-//! Every client but the host app's is trusted on first use: an unknown
-//! `client_id`, an unregistered `redirect_uri`, or a scope outside
-//! `allowed_scopes` is carried to the Owner's consent prompt as a warning rather
-//! than rejected at `/authorize`. [`classify_registration`] is the one place that
-//! decides which of the three warnings applies, so `/authorize` (which decides
-//! whether the redirect may be trusted and whether the standing-grant fast path
-//! may run) and the consent read/approve paths (which render the warning and
-//! demand an acknowledgement) can never disagree about the same request.
+//! A registration the server defines is fixed: a request is held to it. Every
+//! other client is trusted on first use: an unknown `client_id`, an
+//! unregistered `redirect_uri`, or a scope outside `allowed_scopes` is carried
+//! to the Owner's consent prompt as a warning rather than rejected at
+//! `/authorize`. [`classify_registration`] decides which of the three warnings
+//! applies.
 //!
-//! The verdict is **derived, never stored**: it is recomputed from the current
-//! row on every read, so a prompt loaded after the row moved reflects the move.
+//! The resolution is **derived, never stored**: it is recomputed from the
+//! current row on every read, so a prompt loaded after the row moved reflects
+//! the move.
 
 use url::Url;
 
+use crate::domain::authority::ApprovableScopes;
 use crate::domain::client::Client;
 
 /// Whether the registration an authorization-code request presents (see
@@ -58,13 +61,13 @@ impl ClientRegistrationVerdict {
 /// The client registration an authorization-code request presents (its
 /// redirect and scopes), paired with the stored row for its `client_id` it is
 /// judged against.
-pub(crate) struct PresentedClientRegistration<'a> {
+struct PresentedClientRegistration<'a> {
     /// The current `clients` row, or `None` when the `client_id` is unknown.
-    pub(crate) maybe_existing_client: Option<&'a Client>,
+    maybe_existing_client: Option<&'a Client>,
     /// The `redirect_uri` the request presented, already parsed.
-    pub(crate) redirect_uri: &'a Url,
+    redirect_uri: &'a Url,
     /// The scopes the request presented, whitespace-split, in request order.
-    pub(crate) scopes: &'a [String],
+    scopes: &'a [String],
 }
 
 /// Classify `presented_registration` against its current client row.
@@ -81,7 +84,7 @@ pub(crate) struct PresentedClientRegistration<'a> {
 /// `Unknown` scope that only covers itself, so it is reported as new unless the
 /// registration lists it verbatim — deliberately, since the Owner should see an
 /// unrecognized scope string.
-pub(crate) fn classify_registration(
+fn classify_registration(
     presented_registration: &PresentedClientRegistration<'_>,
 ) -> ClientRegistrationVerdict {
     let Some(existing_client) = presented_registration.maybe_existing_client else {
@@ -114,6 +117,101 @@ pub(crate) fn uncovered_scopes(allowed: &[String], requested: &[String]) -> Vec<
         })
         .cloned()
         .collect()
+}
+
+/// A code request against its client's registration as it stands now: built
+/// once per request, by [`resolve`](Self::resolve), from what the request
+/// presents and the client's row (`None` for a `client_id` with no
+/// registration).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ResolvedCodeRequest {
+    client_name: String,
+    client_disabled: bool,
+    registration_is_fixed: bool,
+    redirect_is_registered: bool,
+    registration_verdict: ClientRegistrationVerdict,
+    approvable_scopes: ApprovableScopes,
+}
+
+impl ResolvedCodeRequest {
+    /// Resolve a request from `client_id` presenting `redirect_uri` and
+    /// `requested_scopes` against the client's row `maybe_existing_client`.
+    pub(crate) fn resolve(
+        client_id: &str,
+        redirect_uri: &Url,
+        requested_scopes: &[String],
+        maybe_existing_client: Option<&Client>,
+    ) -> Self {
+        let registration_is_fixed =
+            maybe_existing_client.is_some_and(Client::registration_is_fixed);
+        ResolvedCodeRequest {
+            client_name: maybe_existing_client.map_or_else(
+                || client_id.to_owned(),
+                |existing_client| existing_client.name.clone(),
+            ),
+            client_disabled: maybe_existing_client
+                .is_some_and(|existing_client| existing_client.disabled_at.is_some()),
+            registration_is_fixed,
+            redirect_is_registered: maybe_existing_client
+                .is_some_and(|existing_client| existing_client.allows_redirect_uri(redirect_uri)),
+            registration_verdict: classify_registration(&PresentedClientRegistration {
+                maybe_existing_client,
+                redirect_uri,
+                scopes: requested_scopes,
+            }),
+            approvable_scopes: ApprovableScopes::for_code(
+                requested_scopes,
+                maybe_existing_client,
+                registration_is_fixed,
+            ),
+        }
+    }
+
+    /// The client's registered name, or its `client_id` while it has no
+    /// registration.
+    pub(crate) fn client_name(&self) -> &str {
+        &self.client_name
+    }
+
+    /// Whether the client is disabled: no request of its goes on.
+    pub(crate) fn client_disabled(&self) -> bool {
+        self.client_disabled
+    }
+
+    /// Whether the client's registration is fixed (server-defined): the
+    /// request is held to it, and approving it writes none.
+    pub(crate) fn registration_is_fixed(&self) -> bool {
+        self.registration_is_fixed
+    }
+
+    /// Whether the client's registration already lists the redirect: the one
+    /// case the redirect is trusted with an error.
+    pub(crate) fn redirect_is_registered(&self) -> bool {
+        self.redirect_is_registered
+    }
+
+    /// Whether every requested scope is inside the client's registration.
+    pub(crate) fn scopes_are_registered(&self) -> bool {
+        match &self.registration_verdict {
+            ClientRegistrationVerdict::Registered => true,
+            ClientRegistrationVerdict::New => false,
+            ClientRegistrationVerdict::WouldWiden {
+                unregistered_requested_scopes,
+                ..
+            } => unregistered_requested_scopes.is_empty(),
+        }
+    }
+
+    /// How the request compares against the registration.
+    pub(crate) fn registration_verdict(&self) -> &ClientRegistrationVerdict {
+        &self.registration_verdict
+    }
+
+    /// The scopes an approval of the request may grant, and its approval
+    /// scopes.
+    pub(crate) fn approvable_scopes(&self) -> &ApprovableScopes {
+        &self.approvable_scopes
+    }
 }
 
 #[cfg(test)]
@@ -211,6 +309,64 @@ mod tests {
                 redirect_uri_is_new: false,
                 unregistered_requested_scopes: vec!["something else!!".to_owned()],
             }
+        );
+    }
+
+    fn resolve(maybe_existing_client: Option<&Client>, scopes: &[&str]) -> ResolvedCodeRequest {
+        let requested: Vec<String> = scopes.iter().map(|s| (*s).to_owned()).collect();
+        ResolvedCodeRequest::resolve("app", &redirect(), &requested, maybe_existing_client)
+    }
+
+    /// A client with no row is named by its `client_id`, neither disabled nor
+    /// fixed, and its redirect untrusted.
+    #[test]
+    fn an_unknown_client_resolves_as_new_under_its_id() {
+        let resolved = resolve(None, &["read"]);
+        assert_eq!(resolved.client_name(), "app");
+        assert!(!resolved.client_disabled());
+        assert!(!resolved.registration_is_fixed());
+        assert!(!resolved.redirect_is_registered());
+        assert!(!resolved.scopes_are_registered());
+        assert_eq!(
+            resolved.registration_verdict(),
+            &ClientRegistrationVerdict::New
+        );
+    }
+
+    /// A server-defined registration is fixed: its ceiling is itself, so a
+    /// request beyond it may grant nothing outside it.
+    #[test]
+    fn a_server_defined_registration_is_fixed() {
+        let fixed = Client {
+            registration_source: crate::domain::client::RegistrationSource::ServerDefined,
+            ..client("app", &["read"])
+        };
+        let resolved = resolve(Some(&fixed), &["read", "write"]);
+        assert_eq!(resolved.client_name(), "app display name");
+        assert!(resolved.registration_is_fixed());
+        assert!(resolved.redirect_is_registered());
+        assert!(!resolved.scopes_are_registered());
+        assert_eq!(
+            resolved
+                .approvable_scopes()
+                .grantable_subset(vec!["read".to_owned(), "write".to_owned()]),
+            ["read"]
+        );
+    }
+
+    /// A disabled client says so; nothing else about the resolution changes.
+    #[test]
+    fn a_disabled_client_resolves_disabled() {
+        let disabled = Client {
+            disabled_at: Some(chrono::Utc::now()),
+            ..client("app", &["read"])
+        };
+        let resolved = resolve(Some(&disabled), &["read"]);
+        assert!(resolved.client_disabled());
+        assert!(resolved.scopes_are_registered());
+        assert_eq!(
+            resolved.registration_verdict(),
+            &ClientRegistrationVerdict::Registered
         );
     }
 

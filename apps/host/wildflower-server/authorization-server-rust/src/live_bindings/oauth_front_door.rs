@@ -26,7 +26,6 @@ impl FromState for LiveCodeAuthorizationStarter {
         CodeAuthorizationStarter::new(
             state.store.clone(),
             owner_approval,
-            state.wildflower_host_app_client_id.clone(),
             state.server_origin.clone(),
         )
     }

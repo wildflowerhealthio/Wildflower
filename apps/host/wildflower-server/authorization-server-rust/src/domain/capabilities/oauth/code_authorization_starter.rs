@@ -25,19 +25,16 @@ use wildflowerhealthio_scopes::Grant;
 use super::consume_launch;
 use super::session_shortfall::load_unacknowledged_code_request;
 use crate::crypto_util::pkce::is_valid_s256_code_challenge;
-use crate::domain::authority::{
-    session_shortfall, ApprovableScopes, GrantCoverage, StandingGrantCoverage,
-};
+use crate::domain::authority::{session_shortfall, GrantCoverage, StandingGrantCoverage};
 use crate::domain::authorization_request::{
     AuthorizationRequest, CodeRequest, NewAuthorizationRequest, PendingCodeRequest, RequestKind,
 };
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::writers::{CodeApproval, CodeAuthority, RequestApprover};
-use crate::domain::client::Client;
 use crate::domain::client_redirect::{
     BROWSER_SIGNED_OUT_DESCRIPTION, SCOPES_NOT_REGISTERED_DESCRIPTION,
 };
-use crate::domain::client_registration::{classify_registration, PresentedClientRegistration};
+use crate::domain::client_registration::ResolvedCodeRequest;
 use crate::domain::grant_store::write_transition;
 use crate::domain::launch_context::LaunchRefusal;
 use crate::domain::oauth_error_code::OAuthErrorCode;
@@ -166,26 +163,22 @@ impl From<AuthorizationServerError> for AuthorizationStartError {
 pub(crate) struct CodeAuthorizationStarter<S: GrantStore> {
     store: S,
     owner_approval: Arc<dyn OwnerApproval>,
-    wildflower_host_app_client_id: Arc<str>,
     /// The server's bare origin, `https://<domain>`, also its FHIR base: an
     /// `aud` must name it.
     server_origin: Arc<str>,
 }
 
 impl<S: GrantStore> CodeAuthorizationStarter<S> {
-    /// Build the starter over the store, the popup republish port, the
-    /// host app's `client_id`, and the server's origin — all lifted from the
-    /// state.
+    /// Build the starter over the store, the popup republish port, and the
+    /// server's origin — all lifted from the state.
     pub(crate) fn new(
         store: S,
         owner_approval: Arc<dyn OwnerApproval>,
-        wildflower_host_app_client_id: Arc<str>,
         server_origin: Arc<str>,
     ) -> Self {
         CodeAuthorizationStarter {
             store,
             owner_approval,
-            wildflower_host_app_client_id,
             server_origin,
         }
     }
@@ -193,10 +186,14 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
     /// Validate `authorize_query` (client and redirect first, then the redirectable
     /// params), park it, and decide: a fully pre-approved request is issued a
     /// code under the standing grant's authority and sent back to the client;
-    /// anything else waits on the Owner as a pending consent.
+    /// anything else waits on the Owner as a pending consent. It all happens in
+    /// one write scope; the newest pending consent is republished once that
+    /// has committed.
     ///
-    /// Clients other than the host app's are trusted on first use (see
-    /// [`crate::domain::client_registration`]): a request outside the
+    /// The request is resolved against its client's registration
+    /// ([`ResolvedCodeRequest`]). A disabled client is refused. A fixed
+    /// (server-defined) registration holds the request to its redirects and
+    /// scopes. Any other client is trusted on first use: a request outside the
     /// registration is parked with a warning rather than rejected, never takes
     /// the fast path, and — while its redirect is untrusted — renders every
     /// failure locally rather than risk an open redirect.
@@ -292,18 +289,28 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
         if !tx.has_active_signing_key()? {
             return Err(AuthorizationStartError::NoActiveSigningKey);
         }
-        let registration_is_fixed = self.registration_is_fixed(authorize_query.client_id);
-        let maybe_existing_client =
-            load_client(tx, authorize_query.client_id, registration_is_fixed)?;
+        let maybe_existing_client = tx.client_by_id(authorize_query.client_id)?;
         let requested_redirect_uri = parse_redirect_uri(authorize_query.redirect_uri)?;
+        let requested_scopes: Vec<String> = authorize_query
+            .scope
+            .split_whitespace()
+            .map(str::to_string)
+            .collect();
+        let resolved = ResolvedCodeRequest::resolve(
+            authorize_query.client_id,
+            &requested_redirect_uri,
+            &requested_scopes,
+            maybe_existing_client.as_ref(),
+        );
+        if resolved.client_disabled() {
+            return Err(AuthorizationStartError::LocalPage(
+                OAuthErrorKind::DisabledClient,
+            ));
+        }
         // A redirect is trustworthy only when a client we already know already
         // registered it.
-        let redirect_allowlisted = maybe_existing_client
-            .as_ref()
-            .is_some_and(|existing_client| {
-                existing_client.allows_redirect_uri(&requested_redirect_uri)
-            });
-        if registration_is_fixed && !redirect_allowlisted {
+        let redirect_trusted = resolved.redirect_is_registered();
+        if resolved.registration_is_fixed() && !redirect_trusted {
             return Err(AuthorizationStartError::LocalPage(
                 OAuthErrorKind::RedirectUriNotAllowed,
             ));
@@ -311,42 +318,25 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
         validate_code_params(
             authorize_query,
             &requested_redirect_uri,
-            redirect_allowlisted,
+            redirect_trusted,
             &self.server_origin,
         )?;
-        let requested_scopes: Vec<String> = authorize_query
-            .scope
-            .split_whitespace()
-            .map(str::to_string)
-            .collect();
-        if let (true, Some(fixed_client)) = (registration_is_fixed, maybe_existing_client.as_ref())
-        {
-            if !fixed_client.allows_scopes(&requested_scopes) {
-                return Err(AuthorizationStartError::Redirectable {
-                    redirect_uri: Box::new(requested_redirect_uri),
-                    error: OAuthErrorCode::InvalidScope,
-                    description: SCOPES_NOT_REGISTERED_DESCRIPTION,
-                    client_state: authorize_query.client_state.to_owned(),
-                });
-            }
+        if resolved.registration_is_fixed() && !resolved.scopes_are_registered() {
+            return Err(AuthorizationStartError::Redirectable {
+                redirect_uri: Box::new(requested_redirect_uri),
+                error: OAuthErrorCode::InvalidScope,
+                description: SCOPES_NOT_REGISTERED_DESCRIPTION,
+                client_state: authorize_query.client_state.to_owned(),
+            });
         }
-        let registration_verdict = classify_registration(&PresentedClientRegistration {
-            maybe_existing_client: maybe_existing_client.as_ref(),
-            redirect_uri: &requested_redirect_uri,
-            scopes: &requested_scopes,
-        });
-        let approvable = ApprovableScopes::for_code(
-            &requested_scopes,
-            maybe_existing_client.as_ref(),
-            registration_is_fixed,
-        );
         let decidable_in_requesting_browser = authorize_query.can_decide_consents
-            && approvable
+            && resolved
+                .approvable_scopes()
                 .missing_approval_scopes(authorize_query.browser_session_grant)
                 .is_empty();
         let coverage = GrantCoverage::resolve(
             tx,
-            &registration_verdict,
+            resolved.registration_verdict(),
             authorize_query.client_id,
             &requested_redirect_uri,
             &requested_scopes,
@@ -380,7 +370,7 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
                     return Err(start_error(
                         authorize_query,
                         &requested_redirect_uri,
-                        redirect_allowlisted,
+                        redirect_trusted,
                         OAuthErrorCode::InvalidRequest,
                         launch_refusal_kind(launch_refusal),
                     ));
@@ -461,25 +451,26 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
         }
         let parked_request = load_unacknowledged_code_request(tx, id, sid, now)?;
         let request = parked_request.request();
-        let registration_is_fixed = self.registration_is_fixed(request.client_id());
-        let maybe_existing_client =
-            match load_client(tx, request.client_id(), registration_is_fixed) {
-                Ok(maybe_existing_client) => maybe_existing_client,
-                // The client was disabled since the request parked: the browser
-                // can't go on with it, so it ends here, and the app hears why.
-                Err(AuthorizationStartError::LocalPage(refusal)) => {
-                    return refuse_waiting_request(tx, &parked_request, refusal, now);
-                }
-                Err(error) => return Err(error),
-            };
-        let registration_verdict = classify_registration(&PresentedClientRegistration {
-            maybe_existing_client: maybe_existing_client.as_ref(),
-            redirect_uri: &parked_request.code().redirect_uri,
-            scopes: request.requested_scopes(),
-        });
+        let maybe_existing_client = tx.client_by_id(request.client_id())?;
+        let resolved = ResolvedCodeRequest::resolve(
+            request.client_id(),
+            &parked_request.code().redirect_uri,
+            request.requested_scopes(),
+            maybe_existing_client.as_ref(),
+        );
+        // The client was disabled since the request parked: the browser can't
+        // go on with it, so it ends here, and the app hears why.
+        if resolved.client_disabled() {
+            return refuse_waiting_request(
+                tx,
+                &parked_request,
+                OAuthErrorKind::DisabledClient,
+                now,
+            );
+        }
         let coverage = GrantCoverage::resolve(
             tx,
-            &registration_verdict,
+            resolved.registration_verdict(),
             request.client_id(),
             &parked_request.code().redirect_uri,
             request.requested_scopes(),
@@ -514,13 +505,6 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
                     .ok_or_else(not_found)
             },
         )
-    }
-
-    /// Whether `client_id`'s registration is fixed — defined by the server
-    /// rather than trusted on first use: true only for the host app's client,
-    /// the one client held to its registration.
-    fn registration_is_fixed(&self, client_id: &str) -> bool {
-        client_id == &*self.wildflower_host_app_client_id
     }
 }
 
@@ -650,31 +634,6 @@ fn issue_under_standing_grant(
     }
 }
 
-/// The client row named by the request, if any, read in `tx`. A disabled
-/// client is rejected outright, as is the host app's `client_id` with no row;
-/// any other unknown `client_id` is `None` — a `New` registration verdict.
-fn load_client(
-    tx: &mut impl GrantTx,
-    client_id: &str,
-    registration_is_fixed: bool,
-) -> Result<Option<Client>, AuthorizationStartError> {
-    let Some(client) = tx.client_by_id(client_id)? else {
-        return if registration_is_fixed {
-            Err(AuthorizationStartError::LocalPage(
-                OAuthErrorKind::UnknownClient,
-            ))
-        } else {
-            Ok(None)
-        };
-    };
-    if client.disabled_at.is_some() {
-        return Err(AuthorizationStartError::LocalPage(
-            OAuthErrorKind::DisabledClient,
-        ));
-    }
-    Ok(Some(client))
-}
-
 /// The presented `redirect_uri` must be a well-formed http/https URL (RFC 6749
 /// §4.1.2.1); either failure is an unconditional local page.
 fn parse_redirect_uri(redirect_uri: &str) -> Result<Url, AuthorizationStartError> {
@@ -782,7 +741,7 @@ mod tests {
     use super::*;
     use crate::domain::authorization_request::RequestStatus;
     use crate::domain::browser_session::BrowserSession;
-    use crate::domain::client::ClientKind;
+    use crate::domain::client::{Client, ClientKind, RegistrationSource};
     use crate::domain::grant::AuthorizationCodeGrant;
     use crate::domain::launch_context::{LaunchContext, LaunchRefusal, LAUNCH_CONTEXT_TTL};
 
@@ -847,12 +806,8 @@ mod tests {
             })
             .unwrap();
         let owner_approval = Arc::new(RecordingOwnerApproval::default());
-        let code_authorization_starter = CodeAuthorizationStarter::new(
-            store,
-            owner_approval.clone(),
-            "host".into(),
-            SERVER_ORIGIN.into(),
-        );
+        let code_authorization_starter =
+            CodeAuthorizationStarter::new(store, owner_approval.clone(), SERVER_ORIGIN.into());
         (code_authorization_starter, owner_approval)
     }
 
@@ -1019,13 +974,22 @@ mod tests {
         assert_eq!(owner_approval.count(), 1);
     }
 
-    /// Trust on first use: an unknown client other than the host app's is parked_request for the
-    /// Owner, and its later failures render locally (the redirect is
-    /// unvouched-for), while the host app's client with an unregistered
-    /// redirect is refused outright.
+    /// Trust on first use: an unknown client is parked for the Owner, and its
+    /// later failures render locally (the redirect is unvouched-for), while a
+    /// server-defined client with an unregistered redirect is refused
+    /// outright.
     #[test]
     fn unknown_clients_park_and_untrusted_redirects_fail_locally() {
-        let (code_authorization_starter, _) = starter(FakeGrantStore::default());
+        let store = FakeGrantStore::default();
+        store
+            .tx()
+            .upsert_client(&Client {
+                redirect_uris: vec![Url::parse("https://host.example/cb").unwrap()],
+                registration_source: RegistrationSource::ServerDefined,
+                ..client("host", &["openid"])
+            })
+            .unwrap();
+        let (code_authorization_starter, _) = starter(store);
         let outcome = code_authorization_starter
             .start(&request("newcomer", "openid"), ids(), Utc::now())
             .expect("parked_request for the owner");
@@ -1043,7 +1007,7 @@ mod tests {
         assert!(matches!(
             code_authorization_starter.start(&request("host", "openid"), ids(), Utc::now()),
             Err(AuthorizationStartError::LocalPage(
-                OAuthErrorKind::UnknownClient
+                OAuthErrorKind::RedirectUriNotAllowed
             ))
         ));
     }
@@ -1058,6 +1022,7 @@ mod tests {
             .upsert_client(&Client {
                 kind: ClientKind::Public,
                 redirect_uris: vec![Url::parse("https://example.com/cb").unwrap()],
+                registration_source: RegistrationSource::ServerDefined,
                 ..client("host", &["openid"])
             })
             .unwrap();
@@ -1092,7 +1057,6 @@ mod tests {
         let code_authorization_starter = CodeAuthorizationStarter::new(
             store,
             Arc::new(RecordingOwnerApproval::default()),
-            "host".into(),
             SERVER_ORIGIN.into(),
         );
         assert!(matches!(
@@ -1980,7 +1944,6 @@ mod tests {
         let code_authorization_starter = CodeAuthorizationStarter::new(
             store,
             Arc::new(RecordingOwnerApproval::default()),
-            "host".into(),
             SERVER_ORIGIN.into(),
         );
         assert!(matches!(

@@ -639,6 +639,12 @@ mod tests {
             docs_at_0020,
             "a row with no path entry is left untouched",
         );
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MIGRATIONS,
+        )
+        .expect("upgrade through the rest");
         let clients: Vec<crate::domain::client::Client> = crate::db::clients::clients::table
             .select(crate::domain::client::Client::as_select())
             .load(&mut conn)
@@ -1920,6 +1926,48 @@ mod tests {
         .map(|row| row.name)
         .collect::<Vec<_>>();
         assert_eq!(methods, [Some("S256".to_owned()), None]);
+    }
+
+    /// An install already at `0044` gains `clients.registration_source` when
+    /// `0045` runs, every existing row trusted on first use; seeding's upsert
+    /// then marks the rows it owns server-defined on the next boot. Reverting
+    /// `0045` drops the column.
+    #[test]
+    fn an_install_already_at_0044_starts_every_client_trusted_on_first_use() {
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0044"),
+        )
+        .expect("migrate to 0044");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0045"),
+        )
+        .expect("upgrade through 0045");
+        let sources = diesel::sql_query("SELECT DISTINCT registration_source AS name FROM clients")
+            .load::<Name>(&mut conn)
+            .expect("read the column")
+            .into_iter()
+            .map(|row| row.name)
+            .collect::<Vec<_>>();
+        assert_eq!(sources, ["trusted_on_first_use"]);
+
+        let migration_0045 = MIGRATIONS
+            .migrations()
+            .expect("embedded migrations")
+            .into_iter()
+            .find(|migration| migration.name().version() == MigrationVersion::from("0045"))
+            .expect("0045 is embedded");
+        migration_0045.revert(&mut conn).expect("revert 0045");
+        assert!(
+            diesel::sql_query("SELECT registration_source FROM clients")
+                .execute(&mut conn)
+                .is_err(),
+            "the column is gone"
+        );
     }
 
     /// Running the migrations twice is a no-op the second time (the namespaced

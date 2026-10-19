@@ -62,15 +62,11 @@ pub struct AuthorizationServerState {
     /// each [`DeviceAuthorizer`](crate::domain::capabilities::oauth::DeviceAuthorizer)
     /// built from the state shares it.
     pub(crate) device_page: Arc<Url>,
-    /// The Wildflower host app's `client_id`, pinned from
-    /// [`AuthorizationServerConfig`](crate::AuthorizationServerConfig) at
-    /// [`crate::setup_authorization_server`] — the same id [`crate::seeding`] seeds the
-    /// host app's client row under (both sourced from `tauri-shared-config.json`
-    /// on the live app). `/token` matches a request's presented `client_id`
-    /// against it to hold it to its fixed registration. An `Arc<str>` so the string is
-    /// shared rather than reallocated when the state is cloned before the `Arc`
-    /// wrap.
-    pub(crate) wildflower_host_app_client_id: Arc<str>,
+    /// The guard on the essential clients, built at
+    /// [`crate::setup_authorization_server`]: the host app's client, under
+    /// [`AuthorizationServerConfig::wildflower_host_app_client_id`](crate::AuthorizationServerConfig::wildflower_host_app_client_id),
+    /// and the browser-session client, [`crate::BROWSER_SESSION_CLIENT_ID`].
+    pub(crate) essential_client_guard: EssentialClientGuard,
     /// The hosted launcher logout lands the browser on, pinned from
     /// [`AuthorizationServerConfig`](crate::AuthorizationServerConfig) at [`crate::setup_authorization_server`].
     pub(crate) launcher_base: LauncherBase,
@@ -115,16 +111,6 @@ pub struct AuthorizationServerState {
 }
 
 impl AuthorizationServerState {
-    /// The guard on the essential clients: the host app's,
-    /// [`wildflower_host_app_client_id`](Self::wildflower_host_app_client_id),
-    /// and the browser-session client, [`crate::BROWSER_SESSION_CLIENT_ID`].
-    pub(crate) fn essential_client_guard(&self) -> EssentialClientGuard {
-        EssentialClientGuard::new(
-            self.wildflower_host_app_client_id.clone(),
-            crate::BROWSER_SESSION_CLIENT_ID.into(),
-        )
-    }
-
     /// The [`Revocation`] port the capabilities revoke through: the shared
     /// [`revocation_store`](Self::revocation_store).
     pub(crate) fn revocation(&self) -> Arc<dyn Revocation> {

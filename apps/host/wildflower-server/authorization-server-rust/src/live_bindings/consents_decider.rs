@@ -34,11 +34,6 @@ impl Capability for LiveConsentDecider {
         // `Arc<AuthorizationServerState>` implements `OwnerApproval` (via the bare
         // state's impl), so it coerces to the port handle the capability holds.
         let owner_approval: Arc<dyn OwnerApproval> = state.clone();
-        ConsentDecider::new(
-            state.store.clone(),
-            owner_approval,
-            granted,
-            state.wildflower_host_app_client_id.clone(),
-        )
+        ConsentDecider::new(state.store.clone(), owner_approval, granted)
     }
 }

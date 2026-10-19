@@ -109,6 +109,7 @@ async fn authorize_disabled_client_is_still_rejected() {
                 secret_hash: None,
                 registered_at: Utc::now(),
                 disabled_at: Some(Utc::now()),
+                registration_source: RegistrationSource::TrustedOnFirstUse,
             })
         })
         .expect("register a disabled client");

@@ -19,7 +19,7 @@ use crate::domain::authorization_request::{
     RequestKind, RequestStatus,
 };
 use crate::domain::browser_session::BrowserSession;
-use crate::domain::client::{AllowedGrantType, Client, ClientKind};
+use crate::domain::client::{AllowedGrantType, Client, ClientKind, RegistrationSource};
 use crate::domain::client_credentials::ClientCredentials;
 use crate::domain::grant::AuthorizationCodeGrant;
 use crate::domain::grant_store::*;
@@ -227,6 +227,7 @@ pub(crate) fn client(client_id: &str, registered_client_scopes: &[&str]) -> Clie
         secret_hash: None,
         registered_at: Utc::now(),
         disabled_at: None,
+        registration_source: RegistrationSource::TrustedOnFirstUse,
     }
 }
 

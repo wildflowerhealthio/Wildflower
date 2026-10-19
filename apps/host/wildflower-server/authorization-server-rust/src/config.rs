@@ -19,10 +19,10 @@ pub struct AuthorizationServerConfig {
     pub host_app_client_scopes: Vec<String>,
 
     /// The `client_id` of the Wildflower host app's OAuth client — seeded as
-    /// the host app's client row and matched against a `/token` request's
-    /// presented `client_id` to hold it to its fixed registration. The live
-    /// Tauri app sources this from `tauri-shared-config.json`; standalone/test
-    /// builds use [`crate::default_wildflower_host_app_client_id`].
+    /// the host app's server-defined client row, and one of the essential
+    /// clients the Owner can't disable. The live Tauri app sources this from
+    /// `tauri-shared-config.json`; standalone/test builds use
+    /// [`crate::default_wildflower_host_app_client_id`].
     pub wildflower_host_app_client_id: String,
 
     /// The `client_id` of the FHIR server's web UI (`helios-ui`), which signs

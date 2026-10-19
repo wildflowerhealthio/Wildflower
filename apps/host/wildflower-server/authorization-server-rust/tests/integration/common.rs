@@ -43,7 +43,7 @@ pub use wildflowerhealthio_authorization_server::domain::authorization_request::
 };
 pub use wildflowerhealthio_authorization_server::domain::browser_session::BrowserSession;
 pub use wildflowerhealthio_authorization_server::domain::client::{
-    AllowedGrantType, Client, ClientKind,
+    AllowedGrantType, Client, ClientKind, RegistrationSource,
 };
 pub use wildflowerhealthio_authorization_server::domain::grant_store::{
     AuthorizationCodesTx, AuthorizationRequestsTx, BrowserSessionsTx, ClientsTx, GrantsTx,
@@ -277,6 +277,7 @@ pub fn seed_client_with_redirect(
                 secret_hash: None,
                 registered_at: Utc::now(),
                 disabled_at: None,
+                registration_source: RegistrationSource::TrustedOnFirstUse,
             })
         })
         .expect("register client");
@@ -306,6 +307,7 @@ pub fn seed_test_client(db: &TestDb) {
                 secret_hash: None,
                 registered_at: Utc::now(),
                 disabled_at: None,
+                registration_source: RegistrationSource::TrustedOnFirstUse,
             })
         })
         .expect("register the test client");
@@ -840,6 +842,7 @@ pub fn seed_confidential_client(
                 ),
                 registered_at: Utc::now(),
                 disabled_at: None,
+                registration_source: RegistrationSource::TrustedOnFirstUse,
             })
         })
         .expect("register confidential client");

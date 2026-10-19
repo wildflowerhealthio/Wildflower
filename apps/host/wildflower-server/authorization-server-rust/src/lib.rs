@@ -36,6 +36,7 @@ use wildflowerhealthio_scopes::{
 use wildflowerhealthio_token_revocation::RevocationStore;
 
 use crate::domain::browser_session::LONGEST_BROWSER_SESSION_TTL;
+use crate::domain::essential_client_guard::EssentialClientGuard;
 use crate::domain::last_seen_throttle::LastSeenThrottle;
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
 use crate::domain::sign_in_redirect::SignInDestinations;
@@ -79,7 +80,7 @@ pub use ports::{AdmitEveryAuthorizationStart, AuthorizationStartGate};
 pub use wildflowerhealthio_persistence::DieselPool;
 
 /// `client_id` of the Wildflower host app's OAuth client, seeded at bootstrap
-/// and the one client whose registration is fixed.
+/// with a server-defined registration.
 ///
 /// This is the standalone/test fallback: the live Tauri app sources the id from
 /// `tauri-shared-config.json` and threads it via
@@ -280,7 +281,10 @@ pub fn setup_authorization_server(
         revocation_store: revocation_store.clone(),
         server_origin: server_origin.clone(),
         device_page: Arc::new(http::device_page_url(&config.server_origin)),
-        wildflower_host_app_client_id: config.wildflower_host_app_client_id.clone().into(),
+        essential_client_guard: EssentialClientGuard::new(
+            config.wildflower_host_app_client_id.clone().into(),
+            BROWSER_SESSION_CLIENT_ID.into(),
+        ),
         launcher_base: config.launcher_base.clone(),
         owner_approval_tx,
         pending_consents_recomputed_tx,

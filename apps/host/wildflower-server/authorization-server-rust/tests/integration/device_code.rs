@@ -459,6 +459,7 @@ async fn token_endpoint_rejects_grant_outside_client_allow_list() {
                 secret_hash: None,
                 registered_at: Utc::now(),
                 disabled_at: None,
+                registration_source: RegistrationSource::TrustedOnFirstUse,
             })
         })
         .expect("register code-only client");

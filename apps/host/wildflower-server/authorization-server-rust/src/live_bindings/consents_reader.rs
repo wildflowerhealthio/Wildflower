@@ -30,10 +30,6 @@ impl Capability for LiveConsentReader {
     }
 
     fn build(state: Arc<AuthorizationServerState>, granted: Grant) -> Self {
-        ConsentReader::new(
-            state.store.clone(),
-            granted,
-            state.wildflower_host_app_client_id.clone(),
-        )
+        ConsentReader::new(state.store.clone(), granted)
     }
 }
