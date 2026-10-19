@@ -51,9 +51,7 @@ impl Grant {
 
     /// The `required` scopes this grant does **not** cover, preserving the order
     /// given — empty iff the grant covers every one. The list a per-resource gate
-    /// renders into an `InsufficientScope` 403's `missingScopes`: e.g. the apps
-    /// slice's per-app launch check names the SMART scopes a caller lacks for a
-    /// specific app. Pairs with [`covers_all`](Grant::covers_all), which is the
+    /// renders into an `InsufficientScope` 403's `missingScopes`. Pairs with [`covers_all`](Grant::covers_all), which is the
     /// same test as a bool.
     pub fn missing_scopes(&self, required: &[Scope]) -> Vec<Scope> {
         required

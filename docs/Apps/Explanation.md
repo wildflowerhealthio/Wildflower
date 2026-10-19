@@ -153,17 +153,13 @@ so an under-scoped caller gets a `403 { error: "InsufficientScope", missingScope
 - `GET /apps`, `GET /apps/{id}`, `POST /apps`, `PUT /apps/{id}`,
   `DELETE /apps/{id}` and `PUT /home-screen` are gated on
   `wildflower/Apps.{r,c,u,d}` — a read/create/update/delete grant per capability.
-- The launch (`POST /apps/{id}`) is gated in two layers: a static
-  `wildflower/launch` **umbrella** the `Scoped<AppLauncher>` extractor enforces (a
-  _known_ scope, granted to the owner explicitly — the `wildflower/*` wildcard does
-  not cover it), and — for a **SMART** app (a host-only `client_id`) — a per-app
-  check that the caller's grant covers the app's OAuth client's requested
-  **resource** scopes (its FHIR / Wildflower data access; the OIDC and SMART
-  launch-context scopes are the app's own OAuth concern, so the owner isn't required
-  to hold them). A shortfall on the per-app check returns the shared
-  `InsufficientScope` JSON body, which the launcher's typed client decodes into
-  the home banner — keeping the missing scopes structured so the banner names them
-  (and a future "request permissions" action can read them).
+- The launch (`POST /apps/{id}`) is gated on the static `wildflower/launch`
+  **umbrella** alone, which the `Scoped<AppLauncher>` extractor enforces (a
+  _known_ scope, granted explicitly — the `wildflower/*` wildcard does not cover
+  it). What a **SMART** app (a host-only `client_id`) may then do is bounded at
+  its own `/oauth/authorize`: its authorization code carries only what both its
+  approval and the launching browser's session allow (see the authorization
+  [Jargon Explanation](../../slices/authorization/docs/Jargon%20Explanation.md)).
 - Every launch rides the same bearer gate: the launcher launches through the
   typed client with its bearer. The launch answers `200 { url }` to every
   caller, and the page navigates the tab there — a redirect would be followed

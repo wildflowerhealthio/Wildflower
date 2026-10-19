@@ -9,26 +9,21 @@
 //!      caller's scope claims). An under-umbrella caller `403`s before `find_app`
 //!      or target resolution, so it learns nothing about existence (`404`).
 //!   2. Look up the app (`404 AppNotFound` if absent).
-//!   3. Per-app SMART gate: a **SMART** app additionally requires the caller's
-//!      grant to cover its OAuth client's requested *resource* scopes (the OIDC /
-//!      launch-context scopes are the app's own OAuth concern, filtered out). A
-//!      shortfall `403`s with the shared `InsufficientScope` JSON body naming the
-//!      missing scopes, before any side-effect. A non-SMART app needs only the
-//!      umbrella.
-//!   4. Resolve the launch target from the stored template: `{origin}` is the
+//!   3. Resolve the launch target from the stored template: `{origin}` is the
 //!      public origin, and `{launch}` is, for a SMART app, a launch context the
 //!      authorization server mints for the app's OAuth client (through the
 //!      [`LaunchContextMinter`](crate::ports::LaunchContextMinter) port) and
 //!      consumes at its `/oauth/authorize`. A non-SMART app has no client to
 //!      bind a launch to, so its `{launch}` is empty.
-//!   5. Answer `200` with the URL ([`LaunchTargetBody`]) for the caller's page
+//!   4. Answer `200` with the URL ([`LaunchTargetBody`]) for the caller's page
 //!      to navigate to — the caller is the launcher's `fetch`, which would follow
 //!      a redirect invisibly rather than move the tab. No launch sets a cookie:
 //!      an app authenticates to the API with its own bearer (SMART) — see
 //!      `docs/Apps/Explanation.md`.
 //!
-//! The auth posture (scope-gated on `wildflower/launch` + a per-app SMART check)
-//! is canonical in
+//! The umbrella is the whole launch gate: what a SMART app may then do is
+//! bounded at its own `/oauth/authorize`, whose code carries only what the
+//! launching browser's session also holds. The auth posture is canonical in
 //! `docs/Apps/Explanation.md` §"Auth posture".
 
 use std::sync::Arc;
@@ -49,9 +44,8 @@ use crate::live_bindings::LiveAppLauncher;
 /// `POST /apps/{id}` — launch an app (`404` if no app has this id). Every launcher
 /// drives this through the typed client so the owner bearer rides along.
 /// Scope-gated on the `wildflower/launch` umbrella through
-/// [`Scoped<LiveAppLauncher>`]; a SMART app additionally requires the caller's grant
-/// to cover its OAuth client's scopes (checked here). See the module docs for the
-/// flow and the auth posture.
+/// [`Scoped<LiveAppLauncher>`]. See the module docs for the flow and the auth
+/// posture.
 #[utoipa::path(
     post,
     tag = "Launch",
@@ -59,12 +53,12 @@ use crate::live_bindings::LiveAppLauncher;
     params(("id" = String, Path, description = "App id")),
     responses(
         (status = 200, description = "The resolved launch URL, for the caller's page to navigate to", body = LaunchTargetBody),
-        (status = 403, description = "The caller's token doesn't cover `wildflower/launch`, or a SMART app's required client scopes", body = InsufficientScopeBody),
+        (status = 403, description = "The caller's token doesn't cover `wildflower/launch`", body = InsufficientScopeBody),
         (status = 404, description = "No app has this id", body = AppNotFoundBody),
     ),
 )]
 pub(crate) async fn handle_launch_app(
-    launcher: Scoped<LiveAppLauncher>,
+    _launcher: Scoped<LiveAppLauncher>,
     State(state): State<Arc<AppsState>>,
     Path(id): Path<String>,
 ) -> Result<Response, AppsError> {
@@ -80,21 +74,6 @@ pub(crate) async fn handle_launch_app(
         .store
         .find_app(&id)?
         .ok_or_else(|| AppsError::NotFound { id: id.clone() })?;
-
-    // Per-app SMART gate (module docs, step 3): a SMART app additionally requires
-    // the caller's grant to cover its OAuth client's resource scopes (OIDC /
-    // launch-context scopes are filtered out). A shortfall bails before any
-    // side-effect with the shared `403 InsufficientScope` JSON body naming the gap,
-    // which the typed client decodes. Keeping it structured (not a flattened
-    // message) lets the home banner name the scopes and a future "request
-    // permissions" action read them. A non-SMART app needs only the
-    // umbrella (short-circuited inside).
-    let missing = launcher.missing_launch_scopes(&registration)?;
-    if !missing.is_empty() {
-        return Err(AppsError::InsufficientScope {
-            missing_scopes: wildflowerhealthio_scopes::render_scopes(&missing),
-        });
-    }
 
     Ok(navigate_to(resolve_launch(&registration, &state)?))
 }

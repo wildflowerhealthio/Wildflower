@@ -11,8 +11,7 @@ import {
  * Read + launch endpoints for the apps catalogue. This group carries no
  * middleware; the canonical (Rust) host scope-gates `ListApps` on
  * `wildflower/Apps.r` (a `403 InsufficientScope` when the token doesn't cover it)
- * and mounts `LaunchApp` behind the launch scope gate (the per-app SMART check
- * is in-handler) — see
+ * and `LaunchApp` on the `wildflower/launch` umbrella — see
  * `docs/Apps/Explanation.md` §"Auth posture". The client attaches a bearer that a
  * gating host enforces and an ungated host ignores. The admin reads and mutations
  * live on `AppsAdminApi`.
@@ -33,9 +32,8 @@ const httpApiGroup = HttpApiGroup.make('apps', { topLevel: false })
       .setPath(AppIdPathSchema)
       .addSuccess(LaunchTargetSchema)
       .addError(AppNotFoundSchema, { status: 404 })
-      // The launch umbrella / a SMART app's required scopes come back `403
-      // InsufficientScope`; decode it (the home screen reads `missingScopes` to
-      // route the permission banner).
+      // A token without the `wildflower/launch` umbrella comes back `403
+      // InsufficientScope`.
       .addError(InsufficientScopeSchema, { status: 403 })
   )
 

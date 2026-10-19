@@ -56,11 +56,9 @@ mod tests {
     use crate::domain::test_fake::registration;
     use crate::domain::{AppRegistration, AppsStore};
     use crate::http::test_support::{
-        state, state_full, state_with_launch_scopes, FixedLaunchScopes,
-        RecordingLaunchContextMinter, PUBLIC_ORIGIN,
+        state, state_with_launch_context_minter, RecordingLaunchContextMinter, PUBLIC_ORIGIN,
     };
     use crate::live_bindings::state::AppsState;
-    use crate::ports::NoAppLaunchScopes;
     use wildflowerhealthio_scope_capabilities::ScopeClaims;
 
     /// The owner-level scope claim the host's bearer gate would insert for the
@@ -273,57 +271,25 @@ mod tests {
         seed_app(store, id, "https://app.example/smart", Some("client-1"));
     }
 
-    /// A SMART app launch additionally requires the caller's grant to cover its
-    /// client's scopes: a covering caller launches (`200`). `patient/Observation.rs`
-    /// (read+search) covers the required `.r` (read).
+    /// A SMART app launches on the umbrella alone: the caller's token needn't
+    /// hold the scopes its client asks for, which the authorization server
+    /// bounds at the app's own `/oauth/authorize`.
     #[tokio::test]
-    async fn launch_smart_app_covering_client_scopes_succeeds() {
-        let st = state_with_launch_scopes(FixedLaunchScopes::requiring("patient/Observation.r"));
+    async fn launch_smart_app_needs_only_the_umbrella() {
+        let st = state();
         seed_smart(&st.store, "smart-app");
         let res = send_raw_scoped(
-            &st,
-            post_launch("/apps/smart-app"),
-            Some("wildflower/launch patient/Observation.rs"),
-        )
-        .await;
-        assert_eq!(res.status(), StatusCode::OK);
-    }
-
-    /// An under-scoped SMART launch (umbrella held, client scope not) is
-    /// `403 InsufficientScope` naming the gap, as JSON the launcher decodes.
-    #[tokio::test]
-    async fn launch_smart_app_under_scoped_is_403_json() {
-        let st = state_with_launch_scopes(FixedLaunchScopes::requiring("patient/Observation.r"));
-        seed_smart(&st.store, "smart-app");
-        let (status, body) = send_scoped(
             &st,
             post_launch("/apps/smart-app"),
             Some("wildflower/launch"),
         )
         .await;
-        assert_eq!(status, StatusCode::FORBIDDEN);
-        assert_eq!(body["error"], "InsufficientScope");
-        assert_eq!(
-            body["missingScopes"],
-            serde_json::json!(["patient/Observation.r"])
-        );
-    }
-
-    /// A non-SMART app ignores the launch-scopes port entirely: even with a port
-    /// requiring a scope the caller lacks, it launches (the SMART check
-    /// short-circuits on `is_smart() == false`).
-    #[tokio::test]
-    async fn launch_non_smart_app_ignores_the_launch_scopes_port() {
-        let st = state_with_launch_scopes(FixedLaunchScopes::requiring("patient/Observation.r"));
-        seed_plain(&st.store, "app-y");
-        let res = send_raw_scoped(&st, post_launch("/apps/app-y"), Some("wildflower/launch")).await;
         assert_eq!(res.status(), StatusCode::OK);
     }
 
-    /// Apps state whose launch-context port is `minter`, with no per-app launch
-    /// scopes.
+    /// Apps state whose launch-context port is `minter`.
     fn state_with_minter(minter: Arc<RecordingLaunchContextMinter>) -> Arc<AppsState> {
-        state_full(Arc::new(NoAppLaunchScopes), minter)
+        state_with_launch_context_minter(minter)
     }
 
     /// A SMART app's `{launch}` is a launch context minted for its OAuth client
@@ -369,33 +335,11 @@ mod tests {
         assert!(minter.minted_for().is_empty());
     }
 
-    /// A launch refused by the gates mints nothing: the SMART check runs before
-    /// the side effect.
-    #[tokio::test]
-    async fn an_under_scoped_smart_launch_mints_no_launch() {
-        let minter = Arc::new(RecordingLaunchContextMinter::default());
-        let st = state_full(
-            FixedLaunchScopes::requiring("patient/Observation.r"),
-            Arc::clone(&minter) as Arc<dyn crate::ports::LaunchContextMinter>,
-        );
-        seed_smart(&st.store, "smart-app");
-        let res = send_raw_scoped(
-            &st,
-            post_launch("/apps/smart-app"),
-            Some("wildflower/launch"),
-        )
-        .await;
-        assert_eq!(res.status(), StatusCode::FORBIDDEN);
-        assert!(minter.minted_for().is_empty());
-    }
-
     /// A launch whose launch can't be minted fails as a `500`.
     #[tokio::test]
     async fn a_failed_mint_fails_the_launch() {
-        let st = state_full(
-            Arc::new(NoAppLaunchScopes),
-            Arc::new(RecordingLaunchContextMinter::failing()),
-        );
+        let st =
+            state_with_launch_context_minter(Arc::new(RecordingLaunchContextMinter::failing()));
         seed_smart(&st.store, "smart-app");
         let res = send_raw(&st, post_launch("/apps/smart-app")).await;
         assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);

@@ -18,7 +18,7 @@
 //! store-agnostic.
 //!
 //! One capability per file — [`AppsReader`], [`AppsCreator`], [`AppsEditor`],
-//! [`AppsDeleter`], and the hybrid [`AppLauncher`] — each carrying its struct, its
+//! [`AppsDeleter`], and the launch umbrella's [`AppLauncher`] — each carrying its struct, its
 //! `*_scopes()` required-scope function, its store logic, and its own tests. The
 //! (resource, permission) → required-scope mapping lives with each capability — one
 //! `*_scopes()` function colocated in its file — read by **both** that capability's
@@ -26,9 +26,6 @@
 //! root), so *enforced* and *grantable* can't drift. The by-id read inlines the
 //! store's `find_app` + [`AppsError::NotFound`] shape, as do the editor and the
 //! launch route.
-//!
-//! (The cross-cutting launch capability is a separate, hybrid concern — see the
-//! launch handler.)
 
 mod app_launcher;
 mod apps_creator;
@@ -152,8 +149,8 @@ mod tests {
     /// The routes tree is enumerated at test time, so a NEW handler file is
     /// guarded by default. `launch.rs` is the one exempted file: the launch
     /// response glue (public origin / launch-context seams) legitimately reaches the
-    /// state, while its scope check rides the `Scoped<AppLauncher>` umbrella +
-    /// the in-handler SMART gate. (Advisory-strength: the needles are textual.)
+    /// state, while its scope check rides the `Scoped<AppLauncher>` umbrella.
+    /// (Advisory-strength: the needles are textual.)
     #[test]
     fn apps_handlers_reach_the_store_only_through_capabilities() {
         // Raw router state or a direct store field access — the only ways to reach

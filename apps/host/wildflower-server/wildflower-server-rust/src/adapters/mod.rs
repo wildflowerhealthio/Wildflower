@@ -13,8 +13,6 @@
 //! - [`authorization_start_limit`] — the authorization server's
 //!   `AuthorizationStartGate`: how fast tunnel visitors may start
 //!   authorization requests, each and all together.
-//! - [`app_launch_scopes`] — apps' `AppLaunchScopes`, from the authorization server's OAuth
-//!   clients.
 //! - [`health_probe`] — the reachability monitor's `HealthProbe`, over
 //!   `reqwest`.
 //! - [`launch_context_minter`] — apps' `LaunchContextMinter`, from the authorization server's
@@ -22,7 +20,6 @@
 
 pub(crate) mod access_token_verifier;
 pub(crate) mod acme_certificate;
-pub(crate) mod app_launch_scopes;
 pub(crate) mod authorization_start_limit;
 pub(crate) mod certificate_history;
 pub(crate) mod health_probe;

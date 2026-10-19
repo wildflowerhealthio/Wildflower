@@ -12,7 +12,7 @@ use axum::Router;
 use helios_auth::SessionStore;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
-use wildflowerhealthio_apps::ports::{AppLaunchScopes, LaunchContextMinter};
+use wildflowerhealthio_apps::ports::LaunchContextMinter;
 use wildflowerhealthio_apps::{setup_apps, AppsConfig};
 use wildflowerhealthio_authorization_server::{
     authorization_server_auth_middleware, setup_authorization_server, AuthorizationServerConfig,
@@ -23,7 +23,6 @@ use wildflowerhealthio_tunnel::{TunnelDaemon, TunnelStream};
 
 use crate::adapters::access_token_verifier::AuthorizationServerAccessTokenVerifier;
 use crate::adapters::acme_certificate::DeviceCertificate;
-use crate::adapters::app_launch_scopes::AuthorizationServerAppLaunchScopes;
 use crate::adapters::authorization_start_limit::AuthorizationStartLimit;
 use crate::adapters::health_probe::ReqwestHealthProbe;
 use crate::adapters::launch_context_minter::AuthorizationServerLaunchContextMinter;
@@ -406,19 +405,12 @@ pub async fn set_up(
     // `GET /apps` (list), the admin surface (`POST /apps`,
     // `GET`/`PUT`/`DELETE /apps/{id}`), and `PUT /home-screen` are scope-gated on
     // `wildflower/Apps.*`. The launch route `POST /apps/{id}` is scope-gated on the
-    // `wildflower/launch` umbrella, with a per-app SMART check in the handler.
+    // `wildflower/launch` umbrella alone: a SMART app's code is bounded at its
+    // own `/oauth/authorize`, by the launching browser's session.
     // Every launch resolves `{origin}` to the server's public origin.
     let apps_config = AppsConfig {
         public_origin: public_origin.clone(),
     };
-    // The per-app SMART launch-scope seam: resolves a SMART app's OAuth client
-    // scopes so the launch handler can require the caller's grant to cover them.
-    // The launch umbrella (`wildflower/launch`) is enforced separately by the
-    // bearer gate + `Scoped<AppLauncher>` on the launch route (below).
-    let launch_scopes: Arc<dyn AppLaunchScopes> = Arc::new(AuthorizationServerAppLaunchScopes {
-        state: authorization_server.state.clone(),
-    });
-
     // A SMART app's launch URL carries a `launch` value minted through
     // the authorization server, which its `/oauth/authorize` then consumes.
     let launch_context_minter: Arc<dyn LaunchContextMinter> =
@@ -426,16 +418,10 @@ pub async fn set_up(
             launch_context_minter: authorization_server.launch_context_minter.clone(),
         });
 
-    let apps = setup_apps(
-        diesel_pool.clone(),
-        &apps_config,
-        launch_scopes,
-        launch_context_minter,
-    )
-    .context("failed to set up apps")?;
+    let apps = setup_apps(diesel_pool.clone(), &apps_config, launch_context_minter)
+        .context("failed to set up apps")?;
     // The bearer gate gives every `Scoped<…>` extractor the caller's scope claims,
-    // the launch's `Scoped<AppLauncher>` included (the per-app SMART check then
-    // runs in-handler).
+    // the launch's `Scoped<AppLauncher>` included.
     let gated_apps = apps.router.layer(authorization_server_auth_layer.clone());
 
     // The server's `/health`: the shared database pool and the tunnel's

@@ -66,9 +66,6 @@ pub use wildflowerhealthio_persistence::DieselPool;
 
 pub use config::AppsConfig;
 pub use db::SqliteAppsStore;
-// Re-exported so a host can name the registration its `AppLaunchScopes` adapter
-// reads (see [`ports::AppLaunchScopes`]).
-pub use domain::AppRegistration;
 pub use live_bindings::state::AppsState;
 
 #[cfg(debug_assertions)]
@@ -76,19 +73,19 @@ pub use dev_seed::seed_dev_apps;
 
 pub mod ports;
 
-use ports::{AppLaunchScopes, LaunchContextMinter};
+use ports::LaunchContextMinter;
 
 /// Result of [`setup_apps`]: the router a host mounts, plus the shared state.
 pub struct Apps {
     /// Every apps route: the admin routes (`GET`/`POST /apps`,
     /// `GET`/`PUT`/`DELETE /apps/{id}`, `PUT /home-screen`), each scope-gated on
     /// `wildflower/Apps.*`, and the launch route `POST /apps/{id}`, scope-gated on
-    /// the `wildflower/launch` umbrella (plus the per-app SMART check). Carries no
+    /// the `wildflower/launch` umbrella. Carries no
     /// middleware: the host wraps it with its bearer gate, which inserts the scope
     /// claims the `Scoped<…>` capabilities read.
     pub router: Router,
-    /// Shared handler state (the store, the public origin, the launch-scope
-    /// port, and the launch-context port).
+    /// Shared handler state (the store, the public origin, and the
+    /// launch-context port).
     pub state: Arc<AppsState>,
 }
 
@@ -96,10 +93,6 @@ pub struct Apps {
 /// `request-log-rust`'s `setup_request_log`. The host builds the app-wide diesel pool
 /// (via `wildflowerhealthio_persistence::open_pool`) on the same shared database file its
 /// rusqlite connection serves the other slices from, and passes a clone in.
-///
-/// `launch_scopes` is the host seam resolving a SMART app's required launch scopes
-/// for the per-app launch check (see [`AppLaunchScopes`]). The Tauri host passes a
-/// authorization-server-backed adapter; others pass [`NoAppLaunchScopes`](ports::NoAppLaunchScopes).
 ///
 /// `launch_context_minter` is the host seam minting the SMART `launch` value a
 /// SMART app's launch URL carries (see [`LaunchContextMinter`]). The host passes
@@ -112,7 +105,6 @@ pub struct Apps {
 pub fn setup_apps(
     pool: DieselPool,
     config: &AppsConfig,
-    launch_scopes: Arc<dyn AppLaunchScopes>,
     launch_context_minter: Arc<dyn LaunchContextMinter>,
 ) -> anyhow::Result<Apps> {
     // `SqliteAppsStore::new` runs the embedded migrations — building the
@@ -121,7 +113,6 @@ pub fn setup_apps(
     let state = Arc::new(AppsState::new(
         store,
         config.public_origin.clone(),
-        launch_scopes,
         launch_context_minter,
     ));
 

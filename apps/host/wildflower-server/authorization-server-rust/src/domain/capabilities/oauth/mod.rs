@@ -9,8 +9,7 @@
 //!    [`ClientTokenRevoker`] and [`DeviceAuthorizer`];
 //!  - public: [`CodeAuthorizationStarter`] (a browser arriving at
 //!    `/authorize`), [`AuthorizationStatusReader`] (polling by request id),
-//!    [`PublicKeysReader`] (the JWKS), and [`ClientScopesReader`] (the host's
-//!    per-app launch check). Each exposes exactly one operation, so a handler
+//!    and [`PublicKeysReader`] (the JWKS). Each exposes exactly one operation, so a handler
 //!    holding one can do nothing else with the store;
 //!  - in-process: [`LaunchContexts`] mints the SMART App Launch contexts an app
 //!    launch hands out (for the host and the apps slice) and consumes them for
@@ -25,7 +24,6 @@
 mod authorization_status_reader;
 mod browser_pairing;
 mod client_authenticator;
-mod client_scopes_reader;
 mod client_token_revoker;
 mod code_authorization_starter;
 mod device_authorizer;
@@ -43,7 +41,6 @@ pub(crate) use browser_pairing::{
     StartedBrowserPairing, APPROVED_SESSION_TTL,
 };
 pub(crate) use client_authenticator::ClientAuthenticator;
-pub(crate) use client_scopes_reader::ClientScopesReader;
 pub(crate) use client_token_revoker::ClientTokenRevoker;
 pub(crate) use code_authorization_starter::{
     AuthorizationStartError, AuthorizeNextStep, AuthorizeRequest, CodeAuthorizationStarter,
