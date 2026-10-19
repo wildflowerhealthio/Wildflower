@@ -121,8 +121,9 @@ namespace KnownScope {
    * `wildflower/launch` — the umbrella app-launch capability (Rust's
    * `KnownScope::AnyScopedAppLaunch`). A *known* scope, matched exactly, so the
    * `wildflower/*` resource wildcard does not cover it; launch is granted
-   * explicitly. The apps launch handler additionally checks a SMART app's own
-   * requested scopes.
+   * explicitly. It is the whole launch gate: what a launched SMART app may do is
+   * bounded when its authorization code is issued, to what the launching
+   * browser's session also holds.
    */
   export const anyScopedAppLaunch = new KnownScope('wildflower/launch')
 }

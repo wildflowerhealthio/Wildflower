@@ -10,8 +10,9 @@ pub enum KnownScope {
     LaunchPatient,
     FhirUser,
     /// `wildflower/launch` — the umbrella app-launch capability. Holding it
-    /// authorizes launching apps at all; a SMART app additionally requires the
-    /// caller's grant to cover that app's own requested scopes. It is a *known*
+    /// authorizes launching apps; what a launched SMART app may then do is
+    /// bounded at its own authorization, where its code carries only what the
+    /// launching browser's session also holds. It is a *known*
     /// scope, matched exactly, so the `wildflower/*` resource wildcard does **not**
     /// cover it — launch is an explicitly-granted capability even for an owner
     /// token. (The `wildflower/` prefix is not a resource scope: with no `.perms`

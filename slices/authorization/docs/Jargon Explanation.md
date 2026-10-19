@@ -671,10 +671,11 @@ and no refresh family. The session row is its only record.
    for `OWNER_SCOPES`, so the Owner's card opens with all of them ticked, and
    the Owner unticks what the browser shouldn't have; no tick goes past
    `OWNER_SCOPES` ([Expandable consent](#expandable-consent)). An approval
-   delegates nothing the approver doesn't hold, so an approver holding less
-   opens the card with everything it may delegate ticked instead
-   (`ApprovableScopes::delegable_scopes`). What the session holds bounds
-   every code a request made in it earns.
+   delegates nothing the approver doesn't hold, neither a resource scope nor
+   `wildflower/launch`, so an approver holding less opens the card with
+   everything it may delegate ticked instead
+   (`ApprovableScopes::delegable_scopes`, the card's `startingScopes`). What
+   the session holds bounds every code a request made in it earns.
 5. The first poll after the approval claims the request
    (`ClaimedBrowserPairing`, an authority proof), stores the `approved` browser
    session it starts, named as approved, holding exactly the approved scopes
@@ -761,16 +762,22 @@ refresh policy; today it doesn't. Tokens, requests and families with no
 check.
 
 A code carries only what both its approval and the session of the browser
-that made its request allow: the approval's scopes (the Owner's ticks, or the standing grant's coverage on the
-[fast path](#grant)) less every resource scope and `wildflower/launch` the
-session doesn't cover. Coverage is the rule an approver is held to: either
-SMART spelling, and `system/*` covering `patient/*` and `user/*`. Identity and
-session markers (`openid`, `fhirUser`, `launch`, `launch/patient`,
-`offline_access`) pass through. The request and the standing grant record the
-approval as made; the code's tokens and refresh family take the code's
-scopes. So a browser paired without `patient/Observation.rs` earns no app a
-code for it, whoever approves, and an Owner session, holding `OWNER_SCOPES`,
-bounds nothing. Launching an app from Home needs only `wildflower/launch`:
+that made its request allow: the approval's scopes (the Owner's ticks, or the
+standing grant's coverage on the [fast path](#grant)), each resource scope
+narrowed to the part the session holds, and `wildflower/launch` only if the
+session holds it. A resource scope the session covers stays as approved;
+coverage is the rule an approver is held to: either SMART spelling, and
+`system/*` covering `patient/*` and `user/*`. One the session covers only in
+part narrows to its intersection with each session scope, so an approved
+`system/*.cruds` in a session holding `system/Patient.cruds` gives the code
+`system/Patient.cruds`, and an approved `patient/Observation.rs` in a session
+holding `patient/Observation.r` gives it `patient/Observation.r`. One the
+session holds none of is dropped. Identity and session markers (`openid`,
+`fhirUser`, `launch`, `launch/patient`, `offline_access`) pass through. The
+request and the standing grant record the approval as made; the code's tokens
+and refresh family take the code's scopes. So a browser paired without
+`patient/Observation.rs` earns no app a code for it, whoever approves, and an
+Owner session, holding `OWNER_SCOPES`, bounds nothing. Launching an app from Home needs only `wildflower/launch`:
 what the app may then do is bounded here, at its own `/oauth/authorize`.
 
 **Last seen** (`last_seen_at`) is when the session was last in use. Signing in,

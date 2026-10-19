@@ -29,13 +29,15 @@
 //! ## Launch
 //!
 //! `POST /apps/{id}` resolves a launch target and answers `200` with its URL,
-//! whoever calls — see the launch handler module. The launch
-//! surface is scope-gated on the `wildflower/launch` umbrella (a SMART app
-//! additionally requires the caller's grant to cover its client scopes). Every
-//! launch resolves `{origin}` to the server's public origin from [`AppsConfig`];
-//! the slice knows nothing about the tunnel itself. A SMART app's `{launch}` is
-//! a launch context the authorization server mints for its OAuth client, through the
-//! [`LaunchContextMinter`](ports::LaunchContextMinter) port.
+//! whoever calls — see the launch handler module. The launch surface is
+//! scope-gated on the `wildflower/launch` umbrella alone: what a SMART app may
+//! then do is bounded by the authorization server when it issues the app's
+//! code, which carries only what the launching browser's session also holds.
+//! Every launch resolves `{origin}` to the server's public origin from
+//! [`AppsConfig`]; the slice knows nothing about the tunnel itself. A SMART
+//! app's `{launch}` is a launch context the authorization server mints for its
+//! OAuth client, through the [`LaunchContextMinter`](ports::LaunchContextMinter)
+//! port.
 
 pub mod config;
 pub mod db;
