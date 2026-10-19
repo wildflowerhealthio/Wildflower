@@ -391,7 +391,9 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
     /// [`AuthorizationServerError::AuthorizationRequestNotFound`] for a
     /// request no longer waiting on that page (another session's, already
     /// acknowledged, decided, or expired: the same as an expired request
-    /// anywhere else); [`AuthorizationStartError::LocalPage`] for a client
+    /// anywhere else); [`AuthorizationStartError::NoActiveSigningKey`], as at
+    /// the start, leaving the request waiting;
+    /// [`AuthorizationStartError::LocalPage`] for a client
     /// disabled since; otherwise as [`start`](Self::start).
     pub(crate) fn continue_past_session_shortfall(
         &self,
@@ -400,6 +402,9 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
         code: String,
         now: DateTime<Utc>,
     ) -> Result<AuthorizeNextStep, AuthorizationStartError> {
+        if !self.store.has_active_signing_key()? {
+            return Err(AuthorizationStartError::NoActiveSigningKey);
+        }
         let parked_request = load_unacknowledged_code_request(&self.store, id, sid, now)?;
         let request = parked_request.request();
         let registration_is_fixed = self.registration_is_fixed(&request.client_id);
@@ -687,8 +692,10 @@ mod tests {
     use crate::domain::grant::AuthorizationCodeGrant;
     use crate::domain::launch_context::{LaunchContext, LAUNCH_CONTEXT_TTL};
 
+    use crate::domain::authorization_request::AuthorizationRequest;
     use crate::domain::test_fake::{
-        client, code_grant, seed_active_signing_key, FakeGrantStore, RecordingOwnerApproval,
+        client, code_grant, code_request, seed_active_signing_key, FakeGrantStore,
+        RecordingOwnerApproval, FIXTURE_SID,
     };
 
     const CHALLENGE: &str = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
@@ -1708,6 +1715,46 @@ mod tests {
             .store
             .session_shortfall_acknowledged_for_client(REQUESTING_SID, "other-app")
             .unwrap());
+    }
+
+    /// Without a signing key, going on refuses up front, as the start does,
+    /// and the request still waits on its limited page.
+    #[test]
+    fn continuing_without_a_signing_key_refuses_before_acknowledging() {
+        let store = FakeGrantStore::default();
+        store
+            .insert_authorization_request(&AuthorizationRequest {
+                session_shortfall_acknowledged: false,
+                ..code_request(
+                    "req-1",
+                    RequestStatus::Pending,
+                    Utc::now() + AUTHORIZATION_REQUEST_TTL,
+                )
+            })
+            .unwrap();
+        let code_authorization_starter = CodeAuthorizationStarter::new(
+            store,
+            Arc::new(RecordingOwnerApproval::default()),
+            "host".into(),
+            SERVER_ORIGIN.into(),
+        );
+        assert!(matches!(
+            code_authorization_starter.continue_past_session_shortfall(
+                "req-1",
+                FIXTURE_SID,
+                "the-code".to_owned(),
+                Utc::now(),
+            ),
+            Err(AuthorizationStartError::NoActiveSigningKey)
+        ));
+        assert!(
+            !code_authorization_starter
+                .store
+                .authorization_request_by_id("req-1")
+                .unwrap()
+                .expect("present")
+                .session_shortfall_acknowledged
+        );
     }
 
     /// Only the session the request was made in goes on with it, and only
