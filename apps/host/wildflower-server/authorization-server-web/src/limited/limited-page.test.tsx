@@ -218,7 +218,7 @@ describe('LimitedPage — Continue and Cancel', () => {
         'This server has had too many sign-in requests. Wait a few minutes, then press Continue again.'
       )
     ).toBeDefined()
-    expect(screen.getByRole('button', { name: 'Continue' }).disabled).toBe(false)
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Continue' }).disabled).toBe(false)
     expect(leaveFor).not.toHaveBeenCalled()
   })
 
