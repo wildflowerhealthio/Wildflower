@@ -3,7 +3,8 @@
 //! paired, with nothing parked, notified or consumed meanwhile, even when a
 //! standing grant would cover the request. A browser with one gets the flow,
 //! fast path included, and every code and refresh family the request earns
-//! names the session of the browser that made it, never the approver's. The
+//! names the session of the browser that made it, never the approver's, and
+//! carries only what that session holds of the approval. The
 //! status poll answers that browser and a session that can decide the request
 //! on the consent card, and a launch that lapsed while the browser paired asks
 //! for a new launch.
@@ -30,19 +31,26 @@ fn fhir_ui_query() -> String {
     )
 }
 
-/// `test-app`'s query for `read offline_access`, registered at
-/// `https://app.example/cb`.
+/// `test-app`'s query for `patient/Patient.rs patient/Observation.rs
+/// offline_access`, registered at `https://app.example/cb`.
 fn app_query() -> String {
-    authorize_query("test-app", "read%20offline_access")
+    authorize_query(
+        "test-app",
+        "patient%2FPatient.rs%20patient%2FObservation.rs%20offline_access",
+    )
 }
 
-/// Register `test-app` for `read` and `offline_access`.
+/// Register `test-app` for `app_query`'s scopes.
 fn seed_app(db: &TestDb) {
     seed_client_with_redirect(
         db,
         "test-app",
         "https://app.example/cb",
-        &["read", "offline_access"],
+        &[
+            "patient/Patient.rs",
+            "patient/Observation.rs",
+            "offline_access",
+        ],
     );
 }
 
@@ -63,8 +71,7 @@ async fn park_and_approve(
 }
 
 /// The approval of `app_query`'s scopes.
-const APPROVE_APP: &str =
-    r#"{"approvedScopes":["read","offline_access"],"acknowledgedRegistration":true}"#;
+const APPROVE_APP: &str = r#"{"approvedScopes":["patient/Patient.rs","patient/Observation.rs","offline_access"],"acknowledgedRegistration":true}"#;
 
 /// The approval of `fhir_ui_query`'s scope.
 const APPROVE_FHIR_UI: &str =
@@ -212,9 +219,10 @@ async fn a_browser_without_a_session_is_sent_to_pairing_even_with_a_standing_gra
 }
 
 /// A paired browser takes the fast path on a standing grant another browser
-/// earned, and the code, tokens and refresh family name its own session.
-/// Revoking that session ends them, and the app can't start again from a
-/// browser without a session: the revoked browser is sent to pairing.
+/// earned, and the code, tokens and refresh family name its own session and
+/// carry only what that session holds of the grant. Revoking that session
+/// ends them, and the app can't start again from a browser without a
+/// session: the revoked browser is sent to pairing.
 #[tokio::test]
 async fn a_paired_browser_takes_the_fast_path_under_its_own_session_until_it_is_revoked() {
     let (g, owner_token, db) = spin_up();
@@ -227,11 +235,13 @@ async fn a_paired_browser_takes_the_fast_path_under_its_own_session_until_it_is_
         APPROVE_APP,
     )
     .await;
-    let (sid, session_token) = paired_browser_session(&db);
+    let (sid, session_token) =
+        paired_browser_session_holding(&db, &["wildflower/launch", "patient/Patient.rs"]);
 
     let res = get_authorize(&g.router, &session_token, &app_query()).await;
     assert_eq!(res.status(), StatusCode::FOUND);
     let issued = redeem(&g, &code_of(&location_of(&res))).await;
+    assert_eq!(issued["scope"], "patient/Patient.rs offline_access");
     let access_token = issued["access_token"].as_str().expect("an access token");
     let refresh_token = issued["refresh_token"].as_str().expect("a refresh token");
     assert_eq!(sid_of(access_token), sid);
@@ -289,6 +299,41 @@ async fn the_code_names_the_requesting_browser_s_session_not_the_approver_s() {
     assert_eq!(
         family_sid(&db, refresh_token).as_deref(),
         Some(db.paired_browser_sid.as_str())
+    );
+}
+
+/// The Owner approving from another browser grants the request as asked,
+/// but the code carries only what the requesting browser's session also
+/// holds: a browser paired without `patient/Observation.rs` gets a code
+/// without it. A request the Owner's own session makes later takes the fast
+/// path on that grant with everything, the Owner session bounding nothing.
+#[tokio::test]
+async fn an_owner_approval_from_another_browser_is_bounded_by_the_requesting_session() {
+    let (g, _owner_token, db) = spin_up();
+    seed_app(&db);
+    let owner_session_token = signed_in_owner_session_token(&g).await;
+    let (_, paired_token) =
+        paired_browser_session_holding(&db, &["wildflower/launch", "patient/Patient.rs"]);
+    let request_id = park_and_approve(
+        &g,
+        &owner_session_token,
+        &paired_token,
+        &app_query(),
+        APPROVE_APP,
+    )
+    .await;
+
+    let res = get_authorization_status(&g.router, &paired_token, &request_id).await;
+    let status = body_json(res.into_body()).await;
+    let issued = redeem(&g, &code_of(status["redirect"].as_str().expect("redirect"))).await;
+    assert_eq!(issued["scope"], "patient/Patient.rs offline_access");
+
+    let res = get_authorize(&g.router, &owner_session_token, &app_query()).await;
+    assert_eq!(res.status(), StatusCode::FOUND);
+    let issued = redeem(&g, &code_of(&location_of(&res))).await;
+    assert_eq!(
+        issued["scope"],
+        "patient/Patient.rs patient/Observation.rs offline_access"
     );
 }
 

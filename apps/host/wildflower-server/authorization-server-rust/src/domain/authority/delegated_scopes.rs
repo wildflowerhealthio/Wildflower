@@ -6,7 +6,7 @@
 
 use std::collections::HashSet;
 
-use wildflowerhealthio_scopes::{grantable_scopes, render_scopes, Grant, Scope};
+use wildflowerhealthio_scopes::{grantable_scopes, render_scopes, Grant, KnownScope, Scope};
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::access::consents::{
@@ -252,29 +252,61 @@ impl DelegatedScopes {
 /// The resource scopes in `granted` the `approver_grant` does not cover,
 /// checked across both canonical spellings.
 fn uncovered_resource_scopes(granted: &[String], approver_grant: &Grant) -> Vec<String> {
-    let approver_authority = Grant::new(
-        approver_grant
+    let approver_covers = coverage_in_either_spelling(approver_grant);
+    granted
+        .iter()
+        .filter(|rendered| {
+            let scope = Scope::from(rendered.as_str());
+            matches!(scope, Scope::FhirResource(_) | Scope::WildflowerResource(_))
+                && !approver_covers(&scope)
+        })
+        .cloned()
+        .collect()
+}
+
+/// The `authorized` scopes the browser session holding `session_grant` also
+/// allows, in order: an authorization code carries only what both the
+/// client's authority and the browser the request was made in allow. A
+/// resource scope or `wildflower/launch` stays only when the session covers
+/// it, by the rule [`DelegatedScopes::clamp`] holds an approver to (either
+/// SMART spelling, `system/*` covering `patient/*` and `user/*`). Identity
+/// and session markers (`openid`, `fhirUser`, `launch`, `offline_access`, …)
+/// are no access a session holds, so they pass through.
+pub(crate) fn session_bounded_scopes(authorized: &[String], session_grant: &Grant) -> Vec<String> {
+    let session_covers = coverage_in_either_spelling(session_grant);
+    authorized
+        .iter()
+        .filter(|rendered| {
+            let scope = Scope::from(rendered.as_str());
+            let session_bounds = matches!(
+                scope,
+                Scope::FhirResource(_)
+                    | Scope::WildflowerResource(_)
+                    | Scope::Known(KnownScope::AnyScopedAppLaunch)
+            );
+            !session_bounds || session_covers(&scope)
+        })
+        .cloned()
+        .collect()
+}
+
+/// Whether `holder` covers a scope in either SMART spelling: each held scope
+/// and each asked scope also counts in its alternate canonical form.
+fn coverage_in_either_spelling(holder: &Grant) -> impl Fn(&Scope) -> bool {
+    let authority = Grant::new(
+        holder
             .scopes
             .iter()
             .flat_map(|held| [Some(held.clone()), held.as_alternate_canonical_form()])
             .flatten()
             .collect(),
     );
-    let authorizes = |scope: &Scope| {
-        approver_authority.covers(scope)
+    move |scope: &Scope| {
+        authority.covers(scope)
             || scope
                 .as_alternate_canonical_form()
-                .is_some_and(|twin| approver_authority.covers(&twin))
-    };
-    granted
-        .iter()
-        .filter(|rendered| {
-            let scope = Scope::from(rendered.as_str());
-            matches!(scope, Scope::FhirResource(_) | Scope::WildflowerResource(_))
-                && !authorizes(&scope)
-        })
-        .cloned()
-        .collect()
+                .is_some_and(|twin| authority.covers(&twin))
+    }
 }
 
 #[cfg(test)]
@@ -605,6 +637,88 @@ mod tests {
             Err(AuthorizationServerError::InsufficientScope {
                 missing_scopes: owned_scopes(&["wildflower/Grant.c"]),
             }),
+        );
+    }
+
+    /// A session bounds a code's resource scopes by coverage in either SMART
+    /// spelling: the letter form covers the word form and back, and `system/*`
+    /// covers `patient/*` and `user/*`. What it doesn't cover is dropped.
+    #[test]
+    fn a_session_bounds_resource_scopes_by_coverage_in_either_spelling() {
+        assert_eq!(
+            session_bounded_scopes(
+                &owned_scopes(&[
+                    "patient/Patient.read",
+                    "patient/Observation.rs",
+                    "patient/Condition.rs",
+                    "wildflower/Grant.c",
+                ]),
+                &Grant::parse(["patient/Patient.rs", "patient/Observation.read"]),
+            ),
+            ["patient/Patient.read", "patient/Observation.rs"],
+        );
+        assert_eq!(
+            session_bounded_scopes(
+                &owned_scopes(&[
+                    "patient/Observation.rs",
+                    "user/*.cruds",
+                    "wildflower/Grant.c"
+                ]),
+                &Grant::parse(["system/*.cruds"]),
+            ),
+            ["patient/Observation.rs", "user/*.cruds"],
+        );
+    }
+
+    /// Identity and session markers pass through a session that holds none of
+    /// them; `wildflower/launch` stays only when the session holds it.
+    #[test]
+    fn a_session_passes_markers_through_and_bounds_launch() {
+        let authorized = owned_scopes(&[
+            "openid",
+            "fhirUser",
+            "launch",
+            "launch/patient",
+            "offline_access",
+            "wildflower/launch",
+            "patient/Patient.rs",
+        ]);
+        assert_eq!(
+            session_bounded_scopes(&authorized, &Grant::parse(["patient/Patient.r"])),
+            [
+                "openid",
+                "fhirUser",
+                "launch",
+                "launch/patient",
+                "offline_access"
+            ],
+        );
+        assert_eq!(
+            session_bounded_scopes(&authorized, &Grant::parse(["wildflower/launch"])),
+            [
+                "openid",
+                "fhirUser",
+                "launch",
+                "launch/patient",
+                "offline_access",
+                "wildflower/launch"
+            ],
+        );
+    }
+
+    /// The Owner's scopes bound nothing an approval can grant.
+    #[test]
+    fn the_owner_s_session_bounds_nothing() {
+        let authorized = owned_scopes(&[
+            "patient/Observation.read",
+            "user/*.cruds",
+            "wildflower/Apps.r",
+            "wildflower/launch",
+            "openid",
+        ]);
+        assert_eq!(
+            session_bounded_scopes(&authorized, &Grant::parse(crate::owner_scopes())),
+            authorized,
         );
     }
 
