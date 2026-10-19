@@ -18,7 +18,9 @@ use crate::http::errors::{oauth_error_html, OAuthErrorKind};
 use crate::http::extractors::Live;
 use crate::http::middleware::{start_limited_response, DeferredStartLimit};
 
-use super::authorization_pages::{consent_page_location, pairing_page_location};
+use super::authorization_pages::{
+    consent_page_location, limited_page_location, pairing_page_location,
+};
 use super::wait_page::wait_page_location;
 use crate::live_bindings::{LiveCodeAuthorizationStarter, LiveTokenVerifier};
 
@@ -175,7 +177,16 @@ pub struct AuthorizeParams {
 ///    TTL), made in that session (`sid`). A SMART App Launch's `aud` and
 ///    `launch` are checked first (see their fields), and the launch is
 ///    consumed onto the request.
-/// 2. Unless every requested scope is pre-approved by an existing grant for
+/// 2. A request asking for more than the browser's session holds (scopes a
+///    code issued in that session would not carry in full) waits on the
+///    limited page at `/oauth/authorize/{id}/limited`, which says what the
+///    session lacks and offers Continue or Cancel:
+///    `POST /oauth/authorize/{id}/continue` goes on as below,
+///    `POST /oauth/authorize/{id}/cancel` answers the client
+///    `access_denied`. Until then the Owner isn't asked about it. Once a
+///    browser session has pressed Continue for a client, its later requests
+///    for that client skip the page, whatever the session then lacks.
+/// 3. Unless every requested scope is pre-approved by an existing grant for
 ///    this (client, `redirect_uri`) pair, the request joins the pending-consent
 ///    queue and the browser is 302'd to a page this authorization server
 ///    serves beside the endpoint, on the origin the browser used. A browser
@@ -195,7 +206,7 @@ pub struct AuthorizeParams {
 ///    pages are spec-legal; likewise §4.1 explicitly allows skipping consent
 ///    on a previously established authorization decision, which is what the
 ///    grant fast path implements.
-/// 3. Approval 302s the browser back to the client's `redirect_uri` with
+/// 4. Approval 302s the browser back to the client's `redirect_uri` with
 ///    `code` + `state` (§4.1.2); the client then redeems the short-lived
 ///    code at `POST /oauth/token` (§4.1.3) with its PKCE verifier.
 ///
@@ -213,7 +224,7 @@ pub struct AuthorizeParams {
     path = "/authorize",
     params(AuthorizeParams),
     responses(
-        (status = 302, description = "Redirect to the pairing page (a browser without a browser session), the client redirect_uri, or the authorization server's consent card (a session that can approve the request) or wait page"),
+        (status = 302, description = "Redirect to the pairing page (a browser without a browser session), the limited page (a session holding less than the request asks for), the client redirect_uri, or the authorization server's consent card (a session that can approve the request) or wait page"),
         (status = 400, description = "Local HTML error page (untrusted redirect_uri)"),
         (status = 429, description = "The authorization start limit refused the request"),
         (status = 503, description = "No active signing key")
@@ -255,8 +266,7 @@ pub(super) async fn handle_authorize_request(
                 }),
         )));
     };
-    let requesting_browser_grant =
-        can_decide_consents(browser_session).then(|| browser_session.granted());
+    let browser_session_grant = browser_session.granted();
     let next_step = code_authorization_starter.start(
         &AuthorizeRequest {
             response_type: &params.response_type,
@@ -268,7 +278,8 @@ pub(super) async fn handle_authorize_request(
             client_state: &params.state,
             launch: params.launch.as_deref(),
             aud: params.aud.as_deref(),
-            requesting_browser_grant: requesting_browser_grant.as_ref(),
+            browser_session_grant: &browser_session_grant,
+            can_decide_consents: can_decide_consents(browser_session),
             may_raise_for_owner: &may_raise_for_owner,
             sid: browser_sid,
         },
@@ -278,34 +289,44 @@ pub(super) async fn handle_authorize_request(
         },
         chrono::Utc::now(),
     )?;
-    Ok(match next_step {
-        // Fully pre-approved: 302 the user-agent straight back to the client
-        // with the fresh code (RFC 6749 §4.1.2).
+    Ok(found_redirect(&next_step_location(next_step, "")))
+}
+
+/// Where `next_step` sends the browser: straight back to the client with the
+/// fresh code when fully pre-approved (RFC 6749 §4.1.2), else to a page for
+/// the request, relative to `/oauth/` ([`request_page_location`]) after
+/// `page_prefix`: empty for `/oauth/authorize`'s own `Location`, which the
+/// browser resolves against the endpoint, and `/oauth/` for the limited
+/// page's Continue, which the page follows from elsewhere.
+///
+/// The Owner decides on the consent card when this browser can decide the
+/// request, and else from this authorization server's wait page, which waits
+/// for whichever surface — the host popup, a signed-in launcher's consent
+/// list, or the consent card — decides first. A browser whose session holds
+/// less than the app asks for is first told so on the limited page, which
+/// goes on or cancels.
+///
+/// [`request_page_location`]: super::pages::request_page_location
+pub(super) fn next_step_location(next_step: AuthorizeNextStep, page_prefix: &str) -> String {
+    let request_page = match next_step {
         AuthorizeNextStep::RedirectToClient {
             redirect_uri,
             code,
             client_state,
-        } => found_redirect(&build_client_redirect_url(
-            &redirect_uri,
-            &code,
-            &client_state,
-        )),
-        // Otherwise the Owner decides: on the consent card, when this browser
-        // is signed in as the Owner, and else from this authorization server's
-        // wait page, which waits for whichever surface — the host popup, a
-        // signed-in launcher's consent list, or the consent card — decides
-        // first.
+        } => return build_client_redirect_url(&redirect_uri, &code, &client_state),
         AuthorizeNextStep::AwaitOwner {
             request_id,
-            decidable_in_requesting_browser,
-        } => {
-            if decidable_in_requesting_browser {
-                found_redirect(&consent_page_location(&request_id))
-            } else {
-                found_redirect(&wait_page_location(&request_id))
-            }
+            decidable_in_requesting_browser: true,
+        } => consent_page_location(&request_id),
+        AuthorizeNextStep::AwaitOwner {
+            request_id,
+            decidable_in_requesting_browser: false,
+        } => wait_page_location(&request_id),
+        AuthorizeNextStep::ConfirmSessionShortfall { request_id } => {
+            limited_page_location(&request_id)
         }
-    })
+    };
+    format!("{page_prefix}{request_page}")
 }
 
 fn html_bad_request(html: String) -> Response {

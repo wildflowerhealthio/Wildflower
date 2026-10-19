@@ -214,6 +214,34 @@ pub trait GrantTx {
         id: &str,
     ) -> Result<bool, AuthorizationServerError>;
 
+    /// Record that the browser that made the *pending* code-flow request `id`
+    /// goes on although its browser session falls short of what it asks for,
+    /// and move the request's `expires_at` to `expires_at`. Returns `true` iff
+    /// a pending row still waiting on that acknowledgement was transitioned.
+    /// Decides nothing.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the update fails.
+    fn acknowledge_session_shortfall(
+        &mut self,
+        id: &str,
+        expires_at: DateTime<Utc>,
+    ) -> Result<bool, AuthorizationServerError>;
+
+    /// Deny the *pending* code-flow request `id` only while it still waits on
+    /// its browser's limited page (its session shortfall unacknowledged).
+    /// Returns `true` iff such a row was transitioned, so a Cancel and a
+    /// concurrent Continue race to one winner.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the update fails.
+    fn deny_unacknowledged_authorization_request(
+        &mut self,
+        id: &str,
+    ) -> Result<bool, AuthorizationServerError>;
+
     /// Atomically claim an `approved` request for single-use redemption
     /// (`approved` → `expired` only if still `approved`), returning `true` iff
     /// this call won the race (RFC 8628 §3.4).
@@ -414,6 +442,31 @@ pub trait GrantTx {
         seen_at: DateTime<Utc>,
         seen_before: DateTime<Utc>,
     ) -> Result<bool, AuthorizationServerError>;
+
+    /// Whether the browser session `sid` has gone on past its limited page
+    /// for `client_id` before.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the read fails.
+    fn session_shortfall_acknowledged_for_client(
+        &mut self,
+        sid: &str,
+        client_id: &str,
+    ) -> Result<bool, AuthorizationServerError>;
+
+    /// Record that the browser session `sid` went on past its limited page
+    /// for `client_id`, so its later requests for that client skip the page.
+    /// Recording it again changes nothing.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the insert fails.
+    fn record_session_shortfall_acknowledgement(
+        &mut self,
+        sid: &str,
+        client_id: &str,
+    ) -> Result<(), AuthorizationServerError>;
 
     // ----- retention ------------------------------------------------------
     //

@@ -23,6 +23,12 @@
 //! attempt counts, however malformed; one it refuses is answered
 //! `429 Too Many Requests`.
 //!
+//! A request `/oauth/authorize` parks for its browser's limited page has
+//! spent from the limit by then, the deferred kind included: the route asks
+//! its [`DeferredStartLimit`] before parking it. So
+//! `POST /oauth/authorize/{id}/continue`, which raises it for the Owner,
+//! asks nothing.
+//!
 //! `POST /authorization/oauth-consents/{id}/ask-owner` raises a request for
 //! the Owner too, without starting one, so it spends from the same limit:
 //! [`defer_authorization_start_limit`] hands it a [`DeferredStartLimit`],

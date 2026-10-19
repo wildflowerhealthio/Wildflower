@@ -13,7 +13,7 @@ use super::FromState;
 use crate::db::SqliteGrantStore;
 use crate::domain::capabilities::oauth::{
     AuthorizationStatusReader, BrowserPairing, CodeAuthorizationStarter, DeviceAuthorizer,
-    PublicKeysReader, SameDeviceSignIn,
+    PublicKeysReader, SameDeviceSignIn, SessionShortfall,
 };
 use crate::ports::OwnerApproval;
 
@@ -45,6 +45,15 @@ impl FromState for LiveSameDeviceSignIn {
             state.server_origin.clone(),
             state.owner_grant.clone(),
         )
+    }
+}
+/// Read and cancel a request waiting on its browser's limited page — built by
+/// the `/oauth/authorize/{id}/session-shortfall` and `/cancel` handlers.
+pub(crate) type LiveSessionShortfall = SessionShortfall<SqliteGrantStore>;
+
+impl FromState for LiveSessionShortfall {
+    fn from_state(state: &Arc<AuthorizationServerState>) -> Self {
+        SessionShortfall::new(state.store.clone())
     }
 }
 /// Start and poll browser pairings — built by the `/oauth/pair/*` handlers.

@@ -7,4 +7,8 @@ describe('requestIdOf', () => {
     expect(requestIdOf('/oauth/authorize/req-1/consent')).toBe('req-1')
     expect(requestIdOf('/oauth/authorize/a%2Fb%20c%3F/consent')).toBe('a/b c?')
   })
+
+  test('reads the request id the limited page path names', () => {
+    expect(requestIdOf('/oauth/authorize/req-1/limited')).toBe('req-1')
+  })
 })

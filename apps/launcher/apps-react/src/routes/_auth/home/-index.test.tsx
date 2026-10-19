@@ -51,9 +51,11 @@ vi.mock('../../../queries.ts', () => ({
   useReplaceHomeScreenMutation: () => homeScreenStub,
 }))
 
+import { ErrorBodyRendererContext } from '@wildflowerhealthio/react-tundraish'
 import type { AppRegistration } from '../../../queries.ts'
 import { encodeLaunchError } from './-launch-error.ts'
-import { AppsHomeBody, validateHomeSearch } from './index.tsx'
+
+import { AppsHomeBody, AppsHomeError, validateHomeSearch } from './index.tsx'
 
 const makeApp = (overrides: Partial<AppRegistration> = {}): AppRegistration => ({
   id: 'my-app',
@@ -65,6 +67,22 @@ const makeApp = (overrides: Partial<AppRegistration> = {}): AppRegistration => (
 })
 
 const APP = makeApp()
+
+describe('<AppsHomeError>', () => {
+  test('keeps the Settings gear above the error body the app renders', () => {
+    const denial = { error: 'InsufficientScope', missingScopes: ['wildflower/Apps.r'] }
+    render(
+      <ErrorBodyRendererContext.Provider
+        value={(error) => (error === denial ? <p>not allowed to list apps</p> : null)}
+      >
+        <AppsHomeError error={denial} />
+      </ErrorBodyRendererContext.Provider>
+    )
+
+    expect(screen.getByRole('link', { name: 'Settings' }).getAttribute('href')).toBe('/settings')
+    expect(screen.getByText('not allowed to list apps')).toBeTruthy()
+  })
+})
 
 describe('<AppsHomeBody> reorder-failure banner', () => {
   beforeEach(() => {

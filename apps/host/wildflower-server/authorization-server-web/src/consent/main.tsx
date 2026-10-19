@@ -11,10 +11,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { addOsColorSchemeListener, pageLayoutStyles } from '@wildflowerhealthio/react-tundraish'
 
 import { browserSessionRunner } from '../browser-session.ts'
+import { requestIdOf } from '../request-path.ts'
 import { SessionFooter } from '../session-footer.tsx'
 import { goBackOnceDecidedOf } from '../then-query.ts'
 import { ConsentPage } from './consent-page.tsx'
-import { requestIdOf } from './request-path.ts'
 
 // Mirror the OS colour preference onto `data-color-scheme` so tundra's dark
 // palette (keyed off that attribute, not `prefers-color-scheme`) tracks the OS.

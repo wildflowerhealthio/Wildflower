@@ -52,6 +52,7 @@ pub(crate) fn device_request(
         launch_bound_patient: None,
         decidable_in_requesting_browser: false,
         sid: None,
+        session_shortfall_acknowledged: true,
     }
 }
 
@@ -107,6 +108,7 @@ pub(crate) fn code_request(
         launch_bound_patient: None,
         decidable_in_requesting_browser: false,
         sid: Some(FIXTURE_SID.to_owned()),
+        session_shortfall_acknowledged: true,
     }
 }
 

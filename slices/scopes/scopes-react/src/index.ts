@@ -24,6 +24,7 @@ export {
   type AuthorizationFailureProps,
 } from './organisms/authorization-failure.tsx'
 export { ContextCard, type ContextCardProps } from './atoms/context-card.tsx'
+export { fluentScope } from './organisms/fluent-scope.ts'
 export { ExclusionRow, type ExclusionRowProps } from './atoms/exclusion-row.tsx'
 export { FlagToggleRow, type FlagToggleRowProps } from './atoms/flag-toggle-row.tsx'
 export {

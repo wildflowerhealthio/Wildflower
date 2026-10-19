@@ -45,7 +45,10 @@ pub(crate) struct ApprovalContext<'a> {
 /// authorization-code flow carrying both a `redirect_uri` and a PKCE
 /// `code_challenge`. On success the two optional fields are unwrapped into the
 /// returned [`PendingCodeRequest`]. A request whose `expires_at` has passed is
-/// treated as not found — the deadline is enforced here at read time.
+/// treated as not found — the deadline is enforced here at read time. So is
+/// one still waiting on its browser's limited page
+/// (`session_shortfall_acknowledged` unset): the Owner can't read, approve,
+/// deny or be asked about a request its own browser hasn't gone on with.
 pub(crate) fn load_pending_code_request(
     store: &impl GrantStore,
     id: &str,
@@ -56,6 +59,7 @@ pub(crate) fn load_pending_code_request(
         Some(request)
             if request.status == RequestStatus::Pending
                 && request.grant_type == GrantType::AuthorizationCode
+                && request.session_shortfall_acknowledged
                 && request.expires_at > Utc::now() =>
         {
             PendingCodeRequest::from_request(request).ok_or_else(make_consent_not_found)
@@ -171,11 +175,12 @@ pub(crate) fn approve_oauth_consent(
     // drops it, or moves on to the newest still pending.
     owner_approval.republish_active();
 
-    let client_callback_url = request.client_state.as_deref().map(|client_state| {
-        build_client_redirect_url(requested_redirect_uri, &issued_code.code, client_state)
-    });
     Ok(ConsentOutcome::Approved {
-        redirect: client_callback_url,
+        redirect: Some(build_client_redirect_url(
+            requested_redirect_uri,
+            &issued_code.code,
+            pending_request.client_state(),
+        )),
     })
 }
 
@@ -202,20 +207,12 @@ pub(crate) fn deny_oauth_consent(
 /// `error=access_denied`, `description` as its `error_description`, and the
 /// client's `state` (RFC 6749 §4.1.2.1).
 fn denial_outcome(pending_request: &PendingCodeRequest, description: &str) -> ConsentOutcome {
-    let client_callback_url =
-        pending_request
-            .request()
-            .client_state
-            .as_deref()
-            .map(|client_state| {
-                build_client_error_redirect_url(
-                    pending_request.redirect_uri(),
-                    OAuthErrorCode::AccessDenied,
-                    description,
-                    client_state,
-                )
-            });
     ConsentOutcome::Denied {
-        redirect: client_callback_url,
+        redirect: Some(build_client_error_redirect_url(
+            pending_request.redirect_uri(),
+            OAuthErrorCode::AccessDenied,
+            description,
+            pending_request.client_state(),
+        )),
     }
 }

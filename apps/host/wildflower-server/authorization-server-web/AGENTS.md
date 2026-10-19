@@ -8,6 +8,11 @@ the server's own origin, so the address bar names the server being approved:
 - the **consent card**, `consent.html`, served at
   `/oauth/authorize/{id}/consent`. The card itself is `authorization-react`'s
   `OAuthConsentCard`.
+- the **limited page**, `limited.html`, served at
+  `/oauth/authorize/{id}/limited`: where `/oauth/authorize` sends a browser
+  whose session holds less than the app asks for, to say so and go on or
+  cancel. Once a browser session goes on for an app, the server skips the
+  page for that session's later requests for the same app.
 - the **device page**, `device.html`, served at `/oauth/device`: the RFC 8628
   `verification_uri`, and with `?user_code=` its `verification_uri_complete`.
   The code box and the card are `authorization-react`'s `DeviceCodeEntryForm`
@@ -36,8 +41,8 @@ Security Policy (below).
 ## Layout
 
 - `consent.html` + `src/consent/main.tsx` — the consent card's entry: reads
-  the request id from its path and `then` from its query
-  (`src/then-query.ts`), and mounts `ConsentPage`, with `SessionFooter` under
+  the request id from its path (`src/request-path.ts`) and `then` from its
+  query (`src/then-query.ts`), and mounts `ConsentPage`, with `SessionFooter` under
   it, over `browserSessionRunner(location.origin, FetchHttpClient.layer)`.
 - `src/consent/consent-page.tsx` — reads the consent, renders the card with a
   patient search (`patient-search.ts`, FHIR `GET /Patient?name=`, each hit
@@ -57,6 +62,23 @@ Security Policy (below).
   failed post says so in plain words. A device request whose
   `missingApprovalScopes` isn't empty says to approve it on the server's
   device.
+- `limited.html` + `src/limited/main.tsx` — the limited page's entry: reads
+  the request id from its path (`src/request-path.ts`) and mounts
+  `LimitedPage` over the same runner. It has no `SessionFooter`, so nothing
+  follows its buttons.
+- `src/limited/limited-page.tsx` — reads
+  `GET /oauth/authorize/{id}/session-shortfall` and says "This browser isn't
+  allowed to …, which ‹app› expects. ‹app› may not be able to do
+  everything." above **Cancel** and **Continue**, naming each scope with
+  `scopes-react`'s `fluentScope` (a known scope with its own explanation),
+  each phrase once. A request the session no longer lacks anything of (its
+  grant was widened since it parked) posts Continue at once and says
+  nothing.
+  The buttons post `…/cancel` and `…/continue` and leave for the `location`
+  the answer carries, a path on this origin or the client callback, only an
+  http(s) one. A `404` on any of the three (the request is no longer waiting
+  here, or isn't this browser's) goes to the wait page; any other failure
+  says so in plain words.
 - `device.html` + `src/device/main.tsx` — the device page's entry: reads the
   `user_code` (`user-code-query.ts`) and `then` (`src/then-query.ts`) from its
   query and mounts `DevicePage`, with `SessionFooter` under it, over the same
@@ -151,7 +173,7 @@ Security Policy (below).
 - **The APIs are same-origin only.** `vp dev` serves the page with no server
   behind it; the pages' behaviour is covered by `consent-page.test.tsx`,
   `device-page.test.tsx`, `pair-page.test.tsx` and `session-footer.test.tsx`
-  against a stub server.
+  against a stub server, and the limited page's by `limited-page.test.tsx`.
 
 ## References
 

@@ -70,38 +70,44 @@ pub struct PendingCodeRequest {
     request: AuthorizationRequest,
     redirect_uri: Url,
     code_challenge: String,
+    client_state: String,
     sid: String,
 }
 
 impl PendingCodeRequest {
     /// Unwrap `request`'s code-flow fields, or `None` when it lacks a
-    /// `redirect_uri`, a `code_challenge` or a browser session (`sid`). The
+    /// `redirect_uri`, a `code_challenge`, the client's `state` or a browser
+    /// session (`sid`). The
     /// caller has already checked the grant type, status, and expiry.
     #[must_use]
     pub fn from_request(request: AuthorizationRequest) -> Option<Self> {
         let redirect_uri = request.redirect_uri.clone()?;
         let code_challenge = request.code_challenge.clone()?;
+        let client_state = request.client_state.clone()?;
         let sid = request.sid.clone()?;
         Some(PendingCodeRequest {
             request,
             redirect_uri,
             code_challenge,
+            client_state,
             sid,
         })
     }
 
     /// A new pending code-flow request built from `args` — the `/authorize`
-    /// flow's request to park. Its redirect, challenge and browser session are
-    /// present by construction.
+    /// flow's request to park. Its redirect, challenge, client `state` and
+    /// browser session are present by construction.
     #[must_use]
     pub fn new_code_authorization(args: StartCodeAuthorizationArgs) -> Self {
         let redirect_uri = args.redirect_uri.clone();
         let code_challenge = args.code_challenge.clone();
+        let client_state = args.client_state.clone();
         let sid = args.sid.clone();
         PendingCodeRequest {
             request: AuthorizationRequest::new_code_authorization(args),
             redirect_uri,
             code_challenge,
+            client_state,
             sid,
         }
     }
@@ -122,6 +128,12 @@ impl PendingCodeRequest {
     #[must_use]
     pub fn code_challenge(&self) -> &str {
         &self.code_challenge
+    }
+
+    /// The `state` the client sent, which its callback carries back.
+    #[must_use]
+    pub fn client_state(&self) -> &str {
+        &self.client_state
     }
 
     /// The browser session the request was made in.

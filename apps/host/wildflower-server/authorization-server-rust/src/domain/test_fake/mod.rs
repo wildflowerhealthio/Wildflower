@@ -14,7 +14,7 @@
 //! rather than faithful SQL replicas.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::domain::authorization_code::IssuedAuthorizationCode;
 use crate::domain::authorization_request::AuthorizationRequest;
@@ -52,6 +52,8 @@ pub(crate) struct FakeGrantStore {
     device_grants: RefCell<HashMap<String, DeviceGrant>>,
     launch_contexts: RefCell<HashMap<String, LaunchContext>>,
     browser_sessions: RefCell<HashMap<String, BrowserSession>>,
+    /// The (`sid`, `client_id`) pairs gone on past the limited page.
+    session_shortfall_acknowledgements: RefCell<HashSet<(String, String)>>,
 }
 
 /// A clone of every map, taken before a transaction runs so it can be restored
@@ -67,6 +69,7 @@ struct Snapshot {
     device_grants: HashMap<String, DeviceGrant>,
     launch_contexts: HashMap<String, LaunchContext>,
     browser_sessions: HashMap<String, BrowserSession>,
+    session_shortfall_acknowledgements: HashSet<(String, String)>,
 }
 
 impl FakeGrantStore {
@@ -82,6 +85,10 @@ impl FakeGrantStore {
             device_grants: self.device_grants.borrow().clone(),
             launch_contexts: self.launch_contexts.borrow().clone(),
             browser_sessions: self.browser_sessions.borrow().clone(),
+            session_shortfall_acknowledgements: self
+                .session_shortfall_acknowledgements
+                .borrow()
+                .clone(),
         }
     }
 
@@ -96,6 +103,8 @@ impl FakeGrantStore {
         *self.device_grants.borrow_mut() = snapshot.device_grants;
         *self.launch_contexts.borrow_mut() = snapshot.launch_contexts;
         *self.browser_sessions.borrow_mut() = snapshot.browser_sessions;
+        *self.session_shortfall_acknowledgements.borrow_mut() =
+            snapshot.session_shortfall_acknowledgements;
     }
 }
 

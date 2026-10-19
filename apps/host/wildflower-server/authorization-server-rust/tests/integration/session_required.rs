@@ -218,9 +218,11 @@ async fn a_browser_without_a_session_is_sent_to_pairing_even_with_a_standing_gra
     );
 }
 
-/// A paired browser takes the fast path on a standing grant another browser
-/// earned, and the code, tokens and refresh family name its own session and
-/// carry only what that session holds of the grant. Revoking that session
+/// A paired browser holding less than the app asks for stops at the limited
+/// page, then, going on, takes the fast path on a standing grant another
+/// browser earned, and the code, tokens and refresh family name its own
+/// session and carry only what that session holds of the grant. Revoking that
+/// session
 /// ends them, and the app can't start again from a browser without a
 /// session: the revoked browser is sent to pairing.
 #[tokio::test]
@@ -238,9 +240,10 @@ async fn a_paired_browser_takes_the_fast_path_under_its_own_session_until_it_is_
     let (sid, session_token) =
         paired_browser_session_holding(&db, &["wildflower/launch", "patient/Patient.rs"]);
 
-    let res = get_authorize(&g.router, &session_token, &app_query()).await;
-    assert_eq!(res.status(), StatusCode::FOUND);
-    let issued = redeem(&g, &code_of(&location_of(&res))).await;
+    let request_id =
+        limited_request_id(&get_authorize(&g.router, &session_token, &app_query()).await);
+    let callback = continue_past_session_shortfall(&g.router, &session_token, &request_id).await;
+    let issued = redeem(&g, &code_of(&callback)).await;
     assert_eq!(issued["scope"], "patient/Patient.rs offline_access");
     let access_token = issued["access_token"].as_str().expect("an access token");
     let refresh_token = issued["refresh_token"].as_str().expect("a refresh token");
@@ -318,8 +321,8 @@ async fn the_code_names_the_requesting_browser_s_session_not_the_approver_s() {
 
 /// The Owner approving from another browser grants the request as asked,
 /// but the code carries only what the requesting browser's session also
-/// holds: a browser paired without `patient/Observation.rs` gets a code
-/// without it. A request the Owner's own session makes later takes the fast
+/// holds: a browser paired without `patient/Observation.rs` goes on past the
+/// limited page and gets a code without it. A request the Owner's own session makes later takes the fast
 /// path on that grant with everything, the Owner session bounding nothing.
 #[tokio::test]
 async fn an_owner_approval_from_another_browser_is_bounded_by_the_requesting_session() {
@@ -328,14 +331,20 @@ async fn an_owner_approval_from_another_browser_is_bounded_by_the_requesting_ses
     let owner_session_token = signed_in_owner_session_token(&g).await;
     let (_, paired_token) =
         paired_browser_session_holding(&db, &["wildflower/launch", "patient/Patient.rs"]);
-    let request_id = park_and_approve(
+    let request_id =
+        limited_request_id(&get_authorize(&g.router, &paired_token, &app_query()).await);
+    assert_eq!(
+        continue_past_session_shortfall(&g.router, &paired_token, &request_id).await,
+        format!("/oauth/authorize/{request_id}/wait")
+    );
+    let res = approve_oauth_consent(
         &g,
         &owner_session_token,
-        &paired_token,
-        &app_query(),
-        APPROVE_APP,
+        &request_id,
+        APPROVE_APP.to_owned(),
     )
     .await;
+    assert_eq!(res.status(), StatusCode::OK);
 
     let res = get_authorization_status(&g.router, &paired_token, &request_id).await;
     let status = body_json(res.into_body()).await;

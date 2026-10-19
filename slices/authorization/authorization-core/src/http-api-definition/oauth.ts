@@ -220,6 +220,23 @@ const BrowserPairingNotFoundSchema = Schema.Struct({
   error: Schema.Literal('BrowserPairingNotFound'),
 })
 
+/**
+ * `GET /oauth/authorize/:id/session-shortfall`: what the limited page says. The app, and the
+ * requested scopes this browser's session lacks, which a code issued in it would not carry in full.
+ */
+const SessionShortfallSchema = Schema.Struct({
+  clientName: Schema.String,
+  missingScopes: Schema.Array(Schema.String),
+})
+
+/**
+ * Where the limited page sends the browser after Continue or Cancel: the client callback, or a
+ * path on the server (the consent card or the wait page).
+ */
+const SessionShortfallNextSchema = Schema.Struct({
+  location: Schema.String,
+})
+
 const httpApiGroup = HttpApiGroup.make('oauth', { topLevel: false })
   .add(
     HttpApiEndpoint.get('Authorize', '/authorize')
@@ -232,6 +249,24 @@ const httpApiGroup = HttpApiGroup.make('oauth', { topLevel: false })
       .addSuccess(AuthorizationStatusSchema)
       .addError(AuthorizationStatusNotFoundSchema, { status: 404 })
       .addError(OAuthError500Schema, { status: 500 })
+  )
+  .add(
+    HttpApiEndpoint.get('SessionShortfall', '/authorize/:id/session-shortfall')
+      .setPath(Schema.Struct({ id: Schema.String }))
+      .addSuccess(SessionShortfallSchema)
+      .addError(AuthorizationStatusNotFoundSchema, { status: 404 })
+  )
+  .add(
+    HttpApiEndpoint.post('SessionShortfallContinue', '/authorize/:id/continue')
+      .setPath(Schema.Struct({ id: Schema.String }))
+      .addSuccess(SessionShortfallNextSchema)
+      .addError(AuthorizationStatusNotFoundSchema, { status: 404 })
+  )
+  .add(
+    HttpApiEndpoint.post('SessionShortfallCancel', '/authorize/:id/cancel')
+      .setPath(Schema.Struct({ id: Schema.String }))
+      .addSuccess(SessionShortfallNextSchema)
+      .addError(AuthorizationStatusNotFoundSchema, { status: 404 })
   )
   .add(
     HttpApiEndpoint.post('TokenExchange', '/token')
@@ -283,4 +318,6 @@ export {
   BrowserPairingPollPayloadSchema,
   BrowserPairingStatusSchema,
   BrowserPairingNotFoundSchema,
+  SessionShortfallSchema,
+  SessionShortfallNextSchema,
 }

@@ -1384,7 +1384,7 @@ mod tests {
         assert_eq!(loaded.redirect_uri().as_str(), "https://example.com/cb");
         assert_eq!(loaded.code_challenge().len(), 43);
 
-        // Denied / expired / wrong-flow / unknown → OAuthConsentNotFound.
+        // Expired / waiting on its limited page / unknown → OAuthConsentNotFound.
         store
             .insert_authorization_request(&code_request(
                 "expired",
@@ -1392,7 +1392,17 @@ mod tests {
                 Utc::now() - Duration::minutes(1),
             ))
             .unwrap();
-        for id in ["expired", "ghost"] {
+        store
+            .insert_authorization_request(&AuthorizationRequest {
+                session_shortfall_acknowledged: false,
+                ..code_request(
+                    "unacknowledged",
+                    RequestStatus::Pending,
+                    Utc::now() + Duration::minutes(5),
+                )
+            })
+            .unwrap();
+        for id in ["expired", "unacknowledged", "ghost"] {
             assert_eq!(
                 load_pending_code_request(&store, id),
                 Err(AuthorizationServerError::OAuthConsentNotFound { id: id.to_owned() }),

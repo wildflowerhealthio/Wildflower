@@ -118,6 +118,7 @@ impl GrantTx for FakeGrantTx<'_> {
         let mut pending: Vec<&AuthorizationRequest> = requests
             .values()
             .filter(|r| r.status == RequestStatus::Pending && r.expires_at > Utc::now())
+            .filter(|r| r.session_shortfall_acknowledged)
             .filter(|r| match r.grant_type {
                 GrantType::AuthorizationCode => true,
                 // Mirrors the SQL guard: a device row without its `user_code`
@@ -219,6 +220,38 @@ impl GrantTx for FakeGrantTx<'_> {
             return Ok(false);
         }
         request.decidable_in_requesting_browser = false;
+        Ok(true)
+    }
+
+    fn acknowledge_session_shortfall(
+        &mut self,
+        id: &str,
+        expires_at: DateTime<Utc>,
+    ) -> Result<bool, AuthorizationServerError> {
+        let mut requests = self.store.authorization_requests.borrow_mut();
+        let Some(request) = requests.get_mut(id) else {
+            return Ok(false);
+        };
+        if request.status != RequestStatus::Pending || request.session_shortfall_acknowledged {
+            return Ok(false);
+        }
+        request.session_shortfall_acknowledged = true;
+        request.expires_at = expires_at;
+        Ok(true)
+    }
+
+    fn deny_unacknowledged_authorization_request(
+        &mut self,
+        id: &str,
+    ) -> Result<bool, AuthorizationServerError> {
+        let mut requests = self.store.authorization_requests.borrow_mut();
+        let Some(request) = requests.get_mut(id) else {
+            return Ok(false);
+        };
+        if request.status != RequestStatus::Pending || request.session_shortfall_acknowledged {
+            return Ok(false);
+        }
+        request.status = RequestStatus::Denied;
         Ok(true)
     }
 
@@ -490,7 +523,35 @@ impl GrantTx for FakeGrantTx<'_> {
                     .is_some_and(|revoked_at| revoked_at < cutoff);
             !ended_before_cutoff || named_by_a_family_alive_at_cutoff.contains(sid)
         });
+        self.store
+            .session_shortfall_acknowledgements
+            .borrow_mut()
+            .retain(|(sid, _)| sessions.contains_key(sid));
         Ok(before - sessions.len())
+    }
+
+    fn session_shortfall_acknowledged_for_client(
+        &mut self,
+        sid: &str,
+        client_id: &str,
+    ) -> Result<bool, AuthorizationServerError> {
+        Ok(self
+            .store
+            .session_shortfall_acknowledgements
+            .borrow()
+            .contains(&(sid.to_owned(), client_id.to_owned())))
+    }
+
+    fn record_session_shortfall_acknowledgement(
+        &mut self,
+        sid: &str,
+        client_id: &str,
+    ) -> Result<(), AuthorizationServerError> {
+        self.store
+            .session_shortfall_acknowledgements
+            .borrow_mut()
+            .insert((sid.to_owned(), client_id.to_owned()));
+        Ok(())
     }
 
     fn insert_refresh_token_family_row(

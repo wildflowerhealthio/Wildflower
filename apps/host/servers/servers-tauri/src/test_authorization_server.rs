@@ -62,6 +62,7 @@ impl TestAuthorizationServer {
                     ttl: chrono::Duration::minutes(5),
                     launch_context: None,
                     decidable_in_requesting_browser: false,
+                    session_shortfall_acknowledged: true,
                     sid: "requesting-browser".to_owned(),
                 },
             ))

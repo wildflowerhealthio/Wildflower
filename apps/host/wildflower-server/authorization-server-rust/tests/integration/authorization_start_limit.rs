@@ -6,7 +6,9 @@
 //! Owner, so one it decides on its own consent card passes without asking. A
 //! browser without a session at `/oauth/authorize`, which is only sent to
 //! pairing, never asks. Asking the Owner about a request (`…/ask-owner`) asks
-//! the gate when it raises one, and no other route asks.
+//! the gate when it raises one. A request parked for the limited page asks
+//! the gate before it parks, deferred or not, so going on past the page
+//! (`…/continue`) asks nothing, and no other route asks.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -254,13 +256,15 @@ async fn a_deciding_browser_s_request_raised_for_the_owner_asks_the_gate() {
         .as_str()
         .expect("a browser session's token names its sid")
         .to_owned();
-    // Decides consents, but can't create the grant an approval records.
+    // Decides consents, but can't create the grant an approval records; it
+    // holds all the request asks for, so it doesn't stop at the limited page.
     let session_token = mint_browser_session_token(
         &db,
         &sid,
         &[
             "wildflower/AuthorizationRequest.r",
             "wildflower/AuthorizationRequest.u",
+            "system/*.cruds",
         ],
     );
 
@@ -277,6 +281,92 @@ async fn a_deciding_browser_s_request_raised_for_the_owner_asks_the_gate() {
     assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);
     assert_eq!(gate.asked(), 1);
     assert!(newest_pending_consent(&db).is_none(), "nothing was parked");
+}
+
+/// A deciding browser whose session falls short of the request asks the
+/// gate, which its start deferred, before the request parks for the limited
+/// page; admitted, going on past the page raises the request for the Owner
+/// without asking again. Refused, a request for another app parks nothing.
+#[tokio::test]
+async fn a_deciding_browser_s_request_parked_for_the_limited_page_asks_the_gate() {
+    let gate = Arc::new(CountingGate {
+        admitted: 1,
+        asked: AtomicUsize::new(0),
+    });
+    let (g, _owner_token, db) = spin_up_with_authorization_start_gate(gate.clone());
+    seed_client_with_redirect(
+        &db,
+        "test-app",
+        "https://app.example/cb",
+        &["patient/Observation.rs", "openid"],
+    );
+    let owner_session_token = signed_in_owner_session_token(&g).await;
+    let sid = decode_jwt_payload(&owner_session_token)["sid"]
+        .as_str()
+        .expect("a browser session's token names its sid")
+        .to_owned();
+    let session_token = mint_browser_session_token(
+        &db,
+        &sid,
+        &[
+            "wildflower/AuthorizationRequest.r",
+            "wildflower/AuthorizationRequest.u",
+        ],
+    );
+    let query = authorize_query("test-app", REQUESTED_SCOPES);
+
+    let request_id = limited_request_id(&get_authorize(&g.router, &session_token, &query).await);
+    assert_eq!(gate.asked(), 1);
+    let location = continue_past_session_shortfall(&g.router, &session_token, &request_id).await;
+    assert_eq!(location, format!("/oauth/authorize/{request_id}/wait"));
+    assert_eq!(gate.asked(), 1, "going on asks nothing");
+
+    seed_client_with_redirect(
+        &db,
+        "other-app",
+        "https://app.example/cb",
+        &["patient/Observation.rs", "openid"],
+    );
+    let res = get_authorize(
+        &g.router,
+        &session_token,
+        &authorize_query("other-app", REQUESTED_SCOPES),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(gate.asked(), 2);
+}
+
+/// A browser that can't decide consents spent its start at
+/// `/oauth/authorize`, so going on past the limited page doesn't ask the
+/// gate again.
+#[tokio::test]
+async fn a_continue_whose_start_was_counted_does_not_ask_the_gate_again() {
+    let gate = Arc::new(CountingGate {
+        admitted: 1,
+        asked: AtomicUsize::new(0),
+    });
+    let (g, _owner_token, db) = spin_up_with_authorization_start_gate(gate.clone());
+    seed_client_with_redirect(
+        &db,
+        "test-app",
+        "https://app.example/cb",
+        &["patient/Observation.rs", "openid"],
+    );
+    let (_, session_token) = paired_browser_session_holding(&db, &["wildflower/launch"]);
+
+    let request_id = limited_request_id(
+        &get_authorize(
+            &g.router,
+            &session_token,
+            &authorize_query("test-app", REQUESTED_SCOPES),
+        )
+        .await,
+    );
+    assert_eq!(gate.asked(), 1);
+    let location = continue_past_session_shortfall(&g.router, &session_token, &request_id).await;
+    assert_eq!(location, format!("/oauth/authorize/{request_id}/wait"));
+    assert_eq!(gate.asked(), 1);
 }
 
 /// Every device request is raised for the Owner, so even a browser signed in
