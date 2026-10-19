@@ -172,10 +172,9 @@ impl ApprovableScopes {
     ///
     /// A code approval also takes every held access ([`is_held_access`]) the
     /// request asks for that the prompt may grant: the approver must be able
-    /// to approve the
-    /// request as asked, else it goes to the Owner. A device or pairing
-    /// prompt is expandable, so its approver may grant whatever it holds, and
-    /// [`DelegatedScopes::clamp`] bounds that per scope instead.
+    /// to approve the request as asked, else it goes to the Owner. A device or
+    /// pairing prompt is expandable, so its approver may grant whatever it
+    /// holds, and [`DelegatedScopes::clamp`] bounds that per scope instead.
     pub(crate) fn missing_approval_scopes(&self, approver_grant: &Grant) -> Vec<String> {
         let mut approval_scopes = consent_decider_scopes();
         if self.flow.records_grant() {
@@ -202,9 +201,9 @@ impl ApprovableScopes {
 /// A scope set an Owner has approved **and** is entitled to delegate. Holding
 /// one is proof that the approver held the prompt's approval scopes, and that
 /// every held access ([`is_held_access`]) in it is covered by the approver's
-/// own grant, so the
-/// writers that record grants, write registrations, and issue codes accept
-/// nothing else. The fields are private and there is no other constructor.
+/// own grant, so the writers that record grants, write registrations, and
+/// issue codes accept nothing else. The fields are private and there is no
+/// other constructor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DelegatedScopes {
     scopes: Vec<String>,
@@ -223,9 +222,9 @@ impl DelegatedScopes {
     /// markers (`openid`, `offline_access`, …) are no held access and pass the
     /// approver check; a resource scope or `wildflower/launch` the approver
     /// lacks fails the whole approval (a `403`) rather than being silently
-    /// dropped. Coverage is checked
-    /// across both SMART spellings via [`Scope::as_alternate_canonical_form`],
-    /// the twinning the token minter applies.
+    /// dropped. Coverage is checked across both SMART spellings via
+    /// [`Scope::as_alternate_canonical_form`], the twinning the token minter
+    /// applies.
     ///
     /// # Errors
     ///
@@ -314,31 +313,36 @@ fn uncovered_held_access(granted: &[String], approver_grant: &Grant) -> Vec<Stri
 /// `wildflower/launch` has no parts, so it stays only when the session holds
 /// it. Identity and session markers are no held access, so they pass through.
 ///
-/// The result is collapsed ([`Grant::collapse`]): first-occurrence order, with
-/// duplicates and parts another scope already covers dropped.
+/// One scope's parts are collapsed ([`Grant::collapse`]), so overlapping
+/// session scopes yield the broadest part once, and the result keeps each
+/// scope's first occurrence, in order. A session that covers everything
+/// authorized changes nothing but exact duplicates.
 pub(crate) fn session_bounded_scopes(authorized: &[String], session_grant: &Grant) -> Vec<String> {
     let session_covers = coverage_in_either_spelling(session_grant);
-    let mut bounded = Grant::new(
-        authorized
-            .iter()
-            .map(|rendered| Scope::from(rendered.as_str()))
-            .flat_map(|authorized_scope| {
-                if !is_held_access(&authorized_scope) || session_covers(&authorized_scope) {
-                    vec![authorized_scope]
-                } else {
+    let mut already_bounded = HashSet::new();
+    let bounded: Vec<Scope> = authorized
+        .iter()
+        .map(|rendered| Scope::from(rendered.as_str()))
+        .flat_map(|authorized_scope| {
+            if !is_held_access(&authorized_scope) || session_covers(&authorized_scope) {
+                vec![authorized_scope]
+            } else {
+                let mut parts = Grant::new(
                     session_grant
                         .scopes
                         .iter()
                         .filter_map(|session_scope| {
                             intersection_in_either_spelling(&authorized_scope, session_scope)
                         })
-                        .collect()
-                }
-            })
-            .collect(),
-    );
-    bounded.collapse();
-    bounded.render()
+                        .collect(),
+                );
+                parts.collapse();
+                parts.scopes
+            }
+        })
+        .filter(|scope| already_bounded.insert(scope.clone()))
+        .collect();
+    render_scopes(&bounded)
 }
 
 /// The broadest scope both `authorized_scope` and `session_scope` cover
@@ -862,8 +866,9 @@ mod tests {
         );
     }
 
-    /// Parts the session holds several ways come out once: overlapping
-    /// session scopes collapse into the broadest.
+    /// Parts the session holds several ways come out once: one scope's
+    /// overlapping parts collapse into the broadest, and a part two scopes
+    /// share appears once.
     #[test]
     fn a_session_s_parts_are_deduplicated() {
         assert_eq!(
@@ -872,6 +877,13 @@ mod tests {
                 &Grant::parse(["system/*.rs", "system/Patient.r", "patient/*.rs"]),
             ),
             ["system/*.rs"],
+        );
+        assert_eq!(
+            session_bounded_scopes(
+                &owned_scopes(&["system/*.cruds", "patient/*.rs", "openid", "openid"]),
+                &Grant::parse(["patient/Patient.r"]),
+            ),
+            ["patient/Patient.r", "openid"],
         );
     }
 

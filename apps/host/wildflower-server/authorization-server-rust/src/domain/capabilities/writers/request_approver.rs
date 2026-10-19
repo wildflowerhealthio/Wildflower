@@ -85,9 +85,9 @@ impl<'a, S: GrantStore> RequestApprover<'a, S> {
     /// The approval and the code land in one transaction, which first loads
     /// the request's browser session. A request whose session is no longer
     /// live at `now` (revoked, expired, or no longer stored) is denied rather
-    /// than approved ([`CodeApproval::BrowserSessionEnded`]), so the client hears
-    /// `access_denied` instead of redeeming a code whose tokens are refused on
-    /// arrival. A request no longer pending issues nothing
+    /// than approved ([`CodeApproval::BrowserSessionEnded`]), so the client
+    /// hears `access_denied` rather than earning a code no live session
+    /// bounds. A request no longer pending issues nothing
     /// ([`CodeApproval::RequestNotPending`]); the flow maps that to its own
     /// not-found outcome.
     ///
