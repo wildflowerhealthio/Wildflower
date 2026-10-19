@@ -38,7 +38,7 @@ async fn a_sign_in_starts_an_owner_session_its_token_names() {
     let sid = sid_of(&owner_session_token);
 
     let session = store_handle(&db)
-        .browser_session_by_sid(&sid)
+        .read(|tx| tx.browser_session_by_sid(&sid))
         .expect("read")
         .expect("the sign-in stored its session");
     assert_eq!(session.kind, BrowserSessionKind::Owner);
@@ -83,7 +83,7 @@ async fn revoking_a_session_stops_its_authorization_and_fhir_requests() {
     assert!(g.in_process_token_verifier.verify(&revoked).is_ok());
 
     assert!(store_handle(&db)
-        .revoke_browser_session(&sid_of(&revoked), Utc::now())
+        .write(|tx| tx.revoke_browser_session(&sid_of(&revoked), Utc::now()))
         .expect("revoke"));
 
     assert_eq!(
@@ -182,7 +182,7 @@ async fn an_app_authorized_in_a_session_is_ended_with_it() {
     assert_eq!(res.status(), StatusCode::OK);
     let refreshed = body_json(res.into_body()).await;
     let last_seen_at = store_handle(&db)
-        .browser_session_by_sid(&sid)
+        .read(|tx| tx.browser_session_by_sid(&sid))
         .expect("read")
         .expect("stored")
         .last_seen_at;
@@ -201,7 +201,7 @@ async fn an_app_authorized_in_a_session_is_ended_with_it() {
         .to_owned();
 
     assert!(store_handle(&db)
-        .revoke_browser_session(&sid, Utc::now())
+        .write(|tx| tx.revoke_browser_session(&sid, Utc::now()))
         .expect("revoke"));
 
     let res = refresh(successor).await;
@@ -252,7 +252,7 @@ async fn approving_a_request_whose_session_was_revoked_denies_it() {
         .to_owned();
 
     assert!(store_handle(&db)
-        .revoke_browser_session(&sid_of(&owner_session_token), Utc::now())
+        .write(|tx| tx.revoke_browser_session(&sid_of(&owner_session_token), Utc::now()))
         .expect("revoke"));
 
     let res = approve_oauth_consent(
@@ -470,10 +470,10 @@ async fn signing_out_revokes_the_cookie_s_session_and_clears_it() {
     assert_cache_suppressed(&res, "the sign-out");
     let store = store_handle(&db);
     assert!(store
-        .browser_session_is_revoked(&sid_of(&signing_out))
+        .read(|tx| tx.browser_session_is_revoked(&sid_of(&signing_out)))
         .expect("read"));
     assert!(!store
-        .browser_session_is_revoked(&sid_of(&other))
+        .read(|tx| tx.browser_session_is_revoked(&sid_of(&other)))
         .expect("read"));
     assert!(matches!(
         g.in_process_token_verifier.verify(&signing_out),
@@ -514,7 +514,7 @@ async fn the_session_read_answers_the_browser_session_s_expiry() {
     let (g, _owner_token, db) = spin_up();
     let session_token = signed_in_owner_session_token(&g).await;
     let session = store_handle(&db)
-        .browser_session_by_sid(&sid_of(&session_token))
+        .read(|tx| tx.browser_session_by_sid(&sid_of(&session_token)))
         .expect("read")
         .expect("stored");
 

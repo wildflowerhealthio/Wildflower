@@ -4,9 +4,10 @@
 
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
-use diesel::sqlite::SqliteConnection;
 
+use crate::db::grant_store::SqliteGrantTx;
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::grant_store::LaunchContextsTx;
 use crate::domain::launch_context::LaunchContext;
 
 diesel::table! {
@@ -20,83 +21,96 @@ diesel::table! {
     }
 }
 
-/// Persist a freshly minted launch context.
-pub(super) fn insert_launch_context(
-    conn: &mut SqliteConnection,
-    context: &LaunchContext,
-) -> Result<(), AuthorizationServerError> {
-    diesel::insert_into(launch_contexts::table)
-        .values(context.clone())
-        .execute(conn)
-        .map_err(|e| AuthorizationServerError::infrastructure("insert_launch_context failed", e))?;
-    Ok(())
-}
+impl LaunchContextsTx for SqliteGrantTx<'_> {
+    /// Persist a freshly minted launch context.
+    fn insert_launch_context(
+        &mut self,
+        context: &LaunchContext,
+    ) -> Result<(), AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        diesel::insert_into(launch_contexts::table)
+            .values(context.clone())
+            .execute(conn)
+            .map_err(|e| {
+                AuthorizationServerError::infrastructure("insert_launch_context failed", e)
+            })?;
+        Ok(())
+    }
 
-/// Stamp the launch `nonce` consumed at `now` and return it, iff it was minted
-/// for `client_id` or for any client, is unconsumed, and is unexpired at
-/// `now`; otherwise `None` and nothing changes. One conditional
-/// `UPDATE … RETURNING`, so the check and the stamp are a single statement
-/// under `SQLite`'s write lock: of two racing authorizes presenting the same
-/// nonce, exactly one gets the row.
-pub(super) fn consume_launch_context(
-    conn: &mut SqliteConnection,
-    nonce: &str,
-    client_id: &str,
-    now: DateTime<Utc>,
-) -> Result<Option<LaunchContext>, AuthorizationServerError> {
-    diesel::update(
+    /// Stamp the launch `nonce` consumed at `now` and return it, iff it was minted
+    /// for `client_id` or for any client, is unconsumed, and is unexpired at
+    /// `now`; otherwise `None` and nothing changes. One conditional
+    /// `UPDATE … RETURNING`, so the check and the stamp are a single statement
+    /// under `SQLite`'s write lock: of two racing authorizes presenting the same
+    /// nonce, exactly one gets the row.
+    fn consume_launch_context(
+        &mut self,
+        nonce: &str,
+        client_id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<Option<LaunchContext>, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        diesel::update(
+            launch_contexts::table
+                .find(nonce)
+                .filter(
+                    launch_contexts::client_id
+                        .eq(client_id)
+                        .or(launch_contexts::client_id.is_null()),
+                )
+                .filter(launch_contexts::consumed_at.is_null())
+                .filter(launch_contexts::expires_at.gt(now)),
+        )
+        .set(launch_contexts::consumed_at.eq(now))
+        .returning(LaunchContext::as_returning())
+        .get_result(conn)
+        .optional()
+        .map_err(|e| AuthorizationServerError::infrastructure("consume_launch_context failed", e))
+    }
+
+    /// The launch context `nonce`, as stored, or `None` when there is none.
+    fn launch_context_by_nonce(
+        &mut self,
+        nonce: &str,
+    ) -> Result<Option<LaunchContext>, AuthorizationServerError> {
+        let conn = &mut *self.conn;
         launch_contexts::table
             .find(nonce)
-            .filter(
-                launch_contexts::client_id
-                    .eq(client_id)
-                    .or(launch_contexts::client_id.is_null()),
-            )
-            .filter(launch_contexts::consumed_at.is_null())
-            .filter(launch_contexts::expires_at.gt(now)),
-    )
-    .set(launch_contexts::consumed_at.eq(now))
-    .returning(LaunchContext::as_returning())
-    .get_result(conn)
-    .optional()
-    .map_err(|e| AuthorizationServerError::infrastructure("consume_launch_context failed", e))
-}
+            .select(LaunchContext::as_select())
+            .first(conn)
+            .optional()
+            .map_err(|e| {
+                AuthorizationServerError::infrastructure("launch_context_by_nonce failed", e)
+            })
+    }
 
-/// The launch context `nonce`, as stored, or `None` when there is none.
-pub(super) fn launch_context_by_nonce(
-    conn: &mut SqliteConnection,
-    nonce: &str,
-) -> Result<Option<LaunchContext>, AuthorizationServerError> {
-    launch_contexts::table
-        .find(nonce)
-        .select(LaunchContext::as_select())
-        .first(conn)
-        .optional()
-        .map_err(|e| AuthorizationServerError::infrastructure("launch_context_by_nonce failed", e))
-}
-
-/// Delete every launch context that expired at or before `now`, consumed or
-/// not, returning how many rows went. An expired context can never be
-/// consumed, so nothing reads it again.
-pub(super) fn delete_launch_contexts_expired_by(
-    conn: &mut SqliteConnection,
-    now: DateTime<Utc>,
-) -> Result<usize, AuthorizationServerError> {
-    diesel::delete(launch_contexts::table.filter(launch_contexts::expires_at.le(now)))
-        .execute(conn)
-        .map_err(|e| {
-            AuthorizationServerError::infrastructure("delete_launch_contexts_expired_by failed", e)
-        })
+    /// Delete every launch context that expired at or before `now`, consumed or
+    /// not, returning how many rows went. An expired context can never be
+    /// consumed, so nothing reads it again.
+    fn delete_launch_contexts_expired_by(
+        &mut self,
+        now: DateTime<Utc>,
+    ) -> Result<usize, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        diesel::delete(launch_contexts::table.filter(launch_contexts::expires_at.le(now)))
+            .execute(conn)
+            .map_err(|e| {
+                AuthorizationServerError::infrastructure(
+                    "delete_launch_contexts_expired_by failed",
+                    e,
+                )
+            })
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::grant_store::*;
     use chrono::Duration;
 
     use crate::db::SqliteGrantStore;
-    use crate::domain::capabilities::oauth::LaunchContexts;
+    use crate::domain::capabilities::oauth::{consume_launch, LaunchContexts};
     use crate::domain::launch_context::{LaunchContext, LaunchRefusal, LAUNCH_CONTEXT_TTL};
-    use crate::domain::{GrantStore as _, GrantTx as _};
 
     fn store() -> SqliteGrantStore {
         SqliteGrantStore::open_in_memory().expect("store")
@@ -111,12 +125,12 @@ mod tests {
         let context =
             LaunchContext::for_client("nonce-1".to_owned(), "app", Some("pat-1".to_owned()), now);
         store
-            .with_connection(|tx| tx.insert_launch_context(&context))
+            .write(|tx| tx.insert_launch_context(&context))
             .expect("insert");
 
         let consumed_at = now + Duration::seconds(1);
         let consumed = store
-            .with_connection(|tx| tx.consume_launch_context("nonce-1", "app", consumed_at))
+            .write(|tx| tx.consume_launch_context("nonce-1", "app", consumed_at))
             .expect("consume")
             .expect("live context");
         let mut expected = context;
@@ -132,11 +146,11 @@ mod tests {
         let now = chrono::Utc::now();
         let context = LaunchContext::for_any_client("nonce-1".to_owned(), now);
         store
-            .with_connection(|tx| tx.insert_launch_context(&context))
+            .write(|tx| tx.insert_launch_context(&context))
             .expect("insert");
         let consume = |client_id: &str| {
             store
-                .with_connection(|tx| tx.consume_launch_context("nonce-1", client_id, now))
+                .write(|tx| tx.consume_launch_context("nonce-1", client_id, now))
                 .expect("consume")
         };
         let consumed = consume("other-app").expect("any client consumes it");
@@ -150,7 +164,7 @@ mod tests {
         let store = store();
         let now = chrono::Utc::now();
         store
-            .with_connection(|tx| {
+            .write(|tx| {
                 tx.insert_launch_context(&LaunchContext::for_client(
                     "nonce-1".to_owned(),
                     "app",
@@ -161,7 +175,7 @@ mod tests {
             .expect("insert");
         let consume = || {
             store
-                .with_connection(|tx| tx.consume_launch_context("nonce-1", "app", now))
+                .write(|tx| tx.consume_launch_context("nonce-1", "app", now))
                 .expect("consume")
         };
         assert!(consume().is_some(), "the first consume wins");
@@ -176,7 +190,7 @@ mod tests {
         let store = store();
         let now = chrono::Utc::now();
         store
-            .with_connection(|tx| {
+            .write(|tx| {
                 tx.insert_launch_context(&LaunchContext::for_client(
                     "nonce-1".to_owned(),
                     "app",
@@ -187,7 +201,7 @@ mod tests {
             .expect("insert");
         let consume = |nonce: &str, client_id: &str, at| {
             store
-                .with_connection(|tx| tx.consume_launch_context(nonce, client_id, at))
+                .write(|tx| tx.consume_launch_context(nonce, client_id, at))
                 .expect("consume")
         };
         assert!(consume("nonce-1", "other-app", now).is_none());
@@ -205,11 +219,11 @@ mod tests {
         let context =
             LaunchContext::for_client("nonce-1".to_owned(), "app", Some("pat-1".to_owned()), now);
         store
-            .with_connection(|tx| tx.insert_launch_context(&context))
+            .write(|tx| tx.insert_launch_context(&context))
             .expect("insert");
         let read = |nonce: &str| {
             store
-                .with_connection(|tx| tx.launch_context_by_nonce(nonce))
+                .write(|tx| tx.launch_context_by_nonce(nonce))
                 .expect("read")
         };
         assert_eq!(read("nonce-1"), Some(context));
@@ -223,7 +237,10 @@ mod tests {
     #[test]
     fn a_refused_consume_says_why() {
         let store = store();
-        let launch_contexts = LaunchContexts::over(&store);
+        let launch_contexts = LaunchContexts::new(store.clone());
+        let consume = |nonce: &str, client_id: &str, at| {
+            store.write(|tx| consume_launch(tx, nonce, client_id, at))
+        };
         let now = chrono::Utc::now();
         let expired_at = now + LAUNCH_CONTEXT_TTL;
         launch_contexts
@@ -232,8 +249,7 @@ mod tests {
         launch_contexts
             .mint("app", "used".to_owned(), now)
             .expect("mint used");
-        launch_contexts
-            .consume("used", "app", now)
+        consume("used", "app", now)
             .expect("consume")
             .expect("its own client consumes it");
 
@@ -251,18 +267,13 @@ mod tests {
             ("live", "app", expired_at, LaunchRefusal::Expired),
         ] {
             assert_eq!(
-                launch_contexts
-                    .consume(nonce, client_id, at)
-                    .expect("consume"),
+                consume(nonce, client_id, at).expect("consume"),
                 Err(refusal),
                 "{nonce} by {client_id}"
             );
         }
         assert!(
-            launch_contexts
-                .consume("live", "app", now)
-                .expect("consume")
-                .is_ok(),
+            consume("live", "app", now).expect("consume").is_ok(),
             "the refusals left the live launch consumable by its own client"
         );
     }
@@ -275,7 +286,7 @@ mod tests {
         let now = chrono::Utc::now();
         let expired_at = now - LAUNCH_CONTEXT_TTL;
         store
-            .with_connection(|tx| {
+            .write(|tx| {
                 tx.insert_launch_context(&LaunchContext::for_client(
                     "expired".to_owned(),
                     "app",
@@ -299,11 +310,11 @@ mod tests {
             })
             .expect("insert");
         let pruned = store
-            .with_connection(|tx| tx.delete_launch_contexts_expired_by(now))
+            .write(|tx| tx.delete_launch_contexts_expired_by(now))
             .expect("prune");
         assert_eq!(pruned, 2);
         assert!(store
-            .with_connection(|tx| tx.consume_launch_context("live", "app", now))
+            .write(|tx| tx.consume_launch_context("live", "app", now))
             .expect("consume")
             .is_some());
     }

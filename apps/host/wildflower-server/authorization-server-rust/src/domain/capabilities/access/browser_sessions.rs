@@ -12,6 +12,7 @@ use wildflowerhealthio_scopes::{Permission, Scope, WildflowerResource};
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::browser_session::BrowserSession;
+use crate::domain::grant_store::BrowserSessionsTx as _;
 use crate::domain::GrantStore;
 
 /// The scope gating [`BrowserSessionsReader`] — `wildflower/BrowserSession.r`.
@@ -60,7 +61,7 @@ impl<S: GrantStore> BrowserSessionsReader<S> {
     ) -> Result<Vec<BrowserSessionView>, AuthorizationServerError> {
         Ok(self
             .store
-            .live_browser_sessions(now)?
+            .read(|tx| tx.live_browser_sessions(now))?
             .into_iter()
             .map(|session| BrowserSessionView {
                 held_by_caller: caller_sid == Some(session.sid.as_str()),
@@ -96,7 +97,7 @@ impl<S: GrantStore> BrowserSessionsRevoker<S> {
         sid: &str,
         now: DateTime<Utc>,
     ) -> Result<(), AuthorizationServerError> {
-        if self.store.revoke_browser_session(sid, now)? {
+        if self.store.write(|tx| tx.revoke_browser_session(sid, now))? {
             Ok(())
         } else {
             Err(AuthorizationServerError::BrowserSessionNotFound {
@@ -108,6 +109,7 @@ impl<S: GrantStore> BrowserSessionsRevoker<S> {
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::grant_store::*;
     use chrono::Duration;
 
     use super::*;
@@ -124,9 +126,12 @@ mod tests {
             BrowserSession::new_owner(vec![], Duration::hours(8), now - Duration::hours(9));
         let revoked = BrowserSession::new_owner(vec![], Duration::hours(8), now);
         for session in [&caller_s, &other, &expired, &revoked] {
-            store.insert_browser_session(session).unwrap();
+            store.tx().insert_browser_session(session).unwrap();
         }
-        store.revoke_browser_session(&revoked.sid, now).unwrap();
+        store
+            .tx()
+            .revoke_browser_session(&revoked.sid, now)
+            .unwrap();
         let reader = BrowserSessionsReader::new(store);
 
         let listed: Vec<(String, bool)> = reader
@@ -157,12 +162,13 @@ mod tests {
         let store = FakeGrantStore::default();
         let now = Utc::now();
         let session = BrowserSession::new_owner(vec![], Duration::hours(8), now);
-        store.insert_browser_session(&session).unwrap();
+        store.tx().insert_browser_session(&session).unwrap();
         let revoker = BrowserSessionsRevoker::new(store);
 
         assert_eq!(revoker.revoke(&session.sid, now), Ok(()));
         assert!(revoker
             .store
+            .tx()
             .browser_session_is_revoked(&session.sid)
             .unwrap());
         for sid in [session.sid.as_str(), "no-such-sid"] {

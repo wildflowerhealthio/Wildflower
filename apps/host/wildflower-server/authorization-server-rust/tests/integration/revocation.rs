@@ -210,17 +210,19 @@ async fn revoking_a_grant_bumps_the_client_revocation_epoch() {
     seed_client_with_redirect(&db, "granted-client", "https://app.example/cb", &["read"]);
     let store = store_handle(&db);
     store
-        .create_authorization_code_grant(
-            &wildflowerhealthio_authorization_server::domain::grant::AuthorizationCodeGrant {
-                id: "grant-1".to_string(),
-                client_id: "granted-client".to_string(),
-                scopes: vec!["read".to_string()],
-                granted_at: Utc::now(),
-                last_used_at: None,
-                patient: None,
-                redirect_uri: Url::parse("https://app.example/cb").expect("url"),
-            },
-        )
+        .write(|tx| {
+            tx.create_authorization_code_grant(
+                &wildflowerhealthio_authorization_server::domain::grant::AuthorizationCodeGrant {
+                    id: "grant-1".to_string(),
+                    client_id: "granted-client".to_string(),
+                    scopes: vec!["read".to_string()],
+                    granted_at: Utc::now(),
+                    last_used_at: None,
+                    patient: None,
+                    redirect_uri: Url::parse("https://app.example/cb").expect("url"),
+                },
+            )
+        })
         .expect("create grant");
     // Revoke it.
     let res = g
@@ -263,17 +265,19 @@ async fn revoking_a_device_grant_bumps_the_client_revocation_epoch() {
     seed_client_with_redirect(&db, "device-client", "https://app.example/cb", &["read"]);
     let store = store_handle(&db);
     store
-        .create_device_grant(
-            &wildflowerhealthio_authorization_server::domain::grant::DeviceGrant {
-                id: "device-grant-1".to_string(),
-                client_id: "device-client".to_string(),
-                scopes: vec!["read".to_string()],
-                granted_at: Utc::now(),
-                last_used_at: None,
-                patient: None,
-                device_name: "Ada's laptop".to_string(),
-            },
-        )
+        .write(|tx| {
+            tx.create_device_grant(
+                &wildflowerhealthio_authorization_server::domain::grant::DeviceGrant {
+                    id: "device-grant-1".to_string(),
+                    client_id: "device-client".to_string(),
+                    scopes: vec!["read".to_string()],
+                    granted_at: Utc::now(),
+                    last_used_at: None,
+                    patient: None,
+                    device_name: "Ada's laptop".to_string(),
+                },
+            )
+        })
         .expect("create device grant");
     let res = g
         .router
@@ -345,17 +349,20 @@ async fn revoking_a_grant_of_the_host_app_s_client_bumps_its_epoch() {
     let (g, owner_token, db) = spin_up();
     let host_app_token = mint_host_app_token(&db);
     store_handle(&db)
-        .create_device_grant(
-            &wildflowerhealthio_authorization_server::domain::grant::DeviceGrant {
-                id: "host-app-grant".to_string(),
-                client_id: WILDFLOWER_HOST_APP_CLIENT_ID.to_string(),
-                scopes: wildflowerhealthio_authorization_server::default_host_app_client_scopes(),
-                granted_at: Utc::now(),
-                last_used_at: None,
-                patient: None,
-                device_name: "The Owner's laptop".to_string(),
-            },
-        )
+        .write(|tx| {
+            tx.create_device_grant(
+                &wildflowerhealthio_authorization_server::domain::grant::DeviceGrant {
+                    id: "host-app-grant".to_string(),
+                    client_id: WILDFLOWER_HOST_APP_CLIENT_ID.to_string(),
+                    scopes: wildflowerhealthio_authorization_server::default_host_app_client_scopes(
+                    ),
+                    granted_at: Utc::now(),
+                    last_used_at: None,
+                    patient: None,
+                    device_name: "The Owner's laptop".to_string(),
+                },
+            )
+        })
         .expect("create the host app's grant");
     let res = g
         .router
@@ -370,7 +377,7 @@ async fn revoking_a_grant_of_the_host_app_s_client_bumps_its_epoch() {
         .expect("oneshot");
     assert_eq!(res.status(), StatusCode::NO_CONTENT);
     assert!(store_handle(&db)
-        .grant_by_id("host-app-grant")
+        .read(|tx| tx.grant_by_id("host-app-grant"))
         .expect("query")
         .is_none());
     assert_eq!(

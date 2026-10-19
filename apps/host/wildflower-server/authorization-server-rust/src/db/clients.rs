@@ -8,11 +8,12 @@
 
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
-use diesel::sqlite::SqliteConnection;
 
+use crate::db::grant_store::SqliteGrantTx;
 use crate::db::shared::{json_text_column, text_enum_column};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::client::{AllowedGrantType, Client, ClientKind};
+use crate::domain::grant_store::ClientsTx;
 
 diesel::table! {
     clients (client_id) {
@@ -45,72 +46,75 @@ json_text_column!(
 // client binds it, so its mapping lives here rather than in `db::shared`.
 text_enum_column!(ClientKind);
 
-/// Look up a registered client by its `client_id`, or `None` when absent.
-pub(super) fn client_by_id(
-    conn: &mut SqliteConnection,
-    client_id: &str,
-) -> Result<Option<Client>, AuthorizationServerError> {
-    clients::table
-        .find(client_id)
-        .select(Client::as_select())
-        .first(conn)
-        .optional()
-        .map_err(|e| AuthorizationServerError::infrastructure("client_by_id failed", e))
-}
+impl ClientsTx for SqliteGrantTx<'_> {
+    /// Look up a registered client by its `client_id`, or `None` when absent.
+    fn client_by_id(
+        &mut self,
+        client_id: &str,
+    ) -> Result<Option<Client>, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        clients::table
+            .find(client_id)
+            .select(Client::as_select())
+            .first(conn)
+            .optional()
+            .map_err(|e| AuthorizationServerError::infrastructure("client_by_id failed", e))
+    }
 
-/// Every registered client, ordered by `client_id`.
-pub(super) fn list_clients(
-    conn: &mut SqliteConnection,
-) -> Result<Vec<Client>, AuthorizationServerError> {
-    clients::table
-        .order(clients::client_id.asc())
-        .select(Client::as_select())
-        .load(conn)
-        .map_err(|e| AuthorizationServerError::infrastructure("list_clients failed", e))
-}
+    /// Every registered client, ordered by `client_id`.
+    fn list_clients(&mut self) -> Result<Vec<Client>, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        clients::table
+            .order(clients::client_id.asc())
+            .select(Client::as_select())
+            .load(conn)
+            .map_err(|e| AuthorizationServerError::infrastructure("list_clients failed", e))
+    }
 
-/// Set or clear a client's `disabled_at`, returning whether a row matched. Only
-/// the one column is written, so the client's registration (redirects, scopes,
-/// secret, `registered_at`) survives a disable → enable round trip unchanged.
-pub(super) fn set_client_disabled(
-    conn: &mut SqliteConnection,
-    client_id: &str,
-    disabled_at: Option<DateTime<Utc>>,
-) -> Result<bool, AuthorizationServerError> {
-    let updated = diesel::update(clients::table.find(client_id))
-        .set(clients::disabled_at.eq(disabled_at))
-        .execute(conn)
-        .map_err(|e| AuthorizationServerError::infrastructure("set_client_disabled failed", e))?;
-    Ok(updated > 0)
-}
+    /// Set or clear a client's `disabled_at`, returning whether a row matched. Only
+    /// the one column is written, so the client's registration (redirects, scopes,
+    /// secret, `registered_at`) survives a disable → enable round trip unchanged.
+    fn set_client_disabled(
+        &mut self,
+        client_id: &str,
+        disabled_at: Option<DateTime<Utc>>,
+    ) -> Result<bool, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        let updated = diesel::update(clients::table.find(client_id))
+            .set(clients::disabled_at.eq(disabled_at))
+            .execute(conn)
+            .map_err(|e| {
+                AuthorizationServerError::infrastructure("set_client_disabled failed", e)
+            })?;
+        Ok(updated > 0)
+    }
 
-/// Insert a client, or update its policy fields if one with the same
-/// `client_id` already exists. Used by first-boot seeding so a seeded
-/// client's definition always matches the code, even on a store created by
-/// an older build. Uses `ON CONFLICT … DO UPDATE`, so it never deletes the
-/// row and preserves `registered_at` and `disabled_at` — an upgrade keeps
-/// the original registration time and any admin disable rather than
-/// resurrecting the client.
-pub(super) fn upsert_client(
-    conn: &mut SqliteConnection,
-    client: &Client,
-) -> Result<(), AuthorizationServerError> {
-    use diesel::upsert::excluded;
-    diesel::insert_into(clients::table)
-        .values(client.clone())
-        .on_conflict(clients::client_id)
-        .do_update()
-        .set((
-            clients::name.eq(excluded(clients::name)),
-            clients::kind.eq(excluded(clients::kind)),
-            clients::redirect_uris.eq(excluded(clients::redirect_uris)),
-            clients::allowed_scopes.eq(excluded(clients::allowed_scopes)),
-            clients::allowed_grant_types.eq(excluded(clients::allowed_grant_types)),
-            clients::secret_hash.eq(excluded(clients::secret_hash)),
-        ))
-        .execute(conn)
-        .map_err(|e| AuthorizationServerError::infrastructure("upsert_client failed", e))?;
-    Ok(())
+    /// Insert a client, or update its policy fields if one with the same
+    /// `client_id` already exists. Used by first-boot seeding so a seeded
+    /// client's definition always matches the code, even on a store created by
+    /// an older build. Uses `ON CONFLICT … DO UPDATE`, so it never deletes the
+    /// row and preserves `registered_at` and `disabled_at` — an upgrade keeps
+    /// the original registration time and any admin disable rather than
+    /// resurrecting the client.
+    fn upsert_client(&mut self, client: &Client) -> Result<(), AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        use diesel::upsert::excluded;
+        diesel::insert_into(clients::table)
+            .values(client.clone())
+            .on_conflict(clients::client_id)
+            .do_update()
+            .set((
+                clients::name.eq(excluded(clients::name)),
+                clients::kind.eq(excluded(clients::kind)),
+                clients::redirect_uris.eq(excluded(clients::redirect_uris)),
+                clients::allowed_scopes.eq(excluded(clients::allowed_scopes)),
+                clients::allowed_grant_types.eq(excluded(clients::allowed_grant_types)),
+                clients::secret_hash.eq(excluded(clients::secret_hash)),
+            ))
+            .execute(conn)
+            .map_err(|e| AuthorizationServerError::infrastructure("upsert_client failed", e))?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -119,7 +123,7 @@ mod tests {
     use crate::db::test_support::{arb_opt_timestamp, arb_timestamp, arb_url};
     use crate::db::SqliteGrantStore;
     use crate::domain::client::{AllowedGrantType, ClientKind};
-    use crate::domain::GrantStore as _;
+    use crate::domain::grant_store::*;
     use proptest::prelude::*;
 
     fn arb_client() -> impl Strategy<Value = Client> {
@@ -163,9 +167,9 @@ mod tests {
         #[test]
         fn upsert_and_fetch_round_trip(client in arb_client()) {
             let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
-            store.upsert_client(&client).expect("upsert");
+            store.write(|tx| tx.upsert_client(&client)).expect("upsert");
             let fetched = store
-                .client_by_id(&client.client_id)
+                .read(|tx| tx.client_by_id(&client.client_id))
                 .expect("query")
                 .expect("row present");
             prop_assert_eq!(fetched, client);
@@ -176,7 +180,7 @@ mod tests {
     /// properties run against the delta the test itself upserts.
     fn seeded_client_ids(store: &SqliteGrantStore) -> Vec<String> {
         store
-            .list_clients()
+            .read(|tx| tx.list_clients())
             .expect("list seeded clients")
             .into_iter()
             .map(|c| c.client_id)
@@ -195,7 +199,7 @@ mod tests {
         ) {
             let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
             let mut expected: std::collections::BTreeMap<String, Client> = store
-                .list_clients()
+                .read(|tx| tx.list_clients())
                 .expect("list seeds")
                 .into_iter()
                 .map(|c| (c.client_id.clone(), c))
@@ -205,12 +209,12 @@ mod tests {
                 // `registered_at` / `disabled_at` by design, which is
                 // `upsert_client`'s property, not this one's.
                 if !expected.contains_key(&client.client_id) {
-                    store.upsert_client(client).expect("upsert");
+                    store.write(|tx| tx.upsert_client(client)).expect("upsert");
                     expected.insert(client.client_id.clone(), client.clone());
                 }
             }
 
-            let listed = store.list_clients().expect("list");
+            let listed = store.read(|tx| tx.list_clients()).expect("list");
             prop_assert_eq!(listed, expected.into_values().collect::<Vec<_>>());
         }
 
@@ -225,14 +229,14 @@ mod tests {
             let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
             // A seeded id would keep the seed's policy on upsert; use a fresh one.
             prop_assume!(!seeded_client_ids(&store).contains(&client.client_id));
-            store.upsert_client(&client).expect("upsert");
+            store.write(|tx| tx.upsert_client(&client)).expect("upsert");
 
-            prop_assert!(store.set_client_disabled(&client.client_id, Some(stamp)).expect("disable"));
-            let disabled = store.client_by_id(&client.client_id).expect("query").expect("row");
+            prop_assert!(store.write(|tx| tx.set_client_disabled(&client.client_id, Some(stamp))).expect("disable"));
+            let disabled = store.read(|tx| tx.client_by_id(&client.client_id)).expect("query").expect("row");
             prop_assert_eq!(&disabled, &Client { disabled_at: Some(stamp), ..client.clone() });
 
-            prop_assert!(store.set_client_disabled(&client.client_id, None).expect("enable"));
-            let enabled = store.client_by_id(&client.client_id).expect("query").expect("row");
+            prop_assert!(store.write(|tx| tx.set_client_disabled(&client.client_id, None)).expect("enable"));
+            let enabled = store.read(|tx| tx.client_by_id(&client.client_id)).expect("query").expect("row");
             prop_assert_eq!(enabled, Client { disabled_at: None, ..client });
         }
 
@@ -245,7 +249,7 @@ mod tests {
             let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
             let before = seeded_client_ids(&store);
             prop_assume!(!before.contains(&client_id));
-            prop_assert!(!store.set_client_disabled(&client_id, stamp).expect("update"));
+            prop_assert!(!store.write(|tx| tx.set_client_disabled(&client_id, stamp)).expect("update"));
             prop_assert_eq!(seeded_client_ids(&store), before);
         }
     }
@@ -266,7 +270,7 @@ mod tests {
             registered_at,
             disabled_at: Some(disabled_at),
         };
-        store.upsert_client(&client).expect("insert");
+        store.write(|tx| tx.upsert_client(&client)).expect("insert");
 
         // Re-seed with drifted policy, a newer registered_at, and disabled_at
         // cleared: the policy fields update, but registration time and the admin
@@ -275,10 +279,10 @@ mod tests {
         client.allowed_scopes = vec!["system/*.cruds".to_string()];
         client.registered_at = chrono::DateTime::from_timestamp(2_000, 0).unwrap();
         client.disabled_at = None;
-        store.upsert_client(&client).expect("update");
+        store.write(|tx| tx.upsert_client(&client)).expect("update");
 
         let fetched = store
-            .client_by_id("c1")
+            .read(|tx| tx.client_by_id("c1"))
             .expect("query")
             .expect("row present");
         assert_eq!(fetched.name, "Renamed");
@@ -324,7 +328,7 @@ mod tests {
             "7277e898bee8ac81ea44788236e619a5",
         ] {
             let client = store
-                .client_by_id(client_id)
+                .read(|tx| tx.client_by_id(client_id))
                 .expect("query (a decode failure surfaces here)")
                 .unwrap_or_else(|| panic!("{client_id} is seeded by a clients migration"));
             assert_eq!(client.client_id, client_id);
@@ -340,7 +344,10 @@ mod tests {
 
         // `my_web_app` (the Medication Viewer registration) carries the exact
         // scope + redirect from the review comment.
-        let mwa = store.client_by_id("my_web_app").unwrap().unwrap();
+        let mwa = store
+            .read(|tx| tx.client_by_id("my_web_app"))
+            .unwrap()
+            .unwrap();
         assert_eq!(
             mwa.allowed_scopes,
             vec![
@@ -377,14 +384,14 @@ mod tests {
             "health-viewer-app",
         ] {
             assert!(
-                store.client_by_id(retired).unwrap().is_none(),
+                store.read(|tx| tx.client_by_id(retired)).unwrap().is_none(),
                 "{retired} must no longer be registered",
             );
         }
 
         // Medications carries the published-site redirect it launches from.
         let medications = store
-            .client_by_id("9769f8b274370708d0d3ebb2e3e59b7c")
+            .read(|tx| tx.client_by_id("9769f8b274370708d0d3ebb2e3e59b7c"))
             .unwrap()
             .unwrap();
         assert_eq!(
@@ -421,7 +428,7 @@ mod tests {
         // *known* scope no wildcard covers, and the FHIR and Wildflower resource
         // grammars are disjoint.
         let docs = store
-            .client_by_id("664a01e8614050cd82ffe90350b81413")
+            .read(|tx| tx.client_by_id("664a01e8614050cd82ffe90350b81413"))
             .unwrap()
             .unwrap();
         assert_eq!(
@@ -472,7 +479,7 @@ mod tests {
         // are pinned to the app by
         // `migrations_narrow_the_launcher_client_to_the_apps_own_scopes`.
         let web_client = store
-            .client_by_id("03a513940b52f8c2649a5366d1a26d19")
+            .read(|tx| tx.client_by_id("03a513940b52f8c2649a5366d1a26d19"))
             .unwrap()
             .unwrap();
         assert_eq!(web_client.name, "Wildflower Launcher");
@@ -516,7 +523,7 @@ mod tests {
         // Rust-side mirror of that pin, and a scope added on one side alone fails
         // `/authorize` on a real device.
         let importer = store
-            .client_by_id("165cd26573e5ac72378e6ad2d2198330")
+            .read(|tx| tx.client_by_id("165cd26573e5ac72378e6ad2d2198330"))
             .unwrap()
             .unwrap();
         assert_eq!(
@@ -556,7 +563,7 @@ mod tests {
         // pin, and a scope added on one side alone fails `/authorize` on a real
         // device.
         let ohif = store
-            .client_by_id("941de68e6b59eb9dcc32df8ede89e636")
+            .read(|tx| tx.client_by_id("941de68e6b59eb9dcc32df8ede89e636"))
             .unwrap()
             .unwrap();
         assert_eq!(
@@ -588,7 +595,7 @@ mod tests {
         // in `apps/fhir-sync-pebble/fhir-sync-pebble-web/src/config.ts` — nothing spans the
         // TS/Rust boundary to check it.
         let pebble = store
-            .client_by_id("6847df97d54c31936d54ca1b36b3bb09")
+            .read(|tx| tx.client_by_id("6847df97d54c31936d54ca1b36b3bb09"))
             .unwrap()
             .unwrap();
         assert_eq!(
@@ -620,7 +627,7 @@ mod tests {
         // `seeds_the_strength_dev_client_with_the_apps_own_scopes` reads that
         // file and pins this client to it.
         let strength = store
-            .client_by_id("bdf9fc5cb5a28c6683b49896b0ef8a75")
+            .read(|tx| tx.client_by_id("bdf9fc5cb5a28c6683b49896b0ef8a75"))
             .unwrap()
             .unwrap();
         assert_eq!(
@@ -657,7 +664,7 @@ mod tests {
         // scopes are pinned to `apps/plots/plots-web/src/config.ts` by
         // `seeding.rs`'s `seeds_the_plots_dev_client_with_the_apps_own_scopes`.
         let plots = store
-            .client_by_id("474e103de61f9141c4b640d59bfa130e")
+            .read(|tx| tx.client_by_id("474e103de61f9141c4b640d59bfa130e"))
             .unwrap()
             .unwrap();
         assert_eq!(
@@ -681,7 +688,7 @@ mod tests {
         // `apps/synthetic-data/synthetic-data-web/src/config.ts` by `seeding.rs`'s
         // `seeds_the_synthetic_data_dev_client_with_the_apps_own_scopes`.
         let synthetic_data = store
-            .client_by_id("225ba6af034a3acec6be7ff8010df67f")
+            .read(|tx| tx.client_by_id("225ba6af034a3acec6be7ff8010df67f"))
             .unwrap()
             .unwrap();
         assert_eq!(synthetic_data.name, "Synthetic Data Loader");
@@ -719,7 +726,7 @@ mod tests {
         const AUTHORIZATION_WEB_CLIENT_ID: &str = "7277e898bee8ac81ea44788236e619a5";
         let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let client = store
-            .client_by_id(AUTHORIZATION_WEB_CLIENT_ID)
+            .read(|tx| tx.client_by_id(AUTHORIZATION_WEB_CLIENT_ID))
             .expect("query (a decode failure surfaces here)")
             .expect("0031 seeds the Wildflower Authorization client");
 
@@ -790,7 +797,7 @@ mod tests {
             let id = app["id"].as_str().expect("an id");
             let client_id = published["clientId"].as_str().expect("a clientId");
             let client = store
-                .client_by_id(client_id)
+                .read(|tx| tx.client_by_id(client_id))
                 .expect("query (a decode failure surfaces here)")
                 .unwrap_or_else(|| panic!("{id}: {client_id} is seeded by a clients migration"));
 
@@ -833,7 +840,7 @@ mod tests {
         const LAUNCHER_CLIENT_ID: &str = "03a513940b52f8c2649a5366d1a26d19";
         let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let client = store
-            .client_by_id(LAUNCHER_CLIENT_ID)
+            .read(|tx| tx.client_by_id(LAUNCHER_CLIENT_ID))
             .expect("query (a decode failure surfaces here)")
             .expect("0012 seeds the launcher client");
 
@@ -892,7 +899,7 @@ mod tests {
             .expect("tamper the stored row");
             drop(conn);
             assert!(
-                store.client_by_id("growth_chart").is_err(),
+                store.read(|tx| tx.client_by_id("growth_chart")).is_err(),
                 "a corrupt `{column}` must surface as a typed read error",
             );
         }

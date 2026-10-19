@@ -191,6 +191,7 @@ fn browser_session_token(headers: &HeaderMap) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::grant_store::*;
     use std::sync::Arc;
 
     use axum::http::{header, HeaderMap, HeaderValue};
@@ -205,7 +206,7 @@ mod tests {
     use crate::domain::signing_key::SigningKey;
     use crate::domain::test_fake::{seed_active_signing_key, FakeGrantStore, NothingRevoked};
     use crate::domain::token::{mint_access_token, NewJwtArgs};
-    use crate::domain::GrantStore as _;
+
     use crate::BROWSER_SESSION_CLIENT_ID;
 
     const ORIGIN: &str = "https://ruth.relay.example";
@@ -247,7 +248,7 @@ mod tests {
         let store = FakeGrantStore::default();
         let key = seed_active_signing_key(&store);
         let session = BrowserSession::new_owner(vec![], Duration::hours(8), Utc::now());
-        store.insert_browser_session(&session).expect("insert");
+        store.tx().insert_browser_session(&session).expect("insert");
         let verifier = TokenVerifier::new(store, Arc::new(NothingRevoked), ORIGIN.into());
 
         let browser_session_token = mint(&key, BROWSER_SESSION_CLIENT_ID, Some(&session.sid));
@@ -282,7 +283,7 @@ mod tests {
         let store = FakeGrantStore::default();
         let key = seed_active_signing_key(&store);
         let session = BrowserSession::new_owner(vec![], Duration::hours(8), Utc::now());
-        store.insert_browser_session(&session).expect("insert");
+        store.tx().insert_browser_session(&session).expect("insert");
         let verifier = TokenVerifier::new(store, Arc::new(NothingRevoked), ORIGIN.into());
 
         for (scopes, expected) in [

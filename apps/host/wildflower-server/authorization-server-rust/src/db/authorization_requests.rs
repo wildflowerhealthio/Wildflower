@@ -9,12 +9,13 @@
 
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
-use diesel::sqlite::SqliteConnection;
 
 use crate::db::clients::clients;
+use crate::db::grant_store::SqliteGrantTx;
 use crate::db::shared::{text_enum_column, JsonStrings, UrlText};
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::grant_store::AuthorizationRequestsTx;
 use crate::domain::pending_consent::NewestPendingConsent;
 
 diesel::table! {
@@ -139,124 +140,403 @@ impl From<&AuthorizationRequest> for Row {
     }
 }
 
-/// Load an authorization request by its primary id (the `device_code` for
-/// device-flow, otherwise an internal UUID), or `None` when absent.
-pub(super) fn authorization_request_by_id(
-    conn: &mut SqliteConnection,
-    id: &str,
-) -> Result<Option<AuthorizationRequest>, AuthorizationServerError> {
-    authorization_requests::table
-        .find(id)
-        .select(Row::as_select())
-        .first(conn)
-        .optional()
-        .map_err(|e| {
-            AuthorizationServerError::infrastructure("authorization_request_by_id failed", e)
-        })
-        .map(|row| row.map(AuthorizationRequest::from))
-}
+impl AuthorizationRequestsTx for SqliteGrantTx<'_> {
+    /// Load an authorization request by its primary id (the `device_code` for
+    /// device-flow, otherwise an internal UUID), or `None` when absent.
+    fn authorization_request_by_id(
+        &mut self,
+        id: &str,
+    ) -> Result<Option<AuthorizationRequest>, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        authorization_requests::table
+            .find(id)
+            .select(Row::as_select())
+            .first(conn)
+            .optional()
+            .map_err(|e| {
+                AuthorizationServerError::infrastructure("authorization_request_by_id failed", e)
+            })
+            .map(|row| row.map(AuthorizationRequest::from))
+    }
 
-/// Load an authorization request by the human-typed `user_code` that the
-/// device-flow handed to the user.
-///
-/// Returns *any* row with the code regardless of status — callers that need
-/// to act on a live request (e.g. the consent UI) must use
-/// [`pending_authorization_request_by_user_code`] instead, since `user_code` is
-/// not unique across terminal rows and a stale denied/expired row could
-/// otherwise shadow a fresh pending one.
-pub(super) fn authorization_request_by_user_code(
-    conn: &mut SqliteConnection,
-    user_code: &str,
-) -> Result<Option<AuthorizationRequest>, AuthorizationServerError> {
-    authorization_requests::table
-        .filter(authorization_requests::user_code.eq(user_code))
-        .select(Row::as_select())
-        .first(conn)
-        .optional()
-        .map_err(|e| {
-            AuthorizationServerError::infrastructure("authorization_request_by_user_code failed", e)
-        })
-        .map(|row| row.map(AuthorizationRequest::from))
-}
+    /// Load an authorization request by the human-typed `user_code` that the
+    /// device-flow handed to the user.
+    ///
+    /// Returns *any* row with the code regardless of status — callers that need
+    /// to act on a live request (e.g. the consent UI) must use
+    /// [`Self::pending_authorization_request_by_user_code`] instead, since `user_code` is
+    /// not unique across terminal rows and a stale denied/expired row could
+    /// otherwise shadow a fresh pending one.
+    fn authorization_request_by_user_code(
+        &mut self,
+        user_code: &str,
+    ) -> Result<Option<AuthorizationRequest>, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        authorization_requests::table
+            .filter(authorization_requests::user_code.eq(user_code))
+            .select(Row::as_select())
+            .first(conn)
+            .optional()
+            .map_err(|e| {
+                AuthorizationServerError::infrastructure(
+                    "authorization_request_by_user_code failed",
+                    e,
+                )
+            })
+            .map(|row| row.map(AuthorizationRequest::from))
+    }
 
-/// Load the *pending* authorization request for `user_code`. Filtering on
-/// `status = 'pending'` ensures a stale denied/expired row sharing the same
-/// `user_code` can't shadow a live request and 404 the consent flow.
-pub(super) fn pending_authorization_request_by_user_code(
-    conn: &mut SqliteConnection,
-    user_code: &str,
-) -> Result<Option<AuthorizationRequest>, AuthorizationServerError> {
-    authorization_requests::table
-        .filter(authorization_requests::user_code.eq(user_code))
-        .filter(authorization_requests::status.eq(RequestStatus::Pending))
-        .select(Row::as_select())
-        .first(conn)
-        .optional()
+    /// Load the *pending* authorization request for `user_code`. Filtering on
+    /// `status = 'pending'` ensures a stale denied/expired row sharing the same
+    /// `user_code` can't shadow a live request and 404 the consent flow.
+    fn pending_authorization_request_by_user_code(
+        &mut self,
+        user_code: &str,
+    ) -> Result<Option<AuthorizationRequest>, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        authorization_requests::table
+            .filter(authorization_requests::user_code.eq(user_code))
+            .filter(authorization_requests::status.eq(RequestStatus::Pending))
+            .select(Row::as_select())
+            .first(conn)
+            .optional()
+            .map_err(|e| {
+                AuthorizationServerError::infrastructure(
+                    "pending_authorization_request_by_user_code failed",
+                    e,
+                )
+            })
+            .map(|row| row.map(AuthorizationRequest::from))
+    }
+
+    /// Return the [`NewestPendingConsent`] of the newest pending, non-expired
+    /// authorization request across **both** grant flows and browser pairings, or
+    /// `None` when none exists. See `slices/authorization/docs/Jargon Explanation.md`
+    /// ("Pending consents") for what drives this and who consumes it.
+    ///
+    /// The `user_code IS NOT NULL` guard is scoped to the **device** and
+    /// **pairing** branches, not applied to the whole query: a code row
+    /// legitimately has no `user_code` (it is keyed by `id`), while a device or
+    /// pairing row without one is a malformed half-row that would surface with no
+    /// key the consent fetch could resolve. A pairing row is likewise always
+    /// named.
+    ///
+    /// The client's name comes from its registration through a left join: a
+    /// client trusted on first use has none until the Owner approves it, and is
+    /// named by its `client_id`, as the consent card names it.
+    ///
+    /// A code-flow request whose browser session falls short of what it asks for
+    /// is no candidate until that browser acknowledges the shortfall
+    /// (`session_shortfall_acknowledged`): until then only its own limited page
+    /// knows of it.
+    fn newest_pending_consent(
+        &mut self,
+    ) -> Result<Option<NewestPendingConsent>, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        authorization_requests::table
+            .left_join(clients::table.on(clients::client_id.eq(authorization_requests::client_id)))
+            .filter(authorization_requests::status.eq(RequestStatus::Pending))
+            .filter(authorization_requests::expires_at.gt(Utc::now()))
+            .filter(authorization_requests::session_shortfall_acknowledged.eq(true))
+            .filter(
+                authorization_requests::grant_type
+                    .eq(GrantType::AuthorizationCode)
+                    .or(authorization_requests::grant_type
+                        .eq(GrantType::DeviceCode)
+                        .and(authorization_requests::user_code.is_not_null()))
+                    .or(authorization_requests::grant_type
+                        .eq(GrantType::BrowserPairing)
+                        .and(authorization_requests::user_code.is_not_null())
+                        .and(authorization_requests::device_name.is_not_null())),
+            )
+            .order(authorization_requests::requested_at.desc())
+            .select((
+                authorization_requests::grant_type,
+                authorization_requests::id,
+                authorization_requests::user_code,
+                authorization_requests::client_id,
+                clients::name.nullable(),
+                authorization_requests::decidable_in_requesting_browser,
+                authorization_requests::device_name,
+            ))
+            .first::<PendingConsentRow>(conn)
+            .optional()
+            .map_err(|e| {
+                AuthorizationServerError::infrastructure("newest_pending_consent failed", e)
+            })
+            .map(|row| row.and_then(newest_pending_consent_from_row))
+    }
+
+    /// Persist a freshly-constructed `AuthorizationRequest`.
+    fn insert_authorization_request(
+        &mut self,
+        request: &AuthorizationRequest,
+    ) -> Result<(), AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        let as_infrastructure_error =
+            |e| AuthorizationServerError::infrastructure("insert_authorization_request failed", e);
+        // Bulk reclamation belongs to `domain::retention::purge_expired`. This
+        // predicate mirrors the partial unique index (expired *and* still pending)
+        // so it clears only rows that could actually collide with the insert below.
+        // A guard on that invariant, not a load-bearing step — `generate_unique_user_code`
+        // already regenerates away from any row holding the candidate. See
+        // `authorization-server-rust/docs/Retention Explanation.md`.
+        if let Some(user_code) = request.user_code.as_deref() {
+            diesel::delete(
+                authorization_requests::table
+                    .filter(authorization_requests::user_code.eq(user_code))
+                    .filter(authorization_requests::status.eq(RequestStatus::Pending))
+                    .filter(authorization_requests::expires_at.lt(Utc::now())),
+            )
+            .execute(conn)
+            .map_err(as_infrastructure_error)?;
+        }
+        diesel::insert_into(authorization_requests::table)
+            .values(Row::from(request))
+            .execute(conn)
+            .map_err(as_infrastructure_error)?;
+        Ok(())
+    }
+
+    /// Mark a *pending* `id` approved with `granted_scopes`, an optional patient
+    /// context, and the request's resolved `device_name`, returning `true` iff a
+    /// pending row was actually transitioned.
+    ///
+    /// The `status = 'pending'` guard means a request already in a terminal
+    /// state (denied/expired) can't be flipped back to approved, and the
+    /// affected-row check lets the caller detect a no-op (e.g. the request was
+    /// consumed concurrently between its read and this update).
+    ///
+    /// `device_name` is written **verbatim** — the "keep the device's own name when
+    /// the approver didn't adjust it" resolution is the consent action's job (it
+    /// already holds the loaded request), so the store no longer branches on
+    /// present-vs-absent. The code-flow path passes `None` (its column is and stays
+    /// NULL); the device path passes the effective name it resolved.
+    fn approve_authorization_request(
+        &mut self,
+        id: &str,
+        granted_scopes: &[String],
+        patient: Option<&str>,
+        device_name: Option<&str>,
+    ) -> Result<bool, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        let affected = diesel::update(
+            authorization_requests::table
+                .find(id)
+                .filter(authorization_requests::status.eq(RequestStatus::Pending)),
+        )
+        .set((
+            authorization_requests::status.eq(RequestStatus::Approved),
+            authorization_requests::granted_scopes.eq(JsonStrings(granted_scopes.to_vec())),
+            authorization_requests::patient.eq(patient),
+            authorization_requests::device_name.eq(device_name),
+        ))
+        .execute(conn)
+        .map_err(|e| {
+            AuthorizationServerError::infrastructure("approve_authorization_request failed", e)
+        })?;
+        Ok(affected == 1)
+    }
+
+    /// Mark a *pending* `id` denied, returning `true` iff a pending row was
+    /// actually transitioned — the same `status = 'pending'` guard as
+    /// [`Self::approve_authorization_request`], so when two surfaces decide one request
+    /// (the launcher and the host popup) the first terminal transition
+    /// wins and a late deny can't overwrite an approval.
+    fn deny_authorization_request(&mut self, id: &str) -> Result<bool, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        let affected = diesel::update(
+            authorization_requests::table
+                .find(id)
+                .filter(authorization_requests::status.eq(RequestStatus::Pending)),
+        )
+        .set(authorization_requests::status.eq(RequestStatus::Denied))
+        .execute(conn)
+        .map_err(|e| {
+            AuthorizationServerError::infrastructure("deny_authorization_request failed", e)
+        })?;
+        Ok(affected == 1)
+    }
+
+    /// Raise the *pending* request `id` for the Owner: clear its
+    /// `decidable_in_requesting_browser`, so the host notifies for it. Returns
+    /// `true` iff a pending row was found (whether or not it was decidable
+    /// there). A request in a terminal state is left as it is.
+    fn raise_authorization_request_for_owner(
+        &mut self,
+        id: &str,
+    ) -> Result<bool, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        let affected = diesel::update(
+            authorization_requests::table
+                .find(id)
+                .filter(authorization_requests::status.eq(RequestStatus::Pending)),
+        )
+        .set(authorization_requests::decidable_in_requesting_browser.eq(false))
+        .execute(conn)
         .map_err(|e| {
             AuthorizationServerError::infrastructure(
-                "pending_authorization_request_by_user_code failed",
+                "raise_authorization_request_for_owner failed",
+                e,
+            )
+        })?;
+        Ok(affected == 1)
+    }
+
+    /// Record that the browser that made the *pending* request `id` goes on
+    /// although its browser session falls short of it: set its
+    /// `session_shortfall_acknowledged`, and move its `expires_at` to
+    /// `expires_at`. Returns `true` iff a pending row still waiting on that
+    /// acknowledgement was transitioned, so two Continues race to one winner. A
+    /// request in a terminal state is left as it is.
+    fn acknowledge_session_shortfall(
+        &mut self,
+        id: &str,
+        expires_at: DateTime<Utc>,
+    ) -> Result<bool, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        let affected = diesel::update(
+            authorization_requests::table
+                .find(id)
+                .filter(authorization_requests::status.eq(RequestStatus::Pending))
+                .filter(authorization_requests::session_shortfall_acknowledged.eq(false)),
+        )
+        .set((
+            authorization_requests::session_shortfall_acknowledged.eq(true),
+            authorization_requests::expires_at.eq(expires_at),
+        ))
+        .execute(conn)
+        .map_err(|e| {
+            AuthorizationServerError::infrastructure("acknowledge_session_shortfall failed", e)
+        })?;
+        Ok(affected == 1)
+    }
+
+    /// Deny the *pending* request `id` only while its session shortfall is
+    /// unacknowledged (it waits on its browser's limited page). Returns `true`
+    /// iff such a row was transitioned: a Continue that acknowledged it first
+    /// wins, and the request is left as it is.
+    fn deny_unacknowledged_authorization_request(
+        &mut self,
+        id: &str,
+    ) -> Result<bool, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        let affected = diesel::update(
+            authorization_requests::table
+                .find(id)
+                .filter(authorization_requests::status.eq(RequestStatus::Pending))
+                .filter(authorization_requests::session_shortfall_acknowledged.eq(false)),
+        )
+        .set(authorization_requests::status.eq(RequestStatus::Denied))
+        .execute(conn)
+        .map_err(|e| {
+            AuthorizationServerError::infrastructure(
+                "deny_unacknowledged_authorization_request failed",
+                e,
+            )
+        })?;
+        Ok(affected == 1)
+    }
+
+    /// Atomically claim an `approved` request for single-use redemption,
+    /// transitioning `approved` → `expired` only if it is still `approved`, and
+    /// return `true` iff this call won the race.
+    ///
+    /// The `status = 'approved'` guard plus the affected-row check are what make
+    /// device-flow redemption single-use (RFC 8628 §3.4) even under concurrent
+    /// polls: `SQLite`'s write lock serialises the two `UPDATE`s, so exactly one
+    /// sees a row to change (`true`) and any racer sees zero rows (`false`) and
+    /// must be rejected before a token is minted.
+    fn consume_approved_authorization_request(
+        &mut self,
+        id: &str,
+    ) -> Result<bool, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        let affected = diesel::update(
+            authorization_requests::table
+                .find(id)
+                .filter(authorization_requests::status.eq(RequestStatus::Approved)),
+        )
+        .set(authorization_requests::status.eq(RequestStatus::Expired))
+        .execute(conn)
+        .map_err(|e| {
+            AuthorizationServerError::infrastructure(
+                "consume_approved_authorization_request failed",
+                e,
+            )
+        })?;
+        Ok(affected == 1)
+    }
+
+    /// Stamp `last_polled_at` so the next device-flow poll can be slow-down
+    /// rate-limited.
+    fn record_device_poll(
+        &mut self,
+        id: &str,
+        polled_at: DateTime<Utc>,
+    ) -> Result<(), AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        diesel::update(authorization_requests::table.find(id))
+            .set(authorization_requests::last_polled_at.eq(polled_at))
+            .execute(conn)
+            .map_err(|e| {
+                AuthorizationServerError::infrastructure("record_device_poll failed", e)
+            })?;
+        Ok(())
+    }
+
+    /// Stamp a *pending* browser pairing `id`'s `last_polled_at` and record its
+    /// `browser_name` (in `device_name`, the column the device page reads). The
+    /// `status = 'pending'` guard keeps the name an approval recorded.
+    fn record_browser_pairing_poll(
+        &mut self,
+        id: &str,
+        polled_at: DateTime<Utc>,
+        browser_name: &str,
+    ) -> Result<(), AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        diesel::update(
+            authorization_requests::table
+                .find(id)
+                .filter(authorization_requests::grant_type.eq(GrantType::BrowserPairing))
+                .filter(authorization_requests::status.eq(RequestStatus::Pending)),
+        )
+        .set((
+            authorization_requests::last_polled_at.eq(polled_at),
+            authorization_requests::device_name.eq(browser_name),
+        ))
+        .execute(conn)
+        .map_err(|e| {
+            AuthorizationServerError::infrastructure("record_browser_pairing_poll failed", e)
+        })?;
+        Ok(())
+    }
+
+    /// Delete every authorization request that expired before `cutoff`, returning
+    /// how many rows went. Nothing transitions an abandoned request out of
+    /// `pending`, so this is the only thing that reclaims one.
+    ///
+    /// `cutoff` is the *retention* cutoff, not `now`; the window is the caller's
+    /// (`domain::retention::purge_expired`).
+    fn delete_authorization_requests_expired_before(
+        &mut self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<usize, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        diesel::delete(
+            authorization_requests::table.filter(authorization_requests::expires_at.lt(cutoff)),
+        )
+        .execute(conn)
+        .map_err(|e| {
+            AuthorizationServerError::infrastructure(
+                "delete_authorization_requests_expired_before failed",
                 e,
             )
         })
-        .map(|row| row.map(AuthorizationRequest::from))
+    }
 }
 
-/// Return the [`NewestPendingConsent`] of the newest pending, non-expired
-/// authorization request across **both** grant flows and browser pairings, or
-/// `None` when none exists. See `slices/authorization/docs/Jargon Explanation.md`
-/// ("Pending consents") for what drives this and who consumes it.
-///
-/// The `user_code IS NOT NULL` guard is scoped to the **device** and
-/// **pairing** branches, not applied to the whole query: a code row
-/// legitimately has no `user_code` (it is keyed by `id`), while a device or
-/// pairing row without one is a malformed half-row that would surface with no
-/// key the consent fetch could resolve. A pairing row is likewise always
-/// named.
-///
-/// The client's name comes from its registration through a left join: a
-/// client trusted on first use has none until the Owner approves it, and is
-/// named by its `client_id`, as the consent card names it.
-///
-/// A code-flow request whose browser session falls short of what it asks for
-/// is no candidate until that browser acknowledges the shortfall
-/// (`session_shortfall_acknowledged`): until then only its own limited page
-/// knows of it.
-pub(super) fn newest_pending_consent(
-    conn: &mut SqliteConnection,
-) -> Result<Option<NewestPendingConsent>, AuthorizationServerError> {
-    authorization_requests::table
-        .left_join(clients::table.on(clients::client_id.eq(authorization_requests::client_id)))
-        .filter(authorization_requests::status.eq(RequestStatus::Pending))
-        .filter(authorization_requests::expires_at.gt(Utc::now()))
-        .filter(authorization_requests::session_shortfall_acknowledged.eq(true))
-        .filter(
-            authorization_requests::grant_type
-                .eq(GrantType::AuthorizationCode)
-                .or(authorization_requests::grant_type
-                    .eq(GrantType::DeviceCode)
-                    .and(authorization_requests::user_code.is_not_null()))
-                .or(authorization_requests::grant_type
-                    .eq(GrantType::BrowserPairing)
-                    .and(authorization_requests::user_code.is_not_null())
-                    .and(authorization_requests::device_name.is_not_null())),
-        )
-        .order(authorization_requests::requested_at.desc())
-        .select((
-            authorization_requests::grant_type,
-            authorization_requests::id,
-            authorization_requests::user_code,
-            authorization_requests::client_id,
-            clients::name.nullable(),
-            authorization_requests::decidable_in_requesting_browser,
-            authorization_requests::device_name,
-        ))
-        .first::<PendingConsentRow>(conn)
-        .optional()
-        .map_err(|e| AuthorizationServerError::infrastructure("newest_pending_consent failed", e))
-        .map(|row| row.and_then(newest_pending_consent_from_row))
-}
-
-/// The columns [`newest_pending_consent`] selects: the grant type, the
+/// The columns [`Self::newest_pending_consent`] selects: the grant type, the
 /// request id, its `user_code`, its `client_id`, the registered client's
 /// name, if it has a registration, whether it can be decided in the
 /// browser that made it, and the device's or browser's name.
@@ -271,7 +551,7 @@ type PendingConsentRow = (
 );
 
 /// Build the pending consent from the selected columns. The `None` arm is
-/// unreachable through [`newest_pending_consent`]'s `WHERE`; reaching it
+/// unreachable through [`Self::newest_pending_consent`]'s `WHERE`; reaching it
 /// means the filter drifted, and dropping the request keeps the host from
 /// opening a key nothing can fetch.
 fn newest_pending_consent_from_row(
@@ -305,265 +585,12 @@ fn newest_pending_consent_from_row(
     }
 }
 
-/// Persist a freshly-constructed `AuthorizationRequest`.
-pub(super) fn insert_authorization_request(
-    conn: &mut SqliteConnection,
-    request: &AuthorizationRequest,
-) -> Result<(), AuthorizationServerError> {
-    let as_infrastructure_error =
-        |e| AuthorizationServerError::infrastructure("insert_authorization_request failed", e);
-    // Bulk reclamation belongs to `domain::retention::purge_expired`. This
-    // predicate mirrors the partial unique index (expired *and* still pending)
-    // so it clears only rows that could actually collide with the insert below.
-    // A guard on that invariant, not a load-bearing step — `generate_unique_user_code`
-    // already regenerates away from any row holding the candidate. See
-    // `authorization-server-rust/docs/Retention Explanation.md`.
-    if let Some(user_code) = request.user_code.as_deref() {
-        diesel::delete(
-            authorization_requests::table
-                .filter(authorization_requests::user_code.eq(user_code))
-                .filter(authorization_requests::status.eq(RequestStatus::Pending))
-                .filter(authorization_requests::expires_at.lt(Utc::now())),
-        )
-        .execute(conn)
-        .map_err(as_infrastructure_error)?;
-    }
-    diesel::insert_into(authorization_requests::table)
-        .values(Row::from(request))
-        .execute(conn)
-        .map_err(as_infrastructure_error)?;
-    Ok(())
-}
-
-/// Mark a *pending* `id` approved with `granted_scopes`, an optional patient
-/// context, and the request's resolved `device_name`, returning `true` iff a
-/// pending row was actually transitioned.
-///
-/// The `status = 'pending'` guard means a request already in a terminal
-/// state (denied/expired) can't be flipped back to approved, and the
-/// affected-row check lets the caller detect a no-op (e.g. the request was
-/// consumed concurrently between its read and this update).
-///
-/// `device_name` is written **verbatim** — the "keep the device's own name when
-/// the approver didn't adjust it" resolution is the consent action's job (it
-/// already holds the loaded request), so the store no longer branches on
-/// present-vs-absent. The code-flow path passes `None` (its column is and stays
-/// NULL); the device path passes the effective name it resolved.
-pub(super) fn approve_authorization_request(
-    conn: &mut SqliteConnection,
-    id: &str,
-    granted_scopes: &[String],
-    patient: Option<&str>,
-    device_name: Option<&str>,
-) -> Result<bool, AuthorizationServerError> {
-    let affected = diesel::update(
-        authorization_requests::table
-            .find(id)
-            .filter(authorization_requests::status.eq(RequestStatus::Pending)),
-    )
-    .set((
-        authorization_requests::status.eq(RequestStatus::Approved),
-        authorization_requests::granted_scopes.eq(JsonStrings(granted_scopes.to_vec())),
-        authorization_requests::patient.eq(patient),
-        authorization_requests::device_name.eq(device_name),
-    ))
-    .execute(conn)
-    .map_err(|e| {
-        AuthorizationServerError::infrastructure("approve_authorization_request failed", e)
-    })?;
-    Ok(affected == 1)
-}
-
-/// Mark a *pending* `id` denied, returning `true` iff a pending row was
-/// actually transitioned — the same `status = 'pending'` guard as
-/// [`approve_authorization_request`], so when two surfaces decide one request
-/// (the launcher and the host popup) the first terminal transition
-/// wins and a late deny can't overwrite an approval.
-pub(super) fn deny_authorization_request(
-    conn: &mut SqliteConnection,
-    id: &str,
-) -> Result<bool, AuthorizationServerError> {
-    let affected = diesel::update(
-        authorization_requests::table
-            .find(id)
-            .filter(authorization_requests::status.eq(RequestStatus::Pending)),
-    )
-    .set(authorization_requests::status.eq(RequestStatus::Denied))
-    .execute(conn)
-    .map_err(|e| {
-        AuthorizationServerError::infrastructure("deny_authorization_request failed", e)
-    })?;
-    Ok(affected == 1)
-}
-
-/// Raise the *pending* request `id` for the Owner: clear its
-/// `decidable_in_requesting_browser`, so the host notifies for it. Returns
-/// `true` iff a pending row was found (whether or not it was decidable
-/// there). A request in a terminal state is left as it is.
-pub(super) fn raise_authorization_request_for_owner(
-    conn: &mut SqliteConnection,
-    id: &str,
-) -> Result<bool, AuthorizationServerError> {
-    let affected = diesel::update(
-        authorization_requests::table
-            .find(id)
-            .filter(authorization_requests::status.eq(RequestStatus::Pending)),
-    )
-    .set(authorization_requests::decidable_in_requesting_browser.eq(false))
-    .execute(conn)
-    .map_err(|e| {
-        AuthorizationServerError::infrastructure("raise_authorization_request_for_owner failed", e)
-    })?;
-    Ok(affected == 1)
-}
-
-/// Record that the browser that made the *pending* request `id` goes on
-/// although its browser session falls short of it: set its
-/// `session_shortfall_acknowledged`, and move its `expires_at` to
-/// `expires_at`. Returns `true` iff a pending row still waiting on that
-/// acknowledgement was transitioned, so two Continues race to one winner. A
-/// request in a terminal state is left as it is.
-pub(super) fn acknowledge_session_shortfall(
-    conn: &mut SqliteConnection,
-    id: &str,
-    expires_at: DateTime<Utc>,
-) -> Result<bool, AuthorizationServerError> {
-    let affected = diesel::update(
-        authorization_requests::table
-            .find(id)
-            .filter(authorization_requests::status.eq(RequestStatus::Pending))
-            .filter(authorization_requests::session_shortfall_acknowledged.eq(false)),
-    )
-    .set((
-        authorization_requests::session_shortfall_acknowledged.eq(true),
-        authorization_requests::expires_at.eq(expires_at),
-    ))
-    .execute(conn)
-    .map_err(|e| {
-        AuthorizationServerError::infrastructure("acknowledge_session_shortfall failed", e)
-    })?;
-    Ok(affected == 1)
-}
-
-/// Deny the *pending* request `id` only while its session shortfall is
-/// unacknowledged (it waits on its browser's limited page). Returns `true`
-/// iff such a row was transitioned: a Continue that acknowledged it first
-/// wins, and the request is left as it is.
-pub(super) fn deny_unacknowledged_authorization_request(
-    conn: &mut SqliteConnection,
-    id: &str,
-) -> Result<bool, AuthorizationServerError> {
-    let affected = diesel::update(
-        authorization_requests::table
-            .find(id)
-            .filter(authorization_requests::status.eq(RequestStatus::Pending))
-            .filter(authorization_requests::session_shortfall_acknowledged.eq(false)),
-    )
-    .set(authorization_requests::status.eq(RequestStatus::Denied))
-    .execute(conn)
-    .map_err(|e| {
-        AuthorizationServerError::infrastructure(
-            "deny_unacknowledged_authorization_request failed",
-            e,
-        )
-    })?;
-    Ok(affected == 1)
-}
-
-/// Atomically claim an `approved` request for single-use redemption,
-/// transitioning `approved` → `expired` only if it is still `approved`, and
-/// return `true` iff this call won the race.
-///
-/// The `status = 'approved'` guard plus the affected-row check are what make
-/// device-flow redemption single-use (RFC 8628 §3.4) even under concurrent
-/// polls: `SQLite`'s write lock serialises the two `UPDATE`s, so exactly one
-/// sees a row to change (`true`) and any racer sees zero rows (`false`) and
-/// must be rejected before a token is minted.
-pub(super) fn consume_approved_authorization_request(
-    conn: &mut SqliteConnection,
-    id: &str,
-) -> Result<bool, AuthorizationServerError> {
-    let affected = diesel::update(
-        authorization_requests::table
-            .find(id)
-            .filter(authorization_requests::status.eq(RequestStatus::Approved)),
-    )
-    .set(authorization_requests::status.eq(RequestStatus::Expired))
-    .execute(conn)
-    .map_err(|e| {
-        AuthorizationServerError::infrastructure("consume_approved_authorization_request failed", e)
-    })?;
-    Ok(affected == 1)
-}
-
-/// Stamp `last_polled_at` so the next device-flow poll can be slow-down
-/// rate-limited.
-pub(super) fn record_device_poll(
-    conn: &mut SqliteConnection,
-    id: &str,
-    polled_at: DateTime<Utc>,
-) -> Result<(), AuthorizationServerError> {
-    diesel::update(authorization_requests::table.find(id))
-        .set(authorization_requests::last_polled_at.eq(polled_at))
-        .execute(conn)
-        .map_err(|e| AuthorizationServerError::infrastructure("record_device_poll failed", e))?;
-    Ok(())
-}
-
-/// Stamp a *pending* browser pairing `id`'s `last_polled_at` and record its
-/// `browser_name` (in `device_name`, the column the device page reads). The
-/// `status = 'pending'` guard keeps the name an approval recorded.
-pub(super) fn record_browser_pairing_poll(
-    conn: &mut SqliteConnection,
-    id: &str,
-    polled_at: DateTime<Utc>,
-    browser_name: &str,
-) -> Result<(), AuthorizationServerError> {
-    diesel::update(
-        authorization_requests::table
-            .find(id)
-            .filter(authorization_requests::grant_type.eq(GrantType::BrowserPairing))
-            .filter(authorization_requests::status.eq(RequestStatus::Pending)),
-    )
-    .set((
-        authorization_requests::last_polled_at.eq(polled_at),
-        authorization_requests::device_name.eq(browser_name),
-    ))
-    .execute(conn)
-    .map_err(|e| {
-        AuthorizationServerError::infrastructure("record_browser_pairing_poll failed", e)
-    })?;
-    Ok(())
-}
-
-/// Delete every authorization request that expired before `cutoff`, returning
-/// how many rows went. Nothing transitions an abandoned request out of
-/// `pending`, so this is the only thing that reclaims one.
-///
-/// `cutoff` is the *retention* cutoff, not `now`; the window is the caller's
-/// (`domain::retention::purge_expired`).
-pub(super) fn delete_authorization_requests_expired_before(
-    conn: &mut SqliteConnection,
-    cutoff: DateTime<Utc>,
-) -> Result<usize, AuthorizationServerError> {
-    diesel::delete(
-        authorization_requests::table.filter(authorization_requests::expires_at.lt(cutoff)),
-    )
-    .execute(conn)
-    .map_err(|e| {
-        AuthorizationServerError::infrastructure(
-            "delete_authorization_requests_expired_before failed",
-            e,
-        )
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::db::test_support::{arb_opt_timestamp, arb_timestamp, arb_url};
     use crate::db::SqliteGrantStore;
-    use crate::domain::{GrantStore as _, GrantTx as _};
+    use crate::domain::grant_store::*;
     use proptest::prelude::*;
 
     fn arb_scopes() -> impl Strategy<Value = Vec<String>> {
@@ -644,10 +671,10 @@ mod tests {
         fn insert_and_fetch_round_trip(request in arb_authorization_request()) {
             let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
             store
-                .insert_authorization_request(&request)
+                .write(|tx| tx.insert_authorization_request(&request))
                 .expect("insert");
             let fetched = store
-                .authorization_request_by_id(&request.id)
+                .read(|tx| tx.authorization_request_by_id(&request.id))
                 .expect("query")
                 .expect("row present");
             prop_assert_eq!(fetched, request);
@@ -694,25 +721,27 @@ mod tests {
         let mut expired = device_request_with_status("expired-1", RequestStatus::Pending);
         expired.expires_at = Utc::now() - chrono::Duration::minutes(1);
         store
-            .insert_authorization_request(&expired)
+            .write(|tx| tx.insert_authorization_request(&expired))
             .expect("insert expired");
 
         store
-            .insert_authorization_request(&device_request_with_status(
-                "fresh-1",
-                RequestStatus::Pending,
-            ))
+            .write(|tx| {
+                tx.insert_authorization_request(&device_request_with_status(
+                    "fresh-1",
+                    RequestStatus::Pending,
+                ))
+            })
             .expect("insert fresh");
 
         assert!(
             store
-                .authorization_request_by_id("expired-1")
+                .read(|tx| tx.authorization_request_by_id("expired-1"))
                 .expect("query")
                 .is_some(),
             "an unrelated expired row is the sweep's to reclaim, not this insert's",
         );
         assert!(store
-            .authorization_request_by_id("fresh-1")
+            .read(|tx| tx.authorization_request_by_id("fresh-1"))
             .expect("query")
             .is_some());
     }
@@ -728,20 +757,20 @@ mod tests {
         let mut expired = device_request("dev-stale", "SAME-CODE", RequestStatus::Pending);
         expired.expires_at = Utc::now() - chrono::Duration::minutes(1);
         store
-            .insert_authorization_request(&expired)
+            .write(|tx| tx.insert_authorization_request(&expired))
             .expect("insert expired");
 
         let colliding = device_request("dev-new", "SAME-CODE", RequestStatus::Pending);
         store
-            .insert_authorization_request(&colliding)
+            .write(|tx| tx.insert_authorization_request(&colliding))
             .expect("the colliding insert must not hit the unique index");
 
         assert!(store
-            .authorization_request_by_id("dev-stale")
+            .read(|tx| tx.authorization_request_by_id("dev-stale"))
             .expect("query")
             .is_none());
         assert!(store
-            .authorization_request_by_id("dev-new")
+            .read(|tx| tx.authorization_request_by_id("dev-new"))
             .expect("query")
             .is_some());
     }
@@ -754,16 +783,18 @@ mod tests {
         let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let live = device_request("dev-live", "SAME-CODE", RequestStatus::Pending);
         store
-            .insert_authorization_request(&live)
+            .write(|tx| tx.insert_authorization_request(&live))
             .expect("insert live");
 
         let colliding = device_request("dev-new", "SAME-CODE", RequestStatus::Pending);
         assert!(
-            store.insert_authorization_request(&colliding).is_err(),
+            store
+                .write(|tx| tx.insert_authorization_request(&colliding))
+                .is_err(),
             "colliding with a live pending user_code must stay a hard error",
         );
         assert!(store
-            .authorization_request_by_id("dev-live")
+            .read(|tx| tx.authorization_request_by_id("dev-live"))
             .expect("query")
             .is_some());
     }
@@ -783,26 +814,26 @@ mod tests {
             let mut terminal = device_request(id, "SAME-CODE", status);
             terminal.expires_at = Utc::now() - chrono::Duration::minutes(1);
             store
-                .insert_authorization_request(&terminal)
+                .write(|tx| tx.insert_authorization_request(&terminal))
                 .expect("insert expired terminal row");
         }
 
         let fresh = device_request("dev-new", "SAME-CODE", RequestStatus::Pending);
         store
-            .insert_authorization_request(&fresh)
+            .write(|tx| tx.insert_authorization_request(&fresh))
             .expect("a terminal row must not block the insert");
 
         for id in ["dev-denied", "dev-approved", "dev-expired"] {
             assert!(
                 store
-                    .authorization_request_by_id(id)
+                    .read(|tx| tx.authorization_request_by_id(id))
                     .expect("query")
                     .is_some(),
                 "{id} is the sweep's to reclaim, not this insert's",
             );
         }
         assert!(store
-            .authorization_request_by_id("dev-new")
+            .read(|tx| tx.authorization_request_by_id("dev-new"))
             .expect("query")
             .is_some());
     }
@@ -815,23 +846,25 @@ mod tests {
         let mut old = device_request("dev-old", "OLD-0000", RequestStatus::Pending);
         old.expires_at = Utc::now() - chrono::Duration::days(8);
         store
-            .insert_authorization_request(&old)
+            .write(|tx| tx.insert_authorization_request(&old))
             .expect("insert old");
         let mut recent = device_request("dev-recent", "REC-0000", RequestStatus::Pending);
         recent.expires_at = Utc::now() - chrono::Duration::days(6);
         store
-            .insert_authorization_request(&recent)
+            .write(|tx| tx.insert_authorization_request(&recent))
             .expect("insert recent");
         store
-            .insert_authorization_request(&device_request(
-                "dev-live",
-                "LIV-0000",
-                RequestStatus::Pending,
-            ))
+            .write(|tx| {
+                tx.insert_authorization_request(&device_request(
+                    "dev-live",
+                    "LIV-0000",
+                    RequestStatus::Pending,
+                ))
+            })
             .expect("insert live");
 
         let purged = store
-            .with_connection(|tx| {
+            .write(|tx| {
                 tx.delete_authorization_requests_expired_before(
                     Utc::now() - chrono::Duration::days(7),
                 )
@@ -840,15 +873,15 @@ mod tests {
 
         assert_eq!(purged, 1);
         assert!(store
-            .authorization_request_by_id("dev-old")
+            .read(|tx| tx.authorization_request_by_id("dev-old"))
             .expect("query")
             .is_none());
         assert!(store
-            .authorization_request_by_id("dev-recent")
+            .read(|tx| tx.authorization_request_by_id("dev-recent"))
             .expect("query")
             .is_some());
         assert!(store
-            .authorization_request_by_id("dev-live")
+            .read(|tx| tx.authorization_request_by_id("dev-live"))
             .expect("query")
             .is_some());
     }
@@ -861,21 +894,23 @@ mod tests {
     fn consume_approved_authorization_request_is_single_use() {
         let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         store
-            .insert_authorization_request(&device_request_with_status(
-                "dev-1",
-                RequestStatus::Approved,
-            ))
+            .write(|tx| {
+                tx.insert_authorization_request(&device_request_with_status(
+                    "dev-1",
+                    RequestStatus::Approved,
+                ))
+            })
             .expect("insert");
 
         assert!(store
-            .consume_approved_authorization_request("dev-1")
+            .write(|tx| tx.consume_approved_authorization_request("dev-1"))
             .expect("first claim query"));
         assert!(!store
-            .consume_approved_authorization_request("dev-1")
+            .write(|tx| tx.consume_approved_authorization_request("dev-1"))
             .expect("second claim query"));
 
         let after = store
-            .authorization_request_by_id("dev-1")
+            .read(|tx| tx.authorization_request_by_id("dev-1"))
             .expect("query")
             .expect("row present");
         assert_eq!(after.status, RequestStatus::Expired);
@@ -962,7 +997,12 @@ mod tests {
         let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
 
         // Empty → None.
-        assert_eq!(store.newest_pending_consent().expect("query empty"), None);
+        assert_eq!(
+            store
+                .read(|tx| tx.newest_pending_consent())
+                .expect("query empty"),
+            None
+        );
 
         // Insert two pending device rows with explicit requested_at ordering;
         // proptest's arbitrary timestamps would let one shadow the other
@@ -973,14 +1013,14 @@ mod tests {
         let mut newer = device_request("dev-newer", "BBB-222", RequestStatus::Pending);
         newer.requested_at = now;
         store
-            .insert_authorization_request(&older)
+            .write(|tx| tx.insert_authorization_request(&older))
             .expect("insert older");
         store
-            .insert_authorization_request(&newer)
+            .write(|tx| tx.insert_authorization_request(&newer))
             .expect("insert newer");
 
         assert_eq!(
-            store.newest_pending_consent().expect("query"),
+            store.read(|tx| tx.newest_pending_consent()).expect("query"),
             Some(unregistered_device_consent("BBB-222"))
         );
 
@@ -990,35 +1030,40 @@ mod tests {
         let mut code_row = code_request("code-newest", RequestStatus::Pending);
         code_row.requested_at = now + chrono::Duration::seconds(30);
         store
-            .insert_authorization_request(&code_row)
+            .write(|tx| tx.insert_authorization_request(&code_row))
             .expect("insert code row");
         assert_eq!(
-            store.newest_pending_consent().expect("query"),
+            store.read(|tx| tx.newest_pending_consent()).expect("query"),
             Some(unregistered_code_consent("code-newest"))
         );
 
         // Denying the newest brings back the one before it — across flows.
         store
-            .deny_authorization_request("code-newest")
+            .write(|tx| tx.deny_authorization_request("code-newest"))
             .expect("deny code row");
         assert_eq!(
-            store.newest_pending_consent().expect("query"),
+            store.read(|tx| tx.newest_pending_consent()).expect("query"),
             Some(unregistered_device_consent("BBB-222"))
         );
 
         store
-            .deny_authorization_request("dev-newer")
+            .write(|tx| tx.deny_authorization_request("dev-newer"))
             .expect("deny newer");
         assert_eq!(
-            store.newest_pending_consent().expect("query"),
+            store.read(|tx| tx.newest_pending_consent()).expect("query"),
             Some(unregistered_device_consent("AAA-111"))
         );
 
         // Denying the last pending row leaves none.
         store
-            .deny_authorization_request("dev-older")
+            .write(|tx| tx.deny_authorization_request("dev-older"))
             .expect("deny older");
-        assert_eq!(store.newest_pending_consent().expect("query final"), None);
+        assert_eq!(
+            store
+                .read(|tx| tx.newest_pending_consent())
+                .expect("query final"),
+            None
+        );
     }
 
     // Expired pending rows are filtered out, in both flows: the query must
@@ -1034,22 +1079,25 @@ mod tests {
         let mut expired_code = code_request("code-expired", RequestStatus::Pending);
         expired_code.expires_at = Utc::now() - chrono::Duration::minutes(1);
         store
-            .insert_authorization_request(&expired_device)
+            .write(|tx| tx.insert_authorization_request(&expired_device))
             .expect("insert expired device");
         store
-            .insert_authorization_request(&expired_code)
+            .write(|tx| tx.insert_authorization_request(&expired_code))
             .expect("insert expired code");
         // Both rows are in the table (no other insert has swept them).
         assert!(store
-            .authorization_request_by_id("dev-expired")
+            .read(|tx| tx.authorization_request_by_id("dev-expired"))
             .expect("query")
             .is_some());
         assert!(store
-            .authorization_request_by_id("code-expired")
+            .read(|tx| tx.authorization_request_by_id("code-expired"))
             .expect("query")
             .is_some());
         // The query filters them out.
-        assert_eq!(store.newest_pending_consent().expect("query"), None);
+        assert_eq!(
+            store.read(|tx| tx.newest_pending_consent()).expect("query"),
+            None
+        );
     }
 
     // A device row whose `user_code` is NULL is malformed: there is no key the
@@ -1066,15 +1114,15 @@ mod tests {
         let mut code_row = code_request("code-1", RequestStatus::Pending);
         code_row.requested_at = now - chrono::Duration::seconds(60);
         store
-            .insert_authorization_request(&malformed)
+            .write(|tx| tx.insert_authorization_request(&malformed))
             .expect("insert malformed device row");
         store
-            .insert_authorization_request(&code_row)
+            .write(|tx| tx.insert_authorization_request(&code_row))
             .expect("insert code row");
 
         // The malformed row is newer, so only the guard keeps it from winning.
         assert_eq!(
-            store.newest_pending_consent().expect("query"),
+            store.read(|tx| tx.newest_pending_consent()).expect("query"),
             Some(unregistered_code_consent("code-1"))
         );
     }
@@ -1102,20 +1150,22 @@ mod tests {
         unnamed_pairing.grant_type = GrantType::BrowserPairing;
         unnamed_pairing.requested_at = now + chrono::Duration::seconds(30);
         for request in [&device_row, &pairing, &unnamed_pairing] {
-            store.insert_authorization_request(request).expect("insert");
+            store
+                .write(|tx| tx.insert_authorization_request(request))
+                .expect("insert");
         }
         assert_eq!(
-            store.newest_pending_consent().expect("query"),
+            store.read(|tx| tx.newest_pending_consent()).expect("query"),
             Some(NewestPendingConsent::BrowserPairing {
                 user_code: "PAIR-0001".to_string(),
                 browser_name: "Firefox on Linux".to_string(),
             })
         );
         store
-            .deny_authorization_request("pairing-1")
+            .write(|tx| tx.deny_authorization_request("pairing-1"))
             .expect("deny pairing");
         assert_eq!(
-            store.newest_pending_consent().expect("query"),
+            store.read(|tx| tx.newest_pending_consent()).expect("query"),
             Some(unregistered_device_consent("DEV-0001"))
         );
     }
@@ -1128,28 +1178,32 @@ mod tests {
 
         let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         store
-            .insert_authorization_request(&code_request("code-1", RequestStatus::Pending))
+            .write(|tx| {
+                tx.insert_authorization_request(&code_request("code-1", RequestStatus::Pending))
+            })
             .expect("insert code row");
         assert_eq!(
-            store.newest_pending_consent().expect("query"),
+            store.read(|tx| tx.newest_pending_consent()).expect("query"),
             Some(unregistered_code_consent("code-1"))
         );
 
         store
-            .upsert_client(&Client {
-                client_id: UNREGISTERED_CODE_CLIENT_ID.to_string(),
-                name: "Lifting".to_string(),
-                kind: ClientKind::Public,
-                redirect_uris: vec![],
-                allowed_scopes: vec!["openid".to_string()],
-                allowed_grant_types: AllowedGrantType::ALL.to_vec(),
-                secret_hash: None,
-                registered_at: Utc::now(),
-                disabled_at: None,
+            .write(|tx| {
+                tx.upsert_client(&Client {
+                    client_id: UNREGISTERED_CODE_CLIENT_ID.to_string(),
+                    name: "Lifting".to_string(),
+                    kind: ClientKind::Public,
+                    redirect_uris: vec![],
+                    allowed_scopes: vec!["openid".to_string()],
+                    allowed_grant_types: AllowedGrantType::ALL.to_vec(),
+                    secret_hash: None,
+                    registered_at: Utc::now(),
+                    disabled_at: None,
+                })
             })
             .expect("register the client");
         assert_eq!(
-            store.newest_pending_consent().expect("query"),
+            store.read(|tx| tx.newest_pending_consent()).expect("query"),
             Some(NewestPendingConsent::OAuth {
                 id: "code-1".to_string(),
                 client_name: "Lifting".to_string(),
@@ -1164,16 +1218,23 @@ mod tests {
     fn newest_pending_consent_ignores_decided_rows() {
         let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         store
-            .insert_authorization_request(&device_request(
-                "dev-approved",
-                "AAA-111",
-                RequestStatus::Approved,
-            ))
+            .write(|tx| {
+                tx.insert_authorization_request(&device_request(
+                    "dev-approved",
+                    "AAA-111",
+                    RequestStatus::Approved,
+                ))
+            })
             .expect("insert approved device row");
         store
-            .insert_authorization_request(&code_request("code-denied", RequestStatus::Denied))
+            .write(|tx| {
+                tx.insert_authorization_request(&code_request("code-denied", RequestStatus::Denied))
+            })
             .expect("insert denied code row");
-        assert_eq!(store.newest_pending_consent().expect("query"), None);
+        assert_eq!(
+            store.read(|tx| tx.newest_pending_consent()).expect("query"),
+            None
+        );
     }
 
     // A request that is not `approved` is never claimable and is left untouched
@@ -1182,18 +1243,20 @@ mod tests {
     fn consume_approved_authorization_request_ignores_non_approved() {
         let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         store
-            .insert_authorization_request(&device_request_with_status(
-                "dev-2",
-                RequestStatus::Pending,
-            ))
+            .write(|tx| {
+                tx.insert_authorization_request(&device_request_with_status(
+                    "dev-2",
+                    RequestStatus::Pending,
+                ))
+            })
             .expect("insert");
 
         assert!(!store
-            .consume_approved_authorization_request("dev-2")
+            .write(|tx| tx.consume_approved_authorization_request("dev-2"))
             .expect("pending is not claimable"));
 
         let after = store
-            .authorization_request_by_id("dev-2")
+            .read(|tx| tx.authorization_request_by_id("dev-2"))
             .expect("query")
             .expect("row present");
         assert_eq!(after.status, RequestStatus::Pending);
@@ -1213,12 +1276,16 @@ mod tests {
             ("dev-expired", RequestStatus::Expired),
         ] {
             store
-                .insert_authorization_request(&device_request_with_status(id, status))
+                .write(|tx| {
+                    tx.insert_authorization_request(&device_request_with_status(id, status))
+                })
                 .expect("insert");
-            let denied = store.deny_authorization_request(id).expect("deny query");
+            let denied = store
+                .write(|tx| tx.deny_authorization_request(id))
+                .expect("deny query");
             assert_eq!(denied, status == RequestStatus::Pending, "{id}");
             let after = store
-                .authorization_request_by_id(id)
+                .read(|tx| tx.authorization_request_by_id(id))
                 .expect("query")
                 .expect("row present");
             let expected = if status == RequestStatus::Pending {
@@ -1229,7 +1296,7 @@ mod tests {
             assert_eq!(after.status, expected, "{id}");
         }
         assert!(!store
-            .deny_authorization_request("unknown")
+            .write(|tx| tx.deny_authorization_request("unknown"))
             .expect("deny query"));
     }
 
@@ -1245,20 +1312,22 @@ mod tests {
             ("approved", RequestStatus::Approved, false, false),
         ] {
             store
-                .insert_authorization_request(&AuthorizationRequest {
-                    session_shortfall_acknowledged: acknowledged,
-                    ..code_request(id, status)
+                .write(|tx| {
+                    tx.insert_authorization_request(&AuthorizationRequest {
+                        session_shortfall_acknowledged: acknowledged,
+                        ..code_request(id, status)
+                    })
                 })
                 .expect("insert");
             assert_eq!(
                 store
-                    .deny_unacknowledged_authorization_request(id)
+                    .write(|tx| tx.deny_unacknowledged_authorization_request(id))
                     .expect("deny query"),
                 denied,
                 "{id}"
             );
             let after = store
-                .authorization_request_by_id(id)
+                .read(|tx| tx.authorization_request_by_id(id))
                 .expect("query")
                 .expect("row present");
             let expected = if denied {
@@ -1280,17 +1349,19 @@ mod tests {
             ("req-denied", RequestStatus::Denied),
         ] {
             store
-                .insert_authorization_request(&AuthorizationRequest {
-                    decidable_in_requesting_browser: true,
-                    ..code_request(id, status)
+                .write(|tx| {
+                    tx.insert_authorization_request(&AuthorizationRequest {
+                        decidable_in_requesting_browser: true,
+                        ..code_request(id, status)
+                    })
                 })
                 .expect("insert");
             let raised = store
-                .raise_authorization_request_for_owner(id)
+                .write(|tx| tx.raise_authorization_request_for_owner(id))
                 .expect("raise query");
             assert_eq!(raised, status == RequestStatus::Pending, "{id}");
             let after = store
-                .authorization_request_by_id(id)
+                .read(|tx| tx.authorization_request_by_id(id))
                 .expect("query")
                 .expect("row present");
             assert_eq!(after.status, status, "{id}");
@@ -1310,10 +1381,12 @@ mod tests {
         for column in ["status", "grant_type"] {
             let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
             store
-                .insert_authorization_request(&device_request_with_status(
-                    "dev-1",
-                    RequestStatus::Pending,
-                ))
+                .write(|tx| {
+                    tx.insert_authorization_request(&device_request_with_status(
+                        "dev-1",
+                        RequestStatus::Pending,
+                    ))
+                })
                 .expect("insert");
             let mut conn = store.pool().get().expect("check out a connection");
             diesel::sql_query(format!(
@@ -1323,7 +1396,9 @@ mod tests {
             .expect("tamper the stored row");
             drop(conn);
             assert!(
-                store.authorization_request_by_id("dev-1").is_err(),
+                store
+                    .read(|tx| tx.authorization_request_by_id("dev-1"))
+                    .is_err(),
                 "a corrupt `{column}` must surface as a typed read error",
             );
         }

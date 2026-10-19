@@ -103,7 +103,7 @@ impl TryFrom<GrantViewRow> for Grant {
 /// All grants in `granted_at` order — backs Wildflower Authorization's access page
 /// (Approved Apps + Authorized Devices). Reads the cross-kind `grants`
 /// view.
-pub(crate) fn all_grants(
+pub(super) fn all_grants(
     conn: &mut SqliteConnection,
 ) -> Result<Vec<Grant>, AuthorizationServerError> {
     grants::table
@@ -117,7 +117,7 @@ pub(crate) fn all_grants(
 
 /// Load a single grant by primary id — a cross-kind read off the `grants`
 /// view (ids are UUIDs, unique across both concrete tables).
-pub(crate) fn grant_by_id(
+pub(super) fn grant_by_id(
     conn: &mut SqliteConnection,
     id: &str,
 ) -> Result<Option<Grant>, AuthorizationServerError> {
@@ -136,7 +136,7 @@ pub(crate) fn grant_by_id(
 /// `revoke_grant` action runs both plus
 /// the client's refresh-family expiry inside one transaction, so standing consent
 /// and standing credentials die together or not at all.
-pub(crate) fn delete_authorization_code_grant(
+pub(super) fn delete_authorization_code_grant(
     conn: &mut SqliteConnection,
     id: &str,
 ) -> Result<bool, AuthorizationServerError> {
@@ -150,7 +150,7 @@ pub(crate) fn delete_authorization_code_grant(
 
 /// Delete the device grant `id`, returning `true` iff a row was removed — the
 /// other half of a revoke (see [`delete_authorization_code_grant`]).
-pub(crate) fn delete_device_grant(
+pub(super) fn delete_device_grant(
     conn: &mut SqliteConnection,
     id: &str,
 ) -> Result<bool, AuthorizationServerError> {
@@ -162,6 +162,7 @@ pub(crate) fn delete_device_grant(
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::grant_store::*;
     use chrono::{DateTime, Utc};
     use proptest::prelude::*;
     use url::Url;
@@ -171,7 +172,6 @@ mod tests {
     use crate::db::SqliteGrantStore;
     use crate::domain::authorization_server_error::AuthorizationServerError;
     use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
-    use crate::domain::{GrantStore as _, GrantTx as _};
 
     /// The grant-revoke cascade (delete the grant + expire the client's
     /// refresh-token families in one transaction), inlined so the db test drives
@@ -183,7 +183,7 @@ mod tests {
         client_id: &str,
         now: DateTime<Utc>,
     ) -> Result<(), AuthorizationServerError> {
-        let removed = store.transaction(|tx| {
+        let removed = store.write(|tx| -> Result<bool, AuthorizationServerError> {
             let removed_code = tx.delete_authorization_code_grant(grant_id)?;
             let removed_device = tx.delete_device_grant(grant_id)?;
             tx.expire_refresh_token_families_for_client(client_id, now)?;
@@ -264,14 +264,14 @@ mod tests {
             let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
             match &grant {
                 Grant::AuthorizationCode(g) => {
-                    store.create_authorization_code_grant(g).expect("create code grant");
+                    store.write(|tx| tx.create_authorization_code_grant(g)).expect("create code grant");
                 }
                 Grant::DeviceCode(g) => {
-                    store.create_device_grant(g).expect("create device grant");
+                    store.write(|tx| tx.create_device_grant(g)).expect("create device grant");
                 }
             }
             let fetched = store
-                .grant_by_id(grant.id())
+                .read(|tx| tx.grant_by_id(grant.id()))
                 .expect("query")
                 .expect("row present");
             prop_assert_eq!(fetched, grant);
@@ -286,42 +286,47 @@ mod tests {
         let redirect = read("https://example.com/cb");
         let now = Utc::now();
         store
-            .create_authorization_code_grant(&AuthorizationCodeGrant {
-                id: Uuid::new_v4().to_string(),
-                client_id: "client-a".to_owned(),
-                scopes: vec!["read".to_owned()],
-                granted_at: now,
-                last_used_at: None,
-                patient: None,
-                redirect_uri: redirect.clone(),
+            .write(|tx| {
+                tx.create_authorization_code_grant(&AuthorizationCodeGrant {
+                    id: Uuid::new_v4().to_string(),
+                    client_id: "client-a".to_owned(),
+                    scopes: vec!["read".to_owned()],
+                    granted_at: now,
+                    last_used_at: None,
+                    patient: None,
+                    redirect_uri: redirect.clone(),
+                })
             })
             .expect("code grant");
         store
-            .create_device_grant(&DeviceGrant {
-                id: Uuid::new_v4().to_string(),
-                client_id: "client-a".to_owned(),
-                scopes: vec!["openid".to_owned()],
-                granted_at: now,
-                last_used_at: None,
-                patient: None,
-                device_name: "Ada's laptop".to_owned(),
+            .write(|tx| {
+                tx.create_device_grant(&DeviceGrant {
+                    id: Uuid::new_v4().to_string(),
+                    client_id: "client-a".to_owned(),
+                    scopes: vec!["openid".to_owned()],
+                    granted_at: now,
+                    last_used_at: None,
+                    patient: None,
+                    device_name: "Ada's laptop".to_owned(),
+                })
             })
             .expect("device grant");
 
         assert!(store
-            .grant_by_client_and_redirect("client-a", &redirect)
+            .read(|tx| tx.grant_by_client_and_redirect("client-a", &redirect))
             .expect("query")
             .is_some());
         assert!(store
-            .device_grant_by_client_and_device_name("client-a", "Ada's laptop")
+            .read(|tx| tx.device_grant_by_client_and_device_name("client-a", "Ada's laptop"))
             .expect("query")
             .is_some());
         // The device lookup never returns the code grant, and vice versa.
         assert!(store
-            .device_grant_by_client_and_device_name("client-a", "https://example.com/cb")
+            .read(|tx| tx
+                .device_grant_by_client_and_device_name("client-a", "https://example.com/cb"))
             .expect("query")
             .is_none());
-        assert_eq!(store.all_grants().expect("list").len(), 2);
+        assert_eq!(store.read(|tx| tx.all_grants()).expect("list").len(), 2);
     }
 
     /// Revoking removes the concrete row — visible both through the view read
@@ -336,17 +341,21 @@ mod tests {
 
         let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         store
-            .create_device_grant(&DeviceGrant {
-                id: Uuid::new_v4().to_string(),
-                client_id: "client-a".to_owned(),
-                scopes: vec!["openid".to_owned()],
-                granted_at: Utc::now(),
-                last_used_at: None,
-                patient: None,
-                device_name: "Ada's laptop".to_owned(),
+            .write(|tx| {
+                tx.create_device_grant(&DeviceGrant {
+                    id: Uuid::new_v4().to_string(),
+                    client_id: "client-a".to_owned(),
+                    scopes: vec!["openid".to_owned()],
+                    granted_at: Utc::now(),
+                    last_used_at: None,
+                    patient: None,
+                    device_name: "Ada's laptop".to_owned(),
+                })
             })
             .expect("insert");
-        let id = store.all_grants().expect("list")[0].id().to_owned();
+        let id = store.read(|tx| tx.all_grants()).expect("list")[0]
+            .id()
+            .to_owned();
         // A standing credential minted under this client, live at revoke time.
         let family = RefreshTokenFamily {
             family_id: "fam-1".to_owned(),
@@ -366,23 +375,26 @@ mod tests {
             consumed_at: None,
         };
         store
-            .insert_refresh_token_family_row(&family)
+            .write(|tx| tx.insert_refresh_token_family_row(&family))
             .expect("insert family");
         store
-            .insert_refresh_token(&live)
+            .write(|tx| tx.insert_refresh_token(&live))
             .expect("insert live token");
 
         let revoked_at = Utc::now();
         revoke_grant(&store, &id, "client-a", revoked_at).expect("revoke");
-        assert!(store.grant_by_id(&id).expect("query").is_none());
         assert!(store
-            .device_grant_by_client_and_device_name("client-a", "Ada's laptop")
+            .read(|tx| tx.grant_by_id(&id))
+            .expect("query")
+            .is_none());
+        assert!(store
+            .read(|tx| tx.device_grant_by_client_and_device_name("client-a", "Ada's laptop"))
             .expect("query")
             .is_none());
         // The family died with the consent: deadline pulled back, live token
         // stamped at the same instant.
         let (token, family) = store
-            .refresh_token_with_family_by_hash("live-token")
+            .read(|tx| tx.refresh_token_with_family_by_hash("live-token"))
             .expect("query")
             .expect("row kept for auditability");
         assert_eq!(family.expires_at, revoked_at);

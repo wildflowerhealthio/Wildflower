@@ -12,7 +12,6 @@
 use wildflowerhealthio_authorization_server::domain::launch_context::{
     LaunchContext, LAUNCH_CONTEXT_TTL,
 };
-use wildflowerhealthio_authorization_server::domain::GrantTx as _;
 
 use crate::common::*;
 
@@ -131,7 +130,7 @@ async fn redeem(g: &AuthorizationServer, code: &str) -> Value {
 /// The `sid` the refresh family `refresh_token` belongs to records.
 fn family_sid(db: &TestDb, refresh_token: &str) -> Option<String> {
     store_handle(db)
-        .refresh_token_with_family_by_hash(&token_storage_hash(refresh_token))
+        .read(|tx| tx.refresh_token_with_family_by_hash(&token_storage_hash(refresh_token)))
         .expect("read")
         .expect("the family")
         .1
@@ -268,7 +267,7 @@ async fn a_paired_browser_takes_the_fast_path_under_its_own_session_until_it_is_
         .expect("a rotated refresh token");
 
     assert!(store_handle(&db)
-        .revoke_browser_session(&sid, Utc::now())
+        .write(|tx| tx.revoke_browser_session(&sid, Utc::now()))
         .expect("revoke"));
     let res = post_token(
         &g,
@@ -487,7 +486,7 @@ async fn an_expired_launch_and_an_unknown_one_go_back_to_the_app_saying_why() {
     let (g, _owner_token, db) = spin_up();
     seed_app(&db);
     store_handle(&db)
-        .with_connection(|tx| {
+        .write(|tx| {
             tx.insert_launch_context(&LaunchContext::for_client(
                 "lapsed".to_owned(),
                 "test-app",

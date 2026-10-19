@@ -13,30 +13,30 @@ use crate::domain::authority::DelegatedScopes;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::grant::{AuthorizationCodeGrant, CumulativeConsent, DeviceGrant};
-use crate::domain::{GrantStore, GrantTx};
+use crate::domain::GrantTx;
 
-/// Record standing grants. A borrowed view over the store; the gate is the
+/// Record standing grants, inside the caller's transaction; the gate is the
 /// [`DelegatedScopes`] each method takes.
-pub(crate) struct GrantRecorder<'a, S: GrantStore> {
-    store: &'a S,
+pub(crate) struct GrantRecorder<'a, T: GrantTx> {
+    tx: &'a mut T,
 }
 
-impl<'a, S: GrantStore> GrantRecorder<'a, S> {
-    /// A writer over `store`.
-    pub(crate) fn over(store: &'a S) -> Self {
-        GrantRecorder { store }
+impl<'a, T: GrantTx> GrantRecorder<'a, T> {
+    /// A writer inside the caller's transaction `tx`.
+    pub(crate) fn within(tx: &'a mut T) -> Self {
+        GrantRecorder { tx }
     }
 
     /// Register (or widen) the client and insert or cumulatively update the
-    /// standing authorization-code grant for `(client_id, redirect_uri)`, all
-    /// inside one `BEGIN IMMEDIATE` transaction: write the `clients` row when
-    /// the proof [writes the registration](DelegatedScopes::writes_registration),
-    /// then read the standing grant — if present, fold the
-    /// re-approval in via [`CumulativeConsent::absorb_reapproval`] and write it
-    /// back; otherwise mint a fresh grant. `BEGIN IMMEDIATE` takes the write lock
-    /// before the read, so two concurrent approvals serialise at the read rather
-    /// than both reading the pre-merge row and one losing its scope union — and
-    /// the registration lands with the grant it justifies or not at all.
+    /// standing authorization-code grant for `(client_id, redirect_uri)`, in
+    /// the caller's write scope: write the `clients` row when the proof
+    /// [writes the registration](DelegatedScopes::writes_registration), then
+    /// read the standing grant — if present, fold the re-approval in via
+    /// [`CumulativeConsent::absorb_reapproval`] and write it back; otherwise
+    /// mint a fresh grant. The scope holds the write lock from before the
+    /// read, so two concurrent approvals serialise at the read rather than
+    /// both reading the pre-merge row and one losing its scope union, and the
+    /// registration lands with the grant it justifies or not at all.
     ///
     /// For a client trusted on first use the `clients` row, as read inside the
     /// transaction, is created when absent, otherwise widened in place, and the
@@ -51,10 +51,10 @@ impl<'a, S: GrantStore> GrantRecorder<'a, S> {
     ///
     /// # Errors
     ///
-    /// [`AuthorizationServerError::Infrastructure`] on a store failure; the transaction
-    /// rolls back.
+    /// [`AuthorizationServerError::Infrastructure`] on a store failure, which
+    /// rolls the caller's scope back.
     pub(crate) fn record_code_grant(
-        &self,
+        &mut self,
         client_id: &str,
         redirect_uri: &Url,
         delegated_scopes: &DelegatedScopes,
@@ -62,16 +62,20 @@ impl<'a, S: GrantStore> GrantRecorder<'a, S> {
         now: DateTime<Utc>,
     ) -> Result<(), AuthorizationServerError> {
         let delegated = delegated_scopes.scopes();
-        self.store.immediate_transaction(|tx| {
-            if delegated_scopes.writes_registration() {
-                write_registration(tx, client_id, redirect_uri, delegated, now)?;
+        if delegated_scopes.writes_registration() {
+            write_registration(self.tx, client_id, redirect_uri, delegated, now)?;
+        }
+        match self
+            .tx
+            .grant_by_client_and_redirect(client_id, redirect_uri)?
+        {
+            Some(mut grant) => {
+                grant.absorb_reapproval(delegated, patient, now);
+                self.tx.update_authorization_code_grant(&grant)
             }
-            match tx.grant_by_client_and_redirect(client_id, redirect_uri)? {
-                Some(mut grant) => {
-                    grant.absorb_reapproval(delegated, patient, now);
-                    tx.update_authorization_code_grant(&grant)
-                }
-                None => tx.create_authorization_code_grant(&AuthorizationCodeGrant {
+            None => self
+                .tx
+                .create_authorization_code_grant(&AuthorizationCodeGrant {
                     id: Uuid::new_v4().to_string(),
                     client_id: client_id.to_owned(),
                     scopes: delegated.to_vec(),
@@ -80,21 +84,19 @@ impl<'a, S: GrantStore> GrantRecorder<'a, S> {
                     patient: patient.map(str::to_owned),
                     redirect_uri: redirect_uri.clone(),
                 }),
-            }
-        })
+        }
     }
 
     /// Insert or cumulatively update the standing device grant for
-    /// `(client_id, device_name)` — the same read-merge-write-under-
-    /// `BEGIN IMMEDIATE` shape as [`record_code_grant`](Self::record_code_grant),
-    /// keyed on the device name. Device consent never touches the registration.
+    /// `(client_id, device_name)` — the same read-merge-write shape as
+    /// [`record_code_grant`](Self::record_code_grant), keyed on the device name. Device consent never touches the registration.
     ///
     /// # Errors
     ///
-    /// [`AuthorizationServerError::Infrastructure`] on a store failure; the transaction
-    /// rolls back.
+    /// [`AuthorizationServerError::Infrastructure`] on a store failure, which
+    /// rolls the caller's scope back.
     pub(crate) fn record_device_grant(
-        &self,
+        &mut self,
         client_id: &str,
         device_name: &str,
         delegated_scopes: &DelegatedScopes,
@@ -102,23 +104,24 @@ impl<'a, S: GrantStore> GrantRecorder<'a, S> {
         now: DateTime<Utc>,
     ) -> Result<(), AuthorizationServerError> {
         let delegated = delegated_scopes.scopes();
-        self.store.immediate_transaction(|tx| {
-            match tx.device_grant_by_client_and_device_name(client_id, device_name)? {
-                Some(mut grant) => {
-                    grant.absorb_reapproval(delegated, patient, now);
-                    tx.update_device_grant(&grant)
-                }
-                None => tx.create_device_grant(&DeviceGrant {
-                    id: Uuid::new_v4().to_string(),
-                    client_id: client_id.to_owned(),
-                    scopes: delegated.to_vec(),
-                    granted_at: now,
-                    last_used_at: None,
-                    patient: patient.map(str::to_owned),
-                    device_name: device_name.to_owned(),
-                }),
+        match self
+            .tx
+            .device_grant_by_client_and_device_name(client_id, device_name)?
+        {
+            Some(mut grant) => {
+                grant.absorb_reapproval(delegated, patient, now);
+                self.tx.update_device_grant(&grant)
             }
-        })
+            None => self.tx.create_device_grant(&DeviceGrant {
+                id: Uuid::new_v4().to_string(),
+                client_id: client_id.to_owned(),
+                scopes: delegated.to_vec(),
+                granted_at: now,
+                last_used_at: None,
+                patient: patient.map(str::to_owned),
+                device_name: device_name.to_owned(),
+            }),
+        }
     }
 }
 
@@ -204,6 +207,7 @@ fn widen_registration(
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::grant_store::*;
 
     use super::*;
     use crate::domain::client_registration::uncovered_scopes;
@@ -221,7 +225,8 @@ mod tests {
     #[test]
     fn record_code_grant_inserts_then_unions_scopes() {
         let store = FakeGrantStore::default();
-        let recorder = GrantRecorder::over(&store);
+        let mut tx = store.tx();
+        let mut recorder = GrantRecorder::within(&mut tx);
         recorder
             .record_code_grant(
                 "client-a",
@@ -232,6 +237,7 @@ mod tests {
             )
             .unwrap();
         let first = store
+            .tx()
             .grant_by_client_and_redirect("client-a", &redirect())
             .unwrap()
             .expect("grant inserted");
@@ -247,6 +253,7 @@ mod tests {
             )
             .unwrap();
         let merged = store
+            .tx()
             .grant_by_client_and_redirect("client-a", &redirect())
             .unwrap()
             .expect("grant present");
@@ -267,7 +274,7 @@ mod tests {
     #[test]
     fn record_code_grant_without_widening_never_creates_a_client() {
         let store = FakeGrantStore::default();
-        GrantRecorder::over(&store)
+        GrantRecorder::within(&mut store.tx())
             .record_code_grant(
                 "host",
                 &redirect(),
@@ -276,7 +283,7 @@ mod tests {
                 Utc::now(),
             )
             .unwrap();
-        assert_eq!(store.client_by_id("host").unwrap(), None);
+        assert_eq!(store.tx().client_by_id("host").unwrap(), None);
     }
 
     /// Recording a registering approval for an unknown client creates the
@@ -285,7 +292,7 @@ mod tests {
     #[test]
     fn record_code_grant_widen_registers_a_new_client_with_the_delegated_scopes() {
         let store = FakeGrantStore::default();
-        GrantRecorder::over(&store)
+        GrantRecorder::within(&mut store.tx())
             .record_code_grant(
                 "newcomer",
                 &redirect(),
@@ -295,6 +302,7 @@ mod tests {
             )
             .unwrap();
         let row = store
+            .tx()
             .client_by_id("newcomer")
             .unwrap()
             .expect("registered on first use");
@@ -314,8 +322,11 @@ mod tests {
             (elsewhere.clone(), vec![redirect(), elsewhere.clone()]),
         ] {
             let store = FakeGrantStore::default();
-            store.upsert_client(&client("app", &["openid"])).unwrap();
-            GrantRecorder::over(&store)
+            store
+                .tx()
+                .upsert_client(&client("app", &["openid"]))
+                .unwrap();
+            GrantRecorder::within(&mut store.tx())
                 .record_code_grant(
                     "app",
                     &approved_redirect,
@@ -324,7 +335,7 @@ mod tests {
                     Utc::now(),
                 )
                 .unwrap();
-            let row = store.client_by_id("app").unwrap().expect("present");
+            let row = store.tx().client_by_id("app").unwrap().expect("present");
             assert_eq!(row.redirect_uris, expected_redirects);
             assert_eq!(row.allowed_scopes, ["openid", "patient/Patient.r"]);
         }
@@ -335,7 +346,8 @@ mod tests {
     #[test]
     fn record_device_grant_inserts_then_unions_scopes() {
         let store = FakeGrantStore::default();
-        let recorder = GrantRecorder::over(&store);
+        let mut tx = store.tx();
+        let mut recorder = GrantRecorder::within(&mut tx);
         recorder
             .record_device_grant(
                 "client-a",
@@ -355,6 +367,7 @@ mod tests {
             )
             .unwrap();
         let grant = store
+            .tx()
             .device_grant_by_client_and_device_name("client-a", "Kitchen iPad")
             .unwrap()
             .expect("present");

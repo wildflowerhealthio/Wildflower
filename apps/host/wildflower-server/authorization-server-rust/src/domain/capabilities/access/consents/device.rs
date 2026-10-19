@@ -1,184 +1,230 @@
-//! Device-page consent: load/approve/deny the requests the device page decides
-//! by their `user_code` — a device-flow prompt, or a browser pairing. An
-//! approval obtains a [`DelegatedScopes`] proof and hands it to the writers —
+//! The device page's consent prompt, keyed by its `user_code`: a device-flow
+//! request, or a browser pairing — [`ConsentReader::device_consent`] and
+//! [`ConsentDecider`]'s `approve_device` / `deny_device`. An approval obtains
+//! a [`DelegatedScopes`] proof and hands it to the writers in the same scope —
 //! the [`RequestApprover`] transitions the request, and for a device the
 //! [`GrantRecorder`] records the standing device grant. A browser pairing
 //! records no grant: the pairing page's poll starts the approved session.
 
 use chrono::{DateTime, Utc};
-use wildflowerhealthio_scopes::Grant;
 
-use super::delegation::deny_consent;
-use super::{ApproveDeviceConsentInput, ConsentOutcome};
+use super::delegation::deny_pending_request;
+use super::{
+    ApproveDeviceConsentInput, ConsentDecider, ConsentOutcome, ConsentReader, DeviceConsentView,
+};
 use crate::domain::authority::{ApprovableScopes, DelegatedScopes};
 use crate::domain::authorization_request::{
     device_grant_name, AuthorizationRequest, GrantType, RequestStatus,
 };
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::writers::{GrantRecorder, RequestApprover};
-use crate::domain::GrantStore;
-use crate::ports::OwnerApproval;
+use crate::domain::grant_store::{AuthorizationRequestsTx, ClientsTx as _};
+use crate::domain::{GrantStore, GrantTx};
 
-/// Load the authorization request for `user_code` and verify it's a pending,
-/// unexpired device-code flow or browser pairing.
-pub(super) fn load_pending_request_by_user_code(
-    store: &impl GrantStore,
+impl<S: GrantStore> ConsentReader<S> {
+    /// Load a pending device-page consent prompt for the launcher, with the
+    /// client's name and expansion envelope resolved, and the approval scopes
+    /// the reader lacks.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::DeviceConsentNotFound`] when `user_code`
+    /// names no live device-page prompt; a store failure.
+    pub(crate) fn device_consent(
+        &self,
+        user_code: &str,
+    ) -> Result<DeviceConsentView, AuthorizationServerError> {
+        let (request, maybe_existing_client) = self.store.read(|tx| {
+            let request = load_pending_request_by_user_code(tx, user_code, Utc::now())?;
+            let maybe_existing_client = tx.client_by_id(&request.client_id)?;
+            Ok::<_, AuthorizationServerError>((request, maybe_existing_client))
+        })?;
+        let (client_name, registered_client_scopes) = match maybe_existing_client {
+            Some(existing_client) => (existing_client.name, existing_client.allowed_scopes),
+            None => (request.client_id.clone(), Vec::new()),
+        };
+        let (approvable, starting_scopes, approvable_scopes) = match request.grant_type {
+            GrantType::BrowserPairing => {
+                let approvable = ApprovableScopes::for_browser_pairing();
+                let starting_scopes = approvable.delegable_scopes(&self.reader_grant);
+                (approvable, starting_scopes, crate::owner_scopes())
+            }
+            GrantType::AuthorizationCode | GrantType::DeviceCode => (
+                ApprovableScopes::for_device(&registered_client_scopes),
+                request.requested_scopes.clone(),
+                registered_client_scopes,
+            ),
+        };
+        Ok(DeviceConsentView {
+            request,
+            client_name,
+            starting_scopes,
+            approvable_scopes,
+            missing_approval_scopes: approvable.missing_approval_scopes(&self.reader_grant),
+        })
+    }
+}
+
+impl<S: GrantStore> ConsentDecider<S> {
+    /// Approve the device-page consent prompt `user_code`: apply the
+    /// **expandable** scope decision (up to the client's `allowed_scopes` for
+    /// a device, up to [`OWNER_SCOPES`](crate::OWNER_SCOPES) for a browser
+    /// pairing), transition the request, for a device mint (or refresh) the
+    /// standing device grant, and republish the popup head. An approval that
+    /// grants nothing is applied as a **deny**.
+    ///
+    /// # Errors
+    ///
+    /// [`InsufficientScope`](AuthorizationServerError::InsufficientScope) when
+    /// the approver lacks the request's approval scopes (see
+    /// [`ApprovableScopes::missing_approval_scopes`]: `wildflower/Grant.c` for a
+    /// device's standing grant, which a browser pairing doesn't record), and
+    /// [`InsufficientApproverScope`](AuthorizationServerError::InsufficientApproverScope)
+    /// for a resource scope beyond the approver's own authority, both writing
+    /// nothing; [`DeviceConsentNotFound`](AuthorizationServerError::DeviceConsentNotFound)
+    /// when `user_code` names no live prompt.
+    pub(crate) fn approve_device(
+        &self,
+        user_code: &str,
+        input: ApproveDeviceConsentInput,
+        now: DateTime<Utc>,
+    ) -> Result<ConsentOutcome, AuthorizationServerError> {
+        self.decide_and_republish(|tx| {
+            let device_request = load_pending_request_by_user_code(tx, user_code, now)?;
+            match device_request.grant_type {
+                GrantType::BrowserPairing => {
+                    self.approve_browser_pairing_in(tx, user_code, &device_request, input)
+                }
+                GrantType::AuthorizationCode | GrantType::DeviceCode => {
+                    self.approve_device_in(tx, user_code, &device_request, input, now)
+                }
+            }
+        })
+    }
+
+    /// Deny the device-page consent prompt `user_code` and republish the popup
+    /// head.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::DeviceConsentNotFound`] when `user_code`
+    /// names no live prompt.
+    pub(crate) fn deny_device(&self, user_code: &str) -> Result<(), AuthorizationServerError> {
+        self.decide_and_republish(|tx| {
+            let device_request = load_pending_request_by_user_code(tx, user_code, Utc::now())?;
+            deny_pending_request(tx, &device_request.id, || consent_not_found(user_code))
+        })
+    }
+
+    /// Approve the pending device request `device_request`, inside the
+    /// approval's write scope `tx`.
+    fn approve_device_in(
+        &self,
+        tx: &mut impl GrantTx,
+        user_code: &str,
+        device_request: &AuthorizationRequest,
+        input: ApproveDeviceConsentInput,
+        now: DateTime<Utc>,
+    ) -> Result<ConsentOutcome, AuthorizationServerError> {
+        let client = tx
+            .client_by_id(&device_request.client_id)?
+            .ok_or_else(|| consent_not_found(user_code))?;
+        // The proof every write below demands: the approver holds a device
+        // prompt's approval scopes, and the Owner's approval is clamped to what
+        // it may grant and covered by the approver's own grant.
+        let Some(delegated_scopes) = DelegatedScopes::clamp(
+            &self.approver_grant,
+            input.owner_approved_scopes,
+            &ApprovableScopes::for_device(&client.allowed_scopes),
+        )?
+        else {
+            deny_pending_request(tx, &device_request.id, || consent_not_found(user_code))?;
+            return Ok(ConsentOutcome::Denied { redirect: None });
+        };
+        let request_device_name = input
+            .device_name
+            .as_deref()
+            .or(device_request.device_name.as_deref());
+        if !RequestApprover::within(tx).approve_for_device(
+            &delegated_scopes,
+            &device_request.id,
+            input.patient.as_deref(),
+            request_device_name,
+        )? {
+            return Err(consent_not_found(user_code));
+        }
+        let grant_name = device_grant_name(request_device_name, &client.name);
+        GrantRecorder::within(tx).record_device_grant(
+            &device_request.client_id,
+            grant_name,
+            &delegated_scopes,
+            input.patient.as_deref(),
+            now,
+        )?;
+        Ok(ConsentOutcome::Approved { redirect: None })
+    }
+
+    /// Approve the pending browser pairing `pairing_request`, inside the
+    /// approval's write scope `tx`: clamp the Owner's ticks to
+    /// [`ApprovableScopes::for_browser_pairing`] and the approver's own grant,
+    /// and transition the request under the browser name the approver left.
+    /// Nothing granted is a deny.
+    fn approve_browser_pairing_in(
+        &self,
+        tx: &mut impl GrantTx,
+        user_code: &str,
+        pairing_request: &AuthorizationRequest,
+        input: ApproveDeviceConsentInput,
+    ) -> Result<ConsentOutcome, AuthorizationServerError> {
+        let Some(delegated_scopes) = DelegatedScopes::clamp(
+            &self.approver_grant,
+            input.owner_approved_scopes,
+            &ApprovableScopes::for_browser_pairing(),
+        )?
+        else {
+            deny_pending_request(tx, &pairing_request.id, || consent_not_found(user_code))?;
+            return Ok(ConsentOutcome::Denied { redirect: None });
+        };
+        let browser_name = input
+            .device_name
+            .as_deref()
+            .or(pairing_request.device_name.as_deref())
+            .ok_or_else(|| consent_not_found(user_code))?;
+        if !RequestApprover::within(tx).approve_browser_pairing(
+            &delegated_scopes,
+            &pairing_request.id,
+            browser_name,
+        )? {
+            return Err(consent_not_found(user_code));
+        }
+        Ok(ConsentOutcome::Approved { redirect: None })
+    }
+}
+
+/// Load the authorization request for `user_code` and verify it's a pending
+/// device-code flow or browser pairing, unexpired at `now`.
+fn load_pending_request_by_user_code(
+    tx: &mut impl AuthorizationRequestsTx,
     user_code: &str,
+    now: DateTime<Utc>,
 ) -> Result<AuthorizationRequest, AuthorizationServerError> {
-    match store.pending_authorization_request_by_user_code(user_code)? {
+    match tx.pending_authorization_request_by_user_code(user_code)? {
         Some(request)
             if matches!(
                 request.grant_type,
                 GrantType::DeviceCode | GrantType::BrowserPairing
             ) && request.status == RequestStatus::Pending
-                && request.expires_at > Utc::now() =>
+                && request.expires_at > now =>
         {
             Ok(request)
         }
-        _ => Err(AuthorizationServerError::DeviceConsentNotFound {
-            user_code: user_code.to_owned(),
-        }),
+        _ => Err(consent_not_found(user_code)),
     }
 }
 
-/// Approve a device-page consent prompt: apply the **expandable** scope
-/// decision (up to the client's `allowed_scopes` for a device, up to
-/// [`OWNER_SCOPES`](crate::OWNER_SCOPES) for a browser pairing), transition the
-/// request, for a device mint (or refresh) the standing device grant, and
-/// republish the popup head. An approval that grants nothing is applied as a
-/// **deny**.
-///
-/// The approver must hold the request's approval scopes (see
-/// [`ApprovableScopes::missing_approval_scopes`]: `wildflower/Grant.c` for a
-/// device's standing grant, which a browser pairing doesn't record), else the
-/// approval fails with
-/// [`InsufficientScope`](AuthorizationServerError::InsufficientScope) and
-/// nothing is written.
-pub(super) fn approve_device_consent(
-    store: &impl GrantStore,
-    owner_approval: &dyn OwnerApproval,
-    user_code: &str,
-    input: ApproveDeviceConsentInput,
-    approver_grant: &Grant,
-    now: DateTime<Utc>,
-) -> Result<ConsentOutcome, AuthorizationServerError> {
-    let make_consent_not_found = || AuthorizationServerError::DeviceConsentNotFound {
+/// The device-page prompt `user_code` is not (or no longer) a live prompt.
+fn consent_not_found(user_code: &str) -> AuthorizationServerError {
+    AuthorizationServerError::DeviceConsentNotFound {
         user_code: user_code.to_owned(),
-    };
-    let device_request = load_pending_request_by_user_code(store, user_code)?;
-    if device_request.grant_type == GrantType::BrowserPairing {
-        return approve_browser_pairing(
-            store,
-            owner_approval,
-            &device_request,
-            input,
-            approver_grant,
-            make_consent_not_found,
-        );
     }
-    let client = store
-        .client_by_id(&device_request.client_id)?
-        .ok_or_else(make_consent_not_found)?;
-
-    // The proof every write below demands: the approver holds a device
-    // prompt's approval scopes, and the Owner's approval is clamped to what it
-    // may grant and covered by the approver's own grant.
-    let Some(delegated_scopes) = DelegatedScopes::clamp(
-        approver_grant,
-        input.owner_approved_scopes,
-        &ApprovableScopes::for_device(&client.allowed_scopes),
-    )?
-    else {
-        return deny_consent(
-            store,
-            owner_approval,
-            &device_request.id,
-            make_consent_not_found,
-        )
-        .map(|()| ConsentOutcome::Denied { redirect: None });
-    };
-
-    let request_device_name = input
-        .device_name
-        .as_deref()
-        .or(device_request.device_name.as_deref());
-    let approved = RequestApprover::over(store).approve_for_device(
-        &delegated_scopes,
-        &device_request.id,
-        input.patient.as_deref(),
-        request_device_name,
-    )?;
-    if !approved {
-        return Err(make_consent_not_found());
-    }
-
-    let grant_name = device_grant_name(request_device_name, &client.name);
-    GrantRecorder::over(store).record_device_grant(
-        &device_request.client_id,
-        grant_name,
-        &delegated_scopes,
-        input.patient.as_deref(),
-        now,
-    )?;
-
-    owner_approval.republish_active();
-    Ok(ConsentOutcome::Approved { redirect: None })
-}
-
-/// Approve the pending browser pairing `pairing_request`: clamp the Owner's
-/// ticks to [`ApprovableScopes::for_browser_pairing`] and the approver's own
-/// grant, and transition the request under the browser name the approver
-/// left. Nothing granted is a deny.
-fn approve_browser_pairing(
-    store: &impl GrantStore,
-    owner_approval: &dyn OwnerApproval,
-    pairing_request: &AuthorizationRequest,
-    input: ApproveDeviceConsentInput,
-    approver_grant: &Grant,
-    make_consent_not_found: impl Fn() -> AuthorizationServerError,
-) -> Result<ConsentOutcome, AuthorizationServerError> {
-    let Some(delegated_scopes) = DelegatedScopes::clamp(
-        approver_grant,
-        input.owner_approved_scopes,
-        &ApprovableScopes::for_browser_pairing(),
-    )?
-    else {
-        return deny_consent(
-            store,
-            owner_approval,
-            &pairing_request.id,
-            make_consent_not_found,
-        )
-        .map(|()| ConsentOutcome::Denied { redirect: None });
-    };
-    let browser_name = input
-        .device_name
-        .as_deref()
-        .or(pairing_request.device_name.as_deref())
-        .ok_or_else(&make_consent_not_found)?;
-    if !RequestApprover::over(store).approve_browser_pairing(
-        &delegated_scopes,
-        &pairing_request.id,
-        browser_name,
-    )? {
-        return Err(make_consent_not_found());
-    }
-    owner_approval.republish_active();
-    Ok(ConsentOutcome::Approved { redirect: None })
-}
-
-/// Deny the pending device-page request behind `user_code`. Validates it's a
-/// live device-flow prompt or browser pairing first, then marks it denied and
-/// republishes the popup head.
-pub(super) fn deny_device_consent(
-    store: &impl GrantStore,
-    owner_approval: &dyn OwnerApproval,
-    user_code: &str,
-) -> Result<(), AuthorizationServerError> {
-    let device_request = load_pending_request_by_user_code(store, user_code)?;
-    deny_consent(store, owner_approval, &device_request.id, || {
-        AuthorizationServerError::DeviceConsentNotFound {
-            user_code: user_code.to_owned(),
-        }
-    })
 }

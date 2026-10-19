@@ -11,7 +11,11 @@ use chrono::{DateTime, Duration, Utc};
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::browser_session::LONGEST_BROWSER_SESSION_TTL;
-use crate::domain::{GrantStore, GrantTx};
+use crate::domain::grant_store::{
+    AuthorizationCodesTx as _, AuthorizationRequestsTx as _, BrowserSessionsTx as _,
+    RefreshTokensTx as _,
+};
+use crate::domain::GrantStore;
 
 /// How long a refresh-token family (and its tokens) is kept past its absolute
 /// deadline. Deliberately equal to
@@ -57,7 +61,7 @@ impl PurgedCounts {
 }
 
 /// Delete every row that has aged past its retention window as of `now`, in one
-/// transaction, and report what went. Idempotent — a second pass at the same
+/// write scope, and report what went. Idempotent — a second pass at the same
 /// `now` matches nothing.
 ///
 /// `now` is a parameter rather than a `Utc::now()` inside, so the whole pass
@@ -76,7 +80,7 @@ pub(crate) fn purge_expired(
     let family_cutoff = now - REFRESH_TOKEN_FAMILY_RETENTION;
     let authorization_cutoff = now - AUTHORIZATION_RETENTION;
     let browser_session_cutoff = now - BROWSER_SESSION_RETENTION;
-    store.transaction(|tx| {
+    store.write(|tx| {
         Ok(PurgedCounts {
             refresh_token_families: tx
                 .delete_refresh_token_families_expired_before(family_cutoff)?,
@@ -191,37 +195,46 @@ mod tests {
         let store = FakeGrantStore::default();
         // Past the 90-day window (its deadline is 91 days behind `now`).
         store
+            .tx()
             .insert_refresh_token_family_row(&family("old", now() - Duration::days(91)))
             .expect("seed old family");
         store
+            .tx()
             .insert_refresh_token(&token("old-token", "old"))
             .expect("seed old token");
         // Dead, but only 89 days dead — still inside the window.
         store
+            .tx()
             .insert_refresh_token_family_row(&family("recent", now() - Duration::days(89)))
             .expect("seed recent family");
         store
+            .tx()
             .insert_refresh_token(&token("recent-token", "recent"))
             .expect("seed recent token");
         // Live: deadline still ahead of `now`, and minted under the session
         // `named`.
         store
+            .tx()
             .insert_refresh_token_family_row(&RefreshTokenFamily {
                 sid: Some("named".to_string()),
                 ..family("live", now() + Duration::days(30))
             })
             .expect("seed live family");
         store
+            .tx()
             .insert_refresh_token(&token("live-token", "live"))
             .expect("seed live token");
 
         store
+            .tx()
             .insert_authorization_request(&request("old", now() - Duration::days(8)))
             .expect("seed old request");
         store
+            .tx()
             .insert_authorization_request(&request("recent", now() - Duration::days(6)))
             .expect("seed recent request");
         store
+            .tx()
             .insert_authorization_request(&request("live", now() + Duration::minutes(5)))
             .expect("seed live request");
 
@@ -233,17 +246,21 @@ mod tests {
             ("named", now() - Duration::days(10)),
         ] {
             store
+                .tx()
                 .insert_browser_session(&session(sid, expires_at))
                 .expect("seed session");
         }
 
         store
+            .tx()
             .issue_authorization_code(&code("old", now() - Duration::days(8)))
             .expect("seed old code");
         store
+            .tx()
             .issue_authorization_code(&code("recent", now() - Duration::days(6)))
             .expect("seed recent code");
         store
+            .tx()
             .issue_authorization_code(&code("live", now() + Duration::minutes(1)))
             .expect("seed live code");
         store
@@ -269,44 +286,57 @@ mod tests {
         );
         for (sid, kept) in [("old", false), ("recent", true), ("named", true)] {
             assert_eq!(
-                store.browser_session_by_sid(sid).expect("query").is_some(),
+                store
+                    .tx()
+                    .browser_session_by_sid(sid)
+                    .expect("query")
+                    .is_some(),
                 kept,
                 "session {sid}",
             );
         }
         assert!(store
+            .tx()
             .refresh_token_with_family_by_hash("old-token")
             .expect("query")
             .is_none());
         assert!(store
+            .tx()
             .refresh_token_with_family_by_hash("recent-token")
             .expect("query")
             .is_some());
         assert!(store
+            .tx()
             .refresh_token_with_family_by_hash("live-token")
             .expect("query")
             .is_some());
         assert!(store
+            .tx()
             .authorization_request_by_id("old")
             .expect("query")
             .is_none());
         assert!(store
+            .tx()
             .authorization_request_by_id("recent")
             .expect("query")
             .is_some());
         assert!(store
+            .tx()
             .authorization_request_by_id("live")
             .expect("query")
             .is_some());
         assert!(store
+            .tx()
             .authorization_code_by_request_id("req-old")
             .expect("query")
             .is_none());
         assert!(store
+            .tx()
             .authorization_code_by_request_id("req-recent")
             .expect("query")
             .is_some());
         assert!(store
+            .tx()
             .authorization_code_by_request_id("req-live")
             .expect("query")
             .is_some());
@@ -318,6 +348,7 @@ mod tests {
     fn deleting_a_family_takes_its_tokens() {
         let store = seeded();
         store
+            .tx()
             .insert_refresh_token(&token("old-token-2", "old"))
             .expect("seed a second generation");
 
@@ -326,6 +357,7 @@ mod tests {
         for orphan in ["old-token", "old-token-2"] {
             assert!(
                 store
+                    .tx()
                     .refresh_token_with_family_by_hash(orphan)
                     .expect("query")
                     .is_none(),
@@ -382,6 +414,7 @@ mod tests {
         );
         assert_eq!(later.authorization_codes, 2);
         assert!(store
+            .tx()
             .refresh_token_with_family_by_hash("recent-token")
             .expect("query")
             .is_none());

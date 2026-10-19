@@ -147,7 +147,7 @@ async fn device_consent_threads_patient_onto_request() {
 
     // The posted patient is persisted onto the now-approved request.
     let request = store_handle(&db)
-        .authorization_request_by_id("dev-patient")
+        .read(|tx| tx.authorization_request_by_id("dev-patient"))
         .expect("query request")
         .expect("request present");
     assert_eq!(request.status, RequestStatus::Approved);
@@ -196,7 +196,7 @@ async fn device_consent_allows_expansion_beyond_requested() {
 
     // The expansion is persisted onto the grant — `write` was never requested.
     let request = store_handle(&db)
-        .authorization_request_by_id("dev-expand")
+        .read(|tx| tx.authorization_request_by_id("dev-expand"))
         .expect("query request")
         .expect("request present");
     let granted = request.granted_scopes.expect("granted scopes");
@@ -342,7 +342,7 @@ async fn device_consent_approver_can_adjust_device_name() {
     assert_eq!(res.status(), StatusCode::OK);
 
     let request = store_handle(&db)
-        .authorization_request_by_id("dev-rename")
+        .read(|tx| tx.authorization_request_by_id("dev-rename"))
         .expect("query request")
         .expect("request present");
     assert_eq!(request.device_name.as_deref(), Some("Reception iPad"));
@@ -422,7 +422,7 @@ async fn device_approval_mints_durable_grant_and_links_refresh_family() {
         .to_string();
 
     let (_, family) = store_handle(&db)
-        .refresh_token_with_family_by_hash(&token_storage_hash(&refresh))
+        .read(|tx| tx.refresh_token_with_family_by_hash(&token_storage_hash(&refresh)))
         .expect("family query")
         .expect("family present");
     assert_eq!(
@@ -438,16 +438,18 @@ async fn device_approval_mints_durable_grant_and_links_refresh_family() {
 async fn token_endpoint_rejects_grant_outside_client_allow_list() {
     let (g, _owner_token, db) = spin_up();
     store_handle(&db)
-        .upsert_client(&Client {
-            client_id: "code-only".to_string(),
-            name: "Code-only client".to_string(),
-            kind: ClientKind::Public,
-            redirect_uris: vec![Url::parse("https://app.example/cb").unwrap()],
-            allowed_scopes: vec!["read".to_string(), "offline_access".to_string()],
-            allowed_grant_types: vec![AllowedGrantType::AuthorizationCode],
-            secret_hash: None,
-            registered_at: Utc::now(),
-            disabled_at: None,
+        .write(|tx| {
+            tx.upsert_client(&Client {
+                client_id: "code-only".to_string(),
+                name: "Code-only client".to_string(),
+                kind: ClientKind::Public,
+                redirect_uris: vec![Url::parse("https://app.example/cb").unwrap()],
+                allowed_scopes: vec!["read".to_string(), "offline_access".to_string()],
+                allowed_grant_types: vec![AllowedGrantType::AuthorizationCode],
+                secret_hash: None,
+                registered_at: Utc::now(),
+                disabled_at: None,
+            })
         })
         .expect("register code-only client");
 
@@ -554,14 +556,16 @@ async fn offline_access_issues_rotating_refresh_token() {
     {
         let store = store_handle(&db);
         let grant = store
-            .grant_by_client_and_redirect(
-                "test-app",
-                &Url::parse("https://app.example/cb").unwrap(),
-            )
+            .read(|tx| {
+                tx.grant_by_client_and_redirect(
+                    "test-app",
+                    &Url::parse("https://app.example/cb").unwrap(),
+                )
+            })
             .expect("grant query")
             .expect("code grant minted at approval");
         let (_, family) = store
-            .refresh_token_with_family_by_hash(&token_storage_hash(&first_refresh))
+            .read(|tx| tx.refresh_token_with_family_by_hash(&token_storage_hash(&first_refresh)))
             .expect("family query")
             .expect("family present");
         assert_eq!(family.grant_id.as_deref(), Some(grant.id.as_str()));
@@ -671,7 +675,7 @@ async fn expired_refresh_token_family_is_rejected() {
         })
     );
     let (row, _family) = store
-        .refresh_token_with_family_by_hash(&token_storage_hash("stale-token"))
+        .read(|tx| tx.refresh_token_with_family_by_hash(&token_storage_hash("stale-token")))
         .expect("query")
         .expect("row kept");
     assert_eq!(row.consumed_at, None);
@@ -709,7 +713,7 @@ async fn refresh_token_is_bound_to_issuing_client() {
     );
     // The rightful owner's token is untouched — still live.
     let (row, _family) = store
-        .refresh_token_with_family_by_hash(&token_storage_hash("owned-token"))
+        .read(|tx| tx.refresh_token_with_family_by_hash(&token_storage_hash("owned-token")))
         .expect("query")
         .expect("row present");
     assert_eq!(row.consumed_at, None);
@@ -774,7 +778,7 @@ async fn revoking_grant_revokes_refresh_tokens() {
     // pulled back and the live token is stamped consumed — and redeeming it
     // reports the family as expired.
     let (token, family) = store
-        .refresh_token_with_family_by_hash(&token_storage_hash("standing-token"))
+        .read(|tx| tx.refresh_token_with_family_by_hash(&token_storage_hash("standing-token")))
         .expect("query")
         .expect("rows kept");
     assert!(family.expires_at <= Utc::now());

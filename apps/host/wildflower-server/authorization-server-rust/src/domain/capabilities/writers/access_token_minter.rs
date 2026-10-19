@@ -8,27 +8,43 @@
 use chrono::Duration;
 
 use crate::domain::authority::TokenEntitlement;
+use crate::domain::grant_store::SigningKeysTx;
+use crate::domain::signing_key::SigningKey;
 use crate::domain::token::{mint_access_token, NewJwtArgs, TokenIssuanceError};
-use crate::domain::GrantStore;
 
-/// Mint access tokens for one server. A borrowed view over the store; the gate
-/// is the [`TokenEntitlement`] proof [`mint`](Self::mint) takes.
-pub(crate) struct AccessTokenMinter<'a, S: GrantStore> {
-    store: &'a S,
+/// Mint access tokens for one server with the signing key that was active
+/// when the minter was loaded; the gate is the [`TokenEntitlement`] proof
+/// [`mint`](Self::mint) takes. Loaded inside the caller's scope (reading the
+/// key's private material is the privileged read) and used after it closes,
+/// so the signing itself holds no lock.
+pub(crate) struct AccessTokenMinter<'a> {
+    signing_key: SigningKey,
     /// The server's bare origin: both the `iss` and the `aud` claim.
     server_origin: &'a str,
     ttl: Duration,
 }
 
-impl<'a, S: GrantStore> AccessTokenMinter<'a, S> {
-    /// A writer over `store` minting tokens issued by and for `server_origin`,
-    /// that live for `ttl`.
-    pub(crate) fn new(store: &'a S, server_origin: &'a str, ttl: Duration) -> Self {
-        AccessTokenMinter {
-            store,
+impl<'a> AccessTokenMinter<'a> {
+    /// A minter holding `tx`'s active signing key, minting tokens issued by
+    /// and for `server_origin` that live for `ttl`.
+    ///
+    /// # Errors
+    ///
+    /// [`TokenIssuanceError::NoActiveSigningKey`] when no key can sign;
+    /// [`TokenIssuanceError::Store`] when the key store can't be read.
+    pub(crate) fn with_active_key(
+        tx: &mut impl SigningKeysTx,
+        server_origin: &'a str,
+        ttl: Duration,
+    ) -> Result<Self, TokenIssuanceError> {
+        let signing_key = tx
+            .active_signing_key()?
+            .ok_or(TokenIssuanceError::NoActiveSigningKey)?;
+        Ok(AccessTokenMinter {
+            signing_key,
             server_origin,
             ttl,
-        }
+        })
     }
 
     /// Sign a token carrying exactly the entitlement's client, scopes,
@@ -36,19 +52,13 @@ impl<'a, S: GrantStore> AccessTokenMinter<'a, S> {
     ///
     /// # Errors
     ///
-    /// [`TokenIssuanceError::NoActiveSigningKey`] when no key can sign;
-    /// [`TokenIssuanceError::Signing`] on a key-material or encoding failure;
-    /// [`TokenIssuanceError::Store`] when the key store can't be read.
+    /// [`TokenIssuanceError::Signing`] on a key-material or encoding failure.
     pub(crate) fn mint(
         &self,
         entitlement: TokenEntitlement<'_>,
     ) -> Result<String, TokenIssuanceError> {
-        let key = self
-            .store
-            .active_signing_key()?
-            .ok_or(TokenIssuanceError::NoActiveSigningKey)?;
         Ok(mint_access_token(
-            &key,
+            &self.signing_key,
             &NewJwtArgs {
                 client_id: entitlement.client_id(),
                 scopes: entitlement.token_scopes(),
@@ -69,19 +79,21 @@ mod tests {
     use crate::domain::test_fake::{redeemed_code, seed_active_signing_key, FakeGrantStore};
     use crate::domain::token::{verify_jwt, VerifyOptions};
 
-    fn minter(store: &FakeGrantStore) -> AccessTokenMinter<'_, FakeGrantStore> {
-        AccessTokenMinter::new(store, "https://server.example", Duration::minutes(5))
+    fn minter(store: &FakeGrantStore) -> Result<AccessTokenMinter<'static>, TokenIssuanceError> {
+        AccessTokenMinter::with_active_key(
+            &mut store.tx(),
+            "https://server.example",
+            Duration::minutes(5),
+        )
     }
 
-    /// With no signing key seeded, minting fails closed rather than producing an
-    /// unsigned or differently-signed token.
+    /// With no signing key seeded, loading the minter fails closed, so nothing
+    /// can be minted, unsigned or differently signed.
     #[test]
     fn mint_fails_closed_without_an_active_key() {
         let store = FakeGrantStore::default();
-        let redeemed = redeemed_code(&store, "client-a", &["openid"]);
-        let outcome = minter(&store).mint(TokenEntitlement::AuthorizationCode(&redeemed));
         assert!(matches!(
-            outcome,
+            minter(&store),
             Err(TokenIssuanceError::NoActiveSigningKey)
         ));
     }
@@ -95,9 +107,10 @@ mod tests {
         seed_active_signing_key(&store);
         let redeemed = redeemed_code(&store, "client-a", &["patient/Patient.rs", "openid"]);
         let access_token = minter(&store)
+            .expect("an active key")
             .mint(TokenEntitlement::AuthorizationCode(&redeemed))
             .expect("mint");
-        let keys = store.all_signing_keys().unwrap();
+        let keys = store.tx().all_signing_keys().unwrap();
         let claims = verify_jwt(
             &access_token,
             &keys,

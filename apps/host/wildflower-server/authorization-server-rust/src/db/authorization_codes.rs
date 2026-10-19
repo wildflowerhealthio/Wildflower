@@ -7,10 +7,11 @@
 
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
-use diesel::sqlite::SqliteConnection;
 
+use crate::db::grant_store::SqliteGrantTx;
 use crate::domain::authorization_code::IssuedAuthorizationCode;
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::grant_store::AuthorizationCodesTx;
 
 diesel::table! {
     authorization_codes (code) {
@@ -27,65 +28,75 @@ diesel::table! {
     }
 }
 
-/// Atomically read-and-delete the authorization code so a `/token`
-/// redemption either gets the row exactly once or sees `None`. Wins the
-/// RFC 6749 §10.5 single-use race against any concurrent redeemer of the
-/// same code — `DELETE … RETURNING` runs under `SQLite`'s write lock, so
-/// only one caller's `Ok(Some)` lands and any racer sees `Ok(None)`.
-pub(super) fn redeem_authorization_code(
-    conn: &mut SqliteConnection,
-    code: &str,
-) -> Result<Option<IssuedAuthorizationCode>, AuthorizationServerError> {
-    diesel::delete(authorization_codes::table.find(code))
-        .returning(IssuedAuthorizationCode::as_returning())
-        .get_result(conn)
-        .optional()
-        .map_err(|e| {
-            AuthorizationServerError::infrastructure("redeem_authorization_code failed", e)
-        })
-}
+impl AuthorizationCodesTx for SqliteGrantTx<'_> {
+    /// Atomically read-and-delete the authorization code so a `/token`
+    /// redemption either gets the row exactly once or sees `None`. Wins the
+    /// RFC 6749 §10.5 single-use race against any concurrent redeemer of the
+    /// same code — `DELETE … RETURNING` runs under `SQLite`'s write lock, so
+    /// only one caller's `Ok(Some)` lands and any racer sees `Ok(None)`.
+    fn redeem_authorization_code(
+        &mut self,
+        code: &str,
+    ) -> Result<Option<IssuedAuthorizationCode>, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        diesel::delete(authorization_codes::table.find(code))
+            .returning(IssuedAuthorizationCode::as_returning())
+            .get_result(conn)
+            .optional()
+            .map_err(|e| {
+                AuthorizationServerError::infrastructure("redeem_authorization_code failed", e)
+            })
+    }
 
-/// Look up the code that was issued for a given `request_id`, used by the
-/// authorize-status poll to build the final redirect URL.
-pub(super) fn authorization_code_by_request_id(
-    conn: &mut SqliteConnection,
-    request_id: &str,
-) -> Result<Option<IssuedAuthorizationCode>, AuthorizationServerError> {
-    authorization_codes::table
-        .filter(authorization_codes::request_id.eq(request_id))
-        .select(IssuedAuthorizationCode::as_select())
-        .first(conn)
-        .optional()
-        .map_err(|e| {
-            AuthorizationServerError::infrastructure("authorization_code_by_request_id failed", e)
-        })
-}
+    /// Look up the code that was issued for a given `request_id`, used by the
+    /// authorize-status poll to build the final redirect URL.
+    fn authorization_code_by_request_id(
+        &mut self,
+        request_id: &str,
+    ) -> Result<Option<IssuedAuthorizationCode>, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        authorization_codes::table
+            .filter(authorization_codes::request_id.eq(request_id))
+            .select(IssuedAuthorizationCode::as_select())
+            .first(conn)
+            .optional()
+            .map_err(|e| {
+                AuthorizationServerError::infrastructure(
+                    "authorization_code_by_request_id failed",
+                    e,
+                )
+            })
+    }
 
-/// Persist a freshly-minted authorization code.
-pub(super) fn issue_authorization_code(
-    conn: &mut SqliteConnection,
-    code: &IssuedAuthorizationCode,
-) -> Result<(), AuthorizationServerError> {
-    diesel::insert_into(authorization_codes::table)
-        .values(code.clone())
-        .execute(conn)
-        .map_err(|e| {
-            AuthorizationServerError::infrastructure("issue_authorization_code failed", e)
-        })?;
-    Ok(())
-}
+    /// Persist a freshly-minted authorization code.
+    fn issue_authorization_code(
+        &mut self,
+        code: &IssuedAuthorizationCode,
+    ) -> Result<(), AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        diesel::insert_into(authorization_codes::table)
+            .values(code.clone())
+            .execute(conn)
+            .map_err(|e| {
+                AuthorizationServerError::infrastructure("issue_authorization_code failed", e)
+            })?;
+        Ok(())
+    }
 
-/// Delete every authorization code that expired before `cutoff`, returning how
-/// many rows went. Redemption already deletes a code as it is used
-/// ([`redeem_authorization_code`]), so this only reaps abandoned ones.
-///
-/// `cutoff` is the *retention* cutoff, not `now`; the window is the caller's
-/// (`domain::retention::purge_expired`).
-pub(super) fn delete_authorization_codes_expired_before(
-    conn: &mut SqliteConnection,
-    cutoff: DateTime<Utc>,
-) -> Result<usize, AuthorizationServerError> {
-    diesel::delete(authorization_codes::table.filter(authorization_codes::expires_at.lt(cutoff)))
+    /// Delete every authorization code that expired before `cutoff`, returning how
+    /// many rows went. Redemption already deletes a code as it is used
+    /// ([`Self::redeem_authorization_code`]), so this only reaps abandoned ones.
+    ///
+    /// `cutoff` is the *retention* cutoff, not `now`; the window is the caller's
+    /// (`domain::retention::purge_expired`).
+    fn delete_authorization_codes_expired_before(
+        &mut self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<usize, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        diesel::delete(
+            authorization_codes::table.filter(authorization_codes::expires_at.lt(cutoff)),
+        )
         .execute(conn)
         .map_err(|e| {
             AuthorizationServerError::infrastructure(
@@ -93,6 +104,7 @@ pub(super) fn delete_authorization_codes_expired_before(
                 e,
             )
         })
+    }
 }
 
 #[cfg(test)]
@@ -100,7 +112,7 @@ mod tests {
     use super::*;
     use crate::db::test_support::{arb_timestamp, arb_url};
     use crate::db::SqliteGrantStore;
-    use crate::domain::{GrantStore as _, GrantTx as _};
+    use crate::domain::grant_store::*;
     use proptest::prelude::*;
 
     fn arb_authorization_code() -> impl Strategy<Value = IssuedAuthorizationCode> {
@@ -149,9 +161,9 @@ mod tests {
         #[test]
         fn issue_and_fetch_round_trip(code in arb_authorization_code()) {
             let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
-            store.issue_authorization_code(&code).expect("issue");
+            store.write(|tx| tx.issue_authorization_code(&code)).expect("issue");
             let fetched = store
-                .authorization_code_by_request_id(&code.request_id)
+                .read(|tx| tx.authorization_code_by_request_id(&code.request_id))
                 .expect("query")
                 .expect("row present");
             prop_assert_eq!(fetched, code);
@@ -176,15 +188,17 @@ mod tests {
             expires_at: now + chrono::Duration::seconds(60),
             sid: "sid-1".to_owned(),
         };
-        store.issue_authorization_code(&code).expect("issue");
+        store
+            .write(|tx| tx.issue_authorization_code(&code))
+            .expect("issue");
         let first = store
-            .redeem_authorization_code("the-code")
+            .write(|tx| tx.redeem_authorization_code("the-code"))
             .expect("redeem")
             .expect("first redemption wins");
         assert_eq!(first, code);
         assert!(
             store
-                .redeem_authorization_code("the-code")
+                .write(|tx| tx.redeem_authorization_code("the-code"))
                 .expect("redeem again")
                 .is_none(),
             "second redemption must lose",
@@ -216,26 +230,28 @@ mod tests {
             sample("recent", now - chrono::Duration::days(6)),
             sample("live", now + chrono::Duration::minutes(1)),
         ] {
-            store.issue_authorization_code(&code).expect("issue");
+            store
+                .write(|tx| tx.issue_authorization_code(&code))
+                .expect("issue");
         }
 
         let purged = store
-            .with_connection(|tx| {
+            .write(|tx| {
                 tx.delete_authorization_codes_expired_before(now - chrono::Duration::days(7))
             })
             .expect("delete");
 
         assert_eq!(purged, 1);
         assert!(store
-            .authorization_code_by_request_id("req-old")
+            .read(|tx| tx.authorization_code_by_request_id("req-old"))
             .expect("query")
             .is_none());
         assert!(store
-            .authorization_code_by_request_id("req-recent")
+            .read(|tx| tx.authorization_code_by_request_id("req-recent"))
             .expect("query")
             .is_some());
         assert!(store
-            .authorization_code_by_request_id("req-live")
+            .read(|tx| tx.authorization_code_by_request_id("req-live"))
             .expect("query")
             .is_some());
     }
@@ -259,7 +275,9 @@ mod tests {
             expires_at: now + chrono::Duration::seconds(60),
             sid: "sid-1".to_owned(),
         };
-        store.issue_authorization_code(&code).expect("issue");
+        store
+            .write(|tx| tx.issue_authorization_code(&code))
+            .expect("issue");
         let mut conn = store.pool().get().expect("check out a connection");
         diesel::sql_query(
             "UPDATE authorization_codes SET redirect_uri = 'not a url' WHERE code = 'the-code'",
@@ -268,7 +286,9 @@ mod tests {
         .expect("tamper the stored row");
         drop(conn);
         assert!(
-            store.authorization_code_by_request_id("req-1").is_err(),
+            store
+                .read(|tx| tx.authorization_code_by_request_id("req-1"))
+                .is_err(),
             "a corrupt redirect_uri must surface as a typed read error",
         );
     }

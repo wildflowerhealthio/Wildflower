@@ -270,7 +270,7 @@ async fn a_disabled_browser_session_client_signs_nobody_in_until_re_enabled() {
     let code = g.same_device_sign_in_code_minter.mint();
 
     assert!(store_handle(&db)
-        .set_client_disabled(browser_session_client_id, Some(Utc::now()))
+        .write(|tx| tx.set_client_disabled(browser_session_client_id, Some(Utc::now())))
         .expect("disable the client out of band"));
     let refused = sign_in(&g, &code, "/").await;
     assert_cache_suppressed(&refused, "the refusal");

@@ -16,13 +16,15 @@ use crate::domain::capabilities::oauth::LaunchContexts;
 /// [`AuthorizationServer::launch_context_minter`](crate::AuthorizationServer::launch_context_minter).
 #[derive(Clone)]
 pub struct LaunchContextMinter {
-    store: SqliteGrantStore,
+    launch_contexts: LaunchContexts<SqliteGrantStore>,
 }
 
 impl LaunchContextMinter {
     /// A minter over the authorization server's store.
     pub(crate) fn new(store: SqliteGrantStore) -> Self {
-        LaunchContextMinter { store }
+        LaunchContextMinter {
+            launch_contexts: LaunchContexts::new(store),
+        }
     }
 
     /// Mint a launch for the OAuth client `client_id` and return its `launch`
@@ -33,7 +35,7 @@ impl LaunchContextMinter {
     ///
     /// [`AuthorizationServerError::Infrastructure`] on a store failure.
     pub fn mint(&self, client_id: &str) -> Result<String, AuthorizationServerError> {
-        LaunchContexts::over(&self.store)
+        self.launch_contexts
             .mint(client_id, generate_launch_nonce(), Utc::now())
             .map(|launch_context| launch_context.nonce)
     }
@@ -47,7 +49,7 @@ impl LaunchContextMinter {
     ///
     /// [`AuthorizationServerError::Infrastructure`] on a store failure.
     pub fn mint_for_any_client(&self) -> Result<String, AuthorizationServerError> {
-        LaunchContexts::over(&self.store)
+        self.launch_contexts
             .mint_for_any_client(generate_launch_nonce(), Utc::now())
             .map(|launch_context| launch_context.nonce)
     }

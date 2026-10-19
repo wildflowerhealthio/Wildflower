@@ -51,7 +51,7 @@ pub(crate) use code_authorization_starter::{
     FreshIds,
 };
 pub(crate) use device_authorizer::{DeviceAuthorizationError, DeviceAuthorizer};
-pub(crate) use launch_contexts::LaunchContexts;
+pub(crate) use launch_contexts::{consume_launch, LaunchContexts};
 pub(crate) use public_keys_reader::PublicKeysReader;
 pub(crate) use same_device_sign_in::{
     SameDeviceSignIn, SameDeviceSignInError, SignInRefusal, SignedIn, OWNER_SESSION_TTL,

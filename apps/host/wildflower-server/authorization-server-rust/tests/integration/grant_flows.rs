@@ -824,16 +824,19 @@ async fn approving_a_new_app_without_acknowledgement_is_rejected() {
     );
 
     let store = store_handle(&db);
-    assert!(store.client_by_id("brand-new-app").unwrap().is_none());
     assert!(store
-        .grant_by_client_and_redirect(
-            "brand-new-app",
-            &Url::parse("https://app.example/cb").unwrap(),
-        )
+        .read(|tx| tx.client_by_id("brand-new-app"))
         .unwrap()
         .is_none());
     assert!(store
-        .authorization_code_by_request_id(&request_id)
+        .read(|tx| tx.grant_by_client_and_redirect(
+            "brand-new-app",
+            &Url::parse("https://app.example/cb").unwrap(),
+        ))
+        .unwrap()
+        .is_none());
+    assert!(store
+        .read(|tx| tx.authorization_code_by_request_id(&request_id))
         .unwrap()
         .is_none());
     // Still pending — the prompt loads again.
@@ -877,7 +880,7 @@ async fn approving_a_new_app_registers_it_and_the_next_request_fast_paths() {
 
     let store = store_handle(&db);
     let registered = store
-        .client_by_id("brand-new-app")
+        .read(|tx| tx.client_by_id("brand-new-app"))
         .unwrap()
         .expect("the approval registers the client");
     assert_eq!(registered.name, "brand-new-app");
@@ -894,10 +897,10 @@ async fn approving_a_new_app_registers_it_and_the_next_request_fast_paths() {
     assert!(registered.secret_hash.is_none());
     assert!(registered.disabled_at.is_none());
     assert!(store
-        .grant_by_client_and_redirect(
+        .read(|tx| tx.grant_by_client_and_redirect(
             "brand-new-app",
             &Url::parse("https://app.example/cb").unwrap(),
-        )
+        ))
         .unwrap()
         .is_some());
 
@@ -926,7 +929,10 @@ async fn approving_a_changed_app_widens_its_registration() {
     let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://elsewhere.example/cb", &["read"]);
     let store = store_handle(&db);
-    let before = store.client_by_id("test-app").unwrap().unwrap();
+    let before = store
+        .read(|tx| tx.client_by_id("test-app"))
+        .unwrap()
+        .unwrap();
 
     // A different redirect AND two scopes the registration doesn't cover.
     let res = get_authorize(
@@ -955,7 +961,10 @@ async fn approving_a_changed_app_widens_its_registration() {
     .await;
     assert_eq!(res.status(), StatusCode::OK);
 
-    let after = store.client_by_id("test-app").unwrap().unwrap();
+    let after = store
+        .read(|tx| tx.client_by_id("test-app"))
+        .unwrap()
+        .unwrap();
     assert_eq!(
         after.redirect_uris,
         vec![
@@ -999,7 +1008,7 @@ async fn denying_a_new_app_registers_nothing() {
     assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(body_json(res.into_body()).await["status"], "denied");
     assert!(store_handle(&db)
-        .client_by_id("brand-new-app")
+        .read(|tx| tx.client_by_id("brand-new-app"))
         .unwrap()
         .is_none());
 }
@@ -1024,9 +1033,14 @@ async fn a_changed_request_never_takes_the_fast_path() {
 
     // The grant now covers `read`; narrow the registration out from under it.
     let store = store_handle(&db);
-    let mut client = store.client_by_id("test-app").unwrap().unwrap();
+    let mut client = store
+        .read(|tx| tx.client_by_id("test-app"))
+        .unwrap()
+        .unwrap();
     client.allowed_scopes = Vec::new();
-    store.upsert_client(&client).expect("narrow the client");
+    store
+        .write(|tx| tx.upsert_client(&client))
+        .expect("narrow the client");
 
     let res = get_authorize(
         &g.router,

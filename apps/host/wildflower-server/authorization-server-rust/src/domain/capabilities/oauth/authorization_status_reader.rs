@@ -14,6 +14,7 @@ use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::access::consents::{
     consent_decider_scopes, consent_reader_scopes,
 };
+use crate::domain::grant_store::{AuthorizationCodesTx as _, AuthorizationRequestsTx as _};
 use crate::domain::GrantStore;
 
 /// The scopes that let a browser session read the status of a code-flow
@@ -116,43 +117,44 @@ impl<S: GrantStore> AuthorizationStatusReader<S> {
         poller: Option<&PollingBrowserSession>,
         now: DateTime<Utc>,
     ) -> Result<AuthorizationStatusView, AuthorizationStatusError> {
-        let request = self
-            .store
-            .authorization_request_by_id(id)?
-            .filter(|request| poller.is_some_and(|poller| poller.may_read(request)))
-            .ok_or_else(|| AuthorizationStatusError::NotFound { id: id.to_owned() })?;
-        if request.status == RequestStatus::Pending && request.expires_at < now {
-            return Ok(AuthorizationStatusView::Expired);
-        }
-        Ok(match request.status {
-            RequestStatus::Pending => AuthorizationStatusView::Pending,
-            RequestStatus::Expired => AuthorizationStatusView::Expired,
-            RequestStatus::Denied => AuthorizationStatusView::Denied {
-                redirect_uri: request.redirect_uri,
-                client_state: request.client_state,
-            },
-            RequestStatus::Approved => {
-                let (Some(redirect_uri), Some(client_state)) =
-                    (request.redirect_uri, request.client_state)
-                else {
-                    return Err(AuthorizationStatusError::ApprovedWithoutRedirect);
-                };
-                let code = self
-                    .store
-                    .authorization_code_by_request_id(id)?
-                    .ok_or(AuthorizationStatusError::ApprovedWithoutCode)?;
-                AuthorizationStatusView::Approved {
-                    redirect_uri,
-                    code: code.code,
-                    client_state,
-                }
+        self.store.read(|tx| {
+            let request = tx
+                .authorization_request_by_id(id)?
+                .filter(|request| poller.is_some_and(|poller| poller.may_read(request)))
+                .ok_or_else(|| AuthorizationStatusError::NotFound { id: id.to_owned() })?;
+            if request.status == RequestStatus::Pending && request.expires_at < now {
+                return Ok(AuthorizationStatusView::Expired);
             }
+            Ok(match request.status {
+                RequestStatus::Pending => AuthorizationStatusView::Pending,
+                RequestStatus::Expired => AuthorizationStatusView::Expired,
+                RequestStatus::Denied => AuthorizationStatusView::Denied {
+                    redirect_uri: request.redirect_uri,
+                    client_state: request.client_state,
+                },
+                RequestStatus::Approved => {
+                    let (Some(redirect_uri), Some(client_state)) =
+                        (request.redirect_uri, request.client_state)
+                    else {
+                        return Err(AuthorizationStatusError::ApprovedWithoutRedirect);
+                    };
+                    let code = tx
+                        .authorization_code_by_request_id(id)?
+                        .ok_or(AuthorizationStatusError::ApprovedWithoutCode)?;
+                    AuthorizationStatusView::Approved {
+                        redirect_uri,
+                        code: code.code,
+                        client_state,
+                    }
+                }
+            })
         })
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::grant_store::*;
     use chrono::Duration;
     use wildflowerhealthio_scopes::{render_scopes, Permission, WildflowerResource};
 
@@ -180,6 +182,7 @@ mod tests {
         let store = FakeGrantStore::default();
         let now = Utc::now();
         store
+            .tx()
             .insert_authorization_request(&code_request(
                 "pending",
                 RequestStatus::Pending,
@@ -187,6 +190,7 @@ mod tests {
             ))
             .unwrap();
         store
+            .tx()
             .insert_authorization_request(&code_request(
                 "stale",
                 RequestStatus::Pending,
@@ -194,6 +198,7 @@ mod tests {
             ))
             .unwrap();
         store
+            .tx()
             .insert_authorization_request(&code_request(
                 "denied",
                 RequestStatus::Denied,
@@ -201,6 +206,7 @@ mod tests {
             ))
             .unwrap();
         store
+            .tx()
             .insert_authorization_request(&code_request(
                 "approved",
                 RequestStatus::Approved,
@@ -208,6 +214,7 @@ mod tests {
             ))
             .unwrap();
         store
+            .tx()
             .issue_authorization_code(&IssuedAuthorizationCode {
                 code: "the-code".to_owned(),
                 request_id: "approved".to_owned(),
@@ -263,6 +270,7 @@ mod tests {
         let store = FakeGrantStore::default();
         let now = Utc::now();
         store
+            .tx()
             .insert_authorization_request(&code_request(
                 "parked",
                 RequestStatus::Pending,
@@ -270,6 +278,7 @@ mod tests {
             ))
             .unwrap();
         store
+            .tx()
             .insert_authorization_request(&device_request("device", "CODE", RequestStatus::Pending))
             .unwrap();
         let reader = AuthorizationStatusReader::new(store);

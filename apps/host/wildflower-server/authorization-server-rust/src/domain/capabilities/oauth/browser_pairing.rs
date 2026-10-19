@@ -24,9 +24,10 @@ use crate::domain::authorization_request::{
 };
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::writers::{AccessTokenMinter, BrowserSessionWriter};
+use crate::domain::grant_store::{AuthorizationRequestsTx, ClientsTx};
 use crate::domain::sign_in_redirect::{SignInDestinations, SignInRedirect};
 use crate::domain::token::TokenIssuanceError;
-use crate::domain::GrantStore;
+use crate::domain::{GrantStore, GrantTx};
 use crate::ports::OwnerApproval;
 use crate::BROWSER_SESSION_CLIENT_ID;
 
@@ -108,9 +109,11 @@ pub(crate) enum BrowserPairingPollError {
     NotFound,
     /// The store couldn't be read or written.
     Store(AuthorizationServerError),
-    /// The approved session couldn't be stored. The request is claimed.
+    /// The approved session couldn't be stored; the claim was rolled back
+    /// with it.
     SessionNotStored(AuthorizationServerError),
-    /// The session's token couldn't be minted. The request is claimed.
+    /// The session's token couldn't be minted: before the claim committed
+    /// when no signing key could be loaded, after it when signing failed.
     Issuance(TokenIssuanceError),
 }
 
@@ -167,16 +170,16 @@ impl<S: GrantStore> BrowserPairing<S> {
             .destinations
             .allow_on_this_server(next)
             .ok_or(BrowserPairingStartError::NextNotAllowed)?;
-        if self.browser_session_client_is_disabled()? {
-            return Err(BrowserPairingStartError::BrowserSessionClientDisabled);
-        }
         // 256-bit CSPRNG opaque token, like a `device_code`.
         let pairing_code = generate_authorization_code();
-        let user_code = generate_unique_user_code(&self.store)?
-            .ok_or(BrowserPairingStartError::UserCodeExhausted)?;
         let browser_name = user_agent_name.unwrap_or_else(|| UNRECOGNIZED_BROWSER_NAME.to_owned());
-        self.store
-            .insert_authorization_request(&AuthorizationRequest::new_browser_pairing(
+        let user_code = self.store.write(|tx| {
+            if browser_session_client_is_disabled(tx)? {
+                return Err(BrowserPairingStartError::BrowserSessionClientDisabled);
+            }
+            let user_code = generate_unique_user_code(tx)?
+                .ok_or(BrowserPairingStartError::UserCodeExhausted)?;
+            tx.insert_authorization_request(&AuthorizationRequest::new_browser_pairing(
                 StartBrowserPairingArgs {
                     id: pairing_code.clone(),
                     client_id: BROWSER_SESSION_CLIENT_ID.to_owned(),
@@ -186,6 +189,8 @@ impl<S: GrantStore> BrowserPairing<S> {
                     ttl: DEVICE_AUTHORIZATION_TTL,
                 },
             ))?;
+            Ok(user_code)
+        })?;
         self.owner_approval.republish_active();
         Ok(StartedBrowserPairing {
             pairing_code,
@@ -200,8 +205,9 @@ impl<S: GrantStore> BrowserPairing<S> {
     /// Poll the pairing `pairing_code` names at `now`, from a page that now
     /// names its browser `browser_name` (blank keeps the name it has). While
     /// it is pending the poll is stamped, throttled to the poll interval, and
-    /// the name recorded; once approved, the first poll claims it, stores the
-    /// approved session it starts, and mints the session's token.
+    /// the name recorded; once approved, the first poll claims it and stores
+    /// the approved session it starts, and the session's token is minted once
+    /// that has committed.
     ///
     /// # Errors
     ///
@@ -213,86 +219,126 @@ impl<S: GrantStore> BrowserPairing<S> {
         browser_name: &str,
         now: DateTime<Utc>,
     ) -> Result<BrowserPairingStatus, BrowserPairingPollError> {
-        let pairing_request = match self.store.authorization_request_by_id(pairing_code)? {
-            Some(request) if request.grant_type == GrantType::BrowserPairing => request,
-            _ => return Err(BrowserPairingPollError::NotFound),
-        };
-        if pairing_request.expires_at < now {
-            return Ok(BrowserPairingStatus::Expired);
-        }
-        match pairing_request.status {
-            RequestStatus::Pending => self.record_poll(&pairing_request, browser_name, now),
-            RequestStatus::Approved => self.start_approved_session(&pairing_request, now),
-            RequestStatus::Denied => Ok(BrowserPairingStatus::Denied),
-            RequestStatus::Expired => Ok(BrowserPairingStatus::Expired),
+        let polled = self.store.write(|tx| {
+            let pairing_request = match tx.authorization_request_by_id(pairing_code)? {
+                Some(request) if request.grant_type == GrantType::BrowserPairing => request,
+                _ => return Err(BrowserPairingPollError::NotFound),
+            };
+            if pairing_request.expires_at < now {
+                return Ok(PolledPairing::Answered(BrowserPairingStatus::Expired));
+            }
+            match pairing_request.status {
+                RequestStatus::Pending => record_poll(tx, &pairing_request, browser_name, now),
+                RequestStatus::Approved => self.claim_approved_session(tx, &pairing_request, now),
+                RequestStatus::Denied => Ok(PolledPairing::Answered(BrowserPairingStatus::Denied)),
+                RequestStatus::Expired => {
+                    Ok(PolledPairing::Answered(BrowserPairingStatus::Expired))
+                }
+            }
+        })?;
+        match polled {
+            PolledPairing::Answered(status) => Ok(status),
+            PolledPairing::Renamed => {
+                self.owner_approval.republish_active();
+                Ok(BrowserPairingStatus::Pending)
+            }
+            PolledPairing::Claimed {
+                claimed_pairing,
+                minter,
+            } => {
+                let session_token = minter
+                    .mint(TokenEntitlement::BrowserPairing(&claimed_pairing))
+                    .map_err(BrowserPairingPollError::Issuance)?;
+                Ok(BrowserPairingStatus::Approved { session_token })
+            }
         }
     }
 
-    /// Throttle and stamp a poll of the pending `pairing_request`, recording
-    /// `browser_name` when it is a new one, which the newest pending consent
-    /// is republished for.
-    fn record_poll(
+    /// Claim the approved `pairing_request` and store the approved session it
+    /// starts, inside the poll's scope `tx`, and load the key its token is
+    /// signed with. A request another poll claimed first is
+    /// [`Expired`](BrowserPairingStatus::Expired).
+    fn claim_approved_session(
         &self,
-        pairing_request: &AuthorizationRequest,
-        browser_name: &str,
-        now: DateTime<Utc>,
-    ) -> Result<BrowserPairingStatus, BrowserPairingPollError> {
-        if pairing_request
-            .last_polled_at
-            .is_some_and(|last_polled_at| now - last_polled_at < DEVICE_CODE_POLL_INTERVAL)
-        {
-            return Ok(BrowserPairingStatus::SlowDown);
-        }
-        let browser_name = Some(browser_name.trim())
-            .filter(|browser_name| !browser_name.is_empty())
-            .or(pairing_request.device_name.as_deref())
-            .unwrap_or(UNRECOGNIZED_BROWSER_NAME);
-        self.store
-            .record_browser_pairing_poll(&pairing_request.id, now, browser_name)?;
-        if pairing_request.device_name.as_deref() != Some(browser_name) {
-            self.owner_approval.republish_active();
-        }
-        Ok(BrowserPairingStatus::Pending)
-    }
-
-    /// Claim the approved `pairing_request`, store the approved session it
-    /// starts, and mint the session's token. A request another poll claimed
-    /// first is [`Expired`](BrowserPairingStatus::Expired).
-    fn start_approved_session(
-        &self,
+        tx: &mut impl GrantTx,
         pairing_request: &AuthorizationRequest,
         now: DateTime<Utc>,
-    ) -> Result<BrowserPairingStatus, BrowserPairingPollError> {
+    ) -> Result<PolledPairing<'_>, BrowserPairingPollError> {
         let Some(claimed_pairing) =
-            ClaimedBrowserPairing::claim(&self.store, pairing_request, APPROVED_SESSION_TTL, now)?
+            ClaimedBrowserPairing::claim(tx, pairing_request, APPROVED_SESSION_TTL, now)?
         else {
-            return Ok(BrowserPairingStatus::Expired);
+            return Ok(PolledPairing::Answered(BrowserPairingStatus::Expired));
         };
-        BrowserSessionWriter::over(&self.store)
+        BrowserSessionWriter::within(tx)
             .start_approved_session(&claimed_pairing)
             .map_err(BrowserPairingPollError::SessionNotStored)?;
-        let session_token =
-            AccessTokenMinter::new(&self.store, &self.server_origin, APPROVED_SESSION_TTL)
-                .mint(TokenEntitlement::BrowserPairing(&claimed_pairing))
+        let minter =
+            AccessTokenMinter::with_active_key(tx, &self.server_origin, APPROVED_SESSION_TTL)
                 .map_err(BrowserPairingPollError::Issuance)?;
-        Ok(BrowserPairingStatus::Approved { session_token })
+        Ok(PolledPairing::Claimed {
+            claimed_pairing,
+            minter: Box::new(minter),
+        })
     }
+}
 
-    /// Whether the browser-session client is disabled. Its row is seeded at
-    /// boot, so a missing one is an error, not an enabled client.
-    fn browser_session_client_is_disabled(&self) -> Result<bool, AuthorizationServerError> {
-        let browser_session_client = self
-            .store
-            .client_by_id(BROWSER_SESSION_CLIENT_ID)?
-            .ok_or_else(|| AuthorizationServerError::ClientNotFound {
-                client_id: BROWSER_SESSION_CLIENT_ID.to_owned(),
-            })?;
-        Ok(browser_session_client.disabled_at.is_some())
+/// What a poll's scope did with a pairing.
+enum PolledPairing<'a> {
+    /// The poll's answer needs nothing more.
+    Answered(BrowserPairingStatus),
+    /// The pending pairing was stamped and took a new name, which the newest
+    /// pending consent is republished for.
+    Renamed,
+    /// The approved pairing was claimed and its session stored: the session's
+    /// token is signed with `minter`.
+    Claimed {
+        claimed_pairing: ClaimedBrowserPairing,
+        minter: Box<AccessTokenMinter<'a>>,
+    },
+}
+
+/// Throttle and stamp a poll of the pending `pairing_request` in `tx`,
+/// recording `browser_name` when it is a new one.
+fn record_poll<'a>(
+    tx: &mut impl AuthorizationRequestsTx,
+    pairing_request: &AuthorizationRequest,
+    browser_name: &str,
+    now: DateTime<Utc>,
+) -> Result<PolledPairing<'a>, BrowserPairingPollError> {
+    if pairing_request
+        .last_polled_at
+        .is_some_and(|last_polled_at| now - last_polled_at < DEVICE_CODE_POLL_INTERVAL)
+    {
+        return Ok(PolledPairing::Answered(BrowserPairingStatus::SlowDown));
     }
+    let browser_name = Some(browser_name.trim())
+        .filter(|browser_name| !browser_name.is_empty())
+        .or(pairing_request.device_name.as_deref())
+        .unwrap_or(UNRECOGNIZED_BROWSER_NAME);
+    tx.record_browser_pairing_poll(&pairing_request.id, now, browser_name)?;
+    if pairing_request.device_name.as_deref() == Some(browser_name) {
+        Ok(PolledPairing::Answered(BrowserPairingStatus::Pending))
+    } else {
+        Ok(PolledPairing::Renamed)
+    }
+}
+
+/// Whether the browser-session client is disabled. Its row is seeded at
+/// boot, so a missing one is an error, not an enabled client.
+fn browser_session_client_is_disabled(
+    tx: &mut impl ClientsTx,
+) -> Result<bool, AuthorizationServerError> {
+    let browser_session_client = tx.client_by_id(BROWSER_SESSION_CLIENT_ID)?.ok_or_else(|| {
+        AuthorizationServerError::ClientNotFound {
+            client_id: BROWSER_SESSION_CLIENT_ID.to_owned(),
+        }
+    })?;
+    Ok(browser_session_client.disabled_at.is_some())
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::grant_store::*;
     use url::Url;
     use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
     use wildflowerhealthio_shared_structures::launcher::LauncherBase;
@@ -303,7 +349,6 @@ mod tests {
         client, seed_active_signing_key, FakeGrantStore, RecordingOwnerApproval,
     };
     use crate::domain::token::{verify_jwt, VerifyOptions};
-    use crate::domain::GrantTx as _;
 
     const SERVER_ORIGIN: &str = "https://ruth.relay.example";
     const NEXT: &str = "/oauth/authorize?client_id=app&state=s";
@@ -318,6 +363,7 @@ mod tests {
         let store = FakeGrantStore::default();
         let signing_key = seed_active_signing_key(&store);
         store
+            .tx()
             .upsert_client(&client(
                 BROWSER_SESSION_CLIENT_ID,
                 &["system/*.cruds", "wildflower/*.cruds", "wildflower/launch"],
@@ -345,7 +391,7 @@ mod tests {
     fn approve(store: &FakeGrantStore, pairing_code: &str, approved_scopes: &[&str]) {
         let approved_scopes: Vec<String> = approved_scopes.iter().map(|&s| s.to_owned()).collect();
         assert!(store
-            .with_connection(|tx| {
+            .write(|tx| {
                 tx.approve_authorization_request(
                     pairing_code,
                     &approved_scopes,
@@ -372,6 +418,7 @@ mod tests {
         assert_ne!(started.pairing_code, started.user_code);
         let parked = pairing
             .store
+            .tx()
             .authorization_request_by_user_code(&started.user_code)
             .unwrap()
             .expect("parked under its user code");
@@ -412,6 +459,7 @@ mod tests {
         }
         assert!(pairing
             .store
+            .tx()
             .set_client_disabled(BROWSER_SESSION_CLIENT_ID, Some(Utc::now()))
             .unwrap());
         assert!(matches!(
@@ -435,6 +483,7 @@ mod tests {
         let name = || {
             pairing
                 .store
+                .tx()
                 .authorization_request_by_id(&started.pairing_code)
                 .unwrap()
                 .unwrap()
@@ -512,6 +561,7 @@ mod tests {
         let sid = claims.sid.expect("names its session");
         let session = pairing
             .store
+            .tx()
             .browser_session_by_sid(&sid)
             .unwrap()
             .expect("the session is stored");
@@ -536,6 +586,7 @@ mod tests {
         let denied = pairing.start(NEXT, None).unwrap();
         pairing
             .store
+            .tx()
             .deny_authorization_request(&denied.pairing_code)
             .unwrap();
         assert!(matches!(
@@ -564,6 +615,7 @@ mod tests {
         ));
         pairing
             .store
+            .tx()
             .insert_authorization_request(&crate::domain::test_fake::device_request(
                 "a-device-code",
                 "DEVI-CE00",

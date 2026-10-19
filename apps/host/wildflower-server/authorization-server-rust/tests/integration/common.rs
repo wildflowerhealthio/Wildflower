@@ -44,6 +44,10 @@ pub use wildflowerhealthio_authorization_server::domain::browser_session::Browse
 pub use wildflowerhealthio_authorization_server::domain::client::{
     AllowedGrantType, Client, ClientKind,
 };
+pub use wildflowerhealthio_authorization_server::domain::grant_store::{
+    AuthorizationCodesTx, AuthorizationRequestsTx, BrowserSessionsTx, ClientsTx, GrantsTx,
+    LaunchContextsTx, RefreshTokensTx, SigningKeysTx,
+};
 pub use wildflowerhealthio_authorization_server::domain::refresh_token::{
     RefreshToken, RefreshTokenFamily,
 };
@@ -192,7 +196,7 @@ pub fn paired_browser_session_holding(db: &TestDb, scopes: &[&str]) -> (String, 
         Utc::now(),
     );
     store_handle(db)
-        .insert_browser_session(&session)
+        .write(|tx| tx.insert_browser_session(&session))
         .expect("insert the paired browser's session");
     let token = mint_browser_session_token(db, &session.sid, scopes);
     (session.sid, token)
@@ -215,7 +219,7 @@ fn mint_token_under_session(
     sid: Option<&str>,
 ) -> String {
     let key = store_handle(db)
-        .active_signing_key()
+        .read(|tx| tx.active_signing_key())
         .expect("signing-key query")
         .expect("a seeded active signing key");
     let scope: Vec<String> = scopes.iter().map(|s| (*s).to_owned()).collect();
@@ -261,16 +265,18 @@ pub fn seed_client_with_redirect(
 ) {
     let store = store_handle(db);
     store
-        .upsert_client(&Client {
-            client_id: client_id.to_string(),
-            name: "Integration Test Client".to_string(),
-            kind: ClientKind::Public,
-            redirect_uris: vec![Url::parse(redirect_uri).expect("redirect url")],
-            allowed_scopes: scopes.iter().map(ToString::to_string).collect(),
-            allowed_grant_types: AllowedGrantType::ALL.to_vec(),
-            secret_hash: None,
-            registered_at: Utc::now(),
-            disabled_at: None,
+        .write(|tx| {
+            tx.upsert_client(&Client {
+                client_id: client_id.to_string(),
+                name: "Integration Test Client".to_string(),
+                kind: ClientKind::Public,
+                redirect_uris: vec![Url::parse(redirect_uri).expect("redirect url")],
+                allowed_scopes: scopes.iter().map(ToString::to_string).collect(),
+                allowed_grant_types: AllowedGrantType::ALL.to_vec(),
+                secret_hash: None,
+                registered_at: Utc::now(),
+                disabled_at: None,
+            })
         })
         .expect("register client");
 }
@@ -288,16 +294,18 @@ pub const TEST_CLIENT_SCOPE: &str = "system/*.cruds";
 /// [`TEST_CLIENT_SCOPE`], with no redirect URI.
 pub fn seed_test_client(db: &TestDb) {
     store_handle(db)
-        .upsert_client(&Client {
-            client_id: TEST_CLIENT_ID.to_string(),
-            name: "Integration Test Client".to_string(),
-            kind: ClientKind::Public,
-            redirect_uris: vec![],
-            allowed_scopes: vec![TEST_CLIENT_SCOPE.to_string()],
-            allowed_grant_types: AllowedGrantType::ALL.to_vec(),
-            secret_hash: None,
-            registered_at: Utc::now(),
-            disabled_at: None,
+        .write(|tx| {
+            tx.upsert_client(&Client {
+                client_id: TEST_CLIENT_ID.to_string(),
+                name: "Integration Test Client".to_string(),
+                kind: ClientKind::Public,
+                redirect_uris: vec![],
+                allowed_scopes: vec![TEST_CLIENT_SCOPE.to_string()],
+                allowed_grant_types: AllowedGrantType::ALL.to_vec(),
+                secret_hash: None,
+                registered_at: Utc::now(),
+                disabled_at: None,
+            })
         })
         .expect("register the test client");
 }
@@ -316,7 +324,7 @@ pub fn mint_scoped_token(db: &TestDb, scopes: &[&str]) -> String {
 /// didn't mint for itself.
 pub fn mint_token_naming(db: &TestDb, scopes: &[&str], issuer: &str, audience: &str) -> String {
     let key = store_handle(db)
-        .active_signing_key()
+        .read(|tx| tx.active_signing_key())
         .expect("signing-key query")
         .expect("a seeded active signing key");
     let scope: Vec<String> = scopes.iter().map(|s| (*s).to_owned()).collect();
@@ -391,43 +399,47 @@ pub fn plant_authorization_code(
     let challenge = compute_code_challenge(CODE_VERIFIER);
     let now = Utc::now();
     store
-        .insert_authorization_request(&AuthorizationRequest {
-            id: request_id.clone(),
-            grant_type: GrantType::AuthorizationCode,
-            client_id: client_id.to_string(),
-            requested_scopes: scope_vec.clone(),
-            code_challenge: Some(challenge.clone()),
-            code_challenge_method: Some("S256".to_string()),
-            redirect_uri: Some(redirect_uri.clone()),
-            client_state: Some("state".to_string()),
-            user_code: None,
-            pre_approved_scopes: Vec::new(),
-            requested_at: now,
-            expires_at,
-            last_polled_at: None,
-            status: RequestStatus::Approved,
-            granted_scopes: Some(scope_vec.clone()),
-            patient: None,
-            device_name: None,
-            launch: None,
-            launch_bound_patient: None,
-            decidable_in_requesting_browser: false,
-            sid: Some(sid.to_owned()),
-            session_shortfall_acknowledged: true,
+        .write(|tx| {
+            tx.insert_authorization_request(&AuthorizationRequest {
+                id: request_id.clone(),
+                grant_type: GrantType::AuthorizationCode,
+                client_id: client_id.to_string(),
+                requested_scopes: scope_vec.clone(),
+                code_challenge: Some(challenge.clone()),
+                code_challenge_method: Some("S256".to_string()),
+                redirect_uri: Some(redirect_uri.clone()),
+                client_state: Some("state".to_string()),
+                user_code: None,
+                pre_approved_scopes: Vec::new(),
+                requested_at: now,
+                expires_at,
+                last_polled_at: None,
+                status: RequestStatus::Approved,
+                granted_scopes: Some(scope_vec.clone()),
+                patient: None,
+                device_name: None,
+                launch: None,
+                launch_bound_patient: None,
+                decidable_in_requesting_browser: false,
+                sid: Some(sid.to_owned()),
+                session_shortfall_acknowledged: true,
+            })
         })
         .expect("insert request");
     store
-        .issue_authorization_code(&IssuedAuthorizationCode {
-            code: code.to_string(),
-            request_id,
-            client_id: client_id.to_string(),
-            redirect_uri: redirect_uri.clone(),
-            code_challenge: challenge,
-            granted_scopes: scope_vec,
-            patient: None,
-            issued_at: now,
-            expires_at,
-            sid: sid.to_owned(),
+        .write(|tx| {
+            tx.issue_authorization_code(&IssuedAuthorizationCode {
+                code: code.to_string(),
+                request_id,
+                client_id: client_id.to_string(),
+                redirect_uri: redirect_uri.clone(),
+                code_challenge: challenge,
+                granted_scopes: scope_vec,
+                patient: None,
+                issued_at: now,
+                expires_at,
+                sid: sid.to_owned(),
+            })
         })
         .expect("issue code");
 }
@@ -446,29 +458,31 @@ pub fn plant_device_request(
     let scope_vec: Vec<String> = scopes.iter().map(ToString::to_string).collect();
     let granted = matches!(status, RequestStatus::Approved).then(|| scope_vec.clone());
     store
-        .insert_authorization_request(&AuthorizationRequest {
-            id: device_code.to_string(),
-            grant_type: GrantType::DeviceCode,
-            client_id: client_id.to_string(),
-            requested_scopes: scope_vec,
-            code_challenge: None,
-            code_challenge_method: None,
-            redirect_uri: None,
-            client_state: None,
-            user_code: Some("WILD-FLWR".to_string()),
-            pre_approved_scopes: Vec::new(),
-            requested_at: Utc::now(),
-            expires_at,
-            last_polled_at: None,
-            status,
-            granted_scopes: granted,
-            patient: None,
-            device_name: None,
-            launch: None,
-            launch_bound_patient: None,
-            decidable_in_requesting_browser: false,
-            sid: None,
-            session_shortfall_acknowledged: true,
+        .write(|tx| {
+            tx.insert_authorization_request(&AuthorizationRequest {
+                id: device_code.to_string(),
+                grant_type: GrantType::DeviceCode,
+                client_id: client_id.to_string(),
+                requested_scopes: scope_vec,
+                code_challenge: None,
+                code_challenge_method: None,
+                redirect_uri: None,
+                client_state: None,
+                user_code: Some("WILD-FLWR".to_string()),
+                pre_approved_scopes: Vec::new(),
+                requested_at: Utc::now(),
+                expires_at,
+                last_polled_at: None,
+                status,
+                granted_scopes: granted,
+                patient: None,
+                device_name: None,
+                launch: None,
+                launch_bound_patient: None,
+                decidable_in_requesting_browser: false,
+                sid: None,
+                session_shortfall_acknowledged: true,
+            })
         })
         .expect("insert device request");
 }
@@ -748,24 +762,28 @@ pub fn plant_refresh_token(
 ) {
     let now = Utc::now();
     store
-        .insert_refresh_token_family_row(&RefreshTokenFamily {
-            family_id: format!("family-{plaintext}"),
-            client_id: client_id.to_string(),
-            scopes: vec!["read".to_string(), "offline_access".to_string()],
-            patient: None,
-            issued_at: now,
-            expires_at: family_expires_at,
-            authorization_code_hash: None,
-            grant_id: None,
-            sid: None,
+        .write(|tx| {
+            tx.insert_refresh_token_family_row(&RefreshTokenFamily {
+                family_id: format!("family-{plaintext}"),
+                client_id: client_id.to_string(),
+                scopes: vec!["read".to_string(), "offline_access".to_string()],
+                patient: None,
+                issued_at: now,
+                expires_at: family_expires_at,
+                authorization_code_hash: None,
+                grant_id: None,
+                sid: None,
+            })
         })
         .expect("insert refresh token family row");
     store
-        .insert_refresh_token(&RefreshToken {
-            token_hash: token_storage_hash(plaintext),
-            family_id: format!("family-{plaintext}"),
-            issued_at: now,
-            consumed_at: None,
+        .write(|tx| {
+            tx.insert_refresh_token(&RefreshToken {
+                token_hash: token_storage_hash(plaintext),
+                family_id: format!("family-{plaintext}"),
+                issued_at: now,
+                consumed_at: None,
+            })
         })
         .expect("insert first refresh token");
 }
@@ -786,16 +804,20 @@ pub fn seed_confidential_client(
 ) {
     let store = store_handle(db);
     store
-        .upsert_client(&Client {
-            client_id: client_id.to_string(),
-            name: "Integration Test Confidential Client".to_string(),
-            kind: ClientKind::Confidential,
-            redirect_uris: vec![],
-            allowed_scopes: scopes.iter().map(ToString::to_string).collect(),
-            allowed_grant_types: AllowedGrantType::ALL.to_vec(),
-            secret_hash: Some(hash_client_secret(client_secret_plaintext).expect("hash secret")),
-            registered_at: Utc::now(),
-            disabled_at: None,
+        .write(|tx| {
+            tx.upsert_client(&Client {
+                client_id: client_id.to_string(),
+                name: "Integration Test Confidential Client".to_string(),
+                kind: ClientKind::Confidential,
+                redirect_uris: vec![],
+                allowed_scopes: scopes.iter().map(ToString::to_string).collect(),
+                allowed_grant_types: AllowedGrantType::ALL.to_vec(),
+                secret_hash: Some(
+                    hash_client_secret(client_secret_plaintext).expect("hash secret"),
+                ),
+                registered_at: Utc::now(),
+                disabled_at: None,
+            })
         })
         .expect("register confidential client");
 }

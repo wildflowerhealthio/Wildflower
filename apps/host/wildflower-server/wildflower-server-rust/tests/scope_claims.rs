@@ -13,6 +13,7 @@ use axum::http::{Request, StatusCode};
 use tokio::sync::watch;
 use tower::ServiceExt;
 use url::Url;
+use wildflowerhealthio_authorization_server::domain::grant_store::SigningKeysTx as _;
 use wildflowerhealthio_authorization_server::domain::token::{mint_access_token, NewJwtArgs};
 use wildflowerhealthio_authorization_server::{
     authorization_server_auth_middleware, setup_authorization_server, AdmitEveryAuthorizationStart,
@@ -68,7 +69,7 @@ fn set_up_authorization_server(
 fn mint_scoped_token(pool: &DieselPool, scopes: &[&str]) -> String {
     let key = SqliteGrantStore::new(pool.clone())
         .expect("store handle")
-        .active_signing_key()
+        .read(|tx| tx.active_signing_key())
         .expect("signing-key query")
         .expect("a seeded active signing key");
     let scopes: Vec<String> = scopes.iter().map(|s| (*s).to_owned()).collect();

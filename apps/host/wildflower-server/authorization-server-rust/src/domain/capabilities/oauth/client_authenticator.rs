@@ -29,6 +29,7 @@ impl<S: GrantStore> ClientAuthenticator<S> {
         &self,
         presented: &ClientCredentials,
     ) -> Result<AuthenticatedClient, ClientAuthenticationError> {
-        AuthenticatedClient::authenticate(&self.store, presented)
+        self.store
+            .read(|tx| AuthenticatedClient::authenticate(tx, presented))
     }
 }

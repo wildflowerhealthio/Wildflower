@@ -4,6 +4,7 @@
 
 use crate::crypto_util::public_jwk::PublicJwk;
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::grant_store::SigningKeysTx as _;
 use crate::domain::GrantStore;
 
 /// Read the public signing keys. Generic over the store port; the binding
@@ -25,11 +26,7 @@ impl<S: GrantStore> PublicKeysReader<S> {
     ///
     /// [`AuthorizationServerError::Infrastructure`] on a store failure.
     pub(crate) fn public_jwks(&self) -> Result<Vec<PublicJwk>, AuthorizationServerError> {
-        Ok(self
-            .store
-            .all_signing_keys()?
-            .iter()
-            .map(PublicJwk::from)
-            .collect())
+        let signing_keys = self.store.read(|tx| tx.all_signing_keys())?;
+        Ok(signing_keys.iter().map(PublicJwk::from).collect())
     }
 }

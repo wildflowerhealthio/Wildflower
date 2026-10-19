@@ -12,7 +12,7 @@ use chrono::{DateTime, Duration, Utc};
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::browser_session::BrowserSession;
-use crate::domain::GrantStore;
+use crate::domain::grant_store::AuthorizationRequestsTx;
 use crate::BROWSER_SESSION_CLIENT_ID;
 
 /// An approved browser pairing, atomically claimed (`approved` → `expired`)
@@ -23,8 +23,8 @@ pub(crate) struct ClaimedBrowserPairing {
 }
 
 impl ClaimedBrowserPairing {
-    /// Claim `approved_pairing`, an approved browser pairing request, in
-    /// `store`. When this call wins the claim, the proof holds a new approved
+    /// Claim `approved_pairing`, an approved browser pairing request, in the
+    /// caller's write scope `tx`. When this call wins the claim, the proof holds a new approved
     /// session named after the request's browser, with the scopes the Owner
     /// granted, lasting `session_ttl` from `now`. `None` when the request is
     /// no approved browser pairing, or a concurrent poll claimed it first.
@@ -33,7 +33,7 @@ impl ClaimedBrowserPairing {
     ///
     /// [`AuthorizationServerError::Infrastructure`] on a store failure.
     pub(crate) fn claim(
-        store: &impl GrantStore,
+        tx: &mut impl AuthorizationRequestsTx,
         approved_pairing: &AuthorizationRequest,
         session_ttl: Duration,
         now: DateTime<Utc>,
@@ -52,7 +52,7 @@ impl ClaimedBrowserPairing {
         else {
             return Ok(None);
         };
-        if !store.consume_approved_authorization_request(&approved_pairing.id)? {
+        if !tx.consume_approved_authorization_request(&approved_pairing.id)? {
             return Ok(None);
         }
         Ok(Some(ClaimedBrowserPairing {
@@ -87,8 +87,8 @@ mod tests {
     use super::*;
     use crate::domain::authorization_request::StartBrowserPairingArgs;
     use crate::domain::browser_session::BrowserSessionKind;
+    use crate::domain::grant_store::*;
     use crate::domain::test_fake::FakeGrantStore;
-    use crate::domain::GrantTx as _;
 
     const SESSION_TTL: Duration = Duration::hours(24);
 
@@ -104,9 +104,12 @@ mod tests {
     }
 
     fn approved_pairing(store: &FakeGrantStore, id: &str) -> AuthorizationRequest {
-        store.insert_authorization_request(&pairing(id)).unwrap();
         store
-            .with_connection(|tx| {
+            .tx()
+            .insert_authorization_request(&pairing(id))
+            .unwrap();
+        store
+            .write(|tx| {
                 tx.approve_authorization_request(
                     id,
                     &["wildflower/launch".to_owned(), "system/*.rs".to_owned()],
@@ -115,7 +118,7 @@ mod tests {
                 )
             })
             .unwrap();
-        store.authorization_request_by_id(id).unwrap().unwrap()
+        store.tx().authorization_request_by_id(id).unwrap().unwrap()
     }
 
     /// The claim starts an approved session named as approved, with the
@@ -125,7 +128,7 @@ mod tests {
         let store = FakeGrantStore::default();
         let request = approved_pairing(&store, "pairing-1");
         let now = Utc::now();
-        let claimed = ClaimedBrowserPairing::claim(&store, &request, SESSION_TTL, now)
+        let claimed = ClaimedBrowserPairing::claim(&mut store.tx(), &request, SESSION_TTL, now)
             .unwrap()
             .expect("claims");
         let session = claimed.session();
@@ -136,7 +139,7 @@ mod tests {
         assert_eq!(claimed.client_id(), BROWSER_SESSION_CLIENT_ID);
         assert_eq!(claimed.token_scopes(), session.scopes);
         assert!(
-            ClaimedBrowserPairing::claim(&store, &request, SESSION_TTL, now)
+            ClaimedBrowserPairing::claim(&mut store.tx(), &request, SESSION_TTL, now)
                 .unwrap()
                 .is_none(),
             "the second claim loses"
@@ -149,9 +152,9 @@ mod tests {
     fn only_an_approved_pairing_is_claimed() {
         let store = FakeGrantStore::default();
         let pending = pairing("pairing-2");
-        store.insert_authorization_request(&pending).unwrap();
+        store.tx().insert_authorization_request(&pending).unwrap();
         assert!(
-            ClaimedBrowserPairing::claim(&store, &pending, SESSION_TTL, Utc::now())
+            ClaimedBrowserPairing::claim(&mut store.tx(), &pending, SESSION_TTL, Utc::now())
                 .unwrap()
                 .is_none()
         );
@@ -161,7 +164,7 @@ mod tests {
             ..approved
         };
         assert!(ClaimedBrowserPairing::claim(
-            &store,
+            &mut store.tx(),
             &approved_device_request,
             SESSION_TTL,
             Utc::now()
@@ -170,6 +173,7 @@ mod tests {
         .is_none());
         assert_eq!(
             store
+                .tx()
                 .authorization_request_by_id("pairing-3")
                 .unwrap()
                 .unwrap()

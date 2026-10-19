@@ -41,7 +41,7 @@ fn find_client<'a>(clients: &'a [Value], client_id: &str) -> Option<&'a Value> {
 /// The stored `disabled_at` of `client_id`.
 fn stored_disabled_at(db: &TestDb, client_id: &str) -> Option<DateTime<Utc>> {
     store_handle(db)
-        .client_by_id(client_id)
+        .read(|tx| tx.client_by_id(client_id))
         .unwrap()
         .expect("row")
         .disabled_at

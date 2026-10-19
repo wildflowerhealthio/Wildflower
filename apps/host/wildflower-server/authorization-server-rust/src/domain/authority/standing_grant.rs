@@ -12,7 +12,7 @@ use url::Url;
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::client_registration::ClientRegistrationVerdict;
-use crate::domain::GrantStore;
+use crate::domain::grant_store::GrantsTx;
 
 /// How far a standing grant covers a request. Only [`Full`](Self::Full) is a
 /// proof; the other two carry what the consent prompt pre-ticks.
@@ -43,7 +43,7 @@ impl GrantCoverage {
     ///
     /// [`AuthorizationServerError::Infrastructure`] on a store failure.
     pub(crate) fn resolve(
-        store: &impl GrantStore,
+        tx: &mut impl GrantsTx,
         registration_verdict: &ClientRegistrationVerdict,
         requested_client_id: &str,
         requested_redirect_uri: &Url,
@@ -53,7 +53,7 @@ impl GrantCoverage {
             return Ok(GrantCoverage::Uncovered);
         }
         let Some(grant) =
-            store.grant_by_client_and_redirect(requested_client_id, requested_redirect_uri)?
+            tx.grant_by_client_and_redirect(requested_client_id, requested_redirect_uri)?
         else {
             return Ok(GrantCoverage::Uncovered);
         };
@@ -119,6 +119,7 @@ impl StandingGrantCoverage {
 mod tests {
     use super::*;
     use crate::domain::grant::AuthorizationCodeGrant;
+
     use crate::domain::test_fake::{code_grant, owned_scopes, FakeGrantStore};
 
     fn redirect() -> Url {
@@ -128,6 +129,7 @@ mod tests {
     fn store_with_grant(scopes: &[&str], patient: Option<&str>) -> FakeGrantStore {
         let store = FakeGrantStore::default();
         store
+            .tx()
             .create_authorization_code_grant(&AuthorizationCodeGrant {
                 scopes: owned_scopes(scopes),
                 patient: patient.map(str::to_owned),
@@ -144,7 +146,7 @@ mod tests {
     fn full_coverage_is_a_proof_carrying_the_requested_scopes() {
         let store = store_with_grant(&["patient/*.cruds", "openid"], Some("pat-1"));
         let coverage = GrantCoverage::resolve(
-            &store,
+            &mut store.tx(),
             &ClientRegistrationVerdict::Registered,
             "client",
             &redirect(),
@@ -163,7 +165,7 @@ mod tests {
     fn partial_coverage_pre_ticks_without_proving() {
         let store = store_with_grant(&["openid"], None);
         let coverage = GrantCoverage::resolve(
-            &store,
+            &mut store.tx(),
             &ClientRegistrationVerdict::Registered,
             "client",
             &redirect(),
@@ -182,7 +184,7 @@ mod tests {
         let store = store_with_grant(&["patient/*.cruds", "openid"], None);
         let requested = owned_scopes(&["openid"]);
         let outside = GrantCoverage::resolve(
-            &store,
+            &mut store.tx(),
             &ClientRegistrationVerdict::New,
             "client",
             &redirect(),
@@ -193,7 +195,7 @@ mod tests {
         assert!(outside.pre_approved_scopes().is_empty());
 
         let no_grant = GrantCoverage::resolve(
-            &store,
+            &mut store.tx(),
             &ClientRegistrationVerdict::Registered,
             "stranger",
             &redirect(),

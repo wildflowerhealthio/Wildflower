@@ -2,7 +2,7 @@ use super::*;
 use crate::db::test_support::{arb_opt_timestamp, arb_timestamp};
 use crate::db::SqliteGrantStore;
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::{GrantStore as _, GrantTx as _};
+use crate::domain::GrantStore as _;
 use proptest::prelude::*;
 
 fn arb_family() -> impl Strategy<Value = RefreshTokenFamily> {
@@ -66,7 +66,7 @@ proptest! {
         let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         seed_family_with_token(&store, &family, &token);
         let (fetched_token, fetched_family) = store
-            .refresh_token_with_family_by_hash(&token.token_hash)
+            .read(|tx| tx.refresh_token_with_family_by_hash(&token.token_hash))
             .expect("query")
             .expect("row present");
         prop_assert_eq!(fetched_token, token);
@@ -90,13 +90,13 @@ proptest! {
         seed_family_with_token(&store, &family, &live);
         let now = Utc::now();
         prop_assert!(store
-            .with_connection(|tx| tx.stamp_refresh_token_consumed_if_live(&live.token_hash, now))
+            .write(|tx| tx.stamp_refresh_token_consumed_if_live(&live.token_hash, now))
             .expect("first stamp"));
         prop_assert!(!store
-            .with_connection(|tx| tx.stamp_refresh_token_consumed_if_live(&live.token_hash, now))
+            .write(|tx| tx.stamp_refresh_token_consumed_if_live(&live.token_hash, now))
             .expect("second stamp"));
         prop_assert!(store
-            .with_connection(|tx| tx.refresh_token_exists(&live.token_hash))
+            .write(|tx| tx.refresh_token_exists(&live.token_hash))
             .expect("exists probe"));
     }
 }
@@ -105,10 +105,10 @@ proptest! {
 fn unknown_hash_neither_stamps_nor_exists() {
     let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
     assert!(!store
-        .with_connection(|tx| tx.stamp_refresh_token_consumed_if_live("never-issued", Utc::now()))
+        .write(|tx| tx.stamp_refresh_token_consumed_if_live("never-issued", Utc::now()))
         .expect("stamp"));
     assert!(!store
-        .with_connection(|tx| tx.refresh_token_exists("never-issued"))
+        .write(|tx| tx.refresh_token_exists("never-issued"))
         .expect("exists probe"));
 }
 
@@ -121,7 +121,7 @@ fn unknown_hash_neither_stamps_nor_exists() {
 fn insert_refresh_token_rejects_orphan_without_family() {
     let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
     let err = store
-        .insert_refresh_token(&sample_token("orphan", "no-such-family"))
+        .write(|tx| tx.insert_refresh_token(&sample_token("orphan", "no-such-family")))
         .expect_err("orphan insert must violate the foreign key");
     assert!(
         matches!(
@@ -144,10 +144,10 @@ fn seed_family_with_token(
     token: &RefreshToken,
 ) {
     store
-        .insert_refresh_token_family_row(family)
+        .write(|tx| tx.insert_refresh_token_family_row(family))
         .expect("insert family row");
     store
-        .insert_refresh_token(token)
+        .write(|tx| tx.insert_refresh_token(token))
         .expect("insert first token");
 }
 
@@ -183,7 +183,7 @@ fn expire_family_pulls_deadline_back_and_stamps_the_live_token() {
         &sample_token("token-1", "family-a"),
     );
     store
-        .insert_refresh_token(&sample_token("token-2", "family-a"))
+        .write(|tx| tx.insert_refresh_token(&sample_token("token-2", "family-a")))
         .expect("insert token-2");
     let untouched = sample_family("family-b", "client-1");
     seed_family_with_token(&store, &untouched, &sample_token("other", "family-b"));
@@ -191,18 +191,18 @@ fn expire_family_pulls_deadline_back_and_stamps_the_live_token() {
     // must survive the family kill untouched.
     let redeemed_at = Utc::now();
     assert!(store
-        .with_connection(|tx| tx.stamp_refresh_token_consumed_if_live("token-1", redeemed_at))
+        .write(|tx| tx.stamp_refresh_token_consumed_if_live("token-1", redeemed_at))
         .expect("consume"));
 
     let revoked_at = Utc::now();
     store
-        .expire_refresh_token_family("family-a", revoked_at)
+        .write(|tx| tx.expire_refresh_token_family("family-a", revoked_at))
         .expect("expire");
 
     // Rows are kept — the lineage stays auditable — with the family's
     // deadline pulled back to the revocation instant.
     let (redeemed_token, family) = store
-        .refresh_token_with_family_by_hash("token-1")
+        .read(|tx| tx.refresh_token_with_family_by_hash("token-1"))
         .expect("query")
         .expect("row present");
     assert_eq!(family.expires_at, revoked_at);
@@ -210,13 +210,13 @@ fn expire_family_pulls_deadline_back_and_stamps_the_live_token() {
     // The live token is stamped at the revocation instant, so nothing in
     // a dead family looks live.
     let (live_token, _) = store
-        .refresh_token_with_family_by_hash("token-2")
+        .read(|tx| tx.refresh_token_with_family_by_hash("token-2"))
         .expect("query")
         .expect("row present");
     assert_eq!(live_token.consumed_at, Some(revoked_at));
     // The sibling family is untouched.
     let (other_token, other_family) = store
-        .refresh_token_with_family_by_hash("other")
+        .read(|tx| tx.refresh_token_with_family_by_hash("other"))
         .expect("query")
         .expect("row present");
     assert_eq!(other_family.expires_at, untouched.expires_at);
@@ -235,11 +235,11 @@ fn delete_expired_families_takes_every_generation_with_them() {
     dead.expires_at = Utc::now() - chrono::Duration::days(91);
     seed_family_with_token(&store, &dead, &sample_token("dead-1", "family-dead"));
     store
-        .insert_refresh_token(&sample_token("dead-2", "family-dead"))
+        .write(|tx| tx.insert_refresh_token(&sample_token("dead-2", "family-dead")))
         .expect("insert a second generation");
 
     let purged = store
-        .with_connection(|tx| {
+        .write(|tx| {
             tx.delete_refresh_token_families_expired_before(Utc::now() - chrono::Duration::days(90))
         })
         .expect("delete");
@@ -251,7 +251,7 @@ fn delete_expired_families_takes_every_generation_with_them() {
     for gone in ["dead-1", "dead-2"] {
         assert!(
             store
-                .refresh_token_with_family_by_hash(gone)
+                .read(|tx| tx.refresh_token_with_family_by_hash(gone))
                 .expect("query")
                 .is_none(),
             "{gone} outlived its family",
@@ -282,7 +282,7 @@ fn delete_expired_families_spares_the_recently_dead_and_the_live() {
     );
 
     let purged = store
-        .with_connection(|tx| {
+        .write(|tx| {
             tx.delete_refresh_token_families_expired_before(Utc::now() - chrono::Duration::days(90))
         })
         .expect("delete");
@@ -291,7 +291,7 @@ fn delete_expired_families_spares_the_recently_dead_and_the_live() {
     for spared in ["revoked-token", "live-token"] {
         assert!(
             store
-                .refresh_token_with_family_by_hash(spared)
+                .read(|tx| tx.refresh_token_with_family_by_hash(spared))
                 .expect("query")
                 .is_some(),
             "{spared} was reclaimed early",
@@ -312,17 +312,17 @@ fn expire_for_client_spares_other_clients() {
 
     let revoked_at = Utc::now();
     store
-        .with_connection(|tx| tx.expire_refresh_token_families_for_client("client-1", revoked_at))
+        .write(|tx| tx.expire_refresh_token_families_for_client("client-1", revoked_at))
         .expect("expire");
 
     let (token, family) = store
-        .refresh_token_with_family_by_hash("token-1")
+        .read(|tx| tx.refresh_token_with_family_by_hash("token-1"))
         .expect("query")
         .expect("row present");
     assert_eq!(family.expires_at, revoked_at);
     assert_eq!(token.consumed_at, Some(revoked_at));
     let (other_token, other_family) = store
-        .refresh_token_with_family_by_hash("other")
+        .read(|tx| tx.refresh_token_with_family_by_hash("other"))
         .expect("query")
         .expect("row present");
     assert_eq!(other_family.expires_at, untouched.expires_at);

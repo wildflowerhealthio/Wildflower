@@ -11,7 +11,8 @@ use wildflowerhealthio_scopes::{Permission, Scope, WildflowerResource};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::client::Client;
 use crate::domain::essential_client_guard::EssentialClientGuard;
-use crate::domain::{GrantStore, GrantTx};
+use crate::domain::grant_store::ClientsTx as _;
+use crate::domain::GrantStore;
 
 /// The scope gating [`ClientsReader`] — `wildflower/Client.r`. Shared by the
 /// capability's `FixedScopeCapability` binding and
@@ -62,7 +63,7 @@ impl<S: GrantStore> ClientsReader<S> {
     pub(crate) fn list(&self) -> Result<Vec<ClientView>, AuthorizationServerError> {
         Ok(self
             .store
-            .list_clients()?
+            .read(|tx| tx.list_clients())?
             .into_iter()
             .map(|client| ClientView {
                 essential: self.essential_client_guard.is_essential(&client.client_id),
@@ -122,9 +123,9 @@ impl<S: GrantStore> ClientsDisabler<S> {
         let not_found = || AuthorizationServerError::ClientNotFound {
             client_id: client_id.to_owned(),
         };
-        // Immediate, so two concurrent disables serialise at the read and the
-        // second sees (and keeps) the first one's stamp.
-        let client = self.store.immediate_transaction(|tx| {
+        // One write scope, so two concurrent disables serialise at the read
+        // and the second sees (and keeps) the first one's stamp.
+        let client = self.store.write(|tx| {
             let client = tx.client_by_id(client_id)?.ok_or_else(not_found)?;
             let disabled_at = stamp.map(|stamp| client.disabled_at.unwrap_or(stamp));
             if disabled_at == client.disabled_at {
@@ -145,6 +146,7 @@ impl<S: GrantStore> ClientsDisabler<S> {
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::grant_store::*;
     use proptest::prelude::*;
 
     use super::*;
@@ -162,7 +164,7 @@ mod tests {
     fn disabler_with(rows: &[Client]) -> ClientsDisabler<FakeGrantStore> {
         let store = FakeGrantStore::default();
         for row in rows {
-            store.upsert_client(row).unwrap();
+            store.tx().upsert_client(row).unwrap();
         }
         ClientsDisabler::new(store, essential_client_guard())
     }
@@ -174,6 +176,7 @@ mod tests {
     fn stored(disabler: &ClientsDisabler<FakeGrantStore>, client_id: &str) -> Client {
         disabler
             .store
+            .tx()
             .client_by_id(client_id)
             .unwrap()
             .expect("client row present")
@@ -202,7 +205,7 @@ mod tests {
     fn list_flags_only_the_essential_clients() {
         let store = FakeGrantStore::default();
         for id in ["b-app", HOST, BROWSER_SESSION_CLIENT, "a-app"] {
-            store.upsert_client(&client(id, &["openid"])).unwrap();
+            store.tx().upsert_client(&client(id, &["openid"])).unwrap();
         }
 
         let listed = ClientsReader::new(store, essential_client_guard())
@@ -279,7 +282,7 @@ mod tests {
         assert_eq!(disable(&disabler, "ghost", NOW), not_found);
         assert_eq!(enable(&disabler, "ghost"), not_found);
         assert!(
-            disabler.store.list_clients().unwrap().is_empty(),
+            disabler.store.tx().list_clients().unwrap().is_empty(),
             "nothing created"
         );
     }
@@ -357,7 +360,7 @@ mod tests {
             for (row, disabled_at) in registered.iter().zip(model) {
                 prop_assert_eq!(stored(&disabler, &row.client_id), Client { disabled_at, ..row.clone() });
             }
-            prop_assert_eq!(disabler.store.list_clients().unwrap().len(), registered.len());
+            prop_assert_eq!(disabler.store.tx().list_clients().unwrap().len(), registered.len());
         }
     }
 }

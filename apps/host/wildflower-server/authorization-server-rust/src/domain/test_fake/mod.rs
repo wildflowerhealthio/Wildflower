@@ -15,6 +15,7 @@
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
 use crate::domain::authorization_code::IssuedAuthorizationCode;
 use crate::domain::authorization_request::AuthorizationRequest;
@@ -38,10 +39,16 @@ pub(crate) use fixtures::{
 };
 
 /// An in-memory [`GrantStore`] modelling the primitive port semantics with
-/// no diesel and no database — enough to exercise the actions' semantic mapping
-/// and their composed transaction scripts.
-#[derive(Default)]
+/// no diesel and no database. Cloning it shares the tables, so a test can hand
+/// one clone to a capability and arrange and observe rows through another.
+#[derive(Clone, Default)]
 pub(crate) struct FakeGrantStore {
+    tables: Rc<FakeTables>,
+}
+
+/// The fake's tables, one map per table.
+#[derive(Default)]
+pub(crate) struct FakeTables {
     clients: RefCell<HashMap<String, Client>>,
     signing_keys: RefCell<Vec<SigningKey>>,
     authorization_requests: RefCell<HashMap<String, AuthorizationRequest>>,
@@ -72,7 +79,7 @@ struct Snapshot {
     session_shortfall_acknowledgements: HashSet<(String, String)>,
 }
 
-impl FakeGrantStore {
+impl FakeTables {
     fn snapshot(&self) -> Snapshot {
         Snapshot {
             clients: self.clients.borrow().clone(),
@@ -111,33 +118,40 @@ impl FakeGrantStore {
 impl GrantStore for FakeGrantStore {
     type Tx<'a> = FakeGrantTx<'a>;
 
-    fn with_connection<T>(
+    fn read<T, E: From<AuthorizationServerError>>(
         &self,
-        f: impl FnOnce(&mut Self::Tx<'_>) -> Result<T, AuthorizationServerError>,
-    ) -> Result<T, AuthorizationServerError> {
-        f(&mut FakeGrantTx { store: self })
+        f: impl FnOnce(&mut Self::Tx<'_>) -> Result<T, E>,
+    ) -> Result<T, E> {
+        f(&mut FakeGrantTx {
+            store: &self.tables,
+        })
     }
 
-    fn transaction<T>(
+    fn write<T, E: From<AuthorizationServerError>>(
         &self,
-        f: impl FnOnce(&mut Self::Tx<'_>) -> Result<T, AuthorizationServerError>,
-    ) -> Result<T, AuthorizationServerError> {
-        // No real locking (the fake is single-threaded); the snapshot models the
-        // one property the composed actions rely on — rollback on error — so a
-        // partially-applied transaction never leaks into a later assertion.
-        let snapshot = self.snapshot();
-        let result = f(&mut FakeGrantTx { store: self });
+        f: impl FnOnce(&mut Self::Tx<'_>) -> Result<T, E>,
+    ) -> Result<T, E> {
+        // No real locking (the fake is single-threaded); the snapshot models
+        // the one property the flows rely on, rollback on error, so a
+        // partially applied scope never leaks into a later assertion.
+        let snapshot = self.tables.snapshot();
+        let result = f(&mut FakeGrantTx {
+            store: &self.tables,
+        });
         if result.is_err() {
-            self.restore(snapshot);
+            self.tables.restore(snapshot);
         }
         result
     }
+}
 
-    fn immediate_transaction<T>(
-        &self,
-        f: impl FnOnce(&mut Self::Tx<'_>) -> Result<T, AuthorizationServerError>,
-    ) -> Result<T, AuthorizationServerError> {
-        self.transaction(f)
+impl FakeGrantStore {
+    /// A handle on the maps outside any scope, for a test to arrange rows
+    /// and observe them.
+    pub(crate) fn tx(&self) -> FakeGrantTx<'_> {
+        FakeGrantTx {
+            store: &self.tables,
+        }
     }
 }
 
@@ -145,5 +159,5 @@ impl GrantStore for FakeGrantStore {
 /// mutability (`RefCell`) does the real work; `&mut self` is only the trait's
 /// shape.
 pub(crate) struct FakeGrantTx<'a> {
-    store: &'a FakeGrantStore,
+    store: &'a FakeTables,
 }

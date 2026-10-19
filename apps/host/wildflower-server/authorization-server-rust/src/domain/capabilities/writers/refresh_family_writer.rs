@@ -15,37 +15,33 @@ use crate::domain::refresh_token::{
     REFRESH_TOKEN_FAMILY_TTL,
 };
 use crate::domain::token_exchange_error::{InvalidGrantReason, TokenExchangeError};
-use crate::domain::{GrantStore, GrantTx as _};
+use crate::domain::GrantTx;
 
-/// Issue and rotate refresh tokens. A borrowed view over the store; the gate is
-/// the redemption proof each method takes.
-pub(crate) struct RefreshFamilyWriter<'a, S: GrantStore> {
-    store: &'a S,
+/// Issue and rotate refresh tokens, inside the caller's transaction; the
+/// gate is the redemption proof each method takes.
+pub(crate) struct RefreshFamilyWriter<'a, T: GrantTx> {
+    tx: &'a mut T,
 }
 
-impl<'a, S: GrantStore> RefreshFamilyWriter<'a, S> {
-    /// A writer over `store`.
-    pub(crate) fn over(store: &'a S) -> Self {
-        RefreshFamilyWriter { store }
+impl<'a, T: GrantTx> RefreshFamilyWriter<'a, T> {
+    /// A writer inside the caller's transaction `tx`.
+    pub(crate) fn within(tx: &'a mut T) -> Self {
+        RefreshFamilyWriter { tx }
     }
 
     /// Mint a new family with its first token and return the token's
     /// plaintext. The caller checks
     /// [`earns_refresh_token`](GrantRedemption::earns_refresh_token) first. The
-    /// family records the redemption's
-    /// scopes and patient verbatim, the code it consumed (so a replay of that
-    /// code can revoke the lineage), the standing grant behind it, and the
-    /// browser session it was made under (so revoking that session ends it).
-    ///
-    /// The family row is inserted before its token, with no transaction: the
-    /// token insert's foreign key rejects a token whose family didn't land, so a
-    /// partial write can't leave a live tokenless family a redeemer would trust.
+    /// family records the redemption's scopes and patient verbatim, the code
+    /// it consumed (so a replay of that code can revoke the lineage), the
+    /// standing grant behind it, and the browser session it was made under (so
+    /// revoking that session ends it).
     ///
     /// # Errors
     ///
     /// [`AuthorizationServerError::Infrastructure`] on a store failure.
     pub(crate) fn start_family(
-        &self,
+        &mut self,
         redemption: GrantRedemption<'_>,
         now: DateTime<Utc>,
     ) -> Result<String, AuthorizationServerError> {
@@ -67,65 +63,60 @@ impl<'a, S: GrantStore> RefreshFamilyWriter<'a, S> {
             issued_at: now,
             consumed_at: None,
         };
-        self.store.insert_refresh_token_family_row(&family)?;
-        self.store.insert_refresh_token(&first_token)?;
+        self.tx.insert_refresh_token_family_row(&family)?;
+        self.tx.insert_refresh_token(&first_token)?;
         Ok(plaintext)
     }
 
     /// Consume the presented token and, only if that consume won, insert its
-    /// successor and return the successor's plaintext. The consume is atomic on
-    /// its own; the successor insert is ordered after it, so a failure of the
-    /// insert leaves the presented token spent with no successor (a failed
-    /// rotation the client recovers from by re-authorizing), never a usable
-    /// extra token. A family made under a browser session moves that
-    /// session's `last_seen_at` to `now` in the successor's transaction: an
-    /// app refreshing is the session in use.
+    /// successor and return the successor's plaintext. A family made under a
+    /// browser session moves that session's `last_seen_at` to `now`: an app
+    /// refreshing is the session in use.
+    ///
+    /// A refusal is the inner `Err`, so the caller's scope keeps what it
+    /// wrote: [`InvalidGrantReason::RefreshTokenReplayed`] when the token had
+    /// already been consumed — a leak or a badly broken client, either way an
+    /// unsafe lineage, so the whole family is expired at `now` first; and
+    /// [`InvalidGrantReason::RefreshTokenVanished`] when it disappeared between
+    /// validation and rotation (nothing to revoke).
     ///
     /// # Errors
     ///
-    /// [`InvalidGrantReason::RefreshTokenReplayed`] when the token had already
-    /// been consumed — a leak or a badly broken client, either way an unsafe
-    /// lineage, so the whole family is expired at `now` first;
-    /// [`InvalidGrantReason::RefreshTokenVanished`] when it disappeared between
-    /// validation and rotation (nothing to revoke);
-    /// [`TokenExchangeError::Store`] on a store failure.
+    /// [`AuthorizationServerError::Infrastructure`] on a store failure.
     pub(crate) fn rotate(
-        &self,
+        &mut self,
         validated_refresh_token: &ValidatedRefreshToken,
         now: DateTime<Utc>,
-    ) -> Result<String, TokenExchangeError> {
-        match consume_refresh_token(self.store, validated_refresh_token.presented_hash(), now)? {
+    ) -> Result<Result<String, TokenExchangeError>, AuthorizationServerError> {
+        let family_id = validated_refresh_token.family_id();
+        match consume_refresh_token(self.tx, validated_refresh_token.presented_hash(), now)? {
             RefreshTokenConsumeOutcome::Consumed => {
                 let successor = generate_refresh_token();
-                self.store.transaction(|tx| {
-                    tx.insert_refresh_token(&RefreshToken {
-                        token_hash: token_storage_hash(&successor),
-                        family_id: validated_refresh_token.family_id().to_owned(),
-                        issued_at: now,
-                        consumed_at: None,
-                    })?;
-                    if let Some(sid) = validated_refresh_token.sid() {
-                        tx.touch_browser_session_last_seen(sid, now, now)?;
-                    }
-                    Ok(())
+                self.tx.insert_refresh_token(&RefreshToken {
+                    token_hash: token_storage_hash(&successor),
+                    family_id: family_id.to_owned(),
+                    issued_at: now,
+                    consumed_at: None,
                 })?;
-                Ok(successor)
+                if let Some(sid) = validated_refresh_token.sid() {
+                    self.tx.touch_browser_session_last_seen(sid, now, now)?;
+                }
+                Ok(Ok(successor))
             }
             RefreshTokenConsumeOutcome::Replayed => {
-                self.store
-                    .expire_refresh_token_family(validated_refresh_token.family_id(), now)?;
-                Err(TokenExchangeError::InvalidGrant(
+                self.tx.expire_refresh_token_family(family_id, now)?;
+                Ok(Err(TokenExchangeError::InvalidGrant(
                     InvalidGrantReason::RefreshTokenReplayed {
-                        family_id: validated_refresh_token.family_id().to_owned(),
+                        family_id: family_id.to_owned(),
                         client_id: validated_refresh_token.client_id().to_owned(),
                     },
-                ))
+                )))
             }
-            RefreshTokenConsumeOutcome::NotFound => Err(TokenExchangeError::InvalidGrant(
+            RefreshTokenConsumeOutcome::NotFound => Ok(Err(TokenExchangeError::InvalidGrant(
                 InvalidGrantReason::RefreshTokenVanished {
-                    family_id: validated_refresh_token.family_id().to_owned(),
+                    family_id: family_id.to_owned(),
                 },
-            )),
+            ))),
         }
     }
 }
@@ -133,6 +124,7 @@ impl<'a, S: GrantStore> RefreshFamilyWriter<'a, S> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::grant_store::*;
 
     use crate::domain::test_fake::{
         authenticated_public_client, client, code_grant, redeemed_code,
@@ -155,14 +147,16 @@ mod tests {
     fn start_family_records_the_redemption() {
         let store = FakeGrantStore::default();
         store
+            .tx()
             .create_authorization_code_grant(&code_grant("grant-1", "client"))
             .unwrap();
         let redeemed_code = redeemed_code(&store, "client", &["openid", "offline_access"]);
         let now = Utc::now();
-        let plaintext = RefreshFamilyWriter::over(&store)
+        let plaintext = RefreshFamilyWriter::within(&mut store.tx())
             .start_family(GrantRedemption::AuthorizationCode(&redeemed_code), now)
             .unwrap();
         let (token, family) = store
+            .tx()
             .refresh_token_with_family_by_hash(&token_storage_hash(&plaintext))
             .unwrap()
             .expect("first token resolves");
@@ -180,8 +174,14 @@ mod tests {
 
     fn validated(store: &FakeGrantStore, plaintext: &str) -> ValidatedRefreshToken {
         let client = authenticated_public_client(store, client("client", &["openid"]));
-        ValidatedRefreshToken::validate(store, &NothingRevoked, &client, plaintext, Utc::now())
-            .unwrap()
+        ValidatedRefreshToken::validate(
+            &mut store.tx(),
+            &NothingRevoked,
+            &client,
+            plaintext,
+            Utc::now(),
+        )
+        .unwrap()
     }
 
     /// Rotating a family made under a browser session moves the session's
@@ -192,12 +192,14 @@ mod tests {
         use crate::domain::browser_session::BrowserSession;
 
         let store = FakeGrantStore::default();
-        let writer = RefreshFamilyWriter::over(&store);
+        let mut tx = store.tx();
+        let mut writer = RefreshFamilyWriter::within(&mut tx);
         let signed_in_at = Utc::now() - chrono::Duration::hours(1);
         let session = BrowserSession::new_owner(vec![], chrono::Duration::hours(8), signed_in_at);
-        store.insert_browser_session(&session).unwrap();
+        store.tx().insert_browser_session(&session).unwrap();
         for (family_id, sid) in [("under-session", Some(&session.sid)), ("no-session", None)] {
             store
+                .tx()
                 .insert_refresh_token_family_row(&RefreshTokenFamily {
                     family_id: family_id.to_owned(),
                     client_id: "client".to_owned(),
@@ -211,6 +213,7 @@ mod tests {
                 })
                 .unwrap();
             store
+                .tx()
                 .insert_refresh_token(&RefreshToken {
                     token_hash: token_storage_hash(family_id),
                     family_id: family_id.to_owned(),
@@ -221,6 +224,7 @@ mod tests {
         }
         let last_seen = || {
             store
+                .tx()
                 .browser_session_by_sid(&session.sid)
                 .unwrap()
                 .unwrap()
@@ -230,6 +234,7 @@ mod tests {
         let rotated_at = Utc::now();
         writer
             .rotate(&validated(&store, "no-session"), rotated_at)
+            .unwrap()
             .expect("rotates");
         assert_eq!(
             last_seen(),
@@ -239,6 +244,7 @@ mod tests {
 
         writer
             .rotate(&validated(&store, "under-session"), rotated_at)
+            .unwrap()
             .expect("rotates");
         assert_eq!(last_seen(), rotated_at);
     }
@@ -250,7 +256,8 @@ mod tests {
     fn rotate_consumes_then_replay_expires_the_family() {
         let store = FakeGrantStore::default();
         seed_fixture_browser_session(&store);
-        let writer = RefreshFamilyWriter::over(&store);
+        let mut tx = store.tx();
+        let mut writer = RefreshFamilyWriter::within(&mut tx);
         let now = Utc::now();
         let redeemed_code = redeemed_code(&store, "client", &["offline_access"]);
         let first = writer
@@ -260,19 +267,22 @@ mod tests {
 
         let successor = writer
             .rotate(&presented, now)
+            .unwrap()
             .expect("first rotation rotates");
         assert!(store
+            .tx()
             .refresh_token_with_family_by_hash(&token_storage_hash(&successor))
             .unwrap()
             .is_some());
 
         assert!(matches!(
-            writer.rotate(&presented, now),
+            writer.rotate(&presented, now).unwrap(),
             Err(TokenExchangeError::InvalidGrant(
                 InvalidGrantReason::RefreshTokenReplayed { .. }
             ))
         ));
         let (_, family) = store
+            .tx()
             .refresh_token_with_family_by_hash(&token_storage_hash(&successor))
             .unwrap()
             .unwrap();

@@ -206,7 +206,7 @@ async fn a_browser_pairs_and_holds_a_day_long_session_with_the_approved_scopes()
     );
     let sid = claims["sid"].as_str().expect("names its session");
     let session = store_handle(&db)
-        .browser_session_by_sid(sid)
+        .read(|tx| tx.browser_session_by_sid(sid))
         .expect("read")
         .expect("the approved session is stored");
     assert_eq!(session.kind.as_ref(), "approved");
@@ -232,7 +232,10 @@ async fn a_browser_pairs_and_holds_a_day_long_session_with_the_approved_scopes()
     );
 
     // Pairing recorded no grant.
-    assert!(store_handle(&db).all_grants().expect("grants").is_empty());
+    assert!(store_handle(&db)
+        .read(|tx| tx.all_grants())
+        .expect("grants")
+        .is_empty());
 
     // The pairing starts one session: the next poll finds it spent.
     let (status, cookies) = poll_status(&g, &started.pairing_code, "").await;

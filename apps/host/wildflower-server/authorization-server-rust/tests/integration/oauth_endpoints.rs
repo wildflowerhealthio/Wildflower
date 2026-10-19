@@ -20,7 +20,7 @@ async fn authorize_unknown_client_parks_a_pending_request() {
     assert_eq!(body_json(res.into_body()).await["status"], "pending");
     assert!(
         store_handle(&db)
-            .client_by_id("ghost")
+            .read(|tx| tx.client_by_id("ghost"))
             .expect("client query")
             .is_none(),
         "/authorize must not register an unknown client",
@@ -98,16 +98,18 @@ async fn authorize_disabled_client_is_still_rejected() {
     // Inserted disabled: `upsert_client` deliberately preserves `disabled_at`,
     // so the flag has to be set on the row's first write.
     store_handle(&db)
-        .upsert_client(&Client {
-            client_id: "test-app".to_string(),
-            name: "Disabled Test Client".to_string(),
-            kind: ClientKind::Public,
-            redirect_uris: vec![Url::parse("https://app.example/cb").unwrap()],
-            allowed_scopes: vec!["read".to_string()],
-            allowed_grant_types: AllowedGrantType::ALL.to_vec(),
-            secret_hash: None,
-            registered_at: Utc::now(),
-            disabled_at: Some(Utc::now()),
+        .write(|tx| {
+            tx.upsert_client(&Client {
+                client_id: "test-app".to_string(),
+                name: "Disabled Test Client".to_string(),
+                kind: ClientKind::Public,
+                redirect_uris: vec![Url::parse("https://app.example/cb").unwrap()],
+                allowed_scopes: vec!["read".to_string()],
+                allowed_grant_types: AllowedGrantType::ALL.to_vec(),
+                secret_hash: None,
+                registered_at: Utc::now(),
+                disabled_at: Some(Utc::now()),
+            })
         })
         .expect("register a disabled client");
 
@@ -420,11 +422,13 @@ async fn authorize_host_app_disallowed_scope_still_redirects_invalid_scope() {
     // Give the host client a redirect so the request reaches the scope check.
     let store = store_handle(&db);
     let mut host = store
-        .client_by_id(WILDFLOWER_HOST_APP_CLIENT_ID)
+        .read(|tx| tx.client_by_id(WILDFLOWER_HOST_APP_CLIENT_ID))
         .unwrap()
         .expect("the seeded host app's client");
     host.redirect_uris = vec![Url::parse("https://app.example/cb").unwrap()];
-    store.upsert_client(&host).expect("allowlist a redirect");
+    store
+        .write(|tx| tx.upsert_client(&host))
+        .expect("allowlist a redirect");
 
     let res = get_authorize(
         &g.router,
@@ -539,7 +543,7 @@ async fn authorize_consumes_a_smart_launch_once() {
     let request_id =
         parked_request_id(&get_authorize(&g.router, &db.paired_browser_token, &query).await);
     let parked = store_handle(&db)
-        .authorization_request_by_id(&request_id)
+        .read(|tx| tx.authorization_request_by_id(&request_id))
         .expect("query")
         .expect("parked");
     assert_eq!(parked.launch.as_deref(), Some(launch.as_str()));
@@ -578,7 +582,7 @@ async fn authorize_consumes_a_launch_for_any_client_once() {
     let request_id =
         parked_request_id(&get_authorize(&g.router, &db.paired_browser_token, &query).await);
     let parked = store_handle(&db)
-        .authorization_request_by_id(&request_id)
+        .read(|tx| tx.authorization_request_by_id(&request_id))
         .expect("query")
         .expect("parked");
     assert_eq!(parked.launch.as_deref(), Some(launch.as_str()));

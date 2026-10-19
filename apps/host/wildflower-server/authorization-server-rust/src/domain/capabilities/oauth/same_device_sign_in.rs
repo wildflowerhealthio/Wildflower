@@ -14,6 +14,7 @@ use wildflowerhealthio_scopes::Grant;
 use crate::domain::authority::{RedeemedSameDeviceSignInCode, TokenEntitlement};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::writers::{AccessTokenMinter, BrowserSessionWriter};
+use crate::domain::grant_store::ClientsTx;
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
 use crate::domain::sign_in_redirect::{SignInDestinations, SignInRedirect};
 use crate::domain::token::TokenIssuanceError;
@@ -39,8 +40,8 @@ pub(crate) struct SignedIn {
 pub(crate) enum SameDeviceSignInError {
     /// The request was refused: the browser is told why, on a page.
     Refused(SignInRefusal),
-    /// The browser-session client's row couldn't be read, or is missing though
-    /// it is seeded at boot. The code is unspent.
+    /// The store couldn't be read or written, or the browser-session client's
+    /// row is missing though it is seeded at boot.
     Store(AuthorizationServerError),
     /// The Owner session couldn't be stored. The code is spent.
     SessionNotStored(AuthorizationServerError),
@@ -96,7 +97,9 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
     /// Redeem `presented_code` at `now` for an Owner session and its
     /// token, both lasting [`OWNER_SESSION_TTL`], to go on to `next`.
     /// A `next` that isn't allowed, or a disabled browser-session client, is
-    /// refused before the code is touched, so the code stays redeemable.
+    /// refused before the code is touched, so the code stays redeemable. The
+    /// session is stored in one write scope, and its token signed once that
+    /// has committed.
     ///
     /// # Errors
     ///
@@ -119,54 +122,64 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
             .ok_or(SameDeviceSignInError::Refused(
                 SignInRefusal::RedirectNotAllowed,
             ))?;
-        if self
-            .browser_session_client_is_disabled()
-            .map_err(SameDeviceSignInError::Store)?
-        {
-            return Err(SameDeviceSignInError::Refused(
-                SignInRefusal::BrowserSessionClientDisabled,
-            ));
-        }
-        let redeemed_sign_in_code = RedeemedSameDeviceSignInCode::redeem(
-            &self.codes,
-            presented_code,
-            &self.owner_grant,
-            OWNER_SESSION_TTL,
-            now,
-        )
-        .ok_or(SameDeviceSignInError::Refused(
-            SignInRefusal::CodeNotRedeemable,
-        ))?;
-        BrowserSessionWriter::over(&self.store)
-            .start_owner_session(&redeemed_sign_in_code)
-            .map_err(SameDeviceSignInError::SessionNotStored)?;
-        let session_token =
-            AccessTokenMinter::new(&self.store, &self.server_origin, OWNER_SESSION_TTL)
-                .mint(TokenEntitlement::SameDeviceSignIn(&redeemed_sign_in_code))
-                .map_err(SameDeviceSignInError::Issuance)?;
+        let (redeemed_sign_in_code, minter) = self.store.write(|tx| {
+            if browser_session_client_is_disabled(tx)? {
+                return Err(SameDeviceSignInError::Refused(
+                    SignInRefusal::BrowserSessionClientDisabled,
+                ));
+            }
+            let redeemed_sign_in_code = RedeemedSameDeviceSignInCode::redeem(
+                &self.codes,
+                presented_code,
+                &self.owner_grant,
+                OWNER_SESSION_TTL,
+                now,
+            )
+            .ok_or(SameDeviceSignInError::Refused(
+                SignInRefusal::CodeNotRedeemable,
+            ))?;
+            BrowserSessionWriter::within(tx)
+                .start_owner_session(&redeemed_sign_in_code)
+                .map_err(SameDeviceSignInError::SessionNotStored)?;
+            let minter =
+                AccessTokenMinter::with_active_key(tx, &self.server_origin, OWNER_SESSION_TTL)
+                    .map_err(SameDeviceSignInError::Issuance)?;
+            Ok((redeemed_sign_in_code, minter))
+        })?;
+        let session_token = minter
+            .mint(TokenEntitlement::SameDeviceSignIn(&redeemed_sign_in_code))
+            .map_err(SameDeviceSignInError::Issuance)?;
         Ok(SignedIn {
             session_token,
             redirect,
         })
     }
+}
 
-    /// Whether the browser-session client is disabled. It is an essential
-    /// client, which the Owner can't disable, so only a row disabled out of
-    /// band (direct SQL) is. Its row is seeded at boot, so a missing one is an
-    /// error, not an enabled client.
-    fn browser_session_client_is_disabled(&self) -> Result<bool, AuthorizationServerError> {
-        let browser_session_client = self
-            .store
-            .client_by_id(BROWSER_SESSION_CLIENT_ID)?
-            .ok_or_else(|| AuthorizationServerError::ClientNotFound {
-                client_id: BROWSER_SESSION_CLIENT_ID.to_owned(),
-            })?;
-        Ok(browser_session_client.disabled_at.is_some())
+/// Whether the browser-session client is disabled. It is an essential
+/// client, which the Owner can't disable, so only a row disabled out of
+/// band (direct SQL) is. Its row is seeded at boot, so a missing one is an
+/// error, not an enabled client.
+fn browser_session_client_is_disabled(
+    tx: &mut impl ClientsTx,
+) -> Result<bool, AuthorizationServerError> {
+    let browser_session_client = tx.client_by_id(BROWSER_SESSION_CLIENT_ID)?.ok_or_else(|| {
+        AuthorizationServerError::ClientNotFound {
+            client_id: BROWSER_SESSION_CLIENT_ID.to_owned(),
+        }
+    })?;
+    Ok(browser_session_client.disabled_at.is_some())
+}
+
+impl From<AuthorizationServerError> for SameDeviceSignInError {
+    fn from(error: AuthorizationServerError) -> Self {
+        SameDeviceSignInError::Store(error)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::grant_store::*;
     use url::Url;
     use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
     use wildflowerhealthio_shared_structures::launcher::LauncherBase;
@@ -209,6 +222,7 @@ mod tests {
         let store = FakeGrantStore::default();
         let signing_key = seed_active_signing_key(&store);
         store
+            .tx()
             .upsert_client(&client(BROWSER_SESSION_CLIENT_ID, &OWNER_SCOPES))
             .expect("seed the browser-session client");
         let codes = Arc::new(SameDeviceSignInCodes::new());
@@ -297,6 +311,7 @@ mod tests {
         let set_browser_session_client_disabled_at = |disabled_at| {
             assert!(sign_in
                 .store
+                .tx()
                 .set_client_disabled(BROWSER_SESSION_CLIENT_ID, disabled_at)
                 .expect("set disabled_at"));
         };

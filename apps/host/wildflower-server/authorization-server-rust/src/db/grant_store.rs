@@ -9,28 +9,12 @@
 //! concerns.
 
 use anyhow::Context;
-use chrono::{DateTime, Utc};
-use diesel::connection::Connection;
 use diesel::sqlite::SqliteConnection;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
-use url::Url;
 use wildflowerhealthio_persistence::{DieselPool, PooledDieselConnection};
 
-use crate::db::{
-    authorization_codes, authorization_requests, browser_sessions, clients, grants,
-    launch_contexts, refresh_tokens, signing_keys,
-};
-use crate::domain::authorization_code::IssuedAuthorizationCode;
-use crate::domain::authorization_request::AuthorizationRequest;
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::browser_session::BrowserSession;
-use crate::domain::client::Client;
-use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
-use crate::domain::launch_context::LaunchContext;
-use crate::domain::pending_consent::NewestPendingConsent;
-use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
-use crate::domain::signing_key::SigningKey;
-use crate::domain::{GrantStore, GrantTx};
+use crate::domain::GrantStore;
 
 /// This slice's migration namespace in the shared database. Applied versions are
 /// bookkept per-namespace by [`wildflowerhealthio_persistence::run_diesel_migrations`], so
@@ -128,497 +112,61 @@ impl SqliteGrantStore {
     }
 }
 
-/// A [`GrantTx`] over one checked-out diesel connection — the `SQLite`
-/// primitive handle [`SqliteGrantStore`] hands to a closure. Each method
-/// delegates to the matching query body in the sibling `db/*` modules, passing
-/// the wrapped `&mut SqliteConnection`; the bodies live there so the query SQL
-/// stays next to the row type it maps and this file stays the migration + pool
-/// handle plus the transaction runners. When the closure runs inside
-/// [`GrantStore::transaction`] / [`immediate_transaction`] the connection is
-/// already in a transaction, so the self-contained `expire_*` bodies open
-/// savepoints rather than nested `BEGIN`s.
+/// The [`GrantTx`](crate::domain::GrantTx) a [`SqliteGrantStore`] scope
+/// hands its closure: one checked-out diesel connection, in autocommit for a
+/// read scope and inside `BEGIN IMMEDIATE` for a write scope. Each concern's
+/// `db/` file implements its trait on it, next to that concern's `table!`.
 ///
-/// `pub` only because it is the `SQLite` adapter's [`GrantStore::Tx`]
-/// associated type (a public trait's associated type is part of the public
-/// interface); the field and every method are crate-internal, so out-of-crate
-/// callers can name the type but do nothing with it except through
-/// [`GrantTx`].
+/// `pub` only because it is the adapter's [`GrantStore::Tx`]; out-of-crate
+/// callers can name it but reach nothing except through the traits.
 pub struct SqliteGrantTx<'a> {
-    conn: &'a mut SqliteConnection,
+    pub(in crate::db) conn: &'a mut SqliteConnection,
 }
 
-impl GrantTx for SqliteGrantTx<'_> {
-    // ----- clients -------------------------------------------------------
-
-    fn client_by_id(
-        &mut self,
-        client_id: &str,
-    ) -> Result<Option<Client>, AuthorizationServerError> {
-        clients::client_by_id(self.conn, client_id)
-    }
-
-    fn upsert_client(&mut self, client: &Client) -> Result<(), AuthorizationServerError> {
-        clients::upsert_client(self.conn, client)
-    }
-
-    fn list_clients(&mut self) -> Result<Vec<Client>, AuthorizationServerError> {
-        clients::list_clients(self.conn)
-    }
-
-    fn set_client_disabled(
-        &mut self,
-        client_id: &str,
-        disabled_at: Option<DateTime<Utc>>,
-    ) -> Result<bool, AuthorizationServerError> {
-        clients::set_client_disabled(self.conn, client_id, disabled_at)
-    }
-
-    // ----- signing keys --------------------------------------------------
-
-    fn all_signing_keys(&mut self) -> Result<Vec<SigningKey>, AuthorizationServerError> {
-        signing_keys::all_signing_keys(self.conn)
-    }
-
-    fn active_signing_key(&mut self) -> Result<Option<SigningKey>, AuthorizationServerError> {
-        signing_keys::active_signing_key(self.conn)
-    }
-
-    fn has_active_signing_key(&mut self) -> Result<bool, AuthorizationServerError> {
-        signing_keys::has_active_signing_key(self.conn)
-    }
-
-    fn insert_signing_key(&mut self, key: &SigningKey) -> Result<(), AuthorizationServerError> {
-        signing_keys::insert_signing_key(self.conn, key)
-    }
-
-    // ----- authorization requests ----------------------------------------
-
-    fn authorization_request_by_id(
-        &mut self,
-        id: &str,
-    ) -> Result<Option<AuthorizationRequest>, AuthorizationServerError> {
-        authorization_requests::authorization_request_by_id(self.conn, id)
-    }
-
-    fn authorization_request_by_user_code(
-        &mut self,
-        user_code: &str,
-    ) -> Result<Option<AuthorizationRequest>, AuthorizationServerError> {
-        authorization_requests::authorization_request_by_user_code(self.conn, user_code)
-    }
-
-    fn pending_authorization_request_by_user_code(
-        &mut self,
-        user_code: &str,
-    ) -> Result<Option<AuthorizationRequest>, AuthorizationServerError> {
-        authorization_requests::pending_authorization_request_by_user_code(self.conn, user_code)
-    }
-
-    fn newest_pending_consent(
-        &mut self,
-    ) -> Result<Option<NewestPendingConsent>, AuthorizationServerError> {
-        authorization_requests::newest_pending_consent(self.conn)
-    }
-
-    fn insert_authorization_request(
-        &mut self,
-        request: &AuthorizationRequest,
-    ) -> Result<(), AuthorizationServerError> {
-        authorization_requests::insert_authorization_request(self.conn, request)
-    }
-
-    fn approve_authorization_request(
-        &mut self,
-        id: &str,
-        granted_scopes: &[String],
-        patient: Option<&str>,
-        device_name: Option<&str>,
-    ) -> Result<bool, AuthorizationServerError> {
-        authorization_requests::approve_authorization_request(
-            self.conn,
-            id,
-            granted_scopes,
-            patient,
-            device_name,
-        )
-    }
-
-    fn deny_authorization_request(&mut self, id: &str) -> Result<bool, AuthorizationServerError> {
-        authorization_requests::deny_authorization_request(self.conn, id)
-    }
-
-    fn raise_authorization_request_for_owner(
-        &mut self,
-        id: &str,
-    ) -> Result<bool, AuthorizationServerError> {
-        authorization_requests::raise_authorization_request_for_owner(self.conn, id)
-    }
-
-    fn acknowledge_session_shortfall(
-        &mut self,
-        id: &str,
-        expires_at: DateTime<Utc>,
-    ) -> Result<bool, AuthorizationServerError> {
-        authorization_requests::acknowledge_session_shortfall(self.conn, id, expires_at)
-    }
-
-    fn deny_unacknowledged_authorization_request(
-        &mut self,
-        id: &str,
-    ) -> Result<bool, AuthorizationServerError> {
-        authorization_requests::deny_unacknowledged_authorization_request(self.conn, id)
-    }
-
-    fn consume_approved_authorization_request(
-        &mut self,
-        id: &str,
-    ) -> Result<bool, AuthorizationServerError> {
-        authorization_requests::consume_approved_authorization_request(self.conn, id)
-    }
-
-    fn record_device_poll(
-        &mut self,
-        id: &str,
-        polled_at: DateTime<Utc>,
-    ) -> Result<(), AuthorizationServerError> {
-        authorization_requests::record_device_poll(self.conn, id, polled_at)
-    }
-
-    fn record_browser_pairing_poll(
-        &mut self,
-        id: &str,
-        polled_at: DateTime<Utc>,
-        browser_name: &str,
-    ) -> Result<(), AuthorizationServerError> {
-        authorization_requests::record_browser_pairing_poll(self.conn, id, polled_at, browser_name)
-    }
-
-    // ----- authorization codes -------------------------------------------
-
-    fn redeem_authorization_code(
-        &mut self,
-        code: &str,
-    ) -> Result<Option<IssuedAuthorizationCode>, AuthorizationServerError> {
-        authorization_codes::redeem_authorization_code(self.conn, code)
-    }
-
-    fn authorization_code_by_request_id(
-        &mut self,
-        request_id: &str,
-    ) -> Result<Option<IssuedAuthorizationCode>, AuthorizationServerError> {
-        authorization_codes::authorization_code_by_request_id(self.conn, request_id)
-    }
-
-    fn issue_authorization_code(
-        &mut self,
-        code: &IssuedAuthorizationCode,
-    ) -> Result<(), AuthorizationServerError> {
-        authorization_codes::issue_authorization_code(self.conn, code)
-    }
-
-    // ----- launch contexts ------------------------------------------------
-
-    fn insert_launch_context(
-        &mut self,
-        context: &LaunchContext,
-    ) -> Result<(), AuthorizationServerError> {
-        launch_contexts::insert_launch_context(self.conn, context)
-    }
-
-    fn consume_launch_context(
-        &mut self,
-        nonce: &str,
-        client_id: &str,
-        now: DateTime<Utc>,
-    ) -> Result<Option<LaunchContext>, AuthorizationServerError> {
-        launch_contexts::consume_launch_context(self.conn, nonce, client_id, now)
-    }
-
-    fn launch_context_by_nonce(
-        &mut self,
-        nonce: &str,
-    ) -> Result<Option<LaunchContext>, AuthorizationServerError> {
-        launch_contexts::launch_context_by_nonce(self.conn, nonce)
-    }
-
-    fn delete_launch_contexts_expired_by(
-        &mut self,
-        now: DateTime<Utc>,
-    ) -> Result<usize, AuthorizationServerError> {
-        launch_contexts::delete_launch_contexts_expired_by(self.conn, now)
-    }
-
-    // ----- retention ------------------------------------------------------
-
-    fn delete_authorization_requests_expired_before(
-        &mut self,
-        cutoff: DateTime<Utc>,
-    ) -> Result<usize, AuthorizationServerError> {
-        authorization_requests::delete_authorization_requests_expired_before(self.conn, cutoff)
-    }
-
-    fn delete_authorization_codes_expired_before(
-        &mut self,
-        cutoff: DateTime<Utc>,
-    ) -> Result<usize, AuthorizationServerError> {
-        authorization_codes::delete_authorization_codes_expired_before(self.conn, cutoff)
-    }
-
-    fn delete_refresh_token_families_expired_before(
-        &mut self,
-        cutoff: DateTime<Utc>,
-    ) -> Result<usize, AuthorizationServerError> {
-        refresh_tokens::delete_refresh_token_families_expired_before(self.conn, cutoff)
-    }
-
-    // ----- refresh-token families ----------------------------------------
-
-    fn insert_browser_session(
-        &mut self,
-        session: &BrowserSession,
-    ) -> Result<(), AuthorizationServerError> {
-        browser_sessions::insert_browser_session(self.conn, session)
-    }
-
-    fn browser_session_by_sid(
-        &mut self,
-        sid: &str,
-    ) -> Result<Option<BrowserSession>, AuthorizationServerError> {
-        browser_sessions::browser_session_by_sid(self.conn, sid)
-    }
-
-    fn live_browser_sessions(
-        &mut self,
-        now: DateTime<Utc>,
-    ) -> Result<Vec<BrowserSession>, AuthorizationServerError> {
-        browser_sessions::live_browser_sessions(self.conn, now)
-    }
-
-    fn browser_session_is_revoked(&mut self, sid: &str) -> Result<bool, AuthorizationServerError> {
-        browser_sessions::browser_session_is_revoked(self.conn, sid)
-    }
-
-    fn revoke_browser_session(
-        &mut self,
-        sid: &str,
-        now: DateTime<Utc>,
-    ) -> Result<bool, AuthorizationServerError> {
-        browser_sessions::revoke_browser_session(self.conn, sid, now)
-    }
-
-    fn touch_browser_session_last_seen(
-        &mut self,
-        sid: &str,
-        seen_at: DateTime<Utc>,
-        seen_before: DateTime<Utc>,
-    ) -> Result<bool, AuthorizationServerError> {
-        browser_sessions::touch_browser_session_last_seen(self.conn, sid, seen_at, seen_before)
-    }
-
-    fn delete_browser_sessions_ended_before(
-        &mut self,
-        cutoff: DateTime<Utc>,
-    ) -> Result<usize, AuthorizationServerError> {
-        browser_sessions::delete_browser_sessions_ended_before(self.conn, cutoff)
-    }
-
-    fn session_shortfall_acknowledged_for_client(
-        &mut self,
-        sid: &str,
-        client_id: &str,
-    ) -> Result<bool, AuthorizationServerError> {
-        browser_sessions::session_shortfall_acknowledged_for_client(self.conn, sid, client_id)
-    }
-
-    fn record_session_shortfall_acknowledgement(
-        &mut self,
-        sid: &str,
-        client_id: &str,
-    ) -> Result<(), AuthorizationServerError> {
-        browser_sessions::record_session_shortfall_acknowledgement(self.conn, sid, client_id)
-    }
-
-    fn insert_refresh_token_family_row(
-        &mut self,
-        family: &RefreshTokenFamily,
-    ) -> Result<(), AuthorizationServerError> {
-        refresh_tokens::insert_refresh_token_family_row(self.conn, family)
-    }
-
-    fn insert_refresh_token(
-        &mut self,
-        token: &RefreshToken,
-    ) -> Result<(), AuthorizationServerError> {
-        refresh_tokens::insert_refresh_token(self.conn, token)
-    }
-
-    fn refresh_token_with_family_by_hash(
-        &mut self,
-        token_hash: &str,
-    ) -> Result<Option<(RefreshToken, RefreshTokenFamily)>, AuthorizationServerError> {
-        refresh_tokens::refresh_token_with_family_by_hash(self.conn, token_hash)
-    }
-
-    fn stamp_refresh_token_consumed_if_live(
-        &mut self,
-        token_hash: &str,
-        now: DateTime<Utc>,
-    ) -> Result<bool, AuthorizationServerError> {
-        refresh_tokens::stamp_refresh_token_consumed_if_live(self.conn, token_hash, now)
-    }
-
-    fn refresh_token_exists(&mut self, token_hash: &str) -> Result<bool, AuthorizationServerError> {
-        refresh_tokens::refresh_token_exists(self.conn, token_hash)
-    }
-
-    fn expire_refresh_token_family(
-        &mut self,
-        family_id: &str,
-        now: DateTime<Utc>,
-    ) -> Result<(), AuthorizationServerError> {
-        refresh_tokens::expire_refresh_token_family(self.conn, family_id, now)
-    }
-
-    fn expire_refresh_token_families_for_client(
-        &mut self,
-        client_id: &str,
-        now: DateTime<Utc>,
-    ) -> Result<(), AuthorizationServerError> {
-        refresh_tokens::expire_refresh_token_families_for_client(self.conn, client_id, now)
-    }
-
-    fn expire_refresh_token_families_for_authorization_code(
-        &mut self,
-        authorization_code_hash: &str,
-        now: DateTime<Utc>,
-    ) -> Result<(), AuthorizationServerError> {
-        refresh_tokens::expire_refresh_token_families_for_authorization_code(
-            self.conn,
-            authorization_code_hash,
-            now,
-        )
-    }
-
-    // ----- grants --------------------------------------------------------
-
-    fn all_grants(&mut self) -> Result<Vec<Grant>, AuthorizationServerError> {
-        grants::all_grants(self.conn)
-    }
-
-    fn grant_by_id(&mut self, id: &str) -> Result<Option<Grant>, AuthorizationServerError> {
-        grants::grant_by_id(self.conn, id)
-    }
-
-    fn grant_by_client_and_redirect(
-        &mut self,
-        client_id: &str,
-        redirect_uri: &Url,
-    ) -> Result<Option<AuthorizationCodeGrant>, AuthorizationServerError> {
-        grants::grant_by_client_and_redirect(self.conn, client_id, redirect_uri)
-    }
-
-    fn device_grant_by_client_and_device_name(
-        &mut self,
-        client_id: &str,
-        device_name: &str,
-    ) -> Result<Option<DeviceGrant>, AuthorizationServerError> {
-        grants::device_grant_by_client_and_device_name(self.conn, client_id, device_name)
-    }
-
-    fn create_authorization_code_grant(
-        &mut self,
-        grant: &AuthorizationCodeGrant,
-    ) -> Result<(), AuthorizationServerError> {
-        grants::create_authorization_code_grant(self.conn, grant)
-    }
-
-    fn create_device_grant(&mut self, grant: &DeviceGrant) -> Result<(), AuthorizationServerError> {
-        grants::create_device_grant(self.conn, grant)
-    }
-
-    fn update_authorization_code_grant(
-        &mut self,
-        grant: &AuthorizationCodeGrant,
-    ) -> Result<(), AuthorizationServerError> {
-        grants::update_authorization_code_grant(self.conn, grant)
-    }
-
-    fn update_device_grant(&mut self, grant: &DeviceGrant) -> Result<(), AuthorizationServerError> {
-        grants::update_device_grant(self.conn, grant)
-    }
-
-    fn delete_authorization_code_grant(
-        &mut self,
-        id: &str,
-    ) -> Result<bool, AuthorizationServerError> {
-        grants::delete_authorization_code_grant(self.conn, id)
-    }
-
-    fn delete_device_grant(&mut self, id: &str) -> Result<bool, AuthorizationServerError> {
-        grants::delete_device_grant(self.conn, id)
-    }
-}
-
-/// The `SQLite` implementation of the transaction seam. [`with_connection`] hands
-/// a [`SqliteGrantTx`] over a checked-out connection in autocommit;
-/// [`transaction`] / [`immediate_transaction`] wrap that same handle in a diesel
-/// `BEGIN` / `BEGIN IMMEDIATE`, committing on `Ok` and rolling back on `Err`. The
-/// standalone-convenience default methods (inherited from [`GrantStore`])
-/// all route through [`with_connection`], so a lone read never takes a write lock;
-/// the composed domain actions pick [`transaction`] or [`immediate_transaction`]
-/// per their atomicity needs.
-///
-/// [`with_connection`]: GrantStore::with_connection
-/// [`transaction`]: GrantStore::transaction
-/// [`immediate_transaction`]: GrantStore::immediate_transaction
 impl GrantStore for SqliteGrantStore {
     type Tx<'a> = SqliteGrantTx<'a>;
 
-    fn with_connection<T>(
+    fn read<T, E: From<AuthorizationServerError>>(
         &self,
-        f: impl FnOnce(&mut Self::Tx<'_>) -> Result<T, AuthorizationServerError>,
-    ) -> Result<T, AuthorizationServerError> {
+        f: impl FnOnce(&mut Self::Tx<'_>) -> Result<T, E>,
+    ) -> Result<T, E> {
         let mut conn = self.connection()?;
-        let mut tx = SqliteGrantTx { conn: &mut conn };
-        f(&mut tx)
+        f(&mut SqliteGrantTx { conn: &mut conn })
     }
 
-    fn transaction<T>(
+    fn write<T, E: From<AuthorizationServerError>>(
         &self,
-        f: impl FnOnce(&mut Self::Tx<'_>) -> Result<T, AuthorizationServerError>,
-    ) -> Result<T, AuthorizationServerError> {
-        let mut conn = self.connection()?;
-        // Deref to the concrete `SqliteConnection` up front so both this and
-        // `immediate_transaction` hand `f` the same `&mut SqliteConnection` the
-        // `db/*` query bodies expect.
-        let sqlite: &mut SqliteConnection = &mut conn;
-        sqlite.transaction(|conn| {
-            let mut tx = SqliteGrantTx { conn };
-            f(&mut tx)
-        })
-    }
-
-    fn immediate_transaction<T>(
-        &self,
-        f: impl FnOnce(&mut Self::Tx<'_>) -> Result<T, AuthorizationServerError>,
-    ) -> Result<T, AuthorizationServerError> {
+        f: impl FnOnce(&mut Self::Tx<'_>) -> Result<T, E>,
+    ) -> Result<T, E> {
         let mut conn = self.connection()?;
         let sqlite: &mut SqliteConnection = &mut conn;
-        sqlite.immediate_transaction(|conn| {
-            let mut tx = SqliteGrantTx { conn };
-            f(&mut tx)
-        })
+        sqlite
+            .immediate_transaction(|conn| {
+                f(&mut SqliteGrantTx { conn }).map_err(ScopeError::Closure)
+            })
+            .map_err(|error| match error {
+                ScopeError::Closure(error) => error,
+                ScopeError::Transaction(error) => {
+                    E::from(AuthorizationServerError::infrastructure(
+                        "grant store transaction failed",
+                        error,
+                    ))
+                }
+            })
     }
 }
 
-// Lets [`GrantStore::transaction`] / [`immediate_transaction`] use
-// `AuthorizationServerError` as the diesel transaction error type: diesel requires
-// `E: From<diesel::result::Error>` even though `f`'s body maps its own query
-// errors, because a `BEGIN` / `COMMIT` / `ROLLBACK` failure surfaces as a raw
-// diesel error. Kept in the `db` layer so `domain::authorization_server_error` stays diesel-free.
-impl From<diesel::result::Error> for AuthorizationServerError {
+/// How a write scope failed: its closure's own error, or diesel's `BEGIN`,
+/// `COMMIT` or `ROLLBACK` — which diesel's transaction runner needs a
+/// `From<diesel::result::Error>` for, whatever error the closure speaks.
+enum ScopeError<E> {
+    Closure(E),
+    Transaction(diesel::result::Error),
+}
+
+impl<E> From<diesel::result::Error> for ScopeError<E> {
     fn from(error: diesel::result::Error) -> Self {
-        AuthorizationServerError::infrastructure("grant store transaction failed", error)
+        ScopeError::Transaction(error)
     }
 }
 
@@ -630,6 +178,7 @@ mod tests {
 
     use super::{MIGRATIONS, MIGRATION_NAMESPACE};
     use crate::db::SqliteGrantStore;
+    use crate::domain::grant_store::SigningKeysTx as _;
     use crate::domain::GrantStore as _;
 
     #[derive(QueryableByName)]
@@ -2405,10 +1954,11 @@ mod tests {
         let a = SqliteGrantStore::open_in_memory().expect("store a");
         let b = SqliteGrantStore::open_in_memory().expect("store b");
         let key = crate::domain::signing_key::SigningKey::generate().expect("generate key");
-        a.insert_signing_key(&key).expect("insert into a");
-        assert_eq!(a.all_signing_keys().expect("read a").len(), 1);
+        a.write(|tx| tx.insert_signing_key(&key))
+            .expect("insert into a");
+        assert_eq!(a.read(|tx| tx.all_signing_keys()).expect("read a").len(), 1);
         assert_eq!(
-            b.all_signing_keys().expect("read b").len(),
+            b.read(|tx| tx.all_signing_keys()).expect("read b").len(),
             0,
             "store b must not see store a's key",
         );

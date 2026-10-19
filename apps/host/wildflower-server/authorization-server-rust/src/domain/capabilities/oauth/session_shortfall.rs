@@ -19,6 +19,7 @@ use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::client_redirect::{
     build_client_error_redirect_url, REQUEST_DECLINED_DESCRIPTION,
 };
+use crate::domain::grant_store::{AuthorizationRequestsTx, ClientsTx as _};
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::GrantStore;
 
@@ -41,14 +42,13 @@ pub(crate) struct SessionShortfallView {
 /// [`AuthorizationServerError::AuthorizationRequestNotFound`], the status
 /// poll's `404`, so the answer says nothing about whether `id` exists.
 pub(crate) fn load_unacknowledged_code_request(
-    store: &impl GrantStore,
+    tx: &mut impl AuthorizationRequestsTx,
     id: &str,
     sid: &str,
     now: DateTime<Utc>,
 ) -> Result<PendingCodeRequest, AuthorizationServerError> {
     let not_found = || AuthorizationServerError::AuthorizationRequestNotFound { id: id.to_owned() };
-    store
-        .authorization_request_by_id(id)?
+    tx.authorization_request_by_id(id)?
         .filter(|request| {
             request.grant_type == GrantType::AuthorizationCode
                 && request.status == RequestStatus::Pending
@@ -85,16 +85,20 @@ impl<S: GrantStore> SessionShortfall<S> {
         browser_session: &PollingBrowserSession,
         now: DateTime<Utc>,
     ) -> Result<SessionShortfallView, AuthorizationServerError> {
-        let pending_request =
-            load_unacknowledged_code_request(&self.store, id, &browser_session.sid, now)?;
-        let request = pending_request.request();
-        let client_name = self
-            .store
-            .client_by_id(&request.client_id)?
-            .map_or_else(|| request.client_id.clone(), |client| client.name);
-        Ok(SessionShortfallView {
-            client_name,
-            missing_scopes: session_shortfall(&request.requested_scopes, &browser_session.grant),
+        self.store.read(|tx| {
+            let pending_request =
+                load_unacknowledged_code_request(tx, id, &browser_session.sid, now)?;
+            let request = pending_request.request();
+            let client_name = tx
+                .client_by_id(&request.client_id)?
+                .map_or_else(|| request.client_id.clone(), |client| client.name);
+            Ok(SessionShortfallView {
+                client_name,
+                missing_scopes: session_shortfall(
+                    &request.requested_scopes,
+                    &browser_session.grant,
+                ),
+            })
         })
     }
 
@@ -114,12 +118,14 @@ impl<S: GrantStore> SessionShortfall<S> {
         sid: &str,
         now: DateTime<Utc>,
     ) -> Result<String, AuthorizationServerError> {
-        let pending_request = load_unacknowledged_code_request(&self.store, id, sid, now)?;
-        if !self.store.deny_unacknowledged_authorization_request(id)? {
-            return Err(AuthorizationServerError::AuthorizationRequestNotFound {
-                id: id.to_owned(),
-            });
-        }
+        let pending_request = self.store.write(|tx| {
+            let pending_request = load_unacknowledged_code_request(tx, id, sid, now)?;
+            if tx.deny_unacknowledged_authorization_request(id)? {
+                Ok(pending_request)
+            } else {
+                Err(AuthorizationServerError::AuthorizationRequestNotFound { id: id.to_owned() })
+            }
+        })?;
         Ok(build_client_error_redirect_url(
             pending_request.redirect_uri(),
             OAuthErrorCode::AccessDenied,
@@ -131,13 +137,13 @@ impl<S: GrantStore> SessionShortfall<S> {
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::grant_store::*;
     use chrono::Duration;
     use wildflowerhealthio_scopes::Grant;
 
     use super::*;
     use crate::domain::authorization_request::AuthorizationRequest;
     use crate::domain::test_fake::{client, code_request, FakeGrantStore, FIXTURE_SID};
-    use crate::domain::GrantTx as _;
 
     /// The fixture code request `id`, asking for `patient/Patient.r` and
     /// `patient/Observation.r`, waiting on its limited page.
@@ -170,9 +176,11 @@ mod tests {
     fn the_read_names_the_app_and_what_the_session_lacks() {
         let store = FakeGrantStore::default();
         store
+            .tx()
             .upsert_client(&client("client", &["patient/Patient.r"]))
             .unwrap();
         store
+            .tx()
             .insert_authorization_request(&unacknowledged("req-1"))
             .unwrap();
         let session_shortfall = SessionShortfall::new(store);
@@ -199,21 +207,25 @@ mod tests {
         let store = FakeGrantStore::default();
         let now = Utc::now();
         store
+            .tx()
             .insert_authorization_request(&unacknowledged("waiting"))
             .unwrap();
         store
+            .tx()
             .insert_authorization_request(&AuthorizationRequest {
                 session_shortfall_acknowledged: true,
                 ..unacknowledged("acknowledged")
             })
             .unwrap();
         store
+            .tx()
             .insert_authorization_request(&AuthorizationRequest {
                 expires_at: now - Duration::seconds(1),
                 ..unacknowledged("expired")
             })
             .unwrap();
         store
+            .tx()
             .insert_authorization_request(&AuthorizationRequest {
                 status: RequestStatus::Denied,
                 ..unacknowledged("denied")
@@ -247,6 +259,7 @@ mod tests {
     fn cancel_denies_the_request_and_answers_access_denied() {
         let store = FakeGrantStore::default();
         store
+            .tx()
             .insert_authorization_request(&unacknowledged("req-1"))
             .unwrap();
         let session_shortfall = SessionShortfall::new(store);
@@ -261,6 +274,7 @@ mod tests {
         assert_eq!(
             session_shortfall
                 .store
+                .tx()
                 .authorization_request_by_id("req-1")
                 .unwrap()
                 .expect("present")
@@ -269,6 +283,7 @@ mod tests {
         );
         assert!(!session_shortfall
             .store
+            .tx()
             .session_shortfall_acknowledged_for_client(FIXTURE_SID, "client")
             .unwrap());
         assert!(session_shortfall
@@ -282,23 +297,31 @@ mod tests {
     fn a_cancel_racing_a_continue_leaves_the_acknowledged_request_alone() {
         let store = FakeGrantStore::default();
         store
+            .tx()
             .insert_authorization_request(&unacknowledged("req-1"))
             .unwrap();
         let session_shortfall = SessionShortfall::new(store);
         let now = Utc::now();
-        load_unacknowledged_code_request(&session_shortfall.store, "req-1", FIXTURE_SID, now)
-            .expect("the Cancel reads it first");
+        load_unacknowledged_code_request(
+            &mut session_shortfall.store.tx(),
+            "req-1",
+            FIXTURE_SID,
+            now,
+        )
+        .expect("the Cancel reads it first");
         assert!(session_shortfall
             .store
-            .with_connection(|tx| tx.acknowledge_session_shortfall("req-1", now))
+            .write(|tx| tx.acknowledge_session_shortfall("req-1", now))
             .unwrap());
         assert!(!session_shortfall
             .store
+            .tx()
             .deny_unacknowledged_authorization_request("req-1")
             .unwrap());
         assert_eq!(
             session_shortfall
                 .store
+                .tx()
                 .authorization_request_by_id("req-1")
                 .unwrap()
                 .expect("present")

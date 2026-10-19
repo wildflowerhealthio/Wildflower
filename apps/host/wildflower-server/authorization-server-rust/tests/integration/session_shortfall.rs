@@ -99,7 +99,7 @@ async fn the_fast_path_stops_at_the_limited_page_then_issues_the_narrowed_code()
     assert_eq!(newest_pending_consent(&db), None, "the Owner isn't asked");
     assert_eq!(
         store_handle(&db)
-            .authorization_code_by_request_id(&request_id)
+            .read(|tx| tx.authorization_code_by_request_id(&request_id))
             .expect("read"),
         None,
         "no code yet"
@@ -451,14 +451,16 @@ async fn an_expired_request_on_the_limited_page_goes_no_further() {
     let request_id =
         limited_request_id(&get_authorize(&g.router, &session_token, &app_query()).await);
     let parked = store_handle(&db)
-        .authorization_request_by_id(&request_id)
+        .read(|tx| tx.authorization_request_by_id(&request_id))
         .expect("read")
         .expect("parked");
     store_handle(&db)
-        .insert_authorization_request(&AuthorizationRequest {
-            id: "lapsed".to_owned(),
-            expires_at: Utc::now() - Duration::seconds(1),
-            ..parked
+        .write(|tx| {
+            tx.insert_authorization_request(&AuthorizationRequest {
+                id: "lapsed".to_owned(),
+                expires_at: Utc::now() - Duration::seconds(1),
+                ..parked
+            })
         })
         .expect("plant a lapsed copy");
 

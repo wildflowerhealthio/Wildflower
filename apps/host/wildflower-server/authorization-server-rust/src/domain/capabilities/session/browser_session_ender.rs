@@ -5,6 +5,7 @@
 use chrono::{DateTime, Utc};
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::grant_store::BrowserSessionsTx as _;
 use crate::domain::token::VerifiedClaims;
 use crate::domain::GrantStore;
 
@@ -32,7 +33,7 @@ impl<S: GrantStore> BrowserSessionEnder<S> {
         now: DateTime<Utc>,
     ) -> Result<(), AuthorizationServerError> {
         if let Some(sid) = session_claims.sid.as_deref() {
-            self.store.revoke_browser_session(sid, now)?;
+            self.store.write(|tx| tx.revoke_browser_session(sid, now))?;
         }
         Ok(())
     }
@@ -40,6 +41,7 @@ impl<S: GrantStore> BrowserSessionEnder<S> {
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::grant_store::*;
     use chrono::Duration;
 
     use super::*;
@@ -67,8 +69,8 @@ mod tests {
         let now = Utc::now();
         let signed_out = BrowserSession::new_owner(vec![], Duration::hours(8), now);
         let other = BrowserSession::new_owner(vec![], Duration::hours(8), now);
-        store.insert_browser_session(&signed_out).unwrap();
-        store.insert_browser_session(&other).unwrap();
+        store.tx().insert_browser_session(&signed_out).unwrap();
+        store.tx().insert_browser_session(&other).unwrap();
         let ender = BrowserSessionEnder::new(store);
 
         ender.end(&claims(Some(&signed_out.sid)), now).unwrap();
@@ -76,8 +78,13 @@ mod tests {
 
         assert!(ender
             .store
+            .tx()
             .browser_session_is_revoked(&signed_out.sid)
             .unwrap());
-        assert!(!ender.store.browser_session_is_revoked(&other.sid).unwrap());
+        assert!(!ender
+            .store
+            .tx()
+            .browser_session_is_revoked(&other.sid)
+            .unwrap());
     }
 }

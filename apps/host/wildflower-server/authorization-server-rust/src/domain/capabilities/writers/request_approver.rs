@@ -16,7 +16,7 @@ use crate::domain::authorization_code::{
     IssuedAuthorizationCode, PendingCodeRequest, AUTHORIZATION_CODE_TTL,
 };
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::{GrantStore, GrantTx};
+use crate::domain::GrantTx;
 
 /// On whose authority a code-flow request is approved — the two proofs that
 /// may issue an authorization code. Listing them here is the point: a reader
@@ -57,16 +57,16 @@ pub(crate) enum CodeApproval {
     BrowserSessionEnded,
 }
 
-/// Approve pending requests. A borrowed view over the store; the gate is the
+/// Approve pending requests, inside the caller's transaction; the gate is the
 /// proof each method takes.
-pub(crate) struct RequestApprover<'a, S: GrantStore> {
-    store: &'a S,
+pub(crate) struct RequestApprover<'a, T: GrantTx> {
+    tx: &'a mut T,
 }
 
-impl<'a, S: GrantStore> RequestApprover<'a, S> {
-    /// A writer over `store`.
-    pub(crate) fn over(store: &'a S) -> Self {
-        RequestApprover { store }
+impl<'a, T: GrantTx> RequestApprover<'a, T> {
+    /// A writer inside the caller's transaction `tx`.
+    pub(crate) fn within(tx: &'a mut T) -> Self {
+        RequestApprover { tx }
     }
 
     /// Approve the pending code-flow request under `authority` and issue
@@ -82,8 +82,8 @@ impl<'a, S: GrantStore> RequestApprover<'a, S> {
     /// ([`session_bounded_scopes`]), so a browser paired with less than the
     /// Owner holds earns no app more than it holds, whoever approved.
     ///
-    /// The approval and the code land in one transaction, which first loads
-    /// the request's browser session. A request whose session is no longer
+    /// The approval and the code land in the caller's transaction, which
+    /// first loads the request's browser session. A request whose session is no longer
     /// live at `now` (revoked, expired, or no longer stored) is denied rather
     /// than approved ([`CodeApproval::BrowserSessionEnded`]), so the client
     /// hears `access_denied` rather than earning a code no live session
@@ -95,7 +95,7 @@ impl<'a, S: GrantStore> RequestApprover<'a, S> {
     ///
     /// [`AuthorizationServerError::Infrastructure`] on a store failure.
     pub(crate) fn approve_for_code(
-        &self,
+        &mut self,
         authority: CodeAuthority<'_>,
         pending_request: &PendingCodeRequest,
         patient: Option<&str>,
@@ -104,41 +104,40 @@ impl<'a, S: GrantStore> RequestApprover<'a, S> {
     ) -> Result<CodeApproval, AuthorizationServerError> {
         let authorized_scopes = authority.authorized_scopes();
         let request = pending_request.request();
-        // One transaction, so an approved request never exists without its code,
-        // and its session can't be revoked or narrowed between the read and the
-        // approval.
-        self.store.transaction(|tx| {
-            let Some(browser_session) = tx
-                .browser_session_by_sid(pending_request.sid())?
-                .filter(|browser_session| browser_session.is_live(now))
-            else {
-                return Ok(if tx.deny_authorization_request(&request.id)? {
-                    CodeApproval::BrowserSessionEnded
-                } else {
-                    CodeApproval::RequestNotPending
-                });
-            };
-            if !tx.approve_authorization_request(&request.id, authorized_scopes, patient, None)? {
-                return Ok(CodeApproval::RequestNotPending);
-            }
-            let authorization_code = IssuedAuthorizationCode {
-                code,
-                request_id: request.id.clone(),
-                client_id: request.client_id.clone(),
-                redirect_uri: pending_request.redirect_uri().clone(),
-                code_challenge: pending_request.code_challenge().to_owned(),
-                granted_scopes: session_bounded_scopes(
-                    authorized_scopes,
-                    &Grant::parse(&browser_session.scopes),
-                ),
-                patient: patient.map(str::to_owned),
-                issued_at: now,
-                expires_at: now + AUTHORIZATION_CODE_TTL,
-                sid: browser_session.sid,
-            };
-            tx.issue_authorization_code(&authorization_code)?;
-            Ok(CodeApproval::Issued(Box::new(authorization_code)))
-        })
+        let Some(browser_session) = self
+            .tx
+            .browser_session_by_sid(pending_request.sid())?
+            .filter(|browser_session| browser_session.is_live(now))
+        else {
+            return Ok(if self.tx.deny_authorization_request(&request.id)? {
+                CodeApproval::BrowserSessionEnded
+            } else {
+                CodeApproval::RequestNotPending
+            });
+        };
+        if !self
+            .tx
+            .approve_authorization_request(&request.id, authorized_scopes, patient, None)?
+        {
+            return Ok(CodeApproval::RequestNotPending);
+        }
+        let authorization_code = IssuedAuthorizationCode {
+            code,
+            request_id: request.id.clone(),
+            client_id: request.client_id.clone(),
+            redirect_uri: pending_request.redirect_uri().clone(),
+            code_challenge: pending_request.code_challenge().to_owned(),
+            granted_scopes: session_bounded_scopes(
+                authorized_scopes,
+                &Grant::parse(&browser_session.scopes),
+            ),
+            patient: patient.map(str::to_owned),
+            issued_at: now,
+            expires_at: now + AUTHORIZATION_CODE_TTL,
+            sid: browser_session.sid,
+        };
+        self.tx.issue_authorization_code(&authorization_code)?;
+        Ok(CodeApproval::Issued(Box::new(authorization_code)))
     }
 
     /// Approve the device-flow request `request_id` under `delegated_scopes`,
@@ -151,13 +150,13 @@ impl<'a, S: GrantStore> RequestApprover<'a, S> {
     ///
     /// [`AuthorizationServerError::Infrastructure`] on a store failure.
     pub(crate) fn approve_for_device(
-        &self,
+        &mut self,
         delegated_scopes: &DelegatedScopes,
         request_id: &str,
         patient: Option<&str>,
         device_name: Option<&str>,
     ) -> Result<bool, AuthorizationServerError> {
-        self.store.approve_authorization_request(
+        self.tx.approve_authorization_request(
             request_id,
             delegated_scopes.scopes(),
             patient,
@@ -175,12 +174,12 @@ impl<'a, S: GrantStore> RequestApprover<'a, S> {
     ///
     /// [`AuthorizationServerError::Infrastructure`] on a store failure.
     pub(crate) fn approve_browser_pairing(
-        &self,
+        &mut self,
         delegated_scopes: &DelegatedScopes,
         request_id: &str,
         browser_name: &str,
     ) -> Result<bool, AuthorizationServerError> {
-        self.store.approve_authorization_request(
+        self.tx.approve_authorization_request(
             request_id,
             delegated_scopes.scopes(),
             None,
@@ -191,6 +190,7 @@ impl<'a, S: GrantStore> RequestApprover<'a, S> {
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::grant_store::*;
 
     use chrono::Duration;
 
@@ -210,7 +210,7 @@ mod tests {
     ) -> PendingCodeRequest {
         let standing =
             BrowserSession::new_owner(crate::owner_scopes(), Duration::hours(8), Utc::now());
-        store.insert_browser_session(&standing).unwrap();
+        store.tx().insert_browser_session(&standing).unwrap();
         pending_request_in_session(store, id, status, &standing.sid)
     }
 
@@ -225,13 +225,13 @@ mod tests {
             sid: Some(sid.to_owned()),
             ..code_request(id, status, Utc::now() + Duration::minutes(5))
         };
-        store.insert_authorization_request(&request).unwrap();
+        store.tx().insert_authorization_request(&request).unwrap();
         PendingCodeRequest::from_request(request).expect("a code request")
     }
 
     /// Approve `pending_request` on the Owner's authority, issuing `the-code`.
     fn approve(store: &FakeGrantStore, pending_request: &PendingCodeRequest) -> CodeApproval {
-        RequestApprover::over(store)
+        RequestApprover::within(&mut store.tx())
             .approve_for_code(
                 CodeAuthority::OwnerDelegated(&delegated_scopes(&["patient/Patient.r"])),
                 pending_request,
@@ -250,7 +250,7 @@ mod tests {
         let store = FakeGrantStore::default();
         let pending_request = pending_request(&store, "req-1", RequestStatus::Pending);
         let now = Utc::now();
-        let CodeApproval::Issued(issued_code) = RequestApprover::over(&store)
+        let CodeApproval::Issued(issued_code) = RequestApprover::within(&mut store.tx())
             .approve_for_code(
                 CodeAuthority::OwnerDelegated(&delegated_scopes(&["patient/Patient.r"])),
                 &pending_request,
@@ -266,6 +266,7 @@ mod tests {
         assert_eq!(issued_code.expires_at, now + AUTHORIZATION_CODE_TTL);
         assert_eq!(issued_code.code_challenge, pending_request.code_challenge());
         let request = store
+            .tx()
             .authorization_request_by_id("req-1")
             .unwrap()
             .expect("present");
@@ -275,6 +276,7 @@ mod tests {
             Some(&["patient/Patient.r".to_owned()][..])
         );
         let stored = store
+            .tx()
             .authorization_code_by_request_id("req-1")
             .unwrap()
             .expect("code issued_code");
@@ -293,7 +295,10 @@ mod tests {
             CodeApproval::RequestNotPending
         );
         assert_eq!(
-            store.authorization_code_by_request_id("req-1").unwrap(),
+            store
+                .tx()
+                .authorization_code_by_request_id("req-1")
+                .unwrap(),
             None
         );
     }
@@ -310,9 +315,12 @@ mod tests {
         let expired =
             BrowserSession::new_owner(vec![], Duration::hours(8), now - Duration::hours(9));
         for session in [&standing, &revoked, &expired] {
-            store.insert_browser_session(session).unwrap();
+            store.tx().insert_browser_session(session).unwrap();
         }
-        assert!(store.revoke_browser_session(&revoked.sid, now).unwrap());
+        assert!(store
+            .tx()
+            .revoke_browser_session(&revoked.sid, now)
+            .unwrap());
 
         for (id, sid) in [
             ("req-revoked", revoked.sid.as_str()),
@@ -327,12 +335,13 @@ mod tests {
                 "{id}"
             );
             let request = store
+                .tx()
                 .authorization_request_by_id(id)
                 .unwrap()
                 .expect("present");
             assert_eq!(request.status, RequestStatus::Denied, "{id}");
             assert_eq!(
-                store.authorization_code_by_request_id(id).unwrap(),
+                store.tx().authorization_code_by_request_id(id).unwrap(),
                 None,
                 "{id}"
             );
@@ -364,11 +373,11 @@ mod tests {
             Duration::hours(24),
             Utc::now(),
         );
-        store.insert_browser_session(&paired).unwrap();
+        store.tx().insert_browser_session(&paired).unwrap();
         let pending_request =
             pending_request_in_session(&store, "req-1", RequestStatus::Pending, &paired.sid);
         let approved = ["openid", "patient/Patient.read", "patient/Observation.rs"];
-        let CodeApproval::Issued(issued_code) = RequestApprover::over(&store)
+        let CodeApproval::Issued(issued_code) = RequestApprover::within(&mut store.tx())
             .approve_for_code(
                 CodeAuthority::OwnerDelegated(&delegated_scopes(&approved)),
                 &pending_request,
@@ -385,6 +394,7 @@ mod tests {
             ["openid", "patient/Patient.read"]
         );
         let request = store
+            .tx()
             .authorization_request_by_id("req-1")
             .unwrap()
             .expect("present");
@@ -401,15 +411,18 @@ mod tests {
     fn approve_for_device_records_scopes_and_name_only_while_pending() {
         let store = FakeGrantStore::default();
         store
+            .tx()
             .insert_authorization_request(&device_request("dev-1", "CODE", RequestStatus::Pending))
             .unwrap();
-        let approver = RequestApprover::over(&store);
+        let mut tx = store.tx();
+        let mut approver = RequestApprover::within(&mut tx);
         let scopes = delegated_scopes(&["patient/Patient.r"]);
         let approved = approver
             .approve_for_device(&scopes, "dev-1", None, Some("Kitchen iPad"))
             .unwrap();
         assert!(approved);
         let request = store
+            .tx()
             .authorization_request_by_id("dev-1")
             .unwrap()
             .expect("present");

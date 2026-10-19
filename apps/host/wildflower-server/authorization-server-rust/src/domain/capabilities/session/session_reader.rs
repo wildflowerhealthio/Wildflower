@@ -7,6 +7,7 @@
 use chrono::{DateTime, Utc};
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::grant_store::BrowserSessionsTx as _;
 use crate::domain::token::VerifiedClaims;
 use crate::domain::GrantStore;
 
@@ -57,13 +58,14 @@ impl<S: GrantStore> SessionReader<S> {
         };
         Ok(self
             .store
-            .browser_session_by_sid(sid)?
+            .read(|tx| tx.browser_session_by_sid(sid))?
             .map(|session| session.expires_at))
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::grant_store::*;
     use chrono::Duration;
 
     use super::*;
@@ -90,7 +92,7 @@ mod tests {
     fn the_browser_session_expiry_is_the_named_session_s() {
         let store = FakeGrantStore::default();
         let session = BrowserSession::new_owner(vec![], Duration::hours(8), Utc::now());
-        store.insert_browser_session(&session).expect("insert");
+        store.tx().insert_browser_session(&session).expect("insert");
 
         let reader = SessionReader::new(store, claims(Some(&session.sid)));
         assert_eq!(

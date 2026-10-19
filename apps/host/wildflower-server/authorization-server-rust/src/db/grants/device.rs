@@ -31,7 +31,7 @@ diesel::table! {
 /// reads then chooses this or [`update_device_grant`]. The caller hands the
 /// concrete grant, so the store never inspects a polymorphic value to choose the
 /// table.
-pub(crate) fn create_device_grant(
+pub(super) fn create_device_grant(
     conn: &mut SqliteConnection,
     grant: &DeviceGrant,
 ) -> Result<(), AuthorizationServerError> {
@@ -46,7 +46,7 @@ pub(crate) fn create_device_grant(
 /// the identity a re-pairing upserts against, and the lookup token exchange
 /// uses to stamp `refresh_token_families.grant_id`. Hits the concrete
 /// table.
-pub(crate) fn device_grant_by_client_and_device_name(
+pub(super) fn device_grant_by_client_and_device_name(
     conn: &mut SqliteConnection,
     client_id: &str,
     device_name: &str,
@@ -74,7 +74,7 @@ pub(crate) fn device_grant_by_client_and_device_name(
 /// runs the read + this write inside one `BEGIN IMMEDIATE` transaction (the
 /// concurrency rationale it shares with the authorization-code upsert); this
 /// body is just the `UPDATE`.
-pub(crate) fn update_device_grant(
+pub(super) fn update_device_grant(
     conn: &mut SqliteConnection,
     grant: &DeviceGrant,
 ) -> Result<(), AuthorizationServerError> {
@@ -91,12 +91,12 @@ pub(crate) fn update_device_grant(
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::grant_store::*;
     use chrono::{DateTime, Utc};
     use uuid::Uuid;
 
     use crate::db::SqliteGrantStore;
     use crate::domain::grant::{CumulativeConsent, DeviceGrant};
-    use crate::domain::{GrantStore as _, GrantTx as _};
 
     /// The create-or-union device-grant upsert transaction, inlined here so the db
     /// test drives the real adapter's grant primitives directly instead of
@@ -111,7 +111,7 @@ mod tests {
         now: DateTime<Utc>,
     ) {
         store
-            .immediate_transaction(|tx| {
+            .write(|tx| {
                 match tx.device_grant_by_client_and_device_name(client_id, device_name)? {
                     Some(mut grant) => {
                         grant.absorb_reapproval(scopes, patient, now);
@@ -150,7 +150,7 @@ mod tests {
             now,
         );
         let grant = store
-            .device_grant_by_client_and_device_name("client-a", "Ada's laptop")
+            .read(|tx| tx.device_grant_by_client_and_device_name("client-a", "Ada's laptop"))
             .expect("query")
             .expect("present");
         assert_eq!(grant.scopes, vec!["openid".to_owned()]);
@@ -165,7 +165,7 @@ mod tests {
             Utc::now(),
         );
         let updated = store
-            .device_grant_by_client_and_device_name("client-a", "Ada's laptop")
+            .read(|tx| tx.device_grant_by_client_and_device_name("client-a", "Ada's laptop"))
             .expect("query")
             .expect("present");
         assert_eq!(
@@ -176,7 +176,7 @@ mod tests {
             updated.scopes,
             vec!["openid".to_owned(), "offline_access".to_owned()],
         );
-        assert_eq!(store.all_grants().expect("list").len(), 1);
+        assert_eq!(store.read(|tx| tx.all_grants()).expect("list").len(), 1);
 
         // A different device name for the same client is a distinct grant.
         upsert_device_grant(
@@ -187,6 +187,6 @@ mod tests {
             None,
             Utc::now(),
         );
-        assert_eq!(store.all_grants().expect("list").len(), 2);
+        assert_eq!(store.read(|tx| tx.all_grants()).expect("list").len(), 2);
     }
 }

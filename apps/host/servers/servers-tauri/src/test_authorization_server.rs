@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use tokio::sync::watch;
 use url::Url;
+use wildflowerhealthio_authorization_server::domain::grant_store::AuthorizationRequestsTx as _;
 use wildflowerhealthio_authorization_server::domain::authorization_request::{
     AuthorizationRequest, StartCodeAuthorizationArgs,
 };
@@ -50,7 +51,7 @@ impl TestAuthorizationServer {
         .unwrap();
         SqliteGrantStore::new(pool)
             .unwrap()
-            .insert_authorization_request(&AuthorizationRequest::new_code_authorization(
+            .write(|tx| tx.insert_authorization_request(&AuthorizationRequest::new_code_authorization(
                 StartCodeAuthorizationArgs {
                     id: id.to_owned(),
                     client_id: "lifting".to_owned(),

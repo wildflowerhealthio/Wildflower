@@ -117,7 +117,7 @@ async fn an_approved_browser_without_client_update_cannot_register_a_new_app() {
     assert_eq!(request_status(&g, &db, &request_id).await, "pending");
     assert!(
         store_handle(&db)
-            .client_by_id("test-app")
+            .read(|tx| tx.client_by_id("test-app"))
             .expect("read")
             .is_none(),
         "the refused approval registered nothing"
@@ -227,7 +227,7 @@ async fn an_approved_browser_without_grant_create_cannot_approve_a_device_reques
     assert_refused_for_lacking(res, &["wildflower/Grant.c"]).await;
     assert_eq!(
         store_handle(&db)
-            .authorization_request_by_id("dev-1")
+            .read(|tx| tx.authorization_request_by_id("dev-1"))
             .expect("read")
             .expect("the request")
             .status,

@@ -19,8 +19,8 @@ use crate::domain::browser_session::BrowserSession;
 use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::client_credentials::ClientCredentials;
 use crate::domain::grant::AuthorizationCodeGrant;
+use crate::domain::grant_store::*;
 use crate::domain::signing_key::SigningKey;
-use crate::domain::GrantStore;
 use crate::ports::{OwnerApproval, RevocationCheck};
 
 /// A pending (by default) device-code authorization request fixture.
@@ -66,6 +66,7 @@ pub(crate) const FIXTURE_SID: &str = "sid-1";
 /// honoured.
 pub(crate) fn seed_fixture_browser_session(store: &FakeGrantStore) {
     store
+        .tx()
         .insert_browser_session(&BrowserSession {
             sid: FIXTURE_SID.to_owned(),
             ..BrowserSession::new_approved(
@@ -153,7 +154,7 @@ pub(crate) fn owned_scopes(scopes: &[&str]) -> Vec<String> {
 pub(crate) fn seed_active_signing_key(store: &FakeGrantStore) -> SigningKey {
     let mut key = SigningKey::generate().expect("key");
     key.is_active = true;
-    store.insert_signing_key(&key).unwrap();
+    store.tx().insert_signing_key(&key).unwrap();
     key
 }
 
@@ -163,9 +164,9 @@ pub(crate) fn authenticated_public_client(
     client: Client,
 ) -> AuthenticatedClient {
     let client_id = client.client_id.clone();
-    store.upsert_client(&client).unwrap();
+    store.tx().upsert_client(&client).unwrap();
     AuthenticatedClient::authenticate(
-        store,
+        &mut store.tx(),
         &ClientCredentials {
             client_id,
             client_secret: None,
@@ -190,6 +191,7 @@ pub(crate) fn redeemed_code(
     let now = Utc::now();
     let code = generate_authorization_code();
     store
+        .tx()
         .issue_authorization_code(&IssuedAuthorizationCode {
             code: code.clone(),
             request_id: "req".to_owned(),
@@ -204,7 +206,7 @@ pub(crate) fn redeemed_code(
         })
         .unwrap();
     RedeemedAuthorizationCode::redeem(
-        store,
+        &mut store.tx(),
         &authenticated,
         &PresentedAuthorizationCode {
             code: &code,
@@ -213,6 +215,7 @@ pub(crate) fn redeemed_code(
         },
         now,
     )
+    .expect("the fake store does not fail")
     .expect("a freshly issued code redeems")
 }
 

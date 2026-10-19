@@ -16,6 +16,7 @@ use crate::domain::authorization_request::{
     AuthorizationRequest, StartDeviceAuthorizationArgs, DEVICE_CODE_POLL_INTERVAL,
 };
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::grant_store::AuthorizationRequestsTx;
 use crate::domain::GrantStore;
 use crate::ports::OwnerApproval;
 
@@ -106,18 +107,23 @@ impl<S: GrantStore> DeviceAuthorizer<S> {
         // 256-bit CSPRNG opaque token per RFC 6749 §10.10, like an
         // authorization code.
         let device_code = generate_authorization_code();
-        let user_code = generate_unique_user_code(&self.store)?
-            .ok_or(DeviceAuthorizationError::UserCodeExhausted)?;
-        let request =
-            AuthorizationRequest::new_device_authorization(StartDeviceAuthorizationArgs {
-                id: device_code.clone(),
-                client_id: authenticated_client.client_id().to_owned(),
-                requested_scopes,
-                user_code: user_code.clone(),
-                device_name,
-                ttl: DEVICE_AUTHORIZATION_TTL,
-            });
-        self.store.insert_authorization_request(&request)?;
+        let user_code = self
+            .store
+            .write(|tx| -> Result<_, DeviceAuthorizationError> {
+                let user_code = generate_unique_user_code(tx)?
+                    .ok_or(DeviceAuthorizationError::UserCodeExhausted)?;
+                tx.insert_authorization_request(&AuthorizationRequest::new_device_authorization(
+                    StartDeviceAuthorizationArgs {
+                        id: device_code.clone(),
+                        client_id: authenticated_client.client_id().to_owned(),
+                        requested_scopes,
+                        user_code: user_code.clone(),
+                        device_name,
+                        ttl: DEVICE_AUTHORIZATION_TTL,
+                    },
+                ))?;
+                Ok(user_code)
+            })?;
         // A fresh pending row is now the newest pending consent; republish so
         // the host notifies it.
         self.owner_approval.republish_active();
@@ -130,7 +136,7 @@ impl<S: GrantStore> DeviceAuthorizer<S> {
     }
 }
 
-/// A random `user_code` that collides with *no* existing request in `store` —
+/// A random `user_code` that collides with *no* existing request in `tx` —
 /// pending or terminal, of any flow: reusing a code attached to a
 /// denied/expired row would let that stale row shadow the new request at the
 /// consent-side lookup. `None` when every candidate collided.
@@ -139,17 +145,14 @@ impl<S: GrantStore> DeviceAuthorizer<S> {
 ///
 /// The store's, when reading a candidate's request fails.
 pub(super) fn generate_unique_user_code(
-    store: &impl GrantStore,
+    tx: &mut impl AuthorizationRequestsTx,
 ) -> Result<Option<String>, AuthorizationServerError> {
     for _ in 0..MAX_USER_CODE_GENERATION_ATTEMPTS {
         let candidate = {
             let mut rng = rand::rng();
             generate_oauth_user_code(&mut rng)
         };
-        if store
-            .authorization_request_by_user_code(&candidate)?
-            .is_none()
-        {
+        if tx.authorization_request_by_user_code(&candidate)?.is_none() {
             return Ok(Some(candidate));
         }
     }
@@ -158,6 +161,7 @@ pub(super) fn generate_unique_user_code(
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::grant_store::*;
 
     use super::*;
     use crate::domain::authorization_request::{GrantType, RequestStatus};
@@ -201,6 +205,7 @@ mod tests {
         );
         let parked_request = authorizer
             .store
+            .tx()
             .authorization_request_by_user_code(&device_codes.user_code)
             .unwrap()
             .expect("parked_request under the user code");

@@ -4,7 +4,7 @@ use diesel::prelude::{Insertable, Queryable, Selectable};
 use crate::db::refresh_tokens::{refresh_token_families, refresh_tokens};
 use crate::db::shared::JsonStrings;
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::{GrantStore, GrantTx};
+use crate::domain::grant_store::RefreshTokensTx;
 
 /// Absolute lifetime of a refresh-token family, measured from the original
 /// authorization. Rotation swaps generations but never extends this
@@ -102,42 +102,41 @@ pub enum RefreshTokenConsumeOutcome {
 // successor are privileged writes and live in
 // `domain::capabilities::writers::RefreshFamilyWriter`.
 
-/// Atomically consume a live refresh token, reporting which of the three
-/// [`RefreshTokenConsumeOutcome`] states the presented token was in. The guarded
-/// stamp and the existence probe run in **one** transaction, so a concurrent
-/// redeemer of the same token reads a single snapshot: exactly one caller stamps
-/// the live row (`Consumed`), and a loser sees the row still present but no
-/// longer live (`Replayed`) rather than a torn state; an unknown hash is
-/// `NotFound`.
+/// Consume a live refresh token in the caller's write scope, reporting which
+/// of the three [`RefreshTokenConsumeOutcome`] states the presented token was
+/// in. The guarded stamp and the existence probe run under the scope's write
+/// lock, so of two concurrent redeemers of the same token exactly one stamps
+/// the live row (`Consumed`), and the other sees the row still present but no
+/// longer live (`Replayed`); an unknown hash is `NotFound`.
 ///
 /// # Errors
 ///
-/// [`AuthorizationServerError::Infrastructure`] if the transaction, the stamp, or the
-/// existence probe fails.
+/// [`AuthorizationServerError::Infrastructure`] if the stamp or the existence
+/// probe fails.
 pub(crate) fn consume_refresh_token(
-    store: &impl GrantStore,
+    tx: &mut impl RefreshTokensTx,
     token_hash: &str,
     now: DateTime<Utc>,
 ) -> Result<RefreshTokenConsumeOutcome, AuthorizationServerError> {
-    store.transaction(|tx| {
-        if tx.stamp_refresh_token_consumed_if_live(token_hash, now)? {
-            Ok(RefreshTokenConsumeOutcome::Consumed)
-        } else if tx.refresh_token_exists(token_hash)? {
-            Ok(RefreshTokenConsumeOutcome::Replayed)
-        } else {
-            Ok(RefreshTokenConsumeOutcome::NotFound)
-        }
-    })
+    if tx.stamp_refresh_token_consumed_if_live(token_hash, now)? {
+        Ok(RefreshTokenConsumeOutcome::Consumed)
+    } else if tx.refresh_token_exists(token_hash)? {
+        Ok(RefreshTokenConsumeOutcome::Replayed)
+    } else {
+        Ok(RefreshTokenConsumeOutcome::NotFound)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use crate::domain::test_fake::FakeGrantStore;
 
     fn live_token(store: &FakeGrantStore, token_hash: &str) {
         let now = Utc::now();
         store
+            .tx()
             .insert_refresh_token_family_row(&RefreshTokenFamily {
                 family_id: "fam".to_owned(),
                 client_id: "client".to_owned(),
@@ -151,6 +150,7 @@ mod tests {
             })
             .unwrap();
         store
+            .tx()
             .insert_refresh_token(&RefreshToken {
                 token_hash: token_hash.to_owned(),
                 family_id: "fam".to_owned(),
@@ -167,15 +167,15 @@ mod tests {
         let now = Utc::now();
 
         assert_eq!(
-            consume_refresh_token(&store, "live", now).unwrap(),
+            consume_refresh_token(&mut store.tx(), "live", now).unwrap(),
             RefreshTokenConsumeOutcome::Consumed,
         );
         assert_eq!(
-            consume_refresh_token(&store, "live", now).unwrap(),
+            consume_refresh_token(&mut store.tx(), "live", now).unwrap(),
             RefreshTokenConsumeOutcome::Replayed,
         );
         assert_eq!(
-            consume_refresh_token(&store, "never-issued", now).unwrap(),
+            consume_refresh_token(&mut store.tx(), "never-issued", now).unwrap(),
             RefreshTokenConsumeOutcome::NotFound,
         );
     }

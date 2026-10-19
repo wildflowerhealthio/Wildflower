@@ -10,6 +10,7 @@ use chrono::{DateTime, Utc};
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::browser_session::LAST_SEEN_RESOLUTION;
+use crate::domain::grant_store::BrowserSessionsTx as _;
 use crate::domain::last_seen_throttle::LastSeenThrottle;
 use crate::domain::token::VerifiedClaims;
 use crate::domain::GrantStore;
@@ -47,7 +48,7 @@ impl<S: GrantStore> BrowserSessionUseRecorder<S> {
             return Ok(());
         }
         self.store
-            .touch_browser_session_last_seen(sid, now, now - LAST_SEEN_RESOLUTION)
+            .write(|tx| tx.touch_browser_session_last_seen(sid, now, now - LAST_SEEN_RESOLUTION))
             .inspect_err(|_| self.throttle.forget(sid))?;
         Ok(())
     }
@@ -55,6 +56,7 @@ impl<S: GrantStore> BrowserSessionUseRecorder<S> {
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::grant_store::*;
     use chrono::Duration;
 
     use super::*;
@@ -77,6 +79,7 @@ mod tests {
 
     fn last_seen(store: &FakeGrantStore, sid: &str) -> DateTime<Utc> {
         store
+            .tx()
             .browser_session_by_sid(sid)
             .expect("read")
             .expect("stored")
@@ -90,7 +93,7 @@ mod tests {
         let signed_in_at = Utc::now() - Duration::hours(1);
         let session = BrowserSession::new_owner(vec![], Duration::hours(8), signed_in_at);
         let store = FakeGrantStore::default();
-        store.insert_browser_session(&session).expect("insert");
+        store.tx().insert_browser_session(&session).expect("insert");
         let recorder = BrowserSessionUseRecorder::new(store, Arc::new(LastSeenThrottle::new()));
         let session_claims = claims(Some(&session.sid));
 
@@ -119,7 +122,7 @@ mod tests {
         let signed_in_at = Utc::now();
         let session = BrowserSession::new_owner(vec![], Duration::hours(8), signed_in_at);
         let store = FakeGrantStore::default();
-        store.insert_browser_session(&session).expect("insert");
+        store.tx().insert_browser_session(&session).expect("insert");
         let restarted = BrowserSessionUseRecorder::new(store, Arc::new(LastSeenThrottle::new()));
         restarted
             .record_cookie_use(

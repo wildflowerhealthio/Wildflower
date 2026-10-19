@@ -11,13 +11,16 @@ use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::browser_session::BrowserSession;
 use crate::domain::client::Client;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
+use crate::domain::grant_store::{
+    AuthorizationCodesTx, AuthorizationRequestsTx, BrowserSessionsTx, ClientsTx, GrantsTx,
+    LaunchContextsTx, RefreshTokensTx, SigningKeysTx,
+};
 use crate::domain::launch_context::LaunchContext;
 use crate::domain::pending_consent::NewestPendingConsent;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::domain::signing_key::SigningKey;
-use crate::domain::GrantTx;
 
-impl GrantTx for FakeGrantTx<'_> {
+impl ClientsTx for FakeGrantTx<'_> {
     fn client_by_id(
         &mut self,
         client_id: &str,
@@ -52,7 +55,9 @@ impl GrantTx for FakeGrantTx<'_> {
             .map(|client| client.disabled_at = disabled_at)
             .is_some())
     }
+}
 
+impl SigningKeysTx for FakeGrantTx<'_> {
     fn all_signing_keys(&mut self) -> Result<Vec<SigningKey>, AuthorizationServerError> {
         Ok(self.store.signing_keys.borrow().clone())
     }
@@ -75,7 +80,9 @@ impl GrantTx for FakeGrantTx<'_> {
         self.store.signing_keys.borrow_mut().push(key.clone());
         Ok(())
     }
+}
 
+impl AuthorizationRequestsTx for FakeGrantTx<'_> {
     fn authorization_request_by_id(
         &mut self,
         id: &str,
@@ -303,6 +310,18 @@ impl GrantTx for FakeGrantTx<'_> {
         Ok(())
     }
 
+    fn delete_authorization_requests_expired_before(
+        &mut self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<usize, AuthorizationServerError> {
+        let mut requests = self.store.authorization_requests.borrow_mut();
+        let before = requests.len();
+        requests.retain(|_, r| r.expires_at >= cutoff);
+        Ok(before - requests.len())
+    }
+}
+
+impl AuthorizationCodesTx for FakeGrantTx<'_> {
     fn redeem_authorization_code(
         &mut self,
         code: &str,
@@ -334,16 +353,18 @@ impl GrantTx for FakeGrantTx<'_> {
         Ok(())
     }
 
-    fn delete_authorization_requests_expired_before(
+    fn delete_authorization_codes_expired_before(
         &mut self,
         cutoff: DateTime<Utc>,
     ) -> Result<usize, AuthorizationServerError> {
-        let mut requests = self.store.authorization_requests.borrow_mut();
-        let before = requests.len();
-        requests.retain(|_, r| r.expires_at >= cutoff);
-        Ok(before - requests.len())
+        let mut codes = self.store.authorization_codes.borrow_mut();
+        let before = codes.len();
+        codes.retain(|_, c| c.expires_at >= cutoff);
+        Ok(before - codes.len())
     }
+}
 
+impl LaunchContextsTx for FakeGrantTx<'_> {
     fn insert_launch_context(
         &mut self,
         context: &LaunchContext,
@@ -389,43 +410,9 @@ impl GrantTx for FakeGrantTx<'_> {
         contexts.retain(|_, context| context.expires_at > now);
         Ok(before - contexts.len())
     }
+}
 
-    fn delete_authorization_codes_expired_before(
-        &mut self,
-        cutoff: DateTime<Utc>,
-    ) -> Result<usize, AuthorizationServerError> {
-        let mut codes = self.store.authorization_codes.borrow_mut();
-        let before = codes.len();
-        codes.retain(|_, c| c.expires_at >= cutoff);
-        Ok(before - codes.len())
-    }
-
-    fn delete_refresh_token_families_expired_before(
-        &mut self,
-        cutoff: DateTime<Utc>,
-    ) -> Result<usize, AuthorizationServerError> {
-        // Children first, mirroring the FK order the SQL body has to observe —
-        // the fake has no foreign keys, but a test that asserts on the token map
-        // should see the same intermediate shape.
-        let doomed: Vec<String> = self
-            .store
-            .families
-            .borrow()
-            .values()
-            .filter(|f| f.expires_at < cutoff)
-            .map(|f| f.family_id.clone())
-            .collect();
-        self.store
-            .tokens
-            .borrow_mut()
-            .retain(|_, t| !doomed.contains(&t.family_id));
-        self.store
-            .families
-            .borrow_mut()
-            .retain(|_, f| f.expires_at >= cutoff);
-        Ok(doomed.len())
-    }
-
+impl BrowserSessionsTx for FakeGrantTx<'_> {
     fn insert_browser_session(
         &mut self,
         session: &BrowserSession,
@@ -502,6 +489,30 @@ impl GrantTx for FakeGrantTx<'_> {
         )
     }
 
+    fn session_shortfall_acknowledged_for_client(
+        &mut self,
+        sid: &str,
+        client_id: &str,
+    ) -> Result<bool, AuthorizationServerError> {
+        Ok(self
+            .store
+            .session_shortfall_acknowledgements
+            .borrow()
+            .contains(&(sid.to_owned(), client_id.to_owned())))
+    }
+
+    fn record_session_shortfall_acknowledgement(
+        &mut self,
+        sid: &str,
+        client_id: &str,
+    ) -> Result<(), AuthorizationServerError> {
+        self.store
+            .session_shortfall_acknowledgements
+            .borrow_mut()
+            .insert((sid.to_owned(), client_id.to_owned()));
+        Ok(())
+    }
+
     fn delete_browser_sessions_ended_before(
         &mut self,
         cutoff: DateTime<Utc>,
@@ -529,31 +540,9 @@ impl GrantTx for FakeGrantTx<'_> {
             .retain(|(sid, _)| sessions.contains_key(sid));
         Ok(before - sessions.len())
     }
+}
 
-    fn session_shortfall_acknowledged_for_client(
-        &mut self,
-        sid: &str,
-        client_id: &str,
-    ) -> Result<bool, AuthorizationServerError> {
-        Ok(self
-            .store
-            .session_shortfall_acknowledgements
-            .borrow()
-            .contains(&(sid.to_owned(), client_id.to_owned())))
-    }
-
-    fn record_session_shortfall_acknowledgement(
-        &mut self,
-        sid: &str,
-        client_id: &str,
-    ) -> Result<(), AuthorizationServerError> {
-        self.store
-            .session_shortfall_acknowledgements
-            .borrow_mut()
-            .insert((sid.to_owned(), client_id.to_owned()));
-        Ok(())
-    }
-
+impl RefreshTokensTx for FakeGrantTx<'_> {
     fn insert_refresh_token_family_row(
         &mut self,
         family: &RefreshTokenFamily,
@@ -663,6 +652,34 @@ impl GrantTx for FakeGrantTx<'_> {
         Ok(())
     }
 
+    fn delete_refresh_token_families_expired_before(
+        &mut self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<usize, AuthorizationServerError> {
+        // Children first, mirroring the FK order the SQL body has to observe —
+        // the fake has no foreign keys, but a test that asserts on the token map
+        // should see the same intermediate shape.
+        let doomed: Vec<String> = self
+            .store
+            .families
+            .borrow()
+            .values()
+            .filter(|f| f.expires_at < cutoff)
+            .map(|f| f.family_id.clone())
+            .collect();
+        self.store
+            .tokens
+            .borrow_mut()
+            .retain(|_, t| !doomed.contains(&t.family_id));
+        self.store
+            .families
+            .borrow_mut()
+            .retain(|_, f| f.expires_at >= cutoff);
+        Ok(doomed.len())
+    }
+}
+
+impl GrantsTx for FakeGrantTx<'_> {
     fn all_grants(&mut self) -> Result<Vec<Grant>, AuthorizationServerError> {
         let mut grants: Vec<Grant> = self
             .store

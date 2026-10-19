@@ -11,6 +11,7 @@ use serde::Serialize;
 
 use crate::domain::authorization_request::RequestStatus;
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::grant_store::AuthorizationRequestsTx as _;
 use crate::domain::GrantStore;
 
 /// The newest pending authorization request, or absent when nothing is
@@ -105,12 +106,12 @@ impl ConsentKey {
         store: &impl GrantStore,
         now: DateTime<Utc>,
     ) -> Result<bool, AuthorizationServerError> {
-        let request = match self {
+        let request = store.read(|tx| match self {
             Self::Device { user_code } | Self::Browser { user_code } => {
-                store.pending_authorization_request_by_user_code(user_code)?
+                tx.pending_authorization_request_by_user_code(user_code)
             }
-            Self::OAuth { id } => store.authorization_request_by_id(id)?,
-        };
+            Self::OAuth { id } => tx.authorization_request_by_id(id),
+        })?;
         Ok(request.is_some_and(|request| {
             request.status == RequestStatus::Pending && request.expires_at > now
         }))
@@ -119,6 +120,7 @@ impl ConsentKey {
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::grant_store::*;
     use chrono::Duration;
 
     use super::*;
@@ -153,10 +155,12 @@ mod tests {
             ("denied", RequestStatus::Denied, now + Duration::minutes(5)),
         ] {
             store
+                .tx()
                 .insert_authorization_request(&code_request(id, status, expires_at))
                 .unwrap();
         }
         store
+            .tx()
             .insert_authorization_request(&device_request(
                 "device-waiting",
                 "ABCD-EFGH",
@@ -164,6 +168,7 @@ mod tests {
             ))
             .unwrap();
         store
+            .tx()
             .insert_authorization_request(&device_request(
                 "device-denied",
                 "WXYZ-WXYZ",

@@ -324,6 +324,7 @@ mod tests {
     use std::sync::Arc;
     use tokio::sync::watch;
     use tower::ServiceExt;
+    use wildflowerhealthio_authorization_server::domain::grant_store::SigningKeysTx as _;
     use wildflowerhealthio_authorization_server::domain::token::{mint_access_token, NewJwtArgs};
     use wildflowerhealthio_authorization_server::{
         setup_authorization_server, AdmitEveryAuthorizationStart, AuthorizationServerConfig,
@@ -419,7 +420,7 @@ mod tests {
             .expect("store the browser session");
             let key = SqliteGrantStore::new(self.pool.clone())
                 .expect("store")
-                .active_signing_key()
+                .read(|tx| tx.active_signing_key())
                 .expect("key query")
                 .expect("a seeded key");
             mint_access_token(

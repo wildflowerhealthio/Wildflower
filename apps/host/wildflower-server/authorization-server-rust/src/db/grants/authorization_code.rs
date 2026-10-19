@@ -31,7 +31,7 @@ diesel::table! {
 /// which reads then chooses this or [`update_authorization_code_grant`]. The
 /// caller hands the concrete grant, so the store never inspects a polymorphic
 /// value to choose the table.
-pub(crate) fn create_authorization_code_grant(
+pub(super) fn create_authorization_code_grant(
     conn: &mut SqliteConnection,
     grant: &AuthorizationCodeGrant,
 ) -> Result<(), AuthorizationServerError> {
@@ -49,7 +49,7 @@ pub(crate) fn create_authorization_code_grant(
 /// the consent prompt. A single-kind lookup, so it hits the concrete table
 /// and returns the concrete struct — a device grant for the same client
 /// can never satisfy it.
-pub(crate) fn grant_by_client_and_redirect(
+pub(super) fn grant_by_client_and_redirect(
     conn: &mut SqliteConnection,
     client_id: &str,
     redirect_uri: &Url,
@@ -74,7 +74,7 @@ pub(crate) fn grant_by_client_and_redirect(
 /// runs the read + this write inside one `BEGIN IMMEDIATE` transaction so two
 /// concurrent approvals serialise at the read rather than both reading the
 /// pre-merge row and one losing its scope union; this body is just the `UPDATE`.
-pub(crate) fn update_authorization_code_grant(
+pub(super) fn update_authorization_code_grant(
     conn: &mut SqliteConnection,
     grant: &AuthorizationCodeGrant,
 ) -> Result<(), AuthorizationServerError> {
@@ -93,13 +93,13 @@ pub(crate) fn update_authorization_code_grant(
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::grant_store::*;
     use chrono::{DateTime, Utc};
     use url::Url;
     use uuid::Uuid;
 
     use crate::db::SqliteGrantStore;
     use crate::domain::grant::{AuthorizationCodeGrant, CumulativeConsent};
-    use crate::domain::{GrantStore as _, GrantTx as _};
 
     /// The create-or-union upsert transaction, inlined here so the db test drives
     /// the real adapter's grant primitives directly instead of reaching up into a
@@ -114,8 +114,8 @@ mod tests {
         now: DateTime<Utc>,
     ) {
         store
-            .immediate_transaction(|tx| {
-                match tx.grant_by_client_and_redirect(client_id, redirect)? {
+            .write(
+                |tx| match tx.grant_by_client_and_redirect(client_id, redirect)? {
                     Some(mut grant) => {
                         grant.absorb_reapproval(scopes, patient, now);
                         tx.update_authorization_code_grant(&grant)
@@ -129,8 +129,8 @@ mod tests {
                         patient: patient.map(str::to_owned),
                         redirect_uri: redirect.clone(),
                     }),
-                }
-            })
+                },
+            )
             .expect("upsert code grant");
     }
 
@@ -161,7 +161,7 @@ mod tests {
             now,
         );
         let grant = store
-            .grant_by_client_and_redirect("client-a", &redirect)
+            .read(|tx| tx.grant_by_client_and_redirect("client-a", &redirect))
             .expect("query")
             .expect("present");
         assert_eq!(grant.scopes, vec!["read".to_owned()]);
@@ -177,7 +177,7 @@ mod tests {
             Utc::now(),
         );
         let updated = store
-            .grant_by_client_and_redirect("client-a", &redirect)
+            .read(|tx| tx.grant_by_client_and_redirect("client-a", &redirect))
             .expect("query")
             .expect("present");
         assert_eq!(
@@ -186,6 +186,6 @@ mod tests {
         );
         assert_eq!(updated.scopes, vec!["read".to_owned(), "write".to_owned()]);
         assert_eq!(updated.patient.as_deref(), Some("pat-2"));
-        assert_eq!(store.all_grants().expect("list").len(), 1);
+        assert_eq!(store.read(|tx| tx.all_grants()).expect("list").len(), 1);
     }
 }

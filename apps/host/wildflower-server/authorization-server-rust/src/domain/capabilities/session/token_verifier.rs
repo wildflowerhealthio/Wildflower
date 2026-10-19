@@ -6,6 +6,7 @@
 
 use std::sync::Arc;
 
+use crate::domain::grant_store::{BrowserSessionsTx, SigningKeysTx};
 use crate::domain::token::{verify_jwt, VerifiedClaims, VerifyError, VerifyOptions};
 use crate::domain::GrantStore;
 use crate::ports::RevocationCheck;
@@ -56,8 +57,30 @@ impl<S: GrantStore> TokenVerifier<S> {
     /// server-side variants when the key, revocation or browser-session store
     /// can't be read.
     pub(crate) fn verify(&self, token: &str) -> Result<VerifiedClaims, VerifyError> {
-        let keys = self
+        // A connection that can't be checked out at all fails like the key
+        // read that is the scope's first statement.
+        let claims = self
             .store
+            .read(|tx| Ok(self.verify_signed_and_session_live(tx, token)))
+            .map_err(VerifyError::KeyStoreUnavailable)??;
+        let revoked = self
+            .revocation
+            .is_revoked(claims.jti.as_deref(), claims.issued_at, &claims.subject)
+            .map_err(VerifyError::RevocationStoreUnavailable)?;
+        if revoked {
+            return Err(VerifyError::Revoked);
+        }
+        Ok(claims)
+    }
+
+    /// Verify `token`'s signature, `iss` and `aud` against the keys in `tx`,
+    /// and refuse it when the browser session its `sid` names is revoked.
+    fn verify_signed_and_session_live(
+        &self,
+        tx: &mut (impl SigningKeysTx + BrowserSessionsTx),
+        token: &str,
+    ) -> Result<VerifiedClaims, VerifyError> {
+        let keys = tx
             .all_signing_keys()
             .map_err(VerifyError::KeyStoreUnavailable)?;
         let claims = verify_jwt(
@@ -68,16 +91,8 @@ impl<S: GrantStore> TokenVerifier<S> {
                 accepted_audiences: &[self.server_origin.to_string()],
             },
         )?;
-        let revoked = self
-            .revocation
-            .is_revoked(claims.jti.as_deref(), claims.issued_at, &claims.subject)
-            .map_err(VerifyError::RevocationStoreUnavailable)?;
-        if revoked {
-            return Err(VerifyError::Revoked);
-        }
         if let Some(sid) = claims.sid.as_deref() {
-            if self
-                .store
+            if tx
                 .browser_session_is_revoked(sid)
                 .map_err(VerifyError::BrowserSessionStoreUnavailable)?
             {
@@ -90,6 +105,7 @@ impl<S: GrantStore> TokenVerifier<S> {
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::grant_store::*;
     use std::sync::Mutex;
 
     use chrono::{DateTime, Duration, Utc};
@@ -220,7 +236,7 @@ mod tests {
         let token = mint(&key, ORIGIN, ORIGIN);
         let jti = verify_jwt(
             &token,
-            &store.all_signing_keys().unwrap(),
+            &store.tx().all_signing_keys().unwrap(),
             &VerifyOptions {
                 expected_issuer: ORIGIN,
                 accepted_audiences: &[ORIGIN.to_owned()],
@@ -239,7 +255,7 @@ mod tests {
             ORIGIN.into(),
         );
         // Re-seed the key so the revoked verifier can check the signature.
-        revoked.store.insert_signing_key(&key).unwrap();
+        revoked.store.tx().insert_signing_key(&key).unwrap();
         assert!(matches!(revoked.verify(&token), Err(VerifyError::Revoked)));
 
         let failing = TokenVerifier::new(
@@ -264,7 +280,7 @@ mod tests {
         let (store, key) = store_with_key();
         let now = Utc::now();
         let session = BrowserSession::new_owner(vec![], Duration::hours(8), now);
-        store.insert_browser_session(&session).expect("insert");
+        store.tx().insert_browser_session(&session).expect("insert");
         let under_session = mint_under_session(&key, ORIGIN, ORIGIN, Some(&session.sid));
         let under_no_session = mint(&key, ORIGIN, ORIGIN);
         let under_a_missing_session = mint_under_session(&key, ORIGIN, ORIGIN, Some("no-such-sid"));
@@ -279,6 +295,7 @@ mod tests {
 
         assert!(verifier
             .store
+            .tx()
             .revoke_browser_session(&session.sid, now)
             .expect("revoke"));
         assert!(matches!(
