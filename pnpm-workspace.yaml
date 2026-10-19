@@ -130,6 +130,9 @@ catalog:
   # declare, which the package graph check (scripts/package-graph.ts) trusts.
   elkjs: 0.12.0
   knip: ^6.41.0
+  # The book (apps/wildflower-site/book-web) renders its diagrams with mermaid,
+  # vendored into the build so the pages load nothing from another origin.
+  mermaid: 12.2.0
   nanoid: ^6.0.2
   pdfjs-dist: 6.4.299
   protobufjs: 8.8.1
@@ -140,6 +143,10 @@ catalog:
   # toolchain.
   smol-toml: ^1.9.1
   structured-headers: ^2.1.1
+  # The book's `{{#code}}` preprocessor finds Rust items with tree-sitter, its
+  # WebAssembly build and the Rust grammar's `.wasm`, so it needs no native
+  # build or Rust toolchain.
+  tree-sitter-rust: 0.24.0
   tundra-css: ^0.14.0
 
   # Two TypeScripts; docs/TypeScript/Versions Reference.md lists
@@ -157,6 +164,7 @@ catalog:
   typescript-7: npm:typescript@7.0.2
   vite: npm:@voidzero-dev/vite-plus-core@1.1.0
   vite-plus: 1.1.0
+  web-tree-sitter: 0.27.1
   why-is-node-running: ^3.2.3
 catalogMode: prefer
 

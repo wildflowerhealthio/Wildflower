@@ -21,6 +21,11 @@ only what the apex serves.
   extracted from rust-analyzer's SCIP index and the TypeScript checker. Built
   on `main` only, by `deploy-github-pages.yml`'s `code-index` job, into the
   marketing build.
+- [`book-web`](./book-web/README.md) — the book at `/book/`: the code read in
+  domain order, mdbook chapters kept in `docs/Book/` beside the code they
+  explain, with `{{#code}}` directives that inline source by file and symbol
+  at build time. Built by `deploy-github-pages.yml`'s `book` job into the
+  marketing build, and into the marketing site's PR previews.
 - [`suggested-apps-core-js`](./suggested-apps-core-js/) — the schema of
   `suggested_apps.json`. The site is its only consumer, decoding its file
   with it in a test.

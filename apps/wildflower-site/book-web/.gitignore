@@ -1,0 +1,3 @@
+# The built book, and mermaid copied in from node_modules by scripts/build-book.ts.
+/book/
+/vendor/
