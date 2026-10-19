@@ -219,7 +219,9 @@ Code-flow rows carry the OAuth client's PKCE `code_challenge`,
 `redirect_uri`, requested `scope`, and the `state` parameter. A code-flow row
 started by a SMART App Launch also carries the consumed `launch` and the
 patient its [LaunchContext](#launchcontext) binds (`launch_bound_patient`).
-Device-flow rows leave those columns null.
+A code-flow row whose browser session falls short of what it asks for parks
+with `session_shortfall_acknowledged` unset until its browser goes on from the
+[limited page](#limited-page). Device-flow rows leave those columns null.
 
 ### LaunchContext
 
@@ -421,7 +423,8 @@ overall, and a request over either limit is `429` (the host's
 `authorization_start_limit`). A browser whose session can decide consents,
 as one signed in as the Owner can, is limited only when its request is raised
 for the Owner (every device request is), so one it decides on its own consent
-card is never limited. Nor is a browser without a session at
+card is never limited; one that stops at the [limited page](#limited-page) is
+limited when it goes on and is raised. Nor is a browser without a session at
 `/oauth/authorize`, which is only sent to [pairing](#browser-pairing) and
 parks nothing.
 
@@ -460,6 +463,11 @@ notification on a phone, or the notification itself on the desktop opens its
 page in a browser signed in as the Owner, with `then=back` (see
 `apps/host/servers`'s
 [Server Runs Explanation](../../../apps/host/servers/docs/Server%20Runs%20Explanation.md)).
+
+A code request waiting on its browser's [limited page](#limited-page) isn't
+pending for the Owner until that browser goes on: the newest pending consent
+skips it, and the consent read, approve, deny and ask-owner answer `404` for
+it.
 
 A request that the [grant](#grant) fast path fully pre-approves is never pending:
 `/oauth/authorize` approves it in the same handler, so it never sits
@@ -514,6 +522,47 @@ It interpolates nothing (the script reads the request id from its own path),
 loads only from its own origin under a strict CSP, and follows only an
 `http:`/`https:` redirect. Its colours are copies of `react-tundraish` palette
 tokens under the same names.
+
+### Limited page
+
+The page `/oauth/authorize` sends a browser to when its
+[browser session](#browser-session) holds less than the request asks for:
+`/oauth/authorize/{id}/limited`, on the server's own origin, from the same
+**authorization pages** bundle and with the same headers as the
+[consent card](#consent-card). The request's **session shortfall** is what a
+code issued in that session would leave out, by the rule that bounds every
+code (see [Browser session](#browser-session)). `/oauth/authorize` works it out
+once the request is validated and its launch consumed, before the
+[fast path](#grant), the start limit and the Owner. When it isn't empty, it
+parks the request with `session_shortfall_acknowledged` unset and sends the
+browser here, on every launch that falls short. An Owner session, holding
+`OWNER_SCOPES`, falls short of nothing and never sees the page.
+
+The page reads `GET /oauth/authorize/{id}/session-shortfall` (the app's name
+and the scopes the session lacks) and says, for example, "This browser isn't
+allowed to read and search Observations, which Strength expects. Strength may
+not be able to do everything." The scopes are in the words the scope picker
+uses (`scopes-react`'s `fluentScope`), and the message sits above two buttons:
+
+- **Continue** posts `/oauth/authorize/{id}/continue`, which acknowledges the
+  shortfall and takes the branch the start would have taken. A standing grant
+  that still covers the request issues a code, narrowed to the session.
+  Otherwise the request is raised for the Owner, and the browser goes to the
+  consent card or the [wait page](#wait-page), as recorded at the start.
+  Raising it spends from the authorization start limit only when the start
+  deferred it (a session that can decide consents); a refusal is `429` and
+  leaves the request waiting on the page.
+- **Cancel** posts `/oauth/authorize/{id}/cancel`, which denies the request,
+  and the browser goes back to the app with `access_denied`.
+
+Both answer `{ location }`, where the page sends the browser, which it follows
+only for `http:`/`https:`. Until Continue the request is the browser's alone:
+it isn't a [pending consent](#pending-consents) and no code is issued for it.
+The three calls answer only the browser session the request was made in, read
+from its cookie as the status poll reads it; any other browser, with another
+session or none, gets the `404` an unknown id gets. So does a request no
+longer waiting there (continued, cancelled, decided, or past its five
+minutes), and the page then goes to the wait page, which says how it ended.
 
 ### Consent card
 
@@ -777,8 +826,11 @@ session holds none of is dropped. Identity and session markers (`openid`,
 request and the standing grant record the approval as made; the code's tokens
 and refresh family take the code's scopes. So a browser paired without
 `patient/Observation.rs` earns no app a code for it, whoever approves, and an
-Owner session, holding `OWNER_SCOPES`, bounds nothing. Launching an app from Home needs only `wildflower/launch`:
-what the app may then do is bounded here, at its own `/oauth/authorize`.
+Owner session, holding `OWNER_SCOPES`, bounds nothing. A browser whose session
+falls short of a request is told so before anything is issued or asked, on the
+[limited page](#limited-page). Launching an app from Home needs only
+`wildflower/launch`: what the app may then do is bounded here, at its own
+`/oauth/authorize`.
 
 **Last seen** (`last_seen_at`) is when the session was last in use. Signing in,
 or pairing, sets it, and two uses move it: the host's cookie→bearer layer accepting the
@@ -1034,6 +1086,8 @@ mints a JWT.
 
 A browser without a [browser session](#browser-session) is sent to
 [pairing](#browser-pairing) first and comes back once the Owner approves it.
+A browser whose session holds less than the request asks for stops at the
+[limited page](#limited-page) and goes on only if it presses Continue.
 Unless an existing [grant](#grant) pre-approves every requested scope, the
 request is then parked for the Owner: it joins the
 [pending consents](#pending-consents), so the host app notifies

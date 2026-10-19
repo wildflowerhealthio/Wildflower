@@ -41,6 +41,9 @@ which this doc assumes rather than repeats.
   session of the browser that made the request covers them, whoever approved,
   fast path included
   ([Jargon Explanation](../../../../../slices/authorization/docs/Jargon%20Explanation.md#browser-session)).
+  A request asking for more stops at that browser's limited page: nothing is
+  issued and the Owner isn't asked until it presses Continue, and only the
+  session that made the request can read, continue or cancel it.
 - **Codes and refresh tokens resist theft.** PKCE S256 only, constant-time
   compares, codes bound to client and redirect; refresh families rotate and a
   replay revokes the family; only hashes are stored.
@@ -83,7 +86,7 @@ which this doc assumes rather than repeats.
 | Disabled client keeps calling           | Its live access tokens work until they expire (up to 15 min); the verifier does not consult the client row. Refresh and new grants are refused.                                         |
 | Revoke one grant, lose another          | Revocation is per client: it bumps the client's epoch and expires all its refresh families.                                                                                             |
 | Pairing spam                            | `/oauth/pair/start` is not rate-limited and each pairing notifies the Owner.                                                                                                            |
-| Request-id guessing on the wait page    | A UUID is the only secret; the code it leads to still needs the PKCE verifier.                                                                                                          |
+| Request-id guessing on the wait page    | The status poll and the limited page answer only the request's own session; the code still needs the PKCE verifier.                                                                     |
 | Store read failure                      | Verification fails closed (500), never open.                                                                                                                                            |
 
 ## Not in scope here
