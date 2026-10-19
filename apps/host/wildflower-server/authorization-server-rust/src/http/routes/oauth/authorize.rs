@@ -288,39 +288,44 @@ pub(super) async fn handle_authorize_request(
         },
         chrono::Utc::now(),
     )?;
-    Ok(match next_step {
-        // Fully pre-approved: 302 the user-agent straight back to the client
-        // with the fresh code (RFC 6749 §4.1.2).
+    Ok(found_redirect(&next_step_location(next_step, "")))
+}
+
+/// Where `next_step` sends the browser: straight back to the client with the
+/// fresh code when fully pre-approved (RFC 6749 §4.1.2), else to a page for
+/// the request, relative to `/oauth/` ([`request_page_location`]) after
+/// `page_prefix`: empty for `/oauth/authorize`'s own `Location`, which the
+/// browser resolves against the endpoint, and `/oauth/` for the limited
+/// page's Continue, which the page follows from elsewhere.
+///
+/// The Owner decides on the consent card when this browser can decide the
+/// request, and else from this authorization server's wait page, which waits
+/// for whichever surface — the host popup, a signed-in launcher's consent
+/// list, or the consent card — decides first. A browser whose session holds
+/// less than the app asks for is first told so on the limited page, which
+/// goes on or cancels.
+///
+/// [`request_page_location`]: super::pages::request_page_location
+pub(super) fn next_step_location(next_step: AuthorizeNextStep, page_prefix: &str) -> String {
+    let request_page = match next_step {
         AuthorizeNextStep::RedirectToClient {
             redirect_uri,
             code,
             client_state,
-        } => found_redirect(&build_client_redirect_url(
-            &redirect_uri,
-            &code,
-            &client_state,
-        )),
-        // Otherwise the Owner decides: on the consent card, when this browser
-        // is signed in as the Owner, and else from this authorization server's
-        // wait page, which waits for whichever surface — the host popup, a
-        // signed-in launcher's consent list, or the consent card — decides
-        // first.
+        } => return build_client_redirect_url(&redirect_uri, &code, &client_state),
         AuthorizeNextStep::AwaitOwner {
             request_id,
-            decidable_in_requesting_browser,
-        } => {
-            if decidable_in_requesting_browser {
-                found_redirect(&consent_page_location(&request_id))
-            } else {
-                found_redirect(&wait_page_location(&request_id))
-            }
-        }
-        // This browser's session holds less than the app asks for: say so on
-        // the limited page, which goes on or cancels.
+            decidable_in_requesting_browser: true,
+        } => consent_page_location(&request_id),
+        AuthorizeNextStep::AwaitOwner {
+            request_id,
+            decidable_in_requesting_browser: false,
+        } => wait_page_location(&request_id),
         AuthorizeNextStep::ConfirmSessionShortfall { request_id } => {
-            found_redirect(&limited_page_location(&request_id))
+            limited_page_location(&request_id)
         }
-    })
+    };
+    format!("{page_prefix}{request_page}")
 }
 
 fn html_bad_request(html: String) -> Response {

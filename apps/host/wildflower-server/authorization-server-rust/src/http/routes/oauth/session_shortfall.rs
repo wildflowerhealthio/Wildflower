@@ -8,10 +8,11 @@
 //! Each answers only the browser session the request was made in, read from
 //! its `__Host-browser_session` cookie as the status poll reads it; any other
 //! browser, with another session or none, gets the same `404` as an unknown
-//! id. The bodies are JSON, so another origin's page can't send them without a
-//! preflight, and the host's cookie→bearer layer refuses a write carrying the
-//! cookie from anywhere but the server's origin. Every answer is uncached: a
-//! Continue may carry the client callback with a code.
+//! id. The two posts carry no body, so another page could send them as a
+//! simple request; what refuses one is the host's cookie→bearer layer, which
+//! answers `403` to a write carrying the cookie from anywhere but the server's
+//! origin. Every answer is uncached: a Continue may carry the client callback
+//! with a code.
 
 use axum::extract::Path;
 use axum::http::HeaderMap;
@@ -22,17 +23,14 @@ use serde::Serialize;
 use utoipa::ToSchema;
 use wildflowerhealthio_scope_capabilities::GrantedScopes as _;
 
-use super::authorization_pages::{consent_page_location, limited_page_location};
-use super::authorize::AuthorizeError;
+use super::authorize::{next_step_location, AuthorizeError};
 use super::openapi::AuthorizationRequestNotFound;
-use super::wait_page::wait_page_location;
 use super::OAUTH_MOUNT;
 use crate::crypto_util::random_token::generate_authorization_code;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::oauth::{
-    AuthorizationStartError, AuthorizeNextStep, PollingBrowserSession, SessionShortfallView,
+    AuthorizationStartError, PollingBrowserSession, SessionShortfallView,
 };
-use crate::domain::client_redirect::build_client_redirect_url;
 use crate::domain::token::VerifiedClaims;
 use crate::http::browser_session_cookie::{can_decide_consents, carried_browser_session};
 use crate::http::extractors::Live;
@@ -160,28 +158,15 @@ pub(super) async fn handle_session_shortfall_continue(
         Utc::now(),
     );
     let location = match next_step {
-        Ok(AuthorizeNextStep::RedirectToClient {
-            redirect_uri,
-            code,
-            client_state,
-        }) => build_client_redirect_url(&redirect_uri, &code, &client_state),
-        Ok(AuthorizeNextStep::AwaitOwner {
-            request_id,
-            decidable_in_requesting_browser,
-        }) => {
-            let page_location = if decidable_in_requesting_browser {
-                consent_page_location(&request_id)
-            } else {
-                wait_page_location(&request_id)
-            };
-            format!("{OAUTH_MOUNT}/{page_location}")
-        }
-        Ok(AuthorizeNextStep::ConfirmSessionShortfall { request_id }) => {
-            format!("{OAUTH_MOUNT}/{}", limited_page_location(&request_id))
-        }
+        Ok(next_step) => next_step_location(next_step, &format!("{OAUTH_MOUNT}/")),
         Err(AuthorizationStartError::Store(
             error @ AuthorizationServerError::AuthorizationRequestNotFound { .. },
         )) => return Err(error),
+        // Cancelled between this Continue's acknowledgement and its fast-path
+        // approval: no longer waiting here, like any other request that isn't.
+        Err(AuthorizationStartError::RequestNotPending) => {
+            return Err(AuthorizationServerError::AuthorizationRequestNotFound { id })
+        }
         Err(AuthorizationStartError::StartLimited) => return Ok(start_limited_response()),
         Err(error) => match AuthorizeError::from(error) {
             AuthorizeError::Redirect { location } => location,
