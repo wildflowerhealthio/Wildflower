@@ -28,7 +28,7 @@ pub enum AppsError {
     /// 403 — the caller authenticated, but their token doesn't cover the
     /// scope(s) the operation requires (a scope-gated admin surface, whose
     /// [`Scoped`](wildflowerhealthio_scope_capabilities::Scoped) extractor rejects with this
-    /// variant via `From<MissingScopes>`, or a per-app SMART launch check).
+    /// variant via `From<MissingScopes>`).
     /// `missing_scopes` are the rendered scopes the caller must additionally
     /// hold; the HTTP layer delegates to the shared
     /// [`wildflowerhealthio_scope_capabilities::insufficient_scope`] body.

@@ -112,6 +112,11 @@ pub struct OAuthConsentView {
 pub struct DeviceConsentView {
     pub request: AuthorizationRequest,
     pub client_name: String,
+    /// The scopes the card's ticks start from: what the device requested, or
+    /// for a browser pairing everything the reader may delegate
+    /// ([`ApprovableScopes::delegable_scopes`]) — the Owner's scopes, for the
+    /// Owner.
+    pub starting_scopes: Vec<String>,
     pub approvable_scopes: Vec<String>,
     /// The approval scopes the reader's own grant does not cover, rendered
     /// ([`ApprovableScopes::missing_approval_scopes`]): what it lacks to
@@ -249,19 +254,22 @@ impl<S: GrantStore> ConsentReader<S> {
                 Some(existing_client) => (existing_client.name, existing_client.allowed_scopes),
                 None => (request.client_id.clone(), Vec::new()),
             };
-        let (approvable, approvable_scopes) = match request.grant_type {
-            GrantType::BrowserPairing => (
-                ApprovableScopes::for_browser_pairing(),
-                crate::owner_scopes(),
-            ),
+        let (approvable, starting_scopes, approvable_scopes) = match request.grant_type {
+            GrantType::BrowserPairing => {
+                let approvable = ApprovableScopes::for_browser_pairing();
+                let starting_scopes = approvable.delegable_scopes(&self.reader_grant);
+                (approvable, starting_scopes, crate::owner_scopes())
+            }
             GrantType::AuthorizationCode | GrantType::DeviceCode => (
                 ApprovableScopes::for_device(&registered_client_scopes),
+                request.requested_scopes.clone(),
                 registered_client_scopes,
             ),
         };
         Ok(DeviceConsentView {
             request,
             client_name,
+            starting_scopes,
             approvable_scopes,
             missing_approval_scopes: approvable.missing_approval_scopes(&self.reader_grant),
         })

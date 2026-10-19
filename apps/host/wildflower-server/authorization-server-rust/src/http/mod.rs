@@ -33,8 +33,6 @@ use utoipa::OpenApi;
 use utoipa_axum::router::{OpenApiRouter, UtoipaMethodRouter, UtoipaMethodRouterExt as _};
 use utoipa_axum::routes;
 
-use crate::domain::capabilities::oauth::ClientScopesReader;
-
 /// Base `OpenAPI` document; the collected routes fill in paths + components.
 /// The shared `InsufficientScopeBody` is registered here so the
 /// [`InsufficientScopeResponses`](wildflowerhealthio_scope_capabilities::InsufficientScopeResponses)
@@ -114,28 +112,6 @@ pub fn router(state: Arc<AuthorizationServerState>) -> Router {
         )
         .nest("/authorization", access)
         .with_state(state)
-}
-
-/// The scopes an OAuth client (`client_id`) is permitted to request — its stored
-/// `allowed_scopes`, parsed. The apps slice's per-app SMART launch check resolves a
-/// SMART app's `client_id` to this set through its `AppLaunchScopes` port (wired
-/// host-side to this fn), then requires the launching caller's grant to cover it.
-/// Reads through the
-/// [`ClientScopesReader`](crate::domain::capabilities::oauth::ClientScopesReader)
-/// so the host never touches the store. An unknown `client_id` (a
-/// misconfigured registration) yields an empty set — only the launch umbrella then
-/// gates the launch — and is logged as a warning so the fail-open scope downgrade
-/// is detectable rather than silent.
-///
-/// # Errors
-///
-/// Propagates a store checkout / query failure.
-pub fn client_allowed_scopes(
-    state: &AuthorizationServerState,
-    client_id: &str,
-) -> anyhow::Result<Vec<wildflowerhealthio_scopes::Scope>> {
-    let reader = ClientScopesReader::new(state.store.clone());
-    Ok(reader.registered_client_scopes(client_id)?)
 }
 
 /// The authorization server OAuth + discovery + client-management `OpenAPI` document, collected from the very

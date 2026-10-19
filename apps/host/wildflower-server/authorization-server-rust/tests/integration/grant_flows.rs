@@ -184,6 +184,8 @@ async fn auth_code_grant_owner_narrows_requested_scope() {
         "https://app.example/cb",
         &["patient/Observation.rs"],
     );
+    let (_, session_token) =
+        paired_browser_session_holding(&db, &["wildflower/launch", "patient/Observation.rs"]);
     let challenge = compute_code_challenge(CODE_VERIFIER);
 
     // 1. /authorize parks a pending request for `patient/Observation.rs`.
@@ -197,7 +199,7 @@ async fn auth_code_grant_owner_narrows_requested_scope() {
         .clone()
         .oneshot(build_request(
             Request::get(format!("/oauth/authorize?{query}"))
-                .header("cookie", browser_session_cookie(&db.paired_browser_token)),
+                .header("cookie", browser_session_cookie(&session_token)),
             Body::empty(),
         ))
         .await
@@ -328,10 +330,12 @@ async fn minted_jwt_scope_claim_carries_alternate_canonical_forms() {
         "https://app.example/cb",
         &["patient/Observation.read"],
     );
+    let (_, session_token) =
+        paired_browser_session_holding(&db, &["wildflower/launch", "patient/Observation.rs"]);
     let request_id = authorize_and_approve(
         &g,
         &owner_token,
-        &db.paired_browser_token,
+        &session_token,
         "test-app",
         "patient%2FObservation.read",
         r#"{"approvedScopes":["patient/Observation.read"],"acknowledgedRegistration":false}"#,
@@ -339,7 +343,7 @@ async fn minted_jwt_scope_claim_carries_alternate_canonical_forms() {
     .await;
 
     // Poll the approved request for the client redirect carrying the code.
-    let res = get_authorization_status(&g.router, &db.paired_browser_token, &request_id).await;
+    let res = get_authorization_status(&g.router, &session_token, &request_id).await;
     let status = body_json(res.into_body()).await;
     let redirect = status["redirect"].as_str().expect("redirect");
     let code = Url::parse(redirect)

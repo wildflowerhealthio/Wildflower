@@ -66,9 +66,9 @@ pub use domain::{GrantStore, GrantTx};
 pub use domain::capabilities::grantable_admin_scopes;
 pub use http::{
     authorization_server_auth_middleware, browser_session_clearing_set_cookie,
-    client_allowed_scopes, ensure_bearer_header, record_browser_session_cookie_use,
-    standing_browser_session, AuthorizationServerAuthMiddleware, AuthorizationServerState,
-    BROWSER_SESSION_COOKIE, BROWSER_SESSION_HEADER_VALUE, SESSION_HEADER,
+    ensure_bearer_header, record_browser_session_cookie_use, standing_browser_session,
+    AuthorizationServerAuthMiddleware, AuthorizationServerState, BROWSER_SESSION_COOKIE,
+    BROWSER_SESSION_HEADER_VALUE, SESSION_HEADER,
 };
 pub use live_bindings::{
     InProcessTokenVerifier, LaunchContextMinter, PendingConsentWatcher, SameDeviceSignInCodeMinter,

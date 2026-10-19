@@ -28,7 +28,7 @@ The slice follows the same ports-and-adapters shape as `request-log-rust`:
   shared write-side validator and `AppPayload` input struct in
   `domain/actions/`. The admin HTTP handlers acquire a `Scoped<…>` capability and
   never touch the store directly; the launch handler looks the app up in the
-  store itself and uses `AppLauncher` for the umbrella and per-app scope checks.
+  store itself and uses `AppLauncher` for the `wildflower/launch` umbrella check.
   The capabilities are unit-tested against an in-memory `FakeAppsStore`
   (`domain/test_fake.rs`) — no db, no HTTP.
 

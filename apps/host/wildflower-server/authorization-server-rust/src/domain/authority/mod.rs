@@ -59,7 +59,7 @@ mod token_entitlement;
 
 pub(crate) use authenticated_client::{AuthenticatedClient, ClientAuthenticationError};
 pub(crate) use browser_pairing::ClaimedBrowserPairing;
-pub(crate) use delegated_scopes::{ApprovableScopes, DelegatedScopes};
+pub(crate) use delegated_scopes::{session_bounded_scopes, ApprovableScopes, DelegatedScopes};
 pub(crate) use redemption::{
     ConsumedDeviceRequest, GrantRedemption, PresentedAuthorizationCode, RedeemedAuthorizationCode,
     ValidatedRefreshToken,

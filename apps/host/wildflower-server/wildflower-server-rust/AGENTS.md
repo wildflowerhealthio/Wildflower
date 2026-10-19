@@ -167,8 +167,8 @@ only it composes. Rust-only, no `-core`.
     `CertificateAuthority`, `CertificateState` with the
     `ObservedCertificate` a run derives it from, and
     `CertificateHistoryEntry`;
-    `adapters/` ports implemented here (apps' `AppLaunchScopes` and
-    `LaunchContextMinter` from the authorization server, the authorization
+    `adapters/` ports implemented here (apps' `LaunchContextMinter` from
+    the authorization server, the authorization
     server's `AuthorizationStartGate` as the limit on starting
     authorization requests over kitchen-sink's `RateLimiter`, the monitor's
     `HealthProbe` over reqwest), the device certificate over rustls-acme

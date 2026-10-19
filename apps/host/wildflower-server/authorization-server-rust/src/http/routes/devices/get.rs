@@ -23,10 +23,10 @@ pub(crate) enum DeviceConsentKind {
 
 /// Body returned to the launcher when it loads a pending device-page consent
 /// prompt — what asks, the requesting client, the device's or browser's
-/// name, its requested scopes, and the *expansion envelope* the approver may
-/// grant up to (device consent is expandable): a device client's full
-/// allowed-scope set, a browser's the Owner's scopes. Local to this one route
-/// (its only reader).
+/// name, the scopes the approver's ticks start from, and the *expansion
+/// envelope* the approver may grant up to (device consent is expandable): a
+/// device client's full allowed-scope set, a browser's the Owner's scopes.
+/// Local to this one route (its only reader).
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct DeviceConsent {
@@ -35,7 +35,9 @@ pub(crate) struct DeviceConsent {
     pub(crate) client_id: String,
     pub(crate) client_name: String,
     pub(crate) device_name: Option<String>,
-    pub(crate) requested_scopes: Vec<String>,
+    /// The scopes the approver's ticks start from: a device's requested
+    /// scopes, or for a browser everything the caller may delegate.
+    pub(crate) starting_scopes: Vec<String>,
     pub(crate) allowed_scopes: Vec<String>,
     /// The approval scopes the caller's own token lacks to approve this
     /// request (`wildflower/AuthorizationRequest.u`, and `wildflower/Grant.c`
@@ -57,6 +59,7 @@ async fn handle_get_device_consent(
     let DeviceConsentView {
         request,
         client_name,
+        starting_scopes,
         approvable_scopes,
         missing_approval_scopes,
     } = consents.device_consent(&user_code)?;
@@ -70,7 +73,7 @@ async fn handle_get_device_consent(
         client_id: request.client_id,
         client_name,
         device_name: request.device_name,
-        requested_scopes: request.requested_scopes,
+        starting_scopes,
         allowed_scopes: approvable_scopes,
         missing_approval_scopes,
     }))

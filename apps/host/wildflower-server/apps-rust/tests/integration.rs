@@ -12,7 +12,7 @@ use serde_json::Value;
 use tower::ServiceExt;
 use url::Url;
 use wildflowerhealthio_apps::domain::AppsError;
-use wildflowerhealthio_apps::ports::{LaunchContextMinter, NoAppLaunchScopes};
+use wildflowerhealthio_apps::ports::LaunchContextMinter;
 use wildflowerhealthio_apps::{setup_apps, Apps, AppsConfig};
 
 use wildflowerhealthio_scope_capabilities::ScopeClaims;
@@ -40,21 +40,14 @@ impl LaunchContextMinter for NamedLaunchContextMinter {
     }
 }
 
-/// Spin up the slice, with no per-app SMART launch scopes
-/// ([`NoAppLaunchScopes`]); launches are minted by [`NamedLaunchContextMinter`].
+/// Spin up the slice; launches are minted by [`NamedLaunchContextMinter`].
 fn spin_up() -> Apps {
     let pool =
         wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory diesel pool");
     let config = AppsConfig {
         public_origin: Url::parse("https://dev1.example.com").expect("valid public origin"),
     };
-    setup_apps(
-        pool,
-        &config,
-        Arc::new(NoAppLaunchScopes),
-        Arc::new(NamedLaunchContextMinter),
-    )
-    .expect("setup_apps")
+    setup_apps(pool, &config, Arc::new(NamedLaunchContextMinter)).expect("setup_apps")
 }
 
 async fn body_json(body: Body) -> Value {

@@ -80,10 +80,10 @@ impl ApprovableScopes {
         }
     }
 
-    /// A browser pairing prompt. Like device consent it is **expandable**:
-    /// whatever the pairing's ticks start from, the Owner may grant anything
-    /// up to [`OWNER_SCOPES`](crate::OWNER_SCOPES), which fill both halves, so
-    /// no approved browser session can hold more than an Owner session.
+    /// A browser pairing prompt. It requests the Owner's scopes, and like
+    /// device consent it is **expandable**: the Owner may grant anything up to
+    /// [`OWNER_SCOPES`](crate::OWNER_SCOPES), which fill both halves, so no
+    /// approved browser session can hold more than an Owner session.
     pub(crate) fn for_browser_pairing() -> Self {
         ApprovableScopes {
             requested_scopes: crate::owner_scopes(),
@@ -134,6 +134,27 @@ impl ApprovableScopes {
         grantable_scopes(owner_approved_scopes, &requested, &ceiling)
     }
 
+    /// Everything the approver holding `approver_grant` may delegate on this
+    /// prompt, for its card's ticks to start from: each requested scope and
+    /// each of the approver's own scopes the prompt may grant, less any held
+    /// access ([`is_held_access`]) the approver does not cover. Approving it
+    /// untouched passes [`DelegatedScopes::clamp`]'s approver check, so a
+    /// pairing card that starts from the Owner's scopes starts an approver
+    /// holding less from all it holds instead.
+    pub(crate) fn delegable_scopes(&self, approver_grant: &Grant) -> Vec<String> {
+        let candidates = self
+            .requested_scopes
+            .iter()
+            .cloned()
+            .chain(approver_grant.render())
+            .collect();
+        let approver_may_pass_on = may_pass_on(approver_grant);
+        self.grantable_subset(candidates)
+            .into_iter()
+            .filter(|rendered| approver_may_pass_on(&Scope::from(rendered.as_str())))
+            .collect()
+    }
+
     /// The prompt's **approval scopes** the `approver_grant` does not cover,
     /// rendered, in order; empty when it may approve. Shared by the approve
     /// paths (through [`DelegatedScopes::clamp`]), the consent read
@@ -149,11 +170,11 @@ impl ApprovableScopes {
     /// the row looks like when the approval lands; the host app's fixed
     /// registration takes neither.
     ///
-    /// A code approval also takes every resource scope the request asks for
-    /// that the prompt may grant: the approver must be able to approve the
-    /// request as asked, else it goes to the Owner. A device or pairing
-    /// prompt is expandable, so its approver may grant whatever it holds, and
-    /// [`DelegatedScopes::clamp`] bounds that per scope instead.
+    /// A code approval also takes every held access ([`is_held_access`]) the
+    /// request asks for that the prompt may grant: the approver must be able
+    /// to approve the request as asked, else it goes to the Owner. A device or
+    /// pairing prompt is expandable, so its approver may grant whatever it
+    /// holds, and [`DelegatedScopes::clamp`] bounds that per scope instead.
     pub(crate) fn missing_approval_scopes(&self, approver_grant: &Grant) -> Vec<String> {
         let mut approval_scopes = consent_decider_scopes();
         if self.flow.records_grant() {
@@ -168,7 +189,7 @@ impl ApprovableScopes {
             .collect();
         let mut missing = render_scopes(&uncovered_approval_scopes);
         if self.flow.approves_as_asked() {
-            missing.extend(uncovered_resource_scopes(
+            missing.extend(uncovered_held_access(
                 &self.grantable_subset(self.requested_scopes.clone()),
                 approver_grant,
             ));
@@ -179,9 +200,10 @@ impl ApprovableScopes {
 
 /// A scope set an Owner has approved **and** is entitled to delegate. Holding
 /// one is proof that the approver held the prompt's approval scopes, and that
-/// every resource scope in it is covered by the approver's own grant, so the
-/// writers that record grants, write registrations, and issue codes accept
-/// nothing else. The fields are private and there is no other constructor.
+/// every held access ([`is_held_access`]) in it is covered by the approver's
+/// own grant, so the writers that record grants, write registrations, and
+/// issue codes accept nothing else. The fields are private and there is no
+/// other constructor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DelegatedScopes {
     scopes: Vec<String>,
@@ -193,22 +215,23 @@ impl DelegatedScopes {
     /// approval scopes
     /// ([`missing_approval_scopes`](ApprovableScopes::missing_approval_scopes)),
     /// clamp the `owner_approved_scopes` to the `approvable` scopes' grantable
-    /// subset, then require that the `approver_grant` covers every
-    /// **resource** scope that survives.
+    /// subset, then require that the `approver_grant` covers every held access
+    /// ([`is_held_access`]) that survives.
     ///
     /// `Ok(None)` when nothing survives — the caller denies. Identity and session
-    /// markers (`openid`, `offline_access`, …) are not resource access and pass
-    /// the approver check; a resource scope the approver lacks fails the whole
-    /// approval (a `403`) rather than being silently dropped. Coverage is checked
-    /// across both SMART spellings via [`Scope::as_alternate_canonical_form`],
-    /// the twinning the token minter applies.
+    /// markers (`openid`, `offline_access`, …) are no held access and pass the
+    /// approver check; a resource scope or `wildflower/launch` the approver
+    /// lacks fails the whole approval (a `403`) rather than being silently
+    /// dropped. Coverage is checked across both SMART spellings via
+    /// [`Scope::as_alternate_canonical_form`], the twinning the token minter
+    /// applies.
     ///
     /// # Errors
     ///
     /// [`AuthorizationServerError::InsufficientScope`] naming the approval
     /// scopes the approver lacks, checked first, whatever was ticked; then
     /// [`AuthorizationServerError::InsufficientApproverScope`] naming the
-    /// resource scopes the approver cannot delegate.
+    /// held access the approver cannot delegate.
     pub(crate) fn clamp(
         approver_grant: &Grant,
         owner_approved_scopes: Vec<String>,
@@ -222,7 +245,7 @@ impl DelegatedScopes {
         if grantable.is_empty() {
             return Ok(None);
         }
-        let approver_missing_scopes = uncovered_resource_scopes(&grantable, approver_grant);
+        let approver_missing_scopes = uncovered_held_access(&grantable, approver_grant);
         if approver_missing_scopes.is_empty() {
             Ok(Some(DelegatedScopes {
                 scopes: grantable,
@@ -249,32 +272,128 @@ impl DelegatedScopes {
     }
 }
 
-/// The resource scopes in `granted` the `approver_grant` does not cover,
-/// checked across both canonical spellings.
-fn uncovered_resource_scopes(granted: &[String], approver_grant: &Grant) -> Vec<String> {
-    let approver_authority = Grant::new(
-        approver_grant
+/// Whether `scope` is access its holder must itself hold to pass on: a
+/// resource scope, or `wildflower/launch`. An approver delegates, and a
+/// browser session bounds a code to, only the held access it covers. Identity
+/// and session markers (`openid`, `fhirUser`, `launch`, `offline_access`, …)
+/// are no access anyone holds, so anyone may pass them on.
+fn is_held_access(scope: &Scope) -> bool {
+    scope.is_resource() || *scope == Scope::any_scoped_app_launch()
+}
+
+/// Whether `holder` may pass a scope on: it is no held access
+/// ([`is_held_access`]), or `holder` covers it in either SMART spelling.
+fn may_pass_on(holder: &Grant) -> impl Fn(&Scope) -> bool {
+    let holder_covers = coverage_in_either_spelling(holder);
+    move |scope: &Scope| !is_held_access(scope) || holder_covers(scope)
+}
+
+/// The held access in `granted` the `approver_grant` may not pass on
+/// ([`may_pass_on`]), rendered, in order.
+fn uncovered_held_access(granted: &[String], approver_grant: &Grant) -> Vec<String> {
+    let approver_may_pass_on = may_pass_on(approver_grant);
+    granted
+        .iter()
+        .filter(|rendered| !approver_may_pass_on(&Scope::from(rendered.as_str())))
+        .cloned()
+        .collect()
+}
+
+/// The `authorized` scopes narrowed to what the browser session holding
+/// `session_grant` also holds: an authorization code carries only what both
+/// the client's authority and the browser the request was made in allow.
+///
+/// Held access ([`is_held_access`]) the session covers, by the rule
+/// [`DelegatedScopes::clamp`] holds an approver to (either SMART spelling,
+/// `system/*` covering `patient/*` and `user/*`), stays as authorized. Held
+/// access the session covers only in part narrows to the parts it holds: its
+/// intersection with each session scope
+/// ([`intersection_in_either_spelling`]), so `system/*.cruds` against a
+/// session holding `system/Patient.cruds` yields `system/Patient.cruds`.
+/// `wildflower/launch` has no parts, so it stays only when the session holds
+/// it. Identity and session markers are no held access, so they pass through.
+///
+/// One scope's parts are collapsed ([`Grant::collapse`]), so overlapping
+/// session scopes yield the broadest part once, and the result keeps each
+/// scope's first occurrence, in order. A session that covers everything
+/// authorized changes nothing but exact duplicates.
+pub(crate) fn session_bounded_scopes(authorized: &[String], session_grant: &Grant) -> Vec<String> {
+    let session_covers = coverage_in_either_spelling(session_grant);
+    let mut already_bounded = HashSet::new();
+    let bounded: Vec<Scope> = authorized
+        .iter()
+        .map(|rendered| Scope::from(rendered.as_str()))
+        .flat_map(|authorized_scope| {
+            if !is_held_access(&authorized_scope) || session_covers(&authorized_scope) {
+                vec![authorized_scope]
+            } else {
+                let mut parts = Grant::new(
+                    session_grant
+                        .scopes
+                        .iter()
+                        .filter_map(|session_scope| {
+                            intersection_in_either_spelling(&authorized_scope, session_scope)
+                        })
+                        .collect(),
+                );
+                parts.collapse();
+                parts.scopes
+            }
+        })
+        .filter(|scope| already_bounded.insert(scope.clone()))
+        .collect();
+    render_scopes(&bounded)
+}
+
+/// The broadest scope both `authorized_scope` and `session_scope` cover
+/// ([`Scope::intersection`]) when each also counts in its alternate canonical
+/// form, spelled in the authorized scope's grammar where one exists:
+/// `patient/Observation.rs` against `patient/Observation.read` is
+/// `patient/Observation.rs`, and `patient/*.read` against `patient/Patient.rs`
+/// is `patient/Patient.read`. `patient/*.read` against `patient/Patient.r` has
+/// no word spelling, so it is the letter `patient/Patient.r`.
+fn intersection_in_either_spelling(
+    authorized_scope: &Scope,
+    session_scope: &Scope,
+) -> Option<Scope> {
+    let authorized_spellings = [
+        Some(authorized_scope.clone()),
+        authorized_scope.as_alternate_canonical_form(),
+    ];
+    // The session's letter form first, so a letter-spelled authorized scope
+    // intersects to a letter bag rather than the session's word.
+    let session_spellings = [
+        session_scope.as_alternate_canonical_form(),
+        Some(session_scope.clone()),
+    ];
+    authorized_spellings
+        .iter()
+        .flatten()
+        .find_map(|authorized_spelling| {
+            session_spellings
+                .iter()
+                .flatten()
+                .find_map(|session_spelling| authorized_spelling.intersection(session_spelling))
+        })
+}
+
+/// Whether `holder` covers a scope in either SMART spelling: each held scope
+/// and each asked scope also counts in its alternate canonical form.
+fn coverage_in_either_spelling(holder: &Grant) -> impl Fn(&Scope) -> bool {
+    let authority = Grant::new(
+        holder
             .scopes
             .iter()
             .flat_map(|held| [Some(held.clone()), held.as_alternate_canonical_form()])
             .flatten()
             .collect(),
     );
-    let authorizes = |scope: &Scope| {
-        approver_authority.covers(scope)
+    move |scope: &Scope| {
+        authority.covers(scope)
             || scope
                 .as_alternate_canonical_form()
-                .is_some_and(|twin| approver_authority.covers(&twin))
-    };
-    granted
-        .iter()
-        .filter(|rendered| {
-            let scope = Scope::from(rendered.as_str());
-            matches!(scope, Scope::FhirResource(_) | Scope::WildflowerResource(_))
-                && !authorizes(&scope)
-        })
-        .cloned()
-        .collect()
+                .is_some_and(|twin| authority.covers(&twin))
+    }
 }
 
 #[cfg(test)]
@@ -571,6 +690,64 @@ mod tests {
         );
     }
 
+    /// A pairing prompt's delegable scopes are the Owner's for the Owner, and
+    /// everything a narrower approver holds that an Owner could grant (its
+    /// `openid` is no Owner scope), so approving them passes the clamp.
+    #[test]
+    fn a_pairing_prompt_s_delegable_scopes_are_what_the_approver_holds() {
+        let approvable = ApprovableScopes::for_browser_pairing();
+        assert_eq!(
+            approvable.delegable_scopes(&Grant::parse(crate::owner_scopes())),
+            crate::owner_scopes(),
+        );
+        let narrower = grant(&["system/Patient.rs", "wildflower/launch", "openid"]);
+        let delegable = approvable.delegable_scopes(&narrower);
+        assert_eq!(
+            delegable,
+            [
+                "wildflower/launch",
+                "wildflower/AuthorizationRequest.u",
+                "wildflower/Grant.c",
+                "system/Patient.rs",
+            ],
+        );
+        assert_eq!(
+            DelegatedScopes::clamp(&narrower, delegable.clone(), &approvable)
+                .expect("the approver covers what it may delegate")
+                .expect("granted")
+                .scopes(),
+            delegable,
+        );
+    }
+
+    /// `wildflower/launch` is held access like a resource scope: a pairing
+    /// card for an approver without it opens without it ticked, and ticking
+    /// it anyway fails the approver check rather than handing the new session
+    /// a launch its approver lacks.
+    #[test]
+    fn an_approver_without_launch_may_not_delegate_it() {
+        let approvable = ApprovableScopes::for_browser_pairing();
+        let without_launch = grant(&["system/Patient.rs"]);
+        assert_eq!(
+            approvable.delegable_scopes(&without_launch),
+            [
+                "wildflower/AuthorizationRequest.u",
+                "wildflower/Grant.c",
+                "system/Patient.rs",
+            ],
+        );
+        assert_eq!(
+            DelegatedScopes::clamp(
+                &without_launch,
+                owned_scopes(&["wildflower/launch", "system/Patient.rs"]),
+                &approvable,
+            ),
+            Err(AuthorizationServerError::InsufficientApproverScope {
+                approver_missing_scopes: owned_scopes(&["wildflower/launch"]),
+            }),
+        );
+    }
+
     /// The Owner's scopes cover every approval scope of every flow, whatever
     /// a code request asks for.
     #[test]
@@ -605,6 +782,160 @@ mod tests {
             Err(AuthorizationServerError::InsufficientScope {
                 missing_scopes: owned_scopes(&["wildflower/Grant.c"]),
             }),
+        );
+    }
+
+    /// A session bounds a code's resource scopes by coverage in either SMART
+    /// spelling: the letter form covers the word form and back, and `system/*`
+    /// covers `patient/*` and `user/*`. What it holds none of is dropped.
+    #[test]
+    fn a_session_bounds_resource_scopes_by_coverage_in_either_spelling() {
+        assert_eq!(
+            session_bounded_scopes(
+                &owned_scopes(&[
+                    "patient/Patient.read",
+                    "patient/Observation.rs",
+                    "patient/Condition.rs",
+                    "wildflower/Grant.c",
+                ]),
+                &Grant::parse(["patient/Patient.rs", "patient/Observation.read"]),
+            ),
+            ["patient/Patient.read", "patient/Observation.rs"],
+        );
+        assert_eq!(
+            session_bounded_scopes(
+                &owned_scopes(&[
+                    "patient/Observation.rs",
+                    "user/*.cruds",
+                    "wildflower/Grant.c"
+                ]),
+                &Grant::parse(["system/*.cruds"]),
+            ),
+            ["patient/Observation.rs", "user/*.cruds"],
+        );
+    }
+
+    /// A scope the session holds only part of narrows to the parts it holds:
+    /// wildcards to the session's named types, contexts to the session's, and
+    /// interactions to those the session holds.
+    #[test]
+    fn a_session_narrows_a_scope_it_holds_only_part_of() {
+        let paired_session = Grant::parse([
+            "wildflower/launch",
+            "system/Patient.cruds",
+            "system/Observation.rs",
+            "wildflower/Apps.r",
+        ]);
+        assert_eq!(
+            session_bounded_scopes(
+                &owned_scopes(&["system/*.cruds", "wildflower/*.cruds", "openid"]),
+                &paired_session,
+            ),
+            [
+                "system/Patient.cruds",
+                "system/Observation.rs",
+                "wildflower/Apps.r",
+                "openid",
+            ],
+        );
+        let patient_session = Grant::parse(["patient/Patient.rs", "patient/Observation.r"]);
+        assert_eq!(
+            session_bounded_scopes(&owned_scopes(&["patient/*.rs"]), &patient_session),
+            ["patient/Patient.rs", "patient/Observation.r"],
+        );
+        // A word scope narrows in its own grammar where a word spells the
+        // part, and to the letter form where none does.
+        assert_eq!(
+            session_bounded_scopes(&owned_scopes(&["patient/*.read"]), &patient_session),
+            ["patient/Patient.read", "patient/Observation.r"],
+        );
+        assert_eq!(
+            session_bounded_scopes(
+                &owned_scopes(&["patient/Observation.rs"]),
+                &Grant::parse(["patient/Observation.r"]),
+            ),
+            ["patient/Observation.r"],
+        );
+        // A letter scope stays letters against a session spelled in words.
+        assert_eq!(
+            session_bounded_scopes(
+                &owned_scopes(&["patient/*.cruds"]),
+                &Grant::parse(["patient/Observation.read"]),
+            ),
+            ["patient/Observation.rs"],
+        );
+    }
+
+    /// Parts the session holds several ways come out once: one scope's
+    /// overlapping parts collapse into the broadest, and a part two scopes
+    /// share appears once.
+    #[test]
+    fn a_session_s_parts_are_deduplicated() {
+        assert_eq!(
+            session_bounded_scopes(
+                &owned_scopes(&["system/*.cruds"]),
+                &Grant::parse(["system/*.rs", "system/Patient.r", "patient/*.rs"]),
+            ),
+            ["system/*.rs"],
+        );
+        assert_eq!(
+            session_bounded_scopes(
+                &owned_scopes(&["system/*.cruds", "patient/*.rs", "openid", "openid"]),
+                &Grant::parse(["patient/Patient.r"]),
+            ),
+            ["patient/Patient.r", "openid"],
+        );
+    }
+
+    /// Identity and session markers pass through a session that holds none of
+    /// them; `wildflower/launch` stays only when the session holds it.
+    #[test]
+    fn a_session_passes_markers_through_and_bounds_launch() {
+        let authorized = owned_scopes(&[
+            "openid",
+            "fhirUser",
+            "launch",
+            "launch/patient",
+            "offline_access",
+            "wildflower/launch",
+            "patient/Patient.rs",
+        ]);
+        assert_eq!(
+            session_bounded_scopes(&authorized, &Grant::parse(["patient/Observation.r"])),
+            [
+                "openid",
+                "fhirUser",
+                "launch",
+                "launch/patient",
+                "offline_access"
+            ],
+        );
+        assert_eq!(
+            session_bounded_scopes(&authorized, &Grant::parse(["wildflower/launch"])),
+            [
+                "openid",
+                "fhirUser",
+                "launch",
+                "launch/patient",
+                "offline_access",
+                "wildflower/launch"
+            ],
+        );
+    }
+
+    /// The Owner's scopes bound nothing an approval can grant.
+    #[test]
+    fn the_owner_s_session_bounds_nothing() {
+        let authorized = owned_scopes(&[
+            "patient/Observation.read",
+            "user/*.cruds",
+            "wildflower/Apps.r",
+            "wildflower/launch",
+            "openid",
+        ]);
+        assert_eq!(
+            session_bounded_scopes(&authorized, &Grant::parse(crate::owner_scopes())),
+            authorized,
         );
     }
 

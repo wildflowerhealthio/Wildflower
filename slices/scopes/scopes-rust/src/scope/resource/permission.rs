@@ -175,6 +175,27 @@ impl Permission {
         }
     }
 
+    /// The permission granting only the interactions both `self` and `other`
+    /// grant, spelled so that each of them covers it
+    /// ([`contains`](Permission::contains)), or `None` when they share no
+    /// interaction or no such spelling exists.
+    ///
+    /// Two letter bags intersect to the letter bag of their shared
+    /// interactions. A v1 word covers only word requests, so when either side
+    /// is a word the result is the word spelling the shared interactions
+    /// exactly: `*` ∩ `read` = `read`, `rs` ∩ `read` = `read`, but `r` ∩
+    /// `read` has no word spelling and is `None`.
+    pub(in crate::scope) fn intersection(self, other: Permission) -> Option<Self> {
+        let shared_bits = self.bits() & other.bits();
+        if shared_bits == 0 {
+            None
+        } else if self.is_word_form() || other.is_word_form() {
+            Self::word_form_for_bits(shared_bits)
+        } else {
+            Some(Permission(PermissionRepr::InteractionSet(shared_bits)))
+        }
+    }
+
     /// The SMART v1 word spelling `bits` exactly, or `None` when no word does.
     /// Total over every union [`union`](Permission::union) can reach, since the
     /// words' bit sets are closed under union.
@@ -384,6 +405,48 @@ mod tests {
                 // The union covers both inputs — the property the collapse relies on.
                 assert!(union.contains(a));
                 assert!(union.contains(b));
+            }
+        }
+    }
+
+    #[test]
+    fn intersection_keeps_the_shared_interactions_in_a_spelling_both_cover() {
+        let segment = |perms: &str| Permission::parse_segment(perms).unwrap();
+        assert_eq!(segment("rs").intersection(segment("r")), Some(segment("r")));
+        assert_eq!(
+            Permission::ALL.intersection(segment("cud")),
+            Some(segment("cud"))
+        );
+        assert_eq!(segment("c").intersection(segment("r")), None);
+        assert_eq!(
+            segment("*").intersection(segment("read")),
+            Some(segment("read"))
+        );
+        assert_eq!(segment("read").intersection(segment("write")), None);
+        // Across grammars the result is a word, since a word covers no letter
+        // bag; where no word spells the shared interactions there is none.
+        assert_eq!(
+            segment("cruds").intersection(segment("read")),
+            Some(segment("read"))
+        );
+        assert_eq!(segment("r").intersection(segment("read")), None);
+    }
+
+    /// An intersection is covered by both sides and is commutative.
+    #[test]
+    fn intersection_is_covered_by_both_sides() {
+        let all = [
+            "c", "r", "u", "d", "s", "rs", "cud", "cruds", "read", "write", "*",
+        ]
+        .map(|p| Permission::parse_segment(p).unwrap());
+        for a in all {
+            for b in all {
+                assert_eq!(a.intersection(b), b.intersection(a));
+                let Some(intersection) = a.intersection(b) else {
+                    continue;
+                };
+                assert!(a.contains(intersection), "{a} ∩ {b} = {intersection}");
+                assert!(b.contains(intersection), "{a} ∩ {b} = {intersection}");
             }
         }
     }

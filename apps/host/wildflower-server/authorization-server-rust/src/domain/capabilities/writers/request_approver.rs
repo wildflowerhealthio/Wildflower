@@ -3,12 +3,15 @@
 //! client redeems at `/oauth/token`. Every write demands a proof — the device
 //! flow and a browser pairing a [`DelegatedScopes`], the code flow a
 //! [`CodeAuthority`] (delegated scopes or standing-grant coverage) — so the
-//! scopes recorded on the request and the code are exactly the proof's, never
-//! a slice the flow assembled.
+//! scopes recorded on the request are exactly the proof's, never a slice the
+//! flow assembled, and a code carries the proof's scopes bounded by the
+//! browser session the request was made in.
 
 use chrono::{DateTime, Utc};
 
-use crate::domain::authority::{DelegatedScopes, StandingGrantCoverage};
+use wildflowerhealthio_scopes::Grant;
+
+use crate::domain::authority::{session_bounded_scopes, DelegatedScopes, StandingGrantCoverage};
 use crate::domain::authorization_code::{
     IssuedAuthorizationCode, PendingCodeRequest, AUTHORIZATION_CODE_TTL,
 };
@@ -48,10 +51,10 @@ pub(crate) enum CodeApproval {
     /// The request was no longer pending (a concurrent decision or expiry
     /// won); nothing changed.
     RequestNotPending,
-    /// The browser session the request was made in has been revoked, or no
-    /// longer exists, so every token the code earned would be refused: the
-    /// request was denied instead, and no code issued.
-    BrowserSessionRevoked,
+    /// The browser session the request was made in has ended — revoked,
+    /// expired, or no longer stored — so it bounds no code: the request was
+    /// denied instead, and no code issued.
+    BrowserSessionEnded,
 }
 
 /// Approve pending requests. A borrowed view over the store; the gate is the
@@ -74,12 +77,17 @@ impl<'a, S: GrantStore> RequestApprover<'a, S> {
     /// [`AUTHORIZATION_CODE_TTL`] after `now`. The flow generates `code` (a
     /// CSPRNG opaque token) so tests can inject a known value.
     ///
-    /// The approval and the code land in one transaction, which first checks
-    /// that the request's browser session still stands. A request
-    /// whose session was revoked meanwhile is denied rather than approved
-    /// ([`CodeApproval::BrowserSessionRevoked`]), so the client hears
-    /// `access_denied` instead of redeeming a code whose tokens are refused on
-    /// arrival. A request no longer pending issues nothing
+    /// The request records the authority's scopes; the code carries only
+    /// those the request's browser session also allows
+    /// ([`session_bounded_scopes`]), so a browser paired with less than the
+    /// Owner holds earns no app more than it holds, whoever approved.
+    ///
+    /// The approval and the code land in one transaction, which first loads
+    /// the request's browser session. A request whose session is no longer
+    /// live at `now` (revoked, expired, or no longer stored) is denied rather
+    /// than approved ([`CodeApproval::BrowserSessionEnded`]), so the client
+    /// hears `access_denied` rather than earning a code no live session
+    /// bounds. A request no longer pending issues nothing
     /// ([`CodeApproval::RequestNotPending`]); the flow maps that to its own
     /// not-found outcome.
     ///
@@ -96,31 +104,38 @@ impl<'a, S: GrantStore> RequestApprover<'a, S> {
     ) -> Result<CodeApproval, AuthorizationServerError> {
         let authorized_scopes = authority.authorized_scopes();
         let request = pending_request.request();
-        let authorization_code = IssuedAuthorizationCode {
-            code,
-            request_id: request.id.clone(),
-            client_id: request.client_id.clone(),
-            redirect_uri: pending_request.redirect_uri().clone(),
-            code_challenge: pending_request.code_challenge().to_owned(),
-            granted_scopes: authorized_scopes.to_vec(),
-            patient: patient.map(str::to_owned),
-            issued_at: now,
-            expires_at: now + AUTHORIZATION_CODE_TTL,
-            sid: pending_request.sid().to_owned(),
-        };
         // One transaction, so an approved request never exists without its code,
-        // and its session can't be revoked between the check and the approval.
+        // and its session can't be revoked or narrowed between the read and the
+        // approval.
         self.store.transaction(|tx| {
-            if tx.browser_session_is_revoked(pending_request.sid())? {
+            let Some(browser_session) = tx
+                .browser_session_by_sid(pending_request.sid())?
+                .filter(|browser_session| browser_session.is_live(now))
+            else {
                 return Ok(if tx.deny_authorization_request(&request.id)? {
-                    CodeApproval::BrowserSessionRevoked
+                    CodeApproval::BrowserSessionEnded
                 } else {
                     CodeApproval::RequestNotPending
                 });
-            }
+            };
             if !tx.approve_authorization_request(&request.id, authorized_scopes, patient, None)? {
                 return Ok(CodeApproval::RequestNotPending);
             }
+            let authorization_code = IssuedAuthorizationCode {
+                code,
+                request_id: request.id.clone(),
+                client_id: request.client_id.clone(),
+                redirect_uri: pending_request.redirect_uri().clone(),
+                code_challenge: pending_request.code_challenge().to_owned(),
+                granted_scopes: session_bounded_scopes(
+                    authorized_scopes,
+                    &Grant::parse(&browser_session.scopes),
+                ),
+                patient: patient.map(str::to_owned),
+                issued_at: now,
+                expires_at: now + AUTHORIZATION_CODE_TTL,
+                sid: browser_session.sid,
+            };
             tx.issue_authorization_code(&authorization_code)?;
             Ok(CodeApproval::Issued(Box::new(authorization_code)))
         })
@@ -183,17 +198,18 @@ mod tests {
     use crate::domain::authorization_request::{AuthorizationRequest, RequestStatus};
     use crate::domain::browser_session::BrowserSession;
     use crate::domain::test_fake::{
-        code_request, delegated_scopes, device_request, FakeGrantStore,
+        code_request, delegated_scopes, device_request, owned_scopes, FakeGrantStore,
     };
 
     /// The fixture code request `id`, in `status`, as the approver takes it,
-    /// made in a browser session that stands.
+    /// made in an Owner session that stands.
     fn pending_request(
         store: &FakeGrantStore,
         id: &str,
         status: RequestStatus,
     ) -> PendingCodeRequest {
-        let standing = BrowserSession::new_owner(vec![], Duration::hours(8), Utc::now());
+        let standing =
+            BrowserSession::new_owner(crate::owner_scopes(), Duration::hours(8), Utc::now());
         store.insert_browser_session(&standing).unwrap();
         pending_request_in_session(store, id, status, &standing.sid)
     }
@@ -282,29 +298,32 @@ mod tests {
         );
     }
 
-    /// A request made in a browser session that has since been revoked, or
-    /// that names no session, is denied and earns no code; one whose session
-    /// stands is approved.
+    /// A request made in a browser session that has since been revoked, that
+    /// has expired without being revoked, or that names no session, is denied
+    /// and earns no code; one whose session stands is approved.
     #[test]
-    fn approve_for_code_denies_a_request_whose_browser_session_is_revoked() {
+    fn approve_for_code_denies_a_request_whose_browser_session_has_ended() {
         let store = FakeGrantStore::default();
         let now = Utc::now();
         let standing = BrowserSession::new_owner(vec![], Duration::hours(8), now);
         let revoked = BrowserSession::new_owner(vec![], Duration::hours(8), now);
-        for session in [&standing, &revoked] {
+        let expired =
+            BrowserSession::new_owner(vec![], Duration::hours(8), now - Duration::hours(9));
+        for session in [&standing, &revoked, &expired] {
             store.insert_browser_session(session).unwrap();
         }
         assert!(store.revoke_browser_session(&revoked.sid, now).unwrap());
 
         for (id, sid) in [
             ("req-revoked", revoked.sid.as_str()),
+            ("req-expired", expired.sid.as_str()),
             ("req-missing", "no-such-sid"),
         ] {
             let pending_request =
                 pending_request_in_session(&store, id, RequestStatus::Pending, sid);
             assert_eq!(
                 approve(&store, &pending_request),
-                CodeApproval::BrowserSessionRevoked,
+                CodeApproval::BrowserSessionEnded,
                 "{id}"
             );
             let request = store
@@ -329,6 +348,50 @@ mod tests {
             approve(&store, &pending_request),
             CodeApproval::Issued(issued_code) if issued_code.sid == standing.sid
         ));
+    }
+
+    /// A code carries only what the request's browser session also allows,
+    /// whoever approved; the request records the approval as made.
+    #[test]
+    fn approve_for_code_bounds_the_code_by_the_request_s_browser_session() {
+        let store = FakeGrantStore::default();
+        let paired = BrowserSession::new_approved(
+            "Firefox on Linux".to_owned(),
+            vec![
+                "wildflower/launch".to_owned(),
+                "patient/Patient.rs".to_owned(),
+            ],
+            Duration::hours(24),
+            Utc::now(),
+        );
+        store.insert_browser_session(&paired).unwrap();
+        let pending_request =
+            pending_request_in_session(&store, "req-1", RequestStatus::Pending, &paired.sid);
+        let approved = ["openid", "patient/Patient.read", "patient/Observation.rs"];
+        let CodeApproval::Issued(issued_code) = RequestApprover::over(&store)
+            .approve_for_code(
+                CodeAuthority::OwnerDelegated(&delegated_scopes(&approved)),
+                &pending_request,
+                None,
+                "the-code".to_owned(),
+                Utc::now(),
+            )
+            .unwrap()
+        else {
+            panic!("request was pending");
+        };
+        assert_eq!(
+            issued_code.granted_scopes,
+            ["openid", "patient/Patient.read"]
+        );
+        let request = store
+            .authorization_request_by_id("req-1")
+            .unwrap()
+            .expect("present");
+        assert_eq!(
+            request.granted_scopes.as_deref(),
+            Some(&owned_scopes(&approved)[..])
+        );
     }
 
     /// The device flow: the request flips to approved carrying the proof's

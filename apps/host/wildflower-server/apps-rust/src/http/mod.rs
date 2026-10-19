@@ -13,8 +13,7 @@
 //!  - [`errors`] — the wire bodies + `impl IntoResponse` for
 //!    [`AppsError`](crate::domain::AppsError).
 //!  - [`ports`](crate::ports) — the host-seam dependency-inversion traits
-//!    ([`AppLaunchScopes`](crate::ports::AppLaunchScopes),
-//!    [`LaunchContextMinter`](crate::ports::LaunchContextMinter)) the host wires
+//!    ([`LaunchContextMinter`](crate::ports::LaunchContextMinter)) the host wires
 //!    into [`AppsState`].
 //!
 //! The shared [`AppsState`] itself lives at the crate root
@@ -24,8 +23,7 @@
 //! The surface is exposed as one [`router`] carrying no middleware; the host wraps
 //! it with its bearer gate (which inserts the caller's scope claims). Each handler
 //! is scope-gated: the catalogue reads and writes and `PUT /home-screen` on
-//! `wildflower/Apps.*`, the launch on the `wildflower/launch` umbrella (plus a
-//! per-app SMART check in the handler).
+//! `wildflower/Apps.*`, the launch on the `wildflower/launch` umbrella.
 
 mod errors;
 mod routes;
@@ -68,8 +66,7 @@ fn openapi_spec() -> utoipa::openapi::OpenApi {
 /// `wildflower/Apps.{r,c,u,d}`, and the launch route (`POST /apps/{id}`), gated on
 /// the `wildflower/launch` umbrella by the
 /// [`Scoped<LiveAppLauncher>`](crate::live_bindings::LiveAppLauncher) extractor
-/// before the handler runs, with a SMART app additionally requiring the caller's
-/// grant to cover its OAuth client's scopes. Carries no middleware — the host
+/// before the handler runs. Carries no middleware — the host
 /// wraps it with its bearer gate (which inserts the caller's scope claims).
 pub fn router(state: Arc<AppsState>) -> Router {
     let (router, _spec) = documented_router().split_for_parts();

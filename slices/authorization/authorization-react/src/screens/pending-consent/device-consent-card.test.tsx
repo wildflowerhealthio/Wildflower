@@ -131,7 +131,7 @@ describe('DeviceConsentCard', () => {
   test('disables Approve when nothing is granted (empty request, nothing to add)', () => {
     // A request with no scopes and an empty expansion envelope has an empty draft,
     // which the backend treats as a deny — so Approve is blocked.
-    renderCard(makeConsent({ requestedScopes: [], allowedScopes: [] }), vi.fn())
+    renderCard(makeConsent({ startingScopes: [], allowedScopes: [] }), vi.fn())
     expect(screen.getByRole('button', { name: 'Approve' }).hasAttribute('disabled')).toBe(true)
   })
 
@@ -230,14 +230,17 @@ describe('DeviceConsentCard', () => {
   })
 
   describe('a browser pairing', () => {
-    /** A remote browser's pairing: it starts from launching apps, and may be widened up to the Owner's scopes. */
+    /** The Owner's scopes, which a pairing requests and may be granted up to. */
+    const ownerScopes = ['system/*.cruds', 'wildflower/*.cruds', 'wildflower/launch']
+
+    /** A remote browser's pairing, as the Owner opens it: everything ticked. */
     const browserConsent = makeConsent({
       kind: 'browser',
       clientId: 'cb9bbe139845cae9654b7909d60d274f',
       clientName: 'Wildflower Browsers',
       deviceName: 'Firefox on Linux',
-      requestedScopes: ['wildflower/launch'],
-      allowedScopes: ['system/*.cruds', 'wildflower/*.cruds', 'wildflower/launch'],
+      startingScopes: ownerScopes,
+      allowedScopes: ownerScopes,
     })
 
     test('says a browser wants to sign in, by its name, marked remote, with no application', () => {
@@ -253,7 +256,7 @@ describe('DeviceConsentCard', () => {
       expect(screen.queryByText('A new device is requesting access to your account.')).toBeNull()
     })
 
-    test('approves the ticks it starts from', async () => {
+    test('approves everything it opens with ticked', async () => {
       let capturedPayload: unknown
       const clientLayer = Layer.succeed(AuthorizationServerHttpApiClient, {
         devices: {
@@ -281,7 +284,7 @@ describe('DeviceConsentCard', () => {
       await waitFor(() => {
         expect(onDone).toHaveBeenCalledTimes(1)
       })
-      expect(capturedPayload).toEqual({ approvedScopes: ['wildflower/launch'] })
+      expect(capturedPayload).toEqual({ approvedScopes: ownerScopes })
     })
   })
 })
@@ -294,7 +297,7 @@ const makeConsent = (overrides?: Partial<DeviceConsent>): DeviceConsent => ({
   clientId: 'cli.acme.example',
   clientName: 'Acme CLI',
   deviceName: null,
-  requestedScopes: ['patient/Observation.rs'],
+  startingScopes: ['patient/Observation.rs'],
   // The client is allowed a wider set — device consent is expandable.
   allowedScopes: ['patient/*.cruds'],
   missingApprovalScopes: [],

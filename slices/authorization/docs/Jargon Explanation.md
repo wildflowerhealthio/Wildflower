@@ -279,7 +279,9 @@ that covers every requested scope, with no human in the loop. It runs only
 for a browser that holds a [browser session](#browser-session): a browser
 without one is sent to [pairing](#browser-pairing) first, whatever grant
 stands. The code, and the tokens and refresh family it earns, name that
-browser's session, so revoking the session ends them.
+browser's session, so revoking the session ends them, and carry only what
+that session also holds of the grant (see
+[Browser session](#browser-session)).
 
 - **Table:** `grants`
 - **Identifier:** plain string.
@@ -665,11 +667,15 @@ and no refresh family. The session row is its only record.
    waiting longer after a `slow_down`. While the request is pending each poll
    records the name. The host notifies the Owner of the newest pending
    consent, as for any request.
-4. The Owner decides it at the [device page](#device-page). The ticks start
-   from `wildflower/launch` alone, not the Owner's own access, and the Owner
-   may widen them up to `OWNER_SCOPES` and no further
-   ([Expandable consent](#expandable-consent)); an approval delegates nothing
-   the approver doesn't hold.
+4. The Owner decides it at the [device page](#device-page). The request asks
+   for `OWNER_SCOPES`, so the Owner's card opens with all of them ticked, and
+   the Owner unticks what the browser shouldn't have; no tick goes past
+   `OWNER_SCOPES` ([Expandable consent](#expandable-consent)). An approval
+   delegates nothing the approver doesn't hold, neither a resource scope nor
+   `wildflower/launch`, so an approver holding less opens the card with
+   everything it may delegate ticked instead
+   (`ApprovableScopes::delegable_scopes`, the card's `startingScopes`). What
+   the session holds bounds every code a request made in it earns.
 5. The first poll after the approval claims the request
    (`ClaimedBrowserPairing`, an authority proof), stores the `approved` browser
    session it starts, named as approved, holding exactly the approved scopes
@@ -744,15 +750,35 @@ authorization-code request is made in a session, so its code and family
 always name one: the session of the browser that made the request, not of
 whichever browser approved it, so revoking the browser the app runs in is
 what ends it.
+
 **Revoking** a session sets its `revoked_at` and ends all of them: the token
 verifier refuses a token whose `sid` names a revoked session, on the
 `/authorization` gates and the FHIR server alike, and refresh redemption
 refuses a family whose `sid` does. A request still pending when its session
-is revoked is denied when it is approved, so the app gets `access_denied`
-rather than a code. A `sid` that names no row is treated as revoked. Whether a session's _expiry_ ends a refresh family is the client's
+is revoked, or expires, is denied when it is approved, so the app gets
+`access_denied` rather than a code. A `sid` that names no row is treated as revoked. Whether a session's _expiry_ ends a refresh family is the client's
 refresh policy; today it doesn't. Tokens, requests and families with no
 `sid` (the host app's in-process tokens, the device flow) have no session to
 check.
+
+A code carries only what both its approval and the session of the browser
+that made its request allow: the approval's scopes (the Owner's ticks, or the
+standing grant's coverage on the [fast path](#grant)), each resource scope
+narrowed to the part the session holds, and `wildflower/launch` only if the
+session holds it. A resource scope the session covers stays as approved;
+coverage is the rule an approver is held to: either SMART spelling, and
+`system/*` covering `patient/*` and `user/*`. One the session covers only in
+part narrows to its intersection with each session scope, so an approved
+`system/*.cruds` in a session holding `system/Patient.cruds` gives the code
+`system/Patient.cruds`, and an approved `patient/Observation.rs` in a session
+holding `patient/Observation.r` gives it `patient/Observation.r`. One the
+session holds none of is dropped. Identity and session markers (`openid`,
+`fhirUser`, `launch`, `launch/patient`, `offline_access`) pass through. The
+request and the standing grant record the approval as made; the code's tokens
+and refresh family take the code's scopes. So a browser paired without
+`patient/Observation.rs` earns no app a code for it, whoever approves, and an
+Owner session, holding `OWNER_SCOPES`, bounds nothing. Launching an app from Home needs only `wildflower/launch`:
+what the app may then do is bounded here, at its own `/oauth/authorize`.
 
 **Last seen** (`last_seen_at`) is when the session was last in use. Signing in,
 or pairing, sets it, and two uses move it: the host's cookie→bearer layer accepting the
@@ -813,7 +839,7 @@ one by **where it comes from**:
 | `unregistered_requested_scopes` | Requested scopes the registration does not cover (`newScopes` on the wire).                                  |
 | `approver_missing_scopes`       | Resource scopes an approval would grant that the approving Owner does not hold (`missingScopes` on the 403). |
 | `missing_approval_scopes`       | [Approval scopes](#approval-scopes) the reader of a consent prompt does not hold (`missingApprovalScopes`).  |
-| `granted_scopes`                | What an approval delegated, recorded on the request, the code, and the refresh family.                       |
+| `granted_scopes`                | What an approval delegated, recorded on the request; on the code and refresh family, bounded by the session. |
 | `OWNER_SCOPES`                  | The Owner's authority: `WILDFLOWER_WIDEST_SCOPES` plus `wildflower/launch`, defined in code.                 |
 
 An approval with any `approver_missing_scopes` is refused as a whole with

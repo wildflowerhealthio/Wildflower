@@ -39,8 +39,8 @@
 //!    [`CertificateState`] with what a run observed that it is derived from,
 //!    and [`CertificateHistoryEntry`].
 //!  - `adapters` — ports implemented here, where both sides are in reach:
-//!    apps' `AppLaunchScopes` from the authorization server's OAuth clients, and the
-//!    monitor's `HealthProbe` over `reqwest`; and the device certificate,
+//!    apps' `LaunchContextMinter` from the authorization server's launch
+//!    contexts, and the monitor's `HealthProbe` over `reqwest`; and the device certificate,
 //!    rustls-acme's order and renewal of the tunnel listener's certificate
 //!    as [`DeviceCertificateConfig`] says, which reports its state and
 //!    records each new certificate in the server's certificate history.

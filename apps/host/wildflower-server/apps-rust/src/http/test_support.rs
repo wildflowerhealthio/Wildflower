@@ -5,37 +5,14 @@
 use std::sync::{Arc, Mutex};
 
 use url::Url;
-use wildflowerhealthio_scopes::Scope;
 
 use crate::db::SqliteAppsStore;
-use crate::domain::{AppRegistration, AppsError};
+use crate::domain::AppsError;
 use crate::live_bindings::state::AppsState;
-use crate::ports::{AppLaunchScopes, LaunchContextMinter, NoAppLaunchScopes};
+use crate::ports::LaunchContextMinter;
 
 /// The server's public origin, which every launch's `{origin}` resolves to.
 pub(crate) const PUBLIC_ORIGIN: &str = "https://dev1.example.com";
-
-/// An [`AppLaunchScopes`] fake that requires a fixed scope set for any SMART app —
-/// drives the per-app SMART launch check. The launch capability only consults it
-/// for a SMART app (a `client_id`), so a non-SMART launch never reaches it.
-pub(crate) struct FixedLaunchScopes {
-    required: Vec<Scope>,
-}
-
-impl FixedLaunchScopes {
-    /// Requires the given (space-separated) scopes for every SMART launch.
-    pub(crate) fn requiring(scopes: &str) -> Arc<dyn AppLaunchScopes> {
-        Arc::new(FixedLaunchScopes {
-            required: scopes.split_whitespace().map(Scope::from).collect(),
-        })
-    }
-}
-
-impl AppLaunchScopes for FixedLaunchScopes {
-    fn required_scopes(&self, _registration: &AppRegistration) -> Result<Vec<Scope>, AppsError> {
-        Ok(self.required.clone())
-    }
-}
 
 /// A [`LaunchContextMinter`] fake that records the client each launch was
 /// minted for and answers `launch-for-{client_id}`, or fails every mint when
@@ -77,33 +54,21 @@ impl LaunchContextMinter for RecordingLaunchContextMinter {
     }
 }
 
-/// Build apps state over a fresh in-memory store with a specific launch-scope
-/// seam and launch-context seam, using the shared public origin. The most
-/// general fixture; the others below pin the knobs.
-pub(crate) fn state_full(
-    launch_scopes: Arc<dyn AppLaunchScopes>,
+/// Build apps state over a fresh in-memory store with a specific
+/// launch-context seam, using the shared public origin.
+pub(crate) fn state_with_launch_context_minter(
     launch_context_minter: Arc<dyn LaunchContextMinter>,
 ) -> Arc<AppsState> {
     let store = SqliteAppsStore::open_in_memory().expect("store");
     Arc::new(AppsState::new(
         store,
         Url::parse(PUBLIC_ORIGIN).expect("public origin is a hardcoded valid URL"),
-        launch_scopes,
         launch_context_minter,
     ))
 }
 
-/// Apps state with no per-app launch scopes and a recording launch-context
-/// minter whose mints the test doesn't inspect.
+/// Apps state with a recording launch-context minter whose mints the test
+/// doesn't inspect.
 pub(crate) fn state() -> Arc<AppsState> {
-    state_with_launch_scopes(Arc::new(NoAppLaunchScopes))
-}
-
-/// Apps state with a specific [`AppLaunchScopes`] seam — drives the per-app
-/// SMART launch check.
-pub(crate) fn state_with_launch_scopes(launch_scopes: Arc<dyn AppLaunchScopes>) -> Arc<AppsState> {
-    state_full(
-        launch_scopes,
-        Arc::new(RecordingLaunchContextMinter::default()),
-    )
+    state_with_launch_context_minter(Arc::new(RecordingLaunchContextMinter::default()))
 }

@@ -1,7 +1,7 @@
 //! The shared apps runtime state — the router state every handler is built over,
 //! and the composition point that names the concrete [`SqliteAppsStore`] adapter.
 //! It also holds the public origin every launch's `{origin}` resolves to and the
-//! host-seam ports (per-app launch scopes, launch contexts).
+//! host-seam port that mints launch contexts.
 //!
 //! It lives at the crate root (not under [`crate::http`]) deliberately: the
 //! scope-gated [`capabilities`](crate::domain::capabilities) in `domain/` are
@@ -15,7 +15,7 @@ use std::sync::Arc;
 use url::Url;
 
 use crate::db::SqliteAppsStore;
-use crate::ports::{AppLaunchScopes, LaunchContextMinter};
+use crate::ports::LaunchContextMinter;
 
 /// Shared state threaded through the apps handlers. Holds the **concrete**
 /// [`SqliteAppsStore`] adapter (not `Arc<dyn AppsStore>` or a generic): the port
@@ -29,10 +29,6 @@ pub struct AppsState {
     /// The server's public origin. Every launch resolves `{origin}` to it
     /// ([`Self::public_origin`]).
     pub(crate) public_origin: Url,
-    /// Resolves a **SMART** app's required launch scopes (its OAuth client's
-    /// allowed scopes) for the per-app launch check (see [`AppLaunchScopes`]). The
-    /// host wires an authorization-server-backed adapter; tests use a fake / no-op.
-    pub(crate) launch_scopes: Arc<dyn AppLaunchScopes>,
     /// Mints the SMART `launch` value a SMART app's launch URL carries (see
     /// [`LaunchContextMinter`]). The host wires an authorization-server-backed adapter;
     /// tests use a fake.
@@ -44,13 +40,11 @@ impl AppsState {
     pub fn new(
         store: SqliteAppsStore,
         public_origin: Url,
-        launch_scopes: Arc<dyn AppLaunchScopes>,
         launch_context_minter: Arc<dyn LaunchContextMinter>,
     ) -> Self {
         Self {
             store,
             public_origin,
-            launch_scopes,
             launch_context_minter,
         }
     }

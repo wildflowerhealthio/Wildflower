@@ -14,9 +14,11 @@ const DeviceConsentSchema = Schema.Struct({
   // The human-chosen device name the requester supplied (RFC 8628 extension), or a browser's
   // name. Nullable: absent when a device didn't name itself; a browser always has one.
   deviceName: Schema.NullishOr(Schema.String),
-  requestedScopes: Schema.Array(Schema.String),
+  // The scopes the approver's ticks start from: a device's requested scopes, or for a browser
+  // everything the reader may delegate.
+  startingScopes: Schema.Array(Schema.String),
   // The *expansion envelope* the approver can grant up to (device-auth consent is expandable,
-  // `granted ⊆ allowed`, not clamped to `requestedScopes`): a device client's full
+  // `granted ⊆ allowed`, not clamped to `startingScopes`): a device client's full
   // `allowed_scopes`, or for a browser the Owner's scopes.
   allowedScopes: Schema.Array(Schema.String),
   // The approval scopes the reader's own token lacks to approve this request:

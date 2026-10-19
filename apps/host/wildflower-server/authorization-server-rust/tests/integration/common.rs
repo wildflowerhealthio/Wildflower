@@ -174,16 +174,23 @@ pub fn mint_browser_session_token(db: &TestDb, sid: &str, scopes: &[&str]) -> St
 /// Start a browser session for a browser the Owner paired, holding only
 /// `wildflower/launch`, and return its `sid` and a token minted under it.
 pub fn paired_browser_session(db: &TestDb) -> (String, String) {
+    paired_browser_session_holding(db, &["wildflower/launch"])
+}
+
+/// Start a browser session for a browser the Owner paired, holding `scopes`,
+/// and return its `sid` and a token minted under it. Every authorization code
+/// a request made in it earns carries only what `scopes` also allow.
+pub fn paired_browser_session_holding(db: &TestDb, scopes: &[&str]) -> (String, String) {
     let session = BrowserSession::new_approved(
         "Firefox on Linux".to_owned(),
-        vec!["wildflower/launch".to_owned()],
+        scopes.iter().map(|scope| (*scope).to_owned()).collect(),
         Duration::hours(24),
         Utc::now(),
     );
     store_handle(db)
         .insert_browser_session(&session)
         .expect("insert the paired browser's session");
-    let token = mint_browser_session_token(db, &session.sid, &["wildflower/launch"]);
+    let token = mint_browser_session_token(db, &session.sid, scopes);
     (session.sid, token)
 }
 

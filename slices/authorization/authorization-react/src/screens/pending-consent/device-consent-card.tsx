@@ -54,17 +54,17 @@ const DeviceConsentCard = ({
   consentMutation,
   onDone,
 }: DeviceConsentCardProps): JSX.Element => {
-  // Expandable envelope: seed the sections from what the device requested, but let the owner
-  // grant anything within the client's allowed set.
+  // Expandable envelope: seed the sections from the starting scopes, but let the approver grant
+  // anything within the allowed set.
   const request = useMemo(
     () =>
       ScopeRequest.expandable({
-        requested: consent.requestedScopes,
+        requested: consent.startingScopes,
         available: consent.allowedScopes,
       }),
     [consent]
   )
-  const [draft, setDraft] = useState(() => GrantDraft.fromScopes(consent.requestedScopes, null))
+  const [draft, setDraft] = useState(() => GrantDraft.fromScopes(consent.startingScopes, null))
   const [denied, setDenied] = useState(false)
 
   const submitting = consentMutation.isPending

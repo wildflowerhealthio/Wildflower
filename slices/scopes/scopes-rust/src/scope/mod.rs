@@ -105,9 +105,10 @@ impl Scope {
 
     /// Build the `wildflower/launch` known scope — the umbrella app-launch
     /// capability ([`KnownScope::AnyScopedAppLaunch`]). The typed way to name the
-    /// launch gate so the apps slice's `AppLauncher` and any grantable-scope list
-    /// don't hand-spell it. As a *known* scope it is not covered by the
-    /// `wildflower/*` resource wildcard — it must be granted explicitly.
+    /// launch gate so the apps slice's `AppLauncher` and the authorization
+    /// server's delegation bounds don't hand-spell it. As a *known* scope it is
+    /// not covered by the `wildflower/*` resource wildcard — it must be granted
+    /// explicitly.
     #[must_use]
     pub fn any_scoped_app_launch() -> Scope {
         Scope::Known(KnownScope::AnyScopedAppLaunch)
@@ -121,6 +122,36 @@ impl Scope {
             (Scope::FhirResource(a), Scope::FhirResource(b)) => a.covers(b),
             (Scope::WildflowerResource(a), Scope::WildflowerResource(b)) => a.covers(b),
             (a, b) => a == b,
+        }
+    }
+
+    /// Whether this is a resource scope, FHIR or Wildflower: access to data,
+    /// rather than an identity or session marker.
+    pub fn is_resource(&self) -> bool {
+        matches!(self, Scope::FhirResource(_) | Scope::WildflowerResource(_))
+    }
+
+    /// The broadest single scope both `self` and `other` cover, or `None` when
+    /// they share no access. Two resource scopes of one kind narrow part by
+    /// part — context, resource type, and interactions:
+    /// `system/*.cruds` ∩ `patient/Observation.rs` = `patient/Observation.rs`,
+    /// `patient/Observation.rs` ∩ `patient/*.r` = `patient/Observation.r`. A v1
+    /// word covers only word requests, so a pair with a word side intersects
+    /// to a word (`patient/*.cruds` ∩ `patient/Observation.read` =
+    /// `patient/Observation.read`). Known and unknown scopes — and any
+    /// cross-kind pair — intersect only with an identical twin.
+    ///
+    /// A SMART v2 `?` search-parameter suffix is dropped at parse, so it plays
+    /// no part here.
+    pub fn intersection(&self, other: &Scope) -> Option<Scope> {
+        match (self, other) {
+            (Scope::FhirResource(a), Scope::FhirResource(b)) => {
+                a.intersection(b).map(Scope::FhirResource)
+            }
+            (Scope::WildflowerResource(a), Scope::WildflowerResource(b)) => {
+                a.intersection(b).map(Scope::WildflowerResource)
+            }
+            (a, b) => (a == b).then(|| a.clone()),
         }
     }
 

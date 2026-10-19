@@ -225,6 +225,74 @@ fn wildflower_scopes_round_trip_byte_compatibly() {
     }
 }
 
+/// `a ∩ b`, rendered, through the parser.
+fn intersected(a: &str, b: &str) -> Option<String> {
+    Scope::from(a)
+        .intersection(&Scope::from(b))
+        .map(|scope| scope.to_string())
+}
+
+#[test]
+fn intersection_narrows_resource_scopes_part_by_part() {
+    let some = |rendered: &str| Some(rendered.to_owned());
+    // A wildcard narrows to the named type; `system` to the narrower context.
+    assert_eq!(
+        intersected("system/*.cruds", "system/Patient.cruds"),
+        some("system/Patient.cruds")
+    );
+    assert_eq!(
+        intersected("system/*.cruds", "patient/Observation.rs"),
+        some("patient/Observation.rs")
+    );
+    assert_eq!(
+        intersected("patient/Observation.rs", "patient/*.r"),
+        some("patient/Observation.r")
+    );
+    assert_eq!(
+        intersected("patient/Observation.rs", "patient/Observation.r"),
+        some("patient/Observation.r")
+    );
+    assert_eq!(
+        intersected("wildflower/*.cruds", "wildflower/Apps.r"),
+        some("wildflower/Apps.r")
+    );
+    // A word side keeps the result a word.
+    assert_eq!(
+        intersected("patient/*.read", "patient/Patient.rs"),
+        some("patient/Patient.read")
+    );
+    // Nothing shared: different types, `user` against `patient`, disjoint
+    // interactions, FHIR against Wildflower.
+    for (a, b) in [
+        ("patient/Patient.rs", "patient/Observation.rs"),
+        ("user/*.cruds", "patient/Patient.r"),
+        ("patient/Patient.c", "patient/Patient.r"),
+        ("patient/Patient.r", "patient/Patient.read"),
+        ("system/*.cruds", "wildflower/Apps.r"),
+    ] {
+        assert_eq!(intersected(a, b), None, "{a} ∩ {b}");
+    }
+}
+
+#[test]
+fn intersection_of_known_and_unknown_scopes_is_an_identical_twin() {
+    assert_eq!(
+        intersected("wildflower/launch", "wildflower/launch"),
+        Some("wildflower/launch".to_owned())
+    );
+    assert_eq!(intersected("openid", "a_stray_unknown"), None);
+    assert_eq!(intersected("wildflower/launch", "wildflower/*.cruds"), None);
+}
+
+#[test]
+fn is_resource_holds_for_fhir_and_wildflower_resource_scopes_only() {
+    assert!(Scope::from("patient/Patient.r").is_resource());
+    assert!(Scope::from("wildflower/Apps.r").is_resource());
+    assert!(!Scope::from("wildflower/launch").is_resource());
+    assert!(!Scope::from("openid").is_resource());
+    assert!(!Scope::from("a_stray_unknown").is_resource());
+}
+
 /// Canonical interaction letters for a raw bit set, independent of
 /// `Permission`'s private representation.
 fn canonical_letters(bits: u8) -> String {
@@ -249,6 +317,45 @@ proptest! {
         let via_scope = serde_json::to_string(&Scope::from(canonical.as_str())).unwrap();
         let via_string = serde_json::to_string(&canonical).unwrap();
         prop_assert_eq!(via_scope, via_string);
+    }
+
+    /// [`Scope::intersection`] is covered by both sides, is commutative, and
+    /// reaches exactly the single-interaction atoms both sides reach.
+    #[test]
+    fn intersection_reaches_exactly_what_both_sides_reach(
+        (a, b) in {
+            let scope = (
+                prop::sample::select(vec!["patient", "user", "system"]),
+                prop::sample::select(vec!["*", "Patient", "Observation"]),
+                prop::sample::select(vec![
+                    "c", "r", "u", "d", "s", "rs", "cud", "cruds", "read", "write", "*",
+                ]),
+            )
+                .prop_map(|(ctx, rtype, perms)| Scope::from(format!("{ctx}/{rtype}.{perms}").as_str()));
+            (scope.clone(), scope)
+        },
+    ) {
+        let intersection = a.intersection(&b);
+        prop_assert_eq!(&intersection, &b.intersection(&a));
+        if let Some(intersection) = &intersection {
+            prop_assert!(a.covers(intersection), "{} ∩ {} = {}", a, b, intersection);
+            prop_assert!(b.covers(intersection), "{} ∩ {} = {}", a, b, intersection);
+        }
+        for ctx in ["patient", "user", "system"] {
+            for rtype in ["Patient", "Observation", "Condition"] {
+                for atom in ["c", "r", "u", "d", "s"] {
+                    let probe = Scope::from(format!("{ctx}/{rtype}.{atom}").as_str());
+                    prop_assert_eq!(
+                        intersection.as_ref().is_some_and(|scope| scope.covers(&probe)),
+                        a.covers(&probe) && b.covers(&probe),
+                        "{} ∩ {} at {}",
+                        a,
+                        b,
+                        probe
+                    );
+                }
+            }
+        }
     }
 
     /// [`Grant::collapse`] is an access-preserving rewrite: it may only shorten

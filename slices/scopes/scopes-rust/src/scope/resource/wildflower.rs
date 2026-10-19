@@ -82,6 +82,16 @@ impl WildflowerResourceScope {
         self.resource.covers(&other.resource) && self.permission.contains(other.permission)
     }
 
+    /// The broadest scope both `self` and `other` cover, or `None` when they
+    /// share no access: the named resource under a wildcard, and the shared
+    /// interactions.
+    pub(in crate::scope) fn intersection(&self, other: &WildflowerResourceScope) -> Option<Self> {
+        Some(WildflowerResourceScope {
+            resource: self.resource.intersection(&other.resource)?,
+            permission: self.permission.intersection(other.permission)?,
+        })
+    }
+
     /// The single scope granting everything `self` and `other` do, or `None`
     /// when they name different resources. The FHIR counterpart's context check
     /// has no analogue here — the `wildflower` context is fixed — and the
@@ -118,6 +128,16 @@ impl WildflowerResourceType {
     /// A wildcard covers any resource; otherwise resources must match exactly.
     pub(in crate::scope) fn covers(&self, other: &WildflowerResourceType) -> bool {
         *self == WildflowerResourceType::Wildcard || self == other
+    }
+
+    /// The resource both `self` and `other` cover — the named one under a
+    /// wildcard — or `None` for two different named resources.
+    pub(in crate::scope) fn intersection(&self, other: &WildflowerResourceType) -> Option<Self> {
+        if self.covers(other) {
+            Some(*other)
+        } else {
+            other.covers(self).then_some(*self)
+        }
     }
 }
 
