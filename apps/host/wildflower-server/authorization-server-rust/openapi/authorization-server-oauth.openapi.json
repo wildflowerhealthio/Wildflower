@@ -332,7 +332,7 @@
         "tags": [
           "OAuth 2.0"
         ],
-        "summary": "Go on with request `id` although this browser's session holds less than it\nasks for: issue a code under a standing grant that covers it, or else ask\nthe Owner, on the consent card when this browser can decide it and on the\nwait page otherwise, with the request's five minutes started again. The\nrequest spent from the authorization start limit when `/oauth/authorize`\nparked it, so going on spends nothing. This browser session's later\nrequests for the same app skip the limited page.",
+        "summary": "Go on with request `id` although this browser's session holds less than it\nasks for: issue a code under a standing grant that covers it, or else ask\nthe Owner, on the consent card when this browser can decide it and on the\nwait page otherwise, with the request's five minutes started again. The\nrequest spent from the authorization start limit when `/oauth/authorize`\nparked it, so going on spends nothing. This browser session's later\nrequests for the same app skip the limited page. A client disabled since\nthe request parked ends it: the request is denied and the app is sent\n`access_denied`.",
         "operationId": "handle_session_shortfall_continue",
         "parameters": [
           {
@@ -347,7 +347,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Where the browser goes next",
+            "description": "Where the browser goes next: the client callback (with a code, or with error=access_denied when the client was disabled since), the consent card or the wait page",
             "content": {
               "application/json": {
                 "schema": {
@@ -355,9 +355,6 @@
                 }
               }
             }
-          },
-          "400": {
-            "description": "Local HTML error page (the client was disabled since)"
           },
           "404": {
             "description": "No request with that id waits on this browser's limited page",

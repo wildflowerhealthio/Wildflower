@@ -175,6 +175,29 @@ async fn a_session_that_went_on_for_an_app_skips_the_limited_page_for_it() {
     limited_request_id(&get_authorize(&g.router, &session_token, &other_app_query).await);
 }
 
+/// A Continue for an app disabled since its request parked denies the
+/// request and answers the page, in its JSON, with the app's `access_denied`
+/// callback.
+#[tokio::test]
+async fn continue_for_an_app_disabled_since_denies_the_request() {
+    let (g, owner_token, db) = spin_up();
+    seed_app(&db);
+    let (_, session_token) = limited_browser(&db);
+    let request_id =
+        limited_request_id(&get_authorize(&g.router, &session_token, &app_query()).await);
+    let res = disable_client(&g, &owner_token, "test-app", Utc::now()).await;
+    assert!(res.status().is_success(), "{}", res.status());
+
+    let callback = continue_past_session_shortfall(&g.router, &session_token, &request_id).await;
+    assert_eq!(
+        callback,
+        "https://app.example/cb?error=access_denied\
+         &error_description=The+supplied+client_id+has+been+disabled.&state=xyz"
+    );
+    let status = get_authorization_status(&g.router, &session_token, &request_id).await;
+    assert_eq!(body_json(status.into_body()).await["status"], "denied");
+}
+
 /// Cancel sends the browser back to the app with `access_denied`, and the
 /// request can't be continued or read after. The next request from that
 /// browser stops at the limited page again.

@@ -124,15 +124,16 @@ pub(super) async fn handle_session_shortfall_read(
 /// wait page otherwise, with the request's five minutes started again. The
 /// request spent from the authorization start limit when `/oauth/authorize`
 /// parked it, so going on spends nothing. This browser session's later
-/// requests for the same app skip the limited page.
+/// requests for the same app skip the limited page. A client disabled since
+/// the request parked ends it: the request is denied and the app is sent
+/// `access_denied`.
 #[utoipa::path(
     post,
     tag = "OAuth 2.0",
     path = "/authorize/{id}/continue",
     params(("id" = String, Path, description = "Authorization request id")),
     responses(
-        (status = 200, description = "Where the browser goes next", body = SessionShortfallNextBody),
-        (status = 400, description = "Local HTML error page (the client was disabled since)"),
+        (status = 200, description = "Where the browser goes next: the client callback (with a code, or with error=access_denied when the client was disabled since), the consent card or the wait page", body = SessionShortfallNextBody),
         (status = 404, description = "No request with that id waits on this browser's limited page", body = AuthorizationRequestNotFound),
         (status = 503, description = "No active signing key")
     )

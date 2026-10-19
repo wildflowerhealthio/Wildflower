@@ -557,7 +557,9 @@ uses (`scopes-react`'s `fluentScope`), and the message sits above two buttons:
   Otherwise the request is raised for the Owner, and the browser goes to the
   consent card or the [wait page](#wait-page), as recorded at the start.
   It spends nothing from the authorization start limit: the request spent
-  from it when it parked.
+  from it when it parked. An app disabled since the request parked ends it
+  instead: the request is denied, and the browser goes back to the app with
+  `access_denied`.
 - **Cancel** posts `/oauth/authorize/{id}/cancel`, which denies the request,
   and the browser goes back to the app with `access_denied`.
 

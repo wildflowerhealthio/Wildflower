@@ -393,8 +393,9 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
     /// acknowledged, decided, or expired: the same as an expired request
     /// anywhere else); [`AuthorizationStartError::NoActiveSigningKey`], as at
     /// the start, leaving the request waiting;
-    /// [`AuthorizationStartError::LocalPage`] for a client
-    /// disabled since; otherwise as [`start`](Self::start).
+    /// [`AuthorizationStartError::Redirectable`] with `access_denied` for a
+    /// client disabled since, the request denied (the limited page follows
+    /// it as it follows Cancel's); otherwise as [`start`](Self::start).
     pub(crate) fn continue_past_session_shortfall(
         &self,
         id: &str,
@@ -408,7 +409,16 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
         let parked_request = load_unacknowledged_code_request(&self.store, id, sid, now)?;
         let request = parked_request.request();
         let registration_is_fixed = self.registration_is_fixed(&request.client_id);
-        let maybe_existing_client = self.load_client(&request.client_id, registration_is_fixed)?;
+        let maybe_existing_client =
+            match self.load_client(&request.client_id, registration_is_fixed) {
+                Ok(maybe_existing_client) => maybe_existing_client,
+                // The client was disabled since the request parked: the browser
+                // can't go on with it, so it ends here, and the app hears why.
+                Err(AuthorizationStartError::LocalPage(refusal)) => {
+                    return Err(self.refuse_waiting_request(&parked_request, refusal));
+                }
+                Err(error) => return Err(error),
+            };
         let registration_verdict = classify_registration(&PresentedClientRegistration {
             maybe_existing_client: maybe_existing_client.as_ref(),
             redirect_uri: parked_request.redirect_uri(),
@@ -447,6 +457,30 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
                 }
             },
         )
+    }
+
+    /// Deny `parked_request`, still waiting on its limited page, for
+    /// `refusal`, and send the app `access_denied` carrying `refusal`'s
+    /// sentence. A request no longer waiting there (a Cancel won) is not
+    /// found.
+    fn refuse_waiting_request(
+        &self,
+        parked_request: &PendingCodeRequest,
+        refusal: OAuthErrorKind,
+    ) -> AuthorizationStartError {
+        let id = &parked_request.request().id;
+        match self.store.deny_unacknowledged_authorization_request(id) {
+            Ok(true) => AuthorizationStartError::Redirectable {
+                redirect_uri: Box::new(parked_request.redirect_uri().clone()),
+                error: OAuthErrorCode::AccessDenied,
+                description: refusal.description(),
+                client_state: parked_request.client_state().to_owned(),
+            },
+            Ok(false) => AuthorizationStartError::Store(
+                AuthorizationServerError::AuthorizationRequestNotFound { id: id.clone() },
+            ),
+            Err(error) => AuthorizationStartError::Store(error),
+        }
     }
 
     /// The shared tail of [`start`](Self::start) and
@@ -1715,6 +1749,46 @@ mod tests {
             .store
             .session_shortfall_acknowledged_for_client(REQUESTING_SID, "other-app")
             .unwrap());
+    }
+
+    /// A client disabled since the request parked ends it at Continue: the
+    /// request is denied and the app is sent `access_denied`, saying why.
+    #[test]
+    fn continuing_for_a_client_disabled_since_denies_the_request() {
+        let (code_authorization_starter, owner_approval) = starter(covered_app_store());
+        park_for_the_limited_page(&code_authorization_starter);
+        code_authorization_starter
+            .store
+            .set_client_disabled("app", Some(Utc::now()))
+            .unwrap();
+        let outcome = code_authorization_starter.continue_past_session_shortfall(
+            "req-1",
+            REQUESTING_SID,
+            "the-code".to_owned(),
+            Utc::now(),
+        );
+        assert!(
+            matches!(
+                outcome,
+                Err(AuthorizationStartError::Redirectable {
+                    error: OAuthErrorCode::AccessDenied,
+                    description: "The supplied client_id has been disabled.",
+                    ref client_state,
+                    ..
+                }) if client_state == "xyz"
+            ),
+            "{outcome:?}"
+        );
+        assert_eq!(
+            code_authorization_starter
+                .store
+                .authorization_request_by_id("req-1")
+                .unwrap()
+                .expect("present")
+                .status,
+            RequestStatus::Denied
+        );
+        assert_eq!(owner_approval.count(), 0);
     }
 
     /// Without a signing key, going on refuses up front, as the start does,
