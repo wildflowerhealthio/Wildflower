@@ -16,6 +16,9 @@
 //!    [`CodeAuthorizationStarter`];
 //!  - in-process minted: [`SameDeviceSignIn`] redeems a one-time same-device sign-in code the
 //!    base minted for an Owner session's token, on its way to an allowed `next`;
+//!  - bound to a browser session: [`SessionShortfall`] reads and cancels a
+//!    request waiting on the limited page of the browser that made it, and
+//!    [`CodeAuthorizationStarter`] goes on with one;
 //!  - bound to a pairing code: [`BrowserPairing`] starts a browser pairing for
 //!    a browser that isn't the Owner's, and its page's poll, holding the
 //!    request's secret pairing code, starts the approved session once the
@@ -30,6 +33,7 @@ mod device_authorizer;
 mod launch_contexts;
 mod public_keys_reader;
 mod same_device_sign_in;
+mod session_shortfall;
 mod token_exchanger;
 
 pub(crate) use authorization_status_reader::{
@@ -52,4 +56,5 @@ pub(crate) use public_keys_reader::PublicKeysReader;
 pub(crate) use same_device_sign_in::{
     SameDeviceSignIn, SameDeviceSignInError, SignInRefusal, SignedIn, OWNER_SESSION_TTL,
 };
+pub(crate) use session_shortfall::{SessionShortfall, SessionShortfallView};
 pub(crate) use token_exchanger::{IssuedTokens, TokenExchanger};

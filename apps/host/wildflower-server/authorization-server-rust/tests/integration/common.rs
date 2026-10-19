@@ -69,8 +69,10 @@ pub struct TestDb {
     /// "parked a request and asked the Owner about it".
     pending_consent_rx: watch::Receiver<Option<NewestPendingConsent>>,
     /// The browser session token of a browser the Owner paired, which holds
-    /// only `wildflower/launch`: a browser `/oauth/authorize` accepts but whose
-    /// session can't decide consents, so its requests park on the wait page.
+    /// `wildflower/launch` and every FHIR scope (`system/*.cruds`): a browser
+    /// `/oauth/authorize` accepts, whose session falls short of no FHIR
+    /// request, but can't decide consents, so its requests park on the wait
+    /// page.
     /// Every helper that makes a request in "the app's browser" uses it.
     pub paired_browser_token: String,
     /// The `sid` of [`TestDb::paired_browser_token`]'s browser session.
@@ -171,10 +173,12 @@ pub fn mint_browser_session_token(db: &TestDb, sid: &str, scopes: &[&str]) -> St
     )
 }
 
-/// Start a browser session for a browser the Owner paired, holding only
-/// `wildflower/launch`, and return its `sid` and a token minted under it.
+/// Start a browser session for a browser the Owner paired, holding
+/// `wildflower/launch` and `system/*.cruds` (no Wildflower resource scope, so
+/// it can't decide consents), and return its `sid` and a token minted under
+/// it.
 pub fn paired_browser_session(db: &TestDb) -> (String, String) {
-    paired_browser_session_holding(db, &["wildflower/launch"])
+    paired_browser_session_holding(db, &["wildflower/launch", "system/*.cruds"])
 }
 
 /// Start a browser session for a browser the Owner paired, holding `scopes`,
@@ -409,6 +413,7 @@ pub fn plant_authorization_code(
             launch_bound_patient: None,
             decidable_in_requesting_browser: false,
             sid: Some(sid.to_owned()),
+            session_shortfall_acknowledged: true,
         })
         .expect("insert request");
     store
@@ -463,6 +468,7 @@ pub fn plant_device_request(
             launch_bound_patient: None,
             decidable_in_requesting_browser: false,
             sid: None,
+            session_shortfall_acknowledged: true,
         })
         .expect("insert device request");
 }
@@ -570,6 +576,74 @@ pub fn polling_request_id(wait_page_location: &str) -> String {
     let mut segments = url.path_segments().expect("an absolute path");
     assert_eq!(segments.next_back(), Some("wait"), "{url}");
     segments.next_back().expect("request id").to_string()
+}
+
+/// Assert `res` is a 302 to the limited page (`authorize/{id}/limited`,
+/// relative to `/oauth/authorize`) and return the request id it names: a
+/// request whose browser session holds less than it asks for.
+pub fn limited_request_id(res: &axum::response::Response) -> String {
+    assert_eq!(res.status(), StatusCode::FOUND);
+    let location = location_of(res);
+    let url = Url::parse(SERVER_ORIGIN)
+        .and_then(|origin| origin.join("/oauth/authorize"))
+        .and_then(|authorize| authorize.join(&location))
+        .expect("the limited-page location resolves");
+    let mut segments = url.path_segments().expect("an absolute path");
+    assert_eq!(segments.next_back(), Some("limited"), "{location}");
+    segments.next_back().expect("request id").to_string()
+}
+
+/// The limited page's read, `GET /oauth/authorize/{request_id}/session-shortfall`,
+/// from the browser holding `session_token`.
+pub async fn get_session_shortfall(
+    router: &axum::Router,
+    session_token: &str,
+    request_id: &str,
+) -> axum::response::Response {
+    router
+        .clone()
+        .oneshot(build_request(
+            Request::get(format!("/oauth/authorize/{request_id}/session-shortfall"))
+                .header("cookie", browser_session_cookie(session_token)),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot")
+}
+
+/// The limited page's Continue or Cancel, `POST
+/// /oauth/authorize/{request_id}/{action}`, from the browser holding
+/// `session_token`.
+pub async fn post_session_shortfall(
+    router: &axum::Router,
+    session_token: &str,
+    request_id: &str,
+    action: &str,
+) -> axum::response::Response {
+    router
+        .clone()
+        .oneshot(build_request(
+            Request::post(format!("/oauth/authorize/{request_id}/{action}"))
+                .header("cookie", browser_session_cookie(session_token)),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot")
+}
+
+/// Continue past the limited page for `request_id` from the browser holding
+/// `session_token`, and return the `location` it answers with.
+pub async fn continue_past_session_shortfall(
+    router: &axum::Router,
+    session_token: &str,
+    request_id: &str,
+) -> String {
+    let res = post_session_shortfall(router, session_token, request_id, "continue").await;
+    assert_eq!(res.status(), StatusCode::OK);
+    body_json(res.into_body()).await["location"]
+        .as_str()
+        .expect("a location")
+        .to_owned()
 }
 
 /// Load the Owner-facing consent prompt for `request_id` as JSON.
@@ -960,7 +1034,8 @@ pub async fn signed_in_owner_session_token(g: &AuthorizationServer) -> String {
 
 /// The token of a signed-in browser whose session can't decide consents: it
 /// can read authorization requests but not update them, and deciding takes
-/// both.
+/// both. It holds `wildflower/launch` and every FHIR scope, so it falls short
+/// of no FHIR request.
 pub async fn signed_in_session_token_that_cannot_decide(
     g: &AuthorizationServer,
     db: &TestDb,
@@ -970,5 +1045,13 @@ pub async fn signed_in_session_token_that_cannot_decide(
         .as_str()
         .expect("a browser session's token names its sid")
         .to_owned();
-    mint_browser_session_token(db, &sid, &["wildflower/AuthorizationRequest.r"])
+    mint_browser_session_token(
+        db,
+        &sid,
+        &[
+            "wildflower/AuthorizationRequest.r",
+            "wildflower/launch",
+            "system/*.cruds",
+        ],
+    )
 }

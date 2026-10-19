@@ -254,6 +254,13 @@ impl GrantTx for SqliteGrantTx<'_> {
         authorization_requests::raise_authorization_request_for_owner(self.conn, id)
     }
 
+    fn acknowledge_session_shortfall(
+        &mut self,
+        id: &str,
+    ) -> Result<bool, AuthorizationServerError> {
+        authorization_requests::acknowledge_session_shortfall(self.conn, id)
+    }
+
     fn consume_approved_authorization_request(
         &mut self,
         id: &str,
@@ -2200,6 +2207,64 @@ mod tests {
                 "SELECT code AS name FROM authorization_codes ORDER BY code"
             ),
             [Some("another".to_owned()), Some("in-session".to_owned())]
+        );
+    }
+
+    /// An install already at `0042` gains
+    /// `authorization_requests.session_shortfall_acknowledged` when `0043`
+    /// runs: every existing request, of either flow, reads as acknowledged,
+    /// so none is hidden from the Owner. Reverting `0043` drops the column.
+    #[test]
+    fn an_install_already_at_0042_acknowledges_every_existing_request() {
+        use diesel::connection::SimpleConnection as _;
+        const AT: &str = "2026-10-18 00:00:00+00:00";
+
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0042"),
+        )
+        .expect("migrate to 0042");
+        conn.batch_execute(&format!(
+            "INSERT INTO authorization_requests \
+             (id, grant_type, client_id, requested_scopes, requested_at, expires_at, status, sid) \
+             VALUES ('code', 'authorization_code', 'app', '[]', '{AT}', '{AT}', 'pending', \
+                     'sid-1'), \
+                    ('device', 'device_code', 'device-app', '[]', '{AT}', '{AT}', 'pending', \
+                     NULL)"
+        ))
+        .expect("two requests at 0042");
+
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0043"),
+        )
+        .expect("upgrade through 0043");
+        let acknowledged = diesel::sql_query(
+            "SELECT CAST(session_shortfall_acknowledged AS TEXT) AS name \
+             FROM authorization_requests ORDER BY id",
+        )
+        .load::<OptionalName>(&mut conn)
+        .expect("read the column")
+        .into_iter()
+        .map(|row| row.name)
+        .collect::<Vec<_>>();
+        assert_eq!(acknowledged, [Some("1".to_owned()), Some("1".to_owned())]);
+
+        let migration_0043 = MIGRATIONS
+            .migrations()
+            .expect("embedded migrations")
+            .into_iter()
+            .find(|migration| migration.name().version() == MigrationVersion::from("0043"))
+            .expect("0043 is embedded");
+        migration_0043.revert(&mut conn).expect("revert 0043");
+        assert!(
+            diesel::sql_query("SELECT session_shortfall_acknowledged FROM authorization_requests")
+                .execute(&mut conn)
+                .is_err(),
+            "the column is gone"
         );
     }
 

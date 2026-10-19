@@ -18,7 +18,9 @@ use crate::http::errors::{oauth_error_html, OAuthErrorKind};
 use crate::http::extractors::Live;
 use crate::http::middleware::{start_limited_response, DeferredStartLimit};
 
-use super::authorization_pages::{consent_page_location, pairing_page_location};
+use super::authorization_pages::{
+    consent_page_location, limited_page_location, pairing_page_location,
+};
 use super::wait_page::wait_page_location;
 use crate::live_bindings::{LiveCodeAuthorizationStarter, LiveTokenVerifier};
 
@@ -175,7 +177,13 @@ pub struct AuthorizeParams {
 ///    TTL), made in that session (`sid`). A SMART App Launch's `aud` and
 ///    `launch` are checked first (see their fields), and the launch is
 ///    consumed onto the request.
-/// 2. Unless every requested scope is pre-approved by an existing grant for
+/// 2. A request asking for more than the browser's session holds (scopes a
+///    code issued in that session would leave out) waits on the limited page
+///    at `/oauth/authorize/{id}/limited`, which says what the session lacks
+///    and offers Continue or Cancel: `POST /oauth/authorize/{id}/continue`
+///    goes on as below, `POST /oauth/authorize/{id}/cancel` answers the
+///    client `access_denied`. Until then the Owner isn't asked about it.
+/// 3. Unless every requested scope is pre-approved by an existing grant for
 ///    this (client, `redirect_uri`) pair, the request joins the pending-consent
 ///    queue and the browser is 302'd to a page this authorization server
 ///    serves beside the endpoint, on the origin the browser used. A browser
@@ -195,7 +203,7 @@ pub struct AuthorizeParams {
 ///    pages are spec-legal; likewise §4.1 explicitly allows skipping consent
 ///    on a previously established authorization decision, which is what the
 ///    grant fast path implements.
-/// 3. Approval 302s the browser back to the client's `redirect_uri` with
+/// 4. Approval 302s the browser back to the client's `redirect_uri` with
 ///    `code` + `state` (§4.1.2); the client then redeems the short-lived
 ///    code at `POST /oauth/token` (§4.1.3) with its PKCE verifier.
 ///
@@ -213,7 +221,7 @@ pub struct AuthorizeParams {
     path = "/authorize",
     params(AuthorizeParams),
     responses(
-        (status = 302, description = "Redirect to the pairing page (a browser without a browser session), the client redirect_uri, or the authorization server's consent card (a session that can approve the request) or wait page"),
+        (status = 302, description = "Redirect to the pairing page (a browser without a browser session), the limited page (a session holding less than the request asks for), the client redirect_uri, or the authorization server's consent card (a session that can approve the request) or wait page"),
         (status = 400, description = "Local HTML error page (untrusted redirect_uri)"),
         (status = 429, description = "The authorization start limit refused the request"),
         (status = 503, description = "No active signing key")
@@ -255,8 +263,9 @@ pub(super) async fn handle_authorize_request(
                 }),
         )));
     };
+    let browser_session_grant = browser_session.granted();
     let requesting_browser_grant =
-        can_decide_consents(browser_session).then(|| browser_session.granted());
+        can_decide_consents(browser_session).then_some(&browser_session_grant);
     let next_step = code_authorization_starter.start(
         &AuthorizeRequest {
             response_type: &params.response_type,
@@ -268,7 +277,8 @@ pub(super) async fn handle_authorize_request(
             client_state: &params.state,
             launch: params.launch.as_deref(),
             aud: params.aud.as_deref(),
-            requesting_browser_grant: requesting_browser_grant.as_ref(),
+            browser_session_grant: &browser_session_grant,
+            requesting_browser_grant,
             may_raise_for_owner: &may_raise_for_owner,
             sid: browser_sid,
         },
@@ -304,6 +314,11 @@ pub(super) async fn handle_authorize_request(
             } else {
                 found_redirect(&wait_page_location(&request_id))
             }
+        }
+        // This browser's session holds less than the app asks for: say so on
+        // the limited page, which goes on or cancels.
+        AuthorizeNextStep::ConfirmSessionShortfall { request_id } => {
+            found_redirect(&limited_page_location(&request_id))
         }
     })
 }

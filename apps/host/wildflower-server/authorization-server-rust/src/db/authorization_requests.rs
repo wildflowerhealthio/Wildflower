@@ -40,6 +40,7 @@ diesel::table! {
         launch_bound_patient -> Nullable<Text>,
         decidable_in_requesting_browser -> Bool,
         sid -> Nullable<Text>,
+        session_shortfall_acknowledged -> Bool,
     }
 }
 
@@ -77,6 +78,7 @@ struct Row {
     launch_bound_patient: Option<String>,
     decidable_in_requesting_browser: bool,
     sid: Option<String>,
+    session_shortfall_acknowledged: bool,
 }
 
 impl From<Row> for AuthorizationRequest {
@@ -103,6 +105,7 @@ impl From<Row> for AuthorizationRequest {
             launch_bound_patient: row.launch_bound_patient,
             decidable_in_requesting_browser: row.decidable_in_requesting_browser,
             sid: row.sid,
+            session_shortfall_acknowledged: row.session_shortfall_acknowledged,
         }
     }
 }
@@ -131,6 +134,7 @@ impl From<&AuthorizationRequest> for Row {
             launch_bound_patient: request.launch_bound_patient.clone(),
             decidable_in_requesting_browser: request.decidable_in_requesting_browser,
             sid: request.sid.clone(),
+            session_shortfall_acknowledged: request.session_shortfall_acknowledged,
         }
     }
 }
@@ -212,6 +216,11 @@ pub(super) fn pending_authorization_request_by_user_code(
 /// The client's name comes from its registration through a left join: a
 /// client trusted on first use has none until the Owner approves it, and is
 /// named by its `client_id`, as the consent card names it.
+///
+/// A code-flow request whose browser session falls short of what it asks for
+/// is no candidate until that browser acknowledges the shortfall
+/// (`session_shortfall_acknowledged`): until then only its own limited page
+/// knows of it.
 pub(super) fn newest_pending_consent(
     conn: &mut SqliteConnection,
 ) -> Result<Option<NewestPendingConsent>, AuthorizationServerError> {
@@ -219,6 +228,7 @@ pub(super) fn newest_pending_consent(
         .left_join(clients::table.on(clients::client_id.eq(authorization_requests::client_id)))
         .filter(authorization_requests::status.eq(RequestStatus::Pending))
         .filter(authorization_requests::expires_at.gt(Utc::now()))
+        .filter(authorization_requests::session_shortfall_acknowledged.eq(true))
         .filter(
             authorization_requests::grant_type
                 .eq(GrantType::AuthorizationCode)
@@ -407,6 +417,29 @@ pub(super) fn raise_authorization_request_for_owner(
     Ok(affected == 1)
 }
 
+/// Record that the browser that made the *pending* request `id` goes on
+/// although its browser session falls short of it: set its
+/// `session_shortfall_acknowledged`. Returns `true` iff a pending row still
+/// waiting on that acknowledgement was transitioned, so two Continues race to
+/// one winner. A request in a terminal state is left as it is.
+pub(super) fn acknowledge_session_shortfall(
+    conn: &mut SqliteConnection,
+    id: &str,
+) -> Result<bool, AuthorizationServerError> {
+    let affected = diesel::update(
+        authorization_requests::table
+            .find(id)
+            .filter(authorization_requests::status.eq(RequestStatus::Pending))
+            .filter(authorization_requests::session_shortfall_acknowledged.eq(false)),
+    )
+    .set(authorization_requests::session_shortfall_acknowledged.eq(true))
+    .execute(conn)
+    .map_err(|e| {
+        AuthorizationServerError::infrastructure("acknowledge_session_shortfall failed", e)
+    })?;
+    Ok(affected == 1)
+}
+
 /// Atomically claim an `approved` request for single-use redemption,
 /// transitioning `approved` → `expired` only if it is still `approved`, and
 /// return `true` iff this call won the race.
@@ -545,6 +578,7 @@ mod tests {
             launch in prop::option::of("[A-Za-z0-9_-]{43}"),
             launch_bound_patient in prop::option::of("[a-zA-Z0-9-]{1,32}"),
             decidable_in_requesting_browser in any::<bool>(),
+            session_shortfall_acknowledged in any::<bool>(),
         ) -> AuthorizationRequest {
             AuthorizationRequest {
                 id,
@@ -568,6 +602,7 @@ mod tests {
                 launch_bound_patient,
                 decidable_in_requesting_browser,
                 sid: None,
+                session_shortfall_acknowledged,
             }
         }
     }
@@ -615,6 +650,7 @@ mod tests {
             launch_bound_patient: None,
             decidable_in_requesting_browser: false,
             sid: None,
+            session_shortfall_acknowledged: true,
         }
     }
 
@@ -866,6 +902,7 @@ mod tests {
             launch_bound_patient: None,
             decidable_in_requesting_browser: false,
             sid: None,
+            session_shortfall_acknowledged: true,
         }
     }
 

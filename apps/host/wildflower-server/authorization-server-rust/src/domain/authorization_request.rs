@@ -123,6 +123,13 @@ pub struct AuthorizationRequest {
     /// sends a browser without a session to pairing instead);
     /// `None` for a device request and a browser pairing.
     pub sid: Option<String>,
+    /// Whether the browser that made the request has gone on although its
+    /// browser session holds less than the request asks for (auth-code flow
+    /// only). `false` while the request waits on that browser's limited page:
+    /// the Owner isn't asked about it and nothing decides it. `true` for a
+    /// request whose session holds all it asks for, and for a device request
+    /// and a browser pairing.
+    pub session_shortfall_acknowledged: bool,
 }
 
 /// Inputs to start an authorization-code flow request.
@@ -152,6 +159,10 @@ pub struct StartCodeAuthorizationArgs {
     pub decidable_in_requesting_browser: bool,
     /// The browser session the browser calling `/authorize` holds.
     pub sid: String,
+    /// Whether the request may go on as it is: `false` when the browser
+    /// session falls short of the requested scopes, so the request waits for
+    /// that browser to say to go on.
+    pub session_shortfall_acknowledged: bool,
 }
 
 /// Inputs to start a device-code flow request.
@@ -239,6 +250,7 @@ impl AuthorizationRequest {
             launch_bound_patient,
             decidable_in_requesting_browser: input.decidable_in_requesting_browser,
             sid: Some(input.sid),
+            session_shortfall_acknowledged: input.session_shortfall_acknowledged,
         }
     }
 
@@ -267,6 +279,7 @@ impl AuthorizationRequest {
             launch_bound_patient: None,
             decidable_in_requesting_browser: false,
             sid: None,
+            session_shortfall_acknowledged: true,
         }
     }
 
@@ -297,6 +310,7 @@ impl AuthorizationRequest {
             launch_bound_patient: None,
             decidable_in_requesting_browser: false,
             sid: None,
+            session_shortfall_acknowledged: true,
         }
     }
 }

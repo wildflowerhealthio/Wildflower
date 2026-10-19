@@ -347,9 +347,11 @@ async fn a_browser_session_without_client_update_starting_a_new_app_s_request_wa
 }
 
 /// A browser holding every approval scope but the resource scope a
-/// registered app asks for can't approve it as asked: `/oauth/authorize`
-/// sends it to the wait page and raises the request for the Owner, and the
-/// consent read names the scope it lacks.
+/// registered app asks for can't approve it as asked. Its session falls short
+/// of the request too, so `/oauth/authorize` sends it to the limited page
+/// first, and the Owner hears nothing yet. Continuing sends it to the wait
+/// page and raises the request for the Owner, and the consent read names the
+/// scope it lacks.
 #[tokio::test]
 async fn a_browser_session_lacking_a_requested_resource_scope_waits_for_the_owner() {
     let (g, _owner_token, db) = spin_up();
@@ -361,24 +363,18 @@ async fn a_browser_session_lacking_a_requested_resource_scope_waits_for_the_owne
     );
     let without_resource_scope =
         approved_browser_token(&g, &db, &approver_scopes_without("patient/Observation.rs")).await;
-    let res = g
-        .router
-        .clone()
-        .oneshot(build_request(
-            Request::get(format!(
-                "/oauth/authorize?{}",
-                authorize_query("test-app", REQUESTED_SCOPES)
-            ))
-            .header(
-                "cookie",
-                format!("__Host-browser_session={without_resource_scope}"),
-            ),
-            Body::empty(),
-        ))
-        .await
-        .expect("oneshot");
-    let location = location_of(&res);
-    assert!(location.ends_with("/wait"), "{location}");
+    let res = get_authorize(
+        &g.router,
+        &without_resource_scope,
+        &authorize_query("test-app", REQUESTED_SCOPES),
+    )
+    .await;
+    let request_id = limited_request_id(&res);
+    assert_eq!(newest_pending_consent(&db), None);
+
+    let location =
+        continue_past_session_shortfall(&g.router, &without_resource_scope, &request_id).await;
+    assert_eq!(location, format!("/oauth/authorize/{request_id}/wait"));
     assert!(matches!(
         newest_pending_consent(&db),
         Some(NewestPendingConsent::OAuth {
@@ -387,7 +383,6 @@ async fn a_browser_session_lacking_a_requested_resource_scope_waits_for_the_owne
         })
     ));
 
-    let request_id = parked_request_id(&res);
     let consent = get_oauth_consent(&g, &without_resource_scope, &request_id).await;
     assert_eq!(
         consent["missingApprovalScopes"],

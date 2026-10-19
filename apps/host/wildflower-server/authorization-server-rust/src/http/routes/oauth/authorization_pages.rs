@@ -6,6 +6,9 @@
 //! - `GET /oauth/authorize/{id}/consent` serves the consent card,
 //!   `consent.html`, the same bytes whatever the id: the page reads the id from
 //!   its own path. Uncached, like the wait page.
+//! - `GET /oauth/authorize/{id}/limited` serves the limited page,
+//!   `limited.html`, where a browser whose session holds less than a request
+//!   asks for says whether to go on. The same bytes whatever the id. Uncached.
 //! - `GET /oauth/device` serves the device verification page, `device.html`:
 //!   the RFC 8628 `verification_uri`, and with `?user_code=` its
 //!   `verification_uri_complete`. The same bytes whatever the query: the page
@@ -26,7 +29,9 @@
 //! and follow a redirect to the launcher's. The consent card and the device
 //! page call `/authorization/*` and FHIR `GET /Patient`, on the browser
 //! session's bearer, which the host's cookie→bearer layer presents for them;
-//! the pairing page calls `/oauth/pair/*`, which needs no session.
+//! the pairing page calls `/oauth/pair/*`, which needs no session; the
+//! limited page calls `/oauth/authorize/{id}/*`, on the browser session's
+//! cookie.
 
 use std::path::Path as FilePath;
 use std::sync::Arc;
@@ -52,6 +57,12 @@ static AUTHORIZATION_PAGES: Dir<'static> =
 
 /// The consent card's page in the build.
 const CONSENT_PAGE: &str = "consent.html";
+
+/// The limited page in the build.
+const LIMITED_PAGE: &str = "limited.html";
+
+/// The limited page's last path segment, after `/oauth/authorize/{id}/`.
+const LIMITED_PAGE_SEGMENT: &str = "limited";
 
 /// The device verification page in the build.
 const DEVICE_PAGE: &str = "device.html";
@@ -97,6 +108,13 @@ pub(crate) fn consent_page_location(request_id: &str) -> String {
     request_page_location(request_id, "consent")
 }
 
+/// The `Location` `/oauth/authorize` sends a browser whose session holds less
+/// than pending request `request_id` asks for: the limited page, beside the
+/// endpoint.
+pub(crate) fn limited_page_location(request_id: &str) -> String {
+    request_page_location(request_id, LIMITED_PAGE_SEGMENT)
+}
+
 /// The `Location` `/oauth/authorize` sends a browser without a browser session
 /// to: the pairing page, beside the endpoint, with `next` (the path and query
 /// of the authorize request it made, on this origin) in its query, so the
@@ -134,12 +152,17 @@ fn router_for<S: Clone + Send + Sync + 'static>(
 ) -> Router<S> {
     let policy = content_security_policy(form_targets);
     let consent_policy = policy.clone();
+    let limited_policy = policy.clone();
     let device_policy = policy.clone();
     let pair_policy = policy.clone();
     Router::new()
         .route(
             "/authorize/{id}/consent",
             get(move || async move { page(pages, CONSENT_PAGE, &consent_policy) }),
+        )
+        .route(
+            "/authorize/{id}/limited",
+            get(move || async move { page(pages, LIMITED_PAGE, &limited_policy) }),
         )
         .route(
             DEVICE_PAGE_ROUTE,
@@ -218,6 +241,10 @@ mod tests {
             DirEntry::File(File::new(
                 "consent.html",
                 b"<!doctype html><title>Approve</title>",
+            )),
+            DirEntry::File(File::new(
+                "limited.html",
+                b"<!doctype html><title>Limited access</title>",
             )),
             DirEntry::File(File::new(
                 "device.html",
@@ -316,6 +343,43 @@ mod tests {
                 "{uri}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn the_limited_page_is_the_same_uncached_page_for_every_request() {
+        for uri in [
+            "/authorize/req-1/limited",
+            "/authorize/%3Cscript%3E/limited",
+        ] {
+            let response = get(uri).await;
+            assert_eq!(response.status(), StatusCode::OK, "{uri}");
+            assert_locked_down(&response, uri);
+            assert_eq!(
+                header_of(&response, header::CACHE_CONTROL),
+                "no-store",
+                "{uri}"
+            );
+            assert_eq!(
+                body(response).await,
+                b"<!doctype html><title>Limited access</title>",
+                "{uri}"
+            );
+        }
+    }
+
+    /// The limited page's redirect resolves beside `/oauth/authorize` to the
+    /// page for that request, whatever its id holds.
+    #[test]
+    fn the_limited_location_resolves_to_the_limited_page() {
+        let authorize =
+            Url::parse("https://ruth.relay.example/oauth/authorize?x=1").expect("valid url");
+        assert_eq!(
+            authorize
+                .join(&limited_page_location("req 1/?"))
+                .expect("resolves")
+                .path(),
+            "/oauth/authorize/req%201%2F%3F/limited"
+        );
     }
 
     #[tokio::test]
@@ -464,6 +528,7 @@ mod tests {
             "/consent.html",
             "/device.html",
             "/pair.html",
+            "/limited.html",
             "/device/WDJB-MJHT",
             "/authorize/req-1/consent.html",
         ] {
@@ -473,10 +538,11 @@ mod tests {
     }
 
     /// Whatever was built (or stubbed) into this binary has a consent page, a
-    /// device page and a pairing page to serve.
+    /// limited page, a device page and a pairing page to serve.
     #[test]
-    fn the_embedded_build_has_the_consent_device_and_pairing_pages() {
+    fn the_embedded_build_has_the_consent_limited_device_and_pairing_pages() {
         assert!(AUTHORIZATION_PAGES.get_file(CONSENT_PAGE).is_some());
+        assert!(AUTHORIZATION_PAGES.get_file(LIMITED_PAGE).is_some());
         assert!(AUTHORIZATION_PAGES.get_file(DEVICE_PAGE).is_some());
         assert!(AUTHORIZATION_PAGES.get_file(PAIR_PAGE).is_some());
     }

@@ -45,7 +45,10 @@ pub(crate) struct ApprovalContext<'a> {
 /// authorization-code flow carrying both a `redirect_uri` and a PKCE
 /// `code_challenge`. On success the two optional fields are unwrapped into the
 /// returned [`PendingCodeRequest`]. A request whose `expires_at` has passed is
-/// treated as not found — the deadline is enforced here at read time.
+/// treated as not found — the deadline is enforced here at read time. So is
+/// one still waiting on its browser's limited page
+/// (`session_shortfall_acknowledged` unset): the Owner can't read, approve,
+/// deny or be asked about a request its own browser hasn't gone on with.
 pub(crate) fn load_pending_code_request(
     store: &impl GrantStore,
     id: &str,
@@ -56,6 +59,7 @@ pub(crate) fn load_pending_code_request(
         Some(request)
             if request.status == RequestStatus::Pending
                 && request.grant_type == GrantType::AuthorizationCode
+                && request.session_shortfall_acknowledged
                 && request.expires_at > Utc::now() =>
         {
             PendingCodeRequest::from_request(request).ok_or_else(make_consent_not_found)
@@ -189,11 +193,28 @@ pub(crate) fn deny_oauth_consent(
     id: &str,
 ) -> Result<ConsentOutcome, AuthorizationServerError> {
     let pending_request = load_pending_code_request(store, id)?;
-    deny_consent(store, owner_approval, id, || {
+    deny_pending_code_request(store, owner_approval, &pending_request, || {
         AuthorizationServerError::OAuthConsentNotFound { id: id.to_owned() }
-    })?;
+    })
+}
+
+/// Deny `pending_request`, a code-flow request its caller loaded, republish
+/// the popup head, and return the client's `error=access_denied` callback. A
+/// request no longer pending by the write is `make_not_found`'s error.
+pub(crate) fn deny_pending_code_request(
+    store: &impl GrantStore,
+    owner_approval: &dyn OwnerApproval,
+    pending_request: &PendingCodeRequest,
+    make_not_found: impl FnOnce() -> AuthorizationServerError,
+) -> Result<ConsentOutcome, AuthorizationServerError> {
+    deny_consent(
+        store,
+        owner_approval,
+        &pending_request.request().id,
+        make_not_found,
+    )?;
     Ok(denial_outcome(
-        &pending_request,
+        pending_request,
         REQUEST_DECLINED_DESCRIPTION,
     ))
 }

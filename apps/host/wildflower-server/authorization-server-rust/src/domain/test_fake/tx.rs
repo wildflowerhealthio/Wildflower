@@ -118,6 +118,7 @@ impl GrantTx for FakeGrantTx<'_> {
         let mut pending: Vec<&AuthorizationRequest> = requests
             .values()
             .filter(|r| r.status == RequestStatus::Pending && r.expires_at > Utc::now())
+            .filter(|r| r.session_shortfall_acknowledged)
             .filter(|r| match r.grant_type {
                 GrantType::AuthorizationCode => true,
                 // Mirrors the SQL guard: a device row without its `user_code`
@@ -219,6 +220,21 @@ impl GrantTx for FakeGrantTx<'_> {
             return Ok(false);
         }
         request.decidable_in_requesting_browser = false;
+        Ok(true)
+    }
+
+    fn acknowledge_session_shortfall(
+        &mut self,
+        id: &str,
+    ) -> Result<bool, AuthorizationServerError> {
+        let mut requests = self.store.authorization_requests.borrow_mut();
+        let Some(request) = requests.get_mut(id) else {
+            return Ok(false);
+        };
+        if request.status != RequestStatus::Pending || request.session_shortfall_acknowledged {
+            return Ok(false);
+        }
+        request.session_shortfall_acknowledged = true;
         Ok(true)
     }
 

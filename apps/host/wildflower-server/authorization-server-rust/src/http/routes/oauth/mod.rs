@@ -8,6 +8,7 @@ mod device_name_hint;
 mod internal;
 mod openapi;
 mod pages;
+mod session_shortfall;
 mod sign_in;
 mod sign_out;
 mod token_exchange;
@@ -32,8 +33,8 @@ pub(crate) use authorization_pages::device_page_url;
 pub(crate) const OAUTH_MOUNT: &str = "/oauth";
 
 /// The `/oauth/*` pages — the [`wait_page`] and its assets, the
-/// [`authorization_pages`] (the consent card, the device page, the pairing
-/// page) and theirs, the Owner's [`sign_in`], and a browser's [`sign_out`] —
+/// [`authorization_pages`] (the consent card, the limited page, the device
+/// page, the pairing page) and theirs, the Owner's [`sign_in`], and a browser's [`sign_out`] —
 /// mounted under `/oauth` beside [`openapi_router`]. Kept out of the `OpenAPI`
 /// spec: they are a browser's pages, not API surface. `launcher_base` is where
 /// a sign-out sends the browser, which the authorization pages' policy lets
@@ -71,6 +72,11 @@ pub(crate) fn openapi_router(
         .routes(routes!(
             authorization_status::handle_authorization_status_request
         ))
+        .routes(routes!(session_shortfall::handle_session_shortfall_read))
+        .routes(routes!(
+            session_shortfall::handle_session_shortfall_continue
+        ))
+        .routes(routes!(session_shortfall::handle_session_shortfall_cancel))
         .routes(routes!(token_exchange::handle_token_request))
         .routes(routes!(token_revocation::handle_token_revocation_request))
         .routes(limit_authorization_starts(

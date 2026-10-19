@@ -23,6 +23,12 @@
 //! attempt counts, however malformed; one it refuses is answered
 //! `429 Too Many Requests`.
 //!
+//! `POST /oauth/authorize/{id}/continue` raises a request for the Owner once
+//! its browser goes on past the limited page. Its start was counted at
+//! `/oauth/authorize` already unless the layer deferred it there (a browser
+//! whose session can decide consents), so only then does the route ask the
+//! gate: it extracts a [`DeferredStartLimit`] of its own.
+//!
 //! `POST /authorization/oauth-consents/{id}/ask-owner` raises a request for
 //! the Owner too, without starting one, so it spends from the same limit:
 //! [`defer_authorization_start_limit`] hands it a [`DeferredStartLimit`],
@@ -34,6 +40,7 @@
 //! whether to admit it (`wildflower-server-rust`'s
 //! `authorization_start_limit`: an allowance per visitor and one overall).
 
+use std::convert::Infallible;
 use std::sync::Arc;
 
 use axum::extract::{FromRequestParts, Request, State};
@@ -86,6 +93,23 @@ impl DeferredStartLimit {
     /// when it does.
     pub(crate) fn admits(&self) -> bool {
         self.gate.admit(&self.request_extensions)
+    }
+}
+
+/// A route with no start-limit layer in front of it builds its own
+/// [`DeferredStartLimit`] over the state's gate, to ask when it raises a
+/// request for the Owner: `POST /oauth/authorize/{id}/continue`.
+impl FromRequestParts<Arc<AuthorizationServerState>> for DeferredStartLimit {
+    type Rejection = Infallible;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &Arc<AuthorizationServerState>,
+    ) -> Result<Self, Infallible> {
+        Ok(DeferredStartLimit {
+            gate: state.authorization_start_gate.clone(),
+            request_extensions: parts.extensions.clone(),
+        })
     }
 }
 

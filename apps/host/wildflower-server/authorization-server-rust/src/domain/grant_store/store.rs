@@ -263,6 +263,15 @@ pub trait GrantStore {
         self.with_connection(|tx| tx.raise_authorization_request_for_owner(id))
     }
 
+    /// See [`GrantTx::acknowledge_session_shortfall`].
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`GrantTx::acknowledge_session_shortfall`]'s error.
+    fn acknowledge_session_shortfall(&self, id: &str) -> Result<bool, AuthorizationServerError> {
+        self.with_connection(|tx| tx.acknowledge_session_shortfall(id))
+    }
+
     /// See [`GrantTx::consume_approved_authorization_request`].
     ///
     /// # Errors

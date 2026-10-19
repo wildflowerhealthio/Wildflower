@@ -377,6 +377,18 @@ fn intersection_in_either_spelling(
         })
 }
 
+/// The `requested` scopes a code issued in the browser session holding
+/// `session_grant` would leave out, in order: those [`session_bounded_scopes`]
+/// drops. Empty when the session holds all the request asks for.
+pub(crate) fn session_shortfall(requested: &[String], session_grant: &Grant) -> Vec<String> {
+    let bounded = session_bounded_scopes(requested, session_grant);
+    requested
+        .iter()
+        .filter(|scope| !bounded.contains(scope))
+        .cloned()
+        .collect()
+}
+
 /// Whether `holder` covers a scope in either SMART spelling: each held scope
 /// and each asked scope also counts in its alternate canonical form.
 fn coverage_in_either_spelling(holder: &Grant) -> impl Fn(&Scope) -> bool {
@@ -937,6 +949,24 @@ mod tests {
             session_bounded_scopes(&authorized, &Grant::parse(crate::owner_scopes())),
             authorized,
         );
+    }
+
+    /// The shortfall is what the session bound drops, in the request's order:
+    /// nothing for a session that holds all the request asks for.
+    #[test]
+    fn the_session_shortfall_is_what_the_session_bound_drops() {
+        let requested = owned_scopes(&[
+            "openid",
+            "patient/Patient.read",
+            "patient/Observation.rs",
+            "wildflower/launch",
+            "offline_access",
+        ]);
+        assert_eq!(
+            session_shortfall(&requested, &Grant::parse(["patient/Patient.rs"])),
+            ["patient/Observation.rs", "wildflower/launch"],
+        );
+        assert!(session_shortfall(&requested, &Grant::parse(crate::owner_scopes())).is_empty());
     }
 
     /// Only a code approval for a client trusted on first use writes the

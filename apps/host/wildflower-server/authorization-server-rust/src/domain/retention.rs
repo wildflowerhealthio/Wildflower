@@ -153,6 +153,7 @@ mod tests {
             launch_bound_patient: None,
             decidable_in_requesting_browser: false,
             sid: None,
+            session_shortfall_acknowledged: true,
         }
     }
 
