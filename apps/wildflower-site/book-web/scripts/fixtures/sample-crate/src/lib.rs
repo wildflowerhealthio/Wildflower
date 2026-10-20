@@ -115,3 +115,6 @@ mod tests {
         }
     }
 }
+
+/// A re-export, which a doc link follows to the definition.
+pub use crate::covered::Ticket as Admission;

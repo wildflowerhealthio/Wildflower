@@ -85,13 +85,71 @@ GitHub too. The build points each at the page that includes that chapter,
 anchor kept, and a relative link to any other file at the file on GitHub.
 
 **A directive that can't be resolved fails the build**: a missing file, a
-symbol naming nothing or more than one item, or a fragment's text matching no
-line. The error names the chapter file and the directive. So a rename that
+symbol or test naming nothing or more than one item, a fragment's text
+matching no line, or an anchor already on the page. The error names the chapter file and the directive. So a rename that
 leaves a chapter behind fails the PR's preview build, not the reader.
 
 Diagrams are ` ```mermaid ` blocks, drawn in the browser by mermaid, which the
 build copies out of `node_modules` into the book, so the pages load nothing
 from another origin. Only a page with a diagram loads it.
+
+### Items
+
+```text
+{{#item <path> <symbol> [tests="<symbol> <symbol>…"] [level=N]}}
+```
+
+`{{#item}}` shows a Rust item from its source alone: an anchor, the item's doc
+comment as prose, then its source as `{{#code}}` shows it, without the doc
+comment, and with the same line under it linking GitHub and the code index. A
+struct, enum, union or trait keeps the doc comments of its fields, variants and
+methods in the code, so they document themselves. Each test `tests=` names, in
+that file, follows in order: its doc comment as a caption, then its code.
+Symbols are named as for `{{#code}}`, and `.rs` files alone can be shown.
+
+| Option        | Effect                                                                                                     |
+| ------------- | ---------------------------------------------------------------------------------------------------------- |
+| `tests="a b"` | Show these tests after the item, each captioned by its doc comment.                                        |
+| `level=N`     | Make a doc comment's `#` heading (`# Errors`, `# Panics`) an `N`-deep heading, `##` one deeper, up to six. |
+| (no `level=`) | One deeper than the nearest heading above the directive in the chapter, or `##` under none.                |
+
+The doc comment's Markdown is read as rustdoc reads it. A code block without a
+language is Rust, and its lines starting `#` and a space are hidden. An intra-doc link
+(``[`X`](Self::y)``, ``[`X`](crate::a::B)``, ``[`X`]``, or ``[`X`]`` with a
+``[`X`]: crate::…`` definition, whose line is dropped) is read from where the
+item sits: `Self`, `self`, `super`, `crate` and the crate's own name, the
+file's and its inline modules' `use`s, then the item's module. It goes to,
+in order:
+
+1. the `{{#item}}` showing the item it names, on any page of the book;
+2. for a bare name nothing in scope brings in, the one `{{#item}}` in the crate
+   whose path ends with it;
+3. the item where it is defined, following `pub use` re-exports: its
+   `{{#item}}`, or else its lines on GitHub;
+4. for a field or variant (`Type::field`), its type, as in 3;
+5. nowhere: the link's text alone, as inline code.
+
+A path outside the crate (`std::…`, another crate) ends at 5. Links to URLs
+stay as written.
+
+Each `{{#item}}` puts `<div id="item-…">` before its prose, so a link can
+land on it: `item-`, then the symbol's segments joined by `--`, each with any
+character outside `[A-Za-z0-9_]` as `-`.
+
+| Symbol                             | Anchor                              |
+| ---------------------------------- | ----------------------------------- |
+| `Client`                           | `item-Client`                       |
+| `Client::allows_scopes`            | `item-Client--allows_scopes`        |
+| `tests::a_test`                    | `item-tests--a_test`                |
+| `"<Counter as Resettable>::reset"` | `item-Counter-as-Resettable--reset` |
+
+Two `{{#item}}`s with one anchor on a page fail the build. A chapter's own
+link to an item is `[text](#item-Client--allows_scopes)` on its page, or the
+other chapter's file with that anchor.
+
+```text
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/client.rs Client::allows_scopes tests="allows_scopes_tests::allows_scopes_is_coverage_aware"}}
+```
 
 ## Coverage
 
@@ -110,19 +168,34 @@ inherent `impl` blocks, and every test function (an attribute whose path ends
 in `test`: `#[test]`, `#[tokio::test]`), inline modules and `proptest!` blocks
 included, so a unit test or a property test is `tests::name`. Only `.rs` files can be covered.
 
-An item is in the book when any `{{#code}}` or `{{#code-link}}` on any page
-names it, however its symbol is spelt. `{{#covered}}` renders nothing: it
+An item is in the book when any `{{#code}}`, `{{#code-link}}` or `{{#item}}`
+(as its item or one of its `tests=`) on any page names it, however its symbol
+is spelt. `{{#covered}}` renders nothing: it
 counts items as in the book without showing them, for what the prose names
 another way (getters grouped in a sentence, say). Its symbols must resolve,
 as `{{#code}}`'s must.
 
-After expanding every page, the build prints the count, and a warning per
-coverable item no directive names. It doesn't fail: the list says where the
-book has fallen behind the code.
+After expanding every page, the build prints the count and a warning per
+coverable item no directive names; then, a list per kind, the coverable
+items, tests, fields and variants (of the coverable structs and enums,
+`Type::field`, `Enum::Variant`, `Tuple::0`) with no doc comment; then each
+test that no `{{#item tests=…}}` or `{{#code}}` shows, which a
+`{{#code-link}}` or `{{#covered}}` doesn't. None of it fails the build: the
+lists say where the book and the doc comments have fallen behind the code.
 
 ```text
 coverage: 212/230 items; 18 not in the book:
   WARNING: apps/…/src/domain/grant.rs Grant::covers
+undocumented items: 16 without a doc comment:
+  WARNING: apps/…/src/config.rs AuthorizationServerConfig
+undocumented tests: 203 without a doc comment:
+  WARNING: apps/…/src/crypto_util/base64.rs tests::each_variant_round_trips
+undocumented fields: 341 without a doc comment:
+  WARNING: apps/…/src/db/grant_store.rs SqliteGrantStore::pool
+undocumented variants: 34 without a doc comment:
+  WARNING: apps/…/src/domain/capabilities/oauth/authorization_status_reader.rs AuthorizationStatusView::Pending
+tests: 640/647 shown; 7 not shown by {{#item tests=…}} or {{#code}}:
+  WARNING: apps/…/src/domain/grant.rs tests::covers_a_narrower_scope
 ```
 
 ## How it's built
@@ -130,7 +203,8 @@ coverage: 212/230 items; 18 not in the book:
 `vp run build-book` (`scripts/build-book.ts`) copies mermaid into
 `src/vendor/` and runs `mdbook build`. `book.toml` runs `scripts/code-preprocessor.ts`, an
 [mdbook preprocessor](https://rust-lang.github.io/mdBook/for_developers/preprocessors.html)
-run by Node, which includes the chapters and expands their directives, so the
+run by Node, which includes the chapters, indexes every page's `{{#item}}`s
+for doc links to land on, and expands their directives, so the
 build needs mdbook but no Rust toolchain. Links between pages are relative, so
 the same build serves `/book/` on the apex and a preview's
 `staging/pr-<n>/book/`. mdbook's `404.html` is left out: Pages serves the site
@@ -158,5 +232,6 @@ vp run build-book --out /tmp/site/book
 python3 -m http.server -d /tmp/site   # then open /book/
 ```
 
-`vp test` covers the directive parser, the item finders and the coverage
-listing, against the sources in `scripts/fixtures/`.
+`vp test` covers the directive parser, the item finders, `{{#item}}`'s doc
+comment rendering and link resolution, and the coverage listing, against the
+sources in `scripts/fixtures/`.

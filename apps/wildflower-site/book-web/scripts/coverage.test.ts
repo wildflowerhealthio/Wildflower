@@ -3,7 +3,7 @@ import { join } from 'node:path'
 
 import { describe, expect, it } from 'vite-plus/test'
 
-import { coverableItems, coverageReport, formatCoverage } from './coverage.ts'
+import { coverableFile, coverageReport, formatCoverage } from './coverage.ts'
 import { expandDirectives, type LinkTargets } from './directives.ts'
 
 /** The fixtures folder stands in for the repository root. */
@@ -17,51 +17,129 @@ const targets: LinkTargets = {
   codeIndexUrl: 'https://example.org/code-index/',
 }
 
-describe('coverableItems', () => {
+describe('coverableFile', () => {
   it('lists public items, inherent public methods and every test, property tests too, in file order', async () => {
-    const items = await coverableItems(source)
+    const { items } = await coverableFile(source)
     expect(items.map(({ symbol }) => symbol)).toEqual([
       'Ticket',
       'LIMIT',
       'Ticket::new',
       'Ticket::id',
+      'Stage',
+      'an_integration_style_test',
+      'tests::a_ticket_keeps_its_id',
+      'tests::an_async_unit_test',
+      'tests::a_ticket_keeps_any_id',
+    ])
+    expect(items.filter((item) => item.isTest).map(({ symbol }) => symbol)).toEqual([
       'an_integration_style_test',
       'tests::a_ticket_keeps_its_id',
       'tests::an_async_unit_test',
       'tests::a_ticket_keeps_any_id',
     ])
   })
+
+  it('says which items, fields and variants have a doc comment', async () => {
+    const { items, members } = await coverableFile(source)
+    expect(items.filter((item) => item.documented).map(({ symbol }) => symbol)).toEqual([
+      'Ticket',
+      'Stage',
+      'tests::a_ticket_keeps_any_id',
+    ])
+    expect(members).toEqual([
+      { symbol: 'Ticket::id', kind: 'field', documented: false },
+      { symbol: 'Stage::Issued', kind: 'variant', documented: true },
+      { symbol: 'Stage::Used', kind: 'variant', documented: false },
+      { symbol: 'Stage::Used::0', kind: 'field', documented: true },
+      { symbol: 'Stage::Used::1', kind: 'field', documented: false },
+    ])
+  })
 })
 
 describe('coverageReport', () => {
   it('counts the items a directive names, by the row it resolves to', async () => {
-    const items = await coverableItems(source)
+    const coverable = await coverableFile(source)
     const { references, errors, covers } = await expandDirectives(
       [
         `{{#covers ${path}}}`,
         `{{#code ${path} Ticket::new}}`,
         `See {{#code-link ${path} tests::a_ticket_keeps_its_id}}.`,
-        `{{#covered ${path} LIMIT Ticket::id tests::a_ticket_keeps_any_id}}`,
+        `{{#covered ${path} LIMIT Ticket::id Stage tests::a_ticket_keeps_any_id}}`,
       ].join('\n'),
       repoRoot,
       targets
     )
     expect(errors).toEqual([])
     expect(covers).toEqual([path])
-    const report = coverageReport([{ path, items }], references)
-    expect(report).toEqual({
-      total: 8,
-      referenced: 5,
+    const report = coverageReport([{ path, ...coverable }], references)
+    expect(report).toMatchObject({
+      total: 9,
+      referenced: 6,
       missing: [
         { path, symbol: 'Ticket' },
         { path, symbol: 'an_integration_style_test' },
         { path, symbol: 'tests::an_async_unit_test' },
       ],
     })
+  })
+
+  it('lists the items, tests, fields and variants with no doc comment', async () => {
+    const report = coverageReport([{ path, ...(await coverableFile(source)) }], [])
+    expect(report.undocumented).toEqual([
+      { path, symbol: 'LIMIT', kind: 'item' },
+      { path, symbol: 'Ticket::new', kind: 'item' },
+      { path, symbol: 'Ticket::id', kind: 'item' },
+      { path, symbol: 'an_integration_style_test', kind: 'test' },
+      { path, symbol: 'tests::a_ticket_keeps_its_id', kind: 'test' },
+      { path, symbol: 'tests::an_async_unit_test', kind: 'test' },
+      { path, symbol: 'Ticket::id', kind: 'field' },
+      { path, symbol: 'Stage::Used', kind: 'variant' },
+      { path, symbol: 'Stage::Used::1', kind: 'field' },
+    ])
+  })
+
+  it('lists the tests no {{#item tests=…}} or {{#code}} shows, a link or {{#covered}} not counting', async () => {
+    const coverable = await coverableFile(source)
+    const { references, errors } = await expandDirectives(
+      [
+        `{{#code ${path} tests::a_ticket_keeps_its_id}}`,
+        `{{#code-link ${path} an_integration_style_test}}`,
+        `{{#covered ${path} tests::an_async_unit_test}}`,
+        `{{#item ${path} Ticket tests="tests::a_ticket_keeps_any_id"}}`,
+      ].join('\n'),
+      repoRoot,
+      targets
+    )
+    expect(errors).toEqual([])
+    const report = coverageReport([{ path, ...coverable }], references)
+    expect({ tests: report.tests, unshownTests: report.unshownTests }).toEqual({
+      tests: 4,
+      unshownTests: [
+        { path, symbol: 'an_integration_style_test' },
+        { path, symbol: 'tests::an_async_unit_test' },
+      ],
+    })
     expect(formatCoverage(report)).toBe(
       [
-        'coverage: 5/8 items; 3 not in the book:',
-        `  WARNING: ${path} Ticket`,
+        'coverage: 5/9 items; 4 not in the book:',
+        `  WARNING: ${path} LIMIT`,
+        `  WARNING: ${path} Ticket::new`,
+        `  WARNING: ${path} Ticket::id`,
+        `  WARNING: ${path} Stage`,
+        'undocumented items: 3 without a doc comment:',
+        `  WARNING: ${path} LIMIT`,
+        `  WARNING: ${path} Ticket::new`,
+        `  WARNING: ${path} Ticket::id`,
+        'undocumented tests: 3 without a doc comment:',
+        `  WARNING: ${path} an_integration_style_test`,
+        `  WARNING: ${path} tests::a_ticket_keeps_its_id`,
+        `  WARNING: ${path} tests::an_async_unit_test`,
+        'undocumented fields: 2 without a doc comment:',
+        `  WARNING: ${path} Ticket::id`,
+        `  WARNING: ${path} Stage::Used::1`,
+        'undocumented variants: 1 without a doc comment:',
+        `  WARNING: ${path} Stage::Used`,
+        'tests: 2/4 shown; 2 not shown by {{#item tests=…}} or {{#code}}:',
         `  WARNING: ${path} an_integration_style_test`,
         `  WARNING: ${path} tests::an_async_unit_test`,
         '',
@@ -69,9 +147,18 @@ describe('coverageReport', () => {
     )
   })
 
-  it('says so when every item is in the book', () => {
-    expect(formatCoverage({ total: 2, referenced: 2, missing: [] })).toBe(
-      'coverage: 2/2 items; every covered item is in the book\n'
+  it('says so when every item and test is in the book and documented', () => {
+    expect(
+      formatCoverage({
+        total: 2,
+        referenced: 2,
+        missing: [],
+        undocumented: [],
+        tests: 1,
+        unshownTests: [],
+      })
+    ).toBe(
+      'coverage: 2/2 items; every covered item is in the book\ntests: 1/1 shown; every covered test is in the book\n'
     )
   })
 })

@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // The mdbook preprocessor (`[preprocessor.code]` in book.toml) that expands
-// each page's `{{#chapter}}`, `{{#code}}` and `{{#code-link}}` directives
-// (`directives.ts`). mdbook runs it from the book's root:
+// each page's `{{#chapter}}`, `{{#code}}`, `{{#code-link}}` and `{{#item}}`
+// directives (`directives.ts`), after indexing every page's `{{#item}}`s so a
+// doc comment's links can land on any page. mdbook runs it from the book's
+// root:
 //
 //   code-preprocessor.ts supports <renderer>   exit 0: every renderer
 //   code-preprocessor.ts < [context, book]     the book, expanded, on stdout
@@ -10,19 +12,26 @@
 // the build fails. GitHub links name `GITHUB_SHA` (CI's checkout), or HEAD.
 // Then the coverage of the files the chapters' `{{#covers}}` name
 // (coverage.ts) goes to stderr: a count, and a warning per item the book
-// doesn't show.
+// doesn't show, per item, test, field and variant without a doc comment, and
+// per test no `{{#item tests=…}}` or `{{#code}}` shows.
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import {
-  coverableItems,
+  coverableFile,
   coverageReport,
   formatCoverage,
   type CoveredFile,
   type ItemReference,
 } from './coverage.ts'
-import { chaptersOf, expandDirectives, includeChapters, type LinkTargets } from './directives.ts'
+import {
+  chaptersOf,
+  expandDirectives,
+  includeChapters,
+  indexBook,
+  type LinkTargets,
+} from './directives.ts'
 
 interface Chapter {
   name: string
@@ -72,16 +81,30 @@ const main = async (): Promise<void> => {
   )
   const references: ItemReference[] = []
   const covers = new Set<string>()
+  const included = chapters.map((chapter) =>
+    includeChapters(chapter.content, repoRoot, {
+      page: chapter.source_path ?? '',
+      pages,
+      targets,
+    })
+  )
+  // Every {{#item}} in the book, first, so a doc link can land on any page.
+  const index = indexBook(
+    chapters.map((chapter, i) => ({
+      page: chapter.source_path ?? '',
+      markdown: included[i].markdown,
+    })),
+    repoRoot
+  )
   const failures = (
     await Promise.all(
-      chapters.map(async (chapter) => {
+      chapters.map(async (chapter, i) => {
         const page = `src/${chapter.source_path ?? '?'}`
-        const withChapters = includeChapters(chapter.content, repoRoot, {
+        const withChapters = included[i]
+        const expanded = await expandDirectives(withChapters.markdown, repoRoot, targets, {
           page: chapter.source_path ?? '',
-          pages,
-          targets,
+          index,
         })
-        const expanded = await expandDirectives(withChapters.markdown, repoRoot, targets)
         const { markdown, errors } = expanded
         references.push(...expanded.references)
         expanded.covers.forEach((path) => covers.add(path))
@@ -103,7 +126,7 @@ const main = async (): Promise<void> => {
   const coveredFiles: CoveredFile[] = await Promise.all(
     [...covers].toSorted().map(async (path) => ({
       path,
-      items: await coverableItems(readFileSync(join(repoRoot, path), 'utf8')),
+      ...(await coverableFile(readFileSync(join(repoRoot, path), 'utf8'))),
     }))
   )
   if (coveredFiles.length > 0)

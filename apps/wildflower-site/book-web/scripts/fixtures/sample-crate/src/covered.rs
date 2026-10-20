@@ -34,6 +34,17 @@ impl Default for Ticket {
     }
 }
 
+/// Listed: public, with its variants and their fields.
+pub enum Stage {
+    /// Issued, not yet used.
+    Issued,
+    Used(
+        /// How many times.
+        u32,
+        bool,
+    ),
+}
+
 #[tokio::test]
 async fn an_integration_style_test() {}
 

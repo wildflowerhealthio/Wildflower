@@ -4,6 +4,8 @@
 //   {{#chapter "<path>"}}   a stub in src/: the chapter's whole text
 //   {{#code <path> <symbol> [keep-docs] [from="…" [to="…" | through="…"]]…}}
 //   {{#code-link <path> <symbol> [from=… …]}}   a link to the lines {{#code}} would show
+//   {{#item <path> <symbol> [tests="<symbol>…"] [level=N]}}   a Rust item: its doc
+//                           comment as prose, its source, and each named test
 //   {{#covers <path>}}      a line naming the file a chapter covers (coverage.ts)
 //   {{#covered <path> <symbol>…}}   nothing: counts the items as in the book
 import { execFileSync } from 'node:child_process'
@@ -13,9 +15,22 @@ import { dirname, extname, join, posix, relative } from 'node:path'
 import { parse as parseToml } from 'smol-toml'
 
 import type { ItemReference } from './coverage.ts'
-import { excerpt, ExcerptError, type Fragment, type LocatedItem } from './excerpt.ts'
+import { renderDocMarkdown } from './doc-markdown.ts'
+import { excerpt, ExcerptError, type Excerpt, type Fragment, type LocatedItem } from './excerpt.ts'
 import { ItemNotFound } from './item-not-found.ts'
-import { locateRustItem } from './rust-items.ts'
+import { locateRustItem, type RustItem } from './rust-items.ts'
+import {
+  absolutePath,
+  fileImports,
+  filesFor,
+  linkPaths,
+  rustFileOf,
+  symbolSegments,
+  type FileImports,
+  type PathScope,
+  type RustCrate,
+  type RustFile,
+} from './rust-paths.ts'
 import { locateTypeScriptItem } from './typescript-items.ts'
 
 interface CodeDirective {
@@ -43,7 +58,24 @@ interface CoverageDirective {
   readonly symbols: readonly string[]
 }
 
-type Directive = CodeDirective | CoverageDirective
+/**
+ * `{{#item <path> <symbol> [tests="…"] [level=N]}}`: a Rust item's doc
+ * comment as prose, then its source, then each named test, captioned by its
+ * own doc comment.
+ */
+interface ItemDirective {
+  readonly kind: 'item'
+  readonly raw: string
+  /** Repo-root-relative. */
+  readonly path: string
+  readonly symbol: string
+  /** Symbols in the same file, shown after the item in this order. */
+  readonly tests: readonly string[]
+  /** How many `#`s a `#` heading in the doc comments becomes; by default one more than the heading above the directive. */
+  readonly level: number | undefined
+}
+
+type Directive = CodeDirective | CoverageDirective | ItemDirective
 
 const isCoverageDirective = (directive: Directive): directive is CoverageDirective =>
   directive.kind === 'covers' || directive.kind === 'covered'
@@ -106,6 +138,26 @@ const parseCoverageDirective = (
   return { kind, raw, path, symbols }
 }
 
+const parseItemDirective = (raw: string, args: string): ItemDirective => {
+  const [path, symbol, ...options] = tokenize(args)
+  if (path === undefined || symbol === undefined)
+    throw new DirectiveError(`${raw}: expected a path and a symbol`)
+  let tests: readonly string[] = []
+  let level: number | undefined
+  for (const option of options) {
+    const { key, value } = /^(?<key>tests|level)=(?<value>[\s\S]*)$/.exec(option)?.groups ?? {}
+    if (key === 'tests') {
+      tests = value.split(/\s+/).filter((test) => test !== '')
+      if (tests.length === 0) throw new DirectiveError(`${raw}: tests= is empty`)
+    } else if (key === 'level') {
+      level = Number(value)
+      if (!Number.isInteger(level) || level < 1 || level > 6)
+        throw new DirectiveError(`${raw}: level= must be 1 to 6`)
+    } else throw new DirectiveError(`${raw}: unknown option ${option}`)
+  }
+  return { kind: 'item', raw, path, symbol, tests, level }
+}
+
 const parseDirective = (kind: CodeDirective['kind'], raw: string, args: string): CodeDirective => {
   const [path, symbol, ...options] = tokenize(args)
   if (path === undefined || symbol === undefined)
@@ -130,6 +182,13 @@ const parseDirective = (kind: CodeDirective['kind'], raw: string, args: string):
   return { kind, raw, path, symbol, keepDocs, fragments }
 }
 
+/** The directive `{{#<kind> <args>}}`, written as `raw`. */
+const parseOpened = (kind: string, raw: string, args: string): Directive => {
+  if (kind === 'covers' || kind === 'covered') return parseCoverageDirective(kind, raw, args)
+  if (kind === 'item') return parseItemDirective(raw, args)
+  return parseDirective(kind === 'code-link' ? 'code-link' : 'code', raw, args)
+}
+
 /** A directive found in a chapter, and where its text sits. */
 interface FoundDirective {
   readonly start: number
@@ -137,7 +196,7 @@ interface FoundDirective {
   readonly directive: Directive
 }
 
-const OPENING = /\{\{#(code-link|code|covers|covered)\s/g
+const OPENING = /\{\{#(code-link|code|covers|covered|item)\s/g
 
 /** Every directive in `markdown`, in order. */
 const findDirectives = (markdown: string): readonly FoundDirective[] => {
@@ -168,10 +227,7 @@ const findDirectives = (markdown: string): readonly FoundDirective[] => {
     found.push({
       start,
       end,
-      directive:
-        kind === 'covers' || kind === 'covered'
-          ? parseCoverageDirective(kind, raw, args)
-          : parseDirective(kind === 'code-link' ? 'code-link' : 'code', raw, args),
+      directive: parseOpened(kind, raw, args),
     })
   }
   return found
@@ -330,7 +386,7 @@ const renderCoverageDirective = async (
     directive.symbols.map(async (symbol) => {
       try {
         const item = await locateItem(directive.path, source, symbol)
-        return { path: directive.path, row: item.startRow }
+        return { path: directive.path, row: item.startRow, shown: false }
       } catch (error) {
         if (error instanceof ItemNotFound)
           throw new DirectiveError(`${directive.raw}: ${error.message}`)
@@ -364,13 +420,26 @@ const renderCodeDirective = async (
       throw new DirectiveError(`${directive.raw}: ${error.message}`)
     throw error
   }
-  const references = [{ path: directive.path, row: item.startRow }]
+  const references = [
+    { path: directive.path, row: item.startRow, shown: directive.kind === 'code' },
+  ]
   const github = githubUrl(targets, directive.path, shown.firstRow, shown.lastRow)
   if (directive.kind === 'code-link')
     return { text: `[\`${directive.symbol}\`](${github})`, references }
+  return { text: codeBlock(repoRoot, targets, directive.path, language, shown), references }
+}
 
-  const pkg = owningPackage(repoRoot, directive.path)
-  const shownPath = shownPathOf(repoRoot, directive.path)
+/** An excerpt as a fenced block, with the line under it linking it on GitHub and in the code index. */
+const codeBlock = (
+  repoRoot: string,
+  targets: LinkTargets,
+  path: string,
+  language: string,
+  shown: Excerpt
+): string => {
+  const github = githubUrl(targets, path, shown.firstRow, shown.lastRow)
+  const pkg = owningPackage(repoRoot, path)
+  const shownPath = shownPathOf(repoRoot, path)
   const lines =
     shown.firstRow === shown.lastRow
       ? `line ${shown.firstRow + 1}`
@@ -387,15 +456,271 @@ const renderCodeDirective = async (
   const fence = '`'.repeat(
     Math.max(3, ...[...shown.text.matchAll(/`+/g)].map((m) => m[0].length + 1))
   )
+  return [
+    `${fence}${language}`,
+    shown.text,
+    fence,
+    '',
+    `<p class="code-source">${links.join(' · ')}</p>`,
+  ].join('\n')
+}
+
+/**
+ * The anchor an `{{#item}}` puts on its page: `item-`, then the symbol's
+ * segments joined by `--`, each with any character outside `[A-Za-z0-9_]`
+ * as `-`. `Client::allows_scopes` → `item-Client--allows_scopes`;
+ * `<Counter as Resettable>::reset` → `item-Counter-as-Resettable--reset`.
+ */
+const itemAnchor = (symbol: string): string => {
+  const qualified = /^<\s*([A-Za-z_]\w*)\s+as\s+(?:[A-Za-z_]\w*::)*([A-Za-z_]\w*)\s*>::(.+)$/.exec(
+    symbol
+  )
+  const path = qualified ? `${qualified[1]} as ${qualified[2]}::${qualified[3]}` : symbol
+  return `item-${path
+    .split('::')
+    .map((segment) => segment.trim().replace(/[^A-Za-z0-9_]+/g, '-'))
+    .join('--')}`
+}
+
+/** Where an `{{#item}}` renders an item: its page and anchor, and its path in its crate. */
+interface BookIndexEntry {
+  /** The page of src/ (`authorization-server/domain/client.md`). */
+  readonly page: string
+  readonly anchor: string
+  /** `RustCrate.key` of the item's crate. */
+  readonly crateKey: string
+  /** From the crate root, without `crate`: `['domain', 'client', 'Client', 'allows_scopes']`. */
+  readonly itemPath: readonly string[]
+}
+
+/** Every item an `{{#item}}` renders anywhere in the book, for doc links to land on. */
+type BookIndex = readonly BookIndexEntry[]
+
+/**
+ * The book's index: each `{{#item}}` in `chapters` (their directives not yet
+ * expanded), where it renders. A directive that doesn't parse, or names a
+ * file outside any crate, is left out here and fails when it is expanded.
+ */
+const indexBook = (
+  chapters: readonly { readonly page: string; readonly markdown: string }[],
+  repoRoot: string
+): BookIndex =>
+  chapters.flatMap(({ page, markdown }) => {
+    let found
+    try {
+      found = findDirectives(markdown)
+    } catch (error) {
+      if (error instanceof DirectiveError) return []
+      throw error
+    }
+    return found.flatMap(({ directive }) => {
+      if (directive.kind !== 'item') return []
+      const file = rustFileAt(repoRoot, directive.path)
+      if (file === undefined) return []
+      return [
+        {
+          page,
+          anchor: itemAnchor(directive.symbol),
+          crateKey: file.crate.key,
+          itemPath: [...file.module, ...symbolSegments(directive.symbol)],
+        },
+      ]
+    })
+  })
+
+/** The crate and module of a `.rs` file, if a crate holds it. */
+const rustFileAt = (repoRoot: string, path: string): RustFile | undefined => {
+  if (extname(path) !== '.rs') return undefined
+  const pkg = owningPackage(repoRoot, path)
+  return pkg?.isCrate ? rustFileOf(pkg.dir, pkg.name, path) : undefined
+}
+
+/** The page a directive expands on, and the book's index, for doc links. */
+interface PageContext {
+  /** The page of src/, `''` outside a book. */
+  readonly page: string
+  readonly index: BookIndex
+}
+
+const samePath = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((segment, i) => segment === b[i])
+
+const endsWithPath = (path: readonly string[], suffix: readonly string[]): boolean =>
+  path.length >= suffix.length && samePath(path.slice(path.length - suffix.length), suffix)
+
+/**
+ * Where an intra-doc link in the doc comment of the item at `scope` goes:
+ * 1. the anchor of the `{{#item}}` rendering the item it names, on any page;
+ * 2. for a name found no other way (not imported, not `crate::`/`Self::`),
+ *    the one `{{#item}}` in the crate whose path ends with it;
+ * 3. the item where it is defined, following re-exports: its `{{#item}}`,
+ *    or else its lines on GitHub;
+ * 4. for a field or variant (`Type::field`), its type, by 3;
+ * 5. nowhere (undefined): the link shows its text alone.
+ */
+const resolveDocLink = async (
+  destination: string,
+  scope: PathScope,
+  repoRoot: string,
+  targets: LinkTargets,
+  context: PageContext
+): Promise<string | undefined> => {
+  const { candidates, bare } = linkPaths(destination, scope)
+  const { crate } = scope.file
+  const inCrate = context.index.filter((entry) => entry.crateKey === crate.key)
+  const toPage = (entry: BookIndexEntry): string =>
+    entry.page === context.page
+      ? `#${entry.anchor}`
+      : `${encodeURI(posix.relative(posix.dirname(context.page), entry.page))}#${entry.anchor}`
+  const pageOf = (path: readonly string[]): BookIndexEntry | undefined =>
+    inCrate.find((entry) => samePath(entry.itemPath, path))
+  for (const candidate of candidates) {
+    const entry = pageOf(candidate)
+    if (entry !== undefined) return toPage(entry)
+  }
+  if (bare !== undefined) {
+    const [only, ...others] = inCrate.filter((e) => endsWithPath(e.itemPath, bare))
+    if (only !== undefined && others.length === 0) return toPage(only)
+  }
+  const at = async (path: readonly string[]): Promise<string | undefined> => {
+    const found = await defineItem(repoRoot, crate, path)
+    if (found === undefined) return undefined
+    const entry = pageOf(found.path)
+    return entry !== undefined
+      ? toPage(entry)
+      : githubUrl(targets, found.file, found.item.startRow, found.item.endRow)
+  }
+  const defined = (await Promise.all(candidates.map(at))).find((url) => url !== undefined)
+  if (defined !== undefined) return defined
+  // A field or variant (`Gate::Shut`) is documented in its type's code.
+  const owners = await Promise.all(
+    candidates.map(async (candidate) => {
+      const owner = candidate.slice(0, -1)
+      const found = owner.length === 0 ? undefined : await defineItem(repoRoot, crate, owner)
+      return found !== undefined && HAS_MEMBERS.has(found.item.kind) ? at(owner) : undefined
+    })
+  )
+  return owners.find((url) => url !== undefined)
+}
+
+/** A file's text and `use`s, read once per build. */
+const fileCache = new Map<string, Promise<{ source: string; imports: FileImports }>>()
+const readRustFile = (file: string): Promise<{ source: string; imports: FileImports }> => {
+  let read = fileCache.get(file)
+  if (read === undefined) {
+    const source = readFileSync(file, 'utf8')
+    read = fileImports(source).then((imports) => ({ source, imports }))
+    fileCache.set(file, read)
+  }
+  return read
+}
+
+/**
+ * Where the item at the absolute `path` in `crate` is defined: its file,
+ * its defining path, and where it sits, following the `use` re-exports
+ * (`pub use grant::Grant;`) of the module files on the way.
+ */
+const defineItem = async (
+  repoRoot: string,
+  crate: RustCrate,
+  path: readonly string[],
+  hops = 0
+): Promise<DefinedItem | undefined> => {
+  const inEachFile = await Promise.all(
+    filesFor(crate, path).map(async ({ file, symbol }): Promise<DefinedItem | undefined> => {
+      const onDisk = join(repoRoot, file)
+      if (!existsSync(onDisk)) return undefined
+      const { source, imports } = await readRustFile(onDisk)
+      try {
+        return { path, file, item: await locateRustItem(source, symbol) }
+      } catch (error) {
+        if (!(error instanceof ItemNotFound)) throw error
+      }
+      const [first, ...rest] = symbol.split('::')
+      const named = imports.get('')?.find((u) => u.name === first)
+      if (named === undefined || hops >= 8) return undefined
+      const module = path.slice(0, path.length - rest.length - 1)
+      const target = absolutePath(crate, module, named.path) ?? [...module, ...named.path]
+      return defineItem(repoRoot, crate, [...target, ...rest], hops + 1)
+    })
+  )
+  return inEachFile.find((found) => found !== undefined)
+}
+
+/** An item where it is defined: its path from the crate root, its file, and where it sits there. */
+interface DefinedItem {
+  readonly path: readonly string[]
+  readonly file: string
+  readonly item: RustItem
+}
+
+/** Items whose fields or variants a doc link can name. */
+const HAS_MEMBERS: ReadonlySet<string> = new Set(['struct_item', 'enum_item', 'union_item'])
+
+/** Items whose members' doc comments stay in the code, as the docs of their fields and variants. */
+const KEEPS_MEMBER_DOCS: ReadonlySet<string> = new Set([
+  'struct_item',
+  'enum_item',
+  'union_item',
+  'trait_item',
+])
+
+/** `{{#item}}`: the anchor, the item's doc comment as prose, its source, then each test. */
+const renderItemDirective = async (
+  directive: ItemDirective,
+  repoRoot: string,
+  targets: LinkTargets,
+  context: PageContext,
+  headingLevel: number
+): Promise<Rendered> => {
+  const file = rustFileAt(repoRoot, directive.path)
+  if (extname(directive.path) !== '.rs')
+    throw new DirectiveError(`${directive.raw}: only .rs files can be shown as items`)
+  const source = sourceOf(directive, repoRoot)
+  if (file === undefined)
+    throw new DirectiveError(`${directive.raw}: no crate holds ${directive.path}`)
+  const locateOrFail = async (symbol: string): Promise<RustItem> => {
+    try {
+      return await locateRustItem(source, symbol)
+    } catch (error) {
+      if (error instanceof ItemNotFound)
+        throw new DirectiveError(`${directive.raw}: ${error.message}`)
+      throw error
+    }
+  }
+  const item = await locateOrFail(directive.symbol)
+  const tests = await Promise.all(directive.tests.map(locateOrFail))
+  const { imports } = await readRustFile(join(repoRoot, directive.path))
+  const prose = (located: RustItem, symbol: string): Promise<string> =>
+    renderDocMarkdown(located.docComment, {
+      headingLevel: directive.level ?? headingLevel,
+      resolve: (destination) =>
+        resolveDocLink(destination, { file, symbol, imports }, repoRoot, targets, context),
+    })
+  const block = (located: RustItem, keepDocs: boolean): string =>
+    codeBlock(
+      repoRoot,
+      targets,
+      directive.path,
+      'rust',
+      excerpt(source, located, { fragments: [], keepDocs })
+    )
+  const captions = await Promise.all(
+    tests.map((test, index) => prose(test, directive.tests[index]))
+  )
+  const parts = [
+    `<div id="${itemAnchor(directive.symbol)}" class="item-anchor"></div>`,
+    await prose(item, directive.symbol),
+    block(item, KEEPS_MEMBER_DOCS.has(item.kind)),
+    ...tests.flatMap((test, index) => [captions[index], block(test, false)]),
+  ]
   return {
-    text: [
-      `${fence}${language}`,
-      shown.text,
-      fence,
-      '',
-      `<p class="code-source">${links.join(' · ')}</p>`,
-    ].join('\n'),
-    references,
+    text: parts.filter((part) => part !== '').join('\n\n'),
+    references: [item, ...tests].map(({ startRow }) => ({
+      path: directive.path,
+      row: startRow,
+      shown: true,
+    })),
   }
 }
 
@@ -403,11 +728,39 @@ const renderCodeDirective = async (
 const renderDirective = (
   directive: Directive,
   repoRoot: string,
-  targets: LinkTargets
-): Promise<Rendered> =>
-  isCoverageDirective(directive)
-    ? renderCoverageDirective(directive, repoRoot, targets)
-    : renderCodeDirective(directive, repoRoot, targets)
+  targets: LinkTargets,
+  context: PageContext = NO_PAGE,
+  headingLevel = 2
+): Promise<Rendered> => {
+  if (isCoverageDirective(directive)) return renderCoverageDirective(directive, repoRoot, targets)
+  if (directive.kind === 'item')
+    return renderItemDirective(directive, repoRoot, targets, context, headingLevel)
+  return renderCodeDirective(directive, repoRoot, targets)
+}
+
+/** Outside a book: no page, and no `{{#item}}` elsewhere for links to land on. */
+const NO_PAGE: PageContext = { page: '', index: [] }
+
+/**
+ * How many `#`s a doc comment's `#` heading becomes at `offset` in
+ * `markdown`: one more than the nearest ATX heading above it, outside code
+ * blocks; 2 under none, below the page's title.
+ */
+const headingLevelAt = (markdown: string, offset: number): number => {
+  let level = 1
+  let fence: string | undefined
+  for (const line of markdown.slice(0, offset).split('\n')) {
+    const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1]
+    if (fence === undefined && marker !== undefined) fence = marker
+    else if (fence !== undefined && marker !== undefined && marker.startsWith(fence))
+      fence = undefined
+    else if (fence === undefined) {
+      const heading = /^ {0,3}(#{1,6})(?:[ \t]|$)/.exec(line)?.[1]
+      if (heading !== undefined) level = heading.length
+    }
+  }
+  return Math.min(6, level + 1)
+}
 
 const CHAPTER = /\{\{#chapter\s+"([^"]+)"\s*\}\}/g
 
@@ -486,7 +839,7 @@ interface Expanded {
   readonly markdown: string
   /** One message per directive that failed, naming it; empty when all built. */
   readonly errors: readonly string[]
-  /** The items its `{{#code}}`, `{{#code-link}}` and `{{#covered}}` name. */
+  /** The items its `{{#code}}`, `{{#code-link}}`, `{{#item}}` and `{{#covered}}` name. */
   readonly references: readonly ItemReference[]
   /** The files its `{{#covers}}` name. */
   readonly covers: readonly string[]
@@ -496,7 +849,8 @@ interface Expanded {
 const expandDirectives = async (
   markdown: string,
   repoRoot: string,
-  targets: LinkTargets
+  targets: LinkTargets,
+  context: PageContext = NO_PAGE
 ): Promise<Expanded> => {
   let found
   try {
@@ -506,9 +860,19 @@ const expandDirectives = async (
       return { markdown, errors: [error.message], references: [], covers: [] }
     throw error
   }
+  const anchors = new Set<string>()
+  const duplicateAnchors = found.flatMap(({ directive }) => {
+    if (directive.kind !== 'item') return []
+    const anchor = itemAnchor(directive.symbol)
+    if (!anchors.has(anchor)) {
+      anchors.add(anchor)
+      return []
+    }
+    return [`${directive.raw}: another {{#item}} on this page has the anchor ${anchor}`]
+  })
   const rendered = await Promise.all(
-    found.map(({ directive }) =>
-      renderDirective(directive, repoRoot, targets).then(
+    found.map(({ directive, start }) =>
+      renderDirective(directive, repoRoot, targets, context, headingLevelAt(markdown, start)).then(
         ({ text, references }) => ({ text, references, error: undefined }),
         (error: unknown) => {
           if (!(error instanceof DirectiveError)) throw error
@@ -525,21 +889,28 @@ const expandDirectives = async (
   })
   return {
     markdown: out + markdown.slice(at),
-    errors: rendered.flatMap(({ error }) => (error === undefined ? [] : [error])),
+    errors: [
+      ...rendered.flatMap(({ error }) => (error === undefined ? [] : [error])),
+      ...duplicateAnchors,
+    ],
     references: rendered.flatMap(({ references }) => references),
     covers: found.flatMap(({ directive }) => (directive.kind === 'covers' ? [directive.path] : [])),
   }
 }
 
 export type {
+  BookIndex,
+  BookIndexEntry,
   ChapterLinks,
   CodeDirective,
   CoverageDirective,
   Directive,
   Expanded,
   FoundDirective,
+  ItemDirective,
   LinkTargets,
   OwningPackage,
+  PageContext,
   Rendered,
 }
 export {
@@ -550,5 +921,7 @@ export {
   expandDirectives,
   findDirectives,
   includeChapters,
+  indexBook,
+  itemAnchor,
   renderDirective,
 }

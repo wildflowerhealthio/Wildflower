@@ -238,7 +238,61 @@ const descendants = function* (node: Node): Generator<Node> {
   }
 }
 
-const locate = (lines: readonly string[], item: Node): LocatedItem => {
+// Outer doc comments: `///` lines and `/** */` blocks, not `//!` or `/*!`.
+const isOuterDocComment = (node: Node): boolean =>
+  (node.type === 'line_comment' && /^\/\/\/(?!\/)/.test(node.text)) ||
+  (node.type === 'block_comment' && /^\/\*\*(?![*/])/.test(node.text))
+
+/**
+ * The outer doc comments on `item`, in source order: the `///` and block doc comment
+ * siblings before it, past its attributes and ordinary comments, up to the
+ * previous item.
+ */
+const outerDocNodes = (item: Node): readonly Node[] => {
+  const docs: Node[] = []
+  for (let at = item.previousNamedSibling; at !== null; at = at.previousNamedSibling) {
+    if (isOuterDocComment(at)) docs.unshift(at)
+    else if (!isAttribute(at) && at.type !== 'line_comment' && at.type !== 'block_comment') break
+  }
+  return docs
+}
+
+/** The lines of a doc comment's node, without its markers. */
+const docLinesOf = (node: Node): readonly string[] => {
+  const text = node.text.replace(/\n$/, '')
+  if (node.type === 'line_comment') return [text.replace(/^\/\/\//, '')]
+  return text
+    .replace(/^\/\*\*/, '')
+    .replace(/\*\/$/, '')
+    .split('\n')
+    .map((line) => line.replace(/^\s*\* ?/, ''))
+}
+
+/**
+ * `item`'s outer doc comment as Markdown, as rustdoc reads it: the markers
+ * gone and the lines' common indentation removed. Empty when it has none.
+ */
+const docCommentOf = (item: Node): string => {
+  const lines = outerDocNodes(item).flatMap(docLinesOf)
+  const indents = lines
+    .filter((line) => line.trim() !== '')
+    .map((line) => line.length - line.trimStart().length)
+  const margin = indents.length === 0 ? 0 : Math.min(...indents)
+  return lines
+    .map((line) => line.slice(margin).trimEnd())
+    .join('\n')
+    .trim()
+}
+
+/** What a Rust item is, beyond where it sits: its node kind and its doc comment. */
+interface RustItem extends LocatedItem {
+  /** The tree-sitter node type: `struct_item`, `function_item`, … */
+  readonly kind: string
+  /** Its outer doc comment as Markdown (`docCommentOf`); empty when it has none. */
+  readonly docComment: string
+}
+
+const locate = (lines: readonly string[], item: Node): RustItem => {
   const docRows = new Set<number>()
   const attributeRows = new Set<number>()
   // The item itself, so a `from=` on its first line takes all of it.
@@ -254,6 +308,8 @@ const locate = (lines: readonly string[], item: Node): LocatedItem => {
     statementEnds.set(key, Math.max(statementEnds.get(key) ?? row, lastRow(node)))
   }
   return {
+    kind: item.type,
+    docComment: docCommentOf(item),
     startRow: item.startPosition.row,
     endRow: lastRow(item),
     docRows,
@@ -270,7 +326,7 @@ const locate = (lines: readonly string[], item: Node): LocatedItem => {
  *
  * @throws {@link ItemNotFound} when no item or more than one matches.
  */
-const locateRustItem = async (source: string, symbol: string): Promise<LocatedItem> => {
+const locateRustItem = async (source: string, symbol: string): Promise<RustItem> => {
   const parsed = await parseRust(source)
   // What `locate` returns holds rows, not nodes, so the trees can go.
   try {
@@ -293,5 +349,5 @@ const locateRustItem = async (source: string, symbol: string): Promise<LocatedIt
   }
 }
 
-export type { ParsedRust }
-export { locateRustItem, parseRust }
+export type { ParsedRust, RustItem }
+export { docCommentOf, locateRustItem, parseRust }
