@@ -7,7 +7,7 @@ use axum::middleware::Next;
 use axum::response::Response;
 use wildflowerhealthio_shared_structures::request_caller::{RequestCaller, RequestRefusal};
 
-use crate::domain::token::VerifiedClaims;
+use crate::domain::access_token::VerifiedClaims;
 use crate::http::errors;
 use crate::http::state::AuthorizationServerState;
 use crate::live_bindings::{FromState, LiveTokenVerifier};

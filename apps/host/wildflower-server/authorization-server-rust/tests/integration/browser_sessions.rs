@@ -1,6 +1,6 @@
 use crate::common::*;
+use wildflowerhealthio_authorization_server::domain::access_token::AccessTokenVerifyError;
 use wildflowerhealthio_authorization_server::domain::browser_session::BrowserSessionKind;
-use wildflowerhealthio_authorization_server::domain::token::VerifyError;
 
 // Browser sessions: a same-device sign-in starts a same-device session row, every
 // token, code and refresh family minted under it names it as `sid`, and
@@ -92,7 +92,7 @@ async fn revoking_a_session_stops_its_authorization_and_fhir_requests() {
     );
     assert!(matches!(
         g.in_process_token_verifier.verify(&revoked),
-        Err(VerifyError::Revoked)
+        Err(AccessTokenVerifyError::Revoked)
     ));
     assert_eq!(grants_status(standing.clone()).await, StatusCode::OK);
     assert!(g.in_process_token_verifier.verify(&standing).is_ok());
@@ -215,7 +215,7 @@ async fn an_app_authorized_in_a_session_is_ended_with_it() {
     );
     assert!(matches!(
         g.in_process_token_verifier.verify(access_token),
-        Err(VerifyError::Revoked)
+        Err(AccessTokenVerifyError::Revoked)
     ));
 }
 
@@ -477,7 +477,7 @@ async fn signing_out_revokes_the_cookie_s_session_and_clears_it() {
         .expect("read"));
     assert!(matches!(
         g.in_process_token_verifier.verify(&signing_out),
-        Err(VerifyError::Revoked)
+        Err(AccessTokenVerifyError::Revoked)
     ));
 }
 

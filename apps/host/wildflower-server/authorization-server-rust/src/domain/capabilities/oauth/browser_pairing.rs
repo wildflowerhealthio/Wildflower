@@ -20,6 +20,7 @@ use chrono::{DateTime, Duration, Utc};
 
 use super::device_authorizer::{generate_unique_user_code, DEVICE_AUTHORIZATION_TTL};
 use crate::crypto_util::random_token::generate_authorization_code;
+use crate::domain::access_token::AccessTokenIssuanceError;
 use crate::domain::authority::{ClaimedBrowserPairing, TokenEntitlement};
 use crate::domain::authorization_request::pairing::{NewPairingRequestArgs, PairingRequest};
 use crate::domain::authorization_request::polled::{Polled as _, PolledState};
@@ -28,7 +29,6 @@ use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::writers::{AccessTokenMinter, BrowserSessionWriter};
 use crate::domain::grant_store::{AuthorizationRequestsTx, ClientsTx};
 use crate::domain::sign_in_redirect::{SignInDestinations, SignInRedirect};
-use crate::domain::token::TokenIssuanceError;
 use crate::domain::{GrantStore, GrantTx};
 use crate::ports::OwnerApproval;
 use crate::BROWSER_SESSION_CLIENT_ID;
@@ -116,7 +116,7 @@ pub(crate) enum BrowserPairingPollError {
     SessionNotStored(AuthorizationServerError),
     /// The session's token couldn't be minted (no signing key, or signing
     /// failed); the claim was rolled back with it.
-    Issuance(TokenIssuanceError),
+    Issuance(AccessTokenIssuanceError),
 }
 
 impl From<AuthorizationServerError> for BrowserPairingPollError {
@@ -335,13 +335,13 @@ mod tests {
     use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
     use super::*;
+    use crate::domain::access_token::{verify_access_token, AccessTokenVerifyOptions};
     use crate::domain::authorization_request::polled::PolledRequest;
     use crate::domain::authorization_request::RequestStatus;
     use crate::domain::browser_session::BrowserSessionKind;
     use crate::domain::test_fake::{
         approve_stored, client, seed_active_signing_key, FakeGrantStore, RecordingOwnerApproval,
     };
-    use crate::domain::token::{verify_jwt, VerifyOptions};
 
     const SERVER_ORIGIN: &str = "https://ruth.relay.example";
     const NEXT: &str = "/oauth/authorize?client_id=app&state=s";
@@ -528,10 +528,10 @@ mod tests {
         else {
             panic!("approved");
         };
-        let claims = verify_jwt(
+        let claims = verify_access_token(
             &session_token,
             &[signing_key],
-            &VerifyOptions {
+            &AccessTokenVerifyOptions {
                 expected_issuer: SERVER_ORIGIN,
                 accepted_audiences: &[SERVER_ORIGIN.to_owned()],
             },

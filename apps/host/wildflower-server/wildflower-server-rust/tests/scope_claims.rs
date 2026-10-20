@@ -13,8 +13,10 @@ use axum::http::{Request, StatusCode};
 use tokio::sync::watch;
 use tower::ServiceExt;
 use url::Url;
+use wildflowerhealthio_authorization_server::domain::access_token::{
+    mint_access_token, NewAccessTokenArgs,
+};
 use wildflowerhealthio_authorization_server::domain::grant_store::SigningKeysTx as _;
-use wildflowerhealthio_authorization_server::domain::token::{mint_access_token, NewJwtArgs};
 use wildflowerhealthio_authorization_server::{
     authorization_server_auth_middleware, setup_authorization_server, AdmitEveryAuthorizationStart,
     AuthorizationServerConfig, GrantStore, OwnerPrompt, SqliteGrantStore,
@@ -72,7 +74,7 @@ fn mint_scoped_token(pool: &DieselPool, scopes: &[&str]) -> String {
     let scopes: Vec<String> = scopes.iter().map(|s| (*s).to_owned()).collect();
     mint_access_token(
         &key,
-        &NewJwtArgs {
+        &NewAccessTokenArgs {
             client_id: "scoped-app",
             scopes: &scopes,
             ttl: chrono::Duration::seconds(300),

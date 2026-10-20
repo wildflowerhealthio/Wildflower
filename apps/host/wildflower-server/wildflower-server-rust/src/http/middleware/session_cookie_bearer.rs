@@ -125,7 +125,7 @@ impl SessionCookie {
     ///
     /// # Errors
     ///
-    /// The authorization server's server-side `VerifyError`s, when it can't
+    /// The authorization server's server-side `AccessTokenVerifyError`s, when it can't
     /// check whether a browser session has ended.
     async fn session(&self, value: String) -> anyhow::Result<CookieSession> {
         Ok(match self {
@@ -324,8 +324,10 @@ mod tests {
     use std::sync::Arc;
     use tokio::sync::watch;
     use tower::ServiceExt;
+    use wildflowerhealthio_authorization_server::domain::access_token::{
+        mint_access_token, NewAccessTokenArgs,
+    };
     use wildflowerhealthio_authorization_server::domain::grant_store::SigningKeysTx as _;
-    use wildflowerhealthio_authorization_server::domain::token::{mint_access_token, NewJwtArgs};
     use wildflowerhealthio_authorization_server::{
         setup_authorization_server, AdmitEveryAuthorizationStart, AuthorizationServerConfig,
         AuthorizationServerState, GrantStore, SqliteGrantStore, BROWSER_SESSION_CLIENT_ID,
@@ -423,7 +425,7 @@ mod tests {
                 .expect("a seeded key");
             mint_access_token(
                 &key,
-                &NewJwtArgs {
+                &NewAccessTokenArgs {
                     client_id: BROWSER_SESSION_CLIENT_ID,
                     scopes: &wildflowerhealthio_authorization_server::owner_scopes(),
                     ttl,

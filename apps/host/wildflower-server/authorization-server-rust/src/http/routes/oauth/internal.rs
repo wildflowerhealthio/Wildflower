@@ -5,9 +5,9 @@ use axum::Json;
 use super::client_auth::{
     ClientAuthenticationMethod, ResolveClientCredentialsError, BASIC_AUTH_CHALLENGE,
 };
+use crate::domain::access_token::AccessTokenIssuanceError;
 use crate::domain::authority::ClientAuthenticationError;
 use crate::domain::oauth_error_code::OAuthErrorCode;
-use crate::domain::token::TokenIssuanceError;
 use crate::domain::token_exchange_error::{InvalidGrantReason, TokenExchangeError};
 use crate::http::errors::InternalError;
 use crate::http::wire_representations::{CacheSuppressed, OAuthError};
@@ -155,10 +155,11 @@ impl From<TokenExchangeError> for TokenError {
             TokenExchangeError::Issuance(error) => {
                 tracing::error!(%error, "access token issuance failed");
                 let description = match error {
-                    TokenIssuanceError::NoActiveSigningKey | TokenIssuanceError::Store(_) => {
+                    AccessTokenIssuanceError::NoActiveSigningKey
+                    | AccessTokenIssuanceError::Store(_) => {
                         "No JSON Web Keys available to sign token"
                     }
-                    TokenIssuanceError::Signing(_) => "Failed to sign JWT",
+                    AccessTokenIssuanceError::Signing(_) => "Failed to sign JWT",
                 };
                 TokenError::server_error(OAuthError::new(
                     OAuthErrorCode::ServerError,

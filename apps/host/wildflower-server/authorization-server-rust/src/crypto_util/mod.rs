@@ -2,7 +2,7 @@
 //! [`PublicJwk`](public_jwk::PublicJwk) wire struct, random tokens and their
 //! storage hash, client secrets, and device-flow user codes. This module depends
 //! on nothing else in the crate; domain policy (token claims, mint/verify
-//! rules) lives in [`crate::domain::token`]. Constant-time comparison is
+//! rules) lives in [`crate::domain::access_token`]. Constant-time comparison is
 //! delegated to the `subtle` crate at call sites.
 
 pub mod base64;

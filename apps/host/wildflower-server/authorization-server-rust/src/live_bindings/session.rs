@@ -14,10 +14,10 @@ use wildflowerhealthio_scope_capabilities::AuthenticatedCapability;
 use super::state::AuthorizationServerState;
 use super::FromState;
 use crate::db::SqliteGrantStore;
+use crate::domain::access_token::{AccessTokenVerifyError, VerifiedClaims};
 use crate::domain::capabilities::session::{
     BrowserSessionEnder, BrowserSessionUseRecorder, SessionEnder, SessionReader, TokenVerifier,
 };
-use crate::domain::token::{VerifiedClaims, VerifyError};
 
 /// Verify presented access tokens — built by the two authN gates.
 pub(crate) type LiveTokenVerifier = TokenVerifier<SqliteGrantStore>;
@@ -100,12 +100,12 @@ impl InProcessTokenVerifier {
     ///
     /// # Errors
     ///
-    /// [`VerifyError::TokenRejected`] or [`VerifyError::Revoked`] for a token
+    /// [`AccessTokenVerifyError::TokenRejected`] or [`AccessTokenVerifyError::Revoked`] for a token
     /// that doesn't pass; the other variants when the key, revocation or
     /// browser-session store can't be read
-    /// ([`VerifyError::BrowserSessionStoreUnavailable`] for the last), which
+    /// ([`AccessTokenVerifyError::BrowserSessionStoreUnavailable`] for the last), which
     /// fails closed.
-    pub fn verify(&self, token: &str) -> Result<VerifiedClaims, VerifyError> {
+    pub fn verify(&self, token: &str) -> Result<VerifiedClaims, AccessTokenVerifyError> {
         self.verifier.verify(token)
     }
 }

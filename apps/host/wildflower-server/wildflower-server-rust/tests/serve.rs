@@ -46,8 +46,10 @@ use tokio_rustls::client::TlsStream;
 use tokio_rustls::TlsConnector;
 use tokio_util::sync::CancellationToken;
 use url::Url;
+use wildflowerhealthio_authorization_server::domain::access_token::{
+    mint_access_token, NewAccessTokenArgs,
+};
 use wildflowerhealthio_authorization_server::domain::grant_store::SigningKeysTx as _;
-use wildflowerhealthio_authorization_server::domain::token::{mint_access_token, NewJwtArgs};
 use wildflowerhealthio_authorization_server::{GrantStore, SqliteGrantStore};
 use wildflowerhealthio_request_log::domain::request_log::RequestLogFilter;
 use wildflowerhealthio_request_log::domain::RequestLogStore;
@@ -667,7 +669,7 @@ fn client_token(server_dir: &Path, server_origin: &str, scopes: &[String]) -> St
         .expect("an active signing key");
     mint_access_token(
         &signing_key,
-        &NewJwtArgs {
+        &NewAccessTokenArgs {
             client_id: "request-log-reader",
             scopes,
             ttl: chrono::Duration::minutes(5),

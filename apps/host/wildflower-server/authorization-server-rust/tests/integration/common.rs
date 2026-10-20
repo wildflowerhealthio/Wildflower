@@ -36,6 +36,9 @@ pub use wildflowerhealthio_authorization_server::crypto_util::base64;
 pub use wildflowerhealthio_authorization_server::crypto_util::client_secret::hash_client_secret;
 pub use wildflowerhealthio_authorization_server::crypto_util::pkce::compute_code_challenge;
 pub use wildflowerhealthio_authorization_server::crypto_util::random_token::token_storage_hash;
+pub use wildflowerhealthio_authorization_server::domain::access_token::{
+    mint_access_token, NewAccessTokenArgs,
+};
 pub use wildflowerhealthio_authorization_server::domain::authorization_code::AuthorizationCode;
 pub use wildflowerhealthio_authorization_server::domain::authorization_request::approval::Approval;
 pub use wildflowerhealthio_authorization_server::domain::authorization_request::code::{
@@ -57,7 +60,6 @@ pub use wildflowerhealthio_authorization_server::domain::grant_store::{
 pub use wildflowerhealthio_authorization_server::domain::refresh_token::{
     RefreshToken, RefreshTokenFamily,
 };
-pub use wildflowerhealthio_authorization_server::domain::token::{mint_access_token, NewJwtArgs};
 pub use wildflowerhealthio_authorization_server::{
     ConsentKey, GrantStore, OwnerPrompt, SqliteGrantStore,
 };
@@ -228,7 +230,7 @@ fn mint_token_under_session(
     let scope: Vec<String> = scopes.iter().map(|s| (*s).to_owned()).collect();
     mint_access_token(
         &key,
-        &NewJwtArgs {
+        &NewAccessTokenArgs {
             client_id,
             scopes: &scope,
             ttl: Duration::minutes(15),
@@ -335,7 +337,7 @@ pub fn mint_token_naming(db: &TestDb, scopes: &[&str], issuer: &str, audience: &
     let scope: Vec<String> = scopes.iter().map(|s| (*s).to_owned()).collect();
     mint_access_token(
         &key,
-        &NewJwtArgs {
+        &NewAccessTokenArgs {
             client_id: "scoped-app",
             scopes: &scope,
             ttl: Duration::seconds(300),

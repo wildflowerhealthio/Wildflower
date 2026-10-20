@@ -8,8 +8,8 @@
 
 use chrono::{DateTime, Utc};
 
+use crate::domain::access_token::AccessTokenIssuanceError;
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::token::TokenIssuanceError;
 
 /// Why a grant presented at `/oauth/token` was refused as `invalid_grant`.
 /// The fields carry only what an operator needs to tell the cases apart —
@@ -89,7 +89,7 @@ pub(crate) enum TokenExchangeError {
     SlowDown,
     /// The token could not be minted after the grant was accepted; the
     /// exchange's scope was rolled back with it, so nothing was consumed.
-    Issuance(TokenIssuanceError),
+    Issuance(AccessTokenIssuanceError),
     /// A store read or write failed.
     Store(AuthorizationServerError),
 }
@@ -100,8 +100,8 @@ impl From<AuthorizationServerError> for TokenExchangeError {
     }
 }
 
-impl From<TokenIssuanceError> for TokenExchangeError {
-    fn from(error: TokenIssuanceError) -> Self {
+impl From<AccessTokenIssuanceError> for TokenExchangeError {
+    fn from(error: AccessTokenIssuanceError) -> Self {
         TokenExchangeError::Issuance(error)
     }
 }

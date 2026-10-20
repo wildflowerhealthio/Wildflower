@@ -8,11 +8,11 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 
+use crate::domain::access_token::VerifiedClaims;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::browser_session::LAST_SEEN_RESOLUTION;
 use crate::domain::grant_store::BrowserSessionsTx as _;
 use crate::domain::last_seen_throttle::LastSeenThrottle;
-use crate::domain::token::VerifiedClaims;
 use crate::domain::GrantStore;
 
 /// Record a browser session's cookie use. Holds the store and the throttle

@@ -4,8 +4,8 @@
 
 use std::sync::Arc;
 
+use crate::domain::access_token::VerifiedClaims;
 use crate::domain::session::revoke_session_token;
-use crate::domain::token::VerifiedClaims;
 use crate::ports::Revocation;
 
 /// End the caller's own session. Holds the [`Revocation`] port lifted from the

@@ -34,12 +34,12 @@ use chrono::{DateTime, Duration, Utc};
 use cookie::Cookie;
 use wildflowerhealthio_scope_capabilities::GrantedScopes as _;
 
+use crate::domain::access_token::{AccessTokenVerifyError, VerifiedClaims};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::access::consents::{
     consent_decider_scopes, consent_reader_scopes,
 };
 use crate::domain::capabilities::session::TokenVerifier;
-use crate::domain::token::{VerifiedClaims, VerifyError};
 use crate::domain::GrantStore;
 use crate::http::state::AuthorizationServerState;
 use crate::live_bindings::{FromState, LiveBrowserSessionUseRecorder, LiveTokenVerifier};
@@ -94,12 +94,12 @@ fn browser_session_cookie(value: &str, max_age_seconds: i64) -> String {
 ///
 /// # Errors
 ///
-/// The server-side [`VerifyError`]s, when a key, revocation or browser-session
+/// The server-side [`AccessTokenVerifyError`]s, when a key, revocation or browser-session
 /// store can't be read, so the session can't be checked.
 pub fn standing_browser_session(
     state: &Arc<AuthorizationServerState>,
     session_token: &str,
-) -> Result<Option<VerifiedClaims>, VerifyError> {
+) -> Result<Option<VerifiedClaims>, AccessTokenVerifyError> {
     standing_session_claims(&LiveTokenVerifier::from_state(state), session_token)
 }
 
@@ -127,12 +127,12 @@ pub fn record_browser_session_cookie_use(
 ///
 /// # Errors
 ///
-/// The server-side [`VerifyError`]s, when a key, revocation or browser-session
+/// The server-side [`AccessTokenVerifyError`]s, when a key, revocation or browser-session
 /// store can't be read, so the session can't be checked.
 pub(crate) fn carried_browser_session(
     token_verifier: &LiveTokenVerifier,
     headers: &HeaderMap,
-) -> Result<Option<VerifiedClaims>, VerifyError> {
+) -> Result<Option<VerifiedClaims>, AccessTokenVerifyError> {
     let Some(session_token) = browser_session_token(headers) else {
         return Ok(None);
     };
@@ -162,16 +162,18 @@ pub(crate) fn can_decide_consents(claims: &VerifiedClaims) -> bool {
 ///
 /// # Errors
 ///
-/// The server-side [`VerifyError`]s, when a store can't be read.
+/// The server-side [`AccessTokenVerifyError`]s, when a store can't be read.
 fn standing_session_claims<S: GrantStore>(
     token_verifier: &TokenVerifier<S>,
     session_token: &str,
-) -> Result<Option<VerifiedClaims>, VerifyError> {
+) -> Result<Option<VerifiedClaims>, AccessTokenVerifyError> {
     match token_verifier.verify(session_token) {
         Ok(claims) if claims.subject == BROWSER_SESSION_CLIENT_ID && claims.sid.is_some() => {
             Ok(Some(claims))
         }
-        Ok(_) | Err(VerifyError::TokenRejected | VerifyError::Revoked) => Ok(None),
+        Ok(_) | Err(AccessTokenVerifyError::TokenRejected | AccessTokenVerifyError::Revoked) => {
+            Ok(None)
+        }
         Err(error) => Err(error),
     }
 }
@@ -201,11 +203,11 @@ mod tests {
         browser_session_clearing_set_cookie, browser_session_set_cookie, browser_session_token,
         can_decide_consents, standing_session_claims,
     };
+    use crate::domain::access_token::{mint_access_token, NewAccessTokenArgs};
     use crate::domain::browser_session::BrowserSession;
     use crate::domain::capabilities::session::TokenVerifier;
     use crate::domain::signing_key::SigningKey;
     use crate::domain::test_fake::{seed_active_signing_key, FakeGrantStore, NothingRevoked};
-    use crate::domain::token::{mint_access_token, NewJwtArgs};
 
     use crate::BROWSER_SESSION_CLIENT_ID;
 
@@ -226,7 +228,7 @@ mod tests {
         let scopes: Vec<String> = scopes.iter().map(|&scope| scope.to_owned()).collect();
         mint_access_token(
             key,
-            &NewJwtArgs {
+            &NewAccessTokenArgs {
                 client_id,
                 scopes: &scopes,
                 ttl: Duration::minutes(5),

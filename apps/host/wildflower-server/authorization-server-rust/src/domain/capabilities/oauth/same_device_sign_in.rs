@@ -11,13 +11,13 @@ use std::sync::Arc;
 use chrono::{DateTime, Duration, Utc};
 use wildflowerhealthio_scopes::Grant;
 
+use crate::domain::access_token::AccessTokenIssuanceError;
 use crate::domain::authority::{RedeemedSameDeviceSignInCode, TokenEntitlement};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::writers::{AccessTokenMinter, BrowserSessionWriter};
 use crate::domain::grant_store::ClientsTx;
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
 use crate::domain::sign_in_redirect::{SignInDestinations, SignInRedirect};
-use crate::domain::token::TokenIssuanceError;
 use crate::domain::GrantStore;
 use crate::BROWSER_SESSION_CLIENT_ID;
 
@@ -48,7 +48,7 @@ pub(crate) enum SameDeviceSignInError {
     /// The token couldn't be minted (no signing key, a signing or store
     /// failure). The session was rolled back with it; the code, held in
     /// memory, is spent.
-    Issuance(TokenIssuanceError),
+    Issuance(AccessTokenIssuanceError),
 }
 
 /// A sign-in request the server refuses, rendered as a local page with no
@@ -183,10 +183,10 @@ mod tests {
     use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
     use super::*;
+    use crate::domain::access_token::{verify_access_token, AccessTokenVerifyOptions};
     use crate::domain::same_device_sign_in_codes::SAME_DEVICE_SIGN_IN_CODE_TTL;
     use crate::domain::signing_key::SigningKey;
     use crate::domain::test_fake::{client, seed_active_signing_key, FakeGrantStore};
-    use crate::domain::token::{verify_jwt, VerifyOptions};
 
     const SERVER_ORIGIN: &str = "https://ruth.relay.example";
     const OWNER_SCOPES: [&str; 2] = ["system/*.cruds", "wildflower/*.cruds"];
@@ -234,10 +234,10 @@ mod tests {
         let (sign_in, signing_key) = sign_in_with_a_code(now);
         let signed_in = sign_in.sign_in("code-1", "/", now).expect("signed in");
         assert_eq!(signed_in.redirect.location(), "/");
-        let claims = verify_jwt(
+        let claims = verify_access_token(
             &signed_in.session_token,
             &[signing_key],
-            &VerifyOptions {
+            &AccessTokenVerifyOptions {
                 expected_issuer: SERVER_ORIGIN,
                 accepted_audiences: &[SERVER_ORIGIN.to_owned()],
             },

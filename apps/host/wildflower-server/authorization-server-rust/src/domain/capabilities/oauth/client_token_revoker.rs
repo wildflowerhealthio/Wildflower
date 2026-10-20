@@ -12,12 +12,14 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 
 use crate::crypto_util::random_token::token_storage_hash;
+use crate::domain::access_token::{
+    verify_access_token, AccessTokenVerifyError, AccessTokenVerifyOptions,
+};
 use crate::domain::authority::AuthenticatedClient;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::grant_store::{RefreshTokensTx, SigningKeysTx as _};
 use crate::domain::refresh_token::RefreshTokenFamily;
 use crate::domain::signing_key::SigningKey;
-use crate::domain::token::{verify_jwt, VerifyError, VerifyOptions};
 use crate::domain::GrantStore;
 use crate::ports::Revocation;
 
@@ -97,16 +99,16 @@ impl<S: GrantStore> ClientTokenRevoker<S> {
         presented_token: &str,
         signing_keys: &[SigningKey],
     ) -> Result<(), AuthorizationServerError> {
-        let claims = match verify_jwt(
+        let claims = match verify_access_token(
             presented_token,
             signing_keys,
-            &VerifyOptions {
+            &AccessTokenVerifyOptions {
                 expected_issuer: &self.server_origin,
                 accepted_audiences: &[self.server_origin.to_string()],
             },
         ) {
             Ok(claims) => claims,
-            Err(VerifyError::TokenRejected) => return Ok(()),
+            Err(AccessTokenVerifyError::TokenRejected) => return Ok(()),
             Err(error) => {
                 return Err(AuthorizationServerError::infrastructure(
                     "access-token verification failed during revocation",
@@ -173,11 +175,11 @@ mod tests {
 
     use super::*;
     use crate::crypto_util::base64;
+    use crate::domain::access_token::{mint_access_token, NewAccessTokenArgs};
     use crate::domain::refresh_token::RefreshToken;
     use crate::domain::test_fake::{
         authenticated_public_client, client, seed_active_signing_key, FakeGrantStore,
     };
-    use crate::domain::token::{mint_access_token, NewJwtArgs};
 
     const SERVER_ORIGIN: &str = "https://ruth.relay.example";
 
@@ -246,7 +248,7 @@ mod tests {
             .expect("seeded key");
         mint_access_token(
             &key,
-            &NewJwtArgs {
+            &NewAccessTokenArgs {
                 client_id,
                 scopes: &["openid".to_owned()],
                 ttl: Duration::minutes(5),

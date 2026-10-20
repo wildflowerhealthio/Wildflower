@@ -6,8 +6,10 @@
 
 use std::sync::Arc;
 
+use crate::domain::access_token::{
+    verify_access_token, AccessTokenVerifyError, AccessTokenVerifyOptions, VerifiedClaims,
+};
 use crate::domain::grant_store::{BrowserSessionsTx, SigningKeysTx};
-use crate::domain::token::{verify_jwt, VerifiedClaims, VerifyError, VerifyOptions};
 use crate::domain::GrantStore;
 use crate::ports::RevocationCheck;
 
@@ -52,23 +54,23 @@ impl<S: GrantStore> TokenVerifier<S> {
     ///
     /// # Errors
     ///
-    /// [`VerifyError::TokenRejected`] for a bad, expired, wrong-issuer or
-    /// wrong-audience token; [`VerifyError::Revoked`] for a revoked one; the
+    /// [`AccessTokenVerifyError::TokenRejected`] for a bad, expired, wrong-issuer or
+    /// wrong-audience token; [`AccessTokenVerifyError::Revoked`] for a revoked one; the
     /// server-side variants when the key, revocation or browser-session store
     /// can't be read.
-    pub(crate) fn verify(&self, token: &str) -> Result<VerifiedClaims, VerifyError> {
+    pub(crate) fn verify(&self, token: &str) -> Result<VerifiedClaims, AccessTokenVerifyError> {
         // A connection that can't be checked out at all fails like the key
         // read that is the scope's first statement.
         let claims = self
             .store
             .read(|tx| Ok(self.verify_signed_and_session_live(tx, token)))
-            .map_err(VerifyError::KeyStoreUnavailable)??;
+            .map_err(AccessTokenVerifyError::KeyStoreUnavailable)??;
         let revoked = self
             .revocation
             .is_revoked(claims.jti.as_deref(), claims.issued_at, &claims.subject)
-            .map_err(VerifyError::RevocationStoreUnavailable)?;
+            .map_err(AccessTokenVerifyError::RevocationStoreUnavailable)?;
         if revoked {
-            return Err(VerifyError::Revoked);
+            return Err(AccessTokenVerifyError::Revoked);
         }
         Ok(claims)
     }
@@ -80,14 +82,14 @@ impl<S: GrantStore> TokenVerifier<S> {
         &self,
         tx: &mut (impl SigningKeysTx + BrowserSessionsTx),
         token: &str,
-    ) -> Result<VerifiedClaims, VerifyError> {
+    ) -> Result<VerifiedClaims, AccessTokenVerifyError> {
         let keys = tx
             .all_signing_keys()
-            .map_err(VerifyError::KeyStoreUnavailable)?;
-        let claims = verify_jwt(
+            .map_err(AccessTokenVerifyError::KeyStoreUnavailable)?;
+        let claims = verify_access_token(
             token,
             &keys,
-            &VerifyOptions {
+            &AccessTokenVerifyOptions {
                 expected_issuer: &self.server_origin,
                 accepted_audiences: &[self.server_origin.to_string()],
             },
@@ -95,9 +97,9 @@ impl<S: GrantStore> TokenVerifier<S> {
         if let Some(sid) = claims.sid.as_deref() {
             if tx
                 .is_browser_session_revoked(sid)
-                .map_err(VerifyError::BrowserSessionStoreUnavailable)?
+                .map_err(AccessTokenVerifyError::BrowserSessionStoreUnavailable)?
             {
-                return Err(VerifyError::Revoked);
+                return Err(AccessTokenVerifyError::Revoked);
             }
         }
         Ok(claims)
@@ -112,10 +114,10 @@ mod tests {
     use chrono::{DateTime, Duration, Utc};
 
     use super::*;
+    use crate::domain::access_token::{mint_access_token, NewAccessTokenArgs};
     use crate::domain::browser_session::BrowserSession;
     use crate::domain::signing_key::SigningKey;
     use crate::domain::test_fake::{seed_active_signing_key, FakeGrantStore};
-    use crate::domain::token::{mint_access_token, NewJwtArgs};
 
     /// A revocation check that answers from a fixed set of revoked `jti`s and
     /// records what it was asked.
@@ -168,7 +170,7 @@ mod tests {
     ) -> String {
         mint_access_token(
             key,
-            &NewJwtArgs {
+            &NewAccessTokenArgs {
                 client_id: "client",
                 scopes: &["openid".to_owned()],
                 ttl: Duration::minutes(5),
@@ -210,7 +212,7 @@ mod tests {
             assert!(
                 matches!(
                     verifier.verify(&mint(&key, issuer, audience)),
-                    Err(VerifyError::TokenRejected)
+                    Err(AccessTokenVerifyError::TokenRejected)
                 ),
                 "iss {issuer}, aud {audience} must be rejected"
             );
@@ -224,7 +226,7 @@ mod tests {
         let verifier = verifier(store);
         assert!(matches!(
             verifier.verify(&mint(&key, ORIGIN, &format!("{ORIGIN}/fhir-r4"))),
-            Err(VerifyError::TokenRejected)
+            Err(AccessTokenVerifyError::TokenRejected)
         ));
     }
 
@@ -235,10 +237,10 @@ mod tests {
     fn revocation_is_the_last_gate_and_fails_closed() {
         let (store, key) = store_with_key();
         let token = mint(&key, ORIGIN, ORIGIN);
-        let jti = verify_jwt(
+        let jti = verify_access_token(
             &token,
             &store.tx().all_signing_keys().unwrap(),
-            &VerifyOptions {
+            &AccessTokenVerifyOptions {
                 expected_issuer: ORIGIN,
                 accepted_audiences: &[ORIGIN.to_owned()],
             },
@@ -257,7 +259,10 @@ mod tests {
         );
         // Re-seed the key so the revoked verifier can check the signature.
         revoked.store.tx().insert_signing_key(&key).unwrap();
-        assert!(matches!(revoked.verify(&token), Err(VerifyError::Revoked)));
+        assert!(matches!(
+            revoked.verify(&token),
+            Err(AccessTokenVerifyError::Revoked)
+        ));
 
         let failing = TokenVerifier::new(
             store,
@@ -269,7 +274,7 @@ mod tests {
         );
         assert!(matches!(
             failing.verify(&token),
-            Err(VerifyError::RevocationStoreUnavailable(_))
+            Err(AccessTokenVerifyError::RevocationStoreUnavailable(_))
         ));
     }
 
@@ -291,7 +296,7 @@ mod tests {
         assert_eq!(claims.sid.as_deref(), Some(session.sid.as_str()));
         assert!(matches!(
             verifier.verify(&under_a_missing_session),
-            Err(VerifyError::Revoked)
+            Err(AccessTokenVerifyError::Revoked)
         ));
 
         assert!(verifier
@@ -301,7 +306,7 @@ mod tests {
             .expect("revoke"));
         assert!(matches!(
             verifier.verify(&under_session),
-            Err(VerifyError::Revoked)
+            Err(AccessTokenVerifyError::Revoked)
         ));
         assert!(verifier.verify(&under_no_session).is_ok());
     }

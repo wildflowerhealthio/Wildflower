@@ -45,6 +45,8 @@ pub(crate) mod capabilities;
 #[cfg(test)]
 pub(crate) mod test_fake;
 
+// The access tokens the server signs: their claims, minting and verification.
+pub mod access_token;
 pub mod authorization_code;
 pub mod authorization_request;
 // The browsers the server has signed in, keyed by the `sid` everything minted
@@ -97,7 +99,6 @@ pub mod retention;
 // The logout session-token revoke over the `Revocation` port.
 pub(crate) mod session;
 pub mod signing_key;
-pub mod token;
 // The `/oauth/token` failure vocabulary: specific reasons the HTTP layer
 // collapses onto the generic RFC 6749 §5.2 descriptions.
 pub(crate) mod token_exchange_error;

@@ -27,11 +27,11 @@ use super::authorize::{next_step_location, AuthorizeError};
 use super::openapi::AuthorizationRequestNotFound;
 use super::OAUTH_MOUNT;
 use crate::crypto_util::random_token::generate_authorization_code;
+use crate::domain::access_token::VerifiedClaims;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::oauth::{
     AuthorizationStartError, PollingBrowserSession, SessionShortfallView,
 };
-use crate::domain::token::VerifiedClaims;
 use crate::http::browser_session_cookie::carried_browser_session;
 use crate::http::extractors::Live;
 use crate::http::wire_representations::CacheSuppressed;

@@ -6,9 +6,9 @@
 
 use chrono::{DateTime, Utc};
 
+use crate::domain::access_token::VerifiedClaims;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::grant_store::BrowserSessionsTx as _;
-use crate::domain::token::VerifiedClaims;
 use crate::domain::GrantStore;
 
 /// Read the caller's own session. Built from the caller's claims and the

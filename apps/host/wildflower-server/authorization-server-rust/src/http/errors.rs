@@ -29,27 +29,27 @@ use serde::Serialize;
 use utoipa::ToSchema;
 use wildflowerhealthio_shared_structures::request_caller::RequestRefusal;
 
+use crate::domain::access_token::AccessTokenVerifyError;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::oauth::SignInRefusal;
-use crate::domain::token::VerifyError;
 
-/// Map a token-[`VerifyError`] to its HTTP response, shared by the auth
+/// Map a token-[`AccessTokenVerifyError`] to its HTTP response, shared by the auth
 /// middlewares. Server-side failures (no keys configured, the key, revocation
 /// or browser-session store can't be read, a configured key's material is
 /// corrupt) are operator problems, so
 /// they log and return 500; only a genuinely rejected or revoked token is a
 /// 401, stamped with the matching [`RequestRefusal`]. Written as an exhaustive
-/// match so a new `VerifyError` variant forces a deliberate status choice
+/// match so a new `AccessTokenVerifyError` variant forces a deliberate status choice
 /// rather than silently defaulting to 401.
-pub(crate) fn verify_error_response(context: &str, err: VerifyError) -> Response {
+pub(crate) fn verify_error_response(context: &str, err: AccessTokenVerifyError) -> Response {
     match err {
-        VerifyError::NoSigningKeysConfigured
-        | VerifyError::KeyStoreUnavailable(_)
-        | VerifyError::RevocationStoreUnavailable(_)
-        | VerifyError::BrowserSessionStoreUnavailable(_)
-        | VerifyError::SigningKeyUnreadable(_) => internal_error(context, err),
-        VerifyError::TokenRejected => unauthorized(RequestRefusal::TokenRejected),
-        VerifyError::Revoked => unauthorized(RequestRefusal::Revoked),
+        AccessTokenVerifyError::NoSigningKeysConfigured
+        | AccessTokenVerifyError::KeyStoreUnavailable(_)
+        | AccessTokenVerifyError::RevocationStoreUnavailable(_)
+        | AccessTokenVerifyError::BrowserSessionStoreUnavailable(_)
+        | AccessTokenVerifyError::SigningKeyUnreadable(_) => internal_error(context, err),
+        AccessTokenVerifyError::TokenRejected => unauthorized(RequestRefusal::TokenRejected),
+        AccessTokenVerifyError::Revoked => unauthorized(RequestRefusal::Revoked),
     }
 }
 
@@ -343,31 +343,33 @@ mod tests {
     use super::*;
     use crate::domain::signing_key::KeyMaterialError;
 
-    // Server-side `VerifyError` variants are operator problems → 500; only a
+    // Server-side `AccessTokenVerifyError` variants are operator problems → 500; only a
     // rejected token is a 401. One test per variant so a failure names the
     // exact mapping that broke. The match in `verify_error_response` is
     // exhaustive, so a new variant is a compile error, not a silent 401.
 
     #[test]
     fn no_signing_keys_configured_maps_to_500() {
-        let response = verify_error_response("test", VerifyError::NoSigningKeysConfigured);
+        let response =
+            verify_error_response("test", AccessTokenVerifyError::NoSigningKeysConfigured);
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(stamped_refusal(&response), None, "a 500 is not a refusal");
     }
 
     #[test]
     fn key_store_unavailable_maps_to_500() {
-        let err = VerifyError::KeyStoreUnavailable(AuthorizationServerError::infrastructure(
-            "all_signing_keys failed",
-            "query returned no rows",
-        ));
+        let err =
+            AccessTokenVerifyError::KeyStoreUnavailable(AuthorizationServerError::infrastructure(
+                "all_signing_keys failed",
+                "query returned no rows",
+            ));
         let response = verify_error_response("test", err);
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     #[test]
     fn signing_key_unreadable_maps_to_500() {
-        let err = VerifyError::SigningKeyUnreadable(KeyMaterialError::Decode(
+        let err = AccessTokenVerifyError::SigningKeyUnreadable(KeyMaterialError::Decode(
             base64::DecodeError::InvalidByte(0, b'!'),
         ));
         let response = verify_error_response("test", err);
@@ -390,7 +392,7 @@ mod tests {
 
     #[test]
     fn token_rejected_maps_to_401() {
-        let response = verify_error_response("test", VerifyError::TokenRejected);
+        let response = verify_error_response("test", AccessTokenVerifyError::TokenRejected);
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(
             stamped_refusal(&response),
@@ -402,7 +404,7 @@ mod tests {
     fn revoked_maps_to_401() {
         // A revoked-but-otherwise-valid token is a client problem, not an
         // operator one → 401, same as a plain rejection.
-        let response = verify_error_response("test", VerifyError::Revoked);
+        let response = verify_error_response("test", AccessTokenVerifyError::Revoked);
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(stamped_refusal(&response), Some(RequestRefusal::Revoked));
     }
@@ -411,10 +413,11 @@ mod tests {
     fn revocation_store_unavailable_maps_to_500() {
         // A store read failure fails closed: we can't prove the token is live,
         // so it's an operator-facing 500, never a silent pass.
-        let err = VerifyError::RevocationStoreUnavailable("query returned no rows".to_owned());
+        let err =
+            AccessTokenVerifyError::RevocationStoreUnavailable("query returned no rows".to_owned());
         let response = verify_error_response("test", err);
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
-        let err = VerifyError::BrowserSessionStoreUnavailable(
+        let err = AccessTokenVerifyError::BrowserSessionStoreUnavailable(
             AuthorizationServerError::infrastructure("browser_session_by_sid failed", "locked"),
         );
         let response = verify_error_response("test", err);

@@ -1073,9 +1073,10 @@ honored by `aud=B`, even if the signature is valid.
 
 The `TokenVerifier` accepts only the server's origin, as `iss` and as `aud`;
 every request is served at that origin. Both checks are performed by
-`verify_jwt`'s `VerifyOptions` (`expected_issuer`, `accepted_audiences`) — not
-by manual post-verify checks — so a caller using `verify_jwt` directly is forced
-to pass them and can't silently accept any iss/aud.
+`verify_access_token`'s `AccessTokenVerifyOptions` (`expected_issuer`,
+`accepted_audiences`) — not by manual post-verify checks — so a caller using
+`verify_access_token` directly is forced to pass them and can't silently accept
+any iss/aud.
 
 ### `sub` (subject)
 

@@ -14,13 +14,13 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 
+use crate::domain::access_token::ACCESS_TOKEN_TTL;
 use crate::domain::authority::{
     AuthenticatedClient, ConsumedDeviceRequest, GrantRedemption, PresentedAuthorizationCode,
     RedeemedAuthorizationCode, TokenEntitlement, ValidatedRefreshToken,
 };
 use crate::domain::capabilities::writers::{AccessTokenMinter, RefreshFamilyWriter};
 use crate::domain::client::AllowedGrantType;
-use crate::domain::token::ACCESS_TOKEN_TTL;
 use crate::domain::token_exchange_error::TokenExchangeError;
 use crate::domain::{GrantStore, GrantTx};
 use crate::ports::RevocationCheck;
@@ -291,9 +291,9 @@ mod tests {
     use super::*;
     use crate::crypto_util::pkce::compute_code_challenge;
     use crate::crypto_util::random_token::generate_authorization_code;
+    use crate::domain::access_token::{verify_access_token, AccessTokenVerifyOptions};
     use crate::domain::authorization_code::{AuthorizationCode, AUTHORIZATION_CODE_TTL};
     use crate::domain::client::Client;
-    use crate::domain::token::{verify_jwt, VerifyOptions};
 
     use crate::domain::test_fake::{
         authenticated_public_client, client, seed_active_signing_key, seed_fixture_browser_session,
@@ -395,10 +395,10 @@ mod tests {
             )
             .expect("exchanges");
         assert_eq!(token.granted_scopes, ["openid"]);
-        let claims = verify_jwt(
+        let claims = verify_access_token(
             &token.access_token,
             &exchanger.store.tx().all_signing_keys().unwrap(),
-            &VerifyOptions {
+            &AccessTokenVerifyOptions {
                 expected_issuer: SERVER_ORIGIN,
                 accepted_audiences: &[SERVER_ORIGIN.to_owned()],
             },
