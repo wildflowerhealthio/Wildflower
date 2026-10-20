@@ -28,8 +28,8 @@ interface CoverableItem {
 }
 
 /**
- * A field or variant of a coverable struct or enum, named as rustdoc links
- * it: `Type::field`, `Enum::Variant`, `Enum::Variant::field`, `Tuple::0`.
+ * A named field or variant of a coverable struct or enum, named as rustdoc
+ * links it: `Type::field`, `Enum::Variant`, `Enum::Variant::field`.
  */
 interface CoverableMember {
   readonly symbol: string
@@ -115,31 +115,19 @@ const baseTypeName = (node: Node | null): string | undefined =>
 /** Doc comments sit before a field, past its attributes and visibility. */
 const isDocumented = (node: Node): boolean => docCommentOf(node) !== ''
 
-/** The fields in a struct's or variant's body, as members of `owner`. */
+/**
+ * The named fields in a struct's or variant's body, as members of `owner`. A
+ * tuple's positional fields (`Tuple::0`) aren't listed: rustdoc can't link
+ * them usefully, and the type's or variant's own doc comment covers them.
+ */
 const fieldsOf = (body: Node | null, owner: string): CoverableMember[] => {
-  if (body === null) return []
-  if (body.type === 'field_declaration_list')
-    return body.namedChildren.flatMap((field) => {
-      const name = field?.type === 'field_declaration' ? nameOf(field) : undefined
-      return field === null || name === undefined
-        ? []
-        : [{ symbol: `${owner}::${name}`, kind: 'field' as const, documented: isDocumented(field) }]
-    })
-  // A tuple's fields are bare types; their docs sit before the first part of each.
-  const fields: CoverableMember[] = []
-  let first: Node | undefined
-  for (const child of body.namedChildren) {
-    if (child === null || child.type === 'line_comment' || child.type === 'block_comment') continue
-    first ??= child
-    if (child.type === 'attribute_item' || child.type === 'visibility_modifier') continue
-    fields.push({
-      symbol: `${owner}::${fields.length}`,
-      kind: 'field',
-      documented: isDocumented(first),
-    })
-    first = undefined
-  }
-  return fields
+  if (body?.type !== 'field_declaration_list') return []
+  return body.namedChildren.flatMap((field) => {
+    const name = field?.type === 'field_declaration' ? nameOf(field) : undefined
+    return field === null || name === undefined
+      ? []
+      : [{ symbol: `${owner}::${name}`, kind: 'field' as const, documented: isDocumented(field) }]
+  })
 }
 
 /** The fields of a struct or union, or the variants of an enum and their fields. */

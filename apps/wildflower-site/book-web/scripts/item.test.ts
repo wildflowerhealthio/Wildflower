@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
+  assignAnchors,
   expandDirectives,
   findDirectives,
   indexBook,
@@ -79,6 +80,27 @@ describe('itemAnchor', () => {
     expect(itemAnchor('<Counter as crate::Resettable>::reset')).toBe(
       'item-Counter-as-Resettable--reset'
     )
+  })
+})
+
+describe('assignAnchors', () => {
+  it('keeps the plain anchor unless two items share it, then qualifies those by file stem, then by path', () => {
+    const anchors = assignAnchors([
+      { path: 'c/src/grant.rs', symbol: 'Grant' },
+      { path: 'c/src/grant.rs', symbol: 'tests::at' },
+      { path: 'c/src/client/mod.rs', symbol: 'tests::at' },
+      // The same item twice is one item.
+      { path: 'c/src/grant.rs', symbol: 'tests :: at' },
+      { path: 'c/src/a/started.rs', symbol: 'tests::started' },
+      { path: 'c/src/b/started.rs', symbol: 'tests::started' },
+    ])
+    expect([...anchors.values()]).toEqual([
+      'item-Grant',
+      'item-grant--tests--at',
+      'item-client--tests--at',
+      'item-c--src--a--started--tests--started',
+      'item-c--src--b--started--tests--started',
+    ])
   })
 })
 
@@ -196,6 +218,34 @@ describe('{{#item}}', () => {
       '{{#item sample-ts/sample.ts LIMIT}}: only .rs files can be shown as items',
       `{{#item ${path} Gate}}: another {{#item}} on this page has the anchor item-Gate`,
     ])
+  })
+})
+
+describe('{{#item}} anchors', () => {
+  it('qualifies same-named items from different files, on one page and across the book', async () => {
+    const onePage = await expandOn(
+      `{{#item ${path} tests::at}}\n\n{{#item sample-crate/src/covered.rs tests::at}}`
+    )
+    expect(onePage).toContain('<div id="item-items--tests--at" class="item-anchor"></div>')
+    expect(onePage).toContain('<div id="item-covered--tests--at" class="item-anchor"></div>')
+    const index = indexBook(
+      [
+        { page: 'part/items.md', markdown: `{{#item ${path} tests::at}}` },
+        { page: 'part/other.md', markdown: '{{#item sample-crate/src/covered.rs tests::at}}' },
+        { page: 'part/other.md', markdown: '{{#item sample-crate/src/covered.rs Ticket}}' },
+      ],
+      repoRoot
+    )
+    expect(index.map(({ page, anchor }) => `${page}#${anchor}`)).toEqual([
+      'part/items.md#item-items--tests--at',
+      'part/other.md#item-covered--tests--at',
+      'part/other.md#item-Ticket',
+    ])
+    const { markdown } = await expandDirectives(`{{#item ${path} tests::at}}`, repoRoot, targets, {
+      page: 'part/items.md',
+      index,
+    })
+    expect(markdown).toContain('<div id="item-items--tests--at" class="item-anchor"></div>')
   })
 })
 

@@ -470,22 +470,75 @@ const codeBlock = (
  * segments joined by `--`, each with any character outside `[A-Za-z0-9_]`
  * as `-`. `Client::allows_scopes` → `item-Client--allows_scopes`;
  * `<Counter as Resettable>::reset` → `item-Counter-as-Resettable--reset`.
+ * Where two items in the book share it, `assignAnchors` qualifies it.
  */
 const itemAnchor = (symbol: string): string => {
   const qualified = /^<\s*([A-Za-z_]\w*)\s+as\s+(?:[A-Za-z_]\w*::)*([A-Za-z_]\w*)\s*>::(.+)$/.exec(
     symbol
   )
   const path = qualified ? `${qualified[1]} as ${qualified[2]}::${qualified[3]}` : symbol
-  return `item-${path
-    .split('::')
-    .map((segment) => segment.trim().replace(/[^A-Za-z0-9_]+/g, '-'))
-    .join('--')}`
+  return `item-${path.split('::').map(anchorSegment).join('--')}`
+}
+
+/** A segment of an anchor: any run of characters outside `[A-Za-z0-9_]` as `-`. */
+const anchorSegment = (segment: string): string => segment.trim().replace(/[^A-Za-z0-9_]+/g, '-')
+
+/** An item an `{{#item}}` shows: its file and symbol, as the directive names them. */
+interface ShownItem {
+  /** Repo-root-relative. */
+  readonly path: string
+  readonly symbol: string
+}
+
+/** One key per item, however its symbol is spelt. */
+const shownItemKey = ({ path, symbol }: ShownItem): string => `${path}\0${itemAnchor(symbol)}`
+
+/**
+ * The anchor each item gets, by `shownItemKey`. An item keeps its plain
+ * `itemAnchor` unless another item among `items` has the same one; then each
+ * of those is qualified by its file: `item-<module>--<segments>`, where
+ * `<module>` is the file's stem (its folder's name for a `mod.rs`), or, if
+ * that still leaves two alike or matches another item's plain anchor, the
+ * file's repo-root-relative path without `.rs`, its segments joined by `--`.
+ */
+const assignAnchors = (items: readonly ShownItem[]): ReadonlyMap<string, string> => {
+  const byKey = new Map<string, ShownItem>()
+  for (const item of items) byKey.set(shownItemKey(item), item)
+  const groups = new Map<string, ShownItem[]>()
+  for (const item of byKey.values()) {
+    const plain = itemAnchor(item.symbol)
+    groups.set(plain, [...(groups.get(plain) ?? []), item])
+  }
+  const anchors = new Map<string, string>()
+  for (const [plain, group] of groups) {
+    if (group.length === 1) {
+      anchors.set(shownItemKey(group[0]), plain)
+      continue
+    }
+    const qualified = (qualifier: (path: string) => string): string[] =>
+      group.map((item) => `item-${qualifier(item.path)}--${plain.slice('item-'.length)}`)
+    const byStem = qualified((path) => anchorSegment(fileModuleName(path)))
+    const clean =
+      new Set(byStem).size === group.length && byStem.every((anchor) => !groups.has(anchor))
+    const chosen = clean
+      ? byStem
+      : qualified((path) => path.replace(/\.rs$/, '').split('/').map(anchorSegment).join('--'))
+    group.forEach((item, i) => anchors.set(shownItemKey(item), chosen[i]))
+  }
+  return anchors
+}
+
+/** A file's module name: its stem, or its folder's name for a `mod.rs`. */
+const fileModuleName = (path: string): string => {
+  const stem = posix.basename(path, '.rs')
+  return stem === 'mod' ? posix.basename(posix.dirname(path)) : stem
 }
 
 /** Where an `{{#item}}` renders an item: its page and anchor, and its path in its crate. */
-interface BookIndexEntry {
+interface BookIndexEntry extends ShownItem {
   /** The page of src/ (`authorization-server/domain/client.md`). */
   readonly page: string
+  /** As `assignAnchors` gives it, among every item in the book. */
   readonly anchor: string
   /** `RustCrate.key` of the item's crate. */
   readonly crateKey: string
@@ -504,8 +557,8 @@ type BookIndex = readonly BookIndexEntry[]
 const indexBook = (
   chapters: readonly { readonly page: string; readonly markdown: string }[],
   repoRoot: string
-): BookIndex =>
-  chapters.flatMap(({ page, markdown }) => {
+): BookIndex => {
+  const entries = chapters.flatMap(({ page, markdown }) => {
     let found
     try {
       found = findDirectives(markdown)
@@ -520,13 +573,17 @@ const indexBook = (
       return [
         {
           page,
-          anchor: itemAnchor(directive.symbol),
+          path: directive.path,
+          symbol: directive.symbol,
           crateKey: file.crate.key,
           itemPath: [...file.module, ...symbolSegments(directive.symbol)],
         },
       ]
     })
   })
+  const anchors = assignAnchors(entries)
+  return entries.map((entry) => ({ ...entry, anchor: anchors.get(shownItemKey(entry))! }))
+}
 
 /** The crate and module of a `.rs` file, if a crate holds it. */
 const rustFileAt = (repoRoot: string, path: string): RustFile | undefined => {
@@ -540,7 +597,13 @@ interface PageContext {
   /** The page of src/, `''` outside a book. */
   readonly page: string
   readonly index: BookIndex
+  /** Each item's anchor, by `shownItemKey`, among the book's and this page's items. */
+  readonly anchors?: ReadonlyMap<string, string>
 }
+
+/** The anchor `context` gives the item, or its plain one. */
+const anchorIn = (context: PageContext, item: ShownItem): string =>
+  context.anchors?.get(shownItemKey(item)) ?? itemAnchor(item.symbol)
 
 const samePath = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((segment, i) => segment === b[i])
@@ -709,7 +772,7 @@ const renderItemDirective = async (
     tests.map((test, index) => prose(test, directive.tests[index]))
   )
   const parts = [
-    `<div id="${itemAnchor(directive.symbol)}" class="item-anchor"></div>`,
+    `<div id="${anchorIn(context, directive)}" class="item-anchor"></div>`,
     await prose(item, directive.symbol),
     block(item, KEEPS_MEMBER_DOCS.has(item.kind)),
     ...tests.flatMap((test, index) => [captions[index], block(test, false)]),
@@ -860,10 +923,14 @@ const expandDirectives = async (
       return { markdown, errors: [error.message], references: [], covers: [] }
     throw error
   }
+  const items = found.flatMap(({ directive }) => (directive.kind === 'item' ? [directive] : []))
+  const pageContext: PageContext = {
+    ...context,
+    anchors: assignAnchors([...context.index, ...items]),
+  }
   const anchors = new Set<string>()
-  const duplicateAnchors = found.flatMap(({ directive }) => {
-    if (directive.kind !== 'item') return []
-    const anchor = itemAnchor(directive.symbol)
+  const duplicateAnchors = items.flatMap((directive) => {
+    const anchor = anchorIn(pageContext, directive)
     if (!anchors.has(anchor)) {
       anchors.add(anchor)
       return []
@@ -872,7 +939,13 @@ const expandDirectives = async (
   })
   const rendered = await Promise.all(
     found.map(({ directive, start }) =>
-      renderDirective(directive, repoRoot, targets, context, headingLevelAt(markdown, start)).then(
+      renderDirective(
+        directive,
+        repoRoot,
+        targets,
+        pageContext,
+        headingLevelAt(markdown, start)
+      ).then(
         ({ text, references }) => ({ text, references, error: undefined }),
         (error: unknown) => {
           if (!(error instanceof DirectiveError)) throw error
@@ -915,6 +988,7 @@ export type {
 }
 export {
   DirectiveError,
+  assignAnchors,
   chaptersOf,
   codeIndexPage,
   codeIndexSlug,

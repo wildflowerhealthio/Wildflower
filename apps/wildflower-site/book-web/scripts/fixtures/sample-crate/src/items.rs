@@ -67,4 +67,9 @@ mod tests {
     fn issuing_keeps_the_ticket() {
         assert_eq!(Pass::issue(Ticket::new(2)).ok().map(|p| p.ticket.id()), Some(2));
     }
+
+    /// A helper named as one in `covered.rs` is, for anchors to tell apart.
+    fn at(id: u32) -> Ticket {
+        Ticket::new(id)
+    }
 }

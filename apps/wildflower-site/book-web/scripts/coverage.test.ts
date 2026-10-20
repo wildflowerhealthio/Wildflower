@@ -39,7 +39,7 @@ describe('coverableFile', () => {
     ])
   })
 
-  it('says which items, fields and variants have a doc comment', async () => {
+  it('says which items, named fields and variants have a doc comment, leaving out a tuple’s positional fields', async () => {
     const { items, members } = await coverableFile(source)
     expect(items.filter((item) => item.documented).map(({ symbol }) => symbol)).toEqual([
       'Ticket',
@@ -50,8 +50,6 @@ describe('coverableFile', () => {
       { symbol: 'Ticket::id', kind: 'field', documented: false },
       { symbol: 'Stage::Issued', kind: 'variant', documented: true },
       { symbol: 'Stage::Used', kind: 'variant', documented: false },
-      { symbol: 'Stage::Used::0', kind: 'field', documented: true },
-      { symbol: 'Stage::Used::1', kind: 'field', documented: false },
     ])
   })
 })
@@ -94,7 +92,6 @@ describe('coverageReport', () => {
       { path, symbol: 'tests::an_async_unit_test', kind: 'test' },
       { path, symbol: 'Ticket::id', kind: 'field' },
       { path, symbol: 'Stage::Used', kind: 'variant' },
-      { path, symbol: 'Stage::Used::1', kind: 'field' },
     ])
   })
 
@@ -134,9 +131,8 @@ describe('coverageReport', () => {
         `  WARNING: ${path} an_integration_style_test`,
         `  WARNING: ${path} tests::a_ticket_keeps_its_id`,
         `  WARNING: ${path} tests::an_async_unit_test`,
-        'undocumented fields: 2 without a doc comment:',
+        'undocumented fields: 1 without a doc comment:',
         `  WARNING: ${path} Ticket::id`,
-        `  WARNING: ${path} Stage::Used::1`,
         'undocumented variants: 1 without a doc comment:',
         `  WARNING: ${path} Stage::Used`,
         'tests: 2/4 shown; 2 not shown by {{#item tests=…}} or {{#code}}:',

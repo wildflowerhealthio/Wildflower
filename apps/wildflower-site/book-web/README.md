@@ -2,9 +2,9 @@
 
 The book at `wildflowerhealth.io/book/`: the code read in domain order. Each
 part takes one component and opens with an introduction to who is involved and
-how the code is layered. Its domain chapters then give each entity a page, a
-section per method with the unit tests that exercise it, in the order the
-concepts build on each other; its integration-test chapters give each test a
+how the code is layered. Its domain chapters then give each entity a page,
+each item its doc comment, its code and the unit tests that hold it, in the
+order the concepts build on each other; its integration-test chapters give each test a
 section, saying what the test holds the server to and linking the domain
 sections it relies on. [mdbook](https://rust-lang.github.io/mdBook/) renders
 it, in its stock look: the sidebar, search, and previous and next.
@@ -129,8 +129,11 @@ in order:
 4. for a field or variant (`Type::field`), its type, as in 3;
 5. nowhere: the link's text alone, as inline code.
 
-A path outside the crate (`std::…`, another crate) ends at 5. Links to URLs
-stay as written.
+A path outside the crate (`std::…`, another crate) ends at 5. As rustdoc
+does, a path's generic arguments are dropped before it is read
+(``[`AsRef<str>`]`` names `AsRef`, ``[`Pass<T>`]`` names `Pass`), and a
+bare ``[`X`]`` whose text is no path (``[`&str`]``, ``[`a + b`]``) is its
+text alone. Links to URLs stay as written.
 
 Each `{{#item}}` puts `<div id="item-…">` before its prose, so a link can
 land on it: `item-`, then the symbol's segments joined by `--`, each with any
@@ -143,9 +146,33 @@ character outside `[A-Za-z0-9_]` as `-`.
 | `tests::a_test`                    | `item-tests--a_test`                |
 | `"<Counter as Resettable>::reset"` | `item-Counter-as-Resettable--reset` |
 
-Two `{{#item}}`s with one anchor on a page fail the build. A chapter's own
-link to an item is `[text](#item-Client--allows_scopes)` on its page, or the
-other chapter's file with that anchor.
+That plain anchor is kept unless another item shown anywhere in the book has
+the same one, as same-named test helpers in different files do
+(`tests::at`). Then each of those items is qualified by its file:
+`item-<module>--<segments>`, where `<module>` is the file's stem, or its
+folder's name for a `mod.rs`. If that still leaves two alike, or lands on
+another item's plain anchor, each is qualified by its whole path from the
+repository root, without `.rs`, its segments joined by `--`.
+
+| Shown items                                                      | Anchors                                                                              |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `x/src/grant.rs tests::at` alone                                 | `item-tests--at`                                                                     |
+| `x/src/grant.rs tests::at` and `x/src/client/mod.rs tests::at`   | `item-grant--tests--at`, `item-client--tests--at`                                    |
+| `x/src/a/started.rs tests::started` and `x/src/b/started.rs` too | `item-x--src--a--started--tests--started`, `item-x--src--b--started--tests--started` |
+
+The same item shown on two pages is one item, with one anchor on each. The
+same item twice on one page fails the build. Doc links land on whichever
+anchor the item got. A chapter's own link to an item is
+`[text](#item-Client--allows_scopes)` on its page, or the other chapter's
+file with that anchor.
+
+markdownlint can't see these anchors, as they only exist once the book is
+built. The repository's config lets them through: `link-fragments` (MD051)
+ignores a fragment starting `item-` (`.markdownlint-cli2.mjs`), and the local
+config's `relative-links` rule ignores one in a link to another file
+(`.local.markdownlint-cli2.mjs`). It applies repository-wide, as
+markdownlint-cli2 can't scope a rule's options to a glob, but only the book's
+chapters link to `#item-` anchors.
 
 ```text
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/client.rs Client::allows_scopes tests="allows_scopes_tests::allows_scopes_is_coverage_aware"}}
@@ -177,8 +204,10 @@ as `{{#code}}`'s must.
 
 After expanding every page, the build prints the count and a warning per
 coverable item no directive names; then, a list per kind, the coverable
-items, tests, fields and variants (of the coverable structs and enums,
-`Type::field`, `Enum::Variant`, `Tuple::0`) with no doc comment; then each
+items, tests, named fields and variants (of the coverable structs and enums,
+`Type::field`, `Enum::Variant`, `Enum::Variant::field`) with no doc comment;
+a tuple's positional fields (`Tuple::0`) aren't listed, as the type's or
+variant's own doc comment covers them; then each
 test that no `{{#item tests=…}}` or `{{#code}}` shows, which a
 `{{#code-link}}` or `{{#covered}}` doesn't. None of it fails the build: the
 lists say where the book and the doc comments have fallen behind the code.
@@ -232,6 +261,6 @@ vp run build-book --out /tmp/site/book
 python3 -m http.server -d /tmp/site   # then open /book/
 ```
 
-`vp test` covers the directive parser, the item finders, `{{#item}}`'s doc
-comment rendering and link resolution, and the coverage listing, against the
+`vp test` covers the directive parser, the item finders, `{{#item}}`'s
+anchors, doc comment rendering and link resolution, and the coverage listing, against the
 sources in `scripts/fixtures/`.

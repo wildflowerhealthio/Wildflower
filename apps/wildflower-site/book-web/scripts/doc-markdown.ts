@@ -4,6 +4,9 @@
 //   `[`X`]` with a `[`X`]: crate::…` definition) go wherever `resolve` says,
 //   or become their text (inline code, mostly) when it says nowhere. The
 //   definitions' lines are dropped. Links to URLs and anchors stay as written.
+//   As rustdoc does, a path's generic arguments are dropped before it is
+//   resolved (`[`AsRef<str>`]` names `AsRef`), and a bare `[`X`]` whose text
+//   is no path at all (`[`a + b`]`) is its text alone.
 // - Headings (`# Errors`, `# Panics`) are demoted: `#` becomes `headingLevel`
 //   `#`s, `##` one more, up to six.
 // - A code block with no language, or rustdoc's attributes for one
@@ -22,6 +25,18 @@ interface DocMarkdownOptions {
 
 /** A link destination rustdoc reads as a path to an item, not a URL. */
 const RUST_PATH = /^(?:[a-z]+@)?[A-Za-z_]\w*(?:::[A-Za-z_]\w*)*(?:\(\)|!)?$/
+
+/** `path` without its generic arguments: `Vec<Option<T>>::new` → `Vec::new`. */
+const withoutGenerics = (path: string): string => {
+  let out = ''
+  let depth = 0
+  for (const char of path) {
+    if (char === '<') depth++
+    else if (char === '>' && depth > 0) depth--
+    else if (depth === 0) out += char
+  }
+  return depth === 0 ? out.trim() : path
+}
 
 /** A reference definition's line: `[label]: destination`, optionally titled. */
 const DEFINITION =
@@ -124,9 +139,11 @@ const resolveLinks = async (
 ): Promise<string> => {
   // What each link becomes is resolved after the scan, as `resolve` is async.
   const parts: Promise<string>[] = []
-  const link = async (text: string, destination: string): Promise<string> => {
-    if (!RUST_PATH.test(destination)) return `[${text}](${destination})`
-    const url = await resolve(destination)
+  /** `implied`: the destination is the link's own text, as in a bare `[`X`]`. */
+  const link = async (text: string, destination: string, implied = false): Promise<string> => {
+    const path = withoutGenerics(destination)
+    if (!RUST_PATH.test(path)) return implied ? text : `[${text}](${destination})`
+    const url = await resolve(path)
     return url === undefined ? text : `[${text}](${url})`
   }
   let at = 0
@@ -170,7 +187,8 @@ const resolveLinks = async (
       const destination = definitions.get(normalizeLabel(text))
       // A bare `[`X`]` is an intra-doc link; plain `[x]` is only text.
       if (destination !== undefined) replaced = { end, to: link(text, destination) }
-      else if (/^`[^`]+`$/.test(text.trim())) replaced = { end, to: link(text, labelPath(text)) }
+      else if (/^`[^`]+`$/.test(text.trim()))
+        replaced = { end, to: link(text, labelPath(text), true) }
     }
     if (replaced === undefined) {
       i++

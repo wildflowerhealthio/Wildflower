@@ -41,6 +41,14 @@ describe('renderDocMarkdown', () => {
     )
   })
 
+  it('resolves a generic link by its path without the generics, and shows text that is no path as code', async () => {
+    const rendered = await renderDocMarkdown(
+      'Takes [`AsRef<str>`], [`Pass<T>`], [a list](Vec<Option<T>>), [`a + b`] and [`&str`].',
+      { headingLevel: 2, resolve: known('Pass') }
+    )
+    expect(rendered).toBe('Takes `AsRef<str>`, [`Pass<T>`](#Pass), a list, `a + b` and `&str`.')
+  })
+
   it('demotes headings below the given level, at most to six, but not in code blocks', async () => {
     const rendered = await renderDocMarkdown(
       '# Errors\n\nFails.\n\n## Detail\n\n```text\n# not a heading\n```\n\n###### Deep',
