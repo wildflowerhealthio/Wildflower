@@ -11,7 +11,9 @@
 //! and the column types more than one concern binds (`JsonStrings`,
 //! `UrlText`, the `FlowType` mapping). `grants` is a folder split by kind
 //! (its `authorization_code_grants` / `device_grants` tables, and the
-//! cross-kind `grants` view).
+//! cross-kind `grants` view), and `authorization_requests` one split by table
+//! (`code_authorization_requests`, and `user_code_requests` for device
+//! requests and browser pairings).
 
 pub(crate) mod authorization_codes;
 mod authorization_requests;

@@ -94,10 +94,11 @@ Don't fight it per-field. Give that one table a **private** `#[derive(Queryable,
 Selectable, Insertable)]` row struct in `db/` whose fields **are** the wrapper
 types (`Option<UrlText>`, `Option<JsonStrings>` — the blanket `Option<T: ToSql /
 FromSql>` impls cover `Nullable`), and convert to/from the domain type with
-`From` at the query boundary. In the authorization server only `authorization_requests` needs
-this (`authorization-server-rust/src/db/authorization_requests.rs`, the private `Row`
-struct + its two `From` impls); every other table maps its domain struct
-directly.
+`From` at the query boundary. In the authorization server only the authorization requests need
+this (`authorization-server-rust/src/db/authorization_requests/`, a private row
+struct per table, `code_authorization_requests` and `user_code_requests`, each
+read into the flow's struct by `TryFrom` and written from it by `From`); every
+other table maps its domain struct directly.
 
 Two adjacent facts:
 

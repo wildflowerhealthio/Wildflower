@@ -44,9 +44,10 @@ use polled::Polled as _;
 /// against a device's or pairing's last poll with `slow_down`.
 pub const DEVICE_CODE_POLL_INTERVAL: Duration = Duration::seconds(5);
 
-/// The flow a request belongs to, as stored in the `grant_type` column: one of
-/// the two OAuth grant flows, or a browser pairing, which is no OAuth grant.
-/// The cross-kind `grants` view tags its rows with the flow that earned them.
+/// The flow a request belongs to: one of the two OAuth grant flows, or a
+/// browser pairing, which is no OAuth grant. The store keeps a device
+/// request's or pairing's flow in its `flow` column, and the cross-kind
+/// `grants` view tags its rows with the flow that earned them.
 ///
 /// `strum` derives the `&str` ↔ enum conversions from the `snake_case` variant
 /// names — `AuthorizationCode` → `"authorization_code"`, `DeviceCode` →

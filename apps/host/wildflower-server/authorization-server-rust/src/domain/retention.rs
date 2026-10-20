@@ -1,4 +1,4 @@
-//! Retention policy for the authorization server's four accumulating tables — the
+//! Retention policy for the authorization server's accumulating tables — the
 //! windows themselves plus `purge_expired`, the sweep that applies them.
 //!
 //! Each window is measured **past the row's own `expires_at`** (or, for a
@@ -41,8 +41,12 @@ pub struct PurgedCounts {
     /// Refresh-token **families** deleted. Their tokens went with them; the
     /// token rows are not counted separately.
     pub refresh_token_families: usize,
-    /// Authorization requests deleted.
-    pub authorization_requests: usize,
+    /// Code-flow authorization requests deleted, from
+    /// `code_authorization_requests`.
+    pub code_authorization_requests: usize,
+    /// Device requests and browser pairings deleted, from
+    /// `user_code_requests`.
+    pub user_code_requests: usize,
     /// Authorization codes deleted.
     pub authorization_codes: usize,
     /// Browser sessions deleted.
@@ -54,7 +58,8 @@ impl PurgedCounts {
     #[must_use]
     pub fn is_empty(self) -> bool {
         self.refresh_token_families == 0
-            && self.authorization_requests == 0
+            && self.code_authorization_requests == 0
+            && self.user_code_requests == 0
             && self.authorization_codes == 0
             && self.browser_sessions == 0
     }
@@ -71,7 +76,7 @@ impl PurgedCounts {
 ///
 /// # Errors
 ///
-/// [`AuthorizationServerError::Infrastructure`] if the scope or any of the four
+/// [`AuthorizationServerError::Infrastructure`] if the scope or any of the
 /// deletes fails — rolled back, so a failure leaves the retained set as it was.
 pub(crate) fn purge_expired(
     store: &impl GrantStore,
@@ -84,8 +89,9 @@ pub(crate) fn purge_expired(
         Ok(PurgedCounts {
             refresh_token_families: tx
                 .delete_refresh_token_families_expired_before(family_cutoff)?,
-            authorization_requests: tx
-                .delete_authorization_requests_expired_before(authorization_cutoff)?,
+            code_authorization_requests: tx
+                .delete_code_requests_expired_before(authorization_cutoff)?,
+            user_code_requests: tx.delete_polled_requests_expired_before(authorization_cutoff)?,
             authorization_codes: tx
                 .delete_authorization_codes_expired_before(authorization_cutoff)?,
             browser_sessions: tx.delete_browser_sessions_ended_before(browser_session_cutoff)?,
@@ -98,9 +104,10 @@ mod tests {
     use super::*;
     use crate::domain::authorization_code::AuthorizationCode;
     use crate::domain::authorization_request::device::{DeviceRequest, NewDeviceRequestArgs};
+    use crate::domain::authorization_request::RequestStatus;
     use crate::domain::browser_session::{BrowserSession, BrowserSessionKind};
     use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
-    use crate::domain::test_fake::FakeGrantStore;
+    use crate::domain::test_fake::{code_request, FakeGrantStore};
 
     /// A fixed "now" so every fixture below can be placed relative to it
     /// without a clock read — the windows are the thing under test, not the
@@ -218,6 +225,14 @@ mod tests {
             .expect("seed old request");
         store
             .tx()
+            .insert_code_request(&code_request(
+                "old-code",
+                RequestStatus::Denied,
+                now() - Duration::days(8),
+            ))
+            .expect("seed old code request");
+        store
+            .tx()
             .insert_device_request(&request("recent", now() - Duration::days(6)))
             .expect("seed recent request");
         store
@@ -266,7 +281,8 @@ mod tests {
             purged,
             PurgedCounts {
                 refresh_token_families: 1,
-                authorization_requests: 1,
+                code_authorization_requests: 1,
+                user_code_requests: 1,
                 authorization_codes: 1,
                 browser_sessions: 1,
             },
@@ -395,9 +411,10 @@ mod tests {
             later.browser_sessions, 2,
             "the 23-hour-ended one + the one only a now-dead family named"
         );
+        assert_eq!(later.user_code_requests, 2, "the 6-day-old + the live one");
         assert_eq!(
-            later.authorization_requests, 2,
-            "the 6-day-old + the live one"
+            later.code_authorization_requests, 0,
+            "the old one went first"
         );
         assert_eq!(later.authorization_codes, 2);
         assert!(store

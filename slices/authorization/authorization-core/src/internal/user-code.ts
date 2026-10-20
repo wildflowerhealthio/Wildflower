@@ -4,7 +4,7 @@
  * Alphabet: 20 unambiguous consonants. The default 8-char shape is two
  * blocks of 4 (e.g. "BCDF-GHJK") for ~1.6 × 10^10 distinct codes —
  * enough that brute-forcing under the 5-minute TTL of an
- * `authorizationRequests` row is infeasible without rate limiting (the
+ * `userCodeRequests` row is infeasible without rate limiting (the
  * device-flow approval endpoint also requires a valid Owner Bearer
  * token).
  *

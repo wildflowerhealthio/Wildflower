@@ -204,11 +204,15 @@ A pending authorization that has been started but not yet resolved: an
 OAuth 2.0 request of either grant flow, or a [browser pairing](#browser-pairing),
 which is no OAuth grant.
 
-- **Table:** `authorizationRequests`
-- **Discriminator:** `grantType: 'authorization_code' | 'device_code' | 'browser_pairing'`
-  (the two OAuth flows match the OAuth `grant_type` request parameter).
-- **Status field:**
-  `'awaiting_limited_page' | 'pending' | 'approved' | 'denied' | 'claimed'`.
+- **Tables:** `code_authorization_requests` (the code flow's), and
+  `user_code_requests` (device requests and pairings, keyed by a `userCode`
+  and claimed by a poll).
+- **Discriminator:** in `user_code_requests`,
+  `flow: 'device_code' | 'browser_pairing'` (`device_code` matches the OAuth
+  `grant_type` request parameter). The code table holds one flow and needs none.
+- **Status field:** `'awaiting_limited_page' | 'pending' | 'approved' | 'denied'`
+  for a code request; `'pending' | 'approved' | 'denied' | 'claimed'` for a
+  device request or pairing.
   Expiry is read from `expiresAt`, never stored as a status;
   `awaiting_limited_page` is a code-flow request waiting on its browser's
   [limited page](#limited-page); `claimed` is an approved device request or
@@ -225,7 +229,6 @@ Code-flow rows carry the OAuth client's PKCE `code_challenge`,
 `redirect_uri`, requested `scope`, and the `state` parameter. A code-flow row
 started by a SMART App Launch also carries the consumed `launch` and the
 patient its [LaunchContext](#launchcontext) binds (`launch_bound_patient`).
-Device-flow rows leave those columns null.
 
 A code-flow row whose browser session falls short of what it asks for parks
 as `awaiting_limited_page` until its browser goes on from the

@@ -10,7 +10,7 @@ use crate::domain::authorization_request::code::CodeRequest;
 use crate::domain::authorization_request::device::DeviceRequest;
 use crate::domain::authorization_request::pairing::PairingRequest;
 use crate::domain::authorization_request::polled::PolledRequest;
-use crate::domain::authorization_request::AuthorizationRequest;
+use crate::domain::authorization_request::{AuthorizationRequest, RequestStatus};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::browser_session::BrowserSession;
 use crate::domain::client::Client;
@@ -97,112 +97,125 @@ impl SigningKeysTx for FakeGrantTx<'_> {
 }
 
 impl FakeGrantTx<'_> {
-    /// The request keyed `id`, if it is of the flow `of_flow` picks out.
-    fn flow_request<R>(
+    /// The device request or pairing keyed `id`, if `of_flow` picks it out.
+    fn user_code_request<R>(
         &self,
         id: &str,
-        of_flow: impl FnOnce(AuthorizationRequest) -> Option<R>,
+        of_flow: impl FnOnce(PolledRequest) -> Option<R>,
     ) -> Option<R> {
         self.store
-            .authorization_requests
+            .user_code_requests
             .borrow()
             .get(id)
             .cloned()
             .and_then(of_flow)
     }
 
-    /// The polled request bearing `user_code` that `admits` lets through.
+    /// The device request or pairing bearing `user_code` that `admits` lets
+    /// through.
     fn polled_request(
         &self,
         user_code: &str,
         admits: impl Fn(&AuthorizationRequest) -> bool,
     ) -> Option<PolledRequest> {
         self.store
-            .authorization_requests
+            .user_code_requests
             .borrow()
             .values()
-            .filter(|request| request.user_code() == Some(user_code) && admits(request))
-            .find_map(|request| match request.clone() {
-                AuthorizationRequest::Device(device_request) => {
-                    Some(PolledRequest::Device(device_request))
-                }
-                AuthorizationRequest::Pairing(pairing_request) => {
-                    Some(PolledRequest::Pairing(pairing_request))
-                }
-                AuthorizationRequest::Code(_) => None,
+            .find(|request| {
+                request.user_code() == user_code
+                    && admits(&AuthorizationRequest::from((*request).clone()))
             })
+            .cloned()
     }
 
-    /// Insert `request`, as the adapter's inserts do.
-    fn insert(&self, request: AuthorizationRequest) {
-        self.store
-            .authorization_requests
-            .borrow_mut()
-            .insert(request.id().to_owned(), request);
-    }
-
-    /// The guarded replace: write `changed` over the row of `read_id` while
-    /// it is still of `changed`'s flow and has `read_status`.
-    fn replace(
+    /// The guarded replace of a device request or pairing: write `changed`
+    /// over the entry of `read_id` while it is still of `changed`'s flow and
+    /// has `read_status`.
+    fn replace_user_code_request(
         &self,
         read_id: &str,
-        read_status: crate::domain::authorization_request::RequestStatus,
-        changed: AuthorizationRequest,
+        read_status: RequestStatus,
+        changed: PolledRequest,
     ) -> Result<bool, AuthorizationServerError> {
         if changed.id() != read_id {
-            return Err(AuthorizationServerError::infrastructure(
-                "replace_authorization_request refused",
-                format!("request {read_id} replaced by request {}", changed.id()),
-            ));
+            return Err(replaced_by_another(read_id, changed.id()));
         }
-        let mut requests = self.store.authorization_requests.borrow_mut();
+        let mut requests = self.store.user_code_requests.borrow_mut();
         let Some(stored) = requests.get_mut(read_id) else {
             return Ok(false);
         };
-        if stored.flow_type() != changed.flow_type() || stored.status() != read_status {
-            return Ok(false);
+        let stored_as_read = match (&*stored, &changed) {
+            (PolledRequest::Device(stored), PolledRequest::Device(_)) => {
+                stored.state.status() == read_status
+            }
+            (PolledRequest::Pairing(stored), PolledRequest::Pairing(_)) => {
+                stored.state.status() == read_status
+            }
+            _ => false,
+        };
+        if stored_as_read {
+            *stored = changed;
         }
-        *stored = changed;
-        Ok(true)
+        Ok(stored_as_read)
     }
 }
 
+/// A replace refused because `changed_id` names another request than
+/// `read_id`.
+fn replaced_by_another(read_id: &str, changed_id: &str) -> AuthorizationServerError {
+    AuthorizationServerError::infrastructure(
+        "replace_authorization_request refused",
+        format!("request {read_id} replaced by request {changed_id}"),
+    )
+}
+
 impl AuthorizationRequestsTx for FakeGrantTx<'_> {
+    /// Mirrors the adapter: the code map first, then the user-code map.
     fn authorization_request_by_id(
         &mut self,
         id: &str,
     ) -> Result<Option<AuthorizationRequest>, AuthorizationServerError> {
-        Ok(self.flow_request(id, Some))
+        if let Some(code_request) = self.code_request_by_id(id)? {
+            return Ok(Some(AuthorizationRequest::Code(code_request)));
+        }
+        Ok(self.user_code_request(id, |request| Some(AuthorizationRequest::from(request))))
     }
 
     fn code_request_by_id(
         &mut self,
         id: &str,
     ) -> Result<Option<CodeRequest>, AuthorizationServerError> {
-        Ok(self.flow_request(id, |request| match request {
-            AuthorizationRequest::Code(code_request) => Some(code_request),
-            AuthorizationRequest::Device(_) | AuthorizationRequest::Pairing(_) => None,
-        }))
+        Ok(self
+            .store
+            .code_authorization_requests
+            .borrow()
+            .get(id)
+            .cloned())
     }
 
     fn device_request_by_id(
         &mut self,
         device_code: &str,
     ) -> Result<Option<DeviceRequest>, AuthorizationServerError> {
-        Ok(self.flow_request(device_code, |request| match request {
-            AuthorizationRequest::Device(device_request) => Some(device_request),
-            AuthorizationRequest::Code(_) | AuthorizationRequest::Pairing(_) => None,
-        }))
+        Ok(
+            self.user_code_request(device_code, |request| match request {
+                PolledRequest::Device(device_request) => Some(device_request),
+                PolledRequest::Pairing(_) => None,
+            }),
+        )
     }
 
     fn pairing_request_by_id(
         &mut self,
         pairing_code: &str,
     ) -> Result<Option<PairingRequest>, AuthorizationServerError> {
-        Ok(self.flow_request(pairing_code, |request| match request {
-            AuthorizationRequest::Pairing(pairing_request) => Some(pairing_request),
-            AuthorizationRequest::Code(_) | AuthorizationRequest::Device(_) => None,
-        }))
+        Ok(
+            self.user_code_request(pairing_code, |request| match request {
+                PolledRequest::Pairing(pairing_request) => Some(pairing_request),
+                PolledRequest::Device(_) => None,
+            }),
+        )
     }
 
     fn polled_request_by_user_code(
@@ -217,34 +230,64 @@ impl AuthorizationRequestsTx for FakeGrantTx<'_> {
         user_code: &str,
     ) -> Result<Option<PolledRequest>, AuthorizationServerError> {
         Ok(self.polled_request(user_code, |request| {
-            request.status() == crate::domain::authorization_request::RequestStatus::Pending
+            request.status() == RequestStatus::Pending
         }))
     }
 
+    /// Mirrors the adapter's two reads: the newest candidate from each map
+    /// (of two started at once, the greater id), keeping the later by
+    /// `requested_at`, and on a tie the code request.
     fn owner_prompt(
         &mut self,
         now: DateTime<Utc>,
     ) -> Result<Option<OwnerPrompt>, AuthorizationServerError> {
-        let requests = self.store.authorization_requests.borrow();
         let clients = self.store.clients.borrow();
         // Mirrors the SQL: a disabled client's request is skipped, a client
         // with no row's kept.
-        let client_disabled = |client_id: &str| {
-            clients
-                .get(client_id)
-                .is_some_and(|client| client.disabled_at.is_some())
+        let is_candidate = |request: &AuthorizationRequest| {
+            request.is_pending_at(now)
+                && clients
+                    .get(request.client_id())
+                    .is_none_or(|client| client.disabled_at.is_none())
         };
-        let newest = requests
-            .values()
-            .filter(|request| request.is_pending_at(now) && !client_disabled(request.client_id()))
-            .max_by_key(|request| request.requested_at());
-        Ok(newest.map(|request| {
+        let newest = |requests: Vec<AuthorizationRequest>| {
+            requests
+                .into_iter()
+                .filter(is_candidate)
+                .max_by(|a, b| (a.requested_at(), a.id()).cmp(&(b.requested_at(), b.id())))
+        };
+        let code = newest(
+            self.store
+                .code_authorization_requests
+                .borrow()
+                .values()
+                .cloned()
+                .map(AuthorizationRequest::Code)
+                .collect(),
+        );
+        let polled = newest(
+            self.store
+                .user_code_requests
+                .borrow()
+                .values()
+                .cloned()
+                .map(AuthorizationRequest::from)
+                .collect(),
+        );
+        let later = match (code, polled) {
+            (Some(code), Some(polled)) if polled.requested_at() > code.requested_at() => {
+                Some(polled)
+            }
+            (Some(code), _) => Some(code),
+            (None, polled) => polled,
+        };
+        Ok(later.map(|request| {
             // Mirrors the SQL left join: a client with no registration has no
             // registered name.
             let registered_client_name = clients
                 .get(request.client_id())
                 .map(|client| client.name.clone());
-            OwnerPrompt::for_request(request, registered_client_name)
+            OwnerPrompt::for_request(&request, registered_client_name)
         }))
     }
 
@@ -273,7 +316,10 @@ impl AuthorizationRequestsTx for FakeGrantTx<'_> {
         &mut self,
         request: &CodeRequest,
     ) -> Result<(), AuthorizationServerError> {
-        self.insert(AuthorizationRequest::Code(request.clone()));
+        self.store
+            .code_authorization_requests
+            .borrow_mut()
+            .insert(request.id.clone(), request.clone());
         Ok(())
     }
 
@@ -281,7 +327,10 @@ impl AuthorizationRequestsTx for FakeGrantTx<'_> {
         &mut self,
         request: &DeviceRequest,
     ) -> Result<(), AuthorizationServerError> {
-        self.insert(AuthorizationRequest::Device(request.clone()));
+        self.store
+            .user_code_requests
+            .borrow_mut()
+            .insert(request.id.clone(), PolledRequest::Device(request.clone()));
         Ok(())
     }
 
@@ -289,7 +338,10 @@ impl AuthorizationRequestsTx for FakeGrantTx<'_> {
         &mut self,
         request: &PairingRequest,
     ) -> Result<(), AuthorizationServerError> {
-        self.insert(AuthorizationRequest::Pairing(request.clone()));
+        self.store
+            .user_code_requests
+            .borrow_mut()
+            .insert(request.id.clone(), PolledRequest::Pairing(request.clone()));
         Ok(())
     }
 
@@ -298,11 +350,18 @@ impl AuthorizationRequestsTx for FakeGrantTx<'_> {
         read: &CodeRequest,
         changed: &CodeRequest,
     ) -> Result<bool, AuthorizationServerError> {
-        self.replace(
-            &read.id,
-            read.state.status(),
-            AuthorizationRequest::Code(changed.clone()),
-        )
+        if changed.id != read.id {
+            return Err(replaced_by_another(&read.id, &changed.id));
+        }
+        let mut requests = self.store.code_authorization_requests.borrow_mut();
+        let Some(stored) = requests.get_mut(&read.id) else {
+            return Ok(false);
+        };
+        if stored.state.status() != read.state.status() {
+            return Ok(false);
+        }
+        *stored = changed.clone();
+        Ok(true)
     }
 
     fn replace_device_request(
@@ -310,10 +369,10 @@ impl AuthorizationRequestsTx for FakeGrantTx<'_> {
         read: &DeviceRequest,
         changed: &DeviceRequest,
     ) -> Result<bool, AuthorizationServerError> {
-        self.replace(
+        self.replace_user_code_request(
             &read.id,
             read.state.status(),
-            AuthorizationRequest::Device(changed.clone()),
+            PolledRequest::Device(changed.clone()),
         )
     }
 
@@ -322,20 +381,32 @@ impl AuthorizationRequestsTx for FakeGrantTx<'_> {
         read: &PairingRequest,
         changed: &PairingRequest,
     ) -> Result<bool, AuthorizationServerError> {
-        self.replace(
+        self.replace_user_code_request(
             &read.id,
             read.state.status(),
-            AuthorizationRequest::Pairing(changed.clone()),
+            PolledRequest::Pairing(changed.clone()),
         )
     }
 
-    fn delete_authorization_requests_expired_before(
+    fn delete_code_requests_expired_before(
         &mut self,
         cutoff: DateTime<Utc>,
     ) -> Result<usize, AuthorizationServerError> {
-        let mut requests = self.store.authorization_requests.borrow_mut();
+        let mut requests = self.store.code_authorization_requests.borrow_mut();
         let before = requests.len();
-        requests.retain(|_, request| request.expires_at() >= cutoff);
+        requests.retain(|_, request| request.expires_at >= cutoff);
+        Ok(before - requests.len())
+    }
+
+    fn delete_polled_requests_expired_before(
+        &mut self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<usize, AuthorizationServerError> {
+        let mut requests = self.store.user_code_requests.borrow_mut();
+        let before = requests.len();
+        requests.retain(|_, request| {
+            AuthorizationRequest::from(request.clone()).expires_at() >= cutoff
+        });
         Ok(before - requests.len())
     }
 }

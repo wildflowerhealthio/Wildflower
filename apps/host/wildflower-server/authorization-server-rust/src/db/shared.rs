@@ -160,9 +160,9 @@ impl diesel::serialize::ToSql<diesel::sql_types::Text, diesel::sqlite::Sqlite> f
     }
 }
 
-// The `grant_type` discriminant is bound by both `authorization_requests` (a
-// request's flow) and the cross-kind `grants` view (the flow that earned a
-// grant), so its mapping is shared. The
+// The flow discriminant is bound by both `user_code_requests.flow` (a device
+// request's or browser pairing's flow) and the cross-kind `grants` view's
+// `grant_type` (the flow that earned a grant), so its mapping is shared. The
 // enum's `AsExpression`/`FromSqlRow` derives live on its definition in
 // `domain::authorization_request`.
 text_enum_column!(crate::domain::authorization_request::FlowType);

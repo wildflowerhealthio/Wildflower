@@ -13,7 +13,8 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use crate::domain::authorization_code::AuthorizationCode;
-use crate::domain::authorization_request::AuthorizationRequest;
+use crate::domain::authorization_request::code::CodeRequest;
+use crate::domain::authorization_request::polled::PolledRequest;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::browser_session::BrowserSession;
 use crate::domain::client::Client;
@@ -47,7 +48,9 @@ pub(crate) struct FakeGrantStore {
 pub(crate) struct FakeTables {
     clients: RefCell<HashMap<String, Client>>,
     signing_keys: RefCell<Vec<SigningKey>>,
-    authorization_requests: RefCell<HashMap<String, AuthorizationRequest>>,
+    code_authorization_requests: RefCell<HashMap<String, CodeRequest>>,
+    /// The device requests and browser pairings, in one map as in one table.
+    user_code_requests: RefCell<HashMap<String, PolledRequest>>,
     authorization_codes: RefCell<HashMap<String, AuthorizationCode>>,
     families: RefCell<HashMap<String, RefreshTokenFamily>>,
     tokens: RefCell<HashMap<String, RefreshToken>>,
@@ -64,7 +67,8 @@ pub(crate) struct FakeTables {
 struct Snapshot {
     clients: HashMap<String, Client>,
     signing_keys: Vec<SigningKey>,
-    authorization_requests: HashMap<String, AuthorizationRequest>,
+    code_authorization_requests: HashMap<String, CodeRequest>,
+    user_code_requests: HashMap<String, PolledRequest>,
     authorization_codes: HashMap<String, AuthorizationCode>,
     families: HashMap<String, RefreshTokenFamily>,
     tokens: HashMap<String, RefreshToken>,
@@ -80,7 +84,8 @@ impl FakeTables {
         Snapshot {
             clients: self.clients.borrow().clone(),
             signing_keys: self.signing_keys.borrow().clone(),
-            authorization_requests: self.authorization_requests.borrow().clone(),
+            code_authorization_requests: self.code_authorization_requests.borrow().clone(),
+            user_code_requests: self.user_code_requests.borrow().clone(),
             authorization_codes: self.authorization_codes.borrow().clone(),
             families: self.families.borrow().clone(),
             tokens: self.tokens.borrow().clone(),
@@ -98,7 +103,8 @@ impl FakeTables {
     fn restore(&self, snapshot: Snapshot) {
         *self.clients.borrow_mut() = snapshot.clients;
         *self.signing_keys.borrow_mut() = snapshot.signing_keys;
-        *self.authorization_requests.borrow_mut() = snapshot.authorization_requests;
+        *self.code_authorization_requests.borrow_mut() = snapshot.code_authorization_requests;
+        *self.user_code_requests.borrow_mut() = snapshot.user_code_requests;
         *self.authorization_codes.borrow_mut() = snapshot.authorization_codes;
         *self.families.borrow_mut() = snapshot.families;
         *self.tokens.borrow_mut() = snapshot.tokens;

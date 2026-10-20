@@ -368,7 +368,8 @@ fn spawn_retention_sweep(store: SqliteGrantStore) {
             match swept {
                 Ok(Ok(purged)) if !purged.is_empty() => tracing::info!(
                     refresh_token_families = purged.refresh_token_families,
-                    authorization_requests = purged.authorization_requests,
+                    code_authorization_requests = purged.code_authorization_requests,
+                    user_code_requests = purged.user_code_requests,
                     authorization_codes = purged.authorization_codes,
                     browser_sessions = purged.browser_sessions,
                     "swept the authorization server rows past their retention window",

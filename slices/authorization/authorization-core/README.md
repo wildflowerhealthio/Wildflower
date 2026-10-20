@@ -22,12 +22,13 @@ because the wire schemas in this package mirror their rows.
   authorization-code flow registers or widens a row when the Owner approves
   a `new` or `changed` consent prompt (trust on first use — see the
   [Jargon Explanation](../docs/Jargon%20Explanation.md#trust-on-first-use)).
-- `authorizationRequests` — pending OAuth grants. A `grantType`
-  discriminator (matching the wire `grant_type` parameter) splits
-  between `'authorization_code'` (browser-side OAuth code grant) and
-  `'device_code'` (RFC 8628). `status: 'pending' | 'approved' | 'denied'
-  | 'expired'`. Device-grant rows carry a `userCode` and `lastPolledAt`
-  (for `slow_down`).
+- `codeAuthorizationRequests` — requests of the browser-side OAuth code
+  grant, waiting for the Owner. `status: 'awaiting_limited_page' |
+  'pending' | 'approved' | 'denied'`.
+- `userCodeRequests` — device requests (RFC 8628) and browser pairings,
+  told apart by `flow: 'device_code' | 'browser_pairing'`. `status:
+  'pending' | 'approved' | 'denied' | 'claimed'`. Each carries a `userCode`
+  and `lastPolledAt` (for `slow_down`).
 - `authorizationCodes` — single-use codes issued when a code-flow
   request is approved; consumed at `/oauth/token`.
 - `launchContexts` — the SMART App Launch `launch` values an in-process
@@ -57,10 +58,10 @@ because the wire schemas in this package mirror their rows.
 - `httpRequests` — observability/gating ledger for inbound proxied
   requests.
 
-`authorizationRequests`, `authorizationCodes`, and the refresh-token
-lineage are the three that would otherwise only grow — a background sweep
-reclaims them a fixed window past their own `expires_at` (7 days, 7 days,
-and 90 days respectively). See the
+The two request tables, `authorizationCodes`, and the refresh-token lineage
+are the ones that would otherwise only grow — a background sweep reclaims
+them a fixed window past their own `expires_at` (7 days for the requests and
+codes, 90 days for the lineage). See the
 [Retention Explanation](../../../apps/host/wildflower-server/authorization-server-rust/docs/Retention%20Explanation.md).
 
 ## Routes

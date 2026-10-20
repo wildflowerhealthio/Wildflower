@@ -74,8 +74,12 @@ mod tests {
 
     /// The authorization-request entity, whose transitions build the states.
     const ENTITY: &str = "domain/authorization_request/";
-    /// The row conversion, which reads the states back from their columns.
-    const ROW_CONVERSION: &str = "db/authorization_requests.rs";
+    /// The code request's row conversion, which reads its state back from
+    /// its columns.
+    const CODE_ROW_CONVERSION: &str = "db/authorization_requests/code_request_row.rs";
+    /// The device request's and browser pairing's row conversion, which
+    /// reads their states back from their columns.
+    const USER_CODE_ROW_CONVERSION: &str = "db/authorization_requests/user_code_request_row.rs";
     /// The writers, which call the approve transitions under a proof.
     const WRITERS: &str = "domain/capabilities/writers/";
     /// The in-memory fake and its fixtures, which arrange rows for tests.
@@ -104,8 +108,8 @@ mod tests {
     ///   by the two authority proofs whose single-use redemption it is
     ///   (`ConsumedDeviceRequest` and `ClaimedBrowserPairing`);
     /// - the `Approved(` and `Claimed(` states, built only by the entity's
-    ///   transitions and the row conversion that reads them back (any file may
-    ///   match on them);
+    ///   transitions and the flow's row conversion that reads them back (any
+    ///   file may match on them);
     /// - a flow's struct literal (`CodeRequest {`, …), which could carry
     ///   another request's state over, built only there too.
     const APPROVAL_CONSTRUCTIONS: &[ApprovalConstruction] = &[
@@ -126,27 +130,32 @@ mod tests {
         },
         ApprovalConstruction {
             needle: "Approved(",
-            allowed: &[ENTITY, ROW_CONVERSION, TEST_FAKE],
+            allowed: &[
+                ENTITY,
+                CODE_ROW_CONVERSION,
+                USER_CODE_ROW_CONVERSION,
+                TEST_FAKE,
+            ],
             read_in_match_arms: true,
         },
         ApprovalConstruction {
             needle: "Claimed(",
-            allowed: &[ENTITY, ROW_CONVERSION, TEST_FAKE],
+            allowed: &[ENTITY, USER_CODE_ROW_CONVERSION, TEST_FAKE],
             read_in_match_arms: true,
         },
         ApprovalConstruction {
             needle: "CodeRequest {",
-            allowed: &[ENTITY, ROW_CONVERSION, TEST_FAKE],
+            allowed: &[ENTITY, CODE_ROW_CONVERSION, TEST_FAKE],
             read_in_match_arms: false,
         },
         ApprovalConstruction {
             needle: "DeviceRequest {",
-            allowed: &[ENTITY, ROW_CONVERSION, TEST_FAKE],
+            allowed: &[ENTITY, USER_CODE_ROW_CONVERSION, TEST_FAKE],
             read_in_match_arms: false,
         },
         ApprovalConstruction {
             needle: "PairingRequest {",
-            allowed: &[ENTITY, ROW_CONVERSION, TEST_FAKE],
+            allowed: &[ENTITY, USER_CODE_ROW_CONVERSION, TEST_FAKE],
             read_in_match_arms: false,
         },
     ];

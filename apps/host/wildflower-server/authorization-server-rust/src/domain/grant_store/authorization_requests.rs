@@ -1,5 +1,6 @@
-//! [`AuthorizationRequestsTx`] — the `authorization_requests` table: the
-//! requests the Owner decides, from start to their retention cutoff. A read or
+//! [`AuthorizationRequestsTx`] — the requests the Owner decides, from start to
+//! their retention cutoff: code requests, and the device requests and browser
+//! pairings a poll claims. A read or
 //! write within one flow takes that flow's struct; the reads that cross flows
 //! answer with an [`AuthorizationRequest`].
 
@@ -203,13 +204,24 @@ pub trait AuthorizationRequestsTx {
         changed: &PairingRequest,
     ) -> Result<bool, AuthorizationServerError>;
 
-    /// Delete every authorization request whose `expires_at` fell before
-    /// `cutoff`, returning how many rows went.
+    /// Delete every code request whose `expires_at` fell before `cutoff`,
+    /// returning how many went.
     ///
     /// # Errors
     ///
     /// [`AuthorizationServerError::Infrastructure`] if the delete fails.
-    fn delete_authorization_requests_expired_before(
+    fn delete_code_requests_expired_before(
+        &mut self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<usize, AuthorizationServerError>;
+
+    /// Delete every device request and browser pairing whose `expires_at`
+    /// fell before `cutoff`, returning how many went.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the delete fails.
+    fn delete_polled_requests_expired_before(
         &mut self,
         cutoff: DateTime<Utc>,
     ) -> Result<usize, AuthorizationServerError>;

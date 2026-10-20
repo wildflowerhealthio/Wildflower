@@ -1142,7 +1142,7 @@ mod tests {
         wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
-            MIGRATIONS,
+            MigrationsThrough("0033"),
         )
         .expect("upgrade through 0033");
 
@@ -2242,6 +2242,301 @@ mod tests {
         assert!(reverted.contains(&"device-pending:pending:1".to_owned()));
     }
 
+    /// An install already at `0047` splits `authorization_requests` in two
+    /// when `0048` runs: code requests into `code_authorization_requests`,
+    /// device requests and browser pairings into `user_code_requests` (their
+    /// `grant_type` becoming `flow`). Every in-flight shape lands in its table
+    /// with every column, id and timestamp as it was: a code request awaiting
+    /// the limited page, a pending one with a launch and patient, an approved
+    /// one, a denied one; a pending device request, an approved one its poll
+    /// hasn't claimed (approval, name and last poll), a claimed one, and a
+    /// denied one sharing its `user_code` with the pending one; a pending,
+    /// approved and claimed pairing. The old table goes, the new indexes and
+    /// CHECKs hold, and reverting `0048` rebuilds the one table, row for row.
+    #[test]
+    fn an_install_already_at_0047_splits_the_authorization_requests() {
+        use diesel::connection::SimpleConnection as _;
+        const AT: &str = "2026-10-20 00:00:00+00:00";
+        const UNTIL: &str = "2026-10-20 00:05:00+00:00";
+        const POLLED_AT: &str = "2026-10-20 00:01:00+00:00";
+        /// Every column the code flow has, as one string.
+        const CODE_COLUMNS: &str = "id || '|' || client_id || '|' || requested_scopes || '|' || \
+             requested_at || '|' || expires_at || '|' || status || '|' || \
+             COALESCE(granted_scopes, '-') || '|' || COALESCE(patient, '-') || '|' || \
+             redirect_uri || '|' || code_challenge || '|' || client_state || '|' || sid || '|' || \
+             COALESCE(launch, '-') || '|' || COALESCE(launch_bound_patient, '-') || '|' || \
+             pre_approved_scopes || '|' || decidable_in_requesting_browser";
+        /// Every column the user-code flows have, as one string, the flow
+        /// read from `{flow}`.
+        const USER_CODE_COLUMNS: &str = "id || '|' || {flow} || '|' || client_id || '|' || \
+             requested_scopes || '|' || requested_at || '|' || expires_at || '|' || status || \
+             '|' || COALESCE(granted_scopes, '-') || '|' || COALESCE(patient, '-') || '|' || \
+             user_code || '|' || COALESCE(device_name, '-') || '|' || \
+             COALESCE(last_polled_at, '-')";
+        /// Every column of the one table, as one string.
+        const ONE_TABLE_COLUMNS: &str = "id || '|' || grant_type || '|' || client_id || '|' || \
+             requested_scopes || '|' || COALESCE(code_challenge, '-') || '|' || \
+             COALESCE(redirect_uri, '-') || '|' || COALESCE(client_state, '-') || '|' || \
+             COALESCE(user_code, '-') || '|' || pre_approved_scopes || '|' || requested_at || \
+             '|' || expires_at || '|' || COALESCE(last_polled_at, '-') || '|' || status || '|' || \
+             COALESCE(granted_scopes, '-') || '|' || COALESCE(patient, '-') || '|' || \
+             COALESCE(device_name, '-') || '|' || COALESCE(launch, '-') || '|' || \
+             COALESCE(launch_bound_patient, '-') || '|' || decidable_in_requesting_browser || \
+             '|' || COALESCE(sid, '-')";
+
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0047"),
+        )
+        .expect("migrate to 0047");
+        conn.batch_execute(&format!(
+            "INSERT INTO authorization_requests \
+             (id, grant_type, client_id, requested_scopes, code_challenge, redirect_uri, \
+              client_state, user_code, pre_approved_scopes, requested_at, expires_at, \
+              last_polled_at, status, granted_scopes, patient, device_name, launch, \
+              launch_bound_patient, decidable_in_requesting_browser, sid) \
+             VALUES \
+             ('code-waiting', 'authorization_code', 'app', '[\"read\"]', 'challenge-1', \
+              'https://app.example/cb', 's-1', NULL, '[]', '{AT}', '{UNTIL}', NULL, \
+              'awaiting_limited_page', NULL, NULL, NULL, NULL, NULL, 0, 'sid-1'), \
+             ('code-pending', 'authorization_code', 'app', '[\"read\",\"write\"]', \
+              'challenge-2', 'https://app.example/cb', 's-2', NULL, '[\"read\"]', '{AT}', \
+              '{UNTIL}', NULL, 'pending', NULL, NULL, NULL, 'launch-1', 'Patient/9', 1, \
+              'sid-2'), \
+             ('code-approved', 'authorization_code', 'app', '[\"read\"]', 'challenge-3', \
+              'https://app.example/cb', 's-3', NULL, '[]', '{AT}', '{UNTIL}', NULL, \
+              'approved', '[\"read\"]', 'Patient/1', NULL, NULL, NULL, 0, 'sid-3'), \
+             ('code-denied', 'authorization_code', 'app', '[\"read\"]', 'challenge-4', \
+              'https://app.example/cb', 's-4', NULL, '[]', '{AT}', '{UNTIL}', NULL, \
+              'denied', NULL, NULL, NULL, NULL, NULL, 0, 'sid-4'), \
+             ('device-pending', 'device_code', 'device-app', '[\"openid\"]', NULL, NULL, \
+              NULL, 'SAME-CODE', '[]', '{AT}', '{UNTIL}', '{POLLED_AT}', 'pending', NULL, \
+              NULL, NULL, NULL, NULL, 0, NULL), \
+             ('device-approved', 'device_code', 'device-app', '[\"openid\"]', NULL, NULL, \
+              NULL, 'APPR-OVED', '[]', '{AT}', '{UNTIL}', '{POLLED_AT}', 'approved', \
+              '[\"openid\"]', 'Patient/2', 'Kitchen iPad', NULL, NULL, 0, NULL), \
+             ('device-claimed', 'device_code', 'device-app', '[\"openid\"]', NULL, NULL, \
+              NULL, 'CLAI-MEDD', '[]', '{AT}', '{UNTIL}', '{POLLED_AT}', 'claimed', \
+              '[\"openid\"]', NULL, 'Hallway TV', NULL, NULL, 0, NULL), \
+             ('device-denied', 'device_code', 'device-app', '[\"openid\"]', NULL, NULL, \
+              NULL, 'SAME-CODE', '[]', '{AT}', '{UNTIL}', NULL, 'denied', NULL, NULL, NULL, \
+              NULL, NULL, 0, NULL), \
+             ('pairing-pending', 'browser_pairing', 'browser-session', '[]', NULL, NULL, \
+              NULL, 'PAIR-PEND', '[]', '{AT}', '{UNTIL}', NULL, 'pending', NULL, NULL, \
+              'Firefox on Linux', NULL, NULL, 0, NULL), \
+             ('pairing-approved', 'browser_pairing', 'browser-session', '[]', NULL, NULL, \
+              NULL, 'PAIR-APPR', '[]', '{AT}', '{UNTIL}', '{POLLED_AT}', 'approved', \
+              '[\"wildflower/launch\"]', NULL, 'Safari on iPad', NULL, NULL, 0, NULL), \
+             ('pairing-claimed', 'browser_pairing', 'browser-session', '[]', NULL, NULL, \
+              NULL, 'PAIR-CLAI', '[]', '{AT}', '{UNTIL}', NULL, 'claimed', \
+              '[\"wildflower/launch\"]', NULL, 'Chrome on Windows', NULL, NULL, 0, NULL)"
+        ))
+        .expect("in-flight requests at 0047");
+        let read = |conn: &mut SqliteConnection, query: &str| {
+            diesel::sql_query(query)
+                .load::<Name>(conn)
+                .expect(query)
+                .into_iter()
+                .map(|row| row.name)
+                .collect::<Vec<_>>()
+        };
+        let code_before = read(
+            &mut conn,
+            &format!(
+                "SELECT {CODE_COLUMNS} AS name FROM authorization_requests \
+                 WHERE grant_type = 'authorization_code' ORDER BY id"
+            ),
+        );
+        let user_code_before = read(
+            &mut conn,
+            &format!(
+                "SELECT {} AS name FROM authorization_requests \
+                 WHERE grant_type != 'authorization_code' ORDER BY id",
+                USER_CODE_COLUMNS.replace("{flow}", "grant_type")
+            ),
+        );
+        let one_table_before = read(
+            &mut conn,
+            &format!("SELECT {ONE_TABLE_COLUMNS} AS name FROM authorization_requests ORDER BY id"),
+        );
+        assert_eq!(one_table_before.len(), 11, "every shape planted");
+
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0048"),
+        )
+        .expect("upgrade through 0048");
+        assert_eq!(
+            read(
+                &mut conn,
+                "SELECT id AS name FROM code_authorization_requests ORDER BY id"
+            ),
+            [
+                "code-approved",
+                "code-denied",
+                "code-pending",
+                "code-waiting"
+            ]
+        );
+        assert_eq!(
+            read(
+                &mut conn,
+                "SELECT id AS name FROM user_code_requests ORDER BY id"
+            ),
+            [
+                "device-approved",
+                "device-claimed",
+                "device-denied",
+                "device-pending",
+                "pairing-approved",
+                "pairing-claimed",
+                "pairing-pending",
+            ]
+        );
+        assert_eq!(
+            read(
+                &mut conn,
+                &format!(
+                    "SELECT {CODE_COLUMNS} AS name FROM code_authorization_requests ORDER BY id"
+                )
+            ),
+            code_before,
+            "every code-flow column kept"
+        );
+        assert_eq!(
+            read(
+                &mut conn,
+                &format!(
+                    "SELECT {} AS name FROM user_code_requests ORDER BY id",
+                    USER_CODE_COLUMNS.replace("{flow}", "flow")
+                )
+            ),
+            user_code_before,
+            "every user-code column kept, `grant_type` as `flow`"
+        );
+        assert!(
+            user_code_before.contains(&format!(
+                "device-approved|device_code|device-app|[\"openid\"]|{AT}|{UNTIL}|approved|\
+                 [\"openid\"]|Patient/2|APPR-OVED|Kitchen iPad|{POLLED_AT}"
+            )),
+            "{user_code_before:#?}"
+        );
+        assert!(
+            diesel::sql_query("SELECT id FROM authorization_requests")
+                .execute(&mut conn)
+                .is_err(),
+            "the one table is gone"
+        );
+        assert_eq!(
+            read(
+                &mut conn,
+                "SELECT name FROM sqlite_master WHERE type = 'index' \
+                 AND tbl_name IN ('code_authorization_requests', 'user_code_requests') \
+                 AND name NOT LIKE 'sqlite_autoindex%' ORDER BY name"
+            ),
+            [
+                "user_code_requests_pending_user_code_uidx",
+                "user_code_requests_user_code_idx",
+            ]
+        );
+        let plant_device = |conn: &mut SqliteConnection, id: &str, flow: &str, status: &str| {
+            conn.batch_execute(&format!(
+                "INSERT INTO user_code_requests \
+                 (id, flow, client_id, requested_scopes, requested_at, expires_at, status, \
+                  user_code) \
+                 VALUES ('{id}', '{flow}', 'device-app', '[]', '{AT}', '{UNTIL}', '{status}', \
+                         'SAME-CODE')"
+            ))
+        };
+        assert!(
+            plant_device(&mut conn, "another-pending", "device_code", "pending").is_err(),
+            "a second pending request on a code collides"
+        );
+        assert!(
+            plant_device(&mut conn, "expired", "device_code", "expired").is_err(),
+            "a status the user-code flows never have is refused"
+        );
+        assert!(
+            plant_device(&mut conn, "code", "authorization_code", "denied").is_err(),
+            "a code request is no user-code request"
+        );
+        assert!(
+            plant_device(&mut conn, "approved-bare", "device_code", "approved").is_err(),
+            "an approval without its granted scopes is refused"
+        );
+        plant_device(&mut conn, "another-denied", "device_code", "denied")
+            .expect("a decided request shares a code");
+        let plant_code = |conn: &mut SqliteConnection, id: &str, status: &str| {
+            conn.batch_execute(&format!(
+                "INSERT INTO code_authorization_requests \
+                 (id, client_id, requested_scopes, requested_at, expires_at, status, \
+                  redirect_uri, code_challenge, client_state, sid, pre_approved_scopes, \
+                  decidable_in_requesting_browser) \
+                 VALUES ('{id}', 'app', '[]', '{AT}', '{UNTIL}', '{status}', \
+                         'https://app.example/cb', 'challenge', 's', 'sid-1', '[]', 0)"
+            ))
+        };
+        assert!(
+            plant_code(&mut conn, "claimed", "claimed").is_err(),
+            "a status the code flow never has is refused"
+        );
+        assert!(
+            plant_code(&mut conn, "approved-bare", "approved").is_err(),
+            "an approval without its granted scopes is refused"
+        );
+        plant_code(&mut conn, "another-pending", "pending").expect("a well-formed code request");
+        conn.batch_execute(
+            "DELETE FROM user_code_requests WHERE id = 'another-denied'; \
+             DELETE FROM code_authorization_requests WHERE id = 'another-pending'",
+        )
+        .expect("clear the probes");
+
+        let migration_0048 = MIGRATIONS
+            .migrations()
+            .expect("embedded migrations")
+            .into_iter()
+            .find(|migration| migration.name().version() == MigrationVersion::from("0048"))
+            .expect("0048 is embedded");
+        migration_0048.revert(&mut conn).expect("revert 0048");
+        assert_eq!(
+            read(
+                &mut conn,
+                &format!(
+                    "SELECT {ONE_TABLE_COLUMNS} AS name FROM authorization_requests ORDER BY id"
+                )
+            ),
+            one_table_before,
+            "the revert rebuilds every row"
+        );
+        assert_eq!(
+            read(
+                &mut conn,
+                "SELECT name FROM sqlite_master WHERE type IN ('table', 'index') \
+                 AND (name LIKE 'authorization_requests%' OR name LIKE '%code_%requests%') \
+                 AND name NOT LIKE 'sqlite_autoindex%' ORDER BY name"
+            ),
+            [
+                "authorization_requests",
+                "authorization_requests_pending_user_code_uidx",
+                "authorization_requests_user_code_idx",
+            ]
+        );
+        assert!(
+            conn.batch_execute(&format!(
+                "INSERT INTO authorization_requests \
+                 (id, grant_type, client_id, requested_scopes, user_code, requested_at, \
+                  expires_at, status) \
+                 VALUES ('another-pending', 'device_code', 'device-app', '[]', 'SAME-CODE', \
+                         '{AT}', '{UNTIL}', 'pending')"
+            ))
+            .is_err(),
+            "a second pending request on a code still collides"
+        );
+    }
+
     /// Running the migrations twice is a no-op the second time (the namespaced
     /// runner skips already-applied versions) and every expected table — plus
     /// the `grants` view — exists afterwards, so opening an existing database
@@ -2272,8 +2567,8 @@ mod tests {
         for expected in [
             "authorization_code_grants",
             "authorization_codes",
-            "authorization_requests",
             "clients",
+            "code_authorization_requests",
             "device_grants",
             "grants",
             "browser_sessions",
@@ -2282,6 +2577,7 @@ mod tests {
             "refresh_tokens",
             "session_shortfall_acknowledgements",
             "signing_keys",
+            "user_code_requests",
         ] {
             assert!(names.iter().any(|n| n == expected), "missing {expected}");
         }
