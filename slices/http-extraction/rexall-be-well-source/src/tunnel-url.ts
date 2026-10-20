@@ -39,10 +39,11 @@ const REVINCLUDED_RESOURCE_TYPES = [
  * `_revinclude` on `extension.medicationrecord-processor`, and the portal's
  * `_count`.
  *
- * @param ids.profileUid - The profile's `identifiers.uid`; the searchset's
- *   `subject` is `Patient/<profileUid>`
- * @param ids.pharmacyLocationId - Carebook's id for the account's pharmacy
- *   location, the `medication-processor` the medications reference
+ * @param ids - The account's ids:
+ *   - `profileUid` — the profile's `identifiers.uid`; the searchset's
+ *     `subject` is `Patient/<profileUid>`
+ *   - `pharmacyLocationId` — Carebook's id for the account's pharmacy
+ *     location, the `medication-processor` the medications reference
  */
 const medicationListUrlOf = ({
   profileUid,

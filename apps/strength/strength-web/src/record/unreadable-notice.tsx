@@ -19,8 +19,9 @@ const NOUNS: readonly {
 
 /**
  * What a read found on the record but could not read, said rather than
- * dropped: `1 workout and 2 sets on your record could not be read and are
- * left out.` Nothing when everything read.
+ * dropped:
+ * `1 workout and 2 sets on your record could not be read and are left out.`
+ * Nothing when everything read.
  */
 const UnreadableNotice = ({
   unreadable,

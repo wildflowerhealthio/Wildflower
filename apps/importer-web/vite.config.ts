@@ -57,7 +57,7 @@ export default defineConfig({
    * Pre-bundling breaks the DICOM preview's decode worker and WASM codec URLs;
    * `include` lists the CommonJS dependencies reached through the excluded
    * package. Both halves, and the misleading symptom they produce, are in the
-   * {@link ../../slices/file-formats/docs/Cornerstone Rendering Explanation.md | Cornerstone Rendering Explanation}.
+   * [Cornerstone Rendering Explanation](../../slices/file-formats/docs/Cornerstone%20Rendering%20Explanation.md).
    */
   optimizeDeps: {
     exclude: ['@cornerstonejs/dicom-image-loader'],
