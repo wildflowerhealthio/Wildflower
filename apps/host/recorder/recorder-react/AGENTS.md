@@ -32,9 +32,10 @@ shell that drives it over `RecorderBridge`.
   route, taking `invoke` (Tauri's) and `revealFile` (`tauri-plugin-opener`'s
   `revealItemInDir`). It shows the recordings folder, and after a save offers
   Show file where the folder's `revealsFiles` says the platform can. Under the
-  URL field it lists the bookmarks `byRecency`, each with when it was last
-  recorded (`kitchen-sink`'s `formatRelativeTime`), a name that fills the URL
-  field, and Rename and Remove; Bookmark this names a startable URL that
+  URL field it lists the bookmarks `byRecency` in a `react-tundraish`
+  `ItemList`: each row is a name that fills the URL field, its URL, when it
+  was last recorded (`kitchen-sink`'s `formatRelativeTime`), and a `Menu`
+  with Rename and Remove; Bookmark this names a startable URL that
   isn't bookmarked, and Start recording stamps the bookmark at that URL. It
   drives the provider's recorder, so a page that mounts mid-recording shows
   the recording and its URL. `apps/host/host-app` renders it at `/recorder`,

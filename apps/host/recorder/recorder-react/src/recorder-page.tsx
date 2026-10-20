@@ -3,6 +3,8 @@ import {
   ErrorBanner,
   FieldDescription,
   PageHeader,
+  ItemList,
+  Menu,
   pageLayoutStyles,
   TextField,
 } from '@wildflowerhealthio/react-tundraish'
@@ -14,7 +16,7 @@ import {
   type InvokeHostCommand,
 } from '@wildflowerhealthio/recorder-core-js'
 import { DateTime, Match, Option, Schema } from 'effect'
-import { useId, useState, type JSX } from 'react'
+import { useState, type JSX } from 'react'
 
 import { useProvidedRecorder } from './recorder-context.ts'
 import { type BookmarkChange, type Bookmarks, useBookmarks } from './use-bookmarks.ts'
@@ -107,80 +109,11 @@ const lastRecordedText = (bookmark: Bookmark, now: DateTime.DateTime): string =>
     Option.getOrElse(() => 'never recorded')
   )
 
-/** One bookmark: its name fills the URL field; Rename and Remove change it. */
-function BookmarkRow({
-  bookmark,
-  now,
-  canPick,
-  isChanging,
-  onPick,
-  onRename,
-  onRemove,
-}: {
-  readonly bookmark: Bookmark
-  readonly now: DateTime.DateTime
-  /** Whether the URL field takes a URL now: not while recording or saving. */
-  readonly canPick: boolean
-  readonly isChanging: boolean
-  readonly onPick: (url: string) => void
-  /** Rename the bookmark; whether the host took the change. */
-  readonly onRename: (name: string) => Promise<boolean>
-  readonly onRemove: () => void
-}): JSX.Element {
-  const [isRenaming, setIsRenaming] = useState(false)
-  return (
-    <li className={styles['recorder-page__bookmark']}>
-      <button
-        type="button"
-        className={`button-2 ${styles['recorder-page__bookmark-name']}`}
-        disabled={!canPick}
-        onClick={() => onPick(bookmark.url)}
-      >
-        {bookmark.name}
-      </button>
-      <span className={styles['recorder-page__path']}>{bookmark.url}</span>
-      <span className={`text-body-3 ${styles['recorder-page__bookmark-meta']}`}>
-        {lastRecordedText(bookmark, now)}
-      </span>
-      {isRenaming ? (
-        <BookmarkNameForm
-          label={`New name for ${bookmark.name}`}
-          initialName={bookmark.name}
-          disabled={isChanging}
-          onSave={(name) => {
-            void onRename(name).then((renamed) => {
-              if (renamed) setIsRenaming(false)
-            })
-          }}
-          onCancel={() => setIsRenaming(false)}
-        />
-      ) : (
-        <div className={styles['recorder-page__buttons']}>
-          <button
-            type="button"
-            className="button-3 outline"
-            disabled={isChanging}
-            aria-label={`Rename ${bookmark.name}`}
-            onClick={() => setIsRenaming(true)}
-          >
-            Rename
-          </button>
-          <button
-            type="button"
-            className="button-3 outline accent-red"
-            disabled={isChanging}
-            aria-label={`Remove ${bookmark.name}`}
-            onClick={onRemove}
-          >
-            Remove
-          </button>
-        </div>
-      )}
-    </li>
-  )
-}
-
-/** The bookmarks, most recently recorded first, or why the host can't give them. */
+/**
+ * The bookmarks, most recently recorded first, or why the host can't give
+ * them. A row's name fills the URL field; its menu renames or removes it, and
+ * a rename's form shows under the list.
+ */
 function BookmarksSection({
   bookmarks,
   canPick,
@@ -188,52 +121,88 @@ function BookmarksSection({
   runChange,
 }: {
   readonly bookmarks: Bookmarks
+  /** Whether the URL field takes a URL now: not while recording or saving. */
   readonly canPick: boolean
   readonly onPick: (url: string) => void
   /** Send a change, showing a refusal; whether the host took it. */
   readonly runChange: (change: BookmarkChange) => Promise<boolean>
 }): JSX.Element {
-  const headingId = useId()
+  const [renamingUrl, setRenamingUrl] = useState<string | null>(null)
   const now = DateTime.unsafeNow()
-  return (
-    <section className={styles['recorder-page__bookmarks']} aria-labelledby={headingId}>
-      <h2 id={headingId} className="text-heading-4">
-        Bookmarks
-      </h2>
-      {Match.value(bookmarks.state).pipe(
-        Match.tag('Reading', () => (
-          <p className={styles['recorder-page__folder']}>Reading the bookmarks…</p>
-        )),
-        Match.tag('Read', ({ bookmarks: read }) =>
-          read.length === 0 ? (
-            <p className={styles['recorder-page__folder']}>No bookmarks yet.</p>
-          ) : (
-            <ul className={styles['recorder-page__bookmark-list']}>
-              {byRecency(read).map((bookmark) => (
-                <BookmarkRow
-                  key={bookmark.url}
-                  bookmark={bookmark}
-                  now={now}
-                  canPick={canPick}
-                  isChanging={bookmarks.isChanging}
-                  onPick={onPick}
-                  onRename={(name) => runChange(bookmarks.rename(bookmark.url, name))}
-                  onRemove={() => {
-                    void runChange(bookmarks.remove(bookmark.url))
-                  }}
+  return Match.value(bookmarks.state).pipe(
+    Match.tag('Reading', () => (
+      <p className={styles['recorder-page__folder']}>Reading the bookmarks…</p>
+    )),
+    Match.tag('Read', ({ bookmarks: read }) =>
+      read.length === 0 ? (
+        <p className={styles['recorder-page__folder']}>No bookmarks yet.</p>
+      ) : (
+        <div className={styles['recorder-page__bookmarks']}>
+          <ItemList
+            title="Bookmarks"
+            items={byRecency(read).map((bookmark) => ({
+              id: bookmark.url,
+              title: bookmark.name,
+              subtitle: bookmark.url,
+              meta: lastRecordedText(bookmark, now),
+              disabled: !canPick,
+              onClick: () => {
+                onPick(bookmark.url)
+              },
+              actions: (
+                <Menu
+                  label={`Actions for ${bookmark.name}`}
+                  items={[
+                    {
+                      id: 'rename',
+                      label: 'Rename',
+                      disabled: bookmarks.isChanging,
+                      onSelect: () => {
+                        setRenamingUrl(bookmark.url)
+                      },
+                    },
+                    {
+                      id: 'remove',
+                      label: 'Remove',
+                      destructive: true,
+                      disabled: bookmarks.isChanging,
+                      onSelect: () => {
+                        void runChange(bookmarks.remove(bookmark.url))
+                      },
+                    },
+                  ]}
                 />
-              ))}
-            </ul>
-          )
-        ),
-        Match.tag('Unreadable', ({ message }) => (
-          <p className={styles['recorder-page__folder']} role="alert">
-            Bookmarks can't be read on this device: {message}
-          </p>
-        )),
-        Match.exhaustive
-      )}
-    </section>
+              ),
+            }))}
+          />
+          {Option.fromNullable(read.find((bookmark) => bookmark.url === renamingUrl)).pipe(
+            Option.map((bookmark) => (
+              <BookmarkNameForm
+                key={bookmark.url}
+                label={`New name for ${bookmark.name}`}
+                initialName={bookmark.name}
+                disabled={bookmarks.isChanging}
+                onSave={(name) => {
+                  void runChange(bookmarks.rename(bookmark.url, name)).then((renamed) => {
+                    if (renamed) setRenamingUrl(null)
+                  })
+                }}
+                onCancel={() => {
+                  setRenamingUrl(null)
+                }}
+              />
+            )),
+            Option.getOrNull
+          )}
+        </div>
+      )
+    ),
+    Match.tag('Unreadable', ({ message }) => (
+      <p className={styles['recorder-page__folder']} role="alert">
+        Bookmarks can't be read on this device: {message}
+      </p>
+    )),
+    Match.exhaustive
   )
 }
 

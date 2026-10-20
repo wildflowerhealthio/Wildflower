@@ -243,9 +243,10 @@ describe('RecorderPage', () => {
 
       // Assert
       const rows = await screen.findAllByRole('listitem')
-      expect(rows.map((row) => row.textContent)).toEqual([
-        `${LIFELABS.name}${LIFELABS.url}last recorded 2 weeks agoRenameRemove`,
-        `${SHOPPERS.name}${SHOPPERS.url}never recordedRenameRemove`,
+      // Each row's first button is the bookmark itself; its menu comes after.
+      expect(rows.map((row) => row.querySelector('button')?.textContent)).toEqual([
+        `${LIFELABS.name}last recorded 2 weeks ago${LIFELABS.url}`,
+        `${SHOPPERS.name}never recorded${SHOPPERS.url}`,
       ])
     })
 
@@ -254,7 +255,7 @@ describe('RecorderPage', () => {
       const harness = renderPage()
 
       // Act
-      await harness.user.click(await screen.findByRole('button', { name: LIFELABS.name }))
+      await harness.user.click(await bookmarkRow(LIFELABS.name))
 
       // Assert
       expect(screen.getByLabelText<HTMLInputElement>('URL').value).toBe(LIFELABS.url)
@@ -264,7 +265,7 @@ describe('RecorderPage', () => {
     it('should bookmark the URL under the name the user gives it', async () => {
       // Arrange
       const harness = renderPage()
-      await screen.findByRole('button', { name: LIFELABS.name })
+      await screen.findByText(LIFELABS.name)
       await harness.user.type(screen.getByLabelText('URL'), 'https://lab.example')
       await harness.user.click(screen.getByRole('button', { name: 'Bookmark this' }))
       const name = screen.getByLabelText<HTMLInputElement>('Bookmark name')
@@ -280,7 +281,7 @@ describe('RecorderPage', () => {
         command: BOOKMARK_ADD_COMMAND,
         args: { name: 'Lab results', url: 'https://lab.example/' },
       })
-      expect(await screen.findByRole('button', { name: 'Lab results' })).toBeDefined()
+      expect(await screen.findByText('Lab results')).toBeDefined()
       expect(screen.queryByLabelText('Bookmark name')).toBeNull()
       expect(screen.queryByRole('button', { name: 'Bookmark this' })).toBeNull()
     })
@@ -292,7 +293,7 @@ describe('RecorderPage', () => {
     ])('should offer no Bookmark this for a URL that is %s', async (_why, unbookmarkable) => {
       // Arrange
       const harness = renderPage()
-      await screen.findByRole('button', { name: LIFELABS.name })
+      await screen.findByText(LIFELABS.name)
 
       // Act
       await harness.user.type(screen.getByLabelText('URL'), unbookmarkable)
@@ -304,7 +305,7 @@ describe('RecorderPage', () => {
     it('should offer Bookmark this after a save, for the URL just recorded', async () => {
       // Arrange
       const harness = renderPage()
-      await screen.findByRole('button', { name: LIFELABS.name })
+      await screen.findByText(LIFELABS.name)
 
       // Act
       await saveOneRecording(harness)
@@ -317,8 +318,9 @@ describe('RecorderPage', () => {
       // Arrange
       const harness = renderPage()
       await harness.user.click(
-        await screen.findByRole('button', { name: `Rename ${LIFELABS.name}` })
+        await screen.findByRole('button', { name: `Actions for ${LIFELABS.name}` })
       )
+      await harness.user.click(screen.getByRole('menuitem', { name: 'Rename' }))
       const name = screen.getByLabelText(`New name for ${LIFELABS.name}`)
 
       // Act
@@ -331,18 +333,21 @@ describe('RecorderPage', () => {
         command: BOOKMARK_RENAME_COMMAND,
         args: { url: LIFELABS.url, name: 'LifeLabs results' },
       })
-      expect(await screen.findByRole('button', { name: 'LifeLabs results' })).toBeDefined()
-      expect(screen.queryByRole('button', { name: LIFELABS.name })).toBeNull()
+      expect(await screen.findByText('LifeLabs results')).toBeDefined()
+      expect(screen.queryByText(LIFELABS.name)).toBeNull()
+      expect(screen.queryByLabelText(`New name for ${LIFELABS.name}`)).toBeNull()
     })
 
     it('should remove a bookmark and show the list without it', async () => {
       // Arrange
       const harness = renderPage()
 
-      // Act
       await harness.user.click(
-        await screen.findByRole('button', { name: `Remove ${SHOPPERS.name}` })
+        await screen.findByRole('button', { name: `Actions for ${SHOPPERS.name}` })
       )
+
+      // Act
+      await harness.user.click(screen.getByRole('menuitem', { name: 'Remove' }))
 
       // Assert
       expect(harness.bookmarkCalls.at(-1)).toEqual({
@@ -350,7 +355,7 @@ describe('RecorderPage', () => {
         args: { url: SHOPPERS.url },
       })
       await vi.waitFor(() => {
-        expect(screen.queryByRole('button', { name: SHOPPERS.name })).toBeNull()
+        expect(screen.queryByText(SHOPPERS.name)).toBeNull()
       })
       expect(screen.getAllByRole('listitem')).toHaveLength(1)
     })
@@ -358,7 +363,7 @@ describe('RecorderPage', () => {
     it('should tell the host which URL a recording started from', async () => {
       // Arrange
       const harness = renderPage()
-      await harness.user.click(await screen.findByRole('button', { name: LIFELABS.name }))
+      await harness.user.click(await bookmarkRow(LIFELABS.name))
 
       // Act
       await harness.user.click(startButton())
@@ -368,7 +373,7 @@ describe('RecorderPage', () => {
         command: BOOKMARK_RECORDED_COMMAND,
         args: { url: LIFELABS.url },
       })
-      const row = (await screen.findByRole('button', { name: LIFELABS.name })).closest('li')
+      const row = (await bookmarkRow(LIFELABS.name)).closest('li')
       expect(within(row ?? document.body).getByText('last recorded now')).toBeDefined()
     })
 
@@ -410,7 +415,7 @@ describe('RecorderPage', () => {
       })
 
       // Assert
-      expect(await screen.findByRole('button', { name: LIFELABS.name })).toBeDefined()
+      expect(await screen.findByText(LIFELABS.name)).toBeDefined()
       expect(screen.queryByText('Reading the bookmarks…')).toBeNull()
     })
 
@@ -422,7 +427,7 @@ describe('RecorderPage', () => {
             ? Promise.reject(`${String(args?.['url'])} is already bookmarked`)
             : Promise.resolve([LIFELABS]),
       })
-      await screen.findByRole('button', { name: LIFELABS.name })
+      await screen.findByText(LIFELABS.name)
       await harness.user.type(screen.getByLabelText('URL'), 'https://lab.example')
       await harness.user.click(screen.getByRole('button', { name: 'Bookmark this' }))
 
@@ -472,6 +477,13 @@ const typeLiterally = async (
   // same state an empty URL would produce anyway.
   if (text === '') return
   await user.type(element, text.replaceAll('{', '{{').replaceAll('[', '[['))
+}
+
+/** A bookmark's row, which fills the URL field, found by the bookmark's name. */
+const bookmarkRow = async (name: string): Promise<HTMLElement> => {
+  const row = (await screen.findByText(name)).closest('button')
+  if (row === null) throw new Error(`No row for the bookmark ${name}`)
+  return row
 }
 
 /** The Start control. */
