@@ -185,7 +185,7 @@ jobs:
         run: vp install
 
       - name: Install mdbook
-        uses: taiki-e/install-action@v2.87.27
+        uses: taiki-e/install-action@v2.87.29
         with:
           tool: mdbook@0.5.4
 
