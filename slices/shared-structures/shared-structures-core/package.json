@@ -39,7 +39,7 @@
     "test": "vp test"
   },
   "devDependencies": {
-    "@apidevtools/json-schema-ref-parser": "^16.0.3",
+    "@apidevtools/json-schema-ref-parser": "^16.0.5",
     "@effect/platform": "catalog:",
     "@types/node": "catalog:",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
