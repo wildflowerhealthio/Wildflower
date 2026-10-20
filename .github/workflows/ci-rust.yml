@@ -180,7 +180,7 @@ jobs:
           cache-shared-key: workspace-linux-dev
           cache-save-if: 'false'
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.27
+        uses: taiki-e/install-action@v2.87.29
         with:
           tool: nextest
       # Builds the whole workspace's tests and runs this shard's crates'; see
