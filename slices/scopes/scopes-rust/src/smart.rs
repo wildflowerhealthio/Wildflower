@@ -1,7 +1,8 @@
 //! String-facing entry points to the scope grammar, implemented on top of the
 //! structured [`Scope`] model. These keep the
-//! `&str`/`Vec<String>` signatures the authorization server's consent handlers call, parsing
-//! to `Scope` internally so coverage and rendering share one implementation.
+//! `&str`/`Vec<String>` signatures the authorization server calls on its stored
+//! scope columns, parsing to `Scope` internally so coverage and rendering share
+//! one implementation.
 
 use std::collections::HashSet;
 
@@ -64,7 +65,8 @@ pub fn widened_scopes(standing: &[String], additional: &[String]) -> Vec<String>
     grant.render()
 }
 
-/// Does the client-allowed scope `allowed` cover the approved scope `requested`?
+/// Does the scope `allowed` (a client's registered scope, or a standing
+/// grant's) cover the scope `requested`?
 /// Both sides are parsed to a [`Scope`] and compared with [`Scope::covers`]:
 /// resource scopes match by context + resource-type (wildcard-aware) + a
 /// permission-bit superset — a v2 letter-form `allowed` covers an equivalent v1
@@ -107,16 +109,20 @@ pub fn with_alternate_canonical_forms(scopes: &[String]) -> Vec<String> {
 mod tests {
     use super::*;
 
+    /// `&[&str]` → `HashSet<&str>`, for the requested and ceiling sets.
     fn s<'a>(v: &[&'a str]) -> HashSet<&'a str> {
         v.iter().copied().collect()
     }
 
+    /// A non-resource scope, known or unknown, covers its identical twin.
     #[test]
     fn exact_match_grants() {
         assert!(allowed_scope_covers("offline_access", "offline_access"));
         assert!(allowed_scope_covers("an_unknown_scope", "an_unknown_scope"));
     }
 
+    /// A `*` resource type covers every concrete type in the same context, at
+    /// the same or fewer interactions.
     #[test]
     fn type_wildcard_covers_specific_type() {
         assert!(allowed_scope_covers("system/*.cruds", "system/Patient.r"));
@@ -126,6 +132,7 @@ mod tests {
         ));
     }
 
+    /// A scope covers the same resource with a subset of its interactions.
     #[test]
     fn narrower_perms_covered_by_broader_perms() {
         assert!(allowed_scope_covers(
@@ -138,6 +145,9 @@ mod tests {
         ));
     }
 
+    /// `system` covers every context, while `user` and `patient` cover only
+    /// themselves: a patient scope is bound to the launch patient, not the
+    /// user's own access.
     #[test]
     fn context_hierarchy_only_system_covers_downward() {
         // `system` covers every context...
@@ -150,6 +160,7 @@ mod tests {
         assert!(!allowed_scope_covers("user/*.cruds", "system/Patient.r"));
     }
 
+    /// A scope never covers a request for an interaction it lacks.
     #[test]
     fn missing_perm_bit_rejects() {
         assert!(!allowed_scope_covers(
@@ -162,6 +173,8 @@ mod tests {
         ));
     }
 
+    /// A non-resource scope and a resource scope never cover each other, in
+    /// either direction.
     #[test]
     fn non_smart_scopes_only_match_exactly() {
         // No `/` + `.` resource shape, so these parse to `Known`/`Unknown` and
@@ -170,6 +183,8 @@ mod tests {
         assert!(!allowed_scope_covers("offline_access", "system/Patient.r"));
     }
 
+    /// In the SMART v1 word grammar, `*` covers `read` and `write`, while the two
+    /// words are disjoint and neither covers `*`.
     #[test]
     fn v1_word_perms_cover_only_within_the_word_grammar() {
         // `*` is the word-grammar superset of both words...
@@ -196,6 +211,9 @@ mod tests {
         ));
     }
 
+    /// A v2 letter scope covers the equivalent v1 word scope, but a v1 word
+    /// scope never covers a v2 letter one, so a word-registered client can't
+    /// reach letter-grammar access.
     #[test]
     fn v1_and_v2_perms_cross_cover_letter_over_word_only() {
         // A v2 letter grant covers the equivalent v1 word request (same interaction
@@ -220,6 +238,8 @@ mod tests {
         ));
     }
 
+    /// A permission segment with a stray letter makes the scope unknown, so it
+    /// covers, and is covered by, only its identical string.
     #[test]
     fn invalid_perm_segments_reject() {
         // A stray non-interaction letter makes the segment unparseable, so the
@@ -234,6 +254,8 @@ mod tests {
         ));
     }
 
+    /// An approval is granted only where something requested covers it; an
+    /// approved scope nobody asked for is dropped.
     #[test]
     fn grantable_filters_by_requested_and_allowed_coverage() {
         let approved = vec![
@@ -247,6 +269,8 @@ mod tests {
         assert_eq!(granted, vec!["system/Patient.r", "offline_access"]);
     }
 
+    /// An approval broader than the ceiling is dropped, even when it was
+    /// requested.
     #[test]
     fn grantable_drops_uncovered_approvals() {
         let approved = vec!["system/Patient.cruds".to_string()];
@@ -257,6 +281,8 @@ mod tests {
         assert!(granted.is_empty());
     }
 
+    /// A v1 word scope is granted in its own spelling, for SMART v1
+    /// back-compatibility.
     #[test]
     fn grantable_preserves_v1_word_scopes() {
         // The growth-chart case: a v1 `.read` scope is granted and returned
@@ -268,6 +294,7 @@ mod tests {
         assert_eq!(granted, vec!["patient/Observation.read"]);
     }
 
+    /// The v1 `write` and `*` words are granted in their own spellings too.
     #[test]
     fn grantable_preserves_write_and_wildcard_words() {
         let approved = vec![
@@ -283,6 +310,8 @@ mod tests {
         );
     }
 
+    /// A word and a letter spelling of overlapping access are distinct scopes:
+    /// an approval of both grants both.
     #[test]
     fn grantable_keeps_distinct_word_and_letter_forms() {
         // Owner approved both the word and the letter form — they're distinct
@@ -302,6 +331,8 @@ mod tests {
         );
     }
 
+    /// The Owner can narrow: an approved `.s` is granted against a requested
+    /// `.rs`, which covers it.
     #[test]
     fn grantable_grants_owner_narrowed_v2_letters() {
         // The client requested `.rs`; the Owner approved the tighter `.s`.
@@ -314,6 +345,7 @@ mod tests {
         assert_eq!(granted, vec!["patient/Observation.s"]);
     }
 
+    /// A wildcard request lets the Owner approve one concrete type under it.
     #[test]
     fn grantable_grants_wildcard_requested_narrowed_to_concrete_type() {
         // A wildcard request covers a concrete-type approval: `patient/*.r`
@@ -326,6 +358,8 @@ mod tests {
         assert_eq!(granted, vec!["patient/Observation.r"]);
     }
 
+    /// Interactions are a set, so a request spelled `.sr` covers an approval
+    /// spelled `.rs`, which is granted in its own spelling.
     #[test]
     fn grantable_grants_non_canonical_letter_order() {
         // The parser is letter-set based, so a request spelled `.sr` covers an
@@ -338,6 +372,8 @@ mod tests {
         assert_eq!(granted, vec!["patient/Observation.rs"]);
     }
 
+    /// An approved resource scope no requested scope covers is dropped, while
+    /// the requested one beside it is granted.
     #[test]
     fn grantable_drops_unrequested_resource_scopes() {
         // Only Observation was requested; an approved Condition scope is not
@@ -352,11 +388,14 @@ mod tests {
         assert_eq!(granted, vec!["patient/Observation.r"]);
     }
 
+    /// Granting follows coverage's one-way bridge: a letter request makes an
+    /// equivalent word approval grantable, but a word request never makes a
+    /// letter approval grantable.
     #[test]
     fn grantable_bridges_letter_over_word_asymmetrically() {
         // `Scope::covers` bridges grammars one way (letter covers word, not the
         // reverse — see the `v1_and_v2_perms_cross_cover_letter_over_word_only`
-        // test in `scope`).
+        // test above).
         let allowed = s(&["patient/*.cruds"]);
 
         // A v1 *word* request does not make a v2 *letter* approval grantable — a
@@ -381,6 +420,8 @@ mod tests {
         );
     }
 
+    /// A known scope such as `openid` is granted only against the same scope
+    /// requested.
     #[test]
     fn grantable_known_scopes_match_exactly_not_by_coverage() {
         // Known/flag scopes have no subset structure — coverage collapses to
@@ -400,6 +441,8 @@ mod tests {
         assert!(mismatch.is_empty());
     }
 
+    /// The ceiling clamps even a narrowed approval the request covers: a `.s`
+    /// outside a `.r` ceiling is dropped.
     #[test]
     fn grantable_allowed_clamp_still_applies_under_coverage() {
         // Requested and Owner-approved a narrowed `.s`, but the client's
@@ -418,6 +461,7 @@ mod tests {
         items.iter().map(|s| s.to_string()).collect()
     }
 
+    /// Each v1 word resource scope gains its v2 letter twin right after it.
     #[test]
     fn alternates_added_for_v1_word_resource_scopes() {
         assert_eq!(
@@ -434,6 +478,8 @@ mod tests {
         );
     }
 
+    /// Letter-form resource scopes, known and unknown scopes, and a v1-worded
+    /// Wildflower scope (which parses as unknown) gain nothing.
     #[test]
     fn no_alternate_for_letter_forms_and_non_resource_scopes() {
         // Already-letter resource scopes have no distinct alternate.
@@ -458,6 +504,8 @@ mod tests {
         );
     }
 
+    /// Expanding twice changes nothing, and a list already holding a twin
+    /// doesn't gain it again.
     #[test]
     fn alternate_expansion_is_idempotent_and_deduplicates_existing_alternates() {
         let once = with_alternate_canonical_forms(&v(&["patient/Observation.read"]));
@@ -472,6 +520,8 @@ mod tests {
         );
     }
 
+    /// In a typical SMART grant, each v1 read gains its twin right after it,
+    /// and everything else keeps its place.
     #[test]
     fn alternates_preserve_order_in_a_typical_smart_grant() {
         // The growth-chart grant: OIDC + launch + v1 patient reads. Each v1

@@ -213,7 +213,10 @@ impl CodeRequest {
         }
     }
 
-    /// Approve the request at `now` with `approval`.
+    /// Approve the request at `now` with `approval`. The request records the
+    /// approval as made; the code issued for it carries only what the
+    /// requesting browser's session also covers, a bound
+    /// `RequestApprover::approve_for_code` applies.
     ///
     /// # Errors
     ///
@@ -226,7 +229,9 @@ impl CodeRequest {
         })
     }
 
-    /// Deny the request at `now`.
+    /// Deny the request at `now`: the Owner's or the requesting browser's
+    /// no, or a request whose browser session ended before the approval
+    /// could land.
     ///
     /// # Errors
     ///

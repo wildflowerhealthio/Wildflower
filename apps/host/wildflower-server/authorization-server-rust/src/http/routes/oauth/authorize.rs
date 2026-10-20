@@ -80,12 +80,13 @@ pub(super) enum AuthorizeError {
     Internal(InternalError),
 }
 
-/// Render the flow's failure vocabulary onto the endpoint's responses: a local
-/// page while the redirect is untrusted, a 302 with `error` +
-/// `error_description` + `state` back to a validated redirect (RFC 6749
-/// §4.1.2.1), a 503 with no signing key, the start limit's 429, and a logged
-/// opaque 500 for the rest.
+/// The authorization start's failures as the endpoint's responses.
 impl From<AuthorizationStartError> for AuthorizeError {
+    /// Render the flow's failure vocabulary onto the endpoint's responses: a local
+    /// page while the redirect is untrusted, a 302 with `error` +
+    /// `error_description` + `state` back to a validated redirect (RFC 6749
+    /// §4.1.2.1), a 503 with no signing key, the start limit's 429, and a logged
+    /// opaque 500 for the rest.
     fn from(error: AuthorizationStartError) -> Self {
         match error {
             AuthorizationStartError::NoActiveSigningKey => AuthorizeError::ServiceUnavailable,

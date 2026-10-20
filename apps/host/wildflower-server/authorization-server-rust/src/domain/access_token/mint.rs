@@ -55,6 +55,10 @@ pub(crate) enum AccessTokenIssuanceError {
 
 /// Mint a signed access token using `signing_key` and the supplied claim inputs.
 ///
+/// The jti and the times are the mint's own, never the caller's, so no mint
+/// site can forget them or reuse an id: a fresh random `jti`, `iat` from the
+/// mint's clock, and `exp` the caller's `ttl` after it.
+///
 /// # Errors
 ///
 /// Returns [`AccessTokenMintError::SigningKeyUnreadable`] if `signing_key`'s material

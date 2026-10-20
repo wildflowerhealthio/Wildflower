@@ -21,10 +21,12 @@ pub struct ClientCredentials {
     pub client_secret: Option<String>,
 }
 
-/// Redact `client_secret` from `Debug` output so the plaintext scrubbed on drop
-/// can't leak through a log line or a `{:?}` in a test-failure message. Only the
-/// secret's presence is shown, never its value.
+/// Debug output with `client_secret` redacted.
 impl std::fmt::Debug for ClientCredentials {
+    /// Format the credentials with `client_secret` redacted, so the plaintext
+    /// scrubbed on drop can't leak through a log line or a `{:?}` in a
+    /// test-failure message. Only the secret's presence is shown, never its
+    /// value.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ClientCredentials")
             .field("client_id", &self.client_id)

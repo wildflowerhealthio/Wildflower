@@ -3,8 +3,8 @@
 //! its own table:
 //!
 //! - [`AuthorizationCodeGrant`] carries the exact `redirect_uri` it covers, so
-//!   `/authorize` can skip the consent prompt for a returning
-//!   `(client_id, redirect_uri)` pair;
+//!   `/authorize` can issue a code without asking the Owner when a returning
+//!   `(client_id, redirect_uri)` pair meets that grant's conditions;
 //! - [`DeviceGrant`] carries the paired `device_name`, so an owner can see
 //!   which devices they've authorized in Settings.
 //!
@@ -30,11 +30,16 @@ use crate::db::grants::authorization_code::authorization_code_grants;
 use crate::db::grants::device::device_grants;
 use crate::db::shared::{JsonStrings, UrlText};
 
-/// A standing authorization-code consent: "OAuth client X may ask for scopes Y
-/// at redirect URI Z without re-prompting the Owner." When it covers every
-/// scope a registered client asks for, `/oauth/authorize` issues a code
-/// straight away; when it covers only some, the consent card shows those
-/// already ticked. One grant per `(client_id, redirect_uri)`. Diesel-mapped 1:1 to the
+/// A standing authorization-code consent: client X may have scopes Y at
+/// redirect URI Z. A later request from the client at that redirect gets its
+/// code without asking the Owner only when it changes nothing in the
+/// client's registration, this grant covers every requested scope, its
+/// browser session is live and holds what it asks for (or its browser has
+/// gone on past the limited page for this client), and a launch's patient,
+/// if any, is this grant's. A grant covering only some scopes pre-ticks them
+/// on the consent card.
+///
+/// One grant per `(client_id, redirect_uri)`. Diesel-mapped 1:1 to the
 /// `authorization_code_grants` table; on the wire it rides inside
 /// [`Grant::AuthorizationCode`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Queryable, Selectable, Insertable)]

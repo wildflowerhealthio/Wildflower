@@ -80,8 +80,9 @@ pub(crate) enum ClientRegistrationBody {
     },
 }
 
-/// Render the domain change onto the wire.
+/// The domain change on the wire.
 impl From<PresentedClientChange> for ClientRegistrationBody {
+    /// Render the domain change onto the wire.
     fn from(registration: PresentedClientChange) -> Self {
         match registration {
             PresentedClientChange::NoChange => ClientRegistrationBody::Registered,

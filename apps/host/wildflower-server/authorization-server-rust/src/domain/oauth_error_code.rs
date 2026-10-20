@@ -16,7 +16,7 @@
 use strum::{AsRefStr, Display};
 
 /// A code from the closed set of OAuth error codes the authorization server's JSON error
-/// surface may emit. Its [`AsRef<str>`]/[`Display`] impls (derived by `strum`
+/// surface may emit. Its [`AsRef<str>`](AsRef)/[`Display`] impls (derived by `strum`
 /// from the `snake_case` variant names) yield the exact RFC wire value. Its
 /// audience is an app, as the `error` of an OAuth response: from
 /// `/oauth/token`, or on its callback redirect.

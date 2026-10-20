@@ -131,6 +131,10 @@ impl BrowserSession {
 
     /// Whether the session is live at `now`: not revoked, and `expires_at`
     /// after `now`.
+    ///
+    /// An app's request is approved into a code only while the session it
+    /// was made in is live. Otherwise it is denied, so the app hears
+    /// `access_denied` rather than earning a code no live session bounds.
     #[must_use]
     pub fn is_live(&self, now: DateTime<Utc>) -> bool {
         self.revoked_at.is_none() && self.expires_at > now

@@ -114,13 +114,14 @@ impl TokenError {
     }
 }
 
-/// Render a domain failure on the token surface: any store failure — expected
-/// only the opaque
-/// [`Infrastructure`](crate::domain::authorization_server_error::AuthorizationServerError::Infrastructure)
-/// variant here — becomes the logged, cache-suppressed opaque 500. This `From`
-/// is what lets the exchange helpers `?` a `Result<_, AuthorizationServerError>` from
-/// a domain action.
+/// A store failure on the token surface.
 impl From<crate::domain::authorization_server_error::AuthorizationServerError> for TokenError {
+    /// Render a domain failure on the token surface: any store failure — expected
+    /// only the opaque
+    /// [`Infrastructure`](crate::domain::authorization_server_error::AuthorizationServerError::Infrastructure)
+    /// variant here — becomes the logged, cache-suppressed opaque 500. This `From`
+    /// is what lets the exchange helpers `?` a `Result<_, AuthorizationServerError>` from
+    /// a domain action.
     fn from(error: crate::domain::authorization_server_error::AuthorizationServerError) -> Self {
         TokenError::Internal(InternalError::new(
             "store operation failed on the token surface",
@@ -129,31 +130,32 @@ impl From<crate::domain::authorization_server_error::AuthorizationServerError> f
     }
 }
 
-/// Render the exchange flows' failure vocabulary onto RFC 6749 §5.2 / RFC 8628
-/// §3.5:
-///
-/// - `UnauthorizedGrantType`: `400 unauthorized_client`, "Client may not use
-///   this grant type";
-/// - `InvalidCodeVerifier`: `400 invalid_grant`, "Invalid code_verifier
-///   parameter";
-/// - `InvalidRedirectUri`: `400 invalid_request`, "Invalid redirect_uri
-///   parameter";
-/// - `InvalidGrant(reason)`: `400 invalid_grant`, one description per family
-///   of reasons (below), the reason itself logged;
-/// - `ExpiredToken`, `AuthorizationPending`, `AccessDenied`, `SlowDown`: `400`
-///   with the matching RFC 8628 §3.5 code and no description;
-/// - `Issuance`: `500 server_error`, "Failed to sign JWT" when signing failed,
-///   "No JSON Web Keys available to sign token" otherwise;
-/// - `Store`: the logged, opaque 500.
-///
-/// The [`InvalidGrant`](TokenExchangeError::InvalidGrant) reasons collapse
-/// onto a few descriptions: one for every code refusal — distinguishing "wrong
-/// client" from "wrong redirect_uri" from "expired" from "bad verifier" would
-/// leak facts about a code that may belong to another client — two for a device
-/// code (unknown, already redeemed) and three for a refresh token (invalid,
-/// expired, revoked). The specific reason is logged (it carries no secrets) so
-/// the operator can still tell them apart.
+/// The exchange flows' failures as RFC 6749 §5.2 / RFC 8628 §3.5 errors.
 impl From<TokenExchangeError> for TokenError {
+    /// Render the exchange flows' failure vocabulary onto RFC 6749 §5.2 / RFC 8628
+    /// §3.5:
+    ///
+    /// - `UnauthorizedGrantType`: `400 unauthorized_client`, "Client may not use
+    ///   this grant type";
+    /// - `InvalidCodeVerifier`: `400 invalid_grant`, "Invalid code_verifier
+    ///   parameter";
+    /// - `InvalidRedirectUri`: `400 invalid_request`, "Invalid redirect_uri
+    ///   parameter";
+    /// - `InvalidGrant(reason)`: `400 invalid_grant`, one description per family
+    ///   of reasons (below), the reason itself logged;
+    /// - `ExpiredToken`, `AuthorizationPending`, `AccessDenied`, `SlowDown`: `400`
+    ///   with the matching RFC 8628 §3.5 code and no description;
+    /// - `Issuance`: `500 server_error`, "Failed to sign JWT" when signing failed,
+    ///   "No JSON Web Keys available to sign token" otherwise;
+    /// - `Store`: the logged, opaque 500.
+    ///
+    /// The [`InvalidGrant`](TokenExchangeError::InvalidGrant) reasons collapse
+    /// onto a few descriptions: one for every code refusal — distinguishing "wrong
+    /// client" from "wrong redirect_uri" from "expired" from "bad verifier" would
+    /// leak facts about a code that may belong to another client — two for a device
+    /// code (unknown, already redeemed) and three for a refresh token (invalid,
+    /// expired, revoked). The specific reason is logged (it carries no secrets) so
+    /// the operator can still tell them apart.
     fn from(error: TokenExchangeError) -> Self {
         match error {
             TokenExchangeError::UnauthorizedGrantType => TokenError::bad_request(

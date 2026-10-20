@@ -36,11 +36,13 @@ pub struct SigningKeyValues {
     pub q: String,
 }
 
-/// Redact the private exponents (`d`, `p`, `q`) from `Debug` output so the
-/// plaintext key material that `ZeroizeOnDrop` scrubs from memory can't leak
-/// through a formatter (log line, panic message, `{:?}` in a test failure).
-/// The public `n`/`e` are shown so a formatted value stays identifiable.
+/// Debug output with the private exponents redacted.
 impl std::fmt::Debug for SigningKeyValues {
+    /// Format the values with the private exponents (`d`, `p`, `q`) redacted, so
+    /// the plaintext key material that `ZeroizeOnDrop` scrubs from memory can't
+    /// leak through a formatter (log line, panic message, `{:?}` in a test
+    /// failure). The public `n`/`e` are shown so a formatted value stays
+    /// identifiable.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SigningKeyValues")
             .field("n", &self.n)
@@ -100,8 +102,10 @@ impl SigningKey {
     }
 }
 
-/// Wrap an existing `RsaPrivateKey` as a `SigningKey` with base64url-encoded JWK components and a new `kid`.
+/// A `SigningKey` from an existing RSA private key.
 impl From<&RsaPrivateKey> for SigningKey {
+    /// Wrap `private` as a `SigningKey` with base64url-encoded JWK components and
+    /// a new `kid`. The key starts inactive.
     fn from(private: &RsaPrivateKey) -> Self {
         let primes = private.primes();
         let p = &primes[0];
@@ -129,8 +133,11 @@ impl From<&RsaPrivateKey> for SigningKey {
     }
 }
 
-/// Public-only JWK view of `key`, suitable for publishing in a JWKS endpoint.
+/// The public half of a signing key, as a JWK.
 impl From<&SigningKey> for PublicJwk {
+    /// The public-only JWK view of `key`, suitable for publishing in a JWKS
+    /// endpoint: its `kid`, key type, algorithm and public `n`/`e`, with
+    /// `key_ops` limited to `verify`.
     fn from(key: &SigningKey) -> Self {
         PublicJwk {
             kid: key.kid.clone(),
@@ -143,10 +150,17 @@ impl From<&SigningKey> for PublicJwk {
     }
 }
 
-/// Build a `jsonwebtoken::EncodingKey` (for signing JWTs) from a `SigningKey`.
+/// A `jsonwebtoken` signing key from a `SigningKey`.
 impl TryFrom<&SigningKey> for EncodingKey {
     type Error = KeyMaterialError;
 
+    /// Build a `jsonwebtoken::EncodingKey` (for signing JWTs) from `key`'s
+    /// private components.
+    ///
+    /// # Errors
+    ///
+    /// A [`KeyMaterialError`] when the components don't decode or compose into
+    /// a private key, or it won't encode as PKCS#1 DER.
     fn try_from(key: &SigningKey) -> Result<Self, Self::Error> {
         let private = RsaPrivateKey::try_from(key)?;
         let der = private.to_pkcs1_der().map_err(KeyMaterialError::Encode)?;
@@ -154,10 +168,17 @@ impl TryFrom<&SigningKey> for EncodingKey {
     }
 }
 
-/// Build a `jsonwebtoken::DecodingKey` (for verifying JWTs) from a `SigningKey`.
+/// A `jsonwebtoken` verifying key from a `SigningKey`.
 impl TryFrom<&SigningKey> for DecodingKey {
     type Error = KeyMaterialError;
 
+    /// Build a `jsonwebtoken::DecodingKey` (for verifying JWTs) from `key`'s
+    /// public components.
+    ///
+    /// # Errors
+    ///
+    /// A [`KeyMaterialError`] when `n` or `e` doesn't decode or compose into a
+    /// public key, or it won't encode as PKCS#1 DER.
     fn try_from(key: &SigningKey) -> Result<Self, Self::Error> {
         let public = RsaPublicKey::try_from(key)?;
         let der = public.to_pkcs1_der().map_err(KeyMaterialError::Encode)?;
@@ -165,10 +186,17 @@ impl TryFrom<&SigningKey> for DecodingKey {
     }
 }
 
-/// Reconstruct an `RsaPrivateKey` from a `SigningKey`'s base64url JWK components.
+/// An RSA private key from a `SigningKey`.
 impl TryFrom<&SigningKey> for RsaPrivateKey {
     type Error = KeyMaterialError;
 
+    /// Reconstruct an `RsaPrivateKey` from `key`'s base64url JWK components.
+    /// Every decoded private component is scrubbed if a later one fails.
+    ///
+    /// # Errors
+    ///
+    /// A [`KeyMaterialError`] when a component isn't base64url, or the five
+    /// don't compose into a private key.
     #[allow(clippy::many_single_char_names)]
     fn try_from(key: &SigningKey) -> Result<Self, Self::Error> {
         // Keep every decoded component wrapped in `Zeroizing` until all five
@@ -193,10 +221,17 @@ impl TryFrom<&SigningKey> for RsaPrivateKey {
     }
 }
 
-/// Reconstruct an `RsaPublicKey` from a `SigningKey`'s public JWK components (`n`, `e`).
+/// An RSA public key from a `SigningKey`.
 impl TryFrom<&SigningKey> for RsaPublicKey {
     type Error = KeyMaterialError;
 
+    /// Reconstruct an `RsaPublicKey` from `key`'s public JWK components (`n`,
+    /// `e`).
+    ///
+    /// # Errors
+    ///
+    /// A [`KeyMaterialError`] when `n` or `e` isn't base64url, or the two don't
+    /// compose into a public key.
     fn try_from(key: &SigningKey) -> Result<Self, Self::Error> {
         // `n`/`e` are public, so scrubbing is unnecessary here — but
         // `base64_url_to_biguint` returns `Zeroizing` uniformly; move the

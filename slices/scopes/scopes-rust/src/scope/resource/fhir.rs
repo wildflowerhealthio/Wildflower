@@ -19,7 +19,7 @@ pub struct FhirResourceScope {
 /// scope is bound to the launch patient (possibly a record outside the user's
 /// own access), so neither is a subset of the other. The three stay distinct
 /// *values* (a `user` scope renders as `user`, never silently `system`); only
-/// [`covers`](ContextLevel::covers) applies the rule.
+/// its `covers` applies the rule.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ContextLevel {
     Patient,

@@ -17,6 +17,16 @@ pub struct AccessTokenVerifyOptions<'a> {
 }
 
 /// Failures while verifying an access token.
+///
+/// [`verify_access_token`] itself answers only [`TokenRejected`](Self::TokenRejected),
+/// [`NoSigningKeysConfigured`](Self::NoSigningKeysConfigured) and
+/// [`SigningKeyUnreadable`](Self::SigningKeyUnreadable). The rest come from
+/// the `TokenVerifier` capability, which runs it with the stored keys:
+/// [`KeyStoreUnavailable`](Self::KeyStoreUnavailable) when it can't read
+/// those keys, and [`Revoked`](Self::Revoked),
+/// [`RevocationStoreUnavailable`](Self::RevocationStoreUnavailable) and
+/// [`BrowserSessionStoreUnavailable`](Self::BrowserSessionStoreUnavailable)
+/// from its revocation checks.
 #[derive(Debug, thiserror::Error)]
 pub enum AccessTokenVerifyError {
     /// Token did not pass cryptographic or claim validation; surface as 401.

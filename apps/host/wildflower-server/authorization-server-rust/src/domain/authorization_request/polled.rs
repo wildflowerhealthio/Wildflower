@@ -171,7 +171,10 @@ impl PolledRequest {
     }
 }
 
+/// A polled request is an authorization request of its own flow.
 impl From<PolledRequest> for super::AuthorizationRequest {
+    /// The [`AuthorizationRequest`](super::AuthorizationRequest) of
+    /// `polled_request`'s flow, device or pairing, holding it unchanged.
     fn from(polled_request: PolledRequest) -> Self {
         match polled_request {
             PolledRequest::Device(device_request) => {

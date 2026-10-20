@@ -105,13 +105,14 @@ pub struct VerifiedClaims {
     pub sid: Option<String>,
 }
 
-/// Read the caller's authority from the verified `scope` claim so the shared
-/// `Scoped` extractor can coverage-check
-/// it. Delegates to the one shared claim-string → [`Grant`](wildflowerhealthio_scopes::Grant)
-/// parse, so this gate and a downstream slice's `ScopeClaims` gate can't
-/// disagree on how a claim becomes authority; a missing `scope` claim yields an
-/// empty grant (covers nothing) — fail-closed.
+/// The caller's authority, read from the verified `scope` claim.
 impl wildflowerhealthio_scope_capabilities::GrantedScopes for VerifiedClaims {
+    /// Read the caller's authority from the verified `scope` claim so the shared
+    /// `Scoped` extractor can coverage-check it. Delegates to the one shared
+    /// claim-string → [`Grant`](wildflowerhealthio_scopes::Grant) parse, so this
+    /// gate and a downstream slice's `ScopeClaims` gate can't disagree on how a
+    /// claim becomes authority; a missing `scope` claim yields an empty grant
+    /// (covers nothing) — fail-closed.
     fn granted(&self) -> wildflowerhealthio_scopes::Grant {
         wildflowerhealthio_scope_capabilities::grant_from_scope_claim(self.scope.as_deref())
     }

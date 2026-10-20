@@ -12,7 +12,7 @@ use strum::{AsRefStr, Display, EnumString};
 /// The wire string (stored in the `kind` column and serialized) is the
 /// lowercased variant name: `Public` → `"public"`, `Confidential` →
 /// `"confidential"`. `strum` derives the `&str` ↔ enum conversions
-/// ([`AsRef<str>`], [`Display`], [`FromStr`](std::str::FromStr)) from the same
+/// ([`AsRef<str>`](AsRef), [`Display`], [`FromStr`](std::str::FromStr)) from the same
 /// `serialize_all` rule the serde `rename_all` uses, so the two can't drift.
 #[derive(
     Debug,
@@ -58,9 +58,9 @@ pub enum AllowedGrantType {
 }
 
 impl AllowedGrantType {
-    /// Every grant the token endpoint supports — the backward-compatible
-    /// default for clients registered before per-client restrictions existed
-    /// (and the value migration 007 backfills onto existing rows).
+    /// Every grant the token endpoint supports: the allow-list the host app's
+    /// seeded client gets, and so does a client trusted on first use when an
+    /// approval creates it.
     pub const ALL: [AllowedGrantType; 3] = [
         AllowedGrantType::AuthorizationCode,
         AllowedGrantType::RefreshToken,

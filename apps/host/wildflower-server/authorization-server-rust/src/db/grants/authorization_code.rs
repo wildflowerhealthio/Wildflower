@@ -1,7 +1,8 @@
 //! Authorization-code grants in the store: the `authorization_code_grants` table
 //! and its single-kind query bodies. A code grant is the standing consent for a
-//! `(client_id, redirect_uri)` pair — the identity `/authorize` looks up to decide
-//! whether it can skip the consent prompt. Single-kind operations hit this concrete
+//! `(client_id, redirect_uri)` pair — the identity `/authorize` looks up when it
+//! asks whether a code may be issued without asking the Owner (see
+//! [`AuthorizationCodeGrant`] for the conditions). Single-kind operations hit this concrete
 //! table directly; the cross-kind reads live in [`super::general`].
 
 use chrono::{DateTime, Utc};

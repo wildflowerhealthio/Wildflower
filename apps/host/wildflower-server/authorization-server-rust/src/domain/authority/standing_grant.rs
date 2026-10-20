@@ -1,8 +1,10 @@
 //! [`StandingGrantCoverage`] — the proof behind the `/oauth/authorize` fast
 //! path: a standing authorization-code grant the Owner established earlier
-//! already covers **every** scope this request asks for, so a code may be
-//! issued with no human in the loop (RFC 6749 §4.1 permits skipping consent
-//! on a prior decision). It is only ever built by [`GrantCoverage::resolve`],
+//! already covers **every** scope this request asks for. It is the authority
+//! a code is issued under with no human in the loop (RFC 6749 §4.1 permits
+//! skipping consent on a prior decision), once the request's other
+//! conditions hold too: see [`AuthorizationCodeGrant`](crate::domain::grant::AuthorizationCodeGrant)
+//! for the browser-session and patient ones. It is only ever built by [`GrantCoverage::resolve`],
 //! which is the whole rule: it yields [`GrantCoverage::Full`] only for a request
 //! inside the client's registration, however well an old grant covers one
 //! outside it — the Owner has not yet seen *this* app/redirect/scope

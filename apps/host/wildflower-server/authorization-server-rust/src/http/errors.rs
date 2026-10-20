@@ -196,30 +196,31 @@ pub(crate) struct AuthorizationRequestNotFoundBody {
     pub(crate) id: String,
 }
 
-/// Render the domain's failure vocabulary onto the wire, the same way from
-/// every `/authorization` route. Every JSON body carries `error`, the
-/// variant's name, and one key, the identifier the caller sent:
-///
-/// - each `*NotFound` variant is a `404` naming what wasn't found: `id` for an
-///   OAuth consent, an authorization request or a grant, `userCode` for a
-///   device consent, `sid` for a browser session, `clientId` for a client;
-/// - a refusal of an otherwise valid request is a `409` of the same shape:
-///   `EssentialClient` (`clientId`), a request to disable a client the Owner
-///   needs to get in; `RegistrationNotAcknowledged` (`id`), an approval
-///   outside the app's registration without the Owner's acknowledgement; and
-///   `LaunchPatientMismatch` (`id`), an approval naming a patient other than
-///   the one the app's launch binds;
-/// - a missing scope, the caller's (`InsufficientScope`) or on an approval the
-///   approver's (`InsufficientApproverScope`), is the shared `403` listing the
-///   scopes lacking;
-/// - an [`Infrastructure`](AuthorizationServerError::Infrastructure) failure is
-///   logged (via the shared [`InternalError`]) and answered as an opaque, empty
-///   `500`.
-///
-/// This is the whole of the HTTP layer's error knowledge for the
-/// `/authorization` surface; the handlers just `?` a
-/// `Result<_, AuthorizationServerError>` from a domain action.
+/// The `/authorization` surface's failures as HTTP responses.
 impl IntoResponse for AuthorizationServerError {
+    /// Render the domain's failure vocabulary onto the wire, the same way from
+    /// every `/authorization` route. Every JSON body carries `error`, the
+    /// variant's name, and one key, the identifier the caller sent:
+    ///
+    /// - each `*NotFound` variant is a `404` naming what wasn't found: `id` for an
+    ///   OAuth consent, an authorization request or a grant, `userCode` for a
+    ///   device consent, `sid` for a browser session, `clientId` for a client;
+    /// - a refusal of an otherwise valid request is a `409` of the same shape:
+    ///   `EssentialClient` (`clientId`), a request to disable a client the Owner
+    ///   needs to get in; `RegistrationNotAcknowledged` (`id`), an approval
+    ///   outside the app's registration without the Owner's acknowledgement; and
+    ///   `LaunchPatientMismatch` (`id`), an approval naming a patient other than
+    ///   the one the app's launch binds;
+    /// - a missing scope, the caller's (`InsufficientScope`) or on an approval the
+    ///   approver's (`InsufficientApproverScope`), is the shared `403` listing the
+    ///   scopes lacking;
+    /// - an [`Infrastructure`](AuthorizationServerError::Infrastructure) failure is
+    ///   logged (via the shared [`InternalError`]) and answered as an opaque, empty
+    ///   `500`.
+    ///
+    /// This is the whole of the HTTP layer's error knowledge for the
+    /// `/authorization` surface; the handlers just `?` a
+    /// `Result<_, AuthorizationServerError>` from a domain action.
     fn into_response(self) -> Response {
         match self {
             AuthorizationServerError::OAuthConsentNotFound { id } => (

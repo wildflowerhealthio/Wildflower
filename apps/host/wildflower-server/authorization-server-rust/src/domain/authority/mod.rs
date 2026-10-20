@@ -31,7 +31,8 @@
 //!    redeemed, so a token holds only what the consent behind it recorded.
 //!  - [`StandingGrantCoverage`] — a standing grant already covers every scope
 //!    of a *registered* request: the `/oauth/authorize` fast path's authority
-//!    to issue a code with no human in the loop.
+//!    to issue a code with no human in the loop, when the request's browser
+//!    session and launch patient allow it too.
 //!  - [`RedeemedSameDeviceSignInCode`] — a one-time same-device sign-in code the base minted
 //!    in-process, redeemed at `/oauth/sign-in`: the authority a same-device
 //!    session is started and its token minted under, as the Owner's

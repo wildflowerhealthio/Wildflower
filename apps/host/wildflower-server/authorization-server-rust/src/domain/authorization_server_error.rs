@@ -200,11 +200,14 @@ impl AuthorizationServerError {
     }
 }
 
-/// The [`Scoped`](wildflowerhealthio_scope_capabilities::Scoped) extractor's rejection — the
-/// caller's token doesn't cover the capability's required scopes — becomes
-/// [`InsufficientScope`](AuthorizationServerError::InsufficientScope), so it reaches the wire
-/// through this error's rendering like any other failure.
+/// A `Scoped` rejection is an insufficient-scope error.
 impl From<MissingScopes> for AuthorizationServerError {
+    /// The [`Scoped`](wildflowerhealthio_scope_capabilities::Scoped) extractor's
+    /// rejection — the caller's token doesn't cover the capability's required
+    /// scopes — becomes
+    /// [`InsufficientScope`](AuthorizationServerError::InsufficientScope), naming
+    /// the `missing` scopes, so it reaches the wire through this error's
+    /// rendering like any other failure.
     fn from(missing: MissingScopes) -> Self {
         AuthorizationServerError::InsufficientScope {
             missing_scopes: missing.into_rendered(),

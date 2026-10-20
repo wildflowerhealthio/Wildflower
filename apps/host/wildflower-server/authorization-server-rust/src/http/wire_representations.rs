@@ -160,10 +160,11 @@ pub(crate) enum ConsentResult {
     },
 }
 
-/// Render the domain consent action's [`ConsentOutcome`](crate::domain::capabilities::ConsentOutcome)
-/// onto the launcher wire result, so an approve/deny handler is
-/// `Ok(Json(outcome.into()))`.
+/// A consent outcome on the launcher wire.
 impl From<crate::domain::capabilities::ConsentOutcome> for ConsentResult {
+    /// Render the domain consent action's [`ConsentOutcome`](crate::domain::capabilities::ConsentOutcome)
+    /// onto the launcher wire result, so an approve/deny handler is
+    /// `Ok(Json(outcome.into()))`.
     fn from(outcome: crate::domain::capabilities::ConsentOutcome) -> Self {
         match outcome {
             crate::domain::capabilities::ConsentOutcome::Approved { redirect } => {

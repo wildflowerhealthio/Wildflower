@@ -5,7 +5,7 @@
 //! browser session, its `revoked_at`, whichever comes first), so nothing live
 //! is ever in range. Which tables grow, why each window is what it is, and why
 //! the sweep runs on a timer rather than on the insert path:
-//! `authorization-server-rust/docs/Retention Explanation.md`.
+//! `authorization-server-rust/docs/Book/Domain/Retention Explanation.md`.
 
 use chrono::{DateTime, Duration, Utc};
 
@@ -20,17 +20,23 @@ use crate::domain::GrantStore;
 /// How long a refresh-token family (and its tokens) is kept past its absolute
 /// deadline. Deliberately equal to
 /// [`REFRESH_TOKEN_FAMILY_TTL`](crate::domain::refresh_token::REFRESH_TOKEN_FAMILY_TTL) —
-/// a lineage stays auditable for its own lifetime again after it dies.
+/// a lineage stays auditable for its own lifetime again after it dies. A
+/// family that runs its full course is readable for twice its lifetime, a
+/// quarter's history: the horizon over which "what happened to this device's
+/// session" is still a live question.
 pub const REFRESH_TOKEN_FAMILY_RETENTION: Duration = Duration::days(90);
 
 /// How long an expired authorization request or code is kept — a generous audit
-/// buffer over objects whose useful life is minutes.
+/// buffer over objects whose useful life is minutes (a request lives five
+/// minutes, a code one). A week answers "what did that app try to do last
+/// Tuesday", while abandoned flows can't pile up.
 pub const AUTHORIZATION_RETENTION: Duration = Duration::days(7);
 
 /// How long a browser session is kept once it has expired or been revoked:
 /// the longest session's lifetime, which no token minted under it outlives.
 /// Past that, only a refresh-token family can still name it, and the sweep
-/// keeps any session a family alive at the cutoff names.
+/// keeps any session a family alive at the cutoff names. A session's
+/// limited-page acknowledgements go with it.
 pub const BROWSER_SESSION_RETENTION: Duration = LONGEST_BROWSER_SESSION_TTL;
 
 /// What one `purge_expired` pass reclaimed, per table. All-zero is the

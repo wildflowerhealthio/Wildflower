@@ -79,7 +79,7 @@ impl Client {
     }
 
     /// Whether `redirect_uri` exactly equals an entry on this client's
-    /// `redirect_uris` allowlist. This is the one allowlist verdict: both
+    /// `redirect_uris` allowlist, with no prefix or pattern matching. This is the one allowlist verdict: both
     /// `/authorize` and the consent read path call it, so a prompt can never
     /// disagree with the endpoint that parked it.
     #[must_use]

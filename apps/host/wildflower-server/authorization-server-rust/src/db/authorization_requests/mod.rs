@@ -121,7 +121,7 @@ impl SqliteGrantTx<'_> {
     /// pending row holding its `user_code` (as of the request's start): that
     /// row occupies the partial unique index the insert would otherwise
     /// collide with. Bulk reclamation is the retention sweep's; see
-    /// `authorization-server-rust/docs/Retention Explanation.md`.
+    /// `authorization-server-rust/docs/Book/Domain/Retention Explanation.md`.
     fn insert_user_code_row(
         &mut self,
         row: &UserCodeRequestRow,
