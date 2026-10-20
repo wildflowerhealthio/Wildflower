@@ -14,6 +14,7 @@ use crate::http::state::AuthorizationServerState;
 
 /// The hosted launcher ([`LauncherBase`]).
 pub(crate) struct LauncherPages {
+    /// The launcher's configured base URL, copied from the router state.
     base: LauncherBase,
 }
 

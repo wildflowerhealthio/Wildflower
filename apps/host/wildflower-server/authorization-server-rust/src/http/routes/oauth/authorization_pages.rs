@@ -17,7 +17,7 @@
 //!   browser that isn't the Owner's starts a browser pairing, shows its code,
 //!   and waits for the Owner's approval. The same bytes whatever the query.
 //!   Uncached.
-//! - `GET /oauth/assets/{file}` serves the pages' scripts, stylesheets and
+//! - `GET /oauth/assets/{*file}` serves the pages' scripts, stylesheets and
 //!   fonts, Vite's content-hashed files, which never change under a name and
 //!   are cached as `immutable`. Only `.js`, `.css` and `.woff2` files are
 //!   served; anything else is `404`.
@@ -233,8 +233,8 @@ mod tests {
 
     use super::*;
 
-    /// A build as Vite lays it out: the page, and hashed files under
-    /// `assets/`.
+    /// A build as Vite lays it out: the four pages, and hashed files under
+    /// `assets/`, among them a `.woff` and an `.svg` the routes must refuse.
     static PAGES: Dir<'static> = Dir::new(
         "",
         &[
@@ -273,6 +273,8 @@ mod tests {
         LauncherBase::parse("https://launcher.test/launcher/").expect("launcher base")
     }
 
+    /// One `GET` of `uri` to the routes over the fake build, with the
+    /// launcher's origin as a form target.
     async fn get(uri: &str) -> Response {
         router_for::<()>(&PAGES, &sign_out_form_targets(&launcher_base()))
             .oneshot(Request::get(uri).body(Body::empty()).expect("request"))
@@ -280,6 +282,7 @@ mod tests {
             .expect("infallible")
     }
 
+    /// The whole body of `response`.
     async fn body(response: Response) -> Vec<u8> {
         response
             .into_body()
@@ -290,6 +293,7 @@ mod tests {
             .to_vec()
     }
 
+    /// The value of header `name` on `response`; panics when it is missing.
     fn header_of(response: &Response, name: header::HeaderName) -> &str {
         response
             .headers()
@@ -298,6 +302,9 @@ mod tests {
             .unwrap_or_else(|| panic!("{name}"))
     }
 
+    /// Asserts the headers every page and asset carries: the policy naming
+    /// this origin and the launcher's as form targets, `Referrer-Policy:
+    /// same-origin`, and `nosniff`.
     fn assert_locked_down(response: &Response, uri: &str) {
         assert_eq!(
             header_of(response, header::CONTENT_SECURITY_POLICY),
@@ -318,6 +325,8 @@ mod tests {
         );
     }
 
+    /// The consent card is the same locked-down, `no-store` HTML whatever the id,
+    /// an id spelling `<script>` included.
     #[tokio::test]
     async fn the_consent_card_is_the_same_uncached_page_for_every_request() {
         for uri in [
@@ -345,6 +354,7 @@ mod tests {
         }
     }
 
+    /// The limited page is the same locked-down, `no-store` page whatever the id.
     #[tokio::test]
     async fn the_limited_page_is_the_same_uncached_page_for_every_request() {
         for uri in [
@@ -382,6 +392,8 @@ mod tests {
         );
     }
 
+    /// The device page is the same locked-down, `no-store` HTML with no code, a
+    /// code, or markup as the code.
     #[tokio::test]
     async fn the_device_page_is_the_same_uncached_page_with_or_without_a_code() {
         for uri in [
@@ -410,6 +422,8 @@ mod tests {
         }
     }
 
+    /// The pairing page is the same locked-down, `no-store` page whatever its
+    /// `next`.
     #[tokio::test]
     async fn the_pairing_page_is_the_same_uncached_page_whatever_its_next() {
         for uri in [
@@ -457,6 +471,8 @@ mod tests {
         }
     }
 
+    /// Both device page URLs keep the server origin's port, and a code holding `&`
+    /// and a space is form-encoded.
     #[test]
     fn the_device_page_urls_are_on_the_server_origin_with_the_code_encoded() {
         let device_page =
@@ -475,6 +491,8 @@ mod tests {
         );
     }
 
+    /// Scripts, a stylesheet and a `.woff2` font are served with their types,
+    /// locked down, and cached for a year as `immutable`.
     #[tokio::test]
     async fn hashed_scripts_stylesheets_and_fonts_are_immutable_with_their_types() {
         for (uri, content_type, contents) in [
@@ -516,6 +534,8 @@ mod tests {
         }
     }
 
+    /// A missing asset, a `.woff`, an `.svg`, a path climbing out of `assets/`, a
+    /// page by its file name, and a path under the device page are all `404`.
     #[tokio::test]
     async fn anything_but_a_built_script_stylesheet_or_font_is_not_found() {
         for uri in [

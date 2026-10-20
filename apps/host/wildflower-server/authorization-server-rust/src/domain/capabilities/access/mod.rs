@@ -66,6 +66,8 @@ pub fn grantable_admin_scopes() -> Vec<Scope> {
 mod tests {
     use super::*;
 
+    /// The grantable vocabulary is exactly the eleven `wildflower/*` admin
+    /// scopes the surface checks, in declaration order with no duplicates.
     #[test]
     fn grantable_admin_scopes_are_the_expected_wildflower_scopes() {
         let rendered: Vec<String> =
@@ -88,6 +90,8 @@ mod tests {
         );
     }
 
+    /// Every scope a capability requires parses as a Wildflower resource scope,
+    /// so an Owner's `wildflower/*.cruds` covers it.
     #[test]
     fn every_required_scope_is_a_known_wildflower_resource_not_unknown() {
         // A typo in a required-scope spelling would fall to `Scope::Unknown`,

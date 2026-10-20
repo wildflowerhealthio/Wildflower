@@ -182,39 +182,63 @@ const DEV_APP_PORTS_JSON: &str = include_str!(concat!(
 #[cfg(debug_assertions)]
 #[derive(serde::Deserialize)]
 struct DevAppPorts {
+    /// The port the Medications vite dev server listens on, and its dev client's
+    /// loopback redirect names.
     #[serde(rename = "medications-dev")]
     medications_dev: u16,
+    /// The port the Importer vite dev server listens on, and its dev client's
+    /// loopback redirect names.
     #[serde(rename = "importer-dev")]
     importer_dev: u16,
+    /// The port the OHIF imaging viewer vite dev server listens on, and its dev client's
+    /// loopback redirect names.
     #[serde(rename = "ohif-viewer-dev")]
     ohif_viewer_dev: u16,
+    /// The port the FHIR Sync for Pebble vite dev server listens on, and its dev client's
+    /// loopback redirect names.
     #[serde(rename = "fhir-sync-pebble-dev")]
     fhir_sync_pebble_dev: u16,
+    /// The port the Plots vite dev server listens on, and its dev client's
+    /// loopback redirect names.
     #[serde(rename = "plots-dev")]
     plots_dev: u16,
+    /// The port the Synthetic Data Loader vite dev server listens on, and its dev client's
+    /// loopback redirect names.
     #[serde(rename = "synthetic-data-dev")]
     synthetic_data_dev: u16,
+    /// The port the Strength vite dev server listens on, and its dev client's
+    /// loopback redirect names.
     #[serde(rename = "strength-dev")]
     strength_dev: u16,
 }
 
-/// The dev tiles' OAuth clients: random ids (`openssl rand -hex 16`), not the
-/// tile ids (`medications-dev` and so on). `wildflowerhealthio_apps::dev_seed` points each tile
-/// at its client, and each app's `src/config.ts` (the OHIF viewer's
-/// `config/app-config.js` and launch URL) launches as it under the dev server.
-/// FHIR Sync for Pebble has no tile; its `src/config.ts` alone names its client.
+/// The Medications dev server's client.
+///
+/// The dev tiles' OAuth clients have random ids (`openssl rand -hex 16`), not
+/// the tile ids (`medications-dev` and so on). `wildflowerhealthio_apps::dev_seed`
+/// points each tile at its client, and each app's `src/config.ts` (the OHIF
+/// viewer's `config/app-config.js` and launch URL) launches as it under the dev
+/// server. FHIR Sync for Pebble has no tile; its `src/config.ts` alone names its
+/// client.
 #[cfg(debug_assertions)]
 const MEDICATIONS_DEV_CLIENT_ID: &str = "4be2ee91360733fdcb99b43a3822de5f";
+/// The Importer dev server's client.
 #[cfg(debug_assertions)]
 const IMPORTER_DEV_CLIENT_ID: &str = "57268ff88aea38d6a22de56ae53e2c28";
+/// The Plots dev server's client.
 #[cfg(debug_assertions)]
 const PLOTS_DEV_CLIENT_ID: &str = "e7efc7c805f5f8f640bb3b3d48a2d7aa";
+/// The Synthetic Data Loader dev server's client.
 #[cfg(debug_assertions)]
 const SYNTHETIC_DATA_DEV_CLIENT_ID: &str = "07a31e58db3367afda5c6480e03ed993";
+/// The Strength dev server's client.
 #[cfg(debug_assertions)]
 const STRENGTH_DEV_CLIENT_ID: &str = "8467e680a05f1e92e22864e923144e5a";
+/// The OHIF imaging viewer dev server's client.
 #[cfg(debug_assertions)]
 const OHIF_VIEWER_DEV_CLIENT_ID: &str = "f9866f7b1d0d8505dc65ef4f749664b5";
+/// The FHIR Sync for Pebble dev server's client. It has no dev tile: the app
+/// is standalone-only.
 #[cfg(debug_assertions)]
 const FHIR_SYNC_PEBBLE_DEV_CLIENT_ID: &str = "61e195d6b08bab6bf2cedb1ef3831fa7";
 

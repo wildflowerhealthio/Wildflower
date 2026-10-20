@@ -51,22 +51,29 @@ pub enum BrowserSessionKind {
     Paired,
 }
 
-/// One browser session. Diesel-mapped 1:1 to the `browser_sessions` table.
+/// One browser session. A session's scopes cap what any app requested in it
+/// can receive: the Owner may approve an app for more, but the code issued
+/// under the session carries only what the session also holds. Diesel-mapped
+/// 1:1 to the `browser_sessions` table.
 #[derive(Debug, Clone, PartialEq, Eq, Queryable, Selectable, Insertable)]
 #[diesel(table_name = browser_sessions)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct BrowserSession {
-    /// Primary key — the session id, the `sid` claim of every token minted
-    /// under the session.
+    /// Primary key — the session's identity, and the `sid` claim of every
+    /// authorization code, access token and refresh-token family minted under
+    /// it.
     pub sid: String,
-    /// How the browser came to hold the session.
+    /// How the browser came to hold the session: the Owner's same-device
+    /// sign-in, or a pairing the Owner approved.
     pub kind: BrowserSessionKind,
     /// The name the browser was given at pairing; `None` for a same-device session.
     pub name: Option<String>,
-    /// The session's grant.
+    /// The session's grant: the most an app requested in this browser can be
+    /// issued.
     #[diesel(serialize_as = JsonStrings, deserialize_as = JsonStrings)]
     pub scopes: Vec<String>,
-    /// When the browser signed in.
+    /// When the session started: the same-device sign-in, or the pairing
+    /// poll that claimed the Owner's approval.
     pub created_at: DateTime<Utc>,
     /// When the session stops letting the browser start things.
     pub expires_at: DateTime<Utc>,
@@ -135,6 +142,8 @@ mod tests {
     use super::*;
     use crate::domain::capabilities::oauth::{PAIRED_SESSION_TTL, SAME_DEVICE_SESSION_TTL};
 
+    /// A same-device session is unnamed, lasts exactly its lifetime, starts
+    /// unrevoked and seen at sign-in, and never shares a `sid` with another.
     #[test]
     fn a_same_device_session_is_unnamed_and_lasts_its_ttl() {
         let now = Utc::now();
@@ -155,6 +164,8 @@ mod tests {
         );
     }
 
+    /// A paired session carries the browser's name and the approved scopes,
+    /// lasts exactly its lifetime, and starts unrevoked.
     #[test]
     fn a_paired_session_is_named_and_lasts_its_ttl() {
         let now = Utc::now();

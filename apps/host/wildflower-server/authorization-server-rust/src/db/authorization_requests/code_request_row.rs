@@ -36,28 +36,61 @@ diesel::table! {
 
 diesel::allow_tables_to_appear_in_same_query!(code_authorization_requests, clients);
 
-/// One `code_authorization_requests` row. The approval is `granted_scopes`
-/// and `patient`, set only while the request is approved.
+/// One `code_authorization_requests` row, one field per column of the same
+/// name. Every column a [`CodeRequest`] always has is `NOT NULL`. The approval
+/// is `granted_scopes` and `patient`, set only while the request is approved;
+/// the table's CHECKs hold it to that, and to a `status` the code flow has.
+/// No foreign key ties `client_id` to `clients` or `sid` to
+/// `browser_sessions`: an app trusted on first use has no `clients` row yet,
+/// and a session is pruned on its own schedule.
 #[derive(Queryable, Selectable, Insertable, AsChangeset)]
 #[diesel(table_name = code_authorization_requests)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 #[diesel(treat_none_as_null = true)]
 pub(super) struct CodeAuthorizationRequestRow {
+    /// The primary key: the request's UUID, so every read and write by id is
+    /// a key lookup. An authorization code names its request by it.
     pub(super) id: String,
+    /// The client that made the request.
     client_id: String,
+    /// The scopes the client asked for, as a JSON array.
     requested_scopes: JsonStrings,
+    /// When the request started; the Owner prompt orders by it.
     requested_at: DateTime<Utc>,
+    /// When the request stops waiting for a decision. The retention sweep
+    /// deletes a row by it, whatever its status.
     expires_at: DateTime<Utc>,
+    /// Where the request stands, as its wire string: `awaiting_limited_page`,
+    /// `pending`, `approved` or `denied`. A replace lands only on a row still
+    /// at the status it was read with. Expiry is read from `expires_at`, never
+    /// stored here.
     status: RequestStatus,
+    /// The approved scopes, as a JSON array: set exactly while `status` is
+    /// `approved`.
     granted_scopes: Option<JsonStrings>,
+    /// The patient the approval binds, if any; only ever set beside
+    /// `granted_scopes`.
     patient: Option<String>,
+    /// The redirect the client presented, which its code or error goes back to.
     redirect_uri: UrlText,
+    /// The PKCE S256 challenge the code's redemption is checked against.
     code_challenge: String,
+    /// The `state` the client sent, which its callback carries back.
     client_state: String,
+    /// The browser session the request was made in, which its code is issued
+    /// under.
     sid: String,
+    /// The SMART App Launch `launch` value the request consumed; `NULL` for a
+    /// plain OAuth request.
     launch: Option<String>,
+    /// The patient the consumed launch binds, if any, which an approval must
+    /// name.
     launch_bound_patient: Option<String>,
+    /// The requested scopes a standing grant already covered when the request
+    /// parked, as a JSON array; the consent card shows them ticked.
     pre_approved_scopes: JsonStrings,
+    /// Whether the browser that made the request can decide it itself; raising
+    /// the request for the Owner clears it.
     decidable_in_requesting_browser: bool,
 }
 

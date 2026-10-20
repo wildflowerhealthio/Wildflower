@@ -170,7 +170,8 @@ pub(super) async fn handle_session_shortfall_continue(
 }
 
 /// Cancel request `id`: deny it and send the browser back to the app with
-/// `error=access_denied`.
+/// `error=access_denied`. Cancel isn't remembered: this session's next request
+/// for the app stops at the limited page again.
 #[utoipa::path(
     post,
     tag = "OAuth 2.0",

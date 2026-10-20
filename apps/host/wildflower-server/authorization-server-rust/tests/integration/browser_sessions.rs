@@ -1,12 +1,13 @@
+//! Browser sessions: a same-device sign-in starts a same-device session row,
+//! every token, code and refresh family minted under it names it as `sid`,
+//! and revoking the row ends them on the `/authorization` surface, at the
+//! in-process FHIR verifier and at refresh. `/authorization/browser-sessions`
+//! lists the live rows and revokes one, and `/oauth/sign-out` revokes the
+//! session a browser's cookie holds.
+
 use crate::common::*;
 use wildflowerhealthio_authorization_server::domain::access_token::AccessTokenVerifyError;
 use wildflowerhealthio_authorization_server::domain::browser_session::BrowserSessionKind;
-
-// Browser sessions: a same-device sign-in starts a same-device session row, every
-// token, code and refresh family minted under it names it as `sid`, and
-// revoking the row ends them on the `/authorization` surface, the in-process
-// FHIR verifier and at refresh. `/authorization/browser-sessions` lists the
-// live rows and revokes one.
 
 /// The `sid` claim of `token`, unverified.
 fn sid_of(token: &str) -> String {
@@ -100,8 +101,8 @@ async fn revoking_a_session_stops_its_authorization_and_fhir_requests() {
 
 /// An app authorized from a browser signed in as the Owner is issued its code,
 /// tokens and refresh family under that browser's session: they all name its
-/// `sid`, its refresh marks the session seen, and once the session is revoked the family can't be refreshed and
-/// the app's access token is refused.
+/// `sid`, its refresh marks the session seen, and once the session is revoked the
+/// family can't be refreshed and the app's access token is refused.
 #[tokio::test]
 async fn an_app_authorized_in_a_session_is_ended_with_it() {
     let (g, owner_token, db) = spin_up();

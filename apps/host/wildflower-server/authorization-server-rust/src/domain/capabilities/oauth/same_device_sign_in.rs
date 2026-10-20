@@ -68,8 +68,13 @@ pub(crate) enum SignInRefusal {
 /// unit-testable against the fake; the binding instantiates it over the
 /// concrete `SqliteGrantStore`.
 pub(crate) struct SameDeviceSignIn<S: GrantStore> {
+    /// The store the session is stored in and the browser-session client is
+    /// checked in.
     store: S,
+    /// The outstanding one-time sign-in codes the base minted, held in
+    /// memory; redeeming one spends it.
     codes: Arc<SameDeviceSignInCodes>,
+    /// Where a sign-in may send a browser on to; `next` must be one of them.
     destinations: Arc<SignInDestinations>,
     /// The server's bare origin, the token's `iss` and `aud`.
     server_origin: Arc<str>,
@@ -188,9 +193,14 @@ mod tests {
     use crate::domain::signing_key::SigningKey;
     use crate::domain::test_fake::{client, seed_active_signing_key, FakeGrantStore};
 
+    /// The server's origin: the session token's `iss` and `aud`.
     const SERVER_ORIGIN: &str = "https://ruth.relay.example";
+    /// The Owner's grant in these tests, which a same-device session holds,
+    /// and the browser-session client is allowed.
     const OWNER_SCOPES: [&str; 2] = ["system/*.cruds", "wildflower/*.cruds"];
 
+    /// A sign-in over `store` and the outstanding `codes`, allowing `next`s
+    /// on this server and the site's launcher and authorization app.
     fn sign_in_over(
         store: FakeGrantStore,
         codes: Arc<SameDeviceSignInCodes>,
@@ -228,6 +238,9 @@ mod tests {
         (sign_in_over(store, codes), signing_key)
     }
 
+    /// A code signs the browser in: it goes on to `next`, holding a token
+    /// this server accepts, issued to the browser-session client with the
+    /// Owner's scopes and living [`SAME_DEVICE_SESSION_TTL`].
     #[test]
     fn a_code_signs_the_owner_in_for_eight_hours() {
         let now = Utc::now();
@@ -258,6 +271,8 @@ mod tests {
         );
     }
 
+    /// A redeemed code is spent: presenting it again is
+    /// [`SignInRefusal::CodeNotRedeemable`].
     #[test]
     fn a_code_signs_in_once() {
         let now = Utc::now();
@@ -271,6 +286,8 @@ mod tests {
         ));
     }
 
+    /// A code nobody minted, and a code at its TTL, are both
+    /// [`SignInRefusal::CodeNotRedeemable`].
     #[test]
     fn an_expired_or_unknown_code_signs_nobody_in() {
         let minted_at = Utc::now();
@@ -289,6 +306,8 @@ mod tests {
         ));
     }
 
+    /// A `next` off the allowed places is refused before the code is touched,
+    /// so the same code then signs in with an allowed `next`.
     #[test]
     fn a_refused_next_leaves_the_code_redeemable() {
         let now = Utc::now();
@@ -302,6 +321,8 @@ mod tests {
         assert!(sign_in.sign_in("code-1", "/", now).is_ok());
     }
 
+    /// While the browser-session client is disabled, a sign-in is refused
+    /// without spending the code; once it is enabled again, the code signs in.
     #[test]
     fn a_disabled_browser_session_client_signs_nobody_in_and_leaves_the_code_redeemable() {
         let now = Utc::now();
@@ -324,6 +345,8 @@ mod tests {
         assert!(sign_in.sign_in("code-1", "/", now).is_ok());
     }
 
+    /// With no browser-session client row (it is seeded at boot), a sign-in
+    /// is a store error, not a sign-in for an enabled client.
     #[test]
     fn a_missing_browser_session_client_is_a_store_error() {
         let now = Utc::now();

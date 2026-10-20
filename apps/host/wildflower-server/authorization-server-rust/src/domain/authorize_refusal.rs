@@ -7,17 +7,22 @@
 //! `http::errors`; this is the vocabulary.
 
 /// Why `/oauth/authorize` refused a request: shown on the local page, or sent
-/// back to a trusted redirect as the `error_description`.
+/// back to a trusted redirect as the `error_description`. Its audience is the
+/// person at the browser, or the app once its redirect is trusted. The local
+/// page is titled for the refusal, with [`Self::description`] as its body.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(test, derive(strum::EnumIter))]
 pub enum AuthorizeRefusal {
-    /// The `redirect_uri` is not a well-formed URL.
+    /// The `redirect_uri` is not a well-formed URL, so there is nowhere
+    /// trusted to send the refusal.
     InvalidRedirectUri,
     /// The `redirect_uri` is not `http` or `https`.
     InvalidScheme,
-    /// The client has been disabled.
+    /// The request comes from a client the Owner has disabled.
     DisabledClient,
-    /// The `redirect_uri` is not on a server-defined registration.
+    /// The `redirect_uri` is not on a server-defined registration. A client
+    /// trusted on first use is never refused for this: its new redirect goes
+    /// to the Owner instead.
     RedirectUriNotAllowed,
     /// `response_type` is not `code`.
     UnsupportedResponseType,
@@ -85,7 +90,8 @@ mod tests {
     };
 
     /// RFC 6749 §4.1.2.1: `error_description` is `%x20-21 / %x23-5B /
-    /// %x5D-7E`, printable ASCII without `"` or `\`.
+    /// %x5D-7E`, printable ASCII without `"` or `\`, and the tests also
+    /// refuse the empty string.
     fn is_error_description(text: &str) -> bool {
         !text.is_empty()
             && text
@@ -94,7 +100,8 @@ mod tests {
     }
 
     /// Every reason `/oauth/authorize` sends or shows is a valid
-    /// `error_description`.
+    /// `error_description`, and so are the three fixed sentences of the client
+    /// callback.
     #[test]
     fn every_description_is_a_valid_error_description() {
         for kind in AuthorizeRefusal::iter() {

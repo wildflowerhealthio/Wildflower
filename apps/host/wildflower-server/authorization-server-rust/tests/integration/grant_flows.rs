@@ -1,8 +1,41 @@
+//! The authorization-code flow end to end, from `/oauth/authorize` to
+//! `/oauth/token`: an app reaches the Owner's FHIR server only after the Owner
+//! said yes, now or in a standing grant, and never with more than the Owner
+//! and the browser it runs in hold.
+//!
+//! A browser without a browser session is sent to pair first; a code is
+//! always issued under a session. With one, the request is validated (a
+//! signing key, a client that isn't disabled, PKCE, the client's
+//! registration), and then three questions, asked in order, decide where the
+//! browser goes:
+//!
+//! 1. Does the browser's session hold less than the app asks for? Then the
+//!    limited page: the person at the browser is told before anyone else is
+//!    bothered. It is shown once per browser per app.
+//! 2. Does a standing grant already cover everything asked for? That is, the
+//!    Owner said yes to this app at this redirect and hasn't revoked it, the
+//!    request matches the app's registration, and the launch admits the
+//!    grant's patient. Then the fast path: a code is issued now and the
+//!    browser goes straight back to the app.
+//! 3. Can this browser decide the request itself, because it is the Owner's,
+//!    holding enough to approve the request as asked? Then the consent card,
+//!    in place.
+//!
+//! Otherwise someone else is using the browser: it goes to the wait page, and
+//! the Owner's prompt shows the request.
+//!
+//! Each step can only narrow the scopes: the request is clamped to the
+//! registration, the Owner's ticks to what the Owner holds, the code to the
+//! browser's session, and the token carries the code's scopes. A code redeems
+//! once; a replay ends the refresh family the first redemption started.
+
 use crate::common::*;
 
-/// Drive the full auth-code grant: `/authorize` → owner consent approve →
-/// status poll → `/token`. The core happy path; nothing else here exercises it
-/// end-to-end. Asserts a signed bearer token comes back with the granted scope.
+/// An app the Owner approves ends up with a signed bearer token for exactly
+/// the approved scope: `/oauth/authorize` parks the browser on the wait page,
+/// the Owner approves, the approve response and the wait page's poll hand back
+/// the same code (the poll's answer uncached), and `/oauth/token` redeems it.
+/// No `offline_access` was granted, so no refresh token comes back.
 #[tokio::test]
 async fn auth_code_grant_happy_path_end_to_end() {
     let (g, owner_token, db) = spin_up();
@@ -171,9 +204,8 @@ async fn oauth_consent_prompt_carries_client_display_name() {
 /// The Owner may *narrow* a requested scope at consent time: a request for
 /// `patient/Observation.rs` approved as the tighter `patient/Observation.s` is
 /// still ⊆ the request, so `grantable_scopes` keeps it (coverage, not exact
-/// equality). The flow must approve — not deny — and the minted token must
-/// carry the narrowed `patient/Observation.s`. Guards the covers-based
-/// `is_requested` change in `wildflowerhealthio_scopes::grantable_scopes`.
+/// equality). The flow approves rather than denies, and the minted token
+/// carries the narrowed `patient/Observation.s`.
 #[tokio::test]
 async fn auth_code_grant_owner_narrows_requested_scope() {
     let (g, owner_token, db) = spin_up();
@@ -259,8 +291,8 @@ async fn auth_code_grant_owner_narrows_requested_scope() {
 
 /// The approver must hold every resource scope they approve: a token that may
 /// approve (`wildflower/AuthorizationRequest.u` and `wildflower/Grant.c`) but
-/// lacks one of the requested resource scopes — a narrower device grant — is
-/// refused with a `403 InsufficientScope` naming the uncovered scope. No code is issued: the
+/// lacks one of the requested resource scopes is refused with a
+/// `403 InsufficientScope` naming the uncovered scope. No code is issued: the
 /// request stays `pending`, so the status poll keeps waiting and an approver
 /// whose token does cover it (here the Owner) can still answer it.
 #[tokio::test]
@@ -801,9 +833,10 @@ async fn auth_code_replay_revokes_issued_refresh_family() {
 }
 
 // ---------------------------------------------------------------------------
-// Trust on first use: an app the authorization server has never seen (or one whose
-// request steps outside its registration) reaches the Owner's prompt with a
-// warning, and the `clients` row is created or widened only on approval.
+// Trust on first use: an app the authorization server has never seen (or one
+// whose request steps outside its registration) reaches the Owner's prompt
+// with a warning, and the `clients` row is created or widened only on
+// approval.
 // ---------------------------------------------------------------------------
 
 /// The consent prompt carries the presented client change, recomputed from the
@@ -1063,10 +1096,10 @@ async fn denying_a_new_app_registers_nothing() {
         .is_none());
 }
 
-/// The fast path is gated on the presented client change, not on grant coverage alone: once the
-/// registration no longer covers the request, a standing grant that *does* cover
-/// every requested scope must NOT skip the Owner — they have not seen this
-/// combination.
+/// The fast path is gated on the presented client change, not on grant
+/// coverage alone: once the registration no longer covers the request, a
+/// standing grant that *does* cover every requested scope doesn't skip the
+/// Owner, who has not seen this combination.
 #[tokio::test]
 async fn a_changed_request_never_takes_the_fast_path() {
     let (g, owner_token, db) = spin_up();

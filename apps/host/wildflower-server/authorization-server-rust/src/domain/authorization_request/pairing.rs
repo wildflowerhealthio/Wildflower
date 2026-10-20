@@ -178,6 +178,7 @@ impl Polled for PairingRequest {
 mod tests {
     use super::*;
 
+    /// The instant `minutes` after the tests' fixed start.
     fn at(minutes: i64) -> DateTime<Utc> {
         DateTime::from_timestamp(1_800_000_000, 0).expect("in range") + Duration::minutes(minutes)
     }
@@ -197,6 +198,7 @@ mod tests {
         )
     }
 
+    /// An approval of `wildflower/launch`.
     fn approval() -> PairingApproval {
         PairingApproval {
             granted_scopes: vec!["wildflower/launch".to_owned()],

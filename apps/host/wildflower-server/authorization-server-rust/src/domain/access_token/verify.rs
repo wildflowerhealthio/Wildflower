@@ -124,6 +124,7 @@ mod tests {
     use chrono::{Duration, Utc};
     use jsonwebtoken::{EncodingKey, Header};
 
+    /// A token whose issuer isn't the expected one is rejected.
     #[test]
     fn verify_rejects_wrong_issuer() {
         let key = SigningKey::generate().expect("gen");
@@ -152,6 +153,7 @@ mod tests {
         assert!(matches!(err, AccessTokenVerifyError::TokenRejected));
     }
 
+    /// An empty string is `TokenRejected`, the caller's fault.
     #[test]
     fn verify_rejects_empty_token() {
         let key = SigningKey::generate().expect("gen");
@@ -167,6 +169,8 @@ mod tests {
         assert!(matches!(err, AccessTokenVerifyError::TokenRejected));
     }
 
+    /// With no keys to check against, verifying is `NoSigningKeysConfigured`,
+    /// the operator's fault, not a rejected token.
     #[test]
     fn verify_rejects_when_no_keys() {
         let err = verify_access_token(
@@ -184,11 +188,9 @@ mod tests {
         ));
     }
 
-    /// `verify_access_token` still accepts a legacy token that carries no `jti` claim —
-    /// so a token minted without one keeps validating
-    /// (they surface `jti: None`, so the denylist just can't target them
-    /// individually). Encoded by hand because `mint_access_token` always writes
-    /// a `jti` now.
+    /// A token that carries no `jti` claim still verifies, surfacing
+    /// `jti: None`, so the denylist can't target it individually. Encoded by
+    /// hand because `mint_access_token` always writes a `jti`.
     #[test]
     fn verify_accepts_legacy_token_without_jti() {
         let key = SigningKey::generate().expect("gen");

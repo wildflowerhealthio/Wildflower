@@ -5,10 +5,10 @@
 //! a device request or a browser pairing). Each decision runs in one write
 //! scope: an approval's privileged writes go through the
 //! [`writers`](crate::domain::capabilities::writers) inside it, under the
-//! [`DelegatedScopes`](crate::domain::authority::DelegatedScopes) proof it
+//! [`DelegatedScopes`] proof it
 //! obtains, so what the Owner clicked is never recorded wider than what the
-//! Owner holds, and the newest pending consent is republished once it has
-//! committed.
+//! Owner holds, and the [`OwnerPrompt`](crate::domain::owner_prompt::OwnerPrompt)
+//! is republished once it has committed.
 //!
 //! A code-flow prompt is resolved against its client's registration once
 //! ([`ResolvedCodeRequest`](crate::domain::authorization_request::code::resolved::ResolvedCodeRequest)):
@@ -89,6 +89,8 @@ pub(crate) fn client_registering_approval_scopes() -> Vec<Scope> {
 pub struct OAuthConsentView {
     /// The request, pending as loaded.
     pub pending_request: CodeRequest,
+    /// The name the card shows for the app: its registered name, or its
+    /// `client_id` while it has no registration.
     pub client_name: String,
     /// How this request compares against the client's registration **as it
     /// stands now** — the warning the prompt leads with when the app, its
@@ -102,22 +104,29 @@ pub struct OAuthConsentView {
 }
 
 /// A device-page consent prompt (a device-code request or a browser pairing)
-/// loaded for the launcher or the host — adds the expansion envelope the
-/// approver may grant up to: a device client's full `allowed_scopes`, or for a
-/// browser pairing the Owner's scopes.
+/// loaded for the launcher or the host. Device consent is **expandable**: the
+/// approver may grant more than the device asked for, up to an envelope, so
+/// the view adds that envelope to what an authorization-code prompt shows.
 pub struct DeviceConsentView {
     /// The device request or browser pairing, pending as loaded.
     pub request: PolledRequest,
+    /// The name the card shows for what asks: for a device request the
+    /// client's registered name, or its `client_id` when it has no row; for a
+    /// browser pairing the browser-session client's name.
     pub client_name: String,
     /// The scopes the card's ticks start from: what the device requested, or
     /// for a browser pairing everything the reader may delegate
     /// ([`ApprovableScopes::delegable_scopes`]) — the Owner's scopes, for the
     /// Owner.
     pub starting_scopes: Vec<String>,
+    /// The expansion envelope, the most the approver may grant: for a device
+    /// request the client's registered `allowed_scopes` (empty when it has no
+    /// row), for a browser pairing the Owner's scopes.
     pub approvable_scopes: Vec<String>,
     /// The approval scopes the reader's own grant does not cover, rendered
     /// ([`ApprovableScopes::missing_approval_scopes`]): what it lacks to
-    /// approve this request. Empty when it may approve.
+    /// approve this request, `wildflower/Grant.c` included for a device
+    /// request's standing grant. Empty when it may approve.
     pub missing_approval_scopes: Vec<String>,
 }
 
@@ -125,23 +134,35 @@ pub struct DeviceConsentView {
 // Decision inputs / outcome.
 // ---------------------------------------------------------------------------
 
-/// The Owner's decision on a consent prompt, after the action has applied it.
+/// The Owner's decision on a consent prompt, after the action has applied it
+/// and committed.
 #[derive(Debug, PartialEq, Eq)]
 pub enum ConsentOutcome {
-    /// Approved. `redirect` is the client callback URL carrying the code, to
-    /// hand back so the approving surface can finish the flow inline (code
-    /// flow with a `client_state`); `None` for the device flow.
-    Approved { redirect: Option<String> },
-    /// Denied, or nothing was granted (no requested-and-allowed scope was
-    /// approved, which is applied as a deny). `redirect` is the client callback
-    /// URL carrying `error=access_denied` (code flow with a `client_state`);
-    /// `None` for the device flow.
-    Denied { redirect: Option<String> },
+    /// Approved: a code-flow approval issued its code, a device approval
+    /// recorded its grant, a pairing approval let the browser's poll start its
+    /// session.
+    Approved {
+        /// The client callback URL carrying the code, so the approving
+        /// surface can send the browser on and finish the flow inline. Always
+        /// set for a code-flow prompt; `None` on the device page.
+        redirect: Option<String>,
+    },
+    /// Denied. Covers more than an explicit deny: an approval that grants
+    /// nothing (no requested-and-allowed scope was ticked) is applied as a
+    /// deny, and so is an approval of a code-flow request whose browser
+    /// session has ended or whose client was disabled since it was made.
+    Denied {
+        /// The client callback URL carrying `error=access_denied`, with an
+        /// `error_description` saying which kind of deny it was. Always set
+        /// for a code-flow prompt; `None` on the device page.
+        redirect: Option<String>,
+    },
 }
 
 /// The Owner's approval of an authorization-code consent prompt.
 pub struct ApproveOAuthConsentInput {
-    /// The scopes the Owner ticked.
+    /// The scopes the Owner ticked. Clamped to what the prompt may grant and
+    /// to the approver's own grant; ticking none is a deny.
     pub owner_approved_scopes: Vec<String>,
     /// Optional SMART-on-FHIR patient context to bind to the grant. When the
     /// request's SMART launch bound a patient, it must be that patient, or the
@@ -160,12 +181,15 @@ pub struct ApproveOAuthConsentInput {
 
 /// The Owner's approval of a device-code consent prompt.
 pub struct ApproveDeviceConsentInput {
-    /// The scopes the Owner ticked.
+    /// The scopes the approver ticked. Clamped to the expansion envelope and
+    /// to the approver's own grant; ticking none is a deny.
     pub owner_approved_scopes: Vec<String>,
-    /// Optional SMART-on-FHIR patient context to bind to the grant.
+    /// Optional SMART-on-FHIR patient context to bind to a device grant. A
+    /// browser pairing binds no patient and ignores it.
     pub patient: Option<String>,
-    /// An optional adjusted device name (the approver renaming the device before
-    /// approving); falls back to the device's own name, then the client's name.
+    /// An optional adjusted name (the approver renaming the device or browser
+    /// before approving). Left empty, a device keeps its own name, then the
+    /// client's name; a browser keeps the name it paired with.
     pub device_name: Option<String>,
 }
 
@@ -180,7 +204,11 @@ pub struct ApproveDeviceConsentInput {
 /// caller's own [`Grant`], to say which approval scopes a prompt takes that
 /// the caller lacks.
 pub(crate) struct ConsentReader<S: GrantStore> {
+    /// The store the prompts and their clients are read from.
     store: S,
+    /// The reader's own grant, against which a loaded prompt reports the
+    /// approval scopes the reader lacks, so a browser that can read a prompt
+    /// but not approve it learns so from the prompt itself.
     reader_grant: Grant,
 }
 
@@ -202,10 +230,12 @@ impl<S: GrantStore> ConsentReader<S> {
 /// prompt counting as decided in the browser that made it
 /// (`decidable_in_requesting_browser`), so the host notifies the Owner for
 /// it, which spends from the authorization start limit the caller hands in.
-/// Holds the [`OwnerApproval`] port, to republish the newest pending consent
-/// with the change.
+/// Holds the [`OwnerApproval`] port, to republish the
+/// [`OwnerPrompt`](crate::domain::owner_prompt::OwnerPrompt) with the change.
 pub(crate) struct ConsentRaiser<S: GrantStore> {
+    /// The store holding the code-flow request the raiser raises.
     store: S,
+    /// The port that republishes the Owner prompt once a raise has committed.
     owner_approval: Arc<dyn OwnerApproval>,
 }
 
@@ -220,13 +250,16 @@ impl<S: GrantStore> ConsentRaiser<S> {
     }
 }
 
-/// What [`ConsentRaiser::raise_for_owner`] did with a prompt.
+/// What [`ConsentRaiser::raise_for_owner`] did with a prompt. Each is an
+/// outcome the handler answers, not an error: `Raised` and `AlreadyRaised`
+/// with `204 No Content`, `StartLimited` with the start limit's `429`.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum OwnerRaising {
-    /// The prompt is raised for the Owner now, and the host notifies.
+    /// The prompt is raised for the Owner now: the Owner prompt was
+    /// republished, and the host notifies.
     Raised,
-    /// The prompt was raised already (or never decidable in its requesting
-    /// browser): nothing changed.
+    /// The prompt wasn't decidable in its requesting browser, so it was the
+    /// Owner's already: nothing changed and the start limit wasn't asked.
     AlreadyRaised,
     /// The authorization start limit refused: the prompt is left as it was.
     StartLimited,
@@ -237,11 +270,19 @@ pub(crate) enum OwnerRaising {
 /// additionally holds the caller's own [`Grant`] (the approve paths require the
 /// request's approval scopes and reject any delegation beyond the
 /// approver's authority) plus the [`OwnerApproval`] port — both lifted from
-/// the state. Every decision runs in one write scope, and the newest pending
-/// consent is republished once it has committed.
+/// the state. Every decision runs in one write scope, and the
+/// [`OwnerPrompt`](crate::domain::owner_prompt::OwnerPrompt) is republished
+/// once it has committed, so the Owner's popup moves on; a decision that fails
+/// rolls back and republishes nothing.
 pub(crate) struct ConsentDecider<S: GrantStore> {
+    /// The store every decision reads and writes in one write scope.
     store: S,
+    /// The port that republishes the Owner prompt once a decision has
+    /// committed.
     owner_approval: Arc<dyn OwnerApproval>,
+    /// The approver's own grant: every approval must hold the request's
+    /// approval scopes in it, and the Owner's ticks are clamped to it, so an
+    /// approval is never recorded wider than its approver's authority.
     approver_grant: Grant,
 }
 
@@ -261,7 +302,7 @@ impl<S: GrantStore> ConsentDecider<S> {
     }
 
     /// Run `decide` in one write scope and, once it has committed a decision,
-    /// republish the newest pending consent: the decided request no longer is.
+    /// republish the Owner prompt: the decided request is no longer pending.
     fn decide_and_republish<T>(
         &self,
         decide: impl FnOnce(&mut S::Tx<'_>) -> Result<T, AuthorizationServerError>,
@@ -290,9 +331,9 @@ mod tests {
         pairing_request, seed_fixture_browser_session, FakeGrantStore, RecordingOwnerApproval,
     };
 
-    /// A decider over a clone of `store` for `approver_grant`, with the real host app's
-    /// client id — which the `client` fixture never uses, so the fixture
-    /// client always takes the trust-on-first-use path.
+    /// A decider over a clone of `store` for `approver_grant`. The fake shares
+    /// its tables between clones, so a test arranges and observes rows through
+    /// its own handle.
     fn decider(
         store: &FakeGrantStore,
         owner_approval: &Arc<RecordingOwnerApproval>,
@@ -373,6 +414,9 @@ mod tests {
         )
     }
 
+    /// A store with a live browser session, the fixture client registered for
+    /// `read`, and its pending request `req-1`, plus a recording republish
+    /// port.
     fn live_code_store() -> (FakeGrantStore, Arc<RecordingOwnerApproval>) {
         let store = FakeGrantStore::default();
         seed_fixture_browser_session(&store);
@@ -393,7 +437,7 @@ mod tests {
 
     /// A prompt whose client was disabled since it was made isn't read, and
     /// approving it denies it instead, sending the app `access_denied` with the
-    /// disabled-client sentence: no code, no grant, the popup head
+    /// disabled-client sentence: no code, no grant, the Owner prompt
     /// republished.
     #[test]
     fn a_prompt_whose_client_was_disabled_is_denied_not_approved() {
@@ -446,6 +490,9 @@ mod tests {
         assert_eq!(owner_approval.count(), 1);
     }
 
+    /// An approval of a registered client's request issues its code, records the
+    /// standing grant, returns the callback carrying the code and the client's
+    /// `state`, and republishes the Owner prompt.
     #[test]
     fn approve_oauth_consent_mints_a_code_and_returns_the_redirect() {
         let (store, owner_approval) = live_code_store();
@@ -477,12 +524,15 @@ mod tests {
             )
             .unwrap()
             .is_some());
-        // The approval moved this request out of `pending`, so the popup head
-        // has to be recomputed — the queue spans both grant flows, so a
-        // code-flow approval is as much a head transition as a device one.
+        // The approval moved this request out of `pending`, so the Owner prompt
+        // has to be recomputed: the prompt spans every flow, so a code-flow
+        // approval may change it as much as a device one.
         assert_eq!(owner_approval.count(), 1);
     }
 
+    /// An approval ticking no scope the request may grant is applied as a deny:
+    /// the request is denied, the app hears `access_denied` with "The request
+    /// was declined.", and the Owner prompt is republished.
     #[test]
     fn approve_oauth_consent_with_nothing_granted_is_a_deny() {
         let (store, owner_approval) = live_code_store();
@@ -836,6 +886,7 @@ mod tests {
         );
     }
 
+    /// Approving an id that names no request is `OAuthConsentNotFound`.
     #[test]
     fn approve_oauth_consent_maps_a_missing_request_to_not_found() {
         let store = FakeGrantStore::default();
@@ -855,6 +906,9 @@ mod tests {
         );
     }
 
+    /// A device approval may grant from the client's `allowed_scopes`: it
+    /// records a device grant under the approver's name for the device, holding
+    /// exactly the ticked scopes, and republishes the Owner prompt.
     #[test]
     fn approve_device_consent_expands_to_client_allowed_and_republishes() {
         let store = FakeGrantStore::default();
@@ -890,6 +944,8 @@ mod tests {
         assert_eq!(owner_approval.count(), 1);
     }
 
+    /// Denying a device prompt marks its request denied and republishes the
+    /// Owner prompt; denying an unknown `user_code` is `DeviceConsentNotFound`.
     #[test]
     fn deny_device_consent_marks_denied_and_republishes() {
         let store = FakeGrantStore::default();
@@ -917,6 +973,8 @@ mod tests {
         );
     }
 
+    /// [`live_code_store`] with the client registered for, and its request
+    /// `req-1` asking for, the one resource scope `scope`.
     fn resource_scope_code_store(scope: &str) -> (FakeGrantStore, Arc<RecordingOwnerApproval>) {
         let store = FakeGrantStore::default();
         seed_fixture_browser_session(&store);
@@ -961,6 +1019,8 @@ mod tests {
         assert_eq!(owner_approval.count(), 0);
     }
 
+    /// A device approval ticking a resource scope beyond the approver's own grant
+    /// is `InsufficientApproverScope`, naming it, and republishes nothing.
     #[test]
     fn approve_device_consent_rejects_a_resource_scope_the_approver_cannot_delegate() {
         let store = FakeGrantStore::default();
@@ -995,6 +1055,8 @@ mod tests {
         assert_eq!(owner_approval.count(), 0);
     }
 
+    /// A device approval ticking a resource scope the approver's grant covers is
+    /// approved.
     #[test]
     fn approve_device_consent_allows_a_resource_scope_the_approver_holds() {
         let store = FakeGrantStore::default();
@@ -1319,6 +1381,9 @@ mod tests {
         );
     }
 
+    /// Only a pending, unexpired code-flow request loads as a prompt; an expired
+    /// one, one still waiting on its browser's limited page, and an unknown id
+    /// are each `OAuthConsentNotFound`.
     #[test]
     fn load_pending_code_request_accepts_a_live_request_and_refuses_the_rest() {
         let store = FakeGrantStore::default();
@@ -1360,6 +1425,8 @@ mod tests {
         }
     }
 
+    /// The reader loads a pending code-flow prompt of a registered client with the
+    /// request as stored.
     #[test]
     fn consent_reader_oauth_consent_resolves_the_client_name() {
         let store = FakeGrantStore::default();

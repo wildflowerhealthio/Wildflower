@@ -22,7 +22,12 @@ pub(crate) enum GrantCoverage {
     Uncovered,
     /// A grant covers some of the requested scopes — the prompt pre-ticks them,
     /// the Owner decides the rest.
-    Partial { pre_approved_scopes: Vec<String> },
+    Partial {
+        /// The requested scopes the grant covers, in request order; the
+        /// parked request records them so the consent card opens with them
+        /// ticked.
+        pre_approved_scopes: Vec<String>,
+    },
     /// Every requested scope is covered: the fast path.
     Full(StandingGrantCoverage),
 }
@@ -100,8 +105,14 @@ impl GrantCoverage {
 /// one.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct StandingGrantCoverage {
+    /// The standing grant that covers the request; a code issued under this
+    /// proof stamps that grant's `last_used_at`.
     grant_id: String,
+    /// The requested scopes, verbatim and all of them: what the request
+    /// records and the code may carry, before the browser session bounds it.
     covered_scopes: Vec<String>,
+    /// The SMART-on-FHIR patient context the grant was approved with, which
+    /// the issued code binds.
     patient: Option<String>,
 }
 
@@ -130,10 +141,13 @@ mod tests {
 
     use crate::domain::test_fake::{code_grant, owned_scopes, FakeGrantStore};
 
+    /// The redirect URI every test's grant and request share.
     fn redirect() -> Url {
         Url::parse("https://example.com/cb").unwrap()
     }
 
+    /// A store holding standing code grant "g1" for "client" at
+    /// [`redirect`], with `scopes` and `patient`.
     fn store_with_grant(scopes: &[&str], patient: Option<&str>) -> FakeGrantStore {
         let store = FakeGrantStore::default();
         store

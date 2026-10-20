@@ -14,7 +14,7 @@ use crate::domain::authorization_request::AuthorizationRequest;
 /// prompt answers not found, so the host is never asked about it (a client
 /// with no row, trusted on first use, stays a candidate). The store's
 /// [`owner_prompt`](crate::domain::grant_store::AuthorizationRequestsTx::owner_prompt)
-/// applies it in its query, filtering on the left-joined client's
+/// applies it in its reads, filtering on the left-joined client's
 /// `disabled_at`;
 /// [`is_awaiting_owner`](crate::domain::grant_store::AuthorizationRequestsTx::is_awaiting_owner)
 /// and raising a prompt for the Owner apply it through
@@ -28,7 +28,8 @@ pub enum OwnerPrompt {
     /// An RFC 8628 device-code request. Decided at the device page,
     /// `/oauth/device?user_code=…`.
     DeviceCode {
-        /// The pairing code the device shows its user.
+        /// The code the device shows its user, which the Owner enters or
+        /// confirms at the device page.
         user_code: String,
         /// The name of the client that asks: its registered name, or its
         /// `client_id` while it has no registration, as the consent card
@@ -38,8 +39,8 @@ pub enum OwnerPrompt {
     /// An RFC 6749 §4.1 request parked by `/oauth/authorize` awaiting Owner
     /// approval. Decided at its consent card, `/oauth/authorize/{id}/consent`.
     AuthorizationCode {
-        /// The `AuthorizationRequest` primary key, which is also the `$id` of
-        /// the wait page the requesting browser is sitting on.
+        /// The code request's id, which is also the `$id` of the wait page
+        /// the requesting browser is sitting on.
         id: String,
         /// The name of the client that asks, as for
         /// [`DeviceCode`](Self::DeviceCode).
@@ -54,7 +55,8 @@ pub enum OwnerPrompt {
     /// browser is always remote: a browser on the server's own device signs
     /// in with a same-device sign-in instead.
     BrowserPairing {
-        /// The code the pairing page shows.
+        /// The code the pairing page shows, which the Owner enters or
+        /// confirms at the device page.
         user_code: String,
         /// The name the browser goes by: one it gave itself, or one taken
         /// from its user agent.

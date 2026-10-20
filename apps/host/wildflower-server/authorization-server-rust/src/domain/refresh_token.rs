@@ -1,3 +1,7 @@
+//! Refresh-token families and their tokens (RFC 6749 §6). Every refresh token
+//! descended from one redemption forms a family; only the newest token works,
+//! and presenting an older one ends the whole family.
+
 use chrono::{DateTime, Duration, Utc};
 use diesel::prelude::{Insertable, Queryable, Selectable};
 
@@ -22,17 +26,23 @@ pub struct RefreshTokenFamily {
     /// Primary key — lineage id shared by every token descended from one
     /// authorization.
     pub family_id: String,
-    /// Client the family was issued to; redemption is rejected for any other.
+    /// Client the family was issued to; only it may refresh. A refresh token
+    /// presented by any other client reads exactly like an unknown one.
     pub client_id: String,
-    /// Scopes carried forward to every access token minted from this family.
+    /// Scopes carried forward to every access token minted from this family,
+    /// copied from the redemption that started it.
     #[diesel(serialize_as = JsonStrings, deserialize_as = JsonStrings)]
     pub scopes: Vec<String>,
     /// SMART-on-FHIR patient context recorded at authorization, if any.
     pub patient: Option<String>,
-    /// When the family was created (the original authorization).
+    /// When the family was created: the redemption or device poll that
+    /// started it. Revoking the client refuses every family issued before
+    /// that moment.
     pub issued_at: DateTime<Utc>,
     /// Absolute deadline for the whole family — rotation never extends it;
-    /// past this the client must re-run the authorization flow.
+    /// past this the client must re-run the authorization flow. Ending the
+    /// family (a replay, a revocation) moves it to the moment it ended,
+    /// rather than deleting the row; the retention sweep removes it later.
     pub expires_at: DateTime<Utc>,
     /// SHA-256 base64url hash of the authorization `code` that minted this
     /// family, or `None` for grants with no authorization code (the
@@ -133,6 +143,7 @@ mod tests {
 
     use crate::domain::test_fake::FakeGrantStore;
 
+    /// Store a family with one live token under `token_hash`.
     fn live_token(store: &FakeGrantStore, token_hash: &str) {
         let now = Utc::now();
         store
@@ -160,6 +171,8 @@ mod tests {
             .unwrap();
     }
 
+    /// The first consume of a live token spends it, the second is a replay,
+    /// and a hash that was never issued is not found.
     #[test]
     fn consume_reports_consumed_then_replayed_then_not_found() {
         let store = FakeGrantStore::default();

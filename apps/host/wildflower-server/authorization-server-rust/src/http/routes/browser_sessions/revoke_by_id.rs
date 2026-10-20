@@ -10,15 +10,16 @@ use crate::domain::capabilities::Scoped;
 use crate::http::state::AuthorizationServerState;
 use crate::live_bindings::LiveBrowserSessionsRevoker;
 
-/// `DELETE /browser-sessions/{sid}` — revoke a browser session, which ends
-/// everything minted under it: the browser's own token, and every access
-/// token and refresh family an app it signed in to holds. The caller's own
-/// session may be revoked, which signs that browser out. Acquired through
-/// [`LiveBrowserSessionsRevoker`] (scope `wildflower/BrowserSession.d`).
+/// The `DELETE` method on `/browser-sessions/{sid}`.
 pub(super) fn route() -> MethodRouter<Arc<AuthorizationServerState>> {
     delete(handle_revoke_browser_session)
 }
 
+/// `DELETE /authorization/browser-sessions/{sid}` — revoke a browser session, which ends
+/// everything minted under it: the browser's own token, and every access
+/// token and refresh family an app it signed in to holds. The caller's own
+/// session may be revoked, which signs that browser out. Acquired through
+/// [`LiveBrowserSessionsRevoker`] (scope `wildflower/BrowserSession.d`).
 async fn handle_revoke_browser_session(
     browser_sessions: Scoped<LiveBrowserSessionsRevoker>,
     Path(sid): Path<String>,

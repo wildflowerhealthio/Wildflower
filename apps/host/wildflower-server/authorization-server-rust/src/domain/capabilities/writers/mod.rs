@@ -1,6 +1,9 @@
 //! The **writers** — one per kind of privileged write, each method taking an
 //! authority proof from [`crate::domain::authority`] as the price of
-//! admission:
+//! admission. A proof can only be had from its one constructor, which runs
+//! the check it stands for, so a write that holds the proof is a write whose
+//! check ran. The writers are the only code that may make the privileged
+//! store calls:
 //!
 //!  - [`RequestApprover`] — approve a pending request (the flow's own
 //!    `approve` transition) and, for the code flow, issue its authorization
@@ -226,7 +229,8 @@ mod tests {
     /// writers — and so around the proof its method would have demanded —
     /// fails here. Comments and unit-test modules are skipped (see
     /// [`production_lines`]): prose may name the methods, and a test may
-    /// plant rows to arrange its state.
+    /// plant rows to arrange its state. A floor on the number of files checked
+    /// catches the guard walking an empty tree.
     #[test]
     fn privileged_store_calls_happen_only_in_writers() {
         let src = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));

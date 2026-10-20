@@ -14,8 +14,11 @@ where
 {
     #[derive(Deserialize)]
     #[serde(untagged)]
+    /// The two shapes RFC 7519 §4.1.3 allows `aud` to take.
     enum StringOrVec {
+        /// A single audience, as a bare string.
         One(String),
+        /// Several audiences, as an array.
         Many(Vec<String>),
     }
     match StringOrVec::deserialize(deserializer)? {
@@ -30,10 +33,12 @@ where
 /// RFC 7519 short forms on the wire.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccessTokenClaims {
-    /// Origin that issued the token.
+    /// The server's bare origin, which issued the token. A token another
+    /// server minted is refused.
     #[serde(rename = "iss")]
     pub issuer: String,
-    /// `client_id` the token is bound to.
+    /// The `client_id` of the app the token was issued to. Revoking the app
+    /// bumps this subject's epoch.
     #[serde(rename = "sub")]
     pub subject: String,
     /// Unique JWT ID (RFC 7519 §4.1.7) — a fresh random identifier stamped on
@@ -42,18 +47,20 @@ pub struct AccessTokenClaims {
     /// as the wire short form `jti` (like `scope`/`patient`) since the name is
     /// itself the canonical spelling.
     pub jti: String,
-    /// Resource server the token is intended for.
+    /// Resource server the token is intended for: the server's origin unless
+    /// the request named another.
     #[serde(rename = "aud")]
     pub audience: String,
     /// Instant at which the token stops being valid.
     #[serde(rename = "exp", with = "ts_seconds")]
     pub expires_at: DateTime<Utc>,
-    /// Instant at which the token was minted.
+    /// Instant at which the token was minted. Revoking the app refuses every
+    /// token minted before that moment.
     #[serde(rename = "iat", with = "ts_seconds")]
     pub issued_at: DateTime<Utc>,
     /// Space-separated OAuth scopes granted by this token.
     pub scope: String,
-    /// Optional SMART-on-FHIR patient context.
+    /// The SMART patient context, when the approval named one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub patient: Option<String>,
     /// The browser session the token was minted under (the OpenID `sid`
@@ -72,11 +79,9 @@ pub struct VerifiedClaims {
     /// `client_id` the token is bound to (`sub`).
     #[serde(rename = "sub")]
     pub subject: String,
-    /// Unique JWT ID (`jti`), if the token carries one. `Option` — and
-    /// `#[serde(default)]` — because verification stays tolerant of legacy
-    /// tokens minted before the authorization server wrote a `jti`: they verify fine, they
-    /// just can't be denylisted individually (the per-subject epoch still
-    /// covers them). Every token the authorization server mints today carries one.
+    /// Unique JWT ID (`jti`), if the token carries one. Every token this
+    /// server mints does; a token without one still verifies, but can't be
+    /// denylisted individually (the per-subject epoch still covers it).
     #[serde(default)]
     pub jti: Option<String>,
     /// Audience(s) the token is intended for (`aud`). Normalized at parse time —

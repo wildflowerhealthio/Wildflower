@@ -73,6 +73,8 @@ pub(super) fn device_name_from_user_agent(user_agent: &str) -> Option<String> {
 mod tests {
     use super::*;
 
+    /// A desktop agent naming a browser and a system is named browser on system:
+    /// Chrome on macOS, Firefox on Windows.
     #[test]
     fn desktop_browsers_render_as_browser_on_os() {
         let chrome_mac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 \
@@ -90,6 +92,8 @@ mod tests {
         );
     }
 
+    /// A Chromium fork is named after itself, though its agent carries `Chrome/`
+    /// too: Edge is Edge.
     #[test]
     fn chromium_forks_win_over_the_embedded_chrome_token() {
         let edge = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
@@ -100,6 +104,8 @@ mod tests {
         );
     }
 
+    /// Safari on an iPhone, whose agent carries `Mac OS X`, is named Safari on
+    /// iPhone.
     #[test]
     fn safari_only_when_not_chromium() {
         // Real Safari carries `Safari/` but no `Chrome/`.
@@ -112,6 +118,7 @@ mod tests {
         );
     }
 
+    /// An Android agent is named Android, not Linux, though it carries `Linux`.
     #[test]
     fn android_wins_over_the_linux_token_it_embeds() {
         let android = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 \
@@ -122,6 +129,8 @@ mod tests {
         );
     }
 
+    /// An agent naming neither a browser nor a system (`curl`, `okhttp`, Go's and
+    /// Python's HTTP clients, an empty one) gets no name, never the raw string.
     #[test]
     fn non_browser_clients_yield_none() {
         // The typical device-code caller: a CLI or bare HTTP library.
@@ -140,6 +149,7 @@ mod tests {
         }
     }
 
+    /// A native app's agent naming only its system is named after the system.
     #[test]
     fn a_lone_os_still_names_the_device() {
         // A UA with a recognizable platform but no known browser token.

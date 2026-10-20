@@ -1,7 +1,7 @@
 //! The limit on starting authorization requests: the layer on the two routes
 //! that start one, `GET /oauth/authorize` and
 //! `POST /oauth/device_authorization`, which asks the host's
-//! [`AuthorizationStartGate`](crate::AuthorizationStartGate).
+//! [`AuthorizationStartGate`].
 //!
 //! Anyone who knows the server's domain can start a request, and each one
 //! the server parks raises the Owner's approval popup on the server's device.
@@ -81,6 +81,7 @@ pub(crate) fn start_limited_response() -> Response {
 /// the Owner.
 #[derive(Clone)]
 pub(crate) struct DeferredStartLimit {
+    /// The host's gate, which says whether a start is admitted.
     gate: Arc<dyn AuthorizationStartGate>,
     /// The request's extensions as the layer saw them (its connect info),
     /// what the gate judges it by.

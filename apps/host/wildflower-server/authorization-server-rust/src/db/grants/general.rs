@@ -40,14 +40,23 @@ diesel::table! {
 /// into the [`Grant`] enum, dispatching on the tag.
 #[derive(Queryable)]
 struct GrantViewRow {
+    /// The grant's id, a UUID unique across both tables.
     id: String,
+    /// The client the grant is for.
     client_id: String,
+    /// Everything the Owner has approved under the grant, as a JSON array.
     scopes: JsonStrings,
+    /// The latest approval.
     granted_at: DateTime<Utc>,
+    /// When the grant was last used; `NULL` until it first is.
     last_used_at: Option<DateTime<Utc>>,
+    /// The patient the latest approval named, if any.
     patient: Option<String>,
+    /// The kind tag, which says which payload column is the row's own.
     grant_type: FlowType,
+    /// An authorization-code grant's redirect URI; `NULL` on a device grant.
     redirect_uri: Option<UrlText>,
+    /// A device grant's device name; `NULL` on an authorization-code grant.
     device_name: Option<String>,
 }
 
@@ -210,6 +219,7 @@ mod tests {
         Option<String>,
     );
 
+    /// The shared columns, each drawn independently.
     fn arb_shared() -> impl Strategy<Value = SharedGrantFields> {
         (
             "[a-zA-Z0-9_-]{1,32}",
@@ -221,6 +231,7 @@ mod tests {
         )
     }
 
+    /// A grant of either kind.
     fn arb_grant() -> impl Strategy<Value = Grant> {
         let code = (arb_shared(), arb_url()).prop_map(
             |((id, client_id, scopes, granted_at, last_used_at, patient), redirect_uri)| {
@@ -251,6 +262,7 @@ mod tests {
         prop_oneof![code, device]
     }
 
+    /// `url`, parsed.
     fn read(url: &str) -> Url {
         Url::parse(url).expect("valid url")
     }

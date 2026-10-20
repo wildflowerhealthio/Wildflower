@@ -9,8 +9,11 @@ use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::grant_store::BrowserSessionsTx;
 
 /// Start browser sessions, inside the caller's transaction; the gate is the
-/// proof each method takes.
+/// proof each method takes: a [`RedeemedSameDeviceSignInCode`] for a
+/// same-device session, a [`ClaimedBrowserPairing`] for a paired one.
 pub(crate) struct BrowserSessionWriter<'a, T: BrowserSessionsTx> {
+    /// The caller's open write scope; the session lands with the rest of the
+    /// operation or not at all.
     tx: &'a mut T,
 }
 

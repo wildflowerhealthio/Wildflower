@@ -19,6 +19,8 @@ pub(crate) fn is_essential_client(client_id: &str) -> bool {
 mod tests {
     use super::*;
 
+    /// The host app's and the browser-session clients are essential; a
+    /// lookalike id and any other client are not.
     #[test]
     fn only_the_host_app_s_and_the_browser_session_clients_are_essential() {
         assert!(is_essential_client(WILDFLOWER_HOST_APP_CLIENT_ID));

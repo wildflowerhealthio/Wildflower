@@ -1,8 +1,11 @@
-use crate::common::*;
+//! The device-code grant (RFC 8628) end to end: a device starts at
+//! `/oauth/device_authorization`, polls `/oauth/token` while the Owner decides
+//! on the device page, and redeems the approved request once (§3.4, §3.5).
+//! Approving records a standing device grant, which the refresh family the
+//! device earns links back to. The file also holds the refresh-token rotation
+//! and client-binding tests that the device flow shares with the code flow.
 
-// ---------------------------------------------------------------------------
-// Device-code grant state machine (RFC 8628 §3.4/§3.5)
-// ---------------------------------------------------------------------------
+use crate::common::*;
 
 /// First poll on a still-pending request returns `authorization_pending`; an
 /// immediate second poll trips the slow-down rate limit
@@ -66,18 +69,16 @@ async fn device_grant_single_use_then_expired_token() {
     );
 }
 
-/// Device-flow consent clamps the granted scopes to the client's *current*
-/// `allowed_scopes`, not just what the (possibly stale) request asked for: a
-/// request that asked for `write` while it was permitted must not grant `write`
-/// after the client's policy no longer allows it. Regression guard for the
-/// device path, which previously intersected only with `requested_scopes` (the
-/// code-flow path already clamped to `allowed_scopes`).
+/// Device-flow consent clamps the granted scopes to the client's current
+/// `allowed_scopes`, not just to what the request asked for: a request that
+/// asked for `write` while it was permitted grants no `write` once the
+/// client's registration no longer allows it.
 #[tokio::test]
 async fn device_consent_clamps_granted_scopes_to_client_allowed() {
     let (g, owner_token, db) = spin_up();
-    // The client currently permits only `read` — `write` is no longer allowed.
+    // The client permits only `read`.
     seed_client_with_redirect(&db, "device-client", "https://app.example/cb", &["read"]);
-    // A pending device request that still asks for the now-disallowed `write`.
+    // A pending device request that asks for the disallowed `write` too.
     plant_device_request(
         &store_handle(&db),
         "device-client",
@@ -111,12 +112,9 @@ async fn device_consent_clamps_granted_scopes_to_client_allowed() {
     assert_eq!(token["scope"], "read");
 }
 
-/// Device-flow consent now threads an optional `patient` from the approve body
-/// onto the approved request (the code flow already did). Locks in the one live
-/// behavior change of the consent-dedup refactor: with the shared `ApproveBody`
-/// the device endpoint *honors* a posted `patient`, so a device UI that selects
-/// a patient binds it to the grant. The device UI doesn't send `patient` yet,
-/// so this is the only test that exercises the wired-through path.
+/// Device-flow consent takes an optional `patient` from the approve body onto
+/// the approved request, as the code flow does, so an approver that selects a
+/// patient binds it to what the device is issued.
 #[tokio::test]
 async fn device_consent_threads_patient_onto_request() {
     let (g, owner_token, db) = spin_up();
@@ -160,11 +158,11 @@ async fn device_consent_threads_patient_onto_request() {
     );
 }
 
-/// Device-flow consent is EXPANDABLE: the Owner pairing a device may grant
+/// Device-flow consent is expandable: the Owner approving a device may grant
 /// scopes the device never requested, up to the client's `allowed_scopes`.
-/// (The code-flow path stays clamped to `requested_scopes` — a third-party app
-/// can't widen its own grant; see `device_consent_clamps_granted_scopes_to_client_allowed`
-/// for the still-enforced allowed-scopes ceiling.)
+/// The code flow stays clamped to the requested scopes, so a third-party app
+/// can't widen its own grant; `device_consent_clamps_granted_scopes_to_client_allowed`
+/// holds the allowed-scopes ceiling.
 #[tokio::test]
 async fn device_consent_allows_expansion_beyond_requested() {
     let (g, owner_token, db) = spin_up();
@@ -358,12 +356,11 @@ async fn device_consent_approver_can_adjust_device_name() {
     assert_eq!(request.device_name.as_deref(), Some("Reception iPad"));
 }
 
-/// The headline behavior of this ticket: approving a device-code consent mints a
-/// **durable device grant** (the record "Authorized Devices" in Settings lists),
-/// and the family the device's `offline_access` token starts links back to that
-/// grant. This is the device-flow half of the "family carries grant_id for both
-/// flows" contract; `offline_access_issues_rotating_refresh_token` is the
-/// code-flow half.
+/// Approving a device-code consent records a standing device grant, the record
+/// the Owner's list of authorized devices shows, and the family the device's
+/// `offline_access` token starts links back to that grant. This is the device
+/// half of "a refresh family names the grant that earned it";
+/// `offline_access_issues_rotating_refresh_token` is the code-flow half.
 #[tokio::test]
 async fn device_approval_mints_durable_grant_and_links_refresh_family() {
     let (g, owner_token, db) = spin_up();
@@ -393,7 +390,7 @@ async fn device_approval_mints_durable_grant_and_links_refresh_family() {
     let res = g.router.clone().oneshot(approve).await.expect("oneshot");
     assert_eq!(res.status(), StatusCode::OK);
 
-    // A durable device grant now shows in the access index as the `device_code`
+    // The standing device grant shows in the access index as the `device_code`
     // union variant, titled by its deviceName.
     let res = g
         .router
@@ -558,9 +555,8 @@ async fn token_endpoint_rejects_grant_outside_client_allow_list() {
 }
 
 /// RFC 6749 §5.1/§5.2 (inherited by RFC 8628 §3.4): the
-/// `/oauth/device_authorization` response must suppress caching just like the
-/// token endpoint — the token-endpoint case is already covered, this pins the
-/// device endpoint.
+/// `/oauth/device_authorization` response suppresses caching just like the
+/// token endpoint's.
 #[tokio::test]
 async fn device_authorization_sets_cache_suppression_headers() {
     let (g, _owner_token, db) = spin_up();
@@ -641,9 +637,8 @@ async fn offline_access_issues_rotating_refresh_token() {
         .expect("refresh_token present with offline_access")
         .to_string();
 
-    // The minted family records the authorization-code grant that authorized it
-    // — write-only plumbing for a future per-device revoke. This is the
-    // code-flow half of the "family carries grant_id for both flows" contract.
+    // The minted family records the authorization-code grant that authorized
+    // it, as a device family records its device grant.
     {
         let store = store_handle(&db);
         let grant = store

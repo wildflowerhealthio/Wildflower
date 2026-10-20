@@ -1,13 +1,13 @@
+//! Owner client management (`/authorization/clients`), the other half of
+//! trust on first use: the Owner can see every client they trust (seeded, or
+//! created by a trust-on-first-use approval) and take that trust back by
+//! PATCHing its `disabledAt`. A disabled client is refused at both OAuth front
+//! doors at once; re-enabling (`null`) restores it with its registration
+//! intact. An essential client can't be disabled.
+
 use chrono::DateTime;
 
 use crate::common::*;
-
-// --- Owner client management (`/authorization/clients`, #162) ------------------------
-//
-// The other half of trust on first use: the Owner can see every client they
-// trust (migration-seeded or TOFU-created) and take that trust back by PATCHing
-// its `disabledAt`. A disabled client is refused at both OAuth front doors at
-// once; re-enabling (`null`) restores it with its registration intact. An essential client can't be disabled.
 
 /// `GET /authorization/clients` as `token`.
 async fn list_clients(g: &AuthorizationServer, token: &str) -> axum::response::Response {
@@ -34,6 +34,7 @@ async fn listed_clients(g: &AuthorizationServer, token: &str) -> Vec<Value> {
         .clone()
 }
 
+/// The row for `client_id` in a `GET /authorization/clients` listing, if listed.
 fn find_client<'a>(clients: &'a [Value], client_id: &str) -> Option<&'a Value> {
     clients.iter().find(|c| c["clientId"] == client_id)
 }
@@ -66,6 +67,9 @@ async fn refresh_as_confidential_client(g: &AuthorizationServer) -> axum::respon
     .await
 }
 
+/// The list shows the essential clients, the seeded SMART apps and a client
+/// created by a trust-on-first-use approval exactly as registered, ordered by
+/// id, and no row carries a secret.
 #[tokio::test]
 async fn list_shows_seeded_and_trusted_on_first_use_clients_without_secrets() {
     let (g, owner_token, db) = spin_up();
@@ -141,6 +145,9 @@ async fn list_shows_seeded_and_trusted_on_first_use_clients_without_secrets() {
     }
 }
 
+/// A disabled client's `/oauth/authorize` gets a local error page, never a
+/// redirect to the client or a prompt for the Owner. Re-enabled, its
+/// registration is intact and the same request parks again.
 #[tokio::test]
 async fn a_disabled_client_is_refused_at_authorize_until_re_enabled() {
     let (g, owner_token, db) = spin_up();
@@ -179,6 +186,8 @@ async fn a_disabled_client_is_refused_at_authorize_until_re_enabled() {
     assert_eq!(row["allowedScopes"], serde_json::json!(["read"]));
 }
 
+/// A disabled client is `invalid_client` at `/oauth/token`, and the refused
+/// attempt spends nothing: once re-enabled, the same refresh token redeems.
 #[tokio::test]
 async fn a_disabled_client_is_refused_at_token_until_re_enabled() {
     let (g, db) = spin_up_with_confidential_client();
@@ -236,6 +245,8 @@ async fn any_sent_disabled_at_disables_now_with_the_servers_time() {
     }
 }
 
+/// Disabling a disabled client keeps the first timestamp, and enabling an
+/// enabled client is a no-op `200`.
 #[tokio::test]
 async fn disable_and_enable_are_idempotent() {
     let (g, owner_token, db) = spin_up();
@@ -265,6 +276,7 @@ async fn disable_and_enable_are_idempotent() {
     assert_eq!(stored_disabled_at(&db, "test-app"), None);
 }
 
+/// Disabling or enabling a client that isn't registered is a `404` naming it.
 #[tokio::test]
 async fn an_unknown_client_is_a_404_either_way() {
     let (g, owner_token, _db) = spin_up();
@@ -279,6 +291,9 @@ async fn an_unknown_client_is_a_404_either_way() {
     }
 }
 
+/// A PATCH body without `disabledAt`, with an unknown field, or with a time
+/// that doesn't parse is refused and leaves the client as it was: a missing
+/// field never reads as `null` and re-enables it.
 #[tokio::test]
 async fn a_body_without_disabled_at_is_rejected_and_writes_nothing() {
     let (g, owner_token, db) = spin_up();
@@ -300,6 +315,9 @@ async fn a_body_without_disabled_at_is_rejected_and_writes_nothing() {
     }
 }
 
+/// The host app's and the browser-session client can't be disabled: the
+/// PATCH is a `409 EssentialClient` and writes nothing. Enabling them stays
+/// allowed.
 #[tokio::test]
 async fn an_essential_client_cannot_be_disabled() {
     let (g, owner_token, db) = spin_up();
@@ -323,6 +341,7 @@ async fn an_essential_client_cannot_be_disabled() {
     }
 }
 
+/// Listing and PATCHing clients without a bearer is `401`, and writes nothing.
 #[tokio::test]
 async fn unauthenticated_callers_are_rejected() {
     let (g, _owner_token, db) = spin_up();
@@ -348,6 +367,9 @@ async fn unauthenticated_callers_are_rejected() {
     assert_eq!(stored_disabled_at(&db, "test-app"), None);
 }
 
+/// Listing takes `wildflower/Client.r` and PATCHing `wildflower/Client.u`.
+/// The scope gate runs before the handler, so even an unknown id is a `403`,
+/// not a `404`.
 #[tokio::test]
 async fn under_scoped_callers_are_rejected_before_the_handler() {
     let (g, _owner_token, db) = spin_up();

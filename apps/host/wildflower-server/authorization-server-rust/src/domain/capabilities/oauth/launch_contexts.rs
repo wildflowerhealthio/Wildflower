@@ -16,6 +16,8 @@ use crate::domain::GrantStore;
 /// binding instantiates it over the concrete `SqliteGrantStore`.
 #[derive(Clone)]
 pub(crate) struct LaunchContexts<S: GrantStore> {
+    /// The store holding the `launch_contexts` table, which each mint writes
+    /// to and prunes.
     store: S,
 }
 
@@ -78,9 +80,11 @@ impl<S: GrantStore> LaunchContexts<S> {
 
 /// Consume the launch `nonce` for `client_id` at `now`, in the caller's write
 /// scope `tx`: the context, now stamped consumed, iff it was minted for
-/// `client_id` or for any client and is unconsumed and unexpired. Otherwise
-/// nothing changes, and the [`LaunchRefusal`] says why. A context presented
-/// by the wrong client therefore stays consumable by its own.
+/// `client_id` or for the server launcher and is unconsumed and unexpired.
+/// Otherwise nothing changes, and the [`LaunchRefusal`] says why. A context
+/// presented by the wrong client therefore stays consumable by its own.
+/// `/oauth/authorize` calls this inside its own write scope, so a request
+/// refused after the consume rolls back and leaves the launch unspent.
 ///
 /// The consume is one conditional update, so of two racing consumes exactly
 /// one wins. Only when it finds nothing is the row read back to classify the
@@ -91,9 +95,13 @@ impl<S: GrantStore> LaunchContexts<S> {
 /// [`Expired`](LaunchRefusal::Expired). A launch pruned after expiring is
 /// gone, so it reads as unknown.
 ///
+/// The outer `Result` is the store's; the inner one is the launch's answer.
+///
 /// # Errors
 ///
-/// [`AuthorizationServerError::Infrastructure`] on a store failure.
+/// [`AuthorizationServerError::Infrastructure`] on a store failure, or when
+/// the conditional update refused a row that passes all four checks, which
+/// can't happen.
 pub(crate) fn consume_launch(
     tx: &mut impl LaunchContextsTx,
     nonce: &str,
@@ -170,7 +178,7 @@ mod tests {
         );
     }
 
-    /// A context minted for any client binds no patient and is consumed once,
+    /// A context minted for the server launcher binds no patient and is consumed once,
     /// by whichever client presents it first.
     #[test]
     fn a_context_for_the_server_launcher_is_consumed_once_by_any_client() {

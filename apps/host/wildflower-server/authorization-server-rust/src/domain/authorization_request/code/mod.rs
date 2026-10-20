@@ -3,7 +3,7 @@
 //! it. A request asking for more than its browser's session holds first waits
 //! on that browser's limited page
 //! ([`AwaitingLimitedPage`](CodeRequestState::AwaitingLimitedPage)), and the
-//! Owner is asked about it only once the browser goes on. [`resolved`] judges
+//! Owner is asked about it only once the browser goes on. `resolved` judges
 //! a request against its client's registration.
 
 pub(crate) mod resolved;
@@ -41,8 +41,8 @@ pub struct CodeRequest {
     /// The `state` the client sent, which its callback carries back.
     pub client_state: String,
     /// The browser session the request was made in, which the code it earns
-    /// is issued under. `/oauth/authorize` sends a browser without one to
-    /// pairing first.
+    /// is issued under: this session, not the approver's. `/oauth/authorize`
+    /// sends a browser without one to pairing first.
     pub sid: String,
     /// The SMART App Launch `launch` value the request consumed, or `None`
     /// for a plain OAuth request.
@@ -318,6 +318,7 @@ mod tests {
     use super::*;
     use crate::domain::test_fake::fixture_code_args;
 
+    /// The instant `minutes` after the tests' fixed start.
     fn at(minutes: i64) -> DateTime<Utc> {
         DateTime::from_timestamp(1_800_000_000, 0).expect("in range") + Duration::minutes(minutes)
     }
@@ -334,6 +335,7 @@ mod tests {
         )
     }
 
+    /// An approval of `openid` binding `Patient/1`.
     fn approval() -> Approval {
         Approval {
             granted_scopes: vec!["openid".to_owned()],

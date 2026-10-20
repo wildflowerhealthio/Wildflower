@@ -21,8 +21,12 @@ pub(crate) fn token_revoker_scopes() -> Vec<Scope> {
     )]
 }
 
-/// Revoke issued tokens — `POST /authorization/revocations`.
+/// Revoke issued tokens — `POST /authorization/revocations`: one token by its
+/// `jti`, or every token of a subject at once. The route takes exactly one of
+/// the two per request.
 pub(crate) struct TokenRevoker {
+    /// The revocation store holding the `jti` denylist and the per-subject
+    /// epochs the token verifier checks.
     revocation: Arc<dyn Revocation>,
 }
 
@@ -32,7 +36,9 @@ impl TokenRevoker {
         TokenRevoker { revocation }
     }
 
-    /// Denylist a single token by `jti` until its own expiry.
+    /// Denylist a single token by `jti` until its own expiry, tagged with the
+    /// reason `admin`. The caller passes the token's expiry so the denylist row
+    /// can be swept once the token would have expired anyway.
     pub(crate) fn revoke_jti(
         &self,
         jti: &str,
@@ -43,7 +49,9 @@ impl TokenRevoker {
             .map_err(|e| AuthorizationServerError::infrastructure("revoke_jti failed", e))
     }
 
-    /// Bulk-revoke a subject's whole token cohort via an epoch bump to now.
+    /// Bulk-revoke a subject's whole token cohort via an epoch bump to now. A
+    /// token's subject is its client's `client_id`, so this signs a client out
+    /// everywhere.
     pub(crate) fn revoke_subject(&self, subject: &str) -> Result<(), AuthorizationServerError> {
         self.revocation
             .revoke_subject_as_of_now(subject)

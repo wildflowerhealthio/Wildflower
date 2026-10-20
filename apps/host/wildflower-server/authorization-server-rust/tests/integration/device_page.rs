@@ -1,6 +1,6 @@
 //! The device verification page: `/oauth/device_authorization` sends the user
 //! to `/oauth/device` on the server's origin, which
-//! serves the page, and the page decides the request through the existing
+//! serves the page, and the page decides the request through the
 //! `/authorization/devices/{userCode}` API on the browser session's bearer, the
 //! token its session cookie holds. The cookie→bearer layer that presents that
 //! token for the page is the host's (`wildflower-server-rust`), so these tests
@@ -10,8 +10,12 @@ use crate::common::*;
 
 /// The codes `/oauth/device_authorization` answers the test client with.
 struct DeviceAuthorization {
+    /// The secret the device polls `/oauth/token` with.
     device_code: String,
+    /// The short code the user carries to the device page.
     user_code: String,
+    /// The device page's address with the user code already in its query, for
+    /// a device that can show a link or QR code.
     verification_uri_complete: String,
 }
 
@@ -77,6 +81,8 @@ async fn poll(g: &AuthorizationServer, device_code: &str) -> axum::response::Res
         .expect("oneshot")
 }
 
+/// `verification_uri_complete` names a page on the server's own origin, and
+/// that page is served as HTML, uncached, under a content security policy.
 #[tokio::test]
 async fn verification_uri_complete_serves_the_device_page_on_the_server_origin() {
     let (g, _host_owner_token, db) = spin_up();
@@ -113,6 +119,9 @@ async fn verification_uri_complete_serves_the_device_page_on_the_server_origin()
         .contains_key(axum::http::header::CONTENT_SECURITY_POLICY));
 }
 
+/// A browser signed in as the Owner reads and approves the device request on
+/// its session's bearer, and the device's next poll earns a token for the
+/// approved scope.
 #[tokio::test]
 async fn a_browser_session_approves_the_code_and_the_device_poll_succeeds() {
     let (g, _host_owner_token, db) = spin_up();
@@ -157,6 +166,8 @@ async fn a_browser_session_approves_the_code_and_the_device_poll_succeeds() {
     );
 }
 
+/// Without a bearer, reading or approving the device request is `401`, and the
+/// device's poll still hears `authorization_pending`.
 #[tokio::test]
 async fn without_a_session_the_request_is_left_pending() {
     let (g, _host_owner_token, db) = spin_up();
@@ -184,6 +195,8 @@ async fn without_a_session_the_request_is_left_pending() {
     );
 }
 
+/// A user code that names no request is a `404 DeviceConsentNotFound`
+/// naming the code.
 #[tokio::test]
 async fn an_unknown_code_is_not_found_for_the_browser_session() {
     let (g, _host_owner_token, db) = spin_up();

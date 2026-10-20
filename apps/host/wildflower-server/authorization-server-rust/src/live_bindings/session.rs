@@ -84,6 +84,8 @@ impl AuthenticatedCapability for LiveSessionReader {
 /// [`AuthorizationServer::in_process_token_verifier`](crate::AuthorizationServer::in_process_token_verifier).
 #[derive(Clone)]
 pub struct InProcessTokenVerifier {
+    /// The same verifier the server's own gates build from the state, shared
+    /// between clones.
     verifier: Arc<LiveTokenVerifier>,
 }
 

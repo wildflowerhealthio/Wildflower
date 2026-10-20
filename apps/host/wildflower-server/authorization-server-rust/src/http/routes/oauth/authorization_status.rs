@@ -1,3 +1,6 @@
+//! `GET /oauth/authorize/{id}`, the status poll the wait page drives while
+//! an authorization-code request waits for the Owner.
+
 use axum::extract::Path;
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
@@ -24,11 +27,18 @@ use crate::http::wire_representations::{CacheSuppressed, OAuthError};
 use crate::live_bindings::{LiveAuthorizationStatusReader, LiveTokenVerifier};
 
 /// Polling response for the wait page watching an authorization request as it
-/// moves from `Pending` toward approval or denial.
+/// moves from `Pending` toward approval or denial: where the request stands,
+/// and once it is decided, where to send the browser.
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(tag = "status", rename_all = "lowercase")]
 pub enum AuthorizationStatus {
+    /// `{"status":"pending"}`: undecided and unexpired, whether it waits for
+    /// the Owner or still sits on its browser's limited page. The wait page
+    /// keeps polling.
     Pending,
+    /// `{"status":"denied","redirect":…}`: the Owner declined, or the
+    /// browser session the request was made in was revoked; the poll can't
+    /// tell the two apart, so every denial reads as declined.
     Denied {
         /// Client callback URL carrying `error=access_denied`, an
         /// `error_description` and `state` for code-flow requests (RFC 6749
@@ -37,10 +47,18 @@ pub enum AuthorizationStatus {
         #[serde(skip_serializing_if = "Option::is_none")]
         redirect: Option<String>,
     },
+    /// `{"status":"approved","redirect":…}`: the request was approved and
+    /// its code issued.
     Approved {
+        /// Client callback URL carrying the redeemable `code` and `state`
+        /// (RFC 6749 §4.1.2). The wait page follows it.
         redirect: String,
     },
+    /// `{"status":"error","message":…}`: the request passed its expiry
+    /// undecided, so it can't be decided any more. The wait page stops and
+    /// shows the message.
     Error {
+        /// What the wait page shows: "Authorization request expired".
         message: String,
     },
 }
@@ -62,6 +80,22 @@ impl IntoResponse for AuthorizationStatus {
 /// the scopes that decide the request on the consent card. Any other caller,
 /// with another session or none, gets the same `404` as an unknown id, so a
 /// leaked request id can't collect the code.
+///
+/// The answers, by where the request stands:
+///
+/// - pending: `200` [`AuthorizationStatus::Pending`];
+/// - pending past its expiry: `200` [`AuthorizationStatus::Error`];
+/// - denied: `200` [`AuthorizationStatus::Denied`], with the client's
+///   `access_denied` callback;
+/// - approved: `200` [`AuthorizationStatus::Approved`], with the client's
+///   callback carrying the code;
+/// - unknown, or not readable by this caller: `404`
+///   `AuthorizationRequestNotFound`;
+/// - approved but with no code: `500` `server_error`, an invariant the store
+///   broke.
+///
+/// Only code requests are answered here; a device and a pairing have polls of
+/// their own.
 ///
 /// The error side is `axum::response::ErrorResponse` because two error shapes
 /// share the handler: the Owner-surface `AuthorizationServerError` (its

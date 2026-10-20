@@ -1,4 +1,4 @@
-//! The newest-pending-consent republish seam ([`crate::ports`]) adapted onto the bare
+//! The Owner prompt's republish seam ([`crate::ports`]) adapted onto the bare
 //! [`AuthorizationServerState`]. See the [module docs](super) for the composition layer.
 
 use chrono::Utc;
@@ -8,13 +8,13 @@ use crate::live_bindings::state::AuthorizationServerState;
 use crate::ports::OwnerApproval;
 use crate::GrantStore;
 
-/// The newest-pending-consent republish seam ([`crate::ports`]) the consent capability
+/// The Owner prompt's republish seam ([`crate::ports`]) the consent capability
 /// forwards to after a store write — delegates to the inherent
 /// recompute-and-publish. Implemented on the bare state so an
 /// `Arc<AuthorizationServerState>` coerces to an `Arc<dyn OwnerApproval>` the
 /// capability holds.
 impl OwnerApproval for AuthorizationServerState {
-    /// Recompute the newest pending consent from the store and publish it on
+    /// Recompute the [`OwnerPrompt`](crate::OwnerPrompt) from the store and publish it on
     /// its watch sender. Call after every transition that may change it (see
     /// [`OwnerApproval`]).
     ///

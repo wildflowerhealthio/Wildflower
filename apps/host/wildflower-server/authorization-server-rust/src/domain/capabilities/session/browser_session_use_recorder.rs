@@ -18,7 +18,12 @@ use crate::domain::GrantStore;
 /// Record a browser session's cookie use. Holds the store and the throttle
 /// lifted from the state.
 pub(crate) struct BrowserSessionUseRecorder<S: GrantStore> {
+    /// The store holding the session's `last_seen_at`, whose update is itself
+    /// conditional on the window, so the window holds even when the throttle
+    /// is empty after a restart.
     store: S,
+    /// The state's one in-memory throttle, shared by every request, letting
+    /// one use per session per window through to the store.
     throttle: Arc<LastSeenThrottle>,
 }
 
@@ -63,6 +68,8 @@ mod tests {
     use crate::domain::browser_session::BrowserSession;
     use crate::domain::test_fake::FakeGrantStore;
 
+    /// Verified claims for the `browsers` subject under `sid`, or under no
+    /// session.
     fn claims(sid: Option<&str>) -> VerifiedClaims {
         VerifiedClaims {
             issuer: "iss".to_owned(),
@@ -77,6 +84,7 @@ mod tests {
         }
     }
 
+    /// The stored `last_seen_at` of the session `sid`.
     fn last_seen(store: &FakeGrantStore, sid: &str) -> DateTime<Utc> {
         store
             .tx()

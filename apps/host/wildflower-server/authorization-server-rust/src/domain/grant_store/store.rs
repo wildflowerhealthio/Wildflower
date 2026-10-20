@@ -1,3 +1,6 @@
+//! [`GrantStore`] — the transaction seam: the read and write scopes a
+//! capability opens to reach the store.
+
 use super::GrantTx;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 

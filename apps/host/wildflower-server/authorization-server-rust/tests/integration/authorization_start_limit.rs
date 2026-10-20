@@ -1,14 +1,26 @@
-//! The limit on starting authorization requests: every request to
-//! `/oauth/authorize` (`HEAD` included) and `/oauth/device_authorization`
-//! asks the host's `AuthorizationStartGate`, before it is parsed, and is
-//! answered `429`, uncached, when the gate refuses; a browser whose session
-//! can decide consents asks only once its request is to be raised for the
-//! Owner, so one it decides on its own consent card passes without asking. A
-//! browser without a session at `/oauth/authorize`, which is only sent to
-//! pairing, never asks. Asking the Owner about a request (`…/ask-owner`) asks
-//! the gate when it raises one. A request parked for the limited page asks
-//! the gate before it parks, deferred or not, so going on past the page
-//! (`…/continue`) asks nothing, and no other route asks.
+//! The limit on starting authorization requests.
+//!
+//! Anyone who knows the server's domain can start an authorization request,
+//! and every request raised for the Owner pops up on the Owner's device. So
+//! the host keeps a limit, its `AuthorizationStartGate`: every start that may
+//! bother the Owner spends from the limit once, and a start the limit refuses
+//! is `429`, uncached, and parks nothing.
+//!
+//! The limit sits on `/oauth/authorize` (`HEAD` included) and
+//! `/oauth/device_authorization` only; no other route asks the gate. When a
+//! start asks depends on what it carries:
+//!
+//! - A live browser session that can decide consents, at `/oauth/authorize`,
+//!   asks only when its request is to be raised for the Owner or parked for
+//!   the limited page. One it decides on its own consent card spends nothing,
+//!   and going on past the limited page (`…/continue`) asks nothing more.
+//! - No live browser session, at `/oauth/authorize`, never asks: the browser
+//!   is only sent to pairing.
+//! - Anything else, and every device-authorization start, asks at once,
+//!   before the request is parsed.
+//!
+//! Asking the Owner about a request already parked (`…/ask-owner`) spends from
+//! the same limit, when it raises the request.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -22,7 +34,9 @@ const REQUESTED_SCOPES: &str = "patient%2FObservation.rs%20openid";
 /// A gate that admits its first `admitted` requests and refuses the rest,
 /// counting how often it is asked.
 struct CountingGate {
+    /// How many of the first requests the gate admits.
     admitted: usize,
+    /// How many times the gate has been asked so far.
     asked: AtomicUsize,
 }
 
@@ -65,6 +79,9 @@ async fn send(
         .expect("oneshot")
 }
 
+/// A refused start is `429`, uncached, on either route, before the request is
+/// parsed: both requests here are malformed, and admitted each would be a
+/// `400`.
 #[tokio::test]
 async fn a_refused_start_is_429_uncached_before_it_is_parsed_on_either_route() {
     let gate = CountingGate::refusing();
@@ -97,6 +114,7 @@ async fn a_refused_start_is_429_uncached_before_it_is_parsed_on_either_route() {
     assert_eq!(gate.asked(), 2);
 }
 
+/// `HEAD /oauth/authorize` asks the gate like `GET`.
 #[tokio::test]
 async fn head_authorize_asks_the_gate() {
     let gate = CountingGate::refusing();
@@ -114,6 +132,8 @@ async fn head_authorize_asks_the_gate() {
     assert_eq!(gate.asked(), 1);
 }
 
+/// An admitted start goes on to the route, which here answers the malformed
+/// request with `400`.
 #[tokio::test]
 async fn an_admitted_start_is_served() {
     let gate = Arc::new(CountingGate {
@@ -134,6 +154,8 @@ async fn an_admitted_start_is_served() {
     assert_eq!(gate.asked(), 1);
 }
 
+/// A request the Owner's browser decides on its own consent card spends
+/// nothing from the limit: nobody else is bothered.
 #[tokio::test]
 async fn a_browser_signed_in_as_the_owner_passes_without_asking_the_gate() {
     let gate = CountingGate::refusing();
@@ -197,6 +219,8 @@ async fn a_browser_without_a_session_is_sent_to_pairing_without_asking_the_gate(
     assert_eq!(gate.asked(), 1);
 }
 
+/// A browser whose session can't decide consents asks the gate at once, and a
+/// refusal is `429`.
 #[tokio::test]
 async fn a_browser_session_that_cannot_decide_consents_asks_the_gate() {
     let gate = CountingGate::refusing();
@@ -223,6 +247,8 @@ async fn a_browser_session_that_cannot_decide_consents_asks_the_gate() {
     assert_eq!(gate.asked(), 1);
 }
 
+/// No other route asks the gate: the token endpoint, the request and wait
+/// pages, and the JWKS are never limited.
 #[tokio::test]
 async fn no_other_route_asks_the_gate() {
     let gate = CountingGate::refusing();
@@ -434,7 +460,7 @@ async fn ask_owner(g: &AuthorizationServer, token: &str, request_id: &str) -> St
         .status()
 }
 
-/// Whether the newest pending consent, the code request, is decidable in
+/// Whether the Owner prompt, which must be the code request, is decidable in
 /// its requesting browser.
 fn is_decidable_in_requesting_browser(db: &TestDb) -> bool {
     match owner_prompt(db) {

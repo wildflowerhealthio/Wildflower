@@ -37,26 +37,59 @@ diesel::table! {
 
 diesel::allow_tables_to_appear_in_same_query!(user_code_requests, clients);
 
-/// One `user_code_requests` row. A browser pairing keeps its browser's name
-/// in `device_name`, the column the device page reads a requester's name
-/// from. The approval is `granted_scopes` and `patient`, set only while the
-/// request is approved or claimed.
+/// One `user_code_requests` row, one field per column of the same name. A
+/// browser pairing keeps its browser's name in `device_name`, the column the
+/// device page reads a requester's name from. The approval is
+/// `granted_scopes` and `patient`, set only while the request is approved or
+/// claimed; the table's CHECKs hold it to that, to a `status` these flows
+/// have, and a pairing to a name and no patient.
+///
+/// Two indexes on `user_code` serve the device page: a plain one for its
+/// lookups by the code the Owner types or confirms, and
+/// `user_code_requests_pending_user_code_uidx`, unique where `status` is
+/// `pending`, so **at most one pending request holds a user code**. Decided
+/// and claimed rows are outside it, so they may share a code with each other
+/// and with one pending request.
 #[derive(Queryable, Selectable, Insertable, AsChangeset)]
 #[diesel(table_name = user_code_requests)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 #[diesel(treat_none_as_null = true)]
 pub(super) struct UserCodeRequestRow {
+    /// The primary key: the device's `device_code`, or the pairing code, the
+    /// secret the requester polls with.
     pub(super) id: String,
+    /// Which flow the row is, as its wire string: `device_code` or
+    /// `browser_pairing`. A read by id filters on it, so a device code never
+    /// reads as a pairing.
     pub(super) flow: FlowType,
+    /// The client that made the request: the device's client, or the
+    /// browser-session client for a pairing.
     client_id: String,
+    /// The scopes the requester asked for, as a JSON array.
     requested_scopes: JsonStrings,
+    /// When the request started; the Owner prompt orders by it.
     pub(super) requested_at: DateTime<Utc>,
+    /// When the request stops waiting for a decision, and the requester stops
+    /// being able to claim it. The retention sweep deletes a row by it,
+    /// whatever its status.
     expires_at: DateTime<Utc>,
+    /// Where the request stands, as its wire string: `pending`, `approved`,
+    /// `denied` or `claimed`. A replace lands only on a row still at the
+    /// status it was read with.
     status: RequestStatus,
+    /// The approved scopes, as a JSON array: set exactly while `status` is
+    /// `approved` or `claimed`.
     granted_scopes: Option<JsonStrings>,
+    /// The patient a device approval binds, if any; only ever set beside
+    /// `granted_scopes`, and never on a pairing.
     patient: Option<String>,
+    /// The short code the Owner enters or confirms on the device page.
     pub(super) user_code: String,
+    /// The requester's name: the name a device gave itself or the approver
+    /// settled on (`NULL` falls back to the client's name), or the pairing
+    /// browser's, which a pairing always has.
     device_name: Option<String>,
+    /// When the requester last polled; the poll's slow-down check reads it.
     last_polled_at: Option<DateTime<Utc>>,
 }
 

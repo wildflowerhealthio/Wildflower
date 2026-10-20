@@ -20,15 +20,24 @@ use crate::live_bindings::LiveConsentReader;
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct OAuthConsent {
+    /// The request's id, which the card approves or denies by.
     pub(crate) id: String,
+    /// The app's public `client_id`.
     pub(crate) client_id: String,
     /// The client's registered display name, so the consent UI can name the
     /// app instead of showing a raw `client_id`. Falls back to the
     /// `client_id` when the registration lookup misses.
     pub(crate) client_name: String,
+    /// Everything the app asked for, in request order.
     pub(crate) scopes: Vec<String>,
+    /// Where the app will be sent back to with the code.
     pub(crate) redirect_uri: url::Url,
+    /// The requested scopes a standing grant already covers, ticked to start
+    /// with.
     pub(crate) pre_approved_scopes: Vec<String>,
+    /// The patient on the request's approval. A request the card can load is
+    /// pending, so it carries no approval and this is `null`; the patient a
+    /// SMART launch bound is not sent.
     pub(crate) patient: Option<String>,
     /// How this request compares against the client's registration **right
     /// now** — the warning the consent UI leads with, and the flag that makes
@@ -52,8 +61,14 @@ pub(crate) struct OAuthConsent {
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(tag = "status", rename_all = "lowercase")]
 pub(crate) enum ClientRegistrationBody {
+    /// The redirect is registered and every scope is covered: nothing new
+    /// for the Owner to acknowledge.
     Registered,
+    /// The Owner has never approved this app; nothing about it is stored
+    /// until they do.
     New,
+    /// The app is known, but the request steps outside its registration: a
+    /// new redirect, new scopes, or both.
     Changed {
         /// The presented `redirect_uri` is on no allowlist entry.
         #[serde(rename = "redirectUriIsNew")]
@@ -82,12 +97,13 @@ impl From<PresentedClientChange> for ClientRegistrationBody {
     }
 }
 
-/// `GET /oauth-consents/{id}` — load a pending authorization-code consent
-/// prompt for the launcher to render (scope `wildflower/AuthorizationRequest.r`).
+/// The `GET` method on `/oauth-consents/{id}`.
 pub(super) fn route() -> MethodRouter<Arc<AuthorizationServerState>> {
     get(handle_get_oauth_consent)
 }
 
+/// `GET /authorization/oauth-consents/{id}` — load a pending authorization-code consent
+/// prompt for the launcher to render (scope `wildflower/AuthorizationRequest.r`).
 async fn handle_get_oauth_consent(
     consents: Scoped<LiveConsentReader>,
     Path(id): Path<String>,

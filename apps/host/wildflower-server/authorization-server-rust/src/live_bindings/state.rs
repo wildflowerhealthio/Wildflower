@@ -42,7 +42,7 @@ pub struct AuthorizationServerState {
     /// [`TokenVerifier`](crate::domain::capabilities::session::TokenVerifier))
     /// runs the full `is_revoked` check (denylist + subject epoch) through it,
     /// and the revoke control surface (logout, `/authorization/revocations`, grant
-    /// revoke) writes to it through the [`Revocation`](crate::ports::Revocation)
+    /// revoke) writes to it through the [`Revocation`]
     /// port. Cheap to clone — it wraps the same shared connection every other
     /// slice holds. The host builds one and threads it into both
     /// [`crate::setup_authorization_server`] and fhir-r4-rust's HFS adapter, so the two
@@ -61,7 +61,7 @@ pub struct AuthorizationServerState {
     /// each [`DeviceAuthorizer`](crate::domain::capabilities::oauth::DeviceAuthorizer)
     /// built from the state shares it.
     pub(crate) device_page: Arc<Url>,
-    /// The hosted launcher logout lands the browser on, pinned from
+    /// The hosted launcher, where logout lands the browser, pinned from
     /// [`AuthorizationServerConfig`](crate::AuthorizationServerConfig) at [`crate::setup_authorization_server`].
     pub(crate) launcher_base: LauncherBase,
     /// Watch sender publishing the [`OwnerPrompt`] the host notifies
@@ -71,7 +71,7 @@ pub struct AuthorizationServerState {
     pub(crate) owner_approval_tx: watch::Sender<Option<OwnerPrompt>>,
     /// Pinged each time
     /// [`OwnerApproval::republish_active`](crate::ports::OwnerApproval::republish_active)
-    /// recomputes the newest pending consent, whether or not it changed: what
+    /// recomputes the [`OwnerPrompt`], whether or not it changed: what
     /// the [`PendingConsentWatcher`](crate::PendingConsentWatcher) rereads its
     /// request on.
     pub(crate) pending_consents_recomputed_tx: watch::Sender<()>,

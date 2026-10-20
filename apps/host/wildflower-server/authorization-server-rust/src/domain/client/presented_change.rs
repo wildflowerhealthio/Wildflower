@@ -120,6 +120,7 @@ mod tests {
     use crate::domain::test_fake::client;
     use proptest::prelude::*;
 
+    /// The fixture client's registered redirect.
     fn redirect() -> Url {
         Url::parse("https://example.com/cb").expect("a valid redirect")
     }
@@ -138,6 +139,7 @@ mod tests {
         })
     }
 
+    /// A client with no row would be created by an approval.
     #[test]
     fn an_unknown_client_would_create_its_registration() {
         assert_eq!(
@@ -146,6 +148,7 @@ mod tests {
         );
     }
 
+    /// A registered redirect with every scope covered changes nothing.
     #[test]
     fn an_allowlisted_redirect_with_covered_scopes_changes_nothing() {
         let client = client("app", &["read"]);
@@ -167,6 +170,8 @@ mod tests {
         );
     }
 
+    /// An unregistered redirect with covered scopes would widen the registration
+    /// by the redirect alone, naming no new scope.
     #[test]
     fn an_unregistered_redirect_would_widen_without_new_scopes() {
         let client = client("app", &["read"]);

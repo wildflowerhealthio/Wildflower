@@ -30,6 +30,7 @@ use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::http::state::AuthorizationServerState;
 use crate::live_bindings::LiveSessionReader;
 
+/// The `/session` route table.
 pub fn router() -> Router<Arc<AuthorizationServerState>> {
     Router::new().route("/session", get(handle_get_session))
 }
@@ -50,6 +51,9 @@ struct SessionResponse {
     browser_session_expires_at: Option<DateTime<Utc>>,
 }
 
+/// `GET /authorization/session`: the caller's own scopes and its browser
+/// session's expiry, read from its claims through
+/// `Authenticated<LiveSessionReader>`, which no scope gates.
 async fn handle_get_session(
     session: Authenticated<LiveSessionReader>,
 ) -> Result<Json<SessionResponse>, AuthorizationServerError> {

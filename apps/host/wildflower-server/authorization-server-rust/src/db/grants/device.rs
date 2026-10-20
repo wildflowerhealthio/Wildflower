@@ -14,6 +14,9 @@ use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::grant::DeviceGrant;
 
 diesel::table! {
+    /// The standing device grants. `UNIQUE (client_id, device_name)` holds the
+    /// table to one pairing per app per device name; `device_name` is
+    /// `NOT NULL`, so the key covers every row.
     device_grants (id) {
         id -> Text,
         client_id -> Text,

@@ -112,6 +112,8 @@ mod tests {
     use crate::domain::grant_store::*;
     use proptest::prelude::*;
 
+    /// An authorization code with every field drawn independently, binding a
+    /// patient or not.
     fn arb_authorization_code() -> impl Strategy<Value = AuthorizationCode> {
         (
             "[a-zA-Z0-9_-]{1,40}",
@@ -155,6 +157,7 @@ mod tests {
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(48))]
 
+        /// Any issued code reads back by its request exactly as it was issued.
         #[test]
         fn issue_and_fetch_round_trip(code in arb_authorization_code()) {
             let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");

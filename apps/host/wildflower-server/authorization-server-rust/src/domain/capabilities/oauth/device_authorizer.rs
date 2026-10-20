@@ -31,9 +31,16 @@ const MAX_USER_CODE_GENERATION_ATTEMPTS: usize = 10;
 /// §3.2 response minus the verification URIs, which the HTTP layer builds from
 /// the authorizer's [`device_page`](DeviceAuthorizer::device_page).
 pub(crate) struct DeviceCodes {
+    /// The 256-bit secret the device polls `/oauth/token` with; the request's
+    /// id. Only the device holds it.
     pub(crate) device_code: String,
+    /// The short code the device shows, which the Owner enters at the device
+    /// page. It identifies the request to the Owner; it can't collect tokens.
     pub(crate) user_code: String,
+    /// Seconds until the request expires: [`DEVICE_AUTHORIZATION_TTL`].
     pub(crate) expires_in: i64,
+    /// Seconds the device waits between polls; polling sooner is answered
+    /// `slow_down`.
     pub(crate) interval: i64,
 }
 
@@ -45,6 +52,7 @@ pub(crate) enum DeviceAuthorizationError {
     ScopeNotAllowed,
     /// Every `user_code` candidate collided with an existing request.
     UserCodeExhausted,
+    /// The store couldn't be read or written.
     Store(AuthorizationServerError),
 }
 
@@ -58,8 +66,12 @@ impl From<AuthorizationServerError> for DeviceAuthorizationError {
 /// unit-testable against the fake; the binding instantiates it over the
 /// concrete `SqliteGrantStore`.
 pub(crate) struct DeviceAuthorizer<S: GrantStore> {
+    /// The store a started request is parked in.
     store: S,
+    /// Republishes the Owner prompt after a start, so the host raises the
+    /// Owner's popup for the new request.
     owner_approval: Arc<dyn OwnerApproval>,
+    /// The server's device verification page: see [`Self::device_page`].
     device_page: Arc<Url>,
 }
 
@@ -88,7 +100,8 @@ impl<S: GrantStore> DeviceAuthorizer<S> {
     /// aware: a broad grant admits a narrower request it covers), mint the code
     /// pair, park the request under `device_name` (the name the approver sees
     /// and the grant is keyed on; `None` falls back to the client name at
-    /// approval), and republish the popup head.
+    /// approval), and republish the Owner prompt so the host raises the
+    /// popup.
     ///
     /// # Errors
     ///
@@ -125,8 +138,8 @@ impl<S: GrantStore> DeviceAuthorizer<S> {
                 ))?;
                 Ok(user_code)
             })?;
-        // A fresh pending row is now the newest pending consent; republish so
-        // the host notifies it.
+        // A fresh pending request is now the Owner prompt; republish so the
+        // host notifies it.
         self.owner_approval.republish_active();
         Ok(DeviceCodes {
             device_code,
@@ -177,6 +190,8 @@ mod tests {
         Arc::new(Url::parse("https://dev1.example.com/oauth/device").expect("a URL"))
     }
 
+    /// The proof that public client `app`, allowed `patient/*.rs` and
+    /// `openid`, has authenticated.
     fn authenticated(store: &FakeGrantStore) -> AuthenticatedClient {
         authenticated_public_client(store, client("app", &["patient/*.rs", "openid"]))
     }

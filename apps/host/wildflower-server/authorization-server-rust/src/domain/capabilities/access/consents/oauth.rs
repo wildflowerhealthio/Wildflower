@@ -62,7 +62,7 @@ impl<S: GrantStore> ConsentReader<S> {
 
 impl<S: GrantStore> ConsentRaiser<S> {
     /// Raise the pending authorization-code prompt `id` for the Owner and
-    /// republish the newest pending consent, once `may_raise_for_owner`
+    /// republish the Owner prompt, once `may_raise_for_owner`
     /// admits it: the authorization start limit, as for a request
     /// `/oauth/authorize` raises, so asking the Owner about request after
     /// request costs what starting them would have. A prompt not decidable in
@@ -113,7 +113,7 @@ impl<S: GrantStore> ConsentDecider<S> {
     /// approval scopes), issue the code, record the standing grant and, for a
     /// client trusted on first use, its registration, all in one write scope,
     /// so the code, the grant and the registration land together or not at
-    /// all; once it commits, republish the popup head and return the client
+    /// all; once it commits, republish the Owner prompt and return the client
     /// callback URL. An approval that grants nothing is applied as a **deny**, and so is
     /// one for a request whose browser session has ended or whose client was
     /// disabled since it was made.

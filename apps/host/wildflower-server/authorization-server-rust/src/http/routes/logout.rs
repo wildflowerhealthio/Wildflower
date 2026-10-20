@@ -23,10 +23,14 @@ use crate::http::extractors::LauncherPages;
 use crate::http::state::AuthorizationServerState;
 use crate::live_bindings::LiveSessionEnder;
 
+/// The `/logout` route table.
 pub fn router() -> Router<Arc<AuthorizationServerState>> {
     Router::new().route("/logout", post(handle_logout))
 }
 
+/// `POST /authorization/logout`: denylist the presented token's `jti`
+/// through `Authenticated<LiveSessionEnder>`, then answer `303 See Other` to
+/// the hosted launcher's root.
 async fn handle_logout(session: Authenticated<LiveSessionEnder>, pages: LauncherPages) -> Response {
     // Revoke the presented session token so a leaked copy can't outlive the
     // logout. Best-effort by design: a store hiccup must never fail the logout.

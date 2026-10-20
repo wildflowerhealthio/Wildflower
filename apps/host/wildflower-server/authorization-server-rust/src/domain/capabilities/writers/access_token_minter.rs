@@ -1,7 +1,8 @@
 //! [`AccessTokenMinter`] — the writer that reads the active signing key and
-//! mints a JWT. What a token claims (client, scopes, patient) comes from a
-//! [`TokenEntitlement`] proof, never from a caller-assembled scope slice, so
-//! what a token can be minted *for* is that enum's closed set of variants. Where
+//! mints a JWT. What a token claims (client, scopes, patient, browser
+//! session) comes from a [`TokenEntitlement`] proof, never from a
+//! caller-assembled scope slice, so what a token can be minted *for* is that
+//! enum's closed set of variants. Where
 //! the token is valid (the server's origin, its `iss` and `aud` both) and for
 //! how long are fixed when the minter is built.
 
@@ -21,9 +22,12 @@ use crate::domain::signing_key::SigningKey;
 /// pure computation over it, so a signing failure rolls the scope back with
 /// everything else.
 pub(crate) struct AccessTokenMinter<'a> {
+    /// The signing key that was active when the minter was loaded, private
+    /// material included: every token this minter signs names its `kid`.
     signing_key: SigningKey,
     /// The server's bare origin: both the `iss` and the `aud` claim.
     server_origin: &'a str,
+    /// How long each token minted lives, from the instant it is signed.
     ttl: Duration,
 }
 
@@ -82,6 +86,8 @@ mod tests {
     use crate::domain::access_token::{verify_access_token, AccessTokenVerifyOptions};
     use crate::domain::test_fake::{redeemed_code, seed_active_signing_key, FakeGrantStore};
 
+    /// A minter over the store's active key, for `https://server.example`,
+    /// minting five-minute tokens.
     fn minter(
         store: &FakeGrantStore,
     ) -> Result<AccessTokenMinter<'static>, AccessTokenIssuanceError> {

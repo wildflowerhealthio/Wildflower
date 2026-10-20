@@ -11,6 +11,7 @@ use crate::domain::GrantStore;
 
 /// End a browser's own browser session. Holds the store lifted from the state.
 pub(crate) struct BrowserSessionEnder<S: GrantStore> {
+    /// The store holding the browser session the ender revokes.
     store: S,
 }
 
@@ -22,7 +23,9 @@ impl<S: GrantStore> BrowserSessionEnder<S> {
 
     /// Revoke, at `now`, the browser session `session_claims` name (their
     /// `sid`), ending everything minted under it. Claims with no `sid` name
-    /// no session and end nothing; a session already revoked stays as it was.
+    /// no session and end nothing; a session already revoked keeps its first
+    /// revocation time. The row is kept, stamped revoked, so the token
+    /// verifier refuses every token naming it from then on.
     ///
     /// # Errors
     ///
@@ -48,6 +51,8 @@ mod tests {
     use crate::domain::browser_session::BrowserSession;
     use crate::domain::test_fake::FakeGrantStore;
 
+    /// Verified claims for the `browsers` subject under `sid`, or under no
+    /// session.
     fn claims(sid: Option<&str>) -> VerifiedClaims {
         VerifiedClaims {
             issuer: "iss".to_owned(),

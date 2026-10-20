@@ -1,3 +1,9 @@
+//! [`SigningKey`] — an RSA key the server signs access tokens with, at rest in
+//! its own database. The server signs with its one active key, verifies
+//! against every key it holds, and publishes the public half of each at its
+//! JWKS endpoint. A boot that finds no active key generates one and stores it
+//! as active.
+
 use jsonwebtoken::{DecodingKey, EncodingKey};
 use rsa::pkcs1::{EncodeRsaPrivateKey, EncodeRsaPublicKey};
 use rsa::traits::PrivateKeyParts;
@@ -46,9 +52,9 @@ impl std::fmt::Debug for SigningKeyValues {
     }
 }
 
-/// An RSA signing key used to mint and verify access tokens; `is_active` distinguishes the current minter from rotated-out verify-only keys.
-/// Diesel-mapped 1:1 to the `signing_keys` table; `values` maps to the
-/// `values_json` JSON TEXT column.
+/// An RSA signing key used to mint and verify access tokens; `is_active` marks
+/// the one key that signs, and every key verifies. Diesel-mapped 1:1 to the
+/// `signing_keys` table; `values` maps to the `values_json` JSON TEXT column.
 #[derive(
     Debug,
     Clone,
@@ -61,7 +67,8 @@ impl std::fmt::Debug for SigningKeyValues {
 #[diesel(table_name = crate::db::signing_keys::signing_keys)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct SigningKey {
-    /// Unique key identifier emitted in the JWS `kid` header so verifiers can pick the right key.
+    /// A random id, written into each token's JWS `kid` header so a verifier
+    /// can pick the key that signed it.
     pub kid: String,
     /// JWK key type — always `"RSA"` for keys produced here.
     pub kty: String,
@@ -74,12 +81,14 @@ pub struct SigningKey {
         deserialize_as = crate::db::signing_keys::JsonSigningKeyValues
     )]
     pub values: SigningKeyValues,
-    /// Whether this key currently signs new tokens; retired keys stay published in the JWKS during rotation.
+    /// Whether this key signs new tokens. A key that isn't active still
+    /// verifies, and stays published in the JWKS.
     pub is_active: bool,
 }
 
 impl SigningKey {
-    /// Generate a fresh 2048-bit RSA `SigningKey` with a new random `kid` (inactive by default).
+    /// Generate a fresh 2048-bit RSA `SigningKey` with a new random `kid`,
+    /// not yet active: whoever stores it decides whether it signs.
     ///
     /// # Errors
     ///
@@ -221,15 +230,21 @@ fn base64_url_to_biguint(s: &str) -> Result<Zeroizing<BigUint>, KeyMaterialError
 /// cause chain survives for logging rather than being flattened to a string.
 /// `Compose` and `Generate` both wrap `rsa::Error`, so neither uses `#[from]`
 /// (two `From<rsa::Error>` impls would conflict) — call sites construct them
-/// explicitly to keep the two failure modes distinct.
+/// explicitly to keep the two failure modes distinct. A key that fails here is
+/// the operator's problem, not the caller's: minting and verifying report it
+/// as an unreadable signing key.
 #[derive(Debug, thiserror::Error)]
 pub enum KeyMaterialError {
+    /// A stored component isn't valid base64url.
     #[error("decode JWK component")]
     Decode(#[source] base64::DecodeError),
+    /// The components don't make an RSA key.
     #[error("compose RSA key")]
     Compose(#[source] rsa::Error),
+    /// The rebuilt key couldn't be DER-encoded for `jsonwebtoken`.
     #[error("encode Distinguished Encoding Rules (DER)")]
     Encode(#[source] rsa::pkcs1::Error),
+    /// Generating a fresh RSA key failed.
     #[error("generate RSA key")]
     Generate(#[source] rsa::Error),
 }
@@ -238,6 +253,8 @@ pub enum KeyMaterialError {
 mod tests {
     use super::*;
 
+    /// A token signed with a generated key's signing half verifies with its
+    /// verifying half, and every claim comes back as it went in.
     #[test]
     fn round_trip_sign_verify() {
         use jsonwebtoken::{Algorithm, Header, Validation};
@@ -257,6 +274,8 @@ mod tests {
         assert_eq!(decoded.claims, claims);
     }
 
+    /// A formatted key shows its public parts and a redaction marker, never
+    /// its private parts.
     #[test]
     fn debug_redacts_private_exponents() {
         let values = SigningKeyValues {

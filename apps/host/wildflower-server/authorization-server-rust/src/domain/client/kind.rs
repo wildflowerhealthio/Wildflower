@@ -6,7 +6,8 @@ use diesel::expression::AsExpression;
 use serde::{Deserialize, Serialize};
 use strum::{AsRefStr, Display, EnumString};
 
-/// OAuth client authentication category — `public` clients can't keep a secret (e.g. SPAs, native), `confidential` ones can.
+/// OAuth client authentication category (RFC 6749 §2.1) — `public` clients
+/// can't keep a secret (e.g. SPAs, native), `confidential` ones can.
 ///
 /// The wire string (stored in the `kind` column and serialized) is the
 /// lowercased variant name: `Public` → `"public"`, `Confidential` →
@@ -31,7 +32,11 @@ use strum::{AsRefStr, Display, EnumString};
 #[strum(serialize_all = "lowercase")]
 #[diesel(sql_type = diesel::sql_types::Text)]
 pub enum ClientKind {
+    /// Can't keep a secret, so it authenticates by its `client_id` alone and
+    /// proves possession with PKCE: a browser app or a native app.
     Public,
+    /// Keeps a secret on a back end, and presents it at `/token` by Basic
+    /// header or form body; its row stores the secret's argon2id hash.
     Confidential,
 }
 
@@ -40,10 +45,14 @@ pub enum ClientKind {
 /// 8628) so the stored JSON reads like the request.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AllowedGrantType {
+    /// Redeem an authorization code with its PKCE verifier (RFC 6749 §4.1.3).
     #[serde(rename = "authorization_code")]
     AuthorizationCode,
+    /// Rotate a refresh token into a fresh access token and its successor
+    /// (RFC 6749 §6).
     #[serde(rename = "refresh_token")]
     RefreshToken,
+    /// Poll with a device code until the Owner decides (RFC 8628 §3.4).
     #[serde(rename = "urn:ietf:params:oauth:grant-type:device_code")]
     DeviceCode,
 }

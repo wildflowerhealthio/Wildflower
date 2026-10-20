@@ -1,7 +1,14 @@
+//! [`AuthorizationServerConfig`]: what the host tells the authorization
+//! server about itself at boot.
+
 use url::Url;
 use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
+/// What the host tells the server about itself, passed to
+/// [`crate::setup_authorization_server`]. The live Tauri app reads most of it
+/// from `tauri-shared-config.json` and the server's record; standalone and test
+/// builds use the crate's defaults.
 #[derive(Debug, Clone)]
 pub struct AuthorizationServerConfig {
     /// The server's origin, `https://<domain>`, as a typed [`Url`]. Every token
@@ -25,7 +32,7 @@ pub struct AuthorizationServerConfig {
     /// `fhir-r4-rust`, which sends it as the UI's `client_id`.
     pub fhir_ui_client_id: String,
 
-    /// The hosted launcher logout lands the browser on (see
+    /// The hosted launcher, where logout lands the browser (see
     /// [`LauncherBase`]). The live Tauri app sources it from
     /// `tauri-shared-config.json`.
     pub launcher_base: LauncherBase,

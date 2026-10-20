@@ -14,6 +14,9 @@ use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::grant::AuthorizationCodeGrant;
 
 diesel::table! {
+    /// The standing code grants. `UNIQUE (client_id, redirect_uri)` holds the
+    /// table to one standing consent per app per redirect URI, so two
+    /// approvals racing to insert can't both succeed.
     authorization_code_grants (id) {
         id -> Text,
         client_id -> Text,
@@ -154,6 +157,7 @@ mod tests {
             .expect("upsert code grant");
     }
 
+    /// `url`, parsed.
     fn read(url: &str) -> Url {
         Url::parse(url).expect("valid url")
     }

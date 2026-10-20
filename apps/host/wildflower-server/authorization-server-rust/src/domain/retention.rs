@@ -47,7 +47,8 @@ pub struct PurgedCounts {
     /// Device requests and browser pairings deleted, from
     /// `user_code_requests`.
     pub user_code_requests: usize,
-    /// Authorization codes deleted.
+    /// Authorization codes deleted: the abandoned ones, since redemption
+    /// deletes a code as it is used.
     pub authorization_codes: usize,
     /// Browser sessions deleted.
     pub browser_sessions: usize,
@@ -118,6 +119,8 @@ mod tests {
             .with_timezone(&Utc)
     }
 
+    /// A family issued to `client-1` 90 days before `expires_at`, with no
+    /// code, grant or session.
     fn family(family_id: &str, expires_at: DateTime<Utc>) -> RefreshTokenFamily {
         RefreshTokenFamily {
             family_id: family_id.to_string(),
@@ -132,6 +135,7 @@ mod tests {
         }
     }
 
+    /// A live token in family `family_id`, issued long before `now`.
     fn token(token_hash: &str, family_id: &str) -> RefreshToken {
         RefreshToken {
             token_hash: token_hash.to_string(),
@@ -141,6 +145,8 @@ mod tests {
         }
     }
 
+    /// A pending device request `id` for `client-1`, started five minutes
+    /// before `expires_at`.
     fn request(id: &str, expires_at: DateTime<Utc>) -> DeviceRequest {
         DeviceRequest::new(
             NewDeviceRequestArgs {
@@ -155,6 +161,8 @@ mod tests {
         )
     }
 
+    /// An unredeemed code answering request `req-<code>`, issued a minute
+    /// before `expires_at`.
     fn code(code: &str, expires_at: DateTime<Utc>) -> AuthorizationCode {
         AuthorizationCode {
             code: code.to_string(),
@@ -170,6 +178,7 @@ mod tests {
         }
     }
 
+    /// An unrevoked same-device session `sid` that ends at `expires_at`.
     fn session(sid: &str, expires_at: DateTime<Utc>) -> BrowserSession {
         BrowserSession {
             sid: sid.to_string(),
@@ -269,8 +278,9 @@ mod tests {
     }
 
     /// The whole policy in one assertion: a row one day past its window goes, a
-    /// row one day short of it stays, and a live row is never in range. Both
-    /// windows are exercised at once because they share the transaction.
+    /// row one day short of it stays, and a live row is never in range. Every
+    /// window is exercised at once because they share the transaction. A
+    /// session long ended is kept while a live family names it.
     #[test]
     fn purges_past_each_window_and_spares_everything_inside_it() {
         let store = seeded();

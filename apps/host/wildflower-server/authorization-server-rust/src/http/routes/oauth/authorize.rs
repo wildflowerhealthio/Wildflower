@@ -1,3 +1,7 @@
+//! `GET /oauth/authorize`, the front door of the authorization-code flow
+//! (RFC 6749 §3.1): it answers the person's browser with a redirect onward,
+//! or a page saying why it can't.
+
 use axum::extract::{OriginalUri, Query};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
@@ -36,20 +40,21 @@ fn found_redirect(location: &str) -> Response {
 }
 
 /// Error half of the `/oauth/authorize` handler's `Result`. Each variant
-/// renders one of the endpoint's three distinct failure shapes through
-/// `IntoResponse`, so a fallible step bails with `?` instead of a `match` +
-/// `return` at every call site — the authorization-endpoint analogue of
-/// [`TokenError`](super::internal::TokenError) (and, on the Owner `/authorization`
-/// surface, [`AuthorizationServerError`](crate::domain::authorization_server_error::AuthorizationServerError)).
-/// Kept small (no embedded
-/// `Response`) so `Result<_, AuthorizeError>` doesn't trip
-/// `clippy::result_large_err`.
+/// renders one of the endpoint's failure responses through `IntoResponse`, so a
+/// fallible step bails with `?` instead of a `match` + `return` at every call
+/// site — the authorization-endpoint analogue of
+/// [`TokenError`](super::internal::TokenError) (and, on the Owner
+/// `/authorization` surface,
+/// [`AuthorizationServerError`](crate::domain::authorization_server_error::AuthorizationServerError)).
+/// Kept small (no embedded `Response`) so `Result<_, AuthorizeError>` doesn't
+/// trip `clippy::result_large_err`.
 pub(super) enum AuthorizeError {
     /// A failure on a request whose `redirect_uri` is not trusted — a disabled
     /// client, a malformed or non-http(s) URI, an unregistered redirect for a
     /// server-defined registration, or (because the client is new to this authorization server or
     /// the redirect is not on its registration) any later validation failure.
-    /// Renders a local HTML page — redirecting to an unvouched-for URI would be
+    /// Renders a `400` with the server's own HTML error page
+    /// ([`oauth_error_html`]) — redirecting to an unvouched-for URI would be
     /// an open redirect (RFC 6749 §4.1.2.1).
     LocalPage(AuthorizeRefusal),
     /// A spec'd error once `redirect_uri` is validated — 302 back to the
@@ -57,21 +62,29 @@ pub(super) enum AuthorizeError {
     /// merged with `error` + `error_description` + `state`, RFC 6749
     /// §4.1.2.1) rather than the `Url`, keeping the variant small enough to
     /// dodge `clippy::result_large_err`.
-    Redirect { location: String },
+    Redirect {
+        /// The client's `redirect_uri` with the error, its description and
+        /// the client's `state` in its query.
+        location: String,
+    },
     /// No active signing key: without token-mint capability the endpoint can't
     /// proceed, so it 503s rather than parking a request it can never complete.
+    /// Nothing is parked.
     ServiceUnavailable,
     /// The authorization start limit refused a request that would be raised
     /// for the Owner — the `429` the limit's layer answers.
     StartLimited,
-    /// A logged, opaque 500 (e.g. a store read failed) — see [`InternalError`].
+    /// A logged, opaque 500 — see [`InternalError`]. A store failure, or a
+    /// request the fast path found no longer pending when it came to approve
+    /// it.
     Internal(InternalError),
 }
 
-/// Render the flow's failure vocabulary onto the endpoint's three response
-/// shapes: a local page while the redirect is untrusted, a 302 with `error` +
+/// Render the flow's failure vocabulary onto the endpoint's responses: a local
+/// page while the redirect is untrusted, a 302 with `error` +
 /// `error_description` + `state` back to a validated redirect (RFC 6749
-/// §4.1.2.1), a 503 with no signing key, and a logged opaque 500 for the rest.
+/// §4.1.2.1), a 503 with no signing key, the start limit's 429, and a logged
+/// opaque 500 for the rest.
 impl From<AuthorizationStartError> for AuthorizeError {
     fn from(error: AuthorizationStartError) -> Self {
         match error {
@@ -130,12 +143,28 @@ impl IntoResponse for AuthorizeError {
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct AuthorizeParams {
+    /// The response the client wants; only `code` is supported, anything else
+    /// is `unsupported_response_type`.
     pub response_type: String,
+    /// The PKCE transform (RFC 7636 §4.3); only `S256` is accepted.
     pub code_challenge_method: String,
+    /// The client asking. An unknown one is trusted on first use and carried
+    /// to the Owner's prompt as a registration warning; a disabled one is
+    /// refused on a local page.
     pub client_id: String,
+    /// The scopes asked for, space-separated (RFC 6749 §3.3). Scopes outside a
+    /// trusted-on-first-use client's registration are carried to the Owner's
+    /// prompt; outside a server-defined registration they are refused.
     pub scope: String,
+    /// The PKCE challenge, `BASE64URL(SHA256(code_verifier))`, which the code
+    /// remembers so `POST /oauth/token` can check the verifier (RFC 7636 §4.2).
     pub code_challenge: String,
+    /// Where the browser goes back to with the code or the error. It must be
+    /// an http(s) URL; until it is trusted (registered for this client), a
+    /// failure renders the local page rather than redirecting there.
     pub redirect_uri: String,
+    /// The client's opaque value, carried back unchanged on every redirect to
+    /// it. Required here, though RFC 6749 only recommends it.
     pub state: String,
     /// SMART App Launch `launch` value, handed to the app in its launch URL
     /// and forwarded here. It must name a launch this server minted for this
@@ -218,7 +247,14 @@ pub struct AuthorizeParams {
 /// and while its redirect is untrusted every other failure renders the local
 /// HTML page instead of redirecting. A server-defined registration (the host
 /// app's, the FHIR server UI's) keeps the strict treatment, and a disabled
-/// client is rejected either way.
+/// client is rejected either way. Once the redirect is trusted, a failure goes
+/// back to the client's `redirect_uri` with `error`, `error_description` and
+/// `state` (RFC 6749 §4.1.2.1) instead.
+///
+/// The start limit is asked only when it must be: its layer defers a request
+/// from a browser that can decide consents, and one carrying no session, and
+/// the starter asks the deferred limit only before it raises the request for
+/// the Owner or parks it for the limited page.
 #[utoipa::path(
     get,
     tag = "OAuth 2.0",
@@ -330,6 +366,8 @@ pub(super) fn next_step_location(next_step: AuthorizeNextStep, page_prefix: &str
     format!("{page_prefix}{request_page}")
 }
 
+/// A `400 Bad Request` carrying `html`, the server's own error page, for a
+/// failure that can't be redirected to the client.
 fn html_bad_request(html: String) -> Response {
     (StatusCode::BAD_REQUEST, Html(html)).into_response()
 }

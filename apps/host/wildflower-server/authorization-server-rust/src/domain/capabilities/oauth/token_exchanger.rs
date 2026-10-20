@@ -28,12 +28,19 @@ use crate::ports::RevocationCheck;
 /// The tokens a successful exchange issued: what the RFC 6749 §5.1 token
 /// response carries.
 pub(crate) struct IssuedTokens {
+    /// The signed JWT access token, issued to the client by and for the
+    /// server's origin, living [`ACCESS_TOKEN_TTL`].
     pub(crate) access_token: String,
     /// Seconds until the access token expires.
     pub(crate) expires_in: i64,
     /// The scopes as granted (not the twinned spellings the JWT carries).
     pub(crate) granted_scopes: Vec<String>,
+    /// The refresh token: a new family's first for a code or device grant
+    /// that carries `offline_access`, or the presented one's successor on a
+    /// refresh. `None` when the grant earned no family.
     pub(crate) refresh_token: Option<String>,
+    /// The patient the grant is bound to, the SMART launch context `patient`;
+    /// `None` when it binds none.
     pub(crate) patient: Option<String>,
 }
 
@@ -45,6 +52,7 @@ type ExchangeOutcome = Result<Result<IssuedTokens, TokenExchangeError>, TokenExc
 /// over the store port so it's unit-testable against the fake; the binding
 /// instantiates it over the concrete `SqliteGrantStore`.
 pub(crate) struct TokenExchanger<S: GrantStore> {
+    /// The store each exchange redeems, rotates and mints in.
     store: S,
     /// The revocation check a refresh runs against its client's epoch.
     revocation: Arc<dyn RevocationCheck>,
@@ -300,15 +308,21 @@ mod tests {
         FakeGrantStore, NothingRevoked, FIXTURE_SID,
     };
 
+    /// The PKCE verifier every fixture code's challenge is computed from.
     const VERIFIER: &str = "verifier-verifier-verifier-verifier-verifier-1";
+    /// The server's origin: every minted token's `iss` and `aud`.
     const SERVER_ORIGIN: &str = "https://ruth.relay.example";
 
+    /// An exchanger over a fresh fake store with an active signing key, and
+    /// nothing revoked.
     fn exchanger() -> TokenExchanger<FakeGrantStore> {
         let store = FakeGrantStore::default();
         seed_active_signing_key(&store);
         TokenExchanger::new(store, Arc::new(NothingRevoked), SERVER_ORIGIN.into())
     }
 
+    /// The proof that public client `client_id`, allowed `openid` and the
+    /// `grant_types`, has authenticated.
     fn authenticated(
         store: &FakeGrantStore,
         client_id: &str,
@@ -323,6 +337,9 @@ mod tests {
         )
     }
 
+    /// Issue a live code to `client_id` for `scopes`, under the fixture
+    /// browser session, bound to [`VERIFIER`] and `https://example.com/cb`,
+    /// and return it.
     fn issue_code(store: &FakeGrantStore, client_id: &str, scopes: &[&str]) -> String {
         let code = generate_authorization_code();
         let now = Utc::now();

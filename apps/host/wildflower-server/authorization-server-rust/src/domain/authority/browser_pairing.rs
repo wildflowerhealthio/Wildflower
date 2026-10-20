@@ -20,6 +20,9 @@ use crate::BROWSER_SESSION_CLIENT_ID;
 /// so it starts one session at most. Carries the paired session the claim
 /// starts, which the session writer stores and the minter mints under.
 pub(crate) struct ClaimedBrowserPairing {
+    /// The paired session the claim starts, named after the paired browser
+    /// and holding exactly the scopes the Owner granted; the token's `scope`
+    /// and `sid` are read off it.
     session: BrowserSession,
 }
 
@@ -84,8 +87,11 @@ mod tests {
 
     use crate::domain::test_fake::{approve_stored, FakeGrantStore};
 
+    /// The lifetime every test gives the session a claim starts.
     const SESSION_TTL: Duration = Duration::hours(24);
 
+    /// A fresh pending pairing request `id`, from the browser-session client,
+    /// asking for `wildflower/launch` from a browser named "Firefox on Linux".
     fn pairing(id: &str) -> PairingRequest {
         PairingRequest::new(
             NewPairingRequestArgs {
@@ -100,6 +106,7 @@ mod tests {
         )
     }
 
+    /// The pairing request `id` as the store holds it now.
     fn stored(store: &FakeGrantStore, id: &str) -> PairingRequest {
         store
             .tx()
@@ -108,6 +115,8 @@ mod tests {
             .expect("stored")
     }
 
+    /// Store pairing request `id`, approve it for `wildflower/launch` and
+    /// `system/*.rs` under the name "Ruth's laptop", and read it back.
     fn approved_pairing(store: &FakeGrantStore, id: &str) -> PairingRequest {
         store.tx().insert_pairing_request(&pairing(id)).unwrap();
         approve_stored(

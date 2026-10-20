@@ -17,6 +17,9 @@ use crate::domain::grant_store::ClientsTx;
 /// allows); the row itself is private and there is no other constructor.
 #[derive(Debug)]
 pub(crate) struct AuthenticatedClient {
+    /// The client row the credentials were checked against, as read in the
+    /// caller's scope: present, not disabled, and, if confidential, holding
+    /// the hash the presented secret matched.
     client: Client,
 }
 
@@ -118,6 +121,7 @@ mod tests {
     use crate::crypto_util::client_secret::hash_client_secret;
     use crate::domain::test_fake::{client, FakeGrantStore};
 
+    /// Credentials naming `client_id`, with `secret` if one is presented.
     fn presented(client_id: &str, secret: Option<&str>) -> ClientCredentials {
         ClientCredentials {
             client_id: client_id.to_owned(),
@@ -125,6 +129,8 @@ mod tests {
         }
     }
 
+    /// A confidential client registered for `openid`, storing the hash of
+    /// `secret`.
     fn confidential(client_id: &str, secret: &str) -> Client {
         Client {
             kind: ClientKind::Confidential,

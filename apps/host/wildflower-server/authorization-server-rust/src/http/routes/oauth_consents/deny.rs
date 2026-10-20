@@ -11,13 +11,14 @@ use crate::http::state::AuthorizationServerState;
 use crate::http::wire_representations::ConsentResult;
 use crate::live_bindings::LiveConsentDecider;
 
-/// `POST /oauth-consents/{id}/deny` — the Owner declines a consent prompt (scope
-/// `wildflower/AuthorizationRequest.u`). The answer carries the client callback
-/// with `error=access_denied`, for the consent card to leave for.
+/// The `POST` method on `/oauth-consents/{id}/deny`.
 pub(super) fn route() -> MethodRouter<Arc<AuthorizationServerState>> {
     post(handle_deny_oauth_consent)
 }
 
+/// `POST /authorization/oauth-consents/{id}/deny` — the Owner declines a consent prompt (scope
+/// `wildflower/AuthorizationRequest.u`). The answer carries the client callback
+/// with `error=access_denied`, for the consent card to leave for.
 async fn handle_deny_oauth_consent(
     consents: Scoped<LiveConsentDecider>,
     Path(id): Path<String>,

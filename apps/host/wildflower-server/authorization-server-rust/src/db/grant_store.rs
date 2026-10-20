@@ -1,5 +1,5 @@
 //! The `SqliteGrantStore` adapter — the `SQLite` implementation of the
-//! [`GrantStore`](crate::domain::GrantStore) port. Holds the app-wide r2d2
+//! [`GrantStore`] port. Holds the app-wide r2d2
 //! pool of diesel `SqliteConnection`s (`wildflowerhealthio_persistence::DieselPool`)
 //! onto the shared database file, applies the embedded authorization server
 //! migrations once on construction (under this slice's [`MIGRATION_NAMESPACE`]),
@@ -39,16 +39,17 @@ const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 /// pool is an `Arc` inside), so it drops straight into the axum state.
 #[derive(Clone)]
 pub struct SqliteGrantStore {
-    // The app-wide r2d2 pool onto the shared database file, built and owned by
-    // the host (`wildflowerhealthio_persistence::open_pool`) — the same pool the other
-    // diesel-backed slices' stores ride. Diesel's connection API is `&mut`, so
-    // each call checks a connection out of the pool rather than sharing one
-    // behind a mutex; the pool (an `Arc` inside) makes the store cheap to clone
-    // into the axum state. These are additional openers onto the same file the host's
-    // rusqlite `persistence-rust::Connection` serves the remaining rusqlite
-    // slices from — SQLite permits multiple connections per file; the pool's
-    // `busy_timeout` pragma rides out the brief write locks any connection takes
-    // (see `wildflowerhealthio_persistence::open_pool`).
+    /// The app-wide r2d2 pool onto the shared database file, built and owned
+    /// by the host (`wildflowerhealthio_persistence::open_pool`): the same pool
+    /// the other diesel-backed slices' stores ride. Diesel's connection API is
+    /// `&mut`, so each scope checks a connection out of the pool rather than
+    /// sharing one behind a mutex; the pool (an `Arc` inside) makes the store
+    /// cheap to clone into the axum state. Its connections are additional
+    /// openers onto the same file the host's rusqlite
+    /// `persistence-rust::Connection` serves the remaining rusqlite slices
+    /// from: `SQLite` permits several connections per file, and the pool's
+    /// `busy_timeout` pragma rides out the brief write locks any connection
+    /// takes.
     pool: DieselPool,
 }
 
@@ -119,6 +120,8 @@ impl SqliteGrantStore {
 /// `pub` only because it is the adapter's [`GrantStore::Tx`]; out-of-crate
 /// callers can name it but reach nothing except through the traits.
 pub struct SqliteGrantTx<'a> {
+    /// The scope's checked-out connection, which every query in the scope runs
+    /// on; inside the write scope's transaction for a write scope.
     pub(in crate::db) conn: &'a mut SqliteConnection,
 }
 
@@ -159,7 +162,11 @@ impl GrantStore for SqliteGrantStore {
 /// `COMMIT` or `ROLLBACK` — which diesel's transaction runner needs a
 /// `From<diesel::result::Error>` for, whatever error the closure speaks.
 enum ScopeError<E> {
+    /// The scope's closure failed with its own error; the transaction rolls
+    /// back, and the caller gets that error as it was.
     Closure(E),
+    /// Diesel's `BEGIN`, `COMMIT` or `ROLLBACK` failed; the caller gets it as an
+    /// infrastructure error.
     Transaction(diesel::result::Error),
 }
 
@@ -180,8 +187,10 @@ mod tests {
     use crate::domain::grant_store::SigningKeysTx as _;
     use crate::domain::GrantStore as _;
 
+    /// A text column read under the alias `name`.
     #[derive(QueryableByName)]
     struct Name {
+        /// The column's value.
         #[diesel(sql_type = diesel::sql_types::Text)]
         name: String,
     }
@@ -189,6 +198,7 @@ mod tests {
     /// A nullable column read under the alias `name`.
     #[derive(QueryableByName)]
     struct OptionalName {
+        /// The column's value; `None` for NULL.
         #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Text>)]
         name: Option<String>,
     }
@@ -283,6 +293,7 @@ mod tests {
         }
     }
 
+    /// The client `client_id`'s `column`, read as text.
     fn column_for_client(conn: &mut SqliteConnection, column: &str, client_id: &str) -> Vec<Name> {
         diesel::sql_query(format!(
             "SELECT {column} AS name FROM clients WHERE client_id = ?"

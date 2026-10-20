@@ -40,46 +40,71 @@ pub(crate) use fixtures::{
 /// one clone to a capability and arrange and observe rows through another.
 #[derive(Clone, Default)]
 pub(crate) struct FakeGrantStore {
+    /// The tables, shared by every clone.
     tables: Rc<FakeTables>,
 }
 
 /// The fake's tables, one map per table.
 #[derive(Default)]
 pub(crate) struct FakeTables {
+    /// The `clients` table, by `client_id`.
     clients: RefCell<HashMap<String, Client>>,
+    /// The `signing_keys` table, in insertion order.
     signing_keys: RefCell<Vec<SigningKey>>,
+    /// The `code_authorization_requests` table, by request id.
     code_authorization_requests: RefCell<HashMap<String, CodeRequest>>,
-    /// The device requests and browser pairings, in one map as in one table.
+    /// The device requests and browser pairings, by id: the `user_code_requests` table.
     user_code_requests: RefCell<HashMap<String, PolledRequest>>,
+    /// The `authorization_codes` table, by code.
     authorization_codes: RefCell<HashMap<String, AuthorizationCode>>,
+    /// The `refresh_token_families` table, by family id.
     families: RefCell<HashMap<String, RefreshTokenFamily>>,
+    /// The `refresh_tokens` table, by token hash.
     tokens: RefCell<HashMap<String, RefreshToken>>,
+    /// The `authorization_code_grants` table, by grant id.
     code_grants: RefCell<HashMap<String, AuthorizationCodeGrant>>,
+    /// The `device_grants` table, by grant id.
     device_grants: RefCell<HashMap<String, DeviceGrant>>,
+    /// The `launch_contexts` table, by nonce.
     launch_contexts: RefCell<HashMap<String, LaunchContext>>,
+    /// The `browser_sessions` table, by `sid`.
     browser_sessions: RefCell<HashMap<String, BrowserSession>>,
-    /// The (`sid`, `client_id`) pairs gone on past the limited page.
+    /// The `session_shortfall_acknowledgements` table: the (`sid`, `client_id`) pairs gone on past
+    /// the limited page.
     session_shortfall_acknowledgements: RefCell<HashSet<(String, String)>>,
 }
 
 /// A clone of every map, taken before a write scope runs so it can be restored
 /// on rollback.
 struct Snapshot {
+    /// The `clients` map, as it stood.
     clients: HashMap<String, Client>,
+    /// The `signing_keys` map, as it stood.
     signing_keys: Vec<SigningKey>,
+    /// The `code_authorization_requests` map, as it stood.
     code_authorization_requests: HashMap<String, CodeRequest>,
+    /// The `user_code_requests` map, as it stood.
     user_code_requests: HashMap<String, PolledRequest>,
+    /// The `authorization_codes` map, as it stood.
     authorization_codes: HashMap<String, AuthorizationCode>,
+    /// The `families` map, as it stood.
     families: HashMap<String, RefreshTokenFamily>,
+    /// The `tokens` map, as it stood.
     tokens: HashMap<String, RefreshToken>,
+    /// The `code_grants` map, as it stood.
     code_grants: HashMap<String, AuthorizationCodeGrant>,
+    /// The `device_grants` map, as it stood.
     device_grants: HashMap<String, DeviceGrant>,
+    /// The `launch_contexts` map, as it stood.
     launch_contexts: HashMap<String, LaunchContext>,
+    /// The `browser_sessions` map, as it stood.
     browser_sessions: HashMap<String, BrowserSession>,
+    /// The `session_shortfall_acknowledgements` map, as it stood.
     session_shortfall_acknowledgements: HashSet<(String, String)>,
 }
 
 impl FakeTables {
+    /// A copy of every map as it stands.
     fn snapshot(&self) -> Snapshot {
         Snapshot {
             clients: self.clients.borrow().clone(),
@@ -100,6 +125,7 @@ impl FakeTables {
         }
     }
 
+    /// Put every map back as `snapshot` holds it: a write scope's rollback.
     fn restore(&self, snapshot: Snapshot) {
         *self.clients.borrow_mut() = snapshot.clients;
         *self.signing_keys.borrow_mut() = snapshot.signing_keys;
@@ -161,5 +187,6 @@ impl FakeGrantStore {
 /// mutability (`RefCell`) does the real work; `&mut self` is only the trait's
 /// shape.
 pub(crate) struct FakeGrantTx<'a> {
+    /// The store's tables, which every trait method reads and writes.
     store: &'a FakeTables,
 }

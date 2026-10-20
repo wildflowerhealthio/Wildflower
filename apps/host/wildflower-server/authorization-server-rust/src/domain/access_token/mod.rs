@@ -1,6 +1,6 @@
 //! The access tokens the authorization server signs: what they claim
-//! ([`claims`]), how one is minted ([`mint`]) and how an incoming one is
-//! verified ([`verify`]). Each is an RS256 JWT signed with a key from the
+//! (`claims`), how one is minted (`mint`) and how an incoming one is
+//! verified (`verify`). Each is an RS256 JWT signed with a key from the
 //! signing-key store and lives for [`ACCESS_TOKEN_TTL`].
 
 mod claims;

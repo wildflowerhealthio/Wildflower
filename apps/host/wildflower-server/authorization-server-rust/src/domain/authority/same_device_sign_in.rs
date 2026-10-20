@@ -20,6 +20,9 @@ use crate::BROWSER_SESSION_CLIENT_ID;
 /// same-device session the sign-in starts, holding the Owner's grant, which
 /// the minter records verbatim.
 pub(crate) struct RedeemedSameDeviceSignInCode {
+    /// The same-device session the sign-in starts, holding the Owner's grant
+    /// for the session's lifetime; the token's `scope` and `sid` are read off
+    /// it.
     session: BrowserSession,
 }
 
@@ -68,12 +71,18 @@ mod tests {
     use super::*;
     use crate::domain::browser_session::BrowserSessionKind;
 
+    /// The lifetime every test gives the session a sign-in starts.
     const SESSION_TTL: Duration = Duration::hours(8);
 
+    /// A stand-in for the Owner's grant: every system and Wildflower
+    /// permission.
     fn owner_grant() -> Grant {
         Grant::parse(["system/*.cruds", "wildflower/*.cruds"])
     }
 
+    /// A redeemed code starts a same-device session with no name, holding the
+    /// Owner's grant for the session TTL, and its token is the
+    /// browser-session client's, scoped exactly to that grant.
     #[test]
     fn a_redeemed_code_names_the_browser_session_client_and_the_owner_s_grant() {
         let codes = SameDeviceSignInCodes::new();
@@ -100,6 +109,7 @@ mod tests {
         assert_eq!(session.expires_at, now + SESSION_TTL);
     }
 
+    /// A sign-in code redeems once: presenting it again earns nothing.
     #[test]
     fn a_code_redeems_once() {
         let codes = SameDeviceSignInCodes::new();

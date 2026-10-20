@@ -13,21 +13,27 @@ use super::same_device_sign_in::RedeemedSameDeviceSignInCode;
 /// the [module docs](super).
 #[derive(Clone, Copy)]
 pub(crate) enum TokenEntitlement<'a> {
-    /// A same-device session, signed in with a same-device sign-in code the base minted.
+    /// A redeemed same-device sign-in code: the token is the Owner's, for
+    /// the same-device session the sign-in starts.
     SameDeviceSignIn(&'a RedeemedSameDeviceSignInCode),
-    /// A paired browser session, started by a browser pairing the Owner
-    /// approved.
+    /// A claimed browser pairing: the token is the paired browser's, for the
+    /// paired session the claim starts, with the scopes the Owner granted.
     BrowserPairing(&'a ClaimedBrowserPairing),
-    /// An authorization code redeemed at `/oauth/token`.
+    /// An authorization code redeemed at `/oauth/token`: the token carries
+    /// the scopes, patient and browser session the code was issued with.
     AuthorizationCode(&'a RedeemedAuthorizationCode),
-    /// An approved device request claimed by its poll.
+    /// An approved device request claimed by its poll: the token carries what
+    /// the Owner approved, and no browser session.
     DeviceCode(&'a ConsumedDeviceRequest),
-    /// A live refresh token, validated before its rotation.
+    /// A live refresh token, validated before its rotation: the token carries
+    /// what its family was started with.
     RefreshToken(&'a ValidatedRefreshToken),
 }
 
 impl TokenEntitlement<'_> {
-    /// The `sub` / `client_id` the token is issued to.
+    /// The `sub` / `client_id` the token is issued to: the browser-session
+    /// client ([`BROWSER_SESSION_CLIENT_ID`](crate::BROWSER_SESSION_CLIENT_ID))
+    /// for a browser session's token, the redeeming app for the rest.
     pub(crate) fn client_id(&self) -> &str {
         match self {
             TokenEntitlement::SameDeviceSignIn(redeemed_sign_in_code) => {
@@ -47,7 +53,8 @@ impl TokenEntitlement<'_> {
     /// The scopes written into the token's `scope` claim, exactly as the proof
     /// holds them. A redemption's differ from its `granted_scopes`: each SMART
     /// scope's alternate spelling is added (see
-    /// [`wildflowerhealthio_scopes::with_alternate_canonical_forms`]).
+    /// [`wildflowerhealthio_scopes::with_alternate_canonical_forms`]). A
+    /// browser session's are the session's scopes as stored.
     pub(crate) fn token_scopes(&self) -> &[String] {
         match self {
             TokenEntitlement::SameDeviceSignIn(redeemed_sign_in_code) => {
@@ -82,7 +89,8 @@ impl TokenEntitlement<'_> {
     /// The browser session the token is minted under, the token's `sid`:
     /// the session a same-device sign-in or a browser pairing started, or the
     /// one a redeemed code or refreshed family records. `None` when there is
-    /// none, as for every device-code token.
+    /// none, as for every device-code token: a device pairs with no browser.
+    /// Revoking a browser session ends every token naming it.
     pub(crate) fn sid(&self) -> Option<&str> {
         match self {
             TokenEntitlement::SameDeviceSignIn(redeemed_sign_in_code) => {

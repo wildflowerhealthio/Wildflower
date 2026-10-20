@@ -1,3 +1,8 @@
+//! The session gate on `/authorization` ([`require_valid_session`]), and the
+//! token-to-claims pipeline it shares with the host's bearer gate: a request
+//! is admitted only with a valid, unrevoked `Authorization: Bearer` access
+//! token for this server; any other request is a bare `401` stamped with why.
+
 use std::sync::Arc;
 
 use axum::body::Body;
@@ -20,7 +25,7 @@ use crate::live_bindings::{FromState, LiveTokenVerifier};
 /// This layer only proves *who* the caller is (authN);
 /// *what* they may do (authZ) is decided per-route by the `Scoped<…>` extractor,
 /// which reads these claims and checks the covering scope, returning a `403`
-/// with the missing scopes on failure. An owner token (covering
+/// with the missing scopes on failure. An Owner token (covering
 /// [`WILDFLOWER_WIDEST_SCOPES`](crate::WILDFLOWER_WIDEST_SCOPES)) still covers
 /// every per-resource scope, so it passes every gate.
 ///

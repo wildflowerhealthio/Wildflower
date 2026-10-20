@@ -255,10 +255,13 @@ mod tests {
     use crate::domain::browser_session::BrowserSession;
     use crate::domain::refresh_token::RefreshTokenFamily;
 
+    /// A fresh store on an in-memory database, migrated.
     fn store() -> SqliteGrantStore {
         SqliteGrantStore::open_in_memory().expect("store")
     }
 
+    /// A refresh family for "app", minted under browser session `sid`, that
+    /// ends at `expires_at`.
     fn family(
         family_id: &str,
         sid: &str,

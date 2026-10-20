@@ -15,9 +15,13 @@ use crate::domain::client::{AllowedGrantType, Client, ClientKind, RegistrationSo
 use crate::domain::grant::{AuthorizationCodeGrant, CumulativeConsent, DeviceGrant};
 use crate::domain::GrantTx;
 
-/// Record standing grants, inside the caller's transaction; the gate is the
+/// Create or widen standing grants and, for a client trusted on first use,
+/// its registration, inside the caller's transaction; the gate is the
 /// [`DelegatedScopes`] each method takes.
 pub(crate) struct GrantRecorder<'a, T: GrantTx> {
+    /// The caller's open write scope, holding the write lock from before the
+    /// grant is read; the grant and the registration it justifies land with
+    /// the rest of the operation or not at all.
     tx: &'a mut T,
 }
 
@@ -30,7 +34,7 @@ impl<'a, T: GrantTx> GrantRecorder<'a, T> {
     /// Register (or widen) the client and insert or cumulatively update the
     /// standing authorization-code grant for `(client_id, redirect_uri)`, in
     /// the caller's write scope: write the `clients` row when the proof
-    /// [writes the registration](DelegatedScopes::writes_registration), then
+    /// [writes the registration](DelegatedScopes::would_write_registration), then
     /// read the standing grant — if present, fold the re-approval in via
     /// [`CumulativeConsent::absorb_reapproval`] and write it back; otherwise
     /// mint a fresh grant. The scope holds the write lock from before the
@@ -47,7 +51,7 @@ impl<'a, T: GrantTx> GrantRecorder<'a, T> {
     /// row at all.
     ///
     /// The grant (and any widened registration) records exactly the proof's
-    /// scopes, so a scope the Owner pruned is never added to either.
+    /// scopes, so a scope the approver pruned is never added to either.
     ///
     /// # Errors
     ///
@@ -89,7 +93,8 @@ impl<'a, T: GrantTx> GrantRecorder<'a, T> {
 
     /// Insert or cumulatively update the standing device grant for
     /// `(client_id, device_name)` — the same read-merge-write shape as
-    /// [`record_code_grant`](Self::record_code_grant), keyed on the device name. Device consent never touches the registration.
+    /// [`record_code_grant`](Self::record_code_grant), keyed on the device
+    /// name. Device consent never touches the registration.
     ///
     /// # Errors
     ///
@@ -151,7 +156,7 @@ fn write_registration<T: GrantTx>(
 /// The `clients` row a first approval of an unregistered client creates: a
 /// public client named after its own `client_id` (there is no registrar to have
 /// supplied a display name), holding only the redirect it just used and the
-/// scopes the Owner actually granted.
+/// scopes the approver actually granted.
 ///
 /// The scopes go in collapsed, through the same [`widened_scopes`] the widening
 /// path uses (against an empty registration), so a row created by a first
@@ -178,7 +183,7 @@ fn new_registration(
     }
 }
 
-/// Widen an existing registration by what the Owner just approved: append the
+/// Widen an existing registration by what the approver just approved: append the
 /// `redirect_uri` as an absolute entry when it resolved to none of the existing
 /// ones, and widen `allowed_scopes` by the granted scopes. Everything else on
 /// the row (its name, kind, secret, registration time) is left exactly as it
@@ -216,6 +221,8 @@ mod tests {
         client, delegated_scopes, registering_delegated_scopes, FakeGrantStore,
     };
 
+    /// The redirect each test approves, matching the fixture client's
+    /// registered one.
     fn redirect() -> Url {
         Url::parse("https://example.com/cb").expect("a valid redirect")
     }

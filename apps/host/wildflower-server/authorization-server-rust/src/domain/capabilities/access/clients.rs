@@ -39,12 +39,17 @@ pub(crate) fn clients_disabler_scopes() -> Vec<Scope> {
 /// can't be disabled, so the UI offers no switch for it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ClientView {
+    /// The client's stored registration, disabled or not.
     pub(crate) client: Client,
+    /// Whether the client is essential: the host app's own client or the
+    /// browser-session client, without which the Owner has no way in. An
+    /// essential client can't be disabled.
     pub(crate) essential: bool,
 }
 
 /// Read access to registered clients — `GET /authorization/clients`.
 pub(crate) struct ClientsReader<S: GrantStore> {
+    /// The store the clients are read from.
     store: S,
 }
 
@@ -54,7 +59,8 @@ impl<S: GrantStore> ClientsReader<S> {
         ClientsReader { store }
     }
 
-    /// Every registered client, ordered by `client_id`, disabled ones included.
+    /// Every registered client, ordered by `client_id`, disabled ones included,
+    /// each marked essential or not.
     pub(crate) fn list(&self) -> Result<Vec<ClientView>, AuthorizationServerError> {
         Ok(self
             .store
@@ -73,6 +79,7 @@ impl<S: GrantStore> ClientsReader<S> {
 /// the row as the first one left it (a repeated disable keeps the original
 /// `disabled_at`).
 pub(crate) struct ClientsDisabler<S: GrantStore> {
+    /// The store holding the client rows the disabler edits.
     store: S,
 }
 
@@ -85,9 +92,11 @@ impl<S: GrantStore> ClientsDisabler<S> {
     /// Set `client_id`'s `disabled_at` in one write scope and return the row as
     /// stored.
     ///
-    /// - `Some(stamp)` disables the client, stamped `stamp` (the handler passes
-    ///   the server's now). A client that already carries a stamp keeps it, so
-    ///   a repeated disable doesn't move the time.
+    /// - `Some(stamp)` disables the client, stamped `stamp`. The handler passes
+    ///   the server's own now whatever time was sent, so a disable can't be
+    ///   scheduled or backdated. A client that already carries a stamp keeps
+    ///   it, so a repeated disable doesn't move the time, and a write that
+    ///   would change nothing is skipped.
     /// - `None` re-enables the client. Its registration (redirects, scopes,
     ///   secret) is untouched by the round trip.
     ///
@@ -96,9 +105,9 @@ impl<S: GrantStore> ClientsDisabler<S> {
     /// [`AuthorizationServerError::ClientNotFound`] when no such client exists.
     /// Disabling an essential client is
     /// [`AuthorizationServerError::EssentialClient`] (see
-    /// [`is_essential_client`]). Re-enabling one stays allowed, so an
-    /// essential client disabled out of band (direct SQL) can still be
-    /// recovered.
+    /// [`is_essential_client`]), refused before anything is read. Re-enabling
+    /// one stays allowed, so an essential client disabled out of band (direct
+    /// SQL) can still be recovered.
     pub(crate) fn set_disabled_at(
         &self,
         client_id: &str,
@@ -142,7 +151,9 @@ mod tests {
     use super::*;
     use crate::domain::test_fake::{client, FakeGrantStore};
 
+    /// The host app's own client id, one of the two essential clients.
     const HOST: &str = crate::WILDFLOWER_HOST_APP_CLIENT_ID;
+    /// The browser-session client id, the other essential client.
     const BROWSER_SESSION_CLIENT: &str = crate::BROWSER_SESSION_CLIENT_ID;
 
     /// A disabler over a fresh fake seeded with `rows`; tests reach the fake
@@ -155,10 +166,12 @@ mod tests {
         ClientsDisabler::new(store)
     }
 
+    /// The instant `seconds` after the Unix epoch.
     fn at(seconds: i64) -> DateTime<Utc> {
         DateTime::from_timestamp(seconds, 0).expect("in-range timestamp")
     }
 
+    /// The `client_id` row as the disabler's store holds it.
     fn stored(disabler: &ClientsDisabler<FakeGrantStore>, client_id: &str) -> Client {
         disabler
             .store
@@ -172,6 +185,7 @@ mod tests {
     /// otherwise.
     const NOW: i64 = 5_000;
 
+    /// Disable `client_id`, stamped `stamp` seconds after the epoch.
     fn disable(
         disabler: &ClientsDisabler<FakeGrantStore>,
         client_id: &str,
@@ -180,6 +194,7 @@ mod tests {
         disabler.set_disabled_at(client_id, Some(at(stamp)))
     }
 
+    /// Re-enable `client_id`.
     fn enable(
         disabler: &ClientsDisabler<FakeGrantStore>,
         client_id: &str,
@@ -187,6 +202,8 @@ mod tests {
         disabler.set_disabled_at(client_id, None)
     }
 
+    /// The list returns every client in `client_id` order and marks only the
+    /// host app and the browser-session client essential.
     #[test]
     fn list_flags_only_the_essential_clients() {
         let store = FakeGrantStore::default();
@@ -240,6 +257,8 @@ mod tests {
         assert_eq!(stored(&disabler, "app"), registered);
     }
 
+    /// A second disable, a second later, leaves the first stamp in both the
+    /// answer and the row.
     #[test]
     fn a_repeated_disable_keeps_the_first_timestamp() {
         let disabler = disabler_with(&[client("app", &["openid"])]);
@@ -249,6 +268,7 @@ mod tests {
         assert_eq!(stored(&disabler, "app").disabled_at, Some(at(NOW)));
     }
 
+    /// Enabling a client that is not disabled leaves its row as registered.
     #[test]
     fn enabling_an_enabled_client_is_a_no_op() {
         let registered = client("app", &["openid"]);
@@ -257,6 +277,8 @@ mod tests {
         assert_eq!(stored(&disabler, "app"), registered);
     }
 
+    /// Disabling and enabling an unregistered client are both
+    /// `ClientNotFound`, and neither creates a row.
     #[test]
     fn an_unknown_client_is_client_not_found_either_way() {
         let disabler = disabler_with(&[]);
@@ -271,6 +293,8 @@ mod tests {
         );
     }
 
+    /// For each essential client, a disable is `EssentialClient` and writes
+    /// nothing; an enable succeeds and reports it essential.
     #[test]
     fn an_essential_client_cannot_be_disabled_but_can_be_enabled() {
         for essential_client_id in [HOST, BROWSER_SESSION_CLIENT] {

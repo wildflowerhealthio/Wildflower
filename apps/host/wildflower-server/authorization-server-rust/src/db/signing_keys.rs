@@ -11,6 +11,9 @@ use crate::domain::grant_store::SigningKeysTx;
 use crate::domain::signing_key::{SigningKey, SigningKeyValues};
 
 diesel::table! {
+    /// One row per RSA key, keyed by its `kid`. `values_json` holds the RSA
+    /// components, public and private, as one JSON object; `is_active` marks
+    /// the key that signs new tokens.
     signing_keys (kid) {
         kid -> Text,
         kty -> Text,
@@ -100,6 +103,8 @@ mod tests {
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(48))]
 
+        /// Any key stored in a fresh store is the only key it lists, and it reads as
+        /// the active key exactly when it is marked active.
         #[test]
         fn insert_and_fetch_round_trip(key in arb_signing_key()) {
             let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");

@@ -19,11 +19,16 @@ const NEXT: &str = "/oauth/authorize?client_id=integration-test-app&state=s";
 
 /// What `/oauth/pair/start` answered.
 struct StartedPairing {
+    /// The secret the pairing page polls with; only the browser that started
+    /// the pairing knows it.
     pairing_code: String,
+    /// The short code the page shows, which the Owner enters on the device
+    /// page to find the pairing.
     user_code: String,
 }
 
-/// `POST` a JSON `body` to `path`, from the browser `user_agent` names.
+/// `POST` a JSON `body` to `path`, as `bearer` when given, from the Firefox
+/// on Linux browser [`FIREFOX_LINUX_USER_AGENT`] names.
 async fn post_json(
     g: &AuthorizationServer,
     path: &str,

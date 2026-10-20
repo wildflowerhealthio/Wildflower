@@ -18,8 +18,12 @@ use crate::domain::token_exchange_error::{InvalidGrantReason, TokenExchangeError
 use crate::domain::GrantTx;
 
 /// Issue and rotate refresh tokens, inside the caller's transaction; the
-/// gate is the redemption proof each method takes.
+/// gate is the redemption proof each method takes: a [`GrantRedemption`] to
+/// start a family, a [`ValidatedRefreshToken`] to rotate one.
 pub(crate) struct RefreshFamilyWriter<'a, T: GrantTx> {
+    /// The caller's open write scope; the family, its tokens and the stamps a
+    /// rotation leaves land with the rest of the token exchange or not at
+    /// all.
     tx: &'a mut T,
 }
 
@@ -31,11 +35,11 @@ impl<'a, T: GrantTx> RefreshFamilyWriter<'a, T> {
 
     /// Mint a new family with its first token and return the token's
     /// plaintext. The caller checks
-    /// [`is_refresh_token_earned`](GrantRedemption::is_refresh_token_earned) first. The
-    /// family records the redemption's scopes and patient verbatim, the code
-    /// it consumed (so a replay of that code can revoke the lineage), the
-    /// standing grant behind it, and the browser session it was made under (so
-    /// revoking that session ends it).
+    /// [`is_refresh_token_earned`](GrantRedemption::is_refresh_token_earned)
+    /// first. The family records the redemption's scopes and patient
+    /// verbatim, the code it consumed (so a replay of that code can revoke
+    /// the lineage), the standing grant behind it, and the browser session it
+    /// was made under (so revoking that session ends it).
     ///
     /// # Errors
     ///
@@ -177,6 +181,8 @@ mod tests {
         assert_eq!(family.expires_at, now + REFRESH_TOKEN_FAMILY_TTL);
     }
 
+    /// Validate the refresh token `plaintext` for public client "client",
+    /// with no client epoch bumped.
     fn validated(store: &FakeGrantStore, plaintext: &str) -> ValidatedRefreshToken {
         let client = authenticated_public_client(store, client("client", &["openid"]));
         ValidatedRefreshToken::validate(

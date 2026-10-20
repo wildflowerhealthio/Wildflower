@@ -70,7 +70,7 @@ impl<S: GrantStore> ConsentDecider<S> {
     /// **expandable** scope decision (up to the client's `allowed_scopes` for
     /// a device, up to [`OWNER_SCOPES`](crate::OWNER_SCOPES) for a browser
     /// pairing), transition the request, for a device mint (or refresh) the
-    /// standing device grant, and republish the popup head. An approval that
+    /// standing device grant, and republish the Owner prompt. An approval that
     /// grants nothing is applied as a **deny**.
     ///
     /// # Errors
@@ -82,7 +82,8 @@ impl<S: GrantStore> ConsentDecider<S> {
     /// [`InsufficientApproverScope`](AuthorizationServerError::InsufficientApproverScope)
     /// for a resource scope beyond the approver's own authority, both writing
     /// nothing; [`DeviceConsentNotFound`](AuthorizationServerError::DeviceConsentNotFound)
-    /// when `user_code` names no live prompt.
+    /// when `user_code` names no live prompt, names a device request whose
+    /// client has no row (its envelope), or another surface decided it first.
     pub(crate) fn approve_device_consent(
         &self,
         user_code: &str,

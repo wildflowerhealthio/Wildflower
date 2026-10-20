@@ -39,6 +39,7 @@ pub(crate) fn grants_revoker_scopes() -> Vec<Scope> {
 /// over the store port so it's unit-testable against the fake; the binding
 /// instantiates it over the concrete `SqliteGrantStore`.
 pub(crate) struct GrantsReader<S: GrantStore> {
+    /// The store the grants are read from.
     store: S,
 }
 
@@ -48,7 +49,8 @@ impl<S: GrantStore> GrantsReader<S> {
         GrantsReader { store }
     }
 
-    /// Every standing client grant, for the launcher's list.
+    /// Every standing client grant, code-flow and device alike, for the
+    /// launcher's list.
     pub(crate) fn list(&self) -> Result<Vec<Grant>, AuthorizationServerError> {
         self.store.read(|tx| tx.all_grants())
     }
@@ -66,7 +68,11 @@ impl<S: GrantStore> GrantsReader<S> {
 /// it carries the security-critical token-kill cascade — holds the [`Revocation`]
 /// port for the epoch bump alongside the store.
 pub(crate) struct GrantsRevoker<S: GrantStore> {
+    /// The store the grant is deleted from and the client's refresh-token
+    /// families are expired in.
     store: S,
+    /// The revocation store, whose per-subject epoch ends every live access
+    /// token the grant's client holds.
     revocation: Arc<dyn Revocation>,
 }
 
@@ -93,8 +99,10 @@ impl<S: GrantStore> GrantsRevoker<S> {
     /// while a delete that commits without its bump leaves live access tokens
     /// and a retry that answers 404.
     ///
-    /// Both concrete grant tables are hit (grant ids are UUIDs unique across
-    /// them, so at most one deletes a row).
+    /// The epoch and the families are per client, not per grant: revoking one
+    /// of a client's grants ends every access token and refresh-token family
+    /// the client holds. Both concrete grant tables are hit (grant ids are
+    /// UUIDs unique across them, so at most one deletes a row).
     ///
     /// # Errors
     ///
@@ -151,6 +159,8 @@ mod tests {
         }
     }
 
+    /// A stored grant comes back by its id; an unknown id is `GrantNotFound`
+    /// naming it.
     #[test]
     fn get_returns_the_row_or_grant_not_found() {
         let store = FakeGrantStore::default();

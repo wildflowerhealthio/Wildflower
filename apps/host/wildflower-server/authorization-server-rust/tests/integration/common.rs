@@ -1,3 +1,8 @@
+//! The fixtures every end-to-end test shares: a server spun up over a fresh
+//! in-memory database with an Owner token, second store handles onto that
+//! database for planting and reading rows, token minting, request builders,
+//! and the multi-step drivers for each flow.
+
 pub use axum::body::{to_bytes, Body};
 pub use axum::http::{Request, StatusCode};
 pub use std::sync::Arc;
@@ -72,9 +77,11 @@ pub use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 /// `SqliteGrantStore` and the rusqlite connection behind the shared
 /// `RevocationStore` (which stays rusqlite-backed — it is a separate crate).
 pub struct TestDb {
+    /// The diesel pool behind the router's `SqliteGrantStore`.
     pool: DieselPool,
+    /// The rusqlite connection behind the router's `RevocationStore`.
     revocation_conn: Connection,
-    /// Live receiver on the newest pending consent the slice publishes — the
+    /// Live receiver on the Owner prompt the server publishes — the
     /// same channel the Tauri host notifies from. Held (not dropped) so tests
     /// can assert *what the host would notify* after a request lands,
     /// which is the only observable difference between "parked a request" and
@@ -355,11 +362,13 @@ pub fn build_request(builder: http::request::Builder, body: Body) -> Request<Bod
     builder.body(body).expect("build request")
 }
 
+/// A whole response body, read as JSON.
 pub async fn body_json(body: Body) -> Value {
     let bytes = to_bytes(body, usize::MAX).await.expect("body");
     serde_json::from_slice(&bytes).expect("json")
 }
 
+/// A whole response body, read as UTF-8 text.
 pub async fn body_string(body: Body) -> String {
     let bytes = to_bytes(body, usize::MAX).await.expect("body");
     String::from_utf8(bytes.to_vec()).expect("utf8")
@@ -769,6 +778,8 @@ pub async fn authorize_and_approve(
     request_id
 }
 
+/// A desktop Chrome on macOS `User-Agent`, for the tests that name a device or
+/// browser from its user agent.
 pub const CHROME_MAC_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
      AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
 
@@ -870,7 +881,10 @@ pub fn basic_authorization(client_id: &str, client_secret: &str) -> String {
     )
 }
 
+/// `conf-app`, the confidential client [`spin_up_with_confidential_client`]
+/// registers.
 pub const CONFIDENTIAL_CLIENT_ID: &str = "conf-app";
+/// That confidential client's secret.
 pub const CONFIDENTIAL_CLIENT_SECRET: &str = "shhh-integration-secret";
 
 /// Spin up an authorization server with a seeded confidential client and a live planted

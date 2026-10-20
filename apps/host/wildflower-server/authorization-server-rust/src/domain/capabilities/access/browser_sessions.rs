@@ -33,6 +33,7 @@ pub(crate) fn browser_sessions_revoker_scopes() -> Vec<Scope> {
 
 /// One live browser session, as the Owner's list shows it.
 pub(crate) struct BrowserSessionView {
+    /// The live session the row shows.
     pub(crate) session: BrowserSession,
     /// Whether the caller's own token was minted under the session (its
     /// `sid` names it).
@@ -42,6 +43,7 @@ pub(crate) struct BrowserSessionView {
 /// Read access to the live browser sessions —
 /// `GET /authorization/browser-sessions`.
 pub(crate) struct BrowserSessionsReader<S: GrantStore> {
+    /// The store the sessions are read from.
     store: S,
 }
 
@@ -51,9 +53,10 @@ impl<S: GrantStore> BrowserSessionsReader<S> {
         BrowserSessionsReader { store }
     }
 
-    /// Every browser session live at `now`, newest first, each marked by
-    /// whether it is `caller_sid`'s, the session the caller's token was
-    /// minted under.
+    /// Every browser session live at `now` (neither revoked nor expired),
+    /// newest first, each marked by whether it is `caller_sid`'s, the session
+    /// the caller's token was minted under. A caller under no session holds
+    /// none of them.
     pub(crate) fn list_live(
         &self,
         caller_sid: Option<&str>,
@@ -76,6 +79,7 @@ impl<S: GrantStore> BrowserSessionsReader<S> {
 /// `BrowserSession.d` capability. Revoking the caller's own session is allowed:
 /// it signs that browser out.
 pub(crate) struct BrowserSessionsRevoker<S: GrantStore> {
+    /// The store the revocation is written to.
     store: S,
 }
 

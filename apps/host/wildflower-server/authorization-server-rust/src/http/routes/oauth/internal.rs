@@ -1,3 +1,7 @@
+//! The OAuth surface's error responses: [`OAuthErrorResponse`], the
+//! [`TokenError`] the token-style routes answer with, and
+//! [`ClientAuthenticationFailure`].
+
 use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
@@ -14,13 +18,20 @@ use crate::http::wire_representations::{CacheSuppressed, OAuthError};
 
 /// An [`OAuthError`] paired with the HTTP status it renders at — the
 /// `(status, JSON body)` shape every OAuth-surface error response shares.
+/// On its own it isn't cache-suppressed: the status poll renders it that way,
+/// and the token-style routes wrap it in [`TokenError`], which is.
 #[derive(Debug)]
 pub struct OAuthErrorResponse {
+    /// The HTTP status: `400` for the caller's mistakes, `401` for a failed
+    /// client authentication, `500` for the server's own failure.
     pub status: StatusCode,
+    /// The RFC 6749 §5.2 body: `error` and an optional `error_description`.
     pub error: OAuthError,
 }
 
 impl OAuthErrorResponse {
+    /// The response at `status` with the `error` code and an optional
+    /// human-readable `description`.
     pub fn new(status: StatusCode, error: OAuthErrorCode, description: Option<&str>) -> Self {
         Self {
             status,
@@ -55,6 +66,12 @@ impl IntoResponse for OAuthErrorResponse {
 /// §5.1, through `IntoResponse` — so a fallible step bails with `?` instead of
 /// a `match` + `return` at each call site. Kept small (no embedded `Response`)
 /// so `Result<_, TokenError>` doesn't trip `clippy::result_large_err`.
+///
+/// It is also the [`TokenRequest`](super::token_request::TokenRequest)
+/// extractor's rejection. Beyond the constructors, the rest come by
+/// conversion: a credential error and an authentication failure keep their
+/// own rendering, a store failure becomes the logged opaque 500, and a failed
+/// exchange maps onto RFC 6749 §5.2 and RFC 8628 §3.5.
 pub enum TokenError {
     /// An OAuth error body at its status: the §5.2 400s (`invalid_grant`,
     /// `unauthorized_client`, `invalid_request`, `invalid_scope`, `slow_down`,
@@ -113,7 +130,23 @@ impl From<crate::domain::authorization_server_error::AuthorizationServerError> f
 }
 
 /// Render the exchange flows' failure vocabulary onto RFC 6749 §5.2 / RFC 8628
-/// §3.5. The [`InvalidGrant`](TokenExchangeError::InvalidGrant) reasons collapse
+/// §3.5:
+///
+/// - `UnauthorizedGrantType`: `400 unauthorized_client`, "Client may not use
+///   this grant type";
+/// - `InvalidCodeVerifier`: `400 invalid_grant`, "Invalid code_verifier
+///   parameter";
+/// - `InvalidRedirectUri`: `400 invalid_request`, "Invalid redirect_uri
+///   parameter";
+/// - `InvalidGrant(reason)`: `400 invalid_grant`, one description per family
+///   of reasons (below), the reason itself logged;
+/// - `ExpiredToken`, `AuthorizationPending`, `AccessDenied`, `SlowDown`: `400`
+///   with the matching RFC 8628 §3.5 code and no description;
+/// - `Issuance`: `500 server_error`, "Failed to sign JWT" when signing failed,
+///   "No JSON Web Keys available to sign token" otherwise;
+/// - `Store`: the logged, opaque 500.
+///
+/// The [`InvalidGrant`](TokenExchangeError::InvalidGrant) reasons collapse
 /// onto a few descriptions: one for every code refusal — distinguishing "wrong
 /// client" from "wrong redirect_uri" from "expired" from "bad verifier" would
 /// leak facts about a code that may belong to another client — two for a device
@@ -221,7 +254,11 @@ impl IntoResponse for TokenError {
 /// `WWW-Authenticate: Basic` challenge.
 #[derive(Debug)]
 pub struct ClientAuthenticationFailure {
+    /// Which check refused the client, or the server-side failure that kept
+    /// it from being checked.
     pub error: ClientAuthenticationError,
+    /// How the client presented its credentials: a Basic attempt's `401`
+    /// carries the challenge, a body attempt's doesn't.
     pub presented_via: ClientAuthenticationMethod,
 }
 

@@ -10,6 +10,7 @@ use crate::domain::GrantStore;
 /// Read the public signing keys. Generic over the store port; the binding
 /// instantiates it over the concrete `SqliteGrantStore`.
 pub(crate) struct PublicKeysReader<S: GrantStore> {
+    /// The store the signing keys are read from.
     store: S,
 }
 

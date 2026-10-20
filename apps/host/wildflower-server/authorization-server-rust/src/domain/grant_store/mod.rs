@@ -16,13 +16,13 @@
 //!
 //! A capability method reads as: open the scope, run the flow inside it to an
 //! outcome value, then act on the outcome outside it. What acts outside is a
-//! side effect: republishing the newest pending consent, and writing to
-//! another store (the revocation store's epochs). A side effect inside the
-//! scope would run before the commit: a republish reads the store on another
-//! pooled connection, which can't see this scope's uncommitted writes and
-//! would read the rows as they stood before it. Signing a token is not a side effect — it is pure
-//! computation over the key the scope loaded — so it runs inside the scope,
-//! and a signing failure rolls the scope back.
+//! side effect: republishing the Owner prompt, and writing to another store
+//! (the revocation store's epochs). A side effect inside the scope would run
+//! before the commit: a republish reads the store on another pooled connection,
+//! which can't see this scope's uncommitted writes and would read the rows as
+//! they stood before it. Signing a token is not a side effect — it is pure
+//! computation over the key the scope loaded — so it runs inside the scope, and
+//! a signing failure rolls the scope back.
 //!
 //! The `SQLite` adapter is `crate::db`'s `SqliteGrantStore`, which implements
 //! each concern trait in that concern's `db/` file; the in-memory

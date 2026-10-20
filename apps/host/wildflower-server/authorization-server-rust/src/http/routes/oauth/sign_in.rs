@@ -90,6 +90,9 @@ async fn handle_sign_in(
         .into_response()
 }
 
+/// The `400` error page a refused sign-in gets, naming why: a `next` that
+/// isn't allowed, a disabled browser-session client, or a code that is
+/// unknown, spent or expired. It sets no cookie and redirects nowhere.
 fn refusal_page(refusal: SignInRefusal) -> Response {
     (StatusCode::BAD_REQUEST, Html(sign_in_error_html(refusal))).into_response()
 }

@@ -1,8 +1,16 @@
+//! Device-flow user codes (RFC 8628 §6.1): the short code a person reads off
+//! one screen and types on another, e.g. `BCDF-GHJK`. The device and pairing
+//! flows both show one.
+
 use rand::RngExt;
 
 /// Unambiguous consonants used in device-flow user codes — no vowels, no Y, no 0/1/I/O confusables.
 pub(crate) const ALPHABET: &[u8] = "BCDFGHJKLMNPQRSTVWXZ".as_bytes();
+/// How many letters each dash-separated block of a user code holds.
 pub(crate) const BLOCK_LENGTH: usize = 4;
+/// How many blocks a user code has. Two blocks of four from the 20-letter
+/// alphabet give 20^8 (about 2^34.5) codes: the shape RFC 8628 §6.1 gives as
+/// its example.
 pub(crate) const BLOCK_COUNT: usize = 2;
 
 /// Generate a device-flow user code (e.g. `BCDF-GHJK`) using the unambiguous consonant alphabet.
@@ -43,6 +51,7 @@ mod tests {
     use proptest::prelude::*;
     use rand::SeedableRng;
 
+    /// Every generated code passes the shape check.
     #[test]
     fn generated_code_is_valid() {
         let mut rng = rand::rngs::StdRng::seed_from_u64(0);
@@ -52,6 +61,8 @@ mod tests {
         }
     }
 
+    /// The alphabet holds only uppercase consonants: no vowels, no Y, and no
+    /// digit a reader could mistake for a letter.
     #[test]
     fn alphabet_is_unambiguous_consonants() {
         // No vowels, no 0/1/I/O confusables, no Y.
@@ -65,7 +76,7 @@ mod tests {
 
     proptest! {
         /// `[a-z]` and `ALPHABET` (uppercase consonants) are disjoint, so the
-        /// per-block alphabet check can never pass
+        /// per-block alphabet check rejects any lowercase code.
         #[test]
         fn rejects_codes_with_wrong_alphabet(c in "[a-z]{4}-[a-z]{4}") {
             prop_assert!(!is_valid_oauth_user_code(&c));

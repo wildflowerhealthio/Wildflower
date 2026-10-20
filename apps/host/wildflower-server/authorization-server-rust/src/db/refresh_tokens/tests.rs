@@ -1,3 +1,7 @@
+//! The refresh-token tables against a real in-memory database: round trips,
+//! the guarded consume, the foreign key from token to family, ending a family
+//! or a client's families, and the retention delete.
+
 use super::*;
 use crate::db::test_support::{arb_opt_timestamp, arb_timestamp};
 use crate::db::SqliteGrantStore;
@@ -5,6 +9,7 @@ use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::GrantStore as _;
 use proptest::prelude::*;
 
+/// A family with every field drawn independently, under no browser session.
 fn arb_family() -> impl Strategy<Value = RefreshTokenFamily> {
     (
         "[a-zA-Z0-9-]{1,36}",
@@ -42,6 +47,7 @@ fn arb_family() -> impl Strategy<Value = RefreshTokenFamily> {
         )
 }
 
+/// A token in family `family_id`, consumed or not.
 fn arb_token_in_family(family_id: &str) -> impl Strategy<Value = RefreshToken> {
     let family_id = family_id.to_string();
     ("[a-zA-Z0-9_-]{1,43}", arb_timestamp(), arb_opt_timestamp()).prop_map(
@@ -57,6 +63,8 @@ fn arb_token_in_family(family_id: &str) -> impl Strategy<Value = RefreshToken> {
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(48))]
 
+    /// Any family and token stored together read back together by the token's
+    /// hash, exactly as written.
     #[test]
     fn insert_and_fetch_round_trip(
         family in arb_family(),
@@ -101,6 +109,7 @@ proptest! {
     }
 }
 
+/// A hash never issued can't be stamped consumed and isn't found.
 #[test]
 fn unknown_hash_neither_stamps_nor_exists() {
     let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
@@ -112,11 +121,11 @@ fn unknown_hash_neither_stamps_nor_exists() {
         .expect("exists probe"));
 }
 
-// Foreign-key enforcement (`PRAGMA foreign_keys = ON`): a refresh token
-// whose family does not exist is rejected at insert time instead of
-// becoming an orphan that later reads as "not found" (so a genuine replay
-// of such a token would fail to revoke anything). The store surfaces it as
-// an `Infrastructure` error whose source text names the constraint.
+/// Foreign-key enforcement (`PRAGMA foreign_keys = ON`): a refresh token
+/// whose family does not exist is rejected at insert time instead of
+/// becoming an orphan that later reads as "not found" (so a genuine replay
+/// of such a token would fail to revoke anything). The store surfaces it as
+/// an `Infrastructure` error whose source text names the constraint.
 #[test]
 fn insert_refresh_token_rejects_orphan_without_family() {
     let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
@@ -151,6 +160,8 @@ fn seed_family_with_token(
         .expect("insert first token");
 }
 
+/// A family for `client_id` with `read`, issued now and ending in 90 days,
+/// under no code, grant or browser session.
 fn sample_family(family_id: &str, client_id: &str) -> RefreshTokenFamily {
     RefreshTokenFamily {
         family_id: family_id.to_string(),
@@ -165,6 +176,7 @@ fn sample_family(family_id: &str, client_id: &str) -> RefreshTokenFamily {
     }
 }
 
+/// A live token in `family_id`, issued now.
 fn sample_token(token_hash: &str, family_id: &str) -> RefreshToken {
     RefreshToken {
         token_hash: token_hash.to_string(),
@@ -174,6 +186,9 @@ fn sample_token(token_hash: &str, family_id: &str) -> RefreshToken {
     }
 }
 
+/// Ending a family keeps its rows: its deadline moves to the moment it ended,
+/// its live token is stamped consumed then, a token redeemed earlier keeps its
+/// own stamp, and another family is untouched.
 #[test]
 fn expire_family_pulls_deadline_back_and_stamps_the_live_token() {
     let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
@@ -299,6 +314,8 @@ fn delete_expired_families_spares_the_recently_dead_and_the_live() {
     }
 }
 
+/// Ending a client's families ends that client's alone: another client's
+/// family keeps its deadline and its live token.
 #[test]
 fn expire_for_client_spares_other_clients() {
     let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");

@@ -1,7 +1,7 @@
-//! The consent card (#1099): `/oauth/authorize` sends a browser signed in as
+//! The consent card: `/oauth/authorize` sends a browser signed in as
 //! the Owner to `/oauth/authorize/{id}/consent`, any other browser with a
 //! session to the wait page, and a browser without one to pairing,
-//! and the card decides the request through the existing
+//! and the card decides the request through the
 //! `/authorization/oauth-consents/{id}` API on the browser session's bearer, the
 //! token its session cookie holds. The cookie→bearer layer that presents that
 //! token for the card is the host's (`wildflower-server-rust`), so these tests
@@ -86,6 +86,8 @@ async fn parked_on_the_card(g: &AuthorizationServer) -> (String, String) {
     (same_device_session_token, request_id)
 }
 
+/// A browser signed in as the Owner decides its own request: `/oauth/authorize`
+/// sends it to the consent card, whatever other cookies ride along.
 #[tokio::test]
 async fn a_browser_signed_in_as_the_owner_goes_to_the_consent_card() {
     let (g, _host_owner_token, db) = spin_up();
@@ -106,6 +108,9 @@ async fn a_browser_signed_in_as_the_owner_goes_to_the_consent_card() {
     }
 }
 
+/// A browser without a live browser session, whether it sends no cookie, a
+/// garbage one, a revoked session's token or the token under another cookie
+/// name, is sent to pairing, and nothing is parked.
 #[tokio::test]
 async fn a_browser_without_a_session_goes_to_pairing() {
     let (g, _host_owner_token, db) = spin_up();
@@ -141,6 +146,8 @@ async fn a_browser_without_a_session_goes_to_pairing() {
     assert_eq!(owner_prompt(&db), None, "nothing was parked");
 }
 
+/// A browser whose session can't decide consents is sent to the wait page, and
+/// the Owner is prompted with a request not decidable in that browser.
 #[tokio::test]
 async fn a_browser_session_that_cannot_decide_consents_goes_to_the_wait_page() {
     let (g, _host_owner_token, db) = spin_up();
@@ -165,6 +172,9 @@ async fn a_browser_session_that_cannot_decide_consents_goes_to_the_wait_page() {
     );
 }
 
+/// The Owner prompt says whether the request is decidable in the browser that
+/// made it: true for one parked on the consent card, false for one parked on
+/// the wait page.
 #[tokio::test]
 async fn the_newest_pending_consent_says_whether_its_browser_can_decide_it() {
     let (g, _host_owner_token, db) = spin_up();
@@ -199,6 +209,9 @@ async fn the_newest_pending_consent_says_whether_its_browser_can_decide_it() {
     );
 }
 
+/// Approving on the card answers with the client's redirect carrying a code and
+/// the client's `state`, and a wait page left open on the request settles on
+/// the same redirect.
 #[tokio::test]
 async fn approving_on_the_owner_s_bearer_sends_the_code_to_the_client_and_settles_the_wait_page() {
     let (g, _host_owner_token, db) = spin_up();
@@ -236,6 +249,8 @@ async fn approving_on_the_owner_s_bearer_sends_the_code_to_the_client_and_settle
     assert_eq!(status["redirect"], decision["redirect"]);
 }
 
+/// An approval can't add a scope the app didn't ask for: a hand-made approval
+/// naming an extra scope earns a token for the requested scope alone.
 #[tokio::test]
 async fn a_scope_that_was_not_requested_is_not_granted() {
     let (g, _host_owner_token, db) = spin_up();
@@ -284,6 +299,9 @@ async fn a_scope_that_was_not_requested_is_not_granted() {
     assert_eq!(token["scope"], "patient/Observation.rs");
 }
 
+/// Approving an app new to the Owner without acknowledging the registration
+/// change is a `409 RegistrationNotAcknowledged`, and the request stays
+/// pending.
 #[tokio::test]
 async fn an_unacknowledged_new_registration_is_refused() {
     let (g, _host_owner_token, _db) = spin_up();
@@ -309,6 +327,9 @@ async fn an_unacknowledged_new_registration_is_refused() {
     );
 }
 
+/// Denying on the card answers with the client's redirect carrying
+/// `access_denied` and its `state`, and a wait page left open on the request
+/// settles on the same redirect.
 #[tokio::test]
 async fn denying_sends_access_denied_to_the_client_and_settles_the_wait_page() {
     let (g, _host_owner_token, db) = spin_up();

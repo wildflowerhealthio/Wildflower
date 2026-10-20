@@ -180,6 +180,7 @@ pub fn device_grant_name<'a>(
 mod tests {
     use super::*;
 
+    /// The instant `minutes` after the tests' fixed start.
     fn at(minutes: i64) -> DateTime<Utc> {
         DateTime::from_timestamp(1_800_000_000, 0).expect("in range") + Duration::minutes(minutes)
     }
@@ -199,6 +200,7 @@ mod tests {
         )
     }
 
+    /// An approval of `openid` binding `Patient/1`.
     fn approval() -> Approval {
         Approval {
             granted_scopes: vec!["openid".to_owned()],

@@ -94,13 +94,17 @@ pub(crate) enum BrowserPairingStatus {
     /// The page polled sooner than the poll interval allows; nothing was read
     /// or recorded.
     SlowDown,
-    /// The Owner approved, and this poll started the paired session: its
-    /// token, which the browser holds as its browser session cookie.
-    Approved { session_token: String },
+    /// The Owner approved, and this poll started the paired session.
+    Approved {
+        /// The paired session's day-long token, which the browser holds as its
+        /// browser session cookie.
+        session_token: String,
+    },
     /// The Owner declined.
     Denied,
-    /// The request expired before the Owner approved it, or an earlier poll
-    /// already started its session.
+    /// The request is past its expiry, whatever its status, so an approval
+    /// the browser didn't collect in time is lost; or an earlier poll already
+    /// claimed it and started its session.
     Expired,
 }
 
@@ -129,8 +133,14 @@ impl From<AuthorizationServerError> for BrowserPairingPollError {
 /// unit-testable against the fake; the binding instantiates it over the
 /// concrete `SqliteGrantStore`.
 pub(crate) struct BrowserPairing<S: GrantStore> {
+    /// The store a start parks the pairing request in, and a poll stamps or
+    /// claims it in.
     store: S,
+    /// Republishes the Owner prompt after a start or a rename, so the host
+    /// notifies the Owner and the card shows the browser's current name.
     owner_approval: Arc<dyn OwnerApproval>,
+    /// Where a sign-in may send a browser on to; a start's `next` must be a
+    /// path on this server.
     destinations: Arc<SignInDestinations>,
     /// The server's bare origin, the session token's `iss` and `aud`.
     server_origin: Arc<str>,
@@ -154,9 +164,11 @@ impl<S: GrantStore> BrowserPairing<S> {
 
     /// Start a pairing that goes on to `next` once approved, named
     /// `user_agent_name` (the name the browser's user agent suggests, if
-    /// any), and republish the newest pending consent so the host notifies
-    /// it. A `next` that isn't a path on this server, or a disabled
-    /// browser-session client, starts nothing.
+    /// any), and republish the Owner prompt so the host notifies it. A `next`
+    /// that isn't a path on this server, or a disabled browser-session client
+    /// (no session token could be issued to it), starts nothing. The request
+    /// is parked pending under its pairing code, with a unique `user_code`
+    /// drawn as the device flow's are, for [`DEVICE_AUTHORIZATION_TTL`].
     ///
     /// # Errors
     ///
@@ -207,11 +219,21 @@ impl<S: GrantStore> BrowserPairing<S> {
     }
 
     /// Poll the pairing `pairing_code` names at `now`, from a page that now
-    /// names its browser `browser_name` (blank keeps the name it has). While
-    /// it is pending the poll is stamped, throttled to the poll interval, and
-    /// the name recorded; once approved, the first poll claims it and stores
-    /// the paired session it starts, and mints the session's token, in the
-    /// same scope.
+    /// names its browser `browser_name` (blank keeps the name it has). The
+    /// whole poll is one write scope. A pairing past its expiry is
+    /// [`Expired`](BrowserPairingStatus::Expired) whatever its status;
+    /// otherwise its status decides:
+    ///
+    ///  - pending: throttled to the poll interval
+    ///    ([`SlowDown`](BrowserPairingStatus::SlowDown) records nothing), then
+    ///    the poll is stamped and the name recorded;
+    ///    [`Pending`](BrowserPairingStatus::Pending);
+    ///  - approved: the first poll claims it, stores the paired session it
+    ///    starts and mints the session's token, together or not at all;
+    ///    [`Approved`](BrowserPairingStatus::Approved) with the token;
+    ///  - denied: [`Denied`](BrowserPairingStatus::Denied);
+    ///  - claimed: an earlier poll started the session;
+    ///    [`Expired`](BrowserPairingStatus::Expired).
     ///
     /// # Errors
     ///
@@ -281,12 +303,15 @@ impl<S: GrantStore> BrowserPairing<S> {
 enum PolledPairing {
     /// The poll's answer needs nothing more.
     Answered(BrowserPairingStatus),
-    /// The pending pairing was stamped and took a new name, which the newest
-    /// pending consent is republished for.
+    /// The pending pairing was stamped and took a new name, which the Owner
+    /// prompt is republished for once the scope closes.
     Renamed,
     /// The approved pairing was claimed, its session stored, and the
     /// session's token minted.
-    Claimed { session_token: String },
+    Claimed {
+        /// The paired session's token, for [`BrowserPairingStatus::Approved`].
+        session_token: String,
+    },
 }
 
 /// Throttle and stamp a poll of the pending pairing `request` in `tx`,
@@ -343,7 +368,10 @@ mod tests {
         approve_stored, client, seed_active_signing_key, FakeGrantStore, RecordingOwnerApproval,
     };
 
+    /// The server's origin: the session token's `iss` and `aud`.
     const SERVER_ORIGIN: &str = "https://ruth.relay.example";
+    /// A `next` on this server, as the pairing page passes on its way back to
+    /// `/oauth/authorize`.
     const NEXT: &str = "/oauth/authorize?client_id=app&state=s";
 
     /// A pairing over a store with a signing key and the seeded
@@ -423,6 +451,8 @@ mod tests {
         assert_eq!(owner_approval.count(), 1);
     }
 
+    /// A pairing whose user agent suggests no name goes by
+    /// [`UNRECOGNIZED_BROWSER_NAME`] until the page names it.
     #[test]
     fn a_browser_its_user_agent_doesn_t_name_goes_by_a_generic_name() {
         let (pairing, _, _) = pairing();

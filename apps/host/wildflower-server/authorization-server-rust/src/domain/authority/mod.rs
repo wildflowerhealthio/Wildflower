@@ -1,6 +1,7 @@
 //! **Authority proofs** — the typed answer to "on what authority is this row
 //! written?". Every privileged write (approve a request, issue a code, record or
-//! widen a grant, widen a registration, mint a token) happens in exactly one
+//! widen a grant, widen a registration, start a browser session, mint a
+//! token) happens in exactly one
 //! [`writer`](crate::domain::capabilities::writers), and each writer method
 //! takes one of these proofs as its argument. A proof has private fields and a
 //! single constructor — the function that checks the rule it stands for — so
@@ -12,17 +13,18 @@
 //!  - [`AuthenticatedClient`] — an OAuth client that exists, is enabled, and
 //!    (if confidential) presented its secret. Everything a client does on its
 //!    own behalf takes one.
-//!  - [`DelegatedScopes`] — what an approving Owner may delegate: its approver
-//!    held the prompt's approval scopes; each ticked scope survives only if
-//!    covered by a requested scope **and** by the registration ceiling (a
-//!    code prompt's: the registered scopes, plus what it requested for a
-//!    client trusted on first use; a device prompt's registered scopes fill
-//!    both halves, a pairing's the Owner's scopes); and every surviving held
-//!    access (a resource scope or `wildflower/launch`) is covered by the
-//!    approver's own grant. Identity and session markers (`openid`,
-//!    `offline_access`, …) pass that last check. So no grant, code, or widened
-//!    registration carries held access the approver did not hold, and only a
-//!    proof whose approver could write the client registration writes it.
+//!  - [`DelegatedScopes`] — what an approver (the Owner, or a browser the
+//!    Owner paired) may delegate: it held the prompt's approval scopes; each
+//!    ticked scope survives only if covered by a requested scope **and** by
+//!    the registration ceiling (a code prompt's: the registered scopes, plus
+//!    what it requested for a client trusted on first use; a device prompt's
+//!    registered scopes fill both halves, a pairing's the Owner's scopes);
+//!    and every surviving held access (a resource scope or
+//!    `wildflower/launch`) is covered by the approver's own grant. Identity
+//!    and session markers (`openid`, `offline_access`, …) pass that last
+//!    check. So no grant, code, or widened registration carries held access
+//!    the approver did not hold, and only a proof whose approver could write
+//!    the client registration writes it.
 //!  - [`RedeemedAuthorizationCode`], [`ConsumedDeviceRequest`],
 //!    [`ValidatedRefreshToken`] — the redemptions an access token is minted
 //!    under at `/oauth/token`; each carries the scopes of the record it

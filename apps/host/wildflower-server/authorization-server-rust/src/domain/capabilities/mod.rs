@@ -12,7 +12,8 @@
 //!    authenticated-only self-service operations on the caller's own session
 //!    (acquired through the shared `Authenticated<…>` extractor).
 //!  - [`writers`] — the privileged writes themselves (approve a request, issue a
-//!    code, record a grant, mint a token), each gated on an **authority proof**
+//!    code, record a grant, start a refresh family or a browser session, mint
+//!    a token), each gated on an **authority proof**
 //!    from [`crate::domain::authority`] and run inside the calling
 //!    capability's scope. Capabilities in every other group compose these
 //!    rather than calling the privileged primitives directly; a source-guard
@@ -22,7 +23,7 @@
 //! [`GrantStore`](crate::domain::GrantStore) scope at its top — a read scope
 //! for an operation that only reads, a write scope for one that writes — run
 //! the flow inside it to an outcome value, then act on the outcome once the
-//! scope has closed (republish the newest pending consent, sign a token,
+//! scope has closed (republish the Owner prompt, sign a token,
 //! write to the revocation store). The flows, proofs and writers beneath take
 //! the scope's [`GrantTx`](crate::domain::GrantTx), never the store. A refusal
 //! that must keep what the scope wrote (a spent code, a stamped poll, a
@@ -53,6 +54,9 @@ pub(crate) use access::{
     FixedScopeCapability, GrantsReader, GrantsRevoker, OwnerRaising, Scoped, TokenRevoker,
 };
 
+/// The source guards that pin how the HTTP layer reaches the domain: a route
+/// handler only through a capability extractor, the authN middleware only
+/// through the token verifier.
 #[cfg(test)]
 mod source_guards {
     use crate::domain::source_guard::{production_lines, relative_to, rs_files_under};
@@ -61,8 +65,10 @@ mod source_guards {
     /// through a capability extractor — `Scoped<…>` (scope-gated),
     /// `Authenticated<…>` (the caller's own session), or `Live<…>` (the
     /// pre-auth front door, whose gate is the proof its methods take) — never a
-    /// raw `State<Arc<AuthorizationServerState>>` or a state field. This test fails if
-    /// one appears, so a forgotten gate can't ship silently.
+    /// raw `State<Arc<AuthorizationServerState>>` or a state field. This test
+    /// fails if one appears, so a forgotten gate can't ship silently. It also
+    /// fails when it finds fewer handler files than expected, so a moved
+    /// directory can't make it pass by scanning nothing.
     ///
     /// The routes tree is enumerated at test time, so a NEW handler file is
     /// guarded by default; only module glue (`mod.rs`) is exempt. (Advisory-
@@ -113,8 +119,10 @@ mod source_guards {
     }
 
     /// The authN gates verify a token through the `TokenVerifier` capability,
-    /// not against the stores directly, so the verification policy has exactly
-    /// one home. Same textual strength as the handler guard.
+    /// not against the stores directly: no file under `src/http/middleware/`
+    /// names the store or the revocation store, so the verification policy
+    /// has exactly one home. Same textual strength, and the same floor on
+    /// files scanned, as the handler guard.
     #[test]
     fn middleware_verifies_only_through_the_token_verifier() {
         const FORBIDDEN: &[&str] = &[".store", ".revocation_store"];

@@ -91,7 +91,7 @@ pub(crate) mod sign_in_redirect;
 // pairings alike, so it carries whichever key its consent page reads by.
 pub mod owner_prompt;
 pub mod refresh_token;
-// The retention windows for the four accumulating tables plus the sweep that
+// The retention windows for the accumulating tables plus the sweep that
 // applies them — the policy half of the startup/daily reaper `setup_authorization_server`
 // spawns. Lives here (not in `db`) because the windows are a domain decision;
 // the store only takes cutoffs.
@@ -107,9 +107,12 @@ pub use grant_store::{GrantStore, GrantTx};
 
 /// Shared helpers for the crate's **source-guard** tests — the advisory-strength
 /// tests that enumerate source files and assert a textual invariant (a handler
-/// never names the store, a privileged call never leaves the writers, a proof is
-/// constructed in one place). One enumerator, so every guard walks the tree the
-/// same way.
+/// never names the store, a privileged call never leaves the writers, an
+/// approved request is built in one place). One enumerator, so every guard
+/// walks the tree the same way, and a new file is guarded the day it is added.
+///
+/// The guards are advisory-strength: their needles are text, not types, so
+/// they catch the ordinary way of breaking a rule, not a determined one.
 #[cfg(test)]
 pub(crate) mod source_guard {
     // The enumerator and the relative path are project-agnostic, so they live
@@ -139,6 +142,8 @@ pub(crate) mod source_guard {
     /// inline unit-test module (`#[cfg(test)] mod … { … }`), or `None` when the
     /// test module comes last. Production code belongs above the tests, so a
     /// reader who reaches the test module has seen the whole implementation.
+    /// A braceless `#[cfg(test)] mod x;` is not an inline module, and a second
+    /// gated module after the first is test code, not production.
     pub(crate) fn production_code_after_test_module(source: &str) -> Option<usize> {
         let code = code_only(source);
         let test_items = cfg_test_items(&code);
@@ -157,7 +162,12 @@ pub(crate) mod source_guard {
     /// item's closing `}` or `;`, 0-based, end exclusive), and whether it is an
     /// inline `mod … { … }`.
     struct CfgTestItem {
+        /// The lines the item spans, 0-based, end exclusive: from its
+        /// `#[cfg(test)]` through any further attributes to where its braces
+        /// balance, or to its `;` when it has no body.
         lines: std::ops::Range<usize>,
+        /// Whether the item is an inline `mod … { … }`, the unit-test module
+        /// production code must precede.
         is_inline_module: bool,
     }
 
@@ -240,7 +250,9 @@ pub(crate) mod source_guard {
     /// literal replaced by spaces, so what remains is code alone. Handles
     /// line and (nested) block comments, escaped and raw strings (`r#"…"#`,
     /// byte variants), and tells a char literal (`'{'`) from a lifetime
-    /// (`'a`).
+    /// (`'a`). Line numbers still match the file, and blanking literals also
+    /// blanks the braces inside them, which keeps `cfg_test_items`' brace
+    /// count true.
     pub(crate) fn code_only(source: &str) -> Vec<String> {
         let chars: Vec<char> = source.chars().collect();
         let mut out = String::with_capacity(source.len());
@@ -357,9 +369,12 @@ pub(crate) mod source_guard {
         (chars.get(i + prefix_len + hashes) == Some(&'"')).then_some(hashes)
     }
 
+    /// The source-guard helpers' own tests.
     mod tests {
         use super::{code_only, production_code_after_test_module, production_lines};
 
+        /// The production lines of `source`, each trimmed, so assertions read
+        /// the code as written.
         fn scanned(source: &str) -> Vec<(usize, String)> {
             production_lines(source)
                 .into_iter()
@@ -430,6 +445,8 @@ pub(crate) mod source_guard {
     }
 }
 
+/// The guard that keeps every file's production code above its unit-test
+/// module.
 #[cfg(test)]
 mod test_layout_guard {
     use super::source_guard::{production_code_after_test_module, relative_to, rs_files_under};
@@ -437,7 +454,8 @@ mod test_layout_guard {
     /// Production code goes above the unit-test module: a reader (or a
     /// reviewer) who reaches `#[cfg(test)] mod tests` has then seen the whole
     /// implementation. This test enumerates `src/` and fails on any file with
-    /// production code after its test module.
+    /// production code after its test module, reporting every violation at
+    /// once as `path:line`.
     #[test]
     fn production_code_precedes_the_test_module() {
         let src = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
@@ -457,6 +475,7 @@ mod test_layout_guard {
     }
 }
 
+/// The guard that keeps the domain free of the transport layer.
 #[cfg(test)]
 mod http_free_guard {
     use super::source_guard::{production_lines, rs_files_under};

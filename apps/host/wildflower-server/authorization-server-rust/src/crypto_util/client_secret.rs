@@ -59,6 +59,8 @@ pub fn verify_client_secret(presented: &str, stored_phc: &str) -> Result<bool, C
 mod tests {
     use super::*;
 
+    /// A hashed secret is an argon2id PHC string, and the same plaintext
+    /// verifies against it.
     #[test]
     fn hash_then_verify_roundtrips() {
         let phc = hash_client_secret("correct horse battery staple").unwrap();
@@ -70,12 +72,15 @@ mod tests {
         assert!(verify_client_secret("correct horse battery staple", &phc).unwrap());
     }
 
+    /// A different plaintext does not verify against a stored hash.
     #[test]
     fn verify_rejects_wrong_secret() {
         let phc = hash_client_secret("the-real-secret").unwrap();
         assert!(!verify_client_secret("not-the-secret", &phc).unwrap());
     }
 
+    /// Each hash gets a fresh salt, so one secret hashes to two different
+    /// strings, and both still verify.
     #[test]
     fn same_secret_hashes_differently_each_time() {
         let a = hash_client_secret("repeated-secret").unwrap();
@@ -86,6 +91,7 @@ mod tests {
         assert!(verify_client_secret("repeated-secret", &b).unwrap());
     }
 
+    /// A stored value that is not a PHC string is an error, not a mismatch.
     #[test]
     fn malformed_stored_hash_is_an_error() {
         assert!(verify_client_secret("anything", "not-a-phc-string").is_err());

@@ -192,6 +192,7 @@ mod tests {
     use crate::domain::authorization_request::approval::Approval;
     use crate::domain::authorization_request::device::NewDeviceRequestArgs;
 
+    /// The instant `seconds` after the tests' fixed start.
     fn at(seconds: i64) -> DateTime<Utc> {
         DateTime::from_timestamp(1_800_000_000, 0).expect("in range") + Duration::seconds(seconds)
     }
@@ -211,6 +212,7 @@ mod tests {
         )
     }
 
+    /// An approval of `openid` binding `Patient/1`.
     fn approval() -> Approval {
         Approval {
             granted_scopes: vec!["openid".to_owned()],

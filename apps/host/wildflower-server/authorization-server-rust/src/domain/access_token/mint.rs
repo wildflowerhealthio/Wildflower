@@ -42,10 +42,13 @@ pub enum AccessTokenMintError {
 /// key-material or encoding failure from [`mint_access_token`].
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum AccessTokenIssuanceError {
+    /// The store holds no active signing key, so nothing can be signed.
     #[error("no active signing key in store")]
     NoActiveSigningKey,
+    /// The active key's material wouldn't load, or the JWS wouldn't encode.
     #[error("sign access token")]
     Signing(#[from] AccessTokenMintError),
+    /// The store failed while reading the active key.
     #[error(transparent)]
     Store(#[from] AuthorizationServerError),
 }
@@ -93,6 +96,7 @@ mod tests {
     use proptest::prelude::*;
     use std::sync::OnceLock;
 
+    /// One generated key shared by every case, since generating RSA keys is slow.
     fn shared_key() -> &'static SigningKey {
         static KEY: OnceLock<SigningKey> = OnceLock::new();
         KEY.get_or_init(|| SigningKey::generate().expect("gen"))
@@ -101,6 +105,9 @@ mod tests {
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(64))]
 
+        /// Any minted token verifies against its key, issuer and audience (the
+        /// issuer when none is named), and carries back exactly the claims it was
+        /// minted with, living exactly its TTL from about now.
         #[test]
         fn mint_and_verify_round_trip(
             client_id in "[a-zA-Z0-9_-]{1,32}",
@@ -170,6 +177,8 @@ mod tests {
         }
     }
 
+    /// Arguments for a minute-long token for `client_id` from `origin`, with no
+    /// scopes, audience, patient or browser session.
     fn owner_args<'a>(client_id: &'a str, origin: &'a str) -> NewAccessTokenArgs<'a> {
         NewAccessTokenArgs {
             client_id,

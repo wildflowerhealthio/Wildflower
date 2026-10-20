@@ -36,8 +36,13 @@ pub(crate) struct ApproveOAuthConsentBody {
     pub(crate) acknowledged_registration_change: bool,
 }
 
-/// `POST /oauth-consents/{id}/approve` — the Owner approves a consent prompt,
-/// granting a (narrowed) scope set and minting the authorization code the
+/// The `POST` method on `/oauth-consents/{id}/approve`.
+pub(super) fn route() -> MethodRouter<Arc<AuthorizationServerState>> {
+    post(handle_approve_oauth_consent)
+}
+
+/// `POST /authorization/oauth-consents/{id}/approve` — the Owner approves a
+/// consent prompt, granting a (narrowed) scope set and minting the authorization code the
 /// polling endpoint hands back to the client. Gated by [`LiveConsentDecider`]
 /// (scope `wildflower/AuthorizationRequest.u`), which also carries the approver's
 /// own scopes: an approval delegating a resource scope beyond them is rejected
@@ -47,10 +52,20 @@ pub(crate) struct ApproveOAuthConsentBody {
 /// is rejected with a `409` and writes nothing, as is an approval naming a
 /// patient other than the one the request's SMART launch binds. The write
 /// scope lives in the consent capability's `approve_oauth_consent`.
-pub(super) fn route() -> MethodRouter<Arc<AuthorizationServerState>> {
-    post(handle_approve_oauth_consent)
-}
-
+///
+/// The answers:
+///
+/// - `200`, `"status":"approved"`: the code is issued; `redirect` is the
+///   app's callback carrying it and the app's `state`, for the card to leave
+///   for.
+/// - `200`, `"status":"denied"`: nothing was granted, the requesting
+///   browser's session has ended, or the app was disabled since; the request
+///   is denied and `redirect` carries `access_denied`.
+/// - `403`: the approver lacks an approval scope, or a ticked resource scope
+///   is beyond their own grant. Nothing is written.
+/// - `409`: the registration change wasn't acknowledged, or the body names a
+///   patient other than the one the launch bound. Nothing is written.
+/// - `404`: no live code-flow prompt has this id.
 async fn handle_approve_oauth_consent(
     consents: Scoped<LiveConsentDecider>,
     Path(id): Path<String>,

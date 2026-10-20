@@ -1,7 +1,7 @@
-// `POST /oauth/revoke` (RFC 7009) and refresh redemption against the client's
-// revocation epoch: an app revokes its own refresh or access token, a token
-// that isn't the client's own is answered `200` and left alone, and bumping
-// the client's epoch stops its refresh families.
+//! `POST /oauth/revoke` (RFC 7009) and refresh redemption against the client's
+//! revocation epoch: an app revokes its own refresh or access token, a token
+//! that isn't the client's own is answered `200` and left alone, and bumping
+//! the client's epoch stops its refresh families.
 
 use crate::common::*;
 
@@ -11,6 +11,8 @@ const APP_CLIENT_ID: &str = "revoking-app";
 /// A second public client, whose tokens [`APP_CLIENT_ID`] must not revoke.
 const OTHER_CLIENT_ID: &str = "other-app";
 
+/// Register both test clients as public clients allowed `read` and
+/// `offline_access` at `https://app.example/cb`.
 fn seed_public_clients(db: &TestDb) {
     for client_id in [APP_CLIENT_ID, OTHER_CLIENT_ID] {
         seed_client_with_redirect(

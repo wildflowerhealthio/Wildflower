@@ -47,7 +47,11 @@ pub enum ClientAuthenticationMethod {
 /// `WWW-Authenticate: Basic` challenge on an authentication failure.
 #[derive(Debug, PartialEq, Eq)]
 pub struct PresentedCredentials {
+    /// The `client_id` and, for a confidential client, the secret, for the
+    /// domain to check.
     pub credentials: ClientCredentials,
+    /// How they arrived, which decides whether a `401` carries the Basic
+    /// challenge.
     pub presented_via: ClientAuthenticationMethod,
 }
 
@@ -93,8 +97,13 @@ impl IntoResponse for ResolveClientCredentialsError {
 /// secret, so it is skipped.
 #[derive(Default, Deserialize, Zeroize, ZeroizeOnDrop)]
 struct BodyClientCredentials {
+    /// The body's `client_id`: the client's whole proof for a public client,
+    /// or, beside a Basic header, tolerated only when it names the same
+    /// client.
     #[zeroize(skip)]
     client_id: Option<String>,
+    /// The body's `client_secret` (`client_secret_post`). Beside a Basic
+    /// header it is a second authentication method, and refused.
     client_secret: Option<String>,
 }
 
@@ -107,8 +116,11 @@ struct BodyClientCredentials {
 /// linger as plaintext. `client_id` is not secret, so it is skipped.
 #[derive(Zeroize, ZeroizeOnDrop)]
 struct BasicCredentials {
+    /// The userid half: the client's `client_id`.
     #[zeroize(skip)]
     client_id: String,
+    /// The password half: the client's secret, kept whole even when it holds
+    /// a colon, since the pair splits at the first one.
     client_secret: String,
 }
 
@@ -271,6 +283,7 @@ fn form_urlencoded_decode_credential_component(encoded_component: &str) -> Optio
 mod tests {
     use super::*;
 
+    /// The credentials `resolve_client_credentials` is expected to answer.
     fn presented(
         client_id: &str,
         client_secret: Option<&str>,
@@ -285,6 +298,8 @@ mod tests {
         }
     }
 
+    /// An `Authorization` header value presenting `userid` and `password` by
+    /// Basic, base64-encoded but not form-encoded.
     fn basic_authorization(userid: &str, password: &str) -> String {
         format!(
             "Basic {}",
@@ -292,6 +307,8 @@ mod tests {
         )
     }
 
+    /// Without an `Authorization` header, the body's `client_id` and secret are read,
+    /// presented in the body.
     #[test]
     fn resolves_body_credentials_when_no_authorization_header() {
         let resolved = resolve_client_credentials(
@@ -309,6 +326,7 @@ mod tests {
         );
     }
 
+    /// A Basic header with no body credentials is read, presented by Basic.
     #[test]
     fn resolves_basic_header_credentials() {
         let authorization = basic_authorization("app", "s3cret");
@@ -323,6 +341,7 @@ mod tests {
         );
     }
 
+    /// The Basic scheme is matched without regard to case: `bASIC` is Basic.
     #[test]
     fn basic_scheme_match_is_case_insensitive() {
         let encoded = base64::standard_encode("app:s3cret".as_bytes());
@@ -335,6 +354,8 @@ mod tests {
         assert_eq!(resolved.credentials.client_id, "app");
     }
 
+    /// A header with another scheme, such as `Bearer`, is no Basic attempt: it is
+    /// ignored, and the body's credentials are read.
     #[test]
     fn non_basic_authorization_scheme_falls_back_to_body() {
         let resolved = resolve_client_credentials(
@@ -352,6 +373,8 @@ mod tests {
         );
     }
 
+    /// Each Basic half is form-decoded after the base64: `%2B` is a plus, `+` a
+    /// space and `%40` an `@`.
     #[test]
     fn basic_halves_are_form_urlencoded_decoded() {
         // userid "app+one" → "app%2Bone"; password "p@ss word%" → "p%40ss+word%25"
@@ -368,6 +391,8 @@ mod tests {
         );
     }
 
+    /// The pair splits at the first colon, so a secret holding a colon is kept
+    /// whole.
     #[test]
     fn basic_password_keeps_text_after_first_colon() {
         let authorization = basic_authorization("app", "se:cret");
@@ -378,6 +403,8 @@ mod tests {
         );
     }
 
+    /// A body `client_secret` beside a Basic header is a second authentication
+    /// method, refused as `invalid_request`.
     #[test]
     fn basic_alongside_body_client_secret_is_invalid_request() {
         let authorization = basic_authorization("app", "s3cret");
@@ -389,6 +416,8 @@ mod tests {
         assert_eq!(oauth_error.error, "invalid_request");
     }
 
+    /// A body `client_id` naming the Basic client is tolerated, and the method
+    /// stays Basic.
     #[test]
     fn basic_with_matching_body_client_id_is_allowed() {
         let authorization = basic_authorization("app", "s3cret");
@@ -400,6 +429,8 @@ mod tests {
         );
     }
 
+    /// A body `client_id` naming another client than the Basic header is
+    /// `invalid_request`.
     #[test]
     fn basic_with_mismatched_body_client_id_is_invalid_request() {
         let authorization = basic_authorization("app", "s3cret");
@@ -411,6 +442,8 @@ mod tests {
         assert_eq!(oauth_error.error, "invalid_request");
     }
 
+    /// With no Basic header and no body `client_id`, the request is
+    /// `invalid_request`.
     #[test]
     fn missing_client_id_everywhere_is_invalid_request() {
         let err = resolve_client_credentials(None, "grant_type=refresh_token&refresh_token=x")
@@ -421,6 +454,9 @@ mod tests {
         assert_eq!(oauth_error.error, "invalid_request");
     }
 
+    /// A Basic header that won't decode (bad base64, no colon, bytes that aren't
+    /// UTF-8, a percent-escape to a bad byte) is a failed authentication: a `401`
+    /// carrying the `WWW-Authenticate: Basic` challenge.
     #[test]
     fn malformed_basic_header_is_invalid_client_with_challenge() {
         let malformed_payloads = [

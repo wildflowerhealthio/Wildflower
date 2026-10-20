@@ -383,11 +383,12 @@ pub(crate) fn registering_delegated_scopes(scopes: &[&str]) -> DelegatedScopes {
 /// `Cell`) so it satisfies the port's `Send + Sync` bound.
 #[derive(Default)]
 pub(crate) struct RecordingOwnerApproval {
+    /// How many times the Owner prompt has been republished.
     republishes: AtomicU32,
 }
 
 impl RecordingOwnerApproval {
-    /// How many times the popup head has been republished.
+    /// How many times the Owner prompt has been republished.
     pub(crate) fn count(&self) -> u32 {
         self.republishes.load(Ordering::SeqCst)
     }

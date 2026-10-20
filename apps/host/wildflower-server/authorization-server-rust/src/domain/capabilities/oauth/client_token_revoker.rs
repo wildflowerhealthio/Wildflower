@@ -30,7 +30,10 @@ const CLIENT_REVOCATION_REASON: &str = "client revocation";
 /// unit-testable against the fake; the binding instantiates it over the
 /// concrete `SqliteGrantStore`.
 pub(crate) struct ClientTokenRevoker<S: GrantStore> {
+    /// The store a refresh token's family is found and ended in, and the
+    /// signing keys an access token is verified against are read from.
     store: S,
+    /// The `jti` denylist a revoked access token is added to until it expires.
     revocation: Arc<dyn Revocation>,
     /// The server's bare origin: the one `iss` and `aud` an access token this
     /// server minted carries.
@@ -141,7 +144,11 @@ enum PresentedToken {
     RefreshToken,
     /// No refresh token this server stores: what remains is to try it as an
     /// access token, against the signing keys the scope read.
-    NoRefreshToken { signing_keys: Vec<SigningKey> },
+    NoRefreshToken {
+        /// Every stored signing key, read in the same scope, to verify the
+        /// token against.
+        signing_keys: Vec<SigningKey>,
+    },
 }
 
 /// End the family a presented refresh token belongs to, any of its
@@ -181,6 +188,7 @@ mod tests {
         authenticated_public_client, client, seed_active_signing_key, FakeGrantStore,
     };
 
+    /// The server's origin: the `iss` and `aud` its own access tokens carry.
     const SERVER_ORIGIN: &str = "https://ruth.relay.example";
 
     /// A revoker over a fresh fake store with a signing key, and the real
@@ -197,6 +205,8 @@ mod tests {
         (revoker, revocation_store)
     }
 
+    /// The proof that public client `client_id`, registered for `openid`, has
+    /// authenticated.
     fn authenticated(store: &FakeGrantStore, client_id: &str) -> AuthenticatedClient {
         authenticated_public_client(store, client(client_id, &["openid"]))
     }
@@ -228,6 +238,8 @@ mod tests {
             .unwrap();
     }
 
+    /// When the family holding refresh token `plaintext` ends; revoking it
+    /// moves this to the revocation instant.
     fn family_expires_at(store: &FakeGrantStore, plaintext: &str) -> DateTime<Utc> {
         store
             .tx()
@@ -261,6 +273,8 @@ mod tests {
         .unwrap()
     }
 
+    /// Whether the `jti` of `access_token` is on the revocation store's
+    /// denylist.
     fn is_jti_denylisted(revocation_store: &RevocationStore, access_token: &str) -> bool {
         let payload = access_token.split('.').nth(1).expect("a JWT");
         let claims: serde_json::Value =

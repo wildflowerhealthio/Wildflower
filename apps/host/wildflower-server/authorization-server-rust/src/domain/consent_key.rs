@@ -18,20 +18,22 @@ pub enum ConsentKey {
     /// An RFC 8628 device-code request, decided at the server's device page.
     #[serde(rename = "device", rename_all = "camelCase")]
     DeviceCode {
-        /// The code the device shows its user.
+        /// The code the device shows its user, which the device page looks
+        /// the request up by.
         user_code: String,
     },
     /// An RFC 6749 §4.1 request an app's `/authorize` parked, decided at its
     /// consent card.
     #[serde(rename = "oauth")]
     AuthorizationCode {
-        /// The authorization request's id.
+        /// The code request's id, which its consent card looks it up by.
         id: String,
     },
     /// A browser pairing, decided at the server's device page like a device.
     #[serde(rename = "browser", rename_all = "camelCase")]
     BrowserPairing {
-        /// The code the pairing page shows.
+        /// The code the pairing page shows, which the device page looks the
+        /// pairing up by.
         user_code: String,
     },
 }

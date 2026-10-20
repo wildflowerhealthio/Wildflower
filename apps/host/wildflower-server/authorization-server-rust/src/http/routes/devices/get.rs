@@ -18,7 +18,9 @@ use crate::live_bindings::LiveConsentReader;
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum DeviceConsentKind {
+    /// A device's request, through the device-code flow.
     Device,
+    /// A browser pairing, asking for a browser session.
     Browser,
 }
 
@@ -31,14 +33,24 @@ pub(crate) enum DeviceConsentKind {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct DeviceConsent {
+    /// What asks: `device` for a device's request, `browser` for a pairing.
     pub(crate) kind: DeviceConsentKind,
+    /// The code the Owner entered or confirmed, which approve and deny name.
     pub(crate) user_code: String,
+    /// The requesting client: the device's app, or the browser-session client
+    /// for a pairing.
     pub(crate) client_id: String,
+    /// The client's registered name, or its `client_id` when it has no row.
     pub(crate) client_name: String,
+    /// The browser's name for a pairing; for a device, the name it gave or
+    /// was inferred from its `User-Agent`, if any.
     pub(crate) device_name: Option<String>,
     /// The scopes the approver's ticks start from: a device's requested
     /// scopes, or for a browser everything the caller may delegate.
     pub(crate) starting_scopes: Vec<String>,
+    /// How far the approver may expand: the app's whole registered scope
+    /// list for a device, the Owner's scopes for a pairing. Device consent is
+    /// expandable.
     pub(crate) allowed_scopes: Vec<String>,
     /// The approval scopes the caller's own token lacks to approve this
     /// request (`wildflower/AuthorizationRequest.u`, and `wildflower/Grant.c`
@@ -47,12 +59,13 @@ pub(crate) struct DeviceConsent {
     pub(crate) missing_approval_scopes: Vec<String>,
 }
 
-/// `GET /devices/{userCode}` — load a pending device-code consent prompt for
-/// the launcher to render (scope `wildflower/AuthorizationRequest.r`).
+/// The `GET` method on `/devices/{userCode}`.
 pub(super) fn route() -> MethodRouter<Arc<AuthorizationServerState>> {
     get(handle_get_device_consent)
 }
 
+/// `GET /authorization/devices/{userCode}` — load a pending device-code consent prompt for
+/// the launcher to render (scope `wildflower/AuthorizationRequest.r`).
 async fn handle_get_device_consent(
     consents: Scoped<LiveConsentReader>,
     Path(user_code): Path<String>,

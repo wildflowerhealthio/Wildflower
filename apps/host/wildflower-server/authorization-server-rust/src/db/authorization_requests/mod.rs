@@ -464,10 +464,12 @@ mod tests {
         client, code_with_status, device_with_status, fixture_code_args,
     };
 
+    /// Up to four scope-like strings.
     fn arb_scopes() -> impl Strategy<Value = Vec<String>> {
         prop::collection::vec("[a-z][a-z0-9_]{0,15}", 0..5)
     }
 
+    /// An approval of any scopes, binding a patient or not.
     fn arb_approval() -> impl Strategy<Value = Approval> {
         (arb_scopes(), prop::option::of("[a-zA-Z0-9-]{1,32}")).prop_map(
             |(granted_scopes, patient)| Approval {
@@ -477,6 +479,8 @@ mod tests {
         )
     }
 
+    /// Any polled state, its approval (when approved or claimed) drawn by
+    /// `arb_approval`.
     fn arb_polled_state<A: Clone + std::fmt::Debug, S: Strategy<Value = A>>(
         arb_approval: impl Fn() -> S,
     ) -> impl Strategy<Value = PolledState<A>> {
@@ -489,6 +493,7 @@ mod tests {
     }
 
     prop_compose! {
+        /// A code request in any state, with every field drawn independently.
         fn arb_code_request()(
             id in "[a-zA-Z0-9_-]{1,40}",
             client_id in "[a-zA-Z0-9_-]{1,32}",
@@ -530,6 +535,7 @@ mod tests {
     }
 
     prop_compose! {
+        /// A device request in any polled state, named or not.
         fn arb_device_request()(
             id in "[a-zA-Z0-9_-]{1,40}",
             client_id in "[a-zA-Z0-9_-]{1,32}",
@@ -556,6 +562,8 @@ mod tests {
     }
 
     prop_compose! {
+        /// A browser pairing in any polled state; its approval binds no
+        /// patient.
         fn arb_pairing_request()(
             id in "[a-zA-Z0-9_-]{1,40}",
             client_id in "[a-zA-Z0-9_-]{1,32}",
@@ -583,6 +591,7 @@ mod tests {
         }
     }
 
+    /// A request of any of the three flows.
     fn arb_authorization_request() -> impl Strategy<Value = AuthorizationRequest> {
         prop_oneof![
             arb_code_request().prop_map(AuthorizationRequest::Code),
@@ -662,18 +671,21 @@ mod tests {
         )
     }
 
+    /// Insert the device request `request`, unwrapping the result.
     fn insert_device(store: &SqliteGrantStore, request: &DeviceRequest) {
         store
             .write(|tx| tx.insert_device_request(request))
             .expect("insert");
     }
 
+    /// Insert the code request `request`, unwrapping the result.
     fn insert_code(store: &SqliteGrantStore, request: &CodeRequest) {
         store
             .write(|tx| tx.insert_code_request(request))
             .expect("insert");
     }
 
+    /// The request `id` as stored now, of whichever flow.
     fn stored(store: &SqliteGrantStore, id: &str) -> Option<AuthorizationRequest> {
         store
             .read(|tx| tx.authorization_request_by_id(id))
@@ -1055,6 +1067,7 @@ mod tests {
         }
     }
 
+    /// The Owner prompt as of now.
     fn newest(store: &SqliteGrantStore) -> Option<OwnerPrompt> {
         store.read(|tx| tx.owner_prompt(Utc::now())).expect("query")
     }
@@ -1242,14 +1255,17 @@ mod tests {
         use crate::domain::owner_prompt::OwnerPrompt;
         use crate::domain::test_fake::{code_request, device_request};
 
+        /// Whether the request `key` names awaits the Owner at `now`.
         fn awaiting(store: &SqliteGrantStore, key: &ConsentKey, now: DateTime<Utc>) -> bool {
             store.read(|tx| tx.is_awaiting_owner(key, now)).unwrap()
         }
 
+        /// The consent key of the code request `id`.
         fn oauth(id: &str) -> ConsentKey {
             ConsentKey::AuthorizationCode { id: id.to_owned() }
         }
 
+        /// The consent key of the device request holding `user_code`.
         fn device(user_code: &str) -> ConsentKey {
             ConsentKey::DeviceCode {
                 user_code: user_code.to_owned(),

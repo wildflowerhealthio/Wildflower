@@ -4,13 +4,15 @@
 //! under [`crate::http`]) so `domain/` can be built from it without depending on
 //! the transport layer.
 //!
-//! - [`state`] holds the [`AuthorizationServerState`](state::AuthorizationServerState) struct.
+//! - [`state`] holds the [`AuthorizationServerState`] struct.
 //! - [`crate::adapters`] holds the port trait impls that adapt the state /
 //!   revocation store to the domain seams.
 //! - `access` binds the scope-gated `/authorization` capabilities
-//!   (`FixedScopeCapability` / `Capability`), acquired through `Scoped<…>`.
+//!   (`FixedScopeCapability` / `Capability`), acquired through `Scoped<…>`:
+//!   the caller's scopes unlock each, checked before the capability exists.
 //! - `oauth` binds the pre-auth `/oauth` front door ([`FromState`], acquired
-//!   through `Live<…>`), and holds the in-process faces
+//!   through `Live<…>`), which no claims unlock: where there is a gate, it is
+//!   a proof the method takes, such as an authenticated client. It also holds the in-process faces
 //!   [`crate::setup_authorization_server`] hands out: the
 //!   [`LaunchContextMinter`] (the launchers outside the authorization server
 //!   mint launches through it), the [`SameDeviceSignInCodeMinter`] (the host
@@ -18,8 +20,9 @@
 //!   [`PendingConsentWatcher`] (the host waits on a consent through it).
 //! - `session` binds the token verifier both authN gates run (and its
 //!   in-process face, the [`InProcessTokenVerifier`] the host's FHIR server
-//!   verifies bearers with) and the caller's-own-session capabilities
-//!   (`AuthenticatedCapability`, acquired through `Authenticated<…>`).
+//!   verifies bearers with), which nothing unlocks, and the caller's-own-session
+//!   capabilities (`AuthenticatedCapability`, acquired through
+//!   `Authenticated<…>`), which a verified token alone unlocks.
 //!
 //! Each binding lifts the store and port handles out of the state (never the
 //! whole state), so `domain/` stays free of both `crate::http` and the

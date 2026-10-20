@@ -75,6 +75,8 @@ impl From<StartedBrowserPairing> for StartedBrowserPairingBody {
 /// disabled (`BrowserSessionClientDisabled`, 403).
 #[derive(Debug, Serialize, ToSchema)]
 pub(super) struct BrowserPairingRefused {
+    /// Which refusal: `BrowserPairingNextNotAllowed` or
+    /// `BrowserSessionClientDisabled`.
     error: &'static str,
 }
 
@@ -95,10 +97,19 @@ pub(super) struct BrowserPairingPollBody {
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub(super) enum BrowserPairingStatusBody {
+    /// The Owner hasn't decided yet; the page polls again after its interval.
     Pending,
+    /// The page polled sooner than its interval allows; nothing was read or
+    /// recorded, and the page should wait longer before the next poll.
     SlowDown,
+    /// The Owner approved, and this poll started the paired session: the
+    /// response sets its token as the `__Host-browser_session` cookie, living
+    /// for [`PAIRED_SESSION_TTL`] (a day).
     Approved,
+    /// The Owner declined. No cookie is set.
     Denied,
+    /// The request expired before the Owner approved it, or an earlier poll
+    /// already collected its session. No cookie is set.
     Expired,
 }
 
@@ -106,11 +117,24 @@ pub(super) enum BrowserPairingStatusBody {
 /// (`BrowserPairingNotFound`, 404).
 #[derive(Debug, Serialize, ToSchema)]
 pub(super) struct BrowserPairingNotFound {
+    /// Always `BrowserPairingNotFound`.
     error: &'static str,
 }
 
 /// Start a browser pairing for this browser, named after its `User-Agent`,
-/// and raise the Owner's notification.
+/// and raise the Owner's notification. The body's `next` is where the browser
+/// goes once paired, in practice the `/oauth/authorize` request it was sent
+/// away from.
+///
+/// The answer's pairing code is the page's secret, and the user code is for
+/// the Owner, who confirms it on the device page: only the page that started
+/// the pairing can collect the session. The refusals:
+///
+/// - `next` is no path on this server: `400`, `BrowserPairingNextNotAllowed`.
+/// - The browser-session client is disabled: `403`,
+///   `BrowserSessionClientDisabled`.
+/// - No unused user code could be generated, or a store failed: a logged
+///   `500`.
 #[utoipa::path(
     post,
     tag = "Browser pairing",
@@ -161,7 +185,10 @@ pub(super) async fn handle_browser_pairing_start(
 
 /// Poll a browser pairing. The poll that finds it approved starts the
 /// browser's paired session and sets it as the browser's
-/// `__Host-browser_session` cookie.
+/// `__Host-browser_session` cookie. A blank `browser_name` keeps the name the
+/// pairing has. An unknown pairing code is a `404`; a store failure, a session
+/// that couldn't be stored, and a token that couldn't be minted are each a
+/// logged `500`.
 #[utoipa::path(
     post,
     tag = "Browser pairing",

@@ -31,7 +31,11 @@ pub(crate) fn any_request_status_scopes() -> Vec<Scope> {
 /// verified token carries.
 #[derive(Debug)]
 pub(crate) struct PollingBrowserSession {
+    /// The session the browser's `__Host-browser_session` cookie carries. A
+    /// request made in this session is readable to it.
     pub(crate) sid: String,
+    /// What the session's verified token holds. Covering
+    /// [`any_request_status_scopes`] makes any code request readable to it.
     pub(crate) grant: Grant,
 }
 
@@ -47,30 +51,48 @@ impl PollingBrowserSession {
 /// Where a polled request stands.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum AuthorizationStatusView {
+    /// Undecided and not yet expired: waiting for the Owner, or still on its
+    /// browser's limited page. The wait page keeps polling.
     Pending,
-    /// Denied: the request's `redirect_uri` and `state`, from which the route
-    /// builds the client callback carrying `error=access_denied`.
+    /// Denied: the route builds the client callback carrying
+    /// `error=access_denied` from these.
     Denied {
+        /// The registered redirect the client presented.
         redirect_uri: Url,
+        /// The `state` the client sent, carried back on the callback.
         client_state: String,
     },
-    /// Approved: the client callback carrying the issued code.
+    /// Approved: the route builds the client callback carrying the code from
+    /// these. An approved request answers with its code whatever the time;
+    /// the code's own expiry is checked when the client redeems it.
     Approved {
+        /// The registered redirect the client presented.
         redirect_uri: Url,
+        /// The authorization code issued when the request was approved.
         code: String,
+        /// The `state` the client sent, carried back on the callback.
         client_state: String,
     },
-    /// The request expired before a decision.
+    /// The request passed its `expires_at` undecided. Expiry is never stored:
+    /// the poll derives it from the time.
     Expired,
 }
 
-/// The ways the status read can fail. `NotFound` is the polling endpoint's
-/// 404; `ApprovedWithoutCode` is an invariant violation (an approved code
-/// request always has its code).
+/// The ways the status read can fail.
 #[derive(Debug)]
 pub(crate) enum AuthorizationStatusError {
-    NotFound { id: String },
+    /// No code request the poller may read has this id: the polling
+    /// endpoint's `404`. It reads the same whether the id is unknown, names a
+    /// device request or pairing, or names a request the poller may not read.
+    NotFound {
+        /// The id that was polled.
+        id: String,
+    },
+    /// An approved request has no code. Approving a code request issues its
+    /// code in the same write, so this breaks an invariant; the route answers
+    /// it `500 server_error`.
     ApprovedWithoutCode,
+    /// The store failed.
     Store(AuthorizationServerError),
 }
 
@@ -84,6 +106,7 @@ impl From<AuthorizationServerError> for AuthorizationStatusError {
 /// unit-testable against the fake; the binding instantiates it over the
 /// concrete `SqliteGrantStore`.
 pub(crate) struct AuthorizationStatusReader<S: GrantStore> {
+    /// The store the poll reads, in a read scope.
     store: S,
 }
 
@@ -94,9 +117,14 @@ impl<S: GrantStore> AuthorizationStatusReader<S> {
     }
 
     /// The current status of the code request `id`, for the browser holding
-    /// the browser session `poller` (`None` when it holds none). A pending
-    /// request past its expiry reads as expired; one still on its browser's
-    /// limited page reads as pending, as it is undecided.
+    /// the browser session `poller` (`None` when it holds none):
+    ///
+    ///  - pending, or still on its browser's limited page (as undecided), and
+    ///    before `expires_at`: [`AuthorizationStatusView::Pending`];
+    ///  - either of those past `expires_at`: [`AuthorizationStatusView::Expired`];
+    ///  - denied: [`AuthorizationStatusView::Denied`], with the callback details;
+    ///  - approved: [`AuthorizationStatusView::Approved`], with the code issued
+    ///    for the request, whatever the time.
     ///
     /// A request `poller` may not read (see [`PollingBrowserSession`]), a
     /// device request or a browser pairing (each has its own poll), and any

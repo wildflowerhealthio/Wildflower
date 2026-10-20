@@ -11,7 +11,9 @@ use crate::ports::Revocation;
 /// End the caller's own session. Holds the [`Revocation`] port lifted from the
 /// state and the caller's claims handed over by the extractor.
 pub(crate) struct SessionEnder {
+    /// The revocation store whose `jti` denylist the token verifier checks.
     revocation: Arc<dyn Revocation>,
+    /// The caller's own verified claims: the only token the ender can revoke.
     claims: VerifiedClaims,
 }
 
@@ -23,9 +25,11 @@ impl SessionEnder {
 
     /// Denylist the presented token's `jti` until its `exp`, so a leaked copy
     /// can't outlive the logout. Best-effort by design (see
-    /// [`revoke_session_token`]): a legacy token with no `jti` or `exp` has
-    /// nothing to denylist, and a store hiccup is logged, never surfaced — the
-    /// logout's redirect must not be blocked.
+    /// [`revoke_session_token`]): a token with no `jti` or `exp` has nothing
+    /// to denylist, and a store hiccup is logged, never surfaced — the
+    /// logout's redirect must not be blocked. It does not revoke the browser
+    /// session the token may name; that is
+    /// [`BrowserSessionEnder`](super::BrowserSessionEnder)'s sign-out.
     pub(crate) fn end(&self) {
         let (Some(jti), Some(expires_at)) = (self.claims.jti.as_deref(), self.claims.expires_at)
         else {
@@ -43,8 +47,11 @@ mod tests {
 
     use super::*;
 
+    /// A revocation port recording every `jti` it is asked to revoke; asked
+    /// to revoke a subject, it fails the test, since logout never does.
     #[derive(Default)]
     struct RecordingRevoker {
+        /// Each revoked `jti`, in call order.
         calls: Mutex<Vec<String>>,
     }
 
@@ -64,6 +71,7 @@ mod tests {
         }
     }
 
+    /// Verified claims for `client` carrying the given `jti` and expiry.
     fn claims(jti: Option<&str>, expires_at: Option<DateTime<Utc>>) -> VerifiedClaims {
         VerifiedClaims {
             issuer: "iss".to_owned(),

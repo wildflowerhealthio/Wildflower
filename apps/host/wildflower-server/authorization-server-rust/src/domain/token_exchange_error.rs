@@ -12,8 +12,10 @@ use crate::domain::access_token::AccessTokenIssuanceError;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 
 /// Why a grant presented at `/oauth/token` was refused as `invalid_grant`.
-/// The fields carry only what an operator needs to tell the cases apart —
-/// never the code, verifier, challenge, or token.
+/// The specific reason goes to the operator's log; the app hears one generic
+/// description per family of reasons. The fields carry only what an operator
+/// needs to tell the cases apart — never the code, verifier, challenge, or
+/// token.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum InvalidGrantReason {
     /// The authorization code is unknown or already redeemed — a possible
@@ -21,53 +23,86 @@ pub(crate) enum InvalidGrantReason {
     CodeNotFoundOrRedeemed,
     /// The code was issued to a different client.
     CodeClientMismatch {
+        /// The client the code was issued to.
         code_client_id: String,
+        /// The client that presented it.
         presented_client_id: String,
     },
     /// The presented `redirect_uri` is not the one the code was issued for.
     CodeRedirectMismatch {
+        /// The redirect the code was issued for.
         code_redirect_uri: String,
+        /// The redirect the redeemer named.
         presented_redirect_uri: String,
     },
     /// The code's lifetime has passed.
-    CodeExpired { expires_at: DateTime<Utc> },
+    CodeExpired {
+        /// When the code stopped being redeemable.
+        expires_at: DateTime<Utc>,
+    },
     /// The PKCE `code_verifier` does not hash to the parked challenge.
-    PkceMismatch { client_id: String },
-    /// No device request matches the `device_code` for this client, or the
-    /// request is not a device-flow request.
-    DeviceRequestNotFound { presented_client_id: String },
+    PkceMismatch {
+        /// The client that presented the code.
+        client_id: String,
+    },
+    /// No device request matches the `device_code` for this client: none
+    /// exists, or it belongs to another client, which reads the same.
+    DeviceRequestNotFound {
+        /// The client that presented the `device_code`.
+        presented_client_id: String,
+    },
     /// Two polls raced for one approved device request; this one lost.
-    DeviceCodeAlreadyRedeemed { client_id: String },
+    DeviceCodeAlreadyRedeemed {
+        /// The client the device request belongs to.
+        client_id: String,
+    },
     /// No live refresh token has this value.
     RefreshTokenNotFound,
     /// The refresh token belongs to a different client — answered exactly like
     /// not-found so a stranger can't probe validity.
     RefreshTokenClientMismatch {
+        /// The client the family was issued to.
         family_client_id: String,
+        /// The client that presented the token.
         presented_client_id: String,
     },
-    /// The family's absolute deadline passed, or it was revoked.
+    /// The family's absolute deadline passed, or it was ended (revoked or
+    /// replayed), which moves the deadline to that moment.
     RefreshTokenExpired,
     /// The browser session the family was minted under has been revoked, or
     /// no longer exists.
-    RefreshTokenSessionRevoked { family_id: String },
+    RefreshTokenSessionRevoked {
+        /// The family whose browser session ended.
+        family_id: String,
+    },
     /// The family began before its client's revocation epoch: bumping the
     /// epoch revoked every token the client held then.
-    RefreshTokenClientRevoked { family_id: String },
+    RefreshTokenClientRevoked {
+        /// The family issued before the client's tokens were revoked.
+        family_id: String,
+    },
     /// A consumed refresh token was presented again — theft signal; the whole
     /// family has been revoked.
     RefreshTokenReplayed {
+        /// The family that has been revoked.
         family_id: String,
+        /// The client the family was issued to.
         client_id: String,
     },
     /// The token vanished between lookup and rotation.
-    RefreshTokenVanished { family_id: String },
+    RefreshTokenVanished {
+        /// The family the token was looked up in.
+        family_id: String,
+    },
 }
 
 /// The ways a token exchange can fail. All but [`Issuance`](Self::Issuance) and
 /// [`Store`](Self::Store) are the caller's fault and render as `400` with the
 /// matching RFC 6749 §5.2 / RFC 8628 §3.5 error code; those two are
-/// server-side.
+/// server-side. Its audience is an app at `/oauth/token`, and the operator's
+/// log, which gets the specific reason. An [`AuthorizationServerError`] from
+/// the store becomes [`Store`](Self::Store) and a signing failure becomes
+/// [`Issuance`](Self::Issuance), so the exchange flows can use `?` on either.
 #[derive(Debug)]
 pub(crate) enum TokenExchangeError {
     /// The authenticated client's registration does not allow this grant type
@@ -80,17 +115,22 @@ pub(crate) enum TokenExchangeError {
     InvalidRedirectUri,
     /// The grant itself was refused (`invalid_grant`), for the given reason.
     InvalidGrant(InvalidGrantReason),
-    /// RFC 8628 §3.5: the device request is expired (`expired_token`), still
-    /// pending (`authorization_pending`), denied (`access_denied`), or polled
-    /// too fast (`slow_down`).
+    /// RFC 8628 §3.5 `expired_token`: the device request is past its expiry,
+    /// or was already claimed by an earlier poll that minted its token.
     ExpiredToken,
+    /// RFC 8628 §3.5 `authorization_pending`: the device request still waits
+    /// for the Owner; the device keeps polling.
     AuthorizationPending,
+    /// RFC 8628 §3.5 `access_denied`: the Owner denied the device request.
     AccessDenied,
+    /// RFC 8628 §3.5 `slow_down`: the device polled a pending request sooner
+    /// than the advertised interval allows.
     SlowDown,
     /// The token could not be minted after the grant was accepted; the
-    /// exchange's scope was rolled back with it, so nothing was consumed.
+    /// exchange's scope was rolled back with it, so nothing was consumed. A
+    /// `server_error` 500.
     Issuance(AccessTokenIssuanceError),
-    /// A store read or write failed.
+    /// A store read or write failed: an empty 500, logged.
     Store(AuthorizationServerError),
 }
 

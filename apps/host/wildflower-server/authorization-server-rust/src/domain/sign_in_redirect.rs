@@ -22,23 +22,33 @@ use url::{Position, Url};
 use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
-/// The places a sign-in may send a browser on to.
+/// The places a sign-in may send a browser on to: this server's origin, which
+/// a path must stay on, and the four pages a URL may be under. Built once at
+/// setup from the server's configuration.
 pub(crate) struct SignInDestinations {
     /// This server's origin, which a path `next` must stay on.
     server_origin: Url,
+    /// The hosted launcher: a URL under it is allowed.
     launcher: LauncherBase,
+    /// The hosted Wildflower Authorization app: a URL under it is allowed.
     authorization_app: AuthorizationAppBase,
-    /// The page the host opens this server's launches in.
+    /// The page the host opens this server's launches in; it is allowed
+    /// whatever its query, and so are the URLs within it.
     launcher_url: Url,
-    /// The page the host opens this server's Authorization app at.
+    /// The page the host opens this server's Authorization app at; it is
+    /// allowed whatever its query, and so are the URLs within it.
     authorization_url: Url,
 }
 
 /// A `next` [`SignInDestinations`] allowed: the `Location` the sign-in
 /// answers with. A path on this server stays a path, so the browser stays on
-/// the server's origin.
+/// the server's origin. Only [`SignInDestinations`] makes one.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SignInRedirect(String);
+pub(crate) struct SignInRedirect(
+    /// The `Location` value: a path and query on this server, or an absolute
+    /// URL, re-serialized from the parsed `next`.
+    String,
+);
 
 impl SignInRedirect {
     /// The `Location` to send the browser to.
@@ -126,8 +136,13 @@ fn is_under(url: &Url, page: &Url) -> bool {
 mod tests {
     use super::*;
 
+    /// The origin of the server the tests judge against.
     const SERVER_ORIGIN: &str = "https://ruth.relay.example";
 
+    /// The allow-list the tests judge against: the server at
+    /// [`SERVER_ORIGIN`], a hosted launcher and Authorization app under paths
+    /// of `https://site.example`, and the host's own launcher page (with a
+    /// query) and Authorization page on two more origins.
     fn destinations() -> SignInDestinations {
         SignInDestinations::new(
             Url::parse(SERVER_ORIGIN).expect("server origin"),
@@ -139,6 +154,7 @@ mod tests {
         )
     }
 
+    /// The `Location` `next` would get from [`destinations`], or `None`.
     fn allowed(next: &str) -> Option<String> {
         destinations()
             .allow(next)
@@ -181,6 +197,8 @@ mod tests {
         }
     }
 
+    /// A path keeps its query, `/` is allowed, and `/a/../b` comes back
+    /// normalized as `/b`.
     #[test]
     fn a_path_on_this_server_is_allowed_as_a_path() {
         assert_eq!(
@@ -191,6 +209,8 @@ mod tests {
         assert_eq!(allowed("/a/../b").as_deref(), Some("/b"), "normalized");
     }
 
+    /// `//host`, a backslash after the slash, and a tab or newline between the
+    /// slashes all resolve to another host, and are refused.
     #[test]
     fn a_path_naming_another_host_is_refused() {
         for next in [
@@ -205,6 +225,8 @@ mod tests {
         }
     }
 
+    /// The hosted launcher's base, with a query, and a page within it are
+    /// allowed as given.
     #[test]
     fn a_launcher_url_is_allowed() {
         assert_eq!(
@@ -218,6 +240,7 @@ mod tests {
         );
     }
 
+    /// The hosted Authorization app's base, with a query, is allowed as given.
     #[test]
     fn an_authorization_app_url_is_allowed() {
         assert_eq!(
@@ -227,6 +250,9 @@ mod tests {
         );
     }
 
+    /// The host's launcher page is allowed with any query (a launch adds `iss`
+    /// and `launch`), without one, and with a path within it; the host's
+    /// Authorization page likewise.
     #[test]
     fn a_url_under_the_server_s_own_launcher_or_authorization_app_is_allowed() {
         for next in [
@@ -241,6 +267,9 @@ mod tests {
         }
     }
 
+    /// A sibling path that only shares a prefix, the bare origin, another
+    /// path, `http`, credentials, and the Authorization page without its
+    /// trailing slash are all refused.
     #[test]
     fn a_url_outside_the_server_s_own_launcher_and_authorization_app_is_refused() {
         for next in [
@@ -258,6 +287,10 @@ mod tests {
         }
     }
 
+    /// Everything else is refused: another origin, the allowed origin outside
+    /// both bases, a `..` that climbs out (encoded or not), another scheme or
+    /// port, credentials or a host hidden behind them, this server as an
+    /// absolute URL, `javascript:`, a bare host and the empty string.
     #[test]
     fn any_other_url_is_refused() {
         for next in [

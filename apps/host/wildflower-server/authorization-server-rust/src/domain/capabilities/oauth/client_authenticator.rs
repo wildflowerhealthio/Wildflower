@@ -10,6 +10,7 @@ use crate::domain::GrantStore;
 /// unit-testable against the fake; the binding instantiates it over the concrete
 /// `SqliteGrantStore`.
 pub(crate) struct ClientAuthenticator<S: GrantStore> {
+    /// The store the presented client is looked up in, in a read scope.
     store: S,
 }
 

@@ -14,7 +14,9 @@ use crate::domain::GrantStore;
 /// Read the caller's own session. Built from the caller's claims and the
 /// store, which holds the browser session the claims may name.
 pub(crate) struct SessionReader<S: GrantStore> {
+    /// The store holding the browser session the claims' `sid` may name.
     store: S,
+    /// The caller's own verified claims, the source of every answer.
     claims: VerifiedClaims,
 }
 
@@ -25,13 +27,16 @@ impl<S: GrantStore> SessionReader<S> {
     }
 
     /// The browser session the caller's token was minted under (its `sid`),
-    /// or `None` for a token under no browser session.
+    /// or `None` for a token under no browser session. It reads the claim; it
+    /// does not check the session exists.
     pub(crate) fn sid(&self) -> Option<&str> {
         self.claims.sid.as_deref()
     }
 
     /// The `scope` claim split on whitespace — the scopes this session actually
-    /// holds. Empty when the token carries no `scope` claim at all.
+    /// holds. Empty when the token carries no `scope` claim at all. These are
+    /// the token's scopes, not the session's or the grant's, so a narrowed
+    /// token reads back narrowed.
     pub(crate) fn scopes(&self) -> Vec<String> {
         self.claims
             .scope
@@ -44,7 +49,9 @@ impl<S: GrantStore> SessionReader<S> {
 
     /// When the browser session the caller's token was minted under expires,
     /// or `None` for a token under no browser session (or a `sid` that names
-    /// no session row).
+    /// no session row). It does not check revocation: the session gate's
+    /// [`TokenVerifier`](super::TokenVerifier) has already refused a token
+    /// whose session is revoked.
     ///
     /// # Errors
     ///
@@ -72,6 +79,8 @@ mod tests {
     use crate::domain::browser_session::BrowserSession;
     use crate::domain::test_fake::FakeGrantStore;
 
+    /// Verified claims for `client`, holding `openid wildflower/Grant.r`,
+    /// under `sid` or under no session.
     fn claims(sid: Option<&str>) -> VerifiedClaims {
         VerifiedClaims {
             issuer: "iss".to_owned(),

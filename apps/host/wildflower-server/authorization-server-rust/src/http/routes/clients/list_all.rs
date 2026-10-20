@@ -12,11 +12,14 @@ use crate::live_bindings::LiveClientsReader;
 /// A registered OAuth client as the Owner's "Trusted apps" list reads it. Every
 /// column of the `clients` row **except `secret_hash`**, which never leaves the
 /// server, and `registration_source`, plus `essential` — whether this is the
-/// host app's client or the browser-session client, which can't be disabled.
+/// host app's client or the browser-session client, which can't be disabled,
+/// so the list offers no switch for them.
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ClientBody {
+    /// The public identifier the app sends on every OAuth request.
     client_id: String,
+    /// The app's display name, shown on the consent card and in this list.
     name: String,
     /// `public` or `confidential`.
     #[schema(value_type = String)]
@@ -24,15 +27,20 @@ pub(crate) struct ClientBody {
     /// Absolute redirect URLs, matched exactly at `/oauth/authorize`.
     #[schema(value_type = Vec<String>)]
     redirect_uris: Vec<Url>,
+    /// The scopes the app may request; a request outside them is refused or,
+    /// for an app trusted on first use, shown to the Owner as a change.
     allowed_scopes: Vec<String>,
     /// The `grant_type` values the client may use at `/oauth/token`.
     #[schema(value_type = Vec<String>)]
     allowed_grant_types: Vec<AllowedGrantType>,
+    /// When the app was registered: seeded, or first approved by the Owner.
     #[schema(value_type = String, format = DateTime)]
     registered_at: DateTime<Utc>,
     /// Set while the client is disabled; `null` when it is enabled.
     #[schema(value_type = Option<String>, format = DateTime, required = true)]
     disabled_at: Option<DateTime<Utc>>,
+    /// Whether the Owner needs this app to get in (the host app's client or
+    /// the browser-session client); disabling it is refused.
     essential: bool,
 }
 

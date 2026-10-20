@@ -22,11 +22,23 @@ use crate::domain::client::Client;
 /// registration).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ResolvedCodeRequest {
+    /// What the prompt calls the app: its registered name, or its
+    /// `client_id` while it has no registration.
     client_name: String,
+    /// Whether the Owner has disabled the client: such a request is refused
+    /// at `/oauth/authorize` and the Continue, and denied on approval.
     client_disabled: bool,
+    /// Whether the registration is server-defined, so the request is held to
+    /// it rather than carried to the Owner as a change.
     registration_is_fixed: bool,
+    /// Whether the presented redirect is on the registration, which makes it
+    /// trusted enough to send an error back to.
     redirect_is_registered: bool,
+    /// What approving the request would change in the registration: the
+    /// warning the Owner sees, and what keeps it off the fast path.
     presented_client_change: PresentedClientChange,
+    /// The most an approval of the request may grant, given the
+    /// registration.
     approvable_scopes: ApprovableScopes,
 }
 
@@ -127,10 +139,14 @@ mod tests {
     use crate::domain::client::RegistrationSource;
     use crate::domain::test_fake::client;
 
+    /// The redirect every test request presents, the fixture client's registered
+    /// one.
     fn redirect() -> Url {
         Url::parse("https://example.com/cb").expect("a valid redirect")
     }
 
+    /// Resolve a request from "app" for `scopes` at [`redirect`] against
+    /// `maybe_existing_client`.
     fn resolve(maybe_existing_client: Option<&Client>, scopes: &[&str]) -> ResolvedCodeRequest {
         let requested: Vec<String> = scopes.iter().map(|s| (*s).to_owned()).collect();
         ResolvedCodeRequest::resolve("app", &redirect(), &requested, maybe_existing_client)

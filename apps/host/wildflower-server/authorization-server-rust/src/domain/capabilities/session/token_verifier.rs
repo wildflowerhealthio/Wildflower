@@ -17,9 +17,14 @@ use crate::ports::RevocationCheck;
 /// unit-testable against the fake; the binding instantiates it over the
 /// concrete `SqliteGrantStore`.
 pub(crate) struct TokenVerifier<S: GrantStore> {
+    /// The grant store, holding the signing keys a token must be signed with
+    /// and the browser sessions a token's `sid` may name.
     store: S,
+    /// The host's revocation check: the per-`jti` denylist and the per-subject
+    /// epoch, kept outside the grant store.
     revocation: Arc<dyn RevocationCheck>,
-    /// The server's bare origin: the one `iss` and the one `aud` accepted.
+    /// The server's bare origin: the one `iss` and the one `aud` accepted, so
+    /// a token another server minted is refused by these alone.
     server_origin: Arc<str>,
 }
 
@@ -45,12 +50,14 @@ impl<S: GrantStore> TokenVerifier<S> {
     /// Revocation is the last gate: the token is cryptographically valid, but
     /// a logout / owner revoke / grant revoke may have denylisted its `jti` or
     /// bumped the subject's epoch since it was minted, or revoked the browser
-    /// session its `sid` names. Both authN gates, and through
+    /// session its `sid` names. A `sid` that names no session row reads as
+    /// revoked, so a token naming a session the server never had is refused
+    /// too. Both authN gates, the browser-session cookie checks, and through
     /// [`InProcessTokenVerifier`](crate::InProcessTokenVerifier) the FHIR
     /// server, funnel through here, so it runs the *complete* check (per-`jti`
     /// denylist, per-subject epoch **and** browser session). A token with no
-    /// `sid` has no session to check. A store-read failure fails closed, never
-    /// admitting the token.
+    /// `sid` has no session to check. Every store failure fails closed, never
+    /// admitting the token, and the gates answer it with a `500`, not a `401`.
     ///
     /// # Errors
     ///
@@ -123,8 +130,11 @@ mod tests {
     /// records what it was asked.
     #[derive(Default)]
     struct FakeRevocation {
+        /// The `jti`s answered as revoked.
         revoked_jtis: Vec<String>,
+        /// Each subject the check was asked about, in call order.
         asked: Mutex<Vec<String>>,
+        /// Whether every check fails, as an unreachable revocation store does.
         fail: bool,
     }
 
@@ -148,20 +158,26 @@ mod tests {
     /// Another server's origin.
     const OTHER_ORIGIN: &str = "https://lab.relay.example";
 
+    /// A fake store seeded with one active signing key, and that key.
     fn store_with_key() -> (FakeGrantStore, SigningKey) {
         let store = FakeGrantStore::default();
         let key = seed_active_signing_key(&store);
         (store, key)
     }
 
+    /// A verifier for [`ORIGIN`] over `store`, with nothing revoked.
     fn verifier(store: FakeGrantStore) -> TokenVerifier<FakeGrantStore> {
         TokenVerifier::new(store, Arc::new(FakeRevocation::default()), ORIGIN.into())
     }
 
+    /// A five-minute token for `client` signed with `key`, naming `issuer`
+    /// and `audience`, under no browser session.
     fn mint(key: &SigningKey, issuer: &str, audience: &str) -> String {
         mint_under_session(key, issuer, audience, None)
     }
 
+    /// A five-minute token for `client` signed with `key`, naming `issuer`
+    /// and `audience`, under the browser session `sid` or none.
     fn mint_under_session(
         key: &SigningKey,
         issuer: &str,

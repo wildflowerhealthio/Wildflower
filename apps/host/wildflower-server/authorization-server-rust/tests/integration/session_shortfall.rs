@@ -227,7 +227,7 @@ async fn cancel_answers_the_app_access_denied() {
 }
 
 /// A request waiting on its limited page isn't the Owner's to see or decide:
-/// the newest pending consent skips it, and the consent read, approve, deny
+/// the Owner prompt skips it, and the consent read, approve, deny
 /// and ask-owner all `404`. Once the browser goes on, the Owner sees and
 /// approves it.
 #[tokio::test]

@@ -9,7 +9,10 @@
 //! axum half is mounted under `/authorization` behind the session gate, the spec half
 //! is nested under `/authorization` in the documented surface.
 
+/// `GET /clients`, and the [`ClientBody`](list_all::ClientBody) both
+/// routes answer with.
 mod list_all;
+/// `PATCH /clients/{clientId}`.
 mod update_by_id;
 
 use std::sync::Arc;
@@ -19,6 +22,8 @@ use utoipa_axum::routes;
 
 use crate::http::state::AuthorizationServerState;
 
+/// The `/clients` route table, as an `OpenApiRouter` so the spec is collected
+/// from the routes that serve traffic.
 pub(crate) fn openapi_router() -> OpenApiRouter<Arc<AuthorizationServerState>> {
     OpenApiRouter::new()
         .routes(routes!(list_all::handle_list_clients))

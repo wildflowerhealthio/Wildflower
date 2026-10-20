@@ -9,13 +9,16 @@ use crate::domain::capabilities::Scoped;
 use crate::http::state::AuthorizationServerState;
 use crate::live_bindings::LiveGrantsReader;
 
-/// `GET /grants` — list every standing client grant for the launcher. Acquired
-/// through [`LiveGrantsReader`] (scope `wildflower/Grant.r`): the read capability
-/// *is* the extractor, so the scope check can't be skipped.
+/// The `GET` method on `/grants`.
 pub(super) fn route() -> MethodRouter<Arc<AuthorizationServerState>> {
     get(handle_list_grants)
 }
 
+/// `GET /authorization/grants` — every standing grant, of both kinds, in the
+/// order they were granted: what each app or device has been allowed and
+/// keeps. Acquired through [`LiveGrantsReader`] (scope `wildflower/Grant.r`):
+/// the read capability *is* the extractor, so the scope check can't be
+/// skipped.
 async fn handle_list_grants(
     grants: Scoped<LiveGrantsReader>,
 ) -> Result<impl IntoResponse, AuthorizationServerError> {

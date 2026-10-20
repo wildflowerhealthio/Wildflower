@@ -29,9 +29,11 @@ use crate::domain::GrantTx;
 /// [`StandingGrant`](Self::StandingGrant) by name — an enum, not a trait, for
 /// the reason in the [`authority` module docs](crate::domain::authority).
 pub(crate) enum CodeAuthority<'a> {
-    /// The Owner approved the prompt.
+    /// An approver (the Owner, or a browser the Owner paired) approved the
+    /// prompt, delegating these scopes.
     OwnerDelegated(&'a DelegatedScopes),
-    /// A standing grant already covered every requested scope.
+    /// A standing grant already covered every requested scope, so the code is
+    /// issued with nobody asked, and the grant is stamped used.
     StandingGrant(&'a StandingGrantCoverage),
 }
 
@@ -62,9 +64,14 @@ pub(crate) enum CodeApproval {
     BrowserSessionEnded,
 }
 
-/// Approve pending requests, inside the caller's transaction; the gate is the
-/// proof each method takes.
+/// Approve pending requests of all three flows and, for the code flow, issue
+/// the request's authorization code, inside the caller's transaction. The gate
+/// is the proof each method takes: a [`DelegatedScopes`] for a device request
+/// or a browser pairing, a [`CodeAuthority`] (delegated scopes or a
+/// [`StandingGrantCoverage`]) for a code.
 pub(crate) struct RequestApprover<'a, T: GrantTx> {
+    /// The caller's open write scope; the approval and the code land with the
+    /// rest of the operation or not at all.
     tx: &'a mut T,
 }
 
@@ -255,6 +262,7 @@ mod tests {
         request
     }
 
+    /// The authorization request `id` as the store holds it now.
     fn stored(store: &FakeGrantStore, id: &str) -> AuthorizationRequest {
         store
             .tx()

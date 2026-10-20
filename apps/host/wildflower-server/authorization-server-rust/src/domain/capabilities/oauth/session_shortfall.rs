@@ -27,10 +27,12 @@ use crate::domain::GrantStore;
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct SessionShortfallView {
     /// The client's registered name, or its `client_id` when it has no
-    /// registration yet.
+    /// registration yet (a client trusted on first use, asking for the first
+    /// time).
     pub(crate) client_name: String,
     /// The requested scopes a code issued in this session would not carry in
-    /// full ([`session_shortfall`]), in the request's order.
+    /// full ([`session_shortfall`]), in the request's order: dropped outright,
+    /// or narrowed to what the session holds.
     pub(crate) missing_scopes: Vec<String>,
 }
 
@@ -56,6 +58,7 @@ pub(crate) fn load_code_request_awaiting_limited_page(
 /// (the caller is the browser that made the request, identified by its
 /// browser session), so its only powers are these two.
 pub(crate) struct SessionShortfall<S: GrantStore> {
+    /// The store the waiting request is read from and denied in.
     store: S,
 }
 
@@ -66,7 +69,9 @@ impl<S: GrantStore> SessionShortfall<S> {
     }
 
     /// What request `id` asks for that `browser_session`'s grant doesn't
-    /// hold, and the app asking.
+    /// hold, and the app asking, in a read scope. The missing scopes come from
+    /// [`session_shortfall`] against the calling session's grant, the same
+    /// check `/oauth/authorize` made when it parked the request.
     ///
     /// # Errors
     ///
@@ -98,7 +103,9 @@ impl<S: GrantStore> SessionShortfall<S> {
     /// while the request still waits on the page, so a Continue that
     /// went on with it meanwhile wins and this answers not found. The Owner
     /// was never told of a request still waiting here, so nothing is
-    /// republished.
+    /// republished. A Cancel isn't remembered: unlike a Continue it records
+    /// nothing for the session and the client, so the browser's next request
+    /// for the client stops at the page again.
     ///
     /// # Errors
     ///
@@ -167,6 +174,7 @@ mod tests {
         code_request(id, Utc::now() + Duration::minutes(5), true)
     }
 
+    /// The stored status of request `id`.
     fn status_of(session_shortfall: &SessionShortfall<FakeGrantStore>, id: &str) -> RequestStatus {
         session_shortfall
             .store
@@ -178,6 +186,7 @@ mod tests {
             .status()
     }
 
+    /// The calling browser: session `sid`, whose grant holds `scopes`.
     fn browser_session(sid: &str, scopes: &[&str]) -> PollingBrowserSession {
         PollingBrowserSession {
             sid: sid.to_owned(),

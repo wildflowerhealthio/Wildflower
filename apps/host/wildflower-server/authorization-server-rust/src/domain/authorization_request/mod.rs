@@ -227,6 +227,7 @@ mod tests {
     use crate::domain::authorization_request::code::NewCodeRequestArgs;
     use crate::domain::test_fake::fixture_code_args;
 
+    /// The instant `minutes` after the tests' fixed start.
     fn at(minutes: i64) -> DateTime<Utc> {
         DateTime::from_timestamp(1_800_000_000, 0).expect("in range") + Duration::minutes(minutes)
     }

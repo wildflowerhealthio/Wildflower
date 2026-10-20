@@ -7,10 +7,12 @@
 use crate::common::*;
 use wildflowerhealthio_shared_structures::request_caller::{RequestCaller, RequestRefusal};
 
+/// The client a gate stamped on `response` as its caller, if any.
 fn stamped_caller(response: &axum::response::Response) -> Option<RequestCaller> {
     response.extensions().get::<RequestCaller>().cloned()
 }
 
+/// Why a gate stamped `response` as refused, if it did.
 fn stamped_refusal(response: &axum::response::Response) -> Option<RequestRefusal> {
     response.extensions().get::<RequestRefusal>().copied()
 }
@@ -22,6 +24,8 @@ fn revoke(db: &TestDb, token: &str) {
         .expect("revoke");
 }
 
+/// A router of two stub routes behind the bearer gate the FHIR server uses:
+/// `/Patient`, which is gated, and `/metadata`, which the gate exempts.
 fn bearer_gated_router(g: &AuthorizationServer) -> axum::Router {
     use axum::routing::get;
     use wildflowerhealthio_authorization_server::authorization_server_auth_middleware;
@@ -35,6 +39,7 @@ fn bearer_gated_router(g: &AuthorizationServer) -> axum::Router {
         ))
 }
 
+/// `GET path`, with `token` as its bearer when given.
 fn get_with_bearer(path: &str, token: Option<&str>) -> Request<Body> {
     let mut builder = Request::get(path).header("host", "127.0.0.1");
     if let Some(token) = token {
@@ -43,6 +48,8 @@ fn get_with_bearer(path: &str, token: Option<&str>) -> Request<Body> {
     build_request(builder, Body::empty())
 }
 
+/// A request the bearer gate admits carries the verified token's client as its
+/// caller.
 #[tokio::test]
 async fn the_bearer_gate_stamps_the_token_s_client() {
     let (g, _owner_token, db) = spin_up();
@@ -62,6 +69,7 @@ async fn the_bearer_gate_stamps_the_token_s_client() {
     );
 }
 
+/// A request the bearer gate rejects, or a path it exempts, carries no caller.
 #[tokio::test]
 async fn the_bearer_gate_stamps_nothing_on_a_rejected_or_exempt_request() {
     let (g, _owner_token, _db) = spin_up();
@@ -83,6 +91,8 @@ async fn the_bearer_gate_stamps_nothing_on_a_rejected_or_exempt_request() {
     assert_eq!(stamped_caller(&exempt), None);
 }
 
+/// A request the `/authorization` session gate admits carries the verified
+/// token's client as its caller.
 #[tokio::test]
 async fn the_session_gate_stamps_the_token_s_client() {
     let (g, owner_token, _db) = spin_up();
@@ -103,6 +113,7 @@ async fn the_session_gate_stamps_the_token_s_client() {
     );
 }
 
+/// A request the `/authorization` session gate rejects carries no caller.
 #[tokio::test]
 async fn the_session_gate_stamps_nothing_on_a_rejected_request() {
     let (g, _owner_token, _db) = spin_up();
@@ -117,6 +128,8 @@ async fn the_session_gate_stamps_nothing_on_a_rejected_request() {
     assert_eq!(stamped_caller(&response), None);
 }
 
+/// Each `401` from the bearer gate says why: no token, a token that doesn't
+/// verify, or a revoked one. An exempt path carries no refusal.
 #[tokio::test]
 async fn the_bearer_gate_stamps_why_it_refused_each_401() {
     let (g, _owner_token, db) = spin_up();
@@ -149,6 +162,8 @@ async fn the_bearer_gate_stamps_why_it_refused_each_401() {
     );
 }
 
+/// Each `401` from the `/authorization` session gate says why: no token, a
+/// token that doesn't verify, or a revoked one.
 #[tokio::test]
 async fn the_session_gate_stamps_why_it_refused_each_401() {
     let (g, owner_token, db) = spin_up();

@@ -3,7 +3,7 @@
 //! sends one without a session to pairing first). Validates the request,
 //! parks it, and either issues a
 //! code on the spot under a
-//! [`StandingGrantCoverage`](crate::domain::authority::StandingGrantCoverage)
+//! [`StandingGrantCoverage`]
 //! proof (the one path that issues a code with no human in the loop — named as
 //! an authority so it can be audited as such) or hands it to the Owner. A
 //! SMART App Launch's `aud` is checked against this server, and its `launch`
@@ -39,18 +39,29 @@ use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::{GrantStore, GrantTx};
 use crate::ports::OwnerApproval;
 
-/// Lifetime of a pending authorization request waiting for Owner approval.
+/// Lifetime of a parked code request: five minutes from its start, and again
+/// from the moment its browser goes on past the limited page.
 pub(crate) const AUTHORIZATION_REQUEST_TTL: Duration = Duration::minutes(5);
 
 /// The RFC 6749 §4.1.1 + RFC 7636 request, as presented, with the optional
-/// SMART App Launch parameters.
+/// SMART App Launch parameters, and the facts about the requesting browser
+/// that the handler worked out before calling in.
 pub(crate) struct AuthorizeRequest<'a> {
+    /// The OAuth `response_type`; only `code` is accepted.
     pub(crate) response_type: &'a str,
+    /// The PKCE challenge method; only `S256` is accepted.
     pub(crate) code_challenge_method: &'a str,
+    /// The client asking.
     pub(crate) client_id: &'a str,
+    /// What the client asks for, space-separated.
     pub(crate) scope: &'a str,
+    /// The PKCE S256 challenge, which the code's redeemer must answer with
+    /// its verifier.
     pub(crate) code_challenge: &'a str,
+    /// Where the client wants the answer. Until it is registered to the
+    /// client, failures render locally rather than go there.
     pub(crate) redirect_uri: &'a str,
+    /// The client's `state`, echoed back on every answer that reaches it.
     pub(crate) client_state: &'a str,
     /// The SMART App Launch `launch` value the app was launched with, or
     /// `None` for a plain OAuth request.
@@ -66,9 +77,12 @@ pub(crate) struct AuthorizeRequest<'a> {
     /// Whether that browser session can decide consents. The request can be
     /// decided in that browser when it can and
     /// [`browser_session_grant`](Self::browser_session_grant) also holds the
-    /// request's approval scopes
-    /// ([`ApprovableScopes::missing_approval_scopes`], as the consent card and
-    /// the approval check them); that is recorded on a parked request.
+    /// request's approval scopes (as the consent card and the approval check
+    /// them with [`missing_approval_scopes`]); that is recorded on a parked
+    /// request.
+    ///
+    /// [`missing_approval_scopes`]:
+    /// crate::domain::authority::ApprovableScopes::missing_approval_scopes
     pub(crate) can_decide_consents: bool,
     /// Whether this start may raise a request for the Owner, asked once, only
     /// when the request is about to be (not decided in the requesting browser,
@@ -76,7 +90,8 @@ pub(crate) struct AuthorizeRequest<'a> {
     /// its browser's limited page. The authorization start limit, deferred to
     /// here for a browser that can decide consents so that the requests it
     /// decides itself spend nothing; `true` for a start the limit already
-    /// admitted.
+    /// admitted. It is a closure, not a flag, because only the starter knows
+    /// whether the request will bother the Owner.
     pub(crate) may_raise_for_owner: &'a dyn Fn() -> bool,
     /// The browser session the browser making the request holds, recorded on
     /// the parked request and on the code it earns. A browser without one
@@ -84,30 +99,39 @@ pub(crate) struct AuthorizeRequest<'a> {
     pub(crate) sid: &'a str,
 }
 
-/// The identifiers the flow mints; supplied by the caller so tests can inject
-/// known values.
+/// The identifiers a start may need, minted by the caller (a random UUID and
+/// a random code) so tests can inject known values.
 pub(crate) struct FreshIds {
     /// The parked request's id.
     pub(crate) request_id: String,
-    /// The authorization code, used only on the fast path.
+    /// The authorization code, used only when the request is issued one on
+    /// the spot under a standing grant.
     pub(crate) code: String,
 }
 
-/// Where the user-agent goes next after `/authorize`.
+/// Where the user-agent goes next after `/authorize`, or after a Continue on
+/// the limited page. The route turns each into a location.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum AuthorizeNextStep {
     /// Every requested scope was pre-approved: back to the client with a code
     /// (RFC 6749 §4.1.2).
     RedirectToClient {
+        /// The redirect the client presented, registered to it.
         redirect_uri: Url,
+        /// The code just issued under the standing grant.
         code: String,
+        /// The client's `state`, carried back on the callback.
         client_state: String,
     },
-    /// The request is parked for the Owner: decided in the browser making it
-    /// when `decidable_in_requesting_browser`, and otherwise raised for the
-    /// Owner while the user-agent polls for the decision.
+    /// The request is parked for the Owner: decided in the browser making it,
+    /// on the consent card, when `decidable_in_requesting_browser`, and
+    /// otherwise raised for the Owner while the user-agent polls the wait
+    /// page for the decision.
     AwaitOwner {
+        /// The parked request: the `$id` of the consent card or the wait page.
         request_id: String,
+        /// Whether the request is decided on the consent card in this browser
+        /// rather than by the Owner elsewhere.
         decidable_in_requesting_browser: bool,
     },
     /// The browser's session holds less than the request asks for: the
@@ -115,7 +139,10 @@ pub(crate) enum AuthorizeNextStep {
     /// goes on only when the browser does. The start limit has admitted it and
     /// its launch, if any, is consumed; no code is issued and nothing is
     /// raised for the Owner yet.
-    ConfirmSessionShortfall { request_id: String },
+    ConfirmSessionShortfall {
+        /// The parked request: the `$id` of the limited page.
+        request_id: String,
+    },
 }
 
 /// The ways starting an authorization can fail. `LocalPage` failures render
@@ -126,25 +153,36 @@ pub(crate) enum AuthorizationStartError {
     /// No active signing key: the endpoint cannot issue codes, so it refuses up
     /// front rather than parking a request it can never complete.
     NoActiveSigningKey,
-    /// A failure on a request whose `redirect_uri` is not trusted.
+    /// A failure on a request whose `redirect_uri` is not trusted, shown as
+    /// this server's own page: sending an error to an untrusted redirect
+    /// would make the server an open redirector.
     LocalPage(AuthorizeRefusal),
     /// A spec'd error once `redirect_uri` is validated, with the sentence the
     /// redirect carries as its `error_description`. The URL is boxed to keep
     /// the error small enough for `clippy::result_large_err`.
     Redirectable {
+        /// The client's trusted redirect, which the error goes back to.
         redirect_uri: Box<Url>,
+        /// The OAuth `error` code.
         error: OAuthErrorCode,
+        /// The sentence the redirect carries as its `error_description`.
         description: &'static str,
+        /// The client's `state`, carried back on the callback.
         client_state: String,
     },
     /// The request this flow just parked was no longer pending when the fast
-    /// path approved it — an unexpected concurrent transition.
+    /// path approved it — an unexpected concurrent transition. It rolls the
+    /// scope back.
     RequestNotPending,
     /// The request would be raised for the Owner, or parked for its limited
     /// page, and
     /// [`may_raise_for_owner`](AuthorizeRequest::may_raise_for_owner) refused:
-    /// the authorization start limit. Nothing is parked.
+    /// the authorization start limit. Nothing is parked and the Owner isn't
+    /// told.
     StartLimited,
+    /// A store failure; or, from a Continue,
+    /// [`AuthorizationServerError::AuthorizationRequestNotFound`] for a
+    /// request no longer waiting on its limited page.
     Store(AuthorizationServerError),
 }
 
@@ -159,7 +197,12 @@ impl From<AuthorizationServerError> for AuthorizationStartError {
 /// store port so it's unit-testable against the fake; the binding instantiates
 /// it over the concrete `SqliteGrantStore`.
 pub(crate) struct CodeAuthorizationStarter<S: GrantStore> {
+    /// The store each start or Continue validates, parks and decides in, in
+    /// one write scope.
     store: S,
+    /// Republishes the Owner prompt once a scope that may have changed it
+    /// commits, so the popup never shows a request a rolled-back scope didn't
+    /// keep.
     owner_approval: Arc<dyn OwnerApproval>,
     /// The server's bare origin, `https://<domain>`, also its FHIR base: an
     /// `aud` must name it.
@@ -185,8 +228,9 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
     /// params), park it, and decide: a fully pre-approved request is issued a
     /// code under the standing grant's authority and sent back to the client;
     /// anything else waits on the Owner as a pending consent. It all happens in
-    /// one write scope; the newest pending consent is republished once that
-    /// has committed.
+    /// one write scope, so a refusal from inside it rolls everything back,
+    /// a spent launch included; the Owner prompt is republished once that has
+    /// committed.
     ///
     /// The request is resolved against its client's registration
     /// ([`ResolvedCodeRequest`]). A disabled client is refused. A fixed
@@ -198,7 +242,7 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
     ///
     /// A declared `aud` must be this server's origin (its FHIR base). A
     /// `launch` must name an unconsumed, unexpired launch context minted for
-    /// this client or for any client; it is consumed (so it never works twice)
+    /// this client or for the server launcher; it is consumed (so it never works twice)
     /// and carried onto the parked request. Either failure is
     /// `invalid_request`, and its description says why: a client sees its own
     /// launch's state (not recognized, already used, expired), and another
@@ -268,8 +312,10 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
         self.publish(decided)
     }
 
-    /// Republish the newest pending consent when `decided` changed it, and
-    /// answer with its next step.
+    /// Republish the Owner prompt when `decided` may have changed it, and
+    /// answer with its next step, or hand on its refusal. It runs after the
+    /// scope commits, so the popup never shows a request a rolled-back scope
+    /// didn't keep.
     fn publish(&self, decided: Decided) -> Result<AuthorizeNextStep, AuthorizationStartError> {
         if decided.pending_consents_changed {
             self.owner_approval.republish_active();
@@ -494,11 +540,15 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
 }
 
 /// What a start's or continue's scope committed: the step the user-agent
-/// takes next, or the refusal it is sent away with, and whether the newest
-/// pending consent may have changed, to be republished once the scope has
-/// closed.
+/// takes next, or the refusal it is sent away with, and whether the Owner
+/// prompt may have changed, to be republished once the scope has closed.
 struct Decided {
+    /// The next step, or a refusal that keeps what the scope wrote: the fast
+    /// path's denial for an ended browser session, and a Continue's denial
+    /// for a client disabled since the request parked. A refusal that must
+    /// roll the scope back is the scope's own `Err` instead.
     next_step: Result<AuthorizeNextStep, AuthorizationStartError>,
+    /// Whether the Owner prompt may have changed, so it is republished.
     pending_consents_changed: bool,
 }
 
@@ -578,18 +628,30 @@ fn decide<T: GrantTx>(
         }),
     };
     // A request raised for the Owner is newly pending; one the fast path
-    // decided may have been the newest pending consent for the width of the
-    // approval, so the head is recomputed either way.
+    // decided may have been the Owner prompt for the width of the approval,
+    // so the prompt is recomputed either way.
     Ok(Decided {
         next_step,
         pending_consents_changed: true,
     })
 }
 
-/// The fast path's approval, in the scope `tx`: issue `code` for
-/// `parked_request` under the standing grant and send the user-agent back to
-/// the client with the code, or with `access_denied` when the browser session
-/// the request was made in has ended, which denies the request.
+/// The fast path's approval, in the scope `tx`: the one place a code is
+/// issued with no person deciding, its authority the standing grant. It goes
+/// through the same writer as the Owner's approval, naming
+/// [`CodeAuthority::StandingGrant`], so every code issued here can be found
+/// by that name. The two `Result`s say which outcomes keep what the scope
+/// wrote:
+///
+///  - issued: [`AuthorizeNextStep::RedirectToClient`] with the code; the
+///    scope commits the approved request, its code, and the standing grant's
+///    `last_used_at` stamped with `now`;
+///  - the request's browser session has ended: `access_denied` to the client,
+///    saying the browser signed out; the scope commits the request denied,
+///    since there is nothing to bound the code by and nothing to revoke later;
+///  - the request was no longer pending:
+///    [`AuthorizationStartError::RequestNotPending`], which rolls the scope
+///    back.
 fn issue_under_standing_grant(
     tx: &mut impl GrantTx,
     standing_grant_coverage: &StandingGrantCoverage,
@@ -738,7 +800,9 @@ mod tests {
         FakeGrantStore, RecordingOwnerApproval, FIXTURE_SID,
     };
 
+    /// A well-formed PKCE S256 challenge (RFC 7636 Appendix B's).
     const CHALLENGE: &str = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
+    /// The server's origin, also its FHIR base: the one `aud` accepted.
     const SERVER_ORIGIN: &str = "https://ruth.relay.example";
     /// The browser session every request here is made in, standing in the
     /// starter's store.
@@ -749,6 +813,11 @@ mod tests {
     static SAME_DEVICE_SESSION_GRANT: std::sync::LazyLock<Grant> =
         std::sync::LazyLock::new(|| Grant::parse(crate::owner_scopes()));
 
+    /// A valid code request from `client_id` for `scope`, to
+    /// `https://example.com/cb` with state `xyz`, no launch and no `aud`, made
+    /// in [`REQUESTING_SID`] by a browser whose session falls short of
+    /// nothing, can't decide consents, and is always admitted by the start
+    /// limit.
     fn request<'a>(client_id: &'a str, scope: &'a str) -> AuthorizeRequest<'a> {
         AuthorizeRequest {
             response_type: "code",
@@ -767,6 +836,8 @@ mod tests {
         }
     }
 
+    /// The fresh ids every start here mints: request `req-1`, code
+    /// `the-code`.
     fn ids() -> FreshIds {
         FreshIds {
             request_id: "req-1".to_owned(),
@@ -774,6 +845,9 @@ mod tests {
         }
     }
 
+    /// A starter over `store`, seeded with an active signing key and the
+    /// standing paired session [`REQUESTING_SID`], and the approval port it
+    /// republishes through.
     fn starter(
         store: FakeGrantStore,
     ) -> (
@@ -802,7 +876,7 @@ mod tests {
     /// A registered client with a standing grant covering every requested
     /// scope takes the fast path: the request is parked and approved, a code
     /// is issued under the grant's authority (with its patient) and the
-    /// requesting browser's session, and the popup head is recomputed.
+    /// requesting browser's session, and the Owner prompt is republished.
     #[test]
     fn a_fully_covered_registered_request_is_issued_a_code_without_a_human() {
         let store = FakeGrantStore::default();

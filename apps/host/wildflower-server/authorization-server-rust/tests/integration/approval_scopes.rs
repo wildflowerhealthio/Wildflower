@@ -1,12 +1,28 @@
-//! The approval scopes (#1232): a paired browser approves a code-flow or
-//! device-flow request only when it can also create what the approval creates,
-//! `wildflower/Grant.c` for the standing grant, plus both `wildflower/Client.c`
-//! and `wildflower/Client.u` for the registration of a client trusted on first
-//! use, and, for a code-flow request, holds the resource scopes it asks for. A
-//! refused approval is a `403 InsufficientScope` naming what it lacks, and the
-//! request stays pending for the Owner. The consent read says the same in
-//! `missingApprovalScopes`, `/oauth/authorize` sends the browser to the consent
-//! card only when it lacks none, and the Owner's scopes cover every one.
+//! The approval scopes: who may approve a request besides the Owner.
+//!
+//! The Owner can approve anything. A paired browser, whose browser session
+//! holds less than the Owner's, may approve a code-flow or device-flow request
+//! too, but only if it could create everything the approval creates. Those
+//! are the request's approval scopes:
+//!
+//! - `wildflower/AuthorizationRequest.u`, because every approval decides a
+//!   request.
+//! - `wildflower/Grant.c`, because a code or device approval records a
+//!   standing grant.
+//! - Both `wildflower/Client.c` and `wildflower/Client.u` for a code approval
+//!   for a client trusted on first use, because it creates or widens the
+//!   client's registration. It takes both whatever the row looks like when the
+//!   approval lands, so an approval never turns on whether the row exists yet.
+//! - The resource scopes a code-flow request asks for, because the approval
+//!   approves the request as asked and the approver must hold what it passes
+//!   on.
+//!
+//! A refused approval is a `403 InsufficientScope` naming what it lacks, and
+//! the request stays pending for the Owner. The same list shows in three
+//! places, from one function, so they never disagree: the approve call refuses
+//! on it, the consent read reports it as `missingApprovalScopes`, and
+//! `/oauth/authorize` sends the browser to the consent card only when it lacks
+//! none, and to the wait page otherwise. The Owner's scopes cover every one.
 
 use crate::common::*;
 
@@ -77,6 +93,8 @@ async fn assert_refused_for_lacking(res: axum::response::Response, missing_scope
     assert_eq!(body["missingScopes"], serde_json::json!(missing_scopes));
 }
 
+/// A paired browser holding every approval scope approves like the Owner: the
+/// consent read lacks nothing, and the approval lands.
 #[tokio::test]
 async fn an_approved_browser_approves_a_registered_app_within_its_own_scopes() {
     let (g, _owner_token, db) = spin_up();
@@ -97,7 +115,8 @@ async fn an_approved_browser_approves_a_registered_app_within_its_own_scopes() {
 }
 
 /// Registering a new app takes both client scopes: `wildflower/Client.c`
-/// alone isn't enough.
+/// alone is refused, and the refused approval registers nothing. A browser
+/// holding both then approves the same request.
 #[tokio::test]
 async fn an_approved_browser_without_client_update_cannot_register_a_new_app() {
     let (g, _owner_token, db) = spin_up();
@@ -167,6 +186,9 @@ async fn an_approved_browser_without_client_create_cannot_widen_an_app() {
     assert_eq!(res.status(), StatusCode::OK);
 }
 
+/// No `wildflower/Grant.c`, no code approval: approving an app's request
+/// records a standing grant, so a browser that can't create grants is refused,
+/// and the request stays pending.
 #[tokio::test]
 async fn an_approved_browser_without_grant_create_cannot_approve_a_code_request() {
     let (g, _owner_token, db) = spin_up();
@@ -190,6 +212,9 @@ async fn an_approved_browser_without_grant_create_cannot_approve_a_code_request(
     assert_eq!(request_status(&g, &db, &request_id).await, "pending");
 }
 
+/// The same holds for a device: a browser that can read and decide requests,
+/// but not create grants, is refused a device approval, because it records a
+/// standing device grant. The request stays pending.
 #[tokio::test]
 async fn an_approved_browser_without_grant_create_cannot_approve_a_device_request() {
     let (g, _owner_token, db) = spin_up();
@@ -235,7 +260,7 @@ async fn an_approved_browser_without_grant_create_cannot_approve_a_device_reques
 }
 
 /// The Owner's scopes cover every approval scope, so a same-device session lacks
-/// none and registers a new app as before.
+/// none and registers a new app on approval.
 #[tokio::test]
 async fn a_same_device_session_lacks_no_approval_scope() {
     let (g, _owner_token, db) = spin_up();

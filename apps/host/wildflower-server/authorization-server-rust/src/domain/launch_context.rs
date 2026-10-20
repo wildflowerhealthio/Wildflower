@@ -1,3 +1,8 @@
+//! [`LaunchContext`] — a SMART App Launch `launch` value this server handed
+//! out, and what it binds. The app echoes it back at `/oauth/authorize`, and
+//! the request that presents it consumes it, once: a second presentation,
+//! from anyone, is refused.
+
 use chrono::{DateTime, Duration, Utc};
 use diesel::prelude::{Insertable, Queryable, Selectable};
 
@@ -25,11 +30,13 @@ pub struct LaunchContext {
     /// Primary key — the opaque `launch` value the app is handed and echoes
     /// back at `/oauth/authorize`.
     pub nonce: String,
-    /// The OAuth client the launch is for; `None` when any client may consume
-    /// it. An authorize from any other client can't consume it.
+    /// The OAuth client the launch is for; an authorize from any other client
+    /// can't consume it. `None` for a launch minted for the server launcher,
+    /// which any client may consume.
     client_id: Option<String>,
-    /// The patient the launch binds, if any. When set, the consent approval
-    /// must name the same patient. Set only alongside `client_id`.
+    /// The patient the launch binds, if any. When set, the request it starts
+    /// records that patient, and the consent approval must name the same one.
+    /// Set only alongside `client_id`.
     patient: Option<String>,
     /// When the launch was minted.
     pub created_at: DateTime<Utc>,
@@ -98,12 +105,18 @@ impl LaunchContext {
     }
 }
 
-/// Why `/oauth/authorize` could not consume a presented `launch`.
+/// Why `/oauth/authorize` could not consume a presented `launch`; the request
+/// is refused as `invalid_request`. The consume is one conditional update, so
+/// of two racing requests exactly one wins; only when it finds nothing is the
+/// launch read back to say why, in this order: no launch, another client's
+/// launch, already used, expired.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LaunchRefusal {
     /// No launch has this nonce: never minted, or expired and pruned.
     Unknown,
-    /// The launch is for a different client.
+    /// The launch is for a different client. Checked before anything else,
+    /// so a wrong client never learns whether the launch was used or has
+    /// expired, and it is refused as if the launch were unknown.
     ForAnotherApp,
     /// The launch was consumed already.
     AlreadyUsed,

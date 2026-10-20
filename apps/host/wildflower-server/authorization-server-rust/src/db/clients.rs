@@ -141,6 +141,8 @@ mod tests {
     use crate::domain::grant_store::*;
     use proptest::prelude::*;
 
+    /// A client with every field drawn independently: public or confidential,
+    /// server-defined or trusted on first use, disabled or not.
     fn arb_client() -> impl Strategy<Value = Client> {
         (
             "[a-zA-Z0-9_-]{1,32}",
@@ -185,6 +187,8 @@ mod tests {
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(48))]
 
+        /// Any client upserted into a fresh store reads back by its id exactly as
+        /// written.
         #[test]
         fn upsert_and_fetch_round_trip(client in arb_client()) {
             let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
@@ -275,6 +279,8 @@ mod tests {
         }
     }
 
+    /// Upserting an existing client updates its name and policy in place but
+    /// keeps its first `registered_at` and the Owner's disable.
     #[test]
     fn upsert_updates_policy_but_preserves_registration_and_disable() {
         let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");

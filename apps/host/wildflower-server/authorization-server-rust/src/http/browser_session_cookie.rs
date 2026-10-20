@@ -211,6 +211,7 @@ mod tests {
 
     use crate::BROWSER_SESSION_CLIENT_ID;
 
+    /// The server's origin: the issuer and audience of every test token.
     const ORIGIN: &str = "https://ruth.relay.example";
 
     /// A token for this server, issued to `client_id` under `sid`.
@@ -310,6 +311,8 @@ mod tests {
         }
     }
 
+    /// Request headers carrying each of `cookie_headers` as its own `Cookie`
+    /// header.
     fn cookie_headers(cookie_headers: &[&'static str]) -> HeaderMap {
         let mut headers = HeaderMap::new();
         for cookie_header in cookie_headers {
@@ -318,6 +321,9 @@ mod tests {
         headers
     }
 
+    /// The browser session cookie is found among any others, in one `Cookie`
+    /// header or across several; a cookie whose name only starts the same is
+    /// not it, and no such cookie reads as none.
     #[test]
     fn the_session_token_is_read_from_among_the_browser_s_cookies() {
         for (cookies, expected) in [
@@ -343,6 +349,8 @@ mod tests {
         }
     }
 
+    /// The cookie is `Secure`, `HttpOnly`, `SameSite=Lax` and `Path=/`, and
+    /// lasts exactly as long as the session it holds.
     #[test]
     fn the_cookie_has_exactly_the_browser_session_attributes() {
         assert_eq!(
@@ -357,6 +365,8 @@ mod tests {
         );
     }
 
+    /// Clearing the cookie sends the same name and attributes, empty, with
+    /// `Max-Age=0`, so the browser drops it.
     #[test]
     fn the_clearing_cookie_has_the_same_attributes_and_no_age() {
         assert_eq!(

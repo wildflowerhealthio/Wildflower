@@ -59,6 +59,8 @@ pub fn token_storage_hash(token: &str) -> String {
 mod tests {
     use super::*;
 
+    /// A token is 43 unpadded base64url characters that decode back to
+    /// exactly 32 bytes.
     #[test]
     fn encodes_32_bytes_as_unpadded_base64url() {
         let code = generate_authorization_code();
@@ -73,6 +75,7 @@ mod tests {
         assert_eq!(decoded.len(), TOKEN_BYTES);
     }
 
+    /// Two tokens generated one after the other differ.
     #[test]
     fn successive_codes_differ() {
         let a = generate_authorization_code();

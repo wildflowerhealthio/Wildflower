@@ -11,6 +11,12 @@ use crate::domain::grant_store::LaunchContextsTx;
 use crate::domain::launch_context::LaunchContext;
 
 diesel::table! {
+    /// One row per SMART `launch` value handed out, kept in plain text: it
+    /// lives five minutes and is good for one use. A `NULL` `client_id` is a
+    /// launch any client may consume, and the table's
+    /// `CHECK (patient IS NULL OR client_id IS NOT NULL)` refuses a patient on
+    /// such a launch. `consumed_at` is set by the one `/authorize` that
+    /// consumes it.
     launch_contexts (nonce) {
         nonce -> Text,
         client_id -> Nullable<Text>,
@@ -112,6 +118,7 @@ mod tests {
     use crate::domain::capabilities::oauth::{consume_launch, LaunchContexts};
     use crate::domain::launch_context::{LaunchContext, LaunchRefusal, LAUNCH_CONTEXT_TTL};
 
+    /// A fresh store on an in-memory database, migrated.
     fn store() -> SqliteGrantStore {
         SqliteGrantStore::open_in_memory().expect("store")
     }

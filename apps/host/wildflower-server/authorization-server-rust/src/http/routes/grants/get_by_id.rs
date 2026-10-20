@@ -10,11 +10,14 @@ use crate::domain::capabilities::Scoped;
 use crate::http::state::AuthorizationServerState;
 use crate::live_bindings::LiveGrantsReader;
 
-/// `GET /grants/{id}` — fetch a single grant by id (scope `wildflower/Grant.r`).
+/// The `GET` method on `/grants/{id}`.
 pub(super) fn route() -> MethodRouter<Arc<AuthorizationServerState>> {
     get(handle_get_grant)
 }
 
+/// `GET /authorization/grants/{id}` — one standing grant, or `404` when no
+/// grant has the id. Through `Scoped<LiveGrantsReader>`
+/// (`wildflower/Grant.r`).
 async fn handle_get_grant(
     grants: Scoped<LiveGrantsReader>,
     Path(id): Path<String>,

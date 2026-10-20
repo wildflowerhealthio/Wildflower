@@ -1,9 +1,11 @@
 //! Diesel column mappings shared across more than one persistence concern, plus
-//! the two macros that generate every column mapping in this slice (`shared` and
-//! per-concern alike). A column mapping used by exactly one concern lives in that
-//! concern's `db/<concern>.rs` file (e.g. [`JsonUrls`](super::clients::JsonUrls) with the
-//! client); the ones here — [`JsonStrings`], [`UrlText`], and the [`FlowType`]
-//! enum mapping — are the ones two or more concerns bind.
+//! the two macros that generate every column mapping in this slice (`shared`
+//! and per-concern alike). A column mapping used by exactly one concern lives
+//! in that concern's `db/<concern>.rs` file (e.g.
+//! [`JsonUrls`](super::clients::JsonUrls) with the client); the ones here —
+//! [`JsonStrings`], [`UrlText`], and the
+//! [`FlowType`](crate::domain::authorization_request::FlowType) enum mapping —
+//! are the ones two or more concerns bind.
 //!
 //! A domain row type plugs a newtype in on a plain field with
 //! `#[diesel(serialize_as = …, deserialize_as = …)]`, keeping the field itself the

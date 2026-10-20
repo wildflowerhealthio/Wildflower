@@ -1,3 +1,7 @@
+//! The authorization server's end-to-end tests: each file drives the real
+//! router over a fresh in-memory database and holds the server to one area of
+//! its behaviour on the wire. `common` holds the fixtures they share.
+
 mod approval_scopes;
 mod authorization_start_limit;
 mod bearer_only;
