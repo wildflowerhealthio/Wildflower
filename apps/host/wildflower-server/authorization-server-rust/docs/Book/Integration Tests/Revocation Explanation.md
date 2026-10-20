@@ -2,105 +2,85 @@
 
 {{#covers apps/host/wildflower-server/authorization-server-rust/tests/integration/revocation.rs}}
 
-An access token is a signed JWT that stays valid until it expires. Revocation is how the server stops one early. It keeps two records, in a revocation store shared with the FHIR server:
+An [access token](<../Domain/Access Token Explanation.md>) is a signed JWT that stays valid until it expires. Revocation is how the server stops one early. It keeps two records, in a revocation store shared with the FHIR server:
 
 - **The `jti` denylist** ends one token: the row lives until the token would have expired anyway.
-- **The subject epoch** ends a whole cohort: every token issued to a subject (its `sub`, the `client_id`) before the epoch is revoked.
+- **The subject epoch** ends a cohort: every token issued to a subject (its `sub`, the `client_id`) before the epoch is revoked.
 
-Every `/authorization` bearer gate checks both. A revoked token is `401`, the same as no token. These tests probe the gate with [`owner_grants_probe`](<../Integration Tests Explanation.md#owner_grants_probe>), the smallest Owner-gated call, and plant or read revocations through [`revocation_store_handle`](<../Integration Tests Explanation.md#revocation_store_handle>).
+Every `/authorization` bearer gate checks both, and a revoked token is `401`, the same as no token. Revocation is written in three places: the Owner's `POST /authorization/revocations`, logout, and revoking a [grant](<../Domain/Grant Explanation.md>). [Token Revocation](<Token Revocation Explanation.md>) covers an app revoking its own tokens.
 
-Revocation is written in three places: the Owner's `POST /authorization/revocations`, logout, and revoking a grant. The [Token](<../Domain/Token Explanation.md>) and [Grant](<../Domain/Grant Explanation.md>) pages come first; the [Token Revocation](<Token Revocation Explanation.md>) page covers an app revoking its own tokens.
+This file's own helpers are on the [Test Fixtures](<Test Fixtures Explanation.md#integrationrevocation>) page, with the shared ones.
 
-## Helpers
+## `integration::revocation`
 
-The gate's answer for a token, and a token issued to the Wildflower host app's client holding only `openid`, which reaches no `/authorization` scope gate:
+### `gate_allows_a_live_token_across_repeated_requests`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/revocation.rs gate_status}}
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/revocation.rs gate_allows_a_live_token_across_repeated_requests}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/revocation.rs mint_host_app_token}}
+Relies on [`AccessTokenClaims`](<../Domain/Access Token Explanation.md#item-AccessTokenClaims>)'s `jti`, a revocation handle and not a single-use nonce. Fixtures first used here: [`spin_up`](<Test Fixtures Explanation.md#item-spin_up>) and [`owner_grants_probe`](<Test Fixtures Explanation.md#item-owner_grants_probe>).
 
-## `gate_allows_a_live_token_across_repeated_requests`
+### `gate_rejects_a_revoked_jti`
 
-**A live token keeps working.** Revocation must not make a bearer single-use: the same token passes the gate request after request.
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/revocation.rs gate_rejects_a_revoked_jti}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/revocation.rs gate_allows_a_live_token_across_repeated_requests}}
+Relies on [`AccessTokenClaims`](<../Domain/Access Token Explanation.md#item-AccessTokenClaims>) and [`TokenVerifier::verify`](<../Capabilities/Session/Token Verifier Explanation.md#item-TokenVerifier--verify>). Fixtures first used here: [`jti_of`](<Test Fixtures Explanation.md#item-jti_of>) and [`revocation_store_handle`](<Test Fixtures Explanation.md#item-revocation_store_handle>).
 
-## `gate_rejects_a_revoked_jti`
+### `gate_rejects_after_subject_epoch_bump`
 
-**A denylisted `jti` is rejected.** The token passes, its `jti` is denylisted, and the same token is then `401`.
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/revocation.rs gate_rejects_after_subject_epoch_bump}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/revocation.rs gate_rejects_a_revoked_jti}}
+The epoch is set a second ahead, because a token's `iat` is whole seconds. Relies on [`TokenVerifier::verify`](<../Capabilities/Session/Token Verifier Explanation.md#item-TokenVerifier--verify>). Fixtures first used here: [`OWNER_TOKEN_CLIENT_ID`](<Test Fixtures Explanation.md#item-OWNER_TOKEN_CLIENT_ID>).
 
-Relies on [`AccessTokenClaims`](<../Domain/Token Explanation.md#accesstokenclaims>).
+### `logout_revokes_the_presented_jti`
 
-## `gate_rejects_after_subject_epoch_bump`
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/revocation.rs logout_revokes_the_presented_jti}}
 
-**Bumping a subject's epoch revokes the tokens it was issued before.** The epoch is set a second ahead, because a token's `iat` is whole seconds and the token was minted moments earlier.
+Relies on [`handle_logout`](<../HTTP/Routes/Session Routes Explanation.md#item-handle_logout>). Fixtures first used here: [`build_request`](<Test Fixtures Explanation.md#item-build_request>).
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/revocation.rs gate_rejects_after_subject_epoch_bump}}
+### `revocations_endpoint_revokes_by_jti`
 
-## `logout_revokes_the_presented_jti`
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/revocation.rs revocations_endpoint_revokes_by_jti}}
 
-**Logging out revokes the token that logged out.** Logout redirects (`303`) to the launcher, and denylists the presented token's `jti`, so a leaked copy can't ride on until it expires.
+Relies on [`handle_create_revocation`](<../HTTP/Routes/Session Routes Explanation.md#item-handle_create_revocation>). Fixtures first used here: [`owner_revocation_request`](<Test Fixtures Explanation.md#item-owner_revocation_request>).
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/revocation.rs logout_revokes_the_presented_jti}}
+### `revocations_endpoint_bulk_revokes_by_subject`
 
-The route is {{#code-link apps/host/wildflower-server/authorization-server-rust/src/http/routes/logout.rs handle_logout}}.
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/revocation.rs revocations_endpoint_bulk_revokes_by_subject}}
 
-## `revocations_endpoint_revokes_by_jti`
+Relies on [`handle_create_revocation`](<../HTTP/Routes/Session Routes Explanation.md#item-handle_create_revocation>).
 
-**The Owner can revoke one token by its `jti`.** The body names the `jti` and the token's own expiry. Here the Owner revokes the very token it calls with, which then stops working.
+### `revocations_endpoint_rejects_invalid_bodies`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/revocation.rs revocations_endpoint_revokes_by_jti}}
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/revocation.rs revocations_endpoint_rejects_invalid_bodies}}
 
-The route is {{#code-link apps/host/wildflower-server/authorization-server-rust/src/http/routes/revocations.rs handle_create_revocation}}.
+Relies on [`RevocationRequest::into_revocation`](<../HTTP/Routes/Session Routes Explanation.md#item-RevocationRequest--into_revocation>).
 
-## `revocations_endpoint_bulk_revokes_by_subject`
+### `revocations_endpoint_requires_owner_auth`
 
-**The Owner can revoke everything a client holds by naming it as the subject.** The subject's epoch moves to now, so a token issued to it an hour ago reads back revoked.
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/revocation.rs revocations_endpoint_requires_owner_auth}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/revocation.rs revocations_endpoint_bulk_revokes_by_subject}}
+Relies on [`require_valid_session`](<../HTTP/Middleware Explanation.md#item-require_valid_session>).
 
-## `revocations_endpoint_rejects_invalid_bodies`
+### `revoking_a_grant_bumps_the_client_revocation_epoch`
 
-**A revocation names exactly one mode, completely.** A `jti` without `expiresAt`, both modes at once, neither, and an `expiresAt` already past are all `400`.
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/revocation.rs revoking_a_grant_bumps_the_client_revocation_epoch}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/revocation.rs revocations_endpoint_rejects_invalid_bodies}}
+Relies on [`AuthorizationCodeGrant`](<../Domain/Grant Explanation.md#item-AuthorizationCodeGrant>) and [`GrantsRevoker::revoke`](<../Capabilities/Access/Grants Explanation.md#item-GrantsRevoker--revoke>). The grant's refresh families end too ([`revoking_grant_revokes_refresh_tokens`](<Device Code Explanation.md#item-revoking_grant_revokes_refresh_tokens>)). Fixtures first used here: [`seed_client_with_redirect`](<Test Fixtures Explanation.md#item-seed_client_with_redirect>) and [`store_handle`](<Test Fixtures Explanation.md#item-store_handle>).
 
-The body is checked by {{#code-link apps/host/wildflower-server/authorization-server-rust/src/http/routes/revocations.rs RevocationRequest::into_revocation}}, and the past `expiresAt` by the route.
+### `revoking_a_device_grant_bumps_the_client_revocation_epoch`
 
-## `revocations_endpoint_requires_owner_auth`
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/revocation.rs revoking_a_device_grant_bumps_the_client_revocation_epoch}}
 
-**No bearer, no revocation.** The call is `401`.
+Relies on [`DeviceGrant`](<../Domain/Grant Explanation.md#item-DeviceGrant>) and [`GrantsRevoker::revoke`](<../Capabilities/Access/Grants Explanation.md#item-GrantsRevoker--revoke>).
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/revocation.rs revocations_endpoint_requires_owner_auth}}
+### `revoking_the_host_app_s_subject_revokes_its_tokens`
 
-## `revoking_a_grant_bumps_the_client_revocation_epoch`
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/revocation.rs revoking_the_host_app_s_subject_revokes_its_tokens}}
 
-**Revoking a grant revokes its client's live access tokens.** Deleting the grant bumps the client's epoch, so a token issued to it an hour ago reads back revoked. The grant's refresh tokens end too ([`revoking_grant_revokes_refresh_tokens`](<Device Code Explanation.md#revoking_grant_revokes_refresh_tokens>)).
+Relies on [`handle_create_revocation`](<../HTTP/Routes/Session Routes Explanation.md#item-handle_create_revocation>). Fixtures first used here: [`mint_host_app_token`](<Test Fixtures Explanation.md#item-mint_host_app_token>) and [`gate_status`](<Test Fixtures Explanation.md#item-gate_status>).
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/revocation.rs revoking_a_grant_bumps_the_client_revocation_epoch}}
+### `revoking_a_grant_of_the_host_app_s_client_bumps_its_epoch`
 
-Relies on [`AuthorizationCodeGrant`](<../Domain/Grant Explanation.md#authorizationcodegrant>); the cascade is {{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/access/grants.rs GrantsRevoker::revoke}}.
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/revocation.rs revoking_a_grant_of_the_host_app_s_client_bumps_its_epoch}}
 
-## `revoking_a_device_grant_bumps_the_client_revocation_epoch`
-
-**Revoking an authorized device does the same.** A device grant is revoked through the same `DELETE /authorization/grants/{id}`, and bumps its client's epoch just as a code grant does. The epoch is per client, so this revokes every live access token of that client, not only the device's.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/revocation.rs revoking_a_device_grant_bumps_the_client_revocation_epoch}}
-
-Relies on [`DeviceGrant`](<../Domain/Grant Explanation.md#devicegrant>).
-
-## `revoking_the_host_app_s_subject_revokes_its_tokens`
-
-**The Wildflower host app's client gets no exemption from a subject revoke.** Its token is live, so the gate answers `403` (it reaches no scope there). After the Owner revokes the host app's subject, the gate rejects it outright: `401`.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/revocation.rs revoking_the_host_app_s_subject_revokes_its_tokens}}
-
-## `revoking_a_grant_of_the_host_app_s_client_bumps_its_epoch`
-
-**Nor from a grant revoke.** Revoking a grant of the host app's client deletes it and bumps the host app's epoch, like any other client's.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/revocation.rs revoking_a_grant_of_the_host_app_s_client_bumps_its_epoch}}
-
-Relies on [`DeviceGrant`](<../Domain/Grant Explanation.md#devicegrant>).
+Relies on [`DeviceGrant`](<../Domain/Grant Explanation.md#item-DeviceGrant>) and [`GrantsRevoker::revoke`](<../Capabilities/Access/Grants Explanation.md#item-GrantsRevoker--revoke>).

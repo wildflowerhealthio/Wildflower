@@ -2,100 +2,68 @@
 
 {{#covers apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs}}
 
-A browser session is the server's record of one signed-in browser. Everything minted under it names it as `sid`: the browser's own token, and every code, access token and refresh family an app earns there. **Revoking the session ends all of them**, wherever they are checked. Read the [Browser Session](<../Domain/Browser Session Explanation.md>) page first.
+A [browser session](<../Domain/Browser Session Explanation.md>) is the server's record of one signed-in browser. Everything minted under it names it as `sid`: the browser's own token, and every code, access token and refresh family an app earns there. **Revoking the session ends all of them**, wherever they are checked: on the `/authorization` surface, at the in-process verifier the FHIR server uses, and at refresh. `/authorization/browser-sessions` lists the live sessions and revokes one, and `/oauth/sign-out` revokes the session a browser's cookie holds.
 
-These tests sign a browser in as the Owner with [signed_in_owner_session_token](<../Integration Tests Explanation.md#signed_in_owner_session_token>) and probe a token with [owner_grants_probe](<../Integration Tests Explanation.md#owner_grants_probe>).
+This file's own helpers are on the [Test Fixtures](<Test Fixtures Explanation.md#integrationbrowser_sessions>) page, with the shared ones.
 
-## Helpers
+## `integration::browser_sessions`
 
-The `sid` a token names, read without verifying it:
+### `a_sign_in_starts_a_same_device_session_its_token_names`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs sid_of}}
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs a_sign_in_starts_a_same_device_session_its_token_names}}
 
-An app's call to `POST /oauth/token`:
+A second sign-in gets a different `sid`. Relies on [`BrowserSession::new_same_device_session`](<../Domain/Browser Session Explanation.md#item-BrowserSession--new_same_device_session>). Fixtures first used here: [`spin_up`](<Test Fixtures Explanation.md#item-spin_up>), [`signed_in_same_device_session_token`](<Test Fixtures Explanation.md#item-signed_in_same_device_session_token>), [`sid_of`](<Test Fixtures Explanation.md#item-browser_sessions--sid_of>), [`store_handle`](<Test Fixtures Explanation.md#item-store_handle>) and [`decode_jwt_payload`](<Test Fixtures Explanation.md#item-decode_jwt_payload>).
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs post_token}}
+### `revoking_a_session_stops_its_authorization_and_fhir_requests`
 
-A call on the `/authorization` surface with a bearer, and the list of sessions it is shown, each marked with whether it is the caller's own:
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs revoking_a_session_stops_its_authorization_and_fhir_requests}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs authorization_request}}
+The verifier answers `Revoked`, not a generic rejection. Relies on [`AccessTokenVerifyError`](<../Domain/Access Token Explanation.md#item-AccessTokenVerifyError>) and [`TokenVerifier::verify`](<../Capabilities/Session/Token Verifier Explanation.md#item-TokenVerifier--verify>). Fixtures first used here: [`owner_grants_probe`](<Test Fixtures Explanation.md#item-owner_grants_probe>).
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs listed_browser_sessions}}
+### `an_app_authorized_in_a_session_is_ended_with_it`
 
-The Sign out form's post, with the browser's cookie if it has one:
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs an_app_authorized_in_a_session_is_ended_with_it}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs sign_out}}
+Relies on [`RefreshTokenFamily`](<../Domain/Refresh Token Explanation.md#item-RefreshTokenFamily>) and [`BrowserSession::is_live`](<../Domain/Browser Session Explanation.md#item-BrowserSession--is_live>). Fixtures first used here: [`build_request`](<Test Fixtures Explanation.md#item-build_request>), [`authorize_query`](<Test Fixtures Explanation.md#item-authorize_query>), [`location_of`](<Test Fixtures Explanation.md#item-location_of>), [`approve_oauth_consent`](<Test Fixtures Explanation.md#item-approve_oauth_consent>), [`body_json`](<Test Fixtures Explanation.md#item-body_json>), [`post_token`](<Test Fixtures Explanation.md#item-browser_sessions--post_token>) and [`CODE_VERIFIER`](<Test Fixtures Explanation.md#item-CODE_VERIFIER>).
 
-## `a_sign_in_starts_an_owner_session_its_token_names`
+### `approving_a_request_whose_session_was_revoked_denies_it`
 
-**A sign-in starts its own Owner session: unnamed, holding the Owner's scopes, lasting eight hours, and the token it hands the browser names it and ends with it.**
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs approving_a_request_whose_session_was_revoked_denies_it}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs a_sign_in_starts_an_owner_session_its_token_names}}
+Relies on [`BrowserSession::is_live`](<../Domain/Browser Session Explanation.md#item-BrowserSession--is_live>) and [`CodeRequest::deny`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--deny>), through [`RequestApprover::approve_for_code`](<../Writers/Request Approver Explanation.md#item-RequestApprover--approve_for_code>).
 
-A second sign-in gets a different `sid`. Relies on [`new_owner`](<../Domain/Browser Session Explanation.md#new_owner>) and [`BrowserSession`](<../Domain/Browser Session Explanation.md>).
+### `the_browsers_list_shows_live_sessions_and_revokes_one`
 
-## `revoking_a_session_stops_its_authorization_and_fhir_requests`
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs the_browsers_list_shows_live_sessions_and_revokes_one}}
 
-**A revoked session's token is refused at the `/authorization` gate and by the in-process verifier the FHIR server uses. Another session's token keeps working on both.**
+A fresh session's `lastSeenAt` equals its `createdAt`: signing in is its first use. Relies on [`BrowserSession`](<../Domain/Browser Session Explanation.md#item-BrowserSession>). Fixtures first used here: [`authorization_request`](<Test Fixtures Explanation.md#item-authorization_request>) and [`listed_browser_sessions`](<Test Fixtures Explanation.md#item-listed_browser_sessions>).
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs revoking_a_session_stops_its_authorization_and_fhir_requests}}
+### `revoking_the_caller_s_own_session_signs_it_out`
 
-The verifier answers `Revoked`, not a generic rejection. Relies on [`VerifyError`](<../Domain/Token Explanation.md#verifyerror>).
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs revoking_the_caller_s_own_session_signs_it_out}}
 
-## `an_app_authorized_in_a_session_is_ended_with_it`
+Relies on [`BrowserSession::is_live`](<../Domain/Browser Session Explanation.md#item-BrowserSession--is_live>).
 
-**An app authorized in a browser earns everything under that browser's session, and loses it all when the session is revoked.**
+### `the_browsers_routes_are_scope_gated`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs an_app_authorized_in_a_session_is_ended_with_it}}
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs the_browsers_routes_are_scope_gated}}
 
-The access token and its refreshed successor both name the session's `sid`, and the refresh marks the session seen. After revocation the family's next refresh is `invalid_grant` and the original access token verifies as `Revoked`. Relies on [`RefreshTokenFamily`](<../Domain/Refresh Token Explanation.md#refreshtokenfamily>) and [`BrowserSession`](<../Domain/Browser Session Explanation.md>).
+Relies on [`require_valid_session`](<../HTTP/Middleware Explanation.md#item-require_valid_session>). Fixtures first used here: [`mint_scoped_token`](<Test Fixtures Explanation.md#item-mint_scoped_token>).
 
-## `approving_a_request_whose_session_was_revoked_denies_it`
+### `signing_out_revokes_the_cookie_s_session_and_clears_it`
 
-**If the requesting browser is signed out before the Owner approves, the approval becomes a denial.** The app gets `access_denied`, never a code whose tokens would be refused.
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs signing_out_revokes_the_cookie_s_session_and_clears_it}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs approving_a_request_whose_session_was_revoked_denies_it}}
+Relies on [`BrowserSession::is_live`](<../Domain/Browser Session Explanation.md#item-BrowserSession--is_live>). Fixtures first used here: [`sign_out`](<Test Fixtures Explanation.md#item-sign_out>), [`LAUNCHER_BASE`](<Test Fixtures Explanation.md#item-LAUNCHER_BASE>), [`set_cookie_values`](<Test Fixtures Explanation.md#item-set_cookie_values>) and [`assert_cache_suppressed`](<Test Fixtures Explanation.md#item-assert_cache_suppressed>).
 
-Relies on [`is_live`](<../Domain/Browser Session Explanation.md#is_live>) and [`deny`](<../Domain/Authorization Request Explanation.md#deny>).
+### `signing_out_without_a_standing_session_still_clears_the_cookie`
 
-## `the_browsers_list_shows_live_sessions_and_revokes_one`
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs signing_out_without_a_standing_session_still_clears_the_cookie}}
 
-**The browsers list shows the live sessions, newest first, with the caller's own marked. Revoking one takes it off the list and ends its token. Revoking it again is a `404`.**
+Relies on [`carried_browser_session`](<../HTTP/Browser Session Cookie Explanation.md#item-carried_browser_session>).
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs the_browsers_list_shows_live_sessions_and_revokes_one}}
+### `the_session_read_answers_the_browser_session_s_expiry`
 
-A fresh session's `lastSeenAt` equals its `createdAt`: signing in is its first use. The seeded paired browser is listed too. Relies on [`BrowserSession`](<../Domain/Browser Session Explanation.md>).
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs the_session_read_answers_the_browser_session_s_expiry}}
 
-## `revoking_the_caller_s_own_session_signs_it_out`
-
-**A browser may revoke its own session, and that signs it out.**
-
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs revoking_the_caller_s_own_session_signs_it_out}}
-
-## `the_browsers_routes_are_scope_gated`
-
-**Listing sessions takes `wildflower/BrowserSession.r`; revoking one takes `wildflower/BrowserSession.d`.** A token without the scope gets a `403` naming it, and nothing is revoked.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs the_browsers_routes_are_scope_gated}}
-
-## `signing_out_revokes_the_cookie_s_session_and_clears_it`
-
-**Signing out revokes the session the cookie holds, clears the cookie with the attributes it was set with, and sends the browser to the launcher.** Another browser's session stands.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs signing_out_revokes_the_cookie_s_session_and_clears_it}}
-
-The response is uncached ([assert_cache_suppressed](<../Integration Tests Explanation.md#assert_cache_suppressed>)).
-
-## `signing_out_without_a_standing_session_still_clears_the_cookie`
-
-**Signing out with no cookie, an ended session or a garbage cookie still clears the cookie and sends the browser to the launcher.** There is nothing to revoke, and no error.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs signing_out_without_a_standing_session_still_clears_the_cookie}}
-
-## `the_session_read_answers_the_browser_session_s_expiry`
-
-**`GET /authorization/session` answers when the caller's browser session expires**, which the server's pages show as "Signed in until". A token under no browser session answers `null`.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs the_session_read_answers_the_browser_session_s_expiry}}
-
-Relies on [`BrowserSession`](<../Domain/Browser Session Explanation.md>).
+Relies on [`BrowserSession`](<../Domain/Browser Session Explanation.md#item-BrowserSession>).

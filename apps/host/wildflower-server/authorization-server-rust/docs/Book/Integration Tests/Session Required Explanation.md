@@ -4,74 +4,50 @@
 
 An app's request starts in a browser, and the server asks about the browser before it asks about the app. **A browser without a browser session gets nothing from `/oauth/authorize` but a trip to the pairing page**, and it comes back to the same request once paired. A browser with one gets the whole flow. Every code its request earns is issued under **that browser's session**, never the approver's, and carries only what that session also holds.
 
-These tests hold the server to both halves. They lean on the [browser session](<../Domain/Browser Session Explanation.md>), on the [authorization request](<../Domain/Authorization Request Explanation.md>) that records the `sid` it was made in, and on the [launch context](<../Domain/Launch Context Explanation.md>) a SMART launch carries. The browser the app runs in is the harness's paired browser ([`TestDb`](<../Integration Tests Explanation.md#testdb>)), which holds every FHIR scope but can't decide consents. Other browsers come from [`paired_browser_session_holding`](<../Integration Tests Explanation.md#paired_browser_session_holding>) and [`signed_in_owner_session_token`](<../Integration Tests Explanation.md#signed_in_owner_session_token>).
+These tests hold the server to both halves. They lean on the [browser session](<../Domain/Browser Session Explanation.md>), on the [code request](<../Domain/Authorization Request/Code Request Explanation.md>) that records the `sid` it was made in, and on the [launch context](<../Domain/Launch Context Explanation.md>) a SMART launch carries.
 
-## Helpers
+This file's own helpers are on the [Test Fixtures](<Test Fixtures Explanation.md#integrationsession_required>) page, with the shared ones.
 
-`park_and_approve` makes a request in one browser and approves it as the Owner, which leaves a standing grant behind:
+## `integration::session_required`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/session_required.rs park_and_approve}}
+### `a_browser_without_a_session_is_sent_to_pairing_even_with_a_standing_grant`
 
-`pairing_next` reads where the pairing page will send the browser back to, and fails unless the `Location` is the pairing page:
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/session_required.rs a_browser_without_a_session_is_sent_to_pairing_even_with_a_standing_grant}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/session_required.rs pairing_next}}
+Relies on the front door of [`handle_authorize_request`](<../HTTP/Routes/Authorize Explanation.md#item-handle_authorize_request>), which redirects before any request is parked or any launch consumed. Fixtures first used here: [`spin_up`](<Test Fixtures Explanation.md#item-spin_up>), [`seed_app`](<Test Fixtures Explanation.md#item-session_required--seed_app>), [`fhir_ui_query`](<Test Fixtures Explanation.md#item-fhir_ui_query>), [`APPROVE_FHIR_UI`](<Test Fixtures Explanation.md#item-APPROVE_FHIR_UI>), [`app_query`](<Test Fixtures Explanation.md#item-session_required--app_query>), [`APPROVE_APP`](<Test Fixtures Explanation.md#item-session_required--APPROVE_APP>), [`park_and_approve`](<Test Fixtures Explanation.md#item-park_and_approve>), [`owner_prompt`](<Test Fixtures Explanation.md#item-owner_prompt>), [`get_authorize_without_session`](<Test Fixtures Explanation.md#item-get_authorize_without_session>), [`pairing_next`](<Test Fixtures Explanation.md#item-pairing_next>), [`location_of`](<Test Fixtures Explanation.md#item-location_of>), [`start_pairing`](<Test Fixtures Explanation.md#item-session_required--start_pairing>), [`body_json`](<Test Fixtures Explanation.md#item-body_json>) and [`get_authorize`](<Test Fixtures Explanation.md#item-get_authorize>).
 
-`family_sid` reads, from the store, the browser session a refresh family records:
+### `a_paired_browser_takes_the_fast_path_under_its_own_session_until_it_is_revoked`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/session_required.rs family_sid}}
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/session_required.rs a_paired_browser_takes_the_fast_path_under_its_own_session_until_it_is_revoked}}
 
-## `a_browser_without_a_session_is_sent_to_pairing_even_with_a_standing_grant`
+Relies on [`BrowserSession::is_live`](<../Domain/Browser Session Explanation.md#item-BrowserSession--is_live>), [`RefreshTokenFamily`](<../Domain/Refresh Token Explanation.md#item-RefreshTokenFamily>) and [`session_bounded_scopes`](<../Authority/Delegated Scopes Explanation.md#item-session_bounded_scopes>). Fixtures first used here: [`paired_browser_session_holding`](<Test Fixtures Explanation.md#item-paired_browser_session_holding>), [`limited_request_id`](<Test Fixtures Explanation.md#item-limited_request_id>), [`continue_past_session_shortfall`](<Test Fixtures Explanation.md#item-continue_past_session_shortfall>), [`redeem`](<Test Fixtures Explanation.md#item-session_required--redeem>), [`code_of`](<Test Fixtures Explanation.md#item-session_required--code_of>), [`sid_of`](<Test Fixtures Explanation.md#item-session_required--sid_of>), [`family_sid`](<Test Fixtures Explanation.md#item-family_sid>), [`post_token`](<Test Fixtures Explanation.md#item-session_required--post_token>) and [`store_handle`](<Test Fixtures Explanation.md#item-store_handle>).
 
-**No session, no code, even when a standing grant would cover the request.** The FHIR web UI's request and a hosted app's launched request are both sent to `/oauth/pair`, each with a `next` that is exactly the original request. The Owner's newest pending consent doesn't change, and the pairing page accepts each `next`. The launch is left unspent: the paired browser then makes the same launched request and takes the fast path with it.
+### `the_code_names_the_requesting_browser_s_session_not_the_approver_s`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/session_required.rs a_browser_without_a_session_is_sent_to_pairing_even_with_a_standing_grant}}
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/session_required.rs the_code_names_the_requesting_browser_s_session_not_the_approver_s}}
 
-Relies on the front door of {{#code-link apps/host/wildflower-server/authorization-server-rust/src/http/routes/oauth/authorize.rs handle_authorize_request}}, which redirects before any request is parked or any launch consumed.
+Relies on the [`CodeRequest`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest>)'s `sid` and [`CodeRequest::approve`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--approve>), through [`RequestApprover::approve_for_code`](<../Writers/Request Approver Explanation.md#item-RequestApprover--approve_for_code>). Fixtures first used here: [`signed_in_same_device_session_token`](<Test Fixtures Explanation.md#item-signed_in_same_device_session_token>) and [`get_authorization_status`](<Test Fixtures Explanation.md#item-get_authorization_status>).
 
-## `an_expired_launch_and_an_unknown_one_go_back_to_the_app_saying_why`
+### `an_owner_approval_from_another_browser_is_bounded_by_the_requesting_session`
 
-**A launch that lapsed goes back to the app as `invalid_request`, telling the person to open the app again.** A launch can lapse while the Owner approves the browser's pairing. A launch the server never minted gets the same error with a different reason: it isn't recognized.
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/session_required.rs an_owner_approval_from_another_browser_is_bounded_by_the_requesting_session}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/session_required.rs an_expired_launch_and_an_unknown_one_go_back_to_the_app_saying_why}}
+Relies on [`CodeRequest::acknowledge_session_shortfall`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--acknowledge_session_shortfall>) and [`session_bounded_scopes`](<../Authority/Delegated Scopes Explanation.md#item-session_bounded_scopes>). Fixtures first used here: [`approve_oauth_consent`](<Test Fixtures Explanation.md#item-approve_oauth_consent>).
 
-Relies on [`for_client`](<../Domain/Launch Context Explanation.md#for_client>), [`LAUNCH_CONTEXT_TTL`](<../Domain/Launch Context Explanation.md#launch_context_ttl>) and [`LaunchRefusal`](<../Domain/Launch Context Explanation.md#launchrefusal>).
+### `a_leaked_request_id_collects_nothing`
 
-## `the_code_names_the_requesting_browser_s_session_not_the_approver_s`
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/session_required.rs a_leaked_request_id_collects_nothing}}
 
-**The code belongs to the browser that asked.** The paired browser parks the request, and the Owner approves it from a signed-in browser of their own. The paired browser's status poll collects the code. The access token's `sid` and the refresh family's `sid` both name the paired browser's session, not the Owner's.
+Relies on the [`CodeRequest`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest>)'s `sid`, which [`AuthorizationStatusReader::status`](<../Capabilities/OAuth/Authorization Status Reader Explanation.md#item-AuthorizationStatusReader--status>) compares with the polling browser's. Fixtures first used here: [`paired_browser_session`](<Test Fixtures Explanation.md#item-paired_browser_session>) and [`build_request`](<Test Fixtures Explanation.md#item-build_request>).
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/session_required.rs the_code_names_the_requesting_browser_s_session_not_the_approver_s}}
+### `the_wait_page_reads_the_status_after_the_owner_signs_in_in_the_same_browser`
 
-Relies on the `sid` of the [code request](<../Domain/Authorization Request Explanation.md#the-code-request>) and on [`approve_code`](<../Domain/Authorization Request Explanation.md#approve_code>), through {{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs RequestApprover::approve_for_code}}.
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/session_required.rs the_wait_page_reads_the_status_after_the_owner_signs_in_in_the_same_browser}}
 
-## `an_owner_approval_from_another_browser_is_bounded_by_the_requesting_session`
+Relies on [`BrowserSession::new_same_device_session`](<../Domain/Browser Session Explanation.md#item-BrowserSession--new_same_device_session>) and [`any_request_status_scopes`](<../Capabilities/OAuth/Authorization Status Reader Explanation.md#item-any_request_status_scopes>), the scopes that let a session read a request made in another. Fixtures first used here: [`parked_request_id`](<Test Fixtures Explanation.md#item-parked_request_id>), [`browser_session_cookie`](<Test Fixtures Explanation.md#item-common--browser_session_cookie>), [`browser_session_token`](<Test Fixtures Explanation.md#item-common--browser_session_token>) and [`signed_in_session_token_that_cannot_decide`](<Test Fixtures Explanation.md#item-signed_in_session_token_that_cannot_decide>).
 
-**The Owner approves what the app asked for, but the code carries only what the requesting browser's session also holds.** A browser paired without `patient/Observation.rs` goes on past the limited page to the wait page. The Owner approves all three scopes, and the code redeems without `patient/Observation.rs`. The Owner's own session, which holds everything, then makes the same request and takes the fast path on that grant with all three.
+### `an_expired_launch_and_an_unknown_one_go_back_to_the_app_saying_why`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/session_required.rs an_owner_approval_from_another_browser_is_bounded_by_the_requesting_session}}
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/session_required.rs an_expired_launch_and_an_unknown_one_go_back_to_the_app_saying_why}}
 
-Relies on [`acknowledge_session_shortfall`](<../Domain/Authorization Request Explanation.md#acknowledge_session_shortfall>) and {{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/authority/delegated_scopes.rs session_bounded_scopes}}.
-
-## `a_paired_browser_takes_the_fast_path_under_its_own_session_until_it_is_revoked`
-
-**A standing grant another browser earned doesn't carry a narrower browser past its own bounds, and revoking that browser's session ends what it earned.** The narrow browser stops at the limited page, goes on, and takes the fast path. Its tokens and refresh family name its own session and carry `patient/Patient.rs offline_access`, and a refresh keeps those scopes. Once the session is revoked, the rotated refresh token is `invalid_grant`. The same browser, and a browser with no session, are then sent to pairing.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/session_required.rs a_paired_browser_takes_the_fast_path_under_its_own_session_until_it_is_revoked}}
-
-Relies on [`is_live`](<../Domain/Browser Session Explanation.md#is_live>), the [refresh token family](<../Domain/Refresh Token Explanation.md>) and {{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/authority/delegated_scopes.rs session_bounded_scopes}}.
-
-## `a_leaked_request_id_collects_nothing`
-
-**The status poll answers the browser that parked the request, not whoever holds its id.** Another paired browser, and a browser without a session, get the same `404` and error as an id that doesn't exist. The requesting browser still reads `approved`.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/session_required.rs a_leaked_request_id_collects_nothing}}
-
-Relies on the `sid` of the [code request](<../Domain/Authorization Request Explanation.md#the-code-request>), which {{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/authorization_status_reader.rs AuthorizationStatusReader::status}} compares with the polling browser's.
-
-## `the_wait_page_reads_the_status_after_the_owner_signs_in_in_the_same_browser`
-
-**When the Owner signs in through `/oauth/sign-in` in the browser whose wait page is polling, the poll still answers.** The sign-in hands that browser a new session, with a different `sid`, whose grant can read and update authorization requests. The poll answers it with the approved redirect, and the code still names the session the request was made in. A signed-in session that can read requests but not update them gets the `404` an unknown id gets, and so does no session.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/session_required.rs the_wait_page_reads_the_status_after_the_owner_signs_in_in_the_same_browser}}
-
-Relies on [`new_owner`](<../Domain/Browser Session Explanation.md#new_owner>) and {{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/authorization_status_reader.rs any_request_status_scopes}}, the scopes that let a session read a request made in another.
+Relies on [`LaunchContext::for_client`](<../Domain/Launch Context Explanation.md#item-LaunchContext--for_client>), [`LAUNCH_CONTEXT_TTL`](<../Domain/Launch Context Explanation.md#item-LAUNCH_CONTEXT_TTL>) and [`LaunchRefusal`](<../Domain/Launch Context Explanation.md#item-LaunchRefusal>).

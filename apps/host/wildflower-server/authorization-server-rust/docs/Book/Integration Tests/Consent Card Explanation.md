@@ -2,90 +2,64 @@
 
 {{#covers apps/host/wildflower-server/authorization-server-rust/tests/integration/consent_card.rs}}
 
-When the person at the browser **is** the Owner, there's no one to wait for. `/oauth/authorize` sends a browser signed in as the Owner to the consent card, `/oauth/authorize/{id}/consent`, where the request is decided in place. Any other browser with a session goes to the wait page, and a browser without one goes to pairing.
+When the person at the browser **is** the Owner, there's no one to wait for. `/oauth/authorize` sends a browser signed in as the Owner to the consent card, `/oauth/authorize/{id}/consent`, where the request is decided in place. Any other browser with a session goes to the [Wait Page](<Wait Page Explanation.md>), and a browser without one goes to pairing.
 
-The card decides through the same `/authorization/oauth-consents/{id}` API the host's popup uses, on the browser session's own token as its bearer. In the running server the host's cookie-to-bearer layer presents that token for the card; these tests send it as the bearer themselves.
+The card decides through the same `/authorization/oauth-consents/{id}` API the host's popup uses, on the browser session's own token as its bearer. In the running server the host's cookie-to-bearer layer presents that token for the card; these tests send it as the bearer themselves. Which page a request goes to is recorded on the [`CodeRequest`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest>) as `decidable_in_requesting_browser`, and shown to the host on the [`OwnerPrompt`](<../Domain/Owner Prompt Explanation.md#item-OwnerPrompt>).
 
-Which page a request goes to is recorded on it as `decidable_in_requesting_browser`, on the [code request](<../Domain/Authorization Request Explanation.md#the-code-request>), and shown to the host through [`NewestPendingConsent`](<../Domain/Pending Consent Explanation.md>). Signed-in browsers come from the harness's [`signed_in_owner_session_token`](<../Integration Tests Explanation.md#signed_in_owner_session_token>) and [`signed_in_session_token_that_cannot_decide`](<../Integration Tests Explanation.md#signed_in_session_token_that_cannot_decide>).
+This file's own helpers are on the [Test Fixtures](<Test Fixtures Explanation.md#integrationconsent_card>) page, with the shared ones.
 
-## Helpers
+## `integration::consent_card`
 
-`parked_page` reads the page a parked request's `Location` names (`consent` or `wait`) and the request id before it:
+### `a_browser_signed_in_as_the_owner_goes_to_the_consent_card`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/consent_card.rs parked_page}}
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/consent_card.rs a_browser_signed_in_as_the_owner_goes_to_the_consent_card}}
 
-`parked_on_the_card` signs a browser in as the Owner and parks a request from it, checking it lands on the card:
+Relies on [`BrowserSession::new_same_device_session`](<../Domain/Browser Session Explanation.md#item-BrowserSession--new_same_device_session>) and [`can_decide_consents`](<../HTTP/Browser Session Cookie Explanation.md#item-can_decide_consents>). Fixtures first used here: [`spin_up`](<Test Fixtures Explanation.md#item-spin_up>), [`seed_client_with_redirect`](<Test Fixtures Explanation.md#item-seed_client_with_redirect>), [`signed_in_same_device_session_token`](<Test Fixtures Explanation.md#item-signed_in_same_device_session_token>), [`authorize_with_cookie`](<Test Fixtures Explanation.md#item-authorize_with_cookie>) and [`parked_page`](<Test Fixtures Explanation.md#item-parked_page>).
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/consent_card.rs parked_on_the_card}}
+### `a_browser_without_a_session_goes_to_pairing`
 
-## `a_browser_signed_in_as_the_owner_goes_to_the_consent_card`
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/consent_card.rs a_browser_without_a_session_goes_to_pairing}}
 
-**A browser whose session cookie holds the Owner's session goes to the consent card**, whether the session cookie is alone or among other cookies.
+Relies on [`carried_browser_session`](<../HTTP/Browser Session Cookie Explanation.md#item-carried_browser_session>), which finds no standing session in any of them. Fixtures first used here: [`revocation_store_handle`](<Test Fixtures Explanation.md#item-revocation_store_handle>), [`location_of`](<Test Fixtures Explanation.md#item-location_of>) and [`owner_prompt`](<Test Fixtures Explanation.md#item-owner_prompt>).
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/consent_card.rs a_browser_signed_in_as_the_owner_goes_to_the_consent_card}}
+### `a_browser_session_that_cannot_decide_consents_goes_to_the_wait_page`
 
-Relies on [`new_owner`](<../Domain/Browser Session Explanation.md#new_owner>) and {{#code-link apps/host/wildflower-server/authorization-server-rust/src/http/browser_session_cookie.rs can_decide_consents}}.
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/consent_card.rs a_browser_session_that_cannot_decide_consents_goes_to_the_wait_page}}
 
-## `a_browser_session_that_cannot_decide_consents_goes_to_the_wait_page`
+Relies on [`OwnerPrompt`](<../Domain/Owner Prompt Explanation.md#item-OwnerPrompt>). Fixtures first used here: [`signed_in_session_token_that_cannot_decide`](<Test Fixtures Explanation.md#item-signed_in_session_token_that_cannot_decide>).
 
-**A session that can read requests but not update them can't decide on a card, so its request goes to the wait page and is raised for the Owner.** The newest pending consent names the request, with `decidable_in_requesting_browser: false`.
+### `the_newest_pending_consent_says_whether_its_browser_can_decide_it`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/consent_card.rs a_browser_session_that_cannot_decide_consents_goes_to_the_wait_page}}
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/consent_card.rs the_newest_pending_consent_says_whether_its_browser_can_decide_it}}
 
-Relies on [`NewestPendingConsent`](<../Domain/Pending Consent Explanation.md>).
+Relies on [`OwnerPrompt::for_request`](<../Domain/Owner Prompt Explanation.md#item-OwnerPrompt--for_request>). Fixtures first used here: [`parked_on_the_card`](<Test Fixtures Explanation.md#item-parked_on_the_card>) and [`browser_session_cookie`](<Test Fixtures Explanation.md#item-common--browser_session_cookie>).
 
-## `a_browser_without_a_session_goes_to_pairing`
+### `approving_on_the_owner_s_bearer_sends_the_code_to_the_client_and_settles_the_wait_page`
 
-**Anything short of a standing browser session is no session.** No cookie, an unrelated cookie, a cookie that isn't a token, a token whose subject has been revoked, and a good token under another cookie name all go to the pairing page. Nothing is parked.
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/consent_card.rs approving_on_the_owner_s_bearer_sends_the_code_to_the_client_and_settles_the_wait_page}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/consent_card.rs a_browser_without_a_session_goes_to_pairing}}
+Relies on [`CodeRequest::approve`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--approve>), through [`ConsentDecider::approve_oauth_consent`](<../Capabilities/Access/OAuth Consents Explanation.md#item-ConsentDecider--approve_oauth_consent>). Fixtures first used here: [`decide`](<Test Fixtures Explanation.md#item-consent_card--decide>), [`body_json`](<Test Fixtures Explanation.md#item-body_json>) and [`status_of`](<Test Fixtures Explanation.md#item-status_of>).
 
-Relies on {{#code-link apps/host/wildflower-server/authorization-server-rust/src/http/browser_session_cookie.rs carried_browser_session}}, which finds no standing session in any of them.
+### `a_scope_that_was_not_requested_is_not_granted`
 
-## `the_newest_pending_consent_says_whether_its_browser_can_decide_it`
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/consent_card.rs a_scope_that_was_not_requested_is_not_granted}}
 
-**The host learns whether the requesting browser can decide the request itself**, so it knows whether to interrupt the Owner. A request from the Owner's browser is pending with `decidable_in_requesting_browser: true`. One from the paired browser, which goes to the wait page, is pending with `false`.
+Relies on [`DelegatedScopes::clamp`](<../Authority/Delegated Scopes Explanation.md#item-DelegatedScopes--clamp>), which keeps only ticks the request asked for. Fixtures first used here: [`build_request`](<Test Fixtures Explanation.md#item-build_request>) and [`CODE_VERIFIER`](<Test Fixtures Explanation.md#item-CODE_VERIFIER>).
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/consent_card.rs the_newest_pending_consent_says_whether_its_browser_can_decide_it}}
+### `an_unacknowledged_new_registration_is_refused`
 
-Relies on [`for_request`](<../Domain/Pending Consent Explanation.md#for_request>).
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/consent_card.rs an_unacknowledged_new_registration_is_refused}}
 
-## `approving_on_the_owner_s_bearer_sends_the_code_to_the_client_and_settles_the_wait_page`
+Relies on [`PresentedClientChange::would_change_registration`](<../Domain/Client Explanation.md#item-PresentedClientChange--would_change_registration>), checked by [`ConsentDecider::approve_oauth_consent`](<../Capabilities/Access/OAuth Consents Explanation.md#item-ConsentDecider--approve_oauth_consent>).
 
-**Approving on the card sends the browser to the app's redirect with a code and the app's `state`.** A wait page left open on the same request settles on the same callback.
+### `denying_sends_access_denied_to_the_client_and_settles_the_wait_page`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/consent_card.rs approving_on_the_owner_s_bearer_sends_the_code_to_the_client_and_settles_the_wait_page}}
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/consent_card.rs denying_sends_access_denied_to_the_client_and_settles_the_wait_page}}
 
-Relies on [`approve_code`](<../Domain/Authorization Request Explanation.md#approve_code>), through {{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/access/consents/oauth.rs ConsentDecider::approve_oauth_consent}}.
+Relies on [`CodeRequest::deny`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--deny>).
 
-## `a_scope_that_was_not_requested_is_not_granted`
+### `the_consent_card_is_locked_down_and_uncached`
 
-**An approval can't add scopes the app didn't ask for.** The card never offers one; a hand-made approval that ticks `patient/Condition.rs` is still approved, but the token carries only `patient/Observation.rs`.
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/consent_card.rs the_consent_card_is_locked_down_and_uncached}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/consent_card.rs a_scope_that_was_not_requested_is_not_granted}}
-
-Relies on {{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/authority/delegated_scopes.rs DelegatedScopes::clamp}}, which keeps only ticks the request asked for.
-
-## `an_unacknowledged_new_registration_is_refused`
-
-**An app the server has never seen is approved only once the Owner acknowledges registering it.** `test-app` is registered nowhere here. An approval without `acknowledgedRegistration` is a `409` `RegistrationNotAcknowledged`, and the request stays pending.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/consent_card.rs an_unacknowledged_new_registration_is_refused}}
-
-Relies on [`needs_acknowledgement`](<../Domain/Client Explanation.md#needs_acknowledgement>), checked by {{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/access/consents/oauth.rs ConsentDecider::approve_oauth_consent}}.
-
-## `denying_sends_access_denied_to_the_client_and_settles_the_wait_page`
-
-**Denying on the card sends the browser to the app's redirect with `access_denied`.** A wait page left open on the request settles on the same callback.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/consent_card.rs denying_sends_access_denied_to_the_client_and_settles_the_wait_page}}
-
-Relies on [`deny`](<../Domain/Authorization Request Explanation.md#deny>).
-
-## `the_consent_card_is_locked_down_and_uncached`
-
-**The card is served on the request's own path, as HTML under a strict content security policy, and never cached.** Its scripts, styles, fonts and connections come only from this origin. Its forms may submit only here and to the launcher's origin, since its sign-out form posts here and is redirected on to the launcher. It can't be framed.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/consent_card.rs the_consent_card_is_locked_down_and_uncached}}
-
-The page is served by {{#code-link apps/host/wildflower-server/authorization-server-rust/src/http/routes/oauth/authorization_pages.rs router}}; no domain entity is involved.
+Relies on [`router`](<../HTTP/Routes/Authorization Pages Explanation.md#item-authorization_pages--router>). Fixtures first used here: [`assert_cache_suppressed`](<Test Fixtures Explanation.md#item-assert_cache_suppressed>).

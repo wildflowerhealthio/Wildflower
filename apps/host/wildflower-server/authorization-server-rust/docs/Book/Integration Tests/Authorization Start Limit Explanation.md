@@ -2,134 +2,94 @@
 
 {{#covers apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs}}
 
-Anyone who knows the server's domain can start an authorization request, and every request raised for the Owner pops up on the Owner's device. So the host keeps a limit, the {{#code-link apps/host/wildflower-server/authorization-server-rust/src/ports/authorization_start_gate.rs AuthorizationStartGate}}. **Every start that may bother the Owner spends from the limit, once; a start the limit refuses is `429`, uncached, and parks nothing.**
+Anyone who knows the server's domain can start an authorization request, and every request raised for the Owner pops up on the Owner's device. So the host keeps a limit, its [`AuthorizationStartGate`](<../Assembly/Ports and Adapters Explanation.md#item-AuthorizationStartGate>). **Every start that may bother the Owner spends from the limit once; a start the limit refuses is `429`, uncached, and parks nothing.**
 
-The layer {{#code-link apps/host/wildflower-server/authorization-server-rust/src/http/middleware/authorization_start_limit.rs limit_authorization_starts}} sits on `/oauth/authorize` and `/oauth/device_authorization` only. It asks the gate before the request is parsed, with two exceptions that ask later or never:
+The layer [`limit_authorization_starts`](<../HTTP/Middleware Explanation.md#item-limit_authorization_starts>) sits on `/oauth/authorize` and `/oauth/device_authorization` only. When a start asks depends on what it carries:
 
-| The request carries                                                    | When the gate is asked                                                              |
-| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| A live browser session that can decide consents, at `/oauth/authorize` | Only when the request is to be raised for the Owner, or parked for the limited page |
-| No live browser session, at `/oauth/authorize`                         | Never: the browser is only sent to pairing                                          |
-| Anything else (and every device-authorization start)                   | At once, before parsing                                                             |
+- A live browser session that can decide consents, at `/oauth/authorize`, asks only when its request is to be raised for the Owner ([`CodeRequest::raise_for_owner`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--raise_for_owner>)) or parked for the limited page. One it decides on its own [Consent Card](<Consent Card Explanation.md>) spends nothing, and going on past the limited page ([`CodeRequest::acknowledge_session_shortfall`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--acknowledge_session_shortfall>)) asks nothing more.
+- No live browser session, at `/oauth/authorize`, never asks: the browser is only sent to pairing.
+- Anything else, and every device-authorization start, asks at once, before the request is parsed.
 
-Asking the Owner about a request already parked (`…/ask-owner`) spends from the same limit, when it raises the request. Read [`raise_for_owner`](<../Domain/Authorization Request Explanation.md#raise_for_owner>) and [`acknowledge_session_shortfall`](<../Domain/Authorization Request Explanation.md#acknowledge_session_shortfall>) first.
+Asking the Owner about a request already parked (`…/ask-owner`) spends from the same limit, when it raises the request.
 
-Every test builds its server with [spin_up_with_authorization_start_gate](<../Integration Tests Explanation.md#spin_up_with_authorization_start_gate>).
+This file's own helpers are on the [Test Fixtures](<Test Fixtures Explanation.md#integrationauthorization_start_limit>) page, with the shared ones.
 
-## Helpers
+## `integration::authorization_start_limit`
 
-The scopes the test client registers and asks for:
+### `a_refused_start_is_429_uncached_before_it_is_parsed_on_either_route`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs REQUESTED_SCOPES}}
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs a_refused_start_is_429_uncached_before_it_is_parsed_on_either_route}}
 
-A gate that admits its first `admitted` requests, refuses the rest, and counts how often it is asked:
+Relies on [`limit_authorization_starts`](<../HTTP/Middleware Explanation.md#item-limit_authorization_starts>). Fixtures first used here: [`CountingGate`](<Test Fixtures Explanation.md#item-CountingGate>), [`spin_up_with_authorization_start_gate`](<Test Fixtures Explanation.md#item-spin_up_with_authorization_start_gate>), [`browser_session_cookie`](<Test Fixtures Explanation.md#item-common--browser_session_cookie>), [`send`](<Test Fixtures Explanation.md#item-send>) and [`body_string`](<Test Fixtures Explanation.md#item-body_string>).
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs CountingGate}}
+### `head_authorize_asks_the_gate`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs CountingGate::refusing}}
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs head_authorize_asks_the_gate}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs CountingGate::asked}}
+Relies on [`limit_authorization_starts`](<../HTTP/Middleware Explanation.md#item-limit_authorization_starts>).
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs CountingGate::admit}}
+### `an_admitted_start_is_served`
 
-A request with an optional cookie:
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs an_admitted_start_is_served}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs send}}
+Relies on [`limit_authorization_starts`](<../HTTP/Middleware Explanation.md#item-limit_authorization_starts>).
 
-A browser signed in as the Owner starting a request it decides on its own consent card; asking the Owner about a request; and whether the newest pending request is still decidable in its browser:
+### `a_browser_signed_in_as_the_owner_passes_without_asking_the_gate`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs owner_decided_request}}
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs a_browser_signed_in_as_the_owner_passes_without_asking_the_gate}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs ask_owner}}
+Relies on [`can_decide_consents`](<../HTTP/Browser Session Cookie Explanation.md#item-can_decide_consents>). Fixtures first used here: [`seed_client_with_redirect`](<Test Fixtures Explanation.md#item-seed_client_with_redirect>), [`signed_in_same_device_session_token`](<Test Fixtures Explanation.md#item-signed_in_same_device_session_token>), [`authorize_query`](<Test Fixtures Explanation.md#item-authorize_query>) and [`REQUESTED_SCOPES`](<Test Fixtures Explanation.md#item-authorization_start_limit--REQUESTED_SCOPES>).
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs decidable_in_requesting_browser}}
+### `a_browser_without_a_session_is_sent_to_pairing_without_asking_the_gate`
 
-## `a_refused_start_is_429_uncached_before_it_is_parsed_on_either_route`
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs a_browser_without_a_session_is_sent_to_pairing_without_asking_the_gate}}
 
-**A refused start is `429`, uncached, on either route, before the request is parsed.** Both requests here are malformed; admitted, each would be a `400`.
+Relies on [`carried_browser_session`](<../HTTP/Browser Session Cookie Explanation.md#item-carried_browser_session>). Fixtures first used here: [`location_of`](<Test Fixtures Explanation.md#item-location_of>).
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs a_refused_start_is_429_uncached_before_it_is_parsed_on_either_route}}
+### `a_browser_session_that_cannot_decide_consents_asks_the_gate`
 
-## `head_authorize_asks_the_gate`
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs a_browser_session_that_cannot_decide_consents_asks_the_gate}}
 
-**`HEAD /oauth/authorize` asks the gate like `GET`.**
+Relies on [`can_decide_consents`](<../HTTP/Browser Session Cookie Explanation.md#item-can_decide_consents>). Fixtures first used here: [`signed_in_session_token_that_cannot_decide`](<Test Fixtures Explanation.md#item-signed_in_session_token_that_cannot_decide>).
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs head_authorize_asks_the_gate}}
+### `no_other_route_asks_the_gate`
 
-## `an_admitted_start_is_served`
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs no_other_route_asks_the_gate}}
 
-**An admitted start goes on to the route**, which here answers the malformed request with `400`.
+Relies on [`limit_authorization_starts`](<../HTTP/Middleware Explanation.md#item-limit_authorization_starts>).
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs an_admitted_start_is_served}}
+### `a_deciding_browser_s_request_raised_for_the_owner_asks_the_gate`
 
-## `no_other_route_asks_the_gate`
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs a_deciding_browser_s_request_raised_for_the_owner_asks_the_gate}}
 
-**No other route asks the gate**: the token endpoint, the request and wait pages, and the JWKS are never limited.
+The session holds what the request asks for, so the limited page doesn't apply. Relies on [`CodeRequest::raise_for_owner`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--raise_for_owner>). Fixtures first used here: [`decode_jwt_payload`](<Test Fixtures Explanation.md#item-decode_jwt_payload>), [`mint_browser_session_token`](<Test Fixtures Explanation.md#item-mint_browser_session_token>) and [`owner_prompt`](<Test Fixtures Explanation.md#item-owner_prompt>).
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs no_other_route_asks_the_gate}}
+### `a_deciding_browser_s_request_parked_for_the_limited_page_asks_the_gate`
 
-## `a_browser_without_a_session_is_sent_to_pairing_without_asking_the_gate`
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs a_deciding_browser_s_request_parked_for_the_limited_page_asks_the_gate}}
 
-**A browser with no live session is only sent to pairing, so it doesn't ask the gate.** A flood of them can't spend the allowance a paired browser's requests need. A device authorization without a session still asks.
+Relies on [`CodeRequest::acknowledge_session_shortfall`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--acknowledge_session_shortfall>). Fixtures first used here: [`limited_request_id`](<Test Fixtures Explanation.md#item-limited_request_id>), [`get_authorize`](<Test Fixtures Explanation.md#item-get_authorize>) and [`continue_past_session_shortfall`](<Test Fixtures Explanation.md#item-continue_past_session_shortfall>).
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs a_browser_without_a_session_is_sent_to_pairing_without_asking_the_gate}}
+### `a_continue_whose_start_was_counted_does_not_ask_the_gate_again`
 
-## `a_browser_signed_in_as_the_owner_passes_without_asking_the_gate`
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs a_continue_whose_start_was_counted_does_not_ask_the_gate_again}}
 
-**A request the Owner's browser decides on its own consent card spends nothing**: nobody else is bothered.
+Relies on [`CodeRequest::acknowledge_session_shortfall`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--acknowledge_session_shortfall>). Fixtures first used here: [`paired_browser_session_holding`](<Test Fixtures Explanation.md#item-paired_browser_session_holding>).
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs a_browser_signed_in_as_the_owner_passes_without_asking_the_gate}}
+### `a_device_start_asks_the_gate_whatever_the_browser_session`
 
-## `a_browser_session_that_cannot_decide_consents_asks_the_gate`
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs a_device_start_asks_the_gate_whatever_the_browser_session}}
 
-**A browser whose session can't decide consents asks the gate at once.**
+Relies on [`limit_authorization_starts`](<../HTTP/Middleware Explanation.md#item-limit_authorization_starts>).
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs a_browser_session_that_cannot_decide_consents_asks_the_gate}}
+### `asking_the_owner_is_refused_by_the_limit_and_raises_nothing`
 
-The session comes from [signed_in_session_token_that_cannot_decide](<../Integration Tests Explanation.md#signed_in_session_token_that_cannot_decide>).
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs asking_the_owner_is_refused_by_the_limit_and_raises_nothing}}
 
-## `a_deciding_browser_s_request_raised_for_the_owner_asks_the_gate`
+Relies on [`CodeRequest::raise_for_owner`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--raise_for_owner>). Fixtures first used here: [`owner_decided_request`](<Test Fixtures Explanation.md#item-owner_decided_request>), [`ask_owner`](<Test Fixtures Explanation.md#item-authorization_start_limit--ask_owner>) and [`is_decidable_in_requesting_browser`](<Test Fixtures Explanation.md#item-is_decidable_in_requesting_browser>).
 
-**A browser that can decide consents, but not this request, has it raised for the Owner, and asks the gate then.** Refused, nothing is parked.
+### `asking_the_owner_spends_only_when_it_raises_a_request`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs a_deciding_browser_s_request_raised_for_the_owner_asks_the_gate}}
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs asking_the_owner_spends_only_when_it_raises_a_request}}
 
-The session holds what the request asks for, so the limited page doesn't apply. Relies on [`raise_for_owner`](<../Domain/Authorization Request Explanation.md#raise_for_owner>).
-
-## `a_deciding_browser_s_request_parked_for_the_limited_page_asks_the_gate`
-
-**A deciding browser's request that falls short of its session asks the gate before it parks for the limited page.** Going on past the page raises it for the Owner without asking again. Refused, a request for another app gets `429`.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs a_deciding_browser_s_request_parked_for_the_limited_page_asks_the_gate}}
-
-Relies on [`acknowledge_session_shortfall`](<../Domain/Authorization Request Explanation.md#acknowledge_session_shortfall>), driven by [continue_past_session_shortfall](<../Integration Tests Explanation.md#continue_past_session_shortfall>).
-
-## `a_continue_whose_start_was_counted_does_not_ask_the_gate_again`
-
-**A browser that can't decide consents spent its start at `/oauth/authorize`, so going on past the limited page asks nothing.**
-
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs a_continue_whose_start_was_counted_does_not_ask_the_gate_again}}
-
-Relies on [`acknowledge_session_shortfall`](<../Domain/Authorization Request Explanation.md#acknowledge_session_shortfall>).
-
-## `a_device_start_asks_the_gate_whatever_the_browser_session`
-
-**Every device request is raised for the Owner, so even the Owner's own browser asks the gate to start one.**
-
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs a_device_start_asks_the_gate_whatever_the_browser_session}}
-
-## `asking_the_owner_is_refused_by_the_limit_and_raises_nothing`
-
-**Asking the Owner about a request spends from the limit like a start.** Refused, it is `429` and the request stays decidable in its browser.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs asking_the_owner_is_refused_by_the_limit_and_raises_nothing}}
-
-Relies on [`raise_for_owner`](<../Domain/Authorization Request Explanation.md#raise_for_owner>).
-
-## `asking_the_owner_spends_only_when_it_raises_a_request`
-
-**Asking the Owner spends only when it raises the request.** Asking again about a request already raised spends nothing.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/authorization_start_limit.rs asking_the_owner_spends_only_when_it_raises_a_request}}
-
-Relies on [`raise_for_owner`](<../Domain/Authorization Request Explanation.md#raise_for_owner>).
+Relies on [`CodeRequest::raise_for_owner`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--raise_for_owner>).

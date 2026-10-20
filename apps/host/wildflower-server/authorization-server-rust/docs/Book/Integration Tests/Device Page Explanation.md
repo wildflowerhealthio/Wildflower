@@ -4,48 +4,32 @@
 
 The device page is where a person types, or follows a link with, a device's user code and approves it. `/oauth/device_authorization` points the device's user at it as `verification_uri_complete`: `/oauth/device` on the server's own origin. The page is the same bytes whatever the code: it reads the code from its own URL. It decides the request through the same `/authorization/devices/{userCode}` API the [Device Code](<Device Code Explanation.md>) tests drive, on the bearer of the browser session that opened it.
 
-In production, turning the page's browser session cookie into that bearer is the host's job (`wildflower-server-rust`), not this crate's. So these tests send the browser session's token as the bearer themselves. The session is an Owner sign-in ([`signed_in_owner_session_token`](<../Integration Tests Explanation.md#signed_in_owner_session_token>)); the [Browser Session](<../Domain/Browser Session Explanation.md>) page explains what it holds.
+Turning the page's browser session cookie into that bearer is the host's job (`wildflower-server-rust`), not this crate's, so these tests send the browser session's token as the bearer themselves.
 
-## Helpers
+This file's own helpers are on the [Test Fixtures](<Test Fixtures Explanation.md#integrationdevice_page>) page, with the shared ones.
 
-The codes `/oauth/device_authorization` answers with, and the call that gets them for the test client:
+## `integration::device_page`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/device_page.rs DeviceAuthorization}}
+### `verification_uri_complete_serves_the_device_page_on_the_server_origin`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/device_page.rs start_device_flow}}
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/device_page.rs verification_uri_complete_serves_the_device_page_on_the_server_origin}}
 
-A call on the device-consent API with an optional bearer, and the device's token poll:
+Relies on [`device_page_url_with_code`](<../HTTP/Routes/Authorization Pages Explanation.md#item-device_page_url_with_code>) and [`router_for`](<../HTTP/Routes/Authorization Pages Explanation.md#item-router_for>). Fixtures first used here: [`spin_up`](<Test Fixtures Explanation.md#item-spin_up>), [`seed_test_client`](<Test Fixtures Explanation.md#item-seed_test_client>), [`start_device_flow`](<Test Fixtures Explanation.md#item-start_device_flow>), [`SERVER_ORIGIN`](<Test Fixtures Explanation.md#item-SERVER_ORIGIN>) and [`build_request`](<Test Fixtures Explanation.md#item-build_request>).
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/device_page.rs device_consent_request}}
+### `a_browser_session_approves_the_code_and_the_device_poll_succeeds`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/device_page.rs poll}}
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/device_page.rs a_browser_session_approves_the_code_and_the_device_poll_succeeds}}
 
-## `verification_uri_complete_serves_the_device_page_on_the_server_origin`
+Relies on [`DeviceRequest::approve`](<../Domain/Authorization Request/Polled Requests Explanation.md#item-DeviceRequest--approve>) and [`DeviceRequest::claim`](<../Domain/Authorization Request/Polled Requests Explanation.md#item-DeviceRequest--claim>). Fixtures first used here: [`signed_in_same_device_session_token`](<Test Fixtures Explanation.md#item-signed_in_same_device_session_token>), [`device_consent_request`](<Test Fixtures Explanation.md#item-device_consent_request>), [`body_json`](<Test Fixtures Explanation.md#item-body_json>), [`poll`](<Test Fixtures Explanation.md#item-device_page--poll>) and [`TEST_CLIENT_SCOPE`](<Test Fixtures Explanation.md#item-TEST_CLIENT_SCOPE>).
 
-**The link a device hands its user opens the device page, on the server's own origin.** The link's origin is the server's, and following it serves HTML that is never cached and carries a Content Security Policy.
+### `without_a_session_the_request_is_left_pending`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/device_page.rs verification_uri_complete_serves_the_device_page_on_the_server_origin}}
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/device_page.rs without_a_session_the_request_is_left_pending}}
 
-The link is built by {{#code-link apps/host/wildflower-server/authorization-server-rust/src/http/routes/oauth/authorization_pages.rs device_page_url_with_code}}, and the page served by {{#code-link apps/host/wildflower-server/authorization-server-rust/src/http/routes/oauth/authorization_pages.rs router_for}}.
+Relies on [`require_valid_session`](<../HTTP/Middleware Explanation.md#item-require_valid_session>).
 
-## `a_browser_session_approves_the_code_and_the_device_poll_succeeds`
+### `an_unknown_code_is_not_found_for_the_browser_session`
 
-**A signed-in browser session can read and approve a device's request, and the device's next poll gets its token.** The prompt names the user code, the approval answers `approved`, and the poll returns a token for the approved scope.
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/device_page.rs an_unknown_code_is_not_found_for_the_browser_session}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/device_page.rs a_browser_session_approves_the_code_and_the_device_poll_succeeds}}
-
-Relies on [`approve_device`](<../Domain/Authorization Request Explanation.md#approve_device>) and [`claim`](<../Domain/Authorization Request Explanation.md#claim>).
-
-## `without_a_session_the_request_is_left_pending`
-
-**Without a session, the page can neither read nor decide the request.** Both calls are `401`, and the request is untouched: the device's poll still hears `authorization_pending`.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/device_page.rs without_a_session_the_request_is_left_pending}}
-
-## `an_unknown_code_is_not_found_for_the_browser_session`
-
-**A code that names no pending device request is `404 DeviceConsentNotFound`.** The answer echoes the code back, so the page can say which one it couldn't find.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/tests/integration/device_page.rs an_unknown_code_is_not_found_for_the_browser_session}}
-
-The lookup is {{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/access/consents/device.rs load_pending_request_by_user_code}}.
+Relies on [`load_pending_request_by_user_code`](<../Capabilities/Access/Device Consents Explanation.md#item-load_pending_request_by_user_code>).
