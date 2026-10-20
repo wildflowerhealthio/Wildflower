@@ -103,10 +103,7 @@ impl<'a, T: GrantTx> RefreshFamilyWriter<'a, T> {
                 if let Some(sid) = validated_refresh_token.sid() {
                     self.tx.touch_browser_session_last_seen(sid, now, now)?;
                 }
-                // A code-flow family's grant is a code grant, which this
-                // leaves alone: a code grant is used when it stands in for
-                // the Owner at `/oauth/authorize`.
-                if let Some(grant_id) = validated_refresh_token.grant_id() {
+                if let Some(grant_id) = validated_refresh_token.device_grant_id() {
                     self.tx.stamp_device_grant_used(grant_id, now)?;
                 }
                 Ok(Ok(successor))
@@ -285,9 +282,13 @@ mod tests {
             .tx()
             .create_authorization_code_grant(&code_grant("code-grant", "client"))
             .unwrap();
-        for (family_id, grant_id) in [
-            ("device-family", "device-grant"),
-            ("code-family", "code-grant"),
+        for (family_id, grant_id, authorization_code_hash) in [
+            ("device-family", "device-grant", None),
+            (
+                "code-family",
+                "code-grant",
+                Some(token_storage_hash("code")),
+            ),
         ] {
             store
                 .tx()
@@ -298,7 +299,7 @@ mod tests {
                     patient: None,
                     issued_at,
                     expires_at: issued_at + REFRESH_TOKEN_FAMILY_TTL,
-                    authorization_code_hash: None,
+                    authorization_code_hash,
                     grant_id: Some(grant_id.to_owned()),
                     sid: None,
                 })

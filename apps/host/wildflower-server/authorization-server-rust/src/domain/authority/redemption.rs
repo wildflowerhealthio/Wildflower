@@ -517,10 +517,17 @@ impl ValidatedRefreshToken {
         self.family.sid.as_deref()
     }
 
-    /// The standing grant that earned the family, if one was resolved when
-    /// it started.
-    pub(crate) fn grant_id(&self) -> Option<&str> {
-        self.family.grant_id.as_deref()
+    /// The device grant that earned the family, if the device flow started
+    /// it and a grant was resolved then. A family the code flow started
+    /// records the code it consumed; a device-flow family has no code, so a
+    /// family with no code hash belongs to a device grant. A code grant is
+    /// used when it stands in for the Owner at `/oauth/authorize`, not when
+    /// its family refreshes, so its id is not returned here.
+    pub(crate) fn device_grant_id(&self) -> Option<&str> {
+        match self.family.authorization_code_hash {
+            Some(_) => None,
+            None => self.family.grant_id.as_deref(),
+        }
     }
 
     /// The family this token belongs to.

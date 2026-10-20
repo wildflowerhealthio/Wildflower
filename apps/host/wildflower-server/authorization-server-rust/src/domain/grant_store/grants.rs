@@ -115,8 +115,7 @@ pub trait GrantsTx {
     ) -> Result<(), AuthorizationServerError>;
 
     /// Set the `last_used_at` of the **device** grant `id` to `now`: a
-    /// refresh-token family it earned just rotated. Changes nothing when no
-    /// device grant has that id, as for a code-flow family's grant.
+    /// refresh-token family it earned just rotated.
     ///
     /// # Errors
     ///
