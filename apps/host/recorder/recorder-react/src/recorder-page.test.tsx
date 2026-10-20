@@ -14,7 +14,7 @@ import {
 } from '@wildflowerhealthio/recorder-core-js'
 import { Effect } from 'effect'
 import * as fc from 'fast-check'
-import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import golden from '../../recorder-wire-golden.json' with { type: 'json' }
 import { RecorderPage } from './recorder-page.tsx'
@@ -29,11 +29,40 @@ import { RecorderSenderProvider } from './recorder-sender-provider.tsx'
  * asserted here is only what the user can see and press.
  */
 
+/**
+ * jsdom has no native `<dialog>`: `showModal` and `close` are modelled as the
+ * `open` attribute, and the original descriptors are put back after each test.
+ */
+const dialogMethodDescriptors = (['showModal', 'close'] as const).map(
+  (method) =>
+    [method, Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, method)] as const
+)
+
+/** `HTMLDialogElement.showModal` as jsdom lacks it: the dialog gains `open`. */
+function showModalAsOpen(this: HTMLDialogElement): void {
+  this.setAttribute('open', '')
+}
+
+/** `HTMLDialogElement.close` as jsdom lacks it: the dialog loses `open`, and fires `close`. */
+function closeAsNotOpen(this: HTMLDialogElement): void {
+  this.removeAttribute('open')
+  this.dispatchEvent(new Event('close'))
+}
+
+beforeEach(() => {
+  HTMLDialogElement.prototype.showModal = showModalAsOpen
+  HTMLDialogElement.prototype.close = closeAsNotOpen
+})
+
 // Each test renders its own page; clear the previous one so the role queries
 // (which throw on multiple matches) see one page at a time.
 afterEach(() => {
   cleanup()
   vi.useRealTimers()
+  for (const [method, descriptor] of dialogMethodDescriptors) {
+    if (descriptor === undefined) Reflect.deleteProperty(HTMLDialogElement.prototype, method)
+    else Object.defineProperty(HTMLDialogElement.prototype, method, descriptor)
+  }
 })
 
 describe('RecorderPage', () => {
@@ -338,16 +367,37 @@ describe('RecorderPage', () => {
       expect(screen.queryByLabelText(`New name for ${LIFELABS.name}`)).toBeNull()
     })
 
-    it('should remove a bookmark and show the list without it', async () => {
+    it('should ask before removing a bookmark, and keep it on Cancel', async () => {
       // Arrange
       const harness = renderPage()
-
       await harness.user.click(
         await screen.findByRole('button', { name: `Actions for ${SHOPPERS.name}` })
       )
 
       // Act
       await harness.user.click(screen.getByRole('menuitem', { name: 'Remove' }))
+      const dialog = screen.getByRole('dialog')
+      expect(dialog.textContent).toContain(`Remove the bookmark "${SHOPPERS.name}"?`)
+      await harness.user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+
+      // Assert
+      expect(screen.queryByRole('dialog')).toBeNull()
+      expect(harness.bookmarkCalls.at(-1)?.command).not.toBe(BOOKMARK_REMOVE_COMMAND)
+      expect(screen.getByText(SHOPPERS.name)).toBeDefined()
+    })
+
+    it('should remove a bookmark once confirmed and show the list without it', async () => {
+      // Arrange
+      const harness = renderPage()
+      await harness.user.click(
+        await screen.findByRole('button', { name: `Actions for ${SHOPPERS.name}` })
+      )
+      await harness.user.click(screen.getByRole('menuitem', { name: 'Remove' }))
+
+      // Act
+      await harness.user.click(
+        within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' })
+      )
 
       // Assert
       expect(harness.bookmarkCalls.at(-1)).toEqual({
@@ -357,6 +407,7 @@ describe('RecorderPage', () => {
       await vi.waitFor(() => {
         expect(screen.queryByText(SHOPPERS.name)).toBeNull()
       })
+      expect(screen.queryByRole('dialog')).toBeNull()
       expect(screen.getAllByRole('listitem')).toHaveLength(1)
     })
 

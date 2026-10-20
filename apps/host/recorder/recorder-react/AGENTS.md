@@ -35,7 +35,7 @@ shell that drives it over `RecorderBridge`.
   URL field it lists the bookmarks `byRecency` in a `react-tundraish`
   `ItemList`: each row is a name that fills the URL field, its URL, when it
   was last recorded (`kitchen-sink`'s `formatRelativeTime`), and a `Menu`
-  with Rename and Remove; Bookmark this names a startable URL that
+  with Rename and Remove, which asks first in a `ConfirmDialog`; Bookmark this names a startable URL that
   isn't bookmarked, and Start recording stamps the bookmark at that URL. It
   drives the provider's recorder, so a page that mounts mid-recording shows
   the recording and its URL. `apps/host/host-app` renders it at `/recorder`,
@@ -77,7 +77,7 @@ shell that drives it over `RecorderBridge`.
   platform can't reveal one. Over an in-memory bookmark host: the rows in
   recency order with when each was recorded, a name filling the URL field,
   Bookmark this adding under the entered name and absent for a bookmarked or
-  unstartable URL, Rename and Remove, Start stamping its URL, unreadable
+  unstartable URL, Rename, Remove only once confirmed, Start stamping its URL, unreadable
   bookmarks saying why while recording still works, and a refused add's
   reason in the banner. It renders the page under a `RecorderProvider`.
 - `apps/host/host-app`'s `src/host-root.test.tsx` — a recording kept going

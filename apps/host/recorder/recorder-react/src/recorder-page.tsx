@@ -1,5 +1,6 @@
 import { formatRelativeTime } from '@wildflowerhealthio/kitchen-sink'
 import {
+  ConfirmDialog,
   ErrorBanner,
   FieldDescription,
   PageHeader,
@@ -110,9 +111,45 @@ const lastRecordedText = (bookmark: Bookmark, now: DateTime.DateTime): string =>
   )
 
 /**
+ * Asks before `bookmark` is removed; closed while there is none. A refusal
+ * closes it too, and shows in the page's banner.
+ */
+function BookmarkRemoveDialog({
+  bookmark,
+  pending,
+  onConfirm,
+  onCancel,
+}: {
+  readonly bookmark: Bookmark | undefined
+  /** Whether a bookmark change is waiting on the host. */
+  readonly pending: boolean
+  readonly onConfirm: (bookmark: Bookmark) => void
+  readonly onCancel: () => void
+}): JSX.Element {
+  return (
+    <ConfirmDialog
+      open={bookmark !== undefined}
+      title="Remove Bookmark"
+      confirmLabel="Remove"
+      destructive
+      pending={pending}
+      onConfirm={() => {
+        if (bookmark !== undefined) onConfirm(bookmark)
+      }}
+      onCancel={onCancel}
+    >
+      {Option.fromNullable(bookmark).pipe(
+        Option.map((toRemove) => `Remove the bookmark "${toRemove.name}"?`),
+        Option.getOrNull
+      )}
+    </ConfirmDialog>
+  )
+}
+
+/**
  * The bookmarks, most recently recorded first, or why the host can't give
- * them. A row's name fills the URL field; its menu renames or removes it, and
- * a rename's form shows under the list.
+ * them. A row's name fills the URL field; its menu renames it, with the form
+ * under the list, or removes it once confirmed.
  */
 function BookmarksSection({
   bookmarks,
@@ -128,6 +165,7 @@ function BookmarksSection({
   readonly runChange: (change: BookmarkChange) => Promise<boolean>
 }): JSX.Element {
   const [renamingUrl, setRenamingUrl] = useState<string | null>(null)
+  const [removingUrl, setRemovingUrl] = useState<string | null>(null)
   const now = DateTime.unsafeNow()
   return Match.value(bookmarks.state).pipe(
     Match.tag('Reading', () => (
@@ -167,7 +205,7 @@ function BookmarksSection({
                       destructive: true,
                       disabled: bookmarks.isChanging,
                       onSelect: () => {
-                        void runChange(bookmarks.remove(bookmark.url))
+                        setRemovingUrl(bookmark.url)
                       },
                     },
                   ]}
@@ -194,6 +232,18 @@ function BookmarksSection({
             )),
             Option.getOrNull
           )}
+          <BookmarkRemoveDialog
+            bookmark={read.find((bookmark) => bookmark.url === removingUrl)}
+            pending={bookmarks.isChanging}
+            onConfirm={(bookmark) => {
+              void runChange(bookmarks.remove(bookmark.url)).then(() => {
+                setRemovingUrl(null)
+              })
+            }}
+            onCancel={() => {
+              setRemovingUrl(null)
+            }}
+          />
         </div>
       )
     ),
