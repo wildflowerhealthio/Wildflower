@@ -95,8 +95,8 @@ pub(crate) fn unauthorized(refusal: RequestRefusal) -> Response {
 /// required scope, and
 /// [`InsufficientApproverScope`](AuthorizationServerError::InsufficientApproverScope),
 /// when an approver tries to delegate scopes beyond their own grant. This is the
-/// authorization (not authentication) failure path the resource-scope epic
-/// introduces — the first 403 the authorization server's `/authorization` surface can return.
+/// authorization (not authentication) failure path: the `403` the authorization
+/// server's `/authorization` surface returns.
 /// The wire shape and this constructor live in `scope-capabilities-rust` (the
 /// reusable capability layer), re-exported here so call sites keep importing it
 /// from `errors`.

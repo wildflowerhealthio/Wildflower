@@ -10,7 +10,7 @@
 //! The access token is a stateless JWT that keeps its own short TTL; the client
 //! forgetting it ends the session in that client, so logout also **revokes** the
 //! presented token's `jti` in the shared store, closing the window a leaked copy
-//! could otherwise ride until `exp`. See #269.
+//! could otherwise ride until `exp`.
 
 use std::sync::Arc;
 

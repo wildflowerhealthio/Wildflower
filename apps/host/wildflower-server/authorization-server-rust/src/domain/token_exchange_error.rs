@@ -1,8 +1,10 @@
 //! [`TokenExchangeError`] — the `/oauth/token` failure vocabulary. Each variant
 //! is the *specific* reason, so the rules read as a list; the HTTP layer
 //! collapses the [`InvalidGrant`](TokenExchangeError::InvalidGrant) reasons
-//! onto the generic RFC 6749 §5.2 descriptions (so a response never reveals
-//! which check a code or token failed) and logs the reason for the operator.
+//! onto a few RFC 6749 §5.2 descriptions and logs the reason for the operator:
+//! every code refusal shares one (so a response never reveals which check a
+//! code failed), a device code's are unknown or already redeemed, and a
+//! refresh token's are invalid, expired or revoked.
 
 use chrono::{DateTime, Utc};
 

@@ -110,10 +110,10 @@ impl<S: GrantStore> ConsentDecider<S> {
     /// Approve the authorization-code consent prompt `id`: clamp the Owner's
     /// ticks into a [`DelegatedScopes`] proof (which requires the approver's
     /// approval scopes), issue the code, record the standing grant and, for a
-    /// client trusted on first use, its registration, then republish the
-    /// popup head and return the client callback URL, all in one write scope,
+    /// client trusted on first use, its registration, all in one write scope,
     /// so the code, the grant and the registration land together or not at
-    /// all. An approval that grants nothing is applied as a **deny**, and so is
+    /// all; once it commits, republish the popup head and return the client
+    /// callback URL. An approval that grants nothing is applied as a **deny**, and so is
     /// one for a request whose browser session has ended or whose client was
     /// disabled since it was made.
     ///

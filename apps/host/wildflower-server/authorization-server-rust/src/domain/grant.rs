@@ -47,8 +47,8 @@ pub struct AuthorizationCodeGrant {
     pub scopes: Vec<String>,
     /// When the Owner gave (or last re-confirmed) consent.
     pub granted_at: DateTime<Utc>,
-    /// Last time this grant short-circuited a consent decision; `None` until
-    /// first use.
+    /// A column the grant row carries; nothing stamps it, so every grant
+    /// written reads `None`.
     pub last_used_at: Option<DateTime<Utc>>,
     /// SMART-on-FHIR patient context recorded at approval, carried forward to
     /// future codes/tokens minted under this grant.
@@ -78,8 +78,8 @@ pub struct DeviceGrant {
     pub scopes: Vec<String>,
     /// When the Owner gave (or last re-confirmed) consent.
     pub granted_at: DateTime<Utc>,
-    /// Last time this grant short-circuited a consent decision; `None` until
-    /// first use.
+    /// A column the grant row carries; nothing stamps it, so every grant
+    /// written reads `None`.
     pub last_used_at: Option<DateTime<Utc>>,
     /// SMART-on-FHIR patient context recorded at approval.
     pub patient: Option<String>,

@@ -101,8 +101,10 @@ impl InProcessTokenVerifier {
     /// # Errors
     ///
     /// [`VerifyError::TokenRejected`] or [`VerifyError::Revoked`] for a token
-    /// that doesn't pass; the other variants when a key or revocation store
-    /// can't be read, which fails closed.
+    /// that doesn't pass; the other variants when the key, revocation or
+    /// browser-session store can't be read
+    /// ([`VerifyError::BrowserSessionStoreUnavailable`] for the last), which
+    /// fails closed.
     pub fn verify(&self, token: &str) -> Result<VerifiedClaims, VerifyError> {
         self.verifier.verify(token)
     }

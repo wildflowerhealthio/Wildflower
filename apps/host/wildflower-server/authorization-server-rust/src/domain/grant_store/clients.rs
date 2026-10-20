@@ -5,8 +5,9 @@ use chrono::{DateTime, Utc};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::client::Client;
 
-/// The registered OAuth clients. Every method is one statement on the caller's
-/// [`GrantStore`](super::GrantStore) scope.
+/// The registered OAuth clients. Every method is one primitive on the caller's
+/// [`GrantStore`](super::GrantStore) scope: a single statement, or a few
+/// that land together within that scope.
 pub trait ClientsTx {
     /// Look up a registered client by its `client_id`, or `None` when no client
     /// has this id.
@@ -19,9 +20,10 @@ pub trait ClientsTx {
         -> Result<Option<Client>, AuthorizationServerError>;
 
     /// Insert a client, or update its policy fields if one with the same
-    /// `client_id` already exists (`ON CONFLICT … DO UPDATE`) — used by
-    /// first-boot seeding so a seeded client's definition always matches the
-    /// code, preserving `registered_at` and `disabled_at`.
+    /// `client_id` already exists (`ON CONFLICT … DO UPDATE`), preserving
+    /// `registered_at` and `disabled_at`. Used by the seeding every boot runs,
+    /// so a seeded client's definition always matches the code, and by the
+    /// grant recorder to create or widen a registration trusted on first use.
     ///
     /// # Errors
     ///

@@ -13,12 +13,8 @@
 //!   [`revoke_subject_as_of_now`](wildflowerhealthio_token_revocation::RevocationStore::revoke_subject_as_of_now)),
 //!   invalidating every token that subject holds issued at or before the call —
 //!   including one minted in the current (second-granular) second. `subject` is
-//!   the `sub` claim (today the `client_id`); per-device granularity is future
-//!   work (see #269).
-//!
-//! The revoke-device endpoint the ticket mentions is deferred — it would be a
-//! thin wrapper over the same `subject` mode once a device/session handle is
-//! minted into tokens.
+//!   the `sub` claim (the `client_id`), so revocation is per client, not per
+//!   device.
 
 use std::sync::Arc;
 

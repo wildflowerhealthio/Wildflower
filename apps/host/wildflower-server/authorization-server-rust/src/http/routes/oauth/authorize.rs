@@ -24,9 +24,9 @@ use super::authorization_pages::{
 use super::wait_page::wait_page_location;
 use crate::live_bindings::{LiveCodeAuthorizationStarter, LiveTokenVerifier};
 
-/// `302 Found` redirect. RFC 6749's examples use 302 and the TypeScript
-/// implementation emits 302, so all `/oauth/authorize` redirects use it for
-/// parity — axum's `Redirect` helpers only offer 303/307/308.
+/// `302 Found` redirect. RFC 6749's examples use 302, so all
+/// `/oauth/authorize` redirects use it — axum's `Redirect` helpers only offer
+/// 303/307/308.
 fn found_redirect(location: &str) -> Response {
     (
         StatusCode::FOUND,

@@ -1,8 +1,9 @@
 //! [`BrowserPairing`] — how a browser that isn't the Owner's gets a browser
-//! session: the pairing page (`GET /oauth/pair`) starts a pairing request,
-//! shows its `user_code`, and polls until the Owner decides it at the device
-//! page. Pairing is no OAuth flow: no client redeems it at `/oauth/token`, and
-//! it records no grant and no refresh family. Once the Owner approves, the
+//! session: the pairing page (`GET /oauth/pair`) starts a pairing request
+//! (`POST /oauth/pair/start`), shows its `user_code`, and polls
+//! (`POST /oauth/pair/poll`) until the Owner decides it at the device page.
+//! Pairing is no OAuth flow: no client redeems it at `/oauth/token`, and it
+//! records no grant and no refresh family. Once the Owner approves, the
 //! poll claims the request ([`ClaimedBrowserPairing`]), stores the approved
 //! session it starts, and mints that session's token, which the browser holds
 //! as its browser session cookie — all in the poll's one write scope, so a

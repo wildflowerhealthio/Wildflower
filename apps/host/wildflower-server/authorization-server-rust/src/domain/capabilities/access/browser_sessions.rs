@@ -89,8 +89,9 @@ impl<S: GrantStore> BrowserSessionsRevoker<S> {
     ///
     /// # Errors
     ///
-    /// [`AuthorizationServerError::BrowserSessionNotFound`] when no standing
-    /// session has the `sid` (none ever did, or it is already revoked);
+    /// [`AuthorizationServerError::BrowserSessionNotFound`] when no unrevoked
+    /// session row has the `sid` (none ever did, or it is already revoked; an
+    /// expired session never revoked is still stamped);
     /// [`AuthorizationServerError::Infrastructure`] on a store failure.
     pub(crate) fn revoke(
         &self,

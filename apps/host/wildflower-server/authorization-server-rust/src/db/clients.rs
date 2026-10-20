@@ -89,12 +89,12 @@ impl ClientsTx for SqliteGrantTx<'_> {
     }
 
     /// Insert a client, or update its policy fields if one with the same
-    /// `client_id` already exists. Used by first-boot seeding so a seeded
-    /// client's definition always matches the code, even on a store created by
-    /// an older build. Uses `ON CONFLICT … DO UPDATE`, so it never deletes the
-    /// row and preserves `registered_at` and `disabled_at` — an upgrade keeps
-    /// the original registration time and any admin disable rather than
-    /// resurrecting the client.
+    /// `client_id` already exists. Used by the seeding every boot runs, so a
+    /// seeded client's definition always matches the code, and by the grant
+    /// recorder's trust-on-first-use registration. Uses `ON CONFLICT … DO
+    /// UPDATE`, so it never deletes the row and preserves `registered_at` and
+    /// `disabled_at` — the original registration time and any admin disable
+    /// survive rather than the client being resurrected.
     fn upsert_client(&mut self, client: &Client) -> Result<(), AuthorizationServerError> {
         let conn = &mut *self.conn;
         use diesel::upsert::excluded;

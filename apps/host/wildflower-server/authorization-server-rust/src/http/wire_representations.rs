@@ -80,10 +80,11 @@ impl OAuthError {
     }
 }
 
-/// Body posted by the launcher to approve a **device-code** consent prompt: the
-/// scopes the Owner ticked, plus an optional patient context to bind to the
-/// grant. The device flow sends no `patient` today, so it deserializes to
-/// `None`; the field is kept in anticipation of device-flow patient selection.
+/// Body the device page's consent card posts to
+/// `POST /authorization/devices/{userCode}/approve` to approve a device-code
+/// prompt or a browser pairing: the scopes the Owner ticked, plus an optional
+/// patient context to bind to the grant. The card pins a device grant to all
+/// patients, so it sends no `patient` and the field deserializes to `None`.
 ///
 /// The code flow posts its own
 /// `ApproveOAuthConsentBody` instead — only that surface can show a

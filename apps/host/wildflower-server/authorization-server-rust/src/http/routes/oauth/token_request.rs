@@ -1,5 +1,5 @@
-//! The shared request extractor for the token-style endpoints (`/oauth/token`
-//! and `/oauth/device_authorization`). It ends by **authenticating the client**,
+//! The shared request extractor for the token-style endpoints (`/oauth/token`,
+//! `/oauth/device_authorization` and `/oauth/revoke`). It ends by **authenticating the client**,
 //! so a handler receives an [`AuthenticatedClient`] proof rather than raw
 //! credentials — it cannot act for a client whose secret was never checked.
 

@@ -115,7 +115,8 @@ pub(crate) enum AuthorizeNextStep {
     },
     /// The browser's session holds less than the request asks for: the
     /// request is parked for that browser's limited page, which says so and
-    /// goes on only when the browser does. Nothing is issued, spent or
+    /// goes on only when the browser does. The start limit has admitted it and
+    /// its launch, if any, is consumed; no code is issued and nothing is
     /// raised for the Owner yet.
     ConfirmSessionShortfall { request_id: String },
 }
@@ -1050,7 +1051,7 @@ mod tests {
         ));
     }
 
-    /// Without a signing key nothing is parked_request: the endpoint refuses up front.
+    /// Without a signing key nothing is parked: the endpoint refuses up front.
     #[test]
     fn no_signing_key_refuses_before_parking() {
         let store = FakeGrantStore::default();

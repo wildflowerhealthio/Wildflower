@@ -105,8 +105,8 @@ mod tests {
     use super::*;
 
     /// Clients using `client_secret_post` keep their credentials in the form
-    /// body; the grant enum no longer parses them, so it must tolerate the
-    /// extra fields rather than reject the request.
+    /// body; the grant enum doesn't parse them, so it must tolerate the extra
+    /// fields rather than reject the request.
     #[test]
     fn token_payload_tolerates_unparsed_client_credential_fields() {
         let payload: TokenPayload = serde_urlencoded::from_str(

@@ -79,8 +79,8 @@ pub mod launch_context;
 // codes) — a pure domain vocabulary lifted out of the OAuth route tree so the
 // error model can name it without reaching into `http`.
 pub mod oauth_error_code;
-// The `/oauth/authorize` failures rendered as a local page rather than a
-// redirect; the HTML lives in `http::errors`.
+// Why `/oauth/authorize` refused a request: the body of a local page, or the
+// `error_description` on a trusted redirect; the HTML lives in `http::errors`.
 pub mod oauth_error_kind;
 // The one-time codes the base signs a browser in as the Owner with, kept in
 // memory as hashes, and where a sign-in may send the browser next.

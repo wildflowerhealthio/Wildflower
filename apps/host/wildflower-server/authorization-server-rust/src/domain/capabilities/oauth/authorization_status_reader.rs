@@ -48,8 +48,8 @@ impl PollingBrowserSession {
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum AuthorizationStatusView {
     Pending,
-    /// Denied: the client callback, which carries `error=access_denied` so the
-    /// wait page can complete the flow.
+    /// Denied: the request's `redirect_uri` and `state`, from which the route
+    /// builds the client callback carrying `error=access_denied`.
     Denied {
         redirect_uri: Url,
         client_state: String,

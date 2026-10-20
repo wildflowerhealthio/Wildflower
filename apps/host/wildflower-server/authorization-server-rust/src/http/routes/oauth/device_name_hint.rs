@@ -1,10 +1,10 @@
-//! Best-effort human-facing device name inferred from a device-code client's
-//! `User-Agent`, used only when the client didn't name itself (RFC 8628's
-//! `device_name` extension is absent). A browser-shaped UA becomes e.g.
-//! `"Chrome on macOS"`; an unrecognized UA (the many non-browser device-code
-//! clients — CLIs, TV apps, bare HTTP libraries) yields `None`, so the caller
-//! falls back to the client name rather than surfacing a raw UA string as the
-//! device name.
+//! Best-effort human-facing device name inferred from a `User-Agent`: a
+//! device-code client's, used only when the client didn't name itself (RFC
+//! 8628's `device_name` extension is absent), and a browser's at pairing start,
+//! naming the browser. A browser-shaped UA becomes e.g. `"Chrome on macOS"`;
+//! an unrecognized UA (the many non-browser device-code clients — CLIs, TV
+//! apps, bare HTTP libraries) yields `None`, so the caller falls back to its
+//! default name rather than surfacing a raw UA string.
 //!
 //! Deliberately a tiny substring heuristic, not a full UA database: the
 //! device-code surface rarely carries a rich browser UA, so a dependency-heavy

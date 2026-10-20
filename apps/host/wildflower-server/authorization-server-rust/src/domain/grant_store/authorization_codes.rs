@@ -6,8 +6,9 @@ use chrono::{DateTime, Utc};
 use crate::domain::authorization_code::IssuedAuthorizationCode;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 
-/// The issued authorization codes. Every method is one statement on the caller's
-/// [`GrantStore`](super::GrantStore) scope.
+/// The issued authorization codes. Every method is one primitive on the caller's
+/// [`GrantStore`](super::GrantStore) scope: a single statement, or a few
+/// that land together within that scope.
 pub trait AuthorizationCodesTx {
     /// Atomically read-and-delete the authorization `code` (`DELETE …
     /// RETURNING`), returning the row exactly once or `None` to any racer —

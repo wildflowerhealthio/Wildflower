@@ -15,10 +15,8 @@ use crate::GrantStore;
 /// capability holds.
 impl OwnerApproval for AuthorizationServerState {
     /// Recompute the newest pending consent from the store and publish it on
-    /// its watch sender. Call after every transition that may change it (`/oauth/device_authorization` insert,
-    /// `/oauth/authorize` insert, `/authorization/oauth-consents/{id}/approve`,
-    /// `/authorization/oauth-consents/{id}/deny`, `/authorization/devices/{userCode}/approve`,
-    /// `/authorization/devices/{userCode}/deny`).
+    /// its watch sender. Call after every transition that may change it (see
+    /// [`OwnerApproval`]).
     ///
     /// The DB read happens *inside* `send_if_modified`, so the watch
     /// sender's internal lock serialises the read+publish pair across

@@ -32,8 +32,8 @@ pub enum AuthorizationStatus {
     Denied {
         /// Client callback URL carrying `error=access_denied`, an
         /// `error_description` and `state` for code-flow requests (RFC 6749
-        /// §4.1.2.1) so the wait page can complete the flow. Absent for
-        /// device-flow denials, which have no client `redirect_uri`.
+        /// §4.1.2.1) so the wait page can complete the flow. Always set: only
+        /// code-flow requests are polled here.
         #[serde(skip_serializing_if = "Option::is_none")]
         redirect: Option<String>,
     },

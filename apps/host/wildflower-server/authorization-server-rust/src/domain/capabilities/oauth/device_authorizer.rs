@@ -185,7 +185,7 @@ mod tests {
         authenticated_public_client(store, client("app", &["patient/*.rs", "openid"]))
     }
 
-    /// A request inside the allowlist (by coverage, not spelling) is parked_request as
+    /// A request inside the allowlist (by coverage, not spelling) is parked as
     /// a pending device request under its user code and the popup is raised.
     #[test]
     fn start_parks_a_pending_request_and_raises_the_popup() {
@@ -237,7 +237,7 @@ mod tests {
     }
 
     /// A scope outside the allowlist refuses the whole request before anything
-    /// is parked_request.
+    /// is parked.
     #[test]
     fn start_refuses_a_scope_outside_the_allowlist() {
         let store = FakeGrantStore::default();

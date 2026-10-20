@@ -74,7 +74,8 @@ impl<S: GrantStore> TokenVerifier<S> {
     }
 
     /// Verify `token`'s signature, `iss` and `aud` against the keys in `tx`,
-    /// and refuse it when the browser session its `sid` names is revoked.
+    /// and refuse it when the browser session its `sid` names is revoked or
+    /// has no row.
     fn verify_signed_and_session_live(
         &self,
         tx: &mut (impl SigningKeysTx + BrowserSessionsTx),

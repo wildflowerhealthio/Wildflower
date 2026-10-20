@@ -9,8 +9,9 @@ use crate::domain::authorization_request::{
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::pending_consent::NewestPendingConsent;
 
-/// The authorization requests the Owner decides. Every method is one statement on the caller's
-/// [`GrantStore`](super::GrantStore) scope.
+/// The authorization requests the Owner decides. Every method is one primitive on the caller's
+/// [`GrantStore`](super::GrantStore) scope: a single statement, or a few
+/// that land together within that scope.
 pub trait AuthorizationRequestsTx {
     /// Load an authorization request by its primary id (the `device_code` for
     /// device-flow, otherwise an internal UUID), or `None` when absent.

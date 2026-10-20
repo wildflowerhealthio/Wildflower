@@ -1,5 +1,5 @@
-//! Client credential resolution for the token and device-authorization
-//! endpoints.
+//! Client credential resolution for the token, device-authorization and
+//! revocation endpoints.
 //!
 //! RFC 6749 §2.3.1 requires the authorization server to support HTTP Basic
 //! authentication for clients issued a password (`client_secret_basic`), and

@@ -20,9 +20,9 @@ use crate::domain::GrantStore;
 /// A request whose client is disabled is not a pending consent: its consent
 /// prompt answers not found, so the host is never asked about it (a client
 /// with no row, trusted on first use, stays a candidate). The store's
-/// `newest_pending_consent`, `ConsentKey::is_pending_in` and raising a
-/// prompt for the Owner all apply this rule through
-/// `client_is_disabled`.
+/// `newest_pending_consent` applies it in its query, filtering on the
+/// left-joined client's `disabled_at`; `ConsentKey::is_pending_in` and
+/// raising a prompt for the Owner apply it through `client_is_disabled`.
 ///
 /// Discriminated because the flows share no lookup key, nor what asks: each
 /// variant carries the key its consent surface already fetches by, and the

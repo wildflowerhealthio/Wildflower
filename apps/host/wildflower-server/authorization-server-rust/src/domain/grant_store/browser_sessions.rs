@@ -6,8 +6,9 @@ use chrono::{DateTime, Utc};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::browser_session::BrowserSession;
 
-/// The browser sessions the server has signed in. Every method is one statement on the caller's
-/// [`GrantStore`](super::GrantStore) scope.
+/// The browser sessions the server has signed in. Every method is one primitive on the caller's
+/// [`GrantStore`](super::GrantStore) scope: a single statement, or a few
+/// that land together within that scope.
 pub trait BrowserSessionsTx {
     /// Persist a freshly started browser session.
     ///
@@ -67,7 +68,8 @@ pub trait BrowserSessionsTx {
 
     /// Move the browser session `sid`'s `last_seen_at` to `seen_at`, unless
     /// it was last seen after `seen_before`, returning `true` iff it
-    /// moved. A `sid` with no row moves nothing.
+    /// moved. A `sid` with no row moves nothing. Moved when the session's
+    /// cookie is accepted and by a refresh-token rotation under the session.
     ///
     /// # Errors
     ///

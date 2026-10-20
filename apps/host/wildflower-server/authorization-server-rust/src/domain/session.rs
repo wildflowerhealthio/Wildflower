@@ -1,5 +1,5 @@
-//! Owner **session** operations — today just the logout token revoke, lifted
-//! out of the logout handler so the best-effort denylist decision is a pure,
+//! Owner **session** operations: the logout token revoke, kept out of the
+//! logout handler so the best-effort denylist decision is a pure,
 //! testable domain operation over the [`Revocation`](crate::ports::Revocation)
 //! port (no real revocation store in the way).
 
@@ -14,7 +14,7 @@ use crate::ports::Revocation;
 /// token, so this only recovers the trusted `jti` + `exp` to denylist; any store
 /// hiccup (already revoked, transient failure) must never fail the logout — the
 /// client has already forgotten the token — so a failure is logged and
-/// swallowed rather than returned. See #269.
+/// swallowed rather than returned.
 pub(crate) fn revoke_session_token(
     revoker: &(impl Revocation + ?Sized),
     jti: &str,

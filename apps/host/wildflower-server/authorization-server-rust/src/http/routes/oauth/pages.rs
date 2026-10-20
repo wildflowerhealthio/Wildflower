@@ -1,6 +1,7 @@
 //! What the authorization server's browser pages share: the
 //! [wait page](super::wait_page) and the [authorization
-//! pages](super::authorization_pages) (the consent card). Each is served on the
+//! pages](super::authorization_pages) (the consent card, the limited page, the
+//! device page and the pairing page). Each is served on the
 //! server's origin, under the same security headers, and is reached at a path beside `/oauth/authorize` that
 //! names the pending request.
 

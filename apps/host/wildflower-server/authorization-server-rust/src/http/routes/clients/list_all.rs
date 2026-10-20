@@ -11,8 +11,8 @@ use crate::live_bindings::LiveClientsReader;
 
 /// A registered OAuth client as the Owner's "Trusted apps" list reads it. Every
 /// column of the `clients` row **except `secret_hash`**, which never leaves the
-/// server, plus `essential` — whether this is the host app's client or the
-/// browser-session client, which can't be disabled.
+/// server, and `registration_source`, plus `essential` — whether this is the
+/// host app's client or the browser-session client, which can't be disabled.
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ClientBody {

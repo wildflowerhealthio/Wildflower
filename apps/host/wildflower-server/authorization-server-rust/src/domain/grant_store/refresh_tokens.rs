@@ -6,8 +6,9 @@ use chrono::{DateTime, Utc};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 
-/// The refresh-token families and their tokens. Every method is one statement on the caller's
-/// [`GrantStore`](super::GrantStore) scope.
+/// The refresh-token families and their tokens. Every method is one primitive on the caller's
+/// [`GrantStore`](super::GrantStore) scope: a single statement, or a few
+/// that land together within that scope.
 pub trait RefreshTokensTx {
     /// Persist a new refresh-token family **row only** — a single-table insert.
     /// Pairing it with its first token in the same scope (so a family never

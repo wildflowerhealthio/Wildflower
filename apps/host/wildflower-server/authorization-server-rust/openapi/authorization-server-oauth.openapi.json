@@ -10,7 +10,8 @@
         "tags": [
           "Discovery"
         ],
-        "summary": "`GET /.well-known/jwks.json` — serve the active public signing keys.",
+        "summary": "`GET /.well-known/jwks.json` — serve every stored signing key's public half.",
+        "description": "Active and rotated-out verify-only keys alike.",
         "operationId": "handle_jwks_request",
         "responses": {
           "200": {
@@ -718,7 +719,7 @@
                   "string",
                   "null"
                 ],
-                "description": "Client callback URL carrying `error=access_denied`, an\n`error_description` and `state` for code-flow requests (RFC 6749\n§4.1.2.1) so the wait page can complete the flow. Absent for\ndevice-flow denials, which have no client `redirect_uri`."
+                "description": "Client callback URL carrying `error=access_denied`, an\n`error_description` and `state` for code-flow requests (RFC 6749\n§4.1.2.1) so the wait page can complete the flow. Always set: only\ncode-flow requests are polled here."
               },
               "status": {
                 "type": "string",
@@ -899,7 +900,7 @@
       },
       "ClientBody": {
         "type": "object",
-        "description": "A registered OAuth client as the Owner's \"Trusted apps\" list reads it. Every\ncolumn of the `clients` row **except `secret_hash`**, which never leaves the\nserver, plus `essential` — whether this is the host app's client or the\nbrowser-session client, which can't be disabled.",
+        "description": "A registered OAuth client as the Owner's \"Trusted apps\" list reads it. Every\ncolumn of the `clients` row **except `secret_hash`**, which never leaves the\nserver, and `registration_source`, plus `essential` — whether this is the\nhost app's client or the browser-session client, which can't be disabled.",
         "required": [
           "clientId",
           "name",

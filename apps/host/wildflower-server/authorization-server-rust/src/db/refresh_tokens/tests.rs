@@ -116,7 +116,7 @@ fn unknown_hash_neither_stamps_nor_exists() {
 // whose family does not exist is rejected at insert time instead of
 // becoming an orphan that later reads as "not found" (so a genuine replay
 // of such a token would fail to revoke anything). The store surfaces it as
-// the opaque Backend whose text names the constraint.
+// an `Infrastructure` error whose source text names the constraint.
 #[test]
 fn insert_refresh_token_rejects_orphan_without_family() {
     let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");

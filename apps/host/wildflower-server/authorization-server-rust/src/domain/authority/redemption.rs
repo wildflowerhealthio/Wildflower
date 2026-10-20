@@ -258,9 +258,10 @@ impl ConsumedDeviceRequest {
     /// ([`ExpiredToken`](TokenExchangeError::ExpiredToken),
     /// [`AuthorizationPending`](TokenExchangeError::AuthorizationPending),
     /// [`AccessDenied`](TokenExchangeError::AccessDenied),
-    /// [`SlowDown`](TokenExchangeError::SlowDown)), and
-    /// [`TokenExchangeError::InvalidGrant`] for an unknown or already-claimed
-    /// request.
+    /// [`SlowDown`](TokenExchangeError::SlowDown)), with an already-claimed
+    /// request answering `ExpiredToken`;
+    /// [`TokenExchangeError::InvalidGrant`] for an unknown request, or one
+    /// whose guarded claim loses a race to a concurrent poll.
     ///
     /// # Errors
     ///
@@ -675,8 +676,7 @@ mod tests {
     }
 
     /// Each binding refuses with its own reason: wrong client, wrong redirect,
-    /// expired, bad verifier. Every refusal consumed the code (redemption is
-    /// atomic and first), so none of them can be retried into a token.
+    /// expired, bad verifier, each on a freshly issued code.
     #[test]
     fn a_code_is_refused_for_each_broken_binding() {
         let store = FakeGrantStore::default();

@@ -4,9 +4,10 @@
 //!   [`read`](GrantStore::read) scope (autocommit) for an operation that only
 //!   reads, a [`write`](GrantStore::write) scope (`BEGIN IMMEDIATE`) for one
 //!   that writes.
-//! - [`GrantTx`] is what a scope hands out: every single-statement primitive
-//!   the domain needs, one trait per table it touches ([`ClientsTx`],
-//!   [`SigningKeysTx`], [`AuthorizationRequestsTx`], [`AuthorizationCodesTx`],
+//! - [`GrantTx`] is what a scope hands out: every primitive the domain needs
+//!   (one statement, or a few that land together in the scope), one trait per
+//!   table it touches ([`ClientsTx`], [`SigningKeysTx`],
+//!   [`AuthorizationRequestsTx`], [`AuthorizationCodesTx`],
 //!   [`LaunchContextsTx`], [`BrowserSessionsTx`], [`RefreshTokensTx`],
 //!   [`GrantsTx`]), bundled. A primitive reports absence and conflict through
 //!   its return type (`Option`, `bool`) and fails only with the opaque
@@ -18,8 +19,8 @@
 //! side effect: republishing the newest pending consent, and writing to
 //! another store (the revocation store's epochs). A side effect inside the
 //! scope would run before the commit: a republish reads the store on another
-//! pooled connection, which in WAL would still see the rows as they stood
-//! before this scope. Signing a token is not a side effect — it is pure
+//! pooled connection, which can't see this scope's uncommitted writes and
+//! would read the rows as they stood before it. Signing a token is not a side effect — it is pure
 //! computation over the key the scope loaded — so it runs inside the scope,
 //! and a signing failure rolls the scope back.
 //!

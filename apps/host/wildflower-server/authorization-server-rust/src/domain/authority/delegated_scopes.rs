@@ -135,7 +135,7 @@ impl ApprovableScopes {
     }
 
     /// Everything the approver holding `approver_grant` may delegate on this
-    /// prompt, for its card's ticks to start from: each requested scope and
+    /// prompt, which the pairing card's ticks start from: each requested scope and
     /// each of the approver's own scopes the prompt may grant, less any held
     /// access ([`is_held_access`]) the approver does not cover. Approving it
     /// untouched passes [`DelegatedScopes::clamp`]'s approver check, so a

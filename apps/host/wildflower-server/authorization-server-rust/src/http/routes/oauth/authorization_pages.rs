@@ -102,8 +102,8 @@ fn sign_out_form_targets(launcher_base: &LauncherBase) -> String {
     )
 }
 
-/// The `Location` `/oauth/authorize` sends a browser signed in as the Owner to
-/// for pending request `request_id`: the consent card, beside the endpoint.
+/// The `Location` `/oauth/authorize` sends a browser whose session can decide
+/// pending request `request_id` to: the consent card, beside the endpoint.
 pub(crate) fn consent_page_location(request_id: &str) -> String {
     request_page_location(request_id, "consent")
 }

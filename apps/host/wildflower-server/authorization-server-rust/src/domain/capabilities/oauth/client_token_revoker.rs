@@ -55,8 +55,10 @@ impl<S: GrantStore> ClientTokenRevoker<S> {
     /// # Errors
     ///
     /// [`AuthorizationServerError::Infrastructure`] when the refresh-token,
-    /// signing-key or revocation store can't be read or written. Nothing about
-    /// the token itself is an error.
+    /// signing-key or revocation store can't be read or written, or when an
+    /// access token can't be verified for want of a usable key (no signing
+    /// keys stored, or a key's material unreadable). Nothing about the token
+    /// itself is an error.
     pub(crate) fn revoke(
         &self,
         authenticated_client: &AuthenticatedClient,

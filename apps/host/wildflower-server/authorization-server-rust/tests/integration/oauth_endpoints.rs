@@ -90,8 +90,9 @@ async fn authorize_unregistered_redirect_parks_and_keeps_the_redirect_untrusted(
     );
 }
 
-/// A disabled client is rejected on every endpoint, verdict or no verdict — the
-/// one client-level rejection trust-on-first-use does not relax.
+/// A disabled client, even one registered by trust on first use, is rejected at
+/// `/oauth/authorize` with the local "Disabled client" page — the one
+/// client-level rejection trust-on-first-use does not relax.
 #[tokio::test]
 async fn authorize_disabled_client_is_still_rejected() {
     let (g, _owner_token, db) = spin_up();
@@ -569,8 +570,8 @@ async fn authorize_consumes_a_smart_launch_once() {
 }
 
 /// A launch minted for any client is consumed by the first client to present
-/// it at `/oauth/authorize`; a replay renders the local page that asks for a
-/// new launch.
+/// it at `/oauth/authorize`; a replay redirects to the client's callback with
+/// `invalid_request`, "This launch was already used."
 #[tokio::test]
 async fn authorize_consumes_a_launch_for_any_client_once() {
     let (g, _owner_token, db) = spin_up();

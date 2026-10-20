@@ -134,7 +134,8 @@ impl RefreshTokensTx for SqliteGrantTx<'_> {
 
     /// End a token family by pulling its `expires_at` back to `now`, and
     /// stamp its still-live token consumed at the same instant so no row in
-    /// a dead family looks live. Used by reuse detection. Rows are kept (not
+    /// a dead family looks live. Used by reuse detection and by
+    /// `ClientTokenRevoker` when a client revokes its own refresh token. Rows are kept (not
     /// deleted) so the lineage stays auditable and replayed tokens still
     /// resolve to their dead family. The `consumed_at IS NULL` guard keeps
     /// genuine consumption stamps intact.

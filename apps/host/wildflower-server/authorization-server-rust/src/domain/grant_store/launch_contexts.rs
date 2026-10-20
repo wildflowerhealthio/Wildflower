@@ -6,8 +6,9 @@ use chrono::{DateTime, Utc};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::launch_context::LaunchContext;
 
-/// The SMART App Launch contexts. Every method is one statement on the caller's
-/// [`GrantStore`](super::GrantStore) scope.
+/// The SMART App Launch contexts. Every method is one primitive on the caller's
+/// [`GrantStore`](super::GrantStore) scope: a single statement, or a few
+/// that land together within that scope.
 pub trait LaunchContextsTx {
     /// Persist a freshly minted SMART App Launch context.
     ///

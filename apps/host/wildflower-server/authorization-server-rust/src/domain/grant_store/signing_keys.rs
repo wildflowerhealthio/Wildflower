@@ -4,8 +4,9 @@
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::signing_key::SigningKey;
 
-/// The keys tokens are signed and verified with. Every method is one statement on the caller's
-/// [`GrantStore`](super::GrantStore) scope.
+/// The keys tokens are signed and verified with. Every method is one primitive on the caller's
+/// [`GrantStore`](super::GrantStore) scope: a single statement, or a few
+/// that land together within that scope.
 pub trait SigningKeysTx {
     /// Load every signing key, active keys first then by `kid`.
     ///

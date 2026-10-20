@@ -26,8 +26,9 @@
 //!   Most capabilities are this flavour.
 //! - **Data-dependent** — `impl Capability for …` directly: the required scope
 //!   depends on *which* resource a method targets, so the extractor's static gate
-//!   is empty ("authenticated only") and [`build`](Capability::build) stores the
-//!   caller's [`Grant`] for the methods to re-check per call. A direct
+//!   requires only what every method needs (possibly nothing, "authenticated
+//!   only") and [`build`](Capability::build) stores the caller's [`Grant`] for
+//!   the methods to re-check per call. A direct
 //!   `Capability` impl that neither declares scopes nor stores the grant is a
 //!   bug — that's what `FixedScopeCapability` is for.
 //! - **Authenticated-only** — `impl AuthenticatedCapability for …`, acquired

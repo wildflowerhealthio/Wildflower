@@ -173,10 +173,12 @@ mod tests {
     use crate::domain::authorization_server_error::AuthorizationServerError;
     use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
 
-    /// The grant-revoke cascade (delete the grant + expire the client's
-    /// refresh-token families in one transaction), inlined so the db test drives
-    /// the real adapter directly rather than reaching up into a domain capability.
-    /// Mirrors `GrantsRevoker::revoke`'s write scope.
+    /// A test-only revoke cascade over the store primitives: deletes the grant
+    /// of either kind and expires the client's refresh-token families in one
+    /// write scope, then answers `GrantNotFound` when no grant row was
+    /// deleted. The families are expired even on that miss, and no revocation
+    /// epoch is bumped, so it is a fixture for these db tests, not
+    /// `GrantsRevoker::revoke`.
     fn revoke_grant(
         store: &SqliteGrantStore,
         grant_id: &str,

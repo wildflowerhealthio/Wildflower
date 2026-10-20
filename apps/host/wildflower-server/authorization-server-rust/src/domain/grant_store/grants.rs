@@ -6,8 +6,9 @@ use url::Url;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
 
-/// The standing grants. Every method is one statement on the caller's
-/// [`GrantStore`](super::GrantStore) scope.
+/// The standing grants. Every method is one primitive on the caller's
+/// [`GrantStore`](super::GrantStore) scope: a single statement, or a few
+/// that land together within that scope.
 pub trait GrantsTx {
     /// All grants in `granted_at` order — the cross-kind read off the `grants`
     /// view backing the launcher's access index.

@@ -13,7 +13,9 @@ pub struct Jwks {
     pub keys: Vec<PublicJwk>,
 }
 
-/// `GET /.well-known/jwks.json` — serve the active public signing keys.
+/// `GET /.well-known/jwks.json` — serve every stored signing key's public half.
+///
+/// Active and rotated-out verify-only keys alike.
 #[utoipa::path(
     get,
     tag = "Discovery",

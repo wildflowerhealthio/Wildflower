@@ -28,8 +28,9 @@ pub(crate) fn build_client_redirect_url(
     url.to_string()
 }
 
-/// The `error_description` for the host app's request for scopes outside its
-/// registration (`invalid_scope`).
+/// The `error_description` for a request, from a client with a fixed
+/// (server-defined) registration, for scopes outside that registration
+/// (`invalid_scope`).
 pub(crate) const SCOPES_NOT_REGISTERED_DESCRIPTION: &str =
     "The app asked for access it isn't registered for.";
 

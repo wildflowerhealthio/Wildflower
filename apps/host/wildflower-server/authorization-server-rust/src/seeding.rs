@@ -3,7 +3,7 @@
 //! on every boot — the signing key is inserted only when none exists (never
 //! rotated), and the two clients are *ensured* (re-applied as an upsert) so
 //! their definitions always match the host's granted scopes, correcting any
-//! drift in a store created by an older build.
+//! drift in the stored rows.
 //!
 //! The bundled SMART sample-app clients (growth-chart, medication-viewer →
 //! `my_web_app`, PRECISE-HBR) are seeded in SQL instead — migration
@@ -120,9 +120,8 @@ fn ensure_some_active_signing_key(
 /// `tauri-shared-config.json`; see [`crate::default_host_app_client_scopes`] /
 /// [`crate::default_wildflower_host_app_client_id`]), and the browser-session
 /// client the Owner's scopes ([`crate::OWNER_SCOPES`]), the most any browser
-/// session may hold. This corrects a store
-/// seeded by an older build (registration time and any admin disable are
-/// preserved).
+/// session may hold. This corrects stored rows that have drifted
+/// (registration time and any admin disable are preserved).
 ///
 /// Both are public with no redirect URIs. The host app's client is allowed
 /// every grant type; the browser-session client none, since its tokens are

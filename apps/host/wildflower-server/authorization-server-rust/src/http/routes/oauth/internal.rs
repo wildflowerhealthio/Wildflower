@@ -48,7 +48,7 @@ impl IntoResponse for OAuthErrorResponse {
     }
 }
 
-/// Error half of the token / device-authorization endpoints' `Result`-returning
+/// Error half of the token / device-authorization / revocation endpoints' `Result`-returning
 /// handlers (the OAuth-surface analogue of the Owner `/authorization` surface's
 /// [`AuthorizationServerError`](crate::domain::authorization_server_error::AuthorizationServerError)). Every
 /// variant renders the matching RFC 6749 §5.2 response, cache-suppressed per
@@ -114,10 +114,12 @@ impl From<crate::domain::authorization_server_error::AuthorizationServerError> f
 
 /// Render the exchange flows' failure vocabulary onto RFC 6749 §5.2 / RFC 8628
 /// §3.5. The [`InvalidGrant`](TokenExchangeError::InvalidGrant) reasons collapse
-/// onto one generic description per grant type — distinguishing "wrong client"
-/// from "wrong redirect_uri" from "expired" from "bad verifier" would leak facts
-/// about a code that may belong to another client — and the specific reason is
-/// logged (it carries no secrets) so the operator can still tell them apart.
+/// onto a few descriptions: one for every code refusal — distinguishing "wrong
+/// client" from "wrong redirect_uri" from "expired" from "bad verifier" would
+/// leak facts about a code that may belong to another client — two for a device
+/// code (unknown, already redeemed) and three for a refresh token (invalid,
+/// expired, revoked). The specific reason is logged (it carries no secrets) so
+/// the operator can still tell them apart.
 impl From<TokenExchangeError> for TokenError {
     fn from(error: TokenExchangeError) -> Self {
         match error {

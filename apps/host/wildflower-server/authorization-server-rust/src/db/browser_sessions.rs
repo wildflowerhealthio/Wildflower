@@ -132,7 +132,8 @@ impl BrowserSessionsTx for SqliteGrantTx<'_> {
     /// Move the browser session `sid`'s `last_seen_at` to `seen_at`, unless it was
     /// last seen after `seen_before`, returning `true` iff it moved. The
     /// guard keeps the column from moving backwards, and from moving more than
-    /// once inside a window that ends at `seen_at`.
+    /// once inside a window that ends at `seen_at`. Moved by the cookie-use
+    /// recorder and by a refresh-token rotation under the session.
     fn touch_browser_session_last_seen(
         &mut self,
         sid: &str,

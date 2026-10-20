@@ -1,5 +1,6 @@
-//! Pure cryptographic mechanisms with no product knowledge — PKCE,
-//! RSA/JWK key material, and device-flow user codes. This module depends
+//! Pure cryptographic mechanisms with no product knowledge — PKCE, the
+//! [`PublicJwk`](public_jwk::PublicJwk) wire struct, random tokens and their
+//! storage hash, client secrets, and device-flow user codes. This module depends
 //! on nothing else in the crate; domain policy (token claims, mint/verify
 //! rules) lives in [`crate::domain::token`]. Constant-time comparison is
 //! delegated to the `subtle` crate at call sites.

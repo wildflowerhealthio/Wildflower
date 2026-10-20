@@ -9,9 +9,9 @@ pub mod crypto_util;
 pub mod db;
 pub mod domain;
 pub mod http;
-// Host/HTTP-seam dependency-inversion traits the domain actions call out through
-// (device-consent republish, session-token revoke); the
-// concrete impls are wired onto `Arc<AuthorizationServerState>` in `http::state`. Mirrors
+// Host/HTTP-seam dependency-inversion traits the domain capabilities call out
+// through (pending-consent republish, token revocation, the start gate); the
+// concrete impls live in `adapters`, on `AuthorizationServerState`. Mirrors
 // apps-rust.
 pub(crate) mod ports;
 pub(crate) mod seeding;
@@ -20,8 +20,8 @@ pub(crate) mod adapters;
 
 // The shared runtime state + per-resource capability bindings. At the crate root
 // (not under `http`) so the `domain/` capabilities can be built from it without
-// `domain/` depending on `crate::http`; the struct is axum-free (the one
-// axum-touching seam impl lives in `http::state`).
+// `domain/` depending on `crate::http`; the struct is axum-free (its port impls
+// live in `adapters`, and `http::state` re-exports it).
 pub(crate) mod live_bindings;
 
 use std::sync::Arc;
@@ -56,14 +56,11 @@ pub use seeding::seed_dev_app_clients;
 pub use domain::pending_consent::{ConsentKey, NewestPendingConsent};
 pub use domain::{GrantStore, GrantTx};
 
-// Re-exported so the host can name the pool type at the `setup_authorization_server`
-// call site without a direct diesel dependency; the canonical home is
-// persistence-rust (apps and request-log re-export it the same way).
 /// The admin scopes the `/authorization` surface enforces — the registry meant to
 /// couple *enforced* (the scope-gated capability extractors) with *grantable*
-/// (the vocabulary the consent surfaces will offer). Re-exported for the host
-/// and the resource-authz epic's consent UI; nothing consumes it yet — its
-/// tests pin the set until then. See `domain::capabilities`.
+/// (the vocabulary a consent surface offers). Re-exported for the host;
+/// nothing outside this crate consumes it, and its tests pin the set. See
+/// `domain::capabilities`.
 pub use domain::capabilities::grantable_admin_scopes;
 pub use http::{
     authorization_server_auth_middleware, browser_session_clearing_set_cookie,
@@ -77,6 +74,9 @@ pub use live_bindings::{
 // The host's say over how fast authorization requests are started (see
 // `setup_authorization_server`).
 pub use ports::{AdmitEveryAuthorizationStart, AuthorizationStartGate};
+// Re-exported so the host can name the pool type at the `setup_authorization_server`
+// call site without a direct diesel dependency; the canonical home is
+// persistence-rust (apps and request-log re-export it the same way).
 pub use wildflowerhealthio_persistence::DieselPool;
 
 /// `client_id` of the Wildflower host app's OAuth client, seeded at bootstrap
@@ -106,8 +106,7 @@ pub const BROWSER_SESSION_CLIENT_ID: &str = "cb9bbe139845cae9654b7909d60d274f";
 /// (`system/*.cruds`) **and** full Wildflower-resource access
 /// (`wildflower/*.cruds`). An Owner token covers *every* one of these, so it
 /// covers every per-resource `/authorization/*` scope the scope-gated extractors
-/// require — the fail-closed owner default. (Replaced the bespoke
-/// `wildflower/admin` scope.)
+/// require — the fail-closed owner default.
 pub const WILDFLOWER_WIDEST_SCOPES: &[Scope] = &[
     Scope::FhirResource(FhirResourceScope {
         context: ContextLevel::System,
