@@ -2,77 +2,46 @@
 
 {{#covers apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/same_device_sign_in.rs}}
 
-The Owner's own browser doesn't pair. The base app, running on the same device as the server, mints a one-time [sign-in code](<../../Domain/Same Device Sign In Codes Explanation.md>) in-process and opens `GET /oauth/sign-in?code=…&next=…` in a browser. **Only the base can mint a code, so redeeming one proves the browser is on the Owner's device.** The sign-in starts an Owner [browser session](<../../Domain/Browser Session Explanation.md#new_owner>) holding the Owner's scopes, hands the browser that session's token for its `__Host-browser_session` cookie, and sends it on to `next`.
+The Owner's own browser doesn't pair. The base app, running on the same device as the server, mints a one-time [sign-in code](<../../Domain/Same Device Sign In Codes Explanation.md>) in-process and opens `GET /oauth/sign-in?code=…&next=…` in a browser. **Only the base can mint a code, so redeeming one proves the browser is on the Owner's device.** The sign-in starts a same-device [browser session](<../../Domain/Browser Session Explanation.md>) holding the Owner's scopes, hands the browser that session's token for its cookie, and sends it on to `next`.
 
-The codes live in memory, not in the store, and redeeming one takes it out for good. So the order of the checks matters: **everything that can refuse a sign-in without the code's fault runs before the code is touched**, and a refused `next` or a disabled client leaves the code redeemable.
+The codes live in memory, not in the store, and redeeming one takes it out for good, even when the write scope later rolls back. So **everything that can refuse a sign-in without the code's fault runs before the code is touched**, and a refused `next` or a disabled client leaves the code redeemable. A failure after the code is taken spends it: if the session can't be stored or the token can't be minted, no session remains, and signing in again takes a new code.
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/same_device_sign_in.rs SameDeviceSignIn}}
+The redemption is the [`RedeemedSameDeviceSignInCode`](<../../Authority/Same Device Sign In Explanation.md>) proof; the [browser session writer](<../../Writers/Browser Session Writer Explanation.md>) stores the session it carries, and the [access token minter](<../../Writers/Access Token Minter Explanation.md>) signs its token.
 
-It holds the store, the outstanding codes, the places a sign-in may send a browser on to, the server's origin (the token's `iss` and `aud`), and the Owner's grant. `new` builds it from those handles, lifted from the state.
+The tests sign in over the [sign-in fixtures](<../Test Fixtures Explanation.md#same-device-sign-in>).
 
-{{#covered apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/same_device_sign_in.rs SameDeviceSignIn::new}}
+## `domain::capabilities::oauth::same_device_sign_in`
 
-## `OWNER_SESSION_TTL`
+### `SAME_DEVICE_SESSION_TTL`
 
-**An Owner session lasts a working day**, eight hours. The session and its token end together; after that the base signs the browser in again.
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/same_device_sign_in.rs SAME_DEVICE_SESSION_TTL}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/same_device_sign_in.rs OWNER_SESSION_TTL}}
+### `SignedIn`
 
-## Test fixtures
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/same_device_sign_in.rs SignedIn}}
 
-`sign_in_over` builds the capability over a store and a set of codes, with the Owner's grant as `system/*.cruds wildflower/*.cruds`. `sign_in_with_a_code` adds an active signing key, the seeded browser-session client and one outstanding code, `code-1`, minted at the given instant, and returns the key so a test can verify the token.
+### `SameDeviceSignInError`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/same_device_sign_in.rs tests::sign_in_over}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/same_device_sign_in.rs SameDeviceSignInError}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/same_device_sign_in.rs tests::sign_in_with_a_code}}
+### `SignInRefusal`
 
-## `sign_in`
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/same_device_sign_in.rs SignInRefusal}}
 
-1. **`next` must be one of the allowed places**: a path on this server, or a page under the hosted launcher, the Authorization app, or the launcher and Authorization app the host opens for this server. Anything else is refused before any scope opens.
-2. A **write** scope opens. **A disabled browser-session client signs nobody in**, since every browser session's token is issued to it. It is an essential client the Owner can't disable, so only a row disabled out of band is; its row is seeded at boot, so a missing one is a store error.
-3. The code is redeemed for the [`RedeemedSameDeviceSignInCode`](<../../Authority/Same Device Sign In Explanation.md#redeem>) proof. An unknown, spent or expired code is refused, the three alike. The proof carries a new Owner session holding the Owner's grant, lasting eight hours.
-4. The [session writer](<../../Writers/Browser Session Writer Explanation.md#start_owner_session>) stores the session, and the [minter](<../../Writers/Access Token Minter Explanation.md#mint>) signs its token for the browser-session client, naming the session, with the same eight hours. Both land in the one scope.
+### `SameDeviceSignIn`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/same_device_sign_in.rs SameDeviceSignIn::sign_in}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/same_device_sign_in.rs SameDeviceSignIn}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/same_device_sign_in.rs browser_session_client_is_disabled}}
+#### `new`
 
-A sign-in yields the token and where the browser goes next:
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/same_device_sign_in.rs SameDeviceSignIn::new}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/same_device_sign_in.rs SignedIn}}
+#### `sign_in`
 
-A refusal is rendered as a local page, with no redirect:
+Where a sign-in may go next is the [sign-in destinations](<../../Domain/Same Device Sign In Codes Explanation.md#where-a-sign-in-may-send-the-browser>).
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/same_device_sign_in.rs SignInRefusal}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/same_device_sign_in.rs SameDeviceSignIn::sign_in tests="tests::a_code_signs_the_owner_in_for_eight_hours tests::a_code_signs_in_once tests::an_expired_or_unknown_code_signs_nobody_in tests::a_refused_next_leaves_the_code_redeemable tests::a_disabled_browser_session_client_signs_nobody_in_and_leaves_the_code_redeemable tests::a_missing_browser_session_client_is_a_store_error"}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/same_device_sign_in.rs SameDeviceSignInError}}
+### `is_browser_session_client_disabled`
 
-**A failure after the code is taken spends it.** If the session can't be stored, or the token can't be minted, the scope rolls back and no session remains, but the code is already out of memory: signing in again takes a new one. A store failure reading the browser-session client comes before the code, so it leaves the code redeemable.
-
-### What it looks like
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/same_device_sign_in.rs tests::a_code_signs_the_owner_in_for_eight_hours}}
-
-A good code and `next` of `/` sign in: the redirect is `/`, and the token, which this server accepts, is issued to the browser-session client, carries the Owner's scopes, and lives eight hours.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/same_device_sign_in.rs tests::a_code_signs_in_once}}
-
-The same code a second time is `CodeNotRedeemable`.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/same_device_sign_in.rs tests::an_expired_or_unknown_code_signs_nobody_in}}
-
-A code never minted, and `code-1` presented at the instant its TTL runs out, are both `CodeNotRedeemable`.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/same_device_sign_in.rs tests::a_refused_next_leaves_the_code_redeemable}}
-
-A `next` on another origin is `RedirectNotAllowed`, and the same code then signs in with `/`.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/same_device_sign_in.rs tests::a_disabled_browser_session_client_signs_nobody_in_and_leaves_the_code_redeemable}}
-
-With the browser-session client disabled the sign-in is `BrowserSessionClientDisabled`; once it is enabled again the same code signs in.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/same_device_sign_in.rs tests::a_missing_browser_session_client_is_a_store_error}}
-
-Over a store without the browser-session client's row, the sign-in is a `Store` error naming the missing client, not a sign-in.
-
-Exercised end to end by the [Same-Device Sign-In](<../../Integration Tests/Same Device Sign In Explanation.md>) tests, among them [`the_cookie_holds_an_eight_hour_owner_token`](<../../Integration Tests/Same Device Sign In Explanation.md#the_cookie_holds_an_eight_hour_owner_token>), [`a_next_anywhere_else_is_refused_and_leaves_the_code_redeemable`](<../../Integration Tests/Same Device Sign In Explanation.md#a_next_anywhere_else_is_refused_and_leaves_the_code_redeemable>) and [`a_disabled_browser_session_client_signs_nobody_in_until_re_enabled`](<../../Integration Tests/Same Device Sign In Explanation.md#a_disabled_browser_session_client_signs_nobody_in_until_re_enabled>), and by [`a_sign_in_starts_an_owner_session_its_token_names`](<../../Integration Tests/Browser Sessions Explanation.md#a_sign_in_starts_an_owner_session_its_token_names>).
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/same_device_sign_in.rs is_browser_session_client_disabled}}
