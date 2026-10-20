@@ -196,6 +196,32 @@ impl Permission {
         }
     }
 
+    /// The interactions in `self` that none of the `held` permissions grants
+    /// between them, or `None` when together they grant every one. Each held
+    /// permission counts as far as [`contains`](Permission::contains) would let
+    /// it: a letter bag toward any request, a v1 word only toward a word
+    /// request, so `r` and `s` held apart grant all of `read`, but `read` held
+    /// grants nothing of `rs`. What is left is spelled as a letter bag (`read`
+    /// against a held `r` leaves `s`), since a word rarely spells it; when the
+    /// held permissions grant nothing of `self`, it is `self` as spelled.
+    pub(in crate::scope) fn not_granted_by(
+        self,
+        held: impl IntoIterator<Item = Permission>,
+    ) -> Option<Self> {
+        let granted_bits = held
+            .into_iter()
+            .filter(|held| !held.is_word_form() || self.is_word_form())
+            .fold(0, |bits, held| bits | held.bits());
+        let left_bits = self.bits() & !granted_bits;
+        if left_bits == 0 {
+            None
+        } else if left_bits == self.bits() {
+            Some(self)
+        } else {
+            Some(Permission(PermissionRepr::InteractionSet(left_bits)))
+        }
+    }
+
     /// The SMART v1 word spelling `bits` exactly, or `None` when no word does.
     /// Total over every union [`union`](Permission::union) can reach, since the
     /// words' bit sets are closed under union.
@@ -449,6 +475,44 @@ mod tests {
                 assert!(b.contains(intersection), "{a} ∩ {b} = {intersection}");
             }
         }
+    }
+
+    /// Held permissions grant a request between them, each counting only as
+    /// far as `contains` lets it, and what none grants is left as letters.
+    #[test]
+    fn not_granted_by_unions_the_held_permissions_by_the_contains_rule() {
+        let segment = |perms: &str| Permission::parse_segment(perms).unwrap();
+        assert_eq!(
+            segment("rs").not_granted_by([segment("r"), segment("s")]),
+            None
+        );
+        assert_eq!(
+            segment("rs").not_granted_by([segment("cud"), segment("r")]),
+            Some(segment("s"))
+        );
+        assert_eq!(segment("rs").not_granted_by([]), Some(segment("rs")));
+        // Letters held apart grant a word request; what they leave is letters.
+        assert_eq!(
+            segment("read").not_granted_by([segment("r"), segment("s")]),
+            None
+        );
+        assert_eq!(
+            segment("read").not_granted_by([segment("r")]),
+            Some(segment("s"))
+        );
+        assert_eq!(
+            segment("*").not_granted_by([segment("read"), segment("write")]),
+            None
+        );
+        // A held word grants no letter request, so it leaves it whole.
+        assert_eq!(
+            segment("rs").not_granted_by([segment("read")]),
+            Some(segment("rs"))
+        );
+        assert_eq!(
+            segment("rs").not_granted_by([segment("read"), segment("r")]),
+            Some(segment("s"))
+        );
     }
 
     #[test]

@@ -545,17 +545,19 @@ The page `/oauth/authorize` sends a browser to when its
 [browser session](#browser-session) holds less than the request asks for:
 `/oauth/authorize/{id}/limited`, on the server's own origin, from the same
 **authorization pages** bundle and with the same headers as the
-[consent card](#consent-card). The request's **session shortfall** is every
-requested scope a code issued in that session would not carry in full, by the
-rule that bounds every code (see [Browser session](#browser-session)): those
-the session holds none of, and those it narrows to the part the session
-holds, each named as the request spells it. `/oauth/authorize` works it out
-once the request is validated and its launch consumed, before the
-[fast path](#grant), the start limit and the Owner. When it isn't empty, it
-parks the request as `awaiting_limited_page` and sends the
-browser here, unless that browser session has pressed Continue for the same
-app before. A same-device session, holding `OWNER_SCOPES`, falls short of nothing
-and never sees the page.
+[consent card](#consent-card). The request's **session shortfall** is what
+a code issued in that session would not carry of the requested scopes, by the
+rule that bounds every code (see [Browser session](#browser-session)): each
+requested scope the session holds none of, as the request spells it, and of
+each it narrows, the part the session lacks. A session holding
+`system/*.cuds` and `system/Patient.r` lacks `system/MedicationRequest.r` of
+`system/MedicationRequest.rs`, and nothing of `system/Patient.rs`.
+`/oauth/authorize` works it out once the request is validated and its launch
+consumed, before the [fast path](#grant), the start limit and the Owner.
+When it isn't empty, it parks the request as `awaiting_limited_page` and sends the browser here,
+unless that browser session has pressed Continue for the same app before. A
+same-device session, holding `OWNER_SCOPES`, falls short of nothing and never
+sees the page.
 
 The page reads `GET /oauth/authorize/{id}/session-shortfall` (the app's name
 and the scopes the session lacks) and says, for example, "This browser isn't
@@ -847,22 +849,23 @@ that made its request allow: the approval's scopes (the Owner's ticks, or the
 standing grant's coverage on the [fast path](#grant)), each resource scope
 narrowed to the part the session holds, and `wildflower/launch` only if the
 session holds it. A resource scope the session covers stays as approved;
-coverage is the rule an approver is held to: either SMART spelling, and
-`system/*` covering `patient/*` and `user/*`. One the session covers only in
-part narrows to its intersection with each session scope, so an approved
-`system/*.cruds` in a session holding `system/Patient.cruds` gives the code
-`system/Patient.cruds`, and an approved `patient/Observation.rs` in a session
-holding `patient/Observation.r` gives it `patient/Observation.r`. One the
-session holds none of is dropped. Identity and session markers (`openid`,
-`fhirUser`, `launch`, `launch/patient`, `offline_access`) pass through. The
-request and the standing grant record the approval as made; the code's tokens
-and refresh family take the code's scopes. So a browser paired without
-`patient/Observation.rs` earns no app a code for it, whoever approves, and a
-same-device session, holding `OWNER_SCOPES`, bounds nothing. A browser whose session
-falls short of a request is told so before anything is issued or asked, on the
-[limited page](#limited-page). Launching an app from Home needs only
-`wildflower/launch`: what the app may then do is bounded here, at its own
-`/oauth/authorize`.
+coverage is the rule an approver is held to: either SMART spelling, `system/*`
+covering `patient/*` and `user/*`, and the session's scopes taken together, so
+`system/*.cuds` and `system/Patient.r` cover `system/Patient.rs`. One the
+session covers only in part narrows to its intersection with each session
+scope, so an approved `system/*.cruds` in a session holding
+`system/Patient.cruds` gives the code `system/Patient.cruds`, and an approved
+`patient/Observation.rs` in a session holding `patient/Observation.r` gives it
+`patient/Observation.r`. One the session holds none of is dropped. Identity
+and session markers (`openid`, `fhirUser`, `launch`, `launch/patient`,
+`offline_access`) pass through. The request and the standing grant record the
+approval as made; the code's tokens and refresh family take the code's scopes.
+So a browser paired without `patient/Observation.rs` earns no app a code for
+it, whoever approves, and a same-device session, holding `OWNER_SCOPES`,
+bounds nothing. A browser whose session falls short of a request is told so before
+anything is issued or asked, on the [limited page](#limited-page). Launching
+an app from Home needs only `wildflower/launch`: what the app may then do is
+bounded here, at its own `/oauth/authorize`.
 
 **Last seen** (`last_seen_at`) is when the session was last in use. Signing in,
 or pairing, sets it, and two uses move it: the host's cookie→bearer layer accepting the

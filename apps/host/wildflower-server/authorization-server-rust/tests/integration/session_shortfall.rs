@@ -474,3 +474,32 @@ async fn an_expired_request_on_the_limited_page_goes_no_further() {
     let res = get_authorization_status(&g.router, &session_token, "lapsed").await;
     assert_eq!(body_json(res.into_body()).await["status"], "error");
 }
+
+/// A session's scopes cover a requested scope between them, and the limited
+/// page names only what none of them holds: a browser holding
+/// `system/*.cuds` and `system/Patient.r` lacks just `r` of the Medications
+/// app's `system/Patient.rs system/MedicationRequest.rs`.
+#[tokio::test]
+async fn the_limited_page_names_only_the_part_the_session_s_scopes_together_lack() {
+    let (g, _owner_token, db) = spin_up();
+    seed_client_with_redirect(
+        &db,
+        "test-app",
+        "https://app.example/cb",
+        &["system/Patient.rs", "system/MedicationRequest.rs"],
+    );
+    let (_, session_token) =
+        paired_browser_session_holding(&db, &["system/*.cuds", "system/Patient.r"]);
+    let query = authorize_query(
+        "test-app",
+        "system%2FPatient.rs%20system%2FMedicationRequest.rs",
+    );
+
+    let request_id = limited_request_id(&get_authorize(&g.router, &session_token, &query).await);
+    let res = get_session_shortfall(&g.router, &session_token, &request_id).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(
+        body_json(res.into_body()).await["missingScopes"],
+        serde_json::json!(["system/MedicationRequest.r"])
+    );
+}

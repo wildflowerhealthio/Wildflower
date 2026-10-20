@@ -82,6 +82,25 @@ impl WildflowerResourceScope {
         self.resource.covers(&other.resource) && self.permission.contains(other.permission)
     }
 
+    /// The part of `self` (a requested scope) none of the `held` scopes grants
+    /// between them, or `None` when together they grant all of it: each held
+    /// scope whose resource covers `self`'s counts for its interactions.
+    pub(in crate::scope) fn uncovered_part<'a>(
+        &self,
+        held: impl IntoIterator<Item = &'a WildflowerResourceScope>,
+    ) -> Option<Self> {
+        let held_permissions = held
+            .into_iter()
+            .filter(|held| held.resource.covers(&self.resource))
+            .map(|held| held.permission);
+        self.permission
+            .not_granted_by(held_permissions)
+            .map(|permission| WildflowerResourceScope {
+                permission,
+                ..*self
+            })
+    }
+
     /// The broadest scope both `self` and `other` cover, or `None` when they
     /// share no access: the named resource under a wildcard, and the shared
     /// interactions.
