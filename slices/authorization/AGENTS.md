@@ -17,5 +17,5 @@ The slice is the TypeScript half every signing-in app shares: `authorization-cor
 - [authorization-core README](./authorization-core/README.md) — tables, OAuth routes, page-path drift test
 - [Jargon Explanation](./docs/Jargon%20Explanation.md) — the domain vocabulary
 - [Auth Token Storage Explanation](./docs/Auth%20Token%20Storage%20Explanation.md) — token storage policies
-- [Retention Explanation](../../apps/host/wildflower-server/authorization-server-rust/docs/Retention%20Explanation.md) — the 90-day / 7-day windows, why they are measured past `expires_at`, and the startup+daily sweep that applies them
+- [Retention](../../apps/host/wildflower-server/authorization-server-rust/docs/Book/Domain/Retention%20Explanation.md) — the 90-day / 7-day / one-day windows, why they are measured past `expires_at`, and the startup+daily sweep that applies them
 - [Bridge Explanation](../../docs/Messaging/Bridge%20Explanation.md) — the webview ↔ host bridge this slice speaks over

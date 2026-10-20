@@ -2,100 +2,70 @@
 
 {{#covers apps/host/wildflower-server/authorization-server-rust/src/domain/retention.rs}}
 
-Four of the server's tables only grow. Refresh-token families keep their rows after they die, so a replayed token still resolves to its dead family. A request nobody decided stays `pending` forever. A code nobody came back for is never redeemed. A revoked browser session keeps its row, so tokens minted under it can still be refused by its `sid`. None of these stale rows is live: every read already checks expiry. They only take up the Owner's disk.
+Why the server deletes rows on a timer, why the windows are 90 days, 7 days and a day, and why they are measured past each row's expiry rather than from now.
 
-**Retention deletes a row once it has been dead for its window, measured past the row's own `expires_at`** (for a browser session, its `expires_at` or `revoked_at`, whichever is first). The clock starts when the row stopped being usable, so nothing live is ever in range, and a dead row stays readable for a while as a record of what happened. [Retention Explanation](<../../Retention Explanation.md>) gives the reasoning behind each window.
+## Tables that only grow
 
-The server sweeps once at startup and then daily, through {{#code-link apps/host/wildflower-server/authorization-server-rust/src/lib.rs spawn_retention_sweep}}, and logs what a sweep reclaimed whenever it reclaimed anything.
+Most of the server's tables limit themselves: a grant is deleted when it is revoked, and an authorization code when it is redeemed. These don't:
 
-## Test fixtures
+- **`refresh_token_families` and `refresh_tokens`.** Rotation adds a link per generation, and ending a [family](<Refresh Token Explanation.md>) deliberately deletes nothing: it pulls the family's deadline back and spends its live link. Keeping the rows is what lets a replayed link still resolve to its dead family, which is how reuse detection knows to end a lineage rather than shrug at an unknown hash.
+- **`code_authorization_requests` and `user_code_requests`.** Nothing moves a request the person simply walked away from. It stays pending, and expired, for good.
+- **`authorization_codes`.** Redemption deletes a code, so only the codes nobody came back for pile up.
+- **`browser_sessions`.** Every sign-in and pairing adds a row, and revoking a [session](<Browser Session Explanation.md>) stamps it rather than deleting it, so the tokens it minted can still be refused by its `sid`.
 
-Every fixture is placed relative to one fixed instant, so the tests read no clock.
+None of this is a correctness problem: every read already checks expiry, so a stale row is inert. It is a storage problem, and on a single-user desktop app the storage is the Owner's disk.
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/retention.rs tests::now}}
+## A window past expiry, not now
 
-`family` builds a refresh-token family with a given deadline, and `token` one token in a family.
+The plain sweep would be "delete where `expires_at` is before now". It reclaims the most, and it is the wrong tool, because these rows have audit value after they stop being usable. "Why did that device lose access on Tuesday?" is answerable only while Tuesday's lineage is still there. A cutoff at now destroys the record at the moment it stops being state and becomes evidence.
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/retention.rs tests::family}}
+So **each window is measured past the row's own expiry**: the retention clock starts when the row stopped being usable, not when it was made. For a browser session that is its expiry or its revocation, whichever came first. Two things follow:
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/retention.rs tests::token}}
+- **Nothing live is ever in range.** A live family's deadline is in the future, and a cutoff of now less 90 days is behind now. The sweep can't delete something in use even with every window set to zero.
+- **A revoked family gets its full window too.** Ending a family pulls its deadline back to the moment it ended, so the clock starts there. The reuse-detection case, the one most worth auditing, is kept 90 days from the event.
 
-`request` builds a device-code authorization request that expires at `expires_at`, and `code` an authorization code that does.
+A family is deleted with every link in it, links first, since every pooled connection enforces foreign keys. Leaving orphaned links would be worse than keeping everything: an orphan reads as an unknown token, which is exactly the answer that makes replay detection do nothing.
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/retention.rs tests::request}}
+## When the sweep runs
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/retention.rs tests::code}}
+{{#code-link apps/host/wildflower-server/authorization-server-rust/src/lib.rs spawn_retention_sweep}} sweeps once at startup and then daily. The desktop app has no cron and shouldn't need one. Daily is far finer than the coarsest window, so no row outstays its policy by much, and a machine switched off for a month sweeps once on its next boot rather than catching up a month of missed ticks. The deletes run in one write scope, so a failure rolls back to the set before the sweep; the failure is logged, and the next tick tries again. A sweep is logged only when it reclaimed something.
 
-`session` builds an Owner browser session that expires at `expires_at`, never revoked.
+## The insert's narrow prune
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/retention.rs tests::session}}
+One delete happens outside the sweep. A device request or pairing is keyed for the Owner by its `user_code`, and a partial unique index holds at most one pending request per `user_code`. An expired request still pending under a `user_code` occupies that index until the sweep reaches it, so inserting a new request under the same code would fail. The insert ({{#code-link apps/host/wildflower-server/authorization-server-rust/src/db/authorization_requests/mod.rs SqliteGrantTx::insert_user_code_row}}) therefore first clears exactly that: rows holding this request's `user_code` that are still pending and had already expired when this request started. The condition mirrors the index. A decided row is left for the sweep, since it isn't in the index and could never collide, and a live pending one is never dropped to make room: that collision stays an error.
 
-`seeded` puts one row of each kind on each side of its window: a family 91 days dead and one 89 days dead, a live family minted under the session `named`; requests and codes 8 days dead, 6 days dead, and live; sessions ended 25 hours ago, 23 hours ago, and 10 days ago (`named`).
+It is a guard on the index, not a step the flow relies on. {{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/device_authorizer.rs generate_unique_user_code}} already draws a code no request of any status holds.
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/retention.rs tests::seeded}}
+## `domain::retention`
 
-## `REFRESH_TOKEN_FAMILY_RETENTION`
+The tests place rows either side of each window around one [fixed instant](<Test Fixtures Explanation.md#retention>), in the in-memory test fake.
 
-A refresh-token family, with its tokens, is kept 90 days past its deadline: the same as the family's own lifetime, [`REFRESH_TOKEN_FAMILY_TTL`](<Refresh Token Explanation.md#refresh_token_family_ttl>), so a lineage stays auditable for its own lifetime again after it dies. Revoking a family pulls its deadline back to the revocation, so the window runs from the revocation.
+### `REFRESH_TOKEN_FAMILY_RETENTION`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/retention.rs REFRESH_TOKEN_FAMILY_RETENTION}}
+A family that runs its full course is readable for twice its lifetime: a quarter's history, the horizon over which "what happened to this device's session" is still a live question.
 
-No unit test of its own; the tests under [`purge_expired`](#purge_expired) place families either side of it.
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/retention.rs REFRESH_TOKEN_FAMILY_RETENTION}}
 
-## `AUTHORIZATION_RETENTION`
+### `AUTHORIZATION_RETENTION`
 
-An authorization request or code is kept 7 days past its expiry. Both live for minutes; a week is a generous buffer to answer what a client tried to do.
+Requests live five minutes and codes one: a week is long enough to answer "what did that app try to do last Tuesday", and short enough that abandoned flows can't pile up.
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/retention.rs AUTHORIZATION_RETENTION}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/retention.rs AUTHORIZATION_RETENTION}}
 
-No unit test of its own; the tests under [`purge_expired`](#purge_expired) place requests and codes either side of it.
+### `BROWSER_SESSION_RETENTION`
 
-## `BROWSER_SESSION_RETENTION`
+A session's limited-page acknowledgements go with it.
 
-A browser session is kept for the longest session's lifetime, [`LONGEST_BROWSER_SESSION_TTL`](<Browser Session Explanation.md#longest_browser_session_ttl>), once it has expired or been revoked. No token minted under the session outlives that. Past it, only a refresh-token family can still name the session, and the sweep keeps any session that a family alive at the cutoff names, so that family's refresh still finds its session.
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/retention.rs BROWSER_SESSION_RETENTION}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/retention.rs BROWSER_SESSION_RETENTION}}
+### `PurgedCounts`
 
-No unit test of its own; the tests under [`purge_expired`](#purge_expired) place sessions either side of it.
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/retention.rs PurgedCounts}}
 
-## `PurgedCounts`
+#### `is_empty`
 
-What one sweep reclaimed, per table. Refresh tokens are not counted separately: they go with their family.
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/retention.rs PurgedCounts::is_empty tests="tests::a_second_pass_reclaims_nothing"}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/retention.rs PurgedCounts}}
+### `purge_expired`
 
-## `is_empty`
-
-Whether the sweep reclaimed nothing. Nothing is the steady state, and the server logs a sweep only when it isn't, so an idle server writes no log lines.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/retention.rs PurgedCounts::is_empty}}
-
-### What it looks like
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/retention.rs tests::a_second_pass_reclaims_nothing}}
-
-The first sweep over the seeded store reclaims something; a second at the same instant reclaims nothing, and its counts are empty.
-
-## `purge_expired`
-
-Delete every row past its window as of `now`, in one write scope, and report what went. Each window becomes a cutoff (`now` minus the window), and the store deletes rows whose expiry falls before it. A failure rolls the whole sweep back. Taking `now` as an argument means the whole sweep reads one instant, and tests can place rows without sleeping.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/retention.rs purge_expired}}
-
-### What it looks like
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/retention.rs tests::purges_past_each_window_and_spares_everything_inside_it}}
-
-In each table, exactly the row past its window goes: the 91-day-dead family and its token, the 8-day-dead request and code, the session ended 25 hours ago. The rows inside their windows stay, the live ones stay, and the session ended 10 days ago stays because the live family names it.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/retention.rs tests::deleting_a_family_takes_its_tokens}}
-
-A family's tokens of every generation go with it, so no token is left pointing at a family that no longer exists.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/retention.rs tests::an_empty_database_reclaims_nothing}}
-
-A first-ever startup sweep over an empty store reclaims nothing and does not fail.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/retention.rs tests::the_spared_rows_are_reclaimed_once_they_age_out}}
-
-Swept again 90 days later, the rows spared the first time go: the 89-day-dead family and its token, both remaining requests and codes, and both remaining sessions, including `named`, since the family that named it is no longer alive at the later cutoff. The windows run from each row's expiry, not from `now`.
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/retention.rs purge_expired tests="tests::purges_past_each_window_and_spares_everything_inside_it tests::deleting_a_family_takes_its_tokens tests::an_empty_database_reclaims_nothing tests::the_spared_rows_are_reclaimed_once_they_age_out"}}

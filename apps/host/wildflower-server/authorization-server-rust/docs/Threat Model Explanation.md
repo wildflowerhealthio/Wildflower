@@ -60,7 +60,7 @@ which this doc assumes rather than repeats.
 - **Authorization starts are rate-limited** per visitor address and globally,
   deferred for a browser that can decide its own requests
   (`wildflower-server-rust`'s `authorization_start_limit.rs`).
-- **Rows expire and are swept** ([Retention Explanation](./Retention%20Explanation.md)).
+- **Rows expire and are swept** ([Retention](./Book/Domain/Retention%20Explanation.md)).
 
 ## What the server relies on others for
 
