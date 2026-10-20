@@ -806,8 +806,8 @@ const renderItemDirective = async (
       headingLevel: directive.level ?? headingLevel,
       resolve: (destination) =>
         resolveDocLink(destination, { file, symbol, imports }, repoRoot, targets, context),
-      fileLink: (relative) => {
-        const [path = '', fragment] = relative.split('#')
+      fileLink: (linkTarget) => {
+        const [path = '', fragment] = linkTarget.split('#')
         const repoPath = posix.normalize(posix.join(posix.dirname(directive.path), decodeURI(path)))
         const url = `${targets.repositoryUrl}/blob/${targets.commit}/${repoPath.split('/').map(encodeURIComponent).join('/')}`
         return fragment === undefined ? url : `${url}#${fragment}`
