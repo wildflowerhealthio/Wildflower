@@ -164,7 +164,7 @@ describe('the access page', () => {
     ).toBeNull()
   })
 
-  it('lists the signed-in browsers, this one marked, an unnamed same-device session as the Owner browser and a paired one by its name', async () => {
+  it('lists the signed-in browsers, this one marked, an unnamed same-device session as the On-device browser and a paired one by its name', async () => {
     // Arrange
     const server = stubServer()
 
@@ -176,12 +176,12 @@ describe('the access page', () => {
     const rows = within(browsers).getAllByRole('listitem')
     expect(rows).toHaveLength(3)
     const [thisRow, otherRow, pairedRow] = rows
-    expect(within(thisRow).getByText('Owner browser')).toBeTruthy()
+    expect(within(thisRow).getByText('On-device browser')).toBeTruthy()
     expect(within(thisRow).getByText('This browser')).toBeTruthy()
     expect(
-      within(thisRow).getByText(/^Same device · Signed in .+ · Expires .+ · Last seen .+$/)
+      within(thisRow).getByText(/^On-device · Signed in .+ · Expires .+ · Last seen .+$/)
     ).toBeTruthy()
-    expect(within(otherRow).getByText('Owner browser')).toBeTruthy()
+    expect(within(otherRow).getByText('On-device browser')).toBeTruthy()
     expect(within(otherRow).queryByText('This browser')).toBeNull()
     expect(within(pairedRow).getByText(pairedBrowserSession.name)).toBeTruthy()
     expect(within(pairedRow).getByText(/^Paired · Signed in /)).toBeTruthy()
@@ -212,7 +212,7 @@ describe('the access page', () => {
     mountAccessPages(server)
     const browsers = await sectionTitled('Browsers')
     const [, otherRow] = within(browsers).getAllByRole('listitem')
-    fireEvent.click(within(otherRow).getByRole('button', { name: 'Actions for Owner browser' }))
+    fireEvent.click(within(otherRow).getByRole('button', { name: 'Actions for On-device browser' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Revoke' }))
     const listReads = (): number =>
       server.requests.filter((request) => request.url.endsWith('/authorization/browser-sessions'))
@@ -261,7 +261,7 @@ describe('the access page', () => {
     mountAccessPages(server)
     const browsers = await sectionTitled('Browsers')
     const [, otherRow] = within(browsers).getAllByRole('listitem')
-    fireEvent.click(within(otherRow).getByRole('button', { name: 'Actions for Owner browser' }))
+    fireEvent.click(within(otherRow).getByRole('button', { name: 'Actions for On-device browser' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Revoke' }))
 
     // Act
@@ -288,7 +288,7 @@ describe('the access page', () => {
     mountAccessPages(server)
     const browsers = await sectionTitled('Browsers')
     const [, otherRow] = within(browsers).getAllByRole('listitem')
-    fireEvent.click(within(otherRow).getByRole('button', { name: 'Actions for Owner browser' }))
+    fireEvent.click(within(otherRow).getByRole('button', { name: 'Actions for On-device browser' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Revoke' }))
 
     // Act
@@ -309,7 +309,7 @@ describe('the access page', () => {
     const [thisRow] = within(browsers).getAllByRole('listitem')
 
     // Act
-    fireEvent.click(within(thisRow).getByRole('button', { name: 'Actions for Owner browser' }))
+    fireEvent.click(within(thisRow).getByRole('button', { name: 'Actions for On-device browser' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Revoke' }))
 
     // Assert

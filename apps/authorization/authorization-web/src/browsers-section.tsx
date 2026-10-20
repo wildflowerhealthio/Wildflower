@@ -20,13 +20,13 @@ import { Suspense, useState } from 'react'
 
 /**
  * What a browser session's row is titled: the name a paired browser was
- * given, or for an unnamed same-device session, "Owner browser".
+ * given, or for an unnamed same-device session, "On-device browser".
  */
 const browserSessionTitle = (session: BrowserSession): string =>
   Option.fromNullable(session.name).pipe(
     Option.getOrElse(() =>
       Match.value(session.kind).pipe(
-        Match.when('same_device', () => 'Owner browser'),
+        Match.when('same_device', () => 'On-device browser'),
         Match.when('paired', () => 'Paired browser'),
         Match.exhaustive
       )
@@ -36,7 +36,7 @@ const browserSessionTitle = (session: BrowserSession): string =>
 /** How a browser came to hold its session, as its row says it. */
 const browserSessionKindLabel = (session: BrowserSession): string =>
   Match.value(session.kind).pipe(
-    Match.when('same_device', () => 'Same device'),
+    Match.when('same_device', () => 'On-device'),
     Match.when('paired', () => 'Paired'),
     Match.exhaustive
   )

@@ -40,7 +40,8 @@ pub(crate) struct OAuthConsent {
     pub(crate) pre_approved_scopes: Vec<String>,
     /// The patient on the request's approval. A request the card can load is
     /// pending, so it carries no approval and this is `null`; the patient a
-    /// SMART launch bound is not sent.
+    /// SMART launch bound is not sent. The field stays on the wire so the card
+    /// can be told of a patient a request asks for, once a launch can.
     pub(crate) patient: Option<String>,
     /// How this request compares against the client's registration **right
     /// now** — the warning the consent UI leads with, and the flag that makes
