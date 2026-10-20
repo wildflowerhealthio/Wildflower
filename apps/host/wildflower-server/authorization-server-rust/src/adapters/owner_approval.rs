@@ -1,21 +1,22 @@
-//! The newest-pending-consent republish seam ([`crate::ports`]) adapted onto the bare
+//! The Owner prompt's republish seam ([`crate::ports`]) adapted onto the bare
 //! [`AuthorizationServerState`]. See the [module docs](super) for the composition layer.
 
+use chrono::Utc;
+
+use crate::domain::grant_store::AuthorizationRequestsTx as _;
 use crate::live_bindings::state::AuthorizationServerState;
 use crate::ports::OwnerApproval;
 use crate::GrantStore;
 
-/// The newest-pending-consent republish seam ([`crate::ports`]) the consent capability
+/// The Owner prompt's republish seam ([`crate::ports`]) the consent capability
 /// forwards to after a store write — delegates to the inherent
 /// recompute-and-publish. Implemented on the bare state so an
 /// `Arc<AuthorizationServerState>` coerces to an `Arc<dyn OwnerApproval>` the
 /// capability holds.
 impl OwnerApproval for AuthorizationServerState {
-    /// Recompute the newest pending consent from the store and publish it on
-    /// its watch sender. Call after every transition that may change it (`/oauth/device_authorization` insert,
-    /// `/oauth/authorize` insert, `/authorization/oauth-consents/{id}/approve`,
-    /// `/authorization/oauth-consents/{id}/deny`, `/authorization/devices/{userCode}/approve`,
-    /// `/authorization/devices/{userCode}/deny`).
+    /// Recompute the [`OwnerPrompt`](crate::OwnerPrompt) from the store and publish it on
+    /// its watch sender. Call after every transition that may change it (see
+    /// [`OwnerApproval`]).
     ///
     /// The DB read happens *inside* `send_if_modified`, so the watch
     /// sender's internal lock serialises the read+publish pair across
@@ -43,12 +44,10 @@ impl OwnerApproval for AuthorizationServerState {
     /// changes nothing on the watch above.
     fn republish_active(&self) {
         self.owner_approval_tx.send_if_modified(|current| {
-            let next = match self.store.newest_pending_consent() {
+            let next = match self.store.read(|tx| tx.owner_prompt(Utc::now())) {
                 Ok(next) => next,
                 Err(error) => {
-                    tracing::warn!(
-                        "newest_pending_consent query failed; keeping the last: {error}"
-                    );
+                    tracing::warn!("owner_prompt query failed; keeping the last: {error}");
                     return false;
                 }
             };

@@ -16,7 +16,7 @@
 
 use serde::Serialize;
 pub use wildflowerhealthio_authorization_server::ConsentKey;
-use wildflowerhealthio_authorization_server::NewestPendingConsent;
+use wildflowerhealthio_authorization_server::OwnerPrompt;
 use wildflowerhealthio_unit_runner::UnitStatus;
 
 use crate::domain::ServerDetail;
@@ -59,31 +59,31 @@ impl PendingConsent {
     }
 }
 
-impl From<NewestPendingConsent> for PendingConsent {
-    fn from(newest: NewestPendingConsent) -> Self {
+impl From<OwnerPrompt> for PendingConsent {
+    fn from(newest: OwnerPrompt) -> Self {
         match newest {
-            NewestPendingConsent::Device {
+            OwnerPrompt::DeviceCode {
                 user_code,
                 client_name,
             } => Self {
-                key: ConsentKey::Device { user_code },
+                key: ConsentKey::DeviceCode { user_code },
                 requester_name: client_name,
                 decidable_in_requesting_browser: false,
             },
-            NewestPendingConsent::OAuth {
+            OwnerPrompt::AuthorizationCode {
                 id,
                 client_name,
                 decidable_in_requesting_browser,
             } => Self {
-                key: ConsentKey::OAuth { id },
+                key: ConsentKey::AuthorizationCode { id },
                 requester_name: client_name,
                 decidable_in_requesting_browser,
             },
-            NewestPendingConsent::BrowserPairing {
+            OwnerPrompt::BrowserPairing {
                 user_code,
                 browser_name,
             } => Self {
-                key: ConsentKey::Browser { user_code },
+                key: ConsentKey::BrowserPairing { user_code },
                 requester_name: browser_name,
                 decidable_in_requesting_browser: false,
             },
@@ -98,16 +98,16 @@ mod tests {
 
     #[test]
     fn the_wire_is_as_the_golden_file_says() {
-        let device = PendingConsent::from(NewestPendingConsent::Device {
+        let device = PendingConsent::from(OwnerPrompt::DeviceCode {
             user_code: "ABCD-EFGH".to_owned(),
             client_name: "Lifting".to_owned(),
         });
-        let oauth = PendingConsent::from(NewestPendingConsent::OAuth {
+        let oauth = PendingConsent::from(OwnerPrompt::AuthorizationCode {
             id: "req-1".to_owned(),
             client_name: "app-client-id".to_owned(),
             decidable_in_requesting_browser: false,
         });
-        let browser = PendingConsent::from(NewestPendingConsent::BrowserPairing {
+        let browser = PendingConsent::from(OwnerPrompt::BrowserPairing {
             user_code: "WXYZ-BCDF".to_owned(),
             browser_name: "Firefox on Linux".to_owned(),
         });

@@ -5,12 +5,13 @@ use std::sync::Arc;
 
 use tokio::sync::watch;
 use url::Url;
-use wildflowerhealthio_authorization_server::domain::authorization_request::{
-    AuthorizationRequest, StartCodeAuthorizationArgs,
+use wildflowerhealthio_authorization_server::domain::authorization_request::code::{
+    CodeRequest, NewCodeRequestArgs,
 };
+use wildflowerhealthio_authorization_server::domain::grant_store::AuthorizationRequestsTx as _;
 use wildflowerhealthio_authorization_server::{
     setup_authorization_server, AdmitEveryAuthorizationStart, AuthorizationServerConfig,
-    GrantStore, LaunchContextMinter, NewestPendingConsent, PendingConsentWatcher,
+    GrantStore, LaunchContextMinter, OwnerPrompt, PendingConsentWatcher,
     SameDeviceSignInCodeMinter, SqliteGrantStore,
 };
 use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
@@ -25,7 +26,7 @@ pub(crate) struct TestAuthorizationServer {
     pub(crate) launch_context_minter: LaunchContextMinter,
     pub(crate) same_device_sign_in_code_minter: SameDeviceSignInCodeMinter,
     pub(crate) pending_consent_watcher: PendingConsentWatcher,
-    _pending_consent_rx: watch::Receiver<Option<NewestPendingConsent>>,
+    _pending_consent_rx: watch::Receiver<Option<OwnerPrompt>>,
     database_dir: tempfile::TempDir,
 }
 
@@ -50,22 +51,26 @@ impl TestAuthorizationServer {
         .unwrap();
         SqliteGrantStore::new(pool)
             .unwrap()
-            .insert_authorization_request(&AuthorizationRequest::new_code_authorization(
-                StartCodeAuthorizationArgs {
-                    id: id.to_owned(),
-                    client_id: "lifting".to_owned(),
-                    requested_scopes: vec!["openid".to_owned()],
-                    code_challenge: "c".repeat(43),
-                    redirect_uri: Url::parse("https://lifting.example/callback").unwrap(),
-                    client_state: "state".to_owned(),
-                    pre_approved_scopes: Vec::new(),
-                    ttl: chrono::Duration::minutes(5),
-                    launch_context: None,
-                    decidable_in_requesting_browser: false,
-                    session_shortfall_acknowledged: true,
-                    sid: "requesting-browser".to_owned(),
-                },
-            ))
+            .write(|tx| {
+                tx.insert_code_request(&CodeRequest::new(
+                    NewCodeRequestArgs {
+                        id: id.to_owned(),
+                        client_id: "lifting".to_owned(),
+                        requested_scopes: vec!["openid".to_owned()],
+                        ttl: chrono::Duration::minutes(5),
+                        redirect_uri: Url::parse("https://lifting.example/callback").unwrap(),
+                        code_challenge: "c".repeat(43),
+                        client_state: "state".to_owned(),
+                        sid: "requesting-browser".to_owned(),
+                        launch: None,
+                        launch_bound_patient: None,
+                        pre_approved_scopes: Vec::new(),
+                        decidable_in_requesting_browser: false,
+                        awaits_limited_page: false,
+                    },
+                    chrono::Utc::now(),
+                ))
+            })
             .unwrap();
     }
 }
@@ -89,8 +94,6 @@ pub(crate) fn test_authorization_server() -> TestAuthorizationServer {
             server_origin: Url::parse(&format!("https://{DOMAIN}")).unwrap(),
             host_app_client_scopes:
                 wildflowerhealthio_authorization_server::default_host_app_client_scopes(),
-            wildflower_host_app_client_id:
-                wildflowerhealthio_authorization_server::default_wildflower_host_app_client_id(),
             fhir_ui_client_id: "fhir-ui-client".to_string(),
             launcher_base: LauncherBase::parse("https://launcher.test/launcher/").unwrap(),
             authorization_app_base: AuthorizationAppBase::parse(

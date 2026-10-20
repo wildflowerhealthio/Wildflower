@@ -14,16 +14,16 @@ mod routes;
 mod state;
 mod wire_representations;
 
-pub(crate) use routes::oauth::device_page_url;
-// The shared "insert an `Authorization: Bearer` only when absent" helper — the
-// host's FHIR web UI session middleware uses it.
-pub use middleware::ensure_bearer_header;
-// The layerable bearer gate the host composes its router from, in `middleware/`.
 pub(crate) use browser_session_cookie::browser_session_set_cookie;
 pub use browser_session_cookie::{
     browser_session_clearing_set_cookie, record_browser_session_cookie_use,
     standing_browser_session, BROWSER_SESSION_COOKIE, BROWSER_SESSION_HEADER_VALUE, SESSION_HEADER,
 };
+pub(crate) use routes::oauth::device_page_url;
+// The shared "insert an `Authorization: Bearer` only when absent" helper — the
+// host's cookie→bearer layer (`session_cookie_bearer`) uses it.
+pub use middleware::ensure_bearer_header;
+// The layerable bearer gate the host composes its router from, in `middleware/`.
 pub use middleware::{authorization_server_auth_middleware, AuthorizationServerAuthMiddleware};
 pub use state::AuthorizationServerState;
 
@@ -74,6 +74,17 @@ fn documented_router() -> OpenApiRouter<Arc<AuthorizationServerState>> {
 /// bearer JWT + per-resource scope gates) — the module owns its mount paths so the caller just
 /// `.merge()`s. The host's tunnel listener serves it to remote visitors,
 /// behind these bearer and session gates.
+///
+/// Three pieces join over the shared state:
+///
+/// - the documented pre-auth routes, JWKS and the `/oauth` API, with the
+///   authorization start limit layered on the two routes that start a request;
+/// - the `/oauth` pages, which need the launcher base for where sign-out sends
+///   a browser;
+/// - the `/authorization` routes, merged from each resource's router, with the
+///   deferred start limit on the ask-owner route, then the session gate, then
+///   cache suppression outermost, so the session gate's own `401`s carry
+///   `no-store` too.
 pub fn router(state: Arc<AuthorizationServerState>) -> Router {
     let (documented, _spec) = documented_public_router(|routes, start_route| {
         routes.layer(axum_middleware::from_fn_with_state(

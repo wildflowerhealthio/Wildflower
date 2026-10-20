@@ -1,10 +1,11 @@
-//! The session bindings — the [`TokenVerifier`] both authN gates run, the
-//! [`BrowserSessionUseRecorder`] the host's cookie→bearer layer records a
-//! browser session's cookie use through, the [`BrowserSessionEnder`]
-//! `/oauth/sign-out` ends a browser's own session with, and the
-//! authenticated-only [`SessionEnder`] / [`SessionReader`] the `/authorization`
-//! self-service handlers acquire through `Authenticated<…>`, over the concrete
-//! runtime types. See the [module docs](super) for the binding seam.
+//! The session bindings: the [`TokenVerifier`] both authN gates run (and
+//! the [`InProcessTokenVerifier`] the host's FHIR server verifies bearers
+//! with), the [`BrowserSessionUseRecorder`] the host's cookie→bearer layer
+//! records a browser session's cookie use through, the
+//! [`BrowserSessionEnder`] `/oauth/sign-out` ends a browser's own session
+//! with, and the authenticated-only [`SessionEnder`] / [`SessionReader`] the
+//! `/authorization` self-service handlers acquire through
+//! `Authenticated<…>`.
 
 use std::sync::Arc;
 
@@ -13,10 +14,10 @@ use wildflowerhealthio_scope_capabilities::AuthenticatedCapability;
 use super::state::AuthorizationServerState;
 use super::FromState;
 use crate::db::SqliteGrantStore;
+use crate::domain::access_token::{AccessTokenVerifyError, VerifiedClaims};
 use crate::domain::capabilities::session::{
     BrowserSessionEnder, BrowserSessionUseRecorder, SessionEnder, SessionReader, TokenVerifier,
 };
-use crate::domain::token::VerifiedClaims;
 
 /// Verify presented access tokens — built by the two authN gates.
 pub(crate) type LiveTokenVerifier = TokenVerifier<SqliteGrantStore>;
@@ -75,5 +76,38 @@ impl AuthenticatedCapability for LiveSessionReader {
 
     fn build(state: Arc<AuthorizationServerState>, claims: VerifiedClaims) -> Self {
         SessionReader::new(state.store.clone(), claims)
+    }
+}
+
+/// Verify access tokens exactly as the authorization server's own gates do.
+/// Cheap to clone. [`crate::setup_authorization_server`] hands one out on
+/// [`AuthorizationServer::in_process_token_verifier`](crate::AuthorizationServer::in_process_token_verifier).
+#[derive(Clone)]
+pub struct InProcessTokenVerifier {
+    /// The same verifier the server's own gates build from the state, shared
+    /// between clones.
+    verifier: Arc<LiveTokenVerifier>,
+}
+
+impl InProcessTokenVerifier {
+    /// A verifier over the authorization server's state.
+    pub(crate) fn new(state: &Arc<AuthorizationServerState>) -> Self {
+        InProcessTokenVerifier {
+            verifier: Arc::new(LiveTokenVerifier::from_state(state)),
+        }
+    }
+
+    /// Verify `token`: signed with one of the stored keys, unexpired, its
+    /// `iss` and `aud` both this server's origin, and not revoked.
+    ///
+    /// # Errors
+    ///
+    /// [`AccessTokenVerifyError::TokenRejected`] or [`AccessTokenVerifyError::Revoked`] for a token
+    /// that doesn't pass; the other variants when the key, revocation or
+    /// browser-session store can't be read
+    /// ([`AccessTokenVerifyError::BrowserSessionStoreUnavailable`] for the last), which
+    /// fails closed.
+    pub fn verify(&self, token: &str) -> Result<VerifiedClaims, AccessTokenVerifyError> {
+        self.verifier.verify(token)
     }
 }

@@ -1,3 +1,6 @@
+//! `POST /oauth/token`: an app's back end trades an authorization code, a
+//! device code or a refresh token for tokens.
+
 use axum::response::{IntoResponse, Response};
 use chrono::Utc;
 use serde::Deserialize;
@@ -23,22 +26,41 @@ pub enum TokenPayload {
     /// `code` (RFC 6749 §4.1.3) along with the PKCE verifier.
     #[serde(rename = "authorization_code")]
     AuthorizationCode {
+        /// The code `/oauth/authorize` sent to the client's redirect; it is
+        /// redeemable once, by the client it was issued to.
         code: String,
+        /// The PKCE verifier whose S256 hash is the request's
+        /// `code_challenge` (RFC 7636 §4.5).
         code_verifier: String,
+        /// Must be the `redirect_uri` the authorization request named
+        /// (RFC 6749 §4.1.3).
         redirect_uri: String,
     },
     /// Device-code grant — the client polls with the `device_code` it was
     /// handed at `/device_authorization` (RFC 8628 §3.4).
     #[serde(rename = "urn:ietf:params:oauth:grant-type:device_code")]
-    DeviceCode { device_code: String },
+    DeviceCode {
+        /// The `device_code` `/oauth/device_authorization` answered with.
+        device_code: String,
+    },
     /// Refresh-token grant — the client trades its live refresh token for a
     /// fresh access token plus the refresh token's successor (RFC 6749 §6).
     #[serde(rename = "refresh_token")]
-    RefreshToken { refresh_token: String },
+    RefreshToken {
+        /// The refresh token being rotated; the trade spends it.
+        refresh_token: String,
+    },
 }
 
-/// Render the dispatch outcome — `Ok` carries the §5.1 cache suppression via
-/// [`TokenResponse`], `Err` via [`TokenError`].
+/// `POST /oauth/token` (RFC 6749 §3.2, RFC 8628 §3.4): hand the body's grant
+/// to the matching exchange for the authenticated client, an authorization
+/// code with its PKCE verifier, a device code while the device polls, or a
+/// refresh token for an access token and its successor. A `grant_type` the
+/// endpoint doesn't take fails to parse, so it is the extractor's
+/// `400 invalid_request`, "Malformed payload".
+///
+/// Either outcome is uncached (§5.1): `Ok` through [`TokenResponse`], `Err`
+/// through [`TokenError`].
 #[utoipa::path(
     post,
     tag = "OAuth 2.0",
@@ -88,7 +110,8 @@ pub(super) async fn handle_token_request(
     token_response(token).into_response()
 }
 
-/// The RFC 6749 §5.1 body for an exchange.
+/// The RFC 6749 §5.1 body for an exchange, with SMART's `patient` when the
+/// grant binds one.
 fn token_response(token: IssuedTokens) -> TokenResponse {
     TokenResponse {
         access_token: token.access_token,
@@ -105,8 +128,8 @@ mod tests {
     use super::*;
 
     /// Clients using `client_secret_post` keep their credentials in the form
-    /// body; the grant enum no longer parses them, so it must tolerate the
-    /// extra fields rather than reject the request.
+    /// body; the grant enum doesn't parse them, so it must tolerate the extra
+    /// fields rather than reject the request.
     #[test]
     fn token_payload_tolerates_unparsed_client_credential_fields() {
         let payload: TokenPayload = serde_urlencoded::from_str(

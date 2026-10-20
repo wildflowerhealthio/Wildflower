@@ -1,5 +1,5 @@
-//! The shared request extractor for the token-style endpoints (`/oauth/token`
-//! and `/oauth/device_authorization`). It ends by **authenticating the client**,
+//! The shared request extractor for the token-style endpoints (`/oauth/token`,
+//! `/oauth/device_authorization` and `/oauth/revoke`). It ends by **authenticating the client**,
 //! so a handler receives an [`AuthenticatedClient`] proof rather than raw
 //! credentials — it cannot act for a client whose secret was never checked.
 
@@ -21,12 +21,12 @@ use crate::live_bindings::{FromState, LiveClientAuthenticator};
 /// token-endpoint request body.
 const FORM_URLENCODED: &str = "application/x-www-form-urlencoded";
 
-/// An RFC 6749 token-style request, extracted once into its grant `payload`
-/// (the `grant_type`-tagged body, generic per endpoint) and the authenticated
-/// `client`.
+/// An RFC 6749 token-style request, extracted once into its `payload` (the
+/// endpoint's own body, generic per endpoint) and the
+/// `authenticated_client`.
 ///
-/// Centralizes what both token endpoints otherwise repeat inline: the RFC 6749
-/// §3.2 `Content-Type` check, reading the body, the §2.3.1 credential dance
+/// Centralizes what the token-style endpoints otherwise repeat inline: the
+/// RFC 6749 §3.2 `Content-Type` check, reading the body, the §2.3.1 credential dance
 /// ([`resolve_client_credentials`], which reconciles the `Authorization: Basic`
 /// header with body `client_id` / `client_secret`), and §2.3 client
 /// authentication through the [`LiveClientAuthenticator`]. On any failure the
@@ -39,6 +39,8 @@ const FORM_URLENCODED: &str = "application/x-www-form-urlencoded";
 /// small string — they pull disjoint, differently-shaped fields, so a single
 /// pass would buy nothing but coupling).
 pub(crate) struct TokenRequest<P> {
+    /// The endpoint's own body, parsed from the form: it ignores
+    /// `client_id` and `client_secret`, which the credential parse reads.
     pub payload: P,
     /// The verified client — the proof every client-gated operation takes.
     pub authenticated_client: AuthenticatedClient,
@@ -108,12 +110,14 @@ mod tests {
     use super::*;
     use axum::http::HeaderValue;
 
+    /// Headers carrying one `Content-Type` of `value`.
     fn headers_with_content_type(value: &str) -> HeaderMap {
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_str(value).unwrap());
         headers
     }
 
+    /// The exact form media type passes.
     #[test]
     fn accepts_exact_form_urlencoded() {
         assert!(
@@ -122,6 +126,8 @@ mod tests {
         );
     }
 
+    /// The form media type passes in mixed case and with a `charset`
+    /// parameter.
     #[test]
     fn accepts_form_urlencoded_with_charset_and_mixed_case() {
         assert!(
@@ -132,6 +138,7 @@ mod tests {
         );
     }
 
+    /// Any other media type, such as JSON, is refused.
     #[test]
     fn rejects_other_content_types() {
         assert!(
@@ -140,6 +147,7 @@ mod tests {
         );
     }
 
+    /// A request with no `Content-Type` is refused.
     #[test]
     fn rejects_a_missing_content_type() {
         assert!(require_form_urlencoded_content_type(&HeaderMap::new()).is_err());

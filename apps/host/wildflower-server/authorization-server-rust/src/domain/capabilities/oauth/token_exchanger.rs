@@ -1,41 +1,58 @@
 //! [`TokenExchanger`] — the `/oauth/token` flows (RFC 6749 §4.1.3, RFC 8628
-//! §3.4, RFC 6749 §6). Each reads top to bottom as: check the client may use
-//! the grant type, obtain the redemption proof, mint under it, then (for the
-//! two session-establishing grants) start a refresh family, or (for a refresh)
-//! rotate. The proof is the hand-off between the validation half and the
-//! writers, so a token is never minted for a grant that didn't redeem.
+//! §3.4, RFC 6749 §6). Each runs in one write scope (a refresh is first
+//! validated in a `read` scope; see
+//! [`exchange_refresh_token`](TokenExchanger::exchange_refresh_token)): check the client may use
+//! the grant type, obtain the redemption proof, load the signing key, and (for
+//! the two session-establishing grants) start a refresh family, or (for a
+//! refresh) rotate, then sign the token. Signing runs inside the scope, so a
+//! signing failure rolls it back: the code stays unspent, the device request
+//! unclaimed, the refresh token un-rotated. The proof is the hand-off between
+//! the validation half and the writers, so a token is never minted for a grant
+//! that didn't redeem.
 
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 
+use crate::domain::access_token::ACCESS_TOKEN_TTL;
 use crate::domain::authority::{
     AuthenticatedClient, ConsumedDeviceRequest, GrantRedemption, PresentedAuthorizationCode,
     RedeemedAuthorizationCode, TokenEntitlement, ValidatedRefreshToken,
 };
 use crate::domain::capabilities::writers::{AccessTokenMinter, RefreshFamilyWriter};
 use crate::domain::client::AllowedGrantType;
-use crate::domain::token::ACCESS_TOKEN_TTL;
 use crate::domain::token_exchange_error::TokenExchangeError;
-use crate::domain::GrantStore;
+use crate::domain::{GrantStore, GrantTx};
 use crate::ports::RevocationCheck;
 
 /// The tokens a successful exchange issued: what the RFC 6749 §5.1 token
 /// response carries.
 pub(crate) struct IssuedTokens {
+    /// The signed JWT access token, issued to the client by and for the
+    /// server's origin, living [`ACCESS_TOKEN_TTL`].
     pub(crate) access_token: String,
     /// Seconds until the access token expires.
     pub(crate) expires_in: i64,
     /// The scopes as granted (not the twinned spellings the JWT carries).
     pub(crate) granted_scopes: Vec<String>,
+    /// The refresh token: a new family's first for a code or device grant
+    /// that carries `offline_access`, or the presented one's successor on a
+    /// refresh. `None` when the grant earned no family.
     pub(crate) refresh_token: Option<String>,
+    /// The patient the grant is bound to, the SMART launch context `patient`;
+    /// `None` when it binds none.
     pub(crate) patient: Option<String>,
 }
+
+/// A write scope's answer: the issued tokens, or the refusal (the inner
+/// `Err`) whose writes the scope keeps. The outer `Err` rolls the scope back.
+type ExchangeOutcome = Result<Result<IssuedTokens, TokenExchangeError>, TokenExchangeError>;
 
 /// Exchange grants for tokens on behalf of an [`AuthenticatedClient`]. Generic
 /// over the store port so it's unit-testable against the fake; the binding
 /// instantiates it over the concrete `SqliteGrantStore`.
 pub(crate) struct TokenExchanger<S: GrantStore> {
+    /// The store each exchange redeems, rotates and mints in.
     store: S,
     /// The revocation check a refresh runs against its client's epoch.
     revocation: Arc<dyn RevocationCheck>,
@@ -72,10 +89,9 @@ impl<S: GrantStore> TokenExchanger<S> {
         presented: &PresentedAuthorizationCode<'_>,
         now: DateTime<Utc>,
     ) -> Result<IssuedTokens, TokenExchangeError> {
-        self.ensure_grant_type_allowed(authenticated_client, AllowedGrantType::AuthorizationCode)?;
-        let redeemed_code =
-            RedeemedAuthorizationCode::redeem(&self.store, authenticated_client, presented, now)?;
-        self.issue_for_redemption(GrantRedemption::AuthorizationCode(&redeemed_code), now)
+        ensure_grant_type_allowed(authenticated_client, AllowedGrantType::AuthorizationCode)?;
+        self.store
+            .write(|tx| self.redeem_code_in(tx, authenticated_client, presented, now))?
     }
 
     /// Poll a device request (RFC 8628 §3.4) and, once it is approved and this
@@ -92,17 +108,24 @@ impl<S: GrantStore> TokenExchanger<S> {
         device_code: &str,
         now: DateTime<Utc>,
     ) -> Result<IssuedTokens, TokenExchangeError> {
-        self.ensure_grant_type_allowed(authenticated_client, AllowedGrantType::DeviceCode)?;
-        let consumed_device_request =
-            ConsumedDeviceRequest::consume(&self.store, authenticated_client, device_code, now)?;
-        self.issue_for_redemption(GrantRedemption::DeviceCode(&consumed_device_request), now)
+        ensure_grant_type_allowed(authenticated_client, AllowedGrantType::DeviceCode)?;
+        self.store
+            .write(|tx| self.claim_device_request_in(tx, authenticated_client, device_code, now))?
     }
 
     /// Trade a live refresh token for a fresh access token and the refresh
-    /// token's successor (RFC 6749 §6, OAuth 2.1 rotation). The access token is
-    /// minted **before** the rotation mutates anything, so a signing failure
-    /// returns without burning the presented token. The family keeps its scopes
-    /// and absolute deadline — rotation never extends its life.
+    /// token's successor (RFC 6749 §6, OAuth 2.1 rotation). The family keeps
+    /// its scopes and absolute deadline — rotation never extends its life.
+    ///
+    /// The one exchange with two scopes. A `read` scope validates the token,
+    /// its client's revocation epoch included: the epoch lives on the
+    /// revocation store, another connection to the same file, so reading it
+    /// under our write lock could stall both connections for the busy
+    /// timeout. The `write` scope then re-validates the store-only facts,
+    /// since the family may have ended between the two, rotates, and mints.
+    /// An epoch bumped between the two scopes doesn't stop this one rotation,
+    /// as the epoch isn't read again; but the family still began before the
+    /// epoch, so its next refresh is refused.
     ///
     /// # Errors
     ///
@@ -116,71 +139,162 @@ impl<S: GrantStore> TokenExchanger<S> {
         presented_refresh_token: &str,
         now: DateTime<Utc>,
     ) -> Result<IssuedTokens, TokenExchangeError> {
-        self.ensure_grant_type_allowed(authenticated_client, AllowedGrantType::RefreshToken)?;
-        let validated_refresh_token = ValidatedRefreshToken::validate(
-            &self.store,
-            self.revocation.as_ref(),
-            authenticated_client,
-            presented_refresh_token,
+        ensure_grant_type_allowed(authenticated_client, AllowedGrantType::RefreshToken)?;
+        let validated_refresh_token = self.store.read(|tx| {
+            ValidatedRefreshToken::validate(
+                tx,
+                self.revocation.as_ref(),
+                authenticated_client,
+                presented_refresh_token,
+                now,
+            )
+        })?;
+        self.store.write(|tx| {
+            self.rotate_refresh_token_in(tx, authenticated_client, validated_refresh_token, now)
+        })?
+    }
+
+    /// [`exchange_authorization_code`](Self::exchange_authorization_code)'s
+    /// flow, inside its write scope `tx`. A refusal is the inner `Err`, so the
+    /// scope keeps the spent code (and any family a replay ended).
+    fn redeem_code_in(
+        &self,
+        tx: &mut impl GrantTx,
+        authenticated_client: &AuthenticatedClient,
+        presented: &PresentedAuthorizationCode<'_>,
+        now: DateTime<Utc>,
+    ) -> ExchangeOutcome {
+        let redeemed_code =
+            match RedeemedAuthorizationCode::redeem(tx, authenticated_client, presented, now)? {
+                Ok(redeemed_code) => redeemed_code,
+                Err(refusal) => return Ok(Err(refusal)),
+            };
+        let redemption = GrantRedemption::AuthorizationCode(&redeemed_code);
+        let (minter, refresh_token) = self.prepare_issuance(tx, redemption, now)?;
+        issue(
+            &minter,
+            TokenEntitlement::AuthorizationCode(&redeemed_code),
+            redemption.granted_scopes(),
+            redeemed_code.patient(),
+            refresh_token,
+        )
+    }
+
+    /// [`exchange_device_code`](Self::exchange_device_code)'s flow, inside its
+    /// write scope `tx`. A refusal is the inner `Err`, so the scope keeps the
+    /// poll it stamped.
+    fn claim_device_request_in(
+        &self,
+        tx: &mut impl GrantTx,
+        authenticated_client: &AuthenticatedClient,
+        device_code: &str,
+        now: DateTime<Utc>,
+    ) -> ExchangeOutcome {
+        let consumed_device_request =
+            match ConsumedDeviceRequest::consume(tx, authenticated_client, device_code, now)? {
+                Ok(consumed_device_request) => consumed_device_request,
+                Err(refusal) => return Ok(Err(refusal)),
+            };
+        let (minter, refresh_token) = self.prepare_issuance(
+            tx,
+            GrantRedemption::DeviceCode(&consumed_device_request),
             now,
         )?;
-        let access_token = self.mint(TokenEntitlement::RefreshToken(&validated_refresh_token))?;
-        let successor =
-            RefreshFamilyWriter::over(&self.store).rotate(&validated_refresh_token, now)?;
-        Ok(IssuedTokens {
-            access_token,
-            expires_in: ACCESS_TOKEN_TTL.num_seconds(),
-            granted_scopes: validated_refresh_token.granted_scopes().to_vec(),
-            refresh_token: Some(successor),
-            patient: validated_refresh_token.patient().map(str::to_owned),
-        })
+        issue(
+            &minter,
+            TokenEntitlement::DeviceCode(&consumed_device_request),
+            consumed_device_request.granted_scopes(),
+            consumed_device_request.patient(),
+            refresh_token,
+        )
     }
 
-    /// The registration must list the grant type the client is using.
-    fn ensure_grant_type_allowed(
+    /// [`exchange_refresh_token`](Self::exchange_refresh_token)'s write half,
+    /// inside its write scope `tx`: re-validate the token validated in the
+    /// read scope, rotate it, and mint. A refusal is the inner `Err`, so the
+    /// scope keeps a replayed family's end.
+    fn rotate_refresh_token_in(
         &self,
+        tx: &mut impl GrantTx,
         authenticated_client: &AuthenticatedClient,
-        grant_type: AllowedGrantType,
-    ) -> Result<(), TokenExchangeError> {
-        if authenticated_client.allows_grant_type(grant_type) {
-            Ok(())
-        } else {
-            Err(TokenExchangeError::UnauthorizedGrantType)
-        }
+        validated_refresh_token: ValidatedRefreshToken,
+        now: DateTime<Utc>,
+    ) -> ExchangeOutcome {
+        let validated_refresh_token =
+            match validated_refresh_token.revalidate(tx, authenticated_client, now) {
+                Ok(validated_refresh_token) => validated_refresh_token,
+                Err(TokenExchangeError::Store(error)) => return Err(error.into()),
+                Err(refusal) => return Ok(Err(refusal)),
+            };
+        let minter = AccessTokenMinter::with_active_key(tx, &self.server_origin, ACCESS_TOKEN_TTL)?;
+        let successor =
+            match RefreshFamilyWriter::within(tx).rotate(&validated_refresh_token, now)? {
+                Ok(successor) => successor,
+                Err(refusal) => return Ok(Err(refusal)),
+            };
+        issue(
+            &minter,
+            TokenEntitlement::RefreshToken(&validated_refresh_token),
+            validated_refresh_token.granted_scopes(),
+            validated_refresh_token.patient(),
+            Some(successor),
+        )
     }
 
-    /// Mint under a redemption and start its refresh family if the grant earned
-    /// one (the mint comes first so a signing failure creates no credential).
-    fn issue_for_redemption(
+    /// Load the signing key, then start `redemption`'s refresh family if the
+    /// grant earned one, inside the exchange's scope `tx`.
+    fn prepare_issuance(
         &self,
+        tx: &mut impl GrantTx,
         redemption: GrantRedemption<'_>,
         now: DateTime<Utc>,
-    ) -> Result<IssuedTokens, TokenExchangeError> {
-        let access_token = self.mint(redemption.entitlement())?;
-        let refresh_token = if redemption.earns_refresh_token() {
-            Some(RefreshFamilyWriter::over(&self.store).start_family(redemption, now)?)
+    ) -> Result<(AccessTokenMinter<'_>, Option<String>), TokenExchangeError> {
+        let minter = AccessTokenMinter::with_active_key(tx, &self.server_origin, ACCESS_TOKEN_TTL)?;
+        let refresh_token = if redemption.is_refresh_token_earned() {
+            Some(RefreshFamilyWriter::within(tx).start_family(redemption, now)?)
         } else {
             None
         };
-        Ok(IssuedTokens {
-            access_token,
-            expires_in: ACCESS_TOKEN_TTL.num_seconds(),
-            granted_scopes: redemption.granted_scopes().to_vec(),
-            refresh_token,
-            patient: redemption.patient().map(str::to_owned),
-        })
+        Ok((minter, refresh_token))
     }
+}
 
-    /// Mint an OAuth access token whose `iss` and `aud` are both the server's
-    /// origin (see `docs/Origins/Explanation.md`).
-    fn mint(&self, entitlement: TokenEntitlement<'_>) -> Result<String, TokenExchangeError> {
-        let minter = AccessTokenMinter::new(&self.store, &self.server_origin, ACCESS_TOKEN_TTL);
-        Ok(minter.mint(entitlement)?)
+/// The registration must list the grant type the client is using.
+fn ensure_grant_type_allowed(
+    authenticated_client: &AuthenticatedClient,
+    grant_type: AllowedGrantType,
+) -> Result<(), TokenExchangeError> {
+    if authenticated_client.allows_grant_type(grant_type) {
+        Ok(())
+    } else {
+        Err(TokenExchangeError::UnauthorizedGrantType)
     }
+}
+
+/// Sign the access token under `entitlement` (its `iss` and `aud` are both
+/// the server's origin; see `docs/Origins/Explanation.md`), and answer with
+/// it, the exchange's `refresh_token`, and the `granted_scopes` and `patient`
+/// the response reports. A signing failure is the outer `Err`, rolling the
+/// exchange's scope back.
+fn issue(
+    minter: &AccessTokenMinter<'_>,
+    entitlement: TokenEntitlement<'_>,
+    granted_scopes: &[String],
+    patient: Option<&str>,
+    refresh_token: Option<String>,
+) -> ExchangeOutcome {
+    Ok(Ok(IssuedTokens {
+        access_token: minter.mint(entitlement)?,
+        expires_in: ACCESS_TOKEN_TTL.num_seconds(),
+        granted_scopes: granted_scopes.to_vec(),
+        refresh_token,
+        patient: patient.map(str::to_owned),
+    }))
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::grant_store::*;
     use chrono::Duration;
 
     use crate::domain::token_exchange_error::InvalidGrantReason;
@@ -188,24 +302,30 @@ mod tests {
     use super::*;
     use crate::crypto_util::pkce::compute_code_challenge;
     use crate::crypto_util::random_token::generate_authorization_code;
-    use crate::domain::authorization_code::{IssuedAuthorizationCode, AUTHORIZATION_CODE_TTL};
+    use crate::domain::access_token::{verify_access_token, AccessTokenVerifyOptions};
+    use crate::domain::authorization_code::{AuthorizationCode, AUTHORIZATION_CODE_TTL};
     use crate::domain::client::Client;
-    use crate::domain::token::{verify_jwt, VerifyOptions};
 
     use crate::domain::test_fake::{
         authenticated_public_client, client, seed_active_signing_key, seed_fixture_browser_session,
         FakeGrantStore, NothingRevoked, FIXTURE_SID,
     };
 
+    /// The PKCE verifier every fixture code's challenge is computed from.
     const VERIFIER: &str = "verifier-verifier-verifier-verifier-verifier-1";
+    /// The server's origin: every minted token's `iss` and `aud`.
     const SERVER_ORIGIN: &str = "https://ruth.relay.example";
 
+    /// An exchanger over a fresh fake store with an active signing key, and
+    /// nothing revoked.
     fn exchanger() -> TokenExchanger<FakeGrantStore> {
         let store = FakeGrantStore::default();
         seed_active_signing_key(&store);
         TokenExchanger::new(store, Arc::new(NothingRevoked), SERVER_ORIGIN.into())
     }
 
+    /// The proof that public client `client_id`, allowed `openid` and the
+    /// `grant_types`, has authenticated.
     fn authenticated(
         store: &FakeGrantStore,
         client_id: &str,
@@ -220,11 +340,15 @@ mod tests {
         )
     }
 
+    /// Issue a live code to `client_id` for `scopes`, under the fixture
+    /// browser session, bound to [`VERIFIER`] and `https://example.com/cb`,
+    /// and return it.
     fn issue_code(store: &FakeGrantStore, client_id: &str, scopes: &[&str]) -> String {
         let code = generate_authorization_code();
         let now = Utc::now();
         store
-            .issue_authorization_code(&IssuedAuthorizationCode {
+            .tx()
+            .issue_authorization_code(&AuthorizationCode {
                 code: code.clone(),
                 request_id: "req".to_owned(),
                 client_id: client_id.to_owned(),
@@ -263,6 +387,7 @@ mod tests {
         assert!(
             exchanger
                 .store
+                .tx()
                 .authorization_code_by_request_id("req")
                 .unwrap()
                 .is_some(),
@@ -290,10 +415,10 @@ mod tests {
             )
             .expect("exchanges");
         assert_eq!(token.granted_scopes, ["openid"]);
-        let claims = verify_jwt(
+        let claims = verify_access_token(
             &token.access_token,
-            &exchanger.store.all_signing_keys().unwrap(),
-            &VerifyOptions {
+            &exchanger.store.tx().all_signing_keys().unwrap(),
+            &AccessTokenVerifyOptions {
                 expected_issuer: SERVER_ORIGIN,
                 accepted_audiences: &[SERVER_ORIGIN.to_owned()],
             },

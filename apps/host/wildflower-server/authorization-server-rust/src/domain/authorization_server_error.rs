@@ -1,7 +1,7 @@
 //! [`AuthorizationServerError`] — the authorization server domain's failure vocabulary, shaped like
 //! apps' `AppsError`: a small set of **semantic**, client-facing
 //! outcomes plus one opaque infrastructure variant. The HTTP layer
-//! ([`crate::http::errors`]) renders each to a status and wire body; nothing
+//! (`crate::http::errors`) renders each to a status and wire body; nothing
 //! here knows about HTTP, and the store ([`crate::db`]) produces
 //! [`Infrastructure`](AuthorizationServerError::Infrastructure) without leaking its
 //! database error types up to the routes. The semantic `*NotFound` outcomes are
@@ -14,32 +14,57 @@ use wildflowerhealthio_scope_capabilities::MissingScopes;
 /// are semantic, client-facing outcomes that are part of the wire contract
 /// (each renders as a structured JSON 404 keyed by the resource's identifying
 /// field); [`Infrastructure`](AuthorizationServerError::Infrastructure) is an opaque
-/// infrastructure failure rendered as a logged, empty 500.
+/// infrastructure failure rendered as a logged, empty 500. Its audience is the
+/// Owner's UI on the `/authorization` surface, which acts on the semantic
+/// variants, and every operation when the store fails. Each semantic 4xx
+/// renders as JSON naming the variant in `error`, with the identifying field
+/// beside it, so the Owner's UI can tell which thing went missing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthorizationServerError {
     /// No pending, unexpired authorization-code consent has this id — the
     /// Owner-facing `/authorization/oauth-consents/{id}` surface's 404.
-    OAuthConsentNotFound { id: String },
+    OAuthConsentNotFound {
+        /// The authorization request id the Owner's UI asked for.
+        id: String,
+    },
     /// No pending, unexpired device-code consent has this user code — the
     /// Owner-facing `/authorization/devices/{userCode}` surface's 404.
-    DeviceConsentNotFound { user_code: String },
+    DeviceConsentNotFound {
+        /// The user code the Owner's UI asked for.
+        user_code: String,
+    },
     /// No standing grant has this id — the `/authorization/grants/{id}` 404.
-    GrantNotFound { id: String },
+    GrantNotFound {
+        /// The grant id the Owner's UI asked for.
+        id: String,
+    },
     /// No standing browser session has this `sid` — the
     /// `DELETE /authorization/browser-sessions/{sid}` 404.
-    BrowserSessionNotFound { sid: String },
+    BrowserSessionNotFound {
+        /// The session id the Owner's UI asked to revoke.
+        sid: String,
+    },
     /// No registered client has this `client_id` — the
     /// `PATCH /authorization/clients/{clientId}` 404.
-    ClientNotFound { client_id: String },
+    ClientNotFound {
+        /// The client the Owner's UI asked to change.
+        client_id: String,
+    },
     /// The Owner tried to disable an essential client — the
     /// `PATCH /authorization/clients/{clientId}` **409**. Disabling it would
     /// leave the Owner no way in (see
-    /// [`EssentialClientGuard`](crate::domain::essential_client_guard::EssentialClientGuard)).
+    /// `is_essential_client`).
     /// Nothing is written when it is raised.
-    EssentialClient { client_id: String },
+    EssentialClient {
+        /// The essential client the Owner tried to disable.
+        client_id: String,
+    },
     /// No authorization request has this id — the `/oauth/authorize/{id}`
-    /// polling endpoint's 404.
-    AuthorizationRequestNotFound { id: String },
+    /// polling endpoint's 404, which the wait page's poll hears.
+    AuthorizationRequestNotFound {
+        /// The authorization request id the wait page polled.
+        id: String,
+    },
     /// The caller authenticated, but their token doesn't cover the scope(s) the
     /// `/authorization` operation requires — the surface's **403**. `missing_scopes`
     /// are the rendered scopes the caller must additionally hold. Raised when the
@@ -50,13 +75,20 @@ pub enum AuthorizationServerError {
     /// registration trusted on first use, a code request's resource scopes),
     /// which depend on the request and so are checked per call. Nothing is
     /// written when an approval raises it.
-    InsufficientScope { missing_scopes: Vec<String> },
+    InsufficientScope {
+        /// The rendered scopes the caller lacks.
+        missing_scopes: Vec<String>,
+    },
     /// An approver tried to grant a client more than they themselves hold —
     /// the consent approve surfaces' **403**. `approver_missing_scopes` are the rendered
     /// scopes the approval would grant that the approver's own token does not
     /// cover ("you can't delegate more permission than you have"). Semantic and
     /// client-facing: the approver must step up (or narrow their approval).
+    /// It renders as the same 403 body as
+    /// [`InsufficientScope`](AuthorizationServerError::InsufficientScope).
     InsufficientApproverScope {
+        /// The rendered scopes the approval would grant beyond the approver's
+        /// own token.
         approver_missing_scopes: Vec<String>,
     },
     /// The Owner approved an authorization-code consent whose client is new to
@@ -64,18 +96,27 @@ pub enum AuthorizationServerError {
     /// registration) without acknowledging that warning — the consent approve
     /// surface's **409**. Semantic and client-facing: the launcher must show the
     /// registration warning and send
-    /// `acknowledgedRegistration: true`. Nothing is written when it is raised.
-    RegistrationNotAcknowledged { id: String },
+    /// `acknowledgedRegistrationChange: true`. Nothing is written when it is raised.
+    RegistrationNotAcknowledged {
+        /// The authorization request the Owner approved.
+        id: String,
+    },
     /// The Owner approved an authorization-code consent whose SMART launch
     /// bound a patient, naming a different patient (or none) — the consent
     /// approve surface's **409**. Nothing is written when it is raised.
-    LaunchPatientMismatch { id: String },
+    LaunchPatientMismatch {
+        /// The authorization request the Owner approved.
+        id: String,
+    },
     /// An infrastructure failure in the backing store (a lock, query, or
     /// mapping error) — opaque to clients: the HTTP layer logs `context` +
     /// `source` and answers an empty 500. The cause is captured as text so
     /// this type stays free of the store's database error types.
     Infrastructure {
+        /// A fixed phrase saying what the store was doing when it failed.
         context: &'static str,
+        /// The cause's `Display` text. Kept as text, not an error source, so
+        /// no database error type reaches the routes.
         source: String,
     },
 }
@@ -159,11 +200,14 @@ impl AuthorizationServerError {
     }
 }
 
-/// The [`Scoped`](wildflowerhealthio_scope_capabilities::Scoped) extractor's rejection — the
-/// caller's token doesn't cover the capability's required scopes — becomes
-/// [`InsufficientScope`](AuthorizationServerError::InsufficientScope), so it reaches the wire
-/// through this error's rendering like any other failure.
+/// A `Scoped` rejection is an insufficient-scope error.
 impl From<MissingScopes> for AuthorizationServerError {
+    /// The [`Scoped`](wildflowerhealthio_scope_capabilities::Scoped) extractor's
+    /// rejection — the caller's token doesn't cover the capability's required
+    /// scopes — becomes
+    /// [`InsufficientScope`](AuthorizationServerError::InsufficientScope), naming
+    /// the `missing` scopes, so it reaches the wire through this error's
+    /// rendering like any other failure.
     fn from(missing: MissingScopes) -> Self {
         AuthorizationServerError::InsufficientScope {
             missing_scopes: missing.into_rendered(),

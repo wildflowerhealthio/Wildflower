@@ -1,3 +1,9 @@
+//! [`SigningKey`] — an RSA key the server signs access tokens with, at rest in
+//! its own database. The server signs with its one active key, verifies
+//! against every key it holds, and publishes the public half of each at its
+//! JWKS endpoint. A boot that finds no active key generates one and stores it
+//! as active.
+
 use jsonwebtoken::{DecodingKey, EncodingKey};
 use rsa::pkcs1::{EncodeRsaPrivateKey, EncodeRsaPublicKey};
 use rsa::traits::PrivateKeyParts;
@@ -30,11 +36,13 @@ pub struct SigningKeyValues {
     pub q: String,
 }
 
-/// Redact the private exponents (`d`, `p`, `q`) from `Debug` output so the
-/// plaintext key material that `ZeroizeOnDrop` scrubs from memory can't leak
-/// through a formatter (log line, panic message, `{:?}` in a test failure).
-/// The public `n`/`e` are shown so a formatted value stays identifiable.
+/// Debug output with the private exponents redacted.
 impl std::fmt::Debug for SigningKeyValues {
+    /// Format the values with the private exponents (`d`, `p`, `q`) redacted, so
+    /// the plaintext key material that `ZeroizeOnDrop` scrubs from memory can't
+    /// leak through a formatter (log line, panic message, `{:?}` in a test
+    /// failure). The public `n`/`e` are shown so a formatted value stays
+    /// identifiable.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SigningKeyValues")
             .field("n", &self.n)
@@ -46,9 +54,9 @@ impl std::fmt::Debug for SigningKeyValues {
     }
 }
 
-/// An RSA signing key used to mint and verify access tokens; `is_active` distinguishes the current minter from rotated-out verify-only keys.
-/// Diesel-mapped 1:1 to the `signing_keys` table; `values` maps to the
-/// `values_json` JSON TEXT column.
+/// An RSA signing key used to mint and verify access tokens; `is_active` marks
+/// the one key that signs, and every key verifies. Diesel-mapped 1:1 to the
+/// `signing_keys` table; `values` maps to the `values_json` JSON TEXT column.
 #[derive(
     Debug,
     Clone,
@@ -61,7 +69,8 @@ impl std::fmt::Debug for SigningKeyValues {
 #[diesel(table_name = crate::db::signing_keys::signing_keys)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct SigningKey {
-    /// Unique key identifier emitted in the JWS `kid` header so verifiers can pick the right key.
+    /// A random id, written into each token's JWS `kid` header so a verifier
+    /// can pick the key that signed it.
     pub kid: String,
     /// JWK key type — always `"RSA"` for keys produced here.
     pub kty: String,
@@ -74,12 +83,14 @@ pub struct SigningKey {
         deserialize_as = crate::db::signing_keys::JsonSigningKeyValues
     )]
     pub values: SigningKeyValues,
-    /// Whether this key currently signs new tokens; retired keys stay published in the JWKS during rotation.
+    /// Whether this key signs new tokens. A key that isn't active still
+    /// verifies, and stays published in the JWKS.
     pub is_active: bool,
 }
 
 impl SigningKey {
-    /// Generate a fresh 2048-bit RSA `SigningKey` with a new random `kid` (inactive by default).
+    /// Generate a fresh 2048-bit RSA `SigningKey` with a new random `kid`,
+    /// not yet active: whoever stores it decides whether it signs.
     ///
     /// # Errors
     ///
@@ -91,8 +102,10 @@ impl SigningKey {
     }
 }
 
-/// Wrap an existing `RsaPrivateKey` as a `SigningKey` with base64url-encoded JWK components and a new `kid`.
+/// A `SigningKey` from an existing RSA private key.
 impl From<&RsaPrivateKey> for SigningKey {
+    /// Wrap `private` as a `SigningKey` with base64url-encoded JWK components and
+    /// a new `kid`. The key starts inactive.
     fn from(private: &RsaPrivateKey) -> Self {
         let primes = private.primes();
         let p = &primes[0];
@@ -120,8 +133,11 @@ impl From<&RsaPrivateKey> for SigningKey {
     }
 }
 
-/// Public-only JWK view of `key`, suitable for publishing in a JWKS endpoint.
+/// The public half of a signing key, as a JWK.
 impl From<&SigningKey> for PublicJwk {
+    /// The public-only JWK view of `key`, suitable for publishing in a JWKS
+    /// endpoint: its `kid`, key type, algorithm and public `n`/`e`, with
+    /// `key_ops` limited to `verify`.
     fn from(key: &SigningKey) -> Self {
         PublicJwk {
             kid: key.kid.clone(),
@@ -134,10 +150,17 @@ impl From<&SigningKey> for PublicJwk {
     }
 }
 
-/// Build a `jsonwebtoken::EncodingKey` (for signing JWTs) from a `SigningKey`.
+/// A `jsonwebtoken` signing key from a `SigningKey`.
 impl TryFrom<&SigningKey> for EncodingKey {
     type Error = KeyMaterialError;
 
+    /// Build a `jsonwebtoken::EncodingKey` (for signing JWTs) from `key`'s
+    /// private components.
+    ///
+    /// # Errors
+    ///
+    /// A [`KeyMaterialError`] when the components don't decode or compose into
+    /// a private key, or it won't encode as PKCS#1 DER.
     fn try_from(key: &SigningKey) -> Result<Self, Self::Error> {
         let private = RsaPrivateKey::try_from(key)?;
         let der = private.to_pkcs1_der().map_err(KeyMaterialError::Encode)?;
@@ -145,10 +168,17 @@ impl TryFrom<&SigningKey> for EncodingKey {
     }
 }
 
-/// Build a `jsonwebtoken::DecodingKey` (for verifying JWTs) from a `SigningKey`.
+/// A `jsonwebtoken` verifying key from a `SigningKey`.
 impl TryFrom<&SigningKey> for DecodingKey {
     type Error = KeyMaterialError;
 
+    /// Build a `jsonwebtoken::DecodingKey` (for verifying JWTs) from `key`'s
+    /// public components.
+    ///
+    /// # Errors
+    ///
+    /// A [`KeyMaterialError`] when `n` or `e` doesn't decode or compose into a
+    /// public key, or it won't encode as PKCS#1 DER.
     fn try_from(key: &SigningKey) -> Result<Self, Self::Error> {
         let public = RsaPublicKey::try_from(key)?;
         let der = public.to_pkcs1_der().map_err(KeyMaterialError::Encode)?;
@@ -156,10 +186,17 @@ impl TryFrom<&SigningKey> for DecodingKey {
     }
 }
 
-/// Reconstruct an `RsaPrivateKey` from a `SigningKey`'s base64url JWK components.
+/// An RSA private key from a `SigningKey`.
 impl TryFrom<&SigningKey> for RsaPrivateKey {
     type Error = KeyMaterialError;
 
+    /// Reconstruct an `RsaPrivateKey` from `key`'s base64url JWK components.
+    /// Every decoded private component is scrubbed if a later one fails.
+    ///
+    /// # Errors
+    ///
+    /// A [`KeyMaterialError`] when a component isn't base64url, or the five
+    /// don't compose into a private key.
     #[allow(clippy::many_single_char_names)]
     fn try_from(key: &SigningKey) -> Result<Self, Self::Error> {
         // Keep every decoded component wrapped in `Zeroizing` until all five
@@ -184,10 +221,17 @@ impl TryFrom<&SigningKey> for RsaPrivateKey {
     }
 }
 
-/// Reconstruct an `RsaPublicKey` from a `SigningKey`'s public JWK components (`n`, `e`).
+/// An RSA public key from a `SigningKey`.
 impl TryFrom<&SigningKey> for RsaPublicKey {
     type Error = KeyMaterialError;
 
+    /// Reconstruct an `RsaPublicKey` from `key`'s public JWK components (`n`,
+    /// `e`).
+    ///
+    /// # Errors
+    ///
+    /// A [`KeyMaterialError`] when `n` or `e` isn't base64url, or the two don't
+    /// compose into a public key.
     fn try_from(key: &SigningKey) -> Result<Self, Self::Error> {
         // `n`/`e` are public, so scrubbing is unnecessary here — but
         // `base64_url_to_biguint` returns `Zeroizing` uniformly; move the
@@ -221,15 +265,21 @@ fn base64_url_to_biguint(s: &str) -> Result<Zeroizing<BigUint>, KeyMaterialError
 /// cause chain survives for logging rather than being flattened to a string.
 /// `Compose` and `Generate` both wrap `rsa::Error`, so neither uses `#[from]`
 /// (two `From<rsa::Error>` impls would conflict) — call sites construct them
-/// explicitly to keep the two failure modes distinct.
+/// explicitly to keep the two failure modes distinct. A key that fails here is
+/// the operator's problem, not the caller's: minting and verifying report it
+/// as an unreadable signing key.
 #[derive(Debug, thiserror::Error)]
 pub enum KeyMaterialError {
+    /// A stored component isn't valid base64url.
     #[error("decode JWK component")]
     Decode(#[source] base64::DecodeError),
+    /// The components don't make an RSA key.
     #[error("compose RSA key")]
     Compose(#[source] rsa::Error),
+    /// The rebuilt key couldn't be DER-encoded for `jsonwebtoken`.
     #[error("encode Distinguished Encoding Rules (DER)")]
     Encode(#[source] rsa::pkcs1::Error),
+    /// Generating a fresh RSA key failed.
     #[error("generate RSA key")]
     Generate(#[source] rsa::Error),
 }
@@ -238,6 +288,8 @@ pub enum KeyMaterialError {
 mod tests {
     use super::*;
 
+    /// A token signed with a generated key's signing half verifies with its
+    /// verifying half, and every claim comes back as it went in.
     #[test]
     fn round_trip_sign_verify() {
         use jsonwebtoken::{Algorithm, Header, Validation};
@@ -257,6 +309,8 @@ mod tests {
         assert_eq!(decoded.claims, claims);
     }
 
+    /// A formatted key shows its public parts and a redaction marker, never
+    /// its private parts.
     #[test]
     fn debug_redacts_private_exponents() {
         let values = SigningKeyValues {

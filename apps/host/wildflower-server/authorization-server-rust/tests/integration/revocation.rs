@@ -1,9 +1,15 @@
+//! Access-token revocation: the bearer gates check the shared revocation
+//! store's denylist of `jti`s and its per-subject epochs, and the control
+//! surfaces (logout, `POST /authorization/revocations`, revoking a grant)
+//! write to it. A `jti` is a revocation handle, not a single-use nonce: a live
+//! token keeps passing.
+
 use crate::common::*;
 
+/// A bearer is multi-use: the same live token authenticates again and again,
+/// and revocation doesn't make it single-use.
 #[tokio::test]
 async fn gate_allows_a_live_token_across_repeated_requests() {
-    // Regression guard for the reframe: the same multi-use bearer must
-    // authenticate again and again — revocation must NOT reintroduce single-use.
     let (g, owner_token, _db) = spin_up();
     for _ in 0..3 {
         let res = g
@@ -20,6 +26,7 @@ async fn gate_allows_a_live_token_across_repeated_requests() {
     }
 }
 
+/// A live token whose `jti` is denylisted is rejected from then on.
 #[tokio::test]
 async fn gate_rejects_a_revoked_jti() {
     let (g, owner_token, db) = spin_up();
@@ -49,6 +56,9 @@ async fn gate_rejects_a_revoked_jti() {
     );
 }
 
+/// Bumping a subject's revocation epoch rejects every token issued to that
+/// client before the epoch. The epoch is set a second ahead, because a
+/// token's `iat` is whole seconds.
 #[tokio::test]
 async fn gate_rejects_after_subject_epoch_bump() {
     let (g, owner_token, db) = spin_up();
@@ -71,6 +81,8 @@ async fn gate_rejects_after_subject_epoch_bump() {
     );
 }
 
+/// Logging out denylists the presented token's `jti`, so the same token no
+/// longer authenticates.
 #[tokio::test]
 async fn logout_revokes_the_presented_jti() {
     let (g, owner_token, db) = spin_up();
@@ -105,6 +117,8 @@ async fn logout_revokes_the_presented_jti() {
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 }
 
+/// `POST /authorization/revocations` with a `jti` and its `expiresAt`
+/// denylists that token, even when it is the caller's own.
 #[tokio::test]
 async fn revocations_endpoint_revokes_by_jti() {
     let (g, owner_token, _db) = spin_up();
@@ -132,6 +146,8 @@ async fn revocations_endpoint_revokes_by_jti() {
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 }
 
+/// `POST /authorization/revocations` with a `subject` bumps that client's
+/// epoch, revoking every token it was issued before now.
 #[tokio::test]
 async fn revocations_endpoint_bulk_revokes_by_subject() {
     let (g, owner_token, db) = spin_up();
@@ -155,6 +171,8 @@ async fn revocations_endpoint_bulk_revokes_by_subject() {
     );
 }
 
+/// A revocation body is one mode or the other: a `jti` without its
+/// `expiresAt`, both modes, neither, or an `expiresAt` already past is `400`.
 #[tokio::test]
 async fn revocations_endpoint_rejects_invalid_bodies() {
     let (g, owner_token, _db) = spin_up();
@@ -186,6 +204,7 @@ async fn revocations_endpoint_rejects_invalid_bodies() {
     }
 }
 
+/// Revoking without a bearer is `401`.
 #[tokio::test]
 async fn revocations_endpoint_requires_owner_auth() {
     let (g, _owner_token, _db) = spin_up();
@@ -203,6 +222,8 @@ async fn revocations_endpoint_requires_owner_auth() {
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 }
 
+/// Revoking an authorization-code grant bumps its client's revocation epoch,
+/// so the client's live access tokens end with the standing consent.
 #[tokio::test]
 async fn revoking_a_grant_bumps_the_client_revocation_epoch() {
     let (g, owner_token, db) = spin_up();
@@ -210,17 +231,19 @@ async fn revoking_a_grant_bumps_the_client_revocation_epoch() {
     seed_client_with_redirect(&db, "granted-client", "https://app.example/cb", &["read"]);
     let store = store_handle(&db);
     store
-        .create_authorization_code_grant(
-            &wildflowerhealthio_authorization_server::domain::grant::AuthorizationCodeGrant {
-                id: "grant-1".to_string(),
-                client_id: "granted-client".to_string(),
-                scopes: vec!["read".to_string()],
-                granted_at: Utc::now(),
-                last_used_at: None,
-                patient: None,
-                redirect_uri: Url::parse("https://app.example/cb").expect("url"),
-            },
-        )
+        .write(|tx| {
+            tx.create_authorization_code_grant(
+                &wildflowerhealthio_authorization_server::domain::grant::AuthorizationCodeGrant {
+                    id: "grant-1".to_string(),
+                    client_id: "granted-client".to_string(),
+                    scopes: vec!["read".to_string()],
+                    granted_at: Utc::now(),
+                    last_used_at: None,
+                    patient: None,
+                    redirect_uri: Url::parse("https://app.example/cb").expect("url"),
+                },
+            )
+        })
         .expect("create grant");
     // Revoke it.
     let res = g
@@ -249,31 +272,30 @@ async fn revoking_a_grant_bumps_the_client_revocation_epoch() {
     );
 }
 
+/// The Owner's list of authorized devices revokes a device through the same
+/// `DELETE /authorization/grants/{id}` route, so revoking a device grant bumps
+/// the client's revocation epoch exactly as revoking an authorization-code
+/// grant does. The epoch is keyed on `sub = client_id`, so revoking one device
+/// grant revokes every live access token of that client.
 #[tokio::test]
 async fn revoking_a_device_grant_bumps_the_client_revocation_epoch() {
-    // Integration point with the polymorphic device grants (#332): the
-    // Authorized Devices list revokes a device through the same
-    // `DELETE /authorization/grants/{id}` surface, so token revocation must fire for a
-    // `DeviceCode` grant exactly as it does for an authorization-code one. This
-    // is the token-revocation half of "revoke this device" — the access-token
-    // epoch is keyed on `sub = client_id`, so revoking one device grant revokes
-    // that client's live access tokens (per-device token handles are deferred —
-    // see #269).
     let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "device-client", "https://app.example/cb", &["read"]);
     let store = store_handle(&db);
     store
-        .create_device_grant(
-            &wildflowerhealthio_authorization_server::domain::grant::DeviceGrant {
-                id: "device-grant-1".to_string(),
-                client_id: "device-client".to_string(),
-                scopes: vec!["read".to_string()],
-                granted_at: Utc::now(),
-                last_used_at: None,
-                patient: None,
-                device_name: "Ada's laptop".to_string(),
-            },
-        )
+        .write(|tx| {
+            tx.create_device_grant(
+                &wildflowerhealthio_authorization_server::domain::grant::DeviceGrant {
+                    id: "device-grant-1".to_string(),
+                    client_id: "device-client".to_string(),
+                    scopes: vec!["read".to_string()],
+                    granted_at: Utc::now(),
+                    last_used_at: None,
+                    patient: None,
+                    device_name: "Ada's laptop".to_string(),
+                },
+            )
+        })
         .expect("create device grant");
     let res = g
         .router
@@ -345,17 +367,20 @@ async fn revoking_a_grant_of_the_host_app_s_client_bumps_its_epoch() {
     let (g, owner_token, db) = spin_up();
     let host_app_token = mint_host_app_token(&db);
     store_handle(&db)
-        .create_device_grant(
-            &wildflowerhealthio_authorization_server::domain::grant::DeviceGrant {
-                id: "host-app-grant".to_string(),
-                client_id: WILDFLOWER_HOST_APP_CLIENT_ID.to_string(),
-                scopes: wildflowerhealthio_authorization_server::default_host_app_client_scopes(),
-                granted_at: Utc::now(),
-                last_used_at: None,
-                patient: None,
-                device_name: "The Owner's laptop".to_string(),
-            },
-        )
+        .write(|tx| {
+            tx.create_device_grant(
+                &wildflowerhealthio_authorization_server::domain::grant::DeviceGrant {
+                    id: "host-app-grant".to_string(),
+                    client_id: WILDFLOWER_HOST_APP_CLIENT_ID.to_string(),
+                    scopes: wildflowerhealthio_authorization_server::default_host_app_client_scopes(
+                    ),
+                    granted_at: Utc::now(),
+                    last_used_at: None,
+                    patient: None,
+                    device_name: "The Owner's laptop".to_string(),
+                },
+            )
+        })
         .expect("create the host app's grant");
     let res = g
         .router
@@ -370,7 +395,7 @@ async fn revoking_a_grant_of_the_host_app_s_client_bumps_its_epoch() {
         .expect("oneshot");
     assert_eq!(res.status(), StatusCode::NO_CONTENT);
     assert!(store_handle(&db)
-        .grant_by_id("host-app-grant")
+        .read(|tx| tx.grant_by_id("host-app-grant"))
         .expect("query")
         .is_none());
     assert_eq!(

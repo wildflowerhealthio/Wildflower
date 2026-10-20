@@ -87,8 +87,8 @@ impl Grant {
     }
 
     /// Reduce this grant to the shortest list granting exactly the same access:
-    /// [merge](merge_restatable) what can be restated as one scope, then
-    /// [drop](without_subsumed) what a broader survivor already admits.
+    /// merge what can be restated as one scope (`merge_restatable`), then
+    /// drop what a broader survivor already admits (`without_subsumed`).
     ///
     /// Order is first-occurrence, so widening appends only what is genuinely new,
     /// and the result is idempotent — collapsing twice changes nothing.
@@ -237,8 +237,8 @@ mod tests {
         grant.render()
     }
 
-    /// The case that motivates the collapse: an approval that grants the whole
-    /// resource must *replace* the narrower entry, not sit beside it.
+    /// An approval that grants the whole resource *replaces* the narrower
+    /// entry rather than sitting beside it, and keeps that entry's position.
     #[test]
     fn widening_replaces_a_narrower_entry_with_the_broader_grant() {
         assert_eq!(
@@ -249,6 +249,7 @@ mod tests {
         // shuffled by a widening that never touched it.
     }
 
+    /// Widening by scopes the grant already covers leaves it exactly as it was.
     #[test]
     fn widening_by_an_already_covered_scope_changes_nothing() {
         let standing = ["patient/*.cruds", "openid"];
@@ -258,6 +259,8 @@ mod tests {
         );
     }
 
+    /// Two scopes on one resource, neither covering the other, restate as one
+    /// scope holding both sets of interactions, in the grammar they share.
     #[test]
     fn widening_unions_the_interactions_of_one_resource() {
         // Neither covers the other, but both address `patient/Patient` in the

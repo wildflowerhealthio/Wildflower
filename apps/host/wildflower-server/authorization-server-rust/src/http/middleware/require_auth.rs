@@ -1,3 +1,8 @@
+//! The session gate on `/authorization` ([`require_valid_session`]), and the
+//! token-to-claims pipeline it shares with the host's bearer gate: a request
+//! is admitted only with a valid, unrevoked `Authorization: Bearer` access
+//! token for this server; any other request is a bare `401` stamped with why.
+
 use std::sync::Arc;
 
 use axum::body::Body;
@@ -7,7 +12,7 @@ use axum::middleware::Next;
 use axum::response::Response;
 use wildflowerhealthio_shared_structures::request_caller::{RequestCaller, RequestRefusal};
 
-use crate::domain::token::VerifiedClaims;
+use crate::domain::access_token::VerifiedClaims;
 use crate::http::errors;
 use crate::http::state::AuthorizationServerState;
 use crate::live_bindings::{FromState, LiveTokenVerifier};
@@ -17,19 +22,18 @@ use crate::live_bindings::{FromState, LiveTokenVerifier};
 /// in the request's extensions for the scope-gated capability extractors
 /// (`domain::capabilities`) to read — a missing/invalid token is a `401`.
 ///
-/// This replaces the old blanket owner gate: authorization is no longer
-/// all-or-nothing here. This layer only proves *who* the caller is (authN);
+/// This layer only proves *who* the caller is (authN);
 /// *what* they may do (authZ) is decided per-route by the `Scoped<…>` extractor,
 /// which reads these claims and checks the covering scope, returning a `403`
-/// with the missing scopes on failure. An owner token (covering
+/// with the missing scopes on failure. An Owner token (covering
 /// [`WILDFLOWER_WIDEST_SCOPES`](crate::WILDFLOWER_WIDEST_SCOPES)) still covers
-/// every per-resource scope, so it passes every gate exactly as before.
+/// every per-resource scope, so it passes every gate.
 ///
 /// This is one of the **pair** of claims-inserting authN gates (see
 /// `docs/Authorization/Scope-Gated Endpoints How-To.md`, "Wiring the claims"):
 /// this one guards the authorization server's own `/authorization` router and inserts the domain
 /// [`VerifiedClaims`]; its sibling
-/// [`require_valid_bearer_token`](super::require_valid_bearer_token::require_valid_bearer_token)
+/// [`authorization_server_auth_middleware`](super::authorization_server_auth_middleware)
 /// wraps the host's downstream slice routers and inserts the framework-neutral
 /// `ScopeClaims`. Both run the same [`verify_request_claims`] pipeline.
 ///
@@ -69,7 +73,7 @@ pub async fn require_valid_session(
 /// [`RequestRefusal::MissingToken`], a verify failure whatever [`errors::verify_error_response`] maps it to (a rejected
 /// or revoked token's `401` stamped with that refusal). Extracted so
 /// [`require_valid_session`] and
-/// [`require_valid_bearer_token`](super::require_valid_bearer_token::require_valid_bearer_token)
+/// [`authorization_server_auth_middleware`](super::authorization_server_auth_middleware)
 /// cannot drift in how a token becomes claims; they differ only in the extension
 /// type they insert (and the bearer gate's exempt paths).
 ///

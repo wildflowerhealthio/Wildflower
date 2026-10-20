@@ -13,15 +13,20 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 /// secret and is skipped.
 #[derive(PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
 pub struct ClientCredentials {
+    /// The client the caller says it is. Not secret, so not scrubbed.
     #[zeroize(skip)]
     pub client_id: String,
+    /// The plaintext secret a confidential client authenticates with; `None`
+    /// for a public client, which has none.
     pub client_secret: Option<String>,
 }
 
-/// Redact `client_secret` from `Debug` output so the plaintext scrubbed on drop
-/// can't leak through a log line or a `{:?}` in a test-failure message. Only the
-/// secret's presence is shown, never its value.
+/// Debug output with `client_secret` redacted.
 impl std::fmt::Debug for ClientCredentials {
+    /// Format the credentials with `client_secret` redacted, so the plaintext
+    /// scrubbed on drop can't leak through a log line or a `{:?}` in a
+    /// test-failure message. Only the secret's presence is shown, never its
+    /// value.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ClientCredentials")
             .field("client_id", &self.client_id)
@@ -37,6 +42,8 @@ impl std::fmt::Debug for ClientCredentials {
 mod tests {
     use super::*;
 
+    /// A formatted credential shows the client and a redaction marker, never
+    /// the secret's value.
     #[test]
     fn debug_redacts_client_secret() {
         let credentials = ClientCredentials {
@@ -57,6 +64,7 @@ mod tests {
         assert!(rendered.contains("app"), "client_id hidden: {rendered}");
     }
 
+    /// A credential with no secret formats it as `None`, not as redacted.
     #[test]
     fn debug_shows_absent_client_secret_as_none() {
         let credentials = ClientCredentials {

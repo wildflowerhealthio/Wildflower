@@ -1,3 +1,10 @@
+//! The layerable bearer gate the host wraps its downstream routers in
+//! ([`authorization_server_auth_middleware`]): the same token check as the
+//! `/authorization` session gate, handing the framework-neutral `ScopeClaims`
+//! to the routes behind it, with an exact-match list of paths that pass
+//! ungated. Also [`ensure_bearer_header`], which the host's cookie→bearer layer
+//! uses to present a session cookie's token as the request's bearer.
+
 use std::sync::Arc;
 
 use crate::http::state::AuthorizationServerState;
@@ -12,7 +19,10 @@ use crate::http::middleware::require_auth::{try_bearer_token_from_headers, verif
 /// State for [`authorization_server_auth_middleware`]'s gate handler.
 #[derive(Clone)]
 pub struct BearerGate {
+    /// The router state, whose token verifier checks each bearer.
     state: Arc<AuthorizationServerState>,
+    /// The paths that pass without a token, trailing slashes trimmed, matched
+    /// exactly by `is_exempt`.
     exempt: Arc<[String]>,
 }
 
@@ -30,7 +40,7 @@ pub type AuthorizationServerAuthMiddleware =
 /// stamps the response with the verified [`RequestCaller`] (an
 /// exempt path's response carries none; a `401` carries the
 /// [`RequestRefusal`](wildflowerhealthio_shared_structures::request_caller::RequestRefusal)
-/// [`verify_request_claims`] stamped instead).
+/// `verify_request_claims` stamped instead).
 /// `Clone` — build once, clone per router. See
 /// `docs/Authorization/Scope-Gated Endpoints How-To.md`.
 pub fn authorization_server_auth_middleware(
@@ -74,9 +84,10 @@ pub fn authorization_server_auth_middleware(
 }
 
 /// If `headers` carries no `Authorization: Bearer`, insert `bearer`. Lets a
-/// FHIR web UI session's bearer (the host's `ui_session_bearer` middleware)
-/// satisfy the bearer gate and any downstream check that reads only the bearer
-/// header, without disturbing a request that already presents one.
+/// session cookie's token (the host's `session_cookie_bearer` layer, for the
+/// browser session and the FHIR web UI's session) satisfy the bearer gate and
+/// any downstream check that reads only the bearer header, without disturbing
+/// a request that already presents one.
 pub fn ensure_bearer_header(headers: &mut HeaderMap, bearer: &HeaderValue) {
     if try_bearer_token_from_headers(headers).is_some() {
         return;
@@ -97,6 +108,8 @@ mod tests {
     use super::{ensure_bearer_header, is_exempt};
     use axum::http::{header, HeaderMap, HeaderValue};
 
+    /// An exempt list like the host's: the FHIR capability statement and the
+    /// SMART discovery document.
     fn exempt() -> Vec<String> {
         vec![
             "/metadata".to_string(),
@@ -104,18 +117,22 @@ mod tests {
         ]
     }
 
+    /// A path on the exempt list passes ungated.
     #[test]
     fn exact_path_is_exempt() {
         assert!(is_exempt("/metadata", &exempt()));
         assert!(is_exempt("/.well-known/smart-configuration", &exempt()));
     }
 
+    /// Trailing slashes on the request path don't stop an exempt path matching.
     #[test]
     fn trailing_slashes_are_trimmed_before_matching() {
         assert!(is_exempt("/metadata/", &exempt()));
         assert!(is_exempt("/metadata///", &exempt()));
     }
 
+    /// The match is exact: a sibling path that starts the same, a deeper path
+    /// under an exempt one, and any other path are all gated.
     #[test]
     fn near_misses_stay_gated() {
         // Exact, not prefix/substring: a sibling path that merely starts the same
@@ -125,17 +142,20 @@ mod tests {
         assert!(!is_exempt("/Patient", &exempt()));
     }
 
+    /// With no exempt paths, every path is gated.
     #[test]
     fn empty_exempt_list_gates_everything() {
         assert!(!is_exempt("/metadata", &[]));
     }
 
+    /// The `Authorization` header's value, if `headers` carry one.
     fn bearer(headers: &HeaderMap) -> Option<&str> {
         headers
             .get(header::AUTHORIZATION)
             .and_then(|v| v.to_str().ok())
     }
 
+    /// A request with no `Authorization` header gets the session's bearer.
     #[test]
     fn ensure_bearer_header_injects_when_absent() {
         // A signed-in web UI request carries no Authorization header; the host
@@ -148,6 +168,7 @@ mod tests {
         assert_eq!(bearer(&headers), Some("Bearer the.jwt.value"));
     }
 
+    /// A request that already presents a bearer keeps its own.
     #[test]
     fn ensure_bearer_header_leaves_an_existing_bearer_untouched() {
         // A request that already presents a bearer is left exactly as-is — the

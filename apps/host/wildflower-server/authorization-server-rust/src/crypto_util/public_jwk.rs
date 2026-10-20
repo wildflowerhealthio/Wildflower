@@ -1,6 +1,11 @@
+//! [`PublicJwk`]: the public half of a signing key as the JWKS endpoint
+//! publishes it (RFC 7517).
+
 use serde::Serialize;
 use utoipa::ToSchema;
 
+/// One signing key's public half, as served at the JWKS endpoint. Resource
+/// servers fetch it to verify the access tokens the server signs.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PublicJwk {
     /// Key identifier matching the source `SigningKey.kid`; verifiers use this to select the key.

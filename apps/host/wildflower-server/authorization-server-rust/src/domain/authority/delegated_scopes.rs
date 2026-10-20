@@ -1,8 +1,21 @@
-//! [`DelegatedScopes`] — the proof that an approving Owner may delegate a scope
-//! set to a client. Its one constructor, [`DelegatedScopes::clamp`], is the whole
-//! of the "can't delegate more than you hold" rule, and of the rule that an
-//! approver holds the prompt's **approval scopes** (the power to decide it and
-//! to create what approving it creates).
+//! [`DelegatedScopes`] — the proof that an approver (the Owner, or a browser
+//! the Owner paired) may delegate a scope set to a client. No one can delegate
+//! more than they hold. The scope rules the server leans on for that come in
+//! three parts:
+//!
+//! - **What a prompt may grant at most**: each consent prompt has a ceiling,
+//!   set by its flow and the client's registration ([`ApprovableScopes`]).
+//!   Whatever the approver ticks is clamped to it.
+//! - **What the approver must hold**: the prompt's **approval scopes** (the
+//!   power to decide it and to create what approving it creates), and every
+//!   piece of held access it passes on.
+//! - **What the browser holds**: a code issued for a client carries only what
+//!   the browser session the request was made in also holds
+//!   ([`session_bounded_scopes`]), and the browser is told beforehand what it
+//!   lacks ([`session_shortfall`]).
+//!
+//! Its one constructor, [`DelegatedScopes::clamp`], is the whole of the first
+//! two parts.
 
 use std::collections::HashSet;
 
@@ -14,15 +27,27 @@ use crate::domain::capabilities::access::consents::{
 };
 use crate::domain::client::Client;
 
-/// The flow a consent prompt belongs to, which decides its approval scopes and
-/// whether approving it writes the client registration.
+/// The flow a consent prompt belongs to, which decides its ceiling, its
+/// approval scopes, and whether approving it writes the client registration.
+///
+/// - A code prompt for a client trusted on first use records a grant, writes
+///   the registration, and its approver must hold what is asked.
+/// - A code prompt for a server-defined (fixed) registration records a grant
+///   and its approver must hold what is asked, but it writes no registration.
+/// - A device prompt records a grant only; its consent is expandable, so the
+///   approver need not hold what the device asked for.
+/// - A browser pairing records no grant and writes no registration; like a
+///   device prompt it is expandable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ApprovalFlow {
-    /// An authorization-code prompt. `registration_is_fixed` for the host
-    /// app's client, whose registration an approval never writes; any other
-    /// client is trusted on first use, so approving creates or widens its
-    /// registration.
-    Code { registration_is_fixed: bool },
+    /// An authorization-code prompt, whose approval records a standing grant
+    /// and approves the request as asked.
+    Code {
+        /// Whether the client's registration is server-defined, which an
+        /// approval never writes. When it is not, the client is trusted on
+        /// first use, so approving creates or widens its registration.
+        registration_is_fixed: bool,
+    },
     /// A device-code prompt: approving records a standing device grant.
     Device,
     /// A browser pairing: approving records no grant and registers no client.
@@ -31,13 +56,13 @@ enum ApprovalFlow {
 
 impl ApprovalFlow {
     /// Whether approving records a standing grant: a code or device approval.
-    fn records_grant(self) -> bool {
+    fn would_record_grant(self) -> bool {
         self != ApprovalFlow::BrowserPairing
     }
 
     /// Whether approving creates or widens the client's registration: a code
     /// approval for a client trusted on first use.
-    fn writes_registration(self) -> bool {
+    fn would_write_registration(self) -> bool {
         self == ApprovalFlow::Code {
             registration_is_fixed: false,
         }
@@ -46,13 +71,13 @@ impl ApprovalFlow {
     /// Whether the approver must hold every resource scope the request asks
     /// for: a code approval, which approves the request as asked. Device and
     /// pairing consent is expandable instead.
-    fn approves_as_asked(self) -> bool {
+    fn would_approve_as_asked(self) -> bool {
         matches!(self, ApprovalFlow::Code { .. })
     }
 }
 
 /// The scopes one consent prompt may grant at most, decided by its flow. An
-/// Owner-approved scope must be covered by a scope of the request **and** by a
+/// approved scope must be covered by a scope of the request **and** by a
 /// scope of the registration ceiling (the most the client's registration
 /// permits for this approval); each constructor names the policy that fills
 /// those two halves.
@@ -62,8 +87,18 @@ impl ApprovalFlow {
 /// ([`missing_approval_scopes`](Self::missing_approval_scopes)).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ApprovableScopes {
+    /// The half that bounds a tick by what was asked: the request's scopes for
+    /// a code prompt, so a code prompt never grants past what the client asked
+    /// for. An expandable prompt fills it with its ceiling instead: a device
+    /// prompt's registered scopes, a pairing's the Owner's scopes.
     requested_scopes: Vec<String>,
+    /// The most the client's registration permits for this approval: a fixed
+    /// registration's scopes, a registration trusted on first use's scopes
+    /// plus what the request asks for, a device client's registered scopes, or
+    /// the Owner's scopes for a pairing.
     registration_ceiling_scopes: Vec<String>,
+    /// The prompt's flow, which sets its approval scopes and whether approving
+    /// it writes the registration.
     flow: ApprovalFlow,
 }
 
@@ -83,7 +118,7 @@ impl ApprovableScopes {
     /// A browser pairing prompt. It requests the Owner's scopes, and like
     /// device consent it is **expandable**: the Owner may grant anything up to
     /// [`OWNER_SCOPES`](crate::OWNER_SCOPES), which fill both halves, so no
-    /// approved browser session can hold more than an Owner session.
+    /// paired browser session can hold more than a same-device session.
     pub(crate) fn for_browser_pairing() -> Self {
         ApprovableScopes {
             requested_scopes: crate::owner_scopes(),
@@ -93,7 +128,7 @@ impl ApprovableScopes {
     }
 
     /// An authorization-code prompt for `requested_scopes`. A fixed
-    /// registration (the host app's client) is its own ceiling; any other client
+    /// (server-defined) registration is its own ceiling; any other client
     /// is trusted on first use, so its ceiling also takes in what this request
     /// asked for — its registration is widened with the grant.
     pub(crate) fn for_code(
@@ -120,10 +155,11 @@ impl ApprovableScopes {
         }
     }
 
-    /// The subset of the `owner_approved_scopes` this prompt may grant: each
-    /// one covered by a requested scope and by a registration-ceiling scope
-    /// (coverage, not spelling — see [`wildflowerhealthio_scopes::grantable_scopes`]).
-    /// Rendered in canonical form, deduplicated, in the Owner's order.
+    /// The subset of the `owner_approved_scopes` (the approver's ticks) this
+    /// prompt may grant: each one covered by a requested scope and by a
+    /// registration-ceiling scope (by permission, not spelling — see
+    /// [`wildflowerhealthio_scopes::grantable_scopes`]). Rendered in canonical
+    /// form, deduplicated, in the order the approver gave them.
     pub(crate) fn grantable_subset(&self, owner_approved_scopes: Vec<String>) -> Vec<String> {
         let requested: HashSet<&str> = self.requested_scopes.iter().map(String::as_str).collect();
         let ceiling: HashSet<&str> = self
@@ -135,7 +171,7 @@ impl ApprovableScopes {
     }
 
     /// Everything the approver holding `approver_grant` may delegate on this
-    /// prompt, for its card's ticks to start from: each requested scope and
+    /// prompt, which the pairing card's ticks start from: each requested scope and
     /// each of the approver's own scopes the prompt may grant, less any held
     /// access ([`is_held_access`]) the approver does not cover. Approving it
     /// untouched passes [`DelegatedScopes::clamp`]'s approver check, so a
@@ -161,26 +197,29 @@ impl ApprovableScopes {
     /// (`missingApprovalScopes`), and `/oauth/authorize`'s choice between the
     /// consent card and the wait page, so the three never disagree.
     ///
-    /// Every approval takes `wildflower/AuthorizationRequest.u`, to decide the
-    /// request at all. A code or device approval records a standing grant, so
-    /// it also takes `wildflower/Grant.c`; a browser pairing records none. A
-    /// code approval for a client trusted on first use writes its
-    /// registration (creating the row, or widening it in place), so it also
-    /// takes both `wildflower/Client.c` and `wildflower/Client.u`, whatever
-    /// the row looks like when the approval lands; the host app's fixed
-    /// registration takes neither.
+    /// The approval scopes, and who takes them:
     ///
-    /// A code approval also takes every held access ([`is_held_access`]) the
-    /// request asks for that the prompt may grant: the approver must be able
-    /// to approve the request as asked, else it goes to the Owner. A device or
-    /// pairing prompt is expandable, so its approver may grant whatever it
-    /// holds, and [`DelegatedScopes::clamp`] bounds that per scope instead.
+    /// - `wildflower/AuthorizationRequest.u`: every approval, to decide the
+    ///   request at all.
+    /// - `wildflower/Grant.c`: a code or device approval, which records a
+    ///   standing grant; a browser pairing records none.
+    /// - `wildflower/Client.c` and `wildflower/Client.u`: a code approval for
+    ///   a client trusted on first use, which creates or widens its
+    ///   registration, whichever the row needs when the approval lands; a
+    ///   server-defined registration takes neither.
+    /// - Each held access ([`is_held_access`]) the request asks for that the
+    ///   prompt may grant: a code approval, which approves the request as
+    ///   asked, else it goes to the Owner.
+    ///
+    /// A device or pairing prompt is expandable, so its approver may grant
+    /// whatever it holds, and [`DelegatedScopes::clamp`] bounds that scope by
+    /// scope instead. The Owner's scopes lack no approval scope on any prompt.
     pub(crate) fn missing_approval_scopes(&self, approver_grant: &Grant) -> Vec<String> {
         let mut approval_scopes = consent_decider_scopes();
-        if self.flow.records_grant() {
+        if self.flow.would_record_grant() {
             approval_scopes.extend(grant_creating_approval_scopes());
         }
-        if self.flow.writes_registration() {
+        if self.flow.would_write_registration() {
             approval_scopes.extend(client_registering_approval_scopes());
         }
         let uncovered_approval_scopes: Vec<Scope> = approval_scopes
@@ -188,7 +227,7 @@ impl ApprovableScopes {
             .filter(|required| !approver_grant.covers(required))
             .collect();
         let mut missing = render_scopes(&uncovered_approval_scopes);
-        if self.flow.approves_as_asked() {
+        if self.flow.would_approve_as_asked() {
             missing.extend(uncovered_held_access(
                 &self.grantable_subset(self.requested_scopes.clone()),
                 approver_grant,
@@ -198,7 +237,7 @@ impl ApprovableScopes {
     }
 }
 
-/// A scope set an Owner has approved **and** is entitled to delegate. Holding
+/// A scope set an approver has approved **and** is entitled to delegate. Holding
 /// one is proof that the approver held the prompt's approval scopes, and that
 /// every held access ([`is_held_access`]) in it is covered by the approver's
 /// own grant, so the writers that record grants, write registrations, and
@@ -206,19 +245,33 @@ impl ApprovableScopes {
 /// other constructor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DelegatedScopes {
+    /// The ticks that survived the prompt's ceiling, every held access among
+    /// them covered by the approver: what the request's approval, the standing
+    /// grant and a widened registration record as they are. A code issued
+    /// under them is further bounded by the browser session.
     scopes: Vec<String>,
+    /// Whether the approval behind the proof creates or widens the client's
+    /// registration: only a code approval for a client trusted on first use,
+    /// whose approver held `wildflower/Client.c` and `wildflower/Client.u`.
+    /// The grant recorder asks it whether to write the `clients` row.
     writes_registration: bool,
 }
 
 impl DelegatedScopes {
-    /// Require that the `approver_grant` holds the `approvable` prompt's
-    /// approval scopes
-    /// ([`missing_approval_scopes`](ApprovableScopes::missing_approval_scopes)),
-    /// clamp the `owner_approved_scopes` to the `approvable` scopes' grantable
-    /// subset, then require that the `approver_grant` covers every held access
-    /// ([`is_held_access`]) that survives.
+    /// The approval rule, in three steps:
     ///
-    /// `Ok(None)` when nothing survives — the caller denies. Identity and session
+    /// 1. Require that the `approver_grant` holds the `approvable` prompt's
+    ///    approval scopes
+    ///    ([`missing_approval_scopes`](ApprovableScopes::missing_approval_scopes)),
+    ///    whatever was ticked, even nothing.
+    /// 2. Clamp the `owner_approved_scopes` to the `approvable` scopes'
+    ///    grantable subset: `Ok(None)` when nothing survives, and the caller
+    ///    denies rather than recording an empty grant.
+    /// 3. Require that the `approver_grant` covers every held access
+    ///    ([`is_held_access`]) that survives, in either spelling; one it lacks
+    ///    fails the whole approval, naming it.
+    ///
+    /// Identity and session
     /// markers (`openid`, `offline_access`, …) are no held access and pass the
     /// approver check; a resource scope or `wildflower/launch` the approver
     /// lacks fails the whole approval (a `403`) rather than being silently
@@ -249,7 +302,7 @@ impl DelegatedScopes {
         if approver_missing_scopes.is_empty() {
             Ok(Some(DelegatedScopes {
                 scopes: grantable,
-                writes_registration: approvable.flow.writes_registration(),
+                writes_registration: approvable.flow.would_write_registration(),
             }))
         } else {
             Err(AuthorizationServerError::InsufficientApproverScope {
@@ -267,7 +320,7 @@ impl DelegatedScopes {
     /// Whether the approval behind this proof creates or widens its client's
     /// registration (a code approval for a client trusted on first use, whose
     /// approver held `wildflower/Client.c` and `wildflower/Client.u`).
-    pub(crate) fn writes_registration(&self) -> bool {
+    pub(crate) fn would_write_registration(&self) -> bool {
         self.writes_registration
     }
 }
@@ -309,7 +362,9 @@ fn uncovered_held_access(granted: &[String], holder: &Grant) -> Vec<String> {
 /// access the session covers only in part narrows to the parts it holds: its
 /// intersection with each session scope
 /// ([`intersection_in_either_spelling`]), so `system/*.cruds` against a
-/// session holding `system/Patient.cruds` yields `system/Patient.cruds`.
+/// session holding `system/Patient.cruds` yields `system/Patient.cruds`. A
+/// part is spelled in the authorized scope's grammar where one spells it, and
+/// in letters where no word does.
 /// `wildflower/launch` has no parts, so it stays only when the session holds
 /// it. Identity and session markers are no held access, so they pass through.
 ///
@@ -382,6 +437,8 @@ fn intersection_in_either_spelling(
 /// order: each held access ([`is_held_access`]) the session does not cover,
 /// whether [`session_bounded_scopes`] drops it or narrows it to the part the
 /// session holds. Empty when the session holds all the request asks for.
+/// `/oauth/authorize` sends the browser to the limited page when it is not
+/// empty, and the limited page lists it.
 pub(crate) fn session_shortfall(requested: &[String], session_grant: &Grant) -> Vec<String> {
     uncovered_held_access(requested, session_grant)
 }
@@ -998,7 +1055,7 @@ mod tests {
             )
             .expect("the owner covers everything")
             .expect("granted")
-            .writes_registration()
+            .would_write_registration()
         };
         let requested = owned_scopes(&["openid"]);
         let registered = client("app", &["openid"]);

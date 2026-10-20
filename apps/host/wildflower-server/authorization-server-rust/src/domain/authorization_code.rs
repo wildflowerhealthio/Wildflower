@@ -1,15 +1,23 @@
+//! [`AuthorizationCode`] — the Owner's approval carried from the browser to
+//! the app's back end. The browser is sent back to the app's redirect URI with
+//! the code in the URL, and the app's back end trades it at `/oauth/token` for
+//! tokens. The URL holds only the code, never a token, and the code is worth
+//! nothing to anyone who sees it without the app's PKCE verifier. A code lives
+//! 60 seconds and is redeemed once.
+
 use chrono::{DateTime, Duration, Utc};
 use diesel::prelude::{Insertable, Queryable, Selectable};
 use url::Url;
 
 use crate::db::authorization_codes::authorization_codes;
 use crate::db::shared::{JsonStrings, UrlText};
-use crate::domain::authorization_request::{AuthorizationRequest, StartCodeAuthorizationArgs};
 
-/// Lifetime of an `authorization_code`, from issuance (the `/authorize`
-/// fast path or an Owner's consent approval) to the client redeeming it at
-/// `/token` (RFC 6749 §4.1.2 — "MUST be short lived"). One value for both
-/// mint sites so the two flows can't drift.
+/// Lifetime of an `authorization_code`, from issuance (on a standing grant at
+/// `/authorize` or the limited page's Continue, or on an Owner's consent
+/// approval) to the client redeeming it at `/token` (RFC 6749 §4.1.2 — "MUST
+/// be short lived"). A code's `expires_at` is its issue instant plus this, and
+/// redemption refuses a code whose `expires_at` is before the moment of
+/// redemption.
 pub const AUTHORIZATION_CODE_TTL: Duration = Duration::seconds(60);
 
 /// A short-lived single-use authorization code as issued — the opaque `code`
@@ -17,26 +25,35 @@ pub const AUTHORIZATION_CODE_TTL: Duration = Duration::seconds(60);
 /// scopes, patient, expiry). Issued at `/authorize` or on an Owner's approval
 /// and redeemed at `/token` (RFC 6749 §4.1.2). The PKCE `code_challenge` is
 /// stashed here so the redeemer can prove possession of the matching
-/// verifier. Diesel-mapped 1:1 to the `authorization_codes` table.
+/// verifier. Everything the redemption checks is fixed on the code when it is
+/// issued. Diesel-mapped 1:1 to the `authorization_codes` table.
 #[derive(Debug, Clone, PartialEq, Eq, Queryable, Selectable, Insertable)]
 #[diesel(table_name = authorization_codes)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
-pub struct IssuedAuthorizationCode {
-    /// Opaque single-use token the client presents at `/token` to redeem.
+pub struct AuthorizationCode {
+    /// Opaque single-use value the client presents at `/token` to redeem.
+    /// Redemption reads and deletes the row in one statement, so of two
+    /// redemptions of the same code only one gets it back.
     pub code: String,
-    /// `id` of the `AuthorizationRequest` this code was issued against.
+    /// The [`CodeRequest`](crate::domain::authorization_request::code::CodeRequest)
+    /// this code answers.
     pub request_id: String,
-    /// `client_id` the code was issued to; must match the redeemer at `/token`.
+    /// The client the code was issued to: the only one that may redeem it at
+    /// `/token`.
     pub client_id: String,
-    /// Redirect URI the client used at `/authorize`; must exact-match the one supplied at `/token` (RFC 6749 §3.1.2.4).
+    /// Redirect URI the client used at `/authorize`; the redeemer must name it
+    /// again, exactly, at `/token` (RFC 6749 §4.1.3).
     #[diesel(serialize_as = UrlText, deserialize_as = UrlText)]
     pub redirect_uri: Url,
     /// PKCE S256 challenge captured at `/authorize`; the redeemer must present a `code_verifier` that hashes to this.
     pub code_challenge: String,
-    /// Scopes the user actually approved — may be a strict subset of what was requested.
+    /// What the tokens will carry: the approval, bounded by what the
+    /// requesting browser's session holds. May be a strict subset of what was
+    /// requested.
     #[diesel(serialize_as = JsonStrings, deserialize_as = JsonStrings)]
     pub granted_scopes: Vec<String>,
-    /// SMART-on-FHIR patient context carried from the consent decision, if any.
+    /// The SMART patient the approval named, if any; the tokens carry it as
+    /// their `patient` claim.
     pub patient: Option<String>,
     /// When the code was minted.
     pub issued_at: DateTime<Utc>,
@@ -47,104 +64,4 @@ pub struct IssuedAuthorizationCode {
     /// refresh family the code earns record it too, so revoking that browser
     /// session ends them.
     pub sid: String,
-}
-
-/// A pending authorization-code request that is known to be well formed: it's
-/// `Pending`, an `AuthorizationCode` grant flow, unexpired, and carries both a
-/// `redirect_uri` and a PKCE `code_challenge`. Those two are unwrapped once so
-/// callers never re-prove them (parse-don't-validate), and the fields are
-/// private so the unwrapped copies can't drift from the request. Its browser
-/// session (`sid`) is unwrapped the same way: every code-flow request is made
-/// in one. It is what
-/// [`RequestApprover::approve_for_code`](crate::domain::capabilities::writers::RequestApprover::approve_for_code)
-/// approves.
-///
-/// Built by the consent flow's `load_pending_code_request`
-/// ([`from_request`](Self::from_request)) and by the `/authorize` flow when it
-/// parks a new request ([`new_code_authorization`](Self::new_code_authorization))
-/// — the sibling of
-/// the [`IssuedAuthorizationCode`] it exists to mint, so it lives beside it
-/// rather than in a file of its own.
-#[derive(Debug, PartialEq)]
-pub struct PendingCodeRequest {
-    request: AuthorizationRequest,
-    redirect_uri: Url,
-    code_challenge: String,
-    client_state: String,
-    sid: String,
-}
-
-impl PendingCodeRequest {
-    /// Unwrap `request`'s code-flow fields, or `None` when it lacks a
-    /// `redirect_uri`, a `code_challenge`, the client's `state` or a browser
-    /// session (`sid`). The
-    /// caller has already checked the grant type, status, and expiry.
-    #[must_use]
-    pub fn from_request(request: AuthorizationRequest) -> Option<Self> {
-        let redirect_uri = request.redirect_uri.clone()?;
-        let code_challenge = request.code_challenge.clone()?;
-        let client_state = request.client_state.clone()?;
-        let sid = request.sid.clone()?;
-        Some(PendingCodeRequest {
-            request,
-            redirect_uri,
-            code_challenge,
-            client_state,
-            sid,
-        })
-    }
-
-    /// A new pending code-flow request built from `args` — the `/authorize`
-    /// flow's request to park. Its redirect, challenge, client `state` and
-    /// browser session are present by construction.
-    #[must_use]
-    pub fn new_code_authorization(args: StartCodeAuthorizationArgs) -> Self {
-        let redirect_uri = args.redirect_uri.clone();
-        let code_challenge = args.code_challenge.clone();
-        let client_state = args.client_state.clone();
-        let sid = args.sid.clone();
-        PendingCodeRequest {
-            request: AuthorizationRequest::new_code_authorization(args),
-            redirect_uri,
-            code_challenge,
-            client_state,
-            sid,
-        }
-    }
-
-    /// The stored request.
-    #[must_use]
-    pub fn request(&self) -> &AuthorizationRequest {
-        &self.request
-    }
-
-    /// The redirect the request was made with.
-    #[must_use]
-    pub fn redirect_uri(&self) -> &Url {
-        &self.redirect_uri
-    }
-
-    /// The request's PKCE S256 challenge.
-    #[must_use]
-    pub fn code_challenge(&self) -> &str {
-        &self.code_challenge
-    }
-
-    /// The `state` the client sent, which its callback carries back.
-    #[must_use]
-    pub fn client_state(&self) -> &str {
-        &self.client_state
-    }
-
-    /// The browser session the request was made in.
-    #[must_use]
-    pub fn sid(&self) -> &str {
-        &self.sid
-    }
-
-    /// The stored request, giving up the unwrapped fields.
-    #[must_use]
-    pub fn into_request(self) -> AuthorizationRequest {
-        self.request
-    }
 }

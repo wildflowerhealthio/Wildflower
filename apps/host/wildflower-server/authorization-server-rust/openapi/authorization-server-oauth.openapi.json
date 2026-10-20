@@ -10,7 +10,8 @@
         "tags": [
           "Discovery"
         ],
-        "summary": "`GET /.well-known/jwks.json` — serve the active public signing keys.",
+        "summary": "`GET /.well-known/jwks.json` — serve every stored signing key's public half.",
+        "description": "Active and rotated-out verify-only keys alike.",
         "operationId": "handle_jwks_request",
         "responses": {
           "200": {
@@ -138,12 +139,13 @@
           "OAuth 2.0"
         ],
         "summary": "The authorization endpoint (RFC 6749 §3.1), the public front door of the\nOAuth flow. It issues nothing to a browser without a browser session: such\na browser is sent to the pairing page first. For a browser with one it\nvalidates the request, then either auto-issues an authorization code (when\nan existing grant pre-approves every requested scope) or parks the\nuser-agent on the consent card or the wait page while the Owner decides.",
-        "description": "Nothing in-process calls this route. Registered clients (e.g.\nSMART-on-FHIR apps) discover it via the FHIR server's\n`.well-known/smart-configuration` (`authorization_endpoint`) and send the\n*user's browser* here with PKCE params to start an authorization-code\nflow:\n\n1. Browser lands here. The browser session cookie is read before anything\n   else: a browser without a live browser session is 302'd to the pairing\n   page, `/oauth/pair?next=<this request's path and query>`, and nothing is\n   parked, notified or consumed. Once the Owner approves the pairing, the\n   page sends the browser back here with its new session. A browser with a\n   session has its request parked as an `AuthorizationRequest` (5-minute\n   TTL), made in that session (`sid`). A SMART App Launch's `aud` and\n   `launch` are checked first (see their fields), and the launch is\n   consumed onto the request.\n2. A request asking for more than the browser's session holds (scopes a\n   code issued in that session would not carry in full) waits on the\n   limited page at `/oauth/authorize/{id}/limited`, which says what the\n   session lacks and offers Continue or Cancel:\n   `POST /oauth/authorize/{id}/continue` goes on as below,\n   `POST /oauth/authorize/{id}/cancel` answers the client\n   `access_denied`. Until then the Owner isn't asked about it. Once a\n   browser session has pressed Continue for a client, its later requests\n   for that client skip the page, whatever the session then lacks.\n3. Unless every requested scope is pre-approved by an existing grant for\n   this (client, `redirect_uri`) pair, the request joins the pending-consent\n   queue and the browser is 302'd to a page this authorization server\n   serves beside the endpoint, on the origin the browser used. A browser\n   whose session can decide consents and holds the request's approval\n   scopes goes to the consent card at `/oauth/authorize/{id}/consent`, where\n   it decides in place; the request records that it can be decided there\n   (`decidable_in_requesting_browser`). Any other goes to the wait page at\n   `/oauth/authorize/{id}/wait`, and the Owner is notified (the host\n   webview's popup). The wait page polls `GET /oauth/authorize/{id}` (a\n   custom extension, not part of any RFC), which answers the browser\n   session the request was made in and a session that can decide it on\n   the consent card, until the Owner decides — in the\n   popup, in a signed-in launcher, or on the consent card once that\n   browser can decide it. Either way the code is issued under the session\n   the request was made in, not the approver's.\n   RFC 6749 leaves the owner-interaction mechanism unspecified, so both\n   pages are spec-legal; likewise §4.1 explicitly allows skipping consent\n   on a previously established authorization decision, which is what the\n   grant fast path implements.\n4. Approval 302s the browser back to the client's `redirect_uri` with\n   `code` + `state` (§4.1.2); the client then redeems the short-lived\n   code at `POST /oauth/token` (§4.1.3) with its PKCE verifier.\n\nClients other than the host app's are **trusted on first use**: an\nunknown `client_id`, an unregistered `redirect_uri`, and scopes outside the\nregistration are all carried to the Owner's prompt as a registration warning\nrather than rejected here, and nothing is written to the `clients` table\nuntil the Owner approves. Such a request never takes the grant fast path,\nand while its redirect is untrusted every other failure renders the local\nHTML page instead of redirecting. The host app's client keeps the strict\ntreatment, and a disabled client is rejected either way.",
+        "description": "Nothing in-process calls this route. Registered clients (e.g.\nSMART-on-FHIR apps) discover it via the FHIR server's\n`.well-known/smart-configuration` (`authorization_endpoint`) and send the\n*user's browser* here with PKCE params to start an authorization-code\nflow:\n\n1. Browser lands here. The browser session cookie is read before anything\n   else: a browser without a live browser session is 302'd to the pairing\n   page, `/oauth/pair?next=<this request's path and query>`, and nothing is\n   parked, notified or consumed. Once the Owner approves the pairing, the\n   page sends the browser back here with its new session. A browser with a\n   session has its request parked as an `AuthorizationRequest` (5-minute\n   TTL), made in that session (`sid`). A SMART App Launch's `aud` and\n   `launch` are checked first (see their fields), and the launch is\n   consumed onto the request.\n2. A request asking for more than the browser's session holds (scopes a\n   code issued in that session would not carry in full) waits on the\n   limited page at `/oauth/authorize/{id}/limited`, which says what the\n   session lacks and offers Continue or Cancel:\n   `POST /oauth/authorize/{id}/continue` goes on as below,\n   `POST /oauth/authorize/{id}/cancel` answers the client\n   `access_denied`. Until then the Owner isn't asked about it. Once a\n   browser session has pressed Continue for a client, its later requests\n   for that client skip the page, whatever the session then lacks.\n3. Unless every requested scope is pre-approved by an existing grant for\n   this (client, `redirect_uri`) pair, the request joins the pending-consent\n   queue and the browser is 302'd to a page this authorization server\n   serves beside the endpoint, on the origin the browser used. A browser\n   whose session can decide consents and holds the request's approval\n   scopes goes to the consent card at `/oauth/authorize/{id}/consent`, where\n   it decides in place; the request records that it can be decided there\n   (`decidable_in_requesting_browser`). Any other goes to the wait page at\n   `/oauth/authorize/{id}/wait`, and the Owner is notified (the host\n   webview's popup). The wait page polls `GET /oauth/authorize/{id}` (a\n   custom extension, not part of any RFC), which answers the browser\n   session the request was made in and a session that can decide it on\n   the consent card, until the Owner decides — in the\n   popup, in a signed-in launcher, or on the consent card once that\n   browser can decide it. Either way the code is issued under the session\n   the request was made in, not the approver's.\n   RFC 6749 leaves the owner-interaction mechanism unspecified, so both\n   pages are spec-legal; likewise §4.1 explicitly allows skipping consent\n   on a previously established authorization decision, which is what the\n   grant fast path implements.\n4. Approval 302s the browser back to the client's `redirect_uri` with\n   `code` + `state` (§4.1.2); the client then redeems the short-lived\n   code at `POST /oauth/token` (§4.1.3) with its PKCE verifier.\n\nClients without a server-defined registration are **trusted on first use**: an\nunknown `client_id`, an unregistered `redirect_uri`, and scopes outside the\nregistration are all carried to the Owner's prompt as a registration warning\nrather than rejected here, and nothing is written to the `clients` table\nuntil the Owner approves. Such a request never takes the grant fast path,\nand while its redirect is untrusted every other failure renders the local\nHTML page instead of redirecting. A server-defined registration (the host\napp's, the FHIR server UI's) keeps the strict treatment, and a disabled\nclient is rejected either way. Once the redirect is trusted, a failure goes\nback to the client's `redirect_uri` with `error`, `error_description` and\n`state` (RFC 6749 §4.1.2.1) instead.\n\nThe start limit is asked only when it must be: its layer defers a request\nfrom a browser that can decide consents, and one carrying no session, and\nthe starter asks the deferred limit only before it raises the request for\nthe Owner or parks it for the limited page.",
         "operationId": "handle_authorize_request",
         "parameters": [
           {
             "name": "response_type",
             "in": "query",
+            "description": "The response the client wants; only `code` is supported, anything else\nis `unsupported_response_type`.",
             "required": true,
             "schema": {
               "type": "string"
@@ -152,6 +154,7 @@
           {
             "name": "code_challenge_method",
             "in": "query",
+            "description": "The PKCE transform (RFC 7636 §4.3); only `S256` is accepted.",
             "required": true,
             "schema": {
               "type": "string"
@@ -160,6 +163,7 @@
           {
             "name": "client_id",
             "in": "query",
+            "description": "The client asking. An unknown one is trusted on first use and carried\nto the Owner's prompt as a registration warning; a disabled one is\nrefused on a local page.",
             "required": true,
             "schema": {
               "type": "string"
@@ -168,6 +172,7 @@
           {
             "name": "scope",
             "in": "query",
+            "description": "The scopes asked for, space-separated (RFC 6749 §3.3). Scopes outside a\ntrusted-on-first-use client's registration are carried to the Owner's\nprompt; outside a server-defined registration they are refused.",
             "required": true,
             "schema": {
               "type": "string"
@@ -176,6 +181,7 @@
           {
             "name": "code_challenge",
             "in": "query",
+            "description": "The PKCE challenge, `BASE64URL(SHA256(code_verifier))`, which the code\nremembers so `POST /oauth/token` can check the verifier (RFC 7636 §4.2).",
             "required": true,
             "schema": {
               "type": "string"
@@ -184,6 +190,7 @@
           {
             "name": "redirect_uri",
             "in": "query",
+            "description": "Where the browser goes back to with the code or the error. It must be\nan http(s) URL; until it is trusted (registered for this client), a\nfailure renders the local page rather than redirecting there.",
             "required": true,
             "schema": {
               "type": "string"
@@ -192,6 +199,7 @@
           {
             "name": "state",
             "in": "query",
+            "description": "The client's opaque value, carried back unchanged on every redirect to\nit. Required here, though RFC 6749 only recommends it.",
             "required": true,
             "schema": {
               "type": "string"
@@ -238,7 +246,7 @@
           "OAuth 2.0"
         ],
         "summary": "Return the current status of the pending authorization request, including\nthe final redirect URL once approved. The caller's browser session (its\n`__Host-browser_session` cookie) is answered when the request was made in\nit, or when its grant covers `wildflower/AuthorizationRequest.r` and `.u`,\nthe scopes that decide the request on the consent card. Any other caller,\nwith another session or none, gets the same `404` as an unknown id, so a\nleaked request id can't collect the code.",
-        "description": "The error side is `axum::response::ErrorResponse` because two error shapes\nshare the handler: the Owner-surface `AuthorizationServerError` (its\n`AuthorizationRequestNotFound` 404 / logged 500) and the OAuth-shaped\n`OAuthErrorResponse` `server_error` — `?` converts either through its\n`IntoResponse`.",
+        "description": "The answers, by where the request stands:\n\n- pending: `200` [`AuthorizationStatus::Pending`];\n- pending past its expiry: `200` [`AuthorizationStatus::Error`];\n- denied: `200` [`AuthorizationStatus::Denied`], with the client's\n  `access_denied` callback;\n- approved: `200` [`AuthorizationStatus::Approved`], with the client's\n  callback carrying the code;\n- unknown, or not readable by this caller: `404`\n  `AuthorizationRequestNotFound`;\n- approved but with no code: `500` `server_error`, an invariant the store\n  broke.\n\nOnly code requests are answered here; a device and a pairing have polls of\ntheir own.\n\nThe error side is `axum::response::ErrorResponse` because two error shapes\nshare the handler: the Owner-surface `AuthorizationServerError` (its\n`AuthorizationRequestNotFound` 404 / logged 500) and the OAuth-shaped\n`OAuthErrorResponse` `server_error` — `?` converts either through its\n`IntoResponse`.",
         "operationId": "handle_authorization_status_request",
         "parameters": [
           {
@@ -290,7 +298,7 @@
         "tags": [
           "OAuth 2.0"
         ],
-        "summary": "Cancel request `id`: deny it and send the browser back to the app with\n`error=access_denied`.",
+        "summary": "Cancel request `id`: deny it and send the browser back to the app with\n`error=access_denied`. Cancel isn't remembered: this session's next request\nfor the app stops at the limited page again.",
         "operationId": "handle_session_shortfall_cancel",
         "parameters": [
           {
@@ -420,6 +428,7 @@
           "OAuth 2.0"
         ],
         "summary": "Issue a `(device_code, user_code)` pair for the client to poll on while the\nuser pairs the device. `Ok` carries the §5.1 cache suppression via\n[`DeviceAuthorizationResponse`], `Err` via [`TokenError`].",
+        "description": "The extractors run in order: the start limit first, before the body is\nread, since every device request is raised for the Owner whoever sends it\n(a refusal is the `429`); then the `User-Agent`; then [`TokenRequest`],\nlast because it consumes the body, which checks the content type, parses\nthe payload and authenticates the client.",
         "operationId": "handle_device_authorization_request",
         "requestBody": {
           "content": {
@@ -470,7 +479,7 @@
         "tags": [
           "Browser pairing"
         ],
-        "summary": "Poll a browser pairing. The poll that finds it approved starts the\nbrowser's approved session and sets it as the browser's\n`__Host-browser_session` cookie.",
+        "summary": "Poll a browser pairing. The poll that finds it approved starts the\nbrowser's paired session and sets it as the browser's\n`__Host-browser_session` cookie. A blank `browser_name` keeps the name the\npairing has. An unknown pairing code is a `404`; a store failure, a session\nthat couldn't be stored, and a token that couldn't be minted are each a\nlogged `500`.",
         "operationId": "handle_browser_pairing_poll",
         "requestBody": {
           "content": {
@@ -511,7 +520,8 @@
         "tags": [
           "Browser pairing"
         ],
-        "summary": "Start a browser pairing for this browser, named after its `User-Agent`,\nand raise the Owner's notification.",
+        "summary": "Start a browser pairing for this browser, named after its `User-Agent`,\nand raise the Owner's notification. The body's `next` is where the browser\ngoes once paired, in practice the `/oauth/authorize` request it was sent\naway from.",
+        "description": "The answer's pairing code is the page's secret, and the user code is for\nthe Owner, who confirms it on the device page: only the page that started\nthe pairing can collect the session. The refusals:\n\n- `next` is no path on this server: `400`, `BrowserPairingNextNotAllowed`.\n- The browser-session client is disabled: `403`,\n  `BrowserSessionClientDisabled`.\n- No unused user code could be generated, or a store failed: a logged\n  `500`.",
         "operationId": "handle_browser_pairing_start",
         "requestBody": {
           "content": {
@@ -616,7 +626,8 @@
         "tags": [
           "OAuth 2.0"
         ],
-        "summary": "Render the dispatch outcome — `Ok` carries the §5.1 cache suppression via\n[`TokenResponse`], `Err` via [`TokenError`].",
+        "summary": "`POST /oauth/token` (RFC 6749 §3.2, RFC 8628 §3.4): hand the body's grant\nto the matching exchange for the authenticated client, an authorization\ncode with its PKCE verifier, a device code while the device polls, or a\nrefresh token for an access token and its successor. A `grant_type` the\nendpoint doesn't take fails to parse, so it is the extractor's\n`400 invalid_request`, \"Malformed payload\".",
+        "description": "Either outcome is uncached (§5.1): `Ok` through [`TokenResponse`], `Err`\nthrough [`TokenError`].",
         "operationId": "handle_token_request",
         "requestBody": {
           "content": {
@@ -677,17 +688,19 @@
     "schemas": {
       "AuthorizationRequestNotFound": {
         "type": "object",
-        "description": "The JSON 404 body `not_found(\"AuthorizationRequestNotFound\", \"id\", ...)`\nrenders for an unknown authorization request.",
+        "description": "The JSON 404 body an unknown authorization request gets, from the status\npoll and from the limited page's calls: also the answer to a caller whose\nbrowser session may not read the request, so the two can't be told apart.",
         "required": [
           "error",
           "id"
         ],
         "properties": {
           "error": {
-            "type": "string"
+            "type": "string",
+            "description": "Always `AuthorizationRequestNotFound`."
           },
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "The request id the caller asked about."
           }
         }
       },
@@ -695,6 +708,7 @@
         "oneOf": [
           {
             "type": "object",
+            "description": "`{\"status\":\"pending\"}`: undecided and unexpired, whether it waits for\nthe Owner or still sits on its browser's limited page. The wait page\nkeeps polling.",
             "required": [
               "status"
             ],
@@ -709,6 +723,7 @@
           },
           {
             "type": "object",
+            "description": "`{\"status\":\"denied\",\"redirect\":…}`: the Owner declined, or the\nbrowser session the request was made in was revoked; the poll can't\ntell the two apart, so every denial reads as declined.",
             "required": [
               "status"
             ],
@@ -718,7 +733,7 @@
                   "string",
                   "null"
                 ],
-                "description": "Client callback URL carrying `error=access_denied`, an\n`error_description` and `state` for code-flow requests (RFC 6749\n§4.1.2.1) so the wait page can complete the flow. Absent for\ndevice-flow denials, which have no client `redirect_uri`."
+                "description": "Client callback URL carrying `error=access_denied`, an\n`error_description` and `state` for code-flow requests (RFC 6749\n§4.1.2.1) so the wait page can complete the flow. Always set: only\ncode-flow requests are polled here."
               },
               "status": {
                 "type": "string",
@@ -730,13 +745,15 @@
           },
           {
             "type": "object",
+            "description": "`{\"status\":\"approved\",\"redirect\":…}`: the request was approved and\nits code issued.",
             "required": [
               "redirect",
               "status"
             ],
             "properties": {
               "redirect": {
-                "type": "string"
+                "type": "string",
+                "description": "Client callback URL carrying the redeemable `code` and `state`\n(RFC 6749 §4.1.2). The wait page follows it."
               },
               "status": {
                 "type": "string",
@@ -748,13 +765,15 @@
           },
           {
             "type": "object",
+            "description": "`{\"status\":\"error\",\"message\":…}`: the request passed its expiry\nundecided, so it can't be decided any more. The wait page stops and\nshows the message.",
             "required": [
               "message",
               "status"
             ],
             "properties": {
               "message": {
-                "type": "string"
+                "type": "string",
+                "description": "What the wait page shows: \"Authorization request expired\"."
               },
               "status": {
                 "type": "string",
@@ -765,7 +784,7 @@
             }
           }
         ],
-        "description": "Polling response for the wait page watching an authorization request as it\nmoves from `Pending` toward approval or denial."
+        "description": "Polling response for the wait page watching an authorization request as it\nmoves from `Pending` toward approval or denial: where the request stands,\nand once it is decided, where to send the browser."
       },
       "BrowserPairingNotFound": {
         "type": "object",
@@ -775,7 +794,8 @@
         ],
         "properties": {
           "error": {
-            "type": "string"
+            "type": "string",
+            "description": "Always `BrowserPairingNotFound`."
           }
         }
       },
@@ -805,7 +825,8 @@
         ],
         "properties": {
           "error": {
-            "type": "string"
+            "type": "string",
+            "description": "Which refusal: `BrowserPairingNextNotAllowed` or\n`BrowserSessionClientDisabled`."
           }
         }
       },
@@ -899,7 +920,7 @@
       },
       "ClientBody": {
         "type": "object",
-        "description": "A registered OAuth client as the Owner's \"Trusted apps\" list reads it. Every\ncolumn of the `clients` row **except `secret_hash`**, which never leaves the\nserver, plus `essential` — whether this is the host app's client or the\nbrowser-session client, which can't be disabled.",
+        "description": "A registered OAuth client as the Owner's \"Trusted apps\" list reads it. Every\ncolumn of the `clients` row **except `secret_hash`**, which never leaves the\nserver, and `registration_source`, plus `essential` — whether this is the\nhost app's client or the browser-session client, which can't be disabled,\nso the list offers no switch for them.",
         "required": [
           "clientId",
           "name",
@@ -913,10 +934,12 @@
         ],
         "properties": {
           "clientId": {
-            "type": "string"
+            "type": "string",
+            "description": "The public identifier the app sends on every OAuth request."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "The app's display name, shown on the consent card and in this list."
           },
           "kind": {
             "type": "string",
@@ -933,7 +956,8 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "The scopes the app may request; a request outside them is refused or,\nfor an app trusted on first use, shown to the Owner as a change."
           },
           "allowedGrantTypes": {
             "type": "array",
@@ -944,7 +968,8 @@
           },
           "registeredAt": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "When the app was registered: seeded, or first approved by the Owner."
           },
           "disabledAt": {
             "type": [
@@ -955,7 +980,8 @@
             "description": "Set while the client is disabled; `null` when it is enabled."
           },
           "essential": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the Owner needs this app to get in (the host app's client or\nthe browser-session client); disabling it is refused."
           }
         }
       },
@@ -972,7 +998,8 @@
             "description": "Always `\"ClientNotFound\"`."
           },
           "clientId": {
-            "type": "string"
+            "type": "string",
+            "description": "The `client_id` the caller asked for."
           }
         }
       },
@@ -984,25 +1011,29 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "The client's id, for `client_secret_post` or a public client; omitted\nwhen it authenticates by `Authorization: Basic`."
           },
           "client_secret": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "A confidential client's secret, for `client_secret_post`; never beside\na Basic header."
           },
           "scope": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "The scopes the device asks for, space-separated; each must be one the\nclient may ask for."
           },
           "device_name": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Non-standard: a name for the device, shown to the approver. Without\none, the device is named from its `User-Agent` when that names a\nbrowser or a system."
           }
         }
       },
@@ -1019,10 +1050,12 @@
         ],
         "properties": {
           "device_code": {
-            "type": "string"
+            "type": "string",
+            "description": "The secret the device polls `/oauth/token` with until the Owner\ndecides. Only the device holds it."
           },
           "user_code": {
-            "type": "string"
+            "type": "string",
+            "description": "The short code the device shows its user, which the Owner confirms on\nthe device page before deciding."
           },
           "verification_uri": {
             "type": "string",
@@ -1034,11 +1067,13 @@
           },
           "expires_in": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Seconds until the request expires; a poll after that is\n`expired_token`."
           },
           "interval": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Seconds the device waits between polls; polling sooner is answered\n`slow_down` (RFC 8628 §3.5)."
           }
         }
       },
@@ -1055,7 +1090,8 @@
             "description": "Always `\"EssentialClient\"`."
           },
           "clientId": {
-            "type": "string"
+            "type": "string",
+            "description": "The essential client the caller tried to disable: the host app's or\nthe browser-session client."
           }
         }
       },
@@ -1091,30 +1127,34 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/PublicJwk"
-            }
+            },
+            "description": "Every stored signing key's public half, the active key and the\nrotated-out keys kept to verify tokens they signed alike."
           }
         }
       },
       "OAuthError": {
         "type": "object",
-        "description": "RFC 6749 §5.2 token-endpoint error body.",
+        "description": "RFC 6749 §5.2 error body: the token, revocation and device-authorization\nendpoints, the wait page's status poll, and client authentication all\nanswer with it.",
         "required": [
           "error"
         ],
         "properties": {
           "error": {
-            "type": "string"
+            "type": "string",
+            "description": "The standard error code, such as `invalid_request` or\n`invalid_client` (an [`OAuthErrorCode`]'s wire string)."
           },
           "error_description": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "A sentence for the app's developer saying what was wrong; omitted when\nthe code says enough."
           }
         }
       },
       "PublicJwk": {
         "type": "object",
+        "description": "One signing key's public half, as served at the JWKS endpoint. Resource\nservers fetch it to verify the access tokens the server signs.",
         "required": [
           "kid",
           "kty",
@@ -1231,6 +1271,7 @@
         "oneOf": [
           {
             "type": "object",
+            "description": "Redeem an authorization code with its PKCE verifier (RFC 6749 §4.1.3).",
             "required": [
               "code",
               "code_verifier",
@@ -1242,22 +1283,27 @@
                 "type": [
                   "string",
                   "null"
-                ]
+                ],
+                "description": "The client's id, for `client_secret_post` or a public client;\nomitted when it authenticates by `Authorization: Basic`."
               },
               "client_secret": {
                 "type": [
                   "string",
                   "null"
-                ]
+                ],
+                "description": "A confidential client's secret, for `client_secret_post`; never\nbeside a Basic header."
               },
               "code": {
-                "type": "string"
+                "type": "string",
+                "description": "The code `/oauth/authorize` sent to the client's redirect."
               },
               "code_verifier": {
-                "type": "string"
+                "type": "string",
+                "description": "The PKCE verifier whose S256 hash is the request's\n`code_challenge` (RFC 7636 §4.5)."
               },
               "redirect_uri": {
-                "type": "string"
+                "type": "string",
+                "description": "The same `redirect_uri` the authorization request named."
               },
               "grant_type": {
                 "type": "string",
@@ -1269,6 +1315,7 @@
           },
           {
             "type": "object",
+            "description": "Poll with a device code until the Owner decides (RFC 8628 §3.4).",
             "required": [
               "device_code",
               "grant_type"
@@ -1278,16 +1325,19 @@
                 "type": [
                   "string",
                   "null"
-                ]
+                ],
+                "description": "The client's id, for `client_secret_post` or a public client;\nomitted when it authenticates by `Authorization: Basic`."
               },
               "client_secret": {
                 "type": [
                   "string",
                   "null"
-                ]
+                ],
+                "description": "A confidential client's secret, for `client_secret_post`; never\nbeside a Basic header."
               },
               "device_code": {
-                "type": "string"
+                "type": "string",
+                "description": "The `device_code` `/oauth/device_authorization` answered with."
               },
               "grant_type": {
                 "type": "string",
@@ -1299,6 +1349,7 @@
           },
           {
             "type": "object",
+            "description": "Trade a live refresh token for a fresh access token and the refresh\ntoken's successor (RFC 6749 §6).",
             "required": [
               "refresh_token",
               "grant_type"
@@ -1308,16 +1359,19 @@
                 "type": [
                   "string",
                   "null"
-                ]
+                ],
+                "description": "The client's id, for `client_secret_post` or a public client;\nomitted when it authenticates by `Authorization: Basic`."
               },
               "client_secret": {
                 "type": [
                   "string",
                   "null"
-                ]
+                ],
+                "description": "A confidential client's secret, for `client_secret_post`; never\nbeside a Basic header."
               },
               "refresh_token": {
-                "type": "string"
+                "type": "string",
+                "description": "The refresh token being rotated; it is spent by the trade."
               },
               "grant_type": {
                 "type": "string",
@@ -1332,7 +1386,7 @@
       },
       "TokenResponse": {
         "type": "object",
-        "description": "RFC 6749 §5.1 successful token-endpoint response.",
+        "description": "RFC 6749 §5.1 successful token-endpoint response: what the token endpoint\ngives an app for an authorization code, a refresh token or a device code.",
         "required": [
           "access_token",
           "token_type",
@@ -1341,17 +1395,21 @@
         ],
         "properties": {
           "access_token": {
-            "type": "string"
+            "type": "string",
+            "description": "The signed access token (a JWT) the app presents as its bearer."
           },
           "token_type": {
-            "type": "string"
+            "type": "string",
+            "description": "The access token's type: always `Bearer`."
           },
           "expires_in": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "How many seconds the access token lives from issue."
           },
           "scope": {
-            "type": "string"
+            "type": "string",
+            "description": "The scopes the access token holds, space-separated: the grant's, which\nmay be narrower than the app asked for."
           },
           "refresh_token": {
             "type": [
@@ -1364,7 +1422,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "The SMART patient context: the FHIR `Patient` id the grant is bound\nto. Present only when the grant binds one."
           }
         }
       },
@@ -1379,16 +1438,19 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "The client's id, for `client_secret_post` or a public client; omitted\nwhen it authenticates by `Authorization: Basic`."
           },
           "client_secret": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "A confidential client's secret, for `client_secret_post`; never beside\na Basic header."
           },
           "token": {
-            "type": "string"
+            "type": "string",
+            "description": "The client's own access or refresh token to revoke. A token that is\nunknown, already dead or another client's is answered `200` alike\n(RFC 7009 §2.2)."
           },
           "token_type_hint": {
             "type": [

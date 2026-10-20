@@ -2,7 +2,7 @@
 //! whose page starts a pairing (`POST /oauth/pair/start`), shows its code, and
 //! polls (`POST /oauth/pair/poll`). The Owner approves it at the device page
 //! (`/authorization/devices/{userCode}`), and the poll that finds it approved
-//! hands the browser an approved browser session as its cookie. The pages'
+//! hands the browser a paired browser session as its cookie. The pages'
 //! bearer comes from the host's cookie→bearer layer, so these tests send the
 //! Owner's session token as the bearer themselves.
 
@@ -19,11 +19,16 @@ const NEXT: &str = "/oauth/authorize?client_id=integration-test-app&state=s";
 
 /// What `/oauth/pair/start` answered.
 struct StartedPairing {
+    /// The secret the pairing page polls with; only the browser that started
+    /// the pairing knows it.
     pairing_code: String,
+    /// The short code the page shows, which the Owner enters on the device
+    /// page to find the pairing.
     user_code: String,
 }
 
-/// `POST` a JSON `body` to `path`, from the browser `user_agent` names.
+/// `POST` a JSON `body` to `path`, as `bearer` when given, from the Firefox
+/// on Linux browser [`FIREFOX_LINUX_USER_AGENT`] names.
 async fn post_json(
     g: &AuthorizationServer,
     path: &str,
@@ -115,9 +120,9 @@ async fn approve(
     .await
 }
 
-/// The approved session's token a poll's `Set-Cookie` carries, checked to
+/// The paired session's token a poll's `Set-Cookie` carries, checked to
 /// last a day.
-fn approved_session_token(cookies: &[String]) -> String {
+fn paired_session_token(cookies: &[String]) -> String {
     let [cookie] = cookies else {
         panic!("exactly one cookie, got {cookies:?}");
     };
@@ -139,15 +144,17 @@ fn approved_session_token(cookies: &[String]) -> String {
 /// The whole pairing: the Owner is notified of a remote browser by name, sees
 /// it on the device page with the Owner's scopes all ticked, unticks some,
 /// and approves; the browser's next poll hands it a
-/// 24 h approved session holding exactly the approved scopes, which the gates
-/// accept and which writes no grant.
+/// 24 h paired session holding exactly the approved scopes, which the gates
+/// accept and which writes no grant. A pending poll sets no cookie and
+/// renames the browser to the name the page gives; the pairing starts one
+/// session only, so the poll after that reads `expired`.
 #[tokio::test]
 async fn a_browser_pairs_and_holds_a_day_long_session_with_the_approved_scopes() {
     let (g, _owner_token, db) = spin_up();
     let started = start_pairing(&g).await;
     assert_eq!(
-        newest_pending_consent(&db),
-        Some(NewestPendingConsent::BrowserPairing {
+        owner_prompt(&db),
+        Some(OwnerPrompt::BrowserPairing {
             user_code: started.user_code.clone(),
             browser_name: "Firefox on Linux".to_owned(),
         })
@@ -157,13 +164,15 @@ async fn a_browser_pairs_and_holds_a_day_long_session_with_the_approved_scopes()
     assert_eq!(status, "pending");
     assert!(cookies.is_empty(), "no cookie while pending");
 
-    let owner_session_token = signed_in_owner_session_token(&g).await;
+    let same_device_session_token = signed_in_same_device_session_token(&g).await;
     let res = g
         .router
         .clone()
         .oneshot(build_request(
-            Request::get(format!("/authorization/devices/{}", started.user_code))
-                .header("authorization", format!("Bearer {owner_session_token}")),
+            Request::get(format!("/authorization/devices/{}", started.user_code)).header(
+                "authorization",
+                format!("Bearer {same_device_session_token}"),
+            ),
             Body::empty(),
         ))
         .await
@@ -185,18 +194,18 @@ async fn a_browser_pairs_and_holds_a_day_long_session_with_the_approved_scopes()
 
     let res = approve(
         &g,
-        &owner_session_token,
+        &same_device_session_token,
         &started.user_code,
         &["wildflower/launch", "system/Patient.rs"],
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(body_json(res.into_body()).await["status"], "approved");
-    assert_eq!(newest_pending_consent(&db), None);
+    assert_eq!(owner_prompt(&db), None);
 
     let (status, cookies) = poll_status(&g, &started.pairing_code, "Ruth's laptop").await;
     assert_eq!(status, "approved");
-    let session_token = approved_session_token(&cookies);
+    let session_token = paired_session_token(&cookies);
     let claims = decode_jwt_payload(&session_token);
     assert_eq!(claims["sub"], BROWSER_SESSION_CLIENT_ID);
     assert_eq!(claims["scope"], "wildflower/launch system/Patient.rs");
@@ -206,10 +215,10 @@ async fn a_browser_pairs_and_holds_a_day_long_session_with_the_approved_scopes()
     );
     let sid = claims["sid"].as_str().expect("names its session");
     let session = store_handle(&db)
-        .browser_session_by_sid(sid)
+        .read(|tx| tx.browser_session_by_sid(sid))
         .expect("read")
-        .expect("the approved session is stored");
-    assert_eq!(session.kind.as_ref(), "approved");
+        .expect("the paired session is stored");
+    assert_eq!(session.kind.as_ref(), "paired");
     assert_eq!(session.name.as_deref(), Some("Ruth's laptop"));
     assert_eq!(session.scopes, ["wildflower/launch", "system/Patient.rs"]);
     assert_eq!(session.expires_at - session.created_at, Duration::hours(24));
@@ -232,7 +241,10 @@ async fn a_browser_pairs_and_holds_a_day_long_session_with_the_approved_scopes()
     );
 
     // Pairing recorded no grant.
-    assert!(store_handle(&db).all_grants().expect("grants").is_empty());
+    assert!(store_handle(&db)
+        .read(|tx| tx.all_grants())
+        .expect("grants")
+        .is_empty());
 
     // The pairing starts one session: the next poll finds it spent.
     let (status, cookies) = poll_status(&g, &started.pairing_code, "").await;
@@ -245,12 +257,12 @@ async fn a_browser_pairs_and_holds_a_day_long_session_with_the_approved_scopes()
 #[tokio::test]
 async fn an_approval_grants_nothing_past_the_owner_s_scopes_or_the_approver_s() {
     let (g, _owner_token, db) = spin_up();
-    let owner_session_token = signed_in_owner_session_token(&g).await;
+    let same_device_session_token = signed_in_same_device_session_token(&g).await;
 
     let started = start_pairing(&g).await;
     let res = approve(
         &g,
-        &owner_session_token,
+        &same_device_session_token,
         &started.user_code,
         &["wildflower/launch", "openid", "offline_access"],
     )
@@ -259,14 +271,14 @@ async fn an_approval_grants_nothing_past_the_owner_s_scopes_or_the_approver_s() 
     let (status, cookies) = poll_status(&g, &started.pairing_code, "").await;
     assert_eq!(status, "approved");
     assert_eq!(
-        decode_jwt_payload(&approved_session_token(&cookies))["scope"],
+        decode_jwt_payload(&paired_session_token(&cookies))["scope"],
         "wildflower/launch",
         "ticks past the Owner's scopes are dropped"
     );
 
     let narrow_approver = mint_browser_session_token(
         &db,
-        decode_jwt_payload(&owner_session_token)["sid"]
+        decode_jwt_payload(&same_device_session_token)["sid"]
             .as_str()
             .expect("sid"),
         &[
@@ -294,10 +306,10 @@ async fn an_approval_grants_nothing_past_the_owner_s_scopes_or_the_approver_s() 
 #[tokio::test]
 async fn a_narrower_approver_s_card_opens_with_what_it_may_delegate() {
     let (g, _owner_token, db) = spin_up();
-    let owner_session_token = signed_in_owner_session_token(&g).await;
+    let same_device_session_token = signed_in_same_device_session_token(&g).await;
     let narrow_approver = mint_browser_session_token(
         &db,
-        decode_jwt_payload(&owner_session_token)["sid"]
+        decode_jwt_payload(&same_device_session_token)["sid"]
             .as_str()
             .expect("sid"),
         &[
@@ -348,7 +360,7 @@ async fn a_narrower_approver_s_card_opens_with_what_it_may_delegate() {
     let (status, cookies) = poll_status(&g, &started.pairing_code, "").await;
     assert_eq!(status, "approved");
     assert_eq!(
-        decode_jwt_payload(&approved_session_token(&cookies))["scope"],
+        decode_jwt_payload(&paired_session_token(&cookies))["scope"],
         "wildflower/AuthorizationRequest.r wildflower/AuthorizationRequest.u system/Patient.rs"
     );
 }
@@ -357,12 +369,12 @@ async fn a_narrower_approver_s_card_opens_with_what_it_may_delegate() {
 #[tokio::test]
 async fn a_declined_pairing_sets_no_cookie() {
     let (g, _owner_token, _db) = spin_up();
-    let owner_session_token = signed_in_owner_session_token(&g).await;
+    let same_device_session_token = signed_in_same_device_session_token(&g).await;
     let started = start_pairing(&g).await;
     let res = post_json(
         &g,
         &format!("/authorization/devices/{}/deny", started.user_code),
-        Some(&owner_session_token),
+        Some(&same_device_session_token),
         serde_json::json!({}),
     )
     .await;
@@ -372,8 +384,10 @@ async fn a_declined_pairing_sets_no_cookie() {
     assert!(cookies.is_empty());
 }
 
-/// A `next` off the server's origin starts nothing, and a poll by an unknown
-/// pairing code, or by a user code, finds nothing.
+/// A `next` off the server's origin starts nothing, whether absolute,
+/// protocol-relative, backslashed or the launcher's (`400
+/// BrowserPairingNextNotAllowed`); a poll by an unknown pairing code, or by a
+/// user code, finds nothing (`404 BrowserPairingNotFound`).
 #[tokio::test]
 async fn a_foreign_next_or_an_unknown_code_starts_and_finds_nothing() {
     let (g, _owner_token, db) = spin_up();
@@ -396,7 +410,7 @@ async fn a_foreign_next_or_an_unknown_code_starts_and_finds_nothing() {
             "BrowserPairingNextNotAllowed"
         );
     }
-    assert_eq!(newest_pending_consent(&db), None);
+    assert_eq!(owner_prompt(&db), None);
 
     let started = start_pairing(&g).await;
     for presented in ["no-such-code", started.user_code.as_str()] {
@@ -416,7 +430,7 @@ async fn a_foreign_next_or_an_unknown_code_starts_and_finds_nothing() {
 async fn the_token_endpoint_cannot_mint_a_browser_token() {
     let (g, _owner_token, db) = spin_up();
     seed_test_client(&db);
-    let owner_session_token = signed_in_owner_session_token(&g).await;
+    let same_device_session_token = signed_in_same_device_session_token(&g).await;
     let started = start_pairing(&g).await;
     let device_code_poll = |client_id: &str| {
         format!(
@@ -436,7 +450,7 @@ async fn the_token_endpoint_cannot_mint_a_browser_token() {
         if approved {
             let res = approve(
                 &g,
-                &owner_session_token,
+                &same_device_session_token,
                 &started.user_code,
                 &["wildflower/launch"],
             )

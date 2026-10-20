@@ -7,18 +7,23 @@
 use chrono::{DateTime, Utc};
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::grant_store::LaunchContextsTx;
 use crate::domain::launch_context::{LaunchContext, LaunchRefusal};
-use crate::domain::{GrantStore, GrantTx};
+use crate::domain::GrantStore;
 
-/// Mint and consume launch contexts. A borrowed view over the store, like the
-/// writers, so a flow capability holding the store can consume through it.
-pub(crate) struct LaunchContexts<'a, S: GrantStore> {
-    store: &'a S,
+/// Mint launch contexts. Generic over the store port so it's unit-testable
+/// against the fake; the [`LaunchContextMinter`](crate::LaunchContextMinter)
+/// binding instantiates it over the concrete `SqliteGrantStore`.
+#[derive(Clone)]
+pub(crate) struct LaunchContexts<S: GrantStore> {
+    /// The store holding the `launch_contexts` table, which each mint writes
+    /// to and prunes.
+    store: S,
 }
 
-impl<'a, S: GrantStore> LaunchContexts<'a, S> {
-    /// The launch contexts in `store`.
-    pub(crate) fn over(store: &'a S) -> Self {
+impl<S: GrantStore> LaunchContexts<S> {
+    /// Build it over a store handle.
+    pub(crate) fn new(store: S) -> Self {
         LaunchContexts { store }
     }
 
@@ -26,7 +31,7 @@ impl<'a, S: GrantStore> LaunchContexts<'a, S> {
     /// patient and expiring
     /// [`LAUNCH_CONTEXT_TTL`](crate::domain::launch_context::LAUNCH_CONTEXT_TTL)
     /// after `now`, and return it. Contexts already expired at `now` are pruned
-    /// in the same transaction. The caller generates `nonce` (a CSPRNG opaque
+    /// in the same scope. The caller generates `nonce` (a CSPRNG opaque
     /// token) so tests can inject a known value.
     ///
     /// # Errors
@@ -41,94 +46,114 @@ impl<'a, S: GrantStore> LaunchContexts<'a, S> {
         self.insert_and_prune_expired(LaunchContext::for_client(nonce, client_id, None, now), now)
     }
 
-    /// Persist a fresh launch context `nonce` that any client may consume, and
-    /// return it. Otherwise as [`LaunchContexts::mint`]: no patient, the same
+    /// Persist a fresh launch context `nonce` for the base's launch of a
+    /// server's launcher, and return it. Any client may consume it: the
+    /// launcher can be any app the Owner set, so the base can't name its
+    /// client. Otherwise as [`LaunchContexts::mint`]: no patient, the same
     /// expiry, the same prune.
     ///
     /// # Errors
     ///
     /// [`AuthorizationServerError::Infrastructure`] on a store failure.
-    pub(crate) fn mint_for_any_client(
+    pub(crate) fn mint_for_server_launcher(
         &self,
         nonce: String,
         now: DateTime<Utc>,
     ) -> Result<LaunchContext, AuthorizationServerError> {
-        self.insert_and_prune_expired(LaunchContext::for_any_client(nonce, now), now)
+        self.insert_and_prune_expired(LaunchContext::for_server_launcher(nonce, now), now)
     }
 
     /// Insert `launch_context`, deleting the contexts expired at `now` in the
-    /// same transaction, and return it.
+    /// same scope, and return it.
     fn insert_and_prune_expired(
         &self,
         launch_context: LaunchContext,
         now: DateTime<Utc>,
     ) -> Result<LaunchContext, AuthorizationServerError> {
-        self.store.transaction(|tx| {
+        self.store.write(|tx| {
             tx.delete_launch_contexts_expired_by(now)?;
             tx.insert_launch_context(&launch_context)
         })?;
         Ok(launch_context)
     }
+}
 
-    /// Consume the launch `nonce` for `client_id` at `now`: the context, now
-    /// stamped consumed, iff it was minted for `client_id` or for any client
-    /// and is unconsumed and unexpired. Otherwise nothing changes, and the
-    /// [`LaunchRefusal`] says why. A context presented by the wrong client
-    /// therefore stays consumable by its own.
-    ///
-    /// The consume is one conditional update, so of two racing consumes
-    /// exactly one wins. Only when it finds nothing is the row read back to
-    /// classify the refusal, checking in this order: no row is
-    /// [`Unknown`](LaunchRefusal::Unknown), another client's launch is
-    /// [`ForAnotherApp`](LaunchRefusal::ForAnotherApp) (so its state is never
-    /// told), then [`AlreadyUsed`](LaunchRefusal::AlreadyUsed), then
-    /// [`Expired`](LaunchRefusal::Expired). A launch pruned after expiring is
-    /// gone, so it reads as unknown.
-    ///
-    /// # Errors
-    ///
-    /// [`AuthorizationServerError::Infrastructure`] on a store failure.
-    pub(crate) fn consume(
-        &self,
-        nonce: &str,
-        client_id: &str,
-        now: DateTime<Utc>,
-    ) -> Result<Result<LaunchContext, LaunchRefusal>, AuthorizationServerError> {
-        self.store.with_connection(|tx| {
-            if let Some(consumed) = tx.consume_launch_context(nonce, client_id, now)? {
-                return Ok(Ok(consumed));
-            }
-            let refusal = match tx.launch_context_by_nonce(nonce)? {
-                None => LaunchRefusal::Unknown,
-                Some(stored) if !stored.admits_client(client_id) => LaunchRefusal::ForAnotherApp,
-                Some(stored) if stored.consumed_at.is_some() => LaunchRefusal::AlreadyUsed,
-                Some(stored) if stored.expires_at <= now => LaunchRefusal::Expired,
-                Some(_) => {
-                    return Err(AuthorizationServerError::infrastructure(
-                        "consume_launch_context",
-                        "refused a launch that is admitted, unconsumed and unexpired",
-                    ))
-                }
-            };
-            Ok(Err(refusal))
-        })
+/// Consume the launch `nonce` for `client_id` at `now`, in the caller's write
+/// scope `tx`: the context, now stamped consumed, iff it was minted for
+/// `client_id` or for the server launcher and is unconsumed and unexpired.
+/// Otherwise nothing changes, and the [`LaunchRefusal`] says why. A context
+/// presented by the wrong client therefore stays consumable by its own.
+/// `/oauth/authorize` calls this inside its own write scope, so a request
+/// refused after the consume rolls back and leaves the launch unspent.
+///
+/// The consume is one conditional update, so of two racing consumes exactly
+/// one wins. Only when it finds nothing is the row read back to classify the
+/// refusal, checking in this order: no row is
+/// [`Unknown`](LaunchRefusal::Unknown), another client's launch is
+/// [`ForAnotherApp`](LaunchRefusal::ForAnotherApp) (so its state is never
+/// told), then [`AlreadyUsed`](LaunchRefusal::AlreadyUsed), then
+/// [`Expired`](LaunchRefusal::Expired). A launch pruned after expiring is
+/// gone, so it reads as unknown.
+///
+/// The outer `Result` is the store's; the inner one is the launch's answer.
+///
+/// # Errors
+///
+/// [`AuthorizationServerError::Infrastructure`] on a store failure, or when
+/// the conditional update refused a row that passes all four checks, which
+/// can't happen.
+pub(crate) fn consume_launch(
+    tx: &mut impl LaunchContextsTx,
+    nonce: &str,
+    client_id: &str,
+    now: DateTime<Utc>,
+) -> Result<Result<LaunchContext, LaunchRefusal>, AuthorizationServerError> {
+    if let Some(consumed) = tx.consume_launch_context(nonce, client_id, now)? {
+        return Ok(Ok(consumed));
     }
+    let refusal = match tx.launch_context_by_nonce(nonce)? {
+        None => LaunchRefusal::Unknown,
+        Some(stored) if !stored.admits_client(client_id) => LaunchRefusal::ForAnotherApp,
+        Some(stored) if stored.consumed_at.is_some() => LaunchRefusal::AlreadyUsed,
+        Some(stored) if stored.expires_at <= now => LaunchRefusal::Expired,
+        Some(_) => {
+            return Err(AuthorizationServerError::infrastructure(
+                "consume_launch_context",
+                "refused a launch that is admitted, unconsumed and unexpired",
+            ))
+        }
+    };
+    Ok(Err(refusal))
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::grant_store::*;
     use chrono::Duration;
 
     use super::*;
     use crate::domain::launch_context::LAUNCH_CONTEXT_TTL;
     use crate::domain::test_fake::FakeGrantStore;
 
+    /// Consume `nonce` for `client_id` at `now` in `launch_contexts`' store, as
+    /// `/oauth/authorize` does inside its scope.
+    fn consume(
+        launch_contexts: &LaunchContexts<FakeGrantStore>,
+        nonce: &str,
+        client_id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<Result<LaunchContext, LaunchRefusal>, AuthorizationServerError> {
+        launch_contexts
+            .store
+            .write(|tx| consume_launch(tx, nonce, client_id, now))
+    }
+
     /// A minted context is unbound to any patient, expires after the TTL, and
     /// is consumed once by its own client.
     #[test]
     fn a_minted_context_is_consumed_once_by_its_client() {
         let store = FakeGrantStore::default();
-        let launch_contexts = LaunchContexts::over(&store);
+        let launch_contexts = LaunchContexts::new(store);
         let now = Utc::now();
         let minted = launch_contexts
             .mint("app", "nonce-1".to_owned(), now)
@@ -138,45 +163,41 @@ mod tests {
         assert_eq!(minted.expires_at, now + LAUNCH_CONTEXT_TTL);
 
         assert_eq!(
-            launch_contexts
-                .consume("nonce-1", "other-app", now)
-                .unwrap(),
+            consume(&launch_contexts, "nonce-1", "other-app", now).unwrap(),
             Err(LaunchRefusal::ForAnotherApp),
             "another client can't consume it"
         );
-        let consumed = launch_contexts
-            .consume("nonce-1", "app", now)
+        let consumed = consume(&launch_contexts, "nonce-1", "app", now)
             .unwrap()
             .expect("its own client consumes it");
         assert_eq!(consumed.consumed_at, Some(now));
         assert_eq!(
-            launch_contexts.consume("nonce-1", "app", now).unwrap(),
+            consume(&launch_contexts, "nonce-1", "app", now).unwrap(),
             Err(LaunchRefusal::AlreadyUsed),
             "a replay is refused"
         );
     }
 
-    /// A context minted for any client binds no patient and is consumed once,
+    /// A context minted for the server launcher binds no patient and is consumed once,
     /// by whichever client presents it first.
     #[test]
-    fn a_context_for_any_client_is_consumed_once_by_any_client() {
+    fn a_context_for_the_server_launcher_is_consumed_once_by_any_client() {
         let store = FakeGrantStore::default();
-        let launch_contexts = LaunchContexts::over(&store);
+        let launch_contexts = LaunchContexts::new(store);
         let now = Utc::now();
         let minted = launch_contexts
-            .mint_for_any_client("nonce-1".to_owned(), now)
+            .mint_for_server_launcher("nonce-1".to_owned(), now)
             .expect("mint");
         assert_eq!(minted.client_id(), None);
         assert_eq!(minted.patient(), None);
         assert_eq!(minted.expires_at, now + LAUNCH_CONTEXT_TTL);
 
-        let consumed = launch_contexts
-            .consume("nonce-1", "other-app", now)
+        let consumed = consume(&launch_contexts, "nonce-1", "other-app", now)
             .unwrap()
             .expect("any client consumes it");
         assert_eq!(consumed.consumed_at, Some(now));
         assert_eq!(
-            launch_contexts.consume("nonce-1", "app", now).unwrap(),
+            consume(&launch_contexts, "nonce-1", "app", now).unwrap(),
             Err(LaunchRefusal::AlreadyUsed),
             "a second client is refused"
         );
@@ -186,7 +207,7 @@ mod tests {
     #[test]
     fn minting_prunes_expired_contexts() {
         let store = FakeGrantStore::default();
-        let launch_contexts = LaunchContexts::over(&store);
+        let launch_contexts = LaunchContexts::new(store);
         let now = Utc::now();
         launch_contexts
             .mint("app", "old".to_owned(), now - LAUNCH_CONTEXT_TTL)
@@ -198,18 +219,18 @@ mod tests {
             .mint("app", "new".to_owned(), now)
             .expect("mint new");
         assert_eq!(
-            store
-                .with_connection(|tx| tx.delete_launch_contexts_expired_by(now))
+            launch_contexts
+                .store
+                .write(|tx| tx.delete_launch_contexts_expired_by(now))
                 .unwrap(),
             0,
             "the last mint already pruned the expired context"
         );
-        assert!(launch_contexts
-            .consume("recent", "app", now)
+        assert!(consume(&launch_contexts, "recent", "app", now)
             .unwrap()
             .is_ok());
         assert_eq!(
-            launch_contexts.consume("old", "app", now).unwrap(),
+            consume(&launch_contexts, "old", "app", now).unwrap(),
             Err(LaunchRefusal::Unknown),
             "a pruned launch reads as unknown"
         );
@@ -220,7 +241,7 @@ mod tests {
     #[test]
     fn a_refused_consume_says_why() {
         let store = FakeGrantStore::default();
-        let launch_contexts = LaunchContexts::over(&store);
+        let launch_contexts = LaunchContexts::new(store);
         let now = Utc::now();
         let expired_at = now + LAUNCH_CONTEXT_TTL;
         launch_contexts
@@ -229,8 +250,7 @@ mod tests {
         launch_contexts
             .mint("app", "used".to_owned(), now)
             .expect("mint used");
-        launch_contexts
-            .consume("used", "app", now)
+        consume(&launch_contexts, "used", "app", now)
             .unwrap()
             .expect("consume used");
 
@@ -248,13 +268,15 @@ mod tests {
             ("live", "app", expired_at, LaunchRefusal::Expired),
         ] {
             assert_eq!(
-                launch_contexts.consume(nonce, client_id, at).unwrap(),
+                consume(&launch_contexts, nonce, client_id, at).unwrap(),
                 Err(refusal),
                 "{nonce} by {client_id}"
             );
         }
         assert!(
-            launch_contexts.consume("live", "app", now).unwrap().is_ok(),
+            consume(&launch_contexts, "live", "app", now)
+                .unwrap()
+                .is_ok(),
             "the refusals left the live launch consumable by its own client"
         );
     }

@@ -866,7 +866,7 @@ mod tests {
     use std::sync::Mutex;
     use std::time::Duration;
 
-    use wildflowerhealthio_authorization_server::NewestPendingConsent;
+    use wildflowerhealthio_authorization_server::OwnerPrompt;
     use wildflowerhealthio_rathole_settings::TunnelName;
     use wildflowerhealthio_servers::{
         CertificateAuthority, ConsentKey, JsonServerRegistry, RelayKind, RunPolicy,
@@ -1612,7 +1612,7 @@ mod tests {
     /// `authorization_server`, `newest` the newest consent waiting on it.
     fn launchable_waiting_on(
         authorization_server: &TestAuthorizationServer,
-        newest: NewestPendingConsent,
+        newest: OwnerPrompt,
     ) -> UnitStatuses<ServerDetail> {
         running_with(authorization_server, |detail| {
             detail.pending_consent = Some(newest);
@@ -1627,8 +1627,8 @@ mod tests {
         }
     }
 
-    fn oauth_consent(id: &str) -> NewestPendingConsent {
-        NewestPendingConsent::OAuth {
+    fn oauth_consent(id: &str) -> OwnerPrompt {
+        OwnerPrompt::AuthorizationCode {
             id: id.to_owned(),
             client_name: "Lifting".to_owned(),
             decidable_in_requesting_browser: false,
@@ -1706,7 +1706,7 @@ mod tests {
         open_consent(
             &launchable_waiting_on(
                 &authorization_server,
-                NewestPendingConsent::Device {
+                OwnerPrompt::DeviceCode {
                     user_code: "ABCD-EFGH".to_owned(),
                     client_name: "Pebble".to_owned(),
                 },
@@ -1831,7 +1831,7 @@ mod tests {
     }
 
     fn consent_key() -> ConsentKey {
-        ConsentKey::OAuth {
+        ConsentKey::AuthorizationCode {
             id: "req-1".to_owned(),
         }
     }
@@ -2186,7 +2186,7 @@ mod tests {
     /// its health not probed yet, as at the app's start.
     fn not_yet_probed_waiting_on(
         authorization_server: &TestAuthorizationServer,
-        newest: Option<NewestPendingConsent>,
+        newest: Option<OwnerPrompt>,
     ) -> UnitStatuses<ServerDetail> {
         running_with(authorization_server, |detail| {
             detail.pending_consent = newest;

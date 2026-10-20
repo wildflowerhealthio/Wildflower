@@ -1,3 +1,8 @@
+//! [`LaunchContext`] — a SMART App Launch `launch` value this server handed
+//! out, and what it binds. The app echoes it back at `/oauth/authorize`, and
+//! the request that presents it consumes it, once: a second presentation,
+//! from anyone, is refused.
+
 use chrono::{DateTime, Duration, Utc};
 use diesel::prelude::{Insertable, Queryable, Selectable};
 
@@ -9,12 +14,13 @@ pub const LAUNCH_CONTEXT_TTL: Duration = Duration::minutes(5);
 
 /// One SMART App Launch `launch` value this server handed out, and what it
 /// binds. Minted in-process (the apps launch route, the base's launch) through
-/// the [`LaunchContexts`](crate::domain::capabilities::oauth::LaunchContexts)
+/// the `LaunchContexts`
 /// capability, and consumed single-use by the `/oauth/authorize` request that
 /// presents it. Diesel-mapped 1:1 to the `launch_contexts` table.
 ///
-/// A launch is for one OAuth client ([`LaunchContext::for_client`]) or for any
-/// client ([`LaunchContext::for_any_client`]). Only a launch for one client can
+/// A launch is for one OAuth client ([`LaunchContext::for_client`]) or for a
+/// server's launcher, which any client may consume
+/// ([`LaunchContext::for_server_launcher`]). Only a launch for one client can
 /// bind a patient: the client and patient fields are private so no other shape
 /// can be built, and the table's CHECK holds the same rule.
 #[derive(Debug, Clone, PartialEq, Eq, Queryable, Selectable, Insertable)]
@@ -24,11 +30,13 @@ pub struct LaunchContext {
     /// Primary key — the opaque `launch` value the app is handed and echoes
     /// back at `/oauth/authorize`.
     pub nonce: String,
-    /// The OAuth client the launch is for; `None` when any client may consume
-    /// it. An authorize from any other client can't consume it.
+    /// The OAuth client the launch is for; an authorize from any other client
+    /// can't consume it. `None` for a launch minted for the server launcher,
+    /// which any client may consume.
     client_id: Option<String>,
-    /// The patient the launch binds, if any. When set, the consent approval
-    /// must name the same patient. Set only alongside `client_id`.
+    /// The patient the launch binds, if any. When set, the request it starts
+    /// records that patient, and the consent approval must name the same one.
+    /// Set only alongside `client_id`.
     patient: Option<String>,
     /// When the launch was minted.
     pub created_at: DateTime<Utc>,
@@ -58,10 +66,12 @@ impl LaunchContext {
         }
     }
 
-    /// A fresh, unconsumed launch `nonce` that any client may consume, binding
-    /// no patient, expiring [`LAUNCH_CONTEXT_TTL`] after `now`.
+    /// A fresh, unconsumed launch `nonce` for the base's launch of a server's
+    /// launcher, expiring [`LAUNCH_CONTEXT_TTL`] after `now`. Any client may
+    /// consume it: the launcher can be any app the Owner set, so the base
+    /// can't name its client. It binds no patient.
     #[must_use]
-    pub fn for_any_client(nonce: String, now: DateTime<Utc>) -> Self {
+    pub fn for_server_launcher(nonce: String, now: DateTime<Utc>) -> Self {
         LaunchContext {
             nonce,
             client_id: None,
@@ -95,12 +105,18 @@ impl LaunchContext {
     }
 }
 
-/// Why `/oauth/authorize` could not consume a presented `launch`.
+/// Why `/oauth/authorize` could not consume a presented `launch`; the request
+/// is refused as `invalid_request`. The consume is one conditional update, so
+/// of two racing requests exactly one wins; only when it finds nothing is the
+/// launch read back to say why, in this order: no launch, another client's
+/// launch, already used, expired.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LaunchRefusal {
     /// No launch has this nonce: never minted, or expired and pruned.
     Unknown,
-    /// The launch is for a different client.
+    /// The launch is for a different client. Checked before anything else,
+    /// so a wrong client never learns whether the launch was used or has
+    /// expired, and it is refused as if the launch were unknown.
     ForAnotherApp,
     /// The launch was consumed already.
     AlreadyUsed,
@@ -121,10 +137,10 @@ mod tests {
         assert!(for_app.admits_client("app"));
         assert!(!for_app.admits_client("other-app"));
 
-        let for_any_client = LaunchContext::for_any_client("n2".to_owned(), now);
-        assert_eq!(for_any_client.client_id(), None);
-        assert_eq!(for_any_client.patient(), None);
-        assert!(for_any_client.admits_client("app"));
-        assert!(for_any_client.admits_client("other-app"));
+        let for_server_launcher = LaunchContext::for_server_launcher("n2".to_owned(), now);
+        assert_eq!(for_server_launcher.client_id(), None);
+        assert_eq!(for_server_launcher.patient(), None);
+        assert!(for_server_launcher.admits_client("app"));
+        assert!(for_server_launcher.admits_client("other-app"));
     }
 }

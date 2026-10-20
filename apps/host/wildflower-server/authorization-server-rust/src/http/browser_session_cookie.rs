@@ -1,5 +1,5 @@
 //! The cookie a browser holds its browser session in once the server has
-//! signed it in (the Owner's, at `/oauth/sign-in`; an approved browser's, on
+//! signed it in (the Owner's, at `/oauth/sign-in`; a paired browser's, on
 //! the pairing page's poll): `__Host-browser_session`,
 //! whose value is the browser's access token itself, naming its browser
 //! session as its `sid`. A restart doesn't sign the browser out; revoking the
@@ -34,12 +34,12 @@ use chrono::{DateTime, Duration, Utc};
 use cookie::Cookie;
 use wildflowerhealthio_scope_capabilities::GrantedScopes as _;
 
+use crate::domain::access_token::{AccessTokenVerifyError, VerifiedClaims};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::access::consents::{
     consent_decider_scopes, consent_reader_scopes,
 };
 use crate::domain::capabilities::session::TokenVerifier;
-use crate::domain::token::{VerifiedClaims, VerifyError};
 use crate::domain::GrantStore;
 use crate::http::state::AuthorizationServerState;
 use crate::live_bindings::{FromState, LiveBrowserSessionUseRecorder, LiveTokenVerifier};
@@ -88,18 +88,18 @@ fn browser_session_cookie(value: &str, max_age_seconds: i64) -> String {
 /// The verified claims of the browser session a browser session cookie holds,
 /// or `None` once the session has ended: the gates would refuse
 /// `session_token` as a bad, expired or revoked token (by its `jti`, its
-/// subject or its browser session), checked by the same [`TokenVerifier`] the
+/// subject or its browser session), checked by the same `TokenVerifier` the
 /// gates run, or it is no browser session's token at all. Their `sid` names
 /// the browser session.
 ///
 /// # Errors
 ///
-/// The server-side [`VerifyError`]s, when a key, revocation or browser-session
+/// The server-side [`AccessTokenVerifyError`]s, when a key, revocation or browser-session
 /// store can't be read, so the session can't be checked.
 pub fn standing_browser_session(
     state: &Arc<AuthorizationServerState>,
     session_token: &str,
-) -> Result<Option<VerifiedClaims>, VerifyError> {
+) -> Result<Option<VerifiedClaims>, AccessTokenVerifyError> {
     standing_session_claims(&LiveTokenVerifier::from_state(state), session_token)
 }
 
@@ -127,12 +127,12 @@ pub fn record_browser_session_cookie_use(
 ///
 /// # Errors
 ///
-/// The server-side [`VerifyError`]s, when a key, revocation or browser-session
+/// The server-side [`AccessTokenVerifyError`]s, when a key, revocation or browser-session
 /// store can't be read, so the session can't be checked.
 pub(crate) fn carried_browser_session(
     token_verifier: &LiveTokenVerifier,
     headers: &HeaderMap,
-) -> Result<Option<VerifiedClaims>, VerifyError> {
+) -> Result<Option<VerifiedClaims>, AccessTokenVerifyError> {
     let Some(session_token) = browser_session_token(headers) else {
         return Ok(None);
     };
@@ -162,16 +162,18 @@ pub(crate) fn can_decide_consents(claims: &VerifiedClaims) -> bool {
 ///
 /// # Errors
 ///
-/// The server-side [`VerifyError`]s, when a store can't be read.
+/// The server-side [`AccessTokenVerifyError`]s, when a store can't be read.
 fn standing_session_claims<S: GrantStore>(
     token_verifier: &TokenVerifier<S>,
     session_token: &str,
-) -> Result<Option<VerifiedClaims>, VerifyError> {
+) -> Result<Option<VerifiedClaims>, AccessTokenVerifyError> {
     match token_verifier.verify(session_token) {
         Ok(claims) if claims.subject == BROWSER_SESSION_CLIENT_ID && claims.sid.is_some() => {
             Ok(Some(claims))
         }
-        Ok(_) | Err(VerifyError::TokenRejected | VerifyError::Revoked) => Ok(None),
+        Ok(_) | Err(AccessTokenVerifyError::TokenRejected | AccessTokenVerifyError::Revoked) => {
+            Ok(None)
+        }
         Err(error) => Err(error),
     }
 }
@@ -191,6 +193,7 @@ fn browser_session_token(headers: &HeaderMap) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::grant_store::*;
     use std::sync::Arc;
 
     use axum::http::{header, HeaderMap, HeaderValue};
@@ -200,14 +203,15 @@ mod tests {
         browser_session_clearing_set_cookie, browser_session_set_cookie, browser_session_token,
         can_decide_consents, standing_session_claims,
     };
+    use crate::domain::access_token::{mint_access_token, NewAccessTokenArgs};
     use crate::domain::browser_session::BrowserSession;
     use crate::domain::capabilities::session::TokenVerifier;
     use crate::domain::signing_key::SigningKey;
     use crate::domain::test_fake::{seed_active_signing_key, FakeGrantStore, NothingRevoked};
-    use crate::domain::token::{mint_access_token, NewJwtArgs};
-    use crate::domain::GrantStore as _;
+
     use crate::BROWSER_SESSION_CLIENT_ID;
 
+    /// The server's origin: the issuer and audience of every test token.
     const ORIGIN: &str = "https://ruth.relay.example";
 
     /// A token for this server, issued to `client_id` under `sid`.
@@ -225,7 +229,7 @@ mod tests {
         let scopes: Vec<String> = scopes.iter().map(|&scope| scope.to_owned()).collect();
         mint_access_token(
             key,
-            &NewJwtArgs {
+            &NewAccessTokenArgs {
                 client_id,
                 scopes: &scopes,
                 ttl: Duration::minutes(5),
@@ -246,8 +250,9 @@ mod tests {
     fn only_a_browser_session_token_holds_a_browser_session() {
         let store = FakeGrantStore::default();
         let key = seed_active_signing_key(&store);
-        let session = BrowserSession::new_owner(vec![], Duration::hours(8), Utc::now());
-        store.insert_browser_session(&session).expect("insert");
+        let session =
+            BrowserSession::new_same_device_session(vec![], Duration::hours(8), Utc::now());
+        store.tx().insert_browser_session(&session).expect("insert");
         let verifier = TokenVerifier::new(store, Arc::new(NothingRevoked), ORIGIN.into());
 
         let browser_session_token = mint(&key, BROWSER_SESSION_CLIENT_ID, Some(&session.sid));
@@ -281,8 +286,9 @@ mod tests {
     fn deciding_consents_takes_reading_and_updating_requests() {
         let store = FakeGrantStore::default();
         let key = seed_active_signing_key(&store);
-        let session = BrowserSession::new_owner(vec![], Duration::hours(8), Utc::now());
-        store.insert_browser_session(&session).expect("insert");
+        let session =
+            BrowserSession::new_same_device_session(vec![], Duration::hours(8), Utc::now());
+        store.tx().insert_browser_session(&session).expect("insert");
         let verifier = TokenVerifier::new(store, Arc::new(NothingRevoked), ORIGIN.into());
 
         for (scopes, expected) in [
@@ -305,6 +311,8 @@ mod tests {
         }
     }
 
+    /// Request headers carrying each of `cookie_headers` as its own `Cookie`
+    /// header.
     fn cookie_headers(cookie_headers: &[&'static str]) -> HeaderMap {
         let mut headers = HeaderMap::new();
         for cookie_header in cookie_headers {
@@ -313,6 +321,9 @@ mod tests {
         headers
     }
 
+    /// The browser session cookie is found among any others, in one `Cookie`
+    /// header or across several; a cookie whose name only starts the same is
+    /// not it, and no such cookie reads as none.
     #[test]
     fn the_session_token_is_read_from_among_the_browser_s_cookies() {
         for (cookies, expected) in [
@@ -338,6 +349,8 @@ mod tests {
         }
     }
 
+    /// The cookie is `Secure`, `HttpOnly`, `SameSite=Lax` and `Path=/`, and
+    /// lasts exactly as long as the session it holds.
     #[test]
     fn the_cookie_has_exactly_the_browser_session_attributes() {
         assert_eq!(
@@ -352,6 +365,8 @@ mod tests {
         );
     }
 
+    /// Clearing the cookie sends the same name and attributes, empty, with
+    /// `Max-Age=0`, so the browser drops it.
     #[test]
     fn the_clearing_cookie_has_the_same_attributes_and_no_age() {
         assert_eq!(

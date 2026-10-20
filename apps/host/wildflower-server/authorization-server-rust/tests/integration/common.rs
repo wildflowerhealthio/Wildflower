@@ -1,3 +1,8 @@
+//! The fixtures every end-to-end test shares: a server spun up over a fresh
+//! in-memory database with an Owner token, second store handles onto that
+//! database for planting and reading rows, token minting, request builders,
+//! and the multi-step drivers for each flow.
+
 pub use axum::body::{to_bytes, Body};
 pub use axum::http::{Request, StatusCode};
 pub use std::sync::Arc;
@@ -36,20 +41,32 @@ pub use wildflowerhealthio_authorization_server::crypto_util::base64;
 pub use wildflowerhealthio_authorization_server::crypto_util::client_secret::hash_client_secret;
 pub use wildflowerhealthio_authorization_server::crypto_util::pkce::compute_code_challenge;
 pub use wildflowerhealthio_authorization_server::crypto_util::random_token::token_storage_hash;
-pub use wildflowerhealthio_authorization_server::domain::authorization_code::IssuedAuthorizationCode;
-pub use wildflowerhealthio_authorization_server::domain::authorization_request::{
-    AuthorizationRequest, GrantType, RequestStatus,
+pub use wildflowerhealthio_authorization_server::domain::access_token::{
+    mint_access_token, NewAccessTokenArgs,
 };
+pub use wildflowerhealthio_authorization_server::domain::authorization_code::AuthorizationCode;
+pub use wildflowerhealthio_authorization_server::domain::authorization_request::approval::Approval;
+pub use wildflowerhealthio_authorization_server::domain::authorization_request::code::{
+    CodeRequest, NewCodeRequestArgs,
+};
+pub use wildflowerhealthio_authorization_server::domain::authorization_request::device::{
+    DeviceRequest, NewDeviceRequestArgs,
+};
+pub use wildflowerhealthio_authorization_server::domain::authorization_request::polled::Polled;
+pub use wildflowerhealthio_authorization_server::domain::authorization_request::RequestStatus;
 pub use wildflowerhealthio_authorization_server::domain::browser_session::BrowserSession;
 pub use wildflowerhealthio_authorization_server::domain::client::{
-    AllowedGrantType, Client, ClientKind,
+    AllowedGrantType, Client, ClientKind, RegistrationSource,
+};
+pub use wildflowerhealthio_authorization_server::domain::grant_store::{
+    AuthorizationCodesTx, AuthorizationRequestsTx, BrowserSessionsTx, ClientsTx, GrantsTx,
+    LaunchContextsTx, RefreshTokensTx, SigningKeysTx,
 };
 pub use wildflowerhealthio_authorization_server::domain::refresh_token::{
     RefreshToken, RefreshTokenFamily,
 };
-pub use wildflowerhealthio_authorization_server::domain::token::{mint_access_token, NewJwtArgs};
 pub use wildflowerhealthio_authorization_server::{
-    ConsentKey, GrantStore, NewestPendingConsent, SqliteGrantStore,
+    ConsentKey, GrantStore, OwnerPrompt, SqliteGrantStore,
 };
 pub use wildflowerhealthio_persistence::{Connection, DieselPool};
 pub use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
@@ -60,14 +77,16 @@ pub use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 /// `SqliteGrantStore` and the rusqlite connection behind the shared
 /// `RevocationStore` (which stays rusqlite-backed — it is a separate crate).
 pub struct TestDb {
+    /// The diesel pool behind the router's `SqliteGrantStore`.
     pool: DieselPool,
+    /// The rusqlite connection behind the router's `RevocationStore`.
     revocation_conn: Connection,
-    /// Live receiver on the newest pending consent the slice publishes — the
+    /// Live receiver on the Owner prompt the server publishes — the
     /// same channel the Tauri host notifies from. Held (not dropped) so tests
     /// can assert *what the host would notify* after a request lands,
     /// which is the only observable difference between "parked a request" and
     /// "parked a request and asked the Owner about it".
-    pending_consent_rx: watch::Receiver<Option<NewestPendingConsent>>,
+    pending_consent_rx: watch::Receiver<Option<OwnerPrompt>>,
     /// The browser session token of a browser the Owner paired, which holds
     /// `wildflower/launch` and every FHIR scope (`system/*.cruds`): a browser
     /// `/oauth/authorize` accepts, whose session falls short of no FHIR
@@ -100,8 +119,6 @@ pub fn spin_up_with_authorization_start_gate(
         server_origin: Url::parse(SERVER_ORIGIN).expect("SERVER_ORIGIN is a valid URL"),
         host_app_client_scopes:
             wildflowerhealthio_authorization_server::default_host_app_client_scopes(),
-        wildflower_host_app_client_id:
-            wildflowerhealthio_authorization_server::default_wildflower_host_app_client_id(),
         fhir_ui_client_id: "fhir-ui-client".to_string(),
         launcher_base: LauncherBase::parse(LAUNCHER_BASE).expect("LAUNCHER_BASE is a valid URL"),
         authorization_app_base: AuthorizationAppBase::parse(AUTHORIZATION_APP_BASE)
@@ -109,8 +126,7 @@ pub fn spin_up_with_authorization_start_gate(
         launcher_url: Url::parse(LAUNCHER_URL).expect("LAUNCHER_URL is a valid URL"),
         authorization_url: Url::parse(AUTHORIZATION_URL).expect("AUTHORIZATION_URL is a valid URL"),
     };
-    let (pending_consent_tx, pending_consent_rx) =
-        watch::channel::<Option<NewestPendingConsent>>(None);
+    let (pending_consent_tx, pending_consent_rx) = watch::channel::<Option<OwnerPrompt>>(None);
     // The shared revocation store lives on the rusqlite connection the host
     // wires into both the authorization server and the FHIR server (#269). A second handle on
     // the same connection (see `revocation_store_handle`) lets tests
@@ -185,14 +201,14 @@ pub fn paired_browser_session(db: &TestDb) -> (String, String) {
 /// and return its `sid` and a token minted under it. Every authorization code
 /// a request made in it earns carries only what `scopes` also allow.
 pub fn paired_browser_session_holding(db: &TestDb, scopes: &[&str]) -> (String, String) {
-    let session = BrowserSession::new_approved(
+    let session = BrowserSession::new_paired_session(
         "Firefox on Linux".to_owned(),
         scopes.iter().map(|scope| (*scope).to_owned()).collect(),
         Duration::hours(24),
         Utc::now(),
     );
     store_handle(db)
-        .insert_browser_session(&session)
+        .write(|tx| tx.insert_browser_session(&session))
         .expect("insert the paired browser's session");
     let token = mint_browser_session_token(db, &session.sid, scopes);
     (session.sid, token)
@@ -215,13 +231,13 @@ fn mint_token_under_session(
     sid: Option<&str>,
 ) -> String {
     let key = store_handle(db)
-        .active_signing_key()
+        .read(|tx| tx.active_signing_key())
         .expect("signing-key query")
         .expect("a seeded active signing key");
     let scope: Vec<String> = scopes.iter().map(|s| (*s).to_owned()).collect();
     mint_access_token(
         &key,
-        &NewJwtArgs {
+        &NewAccessTokenArgs {
             client_id,
             scopes: &scope,
             ttl: Duration::minutes(15),
@@ -234,9 +250,9 @@ fn mint_token_under_session(
     .expect("mint token")
 }
 
-/// The pending consent the host would currently be showing — the latest value
-/// on the slice's pending-consent watch channel.
-pub fn newest_pending_consent(db: &TestDb) -> Option<NewestPendingConsent> {
+/// The Owner prompt the host would currently be showing: the latest value on
+/// the channel the server publishes it on.
+pub fn owner_prompt(db: &TestDb) -> Option<OwnerPrompt> {
     db.pending_consent_rx.borrow().clone()
 }
 
@@ -261,16 +277,19 @@ pub fn seed_client_with_redirect(
 ) {
     let store = store_handle(db);
     store
-        .upsert_client(&Client {
-            client_id: client_id.to_string(),
-            name: "Integration Test Client".to_string(),
-            kind: ClientKind::Public,
-            redirect_uris: vec![Url::parse(redirect_uri).expect("redirect url")],
-            allowed_scopes: scopes.iter().map(ToString::to_string).collect(),
-            allowed_grant_types: AllowedGrantType::ALL.to_vec(),
-            secret_hash: None,
-            registered_at: Utc::now(),
-            disabled_at: None,
+        .write(|tx| {
+            tx.upsert_client(&Client {
+                client_id: client_id.to_string(),
+                name: "Integration Test Client".to_string(),
+                kind: ClientKind::Public,
+                redirect_uris: vec![Url::parse(redirect_uri).expect("redirect url")],
+                allowed_scopes: scopes.iter().map(ToString::to_string).collect(),
+                allowed_grant_types: AllowedGrantType::ALL.to_vec(),
+                secret_hash: None,
+                registered_at: Utc::now(),
+                disabled_at: None,
+                registration_source: RegistrationSource::TrustedOnFirstUse,
+            })
         })
         .expect("register client");
 }
@@ -288,16 +307,19 @@ pub const TEST_CLIENT_SCOPE: &str = "system/*.cruds";
 /// [`TEST_CLIENT_SCOPE`], with no redirect URI.
 pub fn seed_test_client(db: &TestDb) {
     store_handle(db)
-        .upsert_client(&Client {
-            client_id: TEST_CLIENT_ID.to_string(),
-            name: "Integration Test Client".to_string(),
-            kind: ClientKind::Public,
-            redirect_uris: vec![],
-            allowed_scopes: vec![TEST_CLIENT_SCOPE.to_string()],
-            allowed_grant_types: AllowedGrantType::ALL.to_vec(),
-            secret_hash: None,
-            registered_at: Utc::now(),
-            disabled_at: None,
+        .write(|tx| {
+            tx.upsert_client(&Client {
+                client_id: TEST_CLIENT_ID.to_string(),
+                name: "Integration Test Client".to_string(),
+                kind: ClientKind::Public,
+                redirect_uris: vec![],
+                allowed_scopes: vec![TEST_CLIENT_SCOPE.to_string()],
+                allowed_grant_types: AllowedGrantType::ALL.to_vec(),
+                secret_hash: None,
+                registered_at: Utc::now(),
+                disabled_at: None,
+                registration_source: RegistrationSource::TrustedOnFirstUse,
+            })
         })
         .expect("register the test client");
 }
@@ -316,13 +338,13 @@ pub fn mint_scoped_token(db: &TestDb, scopes: &[&str]) -> String {
 /// didn't mint for itself.
 pub fn mint_token_naming(db: &TestDb, scopes: &[&str], issuer: &str, audience: &str) -> String {
     let key = store_handle(db)
-        .active_signing_key()
+        .read(|tx| tx.active_signing_key())
         .expect("signing-key query")
         .expect("a seeded active signing key");
     let scope: Vec<String> = scopes.iter().map(|s| (*s).to_owned()).collect();
     mint_access_token(
         &key,
-        &NewJwtArgs {
+        &NewAccessTokenArgs {
             client_id: "scoped-app",
             scopes: &scope,
             ttl: Duration::seconds(300),
@@ -340,11 +362,13 @@ pub fn build_request(builder: http::request::Builder, body: Body) -> Request<Bod
     builder.body(body).expect("build request")
 }
 
+/// A whole response body, read as JSON.
 pub async fn body_json(body: Body) -> Value {
     let bytes = to_bytes(body, usize::MAX).await.expect("body");
     serde_json::from_slice(&bytes).expect("json")
 }
 
+/// A whole response body, read as UTF-8 text.
 pub async fn body_string(body: Body) -> String {
     let bytes = to_bytes(body, usize::MAX).await.expect("body");
     String::from_utf8(bytes.to_vec()).expect("utf8")
@@ -390,51 +414,59 @@ pub fn plant_authorization_code(
     let scope_vec: Vec<String> = scopes.iter().map(ToString::to_string).collect();
     let challenge = compute_code_challenge(CODE_VERIFIER);
     let now = Utc::now();
-    store
-        .insert_authorization_request(&AuthorizationRequest {
+    let requested_at = expires_at.min(now) - Duration::seconds(1);
+    let request = CodeRequest::new(
+        NewCodeRequestArgs {
             id: request_id.clone(),
-            grant_type: GrantType::AuthorizationCode,
             client_id: client_id.to_string(),
             requested_scopes: scope_vec.clone(),
-            code_challenge: Some(challenge.clone()),
-            code_challenge_method: Some("S256".to_string()),
-            redirect_uri: Some(redirect_uri.clone()),
-            client_state: Some("state".to_string()),
-            user_code: None,
-            pre_approved_scopes: Vec::new(),
-            requested_at: now,
-            expires_at,
-            last_polled_at: None,
-            status: RequestStatus::Approved,
-            granted_scopes: Some(scope_vec.clone()),
-            patient: None,
-            device_name: None,
+            ttl: expires_at - requested_at,
+            redirect_uri: redirect_uri.clone(),
+            code_challenge: challenge.clone(),
+            client_state: "state".to_string(),
+            sid: sid.to_owned(),
             launch: None,
             launch_bound_patient: None,
+            pre_approved_scopes: Vec::new(),
             decidable_in_requesting_browser: false,
-            sid: Some(sid.to_owned()),
-            session_shortfall_acknowledged: true,
-        })
+            awaits_limited_page: false,
+        },
+        requested_at,
+    )
+    .approve(
+        Approval {
+            granted_scopes: scope_vec.clone(),
+            patient: None,
+        },
+        requested_at,
+    )
+    .expect("a pending request approves");
+    store
+        .write(|tx| tx.insert_code_request(&request))
         .expect("insert request");
     store
-        .issue_authorization_code(&IssuedAuthorizationCode {
-            code: code.to_string(),
-            request_id,
-            client_id: client_id.to_string(),
-            redirect_uri: redirect_uri.clone(),
-            code_challenge: challenge,
-            granted_scopes: scope_vec,
-            patient: None,
-            issued_at: now,
-            expires_at,
-            sid: sid.to_owned(),
+        .write(|tx| {
+            tx.issue_authorization_code(&AuthorizationCode {
+                code: code.to_string(),
+                request_id,
+                client_id: client_id.to_string(),
+                redirect_uri: redirect_uri.clone(),
+                code_challenge: challenge,
+                granted_scopes: scope_vec,
+                patient: None,
+                issued_at: now,
+                expires_at,
+                sid: sid.to_owned(),
+            })
         })
         .expect("issue code");
 }
 
-/// Plant a device-flow request directly, returning its `device_code`. `status`
-/// and `expires_at` are caller-controlled so the device state-machine tests can
-/// stand up Approved/expired rows the public surface can't mint on demand.
+/// Plant a device-flow request directly, keyed by `WILD-FLWR`. `status` and
+/// `expires_at` are caller-controlled so the device state-machine tests can
+/// stand up approved or expired rows the public surface can't mint on demand:
+/// the request starts pending just before it would expire (or now) and moves
+/// to `status`, an approval granting the requested `scopes`.
 pub fn plant_device_request(
     store: &SqliteGrantStore,
     client_id: &str,
@@ -444,32 +476,43 @@ pub fn plant_device_request(
     expires_at: chrono::DateTime<Utc>,
 ) {
     let scope_vec: Vec<String> = scopes.iter().map(ToString::to_string).collect();
-    let granted = matches!(status, RequestStatus::Approved).then(|| scope_vec.clone());
-    store
-        .insert_authorization_request(&AuthorizationRequest {
+    let requested_at = expires_at.min(Utc::now()) - Duration::seconds(1);
+    let pending = DeviceRequest::new(
+        NewDeviceRequestArgs {
             id: device_code.to_string(),
-            grant_type: GrantType::DeviceCode,
             client_id: client_id.to_string(),
-            requested_scopes: scope_vec,
-            code_challenge: None,
-            code_challenge_method: None,
-            redirect_uri: None,
-            client_state: None,
-            user_code: Some("WILD-FLWR".to_string()),
-            pre_approved_scopes: Vec::new(),
-            requested_at: Utc::now(),
-            expires_at,
-            last_polled_at: None,
-            status,
-            granted_scopes: granted,
-            patient: None,
+            requested_scopes: scope_vec.clone(),
+            ttl: expires_at - requested_at,
+            user_code: "WILD-FLWR".to_string(),
             device_name: None,
-            launch: None,
-            launch_bound_patient: None,
-            decidable_in_requesting_browser: false,
-            sid: None,
-            session_shortfall_acknowledged: true,
-        })
+        },
+        requested_at,
+    );
+    let approve = |request: &DeviceRequest| {
+        request
+            .approve(
+                Approval {
+                    granted_scopes: scope_vec.clone(),
+                    patient: None,
+                },
+                None,
+                requested_at,
+            )
+            .expect("a pending request approves")
+    };
+    let request = match status {
+        RequestStatus::Pending => pending,
+        RequestStatus::Approved => approve(&pending),
+        RequestStatus::Denied => pending
+            .deny(requested_at)
+            .expect("a pending request denies"),
+        RequestStatus::Claimed => approve(&pending)
+            .claim(requested_at)
+            .expect("an approved request is claimed"),
+        RequestStatus::AwaitingLimitedPage => panic!("a device request has no limited page"),
+    };
+    store
+        .write(|tx| tx.insert_device_request(&request))
         .expect("insert device request");
 }
 
@@ -696,7 +739,7 @@ pub async fn approve_oauth_consent(
 /// `auth_code_grant_happy_path_end_to_end`. Uses the shared
 /// `https://app.example/cb` redirect and [`CODE_VERIFIER`]'s challenge.
 ///
-/// `approve_body` carries `acknowledgedRegistration` like any real approval;
+/// `approve_body` carries `acknowledgedRegistrationChange` like any real approval;
 /// callers seed a client whose registration already covers the request, so the
 /// flag is ignored.
 pub async fn authorize_and_approve(
@@ -735,6 +778,8 @@ pub async fn authorize_and_approve(
     request_id
 }
 
+/// A desktop Chrome on macOS `User-Agent`, for the tests that name a device or
+/// browser from its user agent.
 pub const CHROME_MAC_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
      AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
 
@@ -748,24 +793,28 @@ pub fn plant_refresh_token(
 ) {
     let now = Utc::now();
     store
-        .insert_refresh_token_family_row(&RefreshTokenFamily {
-            family_id: format!("family-{plaintext}"),
-            client_id: client_id.to_string(),
-            scopes: vec!["read".to_string(), "offline_access".to_string()],
-            patient: None,
-            issued_at: now,
-            expires_at: family_expires_at,
-            authorization_code_hash: None,
-            grant_id: None,
-            sid: None,
+        .write(|tx| {
+            tx.insert_refresh_token_family_row(&RefreshTokenFamily {
+                family_id: format!("family-{plaintext}"),
+                client_id: client_id.to_string(),
+                scopes: vec!["read".to_string(), "offline_access".to_string()],
+                patient: None,
+                issued_at: now,
+                expires_at: family_expires_at,
+                authorization_code_hash: None,
+                grant_id: None,
+                sid: None,
+            })
         })
         .expect("insert refresh token family row");
     store
-        .insert_refresh_token(&RefreshToken {
-            token_hash: token_storage_hash(plaintext),
-            family_id: format!("family-{plaintext}"),
-            issued_at: now,
-            consumed_at: None,
+        .write(|tx| {
+            tx.insert_refresh_token(&RefreshToken {
+                token_hash: token_storage_hash(plaintext),
+                family_id: format!("family-{plaintext}"),
+                issued_at: now,
+                consumed_at: None,
+            })
         })
         .expect("insert first refresh token");
 }
@@ -786,16 +835,21 @@ pub fn seed_confidential_client(
 ) {
     let store = store_handle(db);
     store
-        .upsert_client(&Client {
-            client_id: client_id.to_string(),
-            name: "Integration Test Confidential Client".to_string(),
-            kind: ClientKind::Confidential,
-            redirect_uris: vec![],
-            allowed_scopes: scopes.iter().map(ToString::to_string).collect(),
-            allowed_grant_types: AllowedGrantType::ALL.to_vec(),
-            secret_hash: Some(hash_client_secret(client_secret_plaintext).expect("hash secret")),
-            registered_at: Utc::now(),
-            disabled_at: None,
+        .write(|tx| {
+            tx.upsert_client(&Client {
+                client_id: client_id.to_string(),
+                name: "Integration Test Confidential Client".to_string(),
+                kind: ClientKind::Confidential,
+                redirect_uris: vec![],
+                allowed_scopes: scopes.iter().map(ToString::to_string).collect(),
+                allowed_grant_types: AllowedGrantType::ALL.to_vec(),
+                secret_hash: Some(
+                    hash_client_secret(client_secret_plaintext).expect("hash secret"),
+                ),
+                registered_at: Utc::now(),
+                disabled_at: None,
+                registration_source: RegistrationSource::TrustedOnFirstUse,
+            })
         })
         .expect("register confidential client");
 }
@@ -827,7 +881,10 @@ pub fn basic_authorization(client_id: &str, client_secret: &str) -> String {
     )
 }
 
+/// `conf-app`, the confidential client [`spin_up_with_confidential_client`]
+/// registers.
 pub const CONFIDENTIAL_CLIENT_ID: &str = "conf-app";
+/// That confidential client's secret.
 pub const CONFIDENTIAL_CLIENT_SECRET: &str = "shhh-integration-secret";
 
 /// Spin up an authorization server with a seeded confidential client and a live planted
@@ -1012,7 +1069,8 @@ pub async fn sign_in(g: &AuthorizationServer, code: &str, next: &str) -> axum::r
         .expect("oneshot")
 }
 
-/// The Owner token a sign-in's `Set-Cookie` hands the browser.
+/// The same-device session token a sign-in's `Set-Cookie` hands
+/// the browser. Panics on any other number of cookies.
 pub fn browser_session_token(res: &axum::response::Response) -> String {
     let cookies = set_cookie_values(res);
     let [cookie] = cookies.as_slice() else {
@@ -1025,9 +1083,9 @@ pub fn browser_session_token(res: &axum::response::Response) -> String {
         .to_owned()
 }
 
-/// Sign a browser in as the Owner, returning the Owner session token its
+/// Sign a browser in as the Owner, returning the same-device session token its
 /// `__Host-browser_session` cookie holds.
-pub async fn signed_in_owner_session_token(g: &AuthorizationServer) -> String {
+pub async fn signed_in_same_device_session_token(g: &AuthorizationServer) -> String {
     let code = g.same_device_sign_in_code_minter.mint();
     browser_session_token(&sign_in(g, &code, "/").await)
 }
@@ -1040,8 +1098,8 @@ pub async fn signed_in_session_token_that_cannot_decide(
     g: &AuthorizationServer,
     db: &TestDb,
 ) -> String {
-    let owner_session_token = signed_in_owner_session_token(g).await;
-    let sid = decode_jwt_payload(&owner_session_token)["sid"]
+    let same_device_session_token = signed_in_same_device_session_token(g).await;
+    let sid = decode_jwt_payload(&same_device_session_token)["sid"]
         .as_str()
         .expect("a browser session's token names its sid")
         .to_owned();

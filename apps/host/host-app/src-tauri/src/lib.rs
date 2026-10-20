@@ -17,11 +17,6 @@ use wildflowerhealthio_wildflower_server::WildflowerServerConfig;
 // the authorization server seeds the client's `allowed_scopes` from them.
 const HOST_APP_CLIENT_SCOPES: &str = env!("WILDFLOWER_HOST_APP_CLIENT_SCOPES");
 
-// The Wildflower host app's OAuth `client_id`, sourced from the same
-// `apps/host/host-app/tauri-shared-config.json` (re-emitted by `build.rs`):
-// the id the authorization server seeds the host app's client under.
-const WILDFLOWER_HOST_APP_CLIENT_ID: &str = env!("WILDFLOWER_HOST_APP_CLIENT_ID");
-
 // The hosted launcher (see `wildflowerhealthio_shared_structures::launcher`), sourced from the
 // same `tauri-shared-config.json` (re-emitted by `build.rs`). Debug builds use
 // the local `main-web` dev server, so a dev host's links open the UI being
@@ -203,7 +198,6 @@ fn server_config(
         launcher_url: server.launcher_url.clone(),
         authorization_url: server.authorization_url.clone(),
         host_app_client_scopes: host_app_client_scopes(),
-        wildflower_host_app_client_id: WILDFLOWER_HOST_APP_CLIENT_ID.to_owned(),
         relay_settings: relay_settings_of(server),
         domain: server.domain(),
         device_certificate: server.device_certificate_config(data_root),

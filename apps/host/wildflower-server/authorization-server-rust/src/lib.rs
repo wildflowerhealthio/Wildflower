@@ -1,3 +1,15 @@
+//! The Wildflower authorization server: the OAuth 2.0 and SMART App Launch
+//! authorization server in front of the Owner's FHIR server. It decides which
+//! apps, devices and browsers may reach the Owner's data, asks the Owner when
+//! it must, and signs the access tokens the FHIR server checks.
+//!
+//! The host builds one with [`setup_authorization_server`] and merges its
+//! router: `/oauth/*` for apps, devices and browsers on their way in,
+//! `/authorization/*` for the Owner's own pages, and `/.well-known/jwks.json`
+//! for anyone checking a token. `domain` holds the rules, `db` the `SQLite`
+//! store, and `http` the routes that adapt between the two.
+#![warn(missing_docs, clippy::missing_docs_in_private_items)]
+
 pub mod config;
 // The modules below aren't part of the host contract (the Tauri host imports
 // the crate-root re-exports), but they stay `pub` because a web of
@@ -9,9 +21,9 @@ pub mod crypto_util;
 pub mod db;
 pub mod domain;
 pub mod http;
-// Host/HTTP-seam dependency-inversion traits the domain actions call out through
-// (device-consent republish, session-token revoke); the
-// concrete impls are wired onto `Arc<AuthorizationServerState>` in `http::state`. Mirrors
+// Host/HTTP-seam dependency-inversion traits the domain capabilities call out
+// through (the Owner prompt's republish, token revocation, the start gate); the
+// concrete impls live in `adapters`, on `AuthorizationServerState`. Mirrors
 // apps-rust.
 pub(crate) mod ports;
 pub(crate) mod seeding;
@@ -20,8 +32,8 @@ pub(crate) mod adapters;
 
 // The shared runtime state + per-resource capability bindings. At the crate root
 // (not under `http`) so the `domain/` capabilities can be built from it without
-// `domain/` depending on `crate::http`; the struct is axum-free (the one
-// axum-touching seam impl lives in `http::state`).
+// `domain/` depending on `crate::http`; the struct is axum-free (its port impls
+// live in `adapters`, and `http::state` re-exports it).
 pub(crate) mod live_bindings;
 
 use std::sync::Arc;
@@ -47,22 +59,20 @@ pub use db::SqliteGrantStore;
 // contains no code that could write them.
 #[cfg(debug_assertions)]
 pub use seeding::seed_dev_app_clients;
-// The persistence port traits, re-exported so out-of-crate callers (e.g. the
-// integration test) can bring the store methods into scope on the concrete
-// `SqliteGrantStore` adapter. `GrantStore` is the transaction seam
-// (and carries the standalone-convenience default methods); `GrantTx` is
-// the primitive contract a composed transaction hands out.
-pub use domain::pending_consent::{ConsentKey, NewestPendingConsent};
+// The persistence port, re-exported so out-of-crate callers (the host, the
+// integration tests) can open a scope on the concrete `SqliteGrantStore`:
+// `GrantStore` is the seam with its read and write scopes, `GrantTx` the
+// bundle of per-table primitives a scope hands out (each concern's trait is
+// in `domain::grant_store`).
+pub use domain::consent_key::ConsentKey;
+pub use domain::owner_prompt::OwnerPrompt;
 pub use domain::{GrantStore, GrantTx};
 
-// Re-exported so the host can name the pool type at the `setup_authorization_server`
-// call site without a direct diesel dependency; the canonical home is
-// persistence-rust (apps and request-log re-export it the same way).
 /// The admin scopes the `/authorization` surface enforces — the registry meant to
 /// couple *enforced* (the scope-gated capability extractors) with *grantable*
-/// (the vocabulary the consent surfaces will offer). Re-exported for the host
-/// and the resource-authz epic's consent UI; nothing consumes it yet — its
-/// tests pin the set until then. See [`domain::capabilities`].
+/// (the vocabulary a consent surface offers). Re-exported for the host;
+/// nothing outside this crate consumes it, and its tests pin the set. See
+/// `domain::capabilities`.
 pub use domain::capabilities::grantable_admin_scopes;
 pub use http::{
     authorization_server_auth_middleware, browser_session_clearing_set_cookie,
@@ -76,21 +86,19 @@ pub use live_bindings::{
 // The host's say over how fast authorization requests are started (see
 // `setup_authorization_server`).
 pub use ports::{AdmitEveryAuthorizationStart, AuthorizationStartGate};
+// Re-exported so the host can name the pool type at the `setup_authorization_server`
+// call site without a direct diesel dependency; the canonical home is
+// persistence-rust (apps and request-log re-export it the same way).
 pub use wildflowerhealthio_persistence::DieselPool;
 
 /// `client_id` of the Wildflower host app's OAuth client, seeded at bootstrap
-/// and the one client whose registration is fixed.
-///
-/// This is the standalone/test fallback: the live Tauri app sources the id from
-/// `tauri-shared-config.json` and threads it via
-/// [`AuthorizationServerConfig::wildflower_host_app_client_id`], so the id can't
-/// drift from the host's config. Rendered by
-/// [`default_wildflower_host_app_client_id`].
+/// with a server-defined registration. Like [`BROWSER_SESSION_CLIENT_ID`], it
+/// is an essential client: it can't be disabled.
 pub const WILDFLOWER_HOST_APP_CLIENT_ID: &str = "c4e755b6a4c1abf2aae6d0d83f2545a5";
 
 /// `client_id` of the browser-session client: the browsers the server has
 /// signed in. The Owner's is signed in by the host app on its own device with
-/// a same-device sign-in code at `/oauth/sign-in`; an approved browser pairs at
+/// a same-device sign-in code at `/oauth/sign-in`; any other browser pairs at
 /// `/oauth/pair`, showing a code the Owner approves. Each such browser holds a
 /// token issued to this client (its `sub`), so revoking the client's subject
 /// signs every browser out, and one browser is signed out by revoking its
@@ -105,8 +113,7 @@ pub const BROWSER_SESSION_CLIENT_ID: &str = "cb9bbe139845cae9654b7909d60d274f";
 /// (`system/*.cruds`) **and** full Wildflower-resource access
 /// (`wildflower/*.cruds`). An Owner token covers *every* one of these, so it
 /// covers every per-resource `/authorization/*` scope the scope-gated extractors
-/// require — the fail-closed owner default. (Replaced the bespoke
-/// `wildflower/admin` scope.)
+/// require — the fail-closed owner default.
 pub const WILDFLOWER_WIDEST_SCOPES: &[Scope] = &[
     Scope::FhirResource(FhirResourceScope {
         context: ContextLevel::System,
@@ -119,8 +126,8 @@ pub const WILDFLOWER_WIDEST_SCOPES: &[Scope] = &[
     }),
 ];
 
-/// The Owner's scopes: the authority the Owner approves consents with, what an
-/// Owner session holds, the most an approved browser session may be granted,
+/// The Owner's scopes: the authority the Owner approves consents with, what a
+/// same-device session holds, the most a paired browser session may be granted,
 /// and the browser-session client's `allowed_scopes`.
 /// An approval can't delegate a resource scope these don't cover.
 ///
@@ -157,14 +164,6 @@ pub fn default_host_app_client_scopes() -> Vec<String> {
     vec![Scope::Known(KnownScope::Openid).to_string()]
 }
 
-/// The default Wildflower host app `client_id` — [`WILDFLOWER_HOST_APP_CLIENT_ID`]. Standalone
-/// and test builds seed [`AuthorizationServerConfig::wildflower_host_app_client_id`] from this;
-/// the live Tauri app sources the value from `tauri-shared-config.json` instead.
-#[must_use]
-pub fn default_wildflower_host_app_client_id() -> String {
-    WILDFLOWER_HOST_APP_CLIENT_ID.to_string()
-}
-
 /// How often the background sweep drops denylist rows whose token has already
 /// expired (mirrors the refresh-token/device-code reaping cadence). The first
 /// sweep runs at startup; thereafter daily. A revoked-then-expired `jti` is
@@ -178,33 +177,37 @@ const REVOCATION_PURGE_INTERVAL: std::time::Duration = std::time::Duration::from
 /// says.
 const RETENTION_SWEEP_INTERVAL: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
 
-/// How often the background reaper re-runs the newest-pending-consent query
-/// so the watch channel drops a row whose `expires_at` has passed without any
+/// How often the background reaper recomputes the [`OwnerPrompt`], so the
+/// watch channel drops a request whose `expires_at` has passed without any
 /// HTTP mutation arriving to trigger a republish. Picked well under the
 /// 5-minute `DEVICE_AUTHORIZATION_TTL` so a freshly-expired request clears
-/// within seconds; the query itself is a single indexed `LIMIT 1` and the
-/// watch sender suppresses no-op publishes.
+/// within seconds; the recompute is two `LIMIT 1` reads, one per request
+/// table, and the watch sender suppresses no-op publishes.
 const DEVICE_CONSENT_REAPER_INTERVAL: std::time::Duration = std::time::Duration::from_secs(15);
 
-/// Result of `setup_authorization_server`: the public router that should be merged
-/// into the app's root router, the shared `Arc<AuthorizationServerState>` needed to
-/// gate fhir-r4-rust traffic, the minter app launches mint their `launch`
-/// values through, the minter the host mints same-device sign-in codes through,
-/// and the watcher it waits on for a pending consent to settle.
+/// What [`setup_authorization_server`] hands the host: the router to merge,
+/// the shared state its own gates need, and the in-process handles it keeps.
 pub struct AuthorizationServer {
+    /// The server's HTTP surface, at `/.well-known/jwks.json`, `/oauth/*` and
+    /// `/authorization/*`. The host merges it into its own router, which the
+    /// tunnel listener serves.
     pub router: axum::Router,
+    /// The shared state, which the host passes to
+    /// [`authorization_server_auth_middleware`], the bearer gate on the FHIR
+    /// server's routes.
     pub state: Arc<AuthorizationServerState>,
-    /// Mints the SMART App Launch contexts `/oauth/authorize` consumes — for
-    /// the in-process launchers (the apps slice, the host).
+    /// Mints the SMART App Launch `launch` values `/oauth/authorize` consumes,
+    /// which the in-process launchers (the apps slice, the host) put in an
+    /// app's launch URL.
     pub launch_context_minter: LaunchContextMinter,
-    /// Mints the one-time codes `/oauth/sign-in` signs a browser in as the
-    /// Owner with — for the host, in-process.
+    /// Mints the one-time codes `/oauth/sign-in` signs the Owner's own browser
+    /// in with: for the host, in-process.
     pub same_device_sign_in_code_minter: SameDeviceSignInCodeMinter,
-    /// Waits for a pending consent to be decided or expire — for the host,
+    /// Waits for a pending consent to be decided or expire: for the host,
     /// in-process, which closes the page it opened the request at.
     pub pending_consent_watcher: PendingConsentWatcher,
-    /// Verifies access tokens as the authorization server's own gates do —
-    /// for the host's FHIR server, which verifies each bearer through it
+    /// Verifies access tokens exactly as the authorization server's own gates
+    /// do: for the host's FHIR server, which verifies each bearer through it
     /// in-process.
     pub in_process_token_verifier: InProcessTokenVerifier,
 }
@@ -214,9 +217,9 @@ pub struct AuthorizationServer {
 /// other diesel-backed slices ride). Runs idempotent bootstrap
 /// (schema migrations, signing-key seed, essential-client seed), and:
 ///
-///  - publishes the newest pending consent — device-code and
-///    authorization-code requests and browser pairings alike — on
-///    `owner_approval_tx`. On the
+///  - publishes the [`OwnerPrompt`], the newest request awaiting the Owner
+///    (device-code and authorization-code requests and browser pairings
+///    alike), on `owner_approval_tx`. On the
 ///    Tauri host, the server's run reports it as its detail, which the base's
 ///    server status carries and from which the host notifies each new
 ///    request.
@@ -261,13 +264,12 @@ pub fn setup_authorization_server(
     pool: DieselPool,
     revocation_store: RevocationStore,
     config: &AuthorizationServerConfig,
-    owner_approval_tx: watch::Sender<Option<NewestPendingConsent>>,
+    owner_approval_tx: watch::Sender<Option<OwnerPrompt>>,
     authorization_start_gate: Arc<dyn AuthorizationStartGate>,
 ) -> anyhow::Result<AuthorizationServer> {
     let store = seeding::open_and_seed_store(
         pool,
         &config.host_app_client_scopes,
-        &config.wildflower_host_app_client_id,
         &config.fhir_ui_client_id,
         &config.server_origin,
     )?;
@@ -280,7 +282,6 @@ pub fn setup_authorization_server(
         revocation_store: revocation_store.clone(),
         server_origin: server_origin.clone(),
         device_page: Arc::new(http::device_page_url(&config.server_origin)),
-        wildflower_host_app_client_id: config.wildflower_host_app_client_id.clone().into(),
         launcher_base: config.launcher_base.clone(),
         owner_approval_tx,
         pending_consents_recomputed_tx,
@@ -296,7 +297,7 @@ pub fn setup_authorization_server(
         authorization_start_gate,
         last_seen_throttle: Arc::new(LastSeenThrottle::new()),
     });
-    // Seed the newest pending consent from SQLite so a request that was
+    // Publish the Owner prompt from SQLite so a request that was
     // pending across an app restart is reported in the run's first detail —
     // the `watch` value itself doesn't survive the process, but the row
     // does.
@@ -358,12 +359,13 @@ fn spawn_revocation_purge(revocation_store: RevocationStore) {
 /// [`domain::retention`].
 ///
 /// Space reclamation only: every row it touches is already past `expires_at`
-/// and rejected by the read paths, so nothing here changes what the server
-/// honours. A failed sweep is logged and retried next tick.
+/// (or, for a browser session, its `revoked_at`) and rejected by the read
+/// paths, so nothing here changes what the server honours. A failed sweep is
+/// logged and retried next tick.
 ///
 /// Runs on [`spawn_blocking`](tokio::task::spawn_blocking) rather than a runtime
 /// worker: `pool.get()` alone can park for r2d2's 30s connection timeout, and the
-/// sweep then holds one write transaction across three unindexed full scans.
+/// sweep then holds one write transaction across a delete per table.
 fn spawn_retention_sweep(store: SqliteGrantStore) {
     tokio::spawn(async move {
         let mut ticks = interval(RETENTION_SWEEP_INTERVAL);
@@ -383,7 +385,8 @@ fn spawn_retention_sweep(store: SqliteGrantStore) {
             match swept {
                 Ok(Ok(purged)) if !purged.is_empty() => tracing::info!(
                     refresh_token_families = purged.refresh_token_families,
-                    authorization_requests = purged.authorization_requests,
+                    code_authorization_requests = purged.code_authorization_requests,
+                    user_code_requests = purged.user_code_requests,
                     authorization_codes = purged.authorization_codes,
                     browser_sessions = purged.browser_sessions,
                     "swept the authorization server rows past their retention window",
@@ -400,8 +403,8 @@ fn spawn_retention_sweep(store: SqliteGrantStore) {
     });
 }
 
-/// Spawn the background reaper that periodically re-runs the
-/// newest-pending-consent query. Mutation-driven republishing alone leaves
+/// Spawn the background reaper that periodically recomputes the
+/// [`OwnerPrompt`]. Mutation-driven republishing alone leaves
 /// the watch advertising a request whose row has expired in the meantime —
 /// without this task, an idle host stays stuck on the now-expired request
 /// until some unrelated handler happens to write. The reaper drops the stale

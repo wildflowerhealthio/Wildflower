@@ -2,8 +2,9 @@
 //!
 //! [`scope`] is the structured, owned [`Scope`] model — parse, render, and
 //! coverage. [`smart`] keeps the string-facing grammar entry points
-//! (`grantable_scopes`, `allowed_scope_covers`, `widened_scopes`) that
-//! authorization server's consent handlers call, implemented on top of the model.
+//! (`grantable_scopes`, `allowed_scope_covers`, `widened_scopes`,
+//! `with_alternate_canonical_forms`) that the authorization server calls,
+//! implemented on top of the model.
 
 pub mod scope;
 pub mod smart;
@@ -18,8 +19,7 @@ pub use smart::{
 
 /// Render a slice of [`Scope`]s to their canonical wire strings — the shape
 /// stored in client `allowed_scopes`/grant rows and minted into a token's
-/// space-joined `scope` claim. Consolidates the `…map(ToString::to_string)…`
-/// idiom callers would otherwise repeat.
+/// space-joined `scope` claim, in order.
 pub fn render_scopes(scopes: &[Scope]) -> Vec<String> {
     scopes.iter().map(ToString::to_string).collect()
 }

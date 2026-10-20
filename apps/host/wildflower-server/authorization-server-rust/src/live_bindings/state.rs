@@ -21,9 +21,8 @@ use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 use wildflowerhealthio_token_revocation::RevocationStore;
 
 use crate::db::SqliteGrantStore;
-use crate::domain::essential_client_guard::EssentialClientGuard;
 use crate::domain::last_seen_throttle::LastSeenThrottle;
-use crate::domain::pending_consent::NewestPendingConsent;
+use crate::domain::owner_prompt::OwnerPrompt;
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
 use crate::domain::sign_in_redirect::SignInDestinations;
 use crate::ports::{AuthorizationStartGate, Revocation, RevocationCheck};
@@ -43,7 +42,7 @@ pub struct AuthorizationServerState {
     /// [`TokenVerifier`](crate::domain::capabilities::session::TokenVerifier))
     /// runs the full `is_revoked` check (denylist + subject epoch) through it,
     /// and the revoke control surface (logout, `/authorization/revocations`, grant
-    /// revoke) writes to it through the [`Revocation`](crate::ports::Revocation)
+    /// revoke) writes to it through the [`Revocation`]
     /// port. Cheap to clone — it wraps the same shared connection every other
     /// slice holds. The host builds one and threads it into both
     /// [`crate::setup_authorization_server`] and fhir-r4-rust's HFS adapter, so the two
@@ -62,30 +61,21 @@ pub struct AuthorizationServerState {
     /// each [`DeviceAuthorizer`](crate::domain::capabilities::oauth::DeviceAuthorizer)
     /// built from the state shares it.
     pub(crate) device_page: Arc<Url>,
-    /// The Wildflower host app's `client_id`, pinned from
-    /// [`AuthorizationServerConfig`](crate::AuthorizationServerConfig) at
-    /// [`crate::setup_authorization_server`] — the same id [`crate::seeding`] seeds the
-    /// host app's client row under (both sourced from `tauri-shared-config.json`
-    /// on the live app). `/token` matches a request's presented `client_id`
-    /// against it to hold it to its fixed registration. An `Arc<str>` so the string is
-    /// shared rather than reallocated when the state is cloned before the `Arc`
-    /// wrap.
-    pub(crate) wildflower_host_app_client_id: Arc<str>,
-    /// The hosted launcher logout lands the browser on, pinned from
+    /// The hosted launcher, where logout lands the browser, pinned from
     /// [`AuthorizationServerConfig`](crate::AuthorizationServerConfig) at [`crate::setup_authorization_server`].
     pub(crate) launcher_base: LauncherBase,
-    /// Watch sender publishing the [`NewestPendingConsent`] the host notifies
+    /// Watch sender publishing the [`OwnerPrompt`] the host notifies
     /// and the base shows on the server's page. Handlers whose write may change it call the
     /// [`OwnerApproval::republish_active`](crate::ports::OwnerApproval::republish_active)
     /// seam after the write completes.
-    pub(crate) owner_approval_tx: watch::Sender<Option<NewestPendingConsent>>,
+    pub(crate) owner_approval_tx: watch::Sender<Option<OwnerPrompt>>,
     /// Pinged each time
     /// [`OwnerApproval::republish_active`](crate::ports::OwnerApproval::republish_active)
-    /// recomputes the newest pending consent, whether or not it changed: what
+    /// recomputes the [`OwnerPrompt`], whether or not it changed: what
     /// the [`PendingConsentWatcher`](crate::PendingConsentWatcher) rereads its
     /// request on.
     pub(crate) pending_consents_recomputed_tx: watch::Sender<()>,
-    /// The Owner's grant, [`crate::OWNER_SCOPES`] — what an Owner
+    /// The Owner's grant, [`crate::OWNER_SCOPES`] — what a same-device
     /// session holds, the authority it decides consents with.
     pub(crate) owner_grant: wildflowerhealthio_scopes::Grant,
     /// The outstanding same-device sign-in codes: minted in-process by the
@@ -115,16 +105,6 @@ pub struct AuthorizationServerState {
 }
 
 impl AuthorizationServerState {
-    /// The guard on the essential clients: the host app's,
-    /// [`wildflower_host_app_client_id`](Self::wildflower_host_app_client_id),
-    /// and the browser-session client, [`crate::BROWSER_SESSION_CLIENT_ID`].
-    pub(crate) fn essential_client_guard(&self) -> EssentialClientGuard {
-        EssentialClientGuard::new(
-            self.wildflower_host_app_client_id.clone(),
-            crate::BROWSER_SESSION_CLIENT_ID.into(),
-        )
-    }
-
     /// The [`Revocation`] port the capabilities revoke through: the shared
     /// [`revocation_store`](Self::revocation_store).
     pub(crate) fn revocation(&self) -> Arc<dyn Revocation> {

@@ -1,7 +1,7 @@
 //! `POST /oauth/pair/start` and `POST /oauth/pair/poll` — the endpoints the
 //! pairing page (`GET /oauth/pair`, an authorization page) calls on its own
 //! origin: start a browser pairing, then poll it until the Owner decides it.
-//! The poll that finds it approved hands the browser its approved browser
+//! The poll that finds it approved hands the browser its paired browser
 //! session as its `__Host-browser_session` cookie.
 //!
 //! Pairing is no OAuth flow, so the bodies are JSON, not form-encoded. A JSON
@@ -20,7 +20,7 @@ use utoipa::ToSchema;
 use super::device_name_hint::device_name_from_user_agent;
 use crate::domain::capabilities::oauth::{
     BrowserPairingPollError, BrowserPairingStartError, BrowserPairingStatus, StartedBrowserPairing,
-    APPROVED_SESSION_TTL,
+    PAIRED_SESSION_TTL,
 };
 use crate::http::browser_session_set_cookie;
 use crate::http::errors::InternalError;
@@ -75,6 +75,8 @@ impl From<StartedBrowserPairing> for StartedBrowserPairingBody {
 /// disabled (`BrowserSessionClientDisabled`, 403).
 #[derive(Debug, Serialize, ToSchema)]
 pub(super) struct BrowserPairingRefused {
+    /// Which refusal: `BrowserPairingNextNotAllowed` or
+    /// `BrowserSessionClientDisabled`.
     error: &'static str,
 }
 
@@ -95,10 +97,19 @@ pub(super) struct BrowserPairingPollBody {
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub(super) enum BrowserPairingStatusBody {
+    /// The Owner hasn't decided yet; the page polls again after its interval.
     Pending,
+    /// The page polled sooner than its interval allows; nothing was read or
+    /// recorded, and the page should wait longer before the next poll.
     SlowDown,
+    /// The Owner approved, and this poll started the paired session: the
+    /// response sets its token as the `__Host-browser_session` cookie, living
+    /// for [`PAIRED_SESSION_TTL`] (a day).
     Approved,
+    /// The Owner declined. No cookie is set.
     Denied,
+    /// The request expired before the Owner approved it, or an earlier poll
+    /// already collected its session. No cookie is set.
     Expired,
 }
 
@@ -106,11 +117,24 @@ pub(super) enum BrowserPairingStatusBody {
 /// (`BrowserPairingNotFound`, 404).
 #[derive(Debug, Serialize, ToSchema)]
 pub(super) struct BrowserPairingNotFound {
+    /// Always `BrowserPairingNotFound`.
     error: &'static str,
 }
 
 /// Start a browser pairing for this browser, named after its `User-Agent`,
-/// and raise the Owner's notification.
+/// and raise the Owner's notification. The body's `next` is where the browser
+/// goes once paired, in practice the `/oauth/authorize` request it was sent
+/// away from.
+///
+/// The answer's pairing code is the page's secret, and the user code is for
+/// the Owner, who confirms it on the device page: only the page that started
+/// the pairing can collect the session. The refusals:
+///
+/// - `next` is no path on this server: `400`, `BrowserPairingNextNotAllowed`.
+/// - The browser-session client is disabled: `403`,
+///   `BrowserSessionClientDisabled`.
+/// - No unused user code could be generated, or a store failed: a logged
+///   `500`.
 #[utoipa::path(
     post,
     tag = "Browser pairing",
@@ -131,7 +155,7 @@ pub(super) async fn handle_browser_pairing_start(
         .get(header::USER_AGENT)
         .and_then(|value| value.to_str().ok())
         .and_then(device_name_from_user_agent);
-    let response = match pairing.start(&body.next, user_agent_name) {
+    let response = match pairing.start(&body.next, user_agent_name, Utc::now()) {
         Ok(started) => Json(StartedBrowserPairingBody::from(started)).into_response(),
         Err(BrowserPairingStartError::NextNotAllowed) => (
             StatusCode::BAD_REQUEST,
@@ -160,8 +184,11 @@ pub(super) async fn handle_browser_pairing_start(
 }
 
 /// Poll a browser pairing. The poll that finds it approved starts the
-/// browser's approved session and sets it as the browser's
-/// `__Host-browser_session` cookie.
+/// browser's paired session and sets it as the browser's
+/// `__Host-browser_session` cookie. A blank `browser_name` keeps the name the
+/// pairing has. An unknown pairing code is a `404`; a store failure, a session
+/// that couldn't be stored, and a token that couldn't be minted are each a
+/// logged `500`.
 #[utoipa::path(
     post,
     tag = "Browser pairing",
@@ -180,7 +207,7 @@ pub(super) async fn handle_browser_pairing_poll(
         Ok(BrowserPairingStatus::Approved { session_token }) => (
             [(
                 header::SET_COOKIE,
-                browser_session_set_cookie(&session_token, APPROVED_SESSION_TTL),
+                browser_session_set_cookie(&session_token, PAIRED_SESSION_TTL),
             )],
             Json(BrowserPairingStatusBody::Approved),
         )
@@ -206,10 +233,10 @@ pub(super) async fn handle_browser_pairing_poll(
             InternalError::new("poll a browser pairing", error).into_response()
         }
         Err(BrowserPairingPollError::SessionNotStored(error)) => {
-            InternalError::new("store an approved browser session", error).into_response()
+            InternalError::new("store a paired browser session", error).into_response()
         }
         Err(BrowserPairingPollError::Issuance(error)) => {
-            InternalError::new("mint an approved browser session's token", error).into_response()
+            InternalError::new("mint a paired browser session's token", error).into_response()
         }
     };
     CacheSuppressed(response).into_response()

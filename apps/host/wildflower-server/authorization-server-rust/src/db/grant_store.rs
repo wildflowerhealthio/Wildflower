@@ -1,36 +1,19 @@
 //! The `SqliteGrantStore` adapter — the `SQLite` implementation of the
-//! [`GrantStore`](crate::domain::GrantStore) port. Holds the app-wide
-//! r2d2 pool of Diesel `SqliteConnection`s (`wildflowerhealthio_persistence::DieselPool`) onto
-//! the shared database file, applies the embedded authorization server migrations once on
-//! construction (under this slice's [`MIGRATION_NAMESPACE`]), and implements the
-//! port by checking a connection out of the pool and delegating to the
-//! per-concern query bodies in the sibling `db/*` modules. Mirrors
-//! `apps-rust`'s `SqliteAppsStore`, scaled to the authorization server's six persistence
-//! concerns.
+//! [`GrantStore`] port. Holds the app-wide r2d2
+//! pool of diesel `SqliteConnection`s (`wildflowerhealthio_persistence::DieselPool`)
+//! onto the shared database file, applies the embedded authorization server
+//! migrations once on construction (under this slice's [`MIGRATION_NAMESPACE`]),
+//! and opens the port's two scopes on a checked-out connection: a read scope
+//! in autocommit, a write scope in `BEGIN IMMEDIATE`. The primitives the
+//! scopes hand out are implemented per concern, in the sibling `db/*` files.
 
 use anyhow::Context;
-use chrono::{DateTime, Utc};
-use diesel::connection::Connection;
 use diesel::sqlite::SqliteConnection;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
-use url::Url;
 use wildflowerhealthio_persistence::{DieselPool, PooledDieselConnection};
 
-use crate::db::{
-    authorization_codes, authorization_requests, browser_sessions, clients, grants,
-    launch_contexts, refresh_tokens, signing_keys,
-};
-use crate::domain::authorization_code::IssuedAuthorizationCode;
-use crate::domain::authorization_request::AuthorizationRequest;
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::browser_session::BrowserSession;
-use crate::domain::client::Client;
-use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
-use crate::domain::launch_context::LaunchContext;
-use crate::domain::pending_consent::NewestPendingConsent;
-use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
-use crate::domain::signing_key::SigningKey;
-use crate::domain::{GrantStore, GrantTx};
+use crate::domain::GrantStore;
 
 /// This slice's migration namespace in the shared database. Applied versions are
 /// bookkept per-namespace by [`wildflowerhealthio_persistence::run_diesel_migrations`], so
@@ -56,23 +39,24 @@ const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 /// pool is an `Arc` inside), so it drops straight into the axum state.
 #[derive(Clone)]
 pub struct SqliteGrantStore {
-    // The app-wide r2d2 pool onto the shared database file, built and owned by
-    // the host (`wildflowerhealthio_persistence::open_pool`) — the same pool the other
-    // diesel-backed slices' stores ride. Diesel's connection API is `&mut`, so
-    // each call checks a connection out of the pool rather than sharing one
-    // behind a mutex; the pool (an `Arc` inside) makes the store cheap to clone
-    // into the axum state. These are additional openers onto the same file the host's
-    // rusqlite `persistence-rust::Connection` serves the remaining rusqlite
-    // slices from — SQLite permits multiple connections per file; the pool's
-    // `busy_timeout` pragma rides out the brief write locks any connection takes
-    // (see `wildflowerhealthio_persistence::open_pool`).
+    /// The app-wide r2d2 pool onto the shared database file, built and owned
+    /// by the host (`wildflowerhealthio_persistence::open_pool`): the same pool
+    /// the other diesel-backed slices' stores ride. Diesel's connection API is
+    /// `&mut`, so each scope checks a connection out of the pool rather than
+    /// sharing one behind a mutex; the pool (an `Arc` inside) makes the store
+    /// cheap to clone into the axum state. Its connections are additional
+    /// openers onto the same file the host's rusqlite
+    /// `persistence-rust::Connection` serves the remaining rusqlite slices
+    /// from: `SQLite` permits several connections per file, and the pool's
+    /// `busy_timeout` pragma rides out the brief write locks any connection
+    /// takes.
     pool: DieselPool,
 }
 
 impl SqliteGrantStore {
     /// Wrap the host-owned connection `pool` and apply pending authorization server
     /// migrations once, on a single checked-out connection, under
-    /// [`MIGRATION_NAMESPACE`]. The host builds the app-wide pool (via
+    /// `MIGRATION_NAMESPACE`. The host builds the app-wide pool (via
     /// `wildflowerhealthio_persistence::open_pool`) on the same file its rusqlite connection
     /// opens for the other slices; both coexist (see the `pool` field).
     ///
@@ -128,497 +112,67 @@ impl SqliteGrantStore {
     }
 }
 
-/// A [`GrantTx`] over one checked-out diesel connection — the `SQLite`
-/// primitive handle [`SqliteGrantStore`] hands to a closure. Each method
-/// delegates to the matching query body in the sibling `db/*` modules, passing
-/// the wrapped `&mut SqliteConnection`; the bodies live there so the query SQL
-/// stays next to the row type it maps and this file stays the migration + pool
-/// handle plus the transaction runners. When the closure runs inside
-/// [`GrantStore::transaction`] / [`immediate_transaction`] the connection is
-/// already in a transaction, so the self-contained `expire_*` bodies open
-/// savepoints rather than nested `BEGIN`s.
+/// The [`GrantTx`](crate::domain::GrantTx) a [`SqliteGrantStore`] scope
+/// hands its closure: one checked-out diesel connection, in autocommit for a
+/// read scope and inside `BEGIN IMMEDIATE` for a write scope. Each concern's
+/// `db/` file implements its trait on it, next to that concern's `table!`.
 ///
-/// `pub` only because it is the `SQLite` adapter's [`GrantStore::Tx`]
-/// associated type (a public trait's associated type is part of the public
-/// interface); the field and every method are crate-internal, so out-of-crate
-/// callers can name the type but do nothing with it except through
-/// [`GrantTx`].
+/// `pub` only because it is the adapter's [`GrantStore::Tx`]; out-of-crate
+/// callers can name it but reach nothing except through the traits.
 pub struct SqliteGrantTx<'a> {
-    conn: &'a mut SqliteConnection,
+    /// The scope's checked-out connection, which every query in the scope runs
+    /// on; inside the write scope's transaction for a write scope.
+    pub(in crate::db) conn: &'a mut SqliteConnection,
 }
 
-impl GrantTx for SqliteGrantTx<'_> {
-    // ----- clients -------------------------------------------------------
-
-    fn client_by_id(
-        &mut self,
-        client_id: &str,
-    ) -> Result<Option<Client>, AuthorizationServerError> {
-        clients::client_by_id(self.conn, client_id)
-    }
-
-    fn upsert_client(&mut self, client: &Client) -> Result<(), AuthorizationServerError> {
-        clients::upsert_client(self.conn, client)
-    }
-
-    fn list_clients(&mut self) -> Result<Vec<Client>, AuthorizationServerError> {
-        clients::list_clients(self.conn)
-    }
-
-    fn set_client_disabled(
-        &mut self,
-        client_id: &str,
-        disabled_at: Option<DateTime<Utc>>,
-    ) -> Result<bool, AuthorizationServerError> {
-        clients::set_client_disabled(self.conn, client_id, disabled_at)
-    }
-
-    // ----- signing keys --------------------------------------------------
-
-    fn all_signing_keys(&mut self) -> Result<Vec<SigningKey>, AuthorizationServerError> {
-        signing_keys::all_signing_keys(self.conn)
-    }
-
-    fn active_signing_key(&mut self) -> Result<Option<SigningKey>, AuthorizationServerError> {
-        signing_keys::active_signing_key(self.conn)
-    }
-
-    fn has_active_signing_key(&mut self) -> Result<bool, AuthorizationServerError> {
-        signing_keys::has_active_signing_key(self.conn)
-    }
-
-    fn insert_signing_key(&mut self, key: &SigningKey) -> Result<(), AuthorizationServerError> {
-        signing_keys::insert_signing_key(self.conn, key)
-    }
-
-    // ----- authorization requests ----------------------------------------
-
-    fn authorization_request_by_id(
-        &mut self,
-        id: &str,
-    ) -> Result<Option<AuthorizationRequest>, AuthorizationServerError> {
-        authorization_requests::authorization_request_by_id(self.conn, id)
-    }
-
-    fn authorization_request_by_user_code(
-        &mut self,
-        user_code: &str,
-    ) -> Result<Option<AuthorizationRequest>, AuthorizationServerError> {
-        authorization_requests::authorization_request_by_user_code(self.conn, user_code)
-    }
-
-    fn pending_authorization_request_by_user_code(
-        &mut self,
-        user_code: &str,
-    ) -> Result<Option<AuthorizationRequest>, AuthorizationServerError> {
-        authorization_requests::pending_authorization_request_by_user_code(self.conn, user_code)
-    }
-
-    fn newest_pending_consent(
-        &mut self,
-    ) -> Result<Option<NewestPendingConsent>, AuthorizationServerError> {
-        authorization_requests::newest_pending_consent(self.conn)
-    }
-
-    fn insert_authorization_request(
-        &mut self,
-        request: &AuthorizationRequest,
-    ) -> Result<(), AuthorizationServerError> {
-        authorization_requests::insert_authorization_request(self.conn, request)
-    }
-
-    fn approve_authorization_request(
-        &mut self,
-        id: &str,
-        granted_scopes: &[String],
-        patient: Option<&str>,
-        device_name: Option<&str>,
-    ) -> Result<bool, AuthorizationServerError> {
-        authorization_requests::approve_authorization_request(
-            self.conn,
-            id,
-            granted_scopes,
-            patient,
-            device_name,
-        )
-    }
-
-    fn deny_authorization_request(&mut self, id: &str) -> Result<bool, AuthorizationServerError> {
-        authorization_requests::deny_authorization_request(self.conn, id)
-    }
-
-    fn raise_authorization_request_for_owner(
-        &mut self,
-        id: &str,
-    ) -> Result<bool, AuthorizationServerError> {
-        authorization_requests::raise_authorization_request_for_owner(self.conn, id)
-    }
-
-    fn acknowledge_session_shortfall(
-        &mut self,
-        id: &str,
-        expires_at: DateTime<Utc>,
-    ) -> Result<bool, AuthorizationServerError> {
-        authorization_requests::acknowledge_session_shortfall(self.conn, id, expires_at)
-    }
-
-    fn deny_unacknowledged_authorization_request(
-        &mut self,
-        id: &str,
-    ) -> Result<bool, AuthorizationServerError> {
-        authorization_requests::deny_unacknowledged_authorization_request(self.conn, id)
-    }
-
-    fn consume_approved_authorization_request(
-        &mut self,
-        id: &str,
-    ) -> Result<bool, AuthorizationServerError> {
-        authorization_requests::consume_approved_authorization_request(self.conn, id)
-    }
-
-    fn record_device_poll(
-        &mut self,
-        id: &str,
-        polled_at: DateTime<Utc>,
-    ) -> Result<(), AuthorizationServerError> {
-        authorization_requests::record_device_poll(self.conn, id, polled_at)
-    }
-
-    fn record_browser_pairing_poll(
-        &mut self,
-        id: &str,
-        polled_at: DateTime<Utc>,
-        browser_name: &str,
-    ) -> Result<(), AuthorizationServerError> {
-        authorization_requests::record_browser_pairing_poll(self.conn, id, polled_at, browser_name)
-    }
-
-    // ----- authorization codes -------------------------------------------
-
-    fn redeem_authorization_code(
-        &mut self,
-        code: &str,
-    ) -> Result<Option<IssuedAuthorizationCode>, AuthorizationServerError> {
-        authorization_codes::redeem_authorization_code(self.conn, code)
-    }
-
-    fn authorization_code_by_request_id(
-        &mut self,
-        request_id: &str,
-    ) -> Result<Option<IssuedAuthorizationCode>, AuthorizationServerError> {
-        authorization_codes::authorization_code_by_request_id(self.conn, request_id)
-    }
-
-    fn issue_authorization_code(
-        &mut self,
-        code: &IssuedAuthorizationCode,
-    ) -> Result<(), AuthorizationServerError> {
-        authorization_codes::issue_authorization_code(self.conn, code)
-    }
-
-    // ----- launch contexts ------------------------------------------------
-
-    fn insert_launch_context(
-        &mut self,
-        context: &LaunchContext,
-    ) -> Result<(), AuthorizationServerError> {
-        launch_contexts::insert_launch_context(self.conn, context)
-    }
-
-    fn consume_launch_context(
-        &mut self,
-        nonce: &str,
-        client_id: &str,
-        now: DateTime<Utc>,
-    ) -> Result<Option<LaunchContext>, AuthorizationServerError> {
-        launch_contexts::consume_launch_context(self.conn, nonce, client_id, now)
-    }
-
-    fn launch_context_by_nonce(
-        &mut self,
-        nonce: &str,
-    ) -> Result<Option<LaunchContext>, AuthorizationServerError> {
-        launch_contexts::launch_context_by_nonce(self.conn, nonce)
-    }
-
-    fn delete_launch_contexts_expired_by(
-        &mut self,
-        now: DateTime<Utc>,
-    ) -> Result<usize, AuthorizationServerError> {
-        launch_contexts::delete_launch_contexts_expired_by(self.conn, now)
-    }
-
-    // ----- retention ------------------------------------------------------
-
-    fn delete_authorization_requests_expired_before(
-        &mut self,
-        cutoff: DateTime<Utc>,
-    ) -> Result<usize, AuthorizationServerError> {
-        authorization_requests::delete_authorization_requests_expired_before(self.conn, cutoff)
-    }
-
-    fn delete_authorization_codes_expired_before(
-        &mut self,
-        cutoff: DateTime<Utc>,
-    ) -> Result<usize, AuthorizationServerError> {
-        authorization_codes::delete_authorization_codes_expired_before(self.conn, cutoff)
-    }
-
-    fn delete_refresh_token_families_expired_before(
-        &mut self,
-        cutoff: DateTime<Utc>,
-    ) -> Result<usize, AuthorizationServerError> {
-        refresh_tokens::delete_refresh_token_families_expired_before(self.conn, cutoff)
-    }
-
-    // ----- refresh-token families ----------------------------------------
-
-    fn insert_browser_session(
-        &mut self,
-        session: &BrowserSession,
-    ) -> Result<(), AuthorizationServerError> {
-        browser_sessions::insert_browser_session(self.conn, session)
-    }
-
-    fn browser_session_by_sid(
-        &mut self,
-        sid: &str,
-    ) -> Result<Option<BrowserSession>, AuthorizationServerError> {
-        browser_sessions::browser_session_by_sid(self.conn, sid)
-    }
-
-    fn live_browser_sessions(
-        &mut self,
-        now: DateTime<Utc>,
-    ) -> Result<Vec<BrowserSession>, AuthorizationServerError> {
-        browser_sessions::live_browser_sessions(self.conn, now)
-    }
-
-    fn browser_session_is_revoked(&mut self, sid: &str) -> Result<bool, AuthorizationServerError> {
-        browser_sessions::browser_session_is_revoked(self.conn, sid)
-    }
-
-    fn revoke_browser_session(
-        &mut self,
-        sid: &str,
-        now: DateTime<Utc>,
-    ) -> Result<bool, AuthorizationServerError> {
-        browser_sessions::revoke_browser_session(self.conn, sid, now)
-    }
-
-    fn touch_browser_session_last_seen(
-        &mut self,
-        sid: &str,
-        seen_at: DateTime<Utc>,
-        seen_before: DateTime<Utc>,
-    ) -> Result<bool, AuthorizationServerError> {
-        browser_sessions::touch_browser_session_last_seen(self.conn, sid, seen_at, seen_before)
-    }
-
-    fn delete_browser_sessions_ended_before(
-        &mut self,
-        cutoff: DateTime<Utc>,
-    ) -> Result<usize, AuthorizationServerError> {
-        browser_sessions::delete_browser_sessions_ended_before(self.conn, cutoff)
-    }
-
-    fn session_shortfall_acknowledged_for_client(
-        &mut self,
-        sid: &str,
-        client_id: &str,
-    ) -> Result<bool, AuthorizationServerError> {
-        browser_sessions::session_shortfall_acknowledged_for_client(self.conn, sid, client_id)
-    }
-
-    fn record_session_shortfall_acknowledgement(
-        &mut self,
-        sid: &str,
-        client_id: &str,
-    ) -> Result<(), AuthorizationServerError> {
-        browser_sessions::record_session_shortfall_acknowledgement(self.conn, sid, client_id)
-    }
-
-    fn insert_refresh_token_family_row(
-        &mut self,
-        family: &RefreshTokenFamily,
-    ) -> Result<(), AuthorizationServerError> {
-        refresh_tokens::insert_refresh_token_family_row(self.conn, family)
-    }
-
-    fn insert_refresh_token(
-        &mut self,
-        token: &RefreshToken,
-    ) -> Result<(), AuthorizationServerError> {
-        refresh_tokens::insert_refresh_token(self.conn, token)
-    }
-
-    fn refresh_token_with_family_by_hash(
-        &mut self,
-        token_hash: &str,
-    ) -> Result<Option<(RefreshToken, RefreshTokenFamily)>, AuthorizationServerError> {
-        refresh_tokens::refresh_token_with_family_by_hash(self.conn, token_hash)
-    }
-
-    fn stamp_refresh_token_consumed_if_live(
-        &mut self,
-        token_hash: &str,
-        now: DateTime<Utc>,
-    ) -> Result<bool, AuthorizationServerError> {
-        refresh_tokens::stamp_refresh_token_consumed_if_live(self.conn, token_hash, now)
-    }
-
-    fn refresh_token_exists(&mut self, token_hash: &str) -> Result<bool, AuthorizationServerError> {
-        refresh_tokens::refresh_token_exists(self.conn, token_hash)
-    }
-
-    fn expire_refresh_token_family(
-        &mut self,
-        family_id: &str,
-        now: DateTime<Utc>,
-    ) -> Result<(), AuthorizationServerError> {
-        refresh_tokens::expire_refresh_token_family(self.conn, family_id, now)
-    }
-
-    fn expire_refresh_token_families_for_client(
-        &mut self,
-        client_id: &str,
-        now: DateTime<Utc>,
-    ) -> Result<(), AuthorizationServerError> {
-        refresh_tokens::expire_refresh_token_families_for_client(self.conn, client_id, now)
-    }
-
-    fn expire_refresh_token_families_for_authorization_code(
-        &mut self,
-        authorization_code_hash: &str,
-        now: DateTime<Utc>,
-    ) -> Result<(), AuthorizationServerError> {
-        refresh_tokens::expire_refresh_token_families_for_authorization_code(
-            self.conn,
-            authorization_code_hash,
-            now,
-        )
-    }
-
-    // ----- grants --------------------------------------------------------
-
-    fn all_grants(&mut self) -> Result<Vec<Grant>, AuthorizationServerError> {
-        grants::all_grants(self.conn)
-    }
-
-    fn grant_by_id(&mut self, id: &str) -> Result<Option<Grant>, AuthorizationServerError> {
-        grants::grant_by_id(self.conn, id)
-    }
-
-    fn grant_by_client_and_redirect(
-        &mut self,
-        client_id: &str,
-        redirect_uri: &Url,
-    ) -> Result<Option<AuthorizationCodeGrant>, AuthorizationServerError> {
-        grants::grant_by_client_and_redirect(self.conn, client_id, redirect_uri)
-    }
-
-    fn device_grant_by_client_and_device_name(
-        &mut self,
-        client_id: &str,
-        device_name: &str,
-    ) -> Result<Option<DeviceGrant>, AuthorizationServerError> {
-        grants::device_grant_by_client_and_device_name(self.conn, client_id, device_name)
-    }
-
-    fn create_authorization_code_grant(
-        &mut self,
-        grant: &AuthorizationCodeGrant,
-    ) -> Result<(), AuthorizationServerError> {
-        grants::create_authorization_code_grant(self.conn, grant)
-    }
-
-    fn create_device_grant(&mut self, grant: &DeviceGrant) -> Result<(), AuthorizationServerError> {
-        grants::create_device_grant(self.conn, grant)
-    }
-
-    fn update_authorization_code_grant(
-        &mut self,
-        grant: &AuthorizationCodeGrant,
-    ) -> Result<(), AuthorizationServerError> {
-        grants::update_authorization_code_grant(self.conn, grant)
-    }
-
-    fn update_device_grant(&mut self, grant: &DeviceGrant) -> Result<(), AuthorizationServerError> {
-        grants::update_device_grant(self.conn, grant)
-    }
-
-    fn delete_authorization_code_grant(
-        &mut self,
-        id: &str,
-    ) -> Result<bool, AuthorizationServerError> {
-        grants::delete_authorization_code_grant(self.conn, id)
-    }
-
-    fn delete_device_grant(&mut self, id: &str) -> Result<bool, AuthorizationServerError> {
-        grants::delete_device_grant(self.conn, id)
-    }
-}
-
-/// The `SQLite` implementation of the transaction seam. [`with_connection`] hands
-/// a [`SqliteGrantTx`] over a checked-out connection in autocommit;
-/// [`transaction`] / [`immediate_transaction`] wrap that same handle in a diesel
-/// `BEGIN` / `BEGIN IMMEDIATE`, committing on `Ok` and rolling back on `Err`. The
-/// standalone-convenience default methods (inherited from [`GrantStore`])
-/// all route through [`with_connection`], so a lone read never takes a write lock;
-/// the composed domain actions pick [`transaction`] or [`immediate_transaction`]
-/// per their atomicity needs.
-///
-/// [`with_connection`]: GrantStore::with_connection
-/// [`transaction`]: GrantStore::transaction
-/// [`immediate_transaction`]: GrantStore::immediate_transaction
 impl GrantStore for SqliteGrantStore {
     type Tx<'a> = SqliteGrantTx<'a>;
 
-    fn with_connection<T>(
+    fn read<T, E: From<AuthorizationServerError>>(
         &self,
-        f: impl FnOnce(&mut Self::Tx<'_>) -> Result<T, AuthorizationServerError>,
-    ) -> Result<T, AuthorizationServerError> {
+        f: impl FnOnce(&mut Self::Tx<'_>) -> Result<T, E>,
+    ) -> Result<T, E> {
         let mut conn = self.connection()?;
-        let mut tx = SqliteGrantTx { conn: &mut conn };
-        f(&mut tx)
+        f(&mut SqliteGrantTx { conn: &mut conn })
     }
 
-    fn transaction<T>(
+    fn write<T, E: From<AuthorizationServerError>>(
         &self,
-        f: impl FnOnce(&mut Self::Tx<'_>) -> Result<T, AuthorizationServerError>,
-    ) -> Result<T, AuthorizationServerError> {
-        let mut conn = self.connection()?;
-        // Deref to the concrete `SqliteConnection` up front so both this and
-        // `immediate_transaction` hand `f` the same `&mut SqliteConnection` the
-        // `db/*` query bodies expect.
-        let sqlite: &mut SqliteConnection = &mut conn;
-        sqlite.transaction(|conn| {
-            let mut tx = SqliteGrantTx { conn };
-            f(&mut tx)
-        })
-    }
-
-    fn immediate_transaction<T>(
-        &self,
-        f: impl FnOnce(&mut Self::Tx<'_>) -> Result<T, AuthorizationServerError>,
-    ) -> Result<T, AuthorizationServerError> {
+        f: impl FnOnce(&mut Self::Tx<'_>) -> Result<T, E>,
+    ) -> Result<T, E> {
         let mut conn = self.connection()?;
         let sqlite: &mut SqliteConnection = &mut conn;
-        sqlite.immediate_transaction(|conn| {
-            let mut tx = SqliteGrantTx { conn };
-            f(&mut tx)
-        })
+        sqlite
+            .immediate_transaction(|conn| {
+                f(&mut SqliteGrantTx { conn }).map_err(ScopeError::Closure)
+            })
+            .map_err(|error| match error {
+                ScopeError::Closure(error) => error,
+                ScopeError::Transaction(error) => {
+                    E::from(AuthorizationServerError::infrastructure(
+                        "grant store transaction failed",
+                        error,
+                    ))
+                }
+            })
     }
 }
 
-// Lets [`GrantStore::transaction`] / [`immediate_transaction`] use
-// `AuthorizationServerError` as the diesel transaction error type: diesel requires
-// `E: From<diesel::result::Error>` even though `f`'s body maps its own query
-// errors, because a `BEGIN` / `COMMIT` / `ROLLBACK` failure surfaces as a raw
-// diesel error. Kept in the `db` layer so `domain::authorization_server_error` stays diesel-free.
-impl From<diesel::result::Error> for AuthorizationServerError {
+/// How a write scope failed: its closure's own error, or diesel's `BEGIN`,
+/// `COMMIT` or `ROLLBACK` — which diesel's transaction runner needs a
+/// `From<diesel::result::Error>` for, whatever error the closure speaks.
+enum ScopeError<E> {
+    /// The scope's closure failed with its own error; the transaction rolls
+    /// back, and the caller gets that error as it was.
+    Closure(E),
+    /// Diesel's `BEGIN`, `COMMIT` or `ROLLBACK` failed; the caller gets it as an
+    /// infrastructure error.
+    Transaction(diesel::result::Error),
+}
+
+impl<E> From<diesel::result::Error> for ScopeError<E> {
     fn from(error: diesel::result::Error) -> Self {
-        AuthorizationServerError::infrastructure("grant store transaction failed", error)
+        ScopeError::Transaction(error)
     }
 }
 
@@ -630,10 +184,13 @@ mod tests {
 
     use super::{MIGRATIONS, MIGRATION_NAMESPACE};
     use crate::db::SqliteGrantStore;
+    use crate::domain::grant_store::SigningKeysTx as _;
     use crate::domain::GrantStore as _;
 
+    /// A text column read under the alias `name`.
     #[derive(QueryableByName)]
     struct Name {
+        /// The column's value.
         #[diesel(sql_type = diesel::sql_types::Text)]
         name: String,
     }
@@ -641,6 +198,7 @@ mod tests {
     /// A nullable column read under the alias `name`.
     #[derive(QueryableByName)]
     struct OptionalName {
+        /// The column's value; `None` for NULL.
         #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Text>)]
         name: Option<String>,
     }
@@ -735,6 +293,7 @@ mod tests {
         }
     }
 
+    /// The client `client_id`'s `column`, read as text.
     fn column_for_client(conn: &mut SqliteConnection, column: &str, client_id: &str) -> Vec<Name> {
         diesel::sql_query(format!(
             "SELECT {column} AS name FROM clients WHERE client_id = ?"
@@ -1090,6 +649,12 @@ mod tests {
             docs_at_0020,
             "a row with no path entry is left untouched",
         );
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MIGRATIONS,
+        )
+        .expect("upgrade through the rest");
         let clients: Vec<crate::domain::client::Client> = crate::db::clients::clients::table
             .select(crate::domain::client::Client::as_select())
             .load(&mut conn)
@@ -1588,7 +1153,7 @@ mod tests {
         wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
-            MIGRATIONS,
+            MigrationsThrough("0033"),
         )
         .expect("upgrade through 0033");
 
@@ -1749,8 +1314,8 @@ mod tests {
     /// An install already at `0037`, holding the browser-session client under
     /// its old `wildflower-owner-browser` id and a row naming it in every table
     /// that names a client, re-keys them all when `0038` runs, and every
-    /// standing Owner session ends, so the Owner signs in again; one already
-    /// revoked keeps its time, and an approved browser's session stands. The
+    /// standing same-device session ends, so the Owner signs in again; one already
+    /// revoked keeps its time, and a paired browser's session stands. The
     /// request column takes its new name. Reverting `0038` restores the old id
     /// and column name.
     #[test]
@@ -1850,7 +1415,7 @@ mod tests {
                 .remove(0)
                 .name
         };
-        let ended_at = revoked_at_of(&mut conn, "standing").expect("the Owner session ended");
+        let ended_at = revoked_at_of(&mut conn, "standing").expect("the same-device session ended");
         assert!(
             chrono::DateTime::parse_from_str(&ended_at, "%F %T%.f%:z").is_ok(),
             "{ended_at} is in the diesel chrono text encoding"
@@ -2172,7 +1737,7 @@ mod tests {
         wildflowerhealthio_persistence::run_diesel_migrations(
             &mut conn,
             MIGRATION_NAMESPACE,
-            MIGRATIONS,
+            MigrationsThrough("0042"),
         )
         .expect("upgrade through 0042");
 
@@ -2299,6 +1864,690 @@ mod tests {
         );
     }
 
+    /// An install already at `0043` loses its stored `expired` status when
+    /// `0044` runs: an approved request a poll redeemed (it carries its
+    /// `granted_scopes`) becomes `claimed`, and any other `expired` row (a
+    /// request `0042` ended) is deleted, as is a code request from before the
+    /// browser-session flow (no `sid`). The `code_challenge_method` column,
+    /// always `S256`, goes. Reverting `0044` brings the column back as `S256`
+    /// on every code row and stores a claim as `expired` again.
+    #[test]
+    fn an_install_already_at_0043_claims_redeemed_requests_and_drops_the_rest() {
+        use diesel::connection::SimpleConnection as _;
+        const AT: &str = "2026-10-18 00:00:00+00:00";
+
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0043"),
+        )
+        .expect("migrate to 0043");
+        conn.batch_execute(&format!(
+            "INSERT INTO authorization_requests \
+             (id, grant_type, client_id, requested_scopes, requested_at, expires_at, status, \
+              granted_scopes, user_code, code_challenge, code_challenge_method, sid, \
+              redirect_uri, client_state) \
+             VALUES ('redeemed', 'device_code', 'device-app', '[]', '{AT}', '{AT}', 'expired', \
+                     '[\"openid\"]', 'UC-1', NULL, NULL, NULL, NULL, NULL), \
+                    ('ended', 'authorization_code', 'app', '[]', '{AT}', '{AT}', 'expired', \
+                     NULL, NULL, 'challenge', 'S256', NULL, 'https://app.example/cb', 's'), \
+                    ('pre-session', 'authorization_code', 'app', '[]', '{AT}', '{AT}', \
+                     'approved', '[\"openid\"]', NULL, 'challenge', 'S256', NULL, \
+                     'https://app.example/cb', 's'), \
+                    ('pending', 'authorization_code', 'app', '[]', '{AT}', '{AT}', 'pending', \
+                     NULL, NULL, 'challenge', 'S256', 'sid-1', 'https://app.example/cb', 's')"
+        ))
+        .expect("requests at 0043");
+
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0044"),
+        )
+        .expect("upgrade through 0044");
+        let statuses = |conn: &mut SqliteConnection| {
+            diesel::sql_query(
+                "SELECT id || ':' || status AS name FROM authorization_requests ORDER BY id",
+            )
+            .load::<Name>(conn)
+            .expect("read")
+            .into_iter()
+            .map(|row| row.name)
+            .collect::<Vec<_>>()
+        };
+        assert_eq!(statuses(&mut conn), ["pending:pending", "redeemed:claimed"]);
+        assert!(
+            diesel::sql_query("SELECT code_challenge_method FROM authorization_requests")
+                .execute(&mut conn)
+                .is_err(),
+            "the method column is gone"
+        );
+
+        let migration_0044 = MIGRATIONS
+            .migrations()
+            .expect("embedded migrations")
+            .into_iter()
+            .find(|migration| migration.name().version() == MigrationVersion::from("0044"))
+            .expect("0044 is embedded");
+        migration_0044.revert(&mut conn).expect("revert 0044");
+        assert_eq!(statuses(&mut conn), ["pending:pending", "redeemed:expired"]);
+        let methods = diesel::sql_query(
+            "SELECT code_challenge_method AS name FROM authorization_requests ORDER BY id",
+        )
+        .load::<OptionalName>(&mut conn)
+        .expect("read the method column")
+        .into_iter()
+        .map(|row| row.name)
+        .collect::<Vec<_>>();
+        assert_eq!(methods, [Some("S256".to_owned()), None]);
+    }
+
+    /// An install already at `0044` gains `clients.registration_source` when
+    /// `0045` runs, every existing row trusted on first use; seeding's upsert
+    /// then marks the rows it owns server-defined on the next boot. Reverting
+    /// `0045` drops the column.
+    #[test]
+    fn an_install_already_at_0044_starts_every_client_trusted_on_first_use() {
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0044"),
+        )
+        .expect("migrate to 0044");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0045"),
+        )
+        .expect("upgrade through 0045");
+        let sources = diesel::sql_query("SELECT DISTINCT registration_source AS name FROM clients")
+            .load::<Name>(&mut conn)
+            .expect("read the column")
+            .into_iter()
+            .map(|row| row.name)
+            .collect::<Vec<_>>();
+        assert_eq!(sources, ["trusted_on_first_use"]);
+
+        let migration_0045 = MIGRATIONS
+            .migrations()
+            .expect("embedded migrations")
+            .into_iter()
+            .find(|migration| migration.name().version() == MigrationVersion::from("0045"))
+            .expect("0045 is embedded");
+        migration_0045.revert(&mut conn).expect("revert 0045");
+        assert!(
+            diesel::sql_query("SELECT registration_source FROM clients")
+                .execute(&mut conn)
+                .is_err(),
+            "the column is gone"
+        );
+    }
+
+    /// An install already at `0045` renames each browser session's `kind`
+    /// when `0046` runs: `owner` becomes `same_device` and `approved` becomes
+    /// `paired`, and the rest of each row is kept, `revoked_at` included. The
+    /// rebuilt table takes only the new kinds. Reverting `0046` maps them
+    /// back.
+    #[test]
+    fn an_install_already_at_0045_renames_the_browser_session_kinds() {
+        use diesel::connection::SimpleConnection as _;
+        const CREATED_AT: &str = "2026-10-16 00:00:00+00:00";
+        const LAST_SEEN_AT: &str = "2026-10-16 02:00:00+00:00";
+        const REVOKED_AT: &str = "2026-10-16 03:00:00+00:00";
+
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0045"),
+        )
+        .expect("migrate to 0045");
+        conn.batch_execute(&format!(
+            "INSERT INTO browser_sessions \
+             (sid, kind, name, scopes, created_at, expires_at, revoked_at, last_seen_at) \
+             VALUES ('same-device', 'owner', NULL, '[\"system/*.cruds\"]', '{CREATED_AT}', \
+                     '2026-10-16 08:00:00+00:00', NULL, '{LAST_SEEN_AT}'), \
+                    ('paired', 'approved', 'A tablet', '[\"wildflower/launch\"]', \
+                     '{CREATED_AT}', '2026-10-17 00:00:00+00:00', NULL, '{LAST_SEEN_AT}'), \
+                    ('revoked', 'approved', 'A phone', '[]', '{CREATED_AT}', \
+                     '2026-10-17 00:00:00+00:00', '{REVOKED_AT}', '{CREATED_AT}')"
+        ))
+        .expect("three sessions at 0045");
+
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0046"),
+        )
+        .expect("upgrade through 0046");
+
+        let column_of = |conn: &mut SqliteConnection, column: &str, sid: &str| {
+            diesel::sql_query(format!(
+                "SELECT {column} AS name FROM browser_sessions WHERE sid = ?"
+            ))
+            .bind::<diesel::sql_types::Text, _>(sid)
+            .load::<OptionalName>(conn)
+            .expect("read the session")
+            .remove(0)
+            .name
+        };
+        assert_eq!(
+            column_of(&mut conn, "kind", "same-device").as_deref(),
+            Some("same_device")
+        );
+        assert_eq!(
+            column_of(&mut conn, "kind", "paired").as_deref(),
+            Some("paired")
+        );
+        assert_eq!(
+            column_of(&mut conn, "kind", "revoked").as_deref(),
+            Some("paired")
+        );
+        assert_eq!(column_of(&mut conn, "name", "same-device"), None);
+        assert_eq!(
+            column_of(&mut conn, "scopes", "same-device").as_deref(),
+            Some("[\"system/*.cruds\"]")
+        );
+        assert_eq!(
+            column_of(&mut conn, "name", "paired").as_deref(),
+            Some("A tablet")
+        );
+        assert_eq!(
+            column_of(&mut conn, "expires_at", "paired").as_deref(),
+            Some("2026-10-17 00:00:00+00:00")
+        );
+        assert_eq!(
+            column_of(&mut conn, "last_seen_at", "paired").as_deref(),
+            Some(LAST_SEEN_AT)
+        );
+        assert_eq!(column_of(&mut conn, "revoked_at", "paired"), None);
+        assert_eq!(
+            column_of(&mut conn, "revoked_at", "revoked").as_deref(),
+            Some(REVOKED_AT)
+        );
+        assert_eq!(
+            column_of(&mut conn, "created_at", "revoked").as_deref(),
+            Some(CREATED_AT)
+        );
+        assert!(
+            conn.batch_execute(&format!(
+                "INSERT INTO browser_sessions \
+                 (sid, kind, name, scopes, created_at, expires_at, last_seen_at) \
+                 VALUES ('old', 'owner', NULL, '[]', '{CREATED_AT}', '{CREATED_AT}', \
+                         '{CREATED_AT}')"
+            ))
+            .is_err(),
+            "the rebuilt CHECK refuses the old kinds"
+        );
+        assert!(
+            conn.batch_execute(&format!(
+                "INSERT INTO browser_sessions \
+                 (sid, kind, name, scopes, created_at, expires_at, last_seen_at) \
+                 VALUES ('same-device', 'same_device', NULL, '[]', '{CREATED_AT}', \
+                         '{CREATED_AT}', '{CREATED_AT}')"
+            ))
+            .is_err(),
+            "sid stays the primary key"
+        );
+
+        let migration_0046 = MIGRATIONS
+            .migrations()
+            .expect("embedded migrations")
+            .into_iter()
+            .find(|migration| migration.name().version() == MigrationVersion::from("0046"))
+            .expect("0046 is embedded");
+        migration_0046.revert(&mut conn).expect("revert 0046");
+        assert_eq!(
+            column_of(&mut conn, "kind", "same-device").as_deref(),
+            Some("owner")
+        );
+        assert_eq!(
+            column_of(&mut conn, "kind", "paired").as_deref(),
+            Some("approved")
+        );
+        assert_eq!(
+            column_of(&mut conn, "revoked_at", "revoked").as_deref(),
+            Some(REVOKED_AT)
+        );
+    }
+
+    /// An install already at `0046` gives a code request waiting on its
+    /// browser's limited page (`pending`, unacknowledged) its own status when
+    /// `0047` runs, `awaiting_limited_page`, and drops
+    /// `session_shortfall_acknowledged`. Every other in-flight row keeps its
+    /// status and columns: an acknowledged pending code request, an approved
+    /// one, a pending device request, an approved one its poll hasn't claimed
+    /// yet (its approval, name and last poll), a claimed pairing, and a denied
+    /// device request sharing its `user_code` with a pending one. The partial
+    /// unique index on a pending `user_code` still holds. Reverting `0047`
+    /// brings the column back and the waiting request to `pending`, unset.
+    #[test]
+    fn an_install_already_at_0046_gives_the_limited_page_its_own_status() {
+        use diesel::connection::SimpleConnection as _;
+        const AT: &str = "2026-10-20 00:00:00+00:00";
+        const UNTIL: &str = "2026-10-20 00:05:00+00:00";
+        const POLLED_AT: &str = "2026-10-20 00:01:00+00:00";
+
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0046"),
+        )
+        .expect("migrate to 0046");
+        conn.batch_execute(&format!(
+            "INSERT INTO authorization_requests \
+             (id, grant_type, client_id, requested_scopes, code_challenge, redirect_uri, \
+              client_state, user_code, requested_at, expires_at, last_polled_at, status, \
+              granted_scopes, patient, device_name, sid, session_shortfall_acknowledged) \
+             VALUES \
+             ('code-waiting', 'authorization_code', 'app', '[\"read\"]', 'challenge', \
+              'https://app.example/cb', 's', NULL, '{AT}', '{UNTIL}', NULL, 'pending', \
+              NULL, NULL, NULL, 'sid-1', 0), \
+             ('code-pending', 'authorization_code', 'app', '[\"read\"]', 'challenge', \
+              'https://app.example/cb', 's', NULL, '{AT}', '{UNTIL}', NULL, 'pending', \
+              NULL, NULL, NULL, 'sid-1', 1), \
+             ('code-approved', 'authorization_code', 'app', '[\"read\"]', 'challenge', \
+              'https://app.example/cb', 's', NULL, '{AT}', '{UNTIL}', NULL, 'approved', \
+              '[\"read\"]', 'Patient/1', NULL, 'sid-1', 1), \
+             ('device-pending', 'device_code', 'device-app', '[\"openid\"]', NULL, NULL, \
+              NULL, 'SAME-CODE', '{AT}', '{UNTIL}', '{POLLED_AT}', 'pending', NULL, NULL, \
+              NULL, NULL, 1), \
+             ('device-approved', 'device_code', 'device-app', '[\"openid\"]', NULL, NULL, \
+              NULL, 'APPR-OVED', '{AT}', '{UNTIL}', '{POLLED_AT}', 'approved', \
+              '[\"openid\"]', 'Patient/2', 'Kitchen iPad', NULL, 1), \
+             ('pairing-claimed', 'browser_pairing', 'browser-session', '[]', NULL, NULL, \
+              NULL, 'PAIR-CODE', '{AT}', '{UNTIL}', NULL, 'claimed', \
+              '[\"wildflower/launch\"]', NULL, 'Firefox on Linux', NULL, 1), \
+             ('device-denied', 'device_code', 'device-app', '[\"openid\"]', NULL, NULL, \
+              NULL, 'SAME-CODE', '{AT}', '{UNTIL}', NULL, 'denied', NULL, NULL, NULL, \
+              NULL, 1)"
+        ))
+        .expect("in-flight requests at 0046");
+
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0047"),
+        )
+        .expect("upgrade through 0047");
+        let rows = |conn: &mut SqliteConnection, columns: &str| {
+            diesel::sql_query(format!(
+                "SELECT id || ':' || {columns} AS name FROM authorization_requests ORDER BY id"
+            ))
+            .load::<Name>(conn)
+            .expect("read the requests")
+            .into_iter()
+            .map(|row| row.name)
+            .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            rows(&mut conn, "status"),
+            [
+                "code-approved:approved",
+                "code-pending:pending",
+                "code-waiting:awaiting_limited_page",
+                "device-approved:approved",
+                "device-denied:denied",
+                "device-pending:pending",
+                "pairing-claimed:claimed",
+            ]
+        );
+        assert_eq!(
+            rows(
+                &mut conn,
+                "COALESCE(granted_scopes, '-') || ':' || COALESCE(patient, '-') || ':' || \
+                 COALESCE(device_name, '-') || ':' || COALESCE(last_polled_at, '-') || ':' || \
+                 COALESCE(user_code, '-')"
+            ),
+            [
+                "code-approved:[\"read\"]:Patient/1:-:-:-",
+                "code-pending:-:-:-:-:-",
+                "code-waiting:-:-:-:-:-",
+                format!(
+                    "device-approved:[\"openid\"]:Patient/2:Kitchen iPad:{POLLED_AT}:APPR-OVED"
+                )
+                .as_str(),
+                "device-denied:-:-:-:-:SAME-CODE",
+                format!("device-pending:-:-:-:{POLLED_AT}:SAME-CODE").as_str(),
+                "pairing-claimed:[\"wildflower/launch\"]:-:Firefox on Linux:-:PAIR-CODE",
+            ]
+        );
+        assert!(
+            diesel::sql_query("SELECT session_shortfall_acknowledged FROM authorization_requests")
+                .execute(&mut conn)
+                .is_err(),
+            "the column is gone"
+        );
+        let plant_on_same_code = |conn: &mut SqliteConnection, id: &str, status: &str| {
+            conn.batch_execute(&format!(
+                "INSERT INTO authorization_requests \
+                 (id, grant_type, client_id, requested_scopes, user_code, requested_at, \
+                  expires_at, status) \
+                 VALUES ('{id}', 'device_code', 'device-app', '[]', 'SAME-CODE', '{AT}', \
+                         '{UNTIL}', '{status}')"
+            ))
+        };
+        assert!(
+            plant_on_same_code(&mut conn, "another-pending", "pending").is_err(),
+            "a second pending request on a code collides"
+        );
+        plant_on_same_code(&mut conn, "another-denied", "denied")
+            .expect("a decided request shares a code");
+
+        let migration_0047 = MIGRATIONS
+            .migrations()
+            .expect("embedded migrations")
+            .into_iter()
+            .find(|migration| migration.name().version() == MigrationVersion::from("0047"))
+            .expect("0047 is embedded");
+        migration_0047.revert(&mut conn).expect("revert 0047");
+        let reverted = rows(
+            &mut conn,
+            "status || ':' || CAST(session_shortfall_acknowledged AS TEXT)",
+        );
+        assert!(reverted.contains(&"code-waiting:pending:0".to_owned()));
+        assert!(reverted.contains(&"code-pending:pending:1".to_owned()));
+        assert!(reverted.contains(&"device-pending:pending:1".to_owned()));
+    }
+
+    /// An install already at `0047` splits `authorization_requests` in two
+    /// when `0048` runs: code requests into `code_authorization_requests`,
+    /// device requests and browser pairings into `user_code_requests` (their
+    /// `grant_type` becoming `flow`). Every in-flight shape lands in its table
+    /// with every column, id and timestamp as it was: a code request awaiting
+    /// the limited page, a pending one with a launch and patient, an approved
+    /// one, a denied one; a pending device request, an approved one its poll
+    /// hasn't claimed (approval, name and last poll), a claimed one, and a
+    /// denied one sharing its `user_code` with the pending one; a pending,
+    /// approved and claimed pairing. The old table goes, the new indexes and
+    /// CHECKs hold, and reverting `0048` rebuilds the one table, row for row.
+    #[test]
+    fn an_install_already_at_0047_splits_the_authorization_requests() {
+        use diesel::connection::SimpleConnection as _;
+        const AT: &str = "2026-10-20 00:00:00+00:00";
+        const UNTIL: &str = "2026-10-20 00:05:00+00:00";
+        const POLLED_AT: &str = "2026-10-20 00:01:00+00:00";
+        /// Every column the code flow has, as one string.
+        const CODE_COLUMNS: &str = "id || '|' || client_id || '|' || requested_scopes || '|' || \
+             requested_at || '|' || expires_at || '|' || status || '|' || \
+             COALESCE(granted_scopes, '-') || '|' || COALESCE(patient, '-') || '|' || \
+             redirect_uri || '|' || code_challenge || '|' || client_state || '|' || sid || '|' || \
+             COALESCE(launch, '-') || '|' || COALESCE(launch_bound_patient, '-') || '|' || \
+             pre_approved_scopes || '|' || decidable_in_requesting_browser";
+        /// Every column the user-code flows have, as one string, the flow
+        /// read from `{flow}`.
+        const USER_CODE_COLUMNS: &str = "id || '|' || {flow} || '|' || client_id || '|' || \
+             requested_scopes || '|' || requested_at || '|' || expires_at || '|' || status || \
+             '|' || COALESCE(granted_scopes, '-') || '|' || COALESCE(patient, '-') || '|' || \
+             user_code || '|' || COALESCE(device_name, '-') || '|' || \
+             COALESCE(last_polled_at, '-')";
+        /// Every column of the one table, as one string.
+        const ONE_TABLE_COLUMNS: &str = "id || '|' || grant_type || '|' || client_id || '|' || \
+             requested_scopes || '|' || COALESCE(code_challenge, '-') || '|' || \
+             COALESCE(redirect_uri, '-') || '|' || COALESCE(client_state, '-') || '|' || \
+             COALESCE(user_code, '-') || '|' || pre_approved_scopes || '|' || requested_at || \
+             '|' || expires_at || '|' || COALESCE(last_polled_at, '-') || '|' || status || '|' || \
+             COALESCE(granted_scopes, '-') || '|' || COALESCE(patient, '-') || '|' || \
+             COALESCE(device_name, '-') || '|' || COALESCE(launch, '-') || '|' || \
+             COALESCE(launch_bound_patient, '-') || '|' || decidable_in_requesting_browser || \
+             '|' || COALESCE(sid, '-')";
+
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0047"),
+        )
+        .expect("migrate to 0047");
+        conn.batch_execute(&format!(
+            "INSERT INTO authorization_requests \
+             (id, grant_type, client_id, requested_scopes, code_challenge, redirect_uri, \
+              client_state, user_code, pre_approved_scopes, requested_at, expires_at, \
+              last_polled_at, status, granted_scopes, patient, device_name, launch, \
+              launch_bound_patient, decidable_in_requesting_browser, sid) \
+             VALUES \
+             ('code-waiting', 'authorization_code', 'app', '[\"read\"]', 'challenge-1', \
+              'https://app.example/cb', 's-1', NULL, '[]', '{AT}', '{UNTIL}', NULL, \
+              'awaiting_limited_page', NULL, NULL, NULL, NULL, NULL, 0, 'sid-1'), \
+             ('code-pending', 'authorization_code', 'app', '[\"read\",\"write\"]', \
+              'challenge-2', 'https://app.example/cb', 's-2', NULL, '[\"read\"]', '{AT}', \
+              '{UNTIL}', NULL, 'pending', NULL, NULL, NULL, 'launch-1', 'Patient/9', 1, \
+              'sid-2'), \
+             ('code-approved', 'authorization_code', 'app', '[\"read\"]', 'challenge-3', \
+              'https://app.example/cb', 's-3', NULL, '[]', '{AT}', '{UNTIL}', NULL, \
+              'approved', '[\"read\"]', 'Patient/1', NULL, NULL, NULL, 0, 'sid-3'), \
+             ('code-denied', 'authorization_code', 'app', '[\"read\"]', 'challenge-4', \
+              'https://app.example/cb', 's-4', NULL, '[]', '{AT}', '{UNTIL}', NULL, \
+              'denied', NULL, NULL, NULL, NULL, NULL, 0, 'sid-4'), \
+             ('device-pending', 'device_code', 'device-app', '[\"openid\"]', NULL, NULL, \
+              NULL, 'SAME-CODE', '[]', '{AT}', '{UNTIL}', '{POLLED_AT}', 'pending', NULL, \
+              NULL, NULL, NULL, NULL, 0, NULL), \
+             ('device-approved', 'device_code', 'device-app', '[\"openid\"]', NULL, NULL, \
+              NULL, 'APPR-OVED', '[]', '{AT}', '{UNTIL}', '{POLLED_AT}', 'approved', \
+              '[\"openid\"]', 'Patient/2', 'Kitchen iPad', NULL, NULL, 0, NULL), \
+             ('device-claimed', 'device_code', 'device-app', '[\"openid\"]', NULL, NULL, \
+              NULL, 'CLAI-MEDD', '[]', '{AT}', '{UNTIL}', '{POLLED_AT}', 'claimed', \
+              '[\"openid\"]', NULL, 'Hallway TV', NULL, NULL, 0, NULL), \
+             ('device-denied', 'device_code', 'device-app', '[\"openid\"]', NULL, NULL, \
+              NULL, 'SAME-CODE', '[]', '{AT}', '{UNTIL}', NULL, 'denied', NULL, NULL, NULL, \
+              NULL, NULL, 0, NULL), \
+             ('pairing-pending', 'browser_pairing', 'browser-session', '[]', NULL, NULL, \
+              NULL, 'PAIR-PEND', '[]', '{AT}', '{UNTIL}', NULL, 'pending', NULL, NULL, \
+              'Firefox on Linux', NULL, NULL, 0, NULL), \
+             ('pairing-approved', 'browser_pairing', 'browser-session', '[]', NULL, NULL, \
+              NULL, 'PAIR-APPR', '[]', '{AT}', '{UNTIL}', '{POLLED_AT}', 'approved', \
+              '[\"wildflower/launch\"]', NULL, 'Safari on iPad', NULL, NULL, 0, NULL), \
+             ('pairing-claimed', 'browser_pairing', 'browser-session', '[]', NULL, NULL, \
+              NULL, 'PAIR-CLAI', '[]', '{AT}', '{UNTIL}', NULL, 'claimed', \
+              '[\"wildflower/launch\"]', NULL, 'Chrome on Windows', NULL, NULL, 0, NULL)"
+        ))
+        .expect("in-flight requests at 0047");
+        let read = |conn: &mut SqliteConnection, query: &str| {
+            diesel::sql_query(query)
+                .load::<Name>(conn)
+                .expect(query)
+                .into_iter()
+                .map(|row| row.name)
+                .collect::<Vec<_>>()
+        };
+        let code_before = read(
+            &mut conn,
+            &format!(
+                "SELECT {CODE_COLUMNS} AS name FROM authorization_requests \
+                 WHERE grant_type = 'authorization_code' ORDER BY id"
+            ),
+        );
+        let user_code_before = read(
+            &mut conn,
+            &format!(
+                "SELECT {} AS name FROM authorization_requests \
+                 WHERE grant_type != 'authorization_code' ORDER BY id",
+                USER_CODE_COLUMNS.replace("{flow}", "grant_type")
+            ),
+        );
+        let one_table_before = read(
+            &mut conn,
+            &format!("SELECT {ONE_TABLE_COLUMNS} AS name FROM authorization_requests ORDER BY id"),
+        );
+        assert_eq!(one_table_before.len(), 11, "every shape planted");
+
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0048"),
+        )
+        .expect("upgrade through 0048");
+        assert_eq!(
+            read(
+                &mut conn,
+                "SELECT id AS name FROM code_authorization_requests ORDER BY id"
+            ),
+            [
+                "code-approved",
+                "code-denied",
+                "code-pending",
+                "code-waiting"
+            ]
+        );
+        assert_eq!(
+            read(
+                &mut conn,
+                "SELECT id AS name FROM user_code_requests ORDER BY id"
+            ),
+            [
+                "device-approved",
+                "device-claimed",
+                "device-denied",
+                "device-pending",
+                "pairing-approved",
+                "pairing-claimed",
+                "pairing-pending",
+            ]
+        );
+        assert_eq!(
+            read(
+                &mut conn,
+                &format!(
+                    "SELECT {CODE_COLUMNS} AS name FROM code_authorization_requests ORDER BY id"
+                )
+            ),
+            code_before,
+            "every code-flow column kept"
+        );
+        assert_eq!(
+            read(
+                &mut conn,
+                &format!(
+                    "SELECT {} AS name FROM user_code_requests ORDER BY id",
+                    USER_CODE_COLUMNS.replace("{flow}", "flow")
+                )
+            ),
+            user_code_before,
+            "every user-code column kept, `grant_type` as `flow`"
+        );
+        assert!(
+            user_code_before.contains(&format!(
+                "device-approved|device_code|device-app|[\"openid\"]|{AT}|{UNTIL}|approved|\
+                 [\"openid\"]|Patient/2|APPR-OVED|Kitchen iPad|{POLLED_AT}"
+            )),
+            "{user_code_before:#?}"
+        );
+        assert!(
+            diesel::sql_query("SELECT id FROM authorization_requests")
+                .execute(&mut conn)
+                .is_err(),
+            "the one table is gone"
+        );
+        assert_eq!(
+            read(
+                &mut conn,
+                "SELECT name FROM sqlite_master WHERE type = 'index' \
+                 AND tbl_name IN ('code_authorization_requests', 'user_code_requests') \
+                 AND name NOT LIKE 'sqlite_autoindex%' ORDER BY name"
+            ),
+            [
+                "user_code_requests_pending_user_code_uidx",
+                "user_code_requests_user_code_idx",
+            ]
+        );
+        let plant_device = |conn: &mut SqliteConnection, id: &str, flow: &str, status: &str| {
+            conn.batch_execute(&format!(
+                "INSERT INTO user_code_requests \
+                 (id, flow, client_id, requested_scopes, requested_at, expires_at, status, \
+                  user_code) \
+                 VALUES ('{id}', '{flow}', 'device-app', '[]', '{AT}', '{UNTIL}', '{status}', \
+                         'SAME-CODE')"
+            ))
+        };
+        assert!(
+            plant_device(&mut conn, "another-pending", "device_code", "pending").is_err(),
+            "a second pending request on a code collides"
+        );
+        assert!(
+            plant_device(&mut conn, "expired", "device_code", "expired").is_err(),
+            "a status the user-code flows never have is refused"
+        );
+        assert!(
+            plant_device(&mut conn, "code", "authorization_code", "denied").is_err(),
+            "a code request is no user-code request"
+        );
+        assert!(
+            plant_device(&mut conn, "approved-bare", "device_code", "approved").is_err(),
+            "an approval without its granted scopes is refused"
+        );
+        plant_device(&mut conn, "another-denied", "device_code", "denied")
+            .expect("a decided request shares a code");
+        let plant_code = |conn: &mut SqliteConnection, id: &str, status: &str| {
+            conn.batch_execute(&format!(
+                "INSERT INTO code_authorization_requests \
+                 (id, client_id, requested_scopes, requested_at, expires_at, status, \
+                  redirect_uri, code_challenge, client_state, sid, pre_approved_scopes, \
+                  decidable_in_requesting_browser) \
+                 VALUES ('{id}', 'app', '[]', '{AT}', '{UNTIL}', '{status}', \
+                         'https://app.example/cb', 'challenge', 's', 'sid-1', '[]', 0)"
+            ))
+        };
+        assert!(
+            plant_code(&mut conn, "claimed", "claimed").is_err(),
+            "a status the code flow never has is refused"
+        );
+        assert!(
+            plant_code(&mut conn, "approved-bare", "approved").is_err(),
+            "an approval without its granted scopes is refused"
+        );
+        plant_code(&mut conn, "another-pending", "pending").expect("a well-formed code request");
+        conn.batch_execute(
+            "DELETE FROM user_code_requests WHERE id = 'another-denied'; \
+             DELETE FROM code_authorization_requests WHERE id = 'another-pending'",
+        )
+        .expect("clear the probes");
+
+        let migration_0048 = MIGRATIONS
+            .migrations()
+            .expect("embedded migrations")
+            .into_iter()
+            .find(|migration| migration.name().version() == MigrationVersion::from("0048"))
+            .expect("0048 is embedded");
+        migration_0048.revert(&mut conn).expect("revert 0048");
+        assert_eq!(
+            read(
+                &mut conn,
+                &format!(
+                    "SELECT {ONE_TABLE_COLUMNS} AS name FROM authorization_requests ORDER BY id"
+                )
+            ),
+            one_table_before,
+            "the revert rebuilds every row"
+        );
+        assert_eq!(
+            read(
+                &mut conn,
+                "SELECT name FROM sqlite_master WHERE type IN ('table', 'index') \
+                 AND (name LIKE 'authorization_requests%' OR name LIKE '%code_%requests%') \
+                 AND name NOT LIKE 'sqlite_autoindex%' ORDER BY name"
+            ),
+            [
+                "authorization_requests",
+                "authorization_requests_pending_user_code_uidx",
+                "authorization_requests_user_code_idx",
+            ]
+        );
+        assert!(
+            conn.batch_execute(&format!(
+                "INSERT INTO authorization_requests \
+                 (id, grant_type, client_id, requested_scopes, user_code, requested_at, \
+                  expires_at, status) \
+                 VALUES ('another-pending', 'device_code', 'device-app', '[]', 'SAME-CODE', \
+                         '{AT}', '{UNTIL}', 'pending')"
+            ))
+            .is_err(),
+            "a second pending request on a code still collides"
+        );
+    }
+
     /// Running the migrations twice is a no-op the second time (the namespaced
     /// runner skips already-applied versions) and every expected table — plus
     /// the `grants` view — exists afterwards, so opening an existing database
@@ -2329,8 +2578,8 @@ mod tests {
         for expected in [
             "authorization_code_grants",
             "authorization_codes",
-            "authorization_requests",
             "clients",
+            "code_authorization_requests",
             "device_grants",
             "grants",
             "browser_sessions",
@@ -2339,6 +2588,7 @@ mod tests {
             "refresh_tokens",
             "session_shortfall_acknowledgements",
             "signing_keys",
+            "user_code_requests",
         ] {
             assert!(names.iter().any(|n| n == expected), "missing {expected}");
         }
@@ -2405,10 +2655,11 @@ mod tests {
         let a = SqliteGrantStore::open_in_memory().expect("store a");
         let b = SqliteGrantStore::open_in_memory().expect("store b");
         let key = crate::domain::signing_key::SigningKey::generate().expect("generate key");
-        a.insert_signing_key(&key).expect("insert into a");
-        assert_eq!(a.all_signing_keys().expect("read a").len(), 1);
+        a.write(|tx| tx.insert_signing_key(&key))
+            .expect("insert into a");
+        assert_eq!(a.read(|tx| tx.all_signing_keys()).expect("read a").len(), 1);
         assert_eq!(
-            b.all_signing_keys().expect("read b").len(),
+            b.read(|tx| tx.all_signing_keys()).expect("read b").len(),
             0,
             "store b must not see store a's key",
         );

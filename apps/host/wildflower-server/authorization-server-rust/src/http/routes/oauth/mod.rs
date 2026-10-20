@@ -1,3 +1,15 @@
+//! The `/oauth/*` routes, reached before anyone holds a bearer token: an
+//! app's browser at the front door, an app's back end trading a code for
+//! tokens, a device asking for a code to show its user, a browser asking to be
+//! paired. None of them is the Owner, so none sits behind the
+//! `/authorization` session gate; each answers from what the request itself
+//! proves: a browser session cookie, a client's credentials, a code.
+//!
+//! Two route tables are mounted side by side under [`OAUTH_MOUNT`]: the API
+//! routes ([`openapi_router`]), from which the OpenAPI spec is collected, and
+//! the browser's pages ([`page_router`]), which are no API surface and stay
+//! out of the spec.
+
 mod authorization_pages;
 mod authorization_status;
 mod authorize;
@@ -39,6 +51,16 @@ pub(crate) const OAUTH_MOUNT: &str = "/oauth";
 /// spec: they are a browser's pages, not API surface. `launcher_base` is where
 /// a sign-out sends the browser, which the authorization pages' policy lets
 /// their sign-out form follow.
+///
+/// The routes, all `GET` but the sign-out:
+///
+/// - `/oauth/authorize/{id}/wait`, `/oauth/authorize/wait.js` and
+///   `/oauth/authorize/wait.css`: the wait page and its two files;
+/// - `/oauth/authorize/{id}/consent`, `/oauth/authorize/{id}/limited`,
+///   `/oauth/device`, `/oauth/pair` and `/oauth/assets/{*file}`: the React
+///   authorization pages and their assets;
+/// - `/oauth/sign-in`: the Owner's same-device sign-in;
+/// - `POST /oauth/sign-out`: a browser ending its own session.
 pub(crate) fn page_router(launcher_base: &LauncherBase) -> Router<Arc<AuthorizationServerState>> {
     wait_page::router()
         .merge(authorization_pages::router(launcher_base))
@@ -49,15 +71,28 @@ pub(crate) fn page_router(launcher_base: &LauncherBase) -> Router<Arc<Authorizat
 /// The `/oauth/*` routes as an `OpenApiRouter`, so the OpenAPI spec is collected
 /// from the same handlers that serve traffic. Mounted under `/oauth` by
 /// [`crate::http`]; `routes!` reads each handler's `#[utoipa::path]` for its
-/// method + path.
+/// method + path. The routes:
+///
+/// - `GET /oauth/authorize`: the front door of the authorization-code flow;
+/// - `GET /oauth/authorize/{id}`: the wait page's status poll;
+/// - `GET /oauth/authorize/{id}/session-shortfall`,
+///   `POST /oauth/authorize/{id}/continue` and
+///   `POST /oauth/authorize/{id}/cancel`: the limited page's calls;
+/// - `POST /oauth/token` and `POST /oauth/revoke`: the token endpoint and
+///   revocation;
+/// - `POST /oauth/device_authorization`: a device asking for its codes;
+/// - `POST /oauth/pair/start` and `POST /oauth/pair/poll`: the pairing page's
+///   calls.
 ///
 /// `limit_authorization_starts` wraps the two routes that start an
 /// authorization request, `/authorize` and `/device_authorization`, each
 /// named by its [`AuthorizationStartRoute`], in the limit on how fast they
 /// are started (see
 /// [`limit_authorization_starts`](crate::http::middleware::limit_authorization_starts)),
-/// so it covers every method axum serves them on; the spec, which serves
-/// nothing, leaves them as they are.
+/// so it covers every method axum serves them on, `HEAD /oauth/authorize`
+/// included; the spec, which serves nothing, leaves them as they are. Only
+/// those two are limited: anyone who knows the server's domain can start a
+/// request, and one raised for the Owner pops up on the Owner's device.
 pub(crate) fn openapi_router(
     limit_authorization_starts: impl Fn(
         UtoipaMethodRouter<Arc<AuthorizationServerState>>,

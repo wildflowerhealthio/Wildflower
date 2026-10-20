@@ -2,9 +2,9 @@
 //!
 //! Every generated value must survive a `SQLite` write/read unchanged, so the
 //! generators are deliberately conservative: timestamps come from whole
-//! millisecond epochs (rusqlite stores `DateTime<Utc>` as `%F %T%.f%:z`, which
-//! round-trips sub-second digits exactly, but bounding the range keeps the
-//! Debug output readable on failure) and URLs are assembled from
+//! millisecond epochs (diesel's `TimestamptzSqlite` stores `DateTime<Utc>` as
+//! `%F %T%.f%:z`, which round-trips sub-second digits exactly, but bounding
+//! the range keeps the Debug output readable on failure) and URLs are assembled from
 //! already-valid components so `Url::parse` never rejects them.
 
 use chrono::{DateTime, TimeZone, Utc};

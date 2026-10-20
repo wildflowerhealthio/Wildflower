@@ -12,18 +12,31 @@
 //!    authenticated-only self-service operations on the caller's own session
 //!    (acquired through the shared `Authenticated<…>` extractor).
 //!  - [`writers`] — the privileged writes themselves (approve a request, issue a
-//!    code, record a grant, mint a token), each gated on an **authority proof**
-//!    from [`crate::domain::authority`]. Flow capabilities in every other group
-//!    compose these rather than calling the privileged store methods directly;
-//!    a source-guard test makes that structural.
+//!    code, record a grant, start a refresh family or a browser session, mint
+//!    a token), each gated on an **authority proof**
+//!    from [`crate::domain::authority`] and run inside the calling
+//!    capability's scope. Capabilities in every other group compose these
+//!    rather than calling the privileged primitives directly; a source-guard
+//!    test makes that structural.
+//!
+//! Every public method of a capability has one shape: open one
+//! [`GrantStore`](crate::domain::GrantStore) scope at its top — a read scope
+//! for an operation that only reads, a write scope for one that writes — run
+//! the flow inside it to an outcome value, then act on the outcome once the
+//! scope has closed (republish the Owner prompt, sign a token,
+//! write to the revocation store). The flows, proofs and writers beneath take
+//! the scope's [`GrantTx`](crate::domain::GrantTx), never the store. A refusal
+//! that must keep what the scope wrote (a spent code, a stamped poll, a
+//! request denied for a reason the client is told) is an outcome, not an
+//! error, so the scope commits it.
 //!
 //! Every capability is generic over the [`GrantStore`](crate::domain::GrantStore)
 //! port and holds its dependencies lifted from the state (never an
-//! `Arc<AuthorizationServerState>` it reaches into), so its logic is unit-testable
-//! against the in-memory fake. The bindings that name the concrete
-//! `SqliteGrantStore` and build a capability from the router state live in
-//! [`crate::live_bindings`], so nothing here depends on a concrete adapter or on
-//! `crate::http`.
+//! `Arc<AuthorizationServerState>` it reaches into), so its logic is
+//! unit-testable against the in-memory fake. The bindings that name the
+//! concrete `SqliteGrantStore` and build a capability from the router state
+//! live in [`crate::live_bindings`], so nothing here depends on a concrete
+//! adapter or on `crate::http`.
 
 pub(crate) mod access;
 pub(crate) mod oauth;
@@ -41,6 +54,9 @@ pub(crate) use access::{
     FixedScopeCapability, GrantsReader, GrantsRevoker, OwnerRaising, Scoped, TokenRevoker,
 };
 
+/// The source guards that pin how the HTTP layer reaches the domain: a route
+/// handler only through a capability extractor, the authN middleware only
+/// through the token verifier.
 #[cfg(test)]
 mod source_guards {
     use crate::domain::source_guard::{production_lines, relative_to, rs_files_under};
@@ -49,8 +65,10 @@ mod source_guards {
     /// through a capability extractor — `Scoped<…>` (scope-gated),
     /// `Authenticated<…>` (the caller's own session), or `Live<…>` (the
     /// pre-auth front door, whose gate is the proof its methods take) — never a
-    /// raw `State<Arc<AuthorizationServerState>>` or a state field. This test fails if
-    /// one appears, so a forgotten gate can't ship silently.
+    /// raw `State<Arc<AuthorizationServerState>>` or a state field. This test
+    /// fails if one appears, so a forgotten gate can't ship silently. It also
+    /// fails when it finds fewer handler files than expected, so a moved
+    /// directory can't make it pass by scanning nothing.
     ///
     /// The routes tree is enumerated at test time, so a NEW handler file is
     /// guarded by default; only module glue (`mod.rs`) is exempt. (Advisory-
@@ -64,7 +82,6 @@ mod source_guards {
             "State<",
             ".store",
             ".revocation_store",
-            ".wildflower_host_app_client_id",
             ".owner_approval_tx",
             ".pending_consents_recomputed_tx",
             ".server_origin",
@@ -102,8 +119,10 @@ mod source_guards {
     }
 
     /// The authN gates verify a token through the `TokenVerifier` capability,
-    /// not against the stores directly, so the verification policy has exactly
-    /// one home. Same textual strength as the handler guard.
+    /// not against the stores directly: no file under `src/http/middleware/`
+    /// names the store or the revocation store, so the verification policy
+    /// has exactly one home. Same textual strength, and the same floor on
+    /// files scanned, as the handler guard.
     #[test]
     fn middleware_verifies_only_through_the_token_verifier() {
         const FORBIDDEN: &[&str] = &[".store", ".revocation_store"];

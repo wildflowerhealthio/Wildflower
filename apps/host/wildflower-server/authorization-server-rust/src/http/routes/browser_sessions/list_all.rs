@@ -1,3 +1,6 @@
+//! `GET /authorization/browser-sessions`: the browsers signed in right now, as
+//! the Owner's Browsers list shows them.
+
 use std::sync::Arc;
 
 use axum::routing::{get, MethodRouter};
@@ -19,13 +22,21 @@ use crate::live_bindings::{LiveBrowserSessionsReader, LiveSessionReader};
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct BrowserSessionBody {
+    /// The session's id, which a revoke names.
     sid: String,
+    /// How the browser got its session: `same_device` or `paired`.
     kind: BrowserSessionKind,
-    /// The name the browser was given; `null` for an Owner browser.
+    /// The name the browser was given; `null` for a same-device session.
     name: Option<String>,
+    /// When the browser signed in or was paired.
     created_at: DateTime<Utc>,
+    /// When the session stops letting the browser start things.
     expires_at: DateTime<Utc>,
+    /// When the session was last in use, to the nearest
+    /// `LAST_SEEN_RESOLUTION`.
     last_seen_at: DateTime<Utc>,
+    /// Whether the caller's own token was minted under this session: revoking
+    /// it signs the caller's browser out.
     held_by_caller: bool,
 }
 
@@ -48,15 +59,16 @@ impl From<BrowserSessionView> for BrowserSessionBody {
     }
 }
 
-/// `GET /browser-sessions` — every live browser session (neither revoked nor
-/// expired), newest first, with the caller's own marked by the `sid` its token
-/// carries. Acquired through [`LiveBrowserSessionsReader`] (scope
-/// `wildflower/BrowserSession.r`); the caller's `sid` comes from its own
-/// session through [`LiveSessionReader`].
+/// The `GET` method on `/browser-sessions`.
 pub(super) fn route() -> MethodRouter<Arc<AuthorizationServerState>> {
     get(handle_list_browser_sessions)
 }
 
+/// `GET /authorization/browser-sessions` — every live browser session (neither revoked nor
+/// expired), newest first, with the caller's own marked by the `sid` its token
+/// carries. Acquired through [`LiveBrowserSessionsReader`] (scope
+/// `wildflower/BrowserSession.r`); the caller's `sid` comes from its own
+/// session through [`LiveSessionReader`].
 async fn handle_list_browser_sessions(
     browser_sessions: Scoped<LiveBrowserSessionsReader>,
     caller: Authenticated<LiveSessionReader>,

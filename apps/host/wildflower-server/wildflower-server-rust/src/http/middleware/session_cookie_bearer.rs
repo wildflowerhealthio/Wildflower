@@ -125,7 +125,7 @@ impl SessionCookie {
     ///
     /// # Errors
     ///
-    /// The authorization server's server-side `VerifyError`s, when it can't
+    /// The authorization server's server-side `AccessTokenVerifyError`s, when it can't
     /// check whether a browser session has ended.
     async fn session(&self, value: String) -> anyhow::Result<CookieSession> {
         Ok(match self {
@@ -324,7 +324,10 @@ mod tests {
     use std::sync::Arc;
     use tokio::sync::watch;
     use tower::ServiceExt;
-    use wildflowerhealthio_authorization_server::domain::token::{mint_access_token, NewJwtArgs};
+    use wildflowerhealthio_authorization_server::domain::access_token::{
+        mint_access_token, NewAccessTokenArgs,
+    };
+    use wildflowerhealthio_authorization_server::domain::grant_store::SigningKeysTx as _;
     use wildflowerhealthio_authorization_server::{
         setup_authorization_server, AdmitEveryAuthorizationStart, AuthorizationServerConfig,
         AuthorizationServerState, GrantStore, SqliteGrantStore, BROWSER_SESSION_CLIENT_ID,
@@ -370,8 +373,6 @@ mod tests {
                 server_origin: server_origin(),
                 host_app_client_scopes:
                     wildflowerhealthio_authorization_server::default_host_app_client_scopes(),
-                wildflower_host_app_client_id:
-                    wildflowerhealthio_authorization_server::default_wildflower_host_app_client_id(),
                 fhir_ui_client_id: "fhir-ui-client".to_string(),
                 launcher_base: LauncherBase::parse("https://launcher.test/launcher/")
                     .expect("launcher base"),
@@ -401,7 +402,7 @@ mod tests {
         }
 
         /// A browser session's token, signed by the server's key, living `ttl`,
-        /// under a standing Owner session stored for it.
+        /// under a standing same-device session stored for it.
         fn browser_session_token(&self, ttl: Duration) -> String {
             use diesel::RunQueryDsl as _;
             use std::sync::atomic::{AtomicUsize, Ordering};
@@ -411,7 +412,7 @@ mod tests {
             diesel::sql_query(
                 "INSERT INTO browser_sessions \
                  (sid, kind, name, scopes, created_at, expires_at, last_seen_at) \
-                 VALUES (?, 'owner', NULL, '[]', '2026-01-01 00:00:00+00:00', \
+                 VALUES (?, 'same_device', NULL, '[]', '2026-01-01 00:00:00+00:00', \
                          '2099-01-01 00:00:00+00:00', '2026-01-01 00:00:00+00:00')",
             )
             .bind::<diesel::sql_types::Text, _>(&sid)
@@ -419,12 +420,12 @@ mod tests {
             .expect("store the browser session");
             let key = SqliteGrantStore::new(self.pool.clone())
                 .expect("store")
-                .active_signing_key()
+                .read(|tx| tx.active_signing_key())
                 .expect("key query")
                 .expect("a seeded key");
             mint_access_token(
                 &key,
-                &NewJwtArgs {
+                &NewAccessTokenArgs {
                     client_id: BROWSER_SESSION_CLIENT_ID,
                     scopes: &wildflowerhealthio_authorization_server::owner_scopes(),
                     ttl,

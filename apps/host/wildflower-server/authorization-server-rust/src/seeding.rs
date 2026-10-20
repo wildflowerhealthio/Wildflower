@@ -3,7 +3,7 @@
 //! on every boot — the signing key is inserted only when none exists (never
 //! rotated), and the two clients are *ensured* (re-applied as an upsert) so
 //! their definitions always match the host's granted scopes, correcting any
-//! drift in a store created by an older build.
+//! drift in the stored rows.
 //!
 //! The bundled SMART sample-app clients (growth-chart, medication-viewer →
 //! `my_web_app`, PRECISE-HBR) are seeded in SQL instead — migration
@@ -18,11 +18,9 @@ use wildflowerhealthio_persistence::DieselPool;
 use wildflowerhealthio_scopes::{Permission, Scope};
 
 use crate::db::SqliteGrantStore;
-use crate::domain::client::{AllowedGrantType, Client, ClientKind};
+use crate::domain::client::{AllowedGrantType, Client, ClientKind, RegistrationSource};
+use crate::domain::grant_store::{ClientsTx, SigningKeysTx};
 use crate::domain::signing_key::SigningKey;
-// The persistence port trait — brought into scope so the store's methods
-// (`active_signing_key`, `insert_signing_key`, `upsert_client`, …) resolve on
-// the concrete `SqliteGrantStore` this boot code holds directly.
 use crate::domain::GrantStore as _;
 
 /// Wrap the host-owned connection `pool` in a grant store (applying
@@ -38,20 +36,29 @@ use crate::domain::GrantStore as _;
 pub fn open_and_seed_store(
     pool: DieselPool,
     host_app_client_scopes: &[String],
-    wildflower_host_app_client_id: &str,
     fhir_ui_client_id: &str,
     server_origin: &url::Url,
 ) -> anyhow::Result<SqliteGrantStore> {
     let store = SqliteGrantStore::new(pool).context("failed to open grant store")?;
-    ensure_some_active_signing_key(&store).context("failed to seed signing key")?;
-    ensure_essential_clients(
-        &store,
-        host_app_client_scopes,
-        wildflower_host_app_client_id,
-    )
-    .context("failed to seed the essential clients")?;
-    ensure_fhir_ui_client(&store, fhir_ui_client_id, server_origin)
-        .context("failed to seed the FHIR server UI client")?;
+    // RSA key generation is slow, so it runs before the write lock is taken,
+    // and only on a boot that finds no active key.
+    let candidate_signing_key = if store
+        .read(|tx| tx.active_signing_key())
+        .context("failed to read signing keys")?
+        .is_none()
+    {
+        Some(SigningKey::generate().context("failed to generate signing key")?)
+    } else {
+        None
+    };
+    store.write(|tx| -> anyhow::Result<()> {
+        ensure_some_active_signing_key(tx, candidate_signing_key)
+            .context("failed to seed signing key")?;
+        ensure_essential_clients(tx, host_app_client_scopes)
+            .context("failed to seed the essential clients")?;
+        ensure_fhir_ui_client(tx, fhir_ui_client_id, server_origin)
+            .context("failed to seed the FHIR server UI client")
+    })?;
     Ok(store)
 }
 
@@ -61,7 +68,7 @@ pub fn open_and_seed_store(
 /// across every resource type. Upserted on every boot, like
 /// [`ensure_essential_clients`], so it follows the server's origin.
 fn ensure_fhir_ui_client(
-    store: &SqliteGrantStore,
+    tx: &mut impl ClientsTx,
     fhir_ui_client_id: &str,
     server_origin: &url::Url,
 ) -> anyhow::Result<()> {
@@ -80,53 +87,52 @@ fn ensure_fhir_ui_client(
         secret_hash: None,
         registered_at: Utc::now(),
         disabled_at: None,
+        registration_source: RegistrationSource::ServerDefined,
     };
-    store
-        .upsert_client(&client)
+    tx.upsert_client(&client)
         .context("seed the FHIR server UI client")?;
     Ok(())
 }
 
-/// Generate and insert an active signing key if the table is empty;
-/// otherwise leave the existing keys alone. Idempotent — safe to call on
-/// every boot.
-fn ensure_some_active_signing_key(store: &SqliteGrantStore) -> anyhow::Result<()> {
-    let existing = store.active_signing_key().context("read signing keys")?;
+/// Insert `candidate`, generated before the scope opened, as the active
+/// signing key if none is active; otherwise leave the existing keys alone.
+/// Idempotent — safe to call on every boot.
+fn ensure_some_active_signing_key(
+    tx: &mut impl SigningKeysTx,
+    candidate: Option<SigningKey>,
+) -> anyhow::Result<()> {
+    let existing = tx.active_signing_key().context("read signing keys")?;
     if existing.is_some() {
         return Ok(());
     }
-    let mut key = SigningKey::generate().context("generate signing key")?;
+    let mut key = candidate.context("the active signing key vanished during seeding")?;
     key.is_active = true;
-    store
-        .insert_signing_key(&key)
-        .context("insert signing key")?;
+    tx.insert_signing_key(&key).context("insert signing key")?;
     Ok(())
 }
 
-/// Ensure the essential clients — the host app's client and the browser-session
-/// client ([`crate::BROWSER_SESSION_CLIENT_ID`]) — match the code's definitions.
+/// Ensure the essential clients — the host app's client
+/// ([`crate::WILDFLOWER_HOST_APP_CLIENT_ID`]) and the browser-session client
+/// ([`crate::BROWSER_SESSION_CLIENT_ID`]) — match the code's definitions.
 /// Upserted on every boot so their policy always matches: the host app's
-/// client is allowed `host_app_client_scopes` under
-/// `wildflower_host_app_client_id` (the live app sources both from
-/// `tauri-shared-config.json`; see [`crate::default_host_app_client_scopes`] /
-/// [`crate::default_wildflower_host_app_client_id`]), and the browser-session
+/// client is allowed `host_app_client_scopes` (the live app sources them from
+/// `tauri-shared-config.json`; see [`crate::default_host_app_client_scopes`]),
+/// and the browser-session
 /// client the Owner's scopes ([`crate::OWNER_SCOPES`]), the most any browser
-/// session may hold. This corrects a store
-/// seeded by an older build (registration time and any admin disable are
-/// preserved).
+/// session may hold. This corrects stored rows that have drifted
+/// (registration time and any admin disable are preserved).
 ///
 /// Both are public with no redirect URIs. The host app's client is allowed
 /// every grant type; the browser-session client none, since its tokens are
-/// minted only at `/oauth/sign-in` (an Owner session) and by the pairing
-/// page's poll (an approved session), neither of them OAuth, so no OAuth flow
+/// minted only at `/oauth/sign-in` (a same-device session) and by the pairing
+/// page's poll (a paired session), neither of them OAuth, so no OAuth flow
 /// can be run as it and `/oauth/token` never mints its token.
 fn ensure_essential_clients(
-    store: &SqliteGrantStore,
+    tx: &mut impl ClientsTx,
     host_app_client_scopes: &[String],
-    wildflower_host_app_client_id: &str,
 ) -> anyhow::Result<()> {
     let wildflower_host_app_client = Client {
-        client_id: wildflower_host_app_client_id.to_string(),
+        client_id: crate::WILDFLOWER_HOST_APP_CLIENT_ID.to_string(),
         name: "Wildflower Host".to_string(),
         kind: ClientKind::Public,
         redirect_uris: vec![],
@@ -135,9 +141,9 @@ fn ensure_essential_clients(
         secret_hash: None,
         registered_at: Utc::now(),
         disabled_at: None,
+        registration_source: RegistrationSource::ServerDefined,
     };
-    store
-        .upsert_client(&wildflower_host_app_client)
+    tx.upsert_client(&wildflower_host_app_client)
         .context("seed the host app's client")?;
     let browser_session_client = Client {
         client_id: crate::BROWSER_SESSION_CLIENT_ID.to_string(),
@@ -149,9 +155,9 @@ fn ensure_essential_clients(
         secret_hash: None,
         registered_at: Utc::now(),
         disabled_at: None,
+        registration_source: RegistrationSource::ServerDefined,
     };
-    store
-        .upsert_client(&browser_session_client)
+    tx.upsert_client(&browser_session_client)
         .context("seed the browser-session client")?;
     Ok(())
 }
@@ -176,39 +182,63 @@ const DEV_APP_PORTS_JSON: &str = include_str!(concat!(
 #[cfg(debug_assertions)]
 #[derive(serde::Deserialize)]
 struct DevAppPorts {
+    /// The port the Medications vite dev server listens on, and its dev client's
+    /// loopback redirect names.
     #[serde(rename = "medications-dev")]
     medications_dev: u16,
+    /// The port the Importer vite dev server listens on, and its dev client's
+    /// loopback redirect names.
     #[serde(rename = "importer-dev")]
     importer_dev: u16,
+    /// The port the OHIF imaging viewer vite dev server listens on, and its dev client's
+    /// loopback redirect names.
     #[serde(rename = "ohif-viewer-dev")]
     ohif_viewer_dev: u16,
+    /// The port the FHIR Sync for Pebble vite dev server listens on, and its dev client's
+    /// loopback redirect names.
     #[serde(rename = "fhir-sync-pebble-dev")]
     fhir_sync_pebble_dev: u16,
+    /// The port the Plots vite dev server listens on, and its dev client's
+    /// loopback redirect names.
     #[serde(rename = "plots-dev")]
     plots_dev: u16,
+    /// The port the Synthetic Data Loader vite dev server listens on, and its dev client's
+    /// loopback redirect names.
     #[serde(rename = "synthetic-data-dev")]
     synthetic_data_dev: u16,
+    /// The port the Strength vite dev server listens on, and its dev client's
+    /// loopback redirect names.
     #[serde(rename = "strength-dev")]
     strength_dev: u16,
 }
 
-/// The dev tiles' OAuth clients: random ids (`openssl rand -hex 16`), not the
-/// tile ids (`medications-dev` and so on). `wildflowerhealthio_apps::dev_seed` points each tile
-/// at its client, and each app's `src/config.ts` (the OHIF viewer's
-/// `config/app-config.js` and launch URL) launches as it under the dev server.
-/// FHIR Sync for Pebble has no tile; its `src/config.ts` alone names its client.
+/// The Medications dev server's client.
+///
+/// The dev tiles' OAuth clients have random ids (`openssl rand -hex 16`), not
+/// the tile ids (`medications-dev` and so on). `wildflowerhealthio_apps::dev_seed`
+/// points each tile at its client, and each app's `src/config.ts` (the OHIF
+/// viewer's `config/app-config.js` and launch URL) launches as it under the dev
+/// server. FHIR Sync for Pebble has no tile; its `src/config.ts` alone names its
+/// client.
 #[cfg(debug_assertions)]
 const MEDICATIONS_DEV_CLIENT_ID: &str = "4be2ee91360733fdcb99b43a3822de5f";
+/// The Importer dev server's client.
 #[cfg(debug_assertions)]
 const IMPORTER_DEV_CLIENT_ID: &str = "57268ff88aea38d6a22de56ae53e2c28";
+/// The Plots dev server's client.
 #[cfg(debug_assertions)]
 const PLOTS_DEV_CLIENT_ID: &str = "e7efc7c805f5f8f640bb3b3d48a2d7aa";
+/// The Synthetic Data Loader dev server's client.
 #[cfg(debug_assertions)]
 const SYNTHETIC_DATA_DEV_CLIENT_ID: &str = "07a31e58db3367afda5c6480e03ed993";
+/// The Strength dev server's client.
 #[cfg(debug_assertions)]
 const STRENGTH_DEV_CLIENT_ID: &str = "8467e680a05f1e92e22864e923144e5a";
+/// The OHIF imaging viewer dev server's client.
 #[cfg(debug_assertions)]
 const OHIF_VIEWER_DEV_CLIENT_ID: &str = "f9866f7b1d0d8505dc65ef4f749664b5";
+/// The FHIR Sync for Pebble dev server's client. It has no dev tile: the app
+/// is standalone-only.
 #[cfg(debug_assertions)]
 const FHIR_SYNC_PEBBLE_DEV_CLIENT_ID: &str = "61e195d6b08bab6bf2cedb1ef3831fa7";
 
@@ -321,7 +351,7 @@ const DEV_ROOT_REDIRECT_PATH: &str = "/";
 /// is its single call site in the Tauri host.
 ///
 /// Upserted (not insert-if-missing) so a definition change lands on the next boot
-/// — the same treatment [`ensure_essential_clients`] gets, and safe here because
+/// — the same treatment `ensure_essential_clients` gets, and safe here because
 /// nothing but this code owns these rows.
 ///
 /// # Errors
@@ -467,9 +497,10 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             secret_hash: None,
             registered_at: Utc::now(),
             disabled_at: None,
+            registration_source: RegistrationSource::TrustedOnFirstUse,
         };
         store
-            .upsert_client(&client)
+            .write(|tx| tx.upsert_client(&client))
             .with_context(|| format!("seed dev client {client_id}"))?;
     }
     Ok(())
@@ -510,7 +541,7 @@ mod tests {
         seed_dev_app_clients(pool.clone()).expect("seed dev clients");
         let store = SqliteGrantStore::new(pool).expect("open grant store");
         let client = store
-            .client_by_id(PLOTS_DEV_CLIENT_ID)
+            .read(|tx| tx.client_by_id(PLOTS_DEV_CLIENT_ID))
             .expect("query client")
             .expect("plots dev client seeded");
         let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON).expect("dev ports");
@@ -525,7 +556,7 @@ mod tests {
         );
 
         let production = store
-            .client_by_id(PLOTS_CLIENT_ID)
+            .read(|tx| tx.client_by_id(PLOTS_CLIENT_ID))
             .expect("query client")
             .expect("migration 0028 re-keys the Plots client");
         assert_eq!(production.allowed_scopes, PLOTS_DEV_SCOPES);
@@ -560,7 +591,7 @@ mod tests {
         seed_dev_app_clients(pool.clone()).expect("seed dev clients");
         let store = SqliteGrantStore::new(pool).expect("open grant store");
         let client = store
-            .client_by_id(SYNTHETIC_DATA_DEV_CLIENT_ID)
+            .read(|tx| tx.client_by_id(SYNTHETIC_DATA_DEV_CLIENT_ID))
             .expect("query client")
             .expect("synthetic data dev client seeded");
         let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON).expect("dev ports");
@@ -606,7 +637,7 @@ mod tests {
         seed_dev_app_clients(pool.clone()).expect("seed dev clients");
         let store = SqliteGrantStore::new(pool).expect("open grant store");
         let client = store
-            .client_by_id(MEDICATIONS_DEV_CLIENT_ID)
+            .read(|tx| tx.client_by_id(MEDICATIONS_DEV_CLIENT_ID))
             .expect("query client")
             .expect("medications dev client seeded");
         let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON).expect("dev ports");
@@ -621,7 +652,7 @@ mod tests {
         );
 
         let production = store
-            .client_by_id(MEDICATIONS_CLIENT_ID)
+            .read(|tx| tx.client_by_id(MEDICATIONS_CLIENT_ID))
             .expect("query client")
             .expect("migration 0028 re-keys the Medications client");
         assert_eq!(production.allowed_scopes, MEDICATIONS_DEV_SCOPES);
@@ -658,7 +689,7 @@ mod tests {
         seed_dev_app_clients(pool.clone()).expect("seed dev clients");
         let store = SqliteGrantStore::new(pool).expect("open grant store");
         let client = store
-            .client_by_id(STRENGTH_DEV_CLIENT_ID)
+            .read(|tx| tx.client_by_id(STRENGTH_DEV_CLIENT_ID))
             .expect("query client")
             .expect("strength dev client seeded");
         let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON).expect("dev ports");
@@ -673,47 +704,72 @@ mod tests {
         );
 
         let production = store
-            .client_by_id(STRENGTH_CLIENT_ID)
+            .read(|tx| tx.client_by_id(STRENGTH_CLIENT_ID))
             .expect("query client")
             .expect("migration 0025 re-keys the Strength client");
         assert_eq!(production.allowed_scopes, STRENGTH_DEV_SCOPES);
     }
 
-    /// The host app's client is seeded under the `client_id` and scopes threaded
-    /// through `open_and_seed_store` (from `AuthorizationServerConfig`, which the
-    /// live app sources from `tauri-shared-config.json`), NOT hardcoded
-    /// literals: a regression that re-hardcodes either here, letting it drift
-    /// from the config, fails this test.
+    /// The host app's client is seeded under
+    /// [`crate::WILDFLOWER_HOST_APP_CLIENT_ID`] with the scopes threaded
+    /// through `open_and_seed_store` (from `AuthorizationServerConfig`, which
+    /// the live app sources from `tauri-shared-config.json`), NOT a hardcoded
+    /// scope list: a regression that re-hardcodes the scopes here, letting
+    /// them drift from the config, fails this test.
     #[test]
-    fn seeds_the_host_app_s_client_under_the_configured_id() {
+    fn seeds_the_host_app_s_client_with_the_configured_scopes() {
         let pool =
             wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
         let scopes = vec!["openid".to_string(), "fhirUser".to_string()];
         let store = open_and_seed_store(
             pool,
             &scopes,
-            "custom-host-client",
             "fhir-ui-client",
             &url::Url::parse("https://ruth.relay.example").expect("origin"),
         )
         .expect("seed store");
 
         let seeded = store
-            .client_by_id("custom-host-client")
+            .read(|tx| tx.client_by_id(crate::WILDFLOWER_HOST_APP_CLIENT_ID))
             .expect("query client")
-            .expect("the host app's client seeded under the configured id");
-        assert_eq!(seeded.client_id, "custom-host-client");
+            .expect("the host app's client seeded under its constant id");
         assert_eq!(seeded.name, "Wildflower Host");
         assert_eq!(seeded.allowed_scopes, scopes);
+    }
 
-        // Nothing is seeded under the fallback const's literal — proving the id
-        // came from the argument, not `WILDFLOWER_HOST_APP_CLIENT_ID`.
-        assert!(
+    /// The three clients seeding owns are server-defined, so a request is held
+    /// to their registrations; every other client is trusted on first use.
+    #[test]
+    fn the_clients_seeding_owns_are_server_defined() {
+        let pool =
+            wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
+        let store = open_and_seed_store(
+            pool,
+            &crate::default_host_app_client_scopes(),
+            "fhir-ui-client",
+            &url::Url::parse("https://ruth.relay.example").expect("origin"),
+        )
+        .expect("seed store");
+        let source_of = |client_id: &str| {
             store
-                .client_by_id(crate::WILDFLOWER_HOST_APP_CLIENT_ID)
-                .expect("query fallback id")
-                .is_none(),
-            "seeding must use the configured id, not the hardcoded fallback",
+                .read(|tx| tx.client_by_id(client_id))
+                .expect("query client")
+                .map(|client| client.registration_source)
+        };
+        for client_id in [
+            crate::WILDFLOWER_HOST_APP_CLIENT_ID,
+            crate::BROWSER_SESSION_CLIENT_ID,
+            "fhir-ui-client",
+        ] {
+            assert_eq!(
+                source_of(client_id),
+                Some(RegistrationSource::ServerDefined),
+                "{client_id}"
+            );
+        }
+        assert_eq!(
+            source_of("growth_chart"),
+            Some(RegistrationSource::TrustedOnFirstUse)
         );
     }
 
@@ -726,14 +782,13 @@ mod tests {
         let store = open_and_seed_store(
             pool,
             &crate::default_host_app_client_scopes(),
-            &crate::default_wildflower_host_app_client_id(),
             "fhir-ui-client",
             &url::Url::parse("https://ruth.relay.example").expect("origin"),
         )
         .expect("seed store");
 
         let seeded = store
-            .client_by_id(crate::WILDFLOWER_HOST_APP_CLIENT_ID)
+            .read(|tx| tx.client_by_id(crate::WILDFLOWER_HOST_APP_CLIENT_ID))
             .expect("query client")
             .expect("the host app's client seeded");
         assert_eq!(seeded.allowed_scopes, vec!["openid".to_string()]);
@@ -749,14 +804,13 @@ mod tests {
         let store = open_and_seed_store(
             pool,
             &["openid".to_string()],
-            "host-client",
             "fhir-ui-client",
             &url::Url::parse("https://ruth.relay.example").expect("origin"),
         )
         .expect("seed store");
 
         let seeded = store
-            .client_by_id(crate::BROWSER_SESSION_CLIENT_ID)
+            .read(|tx| tx.client_by_id(crate::BROWSER_SESSION_CLIENT_ID))
             .expect("query client")
             .expect("the browser-session client seeded");
         assert_eq!(seeded.kind, ClientKind::Public);
@@ -773,17 +827,11 @@ mod tests {
         let pool =
             wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
         let origin = url::Url::parse("https://ruth.relay.example").expect("origin");
-        let store = open_and_seed_store(
-            pool,
-            &["openid".to_string()],
-            "host-client",
-            "fhir-ui-client",
-            &origin,
-        )
-        .expect("seed store");
+        let store = open_and_seed_store(pool, &["openid".to_string()], "fhir-ui-client", &origin)
+            .expect("seed store");
 
         let seeded = store
-            .client_by_id("fhir-ui-client")
+            .read(|tx| tx.client_by_id("fhir-ui-client"))
             .expect("query client")
             .expect("the UI client is seeded under the configured id");
         assert_eq!(

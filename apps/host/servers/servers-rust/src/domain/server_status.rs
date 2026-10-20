@@ -320,7 +320,7 @@ pub(crate) mod tests {
         CertificateOrderError, CertificateState, CertificateStatus, IssuedCertificate,
     };
 
-    use wildflowerhealthio_authorization_server::NewestPendingConsent;
+    use wildflowerhealthio_authorization_server::OwnerPrompt;
 
     use super::*;
     use crate::domain::{CertificateAuthority, RegistryError, RunPolicyChoice, ServerChangeError};
@@ -411,7 +411,7 @@ pub(crate) mod tests {
                 status({
                     let mut waiting = running_and_reachable();
                     waiting.detail.as_mut().unwrap().pending_consent =
-                        Some(NewestPendingConsent::OAuth {
+                        Some(OwnerPrompt::AuthorizationCode {
                             id: "req-1".to_owned(),
                             client_name: "Lifting".to_owned(),
                             decidable_in_requesting_browser: false,

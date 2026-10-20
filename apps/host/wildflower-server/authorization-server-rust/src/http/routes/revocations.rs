@@ -1,5 +1,5 @@
 //! `POST /authorization/revocations` — the token-revocation control surface. Acquired
-//! through the [`LiveTokenRevoker`](crate::live_bindings::LiveTokenRevoker)
+//! through the [`LiveTokenRevoker`]
 //! facade (scope `wildflower/Token.d`): a caller must cover the `Token` delete
 //! scope — which an owner's `wildflower/*.cruds` does — to revoke, else a `403`.
 //!
@@ -13,12 +13,8 @@
 //!   [`revoke_subject_as_of_now`](wildflowerhealthio_token_revocation::RevocationStore::revoke_subject_as_of_now)),
 //!   invalidating every token that subject holds issued at or before the call —
 //!   including one minted in the current (second-granular) second. `subject` is
-//!   the `sub` claim (today the `client_id`); per-device granularity is future
-//!   work (see #269).
-//!
-//! The revoke-device endpoint the ticket mentions is deferred — it would be a
-//! thin wrapper over the same `subject` mode once a device/session handle is
-//! minted into tokens.
+//!   the `sub` claim (the `client_id`), so revocation is per client, not per
+//!   device.
 
 use std::sync::Arc;
 
@@ -35,6 +31,7 @@ use crate::domain::capabilities::Scoped;
 use crate::http::state::AuthorizationServerState;
 use crate::live_bindings::LiveTokenRevoker;
 
+/// The `/revocations` route table.
 pub fn router() -> Router<Arc<AuthorizationServerState>> {
     Router::new().route("/revocations", post(handle_create_revocation))
 }
@@ -43,14 +40,19 @@ pub fn router() -> Router<Arc<AuthorizationServerState>> {
 /// ([`BadRequest`](RevocationError::BadRequest)) are HTTP-layer-only — they
 /// describe a malformed `POST /authorization/revocations` body, not a domain outcome —
 /// so they can't live on [`AuthorizationServerError`]; the backing-store failures delegate
-/// to `AuthorizationServerError`'s opaque, logged-500 rendering. This is the one residual
-/// error mechanism left after the `/authorization` surface converged on
-/// `impl IntoResponse for AuthorizationServerError` (the rest of the surface returns
-/// `Result<_, AuthorizationServerError>` directly).
+/// to `AuthorizationServerError`'s opaque, logged-500 rendering. It is the
+/// only `/authorization` route with an error type of its own; the rest return
+/// `Result<_, AuthorizationServerError>` directly.
 enum RevocationError {
     /// A client-fixable malformed request: JSON 400 of the shape
     /// `{ "error": <error>, "detail": <detail> }`.
-    BadRequest { error: &'static str, detail: String },
+    BadRequest {
+        /// The refusal's name: `MissingExpiresAt`, `AmbiguousRevocation`,
+        /// `EmptyRevocation` or `ExpiresAtInPast`.
+        error: &'static str,
+        /// A sentence saying what the body should have been.
+        detail: String,
+    },
     /// A backing-store failure — rendered through `AuthorizationServerError` as the shared
     /// opaque, logged 500.
     Store(AuthorizationServerError),
@@ -109,11 +111,18 @@ struct RevocationRequest {
 enum Revocation {
     /// Denylist a single token until its own `exp`.
     Token {
+        /// The token's `jti` claim, the id the verifier looks up.
         jti: String,
+        /// The token's own `exp`, after which the sweep may drop the row;
+        /// always in the future.
         expires_at: DateTime<Utc>,
     },
     /// Bulk-revoke a subject's whole token cohort via an epoch bump.
-    Subject { subject: String },
+    Subject {
+        /// The `sub` claim (the `client_id`) whose tokens issued up to now
+        /// die.
+        subject: String,
+    },
 }
 
 impl RevocationRequest {
@@ -143,6 +152,11 @@ impl RevocationRequest {
     }
 }
 
+/// `POST /authorization/revocations`, through `Scoped<LiveTokenRevoker>`
+/// (`wildflower/Token.d`): denylist one token or bump a subject's epoch.
+/// `204 No Content` on success; `400` with `error` and `detail` for a body that
+/// names neither mode, both, a `jti` without `expiresAt`, or an `expiresAt`
+/// already past.
 async fn handle_create_revocation(
     tokens: Scoped<LiveTokenRevoker>,
     Json(request): Json<RevocationRequest>,

@@ -3,7 +3,7 @@
 //! redirect codes (`access_denied`, `unsupported_response_type`) and the
 //! RFC 8628 §3.5 device-flow polling codes. Modeled as an enum so a code can't
 //! be typo'd into a spec-violating string at a construction site (a free-typed
-//! `"invalid_grnat"` no longer compiles), and so the valid set is enforced at
+//! `"invalid_grnat"` doesn't compile), and so the valid set is enforced at
 //! every construction site and documented in one place.
 //!
 //! `AsRef<str>` (and the matching `Display`) returns the exact RFC wire value,
@@ -16,8 +16,10 @@
 use strum::{AsRefStr, Display};
 
 /// A code from the closed set of OAuth error codes the authorization server's JSON error
-/// surface may emit. Its [`AsRef<str>`]/[`Display`] impls (derived by `strum`
-/// from the `snake_case` variant names) yield the exact RFC wire value.
+/// surface may emit. Its [`AsRef<str>`](AsRef)/[`Display`] impls (derived by `strum`
+/// from the `snake_case` variant names) yield the exact RFC wire value. Its
+/// audience is an app, as the `error` of an OAuth response: from
+/// `/oauth/token`, or on its callback redirect.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, AsRefStr, Display)]
 #[strum(serialize_all = "snake_case")]
 pub(crate) enum OAuthErrorCode {
@@ -26,8 +28,8 @@ pub(crate) enum OAuthErrorCode {
     InvalidRequest,
     /// RFC 6749 §5.2 — client authentication failed.
     InvalidClient,
-    /// RFC 6749 §5.2 — the provided grant (authorization code, refresh token, …)
-    /// is invalid, expired, revoked, or does not match.
+    /// RFC 6749 §5.2 — the provided grant (authorization code, refresh token,
+    /// device code) is invalid, expired, revoked, or does not match.
     InvalidGrant,
     /// RFC 6749 §5.2 — the authenticated client is not authorized to use this
     /// grant type.
@@ -42,7 +44,8 @@ pub(crate) enum OAuthErrorCode {
     /// RFC 6749 §5.2 — the server encountered an unexpected condition.
     ServerError,
     /// RFC 6749 §4.1.2.1 — the resource owner (or authorization server) denied
-    /// the request.
+    /// the request, or it ended before it could be approved (its browser
+    /// session ended, or its browser cancelled on the limited page).
     AccessDenied,
     /// RFC 8628 §3.5 — the device authorization is still pending the user's
     /// action; the client should keep polling.

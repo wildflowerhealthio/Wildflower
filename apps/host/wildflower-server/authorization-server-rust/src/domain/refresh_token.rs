@@ -1,10 +1,14 @@
+//! Refresh-token families and their tokens (RFC 6749 §6). Every refresh token
+//! descended from one redemption forms a family; only the newest token works,
+//! and presenting an older one ends the whole family.
+
 use chrono::{DateTime, Duration, Utc};
 use diesel::prelude::{Insertable, Queryable, Selectable};
 
 use crate::db::refresh_tokens::{refresh_token_families, refresh_tokens};
 use crate::db::shared::JsonStrings;
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::{GrantStore, GrantTx};
+use crate::domain::grant_store::RefreshTokensTx;
 
 /// Absolute lifetime of a refresh-token family, measured from the original
 /// authorization. Rotation swaps generations but never extends this
@@ -22,17 +26,23 @@ pub struct RefreshTokenFamily {
     /// Primary key — lineage id shared by every token descended from one
     /// authorization.
     pub family_id: String,
-    /// Client the family was issued to; redemption is rejected for any other.
+    /// Client the family was issued to; only it may refresh. A refresh token
+    /// presented by any other client reads exactly like an unknown one.
     pub client_id: String,
-    /// Scopes carried forward to every access token minted from this family.
+    /// Scopes carried forward to every access token minted from this family,
+    /// copied from the redemption that started it.
     #[diesel(serialize_as = JsonStrings, deserialize_as = JsonStrings)]
     pub scopes: Vec<String>,
     /// SMART-on-FHIR patient context recorded at authorization, if any.
     pub patient: Option<String>,
-    /// When the family was created (the original authorization).
+    /// When the family was created: the redemption or device poll that
+    /// started it. Revoking the client refuses every family issued before
+    /// that moment.
     pub issued_at: DateTime<Utc>,
     /// Absolute deadline for the whole family — rotation never extends it;
-    /// past this the client must re-run the authorization flow.
+    /// past this the client must re-run the authorization flow. Ending the
+    /// family (a replay, a revocation) moves it to the moment it ended,
+    /// rather than deleting the row; the retention sweep removes it later.
     pub expires_at: DateTime<Utc>,
     /// SHA-256 base64url hash of the authorization `code` that minted this
     /// family, or `None` for grants with no authorization code (the
@@ -41,9 +51,9 @@ pub struct RefreshTokenFamily {
     /// never stored.
     pub authorization_code_hash: Option<String>,
     /// The [`Grant`](crate::domain::grant::Grant) that authorized this family,
-    /// for **both** flows — the plumbing a future "revoke exactly this device's
-    /// session" ticket keys on. Written at family creation; read by nothing in
-    /// v1. `None` when no matching grant was found at exchange time (e.g. a grant
+    /// for **both** flows, written at family creation. Each rotation of a
+    /// family a device grant earned stamps that grant's `last_used_at`.
+    /// `None` when no matching grant was found at exchange time (e.g. a grant
     /// revoked between approval and the token poll). No FK: families outlive
     /// grants by design (expired in place, never deleted).
     pub grant_id: Option<String>,
@@ -102,42 +112,42 @@ pub enum RefreshTokenConsumeOutcome {
 // successor are privileged writes and live in
 // `domain::capabilities::writers::RefreshFamilyWriter`.
 
-/// Atomically consume a live refresh token, reporting which of the three
-/// [`RefreshTokenConsumeOutcome`] states the presented token was in. The guarded
-/// stamp and the existence probe run in **one** transaction, so a concurrent
-/// redeemer of the same token reads a single snapshot: exactly one caller stamps
-/// the live row (`Consumed`), and a loser sees the row still present but no
-/// longer live (`Replayed`) rather than a torn state; an unknown hash is
-/// `NotFound`.
+/// Consume a live refresh token in the caller's write scope, reporting which
+/// of the three [`RefreshTokenConsumeOutcome`] states the presented token was
+/// in. The guarded stamp and the existence probe run under the scope's write
+/// lock, so of two concurrent redeemers of the same token exactly one stamps
+/// the live row (`Consumed`), and the other sees the row still present but no
+/// longer live (`Replayed`); an unknown hash is `NotFound`.
 ///
 /// # Errors
 ///
-/// [`AuthorizationServerError::Infrastructure`] if the transaction, the stamp, or the
-/// existence probe fails.
+/// [`AuthorizationServerError::Infrastructure`] if the stamp or the existence
+/// probe fails.
 pub(crate) fn consume_refresh_token(
-    store: &impl GrantStore,
+    tx: &mut impl RefreshTokensTx,
     token_hash: &str,
     now: DateTime<Utc>,
 ) -> Result<RefreshTokenConsumeOutcome, AuthorizationServerError> {
-    store.transaction(|tx| {
-        if tx.stamp_refresh_token_consumed_if_live(token_hash, now)? {
-            Ok(RefreshTokenConsumeOutcome::Consumed)
-        } else if tx.refresh_token_exists(token_hash)? {
-            Ok(RefreshTokenConsumeOutcome::Replayed)
-        } else {
-            Ok(RefreshTokenConsumeOutcome::NotFound)
-        }
-    })
+    if tx.stamp_refresh_token_consumed_if_live(token_hash, now)? {
+        Ok(RefreshTokenConsumeOutcome::Consumed)
+    } else if tx.has_refresh_token(token_hash)? {
+        Ok(RefreshTokenConsumeOutcome::Replayed)
+    } else {
+        Ok(RefreshTokenConsumeOutcome::NotFound)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use crate::domain::test_fake::FakeGrantStore;
 
+    /// Store a family with one live token under `token_hash`.
     fn live_token(store: &FakeGrantStore, token_hash: &str) {
         let now = Utc::now();
         store
+            .tx()
             .insert_refresh_token_family_row(&RefreshTokenFamily {
                 family_id: "fam".to_owned(),
                 client_id: "client".to_owned(),
@@ -151,6 +161,7 @@ mod tests {
             })
             .unwrap();
         store
+            .tx()
             .insert_refresh_token(&RefreshToken {
                 token_hash: token_hash.to_owned(),
                 family_id: "fam".to_owned(),
@@ -160,6 +171,8 @@ mod tests {
             .unwrap();
     }
 
+    /// The first consume of a live token spends it, the second is a replay,
+    /// and a hash that was never issued is not found.
     #[test]
     fn consume_reports_consumed_then_replayed_then_not_found() {
         let store = FakeGrantStore::default();
@@ -167,15 +180,15 @@ mod tests {
         let now = Utc::now();
 
         assert_eq!(
-            consume_refresh_token(&store, "live", now).unwrap(),
+            consume_refresh_token(&mut store.tx(), "live", now).unwrap(),
             RefreshTokenConsumeOutcome::Consumed,
         );
         assert_eq!(
-            consume_refresh_token(&store, "live", now).unwrap(),
+            consume_refresh_token(&mut store.tx(), "live", now).unwrap(),
             RefreshTokenConsumeOutcome::Replayed,
         );
         assert_eq!(
-            consume_refresh_token(&store, "never-issued", now).unwrap(),
+            consume_refresh_token(&mut store.tx(), "never-issued", now).unwrap(),
             RefreshTokenConsumeOutcome::NotFound,
         );
     }

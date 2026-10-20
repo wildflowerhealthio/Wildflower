@@ -1,4 +1,4 @@
-//! Every Owner `/authorization/*` response is cache-suppressed by one blanket layer —
+//! Every Owner `/authorization/*` response is cache-suppressed by one blanket layer:
 //! handler output, the session gate's 401, and 404s alike — so a shared or
 //! browser cache never retains a consent prompt, a device prompt, or the
 //! grants list.
@@ -15,6 +15,8 @@ fn owner_get(owner_token: &str, path: &str) -> Request<Body> {
     )
 }
 
+/// The Owner's view of a device request, which names its user code and
+/// scopes, is never cached.
 #[tokio::test]
 async fn device_prompt_is_cache_suppressed() {
     let (g, owner_token, db) = spin_up();
@@ -44,6 +46,7 @@ async fn device_prompt_is_cache_suppressed() {
     assert_cache_suppressed(&res, "the device prompt");
 }
 
+/// The Owner's consent prompt for an app's parked request is never cached.
 #[tokio::test]
 async fn oauth_consent_prompt_is_cache_suppressed() {
     let (g, owner_token, db) = spin_up();
@@ -69,6 +72,7 @@ async fn oauth_consent_prompt_is_cache_suppressed() {
     assert_cache_suppressed(&res, "the oauth-consent prompt");
 }
 
+/// The Owner's list of standing grants is never cached.
 #[tokio::test]
 async fn grants_list_is_cache_suppressed() {
     let (g, owner_token, _db) = spin_up();

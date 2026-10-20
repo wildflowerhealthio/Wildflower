@@ -6,16 +6,16 @@
 
 use std::sync::Arc;
 
-use chrono::Duration;
+use chrono::{DateTime, Duration, Utc};
 use url::Url;
 
 use crate::crypto_util::oauth_user_code::generate_oauth_user_code;
 use crate::crypto_util::random_token::generate_authorization_code;
 use crate::domain::authority::AuthenticatedClient;
-use crate::domain::authorization_request::{
-    AuthorizationRequest, StartDeviceAuthorizationArgs, DEVICE_CODE_POLL_INTERVAL,
-};
+use crate::domain::authorization_request::device::{DeviceRequest, NewDeviceRequestArgs};
+use crate::domain::authorization_request::DEVICE_CODE_POLL_INTERVAL;
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::grant_store::AuthorizationRequestsTx;
 use crate::domain::GrantStore;
 use crate::ports::OwnerApproval;
 
@@ -31,9 +31,16 @@ const MAX_USER_CODE_GENERATION_ATTEMPTS: usize = 10;
 /// §3.2 response minus the verification URIs, which the HTTP layer builds from
 /// the authorizer's [`device_page`](DeviceAuthorizer::device_page).
 pub(crate) struct DeviceCodes {
+    /// The 256-bit secret the device polls `/oauth/token` with; the request's
+    /// id. Only the device holds it.
     pub(crate) device_code: String,
+    /// The short code the device shows, which the Owner enters at the device
+    /// page. It identifies the request to the Owner; it can't collect tokens.
     pub(crate) user_code: String,
+    /// Seconds until the request expires: [`DEVICE_AUTHORIZATION_TTL`].
     pub(crate) expires_in: i64,
+    /// Seconds the device waits between polls; polling sooner is answered
+    /// `slow_down`.
     pub(crate) interval: i64,
 }
 
@@ -45,6 +52,7 @@ pub(crate) enum DeviceAuthorizationError {
     ScopeNotAllowed,
     /// Every `user_code` candidate collided with an existing request.
     UserCodeExhausted,
+    /// The store couldn't be read or written.
     Store(AuthorizationServerError),
 }
 
@@ -58,8 +66,12 @@ impl From<AuthorizationServerError> for DeviceAuthorizationError {
 /// unit-testable against the fake; the binding instantiates it over the
 /// concrete `SqliteGrantStore`.
 pub(crate) struct DeviceAuthorizer<S: GrantStore> {
+    /// The store a started request is parked in.
     store: S,
+    /// Republishes the Owner prompt after a start, so the host raises the
+    /// Owner's popup for the new request.
     owner_approval: Arc<dyn OwnerApproval>,
+    /// The server's device verification page: see [`Self::device_page`].
     device_page: Arc<Url>,
 }
 
@@ -88,7 +100,8 @@ impl<S: GrantStore> DeviceAuthorizer<S> {
     /// aware: a broad grant admits a narrower request it covers), mint the code
     /// pair, park the request under `device_name` (the name the approver sees
     /// and the grant is keyed on; `None` falls back to the client name at
-    /// approval), and republish the popup head.
+    /// approval), and republish the Owner prompt so the host raises the
+    /// popup.
     ///
     /// # Errors
     ///
@@ -99,6 +112,7 @@ impl<S: GrantStore> DeviceAuthorizer<S> {
         authenticated_client: &AuthenticatedClient,
         requested_scopes: Vec<String>,
         device_name: Option<String>,
+        now: DateTime<Utc>,
     ) -> Result<DeviceCodes, DeviceAuthorizationError> {
         if !authenticated_client.allows_scopes(&requested_scopes) {
             return Err(DeviceAuthorizationError::ScopeNotAllowed);
@@ -106,20 +120,26 @@ impl<S: GrantStore> DeviceAuthorizer<S> {
         // 256-bit CSPRNG opaque token per RFC 6749 §10.10, like an
         // authorization code.
         let device_code = generate_authorization_code();
-        let user_code = generate_unique_user_code(&self.store)?
-            .ok_or(DeviceAuthorizationError::UserCodeExhausted)?;
-        let request =
-            AuthorizationRequest::new_device_authorization(StartDeviceAuthorizationArgs {
-                id: device_code.clone(),
-                client_id: authenticated_client.client_id().to_owned(),
-                requested_scopes,
-                user_code: user_code.clone(),
-                device_name,
-                ttl: DEVICE_AUTHORIZATION_TTL,
-            });
-        self.store.insert_authorization_request(&request)?;
-        // A fresh pending row is now the newest pending consent; republish so
-        // the host notifies it.
+        let user_code = self
+            .store
+            .write(|tx| -> Result<_, DeviceAuthorizationError> {
+                let user_code = generate_unique_user_code(tx)?
+                    .ok_or(DeviceAuthorizationError::UserCodeExhausted)?;
+                tx.insert_device_request(&DeviceRequest::new(
+                    NewDeviceRequestArgs {
+                        id: device_code.clone(),
+                        client_id: authenticated_client.client_id().to_owned(),
+                        requested_scopes,
+                        ttl: DEVICE_AUTHORIZATION_TTL,
+                        user_code: user_code.clone(),
+                        device_name,
+                    },
+                    now,
+                ))?;
+                Ok(user_code)
+            })?;
+        // A fresh pending request is now the Owner prompt; republish so the
+        // host notifies it.
         self.owner_approval.republish_active();
         Ok(DeviceCodes {
             device_code,
@@ -130,7 +150,7 @@ impl<S: GrantStore> DeviceAuthorizer<S> {
     }
 }
 
-/// A random `user_code` that collides with *no* existing request in `store` —
+/// A random `user_code` that collides with *no* existing request in `tx` —
 /// pending or terminal, of any flow: reusing a code attached to a
 /// denied/expired row would let that stale row shadow the new request at the
 /// consent-side lookup. `None` when every candidate collided.
@@ -139,17 +159,14 @@ impl<S: GrantStore> DeviceAuthorizer<S> {
 ///
 /// The store's, when reading a candidate's request fails.
 pub(super) fn generate_unique_user_code(
-    store: &impl GrantStore,
+    tx: &mut impl AuthorizationRequestsTx,
 ) -> Result<Option<String>, AuthorizationServerError> {
     for _ in 0..MAX_USER_CODE_GENERATION_ATTEMPTS {
         let candidate = {
             let mut rng = rand::rng();
             generate_oauth_user_code(&mut rng)
         };
-        if store
-            .authorization_request_by_user_code(&candidate)?
-            .is_none()
-        {
+        if tx.polled_request_by_user_code(&candidate)?.is_none() {
             return Ok(Some(candidate));
         }
     }
@@ -158,10 +175,11 @@ pub(super) fn generate_unique_user_code(
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::grant_store::*;
 
     use super::*;
-    use crate::domain::authorization_request::{GrantType, RequestStatus};
 
+    use crate::domain::authorization_request::polled::PolledRequest;
     use crate::domain::test_fake::{
         authenticated_public_client, client, owned_scopes, FakeGrantStore, RecordingOwnerApproval,
     };
@@ -172,11 +190,13 @@ mod tests {
         Arc::new(Url::parse("https://dev1.example.com/oauth/device").expect("a URL"))
     }
 
+    /// The proof that public client `app`, allowed `patient/*.rs` and
+    /// `openid`, has authenticated.
     fn authenticated(store: &FakeGrantStore) -> AuthenticatedClient {
         authenticated_public_client(store, client("app", &["patient/*.rs", "openid"]))
     }
 
-    /// A request inside the allowlist (by coverage, not spelling) is parked_request as
+    /// A request inside the allowlist (by coverage, not spelling) is parked as
     /// a pending device request under its user code and the popup is raised.
     #[test]
     fn start_parks_a_pending_request_and_raises_the_popup() {
@@ -184,11 +204,13 @@ mod tests {
         let client = authenticated(&store);
         let owner_approval = Arc::new(RecordingOwnerApproval::default());
         let authorizer = DeviceAuthorizer::new(store, owner_approval.clone(), device_page());
+        let now = Utc::now();
         let device_codes = authorizer
             .start(
                 &client,
                 owned_scopes(&["patient/Patient.r", "openid"]),
                 Some("Kitchen iPad".to_owned()),
+                now,
             )
             .expect("starts");
         assert_eq!(
@@ -201,22 +223,29 @@ mod tests {
         );
         let parked_request = authorizer
             .store
-            .authorization_request_by_user_code(&device_codes.user_code)
+            .tx()
+            .polled_request_by_user_code(&device_codes.user_code)
             .unwrap()
             .expect("parked_request under the user code");
-        assert_eq!(parked_request.id, device_codes.device_code);
-        assert_eq!(parked_request.grant_type, GrantType::DeviceCode);
-        assert_eq!(parked_request.status, RequestStatus::Pending);
         assert_eq!(
-            parked_request.requested_scopes,
-            ["patient/Patient.r", "openid"]
+            parked_request,
+            PolledRequest::Device(DeviceRequest::new(
+                NewDeviceRequestArgs {
+                    id: device_codes.device_code,
+                    client_id: "app".to_owned(),
+                    requested_scopes: owned_scopes(&["patient/Patient.r", "openid"]),
+                    ttl: DEVICE_AUTHORIZATION_TTL,
+                    user_code: device_codes.user_code,
+                    device_name: Some("Kitchen iPad".to_owned()),
+                },
+                now,
+            ))
         );
-        assert_eq!(parked_request.device_name.as_deref(), Some("Kitchen iPad"));
         assert_eq!(owner_approval.count(), 1);
     }
 
     /// A scope outside the allowlist refuses the whole request before anything
-    /// is parked_request.
+    /// is parked.
     #[test]
     fn start_refuses_a_scope_outside_the_allowlist() {
         let store = FakeGrantStore::default();
@@ -224,7 +253,7 @@ mod tests {
         let owner_approval = Arc::new(RecordingOwnerApproval::default());
         let authorizer = DeviceAuthorizer::new(store, owner_approval.clone(), device_page());
         assert!(matches!(
-            authorizer.start(&client, owned_scopes(&["system/*.cruds"]), None),
+            authorizer.start(&client, owned_scopes(&["system/*.cruds"]), None, Utc::now()),
             Err(DeviceAuthorizationError::ScopeNotAllowed)
         ));
         assert_eq!(owner_approval.count(), 0);

@@ -202,7 +202,6 @@ pub async fn set_up(
         launcher_url,
         authorization_url,
         host_app_client_scopes,
-        wildflower_host_app_client_id,
         relay_settings,
         domain,
         device_certificate,
@@ -241,7 +240,6 @@ pub async fn set_up(
     let authorization_server_config = AuthorizationServerConfig {
         server_origin: public_origin.clone(),
         host_app_client_scopes,
-        wildflower_host_app_client_id,
         fhir_ui_client_id: FHIR_UI_CLIENT_ID.to_string(),
         launcher_base: launcher_base.clone(),
         authorization_app_base,

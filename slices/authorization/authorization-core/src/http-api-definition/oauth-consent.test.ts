@@ -15,7 +15,7 @@ import {
 /**
  * `OAuthConsentSchema.registration` is the trust-on-first-use wire contract's
  * consumer-facing half: it round-trips the server's `registered` / `new` /
- * `changed` union, and `ApproveOAuthConsentBody.acknowledgedRegistration`
+ * `changed` union, and `ApproveOAuthConsentBody.acknowledgedRegistrationChange`
  * carries the Owner's checkbox back. These are pure schema round-trip tests —
  * decode/encode symmetry, not business logic (that lives server-side).
  */
@@ -146,7 +146,7 @@ describe('OAuthConsentSchema', () => {
 })
 
 describe('ApproveOAuthConsentBody', () => {
-  it('requires acknowledgedRegistration', () => {
+  it('requires acknowledgedRegistrationChange', () => {
     // Arrange
     const wire = { approvedScopes: ['patient/Observation.r'], patient: null }
 
@@ -154,19 +154,19 @@ describe('ApproveOAuthConsentBody', () => {
     expect(() => Schema.decodeUnknownSync(ApproveOAuthConsentBody)(wire)).toThrow()
   })
 
-  it('decodes with acknowledgedRegistration set', () => {
+  it('decodes with acknowledgedRegistrationChange set', () => {
     // Arrange
     const wire = {
       approvedScopes: ['patient/Observation.r'],
       patient: null,
-      acknowledgedRegistration: true,
+      acknowledgedRegistrationChange: true,
     }
 
     // Act
     const decoded = Schema.decodeUnknownSync(ApproveOAuthConsentBody)(wire)
 
     // Assert
-    expect(decoded.acknowledgedRegistration).toBe(true)
+    expect(decoded.acknowledgedRegistrationChange).toBe(true)
   })
 })
 

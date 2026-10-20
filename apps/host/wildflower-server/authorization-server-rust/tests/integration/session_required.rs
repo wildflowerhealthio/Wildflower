@@ -12,7 +12,6 @@
 use wildflowerhealthio_authorization_server::domain::launch_context::{
     LaunchContext, LAUNCH_CONTEXT_TTL,
 };
-use wildflowerhealthio_authorization_server::domain::GrantTx as _;
 
 use crate::common::*;
 
@@ -71,11 +70,11 @@ async fn park_and_approve(
 }
 
 /// The approval of `app_query`'s scopes.
-const APPROVE_APP: &str = r#"{"approvedScopes":["patient/Patient.rs","patient/Observation.rs","offline_access"],"acknowledgedRegistration":true}"#;
+const APPROVE_APP: &str = r#"{"approvedScopes":["patient/Patient.rs","patient/Observation.rs","offline_access"],"acknowledgedRegistrationChange":true}"#;
 
 /// The approval of `fhir_ui_query`'s scope.
 const APPROVE_FHIR_UI: &str =
-    r#"{"approvedScopes":["user/*.cruds"],"acknowledgedRegistration":true}"#;
+    r#"{"approvedScopes":["user/*.cruds"],"acknowledgedRegistrationChange":true}"#;
 
 /// The `next` a pairing-page `Location` (`pair?next=…`, relative to
 /// `/oauth/authorize`) carries, decoded.
@@ -131,7 +130,7 @@ async fn redeem(g: &AuthorizationServer, code: &str) -> Value {
 /// The `sid` the refresh family `refresh_token` belongs to records.
 fn family_sid(db: &TestDb, refresh_token: &str) -> Option<String> {
     store_handle(db)
-        .refresh_token_with_family_by_hash(&token_storage_hash(refresh_token))
+        .read(|tx| tx.refresh_token_with_family_by_hash(&token_storage_hash(refresh_token)))
         .expect("read")
         .expect("the family")
         .1
@@ -185,7 +184,7 @@ async fn a_browser_without_a_session_is_sent_to_pairing_even_with_a_standing_gra
         .mint("test-app")
         .expect("mint a launch");
     let launched_app_query = format!("{}&launch={launch}", app_query());
-    let pending_before = newest_pending_consent(&db);
+    let pending_before = owner_prompt(&db);
 
     let mut nexts = Vec::new();
     for query in [fhir_ui_query(), launched_app_query.clone()] {
@@ -195,11 +194,7 @@ async fn a_browser_without_a_session_is_sent_to_pairing_even_with_a_standing_gra
         assert_eq!(next, format!("/oauth/authorize?{query}"));
         nexts.push(next);
     }
-    assert_eq!(
-        newest_pending_consent(&db),
-        pending_before,
-        "nothing parked"
-    );
+    assert_eq!(owner_prompt(&db), pending_before, "nothing parked");
 
     for next in nexts {
         let started = start_pairing(&g, &next).await;
@@ -268,7 +263,7 @@ async fn a_paired_browser_takes_the_fast_path_under_its_own_session_until_it_is_
         .expect("a rotated refresh token");
 
     assert!(store_handle(&db)
-        .revoke_browser_session(&sid, Utc::now())
+        .write(|tx| tx.revoke_browser_session(&sid, Utc::now()))
         .expect("revoke"));
     let res = post_token(
         &g,
@@ -294,10 +289,10 @@ async fn a_paired_browser_takes_the_fast_path_under_its_own_session_until_it_is_
 async fn the_code_names_the_requesting_browser_s_session_not_the_approver_s() {
     let (g, _owner_token, db) = spin_up();
     seed_app(&db);
-    let owner_session_token = signed_in_owner_session_token(&g).await;
+    let same_device_session_token = signed_in_same_device_session_token(&g).await;
     let request_id = park_and_approve(
         &g,
-        &owner_session_token,
+        &same_device_session_token,
         &db.paired_browser_token,
         &app_query(),
         APPROVE_APP,
@@ -312,7 +307,7 @@ async fn the_code_names_the_requesting_browser_s_session_not_the_approver_s() {
     let access_token = issued["access_token"].as_str().expect("an access token");
     let refresh_token = issued["refresh_token"].as_str().expect("a refresh token");
     assert_eq!(sid_of(access_token), db.paired_browser_sid);
-    assert_ne!(sid_of(access_token), sid_of(&owner_session_token));
+    assert_ne!(sid_of(access_token), sid_of(&same_device_session_token));
     assert_eq!(
         family_sid(&db, refresh_token).as_deref(),
         Some(db.paired_browser_sid.as_str())
@@ -323,12 +318,12 @@ async fn the_code_names_the_requesting_browser_s_session_not_the_approver_s() {
 /// but the code carries only what the requesting browser's session also
 /// holds: a browser paired without `patient/Observation.rs` goes on past the
 /// limited page and gets a code without it. A request the Owner's own session makes later takes the fast
-/// path on that grant with everything, the Owner session bounding nothing.
+/// path on that grant with everything, the same-device session bounding nothing.
 #[tokio::test]
 async fn an_owner_approval_from_another_browser_is_bounded_by_the_requesting_session() {
     let (g, _owner_token, db) = spin_up();
     seed_app(&db);
-    let owner_session_token = signed_in_owner_session_token(&g).await;
+    let same_device_session_token = signed_in_same_device_session_token(&g).await;
     let (_, paired_token) =
         paired_browser_session_holding(&db, &["wildflower/launch", "patient/Patient.rs"]);
     let request_id =
@@ -339,7 +334,7 @@ async fn an_owner_approval_from_another_browser_is_bounded_by_the_requesting_ses
     );
     let res = approve_oauth_consent(
         &g,
-        &owner_session_token,
+        &same_device_session_token,
         &request_id,
         APPROVE_APP.to_owned(),
     )
@@ -351,7 +346,7 @@ async fn an_owner_approval_from_another_browser_is_bounded_by_the_requesting_ses
     let issued = redeem(&g, &code_of(status["redirect"].as_str().expect("redirect"))).await;
     assert_eq!(issued["scope"], "patient/Patient.rs offline_access");
 
-    let res = get_authorize(&g.router, &owner_session_token, &app_query()).await;
+    let res = get_authorize(&g.router, &same_device_session_token, &app_query()).await;
     assert_eq!(res.status(), StatusCode::FOUND);
     let issued = redeem(&g, &code_of(&location_of(&res))).await;
     assert_eq!(
@@ -402,7 +397,7 @@ async fn a_leaked_request_id_collects_nothing() {
 
 /// The Owner signs in through `/oauth/sign-in` in the browser whose wait page
 /// is polling (a Custom Tab sharing Chrome's cookies, a desktop default
-/// browser), so the Owner session's cookie replaces the paired session's. The
+/// browser), so the same-device session's cookie replaces the paired session's. The
 /// poll answers that cookie, whose grant covers
 /// `wildflower/AuthorizationRequest.r` and `.u`, with the approved redirect,
 /// and the code still names the requesting browser's session. A signed-in
@@ -434,18 +429,18 @@ async fn the_wait_page_reads_the_status_after_the_owner_signs_in_in_the_same_bro
         ))
         .await
         .expect("oneshot");
-    let owner_session_token = browser_session_token(&signed_in);
-    assert_ne!(sid_of(&owner_session_token), db.paired_browser_sid);
+    let same_device_session_token = browser_session_token(&signed_in);
+    assert_ne!(sid_of(&same_device_session_token), db.paired_browser_sid);
     let res = approve_oauth_consent(
         &g,
-        &owner_session_token,
+        &same_device_session_token,
         &request_id,
         APPROVE_APP.to_owned(),
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
 
-    let res = get_authorization_status(&g.router, &owner_session_token, &request_id).await;
+    let res = get_authorization_status(&g.router, &same_device_session_token, &request_id).await;
     assert_eq!(res.status(), StatusCode::OK);
     let status = body_json(res.into_body()).await;
     assert_eq!(status["status"], "approved");
@@ -458,7 +453,8 @@ async fn the_wait_page_reads_the_status_after_the_owner_signs_in_in_the_same_bro
     let access_token = issued["access_token"].as_str().expect("an access token");
     assert_eq!(sid_of(access_token), db.paired_browser_sid);
 
-    let unknown = get_authorization_status(&g.router, &owner_session_token, "no-such-id").await;
+    let unknown =
+        get_authorization_status(&g.router, &same_device_session_token, "no-such-id").await;
     assert_eq!(unknown.status(), StatusCode::NOT_FOUND);
     let unknown_error = body_json(unknown.into_body()).await["error"].clone();
     let cannot_decide = signed_in_session_token_that_cannot_decide(&g, &db).await;
@@ -487,7 +483,7 @@ async fn an_expired_launch_and_an_unknown_one_go_back_to_the_app_saying_why() {
     let (g, _owner_token, db) = spin_up();
     seed_app(&db);
     store_handle(&db)
-        .with_connection(|tx| {
+        .write(|tx| {
             tx.insert_launch_context(&LaunchContext::for_client(
                 "lapsed".to_owned(),
                 "test-app",

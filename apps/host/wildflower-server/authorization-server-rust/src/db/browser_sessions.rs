@@ -1,17 +1,19 @@
-//! `browser_sessions` queries — the browsers the server has signed in
+//! `browser_sessions` — the browsers the server has signed in
 //! ([`BrowserSession`]), keyed by the `sid` the tokens, codes and refresh
 //! families minted under each record — and the apps each session has gone on
-//! past its limited page for (`session_shortfall_acknowledgements`).
+//! past its limited page for (`session_shortfall_acknowledgements`): the
+//! [`BrowserSessionsTx`] primitives on [`SqliteGrantTx`].
 
 use chrono::{DateTime, Utc};
 use diesel::dsl::{exists, not};
 use diesel::prelude::*;
-use diesel::sqlite::SqliteConnection;
 
+use crate::db::grant_store::SqliteGrantTx;
 use crate::db::refresh_tokens::refresh_token_families;
 use crate::db::shared::text_enum_column;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::browser_session::{BrowserSession, BrowserSessionKind};
+use crate::domain::grant_store::BrowserSessionsTx;
 
 diesel::table! {
     browser_sessions (sid) {
@@ -40,203 +42,226 @@ diesel::allow_tables_to_appear_in_same_query!(browser_sessions, session_shortfal
 // browser session binds it, so its mapping lives here.
 text_enum_column!(BrowserSessionKind);
 
-/// Persist a freshly started browser session.
-pub(super) fn insert_browser_session(
-    conn: &mut SqliteConnection,
-    session: &BrowserSession,
-) -> Result<(), AuthorizationServerError> {
-    diesel::insert_into(browser_sessions::table)
-        .values(session.clone())
+impl BrowserSessionsTx for SqliteGrantTx<'_> {
+    /// Persist a freshly started browser session.
+    fn insert_browser_session(
+        &mut self,
+        session: &BrowserSession,
+    ) -> Result<(), AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        diesel::insert_into(browser_sessions::table)
+            .values(session.clone())
+            .execute(conn)
+            .map_err(|e| {
+                AuthorizationServerError::infrastructure("insert_browser_session failed", e)
+            })?;
+        Ok(())
+    }
+
+    /// Load the browser session `sid`, or `None` when no session has it.
+    fn browser_session_by_sid(
+        &mut self,
+        sid: &str,
+    ) -> Result<Option<BrowserSession>, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        browser_sessions::table
+            .find(sid)
+            .select(BrowserSession::as_select())
+            .first(conn)
+            .optional()
+            .map_err(|e| {
+                AuthorizationServerError::infrastructure("browser_session_by_sid failed", e)
+            })
+    }
+
+    /// Every browser session live at `now` (not revoked, `expires_at` after
+    /// `now`), newest first.
+    fn live_browser_sessions(
+        &mut self,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<BrowserSession>, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        browser_sessions::table
+            .filter(browser_sessions::revoked_at.is_null())
+            .filter(browser_sessions::expires_at.gt(now))
+            .order(browser_sessions::created_at.desc())
+            .select(BrowserSession::as_select())
+            .load(conn)
+            .map_err(|e| {
+                AuthorizationServerError::infrastructure("live_browser_sessions failed", e)
+            })
+    }
+
+    /// Whether the browser session `sid` is revoked or missing: no row with that
+    /// `sid` and `revoked_at IS NULL` exists.
+    fn is_browser_session_revoked(&mut self, sid: &str) -> Result<bool, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        diesel::select(not(exists(
+            browser_sessions::table
+                .find(sid)
+                .filter(browser_sessions::revoked_at.is_null()),
+        )))
+        .get_result(conn)
+        .map_err(|e| {
+            AuthorizationServerError::infrastructure("is_browser_session_revoked failed", e)
+        })
+    }
+
+    /// Stamp the browser session `sid` revoked at `now`, returning `true` iff a
+    /// standing session was transitioned. The `revoked_at IS NULL` guard keeps the
+    /// first revocation's instant.
+    fn revoke_browser_session(
+        &mut self,
+        sid: &str,
+        now: DateTime<Utc>,
+    ) -> Result<bool, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        let affected = diesel::update(
+            browser_sessions::table
+                .find(sid)
+                .filter(browser_sessions::revoked_at.is_null()),
+        )
+        .set(browser_sessions::revoked_at.eq(now))
         .execute(conn)
         .map_err(|e| {
-            AuthorizationServerError::infrastructure("insert_browser_session failed", e)
+            AuthorizationServerError::infrastructure("revoke_browser_session failed", e)
         })?;
-    Ok(())
-}
+        Ok(affected == 1)
+    }
 
-/// Load the browser session `sid`, or `None` when no session has it.
-pub(super) fn browser_session_by_sid(
-    conn: &mut SqliteConnection,
-    sid: &str,
-) -> Result<Option<BrowserSession>, AuthorizationServerError> {
-    browser_sessions::table
-        .find(sid)
-        .select(BrowserSession::as_select())
-        .first(conn)
-        .optional()
-        .map_err(|e| AuthorizationServerError::infrastructure("browser_session_by_sid failed", e))
-}
-
-/// Every browser session live at `now` (not revoked, `expires_at` after
-/// `now`), newest first.
-pub(super) fn live_browser_sessions(
-    conn: &mut SqliteConnection,
-    now: DateTime<Utc>,
-) -> Result<Vec<BrowserSession>, AuthorizationServerError> {
-    browser_sessions::table
-        .filter(browser_sessions::revoked_at.is_null())
-        .filter(browser_sessions::expires_at.gt(now))
-        .order(browser_sessions::created_at.desc())
-        .select(BrowserSession::as_select())
-        .load(conn)
-        .map_err(|e| AuthorizationServerError::infrastructure("live_browser_sessions failed", e))
-}
-
-/// Whether the browser session `sid` is revoked or missing: no row with that
-/// `sid` and `revoked_at IS NULL` exists.
-pub(super) fn browser_session_is_revoked(
-    conn: &mut SqliteConnection,
-    sid: &str,
-) -> Result<bool, AuthorizationServerError> {
-    diesel::select(not(exists(
-        browser_sessions::table
-            .find(sid)
-            .filter(browser_sessions::revoked_at.is_null()),
-    )))
-    .get_result(conn)
-    .map_err(|e| AuthorizationServerError::infrastructure("browser_session_is_revoked failed", e))
-}
-
-/// Stamp the browser session `sid` revoked at `now`, returning `true` iff a
-/// standing session was transitioned. The `revoked_at IS NULL` guard keeps the
-/// first revocation's instant.
-pub(super) fn revoke_browser_session(
-    conn: &mut SqliteConnection,
-    sid: &str,
-    now: DateTime<Utc>,
-) -> Result<bool, AuthorizationServerError> {
-    let affected = diesel::update(
-        browser_sessions::table
-            .find(sid)
-            .filter(browser_sessions::revoked_at.is_null()),
-    )
-    .set(browser_sessions::revoked_at.eq(now))
-    .execute(conn)
-    .map_err(|e| AuthorizationServerError::infrastructure("revoke_browser_session failed", e))?;
-    Ok(affected == 1)
-}
-
-/// Move the browser session `sid`'s `last_seen_at` to `seen_at`, unless it was
-/// last seen after `seen_before`, returning `true` iff it moved. The
-/// guard keeps the column from moving backwards, and from moving more than
-/// once inside a window that ends at `seen_at`.
-pub(super) fn touch_browser_session_last_seen(
-    conn: &mut SqliteConnection,
-    sid: &str,
-    seen_at: DateTime<Utc>,
-    seen_before: DateTime<Utc>,
-) -> Result<bool, AuthorizationServerError> {
-    let affected = diesel::update(
-        browser_sessions::table
-            .find(sid)
-            .filter(browser_sessions::last_seen_at.le(seen_before)),
-    )
-    .set(browser_sessions::last_seen_at.eq(seen_at))
-    .execute(conn)
-    .map_err(|e| {
-        AuthorizationServerError::infrastructure("touch_browser_session_last_seen failed", e)
-    })?;
-    Ok(affected == 1)
-}
-
-/// Whether the browser session `sid` has gone on past its limited page for
-/// `client_id` before.
-pub(super) fn session_shortfall_acknowledged_for_client(
-    conn: &mut SqliteConnection,
-    sid: &str,
-    client_id: &str,
-) -> Result<bool, AuthorizationServerError> {
-    diesel::select(exists(
-        session_shortfall_acknowledgements::table.find((sid, client_id)),
-    ))
-    .get_result(conn)
-    .map_err(|e| {
-        AuthorizationServerError::infrastructure(
-            "session_shortfall_acknowledged_for_client failed",
-            e,
+    /// Move the browser session `sid`'s `last_seen_at` to `seen_at`, unless it was
+    /// last seen after `seen_before`, returning `true` iff it moved. The
+    /// guard keeps the column from moving backwards, and from moving more than
+    /// once inside a window that ends at `seen_at`. Moved by the cookie-use
+    /// recorder and by a refresh-token rotation under the session.
+    fn touch_browser_session_last_seen(
+        &mut self,
+        sid: &str,
+        seen_at: DateTime<Utc>,
+        seen_before: DateTime<Utc>,
+    ) -> Result<bool, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        let affected = diesel::update(
+            browser_sessions::table
+                .find(sid)
+                .filter(browser_sessions::last_seen_at.le(seen_before)),
         )
-    })
-}
+        .set(browser_sessions::last_seen_at.eq(seen_at))
+        .execute(conn)
+        .map_err(|e| {
+            AuthorizationServerError::infrastructure("touch_browser_session_last_seen failed", e)
+        })?;
+        Ok(affected == 1)
+    }
 
-/// Record that the browser session `sid` went on past its limited page for
-/// `client_id`. Recording it again changes nothing.
-pub(super) fn record_session_shortfall_acknowledgement(
-    conn: &mut SqliteConnection,
-    sid: &str,
-    client_id: &str,
-) -> Result<(), AuthorizationServerError> {
-    diesel::insert_into(session_shortfall_acknowledgements::table)
-        .values((
-            session_shortfall_acknowledgements::sid.eq(sid),
-            session_shortfall_acknowledgements::client_id.eq(client_id),
+    /// Whether the browser session `sid` has gone on past its limited page for
+    /// `client_id` before.
+    fn is_session_shortfall_acknowledged_for_client(
+        &mut self,
+        sid: &str,
+        client_id: &str,
+    ) -> Result<bool, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        diesel::select(exists(
+            session_shortfall_acknowledgements::table.find((sid, client_id)),
         ))
-        .on_conflict_do_nothing()
+        .get_result(conn)
+        .map_err(|e| {
+            AuthorizationServerError::infrastructure(
+                "is_session_shortfall_acknowledged_for_client failed",
+                e,
+            )
+        })
+    }
+
+    /// Record that the browser session `sid` went on past its limited page for
+    /// `client_id`. Recording it again changes nothing.
+    fn record_session_shortfall_acknowledgement(
+        &mut self,
+        sid: &str,
+        client_id: &str,
+    ) -> Result<(), AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        diesel::insert_into(session_shortfall_acknowledgements::table)
+            .values((
+                session_shortfall_acknowledgements::sid.eq(sid),
+                session_shortfall_acknowledgements::client_id.eq(client_id),
+            ))
+            .on_conflict_do_nothing()
+            .execute(conn)
+            .map_err(|e| {
+                AuthorizationServerError::infrastructure(
+                    "record_session_shortfall_acknowledgement failed",
+                    e,
+                )
+            })?;
+        Ok(())
+    }
+
+    /// Delete every browser session that expired or was revoked before `cutoff`
+    /// and that no refresh-token family alive at `cutoff` names, returning how
+    /// many went, and with them every limited-page acknowledgement whose session
+    /// is gone. A family that outlives its session's expiry keeps the row, so
+    /// its refresh still finds the session it was minted under. The family probe
+    /// is correlated on `sid`, so `refresh_token_families_sid_idx` answers it.
+    fn delete_browser_sessions_ended_before(
+        &mut self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<usize, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        let named_by_a_family_alive_at_cutoff = exists(
+            refresh_token_families::table
+                .filter(refresh_token_families::sid.eq(browser_sessions::sid.nullable()))
+                .filter(refresh_token_families::expires_at.ge(cutoff)),
+        );
+        let pruned = diesel::delete(
+            browser_sessions::table
+                .filter(
+                    browser_sessions::expires_at
+                        .lt(cutoff)
+                        .or(browser_sessions::revoked_at.lt(cutoff)),
+                )
+                .filter(not(named_by_a_family_alive_at_cutoff)),
+        )
         .execute(conn)
         .map_err(|e| {
             AuthorizationServerError::infrastructure(
-                "record_session_shortfall_acknowledgement failed",
+                "delete_browser_sessions_ended_before failed",
                 e,
             )
         })?;
-    Ok(())
-}
-
-/// Delete every browser session that expired or was revoked before `cutoff`
-/// and that no refresh-token family alive at `cutoff` names, returning how
-/// many went, and with them every limited-page acknowledgement whose session
-/// is gone. A family that outlives its session's expiry keeps the row, so
-/// its refresh still finds the session it was minted under. The family probe
-/// is correlated on `sid`, so `refresh_token_families_sid_idx` answers it.
-pub(super) fn delete_browser_sessions_ended_before(
-    conn: &mut SqliteConnection,
-    cutoff: DateTime<Utc>,
-) -> Result<usize, AuthorizationServerError> {
-    let named_by_a_family_alive_at_cutoff = exists(
-        refresh_token_families::table
-            .filter(refresh_token_families::sid.eq(browser_sessions::sid.nullable()))
-            .filter(refresh_token_families::expires_at.ge(cutoff)),
-    );
-    let pruned = diesel::delete(
-        browser_sessions::table
-            .filter(
-                browser_sessions::expires_at
-                    .lt(cutoff)
-                    .or(browser_sessions::revoked_at.lt(cutoff)),
+        diesel::delete(session_shortfall_acknowledgements::table.filter(
+            not(exists(browser_sessions::table.filter(
+                browser_sessions::sid.eq(session_shortfall_acknowledgements::sid),
+            ))),
+        ))
+        .execute(conn)
+        .map_err(|e| {
+            AuthorizationServerError::infrastructure(
+                "delete session_shortfall_acknowledgements without a session failed",
+                e,
             )
-            .filter(not(named_by_a_family_alive_at_cutoff)),
-    )
-    .execute(conn)
-    .map_err(|e| {
-        AuthorizationServerError::infrastructure("delete_browser_sessions_ended_before failed", e)
-    })?;
-    diesel::delete(session_shortfall_acknowledgements::table.filter(
-        not(exists(browser_sessions::table.filter(
-            browser_sessions::sid.eq(session_shortfall_acknowledgements::sid),
-        ))),
-    ))
-    .execute(conn)
-    .map_err(|e| {
-        AuthorizationServerError::infrastructure(
-            "delete session_shortfall_acknowledgements without a session failed",
-            e,
-        )
-    })?;
-    Ok(pruned)
+        })?;
+        Ok(pruned)
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::grant_store::*;
     use chrono::Duration;
 
     use crate::db::SqliteGrantStore;
     use crate::domain::browser_session::BrowserSession;
     use crate::domain::refresh_token::RefreshTokenFamily;
-    use crate::domain::{GrantStore as _, GrantTx as _};
 
+    /// A fresh store on an in-memory database, migrated.
     fn store() -> SqliteGrantStore {
         SqliteGrantStore::open_in_memory().expect("store")
     }
 
+    /// A refresh family for "app", minted under browser session `sid`, that
+    /// ends at `expires_at`.
     fn family(
         family_id: &str,
         sid: &str,
@@ -262,46 +287,48 @@ mod tests {
     fn a_session_round_trips_and_is_revoked_once() {
         let store = store();
         let now = chrono::Utc::now();
-        let session = BrowserSession::new_owner(
+        let session = BrowserSession::new_same_device_session(
             vec!["system/*.cruds".to_owned(), "wildflower/*.cruds".to_owned()],
             Duration::hours(8),
             now,
         );
         store
-            .with_connection(|tx| tx.insert_browser_session(&session))
+            .write(|tx| tx.insert_browser_session(&session))
             .expect("insert");
         assert_eq!(
-            store.browser_session_by_sid(&session.sid).expect("read"),
+            store
+                .read(|tx| tx.browser_session_by_sid(&session.sid))
+                .expect("read"),
             Some(session.clone())
         );
         assert!(store
-            .browser_session_by_sid("no-such-sid")
+            .read(|tx| tx.browser_session_by_sid("no-such-sid"))
             .expect("read")
             .is_none());
         assert!(!store
-            .browser_session_is_revoked(&session.sid)
+            .read(|tx| tx.is_browser_session_revoked(&session.sid))
             .expect("read"));
         assert!(store
-            .browser_session_is_revoked("no-such-sid")
+            .read(|tx| tx.is_browser_session_revoked("no-such-sid"))
             .expect("read"));
 
         let revoked_at = now + Duration::minutes(1);
         assert!(store
-            .revoke_browser_session(&session.sid, revoked_at)
+            .write(|tx| tx.revoke_browser_session(&session.sid, revoked_at))
             .expect("revoke"));
         assert!(!store
-            .revoke_browser_session(&session.sid, revoked_at + Duration::minutes(1))
+            .write(|tx| tx.revoke_browser_session(&session.sid, revoked_at + Duration::minutes(1)))
             .expect("second revoke"));
         let stored = store
-            .browser_session_by_sid(&session.sid)
+            .read(|tx| tx.browser_session_by_sid(&session.sid))
             .expect("read")
             .expect("still there");
         assert_eq!(stored.revoked_at, Some(revoked_at));
         assert!(store
-            .browser_session_is_revoked(&session.sid)
+            .read(|tx| tx.is_browser_session_revoked(&session.sid))
             .expect("read"));
         assert!(!store
-            .revoke_browser_session("no-such-sid", now)
+            .write(|tx| tx.revoke_browser_session("no-such-sid", now))
             .expect("revoke"));
     }
 
@@ -311,22 +338,33 @@ mod tests {
     fn live_sessions_are_the_unrevoked_unexpired_ones_newest_first() {
         let store = store();
         let now = chrono::Utc::now();
-        let older = BrowserSession::new_owner(vec![], Duration::hours(8), now - Duration::hours(2));
-        let newer = BrowserSession::new_owner(vec![], Duration::hours(8), now - Duration::hours(1));
-        let expired =
-            BrowserSession::new_owner(vec![], Duration::hours(8), now - Duration::hours(9));
-        let revoked = BrowserSession::new_owner(vec![], Duration::hours(8), now);
+        let older = BrowserSession::new_same_device_session(
+            vec![],
+            Duration::hours(8),
+            now - Duration::hours(2),
+        );
+        let newer = BrowserSession::new_same_device_session(
+            vec![],
+            Duration::hours(8),
+            now - Duration::hours(1),
+        );
+        let expired = BrowserSession::new_same_device_session(
+            vec![],
+            Duration::hours(8),
+            now - Duration::hours(9),
+        );
+        let revoked = BrowserSession::new_same_device_session(vec![], Duration::hours(8), now);
         for session in [&older, &newer, &expired, &revoked] {
             store
-                .with_connection(|tx| tx.insert_browser_session(session))
+                .write(|tx| tx.insert_browser_session(session))
                 .expect("insert");
         }
         store
-            .revoke_browser_session(&revoked.sid, now)
+            .write(|tx| tx.revoke_browser_session(&revoked.sid, now))
             .expect("revoke");
 
         let live: Vec<String> = store
-            .live_browser_sessions(now)
+            .read(|tx| tx.live_browser_sessions(now))
             .expect("read")
             .into_iter()
             .map(|session| session.sid)
@@ -341,13 +379,14 @@ mod tests {
     fn a_touch_moves_last_seen_only_past_the_guard() {
         let store = store();
         let signed_in_at = chrono::Utc::now();
-        let session = BrowserSession::new_owner(vec![], Duration::hours(8), signed_in_at);
+        let session =
+            BrowserSession::new_same_device_session(vec![], Duration::hours(8), signed_in_at);
         store
-            .with_connection(|tx| tx.insert_browser_session(&session))
+            .write(|tx| tx.insert_browser_session(&session))
             .expect("insert");
         let last_seen = |store: &SqliteGrantStore| {
             store
-                .browser_session_by_sid(&session.sid)
+                .read(|tx| tx.browser_session_by_sid(&session.sid))
                 .expect("read")
                 .expect("stored")
                 .last_seen_at
@@ -355,24 +394,32 @@ mod tests {
 
         let seen_at = signed_in_at + Duration::minutes(6);
         assert!(store
-            .touch_browser_session_last_seen(&session.sid, seen_at, seen_at - Duration::minutes(5))
+            .write(|tx| tx.touch_browser_session_last_seen(
+                &session.sid,
+                seen_at,
+                seen_at - Duration::minutes(5)
+            ))
             .expect("touch"));
         assert_eq!(last_seen(&store), seen_at);
 
         let soon_after = seen_at + Duration::minutes(1);
         assert!(!store
-            .touch_browser_session_last_seen(
+            .write(|tx| tx.touch_browser_session_last_seen(
                 &session.sid,
                 soon_after,
                 soon_after - Duration::minutes(5)
-            )
+            ))
             .expect("touch inside the window"));
         assert!(!store
-            .touch_browser_session_last_seen(&session.sid, signed_in_at, signed_in_at)
+            .write(|tx| tx.touch_browser_session_last_seen(
+                &session.sid,
+                signed_in_at,
+                signed_in_at
+            ))
             .expect("touch from the past"));
         assert_eq!(last_seen(&store), seen_at);
         assert!(!store
-            .touch_browser_session_last_seen("no-such-sid", soon_after, soon_after)
+            .write(|tx| tx.touch_browser_session_last_seen("no-such-sid", soon_after, soon_after))
             .expect("touch"));
     }
 
@@ -382,11 +429,11 @@ mod tests {
     fn a_session_shortfall_acknowledgement_is_per_session_and_client() {
         let store = store();
         assert!(!store
-            .session_shortfall_acknowledged_for_client("sid-1", "app")
+            .read(|tx| tx.is_session_shortfall_acknowledged_for_client("sid-1", "app"))
             .expect("read"));
         for _ in 0..2 {
             store
-                .with_connection(|tx| tx.record_session_shortfall_acknowledgement("sid-1", "app"))
+                .write(|tx| tx.record_session_shortfall_acknowledgement("sid-1", "app"))
                 .expect("record");
         }
         for (sid, client_id, acknowledged) in [
@@ -396,7 +443,7 @@ mod tests {
         ] {
             assert_eq!(
                 store
-                    .session_shortfall_acknowledged_for_client(sid, client_id)
+                    .read(|tx| tx.is_session_shortfall_acknowledged_for_client(sid, client_id))
                     .expect("read"),
                 acknowledged,
                 "{sid} {client_id}"
@@ -413,12 +460,16 @@ mod tests {
         let store = store();
         let now = chrono::Utc::now();
         let cutoff = now - Duration::hours(24);
-        let session =
-            |created_at| BrowserSession::new_owner(vec![], Duration::hours(8), created_at);
+        let session = |created_at| {
+            BrowserSession::new_same_device_session(vec![], Duration::hours(8), created_at)
+        };
         let expired_long_ago = session(now - Duration::days(3));
         // Still unexpired, but revoked a day and more ago.
-        let revoked_long_ago =
-            BrowserSession::new_owner(vec![], Duration::hours(48), now - Duration::hours(30));
+        let revoked_long_ago = BrowserSession::new_same_device_session(
+            vec![],
+            Duration::hours(48),
+            now - Duration::hours(30),
+        );
         let expired_recently = session(now - Duration::hours(10));
         let named_by_a_live_family = session(now - Duration::days(3));
         let named_by_a_dead_family = session(now - Duration::days(3));
@@ -430,16 +481,14 @@ mod tests {
             &named_by_a_dead_family,
         ] {
             store
-                .with_connection(|tx| tx.insert_browser_session(session))
+                .write(|tx| tx.insert_browser_session(session))
                 .expect("insert");
         }
         store
-            .with_connection(|tx| {
-                tx.revoke_browser_session(&revoked_long_ago.sid, now - Duration::hours(29))
-            })
+            .write(|tx| tx.revoke_browser_session(&revoked_long_ago.sid, now - Duration::hours(29)))
             .expect("revoke");
         store
-            .with_connection(|tx| {
+            .write(|tx| {
                 tx.insert_refresh_token_family_row(&family(
                     "live",
                     &named_by_a_live_family.sid,
@@ -453,14 +502,14 @@ mod tests {
             })
             .expect("families");
         store
-            .with_connection(|tx| {
+            .write(|tx| {
                 tx.record_session_shortfall_acknowledgement(&expired_long_ago.sid, "app")?;
                 tx.record_session_shortfall_acknowledgement(&expired_recently.sid, "app")
             })
             .expect("acknowledgements");
 
         let pruned = store
-            .with_connection(|tx| tx.delete_browser_sessions_ended_before(cutoff))
+            .write(|tx| tx.delete_browser_sessions_ended_before(cutoff))
             .expect("prune");
 
         assert_eq!(pruned, 3);
@@ -473,7 +522,7 @@ mod tests {
         ] {
             assert_eq!(
                 store
-                    .browser_session_by_sid(&session.sid)
+                    .read(|tx| tx.browser_session_by_sid(&session.sid))
                     .expect("read")
                     .is_some(),
                 kept,
@@ -484,7 +533,7 @@ mod tests {
         for (session, kept) in [(&expired_long_ago, false), (&expired_recently, true)] {
             assert_eq!(
                 store
-                    .session_shortfall_acknowledged_for_client(&session.sid, "app")
+                    .read(|tx| tx.is_session_shortfall_acknowledged_for_client(&session.sid, "app"))
                     .expect("read"),
                 kept,
                 "acknowledgement of the session created {}",

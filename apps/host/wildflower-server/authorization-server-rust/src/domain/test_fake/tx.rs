@@ -5,24 +5,41 @@ use chrono::{DateTime, Utc};
 use url::Url;
 
 use super::FakeGrantTx;
-use crate::domain::authorization_code::IssuedAuthorizationCode;
-use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
+use crate::domain::authorization_code::AuthorizationCode;
+use crate::domain::authorization_request::code::CodeRequest;
+use crate::domain::authorization_request::device::DeviceRequest;
+use crate::domain::authorization_request::pairing::PairingRequest;
+use crate::domain::authorization_request::polled::PolledRequest;
+use crate::domain::authorization_request::{AuthorizationRequest, RequestStatus};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::browser_session::BrowserSession;
 use crate::domain::client::Client;
+use crate::domain::consent_key::ConsentKey;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
+use crate::domain::grant_store::{
+    AuthorizationCodesTx, AuthorizationRequestsTx, BrowserSessionsTx, ClientsTx, GrantsTx,
+    LaunchContextsTx, RefreshTokensTx, SigningKeysTx,
+};
 use crate::domain::launch_context::LaunchContext;
-use crate::domain::pending_consent::NewestPendingConsent;
+use crate::domain::owner_prompt::OwnerPrompt;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::domain::signing_key::SigningKey;
-use crate::domain::GrantTx;
 
-impl GrantTx for FakeGrantTx<'_> {
+impl ClientsTx for FakeGrantTx<'_> {
     fn client_by_id(
         &mut self,
         client_id: &str,
     ) -> Result<Option<Client>, AuthorizationServerError> {
         Ok(self.store.clients.borrow().get(client_id).cloned())
+    }
+
+    fn is_client_disabled(&mut self, client_id: &str) -> Result<bool, AuthorizationServerError> {
+        Ok(self
+            .store
+            .clients
+            .borrow()
+            .get(client_id)
+            .is_some_and(|client| client.disabled_at.is_some()))
     }
 
     fn upsert_client(&mut self, client: &Client) -> Result<(), AuthorizationServerError> {
@@ -52,7 +69,9 @@ impl GrantTx for FakeGrantTx<'_> {
             .map(|client| client.disabled_at = disabled_at)
             .is_some())
     }
+}
 
+impl SigningKeysTx for FakeGrantTx<'_> {
     fn all_signing_keys(&mut self) -> Result<Vec<SigningKey>, AuthorizationServerError> {
         Ok(self.store.signing_keys.borrow().clone())
     }
@@ -75,245 +94,335 @@ impl GrantTx for FakeGrantTx<'_> {
         self.store.signing_keys.borrow_mut().push(key.clone());
         Ok(())
     }
+}
 
+impl FakeGrantTx<'_> {
+    /// The device request or pairing keyed `id`, if `of_flow` picks it out.
+    fn user_code_request<R>(
+        &self,
+        id: &str,
+        of_flow: impl FnOnce(PolledRequest) -> Option<R>,
+    ) -> Option<R> {
+        self.store
+            .user_code_requests
+            .borrow()
+            .get(id)
+            .cloned()
+            .and_then(of_flow)
+    }
+
+    /// The device request or pairing bearing `user_code` that `admits` lets
+    /// through.
+    fn polled_request(
+        &self,
+        user_code: &str,
+        admits: impl Fn(&AuthorizationRequest) -> bool,
+    ) -> Option<PolledRequest> {
+        self.store
+            .user_code_requests
+            .borrow()
+            .values()
+            .find(|request| {
+                request.user_code() == user_code
+                    && admits(&AuthorizationRequest::from((*request).clone()))
+            })
+            .cloned()
+    }
+
+    /// The guarded replace of a device request or pairing: write `changed`
+    /// over the entry of `read_id` while it is still of `changed`'s flow and
+    /// has `read_status`.
+    fn replace_user_code_request(
+        &self,
+        read_id: &str,
+        read_status: RequestStatus,
+        changed: PolledRequest,
+    ) -> Result<bool, AuthorizationServerError> {
+        if changed.id() != read_id {
+            return Err(replaced_by_another(read_id, changed.id()));
+        }
+        let mut requests = self.store.user_code_requests.borrow_mut();
+        let Some(stored) = requests.get_mut(read_id) else {
+            return Ok(false);
+        };
+        let stored_as_read = match (&*stored, &changed) {
+            (PolledRequest::Device(stored), PolledRequest::Device(_)) => {
+                stored.state.status() == read_status
+            }
+            (PolledRequest::Pairing(stored), PolledRequest::Pairing(_)) => {
+                stored.state.status() == read_status
+            }
+            _ => false,
+        };
+        if stored_as_read {
+            *stored = changed;
+        }
+        Ok(stored_as_read)
+    }
+}
+
+/// A replace refused because `changed_id` names another request than
+/// `read_id`.
+fn replaced_by_another(read_id: &str, changed_id: &str) -> AuthorizationServerError {
+    AuthorizationServerError::infrastructure(
+        "replace_authorization_request refused",
+        format!("request {read_id} replaced by request {changed_id}"),
+    )
+}
+
+impl AuthorizationRequestsTx for FakeGrantTx<'_> {
+    /// Mirrors the adapter: the code map first, then the user-code map.
     fn authorization_request_by_id(
         &mut self,
         id: &str,
     ) -> Result<Option<AuthorizationRequest>, AuthorizationServerError> {
-        Ok(self.store.authorization_requests.borrow().get(id).cloned())
+        if let Some(code_request) = self.code_request_by_id(id)? {
+            return Ok(Some(AuthorizationRequest::Code(code_request)));
+        }
+        Ok(self.user_code_request(id, |request| Some(AuthorizationRequest::from(request))))
     }
 
-    fn authorization_request_by_user_code(
+    fn code_request_by_id(
         &mut self,
-        user_code: &str,
-    ) -> Result<Option<AuthorizationRequest>, AuthorizationServerError> {
+        id: &str,
+    ) -> Result<Option<CodeRequest>, AuthorizationServerError> {
         Ok(self
             .store
-            .authorization_requests
+            .code_authorization_requests
             .borrow()
-            .values()
-            .find(|r| r.user_code.as_deref() == Some(user_code))
+            .get(id)
             .cloned())
     }
 
-    fn pending_authorization_request_by_user_code(
+    fn device_request_by_id(
         &mut self,
-        user_code: &str,
-    ) -> Result<Option<AuthorizationRequest>, AuthorizationServerError> {
-        Ok(self
-            .store
-            .authorization_requests
-            .borrow()
-            .values()
-            .find(|r| {
-                r.user_code.as_deref() == Some(user_code) && r.status == RequestStatus::Pending
-            })
-            .cloned())
+        device_code: &str,
+    ) -> Result<Option<DeviceRequest>, AuthorizationServerError> {
+        Ok(
+            self.user_code_request(device_code, |request| match request {
+                PolledRequest::Device(device_request) => Some(device_request),
+                PolledRequest::Pairing(_) => None,
+            }),
+        )
     }
 
-    fn newest_pending_consent(
+    fn pairing_request_by_id(
         &mut self,
-    ) -> Result<Option<NewestPendingConsent>, AuthorizationServerError> {
-        let requests = self.store.authorization_requests.borrow();
-        let mut pending: Vec<&AuthorizationRequest> = requests
-            .values()
-            .filter(|r| r.status == RequestStatus::Pending && r.expires_at > Utc::now())
-            .filter(|r| r.session_shortfall_acknowledged)
-            .filter(|r| match r.grant_type {
-                GrantType::AuthorizationCode => true,
-                // Mirrors the SQL guard: a device row without its `user_code`
-                // has no key the consent surface could fetch by, so it is not a
-                // candidate rather than a request with a missing key.
-                GrantType::DeviceCode => r.user_code.is_some(),
-                GrantType::BrowserPairing => r.user_code.is_some() && r.device_name.is_some(),
-            })
-            .collect();
-        pending.sort_by_key(|r| std::cmp::Reverse(r.requested_at));
-        Ok(pending.first().and_then(|r| {
-            // Mirrors the SQL left join: a client with no registration is
-            // named by its `client_id`.
-            let client_name = self
-                .store
-                .clients
-                .borrow()
-                .get(&r.client_id)
-                .map_or_else(|| r.client_id.clone(), |client| client.name.clone());
-            match r.grant_type {
-                GrantType::AuthorizationCode => Some(NewestPendingConsent::OAuth {
-                    id: r.id.clone(),
-                    client_name,
-                    decidable_in_requesting_browser: r.decidable_in_requesting_browser,
-                }),
-                GrantType::DeviceCode => {
-                    r.user_code
-                        .clone()
-                        .map(|user_code| NewestPendingConsent::Device {
-                            user_code,
-                            client_name,
-                        })
-                }
-                GrantType::BrowserPairing => r.user_code.clone().zip(r.device_name.clone()).map(
-                    |(user_code, browser_name)| NewestPendingConsent::BrowserPairing {
-                        user_code,
-                        browser_name,
-                    },
-                ),
-            }
+        pairing_code: &str,
+    ) -> Result<Option<PairingRequest>, AuthorizationServerError> {
+        Ok(
+            self.user_code_request(pairing_code, |request| match request {
+                PolledRequest::Pairing(pairing_request) => Some(pairing_request),
+                PolledRequest::Device(_) => None,
+            }),
+        )
+    }
+
+    fn polled_request_by_user_code(
+        &mut self,
+        user_code: &str,
+    ) -> Result<Option<PolledRequest>, AuthorizationServerError> {
+        Ok(self.polled_request(user_code, |_| true))
+    }
+
+    fn pending_polled_request_by_user_code(
+        &mut self,
+        user_code: &str,
+    ) -> Result<Option<PolledRequest>, AuthorizationServerError> {
+        Ok(self.polled_request(user_code, |request| {
+            request.status() == RequestStatus::Pending
         }))
     }
 
-    fn insert_authorization_request(
+    /// Mirrors the adapter's two reads: the newest candidate from each map
+    /// (of two started at once, the greater id), keeping the later by
+    /// `requested_at`, and on a tie the code request.
+    fn owner_prompt(
         &mut self,
-        request: &AuthorizationRequest,
+        now: DateTime<Utc>,
+    ) -> Result<Option<OwnerPrompt>, AuthorizationServerError> {
+        let clients = self.store.clients.borrow();
+        // Mirrors the SQL: a disabled client's request is skipped, a client
+        // with no row's kept.
+        let is_candidate = |request: &AuthorizationRequest| {
+            request.is_pending_at(now)
+                && clients
+                    .get(request.client_id())
+                    .is_none_or(|client| client.disabled_at.is_none())
+        };
+        let newest = |requests: Vec<AuthorizationRequest>| {
+            requests
+                .into_iter()
+                .filter(is_candidate)
+                .max_by(|a, b| (a.requested_at(), a.id()).cmp(&(b.requested_at(), b.id())))
+        };
+        let code = newest(
+            self.store
+                .code_authorization_requests
+                .borrow()
+                .values()
+                .cloned()
+                .map(AuthorizationRequest::Code)
+                .collect(),
+        );
+        let polled = newest(
+            self.store
+                .user_code_requests
+                .borrow()
+                .values()
+                .cloned()
+                .map(AuthorizationRequest::from)
+                .collect(),
+        );
+        let later = match (code, polled) {
+            (Some(code), Some(polled)) if polled.requested_at() > code.requested_at() => {
+                Some(polled)
+            }
+            (Some(code), _) => Some(code),
+            (None, polled) => polled,
+        };
+        Ok(later.map(|request| {
+            // Mirrors the SQL left join: a client with no registration has no
+            // registered name.
+            let registered_client_name = clients
+                .get(request.client_id())
+                .map(|client| client.name.clone());
+            OwnerPrompt::for_request(&request, registered_client_name)
+        }))
+    }
+
+    fn is_awaiting_owner(
+        &mut self,
+        consent_key: &ConsentKey,
+        now: DateTime<Utc>,
+    ) -> Result<bool, AuthorizationServerError> {
+        let request = match consent_key {
+            ConsentKey::DeviceCode { user_code } | ConsentKey::BrowserPairing { user_code } => self
+                .pending_polled_request_by_user_code(user_code)?
+                .map(AuthorizationRequest::from),
+            ConsentKey::AuthorizationCode { id } => {
+                self.code_request_by_id(id)?.map(AuthorizationRequest::Code)
+            }
+        };
+        match request {
+            Some(request) if request.is_undecided_at(now) => {
+                Ok(!self.is_client_disabled(request.client_id())?)
+            }
+            _ => Ok(false),
+        }
+    }
+
+    fn insert_code_request(
+        &mut self,
+        request: &CodeRequest,
     ) -> Result<(), AuthorizationServerError> {
         self.store
-            .authorization_requests
+            .code_authorization_requests
             .borrow_mut()
             .insert(request.id.clone(), request.clone());
         Ok(())
     }
 
-    fn approve_authorization_request(
+    fn insert_device_request(
         &mut self,
-        id: &str,
-        granted_scopes: &[String],
-        patient: Option<&str>,
-        device_name: Option<&str>,
-    ) -> Result<bool, AuthorizationServerError> {
-        let mut requests = self.store.authorization_requests.borrow_mut();
-        let Some(request) = requests.get_mut(id) else {
-            return Ok(false);
-        };
-        if request.status != RequestStatus::Pending {
-            return Ok(false);
-        }
-        request.status = RequestStatus::Approved;
-        request.granted_scopes = Some(granted_scopes.to_vec());
-        request.patient = patient.map(str::to_owned);
-        if let Some(name) = device_name {
-            request.device_name = Some(name.to_owned());
-        }
-        Ok(true)
-    }
-
-    fn deny_authorization_request(&mut self, id: &str) -> Result<bool, AuthorizationServerError> {
-        let mut requests = self.store.authorization_requests.borrow_mut();
-        let Some(request) = requests.get_mut(id) else {
-            return Ok(false);
-        };
-        if request.status != RequestStatus::Pending {
-            return Ok(false);
-        }
-        request.status = RequestStatus::Denied;
-        Ok(true)
-    }
-
-    fn raise_authorization_request_for_owner(
-        &mut self,
-        id: &str,
-    ) -> Result<bool, AuthorizationServerError> {
-        let mut requests = self.store.authorization_requests.borrow_mut();
-        let Some(request) = requests.get_mut(id) else {
-            return Ok(false);
-        };
-        if request.status != RequestStatus::Pending {
-            return Ok(false);
-        }
-        request.decidable_in_requesting_browser = false;
-        Ok(true)
-    }
-
-    fn acknowledge_session_shortfall(
-        &mut self,
-        id: &str,
-        expires_at: DateTime<Utc>,
-    ) -> Result<bool, AuthorizationServerError> {
-        let mut requests = self.store.authorization_requests.borrow_mut();
-        let Some(request) = requests.get_mut(id) else {
-            return Ok(false);
-        };
-        if request.status != RequestStatus::Pending || request.session_shortfall_acknowledged {
-            return Ok(false);
-        }
-        request.session_shortfall_acknowledged = true;
-        request.expires_at = expires_at;
-        Ok(true)
-    }
-
-    fn deny_unacknowledged_authorization_request(
-        &mut self,
-        id: &str,
-    ) -> Result<bool, AuthorizationServerError> {
-        let mut requests = self.store.authorization_requests.borrow_mut();
-        let Some(request) = requests.get_mut(id) else {
-            return Ok(false);
-        };
-        if request.status != RequestStatus::Pending || request.session_shortfall_acknowledged {
-            return Ok(false);
-        }
-        request.status = RequestStatus::Denied;
-        Ok(true)
-    }
-
-    fn consume_approved_authorization_request(
-        &mut self,
-        id: &str,
-    ) -> Result<bool, AuthorizationServerError> {
-        let mut requests = self.store.authorization_requests.borrow_mut();
-        let Some(request) = requests.get_mut(id) else {
-            return Ok(false);
-        };
-        if request.status != RequestStatus::Approved {
-            return Ok(false);
-        }
-        request.status = RequestStatus::Expired;
-        Ok(true)
-    }
-
-    fn record_device_poll(
-        &mut self,
-        id: &str,
-        polled_at: DateTime<Utc>,
+        request: &DeviceRequest,
     ) -> Result<(), AuthorizationServerError> {
-        if let Some(request) = self.store.authorization_requests.borrow_mut().get_mut(id) {
-            request.last_polled_at = Some(polled_at);
-        }
-        Ok(())
-    }
-
-    fn record_browser_pairing_poll(
-        &mut self,
-        id: &str,
-        polled_at: DateTime<Utc>,
-        browser_name: &str,
-    ) -> Result<(), AuthorizationServerError> {
-        if let Some(request) = self
-            .store
-            .authorization_requests
+        self.store
+            .user_code_requests
             .borrow_mut()
-            .get_mut(id)
-            .filter(|request| {
-                request.grant_type == GrantType::BrowserPairing
-                    && request.status == RequestStatus::Pending
-            })
-        {
-            request.last_polled_at = Some(polled_at);
-            request.device_name = Some(browser_name.to_owned());
-        }
+            .insert(request.id.clone(), PolledRequest::Device(request.clone()));
         Ok(())
     }
 
+    fn insert_pairing_request(
+        &mut self,
+        request: &PairingRequest,
+    ) -> Result<(), AuthorizationServerError> {
+        self.store
+            .user_code_requests
+            .borrow_mut()
+            .insert(request.id.clone(), PolledRequest::Pairing(request.clone()));
+        Ok(())
+    }
+
+    fn replace_code_request(
+        &mut self,
+        read: &CodeRequest,
+        changed: &CodeRequest,
+    ) -> Result<bool, AuthorizationServerError> {
+        if changed.id != read.id {
+            return Err(replaced_by_another(&read.id, &changed.id));
+        }
+        let mut requests = self.store.code_authorization_requests.borrow_mut();
+        let Some(stored) = requests.get_mut(&read.id) else {
+            return Ok(false);
+        };
+        if stored.state.status() != read.state.status() {
+            return Ok(false);
+        }
+        *stored = changed.clone();
+        Ok(true)
+    }
+
+    fn replace_device_request(
+        &mut self,
+        read: &DeviceRequest,
+        changed: &DeviceRequest,
+    ) -> Result<bool, AuthorizationServerError> {
+        self.replace_user_code_request(
+            &read.id,
+            read.state.status(),
+            PolledRequest::Device(changed.clone()),
+        )
+    }
+
+    fn replace_pairing_request(
+        &mut self,
+        read: &PairingRequest,
+        changed: &PairingRequest,
+    ) -> Result<bool, AuthorizationServerError> {
+        self.replace_user_code_request(
+            &read.id,
+            read.state.status(),
+            PolledRequest::Pairing(changed.clone()),
+        )
+    }
+
+    fn delete_code_requests_expired_before(
+        &mut self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<usize, AuthorizationServerError> {
+        let mut requests = self.store.code_authorization_requests.borrow_mut();
+        let before = requests.len();
+        requests.retain(|_, request| request.expires_at >= cutoff);
+        Ok(before - requests.len())
+    }
+
+    fn delete_polled_requests_expired_before(
+        &mut self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<usize, AuthorizationServerError> {
+        let mut requests = self.store.user_code_requests.borrow_mut();
+        let before = requests.len();
+        requests.retain(|_, request| {
+            AuthorizationRequest::from(request.clone()).expires_at() >= cutoff
+        });
+        Ok(before - requests.len())
+    }
+}
+
+impl AuthorizationCodesTx for FakeGrantTx<'_> {
     fn redeem_authorization_code(
         &mut self,
         code: &str,
-    ) -> Result<Option<IssuedAuthorizationCode>, AuthorizationServerError> {
+    ) -> Result<Option<AuthorizationCode>, AuthorizationServerError> {
         Ok(self.store.authorization_codes.borrow_mut().remove(code))
     }
 
     fn authorization_code_by_request_id(
         &mut self,
         request_id: &str,
-    ) -> Result<Option<IssuedAuthorizationCode>, AuthorizationServerError> {
+    ) -> Result<Option<AuthorizationCode>, AuthorizationServerError> {
         Ok(self
             .store
             .authorization_codes
@@ -325,7 +434,7 @@ impl GrantTx for FakeGrantTx<'_> {
 
     fn issue_authorization_code(
         &mut self,
-        code: &IssuedAuthorizationCode,
+        code: &AuthorizationCode,
     ) -> Result<(), AuthorizationServerError> {
         self.store
             .authorization_codes
@@ -334,16 +443,18 @@ impl GrantTx for FakeGrantTx<'_> {
         Ok(())
     }
 
-    fn delete_authorization_requests_expired_before(
+    fn delete_authorization_codes_expired_before(
         &mut self,
         cutoff: DateTime<Utc>,
     ) -> Result<usize, AuthorizationServerError> {
-        let mut requests = self.store.authorization_requests.borrow_mut();
-        let before = requests.len();
-        requests.retain(|_, r| r.expires_at >= cutoff);
-        Ok(before - requests.len())
+        let mut codes = self.store.authorization_codes.borrow_mut();
+        let before = codes.len();
+        codes.retain(|_, c| c.expires_at >= cutoff);
+        Ok(before - codes.len())
     }
+}
 
+impl LaunchContextsTx for FakeGrantTx<'_> {
     fn insert_launch_context(
         &mut self,
         context: &LaunchContext,
@@ -389,43 +500,9 @@ impl GrantTx for FakeGrantTx<'_> {
         contexts.retain(|_, context| context.expires_at > now);
         Ok(before - contexts.len())
     }
+}
 
-    fn delete_authorization_codes_expired_before(
-        &mut self,
-        cutoff: DateTime<Utc>,
-    ) -> Result<usize, AuthorizationServerError> {
-        let mut codes = self.store.authorization_codes.borrow_mut();
-        let before = codes.len();
-        codes.retain(|_, c| c.expires_at >= cutoff);
-        Ok(before - codes.len())
-    }
-
-    fn delete_refresh_token_families_expired_before(
-        &mut self,
-        cutoff: DateTime<Utc>,
-    ) -> Result<usize, AuthorizationServerError> {
-        // Children first, mirroring the FK order the SQL body has to observe —
-        // the fake has no foreign keys, but a test that asserts on the token map
-        // should see the same intermediate shape.
-        let doomed: Vec<String> = self
-            .store
-            .families
-            .borrow()
-            .values()
-            .filter(|f| f.expires_at < cutoff)
-            .map(|f| f.family_id.clone())
-            .collect();
-        self.store
-            .tokens
-            .borrow_mut()
-            .retain(|_, t| !doomed.contains(&t.family_id));
-        self.store
-            .families
-            .borrow_mut()
-            .retain(|_, f| f.expires_at >= cutoff);
-        Ok(doomed.len())
-    }
-
+impl BrowserSessionsTx for FakeGrantTx<'_> {
     fn insert_browser_session(
         &mut self,
         session: &BrowserSession,
@@ -460,7 +537,7 @@ impl GrantTx for FakeGrantTx<'_> {
         Ok(live)
     }
 
-    fn browser_session_is_revoked(&mut self, sid: &str) -> Result<bool, AuthorizationServerError> {
+    fn is_browser_session_revoked(&mut self, sid: &str) -> Result<bool, AuthorizationServerError> {
         Ok(self
             .store
             .browser_sessions
@@ -502,6 +579,30 @@ impl GrantTx for FakeGrantTx<'_> {
         )
     }
 
+    fn is_session_shortfall_acknowledged_for_client(
+        &mut self,
+        sid: &str,
+        client_id: &str,
+    ) -> Result<bool, AuthorizationServerError> {
+        Ok(self
+            .store
+            .session_shortfall_acknowledgements
+            .borrow()
+            .contains(&(sid.to_owned(), client_id.to_owned())))
+    }
+
+    fn record_session_shortfall_acknowledgement(
+        &mut self,
+        sid: &str,
+        client_id: &str,
+    ) -> Result<(), AuthorizationServerError> {
+        self.store
+            .session_shortfall_acknowledgements
+            .borrow_mut()
+            .insert((sid.to_owned(), client_id.to_owned()));
+        Ok(())
+    }
+
     fn delete_browser_sessions_ended_before(
         &mut self,
         cutoff: DateTime<Utc>,
@@ -529,31 +630,9 @@ impl GrantTx for FakeGrantTx<'_> {
             .retain(|(sid, _)| sessions.contains_key(sid));
         Ok(before - sessions.len())
     }
+}
 
-    fn session_shortfall_acknowledged_for_client(
-        &mut self,
-        sid: &str,
-        client_id: &str,
-    ) -> Result<bool, AuthorizationServerError> {
-        Ok(self
-            .store
-            .session_shortfall_acknowledgements
-            .borrow()
-            .contains(&(sid.to_owned(), client_id.to_owned())))
-    }
-
-    fn record_session_shortfall_acknowledgement(
-        &mut self,
-        sid: &str,
-        client_id: &str,
-    ) -> Result<(), AuthorizationServerError> {
-        self.store
-            .session_shortfall_acknowledgements
-            .borrow_mut()
-            .insert((sid.to_owned(), client_id.to_owned()));
-        Ok(())
-    }
-
+impl RefreshTokensTx for FakeGrantTx<'_> {
     fn insert_refresh_token_family_row(
         &mut self,
         family: &RefreshTokenFamily,
@@ -605,7 +684,7 @@ impl GrantTx for FakeGrantTx<'_> {
         }
     }
 
-    fn refresh_token_exists(&mut self, token_hash: &str) -> Result<bool, AuthorizationServerError> {
+    fn has_refresh_token(&mut self, token_hash: &str) -> Result<bool, AuthorizationServerError> {
         Ok(self.store.tokens.borrow().contains_key(token_hash))
     }
 
@@ -663,6 +742,34 @@ impl GrantTx for FakeGrantTx<'_> {
         Ok(())
     }
 
+    fn delete_refresh_token_families_expired_before(
+        &mut self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<usize, AuthorizationServerError> {
+        // Children first, mirroring the FK order the SQL body has to observe —
+        // the fake has no foreign keys, but a test that asserts on the token map
+        // should see the same intermediate shape.
+        let doomed: Vec<String> = self
+            .store
+            .families
+            .borrow()
+            .values()
+            .filter(|f| f.expires_at < cutoff)
+            .map(|f| f.family_id.clone())
+            .collect();
+        self.store
+            .tokens
+            .borrow_mut()
+            .retain(|_, t| !doomed.contains(&t.family_id));
+        self.store
+            .families
+            .borrow_mut()
+            .retain(|_, f| f.expires_at >= cutoff);
+        Ok(doomed.len())
+    }
+}
+
+impl GrantsTx for FakeGrantTx<'_> {
     fn all_grants(&mut self) -> Result<Vec<Grant>, AuthorizationServerError> {
         let mut grants: Vec<Grant> = self
             .store
@@ -760,6 +867,28 @@ impl GrantTx for FakeGrantTx<'_> {
             .device_grants
             .borrow_mut()
             .insert(grant.id.clone(), grant.clone());
+        Ok(())
+    }
+
+    fn stamp_authorization_code_grant_used(
+        &mut self,
+        id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<(), AuthorizationServerError> {
+        if let Some(grant) = self.store.code_grants.borrow_mut().get_mut(id) {
+            grant.last_used_at = Some(now);
+        }
+        Ok(())
+    }
+
+    fn stamp_device_grant_used(
+        &mut self,
+        id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<(), AuthorizationServerError> {
+        if let Some(grant) = self.store.device_grants.borrow_mut().get_mut(id) {
+            grant.last_used_at = Some(now);
+        }
         Ok(())
     }
 

@@ -25,7 +25,7 @@ pub(crate) const LONGEST_BROWSER_SESSION_TTL: Duration = Duration::hours(24);
 pub(crate) const LAST_SEEN_RESOLUTION: Duration = Duration::minutes(5);
 
 /// How a browser came to hold its session. The wire string, stored in the
-/// `kind` column, is the lowercased variant name.
+/// `kind` column, is the snake_case variant name: `same_device` or `paired`.
 #[derive(
     Debug,
     Clone,
@@ -39,34 +39,41 @@ pub(crate) const LAST_SEEN_RESOLUTION: Duration = Duration::minutes(5);
     FromSqlRow,
     serde::Serialize,
 )]
-#[strum(serialize_all = "lowercase")]
-#[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
 #[diesel(sql_type = diesel::sql_types::Text)]
 pub enum BrowserSessionKind {
     /// The Owner's browser, signed in on the server's own device with a
     /// same-device sign-in code.
-    Owner,
+    SameDevice,
     /// Any other browser: one that paired at `/oauth/pair`, showing a code the
     /// Owner approved.
-    Approved,
+    Paired,
 }
 
-/// One browser session. Diesel-mapped 1:1 to the `browser_sessions` table.
+/// One browser session. A session's scopes cap what any app requested in it
+/// can receive: the Owner may approve an app for more, but the code issued
+/// under the session carries only what the session also holds. Diesel-mapped
+/// 1:1 to the `browser_sessions` table.
 #[derive(Debug, Clone, PartialEq, Eq, Queryable, Selectable, Insertable)]
 #[diesel(table_name = browser_sessions)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct BrowserSession {
-    /// Primary key — the session id, the `sid` claim of every token minted
-    /// under the session.
+    /// Primary key — the session's identity, and the `sid` claim of every
+    /// authorization code, access token and refresh-token family minted under
+    /// it.
     pub sid: String,
-    /// How the browser came to hold the session.
+    /// How the browser came to hold the session: the Owner's same-device
+    /// sign-in, or a pairing the Owner approved.
     pub kind: BrowserSessionKind,
-    /// The name the browser was given at pairing; `None` for an Owner session.
+    /// The name the browser was given at pairing; `None` for a same-device session.
     pub name: Option<String>,
-    /// The session's grant.
+    /// The session's grant: the most an app requested in this browser can be
+    /// issued.
     #[diesel(serialize_as = JsonStrings, deserialize_as = JsonStrings)]
     pub scopes: Vec<String>,
-    /// When the browser signed in.
+    /// When the session started: the same-device sign-in, or the pairing
+    /// poll that claimed the Owner's approval.
     pub created_at: DateTime<Utc>,
     /// When the session stops letting the browser start things.
     pub expires_at: DateTime<Utc>,
@@ -74,19 +81,23 @@ pub struct BrowserSession {
     /// while it stands.
     pub revoked_at: Option<DateTime<Utc>>,
     /// When the session was last seen in use: its sign-in, then the server
-    /// accepting its cookie (at most once every [`LAST_SEEN_RESOLUTION`])
+    /// accepting its cookie (at most once every `LAST_SEEN_RESOLUTION`)
     /// and a refresh-token family that names it rotating.
     pub last_seen_at: DateTime<Utc>,
 }
 
 impl BrowserSession {
-    /// A fresh Owner session with a new `sid`, holding `owner_scopes`
+    /// A fresh same-device session with a new `sid`, holding `owner_scopes`
     /// and lasting `ttl` from `now`.
     #[must_use]
-    pub fn new_owner(owner_scopes: Vec<String>, ttl: Duration, now: DateTime<Utc>) -> Self {
+    pub fn new_same_device_session(
+        owner_scopes: Vec<String>,
+        ttl: Duration,
+        now: DateTime<Utc>,
+    ) -> Self {
         BrowserSession {
             sid: uuid::Uuid::new_v4().to_string(),
-            kind: BrowserSessionKind::Owner,
+            kind: BrowserSessionKind::SameDevice,
             name: None,
             scopes: owner_scopes,
             created_at: now,
@@ -96,11 +107,11 @@ impl BrowserSession {
         }
     }
 
-    /// A fresh approved session with a new `sid`, named `browser_name`,
+    /// A fresh paired session with a new `sid`, named `browser_name`,
     /// holding the `approved_scopes` the Owner granted and lasting `ttl` from
     /// `now`.
     #[must_use]
-    pub fn new_approved(
+    pub fn new_paired_session(
         browser_name: String,
         approved_scopes: Vec<String>,
         ttl: Duration,
@@ -108,7 +119,7 @@ impl BrowserSession {
     ) -> Self {
         BrowserSession {
             sid: uuid::Uuid::new_v4().to_string(),
-            kind: BrowserSessionKind::Approved,
+            kind: BrowserSessionKind::Paired,
             name: Some(browser_name),
             scopes: approved_scopes,
             created_at: now,
@@ -120,6 +131,10 @@ impl BrowserSession {
 
     /// Whether the session is live at `now`: not revoked, and `expires_at`
     /// after `now`.
+    ///
+    /// An app's request is approved into a code only while the session it
+    /// was made in is live. Otherwise it is denied, so the app hears
+    /// `access_denied` rather than earning a code no live session bounds.
     #[must_use]
     pub fn is_live(&self, now: DateTime<Utc>) -> bool {
         self.revoked_at.is_none() && self.expires_at > now
@@ -129,39 +144,61 @@ impl BrowserSession {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::capabilities::oauth::{APPROVED_SESSION_TTL, OWNER_SESSION_TTL};
+    use crate::domain::capabilities::oauth::{PAIRED_SESSION_TTL, SAME_DEVICE_SESSION_TTL};
 
+    /// A same-device session is unnamed, lasts exactly its lifetime, starts
+    /// unrevoked and seen at sign-in, and never shares a `sid` with another.
     #[test]
-    fn an_owner_session_is_unnamed_and_lasts_its_ttl() {
+    fn a_same_device_session_is_unnamed_and_lasts_its_ttl() {
         let now = Utc::now();
-        let session =
-            BrowserSession::new_owner(vec!["system/*.cruds".to_owned()], Duration::hours(8), now);
-        assert_eq!(session.kind, BrowserSessionKind::Owner);
+        let session = BrowserSession::new_same_device_session(
+            vec!["system/*.cruds".to_owned()],
+            Duration::hours(8),
+            now,
+        );
+        assert_eq!(session.kind, BrowserSessionKind::SameDevice);
         assert_eq!(session.name, None);
         assert_eq!(session.expires_at - session.created_at, Duration::hours(8));
         assert_eq!(session.revoked_at, None);
         assert_eq!(session.last_seen_at, now, "signing in is a use");
         assert_ne!(
             session.sid,
-            BrowserSession::new_owner(vec![], Duration::hours(8), now).sid,
+            BrowserSession::new_same_device_session(vec![], Duration::hours(8), now).sid,
             "every session gets its own sid"
         );
     }
 
+    /// A paired session carries the browser's name and the approved scopes,
+    /// lasts exactly its lifetime, and starts unrevoked.
     #[test]
-    fn an_approved_session_is_named_and_lasts_its_ttl() {
+    fn a_paired_session_is_named_and_lasts_its_ttl() {
         let now = Utc::now();
-        let session = BrowserSession::new_approved(
+        let session = BrowserSession::new_paired_session(
             "Firefox on Linux".to_owned(),
             vec!["wildflower/launch".to_owned()],
             Duration::hours(24),
             now,
         );
-        assert_eq!(session.kind, BrowserSessionKind::Approved);
+        assert_eq!(session.kind, BrowserSessionKind::Paired);
         assert_eq!(session.name.as_deref(), Some("Firefox on Linux"));
         assert_eq!(session.scopes, ["wildflower/launch"]);
         assert_eq!(session.expires_at - session.created_at, Duration::hours(24));
         assert_eq!(session.revoked_at, None);
+    }
+
+    /// The kind's stored and wire string is its snake_case name.
+    #[test]
+    fn the_kind_is_stored_and_sent_as_its_snake_case_name() {
+        assert_eq!(BrowserSessionKind::SameDevice.as_ref(), "same_device");
+        assert_eq!(BrowserSessionKind::Paired.as_ref(), "paired");
+        assert_eq!(
+            "same_device".parse::<BrowserSessionKind>().ok(),
+            Some(BrowserSessionKind::SameDevice)
+        );
+        assert_eq!(
+            serde_json::to_value(BrowserSessionKind::SameDevice).ok(),
+            Some(serde_json::json!("same_device"))
+        );
     }
 
     /// A session is live until it expires or is revoked, whichever comes
@@ -169,7 +206,7 @@ mod tests {
     #[test]
     fn a_session_is_live_until_it_expires_or_is_revoked() {
         let now = Utc::now();
-        let session = BrowserSession::new_owner(vec![], Duration::hours(8), now);
+        let session = BrowserSession::new_same_device_session(vec![], Duration::hours(8), now);
         assert!(session.is_live(now));
         assert!(!session.is_live(session.expires_at));
         let revoked = BrowserSession {
@@ -183,7 +220,7 @@ mod tests {
     /// revoked-`jti` purge floor and session retention rely on.
     #[test]
     fn every_session_is_within_the_longest_session() {
-        assert!(OWNER_SESSION_TTL <= LONGEST_BROWSER_SESSION_TTL);
-        assert!(APPROVED_SESSION_TTL <= LONGEST_BROWSER_SESSION_TTL);
+        assert!(SAME_DEVICE_SESSION_TTL <= LONGEST_BROWSER_SESSION_TTL);
+        assert!(PAIRED_SESSION_TTL <= LONGEST_BROWSER_SESSION_TTL);
     }
 }

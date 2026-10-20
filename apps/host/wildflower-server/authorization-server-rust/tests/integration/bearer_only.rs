@@ -1,10 +1,12 @@
-use crate::common::*;
+//! Bearer-only authentication: the authorization server's gates read
+//! `Authorization: Bearer` alone. No grant plants a session cookie, a
+//! `wf_auth` cookie authenticates nothing, and logout sets no cookies. The
+//! only cookie the server sets is the browser session cookie, from
+//! `/oauth/sign-in` and from the pairing poll, and it becomes a bearer in the
+//! host's cookie-to-bearer layer, not here. See
+//! `slices/authorization/docs/Auth Token Storage Explanation.md`.
 
-// The authorization server's gates read `Authorization: Bearer` alone: no grant
-// plants a session cookie, a `wf_auth` cookie authenticates nothing, and logout
-// sets no cookies. The one cookie it sets, the Owner's from `/oauth/sign-in`,
-// becomes a bearer in the host's cookie→bearer layer, not here. See
-// `slices/authorization/docs/Auth Token Storage Explanation.md`.
+use crate::common::*;
 
 /// A device grant returns its token in the JSON body only — no `Set-Cookie`
 /// rides the response.
@@ -60,7 +62,7 @@ async fn a_refresh_grant_sets_no_cookie() {
     );
 }
 
-/// A valid owner token presented as a `wf_auth` cookie, with no bearer header,
+/// A valid Owner token presented as a `wf_auth` cookie, with no bearer header,
 /// is unauthenticated: the cookie is not a credential.
 #[tokio::test]
 async fn a_cookie_carried_token_is_not_a_credential() {

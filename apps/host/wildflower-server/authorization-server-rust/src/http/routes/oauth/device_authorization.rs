@@ -1,6 +1,11 @@
+//! `POST /oauth/device_authorization`, the first step of the RFC 8628 device
+//! flow: a device with no good browser of its own asks for a device code to
+//! poll with and a user code for the Owner to confirm on the device page.
+
 use axum::http::{header, HeaderMap};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -18,10 +23,13 @@ use crate::live_bindings::LiveDeviceAuthorizer;
 
 /// Body of an RFC 8628 device authorization request. Client credentials are
 /// not parsed here — RFC 8628 §3.1 inherits RFC 6749 §3.2.1 client
-/// authentication, so [`resolve_client_credentials`] owns both the Basic
+/// authentication, so the [`TokenRequest`] extractor owns both the Basic
 /// header and the body `client_id`/`client_secret` fields.
 #[derive(Debug, Deserialize)]
 pub struct DeviceAuthorizationPayload {
+    /// The scopes the device asks for, space-separated (RFC 6749 §3.3).
+    /// Absent asks for none. Each must be one the client may ask for, else the
+    /// request is `invalid_scope`.
     pub scope: Option<String>,
     /// Non-standard RFC 8628 extension: a human-chosen name for the device being paired,
     /// surfaced to the approver. Absent for strict RFC clients.
@@ -31,7 +39,11 @@ pub struct DeviceAuthorizationPayload {
 /// Body returned by `/oauth/device_authorization` per RFC 8628 §3.2.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct DeviceAuthorizationResponse {
+    /// The secret the device polls `/oauth/token` with until the Owner
+    /// decides. Only the device holds it.
     pub device_code: String,
+    /// The short code the device shows its user, which the Owner confirms on
+    /// the device page before deciding.
     pub user_code: String,
     /// This server's device verification page, `{origin}/oauth/device`.
     pub verification_uri: String,
@@ -39,7 +51,11 @@ pub struct DeviceAuthorizationResponse {
     /// `{origin}/oauth/device?user_code={user_code}`. The Owner still confirms
     /// the code before the page reads the request.
     pub verification_uri_complete: String,
+    /// Seconds until the request expires; a poll after that is
+    /// `expired_token`.
     pub expires_in: i64,
+    /// Seconds the device waits between polls; polling sooner is answered
+    /// `slow_down` (RFC 8628 §3.5).
     pub interval: i64,
 }
 
@@ -54,6 +70,12 @@ impl IntoResponse for DeviceAuthorizationResponse {
 /// Issue a `(device_code, user_code)` pair for the client to poll on while the
 /// user pairs the device. `Ok` carries the §5.1 cache suppression via
 /// [`DeviceAuthorizationResponse`], `Err` via [`TokenError`].
+///
+/// The extractors run in order: the start limit first, before the body is
+/// read, since every device request is raised for the Owner whoever sends it
+/// (a refusal is the `429`); then the `User-Agent`; then [`TokenRequest`],
+/// last because it consumes the body, which checks the content type, parses
+/// the payload and authenticates the client.
 #[utoipa::path(
     post,
     tag = "OAuth 2.0",
@@ -84,7 +106,17 @@ pub(super) async fn handle_device_authorization_request(
 
 /// Parse the request, hand it to the [`LiveDeviceAuthorizer`], and frame the
 /// RFC 8628 §3.2 response with the authorizer's device verification page,
-/// surfacing every failure as a [`TokenError`].
+/// surfacing every failure as a [`TokenError`]:
+///
+/// - a scope the client may not ask for: `400 invalid_scope`, "Scope not
+///   allowed for client";
+/// - no unused user code could be generated: a logged, uncached `500`;
+/// - a store failure: a logged, uncached `500`.
+///
+/// The name the approver sees is the one the client chose, trimmed, when it
+/// isn't blank; else one guessed from the `User-Agent` when that names a
+/// browser or a system; else none, and the approval falls back to the
+/// client's name.
 fn device_authorization(
     authorizer: &LiveDeviceAuthorizer,
     user_agent: Option<&str>,
@@ -114,7 +146,12 @@ fn device_authorization(
         .map(str::to_string)
         .or_else(|| user_agent.and_then(device_name_from_user_agent));
     let device_codes = authorizer
-        .start(&authenticated_client, requested_scopes, device_name)
+        .start(
+            &authenticated_client,
+            requested_scopes,
+            device_name,
+            Utc::now(),
+        )
         .map_err(|error| match error {
             DeviceAuthorizationError::ScopeNotAllowed => TokenError::bad_request(
                 OAuthErrorCode::InvalidScope,

@@ -1,8 +1,10 @@
 //! [`StandingGrantCoverage`] — the proof behind the `/oauth/authorize` fast
 //! path: a standing authorization-code grant the Owner established earlier
-//! already covers **every** scope this request asks for, so a code may be
-//! issued with no human in the loop (RFC 6749 §4.1 permits skipping consent
-//! on a prior decision). It is only ever built by [`GrantCoverage::resolve`],
+//! already covers **every** scope this request asks for. It is the authority
+//! a code is issued under with no human in the loop (RFC 6749 §4.1 permits
+//! skipping consent on a prior decision), once the request's other
+//! conditions hold too: see [`AuthorizationCodeGrant`](crate::domain::grant::AuthorizationCodeGrant)
+//! for the browser-session and patient ones. It is only ever built by [`GrantCoverage::resolve`],
 //! which is the whole rule: it yields [`GrantCoverage::Full`] only for a request
 //! inside the client's registration, however well an old grant covers one
 //! outside it — the Owner has not yet seen *this* app/redirect/scope
@@ -11,8 +13,8 @@
 use url::Url;
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::client_registration::ClientRegistrationVerdict;
-use crate::domain::GrantStore;
+use crate::domain::client::presented_change::PresentedClientChange;
+use crate::domain::grant_store::GrantsTx;
 
 /// How far a standing grant covers a request. Only [`Full`](Self::Full) is a
 /// proof; the other two carry what the consent prompt pre-ticks.
@@ -22,7 +24,12 @@ pub(crate) enum GrantCoverage {
     Uncovered,
     /// A grant covers some of the requested scopes — the prompt pre-ticks them,
     /// the Owner decides the rest.
-    Partial { pre_approved_scopes: Vec<String> },
+    Partial {
+        /// The requested scopes the grant covers, in request order; the
+        /// parked request records them so the consent card opens with them
+        /// ticked.
+        pre_approved_scopes: Vec<String>,
+    },
     /// Every requested scope is covered: the fast path.
     Full(StandingGrantCoverage),
 }
@@ -30,9 +37,11 @@ pub(crate) enum GrantCoverage {
 impl GrantCoverage {
     /// Look up the standing grant for `(requested_client_id,
     /// requested_redirect_uri)` and compute
-    /// which of `requested_scopes` it covers. A request whose `registration`
-    /// verdict is not [`Registered`](ClientRegistrationVerdict::Registered) never
+    /// which of `requested_scopes` it covers. A request that
+    /// [would change its registration](PresentedClientChange::would_change_registration) never
     /// resolves past [`GrantCoverage::Uncovered`], whatever the grant says.
+    /// `/oauth/authorize` resolves it in the scope that parks the request, and
+    /// again when the browser goes on past the limited page.
     ///
     /// "Covers" is [`wildflowerhealthio_scopes::allowed_scope_covers`], not string equality: a
     /// standing grant is a set of permissions, so `patient/*.cruds` answers for
@@ -43,17 +52,17 @@ impl GrantCoverage {
     ///
     /// [`AuthorizationServerError::Infrastructure`] on a store failure.
     pub(crate) fn resolve(
-        store: &impl GrantStore,
-        registration_verdict: &ClientRegistrationVerdict,
+        tx: &mut impl GrantsTx,
+        presented_client_change: &PresentedClientChange,
         requested_client_id: &str,
         requested_redirect_uri: &Url,
         requested_scopes: &[String],
     ) -> Result<GrantCoverage, AuthorizationServerError> {
-        if !registration_verdict.is_registered() {
+        if presented_client_change.would_change_registration() {
             return Ok(GrantCoverage::Uncovered);
         }
         let Some(grant) =
-            store.grant_by_client_and_redirect(requested_client_id, requested_redirect_uri)?
+            tx.grant_by_client_and_redirect(requested_client_id, requested_redirect_uri)?
         else {
             return Ok(GrantCoverage::Uncovered);
         };
@@ -70,6 +79,7 @@ impl GrantCoverage {
         // means nothing was filtered out.
         if pre_approved_scopes.len() == requested_scopes.len() {
             Ok(GrantCoverage::Full(StandingGrantCoverage {
+                grant_id: grant.id,
                 covered_scopes: pre_approved_scopes,
                 patient: grant.patient,
             }))
@@ -99,11 +109,24 @@ impl GrantCoverage {
 /// one.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct StandingGrantCoverage {
+    /// The standing grant that covers the request; a code issued under this
+    /// proof stamps that grant's `last_used_at`.
+    grant_id: String,
+    /// The requested scopes, verbatim and all of them: what the request
+    /// records and the code may carry, before the browser session bounds it.
     covered_scopes: Vec<String>,
+    /// The SMART-on-FHIR patient context the grant was approved with, which
+    /// the issued code binds.
     patient: Option<String>,
 }
 
 impl StandingGrantCoverage {
+    /// The id of the standing grant that covers the request, which a code
+    /// issued under it marks used.
+    pub(crate) fn grant_id(&self) -> &str {
+        &self.grant_id
+    }
+
     /// The covered scopes — the request's, verbatim.
     pub(crate) fn covered_scopes(&self) -> &[String] {
         &self.covered_scopes
@@ -119,15 +142,20 @@ impl StandingGrantCoverage {
 mod tests {
     use super::*;
     use crate::domain::grant::AuthorizationCodeGrant;
+
     use crate::domain::test_fake::{code_grant, owned_scopes, FakeGrantStore};
 
+    /// The redirect URI every test's grant and request share.
     fn redirect() -> Url {
         Url::parse("https://example.com/cb").unwrap()
     }
 
+    /// A store holding standing code grant "g1" for "client" at
+    /// [`redirect`], with `scopes` and `patient`.
     fn store_with_grant(scopes: &[&str], patient: Option<&str>) -> FakeGrantStore {
         let store = FakeGrantStore::default();
         store
+            .tx()
             .create_authorization_code_grant(&AuthorizationCodeGrant {
                 scopes: owned_scopes(scopes),
                 patient: patient.map(str::to_owned),
@@ -144,8 +172,8 @@ mod tests {
     fn full_coverage_is_a_proof_carrying_the_requested_scopes() {
         let store = store_with_grant(&["patient/*.cruds", "openid"], Some("pat-1"));
         let coverage = GrantCoverage::resolve(
-            &store,
-            &ClientRegistrationVerdict::Registered,
+            &mut store.tx(),
+            &PresentedClientChange::NoChange,
             "client",
             &redirect(),
             &owned_scopes(&["patient/Observation.r", "openid"]),
@@ -163,8 +191,8 @@ mod tests {
     fn partial_coverage_pre_ticks_without_proving() {
         let store = store_with_grant(&["openid"], None);
         let coverage = GrantCoverage::resolve(
-            &store,
-            &ClientRegistrationVerdict::Registered,
+            &mut store.tx(),
+            &PresentedClientChange::NoChange,
             "client",
             &redirect(),
             &owned_scopes(&["patient/Observation.r", "openid"]),
@@ -182,8 +210,8 @@ mod tests {
         let store = store_with_grant(&["patient/*.cruds", "openid"], None);
         let requested = owned_scopes(&["openid"]);
         let outside = GrantCoverage::resolve(
-            &store,
-            &ClientRegistrationVerdict::New,
+            &mut store.tx(),
+            &PresentedClientChange::WouldCreate,
             "client",
             &redirect(),
             &requested,
@@ -193,8 +221,8 @@ mod tests {
         assert!(outside.pre_approved_scopes().is_empty());
 
         let no_grant = GrantCoverage::resolve(
-            &store,
-            &ClientRegistrationVerdict::Registered,
+            &mut store.tx(),
+            &PresentedClientChange::NoChange,
             "stranger",
             &redirect(),
             &requested,

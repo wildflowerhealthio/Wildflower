@@ -1,7 +1,7 @@
 //! [`ServerUnit`]: one server, as a unit `UnitRunner` runs.
 
 use tokio::sync::watch;
-use wildflowerhealthio_authorization_server::NewestPendingConsent;
+use wildflowerhealthio_authorization_server::OwnerPrompt;
 use wildflowerhealthio_tunnel::TunnelState;
 use wildflowerhealthio_unit_runner::{RunContext, Unit};
 use wildflowerhealthio_wildflower_server::{
@@ -108,7 +108,7 @@ struct DetailChannels {
     /// The run's certificate's state.
     certificate_rx: watch::Receiver<Option<CertificateState>>,
     /// The run's authorization server's newest pending consent.
-    pending_consent_rx: watch::Receiver<Option<NewestPendingConsent>>,
+    pending_consent_rx: watch::Receiver<Option<OwnerPrompt>>,
     health_open: bool,
     tunnel_open: bool,
     certificate_open: bool,
@@ -119,7 +119,7 @@ impl DetailChannels {
         server_health_rx: watch::Receiver<Option<ServerHealth>>,
         tunnel_state_rx: watch::Receiver<Option<TunnelState>>,
         certificate_rx: watch::Receiver<Option<CertificateState>>,
-        pending_consent_rx: watch::Receiver<Option<NewestPendingConsent>>,
+        pending_consent_rx: watch::Receiver<Option<OwnerPrompt>>,
     ) -> Self {
         Self {
             server_health_rx,

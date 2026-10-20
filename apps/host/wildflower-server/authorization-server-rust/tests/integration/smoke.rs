@@ -1,5 +1,11 @@
+//! Smoke tests: the JWKS publishes the seeded key's public half, the layerable
+//! bearer gate exempts exactly the paths it is given, and the `/authorization`
+//! surface answers `401` without a bearer and the Owner's data with one.
+
 use crate::common::*;
 
+/// The JWKS publishes the seeded key's public half, for verifying only, and
+/// no private component.
 #[tokio::test]
 async fn jwks_endpoint_returns_seeded_key() {
     let (g, _owner_token, _db) = spin_up();
@@ -30,6 +36,8 @@ async fn jwks_endpoint_returns_seeded_key() {
     );
 }
 
+/// The bearer gate serves an exempt path without a token, and gates a path
+/// that only shares its prefix and every other path.
 #[tokio::test]
 async fn bearer_gate_exempts_listed_paths_but_gates_the_rest() {
     use axum::routing::get;
@@ -68,6 +76,7 @@ async fn bearer_gate_exempts_listed_paths_but_gates_the_rest() {
     assert_eq!(status("/Patient").await, StatusCode::UNAUTHORIZED);
 }
 
+/// Listing grants without a bearer is `401`.
 #[tokio::test]
 async fn access_grants_without_auth_returns_401() {
     let (g, _owner_token, _db) = spin_up();
@@ -76,6 +85,7 @@ async fn access_grants_without_auth_returns_401() {
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 }
 
+/// The Owner's token lists the grants: none, on a fresh server.
 #[tokio::test]
 async fn access_grants_with_owner_token_returns_empty_list() {
     let (g, owner_token, _db) = spin_up();
@@ -143,6 +153,7 @@ async fn a_token_not_naming_this_server_as_iss_and_aud_is_rejected() {
     }
 }
 
+/// Reading a grant id that names no grant is `404 GrantNotFound`.
 #[tokio::test]
 async fn get_unknown_grant_returns_404() {
     let (g, owner_token, _db) = spin_up();

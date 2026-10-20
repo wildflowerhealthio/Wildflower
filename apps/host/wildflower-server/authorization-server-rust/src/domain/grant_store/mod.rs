@@ -1,41 +1,76 @@
-//! The authorization server persistence **port**, split into two pure traits the domain
-//! depends on:
+//! The authorization server's persistence **port**.
 //!
-//! - [`GrantTx`] is the primitive contract — every single-statement CRUD
-//!   operation the domain needs, over the authorization server's domain types, taking
-//!   `&mut self` so a batch of them can run against one connection. It signals
-//!   absence/conflict through return types (`Option` / `bool`) rather than
-//!   semantic errors, raising only the opaque
-//!   [`Infrastructure`](AuthorizationServerError::Infrastructure) failure. The semantic
-//!   outcomes (the various `*NotFound`) are decided one layer up, in
-//!   `domain::capabilities`.
-//! - [`GrantStore`] is the **transaction seam**: it hands the domain a
-//!   [`GrantTx`] scoped to one connection, either in autocommit
-//!   ([`with_connection`](GrantStore::with_connection)) or wrapped in a
-//!   [`transaction`](GrantStore::transaction) /
-//!   [`immediate_transaction`](GrantStore::immediate_transaction). A
-//!   multi-statement operation that must be atomic (a grant upsert's
-//!   read-merge-write, a token rotation's consume-then-decide, a revoke's
-//!   delete-both-then-expire) is composed in `domain::capabilities` from
-//!   `GrantTx` primitives inside one of these transactions — so the logic
-//!   lives in the pure domain, unit-tested against the in-memory
-//!   `FakeGrantStore`, and the `SQLite` adapter carries only the primitives
-//!   plus the three transaction runners.
+//! - [`GrantStore`] is the seam a capability opens its one scope through: a
+//!   [`read`](GrantStore::read) scope (autocommit) for an operation that only
+//!   reads, a [`write`](GrantStore::write) scope (`BEGIN IMMEDIATE`) for one
+//!   that writes.
+//! - [`GrantTx`] is what a scope hands out: every primitive the domain needs
+//!   (one statement, or a few that land together in the scope), one trait per
+//!   table it touches ([`ClientsTx`], [`SigningKeysTx`],
+//!   [`AuthorizationRequestsTx`], [`AuthorizationCodesTx`],
+//!   [`LaunchContextsTx`], [`BrowserSessionsTx`], [`RefreshTokensTx`],
+//!   [`GrantsTx`]), bundled. A primitive reports absence and conflict through
+//!   its return type (`Option`, `bool`) and fails only with the opaque
+//!   [`Infrastructure`](crate::domain::authorization_server_error::AuthorizationServerError::Infrastructure)
+//!   error; what an outcome means is decided in `domain::capabilities`.
 //!
-//! Every read/simple-write the routes call standalone is still available
-//! directly on [`GrantStore`] as a **default** method that runs the
-//! primitive through [`with_connection`](GrantStore::with_connection), so
-//! callers that don't compose keep calling `store.client_by_id(..)` unchanged.
+//! A capability method reads as: open the scope, run the flow inside it to an
+//! outcome value, then act on the outcome outside it. What acts outside is a
+//! side effect: republishing the Owner prompt, and writing to another store
+//! (the revocation store's epochs). A side effect inside the scope would run
+//! before the commit: a republish reads the store on another pooled connection,
+//! which can't see this scope's uncommitted writes and would read the rows as
+//! they stood before it. Signing a token is not a side effect — it is pure
+//! computation over the key the scope loaded — so it runs inside the scope, and
+//! a signing failure rolls the scope back.
 //!
-//! The `SQLite` adapter lives in [`crate::db`] as `SqliteGrantStore` (its
-//! `SqliteGrantTx` implements [`GrantTx`]); the in-memory
-//! `FakeGrantStore` in `domain::capabilities` substitutes for it in the
-//! semantic-mapping unit tests. Mirrors `apps-rust`'s `AppsStore`, scaled up to
-//! the authorization server's six persistence concerns — plus the transaction seam that
-//! simpler store doesn't need.
+//! The `SQLite` adapter is `crate::db`'s `SqliteGrantStore`, which implements
+//! each concern trait in that concern's `db/` file; the in-memory
+//! `FakeGrantStore` stands in for it in the domain's unit tests.
 
+mod authorization_codes;
+mod authorization_requests;
+mod browser_sessions;
+mod clients;
+mod grants;
+mod launch_contexts;
+mod refresh_tokens;
+mod signing_keys;
 mod store;
-mod tx;
 
+pub use authorization_codes::AuthorizationCodesTx;
+pub use authorization_requests::AuthorizationRequestsTx;
+pub use browser_sessions::BrowserSessionsTx;
+pub use clients::ClientsTx;
+pub use grants::GrantsTx;
+pub use launch_contexts::LaunchContextsTx;
+pub use refresh_tokens::RefreshTokensTx;
+pub use signing_keys::SigningKeysTx;
 pub use store::GrantStore;
-pub use tx::GrantTx;
+
+/// Every per-table primitive, on one connection-scoped handle: what a
+/// [`GrantStore`] scope hands its closure. Implemented for any type that
+/// implements every concern trait.
+pub trait GrantTx:
+    ClientsTx
+    + SigningKeysTx
+    + AuthorizationRequestsTx
+    + AuthorizationCodesTx
+    + LaunchContextsTx
+    + BrowserSessionsTx
+    + RefreshTokensTx
+    + GrantsTx
+{
+}
+
+impl<T> GrantTx for T where
+    T: ClientsTx
+        + SigningKeysTx
+        + AuthorizationRequestsTx
+        + AuthorizationCodesTx
+        + LaunchContextsTx
+        + BrowserSessionsTx
+        + RefreshTokensTx
+        + GrantsTx
+{
+}

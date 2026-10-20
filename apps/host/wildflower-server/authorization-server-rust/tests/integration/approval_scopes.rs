@@ -1,19 +1,35 @@
-//! The approval scopes (#1232): an approved browser approves a code-flow or
-//! device-flow request only when it can also create what the approval creates,
-//! `wildflower/Grant.c` for the standing grant, plus both `wildflower/Client.c`
-//! and `wildflower/Client.u` for the registration of a client trusted on first
-//! use, and, for a code-flow request, holds the resource scopes it asks for. A
-//! refused approval is a `403 InsufficientScope` naming what it lacks, and the
-//! request stays pending for the Owner. The consent read says the same in
-//! `missingApprovalScopes`, `/oauth/authorize` sends the browser to the consent
-//! card only when it lacks none, and the Owner's scopes cover every one.
+//! The approval scopes: who may approve a request besides the Owner.
+//!
+//! The Owner can approve anything. A paired browser, whose browser session
+//! holds less than the Owner's, may approve a code-flow or device-flow request
+//! too, but only if it could create everything the approval creates. Those
+//! are the request's approval scopes:
+//!
+//! - `wildflower/AuthorizationRequest.u`, because every approval decides a
+//!   request.
+//! - `wildflower/Grant.c`, because a code or device approval records a
+//!   standing grant.
+//! - Both `wildflower/Client.c` and `wildflower/Client.u` for a code approval
+//!   for a client trusted on first use, because it creates or widens the
+//!   client's registration. It takes both whatever the row looks like when the
+//!   approval lands, so an approval never turns on whether the row exists yet.
+//! - The resource scopes a code-flow request asks for, because the approval
+//!   approves the request as asked and the approver must hold what it passes
+//!   on.
+//!
+//! A refused approval is a `403 InsufficientScope` naming what it lacks, and
+//! the request stays pending for the Owner. The same list shows in three
+//! places, from one function, so they never disagree: the approve call refuses
+//! on it, the consent read reports it as `missingApprovalScopes`, and
+//! `/oauth/authorize` sends the browser to the consent card only when it lacks
+//! none, and to the wait page otherwise. The Owner's scopes cover every one.
 
 use crate::common::*;
 
 /// The scopes the test client asks for.
 const REQUESTED_SCOPES: &str = "patient%2FObservation.rs%20openid";
 
-/// The scopes an approved browser holding every approval scope of the test
+/// The scopes a paired browser holding every approval scope of the test
 /// client's request holds: it reads and decides requests, creates grants,
 /// creates and updates clients, and holds the resource scope the client asks
 /// for.
@@ -28,14 +44,13 @@ const APPROVER_SCOPES: &[&str] = &[
 
 /// An approval of what [`REQUESTED_SCOPES`] asks, acknowledging any
 /// registration warning.
-const APPROVE_REQUESTED: &str =
-    r#"{"approvedScopes":["patient/Observation.rs","openid"],"acknowledgedRegistration":true}"#;
+const APPROVE_REQUESTED: &str = r#"{"approvedScopes":["patient/Observation.rs","openid"],"acknowledgedRegistrationChange":true}"#;
 
 /// The token of a signed-in browser whose session holds `scopes` rather than
-/// the Owner's: an approved browser, as far as the gates can tell.
+/// the Owner's: a paired browser, as far as the gates can tell.
 async fn approved_browser_token(g: &AuthorizationServer, db: &TestDb, scopes: &[&str]) -> String {
-    let owner_session_token = signed_in_owner_session_token(g).await;
-    let sid = decode_jwt_payload(&owner_session_token)["sid"]
+    let same_device_session_token = signed_in_same_device_session_token(g).await;
+    let sid = decode_jwt_payload(&same_device_session_token)["sid"]
         .as_str()
         .expect("a browser session's token names its sid")
         .to_owned();
@@ -78,6 +93,8 @@ async fn assert_refused_for_lacking(res: axum::response::Response, missing_scope
     assert_eq!(body["missingScopes"], serde_json::json!(missing_scopes));
 }
 
+/// A paired browser holding every approval scope approves like the Owner: the
+/// consent read lacks nothing, and the approval lands.
 #[tokio::test]
 async fn an_approved_browser_approves_a_registered_app_within_its_own_scopes() {
     let (g, _owner_token, db) = spin_up();
@@ -98,7 +115,8 @@ async fn an_approved_browser_approves_a_registered_app_within_its_own_scopes() {
 }
 
 /// Registering a new app takes both client scopes: `wildflower/Client.c`
-/// alone isn't enough.
+/// alone is refused, and the refused approval registers nothing. A browser
+/// holding both then approves the same request.
 #[tokio::test]
 async fn an_approved_browser_without_client_update_cannot_register_a_new_app() {
     let (g, _owner_token, db) = spin_up();
@@ -117,7 +135,7 @@ async fn an_approved_browser_without_client_update_cannot_register_a_new_app() {
     assert_eq!(request_status(&g, &db, &request_id).await, "pending");
     assert!(
         store_handle(&db)
-            .client_by_id("test-app")
+            .read(|tx| tx.client_by_id("test-app"))
             .expect("read")
             .is_none(),
         "the refused approval registered nothing"
@@ -168,6 +186,9 @@ async fn an_approved_browser_without_client_create_cannot_widen_an_app() {
     assert_eq!(res.status(), StatusCode::OK);
 }
 
+/// No `wildflower/Grant.c`, no code approval: approving an app's request
+/// records a standing grant, so a browser that can't create grants is refused,
+/// and the request stays pending.
 #[tokio::test]
 async fn an_approved_browser_without_grant_create_cannot_approve_a_code_request() {
     let (g, _owner_token, db) = spin_up();
@@ -191,6 +212,9 @@ async fn an_approved_browser_without_grant_create_cannot_approve_a_code_request(
     assert_eq!(request_status(&g, &db, &request_id).await, "pending");
 }
 
+/// The same holds for a device: a browser that can read and decide requests,
+/// but not create grants, is refused a device approval, because it records a
+/// standing device grant. The request stays pending.
 #[tokio::test]
 async fn an_approved_browser_without_grant_create_cannot_approve_a_device_request() {
     let (g, _owner_token, db) = spin_up();
@@ -227,28 +251,28 @@ async fn an_approved_browser_without_grant_create_cannot_approve_a_device_reques
     assert_refused_for_lacking(res, &["wildflower/Grant.c"]).await;
     assert_eq!(
         store_handle(&db)
-            .authorization_request_by_id("dev-1")
+            .read(|tx| tx.authorization_request_by_id("dev-1"))
             .expect("read")
             .expect("the request")
-            .status,
+            .status(),
         RequestStatus::Pending,
     );
 }
 
-/// The Owner's scopes cover every approval scope, so an Owner session lacks
-/// none and registers a new app as before.
+/// The Owner's scopes cover every approval scope, so a same-device session lacks
+/// none and registers a new app on approval.
 #[tokio::test]
-async fn an_owner_session_lacks_no_approval_scope() {
+async fn a_same_device_session_lacks_no_approval_scope() {
     let (g, _owner_token, db) = spin_up();
-    let owner_session_token = signed_in_owner_session_token(&g).await;
+    let same_device_session_token = signed_in_same_device_session_token(&g).await;
     // `test-app` is registered nowhere: the request is `new`.
     let request_id = parked_request(&g, &db).await;
 
-    let consent = get_oauth_consent(&g, &owner_session_token, &request_id).await;
+    let consent = get_oauth_consent(&g, &same_device_session_token, &request_id).await;
     assert_eq!(consent["missingApprovalScopes"], serde_json::json!([]));
     let res = approve_oauth_consent(
         &g,
-        &owner_session_token,
+        &same_device_session_token,
         &request_id,
         APPROVE_REQUESTED.to_owned(),
     )
@@ -327,8 +351,8 @@ async fn a_browser_session_without_client_update_starting_a_new_app_s_request_wa
     let location = location_of(&authorize_with(without_client_update).await);
     assert!(location.ends_with("/wait"), "{location}");
     assert!(matches!(
-        newest_pending_consent(&db),
-        Some(NewestPendingConsent::OAuth {
+        owner_prompt(&db),
+        Some(OwnerPrompt::AuthorizationCode {
             decidable_in_requesting_browser: false,
             ..
         })
@@ -338,8 +362,8 @@ async fn a_browser_session_without_client_update_starting_a_new_app_s_request_wa
     let location = location_of(&authorize_with(with_client_scopes).await);
     assert!(location.ends_with("/consent"), "{location}");
     assert!(matches!(
-        newest_pending_consent(&db),
-        Some(NewestPendingConsent::OAuth {
+        owner_prompt(&db),
+        Some(OwnerPrompt::AuthorizationCode {
             decidable_in_requesting_browser: true,
             ..
         })
@@ -370,14 +394,14 @@ async fn a_browser_session_lacking_a_requested_resource_scope_waits_for_the_owne
     )
     .await;
     let request_id = limited_request_id(&res);
-    assert_eq!(newest_pending_consent(&db), None);
+    assert_eq!(owner_prompt(&db), None);
 
     let location =
         continue_past_session_shortfall(&g.router, &without_resource_scope, &request_id).await;
     assert_eq!(location, format!("/oauth/authorize/{request_id}/wait"));
     assert!(matches!(
-        newest_pending_consent(&db),
-        Some(NewestPendingConsent::OAuth {
+        owner_prompt(&db),
+        Some(OwnerPrompt::AuthorizationCode {
             decidable_in_requesting_browser: false,
             ..
         })
@@ -437,8 +461,8 @@ async fn asking_the_owner_raises_a_request_decidable_in_the_requesting_browser()
         .trim_end_matches("/consent")
         .to_owned();
     assert!(matches!(
-        newest_pending_consent(&db),
-        Some(NewestPendingConsent::OAuth {
+        owner_prompt(&db),
+        Some(OwnerPrompt::AuthorizationCode {
             decidable_in_requesting_browser: true,
             ..
         })
@@ -451,8 +475,8 @@ async fn asking_the_owner_raises_a_request_decidable_in_the_requesting_browser()
         StatusCode::NO_CONTENT
     );
     assert!(matches!(
-        newest_pending_consent(&db),
-        Some(NewestPendingConsent::OAuth {
+        owner_prompt(&db),
+        Some(OwnerPrompt::AuthorizationCode {
             decidable_in_requesting_browser: false,
             ..
         })

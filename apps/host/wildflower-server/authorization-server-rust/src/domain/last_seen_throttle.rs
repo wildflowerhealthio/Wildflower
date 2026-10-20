@@ -15,6 +15,8 @@ use crate::domain::browser_session::LAST_SEEN_RESOLUTION;
 /// When each recently used browser session's cookie use was last let through,
 /// by `sid`.
 pub(crate) struct LastSeenThrottle {
+    /// When each session's use was last let through to the update, keyed by
+    /// `sid`; only the sessions let through within the last window.
     admitted_at_by_sid: Mutex<HashMap<String, DateTime<Utc>>>,
 }
 

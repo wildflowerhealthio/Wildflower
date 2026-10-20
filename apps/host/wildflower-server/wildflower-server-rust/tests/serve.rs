@@ -46,7 +46,10 @@ use tokio_rustls::client::TlsStream;
 use tokio_rustls::TlsConnector;
 use tokio_util::sync::CancellationToken;
 use url::Url;
-use wildflowerhealthio_authorization_server::domain::token::{mint_access_token, NewJwtArgs};
+use wildflowerhealthio_authorization_server::domain::access_token::{
+    mint_access_token, NewAccessTokenArgs,
+};
+use wildflowerhealthio_authorization_server::domain::grant_store::SigningKeysTx as _;
 use wildflowerhealthio_authorization_server::{GrantStore, SqliteGrantStore};
 use wildflowerhealthio_request_log::domain::request_log::RequestLogFilter;
 use wildflowerhealthio_request_log::domain::RequestLogStore;
@@ -102,8 +105,6 @@ fn server_config(server_dir: PathBuf) -> WildflowerServerConfig {
             .expect("authorization URL"),
         host_app_client_scopes:
             wildflowerhealthio_authorization_server::default_host_app_client_scopes(),
-        wildflower_host_app_client_id:
-            wildflowerhealthio_authorization_server::WILDFLOWER_HOST_APP_CLIENT_ID.to_owned(),
         // A relay nothing listens at: the tunnel dials and retries in the
         // background, which the server's lifecycle doesn't wait on, and the
         // domain below never answers.
@@ -663,12 +664,12 @@ fn client_token(server_dir: &Path, server_origin: &str, scopes: &[String]) -> St
         .expect("open the server's database");
     let signing_key = SqliteGrantStore::new(pool)
         .expect("grant store")
-        .active_signing_key()
+        .read(|tx| tx.active_signing_key())
         .expect("signing-key query")
         .expect("an active signing key");
     mint_access_token(
         &signing_key,
-        &NewJwtArgs {
+        &NewAccessTokenArgs {
             client_id: "request-log-reader",
             scopes,
             ttl: chrono::Duration::minutes(5),
@@ -1310,7 +1311,7 @@ async fn the_fhir_ui_sends_its_sign_in_through_the_authorization_server() {
             &serde_json::json!({
                 "approvedScopes": ["user/*.cruds"],
                 "patient": null,
-                "acknowledgedRegistration": true,
+                "acknowledgedRegistrationChange": true,
             }),
         ))
         .await

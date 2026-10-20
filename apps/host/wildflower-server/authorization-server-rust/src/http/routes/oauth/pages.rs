@@ -1,8 +1,10 @@
 //! What the authorization server's browser pages share: the
 //! [wait page](super::wait_page) and the [authorization
-//! pages](super::authorization_pages) (the consent card). Each is served on the
-//! server's origin, under the same security headers, and is reached at a path beside `/oauth/authorize` that
-//! names the pending request.
+//! pages](super::authorization_pages) (the consent card, the limited page, the
+//! device page and the pairing page). Each is served on the server's origin,
+//! under the same security headers. The pages for one pending request (the
+//! wait page, the consent card, the limited page) are reached at a path beside
+//! `/oauth/authorize` that names the request.
 
 use axum::http::header::{self, HeaderName};
 use axum::http::HeaderValue;
@@ -75,6 +77,8 @@ mod tests {
 
     use super::request_page_location;
 
+    /// Resolved against an authorize URL with a query, a request page's
+    /// location lands at `/oauth/authorize/{id}/{page}`.
     #[test]
     fn a_request_page_resolves_beside_the_authorize_endpoint() {
         let authorize = Url::parse("https://ruth.wildflowerhealth.example/oauth/authorize?x=1")
@@ -90,6 +94,8 @@ mod tests {
         }
     }
 
+    /// A slash, a space and a question mark in the id are percent-encoded, so
+    /// the id stays one path segment.
     #[test]
     fn a_request_page_location_keeps_the_id_one_segment() {
         assert_eq!(

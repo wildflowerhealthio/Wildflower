@@ -1,3 +1,10 @@
+//! Confidential-client authentication at the token and device-authorization
+//! endpoints: a client proves itself with `client_secret_basic` (the
+//! `Authorization: Basic` header) or `client_secret_post` (the form body), but
+//! never both in one request (RFC 6749 §2.3). A failed header attempt is a
+//! `401` with a `WWW-Authenticate: Basic` challenge; a failed body attempt is
+//! a `401` without one.
+
 use crate::common::*;
 
 /// Happy path for `client_secret_basic`: credentials only in the header, the

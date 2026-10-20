@@ -1,9 +1,16 @@
+//! The OAuth endpoints' front-door rules: what `/oauth/authorize` parks, what
+//! it renders locally and what it redirects back to the client (RFC 6749
+//! §4.1.2.1: only to a redirect it trusts), how a parked request reaches and
+//! leaves the Owner's prompt, the SMART App Launch `launch` and `aud`
+//! parameters, and the request validation of `/oauth/device_authorization`
+//! and `/oauth/token`.
+
 use crate::common::*;
 
-/// Trust on first use: a `client_id` this authorization server has never seen is no longer
-/// rejected at the door. Its request is parked like any other and the browser is
-/// sent to the Owner's prompt — and **nothing** is written to the `clients`
-/// table, so a request nobody approves leaves no trace of the app.
+/// Trust on first use: a `client_id` this authorization server has never seen
+/// isn't rejected at the door. Its request is parked like any other and the
+/// browser is sent to wait for the Owner, and **nothing** is written to the
+/// `clients` table, so a request nobody approves leaves no trace of the app.
 #[tokio::test]
 async fn authorize_unknown_client_parks_a_pending_request() {
     let (g, _owner_token, db) = spin_up();
@@ -20,7 +27,7 @@ async fn authorize_unknown_client_parks_a_pending_request() {
     assert_eq!(body_json(res.into_body()).await["status"], "pending");
     assert!(
         store_handle(&db)
-            .client_by_id("ghost")
+            .read(|tx| tx.client_by_id("ghost"))
             .expect("client query")
             .is_none(),
         "/authorize must not register an unknown client",
@@ -90,24 +97,28 @@ async fn authorize_unregistered_redirect_parks_and_keeps_the_redirect_untrusted(
     );
 }
 
-/// A disabled client is rejected on every endpoint, verdict or no verdict — the
-/// one client-level rejection trust-on-first-use does not relax.
+/// A disabled client, even one registered by trust on first use, is rejected at
+/// `/oauth/authorize` with the local "Disabled client" page — the one
+/// client-level rejection trust-on-first-use does not relax.
 #[tokio::test]
 async fn authorize_disabled_client_is_still_rejected() {
     let (g, _owner_token, db) = spin_up();
     // Inserted disabled: `upsert_client` deliberately preserves `disabled_at`,
     // so the flag has to be set on the row's first write.
     store_handle(&db)
-        .upsert_client(&Client {
-            client_id: "test-app".to_string(),
-            name: "Disabled Test Client".to_string(),
-            kind: ClientKind::Public,
-            redirect_uris: vec![Url::parse("https://app.example/cb").unwrap()],
-            allowed_scopes: vec!["read".to_string()],
-            allowed_grant_types: AllowedGrantType::ALL.to_vec(),
-            secret_hash: None,
-            registered_at: Utc::now(),
-            disabled_at: Some(Utc::now()),
+        .write(|tx| {
+            tx.upsert_client(&Client {
+                client_id: "test-app".to_string(),
+                name: "Disabled Test Client".to_string(),
+                kind: ClientKind::Public,
+                redirect_uris: vec![Url::parse("https://app.example/cb").unwrap()],
+                allowed_scopes: vec!["read".to_string()],
+                allowed_grant_types: AllowedGrantType::ALL.to_vec(),
+                secret_hash: None,
+                registered_at: Utc::now(),
+                disabled_at: Some(Utc::now()),
+                registration_source: RegistrationSource::TrustedOnFirstUse,
+            })
         })
         .expect("register a disabled client");
 
@@ -122,16 +133,14 @@ async fn authorize_disabled_client_is_still_rejected() {
     assert!(body.contains("Disabled client"), "body = {body}");
 }
 
+/// RFC 6749 §4.1.2.1: the client and its redirect are validated before any
+/// redirectable error (scope, PKCE method), since those failures are 302'd back
+/// to the validated redirect. The host app's client has a fixed registration
+/// with no allowed redirects, so even with an unsupported
+/// `code_challenge_method=plain` the request fails at the redirect check and
+/// renders the local "Redirect URI not allowed" page rather than redirecting.
 #[tokio::test]
 async fn authorize_validates_redirect_uri_before_pkce_method() {
-    // RFC 6749 §4.1.2.1: client_id/redirect_uri must be validated *before*
-    // any redirectable error (scope/PKCE-method), since those failures get
-    // 302'd back to the validated redirect_uri. The host app's client has a
-    // fixed registration with an empty redirect_uri allowlist, so even with an
-    // unsupported `code_challenge_method=plain` the request fails at
-    // redirect-uri validation and renders the local "Redirect URI not allowed"
-    // page rather than redirecting. (The redirect-path tests below seed a
-    // client with an allowlisted redirect_uri via `seed_client_with_redirect`.)
     let (g, _owner_token, db) = spin_up();
     let query = format!(
         "response_type=code&code_challenge_method=plain&client_id={WILDFLOWER_HOST_APP_CLIENT_ID}&\
@@ -148,11 +157,11 @@ async fn authorize_validates_redirect_uri_before_pkce_method() {
     assert!(body.contains("Redirect URI not allowed"), "body = {body}");
 }
 
+/// `unsupported_response_type` is a redirectable error (RFC 6749 §4.1.2.1):
+/// once the client and its redirect validate, the failure goes back to the
+/// client as `error` and `state` query parameters, not a local page.
 #[tokio::test]
 async fn authorize_unsupported_response_type_redirects_back() {
-    // `unsupported_response_type` is a *redirectable* error (RFC 6749
-    // §4.1.2.1): once client_id + redirect_uri validate, the failure goes
-    // back to the client as `error` + `state` query params, not a local page.
     let (g, _owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     let query = "response_type=token&code_challenge_method=S256&client_id=test-app&scope=read&\
@@ -172,6 +181,8 @@ async fn authorize_unsupported_response_type_redirects_back() {
     );
 }
 
+/// Once the client and its redirect validate, an unsupported PKCE method
+/// (`plain`) goes back to the client as `invalid_request` with its `state`.
 #[tokio::test]
 async fn authorize_unsupported_pkce_method_redirects_invalid_request() {
     let (g, _owner_token, db) = spin_up();
@@ -194,7 +205,7 @@ async fn authorize_unsupported_pkce_method_redirects_invalid_request() {
     );
 }
 
-/// A scope outside a client's registration (one not fixed) no longer fails the
+/// A scope outside a client's registration (one not fixed) doesn't fail the
 /// request: it is carried to the Owner's prompt as a `changed` registration
 /// naming exactly the scopes that stepped outside. The registered redirect stays
 /// trusted, so a *different* failure on the same request still 302s back (see
@@ -224,18 +235,13 @@ async fn authorize_disallowed_scope_parks_a_pending_request() {
 
 /// A parked `/authorize` request must reach the host, not only the wait page.
 /// The wait page tells its viewer to "approve this request on your device"; if
-/// the request is never published as the newest pending consent, the host
-/// never notifies it and the flow hangs until the 5-minute TTL — the bug this
-/// covers.
+/// the request is never published as the Owner prompt, the host
+/// never notifies it and the flow hangs until the 5-minute TTL.
 #[tokio::test]
-async fn authorize_publishes_the_parked_request_as_the_newest_pending_consent() {
+async fn authorize_publishes_the_parked_request_as_the_owner_prompt() {
     let (g, _owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
-    assert_eq!(
-        newest_pending_consent(&db),
-        None,
-        "no request has been parked yet"
-    );
+    assert_eq!(owner_prompt(&db), None, "no request has been parked yet");
 
     let res = get_authorize(
         &g.router,
@@ -246,8 +252,8 @@ async fn authorize_publishes_the_parked_request_as_the_newest_pending_consent() 
     let request_id = parked_request_id(&res);
 
     assert_eq!(
-        newest_pending_consent(&db),
-        Some(NewestPendingConsent::OAuth {
+        owner_prompt(&db),
+        Some(OwnerPrompt::AuthorizationCode {
             id: request_id.clone(),
             client_name: "Integration Test Client".to_owned(),
             decidable_in_requesting_browser: false,
@@ -257,10 +263,10 @@ async fn authorize_publishes_the_parked_request_as_the_newest_pending_consent() 
 }
 
 /// Deciding a parked request clears it from the host: the Owner answered it,
-/// so it must not linger as the newest pending consent. Covers approve
+/// so it must not linger as the Owner prompt. Covers approve
 /// and deny separately — they take different paths to the same republish.
 #[tokio::test]
-async fn deciding_an_oauth_consent_clears_the_newest_pending_consent() {
+async fn deciding_an_oauth_consent_clears_the_owner_prompt() {
     for decision in ["approve", "deny"] {
         let (g, owner_token, db) = spin_up();
         seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
@@ -272,7 +278,7 @@ async fn deciding_an_oauth_consent_clears_the_newest_pending_consent() {
         .await;
         let request_id = parked_request_id(&res);
         assert!(
-            newest_pending_consent(&db).is_some(),
+            owner_prompt(&db).is_some(),
             "{decision}: the request should be pending before it is decided",
         );
 
@@ -286,23 +292,23 @@ async fn deciding_an_oauth_consent_clears_the_newest_pending_consent() {
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {owner_token}"))
                 .header("content-type", "application/json"),
-                Body::from(r#"{"approvedScopes":["read"],"acknowledgedRegistration":true}"#),
+                Body::from(r#"{"approvedScopes":["read"],"acknowledgedRegistrationChange":true}"#),
             ))
             .await
             .expect("oneshot");
         assert_eq!(res.status(), StatusCode::OK, "{decision} should succeed");
 
         assert_eq!(
-            newest_pending_consent(&db),
+            owner_prompt(&db),
             None,
             "{decision}: the request must clear once it is decided",
         );
     }
 }
 
-/// The host's [`PendingConsentWatcher`] sees a request settle even when it
+/// The host's `PendingConsentWatcher` sees a request settle even when it
 /// isn't the newest: denying an older request while a newer one waits leaves
-/// the newest pending consent unchanged, so nothing reaches the host through
+/// the Owner prompt unchanged, so nothing reaches the host through
 /// that.
 #[tokio::test]
 async fn the_pending_consent_watcher_sees_an_older_request_decided_under_a_newer_one() {
@@ -325,7 +331,7 @@ async fn the_pending_consent_watcher_sees_an_older_request_decided_under_a_newer
         .await,
     );
     let watcher = g.pending_consent_watcher.clone();
-    let older_key = ConsentKey::OAuth {
+    let older_key = ConsentKey::AuthorizationCode {
         id: older_id.clone(),
     };
     let older_settled = tokio::spawn(async move { watcher.until_settled(older_key).await });
@@ -343,7 +349,7 @@ async fn the_pending_consent_watcher_sees_an_older_request_decided_under_a_newer
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {owner_token}"))
                 .header("content-type", "application/json"),
-            Body::from(r#"{"approvedScopes":["read"],"acknowledgedRegistration":true}"#),
+            Body::from(r#"{"approvedScopes":["read"],"acknowledgedRegistrationChange":true}"#),
         ))
         .await
         .expect("oneshot");
@@ -355,8 +361,8 @@ async fn the_pending_consent_watcher_sees_an_older_request_decided_under_a_newer
         .expect("the watcher's task")
         .expect("the watcher's reads");
     assert_eq!(
-        newest_pending_consent(&db),
-        Some(NewestPendingConsent::OAuth {
+        owner_prompt(&db),
+        Some(OwnerPrompt::AuthorizationCode {
             id: newer_id,
             client_name: "Integration Test Client".to_owned(),
             decidable_in_requesting_browser: false,
@@ -370,7 +376,7 @@ async fn the_pending_consent_watcher_sees_an_older_request_decided_under_a_newer
 /// `pending`. A spurious notification here would ask the Owner to re-approve something
 /// they already consented to, on a request that is already `approved`.
 #[tokio::test]
-async fn a_fast_pathed_authorize_never_becomes_the_newest_pending_consent() {
+async fn a_fast_pathed_authorize_never_becomes_the_owner_prompt() {
     let (g, owner_token, db) = spin_up();
     seed_test_client(&db);
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
@@ -381,11 +387,11 @@ async fn a_fast_pathed_authorize_never_becomes_the_newest_pending_consent() {
         &db.paired_browser_token,
         "test-app",
         "read",
-        r#"{"approvedScopes":["read"],"acknowledgedRegistration":true}"#,
+        r#"{"approvedScopes":["read"],"acknowledgedRegistrationChange":true}"#,
     )
     .await;
     assert_eq!(
-        newest_pending_consent(&db),
+        owner_prompt(&db),
         None,
         "the approved first request left nothing pending"
     );
@@ -405,26 +411,28 @@ async fn a_fast_pathed_authorize_never_becomes_the_newest_pending_consent() {
         "expected the fast path's client redirect, got {location}"
     );
     assert_eq!(
-        newest_pending_consent(&db),
+        owner_prompt(&db),
         None,
         "a fully pre-approved request must never be published as pending",
     );
 }
 
-/// The host app's client is NOT trusted on first use: an unregistered scope for
-/// the host app's client is still the `invalid_scope` redirect back to its
-/// (registered) redirect_uri, exactly as before.
+/// The host app's client is NOT trusted on first use: its registration is
+/// fixed, so an unregistered scope for it is the `invalid_scope` redirect back
+/// to its registered redirect_uri, not a request parked for the Owner.
 #[tokio::test]
 async fn authorize_host_app_disallowed_scope_still_redirects_invalid_scope() {
     let (g, _owner_token, db) = spin_up();
     // Give the host client a redirect so the request reaches the scope check.
     let store = store_handle(&db);
     let mut host = store
-        .client_by_id(WILDFLOWER_HOST_APP_CLIENT_ID)
+        .read(|tx| tx.client_by_id(WILDFLOWER_HOST_APP_CLIENT_ID))
         .unwrap()
         .expect("the seeded host app's client");
     host.redirect_uris = vec![Url::parse("https://app.example/cb").unwrap()];
-    store.upsert_client(&host).expect("allowlist a redirect");
+    store
+        .write(|tx| tx.upsert_client(&host))
+        .expect("allowlist a redirect");
 
     let res = get_authorize(
         &g.router,
@@ -440,12 +448,12 @@ async fn authorize_host_app_disallowed_scope_still_redirects_invalid_scope() {
     );
 }
 
+/// The registration check is by coverage, not exact string membership: a
+/// client allowed `patient/Observation.rs` also admits a request for the
+/// narrower `patient/Observation.r` it covers, which parks like any allowed
+/// scope rather than redirecting back with an `error`.
 #[tokio::test]
 async fn authorize_allows_scope_covered_by_a_broader_allowed_scope() {
-    // The allowlist check is coverage-aware, not exact string membership: a
-    // client allowed `patient/Observation.rs` also admits a request for the
-    // narrower `patient/Observation.r` it covers — parking a pending request
-    // like any allowed scope (no `error=` redirect back to the client).
     let (g, _owner_token, db) = spin_up();
     seed_client_with_redirect(
         &db,
@@ -480,12 +488,13 @@ async fn authorize_allows_scope_covered_by_a_broader_allowed_scope() {
     );
 }
 
+/// Coverage never bridges the SMART v1 word and v2 letter grammars, as in
+/// scopes-core: a client registered with the v1 `patient/Observation.read`
+/// doesn't cover a request for the letter-equivalent `patient/Observation.rs`,
+/// because v1 apps request v1 scopes. The request is parked for the Owner as a
+/// registration change naming the uncovered spelling.
 #[tokio::test]
 async fn authorize_treats_a_cross_grammar_scope_request_as_new() {
-    // Deliberate decision: coverage never bridges the SMART v1 word and v2
-    // letter grammars (mirroring scopes-core). A client registered with the v1
-    // `patient/Observation.read` does NOT cover a request for the
-    // letter-equivalent `patient/Observation.rs` — v1 apps request v1 scopes.
     let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(
         &db,
@@ -539,7 +548,7 @@ async fn authorize_consumes_a_smart_launch_once() {
     let request_id =
         parked_request_id(&get_authorize(&g.router, &db.paired_browser_token, &query).await);
     let parked = store_handle(&db)
-        .authorization_request_by_id(&request_id)
+        .read(|tx| tx.code_request_by_id(&request_id))
         .expect("query")
         .expect("parked");
     assert_eq!(parked.launch.as_deref(), Some(launch.as_str()));
@@ -548,7 +557,8 @@ async fn authorize_consumes_a_smart_launch_once() {
         &g,
         &owner_token,
         &request_id,
-        r#"{"approvedScopes":["read"],"patient":null,"acknowledgedRegistration":true}"#.to_owned(),
+        r#"{"approvedScopes":["read"],"patient":null,"acknowledgedRegistrationChange":true}"#
+            .to_owned(),
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -562,23 +572,24 @@ async fn authorize_consumes_a_smart_launch_once() {
     );
 }
 
-/// A launch minted for any client is consumed by the first client to present
-/// it at `/oauth/authorize`; a replay renders the local page that asks for a
-/// new launch.
+/// A launch minted for the server launcher, which names no client, is consumed
+/// by the first client to present it at `/oauth/authorize`; a replay redirects
+/// to the client's callback with `invalid_request`, "This launch was already
+/// used."
 #[tokio::test]
-async fn authorize_consumes_a_launch_for_any_client_once() {
+async fn authorize_consumes_a_server_launcher_launch_once() {
     let (g, _owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     let launch = g
         .launch_context_minter
-        .mint_for_any_client()
+        .mint_for_server_launcher()
         .expect("mint a launch");
     let query = smart_launch_query(&format!("launch={launch}"));
 
     let request_id =
         parked_request_id(&get_authorize(&g.router, &db.paired_browser_token, &query).await);
     let parked = store_handle(&db)
-        .authorization_request_by_id(&request_id)
+        .read(|tx| tx.code_request_by_id(&request_id))
         .expect("query")
         .expect("parked");
     assert_eq!(parked.launch.as_deref(), Some(launch.as_str()));
@@ -669,6 +680,11 @@ async fn authorize_renders_a_bad_smart_launch_locally_for_an_untrusted_redirect(
     }
 }
 
+/// A device-authorization start for a registered client answers the RFC 8628
+/// §3.2 body: random device and user codes, this server's own device page as
+/// `verification_uri` (and with the user code in `verification_uri_complete`),
+/// a five-minute expiry and a five-second poll interval. The user code is
+/// human-typeable.
 #[tokio::test]
 async fn device_authorization_happy_path() {
     let (g, _owner_token, db) = spin_up();
@@ -710,13 +726,12 @@ async fn device_authorization_happy_path() {
     );
 }
 
+/// The device flow's registration check is by coverage too: the test client
+/// is allowed `system/*.cruds`, which covers a request for the narrower
+/// `system/Observation.rs`, so it is issued a device and user code like any
+/// allowed scope.
 #[tokio::test]
 async fn device_authorization_allows_scope_covered_by_client_wildcard() {
-    // Coverage-aware allowlist (not exact string membership): the test client is
-    // allowed `system/*.cruds`, which covers a request for the narrower
-    // `system/Observation.rs`. The old exact-match gate rejected this with
-    // `invalid_scope`; now it issues a device/user code pair like any allowed
-    // scope.
     let (g, _owner_token, db) = spin_up();
     seed_test_client(&db);
     let body = "client_id=integration-test-app&scope=system%2FObservation.rs";
@@ -729,6 +744,8 @@ async fn device_authorization_allows_scope_covered_by_client_wildcard() {
     assert_eq!(res.status(), StatusCode::OK);
 }
 
+/// A device-authorization start from a client that isn't registered is
+/// `401 invalid_client`: the device flow has no trust on first use.
 #[tokio::test]
 async fn device_authorization_unknown_client_returns_401() {
     let (g, _owner_token, _db) = spin_up();
@@ -744,6 +761,8 @@ async fn device_authorization_unknown_client_returns_401() {
     assert_eq!(body["error"], "invalid_client");
 }
 
+/// Redeeming a code the server never issued is `400 invalid_grant`, not a
+/// malformed request (RFC 6749 §5.2).
 #[tokio::test]
 async fn token_exchange_unknown_code_returns_400_invalid_grant() {
     let (g, _owner_token, db) = spin_up();

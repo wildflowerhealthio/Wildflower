@@ -13,46 +13,123 @@ use crate::domain::authority::{
     ApprovableScopes, AuthenticatedClient, DelegatedScopes, PresentedAuthorizationCode,
     RedeemedAuthorizationCode,
 };
-use crate::domain::authorization_code::{IssuedAuthorizationCode, AUTHORIZATION_CODE_TTL};
-use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
+use crate::domain::authorization_code::{AuthorizationCode, AUTHORIZATION_CODE_TTL};
+use crate::domain::authorization_request::approval::Approval;
+use crate::domain::authorization_request::code::{CodeRequest, NewCodeRequestArgs};
+use crate::domain::authorization_request::device::{DeviceRequest, NewDeviceRequestArgs};
+use crate::domain::authorization_request::pairing::{
+    NewPairingRequestArgs, PairingApproval, PairingRequest,
+};
+use crate::domain::authorization_request::polled::Polled as _;
+use crate::domain::authorization_request::{AuthorizationRequest, RequestStatus};
 use crate::domain::browser_session::BrowserSession;
-use crate::domain::client::{AllowedGrantType, Client, ClientKind};
+use crate::domain::client::{AllowedGrantType, Client, ClientKind, RegistrationSource};
 use crate::domain::client_credentials::ClientCredentials;
 use crate::domain::grant::AuthorizationCodeGrant;
+use crate::domain::grant_store::*;
 use crate::domain::signing_key::SigningKey;
-use crate::domain::GrantStore;
 use crate::ports::{OwnerApproval, RevocationCheck};
 
-/// A pending (by default) device-code authorization request fixture.
-pub(crate) fn device_request(
-    id: &str,
-    user_code: &str,
-    status: RequestStatus,
-) -> AuthorizationRequest {
-    let now = Utc::now();
-    AuthorizationRequest {
-        id: id.to_owned(),
-        grant_type: GrantType::DeviceCode,
-        client_id: "client".to_owned(),
-        requested_scopes: vec!["openid".to_owned()],
-        code_challenge: None,
-        code_challenge_method: None,
-        redirect_uri: None,
-        client_state: None,
-        user_code: Some(user_code.to_owned()),
-        pre_approved_scopes: Vec::new(),
-        requested_at: now,
-        expires_at: now + Duration::minutes(5),
-        last_polled_at: None,
+/// A device-code request fixture from client `client` asking for `openid`,
+/// started now and pending for five minutes, then moved to `status` (see
+/// [`device_with_status`]).
+pub(crate) fn device_request(id: &str, user_code: &str, status: RequestStatus) -> DeviceRequest {
+    device_with_status(
+        DeviceRequest::new(
+            NewDeviceRequestArgs {
+                id: id.to_owned(),
+                client_id: "client".to_owned(),
+                requested_scopes: owned_scopes(&["openid"]),
+                ttl: Duration::minutes(5),
+                user_code: user_code.to_owned(),
+                device_name: None,
+            },
+            Utc::now(),
+        ),
         status,
-        granted_scopes: None,
+    )
+}
+
+/// A pending browser pairing fixture `id` from the browser-session client,
+/// asking for the Owner's scopes, keyed by `user_code`, named `browser_name`,
+/// live for five minutes.
+pub(crate) fn pairing_request(id: &str, user_code: &str, browser_name: &str) -> PairingRequest {
+    PairingRequest::new(
+        NewPairingRequestArgs {
+            id: id.to_owned(),
+            client_id: crate::BROWSER_SESSION_CLIENT_ID.to_owned(),
+            requested_scopes: crate::owner_scopes(),
+            ttl: Duration::minutes(5),
+            user_code: user_code.to_owned(),
+            browser_name: browser_name.to_owned(),
+        },
+        Utc::now(),
+    )
+}
+
+/// A pending code request fixture `id` from `client_id`, asking for
+/// `requested_scopes`, carrying [`fixture_code_args`], live for five minutes.
+pub(crate) fn code_request_for(
+    id: &str,
+    client_id: &str,
+    requested_scopes: Vec<String>,
+) -> CodeRequest {
+    CodeRequest::new(
+        fixture_code_args(id, client_id, requested_scopes),
+        Utc::now(),
+    )
+}
+
+/// `request`, a pending device request, moved to `status` by its own
+/// transitions, taken just before it expires: an approval grants what it
+/// asked for.
+pub(crate) fn device_with_status(request: DeviceRequest, status: RequestStatus) -> DeviceRequest {
+    let decided_at = request.expires_at - Duration::milliseconds(1);
+    let approve = |request: &DeviceRequest| {
+        request
+            .approve(
+                fixture_approval(&request.requested_scopes),
+                None,
+                decided_at,
+            )
+            .expect("a pending fixture approves")
+    };
+    match status {
+        RequestStatus::Pending => request,
+        RequestStatus::Approved => approve(&request),
+        RequestStatus::Denied => request.deny(decided_at).expect("a pending fixture denies"),
+        RequestStatus::Claimed => approve(&request)
+            .claim(decided_at)
+            .expect("an approved fixture is claimed"),
+        RequestStatus::AwaitingLimitedPage => panic!("a device request has no limited page"),
+    }
+}
+
+/// `request`, a pending code request, moved to `status` by its own
+/// transitions, taken just before it expires: an approval grants what it
+/// asked for.
+pub(crate) fn code_with_status(request: CodeRequest, status: RequestStatus) -> CodeRequest {
+    let decided_at = request.expires_at - Duration::milliseconds(1);
+    match status {
+        RequestStatus::Pending => request,
+        RequestStatus::AwaitingLimitedPage => CodeRequest {
+            state:
+                crate::domain::authorization_request::code::CodeRequestState::AwaitingLimitedPage,
+            ..request
+        },
+        RequestStatus::Approved => request
+            .approve(fixture_approval(&request.requested_scopes), decided_at)
+            .expect("a pending fixture approves"),
+        RequestStatus::Denied => request.deny(decided_at).expect("a pending fixture denies"),
+        RequestStatus::Claimed => panic!("a code request is never claimed"),
+    }
+}
+
+/// An approval of `requested_scopes`, binding no patient.
+fn fixture_approval(requested_scopes: &[String]) -> Approval {
+    Approval {
+        granted_scopes: requested_scopes.to_vec(),
         patient: None,
-        device_name: None,
-        launch: None,
-        launch_bound_patient: None,
-        decidable_in_requesting_browser: false,
-        sid: None,
-        session_shortfall_acknowledged: true,
     }
 }
 
@@ -66,9 +143,10 @@ pub(crate) const FIXTURE_SID: &str = "sid-1";
 /// honoured.
 pub(crate) fn seed_fixture_browser_session(store: &FakeGrantStore) {
     store
+        .tx()
         .insert_browser_session(&BrowserSession {
             sid: FIXTURE_SID.to_owned(),
-            ..BrowserSession::new_approved(
+            ..BrowserSession::new_paired_session(
                 "Firefox on Linux".to_owned(),
                 vec!["wildflower/launch".to_owned()],
                 Duration::hours(24),
@@ -78,38 +156,96 @@ pub(crate) fn seed_fixture_browser_session(store: &FakeGrantStore) {
         .unwrap();
 }
 
-/// A well-formed authorization-code request fixture (populated `redirect_uri`,
-/// PKCE `code_challenge` and browser session [`FIXTURE_SID`]) with a
-/// caller-chosen `status` and `expires_at`.
+/// Approve the request `id` stored in `store` now, granting `granted_scopes`
+/// and naming its device or browser `requester_name` (`None` keeps its own),
+/// as an approval through the consent surfaces would.
+pub(crate) fn approve_stored(
+    store: &FakeGrantStore,
+    id: &str,
+    granted_scopes: &[&str],
+    requester_name: Option<&str>,
+) {
+    let mut tx = store.tx();
+    let request = tx
+        .authorization_request_by_id(id)
+        .unwrap()
+        .expect("the request is stored");
+    let approval = Approval {
+        granted_scopes: owned_scopes(granted_scopes),
+        patient: None,
+    };
+    let now = Utc::now();
+    let requester_name = requester_name.map(str::to_owned);
+    let landed = match request {
+        AuthorizationRequest::Code(read) => {
+            let approved = read.approve(approval, now).expect("pending");
+            tx.replace_code_request(&read, &approved)
+        }
+        AuthorizationRequest::Device(read) => {
+            let approved = read
+                .approve(approval, requester_name, now)
+                .expect("pending");
+            tx.replace_device_request(&read, &approved)
+        }
+        AuthorizationRequest::Pairing(read) => {
+            let approval = PairingApproval {
+                granted_scopes: approval.granted_scopes,
+            };
+            let approved = read
+                .approve(approval, requester_name, now)
+                .expect("pending");
+            tx.replace_pairing_request(&read, &approved)
+        }
+    };
+    assert!(landed.unwrap());
+}
+
+/// How the code request fixtures start: `id` from `client_id`, asking for
+/// `requested_scopes`, live for five minutes, with the `https://example.com/cb`
+/// redirect, a PKCE challenge, the client `state`, and browser session
+/// [`FIXTURE_SID`]; no launch, pending (not on its limited page), and not
+/// decidable in the requesting browser.
+pub(crate) fn fixture_code_args(
+    id: &str,
+    client_id: &str,
+    requested_scopes: Vec<String>,
+) -> NewCodeRequestArgs {
+    NewCodeRequestArgs {
+        id: id.to_owned(),
+        client_id: client_id.to_owned(),
+        requested_scopes,
+        ttl: Duration::minutes(5),
+        redirect_uri: Url::parse("https://example.com/cb").unwrap(),
+        code_challenge: "c".repeat(43),
+        client_state: "state".to_owned(),
+        sid: FIXTURE_SID.to_owned(),
+        launch: None,
+        launch_bound_patient: None,
+        pre_approved_scopes: Vec::new(),
+        decidable_in_requesting_browser: false,
+        awaits_limited_page: false,
+    }
+}
+
+/// A code request fixture from client `client` asking for `read`, carrying
+/// [`fixture_code_args`], expiring at `expires_at`, moved to `status` (see
+/// [`code_with_status`]).
 pub(crate) fn code_request(
     id: &str,
     status: RequestStatus,
     expires_at: DateTime<Utc>,
-) -> AuthorizationRequest {
-    AuthorizationRequest {
-        id: id.to_owned(),
-        grant_type: GrantType::AuthorizationCode,
-        client_id: "client".to_owned(),
-        requested_scopes: vec!["read".to_owned()],
-        code_challenge: Some("c".repeat(43)),
-        code_challenge_method: Some("S256".to_owned()),
-        redirect_uri: Some(Url::parse("https://example.com/cb").unwrap()),
-        client_state: Some("state".to_owned()),
-        user_code: None,
-        pre_approved_scopes: Vec::new(),
-        requested_at: Utc::now(),
-        expires_at,
-        last_polled_at: None,
+) -> CodeRequest {
+    let now = Utc::now();
+    code_with_status(
+        CodeRequest::new(
+            NewCodeRequestArgs {
+                ttl: expires_at - now,
+                ..fixture_code_args(id, "client", owned_scopes(&["read"]))
+            },
+            now,
+        ),
         status,
-        granted_scopes: None,
-        patient: None,
-        device_name: None,
-        launch: None,
-        launch_bound_patient: None,
-        decidable_in_requesting_browser: false,
-        sid: Some(FIXTURE_SID.to_owned()),
-        session_shortfall_acknowledged: true,
-    }
+    )
 }
 
 /// A public-client fixture with a caller-chosen `allowed_scopes` set and the
@@ -128,6 +264,7 @@ pub(crate) fn client(client_id: &str, registered_client_scopes: &[&str]) -> Clie
         secret_hash: None,
         registered_at: Utc::now(),
         disabled_at: None,
+        registration_source: RegistrationSource::TrustedOnFirstUse,
     }
 }
 
@@ -153,7 +290,7 @@ pub(crate) fn owned_scopes(scopes: &[&str]) -> Vec<String> {
 pub(crate) fn seed_active_signing_key(store: &FakeGrantStore) -> SigningKey {
     let mut key = SigningKey::generate().expect("key");
     key.is_active = true;
-    store.insert_signing_key(&key).unwrap();
+    store.tx().insert_signing_key(&key).unwrap();
     key
 }
 
@@ -163,9 +300,9 @@ pub(crate) fn authenticated_public_client(
     client: Client,
 ) -> AuthenticatedClient {
     let client_id = client.client_id.clone();
-    store.upsert_client(&client).unwrap();
+    store.tx().upsert_client(&client).unwrap();
     AuthenticatedClient::authenticate(
-        store,
+        &mut store.tx(),
         &ClientCredentials {
             client_id,
             client_secret: None,
@@ -190,7 +327,8 @@ pub(crate) fn redeemed_code(
     let now = Utc::now();
     let code = generate_authorization_code();
     store
-        .issue_authorization_code(&IssuedAuthorizationCode {
+        .tx()
+        .issue_authorization_code(&AuthorizationCode {
             code: code.clone(),
             request_id: "req".to_owned(),
             client_id: client_id.to_owned(),
@@ -204,7 +342,7 @@ pub(crate) fn redeemed_code(
         })
         .unwrap();
     RedeemedAuthorizationCode::redeem(
-        store,
+        &mut store.tx(),
         &authenticated,
         &PresentedAuthorizationCode {
             code: &code,
@@ -213,6 +351,7 @@ pub(crate) fn redeemed_code(
         },
         now,
     )
+    .expect("the fake store does not fail")
     .expect("a freshly issued code redeems")
 }
 
@@ -244,11 +383,12 @@ pub(crate) fn registering_delegated_scopes(scopes: &[&str]) -> DelegatedScopes {
 /// `Cell`) so it satisfies the port's `Send + Sync` bound.
 #[derive(Default)]
 pub(crate) struct RecordingOwnerApproval {
+    /// How many times the Owner prompt has been republished.
     republishes: AtomicU32,
 }
 
 impl RecordingOwnerApproval {
-    /// How many times the popup head has been republished.
+    /// How many times the Owner prompt has been republished.
     pub(crate) fn count(&self) -> u32 {
         self.republishes.load(Ordering::SeqCst)
     }

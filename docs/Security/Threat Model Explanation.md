@@ -27,7 +27,7 @@ In order of how bad losing them is:
 
 1. **Health records**: `health-data.sqlite` and its bulk exports, on the
    device.
-2. **The Owner's authority**: an Owner browser session (8 hours of
+2. **The Owner's authority**: a same-device browser session (8 hours of
    `OWNER_SCOPES`), a same-device sign-in code (60 seconds), or any bearer
    holding the approval scopes. Whoever holds one can read and change every
    record and approve new apps.
@@ -100,7 +100,7 @@ In order of how bad losing them is:
   sandbox and file modes: records, the signing key, the TLS key, the tunnel
   token. Malware or an attacker with the unlocked device has it all. There is
   no at-rest encryption beyond the platform's.
-- **A compromised Owner browser.** The Owner session cookie and the launcher's
+- **A compromised Owner browser.** The same-device session cookie and the launcher's
   in-memory bearer are Owner-equivalent for their lifetime.
 - **An active relay operator.** The operator controls DNS for the relay's
   domain and port 443, so it can obtain a certificate for any tunnel's

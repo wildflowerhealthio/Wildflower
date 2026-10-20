@@ -28,8 +28,12 @@ use super::pages::{
 use crate::http::state::AuthorizationServerState;
 use crate::http::wire_representations::CacheSuppressed;
 
+/// The wait page's markup, the same bytes for every request.
 const WAIT_PAGE_HTML: &str = include_str!("wait_page/wait.html");
+/// The wait page's script: it reads the request id from the page's path,
+/// polls the status, and follows the redirect the poll hands back.
 const WAIT_PAGE_SCRIPT: &str = include_str!("wait_page/wait.js");
+/// The wait page's stylesheet.
 const WAIT_PAGE_STYLESHEET: &str = include_str!("wait_page/wait.css");
 
 /// The wait page's routes, relative to the `/oauth` mount. The page references
@@ -61,14 +65,17 @@ pub(crate) fn wait_page_location(request_id: &str) -> String {
     request_page_location(request_id, "wait")
 }
 
+/// `GET /oauth/authorize/{id}/wait`: the page itself, whatever the id.
 fn wait_page(policy: &HeaderValue) -> Response {
     page_file("text/html; charset=utf-8", WAIT_PAGE_HTML, policy)
 }
 
+/// `GET /oauth/authorize/wait.js`: the page's script.
 fn wait_page_script(policy: &HeaderValue) -> Response {
     page_file("text/javascript; charset=utf-8", WAIT_PAGE_SCRIPT, policy)
 }
 
+/// `GET /oauth/authorize/wait.css`: the page's stylesheet.
 fn wait_page_stylesheet(policy: &HeaderValue) -> Response {
     page_file("text/css; charset=utf-8", WAIT_PAGE_STYLESHEET, policy)
 }

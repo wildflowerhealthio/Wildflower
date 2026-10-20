@@ -118,7 +118,7 @@ mod tests {
     use crate::domain::server_status::tests::{LAB, RUTH};
 
     fn oauth(id: &str) -> ConsentKey {
-        ConsentKey::OAuth { id: id.to_owned() }
+        ConsentKey::AuthorizationCode { id: id.to_owned() }
     }
 
     #[test]

@@ -1,6 +1,5 @@
 //! Request/response wire shapes shared across the authorization server's route trees —
-//! the JSON bodies the OAuth surface and the launcher post and read. Routes and
-//! loaders import their DTOs from here instead of a sibling `internal.rs`, so a
+//! the JSON bodies the OAuth surface and the server's pages post and read. A
 //! shape shared by two surfaces (e.g. [`ConsentResult`] across both consent
 //! flows) has one home and the trees can't drift.
 //!
@@ -22,8 +21,10 @@ use crate::domain::oauth_error_code::OAuthErrorCode;
 /// Token- and device-authorization-endpoint responses — success or error —
 /// must never be cached; wrapping makes that part of the value instead of a
 /// step a call site can forget. The same wrapper renders the authorize-status
-/// poll (its `Approved` redirect carries a redeemable code) and, applied as a
-/// blanket layer, every Owner `/authorization/*` response.
+/// poll (its `Approved` redirect carries a redeemable code), the start limit's
+/// `429`, sign-out and, applied as a blanket layer, every Owner
+/// `/authorization/*` response. The headers are inserted, not appended, so
+/// nothing ends up with either twice.
 pub(crate) struct CacheSuppressed<T>(pub(crate) T);
 
 impl<T: IntoResponse> IntoResponse for CacheSuppressed<T> {
@@ -39,18 +40,26 @@ impl<T: IntoResponse> IntoResponse for CacheSuppressed<T> {
     }
 }
 
-/// RFC 6749 §5.1 successful token-endpoint response.
+/// RFC 6749 §5.1 successful token-endpoint response: what the token endpoint
+/// gives an app for an authorization code, a refresh token or a device code.
 #[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct TokenResponse {
+    /// The signed access token (a JWT) the app presents as its bearer.
     pub(crate) access_token: String,
+    /// The access token's type: always `Bearer`.
     pub(crate) token_type: String,
+    /// How many seconds the access token lives from issue.
     pub(crate) expires_in: i64,
+    /// The scopes the access token holds, space-separated: the grant's, which
+    /// may be narrower than the app asked for.
     pub(crate) scope: String,
     /// Present only when the grant carries [`wildflowerhealthio_scopes::KnownScope::OfflineAccess`]
     /// — the plaintext of the freshly-minted refresh-token generation (RFC 6749
     /// §5.1; only its hash is persisted).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) refresh_token: Option<String>,
+    /// The SMART patient context: the FHIR `Patient` id the grant is bound
+    /// to. Present only when the grant binds one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) patient: Option<String>,
 }
@@ -63,15 +72,24 @@ impl IntoResponse for TokenResponse {
     }
 }
 
-/// RFC 6749 §5.2 token-endpoint error body.
+/// RFC 6749 §5.2 error body: the token, revocation and device-authorization
+/// endpoints, the wait page's status poll, and client authentication all
+/// answer with it.
 #[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub(crate) struct OAuthError {
+    /// The standard error code, such as `invalid_request` or
+    /// `invalid_client` (an [`OAuthErrorCode`]'s wire string).
     pub(crate) error: String,
+    /// A sentence for the app's developer saying what was wrong; omitted when
+    /// the code says enough.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) error_description: Option<String>,
 }
 
 impl OAuthError {
+    /// The body for `error`, with `description` as its `error_description`.
+    /// Taking an [`OAuthErrorCode`] means a code outside the standard's list
+    /// can't be written.
     pub(crate) fn new(error: OAuthErrorCode, description: Option<&str>) -> Self {
         Self {
             error: error.as_ref().to_string(),
@@ -80,10 +98,12 @@ impl OAuthError {
     }
 }
 
-/// Body posted by the launcher to approve a **device-code** consent prompt: the
-/// scopes the Owner ticked, plus an optional patient context to bind to the
-/// grant. The device flow sends no `patient` today, so it deserializes to
-/// `None`; the field is kept in anticipation of device-flow patient selection.
+/// Body the device page's consent card posts to
+/// `POST /authorization/devices/{userCode}/approve` to approve a device-code
+/// prompt or a browser pairing: the scopes the Owner ticked, plus an optional
+/// patient context to bind to the grant, and an optional new name for the
+/// device. The card pins a device grant to all patients, so it sends no
+/// `patient` and the field deserializes to `None`.
 ///
 /// The code flow posts its own
 /// `ApproveOAuthConsentBody` instead — only that surface can show a
@@ -91,20 +111,24 @@ impl OAuthError {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ApproveBody {
+    /// The scopes the approver ticked. They are clamped to what the prompt
+    /// may grant and to the approver's own grant; a resource scope beyond the
+    /// approver's grant is a `403`, and nothing left to grant is a deny.
     pub(crate) approved_scopes: Vec<String>,
+    /// The FHIR `Patient` id to bind a device's grant to; `None` leaves it
+    /// unbound. A pairing ignores it: a browser session binds no patient.
     pub(crate) patient: Option<String>,
-    /// An optional adjusted device name (device flow only — the settings approver
-    /// renaming the device before approving). `None` on the code-flow path and
-    /// when the approver didn't change it; the effective name is resolved in
-    /// `approve_device_consent` (the approver's adjustment, else the device's own
-    /// name), so a `None` here keeps the device's stored name rather than erasing
-    /// it.
+    /// The approver's name for the device or browser, when they changed it
+    /// before approving. A device's grant is named after it, else the
+    /// device's own name; a pairing names the browser with it. `None` keeps
+    /// the name the request carries rather than erasing it.
     #[serde(default)]
     pub(crate) device_name: Option<String>,
 }
 
 /// Result the approving surface sees after approving or denying a consent
-/// prompt.
+/// prompt: `{"status":"approved"}` or `{"status":"denied"}`, with a
+/// `redirect` for a code-flow decision.
 ///
 /// A code-flow decision carries the client callback URL (`code` + `state`, or
 /// `error=access_denied` + `state`, appended to the client's `redirect_uri`) so
@@ -116,20 +140,31 @@ pub(crate) struct ApproveBody {
 #[derive(Debug, Serialize)]
 #[serde(tag = "status", rename_all = "lowercase")]
 pub(crate) enum ConsentResult {
+    /// The request was approved: a code-flow request's code is issued, a
+    /// device's grant stands, a pairing's browser may now sign in.
     Approved {
+        /// The app's callback carrying the code and the app's `state`, for
+        /// the consent card to leave for; absent for a device-page decision,
+        /// whose device or browser polls for its result.
         #[serde(skip_serializing_if = "Option::is_none")]
         redirect: Option<String>,
     },
+    /// The request was denied: declined, or an approval that granted
+    /// nothing. A code-flow approval is a deny too when the requesting
+    /// browser's session has ended or the app was disabled since.
     Denied {
+        /// The app's callback carrying `error=access_denied` and the app's
+        /// `state`; absent for a device-page decision.
         #[serde(skip_serializing_if = "Option::is_none")]
         redirect: Option<String>,
     },
 }
 
-/// Render the domain consent action's [`ConsentOutcome`](crate::domain::capabilities::ConsentOutcome)
-/// onto the launcher wire result, so an approve/deny handler is
-/// `Ok(Json(outcome.into()))`.
+/// A consent outcome on the launcher wire.
 impl From<crate::domain::capabilities::ConsentOutcome> for ConsentResult {
+    /// Render the domain consent action's [`ConsentOutcome`](crate::domain::capabilities::ConsentOutcome)
+    /// onto the launcher wire result, so an approve/deny handler is
+    /// `Ok(Json(outcome.into()))`.
     fn from(outcome: crate::domain::capabilities::ConsentOutcome) -> Self {
         match outcome {
             crate::domain::capabilities::ConsentOutcome::Approved { redirect } => {

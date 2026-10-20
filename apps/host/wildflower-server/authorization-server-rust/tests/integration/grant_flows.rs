@@ -1,8 +1,41 @@
+//! The authorization-code flow end to end, from `/oauth/authorize` to
+//! `/oauth/token`: an app reaches the Owner's FHIR server only after the Owner
+//! said yes, now or in a standing grant, and never with more than the Owner
+//! and the browser it runs in hold.
+//!
+//! A browser without a browser session is sent to pair first; a code is
+//! always issued under a session. With one, the request is validated (a
+//! signing key, a client that isn't disabled, PKCE, the client's
+//! registration), and then three questions, asked in order, decide where the
+//! browser goes:
+//!
+//! 1. Does the browser's session hold less than the app asks for? Then the
+//!    limited page: the person at the browser is told before anyone else is
+//!    bothered. It is shown once per browser per app.
+//! 2. Does a standing grant already cover everything asked for? That is, the
+//!    Owner said yes to this app at this redirect and hasn't revoked it, the
+//!    request matches the app's registration, and the launch admits the
+//!    grant's patient. Then the fast path: a code is issued now and the
+//!    browser goes straight back to the app.
+//! 3. Can this browser decide the request itself, because it is the Owner's,
+//!    holding enough to approve the request as asked? Then the consent card,
+//!    in place.
+//!
+//! Otherwise someone else is using the browser: it goes to the wait page, and
+//! the Owner's prompt shows the request.
+//!
+//! Each step can only narrow the scopes: the request is clamped to the
+//! registration, the Owner's ticks to what the Owner holds, the code to the
+//! browser's session, and the token carries the code's scopes. A code redeems
+//! once; a replay ends the refresh family the first redemption started.
+
 use crate::common::*;
 
-/// Drive the full auth-code grant: `/authorize` → owner consent approve →
-/// status poll → `/token`. The core happy path; nothing else here exercises it
-/// end-to-end. Asserts a signed bearer token comes back with the granted scope.
+/// An app the Owner approves ends up with a signed bearer token for exactly
+/// the approved scope: `/oauth/authorize` parks the browser on the wait page,
+/// the Owner approves, the approve response and the wait page's poll hand back
+/// the same code (the poll's answer uncached), and `/oauth/token` redeems it.
+/// No `offline_access` was granted, so no refresh token comes back.
 #[tokio::test]
 async fn auth_code_grant_happy_path_end_to_end() {
     let (g, owner_token, db) = spin_up();
@@ -41,7 +74,7 @@ async fn auth_code_grant_happy_path_end_to_end() {
         .header("host", "127.0.0.1")
         .header("authorization", format!("Bearer {owner_token}"))
         .header("content-type", "application/json"),
-        Body::from(r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#),
+        Body::from(r#"{"approvedScopes":["read"],"acknowledgedRegistrationChange":false}"#),
     );
     let res = g.router.clone().oneshot(approve).await.expect("oneshot");
     assert_eq!(res.status(), StatusCode::OK);
@@ -171,9 +204,8 @@ async fn oauth_consent_prompt_carries_client_display_name() {
 /// The Owner may *narrow* a requested scope at consent time: a request for
 /// `patient/Observation.rs` approved as the tighter `patient/Observation.s` is
 /// still ⊆ the request, so `grantable_scopes` keeps it (coverage, not exact
-/// equality). The flow must approve — not deny — and the minted token must
-/// carry the narrowed `patient/Observation.s`. Guards the covers-based
-/// `is_requested` change in `wildflowerhealthio_scopes::grantable_scopes`.
+/// equality). The flow approves rather than denies, and the minted token
+/// carries the narrowed `patient/Observation.s`.
 #[tokio::test]
 async fn auth_code_grant_owner_narrows_requested_scope() {
     let (g, owner_token, db) = spin_up();
@@ -222,7 +254,7 @@ async fn auth_code_grant_owner_narrows_requested_scope() {
         .header("authorization", format!("Bearer {owner_token}"))
         .header("content-type", "application/json"),
         Body::from(
-            r#"{"approvedScopes":["patient/Observation.s"],"acknowledgedRegistration":false}"#,
+            r#"{"approvedScopes":["patient/Observation.s"],"acknowledgedRegistrationChange":false}"#,
         ),
     );
     let res = g.router.clone().oneshot(approve).await.expect("oneshot");
@@ -259,8 +291,8 @@ async fn auth_code_grant_owner_narrows_requested_scope() {
 
 /// The approver must hold every resource scope they approve: a token that may
 /// approve (`wildflower/AuthorizationRequest.u` and `wildflower/Grant.c`) but
-/// lacks one of the requested resource scopes — a narrower device grant — is
-/// refused with a `403 InsufficientScope` naming the uncovered scope. No code is issued: the
+/// lacks one of the requested resource scopes is refused with a
+/// `403 InsufficientScope` naming the uncovered scope. No code is issued: the
 /// request stays `pending`, so the status poll keeps waiting and an approver
 /// whose token does cover it (here the Owner) can still answer it.
 #[tokio::test]
@@ -292,7 +324,7 @@ async fn an_approver_lacking_a_requested_resource_scope_is_refused_and_the_reque
             "patient/Observation.rs",
         ],
     );
-    let approve_body = r#"{"approvedScopes":["patient/Observation.rs","patient/Condition.rs"],"acknowledgedRegistration":false}"#;
+    let approve_body = r#"{"approvedScopes":["patient/Observation.rs","patient/Condition.rs"],"acknowledgedRegistrationChange":false}"#;
 
     let res =
         approve_oauth_consent(&g, &narrow_approver, &request_id, approve_body.to_string()).await;
@@ -338,7 +370,7 @@ async fn minted_jwt_scope_claim_carries_alternate_canonical_forms() {
         &session_token,
         "test-app",
         "patient%2FObservation.read",
-        r#"{"approvedScopes":["patient/Observation.read"],"acknowledgedRegistration":false}"#,
+        r#"{"approvedScopes":["patient/Observation.read"],"acknowledgedRegistrationChange":false}"#,
     )
     .await;
 
@@ -398,7 +430,7 @@ async fn consent_approval_persists_grant() {
         &db.paired_browser_token,
         "test-app",
         "read",
-        r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#,
+        r#"{"approvedScopes":["read"],"acknowledgedRegistrationChange":false}"#,
     )
     .await;
 
@@ -447,7 +479,7 @@ async fn pre_approved_scopes_skip_consent_on_reauthorize() {
         &db.paired_browser_token,
         "test-app",
         "read",
-        r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#,
+        r#"{"approvedScopes":["read"],"acknowledgedRegistrationChange":false}"#,
     )
     .await;
 
@@ -489,6 +521,56 @@ async fn pre_approved_scopes_skip_consent_on_reauthorize() {
         .any(|(k, v)| k == "state" && v == "second"));
 }
 
+/// A code issued under the standing grant marks the grant used: the Owner's
+/// grant list shows no `lastUsedAt` after the approval, and the instant of the
+/// second `/authorize`, which skipped the Owner, after it.
+#[tokio::test]
+async fn reauthorizing_under_a_standing_grant_stamps_its_last_use() {
+    let (g, owner_token, db) = spin_up();
+    seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
+    authorize_and_approve(
+        &g,
+        &owner_token,
+        &db.paired_browser_token,
+        "test-app",
+        "read",
+        r#"{"approvedScopes":["read"],"acknowledgedRegistrationChange":false}"#,
+    )
+    .await;
+    let last_used_at = || async {
+        let res = g
+            .router
+            .clone()
+            .oneshot(owner_grants_probe(&owner_token))
+            .await
+            .expect("oneshot");
+        assert_eq!(res.status(), StatusCode::OK);
+        body_json(res.into_body()).await[0]["lastUsedAt"].clone()
+    };
+    assert_eq!(last_used_at().await, Value::Null);
+
+    let before = Utc::now();
+    let res = get_authorize(
+        &g.router,
+        &db.paired_browser_token,
+        &authorize_query("test-app", "read"),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::FOUND);
+    assert!(
+        location_of(&res).starts_with("https://app.example/cb?"),
+        "the standing grant skipped the Owner"
+    );
+
+    let stamped: chrono::DateTime<Utc> = last_used_at()
+        .await
+        .as_str()
+        .expect("lastUsedAt is set")
+        .parse()
+        .expect("an RFC 3339 instant");
+    assert!(stamped >= before && stamped <= Utc::now());
+}
+
 /// The fast path matches by **coverage**, not string equality: a standing
 /// consent to `patient/Observation.rs` answers for a later request for the
 /// narrower `patient/Observation.r`, so the Owner is not re-prompted for access
@@ -509,7 +591,7 @@ async fn a_narrower_request_is_pre_approved_by_a_broader_standing_grant() {
         &db.paired_browser_token,
         "test-app",
         "patient%2FObservation.rs",
-        r#"{"approvedScopes":["patient/Observation.rs"],"acknowledgedRegistration":false}"#,
+        r#"{"approvedScopes":["patient/Observation.rs"],"acknowledgedRegistrationChange":false}"#,
     )
     .await;
 
@@ -563,7 +645,7 @@ async fn consent_approvals_union_scopes_into_grant() {
         &db.paired_browser_token,
         "test-app",
         "read",
-        r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#,
+        r#"{"approvedScopes":["read"],"acknowledgedRegistrationChange":false}"#,
     )
     .await;
     // Second request asks for both, but the Owner only approves `write` —
@@ -574,7 +656,7 @@ async fn consent_approvals_union_scopes_into_grant() {
         &db.paired_browser_token,
         "test-app",
         "read%20write",
-        r#"{"approvedScopes":["write"],"acknowledgedRegistration":false}"#,
+        r#"{"approvedScopes":["write"],"acknowledgedRegistrationChange":false}"#,
     )
     .await;
 
@@ -751,16 +833,17 @@ async fn auth_code_replay_revokes_issued_refresh_family() {
 }
 
 // ---------------------------------------------------------------------------
-// Trust on first use: an app the authorization server has never seen (or one whose
-// request steps outside its registration) reaches the Owner's prompt with a
-// warning, and the `clients` row is created or widened only on approval.
+// Trust on first use: an app the authorization server has never seen (or one
+// whose request steps outside its registration) reaches the Owner's prompt
+// with a warning, and the `clients` row is created or widened only on
+// approval.
 // ---------------------------------------------------------------------------
 
-/// The consent prompt carries the registration verdict, recomputed from the
+/// The consent prompt carries the presented client change, recomputed from the
 /// current row: `registered` for a request that matches the registration, `new`
 /// for a client with no row at all.
 #[tokio::test]
-async fn consent_prompt_reports_the_registration_verdict() {
+async fn consent_prompt_reports_the_presented_client_change() {
     let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
 
@@ -811,7 +894,7 @@ async fn approving_a_new_app_without_acknowledgement_is_rejected() {
         &g,
         &owner_token,
         &request_id,
-        r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#.to_string(),
+        r#"{"approvedScopes":["read"],"acknowledgedRegistrationChange":false}"#.to_string(),
     )
     .await;
     assert_eq!(res.status(), StatusCode::CONFLICT);
@@ -824,16 +907,19 @@ async fn approving_a_new_app_without_acknowledgement_is_rejected() {
     );
 
     let store = store_handle(&db);
-    assert!(store.client_by_id("brand-new-app").unwrap().is_none());
     assert!(store
-        .grant_by_client_and_redirect(
-            "brand-new-app",
-            &Url::parse("https://app.example/cb").unwrap(),
-        )
+        .read(|tx| tx.client_by_id("brand-new-app"))
         .unwrap()
         .is_none());
     assert!(store
-        .authorization_code_by_request_id(&request_id)
+        .read(|tx| tx.grant_by_client_and_redirect(
+            "brand-new-app",
+            &Url::parse("https://app.example/cb").unwrap(),
+        ))
+        .unwrap()
+        .is_none());
+    assert!(store
+        .read(|tx| tx.authorization_code_by_request_id(&request_id))
         .unwrap()
         .is_none());
     // Still pending — the prompt loads again.
@@ -864,7 +950,7 @@ async fn approving_a_new_app_registers_it_and_the_next_request_fast_paths() {
         &g,
         &owner_token,
         &request_id,
-        r#"{"approvedScopes":["read"],"acknowledgedRegistration":true}"#.to_string(),
+        r#"{"approvedScopes":["read"],"acknowledgedRegistrationChange":true}"#.to_string(),
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -877,7 +963,7 @@ async fn approving_a_new_app_registers_it_and_the_next_request_fast_paths() {
 
     let store = store_handle(&db);
     let registered = store
-        .client_by_id("brand-new-app")
+        .read(|tx| tx.client_by_id("brand-new-app"))
         .unwrap()
         .expect("the approval registers the client");
     assert_eq!(registered.name, "brand-new-app");
@@ -894,10 +980,10 @@ async fn approving_a_new_app_registers_it_and_the_next_request_fast_paths() {
     assert!(registered.secret_hash.is_none());
     assert!(registered.disabled_at.is_none());
     assert!(store
-        .grant_by_client_and_redirect(
+        .read(|tx| tx.grant_by_client_and_redirect(
             "brand-new-app",
             &Url::parse("https://app.example/cb").unwrap(),
-        )
+        ))
         .unwrap()
         .is_some());
 
@@ -926,7 +1012,10 @@ async fn approving_a_changed_app_widens_its_registration() {
     let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://elsewhere.example/cb", &["read"]);
     let store = store_handle(&db);
-    let before = store.client_by_id("test-app").unwrap().unwrap();
+    let before = store
+        .read(|tx| tx.client_by_id("test-app"))
+        .unwrap()
+        .unwrap();
 
     // A different redirect AND two scopes the registration doesn't cover.
     let res = get_authorize(
@@ -950,12 +1039,15 @@ async fn approving_a_changed_app_widens_its_registration() {
         &g,
         &owner_token,
         &request_id,
-        r#"{"approvedScopes":["read","write"],"acknowledgedRegistration":true}"#.to_string(),
+        r#"{"approvedScopes":["read","write"],"acknowledgedRegistrationChange":true}"#.to_string(),
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
 
-    let after = store.client_by_id("test-app").unwrap().unwrap();
+    let after = store
+        .read(|tx| tx.client_by_id("test-app"))
+        .unwrap()
+        .unwrap();
     assert_eq!(
         after.redirect_uris,
         vec![
@@ -999,15 +1091,15 @@ async fn denying_a_new_app_registers_nothing() {
     assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(body_json(res.into_body()).await["status"], "denied");
     assert!(store_handle(&db)
-        .client_by_id("brand-new-app")
+        .read(|tx| tx.client_by_id("brand-new-app"))
         .unwrap()
         .is_none());
 }
 
-/// The fast path is gated on the verdict, not on grant coverage alone: once the
-/// registration no longer covers the request, a standing grant that *does* cover
-/// every requested scope must NOT skip the Owner — they have not seen this
-/// combination.
+/// The fast path is gated on the presented client change, not on grant
+/// coverage alone: once the registration no longer covers the request, a
+/// standing grant that *does* cover every requested scope doesn't skip the
+/// Owner, who has not seen this combination.
 #[tokio::test]
 async fn a_changed_request_never_takes_the_fast_path() {
     let (g, owner_token, db) = spin_up();
@@ -1018,15 +1110,20 @@ async fn a_changed_request_never_takes_the_fast_path() {
         &db.paired_browser_token,
         "test-app",
         "read",
-        r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#,
+        r#"{"approvedScopes":["read"],"acknowledgedRegistrationChange":false}"#,
     )
     .await;
 
     // The grant now covers `read`; narrow the registration out from under it.
     let store = store_handle(&db);
-    let mut client = store.client_by_id("test-app").unwrap().unwrap();
+    let mut client = store
+        .read(|tx| tx.client_by_id("test-app"))
+        .unwrap()
+        .unwrap();
     client.allowed_scopes = Vec::new();
-    store.upsert_client(&client).expect("narrow the client");
+    store
+        .write(|tx| tx.upsert_client(&client))
+        .expect("narrow the client");
 
     let res = get_authorize(
         &g.router,

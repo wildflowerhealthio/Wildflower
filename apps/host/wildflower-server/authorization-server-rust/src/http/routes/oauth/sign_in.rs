@@ -19,7 +19,7 @@ use chrono::Utc;
 use serde::Deserialize;
 
 use crate::domain::capabilities::oauth::{
-    SameDeviceSignInError, SignInRefusal, SignedIn, OWNER_SESSION_TTL,
+    SameDeviceSignInError, SignInRefusal, SignedIn, SAME_DEVICE_SESSION_TTL,
 };
 use crate::http::browser_session_set_cookie;
 use crate::http::errors::{sign_in_error_html, InternalError};
@@ -46,7 +46,7 @@ struct SignInParams {
     next: String,
 }
 
-/// Redeem the code for an Owner session's token, hand the browser the token as
+/// Redeem the code for a same-device session's token, hand the browser the token as
 /// its `__Host-browser_session` cookie, and `303` it on to `next`. A `next` that
 /// isn't allowed, a disabled browser-session client, or a code that is unknown,
 /// spent or expired, gets the error page, with no cookie and no redirect.
@@ -67,7 +67,7 @@ async fn handle_sign_in(
                 (header::LOCATION, redirect.location().to_owned()),
                 (
                     header::SET_COOKIE,
-                    browser_session_set_cookie(&session_token, OWNER_SESSION_TTL),
+                    browser_session_set_cookie(&session_token, SAME_DEVICE_SESSION_TTL),
                 ),
             ],
         )
@@ -77,10 +77,10 @@ async fn handle_sign_in(
             InternalError::new("read the browser-session client", error).into_response()
         }
         Err(SameDeviceSignInError::SessionNotStored(error)) => {
-            InternalError::new("store the Owner session", error).into_response()
+            InternalError::new("store the same-device session", error).into_response()
         }
         Err(SameDeviceSignInError::Issuance(error)) => {
-            InternalError::new("mint the Owner session's token", error).into_response()
+            InternalError::new("mint the same-device session's token", error).into_response()
         }
     };
     (
@@ -90,6 +90,9 @@ async fn handle_sign_in(
         .into_response()
 }
 
+/// The `400` error page a refused sign-in gets, naming why: a `next` that
+/// isn't allowed, a disabled browser-session client, or a code that is
+/// unknown, spent or expired. It sets no cookie and redirects nowhere.
 fn refusal_page(refusal: SignInRefusal) -> Response {
     (StatusCode::BAD_REQUEST, Html(sign_in_error_html(refusal))).into_response()
 }

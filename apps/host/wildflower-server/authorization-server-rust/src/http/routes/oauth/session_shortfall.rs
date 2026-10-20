@@ -27,11 +27,11 @@ use super::authorize::{next_step_location, AuthorizeError};
 use super::openapi::AuthorizationRequestNotFound;
 use super::OAUTH_MOUNT;
 use crate::crypto_util::random_token::generate_authorization_code;
+use crate::domain::access_token::VerifiedClaims;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::oauth::{
     AuthorizationStartError, PollingBrowserSession, SessionShortfallView,
 };
-use crate::domain::token::VerifiedClaims;
 use crate::http::browser_session_cookie::carried_browser_session;
 use crate::http::extractors::Live;
 use crate::http::wire_representations::CacheSuppressed;
@@ -170,7 +170,8 @@ pub(super) async fn handle_session_shortfall_continue(
 }
 
 /// Cancel request `id`: deny it and send the browser back to the app with
-/// `error=access_denied`.
+/// `error=access_denied`. Cancel isn't remembered: this session's next request
+/// for the app stops at the limited page again.
 #[utoipa::path(
     post,
     tag = "OAuth 2.0",

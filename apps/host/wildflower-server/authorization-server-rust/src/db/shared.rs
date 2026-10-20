@@ -1,9 +1,11 @@
 //! Diesel column mappings shared across more than one persistence concern, plus
-//! the two macros that generate every column mapping in this slice (`shared` and
-//! per-concern alike). A column mapping used by exactly one concern lives in that
-//! concern's `db/<concern>.rs` file (e.g. [`JsonUrls`](super::clients::JsonUrls) with the
-//! client); the ones here — [`JsonStrings`], [`UrlText`], and the [`GrantType`]
-//! enum mapping — are the ones two or more concerns bind.
+//! the two macros that generate every column mapping in this slice (`shared`
+//! and per-concern alike). A column mapping used by exactly one concern lives
+//! in that concern's `db/<concern>.rs` file (e.g.
+//! [`JsonUrls`](super::clients::JsonUrls) with the client); the ones here —
+//! [`JsonStrings`], [`UrlText`], and the
+//! [`FlowType`](crate::domain::authorization_request::FlowType) enum mapping —
+//! are the ones two or more concerns bind.
 //!
 //! A domain row type plugs a newtype in on a plain field with
 //! `#[diesel(serialize_as = …, deserialize_as = …)]`, keeping the field itself the
@@ -160,8 +162,9 @@ impl diesel::serialize::ToSql<diesel::sql_types::Text, diesel::sqlite::Sqlite> f
     }
 }
 
-// The `grant_type` discriminant is bound by both `authorization_requests` (the
-// flow kind) and the cross-kind `grants` view, so its mapping is shared. The
+// The flow discriminant is bound by both `user_code_requests.flow` (a device
+// request's or browser pairing's flow) and the cross-kind `grants` view's
+// `grant_type` (the flow that earned a grant), so its mapping is shared. The
 // enum's `AsExpression`/`FromSqlRow` derives live on its definition in
 // `domain::authorization_request`.
-text_enum_column!(crate::domain::authorization_request::GrantType);
+text_enum_column!(crate::domain::authorization_request::FlowType);

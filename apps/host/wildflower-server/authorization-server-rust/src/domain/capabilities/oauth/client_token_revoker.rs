@@ -12,10 +12,14 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 
 use crate::crypto_util::random_token::token_storage_hash;
+use crate::domain::access_token::{
+    verify_access_token, AccessTokenVerifyError, AccessTokenVerifyOptions,
+};
 use crate::domain::authority::AuthenticatedClient;
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::grant_store::{RefreshTokensTx, SigningKeysTx as _};
 use crate::domain::refresh_token::RefreshTokenFamily;
-use crate::domain::token::{verify_jwt, VerifyError, VerifyOptions};
+use crate::domain::signing_key::SigningKey;
 use crate::domain::GrantStore;
 use crate::ports::Revocation;
 
@@ -26,7 +30,10 @@ const CLIENT_REVOCATION_REASON: &str = "client revocation";
 /// unit-testable against the fake; the binding instantiates it over the
 /// concrete `SqliteGrantStore`.
 pub(crate) struct ClientTokenRevoker<S: GrantStore> {
+    /// The store a refresh token's family is found and ended in, and the
+    /// signing keys an access token is verified against are read from.
     store: S,
+    /// The `jti` denylist a revoked access token is added to until it expires.
     revocation: Arc<dyn Revocation>,
     /// The server's bare origin: the one `iss` and `aud` an access token this
     /// server minted carries.
@@ -47,13 +54,16 @@ impl<S: GrantStore> ClientTokenRevoker<S> {
     /// Revoke `presented_token` if it is one of `authenticated_client`'s. The
     /// token's type is told from the token itself, so the request's
     /// `token_type_hint` is never needed: a refresh token is found by its
-    /// storage hash, and anything else is tried as an access token.
+    /// storage hash and its family ended in the one write scope, and anything
+    /// else is tried as an access token once the scope has closed.
     ///
     /// # Errors
     ///
     /// [`AuthorizationServerError::Infrastructure`] when the refresh-token,
-    /// signing-key or revocation store can't be read or written. Nothing about
-    /// the token itself is an error.
+    /// signing-key or revocation store can't be read or written, or when an
+    /// access token can't be verified for want of a usable key (no signing
+    /// keys stored, or a key's material unreadable). Nothing about the token
+    /// itself is an error.
     pub(crate) fn revoke(
         &self,
         authenticated_client: &AuthenticatedClient,
@@ -61,59 +71,47 @@ impl<S: GrantStore> ClientTokenRevoker<S> {
         now: DateTime<Utc>,
     ) -> Result<(), AuthorizationServerError> {
         let presented_hash = token_storage_hash(presented_token);
-        match self
+        let presented = self
             .store
-            .refresh_token_with_family_by_hash(&presented_hash)?
-        {
-            Some((_, family)) => self.end_refresh_family(authenticated_client, &family, now),
-            None => self.denylist_access_token(authenticated_client, presented_token),
+            .write(|tx| -> Result<_, AuthorizationServerError> {
+                match tx.refresh_token_with_family_by_hash(&presented_hash)? {
+                    Some((_, family)) => {
+                        end_refresh_family(tx, authenticated_client, &family, now)?;
+                        Ok(PresentedToken::RefreshToken)
+                    }
+                    None => Ok(PresentedToken::NoRefreshToken {
+                        signing_keys: tx.all_signing_keys()?,
+                    }),
+                }
+            })?;
+        match presented {
+            PresentedToken::RefreshToken => Ok(()),
+            PresentedToken::NoRefreshToken { signing_keys } => {
+                self.denylist_access_token(authenticated_client, presented_token, &signing_keys)
+            }
         }
-    }
-
-    /// End the family a presented refresh token belongs to, any of its
-    /// generations, when it is the client's and still alive. A family that has
-    /// already ended keeps the instant it ended at.
-    fn end_refresh_family(
-        &self,
-        authenticated_client: &AuthenticatedClient,
-        family: &RefreshTokenFamily,
-        now: DateTime<Utc>,
-    ) -> Result<(), AuthorizationServerError> {
-        if family.client_id != authenticated_client.client_id() {
-            tracing::info!(
-                family_id = %family.family_id,
-                presented_client_id = authenticated_client.client_id(),
-                "revocation presented another client's refresh token; left alone"
-            );
-            return Ok(());
-        }
-        if family.expires_at <= now {
-            return Ok(());
-        }
-        self.store
-            .expire_refresh_token_family(&family.family_id, now)
     }
 
     /// Denylist a presented access token until its own expiry when this server
-    /// minted it for the client. A token that fails verification (forged,
-    /// expired, another server's) can't be used anyway, so there is nothing to
-    /// revoke.
+    /// minted it for the client, verified against `signing_keys`. A token that
+    /// fails verification (forged, expired, another server's) can't be used
+    /// anyway, so there is nothing to revoke.
     fn denylist_access_token(
         &self,
         authenticated_client: &AuthenticatedClient,
         presented_token: &str,
+        signing_keys: &[SigningKey],
     ) -> Result<(), AuthorizationServerError> {
-        let signing_keys = self.store.all_signing_keys()?;
-        let claims = match verify_jwt(
+        let claims = match verify_access_token(
             presented_token,
-            &signing_keys,
-            &VerifyOptions {
+            signing_keys,
+            &AccessTokenVerifyOptions {
                 expected_issuer: &self.server_origin,
                 accepted_audiences: &[self.server_origin.to_string()],
             },
         ) {
             Ok(claims) => claims,
-            Err(VerifyError::TokenRejected) => return Ok(()),
+            Err(AccessTokenVerifyError::TokenRejected) => return Ok(()),
             Err(error) => {
                 return Err(AuthorizationServerError::infrastructure(
                     "access-token verification failed during revocation",
@@ -140,19 +138,59 @@ impl<S: GrantStore> ClientTokenRevoker<S> {
     }
 }
 
+/// What the revoke scope found the presented token to be.
+enum PresentedToken {
+    /// A refresh token: its family was handled inside the scope.
+    RefreshToken,
+    /// No refresh token this server stores: what remains is to try it as an
+    /// access token, against the signing keys the scope read.
+    NoRefreshToken {
+        /// Every stored signing key, read in the same scope, to verify the
+        /// token against.
+        signing_keys: Vec<SigningKey>,
+    },
+}
+
+/// End the family a presented refresh token belongs to, any of its
+/// generations, when it is the client's and still alive, in the caller's
+/// scope `tx`. A family that has already ended keeps the instant it ended at.
+/// Ending the family touches no access token already minted from it; those
+/// live out their own lifetimes.
+fn end_refresh_family(
+    tx: &mut impl RefreshTokensTx,
+    authenticated_client: &AuthenticatedClient,
+    family: &RefreshTokenFamily,
+    now: DateTime<Utc>,
+) -> Result<(), AuthorizationServerError> {
+    if family.client_id != authenticated_client.client_id() {
+        tracing::info!(
+            family_id = %family.family_id,
+            presented_client_id = authenticated_client.client_id(),
+            "revocation presented another client's refresh token; left alone"
+        );
+        return Ok(());
+    }
+    if family.expires_at <= now {
+        return Ok(());
+    }
+    tx.expire_refresh_token_family(&family.family_id, now)
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::domain::grant_store::*;
     use chrono::Duration;
     use wildflowerhealthio_token_revocation::RevocationStore;
 
     use super::*;
     use crate::crypto_util::base64;
+    use crate::domain::access_token::{mint_access_token, NewAccessTokenArgs};
     use crate::domain::refresh_token::RefreshToken;
     use crate::domain::test_fake::{
         authenticated_public_client, client, seed_active_signing_key, FakeGrantStore,
     };
-    use crate::domain::token::{mint_access_token, NewJwtArgs};
 
+    /// The server's origin: the `iss` and `aud` its own access tokens carry.
     const SERVER_ORIGIN: &str = "https://ruth.relay.example";
 
     /// A revoker over a fresh fake store with a signing key, and the real
@@ -169,6 +207,8 @@ mod tests {
         (revoker, revocation_store)
     }
 
+    /// The proof that public client `client_id`, registered for `openid`, has
+    /// authenticated.
     fn authenticated(store: &FakeGrantStore, client_id: &str) -> AuthenticatedClient {
         authenticated_public_client(store, client(client_id, &["openid"]))
     }
@@ -176,6 +216,7 @@ mod tests {
     /// Plant a family for `client_id` whose one live token is `plaintext`.
     fn plant_family(store: &FakeGrantStore, client_id: &str, plaintext: &str, now: DateTime<Utc>) {
         store
+            .tx()
             .insert_refresh_token_family_row(&RefreshTokenFamily {
                 family_id: format!("family-{plaintext}"),
                 client_id: client_id.to_owned(),
@@ -189,6 +230,7 @@ mod tests {
             })
             .unwrap();
         store
+            .tx()
             .insert_refresh_token(&RefreshToken {
                 token_hash: token_storage_hash(plaintext),
                 family_id: format!("family-{plaintext}"),
@@ -198,8 +240,11 @@ mod tests {
             .unwrap();
     }
 
+    /// When the family holding refresh token `plaintext` ends; revoking it
+    /// moves this to the revocation instant.
     fn family_expires_at(store: &FakeGrantStore, plaintext: &str) -> DateTime<Utc> {
         store
+            .tx()
             .refresh_token_with_family_by_hash(&token_storage_hash(plaintext))
             .unwrap()
             .expect("planted")
@@ -210,10 +255,14 @@ mod tests {
     /// An access token for `client_id`, signed by the store's key and naming
     /// `issuer` as `iss` and `aud`.
     fn access_token(store: &FakeGrantStore, client_id: &str, issuer: &str) -> String {
-        let key = store.active_signing_key().unwrap().expect("seeded key");
+        let key = store
+            .tx()
+            .active_signing_key()
+            .unwrap()
+            .expect("seeded key");
         mint_access_token(
             &key,
-            &NewJwtArgs {
+            &NewAccessTokenArgs {
                 client_id,
                 scopes: &["openid".to_owned()],
                 ttl: Duration::minutes(5),
@@ -226,7 +275,9 @@ mod tests {
         .unwrap()
     }
 
-    fn jti_is_denylisted(revocation_store: &RevocationStore, access_token: &str) -> bool {
+    /// Whether the `jti` of `access_token` is on the revocation store's
+    /// denylist.
+    fn is_jti_denylisted(revocation_store: &RevocationStore, access_token: &str) -> bool {
         let payload = access_token.split('.').nth(1).expect("a JWT");
         let claims: serde_json::Value =
             serde_json::from_slice(&base64::url_safe_no_pad_decode(payload).expect("base64url"))
@@ -273,13 +324,13 @@ mod tests {
 
         let own = access_token(&revoker.store, "app", SERVER_ORIGIN);
         revoker.revoke(&stranger, &own, now).unwrap();
-        assert!(!jti_is_denylisted(&revocation_store, &own));
+        assert!(!is_jti_denylisted(&revocation_store, &own));
         revoker.revoke(&app, &own, now).unwrap();
-        assert!(jti_is_denylisted(&revocation_store, &own));
+        assert!(is_jti_denylisted(&revocation_store, &own));
 
         let foreign = access_token(&revoker.store, "app", "https://other.example");
         revoker.revoke(&app, &foreign, now).unwrap();
-        assert!(!jti_is_denylisted(&revocation_store, &foreign));
+        assert!(!is_jti_denylisted(&revocation_store, &foreign));
 
         revoker.revoke(&app, "not-a-token", now).unwrap();
     }

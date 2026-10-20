@@ -5,8 +5,11 @@
 //! the `get` response shape beside its route, and the consent logic in
 //! `domain::capabilities`. `router()` is the only path table.
 
+/// `POST /devices/{userCode}/approve`.
 mod approve;
+/// `POST /devices/{userCode}/deny`.
 mod deny;
+/// `GET /devices/{userCode}`, and the prompt body it answers with.
 mod get;
 
 use std::sync::Arc;
@@ -15,6 +18,7 @@ use axum::Router;
 
 use crate::http::state::AuthorizationServerState;
 
+/// The `/devices` route table: the prompt, and its approve and deny.
 pub fn router() -> Router<Arc<AuthorizationServerState>> {
     Router::new()
         .route("/devices/{userCode}", get::route())

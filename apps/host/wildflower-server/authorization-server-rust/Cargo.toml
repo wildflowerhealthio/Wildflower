@@ -21,7 +21,7 @@ diesel_migrations.workspace = true
 # The app-wide diesel connection pool (`DieselPool` / `open_in_memory_pool`)
 # shared across diesel-backed slices; this crate names the pool type but not
 # rusqlite — the token-revocation store (a separate crate) keeps its own
-# rusqlite connection, whose error type `domain/token.rs` still names.
+# rusqlite connection.
 wildflowerhealthio-persistence = { path = "../../../../slices/persistence-rust" }
 rusqlite.workspace = true
 # The shared token-revocation store (per-jti denylist + per-subject epoch).

@@ -1,32 +1,42 @@
-//! Retention policy for the authorization server's four accumulating tables — the
+//! Retention policy for the authorization server's accumulating tables — the
 //! windows themselves plus `purge_expired`, the sweep that applies them.
 //!
 //! Each window is measured **past the row's own `expires_at`** (or, for a
 //! browser session, its `revoked_at`, whichever comes first), so nothing live
 //! is ever in range. Which tables grow, why each window is what it is, and why
 //! the sweep runs on a timer rather than on the insert path:
-//! `authorization-server-rust/docs/Retention Explanation.md`.
+//! `authorization-server-rust/docs/Book/Domain/Retention Explanation.md`.
 
 use chrono::{DateTime, Duration, Utc};
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::browser_session::LONGEST_BROWSER_SESSION_TTL;
-use crate::domain::{GrantStore, GrantTx};
+use crate::domain::grant_store::{
+    AuthorizationCodesTx as _, AuthorizationRequestsTx as _, BrowserSessionsTx as _,
+    RefreshTokensTx as _,
+};
+use crate::domain::GrantStore;
 
 /// How long a refresh-token family (and its tokens) is kept past its absolute
 /// deadline. Deliberately equal to
 /// [`REFRESH_TOKEN_FAMILY_TTL`](crate::domain::refresh_token::REFRESH_TOKEN_FAMILY_TTL) —
-/// a lineage stays auditable for its own lifetime again after it dies.
+/// a lineage stays auditable for its own lifetime again after it dies. A
+/// family that runs its full course is readable for twice its lifetime, a
+/// quarter's history: the horizon over which "what happened to this device's
+/// session" is still a live question.
 pub const REFRESH_TOKEN_FAMILY_RETENTION: Duration = Duration::days(90);
 
 /// How long an expired authorization request or code is kept — a generous audit
-/// buffer over objects whose useful life is minutes.
+/// buffer over objects whose useful life is minutes (a request lives five
+/// minutes, a code one). A week answers "what did that app try to do last
+/// Tuesday", while abandoned flows can't pile up.
 pub const AUTHORIZATION_RETENTION: Duration = Duration::days(7);
 
 /// How long a browser session is kept once it has expired or been revoked:
 /// the longest session's lifetime, which no token minted under it outlives.
 /// Past that, only a refresh-token family can still name it, and the sweep
-/// keeps any session a family alive at the cutoff names.
+/// keeps any session a family alive at the cutoff names. A session's
+/// limited-page acknowledgements go with it.
 pub const BROWSER_SESSION_RETENTION: Duration = LONGEST_BROWSER_SESSION_TTL;
 
 /// What one `purge_expired` pass reclaimed, per table. All-zero is the
@@ -37,9 +47,14 @@ pub struct PurgedCounts {
     /// Refresh-token **families** deleted. Their tokens went with them; the
     /// token rows are not counted separately.
     pub refresh_token_families: usize,
-    /// Authorization requests deleted.
-    pub authorization_requests: usize,
-    /// Authorization codes deleted.
+    /// Code-flow authorization requests deleted, from
+    /// `code_authorization_requests`.
+    pub code_authorization_requests: usize,
+    /// Device requests and browser pairings deleted, from
+    /// `user_code_requests`.
+    pub user_code_requests: usize,
+    /// Authorization codes deleted: the abandoned ones, since redemption
+    /// deletes a code as it is used.
     pub authorization_codes: usize,
     /// Browser sessions deleted.
     pub browser_sessions: usize,
@@ -50,14 +65,15 @@ impl PurgedCounts {
     #[must_use]
     pub fn is_empty(self) -> bool {
         self.refresh_token_families == 0
-            && self.authorization_requests == 0
+            && self.code_authorization_requests == 0
+            && self.user_code_requests == 0
             && self.authorization_codes == 0
             && self.browser_sessions == 0
     }
 }
 
 /// Delete every row that has aged past its retention window as of `now`, in one
-/// transaction, and report what went. Idempotent — a second pass at the same
+/// write scope, and report what went. Idempotent — a second pass at the same
 /// `now` matches nothing.
 ///
 /// `now` is a parameter rather than a `Utc::now()` inside, so the whole pass
@@ -67,7 +83,7 @@ impl PurgedCounts {
 ///
 /// # Errors
 ///
-/// [`AuthorizationServerError::Infrastructure`] if the transaction or any of the four
+/// [`AuthorizationServerError::Infrastructure`] if the scope or any of the
 /// deletes fails — rolled back, so a failure leaves the retained set as it was.
 pub(crate) fn purge_expired(
     store: &impl GrantStore,
@@ -76,12 +92,13 @@ pub(crate) fn purge_expired(
     let family_cutoff = now - REFRESH_TOKEN_FAMILY_RETENTION;
     let authorization_cutoff = now - AUTHORIZATION_RETENTION;
     let browser_session_cutoff = now - BROWSER_SESSION_RETENTION;
-    store.transaction(|tx| {
+    store.write(|tx| {
         Ok(PurgedCounts {
             refresh_token_families: tx
                 .delete_refresh_token_families_expired_before(family_cutoff)?,
-            authorization_requests: tx
-                .delete_authorization_requests_expired_before(authorization_cutoff)?,
+            code_authorization_requests: tx
+                .delete_code_requests_expired_before(authorization_cutoff)?,
+            user_code_requests: tx.delete_polled_requests_expired_before(authorization_cutoff)?,
             authorization_codes: tx
                 .delete_authorization_codes_expired_before(authorization_cutoff)?,
             browser_sessions: tx.delete_browser_sessions_ended_before(browser_session_cutoff)?,
@@ -92,11 +109,12 @@ pub(crate) fn purge_expired(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::authorization_code::IssuedAuthorizationCode;
-    use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
+    use crate::domain::authorization_code::AuthorizationCode;
+    use crate::domain::authorization_request::device::{DeviceRequest, NewDeviceRequestArgs};
+    use crate::domain::authorization_request::RequestStatus;
     use crate::domain::browser_session::{BrowserSession, BrowserSessionKind};
     use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
-    use crate::domain::test_fake::FakeGrantStore;
+    use crate::domain::test_fake::{code_request, FakeGrantStore};
 
     /// A fixed "now" so every fixture below can be placed relative to it
     /// without a clock read — the windows are the thing under test, not the
@@ -107,6 +125,8 @@ mod tests {
             .with_timezone(&Utc)
     }
 
+    /// A family issued to `client-1` 90 days before `expires_at`, with no
+    /// code, grant or session.
     fn family(family_id: &str, expires_at: DateTime<Utc>) -> RefreshTokenFamily {
         RefreshTokenFamily {
             family_id: family_id.to_string(),
@@ -121,6 +141,7 @@ mod tests {
         }
     }
 
+    /// A live token in family `family_id`, issued long before `now`.
     fn token(token_hash: &str, family_id: &str) -> RefreshToken {
         RefreshToken {
             token_hash: token_hash.to_string(),
@@ -130,35 +151,26 @@ mod tests {
         }
     }
 
-    fn request(id: &str, expires_at: DateTime<Utc>) -> AuthorizationRequest {
-        AuthorizationRequest {
-            id: id.to_string(),
-            grant_type: GrantType::DeviceCode,
-            client_id: "client-1".to_string(),
-            requested_scopes: vec!["openid".to_string()],
-            code_challenge: None,
-            code_challenge_method: None,
-            redirect_uri: None,
-            client_state: None,
-            user_code: Some(format!("UC-{id}")),
-            pre_approved_scopes: vec![],
-            requested_at: expires_at - Duration::minutes(5),
-            expires_at,
-            last_polled_at: None,
-            status: RequestStatus::Pending,
-            granted_scopes: None,
-            patient: None,
-            device_name: None,
-            launch: None,
-            launch_bound_patient: None,
-            decidable_in_requesting_browser: false,
-            sid: None,
-            session_shortfall_acknowledged: true,
-        }
+    /// A pending device request `id` for `client-1`, started five minutes
+    /// before `expires_at`.
+    fn request(id: &str, expires_at: DateTime<Utc>) -> DeviceRequest {
+        DeviceRequest::new(
+            NewDeviceRequestArgs {
+                id: id.to_string(),
+                client_id: "client-1".to_string(),
+                requested_scopes: vec!["openid".to_string()],
+                ttl: Duration::minutes(5),
+                user_code: format!("UC-{id}"),
+                device_name: None,
+            },
+            expires_at - Duration::minutes(5),
+        )
     }
 
-    fn code(code: &str, expires_at: DateTime<Utc>) -> IssuedAuthorizationCode {
-        IssuedAuthorizationCode {
+    /// An unredeemed code answering request `req-<code>`, issued a minute
+    /// before `expires_at`.
+    fn code(code: &str, expires_at: DateTime<Utc>) -> AuthorizationCode {
+        AuthorizationCode {
             code: code.to_string(),
             request_id: format!("req-{code}"),
             client_id: "client-1".to_string(),
@@ -172,10 +184,11 @@ mod tests {
         }
     }
 
+    /// An unrevoked same-device session `sid` that ends at `expires_at`.
     fn session(sid: &str, expires_at: DateTime<Utc>) -> BrowserSession {
         BrowserSession {
             sid: sid.to_string(),
-            kind: BrowserSessionKind::Owner,
+            kind: BrowserSessionKind::SameDevice,
             name: None,
             scopes: vec!["system/*.cruds".to_string()],
             created_at: expires_at - Duration::hours(8),
@@ -191,38 +204,55 @@ mod tests {
         let store = FakeGrantStore::default();
         // Past the 90-day window (its deadline is 91 days behind `now`).
         store
+            .tx()
             .insert_refresh_token_family_row(&family("old", now() - Duration::days(91)))
             .expect("seed old family");
         store
+            .tx()
             .insert_refresh_token(&token("old-token", "old"))
             .expect("seed old token");
         // Dead, but only 89 days dead — still inside the window.
         store
+            .tx()
             .insert_refresh_token_family_row(&family("recent", now() - Duration::days(89)))
             .expect("seed recent family");
         store
+            .tx()
             .insert_refresh_token(&token("recent-token", "recent"))
             .expect("seed recent token");
         // Live: deadline still ahead of `now`, and minted under the session
         // `named`.
         store
+            .tx()
             .insert_refresh_token_family_row(&RefreshTokenFamily {
                 sid: Some("named".to_string()),
                 ..family("live", now() + Duration::days(30))
             })
             .expect("seed live family");
         store
+            .tx()
             .insert_refresh_token(&token("live-token", "live"))
             .expect("seed live token");
 
         store
-            .insert_authorization_request(&request("old", now() - Duration::days(8)))
+            .tx()
+            .insert_device_request(&request("old", now() - Duration::days(8)))
             .expect("seed old request");
         store
-            .insert_authorization_request(&request("recent", now() - Duration::days(6)))
+            .tx()
+            .insert_code_request(&code_request(
+                "old-code",
+                RequestStatus::Denied,
+                now() - Duration::days(8),
+            ))
+            .expect("seed old code request");
+        store
+            .tx()
+            .insert_device_request(&request("recent", now() - Duration::days(6)))
             .expect("seed recent request");
         store
-            .insert_authorization_request(&request("live", now() + Duration::minutes(5)))
+            .tx()
+            .insert_device_request(&request("live", now() + Duration::minutes(5)))
             .expect("seed live request");
 
         // Ended a day and an hour ago — past the 24-hour window; an hour short
@@ -233,25 +263,30 @@ mod tests {
             ("named", now() - Duration::days(10)),
         ] {
             store
+                .tx()
                 .insert_browser_session(&session(sid, expires_at))
                 .expect("seed session");
         }
 
         store
+            .tx()
             .issue_authorization_code(&code("old", now() - Duration::days(8)))
             .expect("seed old code");
         store
+            .tx()
             .issue_authorization_code(&code("recent", now() - Duration::days(6)))
             .expect("seed recent code");
         store
+            .tx()
             .issue_authorization_code(&code("live", now() + Duration::minutes(1)))
             .expect("seed live code");
         store
     }
 
     /// The whole policy in one assertion: a row one day past its window goes, a
-    /// row one day short of it stays, and a live row is never in range. Both
-    /// windows are exercised at once because they share the transaction.
+    /// row one day short of it stays, and a live row is never in range. Every
+    /// window is exercised at once because they share the transaction. A
+    /// session long ended is kept while a live family names it.
     #[test]
     fn purges_past_each_window_and_spares_everything_inside_it() {
         let store = seeded();
@@ -262,51 +297,65 @@ mod tests {
             purged,
             PurgedCounts {
                 refresh_token_families: 1,
-                authorization_requests: 1,
+                code_authorization_requests: 1,
+                user_code_requests: 1,
                 authorization_codes: 1,
                 browser_sessions: 1,
             },
         );
         for (sid, kept) in [("old", false), ("recent", true), ("named", true)] {
             assert_eq!(
-                store.browser_session_by_sid(sid).expect("query").is_some(),
+                store
+                    .tx()
+                    .browser_session_by_sid(sid)
+                    .expect("query")
+                    .is_some(),
                 kept,
                 "session {sid}",
             );
         }
         assert!(store
+            .tx()
             .refresh_token_with_family_by_hash("old-token")
             .expect("query")
             .is_none());
         assert!(store
+            .tx()
             .refresh_token_with_family_by_hash("recent-token")
             .expect("query")
             .is_some());
         assert!(store
+            .tx()
             .refresh_token_with_family_by_hash("live-token")
             .expect("query")
             .is_some());
         assert!(store
+            .tx()
             .authorization_request_by_id("old")
             .expect("query")
             .is_none());
         assert!(store
+            .tx()
             .authorization_request_by_id("recent")
             .expect("query")
             .is_some());
         assert!(store
+            .tx()
             .authorization_request_by_id("live")
             .expect("query")
             .is_some());
         assert!(store
+            .tx()
             .authorization_code_by_request_id("req-old")
             .expect("query")
             .is_none());
         assert!(store
+            .tx()
             .authorization_code_by_request_id("req-recent")
             .expect("query")
             .is_some());
         assert!(store
+            .tx()
             .authorization_code_by_request_id("req-live")
             .expect("query")
             .is_some());
@@ -318,6 +367,7 @@ mod tests {
     fn deleting_a_family_takes_its_tokens() {
         let store = seeded();
         store
+            .tx()
             .insert_refresh_token(&token("old-token-2", "old"))
             .expect("seed a second generation");
 
@@ -326,6 +376,7 @@ mod tests {
         for orphan in ["old-token", "old-token-2"] {
             assert!(
                 store
+                    .tx()
                     .refresh_token_with_family_by_hash(orphan)
                     .expect("query")
                     .is_none(),
@@ -376,12 +427,14 @@ mod tests {
             later.browser_sessions, 2,
             "the 23-hour-ended one + the one only a now-dead family named"
         );
+        assert_eq!(later.user_code_requests, 2, "the 6-day-old + the live one");
         assert_eq!(
-            later.authorization_requests, 2,
-            "the 6-day-old + the live one"
+            later.code_authorization_requests, 0,
+            "the old one went first"
         );
         assert_eq!(later.authorization_codes, 2);
         assert!(store
+            .tx()
             .refresh_token_with_family_by_hash("recent-token")
             .expect("query")
             .is_none());

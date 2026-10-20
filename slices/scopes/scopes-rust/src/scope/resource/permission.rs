@@ -40,7 +40,7 @@ const INTERACTIONS: [(u8, char); 5] = [
 
 /// A non-empty set of interactions — the permission half of every resource scope.
 ///
-/// Coverage ([`contains`](Permission::contains)) compares by interaction bit set,
+/// Coverage (its `contains`) compares by interaction bit set,
 /// with one asymmetry across grammars: a v2 *letter* grant covers both letter and
 /// v1 *word* requests (`cruds` ⊇ `read`), but a v1 *word* grant never covers a
 /// letter request. Tokens are minted in the letter grammar, so a letter grant

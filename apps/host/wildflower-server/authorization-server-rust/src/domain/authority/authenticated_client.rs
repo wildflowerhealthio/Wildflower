@@ -10,19 +10,23 @@ use crate::crypto_util::client_secret::verify_client_secret;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::client_credentials::ClientCredentials;
-use crate::domain::GrantStore;
+use crate::domain::grant_store::ClientsTx;
 
 /// A client whose credentials have been verified. It answers the questions a
 /// flow asks of the client it acts for (its id, name, and what its registration
 /// allows); the row itself is private and there is no other constructor.
 #[derive(Debug)]
 pub(crate) struct AuthenticatedClient {
+    /// The client row the credentials were checked against, as read in the
+    /// caller's scope: present, not disabled, and, if confidential, holding
+    /// the hash the presented secret matched.
     client: Client,
 }
 
 /// The ways client authentication can fail. The first five are the caller's
-/// fault and render as `401 invalid_client` (the description names which);
-/// the last two are server-side and render as `500 server_error`.
+/// fault and render as `401 invalid_client` (the description names which),
+/// with a `Basic` challenge when the credentials came in the `Authorization`
+/// header; the last two are server-side and render as `500 server_error`.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum ClientAuthenticationError {
     /// No client row has this `client_id`.
@@ -42,20 +46,27 @@ pub(crate) enum ClientAuthenticationError {
     Store(AuthorizationServerError),
 }
 
+impl From<AuthorizationServerError> for ClientAuthenticationError {
+    fn from(error: AuthorizationServerError) -> Self {
+        ClientAuthenticationError::Store(error)
+    }
+}
+
 impl AuthenticatedClient {
     /// Look up the client the credentials name and verify them: unknown and
     /// disabled clients are refused; a public client passes on identity alone; a
     /// confidential client must present the secret matching its stored argon2id
-    /// PHC string (compared in constant time inside the verifier).
+    /// PHC string (compared in constant time inside the verifier). A secret a
+    /// public client sends anyway is ignored.
     ///
     /// # Errors
     ///
     /// A [`ClientAuthenticationError`] naming the failed check.
     pub(crate) fn authenticate(
-        store: &impl GrantStore,
+        tx: &mut impl ClientsTx,
         presented: &ClientCredentials,
     ) -> Result<Self, ClientAuthenticationError> {
-        let client = store
+        let client = tx
             .client_by_id(&presented.client_id)
             .map_err(ClientAuthenticationError::Store)?
             .ok_or(ClientAuthenticationError::UnknownClient)?;
@@ -105,12 +116,14 @@ impl AuthenticatedClient {
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::grant_store::*;
     use chrono::Utc;
 
     use super::*;
     use crate::crypto_util::client_secret::hash_client_secret;
     use crate::domain::test_fake::{client, FakeGrantStore};
 
+    /// Credentials naming `client_id`, with `secret` if one is presented.
     fn presented(client_id: &str, secret: Option<&str>) -> ClientCredentials {
         ClientCredentials {
             client_id: client_id.to_owned(),
@@ -118,6 +131,8 @@ mod tests {
         }
     }
 
+    /// A confidential client registered for `openid`, storing the hash of
+    /// `secret`.
     fn confidential(client_id: &str, secret: &str) -> Client {
         Client {
             kind: ClientKind::Confidential,
@@ -131,12 +146,18 @@ mod tests {
     #[test]
     fn a_public_client_authenticates_on_identity_alone() {
         let store = FakeGrantStore::default();
-        store.upsert_client(&client("app", &["openid"])).unwrap();
-        let proof =
-            AuthenticatedClient::authenticate(&store, &presented("app", None)).expect("public");
+        store
+            .tx()
+            .upsert_client(&client("app", &["openid"]))
+            .unwrap();
+        let proof = AuthenticatedClient::authenticate(&mut store.tx(), &presented("app", None))
+            .expect("public");
         assert_eq!(proof.client_id(), "app");
         assert_eq!(proof.name(), "app display name");
-        assert!(AuthenticatedClient::authenticate(&store, &presented("app", Some("x"))).is_ok());
+        assert!(
+            AuthenticatedClient::authenticate(&mut store.tx(), &presented("app", Some("x")))
+                .is_ok()
+        );
     }
 
     /// Unknown and disabled clients are refused before any secret is looked at.
@@ -144,17 +165,19 @@ mod tests {
     fn unknown_and_disabled_clients_are_refused() {
         let store = FakeGrantStore::default();
         store
+            .tx()
             .upsert_client(&Client {
                 disabled_at: Some(Utc::now()),
                 ..confidential("gone", "s3cret")
             })
             .unwrap();
         assert_eq!(
-            AuthenticatedClient::authenticate(&store, &presented("ghost", None)).unwrap_err(),
+            AuthenticatedClient::authenticate(&mut store.tx(), &presented("ghost", None))
+                .unwrap_err(),
             ClientAuthenticationError::UnknownClient
         );
         assert_eq!(
-            AuthenticatedClient::authenticate(&store, &presented("gone", Some("s3cret")))
+            AuthenticatedClient::authenticate(&mut store.tx(), &presented("gone", Some("s3cret")))
                 .unwrap_err(),
             ClientAuthenticationError::Disabled
         );
@@ -165,30 +188,40 @@ mod tests {
     #[test]
     fn a_confidential_client_needs_the_matching_secret() {
         let store = FakeGrantStore::default();
-        store.upsert_client(&confidential("app", "s3cret")).unwrap();
         store
+            .tx()
+            .upsert_client(&confidential("app", "s3cret"))
+            .unwrap();
+        store
+            .tx()
             .upsert_client(&Client {
                 secret_hash: None,
                 ..confidential("broken", "irrelevant")
             })
             .unwrap();
         assert_eq!(
-            AuthenticatedClient::authenticate(&store, &presented("app", None)).unwrap_err(),
+            AuthenticatedClient::authenticate(&mut store.tx(), &presented("app", None))
+                .unwrap_err(),
             ClientAuthenticationError::SecretRequired
         );
         assert_eq!(
-            AuthenticatedClient::authenticate(&store, &presented("app", Some("wrong")))
+            AuthenticatedClient::authenticate(&mut store.tx(), &presented("app", Some("wrong")))
                 .unwrap_err(),
             ClientAuthenticationError::SecretMismatch
         );
         assert_eq!(
-            AuthenticatedClient::authenticate(&store, &presented("broken", Some("s3cret")))
-                .unwrap_err(),
+            AuthenticatedClient::authenticate(
+                &mut store.tx(),
+                &presented("broken", Some("s3cret"))
+            )
+            .unwrap_err(),
             ClientAuthenticationError::SecretNotConfigured
         );
-        assert!(
-            AuthenticatedClient::authenticate(&store, &presented("app", Some("s3cret"))).is_ok()
-        );
+        assert!(AuthenticatedClient::authenticate(
+            &mut store.tx(),
+            &presented("app", Some("s3cret"))
+        )
+        .is_ok());
     }
 
     /// The proof answers for the registration it verified: its grant types
@@ -197,12 +230,13 @@ mod tests {
     fn the_proof_answers_for_its_registration() {
         let store = FakeGrantStore::default();
         store
+            .tx()
             .upsert_client(&Client {
                 allowed_grant_types: vec![AllowedGrantType::DeviceCode],
                 ..client("app", &["patient/*.rs"])
             })
             .unwrap();
-        let proof = AuthenticatedClient::authenticate(&store, &presented("app", None))
+        let proof = AuthenticatedClient::authenticate(&mut store.tx(), &presented("app", None))
             .expect("a public client authenticates");
         assert!(proof.allows_grant_type(AllowedGrantType::DeviceCode));
         assert!(!proof.allows_grant_type(AllowedGrantType::RefreshToken));

@@ -3,19 +3,23 @@
 //! its own table:
 //!
 //! - [`AuthorizationCodeGrant`] carries the exact `redirect_uri` it covers, so
-//!   `/authorize` can skip the consent prompt for a returning
-//!   `(client_id, redirect_uri)` pair;
+//!   `/authorize` can issue a code without asking the Owner when a returning
+//!   `(client_id, redirect_uri)` pair meets that grant's conditions;
 //! - [`DeviceGrant`] carries the paired `device_name`, so an owner can see
 //!   which devices they've authorized in Settings.
 //!
 //! The kinds share **behaviour**, not structure: [`CumulativeConsent`] is the
 //! re-approval rule (scope union — approving a narrower request never
 //! withdraws earlier consent), and the thin [`Grant`] enum is the wire/list
-//! seam — its internally-tagged serde keeps the `grantType`-tagged JSON the
-//! `access-management` `GrantSchema` decodes byte-identical to the old
-//! polymorphic-rows implementation. Single-kind operations (upserts, keyed
+//! seam — its internally-tagged serde writes the `grantType`-tagged JSON the
+//! `access-management` `GrantSchema` decodes. Single-kind operations (upserts, keyed
 //! lookups) never touch the enum; cross-kind reads come off the `grants` SQL
 //! VIEW in [`crate::db`].
+//!
+//! A grant is the Owner's standing yes, and lasts until the Owner revokes it:
+//! nothing about it expires. Revoking one revokes every access token its
+//! client holds, deletes the row, and expires every refresh family issued to
+//! the client.
 
 use chrono::{DateTime, Utc};
 use diesel::prelude::{Insertable, Queryable, Selectable};
@@ -26,8 +30,16 @@ use crate::db::grants::authorization_code::authorization_code_grants;
 use crate::db::grants::device::device_grants;
 use crate::db::shared::{JsonStrings, UrlText};
 
-/// A standing authorization-code consent: "OAuth client X may ask for scopes Y
-/// at redirect URI Z without re-prompting the Owner." Diesel-mapped 1:1 to the
+/// A standing authorization-code consent: client X may have scopes Y at
+/// redirect URI Z. A later request from the client at that redirect gets its
+/// code without asking the Owner only when it changes nothing in the
+/// client's registration, this grant covers every requested scope, its
+/// browser session is live and holds what it asks for (or its browser has
+/// gone on past the limited page for this client), and a launch's patient,
+/// if any, is this grant's. A grant covering only some scopes pre-ticks them
+/// on the consent card.
+///
+/// One grant per `(client_id, redirect_uri)`. Diesel-mapped 1:1 to the
 /// `authorization_code_grants` table; on the wire it rides inside
 /// [`Grant::AuthorizationCode`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Queryable, Selectable, Insertable)]
@@ -41,17 +53,20 @@ pub struct AuthorizationCodeGrant {
     pub id: String,
     /// `client_id` the Owner approved this grant for.
     pub client_id: String,
-    /// Scopes the Owner approved; consent is cumulative (see
+    /// Everything the Owner has approved for this client at this redirect,
+    /// across every approval; consent is cumulative (see
     /// [`CumulativeConsent`]).
     #[diesel(serialize_as = JsonStrings, deserialize_as = JsonStrings)]
     pub scopes: Vec<String>,
-    /// When the Owner gave (or last re-confirmed) consent.
+    /// When the Owner gave (or last re-confirmed) consent: the latest
+    /// approval.
     pub granted_at: DateTime<Utc>,
-    /// Last time this grant short-circuited a consent decision; `None` until
-    /// first use.
+    /// When this grant last let a code be issued without asking the Owner,
+    /// at `/oauth/authorize` or at the limited page's Continue; `None` until
+    /// it first does. A re-approval keeps it.
     pub last_used_at: Option<DateTime<Utc>>,
-    /// SMART-on-FHIR patient context recorded at approval, carried forward to
-    /// future codes/tokens minted under this grant.
+    /// The SMART patient the latest approval named, carried forward to the
+    /// codes this grant lets be issued without asking the Owner.
     pub patient: Option<String>,
     /// The exact redirect URI this grant covers — `/authorize` keys the
     /// consent-skip fast path on `(client_id, redirect_uri)`.
@@ -60,7 +75,10 @@ pub struct AuthorizationCodeGrant {
 }
 
 /// A standing device pairing: the durable record of an approved device-code
-/// flow, keyed on the human-facing device name. Diesel-mapped 1:1 to the
+/// flow, keyed on the client and the human-facing device name. It is the
+/// Owner's record of which devices they have paired; it never skips a prompt.
+/// A refresh family begun by the device's poll records the grant's `id`.
+/// Diesel-mapped 1:1 to the
 /// `device_grants` table; on the wire it rides inside [`Grant::DeviceCode`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Queryable, Selectable, Insertable)]
 #[serde(rename_all = "camelCase")]
@@ -76,12 +94,13 @@ pub struct DeviceGrant {
     /// [`CumulativeConsent`]).
     #[diesel(serialize_as = JsonStrings, deserialize_as = JsonStrings)]
     pub scopes: Vec<String>,
-    /// When the Owner gave (or last re-confirmed) consent.
+    /// When the Owner gave (or last re-confirmed) consent: the latest
+    /// approval.
     pub granted_at: DateTime<Utc>,
-    /// Last time this grant short-circuited a consent decision; `None` until
-    /// first use.
+    /// When a refresh-token family this pairing earned last rotated; `None`
+    /// until one first does. A re-pairing keeps it.
     pub last_used_at: Option<DateTime<Utc>>,
-    /// SMART-on-FHIR patient context recorded at approval.
+    /// The SMART patient the latest approval named, if any.
     pub patient: Option<String>,
     /// The human-facing device name this pairing is keyed on. Defaults to
     /// the client's name when the device didn't name itself.
@@ -96,6 +115,7 @@ pub struct DeviceGrant {
 pub trait CumulativeConsent {
     /// Fold a re-approval into this standing grant: union `additional` scopes
     /// in, stamp `granted_at = at`, and adopt the re-approval's `patient`.
+    /// `last_used_at` is left as it was.
     fn absorb_reapproval(
         &mut self,
         additional: &[String],
@@ -151,7 +171,10 @@ fn union_scopes_into(standing_ref: &mut Vec<String>, additional: &[String]) {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "grantType", rename_all = "snake_case")]
 pub enum Grant {
+    /// A standing consent for a client at one redirect, tagged
+    /// `authorization_code`.
     AuthorizationCode(AuthorizationCodeGrant),
+    /// A standing device pairing, tagged `device_code`.
     DeviceCode(DeviceGrant),
 }
 
@@ -181,6 +204,8 @@ impl Grant {
 mod tests {
     use super::*;
 
+    /// An authorization-code grant for `client-a` at `https://example.com/cb`,
+    /// with `read` and `offline_access`, no patient and no use yet.
     fn code_grant() -> AuthorizationCodeGrant {
         AuthorizationCodeGrant {
             id: "grant-x".to_owned(),
@@ -193,6 +218,8 @@ mod tests {
         }
     }
 
+    /// A device grant for `client-a`'s "Ada's laptop", with the same scopes
+    /// as [`code_grant`].
     fn device_grant() -> DeviceGrant {
         DeviceGrant {
             id: "grant-x".to_owned(),
@@ -205,6 +232,7 @@ mod tests {
         }
     }
 
+    /// The JSON the grants endpoints send for `grant`.
     fn to_json(grant: &Grant) -> serde_json::Value {
         serde_json::to_value(grant).expect("grant serializes")
     }
@@ -212,8 +240,7 @@ mod tests {
     /// An authorization-code grant serializes as the `authorization_code`
     /// variant: the `grantType` tag and `redirectUri` sit alongside the shared
     /// fields, with an absent `patient`/`lastUsedAt` rendered as `null` — the
-    /// exact JSON the old polymorphic `Grant` produced, so the TS
-    /// `access-management` `GrantSchema` can't notice the storage restructure.
+    /// exact JSON the TS `access-management` `GrantSchema` decodes.
     #[test]
     fn authorization_code_grant_serializes_exactly() {
         let grant = Grant::AuthorizationCode(code_grant());

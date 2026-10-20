@@ -28,8 +28,9 @@ pub(crate) fn build_client_redirect_url(
     url.to_string()
 }
 
-/// The `error_description` for the host app's request for scopes outside its
-/// registration (`invalid_scope`).
+/// The `error_description` for a request, from a client with a fixed
+/// (server-defined) registration, for scopes outside that registration
+/// (`invalid_scope`).
 pub(crate) const SCOPES_NOT_REGISTERED_DESCRIPTION: &str =
     "The app asked for access it isn't registered for.";
 
@@ -47,10 +48,10 @@ pub(crate) const REQUEST_DECLINED_DESCRIPTION: &str = "The request was declined.
 /// redirecting the user-agent back to the client's already-parsed
 /// `redirect_uri` with `error`, `error_description` and `state` appended, in
 /// that order (RFC 6749 §4.1.2.1). `description` is one of the fixed
-/// sentences ([`OAuthErrorKind::description`] or this module's consts), never
+/// sentences ([`AuthorizeRefusal::description`] or this module's consts), never
 /// request input.
 ///
-/// [`OAuthErrorKind::description`]: crate::domain::oauth_error_kind::OAuthErrorKind::description
+/// [`AuthorizeRefusal::description`]: crate::domain::authorize_refusal::AuthorizeRefusal::description
 pub(crate) fn build_client_error_redirect_url(
     redirect_uri: &Url,
     error: OAuthErrorCode,
@@ -69,6 +70,7 @@ pub(crate) fn build_client_error_redirect_url(
 mod tests {
     use super::*;
 
+    /// A success callback is the redirect with `code` then `state` appended.
     #[test]
     fn success_redirect_appends_code_and_state() {
         let redirect = Url::parse("https://client.example/cb").unwrap();
@@ -79,6 +81,7 @@ mod tests {
         );
     }
 
+    /// A redirect's own query is kept, with `code` and `state` after it.
     #[test]
     fn success_redirect_preserves_existing_query() {
         let redirect = Url::parse("https://client.example/cb?keep=1").unwrap();
@@ -86,6 +89,8 @@ mod tests {
         assert_eq!(url, "https://client.example/cb?keep=1&code=c&state=s");
     }
 
+    /// A failure callback appends `error`, `error_description` and `state`, in
+    /// that order.
     #[test]
     fn error_redirect_appends_error_description_and_state_in_order() {
         let redirect = Url::parse("https://client.example/cb").unwrap();
@@ -102,6 +107,8 @@ mod tests {
         );
     }
 
+    /// A redirect's own query is kept ahead of the failure parameters, and the
+    /// description is form-encoded.
     #[test]
     fn error_redirect_preserves_existing_query() {
         let redirect = Url::parse("https://client.example/cb?keep=1").unwrap();

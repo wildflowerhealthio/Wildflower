@@ -1,3 +1,9 @@
+//! The authorization server's middleware: the two bearer gates that turn a
+//! request's access token into claims (the session gate on `/authorization`,
+//! and the layerable bearer gate the host wraps its downstream routers in), the
+//! authorization start limit, and the cache suppression every `/authorization`
+//! response passes through.
+
 mod authorization_start_limit;
 mod cache_suppression;
 mod require_valid_bearer_token;

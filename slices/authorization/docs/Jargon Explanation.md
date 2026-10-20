@@ -25,13 +25,13 @@ Distinct human/machine roles whose names collide easily — get these straight
 first. "Host" alone is ambiguous (the host app, the HTTP `Host` header, the
 `__Host-` cookie prefix), so these docs say **Wildflower host app**.
 
-| Role                    | Who they are                                                                                                                     | Where they show up                                                                        |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| **OAuth client**        | Remote app requesting access (the SMART-on-FHIR caller, or the Wildflower host app itself).                                      | `client_id`, `redirect_uri`, `/oauth/...` endpoints, the [`clients`](#client) table       |
-| **Owner**               | Human with absolute control over the data this authorization server protects. Approves consent, gates inbound requests.          | `/authorization/...` endpoints, `RequireAuthMiddleware`, tokens holding the Owner's grant |
-| **Wildflower host app** | The app on the Owner's device that runs this server in its own process. See [Wildflower host app](#wildflower-host-app).         | The host app's client (`WILDFLOWER_HOST_APP_CLIENT_ID`), the in-process consent decider   |
-| **Signed-in browser**   | A browser the server has signed in: the Owner's on the same device, or an approved one. See [Browser session](#browser-session). | The browser-session client, the `__Host-browser_session` cookie                           |
-| **Resource owner**      | OAuth-spec name for the Owner — the person whose data is being shared.                                                           | OAuth spec only; we say "Owner"                                                           |
+| Role                    | Who they are                                                                                                                  | Where they show up                                                                        |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| **OAuth client**        | Remote app requesting access (the SMART-on-FHIR caller, or the Wildflower host app itself).                                   | `client_id`, `redirect_uri`, `/oauth/...` endpoints, the [`clients`](#client) table       |
+| **Owner**               | Human with absolute control over the data this authorization server protects. Approves consent, gates inbound requests.       | `/authorization/...` endpoints, `RequireAuthMiddleware`, tokens holding the Owner's grant |
+| **Wildflower host app** | The app on the Owner's device that runs this server in its own process. See [Wildflower host app](#wildflower-host-app).      | The host app's client (`WILDFLOWER_HOST_APP_CLIENT_ID`), the in-process consent decider   |
+| **Signed-in browser**   | A browser the server has signed in: the Owner's on the same device, or a paired one. See [Browser session](#browser-session). | The browser-session client, the `__Host-browser_session` cookie                           |
+| **Resource owner**      | OAuth-spec name for the Owner — the person whose data is being shared.                                                        | OAuth spec only; we say "Owner"                                                           |
 
 > **Open question:** The OAuth `client` (third-party app) is unrelated to
 > HTTP-client instances in the codebase — the word is overloaded. The
@@ -97,8 +97,7 @@ the row is created or widened only when the Owner approves — see
 Two clients are seeded by the server at startup, both `kind: 'public'` with
 empty `redirectUris`:
 
-- `WILDFLOWER_HOST_APP_CLIENT_ID` (configured as `wildflower_host_app_client_id`
-  in `tauri-shared-config.json`), named `Wildflower Host`, the
+- `WILDFLOWER_HOST_APP_CLIENT_ID`, named `Wildflower Host`, the
   [Wildflower host app](#wildflower-host-app)'s. It is allowed only its own
   scopes (`host_app_client_scopes`, `openid`), not the Owner's. The host app holds
   no token of its own (see [Wildflower host app](#wildflower-host-app)).
@@ -124,7 +123,7 @@ recovered; while the browser-session client is disabled that way,
 `/oauth/sign-in` signs no browser in and `/oauth/pair` starts no
 [browser pairing](#browser-pairing). `GET /authorization/clients` flags both
 `essential`, and the "Trusted Apps" list offers them no switch. The rule lives
-in one place, `EssentialClientGuard`, which the client reader and disabler
+in one place, `is_essential_client`, which the client reader and disabler
 share.
 
 ### Trust on first use
@@ -133,7 +132,7 @@ An authorization-code request **presents** a client registration: its
 `client_id`, `redirect_uri`, and scopes (`PresentedClientRegistration` in
 Rust). `/oauth/authorize` judges whether to accept it as it stands against
 the current [`clients`](#client) row, and computes a **registration verdict**
-(`ClientRegistrationVerdict`):
+(`PresentedClientChange` in Rust):
 
 - **`registered`** — the row exists, the `redirect_uri` resolves to an
   allowlist entry, and every requested scope is covered by `allowedScopes`.
@@ -151,7 +150,7 @@ now. Nothing is persisted for a `new` client until approval; a denied or
 expired prompt leaves no trace of it.
 
 Approving a `new` or `changed` prompt requires the Owner's explicit
-`acknowledgedRegistration` (the consent UI's "I recognise this app and this
+`acknowledgedRegistrationChange` (the consent UI's "I recognise this app and this
 redirect address" checkbox) — the server rejects the approval without it.
 Writing the row, created or widened, takes both `wildflower/Client.c` and
 `wildflower/Client.u` of the approver (see [Approval scopes](#approval-scopes)).
@@ -178,10 +177,12 @@ endpoints (RFC 6749 §4.1.2.1's open-redirect rule). Scope strings are not
 validated against a grammar on this path: an unparseable scope is carried to
 the prompt as an opaque named scope that matches only itself.
 
-The host app's client is exempt: its registration is
-**fixed** (defined by the server; approvals can't create or widen it), so an
-unregistered redirect or scope for it is rejected at the boundary, and
-approval never widens its row. Disabled clients are rejected on every endpoint regardless of verdict,
+The clients the server defines are exempt — the host app's, the
+browser-session client and the FHIR server UI's, marked `server_defined` in
+the client's `registrationSource` by boot-time seeding. Their registration is
+**fixed** (approvals can't create or widen it), so an unregistered redirect or
+scope for one is rejected at the boundary, and approval never widens its
+row. Disabled clients are rejected on every endpoint regardless of verdict,
 and a widening never clears `disabledAt` — trust the Owner took back stays
 taken back until they re-enable the app.
 
@@ -203,10 +204,19 @@ A pending authorization that has been started but not yet resolved: an
 OAuth 2.0 request of either grant flow, or a [browser pairing](#browser-pairing),
 which is no OAuth grant.
 
-- **Table:** `authorizationRequests`
-- **Discriminator:** `grantType: 'authorization_code' | 'device_code' | 'browser_pairing'`
-  (the two OAuth flows match the OAuth `grant_type` request parameter).
-- **Status field:** `'pending' | 'approved' | 'denied' | 'expired'`.
+- **Tables:** `code_authorization_requests` (the code flow's), and
+  `user_code_requests` (device requests and pairings, keyed by a `userCode`
+  and claimed by a poll).
+- **Discriminator:** in `user_code_requests`,
+  `flow: 'device_code' | 'browser_pairing'` (`device_code` matches the OAuth
+  `grant_type` request parameter). The code table holds one flow and needs none.
+- **Status field:** `'awaiting_limited_page' | 'pending' | 'approved' | 'denied'`
+  for a code request; `'pending' | 'approved' | 'denied' | 'claimed'` for a
+  device request or pairing.
+  Expiry is read from `expiresAt`, never stored as a status;
+  `awaiting_limited_page` is a code-flow request waiting on its browser's
+  [limited page](#limited-page); `claimed` is an approved device request or
+  pairing whose poll redeemed the approval.
 - **TTL:** 5 minutes.
 - **Identifier:** `id` (UUID — for code flow, the request id; for
   device flow, the `device_code`; for a pairing, its pairing code).
@@ -219,14 +229,13 @@ Code-flow rows carry the OAuth client's PKCE `code_challenge`,
 `redirect_uri`, requested `scope`, and the `state` parameter. A code-flow row
 started by a SMART App Launch also carries the consumed `launch` and the
 patient its [LaunchContext](#launchcontext) binds (`launch_bound_patient`).
-Device-flow rows leave those columns null.
 
-`session_shortfall_acknowledged` is never null. A code-flow row whose browser
-session falls short of what it asks for parks with it unset until its browser
-goes on from the [limited page](#limited-page), unless that session went on
-for the same app before (a row in `session_shortfall_acknowledgements`).
-Every other row, device-flow rows and browser pairings included, has it
-set.
+A code-flow row whose browser session falls short of what it asks for parks
+as `awaiting_limited_page` until its browser goes on from the
+[limited page](#limited-page), which makes it `pending`, unless that session
+went on for the same app before (a row in
+`session_shortfall_acknowledgements`). Only `pending` requests are asked of
+the Owner.
 
 ### LaunchContext
 
@@ -313,9 +322,9 @@ that session also holds of the grant (see
   a standing consent to `patient/Observation.rs` pre-approves a later
   request for the narrower `patient/Observation.r`.
 - **Key fields:** `clientId`, `scopes`, `redirectUri`, `grantedAt`,
-  `lastUsedAt` (event slot reserved, materializer present, but **no
-  consumer commits `clientAccessRecorded` yet**), `patient`
-  (SMART-on-FHIR launch context).
+  `lastUsedAt` (when the grant last let a code be issued without
+  asking the Owner; for a device grant, when a refresh token it earned
+  was last rotated), `patient` (SMART-on-FHIR launch context).
 
 Display name lives on [`Client`](#client)`.name`, not on `Grant`.
 
@@ -389,7 +398,7 @@ The host app's path to becoming an Owner-authenticated client. Flow:
    `slow_down` if polled faster than the advertised `interval` (5s),
    `access_denied` / `expired_token` on terminal failure.
 
-The device_code is single-use: the row's status flips to `expired` on
+The device_code is single-use: the row's status flips to `claimed` on
 the first successful token mint so a second poll returns `expired_token`.
 
 ### Device name
@@ -435,7 +444,7 @@ browser without a session at
 `/oauth/authorize`, which is only sent to [pairing](#browser-pairing) and
 parks nothing.
 
-The newest is a `NewestPendingConsent`, discriminated because the flows have
+The newest is an `OwnerPrompt`, discriminated because the flows have
 no shared lookup key, with the name of what asks: the client's (its registered
 name, or its `client_id` while it has none), or a pairing browser's:
 
@@ -445,7 +454,7 @@ name, or its `client_id` while it has none), or a pairing browser's:
 | Authorization code | `{ kind: 'oauth', id, clientName }`          | the consent card, `/oauth/authorize/{id}/consent` |
 | Browser pairing    | `{ kind: 'browser', userCode, browserName }` | the device page, `/oauth/device?user_code=`       |
 
-The Rust side recomputes it (`newest_pending_consent`) after every transition
+The Rust side recomputes it (`owner_prompt`) after every transition
 that could change it — either flow's insert, approve, or deny — and publishes
 it on a `watch` channel. The Tauri host carries each server's newest pending
 consent in the server's status, posts a notification ("‹client› wants access
@@ -543,9 +552,9 @@ the session holds none of, and those it narrows to the part the session
 holds, each named as the request spells it. `/oauth/authorize` works it out
 once the request is validated and its launch consumed, before the
 [fast path](#grant), the start limit and the Owner. When it isn't empty, it
-parks the request with `session_shortfall_acknowledged` unset and sends the
+parks the request as `awaiting_limited_page` and sends the
 browser here, unless that browser session has pressed Continue for the same
-app before. An Owner session, holding `OWNER_SCOPES`, falls short of nothing
+app before. A same-device session, holding `OWNER_SCOPES`, falls short of nothing
 and never sees the page.
 
 The page reads `GET /oauth/authorize/{id}/session-shortfall` (the app's name
@@ -554,8 +563,8 @@ allowed to read and search Observations, which Strength expects. Strength may
 not be able to do everything." The scopes are in the words the scope picker
 uses (`scopes-react`'s `fluentScope`), and the message sits above two buttons:
 
-- **Continue** posts `/oauth/authorize/{id}/continue`, which acknowledges the
-  shortfall, gives the request a fresh five minutes, and takes the branch the
+- **Continue** posts `/oauth/authorize/{id}/continue`, which makes the
+  request `pending`, gives it a fresh five minutes, and takes the branch the
   start would have taken. A standing grant
   that still covers the request issues a code, narrowed to the session.
   Otherwise the request is raised for the Owner, and the browser goes to the
@@ -689,7 +698,7 @@ running the server, and the host app runs on that device.
    card's Authorization, the server's Authorization app with `iss`; and for
    a pending request, its consent card or the device page, with `then=back`.
 3. The server redeems the code (`RedeemedSameDeviceSignInCode`, an authority
-   proof), stores the `owner` [browser session](#browser-session) it starts,
+   proof), stores the `same_device` [browser session](#browser-session) it starts,
    and mints a token through the ordinary minter, issued to the
    browser-session client (its `sub`) and holding the Owner's
    grant (`OWNER_SCOPES`, the grant the Owner decides consents with), as a
@@ -748,12 +757,13 @@ and no refresh family. The session row is its only record.
    (`ApprovableScopes::delegable_scopes`, the card's `startingScopes`). What
    the session holds bounds every code a request made in it earns.
 5. The first poll after the approval claims the request
-   (`ClaimedBrowserPairing`, an authority proof), stores the `approved` browser
+   (`ClaimedBrowserPairing`, an authority proof), stores the `paired` browser
    session it starts, named as approved, holding exactly the approved scopes
-   and lasting 24 hours (`APPROVED_SESSION_TTL`), and mints the session's token
+   and lasting 24 hours (`PAIRED_SESSION_TTL`), and mints the session's token
    for the browser-session client, for 24 hours. It answers `approved`,
    setting `__Host-browser_session=<the token>; …; Max-Age=86400`, and the page
-   goes on to `next`. Later polls find the request `expired`.
+   goes on to `next`. Later polls find the request claimed and answer
+   `expired`.
 
 The request expires 5 minutes after it starts, like any authorization request.
 Starting one is not rate-limited. The poll's JSON body needs a preflight from
@@ -763,14 +773,14 @@ pages can have its cookie set.
 ### Browser session
 
 A browser the server has signed in, one row in `browser_sessions`, keyed by
-its `sid`. Its `kind` says how the browser came to hold it: `owner` for a
+its `sid`. Its `kind` says how the browser came to hold it: `same_device` for a
 browser signed in as the Owner with a
-[same-device sign-in](#same-device-sign-in), `approved` for any other browser,
-signed in by a [browser pairing](#browser-pairing). An Owner session has no
-`name`, holds `OWNER_SCOPES`, and expires 8 hours (`OWNER_SESSION_TTL`) after
-the sign-in. An approved session has the name the browser was approved under,
+[same-device sign-in](#same-device-sign-in), `paired` for any other browser,
+signed in by a [browser pairing](#browser-pairing). A same-device session has no
+`name`, holds `OWNER_SCOPES`, and expires 8 hours (`SAME_DEVICE_SESSION_TTL`) after
+the sign-in. A paired session has the name the browser was approved under,
 holds the scopes the Owner granted, and expires 24 hours
-(`APPROVED_SESSION_TTL`) after the pairing.
+(`PAIRED_SESSION_TTL`) after the pairing.
 
 The browser holds its session in the `__Host-browser_session` cookie, whose
 value is the session's token, issued to the browser-session client (its
@@ -847,8 +857,8 @@ session holds none of is dropped. Identity and session markers (`openid`,
 `fhirUser`, `launch`, `launch/patient`, `offline_access`) pass through. The
 request and the standing grant record the approval as made; the code's tokens
 and refresh family take the code's scopes. So a browser paired without
-`patient/Observation.rs` earns no app a code for it, whoever approves, and an
-Owner session, holding `OWNER_SCOPES`, bounds nothing. A browser whose session
+`patient/Observation.rs` earns no app a code for it, whoever approves, and a
+same-device session, holding `OWNER_SCOPES`, bounds nothing. A browser whose session
 falls short of a request is told so before anything is issued or asked, on the
 [limited page](#limited-page). Launching an app from Home needs only
 `wildflower/launch`: what the app may then do is bounded here, at its own
@@ -884,7 +894,7 @@ went on past the [limited page](#limited-page) for with it.
 
 - **Table:** `browser_sessions`
 - **Identifier:** `sid` (a random UUID).
-- **Kind:** `'owner' | 'approved'`.
+- **Kind:** `'same_device' | 'paired'`.
 
 ### Expandable consent
 
@@ -896,8 +906,8 @@ consent path, where the grant may only be narrowed within the requested set
 distinction lives in the `ApprovableScopes` constructors: `for_device`
 measures the grantable subset against `client.allowedScopes`; `for_code`
 measures it against the request's `requestedScopes`; `for_browser_pairing`,
-also expandable, against `OWNER_SCOPES`, so no approved browser session holds
-more than an Owner session. The shared scope-picker UI models the
+also expandable, against `OWNER_SCOPES`, so no paired browser session holds
+more than a same-device session. The shared scope-picker UI models the
 same split with its `expandable` vs `clamped` mode.
 
 ### Scope sets
@@ -941,16 +951,16 @@ The client scopes come as a pair, whatever the registration verdict says:
 an approval creates the row when it is missing and widens it otherwise,
 deciding which from the row as it reads it inside the write, so what an
 approver must hold never turns on a row a sibling approval just changed. The
-host app's client has a fixed registration, so approving its requests takes
-no client scope, and of the resource scopes only those its registration
+server-defined clients have fixed registrations, so approving their requests
+takes no client scope, and of the resource scopes only those the registration
 allows. A code approval takes the requested resource scopes because the card
 offers its approver no narrowing it can't make: a browser that can't approve
 the request as asked asks the Owner instead. A [browser pairing](#browser-pairing)
 records no grant and registers no client, so it takes
 `wildflower/AuthorizationRequest.u` alone; device consent is expandable, so a
 device request's approver picks within what it holds (see
-[Scope sets](#scope-sets)). `OWNER_SCOPES` cover every approval scope, so an
-Owner session can always approve; an [approved browser](#browser-session)
+[Scope sets](#scope-sets)). `OWNER_SCOPES` cover every approval scope, so a
+same-device session can always approve; a [paired browser](#browser-session)
 can only with the scopes its pairing granted.
 
 `ApprovableScopes::missing_approval_scopes` (in `domain/authority`) is the one
@@ -1012,7 +1022,7 @@ Where the OAuth client wants the authorization code delivered after
 approval. Validated to be `http(s)`; matched against the client's
 `redirectUris` allowlist (exact match — no prefix games). A miss is not a
 rejection but a `changed` [registration verdict](#trust-on-first-use)
-(the host app's client excepted), and until the Owner approves, the URI is
+(the server-defined clients excepted), and until the Owner approves, the URI is
 untrusted — no error redirects to it.
 
 ### `scope`
@@ -1020,8 +1030,8 @@ untrusted — no error redirects to it.
 Space-delimited list of permission strings the OAuth client is asking
 for. Compared against `client.allowedScopes`; a scope outside that set makes
 the request a `changed` [registration verdict](#trust-on-first-use) that the
-Owner is warned about (the host app's client excepted — its requests are
-rejected with `invalid_scope`). Stored on
+Owner is warned about (the server-defined clients excepted — their requests
+are rejected with `invalid_scope`). Stored on
 `AuthorizationRequest.requestedScopes`,
 `AuthorizationCode.grantedScopes`, and `Grant.scopes`.
 
@@ -1044,8 +1054,8 @@ holds.
 - **`code_challenge`** — `BASE64URL(SHA-256(code_verifier))` per RFC 7636
   §4.2. Sent on `/oauth/authorize` and persisted on the
   `AuthorizationRequest` and `AuthorizationCode` rows.
-- **`code_challenge_method`** — `S256` is the only value accepted.
-  RFC 7636 also defines `plain` but we reject it.
+- **`code_challenge_method`** — `S256` is the only value accepted, so it
+  isn't stored. RFC 7636 also defines `plain` but we reject it.
 - **Verification** — `internal/pkce.ts:computeCodeChallenge` recomputes
   the challenge from the verifier at token exchange and compares with
   `timingSafeEqual`.
@@ -1063,9 +1073,10 @@ honored by `aud=B`, even if the signature is valid.
 
 The `TokenVerifier` accepts only the server's origin, as `iss` and as `aud`;
 every request is served at that origin. Both checks are performed by
-`verify_jwt`'s `VerifyOptions` (`expected_issuer`, `accepted_audiences`) — not
-by manual post-verify checks — so a caller using `verify_jwt` directly is forced
-to pass them and can't silently accept any iss/aud.
+`verify_access_token`'s `AccessTokenVerifyOptions` (`expected_issuer`,
+`accepted_audiences`) — not by manual post-verify checks — so a caller using
+`verify_access_token` directly is forced to pass them and can't silently accept
+any iss/aud.
 
 ### `sub` (subject)
 

@@ -17,8 +17,9 @@ import { RequireAuthMiddleware } from './require-auth.ts'
  *   ("Authorized Devices").
  *
  * A consumer narrows on `grantType` to read `redirectUri` (code) or `deviceName`
- * (device). `lastUsedAt` is null until the first time a token minted from this
- * grant is used.
+ * (device). `lastUsedAt` is null until the grant is first used: a code grant
+ * when it lets a code be issued without asking the Owner, a device grant when
+ * a refresh token it earned is rotated.
  */
 const sharedGrantFields = {
   id: Schema.String,
@@ -131,11 +132,11 @@ const SessionSchema = Schema.Struct({
  * nor expired, keyed by the `sid` every token, code and refresh family minted
  * under it records.
  *
- * - `kind` is how the browser came to hold it: `owner`, a same-device sign-in
- *   as the Owner, or `approved`, a browser that paired at `/oauth/pair` with a
- *   code the Owner approved;
- * - `name` is the name an approved browser was given, `null` for an Owner
- *   browser;
+ * - `kind` is how the browser came to hold it: `same_device`, a same-device
+ *   sign-in as the Owner, or `paired`, a browser that paired at `/oauth/pair`
+ *   with a code the Owner approved;
+ * - `name` is the name a paired browser was given, `null` for a same-device
+ *   session;
  * - `lastSeenAt` is when it was last seen in use: its sign-in, the server
  *   accepting its cookie (at most once every five minutes), or a refresh-token
  *   family made under it rotating;
@@ -143,7 +144,7 @@ const SessionSchema = Schema.Struct({
  */
 const BrowserSessionSchema = Schema.Struct({
   sid: Schema.String,
-  kind: Schema.Literal('owner', 'approved'),
+  kind: Schema.Literal('same_device', 'paired'),
   name: Schema.NullOr(Schema.String),
   createdAt: Schema.DateTimeUtc,
   expiresAt: Schema.DateTimeUtc,

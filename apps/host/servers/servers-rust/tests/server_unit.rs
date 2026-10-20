@@ -15,10 +15,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use url::Url;
-use wildflowerhealthio_authorization_server::domain::authorization_request::{
-    AuthorizationRequest, GrantType, RequestStatus,
+use wildflowerhealthio_authorization_server::domain::authorization_request::device::{
+    DeviceRequest, NewDeviceRequestArgs,
 };
-use wildflowerhealthio_authorization_server::{GrantStore, NewestPendingConsent, SqliteGrantStore};
+use wildflowerhealthio_authorization_server::domain::grant_store::AuthorizationRequestsTx as _;
+use wildflowerhealthio_authorization_server::{GrantStore, OwnerPrompt, SqliteGrantStore};
 use wildflowerhealthio_servers::{
     LaunchError, RunPolicy, ServerDetail, ServerLaunchMinter, ServerStatus, ServerUnit,
 };
@@ -58,8 +59,6 @@ fn server_config(server_dir: PathBuf) -> WildflowerServerConfig {
             .expect("authorization URL"),
         host_app_client_scopes:
             wildflowerhealthio_authorization_server::default_host_app_client_scopes(),
-        wildflower_host_app_client_id:
-            wildflowerhealthio_authorization_server::WILDFLOWER_HOST_APP_CLIENT_ID.to_owned(),
         // A relay nothing listens at: the tunnel dials and retries in the
         // background, which the server's lifecycle doesn't wait on, and the
         // reachability monitor finds the server unreachable.
@@ -272,31 +271,20 @@ fn park_device_requests(server_dir: &std::path::Path, count: usize) -> Vec<Strin
             let user_code = format!("WILD-000{index}");
             let requested_at = chrono::Utc::now() + chrono::Duration::milliseconds(index as i64);
             store
-                .insert_authorization_request(&AuthorizationRequest {
-                    id: format!("device-code-{index}"),
-                    grant_type: GrantType::DeviceCode,
-                    client_id:
-                        wildflowerhealthio_authorization_server::WILDFLOWER_HOST_APP_CLIENT_ID
-                            .to_owned(),
-                    requested_scopes: vec!["openid".to_owned()],
-                    code_challenge: None,
-                    code_challenge_method: None,
-                    redirect_uri: None,
-                    client_state: None,
-                    user_code: Some(user_code.clone()),
-                    pre_approved_scopes: Vec::new(),
-                    requested_at,
-                    expires_at: requested_at + chrono::Duration::minutes(10),
-                    last_polled_at: None,
-                    status: RequestStatus::Pending,
-                    granted_scopes: None,
-                    patient: None,
-                    device_name: None,
-                    launch: None,
-                    launch_bound_patient: None,
-                    decidable_in_requesting_browser: false,
-                    sid: None,
-                    session_shortfall_acknowledged: true,
+                .write(|tx| {
+                    tx.insert_device_request(&DeviceRequest::new(
+                        NewDeviceRequestArgs {
+                            id: format!("device-code-{index}"),
+                            client_id:
+                                wildflowerhealthio_authorization_server::WILDFLOWER_HOST_APP_CLIENT_ID
+                                    .to_owned(),
+                            requested_scopes: vec!["openid".to_owned()],
+                            ttl: chrono::Duration::minutes(10),
+                            user_code: user_code.clone(),
+                            device_name: None,
+                        },
+                        requested_at,
+                    ))
                 })
                 .expect("park a device request");
             user_code
@@ -317,7 +305,7 @@ async fn a_running_servers_newest_consent_is_its_detail_named_for_its_client() {
 
     // The host app's client is seeded as the run sets its server up, so the
     // newest request carries its registered name.
-    let newest = NewestPendingConsent::Device {
+    let newest = OwnerPrompt::DeviceCode {
         user_code: user_codes[1].clone(),
         client_name: "Wildflower Host".to_owned(),
     };

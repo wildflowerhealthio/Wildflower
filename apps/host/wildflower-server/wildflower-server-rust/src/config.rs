@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use tokio::sync::watch;
 use url::Url;
-use wildflowerhealthio_authorization_server::NewestPendingConsent;
+use wildflowerhealthio_authorization_server::OwnerPrompt;
 use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 use wildflowerhealthio_shared_structures::ServerRuntimeConfig;
@@ -41,8 +41,6 @@ pub struct WildflowerServerConfig {
     /// (see
     /// [`AuthorizationServerConfig::host_app_client_scopes`](wildflowerhealthio_authorization_server::AuthorizationServerConfig::host_app_client_scopes)).
     pub host_app_client_scopes: Vec<String>,
-    /// The Wildflower host app's OAuth `client_id`.
-    pub wildflower_host_app_client_id: String,
     /// The relay connection the server's tunnel dials, from the server's
     /// record.
     pub relay_settings: wildflowerhealthio_tunnel::RelaySettings,
@@ -97,5 +95,5 @@ pub struct ServerObservers {
     /// The server's newest pending consent, published by the authorization
     /// server as the run starts and after each change to its pending consents,
     /// for as long as the server runs.
-    pub pending_consent_tx: watch::Sender<Option<NewestPendingConsent>>,
+    pub pending_consent_tx: watch::Sender<Option<OwnerPrompt>>,
 }

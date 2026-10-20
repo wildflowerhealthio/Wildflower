@@ -44,7 +44,7 @@ const OAuthConsentSchema = Schema.Struct({
   /**
    * The trust-on-first-use standing this request was resolved with — see
    * {@link OAuthConsentRegistrationSchema}. Drives the Owner-facing warning
-   * callout and gates whether {@link ApproveOAuthConsentBody.acknowledgedRegistration}
+   * callout and gates whether {@link ApproveOAuthConsentBody.acknowledgedRegistrationChange}
    * is required.
    */
   registration: OAuthConsentRegistrationSchema,
@@ -72,7 +72,7 @@ const ApproveOAuthConsentBody = Schema.Struct({
    * `changed`; ignored for `registered`. Send `false` when no acknowledgment
    * was shown (the `registered` case).
    */
-  acknowledgedRegistration: Schema.Boolean,
+  acknowledgedRegistrationChange: Schema.Boolean,
 })
 
 /**
@@ -96,7 +96,7 @@ const OAuthConsentNotFoundSchema = Schema.Struct({
 
 /**
  * Returned when an approval of a `new` or `changed` {@link OAuthConsentRegistrationSchema}
- * arrives without `acknowledgedRegistration: true` — the Owner must tick the
+ * arrives without `acknowledgedRegistrationChange: true` — the Owner must tick the
  * "I recognise this app" checkbox before the server will register/re-register the
  * client. Modeled as a 409 (conflict with the pending registration state) rather
  * than a 422; the exact status is provisional pending the server implementation.

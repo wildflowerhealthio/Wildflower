@@ -8,8 +8,6 @@
 //! request can read, continue or cancel it. Once a browser session has gone on
 //! for an app, its later requests for that app skip the page.
 
-use wildflowerhealthio_authorization_server::domain::authorization_request::AuthorizationRequest;
-
 use crate::common::*;
 
 /// `test-app`'s query for `patient/Patient.rs patient/Observation.rs
@@ -37,7 +35,7 @@ fn seed_app(db: &TestDb) {
 }
 
 /// The approval of `app_query`'s scopes.
-const APPROVE_APP: &str = r#"{"approvedScopes":["patient/Patient.rs","patient/Observation.rs","offline_access"],"acknowledgedRegistration":true}"#;
+const APPROVE_APP: &str = r#"{"approvedScopes":["patient/Patient.rs","patient/Observation.rs","offline_access"],"acknowledgedRegistrationChange":true}"#;
 
 /// A browser paired with `wildflower/launch` and `patient/Patient.rs` alone:
 /// it falls short of `app_query` by `patient/Observation.rs`.
@@ -96,10 +94,10 @@ async fn the_fast_path_stops_at_the_limited_page_then_issues_the_narrowed_code()
 
     let request_id =
         limited_request_id(&get_authorize(&g.router, &session_token, &app_query()).await);
-    assert_eq!(newest_pending_consent(&db), None, "the Owner isn't asked");
+    assert_eq!(owner_prompt(&db), None, "the Owner isn't asked");
     assert_eq!(
         store_handle(&db)
-            .authorization_code_by_request_id(&request_id)
+            .read(|tx| tx.authorization_code_by_request_id(&request_id))
             .expect("read"),
         None,
         "no code yet"
@@ -123,7 +121,7 @@ async fn the_fast_path_stops_at_the_limited_page_then_issues_the_narrowed_code()
     );
     let issued = redeem(&g, &code_of(&callback)).await;
     assert_eq!(issued["scope"], "patient/Patient.rs offline_access");
-    assert_eq!(newest_pending_consent(&db), None);
+    assert_eq!(owner_prompt(&db), None);
 
     let res = post_session_shortfall(&g.router, &session_token, &request_id, "continue").await;
     assert_eq!(
@@ -229,7 +227,7 @@ async fn cancel_answers_the_app_access_denied() {
 }
 
 /// A request waiting on its limited page isn't the Owner's to see or decide:
-/// the newest pending consent skips it, and the consent read, approve, deny
+/// the Owner prompt skips it, and the consent read, approve, deny
 /// and ask-owner all `404`. Once the browser goes on, the Owner sees and
 /// approves it.
 #[tokio::test]
@@ -240,7 +238,7 @@ async fn the_owner_neither_sees_nor_decides_a_request_waiting_on_its_limited_pag
     let request_id =
         limited_request_id(&get_authorize(&g.router, &session_token, &app_query()).await);
 
-    assert_eq!(newest_pending_consent(&db), None);
+    assert_eq!(owner_prompt(&db), None);
     let owner_request = |method: &str, action: &str| {
         let uri = format!("/authorization/oauth-consents/{request_id}{action}");
         build_request(
@@ -276,8 +274,8 @@ async fn the_owner_neither_sees_nor_decides_a_request_waiting_on_its_limited_pag
         format!("/oauth/authorize/{request_id}/wait")
     );
     assert!(matches!(
-        newest_pending_consent(&db),
-        Some(NewestPendingConsent::OAuth { ref id, .. }) if *id == request_id
+        owner_prompt(&db),
+        Some(OwnerPrompt::AuthorizationCode { ref id, .. }) if *id == request_id
     ));
     let res = approve_oauth_consent(&g, &owner_token, &request_id, APPROVE_APP.to_owned()).await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -294,9 +292,9 @@ async fn another_browser_can_neither_read_nor_continue_nor_cancel() {
     let request_id =
         limited_request_id(&get_authorize(&g.router, &session_token, &app_query()).await);
     let (_, other_browser_token) = limited_browser(&db);
-    let owner_session_token = signed_in_owner_session_token(&g).await;
+    let same_device_session_token = signed_in_same_device_session_token(&g).await;
 
-    for token in [&other_browser_token, &owner_session_token] {
+    for token in [&other_browser_token, &same_device_session_token] {
         let res = get_session_shortfall(&g.router, token, &request_id).await;
         assert_eq!(res.status(), StatusCode::NOT_FOUND);
         assert_eq!(
@@ -339,16 +337,16 @@ async fn another_browser_can_neither_read_nor_continue_nor_cancel() {
 /// The Owner's session holds everything, so it never sees the limited page:
 /// it goes to the consent card, or takes the fast path.
 #[tokio::test]
-async fn an_owner_session_never_sees_the_limited_page() {
+async fn a_same_device_session_never_sees_the_limited_page() {
     let (g, owner_token, db) = spin_up();
     seed_app(&db);
-    let owner_session_token = signed_in_owner_session_token(&g).await;
+    let same_device_session_token = signed_in_same_device_session_token(&g).await;
     let query = authorize_query(
         "test-app",
         "patient%2FPatient.rs%20patient%2FObservation.rs%20offline_access%20wildflower%2Flaunch",
     );
 
-    let res = get_authorize(&g.router, &owner_session_token, &query).await;
+    let res = get_authorize(&g.router, &same_device_session_token, &query).await;
     assert_eq!(res.status(), StatusCode::FOUND);
     assert!(
         location_of(&res).ends_with("/consent"),
@@ -357,7 +355,7 @@ async fn an_owner_session_never_sees_the_limited_page() {
     );
 
     approve_a_standing_grant(&g, &owner_token, &db).await;
-    let res = get_authorize(&g.router, &owner_session_token, &app_query()).await;
+    let res = get_authorize(&g.router, &same_device_session_token, &app_query()).await;
     assert_eq!(res.status(), StatusCode::FOUND);
     assert!(
         location_of(&res).starts_with("https://app.example/cb?code="),
@@ -379,8 +377,8 @@ async fn without_a_standing_grant_continue_raises_the_request_for_the_owner() {
         "test-app",
         "patient%2FPatient.rs%20patient%2FObservation.rs%20offline_access%20wildflower%2Flaunch",
     );
-    let owner_session_token = signed_in_owner_session_token(&g).await;
-    let owner_sid = decode_jwt_payload(&owner_session_token)["sid"]
+    let same_device_session_token = signed_in_same_device_session_token(&g).await;
+    let owner_sid = decode_jwt_payload(&same_device_session_token)["sid"]
         .as_str()
         .expect("a browser session's token names its sid")
         .to_owned();
@@ -415,8 +413,8 @@ async fn without_a_standing_grant_continue_raises_the_request_for_the_owner() {
         serde_json::json!(["wildflower/launch"])
     );
     assert!(matches!(
-        newest_pending_consent(&db),
-        Some(NewestPendingConsent::OAuth {
+        owner_prompt(&db),
+        Some(OwnerPrompt::AuthorizationCode {
             ref id,
             decidable_in_requesting_browser: false,
             ..
@@ -431,8 +429,8 @@ async fn without_a_standing_grant_continue_raises_the_request_for_the_owner() {
         format!("/oauth/authorize/{request_id}/wait")
     );
     assert!(matches!(
-        newest_pending_consent(&db),
-        Some(NewestPendingConsent::OAuth {
+        owner_prompt(&db),
+        Some(OwnerPrompt::AuthorizationCode {
             ref id,
             decidable_in_requesting_browser: false,
             ..
@@ -451,14 +449,18 @@ async fn an_expired_request_on_the_limited_page_goes_no_further() {
     let request_id =
         limited_request_id(&get_authorize(&g.router, &session_token, &app_query()).await);
     let parked = store_handle(&db)
-        .authorization_request_by_id(&request_id)
+        .read(|tx| tx.code_request_by_id(&request_id))
         .expect("read")
         .expect("parked");
+    let lapsed_at = Utc::now() - Duration::minutes(5) - Duration::seconds(1);
     store_handle(&db)
-        .insert_authorization_request(&AuthorizationRequest {
-            id: "lapsed".to_owned(),
-            expires_at: Utc::now() - Duration::seconds(1),
-            ..parked
+        .write(|tx| {
+            tx.insert_code_request(&CodeRequest {
+                id: "lapsed".to_owned(),
+                requested_at: lapsed_at,
+                expires_at: lapsed_at + Duration::minutes(5),
+                ..parked
+            })
         })
         .expect("plant a lapsed copy");
 

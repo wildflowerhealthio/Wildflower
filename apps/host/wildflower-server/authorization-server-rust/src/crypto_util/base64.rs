@@ -57,6 +57,8 @@ pub fn standard_decode(s: &str) -> Result<Vec<u8>, DecodeError> {
 mod tests {
     use super::*;
 
+    /// The standard form pads an incomplete final quantum with `=`; the
+    /// url-safe no-pad form leaves it off.
     #[test]
     fn standard_pads_while_url_safe_does_not() {
         // A single input byte leaves the final base64 quantum incomplete: the
@@ -65,6 +67,8 @@ mod tests {
         assert_eq!(url_safe_no_pad_encode(&[0x00]), "AA");
     }
 
+    /// The two alphabets differ only in the symbols for indices 62 and 63:
+    /// `+`/`/` in the standard form, `-`/`_` in the url-safe form.
     #[test]
     fn alphabets_differ_on_the_62nd_and_63rd_symbols() {
         // 0xFB,0xF0 select base64 indices 62 and 63 — the only two symbols the
@@ -74,6 +78,7 @@ mod tests {
         assert_eq!(url_safe_no_pad_encode(&bytes), "-_A");
     }
 
+    /// Each flavour decodes what it encodes back to the same bytes.
     #[test]
     fn each_variant_round_trips() {
         let bytes: &[u8] = &[0x00, 0x10, 0x83, 0xfb, 0xf0, 0xff];

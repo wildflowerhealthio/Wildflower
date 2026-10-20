@@ -1,8 +1,13 @@
+//! PKCE (RFC 7636): the `code_verifier` length rule, the S256
+//! `code_challenge` shape, and deriving a challenge from a verifier. S256 is
+//! the only method the server accepts.
+
 use crate::crypto_util::sha256;
 
-/// RFC 7636 §4.1 bounds on the `code_verifier`: 43–128 characters drawn from
-/// the unreserved set.
+/// The shortest `code_verifier` RFC 7636 §4.1 allows: 43 characters drawn
+/// from the unreserved set.
 const CODE_VERIFIER_MIN_LEN: usize = 43;
+/// The longest `code_verifier` RFC 7636 §4.1 allows: 128 characters.
 const CODE_VERIFIER_MAX_LEN: usize = 128;
 
 /// True when `code_verifier` has an RFC 7636 §4.1-legal length (43–128 chars).
@@ -37,6 +42,8 @@ pub fn compute_code_challenge(code_verifier: &str) -> String {
 mod tests {
     use super::*;
 
+    /// The verifier from RFC 7636 Appendix B derives the challenge the RFC
+    /// gives, and that challenge passes the shape check.
     #[test]
     fn rfc7636_appendix_b_example() {
         // RFC 7636 Appendix B
@@ -46,6 +53,8 @@ mod tests {
         assert!(is_valid_s256_code_challenge(expected));
     }
 
+    /// A challenge one character short or long, padded with `=`, or ending in
+    /// a `.` is refused.
     #[test]
     fn s256_challenge_shape_is_43_base64url_chars() {
         assert!(!is_valid_s256_code_challenge(&"a".repeat(42)));

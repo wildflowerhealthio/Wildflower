@@ -4,17 +4,24 @@
 //! constructor is the whole redemption rule: the atomic single-use claim, the
 //! client / redirect / expiry bindings, the PKCE check. The scopes each carries
 //! are copied from the record it redeemed, so the token the minter signs can
-//! only ever hold what the standing consent behind that record recorded.
+//! only ever hold what the consent behind that record recorded.
 //!
 //!  - [`RedeemedAuthorizationCode`] — the code consumed and bound.
 //!  - [`ConsumedDeviceRequest`] — the approved device request claimed.
-//!  - [`ValidatedRefreshToken`] — a live refresh token bound to its client. It
-//!    is *validated*, not yet rotated, on purpose: the flow mints first and
-//!    rotates after, so a signing failure never burns the presented token.
+//!  - [`ValidatedRefreshToken`] — a live refresh token bound to its client,
+//!    validated before the refresh-family writer rotates it.
 //!
 //! [`GrantRedemption`] names the two that may also start a refresh-token
 //! family (a refresh can only rotate the family it belongs to). Every proof
 //! is minted under through its [`TokenEntitlement`] variant.
+//!
+//! Each constructor runs inside the token exchange's write scope, but for
+//! [`ValidatedRefreshToken`], validated in a `read` scope first and
+//! re-validated in the write scope (see its doc). A refusal
+//! that follows a write (a code consumed and then found bound elsewhere, a
+//! device poll stamped) is the inner `Err` of a nested result, so the scope
+//! commits what it wrote rather than rolling it back. Only a store failure is
+//! the outer `Err`.
 
 use chrono::{DateTime, Utc};
 use subtle::ConstantTimeEq;
@@ -22,29 +29,39 @@ use url::Url;
 use wildflowerhealthio_scopes::KnownScope;
 
 use super::authenticated_client::AuthenticatedClient;
+#[cfg(doc)]
 use super::token_entitlement::TokenEntitlement;
 use crate::crypto_util::pkce::{compute_code_challenge, is_valid_code_verifier_length};
 use crate::crypto_util::random_token::token_storage_hash;
-use crate::domain::authorization_code::IssuedAuthorizationCode;
-use crate::domain::authorization_request::{
-    device_grant_name, AuthorizationRequest, GrantType, RequestStatus, DEVICE_CODE_POLL_INTERVAL,
-};
+use crate::domain::authorization_code::AuthorizationCode;
+use crate::domain::authorization_request::approval::Approval;
+use crate::domain::authorization_request::device::device_grant_name;
+use crate::domain::authorization_request::polled::{Polled as _, PolledState};
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::grant_store::{
+    AuthorizationCodesTx, AuthorizationRequestsTx, BrowserSessionsTx, GrantsTx, RefreshTokensTx,
+};
 use crate::domain::refresh_token::RefreshTokenFamily;
 use crate::domain::token_exchange_error::{InvalidGrantReason, TokenExchangeError};
-use crate::domain::GrantStore;
 use crate::ports::RevocationCheck;
 
 /// The presented halves of an `authorization_code` grant request (RFC 6749
-/// §4.1.3), as the client sent them.
+/// §4.1.3), as the client sent them: the three values redemption checks.
 pub(crate) struct PresentedAuthorizationCode<'a> {
+    /// The authorization code, as issued at `/oauth/authorize`; taken out of
+    /// the store before its bindings are checked.
     pub(crate) code: &'a str,
+    /// The PKCE verifier (RFC 7636 §4.5), whose S256 hash must equal the
+    /// challenge the code was bound to.
     pub(crate) code_verifier: &'a str,
+    /// The redirect URI named again, which must equal the one the code was
+    /// issued for.
     pub(crate) redirect_uri: &'a str,
 }
 
 /// A redemption that may start a refresh-token family: the two grants that
-/// establish a session rather than renew one.
+/// establish a session rather than renew one. A refresh only rotates the
+/// family it already belongs to, so it is not one of these.
 #[derive(Clone, Copy)]
 pub(crate) enum GrantRedemption<'a> {
     /// An authorization code redeemed at `/oauth/token`.
@@ -54,18 +71,6 @@ pub(crate) enum GrantRedemption<'a> {
 }
 
 impl<'a> GrantRedemption<'a> {
-    /// The entitlement a token is minted under for this redemption.
-    pub(crate) fn entitlement(self) -> TokenEntitlement<'a> {
-        match self {
-            GrantRedemption::AuthorizationCode(redeemed_code) => {
-                TokenEntitlement::AuthorizationCode(redeemed_code)
-            }
-            GrantRedemption::DeviceCode(consumed_device_request) => {
-                TokenEntitlement::DeviceCode(consumed_device_request)
-            }
-        }
-    }
-
     /// The `client_id` the redemption is bound to.
     pub(crate) fn client_id(self) -> &'a str {
         match self {
@@ -86,8 +91,8 @@ impl<'a> GrantRedemption<'a> {
         }
     }
 
-    /// The scopes as granted (before the minter's spelling twin), for the
-    /// token response's `scope` and the family's record.
+    /// The scopes as granted (without the alternate spellings the token
+    /// carries), for the token response's `scope` and the family's record.
     pub(crate) fn granted_scopes(self) -> &'a [String] {
         match self {
             GrantRedemption::AuthorizationCode(redeemed_code) => redeemed_code.granted_scopes(),
@@ -129,7 +134,7 @@ impl<'a> GrantRedemption<'a> {
 
     /// Whether the grant carries [`KnownScope::OfflineAccess`] and so earns a
     /// refresh-token family alongside its access token.
-    pub(crate) fn earns_refresh_token(self) -> bool {
+    pub(crate) fn is_refresh_token_earned(self) -> bool {
         self.granted_scopes()
             .iter()
             .any(|scope| scope == KnownScope::OfflineAccess.as_str())
@@ -140,90 +145,76 @@ impl<'a> GrantRedemption<'a> {
 /// to the redeeming client and `redirect_uri`, unexpired, and matching the
 /// PKCE verifier. Carries the code's granted scopes.
 pub(crate) struct RedeemedAuthorizationCode {
-    code: IssuedAuthorizationCode,
+    /// The issued code, whole, as taken out of the store: the client, scopes,
+    /// patient and browser session the token is minted with.
+    code: AuthorizationCode,
+    /// The code's granted scopes with each SMART scope's alternate spelling
+    /// added: the token's `scope` claim.
     token_scopes: Vec<String>,
+    /// The standing code grant for this client and redirect, recorded on the
+    /// refresh family the code starts; `None` when none stands, as for a grant
+    /// revoked between approval and redemption.
     grant_id: Option<String>,
 }
 
 impl RedeemedAuthorizationCode {
     /// Check the presented request is well formed, then atomically
-    /// read-and-consume the code and verify every binding. A malformed request
+    /// read-and-consume the code and verify every binding. A code is spent the
+    /// moment it is presented, and only then checked, so of two redemptions
+    /// racing for one code only one gets it, and a code that fails a binding
+    /// can't be retried into a token. A malformed request
     /// is refused before the code is touched. A code that is gone (redeemed or
     /// never issued) is a possible replay: any refresh family minted from it is
     /// revoked before the refusal (RFC 6749 §4.1.2). The binding failures all
     /// collapse to `invalid_grant` on the wire (the reason is logged), so a
     /// response never reveals which check failed.
     ///
+    /// The refusals, as the inner `Err`:
+    /// [`TokenExchangeError::InvalidCodeVerifier`] (RFC 7636 §4.1 length) or
+    /// [`TokenExchangeError::InvalidRedirectUri`] for a malformed request, and
+    /// [`TokenExchangeError::InvalidGrant`] with the specific reason.
+    ///
     /// # Errors
     ///
-    /// [`TokenExchangeError::InvalidCodeVerifier`] (RFC 7636 §4.1 length) or
-    /// [`TokenExchangeError::InvalidRedirectUri`] for a malformed request;
-    /// [`TokenExchangeError::InvalidGrant`] with the specific reason;
-    /// [`TokenExchangeError::Store`] on a store failure.
+    /// [`AuthorizationServerError::Infrastructure`] on a store failure.
     pub(crate) fn redeem(
-        store: &impl GrantStore,
+        tx: &mut (impl AuthorizationCodesTx + RefreshTokensTx + GrantsTx),
         authenticated_client: &AuthenticatedClient,
         presented: &PresentedAuthorizationCode<'_>,
         now: DateTime<Utc>,
-    ) -> Result<Self, TokenExchangeError> {
+    ) -> Result<Result<Self, TokenExchangeError>, AuthorizationServerError> {
         if !is_valid_code_verifier_length(presented.code_verifier) {
-            return Err(TokenExchangeError::InvalidCodeVerifier);
+            return Ok(Err(TokenExchangeError::InvalidCodeVerifier));
         }
-        let redirect_uri = Url::parse(presented.redirect_uri)
-            .map_err(|_| TokenExchangeError::InvalidRedirectUri)?;
+        let Ok(redirect_uri) = Url::parse(presented.redirect_uri) else {
+            return Ok(Err(TokenExchangeError::InvalidRedirectUri));
+        };
         // A concurrent redemption of the same code can only succeed once, so
         // any racer past this point sees `None` (RFC 6749 §10.5).
-        let Some(code) = store.redeem_authorization_code(presented.code)? else {
-            store.expire_refresh_token_families_for_authorization_code(
+        let Some(code) = tx.redeem_authorization_code(presented.code)? else {
+            tx.expire_refresh_token_families_for_authorization_code(
                 &token_storage_hash(presented.code),
                 now,
             )?;
-            return Err(TokenExchangeError::InvalidGrant(
+            return Ok(Err(TokenExchangeError::InvalidGrant(
                 InvalidGrantReason::CodeNotFoundOrRedeemed,
-            ));
+            )));
         };
-        if code.client_id != authenticated_client.client_id() {
-            return Err(TokenExchangeError::InvalidGrant(
-                InvalidGrantReason::CodeClientMismatch {
-                    code_client_id: code.client_id,
-                    presented_client_id: authenticated_client.client_id().to_owned(),
-                },
-            ));
+        if let Err(reason) =
+            check_code_bindings(&code, authenticated_client, &redirect_uri, presented, now)
+        {
+            return Ok(Err(TokenExchangeError::InvalidGrant(reason)));
         }
-        if code.redirect_uri != redirect_uri {
-            return Err(TokenExchangeError::InvalidGrant(
-                InvalidGrantReason::CodeRedirectMismatch {
-                    code_redirect_uri: code.redirect_uri.to_string(),
-                    presented_redirect_uri: redirect_uri.to_string(),
-                },
-            ));
-        }
-        if code.expires_at < now {
-            return Err(TokenExchangeError::InvalidGrant(
-                InvalidGrantReason::CodeExpired {
-                    expires_at: code.expires_at,
-                },
-            ));
-        }
-        let computed = compute_code_challenge(presented.code_verifier);
-        if !bool::from(code.code_challenge.as_bytes().ct_eq(computed.as_bytes())) {
-            return Err(TokenExchangeError::InvalidGrant(
-                InvalidGrantReason::PkceMismatch {
-                    client_id: authenticated_client.client_id().to_owned(),
-                },
-            ));
-        }
-        // The standing grant behind this exchange, recorded on the family
-        // (write-only in v1); a grant revoked between approval and redemption
-        // just leaves it `None`.
-        let grant_id = store
+        // The standing grant behind this exchange, recorded on the family; a
+        // grant revoked between approval and redemption just leaves it `None`.
+        let grant_id = tx
             .grant_by_client_and_redirect(authenticated_client.client_id(), &redirect_uri)?
             .map(|grant| grant.id);
-        Ok(RedeemedAuthorizationCode {
+        Ok(Ok(RedeemedAuthorizationCode {
             token_scopes: token_scope_spellings(&code.granted_scopes),
             code,
             grant_id,
-        })
+        }))
     }
 
     /// The redeeming client.
@@ -267,91 +258,122 @@ impl RedeemedAuthorizationCode {
 /// §3.4 single use), bound to the polling client. Carries the scopes the Owner
 /// granted at approval.
 pub(crate) struct ConsumedDeviceRequest {
-    request: AuthorizationRequest,
-    granted_scopes: Vec<String>,
+    /// The polling client, which the request was made by and is claimed for.
+    client_id: String,
+    /// What the Owner approved: the granted scopes and the patient context,
+    /// if any.
+    approval: Approval,
+    /// The granted scopes with each SMART scope's alternate spelling added:
+    /// the token's `scope` claim.
     token_scopes: Vec<String>,
+    /// The standing device grant for this client and the device's grant
+    /// name, recorded on the refresh family the claim starts; each rotation of
+    /// that family stamps the grant used. `None` when none stands.
     grant_id: Option<String>,
 }
 
 impl ConsumedDeviceRequest {
     /// Resolve the device request for `device_code`, require it to be this
     /// client's, unexpired, and approved (stamping the poll and throttling a
-    /// still-pending one per §3.5), then atomically claim it. The status read
-    /// is advisory; the `approved` → `expired` claim is the real single-use
-    /// gate, so two concurrent polls can't both mint.
+    /// still-pending one per §3.5), then claim it, single use, under the
+    /// scope's write lock, so two concurrent polls can't both mint. Once
+    /// claimed, the standing device grant is looked up by the client and the
+    /// device's grant name ([`device_grant_name`]) and recorded on the proof.
+    ///
+    /// Each poll is answered by the request's state:
+    ///
+    /// - unknown, another client's, or not a device request: `invalid_grant`,
+    ///   the three alike;
+    /// - past its expiry, whatever its status: `expired_token`;
+    /// - pending, polled again within [`DEVICE_CODE_POLL_INTERVAL`] of the
+    ///   last poll: `slow_down`, and the poll is not stamped;
+    /// - pending otherwise: `authorization_pending`, and the poll is stamped;
+    /// - denied: `access_denied`;
+    /// - already claimed: `expired_token`, since the device code has done its
+    ///   work;
+    /// - approved: claimed, and the proof returned; a poll that loses the
+    ///   claim to a concurrent one is `invalid_grant`.
+    ///
+    /// [`DEVICE_CODE_POLL_INTERVAL`]: crate::domain::authorization_request::DEVICE_CODE_POLL_INTERVAL
+    ///
+    /// The refusals, as the inner `Err`: the §3.5 poll outcomes
+    /// ([`ExpiredToken`](TokenExchangeError::ExpiredToken),
+    /// [`AuthorizationPending`](TokenExchangeError::AuthorizationPending),
+    /// [`AccessDenied`](TokenExchangeError::AccessDenied),
+    /// [`SlowDown`](TokenExchangeError::SlowDown)), with an already-claimed
+    /// request answering `ExpiredToken`;
+    /// [`TokenExchangeError::InvalidGrant`] for an unknown request, or one
+    /// whose guarded claim loses a race to a concurrent poll.
     ///
     /// # Errors
     ///
-    /// The §3.5 poll outcomes ([`ExpiredToken`](TokenExchangeError::ExpiredToken),
-    /// [`AuthorizationPending`](TokenExchangeError::AuthorizationPending),
-    /// [`AccessDenied`](TokenExchangeError::AccessDenied),
-    /// [`SlowDown`](TokenExchangeError::SlowDown)),
-    /// [`TokenExchangeError::InvalidGrant`] for an unknown or already-claimed
-    /// request, [`TokenExchangeError::Store`] on a store failure.
+    /// [`AuthorizationServerError::Infrastructure`] on a store failure.
     pub(crate) fn consume(
-        store: &impl GrantStore,
+        tx: &mut (impl AuthorizationRequestsTx + GrantsTx),
         authenticated_client: &AuthenticatedClient,
         device_code: &str,
         now: DateTime<Utc>,
-    ) -> Result<Self, TokenExchangeError> {
-        let request = match store.authorization_request_by_id(device_code)? {
-            Some(record)
-                if record.grant_type == GrantType::DeviceCode
-                    && record.client_id == authenticated_client.client_id() =>
-            {
-                record
-            }
-            // One outcome collapses "no such device_code", "wrong client", and
-            // "not a device request".
-            _ => {
-                return Err(TokenExchangeError::InvalidGrant(
-                    InvalidGrantReason::DeviceRequestNotFound {
-                        presented_client_id: authenticated_client.client_id().to_owned(),
-                    },
-                ))
-            }
-        };
-        if request.expires_at < now {
-            return Err(TokenExchangeError::ExpiredToken);
-        }
-        if request.status == RequestStatus::Pending {
-            if let Some(last_polled) = request.last_polled_at {
-                if now - last_polled < DEVICE_CODE_POLL_INTERVAL {
-                    return Err(TokenExchangeError::SlowDown);
-                }
-            }
-            store.record_device_poll(&request.id, now)?;
-        }
-        match request.status {
-            RequestStatus::Approved => {}
-            RequestStatus::Pending => return Err(TokenExchangeError::AuthorizationPending),
-            RequestStatus::Denied => return Err(TokenExchangeError::AccessDenied),
-            RequestStatus::Expired => return Err(TokenExchangeError::ExpiredToken),
-        }
-        if !store.consume_approved_authorization_request(&request.id)? {
-            return Err(TokenExchangeError::InvalidGrant(
-                InvalidGrantReason::DeviceCodeAlreadyRedeemed {
-                    client_id: request.client_id,
+    ) -> Result<Result<Self, TokenExchangeError>, AuthorizationServerError> {
+        // One outcome collapses "no such device_code", "wrong client", and
+        // "not a device request".
+        let Some(request) = tx
+            .device_request_by_id(device_code)?
+            .filter(|request| request.client_id == authenticated_client.client_id())
+        else {
+            return Ok(Err(TokenExchangeError::InvalidGrant(
+                InvalidGrantReason::DeviceRequestNotFound {
+                    presented_client_id: authenticated_client.client_id().to_owned(),
                 },
-            ));
+            )));
+        };
+        if request.is_expired_at(now) {
+            return Ok(Err(TokenExchangeError::ExpiredToken));
         }
-        let granted_scopes = request.granted_scopes.clone().unwrap_or_default();
+        let approval = match &request.state {
+            PolledState::Pending => {
+                if request.is_polled_too_soon_at(now) {
+                    return Ok(Err(TokenExchangeError::SlowDown));
+                }
+                if let Ok(stamped) = request.stamp_poll(now) {
+                    tx.replace_device_request(&request, &stamped)?;
+                }
+                return Ok(Err(TokenExchangeError::AuthorizationPending));
+            }
+            PolledState::Denied => return Ok(Err(TokenExchangeError::AccessDenied)),
+            // A claimed request already minted its token: as RFC 8628 §3.5
+            // has it, the device code has expired.
+            PolledState::Claimed(_) => return Ok(Err(TokenExchangeError::ExpiredToken)),
+            PolledState::Approved(approval) => approval.clone(),
+        };
+        let claimed = request.claim(now).map_err(|_| {
+            AuthorizationServerError::infrastructure(
+                "claiming a device request",
+                "an approved, unexpired request is not claimable",
+            )
+        })?;
+        if !tx.replace_device_request(&request, &claimed)? {
+            return Ok(Err(TokenExchangeError::InvalidGrant(
+                InvalidGrantReason::DeviceCodeAlreadyRedeemed {
+                    client_id: request.client_id.clone(),
+                },
+            )));
+        }
         let grant_name =
             device_grant_name(request.device_name.as_deref(), authenticated_client.name());
-        let grant_id = store
+        let grant_id = tx
             .device_grant_by_client_and_device_name(&request.client_id, grant_name)?
             .map(|grant| grant.id);
-        Ok(ConsumedDeviceRequest {
-            token_scopes: token_scope_spellings(&granted_scopes),
-            granted_scopes,
-            request,
+        Ok(Ok(ConsumedDeviceRequest {
+            token_scopes: token_scope_spellings(&approval.granted_scopes),
+            client_id: request.client_id.clone(),
+            approval,
             grant_id,
-        })
+        }))
     }
 
     /// The polling client the request was claimed by.
     pub(crate) fn client_id(&self) -> &str {
-        &self.request.client_id
+        &self.client_id
     }
 
     /// The granted scopes with each SMART scope's alternate spelling added —
@@ -362,12 +384,12 @@ impl ConsumedDeviceRequest {
 
     /// The scopes the Owner granted at approval.
     pub(crate) fn granted_scopes(&self) -> &[String] {
-        &self.granted_scopes
+        &self.approval.granted_scopes
     }
 
     /// The patient context bound at approval, if any.
     pub(crate) fn patient(&self) -> Option<&str> {
-        self.request.patient.as_deref()
+        self.approval.patient.as_deref()
     }
 
     /// The standing device grant behind the request, if one was resolved.
@@ -377,12 +399,25 @@ impl ConsumedDeviceRequest {
 }
 
 /// A refresh token that resolved to a live family owned by the presenting
-/// client (RFC 6749 §6). Not yet consumed: the flow mints against it first and
-/// rotates it afterwards through the refresh-family writer, so a signing
-/// failure leaves the presented token usable for a retry.
+/// client (RFC 6749 §6). Not yet consumed: the refresh-family writer rotates
+/// it.
+///
+/// Built in two scopes. [`validate`](Self::validate) runs the whole
+/// validation in a `read` scope, the client's revocation epoch included: the
+/// epoch lives on the revocation store, another connection to the same file,
+/// so it can't be read under the exchange's write lock without risking a
+/// lock-order stall. [`revalidate`](Self::revalidate) then re-runs the
+/// store-only half inside the `write` scope that rotates, because the family
+/// may have ended between the two.
 pub(crate) struct ValidatedRefreshToken {
+    /// The live family the token belongs to, this client's: the scopes,
+    /// patient and browser session every token rotated under it carries.
     family: RefreshTokenFamily,
+    /// The storage hash of the token as presented, by which the refresh-family
+    /// writer consumes it when it rotates the token into its successor.
     presented_hash: String,
+    /// The family's scopes with each SMART scope's alternate spelling added:
+    /// the token's `scope` claim.
     token_scopes: Vec<String>,
 }
 
@@ -392,7 +427,11 @@ impl ValidatedRefreshToken {
     /// earlier than its client's revocation epoch. A valid token presented by
     /// the wrong client is answered exactly like an unknown one so a stranger
     /// can't probe validity, and is refused before any consume so it can't
-    /// burn the rightful client's token.
+    /// burn the rightful client's token. A family begun at the epoch itself
+    /// still validates. Bumping a client's revocation epoch revokes every
+    /// token it held at that instant, so a family begun before it is refused
+    /// like an access token issued before it. Runs in a `read` scope, outside
+    /// the write lock (see the type's doc).
     ///
     /// # Errors
     ///
@@ -400,14 +439,74 @@ impl ValidatedRefreshToken {
     /// [`TokenExchangeError::Store`] on a store failure, the revocation
     /// store's included, so an unreadable epoch never admits a family.
     pub(crate) fn validate(
-        store: &impl GrantStore,
+        tx: &mut (impl RefreshTokensTx + BrowserSessionsTx),
         revocation: &dyn RevocationCheck,
         authenticated_client: &AuthenticatedClient,
         presented_refresh_token: &str,
         now: DateTime<Utc>,
     ) -> Result<Self, TokenExchangeError> {
-        let presented_hash = token_storage_hash(presented_refresh_token);
-        let Some((_, family)) = store.refresh_token_with_family_by_hash(&presented_hash)? else {
+        let validated = Self::live_family(
+            tx,
+            authenticated_client,
+            token_storage_hash(presented_refresh_token),
+            now,
+        )?;
+        // Bumping a client's revocation epoch revokes every token it held at
+        // that instant, refresh families included: a family begun before the
+        // epoch is refused like an access token issued before it. The family
+        // has no `jti` of its own, so only the epoch applies.
+        let family_predates_client_epoch = revocation
+            .is_revoked(
+                None,
+                Some(validated.family.issued_at),
+                &validated.family.client_id,
+            )
+            .map_err(|error| {
+                AuthorizationServerError::infrastructure(
+                    "refresh-token revocation epoch check failed",
+                    error,
+                )
+            })?;
+        if family_predates_client_epoch {
+            return Err(TokenExchangeError::InvalidGrant(
+                InvalidGrantReason::RefreshTokenClientRevoked {
+                    family_id: validated.family.family_id,
+                },
+            ));
+        }
+        Ok(validated)
+    }
+
+    /// Re-load this token's family inside the rotating `write` scope `tx` and
+    /// re-check the store-only facts — this client's, unexpired, its browser
+    /// session not revoked — since the family may have ended after
+    /// [`validate`](Self::validate)'s scope closed. The epoch was checked
+    /// there and is not re-read here (see the type's doc).
+    ///
+    /// # Errors
+    ///
+    /// As [`validate`](Self::validate), less the epoch check.
+    pub(crate) fn revalidate(
+        self,
+        tx: &mut (impl RefreshTokensTx + BrowserSessionsTx),
+        authenticated_client: &AuthenticatedClient,
+        now: DateTime<Utc>,
+    ) -> Result<Self, TokenExchangeError> {
+        Self::live_family(tx, authenticated_client, self.presented_hash, now)
+    }
+
+    /// The store-only half of validation: the family `presented_hash`
+    /// belongs to, required to be `authenticated_client`'s, unexpired at
+    /// `now`, and not minted under a revoked browser session. A revoked family
+    /// is one whose deadline was pulled back to the revocation instant, so the
+    /// deadline check covers both.
+    fn live_family(
+        tx: &mut (impl RefreshTokensTx + BrowserSessionsTx),
+        authenticated_client: &AuthenticatedClient,
+        presented_hash: String,
+        now: DateTime<Utc>,
+    ) -> Result<Self, TokenExchangeError> {
+        let Some((_, family)) = tx.refresh_token_with_family_by_hash(&presented_hash)? else {
             return Err(TokenExchangeError::InvalidGrant(
                 InvalidGrantReason::RefreshTokenNotFound,
             ));
@@ -431,32 +530,13 @@ impl ValidatedRefreshToken {
         // Revoking a browser session ends every family minted under it. A
         // family with no session (the device flow) has none to check.
         if let Some(sid) = family.sid.as_deref() {
-            if store.browser_session_is_revoked(sid)? {
+            if tx.is_browser_session_revoked(sid)? {
                 return Err(TokenExchangeError::InvalidGrant(
                     InvalidGrantReason::RefreshTokenSessionRevoked {
                         family_id: family.family_id,
                     },
                 ));
             }
-        }
-        // Bumping a client's revocation epoch revokes every token it held at
-        // that instant, refresh families included: a family begun before the
-        // epoch is refused like an access token issued before it. The family
-        // has no `jti` of its own, so only the epoch applies.
-        let family_predates_client_epoch = revocation
-            .is_revoked(None, Some(family.issued_at), &family.client_id)
-            .map_err(|error| {
-                AuthorizationServerError::infrastructure(
-                    "refresh-token revocation epoch check failed",
-                    error,
-                )
-            })?;
-        if family_predates_client_epoch {
-            return Err(TokenExchangeError::InvalidGrant(
-                InvalidGrantReason::RefreshTokenClientRevoked {
-                    family_id: family.family_id,
-                },
-            ));
         }
         Ok(ValidatedRefreshToken {
             token_scopes: token_scope_spellings(&family.scopes),
@@ -491,6 +571,19 @@ impl ValidatedRefreshToken {
         self.family.sid.as_deref()
     }
 
+    /// The device grant that earned the family, if the device flow started
+    /// it and a grant was resolved then. A family the code flow started
+    /// records the code it consumed; a device-flow family has no code, so a
+    /// family with no code hash belongs to a device grant. A code grant is
+    /// used when it stands in for the Owner at `/oauth/authorize`, not when
+    /// its family refreshes, so its id is not returned here.
+    pub(crate) fn device_grant_id(&self) -> Option<&str> {
+        match self.family.authorization_code_hash {
+            Some(_) => None,
+            None => self.family.grant_id.as_deref(),
+        }
+    }
+
     /// The family this token belongs to.
     pub(crate) fn family_id(&self) -> &str {
         &self.family.family_id
@@ -500,6 +593,44 @@ impl ValidatedRefreshToken {
     pub(crate) fn presented_hash(&self) -> &str {
         &self.presented_hash
     }
+}
+
+/// Why the consumed `code` may not be redeemed by `authenticated_client`
+/// with `redirect_uri` and the presented verifier at `now`, if anything: it
+/// must be the client's, for that redirect, unexpired, and its PKCE challenge
+/// must match the verifier. Each failure is its own `InvalidGrantReason`, for
+/// the log; the code is already spent, so none can be retried into a token.
+fn check_code_bindings(
+    code: &AuthorizationCode,
+    authenticated_client: &AuthenticatedClient,
+    redirect_uri: &Url,
+    presented: &PresentedAuthorizationCode<'_>,
+    now: DateTime<Utc>,
+) -> Result<(), InvalidGrantReason> {
+    if code.client_id != authenticated_client.client_id() {
+        return Err(InvalidGrantReason::CodeClientMismatch {
+            code_client_id: code.client_id.clone(),
+            presented_client_id: authenticated_client.client_id().to_owned(),
+        });
+    }
+    if code.redirect_uri != *redirect_uri {
+        return Err(InvalidGrantReason::CodeRedirectMismatch {
+            code_redirect_uri: code.redirect_uri.to_string(),
+            presented_redirect_uri: redirect_uri.to_string(),
+        });
+    }
+    if code.expires_at < now {
+        return Err(InvalidGrantReason::CodeExpired {
+            expires_at: code.expires_at,
+        });
+    }
+    let computed = compute_code_challenge(presented.code_verifier);
+    if !bool::from(code.code_challenge.as_bytes().ct_eq(computed.as_bytes())) {
+        return Err(InvalidGrantReason::PkceMismatch {
+            client_id: authenticated_client.client_id().to_owned(),
+        });
+    }
+    Ok(())
 }
 
 /// The scopes a token carries: each granted scope alongside its alternate
@@ -512,6 +643,7 @@ fn token_scope_spellings(granted: &[String]) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::grant_store::*;
     use chrono::Duration;
 
     use super::*;
@@ -519,28 +651,40 @@ mod tests {
     use crate::domain::authorization_code::AUTHORIZATION_CODE_TTL;
     use crate::domain::browser_session::BrowserSession;
 
+    use crate::domain::authorization_request::RequestStatus;
+    use crate::domain::authorization_request::DEVICE_CODE_POLL_INTERVAL;
     use crate::domain::refresh_token::RefreshToken;
     use crate::domain::test_fake::{
-        authenticated_public_client, client, device_request, FakeGrantStore, NothingRevoked,
+        approve_stored, authenticated_public_client, client, device_request, FakeGrantStore,
+        NothingRevoked,
     };
     use wildflowerhealthio_token_revocation::RevocationStore;
 
+    /// Register public client `client_id` and authenticate as it.
     fn authenticated(store: &FakeGrantStore, client_id: &str) -> AuthenticatedClient {
         authenticated_public_client(store, client(client_id, &["openid"]))
     }
 
+    /// The redirect every test code is issued for and redeemed at.
     const REDIRECT: &str = "https://example.com/cb";
 
+    /// [`REDIRECT`], parsed.
     fn redirect() -> Url {
         Url::parse(REDIRECT).unwrap()
     }
 
+    /// The PKCE verifier whose challenge every test code is bound to.
     const VERIFIER: &str = "verifier-verifier-verifier-verifier-verifier-1";
 
+    /// Store a fresh code for `client_id`, issued at `now` (in the past for
+    /// an expired code), bound to [`REDIRECT`] and [`VERIFIER`], to patient
+    /// `pat-1` and browser session `sid-1`, granting `patient/Patient.read`;
+    /// returns the code.
     fn issued_code(store: &FakeGrantStore, client_id: &str, now: DateTime<Utc>) -> String {
         let code = generate_authorization_code();
         store
-            .issue_authorization_code(&IssuedAuthorizationCode {
+            .tx()
+            .issue_authorization_code(&AuthorizationCode {
                 code: code.clone(),
                 request_id: "req".to_owned(),
                 client_id: client_id.to_owned(),
@@ -556,6 +700,8 @@ mod tests {
         code
     }
 
+    /// The `invalid_grant` reason `outcome` refused with; fails the test on
+    /// any other outcome.
     fn reason(outcome: Result<impl Sized, TokenExchangeError>) -> InvalidGrantReason {
         match outcome {
             Err(TokenExchangeError::InvalidGrant(reason)) => reason,
@@ -578,8 +724,9 @@ mod tests {
             code_verifier: VERIFIER,
             redirect_uri: REDIRECT,
         };
-        let proof =
-            RedeemedAuthorizationCode::redeem(&store, &client, &redemption, now).expect("redeems");
+        let proof = RedeemedAuthorizationCode::redeem(&mut store.tx(), &client, &redemption, now)
+            .unwrap()
+            .expect("redeems");
         assert_eq!(proof.client_id(), "app");
         assert_eq!(proof.patient(), Some("pat-1"));
         assert_eq!(proof.granted_scopes(), ["patient/Patient.read"]);
@@ -593,19 +740,16 @@ mod tests {
             Some(code.as_str())
         );
         assert_eq!(
-            reason(RedeemedAuthorizationCode::redeem(
-                &store,
-                &client,
-                &redemption,
-                now
-            )),
+            reason(
+                RedeemedAuthorizationCode::redeem(&mut store.tx(), &client, &redemption, now)
+                    .unwrap()
+            ),
             InvalidGrantReason::CodeNotFoundOrRedeemed
         );
     }
 
     /// Each binding refuses with its own reason: wrong client, wrong redirect,
-    /// expired, bad verifier. Every refusal consumed the code (redemption is
-    /// atomic and first), so none of them can be retried into a token.
+    /// expired, bad verifier, each on a freshly issued code.
     #[test]
     fn a_code_is_refused_for_each_broken_binding() {
         let store = FakeGrantStore::default();
@@ -620,12 +764,10 @@ mod tests {
             redirect_uri: REDIRECT,
         };
         assert!(matches!(
-            reason(RedeemedAuthorizationCode::redeem(
-                &store,
-                &other,
-                &wrong_client,
-                now
-            )),
+            reason(
+                RedeemedAuthorizationCode::redeem(&mut store.tx(), &other, &wrong_client, now)
+                    .unwrap()
+            ),
             InvalidGrantReason::CodeClientMismatch { .. }
         ));
 
@@ -636,12 +778,10 @@ mod tests {
             redirect_uri: "https://elsewhere.example/cb",
         };
         assert!(matches!(
-            reason(RedeemedAuthorizationCode::redeem(
-                &store,
-                &app,
-                &wrong_redirect,
-                now
-            )),
+            reason(
+                RedeemedAuthorizationCode::redeem(&mut store.tx(), &app, &wrong_redirect, now)
+                    .unwrap()
+            ),
             InvalidGrantReason::CodeRedirectMismatch { .. }
         ));
 
@@ -656,9 +796,9 @@ mod tests {
             redirect_uri: REDIRECT,
         };
         assert!(matches!(
-            reason(RedeemedAuthorizationCode::redeem(
-                &store, &app, &expired, now
-            )),
+            reason(
+                RedeemedAuthorizationCode::redeem(&mut store.tx(), &app, &expired, now).unwrap()
+            ),
             InvalidGrantReason::CodeExpired { .. }
         ));
 
@@ -669,12 +809,10 @@ mod tests {
             redirect_uri: REDIRECT,
         };
         assert!(matches!(
-            reason(RedeemedAuthorizationCode::redeem(
-                &store,
-                &app,
-                &bad_verifier,
-                now
-            )),
+            reason(
+                RedeemedAuthorizationCode::redeem(&mut store.tx(), &app, &bad_verifier, now)
+                    .unwrap()
+            ),
             InvalidGrantReason::PkceMismatch { .. }
         ));
     }
@@ -690,29 +828,34 @@ mod tests {
         let client = authenticated(&store, "client");
         let stranger = authenticated(&store, "stranger");
         store
-            .insert_authorization_request(&device_request("dev", "CODE", RequestStatus::Pending))
+            .tx()
+            .insert_device_request(&device_request("dev", "CODE", RequestStatus::Pending))
             .unwrap();
 
         assert!(matches!(
-            ConsumedDeviceRequest::consume(&store, &client, "dev", now),
+            ConsumedDeviceRequest::consume(&mut store.tx(), &client, "dev", now).unwrap(),
             Err(TokenExchangeError::AuthorizationPending)
         ));
         assert!(matches!(
-            ConsumedDeviceRequest::consume(&store, &client, "dev", now + Duration::seconds(1)),
+            ConsumedDeviceRequest::consume(
+                &mut store.tx(),
+                &client,
+                "dev",
+                now + Duration::seconds(1)
+            )
+            .unwrap(),
             Err(TokenExchangeError::SlowDown)
         ));
         assert!(matches!(
-            reason(ConsumedDeviceRequest::consume(
-                &store, &stranger, "dev", now
-            )),
+            reason(ConsumedDeviceRequest::consume(&mut store.tx(), &stranger, "dev", now).unwrap()),
             InvalidGrantReason::DeviceRequestNotFound { .. }
         ));
 
-        store
-            .approve_authorization_request("dev", &["openid".to_owned()], None, None)
-            .unwrap();
+        approve_stored(&store, "dev", &["openid"], None);
         let later = now + DEVICE_CODE_POLL_INTERVAL;
-        let proof = ConsumedDeviceRequest::consume(&store, &client, "dev", later).expect("claimed");
+        let proof = ConsumedDeviceRequest::consume(&mut store.tx(), &client, "dev", later)
+            .unwrap()
+            .expect("claimed");
         assert_eq!(proof.client_id(), "client");
         assert_eq!(proof.granted_scopes(), ["openid"]);
         assert_eq!(
@@ -720,15 +863,19 @@ mod tests {
             None
         );
         assert!(matches!(
-            ConsumedDeviceRequest::consume(&store, &client, "dev", later),
+            ConsumedDeviceRequest::consume(&mut store.tx(), &client, "dev", later).unwrap(),
             Err(TokenExchangeError::ExpiredToken)
         ));
     }
 
+    /// [`live_family_under`] no browser session, as for the device flow.
     fn live_family(store: &FakeGrantStore, client_id: &str, now: DateTime<Utc>) {
         live_family_under(store, client_id, None, now);
     }
 
+    /// Store refresh family `fam` for `client_id`, started under browser
+    /// session `sid`, live for a day from `now` with `openid offline_access`,
+    /// and its one unconsumed token, whose plaintext is `live`.
     fn live_family_under(
         store: &FakeGrantStore,
         client_id: &str,
@@ -736,6 +883,7 @@ mod tests {
         now: DateTime<Utc>,
     ) {
         store
+            .tx()
             .insert_refresh_token_family_row(&RefreshTokenFamily {
                 family_id: "fam".to_owned(),
                 client_id: client_id.to_owned(),
@@ -749,6 +897,7 @@ mod tests {
             })
             .unwrap();
         store
+            .tx()
             .insert_refresh_token(&RefreshToken {
                 token_hash: token_storage_hash("live"),
                 family_id: "fam".to_owned(),
@@ -769,14 +918,15 @@ mod tests {
         let stranger = authenticated(&store, "stranger");
         live_family(&store, "client", now);
 
-        let proof = ValidatedRefreshToken::validate(&store, &NothingRevoked, &client, "live", now)
-            .expect("validates");
+        let proof =
+            ValidatedRefreshToken::validate(&mut store.tx(), &NothingRevoked, &client, "live", now)
+                .expect("validates");
         assert_eq!(proof.family_id(), "fam");
         assert_eq!(proof.presented_hash(), token_storage_hash("live"));
         assert_eq!(proof.granted_scopes(), ["openid", "offline_access"]);
         assert_eq!(
             reason(ValidatedRefreshToken::validate(
-                &store,
+                &mut store.tx(),
                 &NothingRevoked,
                 &client,
                 "ghost",
@@ -786,7 +936,7 @@ mod tests {
         );
         assert!(matches!(
             reason(ValidatedRefreshToken::validate(
-                &store,
+                &mut store.tx(),
                 &NothingRevoked,
                 &stranger,
                 "live",
@@ -796,7 +946,7 @@ mod tests {
         ));
         assert_eq!(
             reason(ValidatedRefreshToken::validate(
-                &store,
+                &mut store.tx(),
                 &NothingRevoked,
                 &client,
                 "live",
@@ -814,19 +964,23 @@ mod tests {
     #[test]
     fn a_refresh_token_is_refused_once_its_session_is_revoked() {
         let now = Utc::now();
-        let session = BrowserSession::new_owner(vec![], Duration::hours(8), now);
+        let session = BrowserSession::new_same_device_session(vec![], Duration::hours(8), now);
 
         let store = FakeGrantStore::default();
         let client = authenticated(&store, "client");
-        store.insert_browser_session(&session).unwrap();
+        store.tx().insert_browser_session(&session).unwrap();
         live_family_under(&store, "client", Some(&session.sid), now);
-        let proof = ValidatedRefreshToken::validate(&store, &NothingRevoked, &client, "live", now)
-            .expect("validates");
+        let proof =
+            ValidatedRefreshToken::validate(&mut store.tx(), &NothingRevoked, &client, "live", now)
+                .expect("validates");
         assert_eq!(proof.sid(), Some(session.sid.as_str()));
-        assert!(store.revoke_browser_session(&session.sid, now).unwrap());
+        assert!(store
+            .tx()
+            .revoke_browser_session(&session.sid, now)
+            .unwrap());
         assert_eq!(
             reason(ValidatedRefreshToken::validate(
-                &store,
+                &mut store.tx(),
                 &NothingRevoked,
                 &client,
                 "live",
@@ -842,7 +996,7 @@ mod tests {
         live_family_under(&store, "client", Some("no-such-sid"), now);
         assert_eq!(
             reason(ValidatedRefreshToken::validate(
-                &store,
+                &mut store.tx(),
                 &NothingRevoked,
                 &client,
                 "live",
@@ -867,12 +1021,12 @@ mod tests {
         revocation_store
             .bump_subject_epoch("client", now)
             .expect("bump to the family's start");
-        ValidatedRefreshToken::validate(&store, &revocation_store, &client, "live", now)
+        ValidatedRefreshToken::validate(&mut store.tx(), &revocation_store, &client, "live", now)
             .expect("a family begun at the epoch validates");
         revocation_store
             .bump_subject_epoch("other-client", now + Duration::seconds(1))
             .expect("bump another client");
-        ValidatedRefreshToken::validate(&store, &revocation_store, &client, "live", now)
+        ValidatedRefreshToken::validate(&mut store.tx(), &revocation_store, &client, "live", now)
             .expect("another client's epoch doesn't touch this family");
 
         revocation_store
@@ -880,7 +1034,7 @@ mod tests {
             .expect("bump past the family's start");
         assert_eq!(
             reason(ValidatedRefreshToken::validate(
-                &store,
+                &mut store.tx(),
                 &revocation_store,
                 &client,
                 "live",

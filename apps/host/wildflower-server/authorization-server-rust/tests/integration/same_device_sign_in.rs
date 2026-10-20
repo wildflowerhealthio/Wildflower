@@ -1,8 +1,10 @@
-use crate::common::*;
+//! Same-device sign-in, `GET /oauth/sign-in?code=…&next=…`: a code the base
+//! minted in-process signs a browser in as the Owner, once, starting a
+//! same-device browser session whose token, holding the Owner's scopes, it
+//! hands the browser as its `__Host-browser_session` cookie, and sending it
+//! on to an allowed `next`.
 
-// `GET /oauth/sign-in?code=…&next=…`: a code the base minted in-process signs
-// a browser in as the Owner, once, handing it an Owner token as its
-// `__Host-browser_session` cookie and sending it on to an allowed `next`.
+use crate::common::*;
 
 /// A token's payload claims, unverified.
 fn claims_of(token: &str) -> Value {
@@ -25,6 +27,9 @@ async fn assert_refused(res: axum::response::Response, what: &str) {
     );
 }
 
+/// A sign-in code signs a browser in once: the first use answers a `303`,
+/// uncached, with the browser session cookie, and a second use gets the error
+/// page.
 #[tokio::test]
 async fn a_code_signs_in_once() {
     let (g, _owner_token, _db) = spin_up();
@@ -38,6 +43,8 @@ async fn a_code_signs_in_once() {
     assert_refused(sign_in(&g, &code, "/").await, "a spent code").await;
 }
 
+/// A code the base never minted, or no code at all, gets the error page: no
+/// cookie and no redirect.
 #[tokio::test]
 async fn an_unknown_code_signs_nobody_in() {
     let (g, _owner_token, _db) = spin_up();
@@ -54,6 +61,10 @@ async fn an_unknown_code_signs_nobody_in() {
     .await;
 }
 
+/// After signing in, the browser is sent on to `next` when it is a path on
+/// this server, or under the hosted launcher or Authorization app, or under
+/// this server's own launcher or Authorization app as its host configures
+/// them.
 #[tokio::test]
 async fn the_browser_goes_on_to_an_allowed_next() {
     let (g, _owner_token, _db) = spin_up();
@@ -94,6 +105,9 @@ async fn the_browser_goes_on_to_an_allowed_next() {
     }
 }
 
+/// A `next` anywhere else (protocol-relative, another origin, outside the
+/// allowed bases, the bare server origin, or empty) gets the error page and
+/// leaves the code unspent, so it still signs in with an allowed `next`.
 #[tokio::test]
 async fn a_next_anywhere_else_is_refused_and_leaves_the_code_redeemable() {
     let (g, _owner_token, _db) = spin_up();
@@ -214,7 +228,8 @@ async fn a_browser_session_is_revoked_by_its_jti() {
 
 /// Revoking the browser-session client's subject is a `204`
 /// that signs every browser out at once, while a token issued to
-/// another client keeps working.
+/// another client keeps working. The epoch is second-granular, so a token
+/// issued in the revoking second is revoked too.
 #[tokio::test]
 async fn revoking_the_browser_session_client_s_subject_signs_every_browser_out() {
     let (g, owner_token, _db) = spin_up();
@@ -270,7 +285,7 @@ async fn a_disabled_browser_session_client_signs_nobody_in_until_re_enabled() {
     let code = g.same_device_sign_in_code_minter.mint();
 
     assert!(store_handle(&db)
-        .set_client_disabled(browser_session_client_id, Some(Utc::now()))
+        .write(|tx| tx.set_client_disabled(browser_session_client_id, Some(Utc::now())))
         .expect("disable the client out of band"));
     let refused = sign_in(&g, &code, "/").await;
     assert_cache_suppressed(&refused, "the refusal");

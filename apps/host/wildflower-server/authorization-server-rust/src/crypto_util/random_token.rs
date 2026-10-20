@@ -46,9 +46,10 @@ pub(crate) fn generate_same_device_sign_in_code() -> String {
 }
 
 /// SHA-256 digest of an opaque token, base64url-encoded without padding —
-/// the at-rest form for refresh tokens, so a stolen database never yields a
-/// presentable credential. Public so integration tests can plant rows with
-/// known plaintexts.
+/// the at-rest form for refresh tokens and for the authorization code a refresh
+/// family records, and the in-memory key for same-device sign-in codes, so a
+/// stolen database never yields a presentable credential. Public so
+/// integration tests can plant rows with known plaintexts.
 #[must_use]
 pub fn token_storage_hash(token: &str) -> String {
     sha256::as_base64_no_pad(token.as_bytes())
@@ -58,6 +59,8 @@ pub fn token_storage_hash(token: &str) -> String {
 mod tests {
     use super::*;
 
+    /// A token is 43 unpadded base64url characters that decode back to
+    /// exactly 32 bytes.
     #[test]
     fn encodes_32_bytes_as_unpadded_base64url() {
         let code = generate_authorization_code();
@@ -72,6 +75,7 @@ mod tests {
         assert_eq!(decoded.len(), TOKEN_BYTES);
     }
 
+    /// Two tokens generated one after the other differ.
     #[test]
     fn successive_codes_differ() {
         let a = generate_authorization_code();

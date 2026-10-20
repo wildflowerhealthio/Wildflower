@@ -1,9 +1,9 @@
 //! [`SameDeviceSignIn`] — `GET /oauth/sign-in`: redeem a one-time same-device sign-in code the
-//! base minted in-process for an Owner session's token, and say where the
+//! base minted in-process for a same-device session's token, and say where the
 //! browser goes next. It reads top to bottom as: check `next` against the
 //! allow-list and check the browser-session client isn't disabled (both before
 //! the code is touched), redeem the code for its
-//! [`RedeemedSameDeviceSignInCode`] proof, store the Owner session it
+//! [`RedeemedSameDeviceSignInCode`] proof, store the same-device session it
 //! starts, mint under it.
 
 use std::sync::Arc;
@@ -11,18 +11,19 @@ use std::sync::Arc;
 use chrono::{DateTime, Duration, Utc};
 use wildflowerhealthio_scopes::Grant;
 
+use crate::domain::access_token::AccessTokenIssuanceError;
 use crate::domain::authority::{RedeemedSameDeviceSignInCode, TokenEntitlement};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::writers::{AccessTokenMinter, BrowserSessionWriter};
+use crate::domain::grant_store::ClientsTx;
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
 use crate::domain::sign_in_redirect::{SignInDestinations, SignInRedirect};
-use crate::domain::token::TokenIssuanceError;
 use crate::domain::GrantStore;
 use crate::BROWSER_SESSION_CLIENT_ID;
 
-/// How long an Owner session's token lives: a working day, after which the
+/// How long a same-device session's token lives: a working day, after which the
 /// base signs the browser in again.
-pub(crate) const OWNER_SESSION_TTL: Duration = Duration::hours(8);
+pub(crate) const SAME_DEVICE_SESSION_TTL: Duration = Duration::hours(8);
 
 /// What a successful sign-in yields: the browser session's token, and where
 /// the browser goes next.
@@ -39,14 +40,15 @@ pub(crate) struct SignedIn {
 pub(crate) enum SameDeviceSignInError {
     /// The request was refused: the browser is told why, on a page.
     Refused(SignInRefusal),
-    /// The browser-session client's row couldn't be read, or is missing though
-    /// it is seeded at boot. The code is unspent.
+    /// The store couldn't be read or written, or the browser-session client's
+    /// row is missing though it is seeded at boot.
     Store(AuthorizationServerError),
-    /// The Owner session couldn't be stored. The code is spent.
+    /// The same-device session couldn't be stored. The code is spent.
     SessionNotStored(AuthorizationServerError),
     /// The token couldn't be minted (no signing key, a signing or store
-    /// failure). The code is spent.
-    Issuance(TokenIssuanceError),
+    /// failure). The session was rolled back with it; the code, held in
+    /// memory, is spent.
+    Issuance(AccessTokenIssuanceError),
 }
 
 /// A sign-in request the server refuses, rendered as a local page with no
@@ -66,8 +68,13 @@ pub(crate) enum SignInRefusal {
 /// unit-testable against the fake; the binding instantiates it over the
 /// concrete `SqliteGrantStore`.
 pub(crate) struct SameDeviceSignIn<S: GrantStore> {
+    /// The store the session is stored in and the browser-session client is
+    /// checked in.
     store: S,
+    /// The outstanding one-time sign-in codes the base minted, held in
+    /// memory; redeeming one spends it.
     codes: Arc<SameDeviceSignInCodes>,
+    /// Where a sign-in may send a browser on to; `next` must be one of them.
     destinations: Arc<SignInDestinations>,
     /// The server's bare origin, the token's `iss` and `aud`.
     server_origin: Arc<str>,
@@ -93,10 +100,13 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
         }
     }
 
-    /// Redeem `presented_code` at `now` for an Owner session and its
-    /// token, both lasting [`OWNER_SESSION_TTL`], to go on to `next`.
+    /// Redeem `presented_code` at `now` for a same-device session and its
+    /// token, both lasting [`SAME_DEVICE_SESSION_TTL`], to go on to `next`.
     /// A `next` that isn't allowed, or a disabled browser-session client, is
-    /// refused before the code is touched, so the code stays redeemable.
+    /// refused before the code is touched, so the code stays redeemable. The
+    /// session is stored and its token signed in one write scope. A failure
+    /// after the code is taken spends it: the code leaves memory even when the
+    /// scope rolls back, so signing in again takes a new code.
     ///
     /// # Errors
     ///
@@ -119,67 +129,80 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
             .ok_or(SameDeviceSignInError::Refused(
                 SignInRefusal::RedirectNotAllowed,
             ))?;
-        if self
-            .browser_session_client_is_disabled()
-            .map_err(SameDeviceSignInError::Store)?
-        {
-            return Err(SameDeviceSignInError::Refused(
-                SignInRefusal::BrowserSessionClientDisabled,
-            ));
-        }
-        let redeemed_sign_in_code = RedeemedSameDeviceSignInCode::redeem(
-            &self.codes,
-            presented_code,
-            &self.owner_grant,
-            OWNER_SESSION_TTL,
-            now,
-        )
-        .ok_or(SameDeviceSignInError::Refused(
-            SignInRefusal::CodeNotRedeemable,
-        ))?;
-        BrowserSessionWriter::over(&self.store)
-            .start_owner_session(&redeemed_sign_in_code)
-            .map_err(SameDeviceSignInError::SessionNotStored)?;
-        let session_token =
-            AccessTokenMinter::new(&self.store, &self.server_origin, OWNER_SESSION_TTL)
-                .mint(TokenEntitlement::SameDeviceSignIn(&redeemed_sign_in_code))
-                .map_err(SameDeviceSignInError::Issuance)?;
+        let session_token = self.store.write(|tx| {
+            if is_browser_session_client_disabled(tx)? {
+                return Err(SameDeviceSignInError::Refused(
+                    SignInRefusal::BrowserSessionClientDisabled,
+                ));
+            }
+            let redeemed_sign_in_code = RedeemedSameDeviceSignInCode::redeem(
+                &self.codes,
+                presented_code,
+                &self.owner_grant,
+                SAME_DEVICE_SESSION_TTL,
+                now,
+            )
+            .ok_or(SameDeviceSignInError::Refused(
+                SignInRefusal::CodeNotRedeemable,
+            ))?;
+            BrowserSessionWriter::within(tx)
+                .start_same_device_session(&redeemed_sign_in_code)
+                .map_err(SameDeviceSignInError::SessionNotStored)?;
+            AccessTokenMinter::with_active_key(tx, &self.server_origin, SAME_DEVICE_SESSION_TTL)
+                .and_then(|minter| {
+                    minter.mint(TokenEntitlement::SameDeviceSignIn(&redeemed_sign_in_code))
+                })
+                .map_err(SameDeviceSignInError::Issuance)
+        })?;
         Ok(SignedIn {
             session_token,
             redirect,
         })
     }
+}
 
-    /// Whether the browser-session client is disabled. It is an essential
-    /// client, which the Owner can't disable, so only a row disabled out of
-    /// band (direct SQL) is. Its row is seeded at boot, so a missing one is an
-    /// error, not an enabled client.
-    fn browser_session_client_is_disabled(&self) -> Result<bool, AuthorizationServerError> {
-        let browser_session_client = self
-            .store
-            .client_by_id(BROWSER_SESSION_CLIENT_ID)?
-            .ok_or_else(|| AuthorizationServerError::ClientNotFound {
-                client_id: BROWSER_SESSION_CLIENT_ID.to_owned(),
-            })?;
-        Ok(browser_session_client.disabled_at.is_some())
+/// Whether the browser-session client is disabled. It is an essential
+/// client, which the Owner can't disable, so only a row disabled out of
+/// band (direct SQL) is. Its row is seeded at boot, so a missing one is an
+/// error, not an enabled client.
+fn is_browser_session_client_disabled(
+    tx: &mut impl ClientsTx,
+) -> Result<bool, AuthorizationServerError> {
+    let browser_session_client = tx.client_by_id(BROWSER_SESSION_CLIENT_ID)?.ok_or_else(|| {
+        AuthorizationServerError::ClientNotFound {
+            client_id: BROWSER_SESSION_CLIENT_ID.to_owned(),
+        }
+    })?;
+    Ok(browser_session_client.disabled_at.is_some())
+}
+
+impl From<AuthorizationServerError> for SameDeviceSignInError {
+    fn from(error: AuthorizationServerError) -> Self {
+        SameDeviceSignInError::Store(error)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::grant_store::*;
     use url::Url;
     use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
     use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
     use super::*;
+    use crate::domain::access_token::{verify_access_token, AccessTokenVerifyOptions};
     use crate::domain::same_device_sign_in_codes::SAME_DEVICE_SIGN_IN_CODE_TTL;
     use crate::domain::signing_key::SigningKey;
     use crate::domain::test_fake::{client, seed_active_signing_key, FakeGrantStore};
-    use crate::domain::token::{verify_jwt, VerifyOptions};
 
+    /// The server's origin: the session token's `iss` and `aud`.
     const SERVER_ORIGIN: &str = "https://ruth.relay.example";
+    /// The Owner's grant in these tests, which a same-device session holds,
+    /// and the browser-session client is allowed.
     const OWNER_SCOPES: [&str; 2] = ["system/*.cruds", "wildflower/*.cruds"];
 
+    /// A sign-in over `store` and the outstanding `codes`, allowing `next`s
+    /// on this server and the site's launcher and authorization app.
     fn sign_in_over(
         store: FakeGrantStore,
         codes: Arc<SameDeviceSignInCodes>,
@@ -209,6 +232,7 @@ mod tests {
         let store = FakeGrantStore::default();
         let signing_key = seed_active_signing_key(&store);
         store
+            .tx()
             .upsert_client(&client(BROWSER_SESSION_CLIENT_ID, &OWNER_SCOPES))
             .expect("seed the browser-session client");
         let codes = Arc::new(SameDeviceSignInCodes::new());
@@ -216,16 +240,19 @@ mod tests {
         (sign_in_over(store, codes), signing_key)
     }
 
+    /// A code signs the browser in: it goes on to `next`, holding a token
+    /// this server accepts, issued to the browser-session client with the
+    /// Owner's scopes and living [`SAME_DEVICE_SESSION_TTL`].
     #[test]
     fn a_code_signs_the_owner_in_for_eight_hours() {
         let now = Utc::now();
         let (sign_in, signing_key) = sign_in_with_a_code(now);
         let signed_in = sign_in.sign_in("code-1", "/", now).expect("signed in");
         assert_eq!(signed_in.redirect.location(), "/");
-        let claims = verify_jwt(
+        let claims = verify_access_token(
             &signed_in.session_token,
             &[signing_key],
-            &VerifyOptions {
+            &AccessTokenVerifyOptions {
                 expected_issuer: SERVER_ORIGIN,
                 accepted_audiences: &[SERVER_ORIGIN.to_owned()],
             },
@@ -241,11 +268,13 @@ mod tests {
                 .expires_at
                 .zip(claims.issued_at)
                 .map(|(exp, iat)| exp - iat),
-            Some(OWNER_SESSION_TTL),
+            Some(SAME_DEVICE_SESSION_TTL),
             "the token lives eight hours"
         );
     }
 
+    /// A redeemed code is spent: presenting it again is
+    /// [`SignInRefusal::CodeNotRedeemable`].
     #[test]
     fn a_code_signs_in_once() {
         let now = Utc::now();
@@ -259,6 +288,8 @@ mod tests {
         ));
     }
 
+    /// A code nobody minted, and a code at its TTL, are both
+    /// [`SignInRefusal::CodeNotRedeemable`].
     #[test]
     fn an_expired_or_unknown_code_signs_nobody_in() {
         let minted_at = Utc::now();
@@ -277,6 +308,8 @@ mod tests {
         ));
     }
 
+    /// A `next` off the allowed places is refused before the code is touched,
+    /// so the same code then signs in with an allowed `next`.
     #[test]
     fn a_refused_next_leaves_the_code_redeemable() {
         let now = Utc::now();
@@ -290,6 +323,8 @@ mod tests {
         assert!(sign_in.sign_in("code-1", "/", now).is_ok());
     }
 
+    /// While the browser-session client is disabled, a sign-in is refused
+    /// without spending the code; once it is enabled again, the code signs in.
     #[test]
     fn a_disabled_browser_session_client_signs_nobody_in_and_leaves_the_code_redeemable() {
         let now = Utc::now();
@@ -297,6 +332,7 @@ mod tests {
         let set_browser_session_client_disabled_at = |disabled_at| {
             assert!(sign_in
                 .store
+                .tx()
                 .set_client_disabled(BROWSER_SESSION_CLIENT_ID, disabled_at)
                 .expect("set disabled_at"));
         };
@@ -311,6 +347,8 @@ mod tests {
         assert!(sign_in.sign_in("code-1", "/", now).is_ok());
     }
 
+    /// With no browser-session client row (it is seeded at boot), a sign-in
+    /// is a store error, not a sign-in for an enabled client.
     #[test]
     fn a_missing_browser_session_client_is_a_store_error() {
         let now = Utc::now();

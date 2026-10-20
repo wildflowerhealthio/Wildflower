@@ -5,6 +5,7 @@
 //! Single-kind operations hit this concrete table; the cross-kind reads live in
 //! [`super::general`].
 
+use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
@@ -13,6 +14,9 @@ use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::grant::DeviceGrant;
 
 diesel::table! {
+    /// The standing device grants. `UNIQUE (client_id, device_name)` holds the
+    /// table to one pairing per app per device name; `device_name` is
+    /// `NOT NULL`, so the key covers every row.
     device_grants (id) {
         id -> Text,
         client_id -> Text,
@@ -27,11 +31,11 @@ diesel::table! {
 /// Insert a brand-new device grant row — a plain single-table insert. The
 /// insert branch of a first-time pairing, and a test/seed helper; the
 /// scope-union re-pairing flow is
-/// `upsert_device_grant`, which
+/// `GrantRecorder::record_device_grant`, which
 /// reads then chooses this or [`update_device_grant`]. The caller hands the
 /// concrete grant, so the store never inspects a polymorphic value to choose the
 /// table.
-pub(crate) fn create_device_grant(
+pub(super) fn create_device_grant(
     conn: &mut SqliteConnection,
     grant: &DeviceGrant,
 ) -> Result<(), AuthorizationServerError> {
@@ -46,7 +50,7 @@ pub(crate) fn create_device_grant(
 /// the identity a re-pairing upserts against, and the lookup token exchange
 /// uses to stamp `refresh_token_families.grant_id`. Hits the concrete
 /// table.
-pub(crate) fn device_grant_by_client_and_device_name(
+pub(super) fn device_grant_by_client_and_device_name(
     conn: &mut SqliteConnection,
     client_id: &str,
     device_name: &str,
@@ -68,13 +72,11 @@ pub(crate) fn device_grant_by_client_and_device_name(
 /// Overwrite the mutable fields (`scopes`, `granted_at`, `patient`) of the
 /// device grant identified by `grant.id` — the write half of a device
 /// re-pairing, after
-/// `upsert_device_grant` has read
+/// `GrantRecorder::record_device_grant` has read
 /// the standing grant and folded the re-approval into it via
-/// [`absorb_reapproval`](crate::domain::grant::CumulativeConsent). The action
-/// runs the read + this write inside one `BEGIN IMMEDIATE` transaction (the
-/// concurrency rationale it shares with the authorization-code upsert); this
-/// body is just the `UPDATE`.
-pub(crate) fn update_device_grant(
+/// [`absorb_reapproval`](crate::domain::grant::CumulativeConsent), in the same
+/// write scope as that read; this body is just the `UPDATE`.
+pub(super) fn update_device_grant(
     conn: &mut SqliteConnection,
     grant: &DeviceGrant,
 ) -> Result<(), AuthorizationServerError> {
@@ -89,14 +91,30 @@ pub(crate) fn update_device_grant(
     Ok(())
 }
 
+/// Set the `last_used_at` of the device grant `id` to `now`, the one column a
+/// re-pairing's update leaves alone.
+pub(super) fn stamp_device_grant_used(
+    conn: &mut SqliteConnection,
+    id: &str,
+    now: DateTime<Utc>,
+) -> Result<(), AuthorizationServerError> {
+    diesel::update(device_grants::table.find(id))
+        .set(device_grants::last_used_at.eq(now))
+        .execute(conn)
+        .map_err(|e| {
+            AuthorizationServerError::infrastructure("stamp_device_grant_used failed", e)
+        })?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::domain::grant_store::*;
     use chrono::{DateTime, Utc};
     use uuid::Uuid;
 
     use crate::db::SqliteGrantStore;
     use crate::domain::grant::{CumulativeConsent, DeviceGrant};
-    use crate::domain::{GrantStore as _, GrantTx as _};
 
     /// The create-or-union device-grant upsert transaction, inlined here so the db
     /// test drives the real adapter's grant primitives directly instead of
@@ -111,7 +129,7 @@ mod tests {
         now: DateTime<Utc>,
     ) {
         store
-            .immediate_transaction(|tx| {
+            .write(|tx| {
                 match tx.device_grant_by_client_and_device_name(client_id, device_name)? {
                     Some(mut grant) => {
                         grant.absorb_reapproval(scopes, patient, now);
@@ -131,7 +149,7 @@ mod tests {
             .expect("upsert device grant");
     }
 
-    /// The `upsert_device_grant` action over the real `SQLite` adapter: a first
+    /// The `GrantRecorder::record_device_grant` action over the real `SQLite` adapter: a first
     /// pairing mints a durable device grant (via `create_device_grant`), and
     /// re-pairing under the same `(client_id, device_name)` reads then unions
     /// scopes onto the same row through `update_device_grant` — all inside the
@@ -150,7 +168,7 @@ mod tests {
             now,
         );
         let grant = store
-            .device_grant_by_client_and_device_name("client-a", "Ada's laptop")
+            .read(|tx| tx.device_grant_by_client_and_device_name("client-a", "Ada's laptop"))
             .expect("query")
             .expect("present");
         assert_eq!(grant.scopes, vec!["openid".to_owned()]);
@@ -165,7 +183,7 @@ mod tests {
             Utc::now(),
         );
         let updated = store
-            .device_grant_by_client_and_device_name("client-a", "Ada's laptop")
+            .read(|tx| tx.device_grant_by_client_and_device_name("client-a", "Ada's laptop"))
             .expect("query")
             .expect("present");
         assert_eq!(
@@ -176,7 +194,7 @@ mod tests {
             updated.scopes,
             vec!["openid".to_owned(), "offline_access".to_owned()],
         );
-        assert_eq!(store.all_grants().expect("list").len(), 1);
+        assert_eq!(store.read(|tx| tx.all_grants()).expect("list").len(), 1);
 
         // A different device name for the same client is a distinct grant.
         upsert_device_grant(
@@ -187,6 +205,44 @@ mod tests {
             None,
             Utc::now(),
         );
-        assert_eq!(store.all_grants().expect("list").len(), 2);
+        assert_eq!(store.read(|tx| tx.all_grants()).expect("list").len(), 2);
+    }
+
+    /// The stamp sets `last_used_at`, and a re-pairing's update, which writes
+    /// only the consent fields, keeps it.
+    #[test]
+    fn a_repairing_keeps_the_stamp_over_sqlite() {
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
+        upsert_device_grant(
+            &store,
+            "client-a",
+            "Kitchen iPad",
+            &["read".to_owned()],
+            None,
+            Utc::now(),
+        );
+        let grant = store
+            .read(|tx| tx.device_grant_by_client_and_device_name("client-a", "Kitchen iPad"))
+            .expect("query")
+            .expect("present");
+        assert_eq!(grant.last_used_at, None);
+
+        let used_at: DateTime<Utc> = "2026-10-20T12:00:00Z".parse().expect("instant");
+        store
+            .write(|tx| tx.stamp_device_grant_used(&grant.id, used_at))
+            .expect("stamp");
+        upsert_device_grant(
+            &store,
+            "client-a",
+            "Kitchen iPad",
+            &["write".to_owned()],
+            None,
+            Utc::now(),
+        );
+        let repaired = store
+            .read(|tx| tx.device_grant_by_client_and_device_name("client-a", "Kitchen iPad"))
+            .expect("query")
+            .expect("present");
+        assert_eq!(repaired.last_used_at, Some(used_at));
     }
 }

@@ -1,53 +1,57 @@
 //! [`BrowserSessionWriter`] — the writer that starts browser sessions. A
 //! session holds a grant and is what the tokens minted under it name as their
-//! `sid`, so starting one takes the proof that the browser may hold it: for an
-//! Owner session, a redeemed same-device sign-in code; for an approved session,
+//! `sid`, so starting one takes the proof that the browser may hold it: for a
+//! same-device session, a redeemed same-device sign-in code; for a paired session,
 //! a claimed browser pairing.
 
 use crate::domain::authority::{ClaimedBrowserPairing, RedeemedSameDeviceSignInCode};
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::GrantStore;
+use crate::domain::grant_store::BrowserSessionsTx;
 
-/// Start browser sessions. A borrowed view over the store; the gate is the
-/// proof each method takes.
-pub(crate) struct BrowserSessionWriter<'a, S: GrantStore> {
-    store: &'a S,
+/// Start browser sessions, inside the caller's transaction; the gate is the
+/// proof each method takes: a [`RedeemedSameDeviceSignInCode`] for a
+/// same-device session, a [`ClaimedBrowserPairing`] for a paired one.
+pub(crate) struct BrowserSessionWriter<'a, T: BrowserSessionsTx> {
+    /// The caller's open write scope; the session lands with the rest of the
+    /// operation or not at all.
+    tx: &'a mut T,
 }
 
-impl<'a, S: GrantStore> BrowserSessionWriter<'a, S> {
-    /// A writer over `store`.
-    pub(crate) fn over(store: &'a S) -> Self {
-        BrowserSessionWriter { store }
+impl<'a, T: BrowserSessionsTx> BrowserSessionWriter<'a, T> {
+    /// A writer inside the caller's transaction `tx`.
+    pub(crate) fn within(tx: &'a mut T) -> Self {
+        BrowserSessionWriter { tx }
     }
 
-    /// Store the Owner session `redeemed_sign_in_code` starts.
+    /// Store the same-device session `redeemed_sign_in_code` starts.
     ///
     /// # Errors
     ///
     /// [`AuthorizationServerError::Infrastructure`] on a store failure.
-    pub(crate) fn start_owner_session(
-        &self,
+    pub(crate) fn start_same_device_session(
+        &mut self,
         redeemed_sign_in_code: &RedeemedSameDeviceSignInCode,
     ) -> Result<(), AuthorizationServerError> {
-        self.store
+        self.tx
             .insert_browser_session(redeemed_sign_in_code.session())
     }
 
-    /// Store the approved session `claimed_pairing` starts.
+    /// Store the paired session `claimed_pairing` starts.
     ///
     /// # Errors
     ///
     /// [`AuthorizationServerError::Infrastructure`] on a store failure.
-    pub(crate) fn start_approved_session(
-        &self,
+    pub(crate) fn start_paired_session(
+        &mut self,
         claimed_pairing: &ClaimedBrowserPairing,
     ) -> Result<(), AuthorizationServerError> {
-        self.store.insert_browser_session(claimed_pairing.session())
+        self.tx.insert_browser_session(claimed_pairing.session())
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::grant_store::*;
     use chrono::{Duration, Utc};
     use wildflowerhealthio_scopes::Grant;
 
@@ -57,7 +61,7 @@ mod tests {
 
     /// The stored row is exactly the session the redeemed code carries.
     #[test]
-    fn start_owner_session_stores_the_proof_s_session() {
+    fn start_same_device_session_stores_the_proof_s_session() {
         let store = FakeGrantStore::default();
         let codes = SameDeviceSignInCodes::new();
         let now = Utc::now();
@@ -70,11 +74,12 @@ mod tests {
             now,
         )
         .expect("redeems");
-        BrowserSessionWriter::over(&store)
-            .start_owner_session(&redeemed)
+        BrowserSessionWriter::within(&mut store.tx())
+            .start_same_device_session(&redeemed)
             .expect("stored");
         assert_eq!(
             store
+                .tx()
                 .browser_session_by_sid(&redeemed.session().sid)
                 .expect("read"),
             Some(redeemed.session().clone())

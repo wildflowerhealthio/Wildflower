@@ -4,12 +4,16 @@
 //! each exposing a `MethodRouter`; the DTO shared with the device flow
 //! (`ConsentResult`) lives in [`crate::http::wire_representations`], the `get`
 //! response shape and the approve body beside their routes (both carry the
-//! registration verdict this flow alone has), and the consent logic in
+//! presented client change this flow alone has), and the consent logic in
 //! `domain::capabilities`. `router()` is the only path table.
 
+/// `POST /oauth-consents/{id}/approve`, and the approve body it reads.
 mod approve;
+/// `POST /oauth-consents/{id}/ask-owner`.
 mod ask_owner;
+/// `POST /oauth-consents/{id}/deny`.
 mod deny;
+/// `GET /oauth-consents/{id}`, and the prompt body it answers with.
 mod get;
 
 use std::sync::Arc;
@@ -19,8 +23,9 @@ use axum::Router;
 
 use crate::http::state::AuthorizationServerState;
 
-/// `defer_start_limit` wraps the `ask-owner` route, which raises a request for
-/// the Owner and so spends from the authorization start limit (see
+/// The `/oauth-consents` route table. `defer_start_limit` wraps the `ask-owner`
+/// route, which raises a request for the Owner and so spends from the
+/// authorization start limit (see
 /// [`defer_authorization_start_limit`](crate::http::middleware::defer_authorization_start_limit)).
 pub fn router(
     defer_start_limit: impl Fn(

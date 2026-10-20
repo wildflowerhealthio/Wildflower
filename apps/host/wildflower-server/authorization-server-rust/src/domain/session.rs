@@ -1,6 +1,6 @@
-//! Owner **session** operations — today just the logout token revoke, lifted
+//! Session-token operations: logout's revoke of the caller's own token, kept
 //! out of the logout handler so the best-effort denylist decision is a pure,
-//! testable domain operation over the [`Revocation`](crate::ports::Revocation)
+//! testable domain operation over the [`Revocation`]
 //! port (no real revocation store in the way).
 
 use chrono::{DateTime, Utc};
@@ -14,7 +14,7 @@ use crate::ports::Revocation;
 /// token, so this only recovers the trusted `jti` + `exp` to denylist; any store
 /// hiccup (already revoked, transient failure) must never fail the logout — the
 /// client has already forgotten the token — so a failure is logged and
-/// swallowed rather than returned. See #269.
+/// swallowed rather than returned.
 pub(crate) fn revoke_session_token(
     revoker: &(impl Revocation + ?Sized),
     jti: &str,
@@ -31,9 +31,13 @@ mod tests {
 
     use super::*;
 
+    /// A [`Revocation`] port that records each `jti` revoke, and fails every
+    /// one when `fail` is set.
     #[derive(Default)]
     struct RecordingRevoker {
+        /// Each `revoke_jti` call: the `jti`, its expiry and the reason.
         calls: Mutex<Vec<(String, DateTime<Utc>, String)>>,
+        /// Whether every revoke answers a store failure.
         fail: bool,
     }
 
@@ -60,6 +64,8 @@ mod tests {
         }
     }
 
+    /// Logout denylists the token's `jti` until its expiry, with the reason
+    /// `logout`.
     #[test]
     fn revokes_the_jti_with_the_logout_reason() {
         let revoker = RecordingRevoker::default();
@@ -71,6 +77,8 @@ mod tests {
         );
     }
 
+    /// A revocation store failure is logged and swallowed, so the logout
+    /// still goes ahead.
     #[test]
     fn swallows_a_store_failure_so_the_logout_still_proceeds() {
         let revoker = RecordingRevoker {
