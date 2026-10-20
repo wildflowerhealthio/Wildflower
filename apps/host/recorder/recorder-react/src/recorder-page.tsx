@@ -1,15 +1,26 @@
+import { formatRelativeTime } from '@wildflowerhealthio/kitchen-sink'
 import {
+  ConfirmDialog,
   ErrorBanner,
   FieldDescription,
   PageHeader,
+  ItemList,
+  Menu,
   pageLayoutStyles,
   TextField,
 } from '@wildflowerhealthio/react-tundraish'
-import { HttpUrl, type InvokeHostCommand } from '@wildflowerhealthio/recorder-core-js'
-import { Match, Schema } from 'effect'
-import { useId, useState, type JSX } from 'react'
+import {
+  type Bookmark,
+  bookmarkUrl,
+  byRecency,
+  HttpUrl,
+  type InvokeHostCommand,
+} from '@wildflowerhealthio/recorder-core-js'
+import { DateTime, Match, Option, Schema } from 'effect'
+import { useState, type JSX } from 'react'
 
 import { useProvidedRecorder } from './recorder-context.ts'
+import { type BookmarkChange, type Bookmarks, useBookmarks } from './use-bookmarks.ts'
 import { type SaveFolderState, useSaveFolder } from './use-save-folder.ts'
 import styles from './recorder-page.module.css'
 
@@ -22,16 +33,9 @@ import styles from './recorder-page.module.css'
  */
 const isStartableUrl = Schema.is(HttpUrl)
 
-const SUGGESTED_URLS: readonly string[] = [
-  'https://app.letsbewell.ca/health/prescriptions',
-  'https://mypharmacy.shoppersdrugmart.ca/en/prescription-dashboard/',
-  'https://www.on.mycarecompass.lifelabs.com/reports',
-  'https://virtualcare.telushealth.com/',
-]
-
 /** Props for {@link RecorderPage}. */
 interface RecorderPageProps {
-  /** How the page reads the recordings folder: Tauri's `invoke`. */
+  /** How the page reads the recordings folder and the bookmarks: Tauri's `invoke`. */
   readonly invoke: InvokeHostCommand
   /**
    * Show a saved file selected in the platform's file manager:
@@ -61,11 +65,219 @@ function SaveFolderLine({ saveFolder }: { readonly saveFolder: SaveFolderState }
   )
 }
 
+/** A bookmark's name, being typed: Save sends it, Cancel drops it. */
+function BookmarkNameForm({
+  label,
+  initialName,
+  disabled,
+  onSave,
+  onCancel,
+}: {
+  readonly label: string
+  readonly initialName: string
+  /** Whether a bookmark change is waiting on the host. */
+  readonly disabled: boolean
+  readonly onSave: (name: string) => void
+  readonly onCancel: () => void
+}): JSX.Element {
+  const [name, setName] = useState(initialName)
+  const trimmedName = name.trim()
+  return (
+    <form
+      className={styles['recorder-page__bookmark-form']}
+      onSubmit={(event) => {
+        event.preventDefault()
+        if (trimmedName !== '') onSave(trimmedName)
+      }}
+    >
+      <TextField label={label} value={name} onChange={setName} autoCapitalize="words" />
+      <div className={styles['recorder-page__buttons']}>
+        <button type="submit" className="button-2 filled" disabled={disabled || trimmedName === ''}>
+          Save
+        </button>
+        <button type="button" className="button-2" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  )
+}
+
+/** When a recording last started from `bookmark`, as its row says it. */
+const lastRecordedText = (bookmark: Bookmark, now: DateTime.DateTime): string =>
+  Option.fromNullable(bookmark.lastRecordedAt).pipe(
+    Option.map((recordedAt) => `last recorded ${formatRelativeTime(recordedAt, now)}`),
+    Option.getOrElse(() => 'never recorded')
+  )
+
 /**
- * The Recorder page: type a URL, record the responses the sniffer webview
- * reports, and save them as a `.har` file in the recordings folder, which the
- * page shows. After a save it offers Show file where the platform's file
- * manager can reveal one.
+ * Asks before `bookmark` is removed; closed while there is none. A refusal
+ * closes it too, and shows in the page's banner.
+ */
+function BookmarkRemoveDialog({
+  bookmark,
+  pending,
+  onConfirm,
+  onCancel,
+}: {
+  readonly bookmark: Bookmark | undefined
+  /** Whether a bookmark change is waiting on the host. */
+  readonly pending: boolean
+  readonly onConfirm: (bookmark: Bookmark) => void
+  readonly onCancel: () => void
+}): JSX.Element {
+  return (
+    <ConfirmDialog
+      open={bookmark !== undefined}
+      title="Remove Bookmark"
+      confirmLabel="Remove"
+      destructive
+      pending={pending}
+      onConfirm={() => {
+        if (bookmark !== undefined) onConfirm(bookmark)
+      }}
+      onCancel={onCancel}
+    >
+      {Option.fromNullable(bookmark).pipe(
+        Option.map((toRemove) => `Remove the bookmark "${toRemove.name}"?`),
+        Option.getOrNull
+      )}
+    </ConfirmDialog>
+  )
+}
+
+/**
+ * The bookmarks, most recently recorded first, or why the host can't give
+ * them. A row's name fills the URL field; its menu renames it, with the form
+ * under the list, or removes it once confirmed.
+ */
+function BookmarksSection({
+  bookmarks,
+  canPick,
+  onPick,
+  runChange,
+}: {
+  readonly bookmarks: Bookmarks
+  /** Whether the URL field takes a URL now: not while recording or saving. */
+  readonly canPick: boolean
+  readonly onPick: (url: string) => void
+  /** Send a change, showing a refusal; whether the host took it. */
+  readonly runChange: (change: BookmarkChange) => Promise<boolean>
+}): JSX.Element {
+  const [renamingUrl, setRenamingUrl] = useState<string | null>(null)
+  const [removingUrl, setRemovingUrl] = useState<string | null>(null)
+  const now = DateTime.unsafeNow()
+  return Match.value(bookmarks.state).pipe(
+    Match.tag('Reading', () => (
+      <p className={styles['recorder-page__folder']}>Reading the bookmarks…</p>
+    )),
+    Match.tag('Read', ({ bookmarks: read }) =>
+      read.length === 0 ? (
+        <p className={styles['recorder-page__folder']}>No bookmarks yet.</p>
+      ) : (
+        <div className={styles['recorder-page__bookmarks']}>
+          <ItemList
+            title="Bookmarks"
+            items={byRecency(read).map((bookmark) => ({
+              id: bookmark.url,
+              title: bookmark.name,
+              subtitle: bookmark.url,
+              meta: lastRecordedText(bookmark, now),
+              disabled: !canPick,
+              onClick: () => {
+                onPick(bookmark.url)
+              },
+              actions: (
+                <Menu
+                  label={`Actions for ${bookmark.name}`}
+                  items={[
+                    {
+                      id: 'rename',
+                      label: 'Rename',
+                      disabled: bookmarks.isChanging,
+                      onSelect: () => {
+                        setRenamingUrl(bookmark.url)
+                      },
+                    },
+                    {
+                      id: 'remove',
+                      label: 'Remove',
+                      destructive: true,
+                      disabled: bookmarks.isChanging,
+                      onSelect: () => {
+                        setRemovingUrl(bookmark.url)
+                      },
+                    },
+                  ]}
+                />
+              ),
+            }))}
+          />
+          {Option.fromNullable(read.find((bookmark) => bookmark.url === renamingUrl)).pipe(
+            Option.map((bookmark) => (
+              <BookmarkNameForm
+                key={bookmark.url}
+                label={`New name for ${bookmark.name}`}
+                initialName={bookmark.name}
+                disabled={bookmarks.isChanging}
+                onSave={(name) => {
+                  void runChange(bookmarks.rename(bookmark.url, name)).then((renamed) => {
+                    if (renamed) setRenamingUrl(null)
+                  })
+                }}
+                onCancel={() => {
+                  setRenamingUrl(null)
+                }}
+              />
+            )),
+            Option.getOrNull
+          )}
+          <BookmarkRemoveDialog
+            bookmark={read.find((bookmark) => bookmark.url === removingUrl)}
+            pending={bookmarks.isChanging}
+            onConfirm={(bookmark) => {
+              void runChange(bookmarks.remove(bookmark.url)).then(() => {
+                setRemovingUrl(null)
+              })
+            }}
+            onCancel={() => {
+              setRemovingUrl(null)
+            }}
+          />
+        </div>
+      )
+    ),
+    Match.tag('Unreadable', ({ message }) => (
+      <p className={styles['recorder-page__folder']} role="alert">
+        Bookmarks can't be read on this device: {message}
+      </p>
+    )),
+    Match.exhaustive
+  )
+}
+
+/**
+ * The URL field's URL as a bookmark's key, when it is one the page can
+ * bookmark: startable, and not bookmarked yet.
+ */
+const unbookmarkedUrlOf = (url: string, bookmarks: Bookmarks): Option.Option<string> =>
+  Option.liftPredicate(url, isStartableUrl).pipe(
+    Option.flatMap(bookmarkUrl),
+    Option.filter(
+      (key) =>
+        bookmarks.state._tag === 'Read' &&
+        !bookmarks.state.bookmarks.some((bookmark) => bookmark.url === key)
+    )
+  )
+
+/**
+ * The Recorder page: type a URL or pick a bookmark, record the responses the
+ * sniffer webview reports, and save them as a `.har` file in the recordings
+ * folder, which the page shows. After a save it offers Show file where the
+ * platform's file manager can reveal one. Its bookmarks, most recently
+ * recorded first, say when each was last recorded; a startable URL that isn't
+ * bookmarked can be, and starting a recording stamps the bookmark at exactly
+ * that URL.
  *
  * @remarks
  * Needs a `RecorderProvider` above it. The page is only the state machine's
@@ -77,14 +289,32 @@ function RecorderPage({ invoke, revealFile }: RecorderPageProps): JSX.Element {
   const { state, start, stop } = useProvidedRecorder()
   const [url, setUrl] = useState(state._tag === 'Recording' ? state.startUrl : '')
   const saveFolder = useSaveFolder(invoke)
+  const bookmarks = useBookmarks(invoke)
   const [revealFailure, setRevealFailure] = useState<string | null>(null)
-  const suggestionsId = useId()
+  const [bookmarkFailure, setBookmarkFailure] = useState<string | null>(null)
+  const [isNamingBookmark, setIsNamingBookmark] = useState(false)
   const revealsFiles = saveFolder._tag === 'Read' && saveFolder.folder.revealsFiles
 
   const isRecording = state._tag === 'Recording'
   // `Saving` blocks a new recording: starting again would re-point the file
   // name the host's pending answer is matched on.
-  const canStart = state._tag !== 'Recording' && state._tag !== 'Saving' && isStartableUrl(url)
+  const takesUrl = state._tag !== 'Recording' && state._tag !== 'Saving'
+  const canStart = takesUrl && isStartableUrl(url)
+  const unbookmarkedUrl = canStart ? unbookmarkedUrlOf(url, bookmarks) : Option.none()
+
+  /** Send a bookmark change, showing its refusal in the banner; whether the host took it. */
+  const runChange = (change: BookmarkChange): Promise<boolean> => {
+    setBookmarkFailure(null)
+    return change.then(
+      Option.match({
+        onNone: () => true,
+        onSome: ({ message }) => {
+          setBookmarkFailure(message)
+          return false
+        },
+      })
+    )
+  }
 
   return (
     <div className={pageLayoutStyles['page']}>
@@ -98,6 +328,7 @@ function RecorderPage({ invoke, revealFile }: RecorderPageProps): JSX.Element {
       <SaveFolderLine saveFolder={saveFolder} />
 
       <ErrorBanner error={state._tag === 'Failed' ? state.message : revealFailure} />
+      <ErrorBanner error={bookmarkFailure} />
 
       <TextField
         label="URL"
@@ -106,16 +337,20 @@ function RecorderPage({ invoke, revealFile }: RecorderPageProps): JSX.Element {
         autoComplete="off"
         autoCapitalize="none"
         placeholder="https://example.com"
-        list={suggestionsId}
         value={url}
         onChange={setUrl}
-        disabled={isRecording || state._tag === 'Saving'}
+        disabled={!takesUrl}
       />
-      <datalist id={suggestionsId}>
-        {SUGGESTED_URLS.map((suggestion) => (
-          <option key={suggestion} value={suggestion} />
-        ))}
-      </datalist>
+
+      <BookmarksSection
+        bookmarks={bookmarks}
+        canPick={takesUrl}
+        onPick={(bookmarkedUrl) => {
+          setIsNamingBookmark(false)
+          setUrl(bookmarkedUrl)
+        }}
+        runChange={runChange}
+      />
 
       {Match.value(state).pipe(
         Match.when({ _tag: 'Recording' }, (s) => (
@@ -143,7 +378,14 @@ function RecorderPage({ invoke, revealFile }: RecorderPageProps): JSX.Element {
           disabled={!canStart}
           onClick={() => {
             setRevealFailure(null)
+            setIsNamingBookmark(false)
             start(url)
+            // Stamps the bookmark at exactly this URL, if there is one. With
+            // bookmarks the host can't read, the stamp would only fail again.
+            const recordedUrl = bookmarkUrl(url)
+            if (bookmarks.state._tag !== 'Unreadable' && Option.isSome(recordedUrl)) {
+              void runChange(bookmarks.recorded(recordedUrl.value))
+            }
           }}
         >
           Start recording
@@ -169,7 +411,41 @@ function RecorderPage({ invoke, revealFile }: RecorderPageProps): JSX.Element {
             Show file
           </button>
         ) : null}
+        {unbookmarkedUrl.pipe(
+          Option.filter(() => !isNamingBookmark),
+          Option.map(() => (
+            <button
+              key="bookmark-this"
+              type="button"
+              className="button-2"
+              disabled={bookmarks.isChanging}
+              onClick={() => setIsNamingBookmark(true)}
+            >
+              Bookmark this
+            </button>
+          )),
+          Option.getOrNull
+        )}
       </div>
+
+      {unbookmarkedUrl.pipe(
+        Option.filter(() => isNamingBookmark),
+        Option.map((key) => (
+          <BookmarkNameForm
+            key={key}
+            label="Bookmark name"
+            initialName={new URL(key).host}
+            disabled={bookmarks.isChanging}
+            onSave={(name) => {
+              void runChange(bookmarks.add(name, key)).then((added) => {
+                if (added) setIsNamingBookmark(false)
+              })
+            }}
+            onCancel={() => setIsNamingBookmark(false)}
+          />
+        )),
+        Option.getOrNull
+      )}
     </div>
   )
 }

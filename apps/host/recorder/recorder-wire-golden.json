@@ -79,6 +79,34 @@
     "recorder_save_folder": {
       "path": "/home/ada/Documents/Wildflower Recordings",
       "revealsFiles": true
+    },
+    "recorder_bookmarks": [
+      {
+        "name": "LifeLabs reports",
+        "url": "https://www.on.mycarecompass.lifelabs.com/reports",
+        "lastRecordedAt": "2026-09-25T14:02:11Z"
+      },
+      {
+        "name": "Shoppers prescriptions",
+        "url": "https://mypharmacy.shoppersdrugmart.ca/en/prescription-dashboard/",
+        "lastRecordedAt": null
+      }
+    ]
+  },
+  "commandArgs": {
+    "recorder_bookmark_add": {
+      "name": "LifeLabs reports",
+      "url": "https://www.on.mycarecompass.lifelabs.com/reports"
+    },
+    "recorder_bookmark_rename": {
+      "url": "https://www.on.mycarecompass.lifelabs.com/reports",
+      "name": "LifeLabs results"
+    },
+    "recorder_bookmark_remove": {
+      "url": "https://www.on.mycarecompass.lifelabs.com/reports"
+    },
+    "recorder_bookmark_recorded": {
+      "url": "https://www.on.mycarecompass.lifelabs.com/reports"
     }
   }
 }

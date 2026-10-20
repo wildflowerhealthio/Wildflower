@@ -2,7 +2,7 @@
   "name": "@wildflowerhealthio/recorder-react",
   "version": "0.0.0",
   "private": true,
-  "description": "The Recorder's browser surface: `RecorderPage`, and `RecorderProvider` running the `useRecorder` state machine behind it. Takes the sniffer's response events over `RecorderBridge`, accumulates them with `recorder-core-js`'s `Recording`, and carries the encoded archive to the host on the same bridge. No fs — the host writes the file.",
+  "description": "The Recorder's browser surface: `RecorderPage`, and `RecorderProvider` running the `useRecorder` state machine behind it. Takes the sniffer's response events over `RecorderBridge`, accumulates them with `recorder-core-js`'s `Recording`, and carries the encoded archive to the host on the same bridge. Reads and changes the Recorder's bookmarks through host commands. No fs — the host writes the file.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -53,6 +53,7 @@
     "@wildflowerhealthio/effect-messaging-core": "workspace:*",
     "@wildflowerhealthio/effect-messaging-react": "workspace:*",
     "@wildflowerhealthio/http-archive": "workspace:*",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
     "@wildflowerhealthio/react-tundraish": "workspace:*",
     "@wildflowerhealthio/recorder-core-js": "workspace:*",

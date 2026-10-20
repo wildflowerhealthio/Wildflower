@@ -7,6 +7,8 @@ publish.workspace = true
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-log = "2"
+# `Utc::now()`, the instant `recorder_bookmark_recorded` stamps.
+chrono = { workspace = true, features = ["clock"] }
 serde_json.workspace = true
 wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-structures/shared-structures-rust" }
 # The wire mirror and the validated, atomic write — everything that can be

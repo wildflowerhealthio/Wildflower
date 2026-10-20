@@ -30,8 +30,8 @@ openssl = {version = "0.10.36", features = ["vendored"] }
 serde_json.workspace = true
 wildflowerhealthio-browser-sniffer-tauri = { path = "../../browser-sniffer-tauri" }
 # Host glue for the Recorder: the `BRIDGE_EVENT` listener that writes a
-# recorded archive into the `Wildflower Recordings` folder, and the
-# `recorder_save_folder` command.
+# recorded archive into the `Wildflower Recordings` folder, and the Recorder
+# page's commands: `recorder_save_folder` and the bookmark commands.
 wildflowerhealthio-recorder-tauri = { path = "../../recorder/recorder-tauri" }
 # The install's servers on the unit runner, the notifications about them, and
 # the base's commands for adding a server and re-entering its token, over the

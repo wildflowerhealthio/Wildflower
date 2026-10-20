@@ -20,3 +20,17 @@
   font-family: var(--font-family-mono);
   word-break: break-all;
 }
+
+/* The bookmarks, under the URL field, above a rename's form. */
+.recorder-page__bookmarks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* A bookmark's name being typed, with its Save and Cancel. */
+.recorder-page__bookmark-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
