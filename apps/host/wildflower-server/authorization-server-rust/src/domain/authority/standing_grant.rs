@@ -11,7 +11,7 @@
 use url::Url;
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::client_registration::PresentedClientChange;
+use crate::domain::client::presented_change::PresentedClientChange;
 use crate::domain::grant_store::GrantsTx;
 
 /// How far a standing grant covers a request. Only [`Full`](Self::Full) is a

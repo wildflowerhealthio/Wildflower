@@ -9,7 +9,7 @@ use utoipa::ToSchema;
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::{OAuthConsentView, Scoped};
-use crate::domain::client_registration::PresentedClientChange;
+use crate::domain::client::presented_change::PresentedClientChange;
 use crate::http::state::AuthorizationServerState;
 use crate::live_bindings::LiveConsentReader;
 

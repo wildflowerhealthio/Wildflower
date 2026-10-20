@@ -11,7 +11,7 @@
 //! committed.
 //!
 //! A code-flow prompt is resolved against its client's registration once
-//! ([`ResolvedCodeRequest`](crate::domain::client_registration::ResolvedCodeRequest)):
+//! ([`ResolvedCodeRequest`](crate::domain::authorization_request::code::resolved::ResolvedCodeRequest)):
 //! the read and the approval carry its **presented client change**, and neither
 //! goes on for a disabled client.
 //!
@@ -33,7 +33,7 @@ use wildflowerhealthio_scopes::{Grant, Permission, Scope, WildflowerResource};
 use crate::domain::authority::{ApprovableScopes, DelegatedScopes};
 use crate::domain::authorization_request::{AuthorizationRequest, PendingCodeRequest};
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::client_registration::PresentedClientChange;
+use crate::domain::client::presented_change::PresentedClientChange;
 use crate::domain::GrantStore;
 use crate::ports::OwnerApproval;
 

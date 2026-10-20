@@ -1,86 +1,20 @@
+//! A registered OAuth client: [`Client`], the `clients` row, and the
+//! allowlist checks `/authorize`, `/device_authorization` and the consent
+//! read make against it.
+
+mod kind;
+pub(crate) mod presented_change;
+mod registration_source;
+
 use chrono::{DateTime, Utc};
-use diesel::deserialize::FromSqlRow;
-use diesel::expression::AsExpression;
 use diesel::prelude::{Insertable, Queryable, Selectable};
-use serde::{Deserialize, Serialize};
-use strum::{AsRefStr, Display, EnumString};
 use url::Url;
 
 use crate::db::clients::{clients, JsonAllowedGrantTypes, JsonUrls};
 use crate::db::shared::JsonStrings;
 
-/// OAuth client authentication category — `public` clients can't keep a secret (e.g. SPAs, native), `confidential` ones can.
-///
-/// The wire string (stored in the `kind` column and serialized) is the
-/// lowercased variant name: `Public` → `"public"`, `Confidential` →
-/// `"confidential"`. `strum` derives the `&str` ↔ enum conversions
-/// ([`AsRef<str>`], [`Display`], [`FromStr`](std::str::FromStr)) from the same
-/// `serialize_all` rule the serde `rename_all` uses, so the two can't drift.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    Serialize,
-    Deserialize,
-    PartialEq,
-    Eq,
-    EnumString,
-    AsRefStr,
-    Display,
-    AsExpression,
-    FromSqlRow,
-)]
-#[serde(rename_all = "lowercase")]
-#[strum(serialize_all = "lowercase")]
-#[diesel(sql_type = diesel::sql_types::Text)]
-pub enum ClientKind {
-    Public,
-    Confidential,
-}
-
-/// A grant type the token endpoint supports, used for the per-client
-/// allow-list. Wire values match the `grant_type` parameter (RFC 6749 / RFC
-/// 8628) so the stored JSON reads like the request.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-pub enum AllowedGrantType {
-    #[serde(rename = "authorization_code")]
-    AuthorizationCode,
-    #[serde(rename = "refresh_token")]
-    RefreshToken,
-    #[serde(rename = "urn:ietf:params:oauth:grant-type:device_code")]
-    DeviceCode,
-}
-
-impl AllowedGrantType {
-    /// Every grant the token endpoint supports — the backward-compatible
-    /// default for clients registered before per-client restrictions existed
-    /// (and the value migration 007 backfills onto existing rows).
-    pub const ALL: [AllowedGrantType; 3] = [
-        AllowedGrantType::AuthorizationCode,
-        AllowedGrantType::RefreshToken,
-        AllowedGrantType::DeviceCode,
-    ];
-}
-
-/// Who defines a client's registration, stored in the `registration_source`
-/// column (`strum` derives the `snake_case` wire strings, `server_defined`
-/// and `trusted_on_first_use`).
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, EnumString, AsRefStr, Display, AsExpression, FromSqlRow,
-)]
-#[strum(serialize_all = "snake_case")]
-#[diesel(sql_type = diesel::sql_types::Text)]
-pub enum RegistrationSource {
-    /// The server defines it, and boot-time seeding rewrites it every boot:
-    /// the host app's client, the browser-session client, and the FHIR
-    /// server UI's client. A request is held to it, and an approval never
-    /// writes it.
-    ServerDefined,
-    /// The Owner's approvals define it: created by the first approval of an
-    /// unknown client, and widened by any later approval of a request outside
-    /// it.
-    TrustedOnFirstUse,
-}
+pub use kind::{AllowedGrantType, ClientKind};
+pub use registration_source::RegistrationSource;
 
 /// A registered OAuth client — the identity and policy bundle that `/authorize` and `/token` look up by `client_id`.
 /// Diesel-mapped 1:1 to the `clients` table; the JSON list columns convert

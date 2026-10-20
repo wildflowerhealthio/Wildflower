@@ -58,11 +58,6 @@ pub mod client_credentials;
 // + `state`) — no axum/store coupling, so the `/oauth` surface and the Owner
 // consent action can return the same URL.
 pub mod client_redirect;
-// A code request resolved against its client's registration as it stands now:
-// the client's name, whether it is disabled, the presented client change, the
-// approvable scopes. Derived on every read, never stored, so `/authorize`, the
-// limited page's Continue and the consent surfaces agree.
-pub(crate) mod client_registration;
 // The domain's failure vocabulary (shaped like apps' `AppsError`):
 // semantic client-facing variants plus the opaque `Infrastructure`.
 pub mod authorization_server_error;

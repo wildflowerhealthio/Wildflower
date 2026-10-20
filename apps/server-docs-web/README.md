@@ -219,7 +219,7 @@ the seed carries only the published URL. The other addresses are **not**
 rejected: for every client but the host app's, an unregistered redirect
 reaches the Owner's consent prompt as a "this redirect is new" warning, and
 approving it adds the entry to the client row (`authorization-server-rust`'s
-`domain/client_registration.rs`). The Owner's consent is the gate — which is
+`domain/client/presented_change.rs`). The Owner's consent is the gate — which is
 the honest one, since a static page cannot know what a given server's row holds.
 
 Two properties make the derivation safe to rely on, both pinned by tests in

@@ -191,7 +191,7 @@ fn new_registration(
 /// already covers leaves it untouched. `allowed_scopes` is only ever read
 /// through [`wildflowerhealthio_scopes::allowed_scope_covers`] (at `/authorize`, at
 /// `/device_authorization`, and in
-/// [`PresentedClientChange::from_presented_registration`](crate::domain::client_registration::PresentedClientChange::from_presented_registration)),
+/// [`PresentedClientChange::from_presented_registration`](crate::domain::client::presented_change::PresentedClientChange::from_presented_registration)),
 /// so a collapsed row admits exactly the requests the un-collapsed one did.
 fn widen_registration(
     mut client: Client,
@@ -211,7 +211,7 @@ mod tests {
     use crate::domain::grant_store::*;
 
     use super::*;
-    use crate::domain::client_registration::uncovered_scopes;
+    use crate::domain::client::presented_change::uncovered_scopes;
     use crate::domain::test_fake::{
         client, delegated_scopes, registering_delegated_scopes, FakeGrantStore,
     };

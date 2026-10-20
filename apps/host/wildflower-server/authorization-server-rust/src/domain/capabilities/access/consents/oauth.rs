@@ -14,6 +14,7 @@ use super::{
     OAuthConsentView, OwnerRaising,
 };
 use crate::domain::authority::DelegatedScopes;
+use crate::domain::authorization_request::code::resolved::ResolvedCodeRequest;
 use crate::domain::authorization_request::PendingCodeRequest;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::authorize_refusal::AuthorizeRefusal;
@@ -24,7 +25,6 @@ use crate::domain::client_redirect::{
     build_client_error_redirect_url, build_client_redirect_url, BROWSER_SIGNED_OUT_DESCRIPTION,
     REQUEST_DECLINED_DESCRIPTION,
 };
-use crate::domain::client_registration::ResolvedCodeRequest;
 use crate::domain::grant_store::{write_transition, AuthorizationRequestsTx, ClientsTx};
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::{GrantStore, GrantTx};
@@ -124,7 +124,7 @@ impl<S: GrantStore> ConsentDecider<S> {
     /// [`ApprovableScopes::missing_approval_scopes`](crate::domain::authority::ApprovableScopes::missing_approval_scopes));
     /// [`RegistrationNotAcknowledged`](AuthorizationServerError::RegistrationNotAcknowledged)
     /// when the
-    /// [presented client change](crate::domain::client_registration::PresentedClientChange)
+    /// [presented client change](crate::domain::client::presented_change::PresentedClientChange)
     /// finds the request new or changed and the Owner didn't
     /// [acknowledge](ApproveOAuthConsentInput::acknowledged_registration_change) it;
     /// [`LaunchPatientMismatch`](AuthorizationServerError::LaunchPatientMismatch)

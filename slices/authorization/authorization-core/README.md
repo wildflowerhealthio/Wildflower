@@ -210,7 +210,7 @@ construction: the outbound string and the one derived again on the callback
 An address the client has not registered is not a dead end. For every client but
 the host app's, `authorization-server-rust` carries an unregistered `redirect_uri`
 to the Owner's consent prompt as a warning and adds it to the row on approval
-(`domain/client_registration.rs`), so the Owner is the gate rather than a list
+(`domain/client/presented_change.rs`), so the Owner is the gate rather than a list
 inside the page.
 
 The host app's client is the exception, in both directions: its registration

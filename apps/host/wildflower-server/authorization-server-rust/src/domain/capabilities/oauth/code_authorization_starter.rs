@@ -26,6 +26,7 @@ use super::consume_launch;
 use super::session_shortfall::load_unacknowledged_code_request;
 use crate::crypto_util::pkce::is_valid_s256_code_challenge;
 use crate::domain::authority::{session_shortfall, GrantCoverage, StandingGrantCoverage};
+use crate::domain::authorization_request::code::resolved::ResolvedCodeRequest;
 use crate::domain::authorization_request::{
     AuthorizationRequest, CodeRequest, NewAuthorizationRequest, PendingCodeRequest, RequestKind,
 };
@@ -35,7 +36,6 @@ use crate::domain::capabilities::writers::{CodeApproval, CodeAuthority, RequestA
 use crate::domain::client_redirect::{
     BROWSER_SIGNED_OUT_DESCRIPTION, SCOPES_NOT_REGISTERED_DESCRIPTION,
 };
-use crate::domain::client_registration::ResolvedCodeRequest;
 use crate::domain::grant_store::write_transition;
 use crate::domain::launch_context::LaunchRefusal;
 use crate::domain::oauth_error_code::OAuthErrorCode;

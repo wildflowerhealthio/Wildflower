@@ -18,6 +18,8 @@
 //! Expiry is derived from `expires_at` ([`AuthorizationRequest::is_expired_at`]),
 //! never stored as a status.
 
+pub(crate) mod code;
+
 use chrono::{DateTime, Duration, Utc};
 use diesel::deserialize::FromSqlRow;
 use diesel::expression::AsExpression;
