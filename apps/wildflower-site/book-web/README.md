@@ -107,6 +107,14 @@ methods in the code, so they document themselves. Each test `tests=` names, in
 that file, follows in order: its doc comment as a caption, then its code.
 Symbols are named as for `{{#code}}`, and `.rs` files alone can be shown.
 
+A module shows its docs alone, with no source: `self` is the file's own
+`//!` doc, so a chapter's opening can come from the code
+(`{{#item <path> self}}`), and an inline `mod` shows its `///` doc then the
+`//!` doc inside it. A module with no doc comment fails the build. Its anchor
+is `item-` and the file's module name (its stem, or its folder's for a
+`mod.rs`), qualified by path as below when two share one, and a doc link to
+the module's path lands on it.
+
 | Option        | Effect                                                                                                     |
 | ------------- | ---------------------------------------------------------------------------------------------------------- |
 | `tests="a b"` | Show these tests after the item, each captioned by its doc comment.                                        |
@@ -203,8 +211,8 @@ another way (getters grouped in a sentence, say). Its symbols must resolve,
 as `{{#code}}`'s must.
 
 After expanding every page, the build prints the count and a warning per
-coverable item no directive names; then, a list per kind, the coverable
-items, tests, named fields and variants (of the coverable structs and enums,
+coverable item no directive names; then, a list per kind, the covered files
+with no `//!` doc of their own (as `self`), the coverable items, tests, named fields and variants (of the coverable structs and enums,
 `Type::field`, `Enum::Variant`, `Enum::Variant::field`) with no doc comment;
 a tuple's positional fields (`Tuple::0`) aren't listed, as the type's or
 variant's own doc comment covers them; then each

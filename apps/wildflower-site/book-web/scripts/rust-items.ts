@@ -238,6 +238,11 @@ const descendants = function* (node: Node): Generator<Node> {
   }
 }
 
+// Inner doc comments: `//!` lines and `/*!` blocks, a module's own doc.
+const isInnerDocComment = (node: Node): boolean =>
+  (node.type === 'line_comment' && node.text.startsWith('//!')) ||
+  (node.type === 'block_comment' && node.text.startsWith('/*!'))
+
 // Outer doc comments: `///` lines and `/** */` blocks, not `//!` or `/*!`.
 const isOuterDocComment = (node: Node): boolean =>
   (node.type === 'line_comment' && /^\/\/\/(?!\/)/.test(node.text)) ||
@@ -257,23 +262,40 @@ const outerDocNodes = (item: Node): readonly Node[] => {
   return docs
 }
 
+/**
+ * The inner doc comments opening `scope` (a file or a `mod`'s body), in
+ * source order: the `//!` lines and `/*!` blocks before its first item, past
+ * its inner attributes (`#![…]`) and ordinary comments.
+ */
+const innerDocNodes = (scope: Node): readonly Node[] => {
+  const docs: Node[] = []
+  for (const node of scope.namedChildren) {
+    if (node === null) continue
+    if (isInnerDocComment(node)) docs.push(node)
+    else if (
+      node.type !== 'inner_attribute_item' &&
+      node.type !== 'line_comment' &&
+      node.type !== 'block_comment'
+    )
+      break
+  }
+  return docs
+}
+
 /** The lines of a doc comment's node, without its markers. */
 const docLinesOf = (node: Node): readonly string[] => {
   const text = node.text.replace(/\n$/, '')
-  if (node.type === 'line_comment') return [text.replace(/^\/\/\//, '')]
+  if (node.type === 'line_comment') return [text.replace(/^\/\/[/!]/, '')]
   return text
-    .replace(/^\/\*\*/, '')
+    .replace(/^\/\*[*!]/, '')
     .replace(/\*\/$/, '')
     .split('\n')
     .map((line) => line.replace(/^\s*\* ?/, ''))
 }
 
-/**
- * `item`'s outer doc comment as Markdown, as rustdoc reads it: the markers
- * gone and the lines' common indentation removed. Empty when it has none.
- */
-const docCommentOf = (item: Node): string => {
-  const lines = outerDocNodes(item).flatMap(docLinesOf)
+/** Doc comment nodes' text as Markdown, as rustdoc reads it: the markers gone and the lines' common indentation removed. */
+const docMarkdown = (nodes: readonly Node[]): string => {
+  const lines = nodes.flatMap(docLinesOf)
   const indents = lines
     .filter((line) => line.trim() !== '')
     .map((line) => line.length - line.trimStart().length)
@@ -284,12 +306,29 @@ const docCommentOf = (item: Node): string => {
     .trim()
 }
 
+/** `item`'s outer doc comment as Markdown (`docMarkdown`). Empty when it has none. */
+const docCommentOf = (item: Node): string => docMarkdown(outerDocNodes(item))
+
+/**
+ * The inner doc comment (`//!`) opening `scope`, a file's root or a `mod`'s
+ * body, as Markdown (`docMarkdown`). Empty when it has none.
+ */
+const innerDocCommentOf = (scope: Node): string => docMarkdown(innerDocNodes(scope))
+
+/** An inline `mod`'s inner doc comment; empty for `mod x;` and any other item. */
+const innerDocOfMod = (item: Node): string => {
+  const body = item.type === 'mod_item' ? modBody(item) : null
+  return body === null ? '' : innerDocCommentOf(body)
+}
+
 /** What a Rust item is, beyond where it sits: its node kind and its doc comment. */
 interface RustItem extends LocatedItem {
   /** The tree-sitter node type: `struct_item`, `function_item`, … */
   readonly kind: string
   /** Its outer doc comment as Markdown (`docCommentOf`); empty when it has none. */
   readonly docComment: string
+  /** An inline `mod`'s inner doc comment (`//!` in its body) as Markdown; empty for any other item. */
+  readonly innerDocComment: string
 }
 
 const locate = (lines: readonly string[], item: Node): RustItem => {
@@ -310,6 +349,7 @@ const locate = (lines: readonly string[], item: Node): RustItem => {
   return {
     kind: item.type,
     docComment: docCommentOf(item),
+    innerDocComment: innerDocOfMod(item),
     startRow: item.startPosition.row,
     endRow: lastRow(item),
     docRows,
@@ -349,5 +389,15 @@ const locateRustItem = async (source: string, symbol: string): Promise<RustItem>
   }
 }
 
+/** The Rust `source`'s own doc: its leading `//!` comments as Markdown, empty when it has none. */
+const fileDocOf = async (source: string): Promise<string> => {
+  const parsed = await parseRust(source)
+  try {
+    return innerDocCommentOf(parsed.root)
+  } finally {
+    parsed.delete()
+  }
+}
+
 export type { ParsedRust, RustItem }
-export { docCommentOf, locateRustItem, parseRust }
+export { docCommentOf, fileDocOf, innerDocCommentOf, locateRustItem, parseRust }

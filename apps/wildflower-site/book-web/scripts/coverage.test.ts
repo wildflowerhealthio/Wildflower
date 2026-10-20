@@ -143,6 +143,17 @@ describe('coverageReport', () => {
     )
   })
 
+  it('lists a file with no //! doc of its own as an undocumented module', async () => {
+    const bare = await coverableFile('/// An item, but no module doc.\npub const N: u32 = 1;\n')
+    expect(bare.moduleDocumented).toBe(false)
+    expect((await coverableFile(source)).moduleDocumented).toBe(true)
+    const report = coverageReport([{ path: 'bare.rs', ...bare }], [])
+    expect(report.undocumented).toEqual([{ path: 'bare.rs', symbol: 'self', kind: 'module' }])
+    expect(formatCoverage(report)).toContain(
+      'undocumented modules: 1 without a doc comment:\n  WARNING: bare.rs self\n'
+    )
+  })
+
   it('says so when every item and test is in the book and documented', () => {
     expect(
       formatCoverage({

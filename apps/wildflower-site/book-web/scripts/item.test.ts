@@ -221,6 +221,28 @@ describe('{{#item}}', () => {
   })
 })
 
+describe('{{#item <path> self}}', () => {
+  it('renders the file’s own //! doc as prose under the module’s anchor, with no source', async () => {
+    const page = await expandOn(`{{#item ${path} self}}`)
+    expect(page).toBe(
+      [
+        '<div id="item-items" class="item-anchor"></div>',
+        '',
+        "A fixture for book-web's tests: items `{{#item}}` renders.",
+      ].join('\n')
+    )
+  })
+
+  it('fails on a file or mod with no doc of its own', async () => {
+    const { errors } = await expandDirectives(
+      '{{#item sample-crate/src/lib.rs nested}}',
+      repoRoot,
+      targets
+    )
+    expect(errors.map(String)).toEqual([expect.stringContaining('mod nested has no doc comment')])
+  })
+})
+
 describe('{{#item}} anchors', () => {
   it('qualifies same-named items from different files, on one page and across the book', async () => {
     const onePage = await expandOn(

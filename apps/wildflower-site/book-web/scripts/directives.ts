@@ -5,7 +5,8 @@
 //   {{#code <path> <symbol> [keep-docs] [from="…" [to="…" | through="…"]]…}}
 //   {{#code-link <path> <symbol> [from=… …]}}   a link to the lines {{#code}} would show
 //   {{#item <path> <symbol> [tests="<symbol>…"] [level=N]}}   a Rust item: its doc
-//                           comment as prose, its source, and each named test
+//                           comment as prose, its source, and each named test;
+//                           for a `mod`, or `self` (the file), its docs alone
 //   {{#covers <path>}}      a line naming the file a chapter covers (coverage.ts)
 //   {{#covered <path> <symbol>…}}   nothing: counts the items as in the book
 import { execFileSync } from 'node:child_process'
@@ -18,7 +19,7 @@ import type { ItemReference } from './coverage.ts'
 import { renderDocMarkdown } from './doc-markdown.ts'
 import { excerpt, ExcerptError, type Excerpt, type Fragment, type LocatedItem } from './excerpt.ts'
 import { ItemNotFound } from './item-not-found.ts'
-import { locateRustItem, type RustItem } from './rust-items.ts'
+import { fileDocOf, locateRustItem, type RustItem } from './rust-items.ts'
 import {
   absolutePath,
   fileImports,
@@ -61,13 +62,15 @@ interface CoverageDirective {
 /**
  * `{{#item <path> <symbol> [tests="…"] [level=N]}}`: a Rust item's doc
  * comment as prose, then its source, then each named test, captioned by its
- * own doc comment.
+ * own doc comment. A module shows its docs alone, with no source: `self`, the
+ * file's `//!` doc; an inline `mod`, its `///` doc then its `//!` one.
  */
 interface ItemDirective {
   readonly kind: 'item'
   readonly raw: string
   /** Repo-root-relative. */
   readonly path: string
+  /** An item's symbol, or `self` for the file's own module. */
   readonly symbol: string
   /** Symbols in the same file, shown after the item in this order. */
   readonly tests: readonly string[]
@@ -483,6 +486,16 @@ const itemAnchor = (symbol: string): string => {
 /** A segment of an anchor: any run of characters outside `[A-Za-z0-9_]` as `-`. */
 const anchorSegment = (segment: string): string => segment.trim().replace(/[^A-Za-z0-9_]+/g, '-')
 
+/** The symbol `{{#item}}` takes for the file's own module, whose doc is its `//!` comment. */
+const FILE_MODULE = 'self'
+
+/**
+ * The anchor an item gets unless another shares it: `itemAnchor`, or for
+ * `self`, `item-` and the file's module name (`fileModuleName`).
+ */
+const plainAnchor = ({ path, symbol }: ShownItem): string =>
+  symbol.trim() === FILE_MODULE ? `item-${anchorSegment(fileModuleName(path))}` : itemAnchor(symbol)
+
 /** An item an `{{#item}}` shows: its file and symbol, as the directive names them. */
 interface ShownItem {
   /** Repo-root-relative. */
@@ -495,18 +508,20 @@ const shownItemKey = ({ path, symbol }: ShownItem): string => `${path}\0${itemAn
 
 /**
  * The anchor each item gets, by `shownItemKey`. An item keeps its plain
- * `itemAnchor` unless another item among `items` has the same one; then each
- * of those is qualified by its file: `item-<module>--<segments>`, where
- * `<module>` is the file's stem (its folder's name for a `mod.rs`), or, if
- * that still leaves two alike or matches another item's plain anchor, the
+ * anchor (`plainAnchor`) unless another item among `items` has the same one;
+ * then each of those is qualified by its file: `item-<module>--<segments>`,
+ * where `<module>` is the file's stem (its folder's name for a `mod.rs`), or,
+ * if that still leaves two alike or matches another item's plain anchor, the
  * file's repo-root-relative path without `.rs`, its segments joined by `--`.
+ * A `self` has no segments, so it is `item-<module>`, which is its plain
+ * anchor: qualified, it takes the path, `item-<path>`.
  */
 const assignAnchors = (items: readonly ShownItem[]): ReadonlyMap<string, string> => {
   const byKey = new Map<string, ShownItem>()
   for (const item of items) byKey.set(shownItemKey(item), item)
   const groups = new Map<string, ShownItem[]>()
   for (const item of byKey.values()) {
-    const plain = itemAnchor(item.symbol)
+    const plain = plainAnchor(item)
     groups.set(plain, [...(groups.get(plain) ?? []), item])
   }
   const anchors = new Map<string, string>()
@@ -516,7 +531,11 @@ const assignAnchors = (items: readonly ShownItem[]): ReadonlyMap<string, string>
       continue
     }
     const qualified = (qualifier: (path: string) => string): string[] =>
-      group.map((item) => `item-${qualifier(item.path)}--${plain.slice('item-'.length)}`)
+      group.map((item) =>
+        item.symbol.trim() === FILE_MODULE
+          ? `item-${qualifier(item.path)}`
+          : `item-${qualifier(item.path)}--${plain.slice('item-'.length)}`
+      )
     const byStem = qualified((path) => anchorSegment(fileModuleName(path)))
     const clean =
       new Set(byStem).size === group.length && byStem.every((anchor) => !groups.has(anchor))
@@ -542,7 +561,10 @@ interface BookIndexEntry extends ShownItem {
   readonly anchor: string
   /** `RustCrate.key` of the item's crate. */
   readonly crateKey: string
-  /** From the crate root, without `crate`: `['domain', 'client', 'Client', 'allows_scopes']`. */
+  /**
+   * From the crate root, without `crate`: `['domain', 'client', 'Client', 'allows_scopes']`,
+   * or the file's module for `self` (`['domain', 'client']`).
+   */
   readonly itemPath: readonly string[]
 }
 
@@ -576,7 +598,10 @@ const indexBook = (
           path: directive.path,
           symbol: directive.symbol,
           crateKey: file.crate.key,
-          itemPath: [...file.module, ...symbolSegments(directive.symbol)],
+          itemPath:
+            directive.symbol === FILE_MODULE
+              ? file.module
+              : [...file.module, ...symbolSegments(directive.symbol)],
         },
       ]
     })
@@ -603,7 +628,7 @@ interface PageContext {
 
 /** The anchor `context` gives the item, or its plain one. */
 const anchorIn = (context: PageContext, item: ShownItem): string =>
-  context.anchors?.get(shownItemKey(item)) ?? itemAnchor(item.symbol)
+  context.anchors?.get(shownItemKey(item)) ?? plainAnchor(item)
 
 const samePath = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((segment, i) => segment === b[i])
@@ -728,7 +753,29 @@ const KEEPS_MEMBER_DOCS: ReadonlySet<string> = new Set([
   'trait_item',
 ])
 
-/** `{{#item}}`: the anchor, the item's doc comment as prose, its source, then each test. */
+/**
+ * A module's docs, each as prose with its links read from where it is
+ * written: `self` is the file's `//!` doc, read inside the file's module; an
+ * inline `mod`'s `///` doc is read where the `mod` sits, as any item's is, and
+ * its `//!` doc inside it. Undefined when `symbol` names no module.
+ */
+const moduleDocs = async (
+  source: string,
+  symbol: string,
+  item: RustItem | undefined
+): Promise<readonly { readonly markdown: string; readonly scope: string }[] | undefined> => {
+  if (symbol === FILE_MODULE) return [{ markdown: await fileDocOf(source), scope: FILE_MODULE }]
+  if (item?.kind !== 'mod_item') return undefined
+  return [
+    { markdown: item.docComment, scope: symbol },
+    { markdown: item.innerDocComment, scope: `${symbol}::${FILE_MODULE}` },
+  ]
+}
+
+/**
+ * `{{#item}}`: the anchor, the item's doc comment as prose, its source, then
+ * each test. A module (`self`, or a `mod`) shows its docs alone, no source.
+ */
 const renderItemDirective = async (
   directive: ItemDirective,
   repoRoot: string,
@@ -751,11 +798,11 @@ const renderItemDirective = async (
       throw error
     }
   }
-  const item = await locateOrFail(directive.symbol)
+  const item = directive.symbol === FILE_MODULE ? undefined : await locateOrFail(directive.symbol)
   const tests = await Promise.all(directive.tests.map(locateOrFail))
   const { imports } = await readRustFile(join(repoRoot, directive.path))
-  const prose = (located: RustItem, symbol: string): Promise<string> =>
-    renderDocMarkdown(located.docComment, {
+  const prose = (markdown: string, symbol: string): Promise<string> =>
+    renderDocMarkdown(markdown, {
       headingLevel: directive.level ?? headingLevel,
       resolve: (destination) =>
         resolveDocLink(destination, { file, symbol, imports }, repoRoot, targets, context),
@@ -768,18 +815,33 @@ const renderItemDirective = async (
       'rust',
       excerpt(source, located, { fragments: [], keepDocs })
     )
+  const docs = await moduleDocs(source, directive.symbol, item)
+  if (docs !== undefined && docs.every(({ markdown }) => markdown === ''))
+    throw new DirectiveError(
+      directive.symbol === FILE_MODULE
+        ? `${directive.raw}: ${directive.path} has no //! doc comment`
+        : `${directive.raw}: mod ${directive.symbol} has no doc comment`
+    )
+  const shown =
+    docs === undefined && item !== undefined
+      ? [
+          await prose(item.docComment, directive.symbol),
+          block(item, KEEPS_MEMBER_DOCS.has(item.kind)),
+        ]
+      : await Promise.all((docs ?? []).map(({ markdown, scope }) => prose(markdown, scope)))
   const captions = await Promise.all(
-    tests.map((test, index) => prose(test, directive.tests[index]))
+    tests.map((test, index) => prose(test.docComment, directive.tests[index]))
   )
   const parts = [
     `<div id="${anchorIn(context, directive)}" class="item-anchor"></div>`,
-    await prose(item, directive.symbol),
-    block(item, KEEPS_MEMBER_DOCS.has(item.kind)),
+    ...shown,
     ...tests.flatMap((test, index) => [captions[index], block(test, false)]),
   ]
+  // A module isn't a coverable item; its tests are.
+  const referenced = docs === undefined && item !== undefined ? [item, ...tests] : tests
   return {
     text: parts.filter((part) => part !== '').join('\n\n'),
-    references: [item, ...tests].map(({ startRow }) => ({
+    references: referenced.map(({ startRow }) => ({
       path: directive.path,
       row: startRow,
       shown: true,

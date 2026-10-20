@@ -15,7 +15,7 @@
 // functions of a `proptest!` block, each of which carries its `#[test]`.
 import type { Node } from 'web-tree-sitter'
 
-import { docCommentOf, parseRust, type ParsedRust } from './rust-items.ts'
+import { docCommentOf, innerDocCommentOf, parseRust, type ParsedRust } from './rust-items.ts'
 
 /** An item a covered file holds: its symbol, as a directive names it, and its first row. */
 interface CoverableItem {
@@ -43,6 +43,8 @@ interface Coverable {
   readonly items: readonly CoverableItem[]
   /** In file order. */
   readonly members: readonly CoverableMember[]
+  /** Whether the file opens with its own `//!` doc, which `{{#item <path> self}}` shows. */
+  readonly moduleDocumented: boolean
 }
 
 /** An item a directive names: the row it starts on in its file. */
@@ -60,11 +62,11 @@ interface CoveredFile extends Coverable {
   readonly path: string
 }
 
-/** An item, test, field or variant with no doc comment. */
+/** A file's module, item, test, field or variant with no doc comment. A module is `self`. */
 interface Undocumented {
   readonly path: string
   readonly symbol: string
-  readonly kind: 'item' | 'test' | 'field' | 'variant'
+  readonly kind: 'module' | 'item' | 'test' | 'field' | 'variant'
 }
 
 interface CoverageReport {
@@ -146,7 +148,11 @@ const membersOf = (node: Node, owner: string): CoverableMember[] => {
 }
 
 /** What is coverable directly in `scope` (a file or a module's body), named under `prefix`. */
-const coverableIn = (parsed: ParsedRust, scope: Node, prefix: string): Coverable => {
+const coverableIn = (
+  parsed: ParsedRust,
+  scope: Node,
+  prefix: string
+): Omit<Coverable, 'moduleDocumented'> => {
   const items: CoverableItem[] = []
   const members: CoverableMember[] = []
   let attributes: Node[] = []
@@ -196,7 +202,10 @@ const coverableIn = (parsed: ParsedRust, scope: Node, prefix: string): Coverable
 const coverableFile = async (source: string): Promise<Coverable> => {
   const parsed = await parseRust(source)
   try {
-    return coverableIn(parsed, parsed.root, '')
+    return {
+      ...coverableIn(parsed, parsed.root, ''),
+      moduleDocumented: innerDocCommentOf(parsed.root) !== '',
+    }
   } finally {
     parsed.delete()
   }
@@ -214,7 +223,8 @@ const coverageReport = (
   const missing: { path: string; symbol: string }[] = []
   const unshownTests: { path: string; symbol: string }[] = []
   const undocumented: Undocumented[] = []
-  for (const { path, items, members } of files) {
+  for (const { path, items, members, moduleDocumented } of files) {
+    if (!moduleDocumented) undocumented.push({ path, symbol: 'self', kind: 'module' })
     for (const { symbol, row, isTest, documented } of items) {
       total++
       if (!named.has(`${path}:${row}`)) missing.push({ path, symbol })
@@ -242,7 +252,7 @@ const warnings = (entries: readonly { readonly path: string; readonly symbol: st
 
 /**
  * The report as the build prints it: the items not in the book, then a list
- * per kind (items, tests, fields, variants) of those without a doc comment,
+ * per kind (modules, items, tests, fields, variants) of those without a doc comment,
  * then the tests not shown.
  */
 const formatCoverage = (report: CoverageReport): string => {
@@ -251,7 +261,7 @@ const formatCoverage = (report: CoverageReport): string => {
     report.missing.length === 0
       ? `${head}; every covered item is in the book\n`
       : `${head}; ${report.missing.length} not in the book:\n${warnings(report.missing)}`
-  for (const kind of ['item', 'test', 'field', 'variant'] as const) {
+  for (const kind of ['module', 'item', 'test', 'field', 'variant'] as const) {
     const of = report.undocumented.filter((u) => u.kind === kind)
     if (of.length > 0)
       out += `undocumented ${kind}s: ${of.length} without a doc comment:\n${warnings(of)}`
