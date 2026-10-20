@@ -87,6 +87,10 @@ impl<'a, T: GrantTx> RequestApprover<'a, T> {
     /// ([`session_bounded_scopes`]), so a browser paired with less than the
     /// Owner holds earns no app more than it holds, whoever approved.
     ///
+    /// Under a [`CodeAuthority::StandingGrant`], issuing the code also stamps
+    /// that grant's `last_used_at` with `now`: the grant just stood in for the
+    /// Owner.
+    ///
     /// The approval and the code land in the caller's transaction, which
     /// first loads the request's browser session. A request whose session is no longer
     /// live at `now` (revoked, expired, or no longer stored) is denied rather
@@ -148,6 +152,10 @@ impl<'a, T: GrantTx> RequestApprover<'a, T> {
             sid: browser_session.sid,
         };
         self.tx.issue_authorization_code(&authorization_code)?;
+        if let CodeAuthority::StandingGrant(standing_grant_coverage) = authority {
+            self.tx
+                .stamp_authorization_code_grant_used(standing_grant_coverage.grant_id(), now)?;
+        }
         Ok(CodeApproval::Issued(Box::new(authorization_code)))
     }
 
@@ -210,13 +218,16 @@ mod tests {
     use chrono::Duration;
 
     use super::*;
+    use crate::domain::authority::GrantCoverage;
     use crate::domain::authorization_request::code::{CodeRequestState, NewCodeRequestArgs};
     use crate::domain::authorization_request::polled::PolledState;
     use crate::domain::authorization_request::{AuthorizationRequest, RequestStatus};
     use crate::domain::browser_session::BrowserSession;
+    use crate::domain::client::presented_change::PresentedClientChange;
     use crate::domain::grant_store::*;
     use crate::domain::test_fake::{
-        delegated_scopes, device_request, fixture_code_args, owned_scopes, FakeGrantStore,
+        code_grant, delegated_scopes, device_request, fixture_code_args, owned_scopes,
+        FakeGrantStore,
     };
 
     /// A pending code request `id`, as the approver takes it, made in a
@@ -317,6 +328,86 @@ mod tests {
                 .unwrap(),
             Some(*issued_code)
         );
+    }
+
+    /// The standing grant "g1" covering every scope of a request for "client"
+    /// at the fixture redirect, and its coverage of `request`.
+    fn standing_grant_coverage(
+        store: &FakeGrantStore,
+        request: &CodeRequest,
+    ) -> StandingGrantCoverage {
+        store
+            .tx()
+            .create_authorization_code_grant(&code_grant("g1", "client"))
+            .unwrap();
+        let GrantCoverage::Full(coverage) = GrantCoverage::resolve(
+            &mut store.tx(),
+            &PresentedClientChange::NoChange,
+            "client",
+            &request.redirect_uri,
+            &request.requested_scopes,
+        )
+        .unwrap() else {
+            panic!("the grant covers the request");
+        };
+        coverage
+    }
+
+    /// When the standing grant "g1" was last used, as stored.
+    fn grant_last_used_at(store: &FakeGrantStore) -> Option<DateTime<Utc>> {
+        let Some(crate::domain::grant::Grant::AuthorizationCode(grant)) =
+            store.tx().grant_by_id("g1").unwrap()
+        else {
+            panic!("the code grant");
+        };
+        grant.last_used_at
+    }
+
+    /// A code issued under a standing grant stamps that grant used at the
+    /// issuing instant; one the Owner approved leaves it alone, and so does a
+    /// request denied because its browser session ended.
+    #[test]
+    fn approve_for_code_stamps_only_the_standing_grant_it_issues_under() {
+        let store = FakeGrantStore::default();
+        let pending_request = pending_code_request(&store, "req-1");
+        let coverage = standing_grant_coverage(&store, &pending_request);
+
+        let owner_approved = pending_code_request(&store, "req-owner");
+        assert!(matches!(
+            approve(&store, &owner_approved),
+            CodeApproval::Issued(_)
+        ));
+        assert_eq!(grant_last_used_at(&store), None);
+
+        let signed_out = pending_code_request_in_session(&store, "req-signed-out", "gone");
+        assert_eq!(
+            RequestApprover::within(&mut store.tx())
+                .approve_for_code(
+                    CodeAuthority::StandingGrant(&coverage),
+                    &signed_out,
+                    None,
+                    "no-code".to_owned(),
+                    Utc::now(),
+                )
+                .unwrap(),
+            CodeApproval::BrowserSessionEnded
+        );
+        assert_eq!(grant_last_used_at(&store), None);
+
+        let now = Utc::now();
+        assert!(matches!(
+            RequestApprover::within(&mut store.tx())
+                .approve_for_code(
+                    CodeAuthority::StandingGrant(&coverage),
+                    &pending_request,
+                    None,
+                    "the-code".to_owned(),
+                    now,
+                )
+                .unwrap(),
+            CodeApproval::Issued(_)
+        ));
+        assert_eq!(grant_last_used_at(&store), Some(now));
     }
 
     /// A request decided since it was read issues nothing — the outcome the

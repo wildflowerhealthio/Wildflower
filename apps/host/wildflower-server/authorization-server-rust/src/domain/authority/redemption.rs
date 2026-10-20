@@ -517,6 +517,12 @@ impl ValidatedRefreshToken {
         self.family.sid.as_deref()
     }
 
+    /// The standing grant that earned the family, if one was resolved when
+    /// it started.
+    pub(crate) fn grant_id(&self) -> Option<&str> {
+        self.family.grant_id.as_deref()
+    }
+
     /// The family this token belongs to.
     pub(crate) fn family_id(&self) -> &str {
         &self.family.family_id

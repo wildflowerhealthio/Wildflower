@@ -375,6 +375,66 @@ mod tests {
         assert_eq!(grant.scopes, ["patient/Patient.r", "patient/Observation.r"]);
     }
 
+    /// A new grant of either kind starts never used, and a re-approval keeps
+    /// the stamp its use left.
+    #[test]
+    fn a_new_grant_starts_unused_and_a_reapproval_keeps_its_last_use() {
+        let store = FakeGrantStore::default();
+        let record = || {
+            let mut tx = store.tx();
+            let mut recorder = GrantRecorder::within(&mut tx);
+            recorder
+                .record_code_grant(
+                    "client-a",
+                    &redirect(),
+                    &delegated_scopes(&["openid"]),
+                    None,
+                    Utc::now(),
+                )
+                .unwrap();
+            recorder
+                .record_device_grant(
+                    "client-a",
+                    "Kitchen iPad",
+                    &delegated_scopes(&["openid"]),
+                    None,
+                    Utc::now(),
+                )
+                .unwrap();
+        };
+        let code_grant = || {
+            store
+                .tx()
+                .grant_by_client_and_redirect("client-a", &redirect())
+                .unwrap()
+                .expect("code grant")
+        };
+        let device_grant = || {
+            store
+                .tx()
+                .device_grant_by_client_and_device_name("client-a", "Kitchen iPad")
+                .unwrap()
+                .expect("device grant")
+        };
+
+        record();
+        assert_eq!(code_grant().last_used_at, None);
+        assert_eq!(device_grant().last_used_at, None);
+
+        let used_at = Utc::now();
+        store
+            .tx()
+            .stamp_authorization_code_grant_used(&code_grant().id, used_at)
+            .unwrap();
+        store
+            .tx()
+            .stamp_device_grant_used(&device_grant().id, used_at)
+            .unwrap();
+        record();
+        assert_eq!(code_grant().last_used_at, Some(used_at));
+        assert_eq!(device_grant().last_used_at, Some(used_at));
+    }
+
     /// Widen the fixture client (registered with `registered`) by `granted`,
     /// leaving its redirect allowlist alone.
     fn widened(registered: &[&str], granted: &[&str]) -> Vec<String> {

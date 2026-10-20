@@ -441,6 +441,86 @@ async fn device_approval_mints_durable_grant_and_links_refresh_family() {
     );
 }
 
+/// Each rotation of the refresh family a device grant earned marks the grant
+/// used: the Owner's grant list shows no `lastUsedAt` once the device has
+/// claimed its first tokens, and the rotation's instant after a refresh.
+#[tokio::test]
+async fn a_device_refresh_stamps_its_grant_s_last_use() {
+    let (g, owner_token, db) = spin_up();
+    seed_client_with_redirect(
+        &db,
+        "device-client",
+        "https://app.example/cb",
+        &["read", "offline_access"],
+    );
+    plant_device_request(
+        &store_handle(&db),
+        "device-client",
+        "dev-used",
+        &["read", "offline_access"],
+        RequestStatus::Pending,
+        Utc::now() + Duration::minutes(5),
+    );
+    let approve = build_request(
+        Request::post("/authorization/devices/WILD-FLWR/approve")
+            .header("host", "127.0.0.1")
+            .header("authorization", format!("Bearer {owner_token}"))
+            .header("content-type", "application/json"),
+        Body::from(r#"{"approvedScopes":["read","offline_access"],"deviceName":"Reception iPad"}"#),
+    );
+    let res = g.router.clone().oneshot(approve).await.expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code&\
+                client_id=device-client&device_code=dev-used";
+    let res = post_form(&g.router, "/oauth/token", body).await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let refresh = body_json(res.into_body()).await["refresh_token"]
+        .as_str()
+        .expect("offline_access refresh token")
+        .to_string();
+    let last_used_at = || async {
+        let res = g
+            .router
+            .clone()
+            .oneshot(owner_grants_probe(&owner_token))
+            .await
+            .expect("oneshot");
+        assert_eq!(res.status(), StatusCode::OK);
+        body_json(res.into_body())
+            .await
+            .as_array()
+            .expect("grants array")
+            .iter()
+            .find(|grant| grant["grantType"] == "device_code")
+            .expect("the device grant")["lastUsedAt"]
+            .clone()
+    };
+    assert_eq!(last_used_at().await, Value::Null);
+
+    let before = Utc::now();
+    let res = g
+        .router
+        .clone()
+        .oneshot(build_request(
+            Request::post("/oauth/token")
+                .header("content-type", "application/x-www-form-urlencoded"),
+            Body::from(format!(
+                "grant_type=refresh_token&client_id=device-client&refresh_token={refresh}"
+            )),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let stamped: chrono::DateTime<Utc> = last_used_at()
+        .await
+        .as_str()
+        .expect("lastUsedAt is set")
+        .parse()
+        .expect("an RFC 3339 instant");
+    assert!(stamped >= before && stamped <= Utc::now());
+}
+
 /// A client restricted to a grant-type subset is refused a grant outside it
 /// (RFC 6749 §5.2 `unauthorized_client`). Here a code-only client is rejected
 /// at the refresh-token grant before any token lookup.

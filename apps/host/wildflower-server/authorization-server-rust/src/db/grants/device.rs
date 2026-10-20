@@ -5,6 +5,7 @@
 //! Single-kind operations hit this concrete table; the cross-kind reads live in
 //! [`super::general`].
 
+use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
@@ -84,6 +85,22 @@ pub(super) fn update_device_grant(
         ))
         .execute(conn)
         .map_err(|e| AuthorizationServerError::infrastructure("update_device_grant failed", e))?;
+    Ok(())
+}
+
+/// Set the `last_used_at` of the device grant `id` to `now`, the one column a
+/// re-pairing's update leaves alone.
+pub(super) fn stamp_device_grant_used(
+    conn: &mut SqliteConnection,
+    id: &str,
+    now: DateTime<Utc>,
+) -> Result<(), AuthorizationServerError> {
+    diesel::update(device_grants::table.find(id))
+        .set(device_grants::last_used_at.eq(now))
+        .execute(conn)
+        .map_err(|e| {
+            AuthorizationServerError::infrastructure("stamp_device_grant_used failed", e)
+        })?;
     Ok(())
 }
 
@@ -186,5 +203,43 @@ mod tests {
             Utc::now(),
         );
         assert_eq!(store.read(|tx| tx.all_grants()).expect("list").len(), 2);
+    }
+
+    /// The stamp sets `last_used_at`, and a re-pairing's update, which writes
+    /// only the consent fields, keeps it.
+    #[test]
+    fn a_repairing_keeps_the_stamp_over_sqlite() {
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
+        upsert_device_grant(
+            &store,
+            "client-a",
+            "Kitchen iPad",
+            &["read".to_owned()],
+            None,
+            Utc::now(),
+        );
+        let grant = store
+            .read(|tx| tx.device_grant_by_client_and_device_name("client-a", "Kitchen iPad"))
+            .expect("query")
+            .expect("present");
+        assert_eq!(grant.last_used_at, None);
+
+        let used_at: DateTime<Utc> = "2026-10-20T12:00:00Z".parse().expect("instant");
+        store
+            .write(|tx| tx.stamp_device_grant_used(&grant.id, used_at))
+            .expect("stamp");
+        upsert_device_grant(
+            &store,
+            "client-a",
+            "Kitchen iPad",
+            &["write".to_owned()],
+            None,
+            Utc::now(),
+        );
+        let repaired = store
+            .read(|tx| tx.device_grant_by_client_and_device_name("client-a", "Kitchen iPad"))
+            .expect("query")
+            .expect("present");
+        assert_eq!(repaired.last_used_at, Some(used_at));
     }
 }

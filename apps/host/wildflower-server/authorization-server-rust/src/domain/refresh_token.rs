@@ -41,9 +41,9 @@ pub struct RefreshTokenFamily {
     /// never stored.
     pub authorization_code_hash: Option<String>,
     /// The [`Grant`](crate::domain::grant::Grant) that authorized this family,
-    /// for **both** flows — the plumbing a future "revoke exactly this device's
-    /// session" ticket keys on. Written at family creation; read by nothing in
-    /// v1. `None` when no matching grant was found at exchange time (e.g. a grant
+    /// for **both** flows, written at family creation. Each rotation of a
+    /// family a device grant earned stamps that grant's `last_used_at`.
+    /// `None` when no matching grant was found at exchange time (e.g. a grant
     /// revoked between approval and the token poll). No FK: families outlive
     /// grants by design (expired in place, never deleted).
     pub grant_id: Option<String>,

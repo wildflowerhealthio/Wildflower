@@ -4,6 +4,7 @@
 //! whether it can skip the consent prompt. Single-kind operations hit this concrete
 //! table directly; the cross-kind reads live in [`super::general`].
 
+use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 use url::Url;
@@ -87,6 +88,25 @@ pub(super) fn update_authorization_code_grant(
         .execute(conn)
         .map_err(|e| {
             AuthorizationServerError::infrastructure("update_authorization_code_grant failed", e)
+        })?;
+    Ok(())
+}
+
+/// Set the `last_used_at` of the authorization-code grant `id` to `now`, the
+/// one column a re-approval's update leaves alone.
+pub(super) fn stamp_authorization_code_grant_used(
+    conn: &mut SqliteConnection,
+    id: &str,
+    now: DateTime<Utc>,
+) -> Result<(), AuthorizationServerError> {
+    diesel::update(authorization_code_grants::table.find(id))
+        .set(authorization_code_grants::last_used_at.eq(now))
+        .execute(conn)
+        .map_err(|e| {
+            AuthorizationServerError::infrastructure(
+                "stamp_authorization_code_grant_used failed",
+                e,
+            )
         })?;
     Ok(())
 }
@@ -187,5 +207,44 @@ mod tests {
         assert_eq!(updated.scopes, vec!["read".to_owned(), "write".to_owned()]);
         assert_eq!(updated.patient.as_deref(), Some("pat-2"));
         assert_eq!(store.read(|tx| tx.all_grants()).expect("list").len(), 1);
+    }
+
+    /// The stamp sets `last_used_at`, and a re-approval's update, which
+    /// writes only the consent fields, keeps it.
+    #[test]
+    fn a_reapproval_keeps_the_stamp_over_sqlite() {
+        let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
+        let redirect = read("https://example.com/cb");
+        upsert_code_grant(
+            &store,
+            "client-a",
+            &redirect,
+            &["read".to_owned()],
+            None,
+            Utc::now(),
+        );
+        let grant = store
+            .read(|tx| tx.grant_by_client_and_redirect("client-a", &redirect))
+            .expect("query")
+            .expect("present");
+        assert_eq!(grant.last_used_at, None);
+
+        let used_at: DateTime<Utc> = "2026-10-20T12:00:00Z".parse().expect("instant");
+        store
+            .write(|tx| tx.stamp_authorization_code_grant_used(&grant.id, used_at))
+            .expect("stamp");
+        upsert_code_grant(
+            &store,
+            "client-a",
+            &redirect,
+            &["write".to_owned()],
+            None,
+            Utc::now(),
+        );
+        let reapproved = store
+            .read(|tx| tx.grant_by_client_and_redirect("client-a", &redirect))
+            .expect("query")
+            .expect("present");
+        assert_eq!(reapproved.last_used_at, Some(used_at));
     }
 }

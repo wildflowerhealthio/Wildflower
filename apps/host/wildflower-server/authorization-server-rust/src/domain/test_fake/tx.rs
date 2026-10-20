@@ -870,6 +870,28 @@ impl GrantsTx for FakeGrantTx<'_> {
         Ok(())
     }
 
+    fn stamp_authorization_code_grant_used(
+        &mut self,
+        id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<(), AuthorizationServerError> {
+        if let Some(grant) = self.store.code_grants.borrow_mut().get_mut(id) {
+            grant.last_used_at = Some(now);
+        }
+        Ok(())
+    }
+
+    fn stamp_device_grant_used(
+        &mut self,
+        id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<(), AuthorizationServerError> {
+        if let Some(grant) = self.store.device_grants.borrow_mut().get_mut(id) {
+            grant.last_used_at = Some(now);
+        }
+        Ok(())
+    }
+
     fn delete_authorization_code_grant(
         &mut self,
         id: &str,

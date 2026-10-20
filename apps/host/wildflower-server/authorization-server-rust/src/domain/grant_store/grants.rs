@@ -1,6 +1,7 @@
 //! [`GrantsTx`] — the `authorization_code_grants` and `device_grants` tables
 //! and the cross-kind `grants` view: the Owner's standing consent.
 
+use chrono::{DateTime, Utc};
 use url::Url;
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
@@ -99,6 +100,32 @@ pub trait GrantsTx {
     ///
     /// [`AuthorizationServerError::Infrastructure`] if the update fails.
     fn update_device_grant(&mut self, grant: &DeviceGrant) -> Result<(), AuthorizationServerError>;
+
+    /// Set the `last_used_at` of the **authorization-code** grant `id` to
+    /// `now`: the grant just let a code be issued without asking the Owner.
+    /// Changes nothing when no code grant has that id.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the update fails.
+    fn stamp_authorization_code_grant_used(
+        &mut self,
+        id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<(), AuthorizationServerError>;
+
+    /// Set the `last_used_at` of the **device** grant `id` to `now`: a
+    /// refresh-token family it earned just rotated. Changes nothing when no
+    /// device grant has that id, as for a code-flow family's grant.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the update fails.
+    fn stamp_device_grant_used(
+        &mut self,
+        id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<(), AuthorizationServerError>;
 
     /// Delete the **authorization-code** grant `id`, returning `true` iff a row
     /// was removed. Half of a revoke; grant ids are UUIDs unique across both

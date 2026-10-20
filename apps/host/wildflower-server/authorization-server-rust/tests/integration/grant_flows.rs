@@ -489,6 +489,56 @@ async fn pre_approved_scopes_skip_consent_on_reauthorize() {
         .any(|(k, v)| k == "state" && v == "second"));
 }
 
+/// A code issued under the standing grant marks the grant used: the Owner's
+/// grant list shows no `lastUsedAt` after the approval, and the instant of the
+/// second `/authorize`, which skipped the Owner, after it.
+#[tokio::test]
+async fn reauthorizing_under_a_standing_grant_stamps_its_last_use() {
+    let (g, owner_token, db) = spin_up();
+    seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
+    authorize_and_approve(
+        &g,
+        &owner_token,
+        &db.paired_browser_token,
+        "test-app",
+        "read",
+        r#"{"approvedScopes":["read"],"acknowledgedRegistrationChange":false}"#,
+    )
+    .await;
+    let last_used_at = || async {
+        let res = g
+            .router
+            .clone()
+            .oneshot(owner_grants_probe(&owner_token))
+            .await
+            .expect("oneshot");
+        assert_eq!(res.status(), StatusCode::OK);
+        body_json(res.into_body()).await[0]["lastUsedAt"].clone()
+    };
+    assert_eq!(last_used_at().await, Value::Null);
+
+    let before = Utc::now();
+    let res = get_authorize(
+        &g.router,
+        &db.paired_browser_token,
+        &authorize_query("test-app", "read"),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::FOUND);
+    assert!(
+        location_of(&res).starts_with("https://app.example/cb?"),
+        "the standing grant skipped the Owner"
+    );
+
+    let stamped: chrono::DateTime<Utc> = last_used_at()
+        .await
+        .as_str()
+        .expect("lastUsedAt is set")
+        .parse()
+        .expect("an RFC 3339 instant");
+    assert!(stamped >= before && stamped <= Utc::now());
+}
+
 /// The fast path matches by **coverage**, not string equality: a standing
 /// consent to `patient/Observation.rs` answers for a later request for the
 /// narrower `patient/Observation.r`, so the Owner is not re-prompted for access

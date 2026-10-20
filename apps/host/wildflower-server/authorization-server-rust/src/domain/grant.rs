@@ -47,8 +47,9 @@ pub struct AuthorizationCodeGrant {
     pub scopes: Vec<String>,
     /// When the Owner gave (or last re-confirmed) consent.
     pub granted_at: DateTime<Utc>,
-    /// A column the grant row carries; nothing stamps it, so every grant
-    /// written reads `None`.
+    /// When this grant last let a code be issued without asking the Owner,
+    /// at `/oauth/authorize` or at the limited page's Continue; `None` until
+    /// it first does. A re-approval keeps it.
     pub last_used_at: Option<DateTime<Utc>>,
     /// SMART-on-FHIR patient context recorded at approval, carried forward to
     /// future codes/tokens minted under this grant.
@@ -78,8 +79,8 @@ pub struct DeviceGrant {
     pub scopes: Vec<String>,
     /// When the Owner gave (or last re-confirmed) consent.
     pub granted_at: DateTime<Utc>,
-    /// A column the grant row carries; nothing stamps it, so every grant
-    /// written reads `None`.
+    /// When a refresh-token family this pairing earned last rotated; `None`
+    /// until one first does. A re-pairing keeps it.
     pub last_used_at: Option<DateTime<Utc>>,
     /// SMART-on-FHIR patient context recorded at approval.
     pub patient: Option<String>,
@@ -96,6 +97,7 @@ pub struct DeviceGrant {
 pub trait CumulativeConsent {
     /// Fold a re-approval into this standing grant: union `additional` scopes
     /// in, stamp `granted_at = at`, and adopt the re-approval's `patient`.
+    /// `last_used_at` is left as it was.
     fn absorb_reapproval(
         &mut self,
         additional: &[String],

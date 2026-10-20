@@ -70,6 +70,7 @@ impl GrantCoverage {
         // means nothing was filtered out.
         if pre_approved_scopes.len() == requested_scopes.len() {
             Ok(GrantCoverage::Full(StandingGrantCoverage {
+                grant_id: grant.id,
                 covered_scopes: pre_approved_scopes,
                 patient: grant.patient,
             }))
@@ -99,11 +100,18 @@ impl GrantCoverage {
 /// one.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct StandingGrantCoverage {
+    grant_id: String,
     covered_scopes: Vec<String>,
     patient: Option<String>,
 }
 
 impl StandingGrantCoverage {
+    /// The id of the standing grant that covers the request, which a code
+    /// issued under it marks used.
+    pub(crate) fn grant_id(&self) -> &str {
+        &self.grant_id
+    }
+
     /// The covered scopes — the request's, verbatim.
     pub(crate) fn covered_scopes(&self) -> &[String] {
         &self.covered_scopes

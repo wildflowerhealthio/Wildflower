@@ -1700,6 +1700,80 @@ mod tests {
         assert_eq!(owner_approval.count(), 1);
     }
 
+    /// When the standing grant "g1" for "app" was last used, as stored.
+    fn grant_last_used_at(
+        code_authorization_starter: &CodeAuthorizationStarter<FakeGrantStore>,
+    ) -> Option<DateTime<Utc>> {
+        code_authorization_starter
+            .store
+            .tx()
+            .grant_by_client_and_redirect("app", &Url::parse("https://example.com/cb").unwrap())
+            .unwrap()
+            .expect("the standing grant")
+            .last_used_at
+    }
+
+    /// A code issued under the standing grant stamps the grant used, at
+    /// `/oauth/authorize` and at the limited page's Continue. Parking for the
+    /// limited page issues nothing and stamps nothing.
+    #[test]
+    fn a_code_issued_under_the_standing_grant_stamps_it_used() {
+        let (code_authorization_starter, _) = starter(covered_app_store());
+        let started_at = Utc::now();
+        code_authorization_starter
+            .start(&request("app", COVERED_SCOPES), ids(), started_at)
+            .expect("starts");
+        assert_eq!(
+            grant_last_used_at(&code_authorization_starter),
+            Some(started_at)
+        );
+
+        let (code_authorization_starter, _) = starter(covered_app_store());
+        park_for_the_limited_page(&code_authorization_starter);
+        assert_eq!(grant_last_used_at(&code_authorization_starter), None);
+        let continued_at = Utc::now();
+        code_authorization_starter
+            .continue_past_session_shortfall(
+                "req-1",
+                REQUESTING_SID,
+                "the-code".to_owned(),
+                continued_at,
+            )
+            .expect("continues");
+        assert_eq!(
+            grant_last_used_at(&code_authorization_starter),
+            Some(continued_at)
+        );
+    }
+
+    /// A grant that covers only some of the requested scopes issues no code,
+    /// so the request waits for the Owner and the grant stays unused.
+    #[test]
+    fn a_partially_covering_grant_is_not_stamped_used() {
+        let store = FakeGrantStore::default();
+        store
+            .tx()
+            .upsert_client(&client("app", &["patient/Patient.r", "openid"]))
+            .unwrap();
+        store
+            .tx()
+            .create_authorization_code_grant(&AuthorizationCodeGrant {
+                scopes: vec!["openid".to_owned()],
+                ..code_grant("g1", "app")
+            })
+            .unwrap();
+        let (code_authorization_starter, _) = starter(store);
+        let outcome = code_authorization_starter
+            .start(
+                &request("app", "patient/Patient.r openid"),
+                ids(),
+                Utc::now(),
+            )
+            .expect("starts");
+        assert!(matches!(outcome, AuthorizeNextStep::AwaitOwner { .. }));
+        assert_eq!(grant_last_used_at(&code_authorization_starter), None);
+    }
+
     /// With no standing grant, going on raises the request for the Owner, with
     /// its expiry restarted, and asks no start limit: the request spent from
     /// it when it parked.

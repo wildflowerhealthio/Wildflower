@@ -322,9 +322,9 @@ that session also holds of the grant (see
   a standing consent to `patient/Observation.rs` pre-approves a later
   request for the narrower `patient/Observation.r`.
 - **Key fields:** `clientId`, `scopes`, `redirectUri`, `grantedAt`,
-  `lastUsedAt` (event slot reserved, materializer present, but **no
-  consumer commits `clientAccessRecorded` yet**), `patient`
-  (SMART-on-FHIR launch context).
+  `lastUsedAt` (when the grant last let a code be issued without
+  asking the Owner; for a device grant, when a refresh token it earned
+  was last rotated), `patient` (SMART-on-FHIR launch context).
 
 Display name lives on [`Client`](#client)`.name`, not on `Grant`.
 

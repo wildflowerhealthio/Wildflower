@@ -71,7 +71,9 @@ impl<'a, T: GrantTx> RefreshFamilyWriter<'a, T> {
     /// Consume the presented token and, only if that consume won, insert its
     /// successor and return the successor's plaintext. A family made under a
     /// browser session moves that session's `last_seen_at` to `now`: an app
-    /// refreshing is the session in use.
+    /// refreshing is the session in use. A family a device grant earned
+    /// stamps that grant's `last_used_at` with `now`: a device refreshing is
+    /// the pairing in use.
     ///
     /// A refusal is the inner `Err`, so the caller's scope keeps what it
     /// wrote: [`InvalidGrantReason::RefreshTokenReplayed`] when the token had
@@ -100,6 +102,12 @@ impl<'a, T: GrantTx> RefreshFamilyWriter<'a, T> {
                 })?;
                 if let Some(sid) = validated_refresh_token.sid() {
                     self.tx.touch_browser_session_last_seen(sid, now, now)?;
+                }
+                // A code-flow family's grant is a code grant, which this
+                // leaves alone: a code grant is used when it stands in for
+                // the Owner at `/oauth/authorize`.
+                if let Some(grant_id) = validated_refresh_token.grant_id() {
+                    self.tx.stamp_device_grant_used(grant_id, now)?;
                 }
                 Ok(Ok(successor))
             }
@@ -251,6 +259,75 @@ mod tests {
             .unwrap()
             .expect("rotates");
         assert_eq!(last_seen(), rotated_at);
+    }
+
+    /// Rotating a family a device grant earned stamps that grant used at the
+    /// rotation's instant; a code-flow family leaves its code grant alone.
+    #[test]
+    fn rotate_stamps_the_device_grant_that_earned_the_family() {
+        use crate::domain::grant::{DeviceGrant, Grant};
+
+        let store = FakeGrantStore::default();
+        let issued_at = Utc::now() - chrono::Duration::hours(1);
+        store
+            .tx()
+            .create_device_grant(&DeviceGrant {
+                id: "device-grant".to_owned(),
+                client_id: "client".to_owned(),
+                scopes: vec!["offline_access".to_owned()],
+                granted_at: issued_at,
+                last_used_at: None,
+                patient: None,
+                device_name: "Reception iPad".to_owned(),
+            })
+            .unwrap();
+        store
+            .tx()
+            .create_authorization_code_grant(&code_grant("code-grant", "client"))
+            .unwrap();
+        for (family_id, grant_id) in [
+            ("device-family", "device-grant"),
+            ("code-family", "code-grant"),
+        ] {
+            store
+                .tx()
+                .insert_refresh_token_family_row(&RefreshTokenFamily {
+                    family_id: family_id.to_owned(),
+                    client_id: "client".to_owned(),
+                    scopes: vec!["offline_access".to_owned()],
+                    patient: None,
+                    issued_at,
+                    expires_at: issued_at + REFRESH_TOKEN_FAMILY_TTL,
+                    authorization_code_hash: None,
+                    grant_id: Some(grant_id.to_owned()),
+                    sid: None,
+                })
+                .unwrap();
+            store
+                .tx()
+                .insert_refresh_token(&RefreshToken {
+                    token_hash: token_storage_hash(family_id),
+                    family_id: family_id.to_owned(),
+                    issued_at,
+                    consumed_at: None,
+                })
+                .unwrap();
+        }
+        let last_used_at = |id: &str| match store.tx().grant_by_id(id).unwrap() {
+            Some(Grant::AuthorizationCode(grant)) => grant.last_used_at,
+            Some(Grant::DeviceCode(grant)) => grant.last_used_at,
+            None => panic!("grant {id} present"),
+        };
+
+        let rotated_at = Utc::now();
+        for family_id in ["device-family", "code-family"] {
+            RefreshFamilyWriter::within(&mut store.tx())
+                .rotate(&validated(&store, family_id), rotated_at)
+                .unwrap()
+                .expect("rotates");
+        }
+        assert_eq!(last_used_at("device-grant"), Some(rotated_at));
+        assert_eq!(last_used_at("code-grant"), None);
     }
 
     /// Rotation consumes the presented token and issues a live successor in the

@@ -17,8 +17,9 @@ import { RequireAuthMiddleware } from './require-auth.ts'
  *   ("Authorized Devices").
  *
  * A consumer narrows on `grantType` to read `redirectUri` (code) or `deviceName`
- * (device). `lastUsedAt` is null until the first time a token minted from this
- * grant is used.
+ * (device). `lastUsedAt` is null until the grant is first used: a code grant
+ * when it lets a code be issued without asking the Owner, a device grant when
+ * a refresh token it earned is rotated.
  */
 const sharedGrantFields = {
   id: Schema.String,

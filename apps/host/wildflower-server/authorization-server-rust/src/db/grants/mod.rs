@@ -12,6 +12,7 @@
 //!    decoder, the two launcher reads, and the two id-keyed deletes a revoke
 //!    composes.
 
+use chrono::{DateTime, Utc};
 use url::Url;
 
 use crate::db::grant_store::SqliteGrantTx;
@@ -69,6 +70,22 @@ impl GrantsTx for SqliteGrantTx<'_> {
 
     fn update_device_grant(&mut self, grant: &DeviceGrant) -> Result<(), AuthorizationServerError> {
         device::update_device_grant(self.conn, grant)
+    }
+
+    fn stamp_authorization_code_grant_used(
+        &mut self,
+        id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<(), AuthorizationServerError> {
+        authorization_code::stamp_authorization_code_grant_used(self.conn, id, now)
+    }
+
+    fn stamp_device_grant_used(
+        &mut self,
+        id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<(), AuthorizationServerError> {
+        device::stamp_device_grant_used(self.conn, id, now)
     }
 
     fn delete_authorization_code_grant(
