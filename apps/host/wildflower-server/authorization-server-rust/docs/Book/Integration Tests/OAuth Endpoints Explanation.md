@@ -76,7 +76,7 @@ Relies on [`CodeRequest::approve`](<../Domain/Authorization Request/Code Request
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/oauth_endpoints.rs the_pending_consent_watcher_sees_an_older_request_decided_under_a_newer_one}}
 
-Relies on [`PendingConsentWatcher::until_settled`](<../Assembly/OAuth Bindings Explanation.md#item-PendingConsentWatcher--until_settled>), which rereads the request through [`AuthorizationRequestsTx::is_awaiting_owner`](<../Grant Store/Authorization Requests Explanation.md#item-AuthorizationRequestsTx--is_awaiting_owner>) each time the Owner prompt is recomputed, whether or not it changed.
+Relies on [`PendingConsentWatcher::until_settled`](<../Assembly/OAuth Bindings Explanation.md#item-PendingConsentWatcher--until_settled>), which rereads the request through [`AuthorizationRequestsTx::is_awaiting_owner`](<../Persistence/Authorization Requests Explanation.md#item-SqliteGrantTx--is_awaiting_owner>) each time the Owner prompt is recomputed, whether or not it changed.
 
 ### `a_fast_pathed_authorize_never_becomes_the_owner_prompt`
 

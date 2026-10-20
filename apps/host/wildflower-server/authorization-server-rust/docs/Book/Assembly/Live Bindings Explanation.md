@@ -27,7 +27,7 @@ The OAuth and Session groups also hold the in-process handles [`setup_authorizat
 
 #### `revocation`
 
-The write port is [`Revocation`](<Ports and Adapters Explanation.md#item-Revocation>).
+The write port is [`Revocation`](<Ports and Adapters Explanation.md#item-revocation--Revocation>).
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/state.rs AuthorizationServerState::revocation}}
 
