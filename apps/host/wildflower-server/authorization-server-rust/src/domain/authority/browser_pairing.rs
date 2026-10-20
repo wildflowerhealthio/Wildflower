@@ -1,4 +1,4 @@
-//! [`ClaimedBrowserPairing`] — the authority an approved browser session is
+//! [`ClaimedBrowserPairing`] — the authority a paired browser session is
 //! started and its token minted under: a browser pairing the Owner approved,
 //! claimed once by the poll of the page that started it. Only that page holds
 //! the pairing code the request is keyed on, so the claim is proof that the
@@ -16,7 +16,7 @@ use crate::domain::grant_store::{write_transition, AuthorizationRequestsTx};
 use crate::BROWSER_SESSION_CLIENT_ID;
 
 /// An approved browser pairing, atomically claimed (`approved` → `claimed`)
-/// so it starts one session at most. Carries the approved session the claim
+/// so it starts one session at most. Carries the paired session the claim
 /// starts, which the session writer stores and the minter mints under.
 pub(crate) struct ClaimedBrowserPairing {
     session: BrowserSession,
@@ -24,7 +24,7 @@ pub(crate) struct ClaimedBrowserPairing {
 
 impl ClaimedBrowserPairing {
     /// Claim `approved_pairing`, an approved browser pairing request, in the
-    /// caller's write scope `tx`. When this call wins the claim, the proof holds a new approved
+    /// caller's write scope `tx`. When this call wins the claim, the proof holds a new paired
     /// session named after the request's browser, with the scopes the Owner
     /// granted, lasting `session_ttl` from `now`. `None` when the request is
     /// no approved browser pairing, or a concurrent poll claimed it first.
@@ -47,7 +47,7 @@ impl ClaimedBrowserPairing {
             return Ok(None);
         }
         Ok(Some(ClaimedBrowserPairing {
-            session: BrowserSession::new_approved(
+            session: BrowserSession::new_paired_session(
                 pairing_request.browser_name.clone(),
                 approval.granted_scopes.clone(),
                 session_ttl,
@@ -66,7 +66,7 @@ impl ClaimedBrowserPairing {
         &self.session.scopes
     }
 
-    /// The approved session the claim starts: the token's `sid`, and the row
+    /// The paired session the claim starts: the token's `sid`, and the row
     /// the session writer stores.
     pub(crate) fn session(&self) -> &BrowserSession {
         &self.session
@@ -124,10 +124,10 @@ mod tests {
         stored(store, id)
     }
 
-    /// The claim starts an approved session named as approved, with the
+    /// The claim starts a paired session named as approved, with the
     /// approved scopes, and claims the request once.
     #[test]
-    fn an_approved_pairing_is_claimed_once_for_an_approved_session() {
+    fn an_approved_pairing_is_claimed_once_for_a_paired_session() {
         let store = FakeGrantStore::default();
         let request = approved_pairing(&store, "pairing-1");
         let now = Utc::now();
@@ -135,7 +135,7 @@ mod tests {
             .unwrap()
             .expect("claims");
         let session = claimed.session();
-        assert_eq!(session.kind, BrowserSessionKind::Approved);
+        assert_eq!(session.kind, BrowserSessionKind::Paired);
         assert_eq!(session.name.as_deref(), Some("Ruth's laptop"));
         assert_eq!(session.scopes, ["wildflower/launch", "system/*.rs"]);
         assert_eq!(session.expires_at, now + SESSION_TTL);

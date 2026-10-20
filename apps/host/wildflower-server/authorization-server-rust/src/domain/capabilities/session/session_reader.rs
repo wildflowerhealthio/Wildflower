@@ -91,7 +91,8 @@ mod tests {
     #[test]
     fn the_browser_session_expiry_is_the_named_session_s() {
         let store = FakeGrantStore::default();
-        let session = BrowserSession::new_owner(vec![], Duration::hours(8), Utc::now());
+        let session =
+            BrowserSession::new_same_device_session(vec![], Duration::hours(8), Utc::now());
         store.tx().insert_browser_session(&session).expect("insert");
 
         let reader = SessionReader::new(store, claims(Some(&session.sid)));

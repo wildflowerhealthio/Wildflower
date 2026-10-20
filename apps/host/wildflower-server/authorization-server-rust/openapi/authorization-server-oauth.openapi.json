@@ -471,7 +471,7 @@
         "tags": [
           "Browser pairing"
         ],
-        "summary": "Poll a browser pairing. The poll that finds it approved starts the\nbrowser's approved session and sets it as the browser's\n`__Host-browser_session` cookie.",
+        "summary": "Poll a browser pairing. The poll that finds it approved starts the\nbrowser's paired session and sets it as the browser's\n`__Host-browser_session` cookie.",
         "operationId": "handle_browser_pairing_poll",
         "requestBody": {
           "content": {

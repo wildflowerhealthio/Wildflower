@@ -19,15 +19,15 @@ import type { JSX } from 'react'
 import { Suspense, useState } from 'react'
 
 /**
- * What a browser session's row is titled: the name an approved browser was
- * given, or for an Owner's unnamed session, "Owner browser".
+ * What a browser session's row is titled: the name a paired browser was
+ * given, or for an unnamed same-device session, "Owner browser".
  */
 const browserSessionTitle = (session: BrowserSession): string =>
   Option.fromNullable(session.name).pipe(
     Option.getOrElse(() =>
       Match.value(session.kind).pipe(
-        Match.when('owner', () => 'Owner browser'),
-        Match.when('approved', () => 'Approved browser'),
+        Match.when('same_device', () => 'Owner browser'),
+        Match.when('paired', () => 'Paired browser'),
         Match.exhaustive
       )
     )
@@ -36,8 +36,8 @@ const browserSessionTitle = (session: BrowserSession): string =>
 /** How a browser came to hold its session, as its row says it. */
 const browserSessionKindLabel = (session: BrowserSession): string =>
   Match.value(session.kind).pipe(
-    Match.when('owner', () => 'Owner'),
-    Match.when('approved', () => 'Approved'),
+    Match.when('same_device', () => 'Same device'),
+    Match.when('paired', () => 'Paired'),
     Match.exhaustive
   )
 

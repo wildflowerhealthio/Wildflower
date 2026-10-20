@@ -124,8 +124,8 @@ fn ensure_some_active_signing_key(
 ///
 /// Both are public with no redirect URIs. The host app's client is allowed
 /// every grant type; the browser-session client none, since its tokens are
-/// minted only at `/oauth/sign-in` (an Owner session) and by the pairing
-/// page's poll (an approved session), neither of them OAuth, so no OAuth flow
+/// minted only at `/oauth/sign-in` (a same-device session) and by the pairing
+/// page's poll (a paired session), neither of them OAuth, so no OAuth flow
 /// can be run as it and `/oauth/token` never mints its token.
 fn ensure_essential_clients(
     tx: &mut impl ClientsTx,

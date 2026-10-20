@@ -1303,8 +1303,8 @@ mod tests {
     /// An install already at `0037`, holding the browser-session client under
     /// its old `wildflower-owner-browser` id and a row naming it in every table
     /// that names a client, re-keys them all when `0038` runs, and every
-    /// standing Owner session ends, so the Owner signs in again; one already
-    /// revoked keeps its time, and an approved browser's session stands. The
+    /// standing same-device session ends, so the Owner signs in again; one already
+    /// revoked keeps its time, and a paired browser's session stands. The
     /// request column takes its new name. Reverting `0038` restores the old id
     /// and column name.
     #[test]
@@ -1404,7 +1404,7 @@ mod tests {
                 .remove(0)
                 .name
         };
-        let ended_at = revoked_at_of(&mut conn, "standing").expect("the Owner session ended");
+        let ended_at = revoked_at_of(&mut conn, "standing").expect("the same-device session ended");
         assert!(
             chrono::DateTime::parse_from_str(&ended_at, "%F %T%.f%:z").is_ok(),
             "{ended_at} is in the diesel chrono text encoding"
@@ -1971,6 +1971,134 @@ mod tests {
                 .execute(&mut conn)
                 .is_err(),
             "the column is gone"
+        );
+    }
+
+    /// An install already at `0045` renames each browser session's `kind`
+    /// when `0046` runs: `owner` becomes `same_device` and `approved` becomes
+    /// `paired`, and the rest of each row is kept, `revoked_at` included. The
+    /// rebuilt table takes only the new kinds. Reverting `0046` maps them
+    /// back.
+    #[test]
+    fn an_install_already_at_0045_renames_the_browser_session_kinds() {
+        use diesel::connection::SimpleConnection as _;
+        const CREATED_AT: &str = "2026-10-16 00:00:00+00:00";
+        const LAST_SEEN_AT: &str = "2026-10-16 02:00:00+00:00";
+        const REVOKED_AT: &str = "2026-10-16 03:00:00+00:00";
+
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0045"),
+        )
+        .expect("migrate to 0045");
+        conn.batch_execute(&format!(
+            "INSERT INTO browser_sessions \
+             (sid, kind, name, scopes, created_at, expires_at, revoked_at, last_seen_at) \
+             VALUES ('same-device', 'owner', NULL, '[\"system/*.cruds\"]', '{CREATED_AT}', \
+                     '2026-10-16 08:00:00+00:00', NULL, '{LAST_SEEN_AT}'), \
+                    ('paired', 'approved', 'A tablet', '[\"wildflower/launch\"]', \
+                     '{CREATED_AT}', '2026-10-17 00:00:00+00:00', NULL, '{LAST_SEEN_AT}'), \
+                    ('revoked', 'approved', 'A phone', '[]', '{CREATED_AT}', \
+                     '2026-10-17 00:00:00+00:00', '{REVOKED_AT}', '{CREATED_AT}')"
+        ))
+        .expect("three sessions at 0045");
+
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0046"),
+        )
+        .expect("upgrade through 0046");
+
+        let column_of = |conn: &mut SqliteConnection, column: &str, sid: &str| {
+            diesel::sql_query(format!(
+                "SELECT {column} AS name FROM browser_sessions WHERE sid = ?"
+            ))
+            .bind::<diesel::sql_types::Text, _>(sid)
+            .load::<OptionalName>(conn)
+            .expect("read the session")
+            .remove(0)
+            .name
+        };
+        assert_eq!(
+            column_of(&mut conn, "kind", "same-device").as_deref(),
+            Some("same_device")
+        );
+        assert_eq!(
+            column_of(&mut conn, "kind", "paired").as_deref(),
+            Some("paired")
+        );
+        assert_eq!(
+            column_of(&mut conn, "kind", "revoked").as_deref(),
+            Some("paired")
+        );
+        assert_eq!(column_of(&mut conn, "name", "same-device"), None);
+        assert_eq!(
+            column_of(&mut conn, "scopes", "same-device").as_deref(),
+            Some("[\"system/*.cruds\"]")
+        );
+        assert_eq!(
+            column_of(&mut conn, "name", "paired").as_deref(),
+            Some("A tablet")
+        );
+        assert_eq!(
+            column_of(&mut conn, "expires_at", "paired").as_deref(),
+            Some("2026-10-17 00:00:00+00:00")
+        );
+        assert_eq!(
+            column_of(&mut conn, "last_seen_at", "paired").as_deref(),
+            Some(LAST_SEEN_AT)
+        );
+        assert_eq!(column_of(&mut conn, "revoked_at", "paired"), None);
+        assert_eq!(
+            column_of(&mut conn, "revoked_at", "revoked").as_deref(),
+            Some(REVOKED_AT)
+        );
+        assert_eq!(
+            column_of(&mut conn, "created_at", "revoked").as_deref(),
+            Some(CREATED_AT)
+        );
+        assert!(
+            conn.batch_execute(&format!(
+                "INSERT INTO browser_sessions \
+                 (sid, kind, name, scopes, created_at, expires_at, last_seen_at) \
+                 VALUES ('old', 'owner', NULL, '[]', '{CREATED_AT}', '{CREATED_AT}', \
+                         '{CREATED_AT}')"
+            ))
+            .is_err(),
+            "the rebuilt CHECK refuses the old kinds"
+        );
+        assert!(
+            conn.batch_execute(&format!(
+                "INSERT INTO browser_sessions \
+                 (sid, kind, name, scopes, created_at, expires_at, last_seen_at) \
+                 VALUES ('same-device', 'same_device', NULL, '[]', '{CREATED_AT}', \
+                         '{CREATED_AT}', '{CREATED_AT}')"
+            ))
+            .is_err(),
+            "sid stays the primary key"
+        );
+
+        let migration_0046 = MIGRATIONS
+            .migrations()
+            .expect("embedded migrations")
+            .into_iter()
+            .find(|migration| migration.name().version() == MigrationVersion::from("0046"))
+            .expect("0046 is embedded");
+        migration_0046.revert(&mut conn).expect("revert 0046");
+        assert_eq!(
+            column_of(&mut conn, "kind", "same-device").as_deref(),
+            Some("owner")
+        );
+        assert_eq!(
+            column_of(&mut conn, "kind", "paired").as_deref(),
+            Some("approved")
+        );
+        assert_eq!(
+            column_of(&mut conn, "revoked_at", "revoked").as_deref(),
+            Some(REVOKED_AT)
         );
     }
 

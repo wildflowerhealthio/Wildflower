@@ -31,12 +31,12 @@
 //!    of a *registered* request: the `/oauth/authorize` fast path's authority
 //!    to issue a code with no human in the loop.
 //!  - [`RedeemedSameDeviceSignInCode`] — a one-time same-device sign-in code the base minted
-//!    in-process, redeemed at `/oauth/sign-in`: the authority an Owner
+//!    in-process, redeemed at `/oauth/sign-in`: the authority a same-device
 //!    session is started and its token minted under, as the Owner's
 //!    client and grant.
 //!  - [`ClaimedBrowserPairing`] — a browser pairing the Owner approved,
-//!    claimed once by the poll of the page that started it: the authority an
-//!    approved browser session is started and its token minted under, with the
+//!    claimed once by the poll of the page that started it: the authority a
+//!    paired browser session is started and its token minted under, with the
 //!    scopes the Owner granted.
 //!  - [`TokenEntitlement`] — the enum the minter mints under, one variant per
 //!    proof above that a token may be minted for; each carries its claims

@@ -121,11 +121,18 @@ mod tests {
     fn the_list_holds_the_live_sessions_and_marks_the_caller_s() {
         let store = FakeGrantStore::default();
         let now = Utc::now();
-        let caller_s = BrowserSession::new_owner(vec![], Duration::hours(8), now);
-        let other = BrowserSession::new_owner(vec![], Duration::hours(8), now - Duration::hours(1));
-        let expired =
-            BrowserSession::new_owner(vec![], Duration::hours(8), now - Duration::hours(9));
-        let revoked = BrowserSession::new_owner(vec![], Duration::hours(8), now);
+        let caller_s = BrowserSession::new_same_device_session(vec![], Duration::hours(8), now);
+        let other = BrowserSession::new_same_device_session(
+            vec![],
+            Duration::hours(8),
+            now - Duration::hours(1),
+        );
+        let expired = BrowserSession::new_same_device_session(
+            vec![],
+            Duration::hours(8),
+            now - Duration::hours(9),
+        );
+        let revoked = BrowserSession::new_same_device_session(vec![], Duration::hours(8), now);
         for session in [&caller_s, &other, &expired, &revoked] {
             store.tx().insert_browser_session(session).unwrap();
         }
@@ -162,7 +169,7 @@ mod tests {
     fn revoke_ends_a_standing_session_and_misses_anything_else() {
         let store = FakeGrantStore::default();
         let now = Utc::now();
-        let session = BrowserSession::new_owner(vec![], Duration::hours(8), now);
+        let session = BrowserSession::new_same_device_session(vec![], Duration::hours(8), now);
         store.tx().insert_browser_session(&session).unwrap();
         let revoker = BrowserSessionsRevoker::new(store);
 

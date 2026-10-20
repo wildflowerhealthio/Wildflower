@@ -118,11 +118,17 @@ async fn a_browser_session_approves_the_code_and_the_device_poll_succeeds() {
     let (g, _host_owner_token, db) = spin_up();
     seed_test_client(&db);
     let started = start_device_flow(&g).await;
-    let owner_session_token = signed_in_owner_session_token(&g).await;
+    let same_device_session_token = signed_in_same_device_session_token(&g).await;
     let consent_path = format!("/authorization/devices/{}", started.user_code);
 
-    let read =
-        device_consent_request(&g, "GET", &consent_path, Some(&owner_session_token), "").await;
+    let read = device_consent_request(
+        &g,
+        "GET",
+        &consent_path,
+        Some(&same_device_session_token),
+        "",
+    )
+    .await;
     assert_eq!(read.status(), StatusCode::OK);
     assert_eq!(
         body_json(read.into_body()).await["userCode"],
@@ -133,7 +139,7 @@ async fn a_browser_session_approves_the_code_and_the_device_poll_succeeds() {
         &g,
         "POST",
         &format!("{consent_path}/approve"),
-        Some(&owner_session_token),
+        Some(&same_device_session_token),
         r#"{"approvedScopes":["system/*.cruds"]}"#,
     )
     .await;
@@ -182,13 +188,13 @@ async fn without_a_session_the_request_is_left_pending() {
 async fn an_unknown_code_is_not_found_for_the_browser_session() {
     let (g, _host_owner_token, db) = spin_up();
     seed_test_client(&db);
-    let owner_session_token = signed_in_owner_session_token(&g).await;
+    let same_device_session_token = signed_in_same_device_session_token(&g).await;
 
     let read = device_consent_request(
         &g,
         "GET",
         "/authorization/devices/NOPE-NOPE",
-        Some(&owner_session_token),
+        Some(&same_device_session_token),
         "",
     )
     .await;

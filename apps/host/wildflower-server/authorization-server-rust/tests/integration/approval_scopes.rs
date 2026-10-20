@@ -1,4 +1,4 @@
-//! The approval scopes (#1232): an approved browser approves a code-flow or
+//! The approval scopes (#1232): a paired browser approves a code-flow or
 //! device-flow request only when it can also create what the approval creates,
 //! `wildflower/Grant.c` for the standing grant, plus both `wildflower/Client.c`
 //! and `wildflower/Client.u` for the registration of a client trusted on first
@@ -13,7 +13,7 @@ use crate::common::*;
 /// The scopes the test client asks for.
 const REQUESTED_SCOPES: &str = "patient%2FObservation.rs%20openid";
 
-/// The scopes an approved browser holding every approval scope of the test
+/// The scopes a paired browser holding every approval scope of the test
 /// client's request holds: it reads and decides requests, creates grants,
 /// creates and updates clients, and holds the resource scope the client asks
 /// for.
@@ -31,10 +31,10 @@ const APPROVER_SCOPES: &[&str] = &[
 const APPROVE_REQUESTED: &str = r#"{"approvedScopes":["patient/Observation.rs","openid"],"acknowledgedRegistrationChange":true}"#;
 
 /// The token of a signed-in browser whose session holds `scopes` rather than
-/// the Owner's: an approved browser, as far as the gates can tell.
+/// the Owner's: a paired browser, as far as the gates can tell.
 async fn approved_browser_token(g: &AuthorizationServer, db: &TestDb, scopes: &[&str]) -> String {
-    let owner_session_token = signed_in_owner_session_token(g).await;
-    let sid = decode_jwt_payload(&owner_session_token)["sid"]
+    let same_device_session_token = signed_in_same_device_session_token(g).await;
+    let sid = decode_jwt_payload(&same_device_session_token)["sid"]
         .as_str()
         .expect("a browser session's token names its sid")
         .to_owned();
@@ -234,20 +234,20 @@ async fn an_approved_browser_without_grant_create_cannot_approve_a_device_reques
     );
 }
 
-/// The Owner's scopes cover every approval scope, so an Owner session lacks
+/// The Owner's scopes cover every approval scope, so a same-device session lacks
 /// none and registers a new app as before.
 #[tokio::test]
-async fn an_owner_session_lacks_no_approval_scope() {
+async fn a_same_device_session_lacks_no_approval_scope() {
     let (g, _owner_token, db) = spin_up();
-    let owner_session_token = signed_in_owner_session_token(&g).await;
+    let same_device_session_token = signed_in_same_device_session_token(&g).await;
     // `test-app` is registered nowhere: the request is `new`.
     let request_id = parked_request(&g, &db).await;
 
-    let consent = get_oauth_consent(&g, &owner_session_token, &request_id).await;
+    let consent = get_oauth_consent(&g, &same_device_session_token, &request_id).await;
     assert_eq!(consent["missingApprovalScopes"], serde_json::json!([]));
     let res = approve_oauth_consent(
         &g,
-        &owner_session_token,
+        &same_device_session_token,
         &request_id,
         APPROVE_REQUESTED.to_owned(),
     )

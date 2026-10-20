@@ -86,7 +86,7 @@ pub const WILDFLOWER_HOST_APP_CLIENT_ID: &str = "c4e755b6a4c1abf2aae6d0d83f2545a
 
 /// `client_id` of the browser-session client: the browsers the server has
 /// signed in. The Owner's is signed in by the host app on its own device with
-/// a same-device sign-in code at `/oauth/sign-in`; an approved browser pairs at
+/// a same-device sign-in code at `/oauth/sign-in`; any other browser pairs at
 /// `/oauth/pair`, showing a code the Owner approves. Each such browser holds a
 /// token issued to this client (its `sub`), so revoking the client's subject
 /// signs every browser out, and one browser is signed out by revoking its
@@ -114,8 +114,8 @@ pub const WILDFLOWER_WIDEST_SCOPES: &[Scope] = &[
     }),
 ];
 
-/// The Owner's scopes: the authority the Owner approves consents with, what an
-/// Owner session holds, the most an approved browser session may be granted,
+/// The Owner's scopes: the authority the Owner approves consents with, what a
+/// same-device session holds, the most a paired browser session may be granted,
 /// and the browser-session client's `allowed_scopes`.
 /// An approval can't delegate a resource scope these don't cover.
 ///

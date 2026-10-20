@@ -1,9 +1,9 @@
 //! [`SameDeviceSignIn`] — `GET /oauth/sign-in`: redeem a one-time same-device sign-in code the
-//! base minted in-process for an Owner session's token, and say where the
+//! base minted in-process for a same-device session's token, and say where the
 //! browser goes next. It reads top to bottom as: check `next` against the
 //! allow-list and check the browser-session client isn't disabled (both before
 //! the code is touched), redeem the code for its
-//! [`RedeemedSameDeviceSignInCode`] proof, store the Owner session it
+//! [`RedeemedSameDeviceSignInCode`] proof, store the same-device session it
 //! starts, mint under it.
 
 use std::sync::Arc;
@@ -21,9 +21,9 @@ use crate::domain::token::TokenIssuanceError;
 use crate::domain::GrantStore;
 use crate::BROWSER_SESSION_CLIENT_ID;
 
-/// How long an Owner session's token lives: a working day, after which the
+/// How long a same-device session's token lives: a working day, after which the
 /// base signs the browser in again.
-pub(crate) const OWNER_SESSION_TTL: Duration = Duration::hours(8);
+pub(crate) const SAME_DEVICE_SESSION_TTL: Duration = Duration::hours(8);
 
 /// What a successful sign-in yields: the browser session's token, and where
 /// the browser goes next.
@@ -43,7 +43,7 @@ pub(crate) enum SameDeviceSignInError {
     /// The store couldn't be read or written, or the browser-session client's
     /// row is missing though it is seeded at boot.
     Store(AuthorizationServerError),
-    /// The Owner session couldn't be stored. The code is spent.
+    /// The same-device session couldn't be stored. The code is spent.
     SessionNotStored(AuthorizationServerError),
     /// The token couldn't be minted (no signing key, a signing or store
     /// failure). The session was rolled back with it; the code, held in
@@ -95,8 +95,8 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
         }
     }
 
-    /// Redeem `presented_code` at `now` for an Owner session and its
-    /// token, both lasting [`OWNER_SESSION_TTL`], to go on to `next`.
+    /// Redeem `presented_code` at `now` for a same-device session and its
+    /// token, both lasting [`SAME_DEVICE_SESSION_TTL`], to go on to `next`.
     /// A `next` that isn't allowed, or a disabled browser-session client, is
     /// refused before the code is touched, so the code stays redeemable. The
     /// session is stored and its token signed in one write scope.
@@ -132,16 +132,16 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
                 &self.codes,
                 presented_code,
                 &self.owner_grant,
-                OWNER_SESSION_TTL,
+                SAME_DEVICE_SESSION_TTL,
                 now,
             )
             .ok_or(SameDeviceSignInError::Refused(
                 SignInRefusal::CodeNotRedeemable,
             ))?;
             BrowserSessionWriter::within(tx)
-                .start_owner_session(&redeemed_sign_in_code)
+                .start_same_device_session(&redeemed_sign_in_code)
                 .map_err(SameDeviceSignInError::SessionNotStored)?;
-            AccessTokenMinter::with_active_key(tx, &self.server_origin, OWNER_SESSION_TTL)
+            AccessTokenMinter::with_active_key(tx, &self.server_origin, SAME_DEVICE_SESSION_TTL)
                 .and_then(|minter| {
                     minter.mint(TokenEntitlement::SameDeviceSignIn(&redeemed_sign_in_code))
                 })
@@ -253,7 +253,7 @@ mod tests {
                 .expires_at
                 .zip(claims.issued_at)
                 .map(|(exp, iat)| exp - iat),
-            Some(OWNER_SESSION_TTL),
+            Some(SAME_DEVICE_SESSION_TTL),
             "the token lives eight hours"
         );
     }

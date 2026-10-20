@@ -83,7 +83,7 @@ impl ApprovableScopes {
     /// A browser pairing prompt. It requests the Owner's scopes, and like
     /// device consent it is **expandable**: the Owner may grant anything up to
     /// [`OWNER_SCOPES`](crate::OWNER_SCOPES), which fill both halves, so no
-    /// approved browser session can hold more than an Owner session.
+    /// paired browser session can hold more than a same-device session.
     pub(crate) fn for_browser_pairing() -> Self {
         ApprovableScopes {
             requested_scopes: crate::owner_scopes(),

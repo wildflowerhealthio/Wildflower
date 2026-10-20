@@ -887,7 +887,7 @@ mod tests {
     #[test]
     fn a_refresh_token_is_refused_once_its_session_is_revoked() {
         let now = Utc::now();
-        let session = BrowserSession::new_owner(vec![], Duration::hours(8), now);
+        let session = BrowserSession::new_same_device_session(vec![], Duration::hours(8), now);
 
         let store = FakeGrantStore::default();
         let client = authenticated(&store, "client");

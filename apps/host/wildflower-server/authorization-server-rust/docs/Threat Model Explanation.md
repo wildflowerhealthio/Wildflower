@@ -12,10 +12,10 @@ which this doc assumes rather than repeats.
 | Credential                          | Who holds it                                    | Lifetime                        | Power                                                                         |
 | ----------------------------------- | ----------------------------------------------- | ------------------------------- | ----------------------------------------------------------------------------- |
 | The signing key                     | `wildflower.sqlite`, plaintext                  | Forever; never rotated          | Mint any token for this origin.                                               |
-| Same-device sign-in code            | The host app, in a URL, briefly                 | 60 s, single use                | Becomes an Owner session.                                                     |
-| Owner browser session               | `__Host-browser_session` on the Owner's browser | 8 h                             | `OWNER_SCOPES`: all records, all approvals, all client management.            |
+| Same-device sign-in code            | The host app, in a URL, briefly                 | 60 s, single use                | Becomes a same-device session.                                                |
+| Same-device browser session         | `__Host-browser_session` on the Owner's browser | 8 h                             | `OWNER_SCOPES`: all records, all approvals, all client management.            |
 | Launcher / Authorization app bearer | Page memory                                     | 15 min, refreshed under a `sid` | Owner-equivalent for data and approvals, less what its browser session lacks. |
-| Approved browser session            | A paired browser                                | 24 h                            | Exactly the scopes the Owner ticked, all of `OWNER_SCOPES` unless unticked.   |
+| Paired browser session              | A paired browser                                | 24 h                            | Exactly the scopes the Owner ticked, all of `OWNER_SCOPES` unless unticked.   |
 | A SMART app's access token          | The app                                         | 15 min                          | The granted resource scopes its browser session holds, on this origin only.   |
 | A refresh token                     | The app, if granted `offline_access`            | Family 90 days, rotating        | New access tokens for the same grant.                                         |
 | An authorization code               | The redirect                                    | 60 s, single use                | One token exchange, with the PKCE verifier.                                   |

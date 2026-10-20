@@ -171,7 +171,7 @@ mod tests {
     fn session(sid: &str, expires_at: DateTime<Utc>) -> BrowserSession {
         BrowserSession {
             sid: sid.to_string(),
-            kind: BrowserSessionKind::Owner,
+            kind: BrowserSessionKind::SameDevice,
             name: None,
             scopes: vec!["system/*.cruds".to_string()],
             created_at: expires_at - Duration::hours(8),

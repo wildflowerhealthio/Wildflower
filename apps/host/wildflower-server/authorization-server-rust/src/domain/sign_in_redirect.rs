@@ -85,7 +85,7 @@ impl SignInDestinations {
     }
 
     /// `next` as a redirect, when it is a path on this server; `None`
-    /// otherwise. A browser pairing's `next` must be one: an approved browser
+    /// otherwise. A browser pairing's `next` must be one: a paired browser
     /// is sent on to the server's own `/oauth/authorize`, never off it.
     pub(crate) fn allow_on_this_server(&self, next: &str) -> Option<SignInRedirect> {
         if next.starts_with('/') {

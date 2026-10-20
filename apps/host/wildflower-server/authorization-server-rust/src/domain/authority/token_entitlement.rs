@@ -13,9 +13,9 @@ use super::same_device_sign_in::RedeemedSameDeviceSignInCode;
 /// the [module docs](super).
 #[derive(Clone, Copy)]
 pub(crate) enum TokenEntitlement<'a> {
-    /// An Owner session, signed in with a same-device sign-in code the base minted.
+    /// A same-device session, signed in with a same-device sign-in code the base minted.
     SameDeviceSignIn(&'a RedeemedSameDeviceSignInCode),
-    /// An approved browser session, started by a browser pairing the Owner
+    /// A paired browser session, started by a browser pairing the Owner
     /// approved.
     BrowserPairing(&'a ClaimedBrowserPairing),
     /// An authorization code redeemed at `/oauth/token`.

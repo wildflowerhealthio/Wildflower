@@ -138,7 +138,7 @@ pub(crate) fn seed_fixture_browser_session(store: &FakeGrantStore) {
         .tx()
         .insert_browser_session(&BrowserSession {
             sid: FIXTURE_SID.to_owned(),
-            ..BrowserSession::new_approved(
+            ..BrowserSession::new_paired_session(
                 "Firefox on Linux".to_owned(),
                 vec!["wildflower/launch".to_owned()],
                 Duration::hours(24),

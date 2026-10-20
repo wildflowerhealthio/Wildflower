@@ -1,5 +1,5 @@
 //! The cookie a browser holds its browser session in once the server has
-//! signed it in (the Owner's, at `/oauth/sign-in`; an approved browser's, on
+//! signed it in (the Owner's, at `/oauth/sign-in`; a paired browser's, on
 //! the pairing page's poll): `__Host-browser_session`,
 //! whose value is the browser's access token itself, naming its browser
 //! session as its `sid`. A restart doesn't sign the browser out; revoking the
@@ -247,7 +247,8 @@ mod tests {
     fn only_a_browser_session_token_holds_a_browser_session() {
         let store = FakeGrantStore::default();
         let key = seed_active_signing_key(&store);
-        let session = BrowserSession::new_owner(vec![], Duration::hours(8), Utc::now());
+        let session =
+            BrowserSession::new_same_device_session(vec![], Duration::hours(8), Utc::now());
         store.tx().insert_browser_session(&session).expect("insert");
         let verifier = TokenVerifier::new(store, Arc::new(NothingRevoked), ORIGIN.into());
 
@@ -282,7 +283,8 @@ mod tests {
     fn deciding_consents_takes_reading_and_updating_requests() {
         let store = FakeGrantStore::default();
         let key = seed_active_signing_key(&store);
-        let session = BrowserSession::new_owner(vec![], Duration::hours(8), Utc::now());
+        let session =
+            BrowserSession::new_same_device_session(vec![], Duration::hours(8), Utc::now());
         store.tx().insert_browser_session(&session).expect("insert");
         let verifier = TokenVerifier::new(store, Arc::new(NothingRevoked), ORIGIN.into());
 

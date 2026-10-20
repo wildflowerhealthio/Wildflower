@@ -1,4 +1,4 @@
-//! [`RedeemedSameDeviceSignInCode`] — the authority an Owner session's
+//! [`RedeemedSameDeviceSignInCode`] — the authority a same-device session's
 //! token is minted under: a same-device sign-in code the base minted
 //! in-process, presented once and in time at `GET /oauth/sign-in`. Only the
 //! base can mint a code, and the base runs on the device that runs the server,
@@ -6,8 +6,8 @@
 //! Owner's, issued to the browser-session client
 //! ([`BROWSER_SESSION_CLIENT_ID`]) and holding the Owner's grant
 //! ([`OWNER_SCOPES`](crate::OWNER_SCOPES)), with which the Owner decides
-//! consents on the server's own consent pages. Redeeming a code starts an
-//! Owner session, which the token names as its `sid`.
+//! consents on the server's own consent pages. Redeeming a code starts a
+//! same-device session, which the token names as its `sid`.
 
 use chrono::{DateTime, Duration, Utc};
 use wildflowerhealthio_scopes::Grant;
@@ -17,7 +17,7 @@ use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
 use crate::BROWSER_SESSION_CLIENT_ID;
 
 /// A sign-in code taken out of the outstanding codes, unexpired. Carries the
-/// Owner session the sign-in starts, holding the Owner's grant, which
+/// same-device session the sign-in starts, holding the Owner's grant, which
 /// the minter records verbatim.
 pub(crate) struct RedeemedSameDeviceSignInCode {
     session: BrowserSession,
@@ -25,7 +25,7 @@ pub(crate) struct RedeemedSameDeviceSignInCode {
 
 impl RedeemedSameDeviceSignInCode {
     /// Take `presented` out of `codes` at `now`. When it was outstanding and
-    /// unexpired, the proof holds a new Owner session with
+    /// unexpired, the proof holds a new same-device session with
     /// `owner_grant`, lasting `session_ttl`; an unknown, spent or expired code
     /// is `None`, the three alike.
     pub(crate) fn redeem(
@@ -38,7 +38,11 @@ impl RedeemedSameDeviceSignInCode {
         codes
             .take(presented, now)
             .then(|| RedeemedSameDeviceSignInCode {
-                session: BrowserSession::new_owner(owner_grant.render(), session_ttl, now),
+                session: BrowserSession::new_same_device_session(
+                    owner_grant.render(),
+                    session_ttl,
+                    now,
+                ),
             })
     }
 
@@ -52,7 +56,7 @@ impl RedeemedSameDeviceSignInCode {
         &self.session.scopes
     }
 
-    /// The Owner session the sign-in starts: the token's `sid`, and
+    /// The same-device session the sign-in starts: the token's `sid`, and
     /// the row the session writer stores.
     pub(crate) fn session(&self) -> &BrowserSession {
         &self.session
@@ -89,7 +93,7 @@ mod tests {
             ["system/*.cruds".to_owned(), "wildflower/*.cruds".to_owned()]
         );
         let session = redeemed.session();
-        assert_eq!(session.kind, BrowserSessionKind::Owner);
+        assert_eq!(session.kind, BrowserSessionKind::SameDevice);
         assert_eq!(session.name, None);
         assert_eq!(session.scopes, redeemed.token_scopes());
         assert_eq!(session.created_at, now);

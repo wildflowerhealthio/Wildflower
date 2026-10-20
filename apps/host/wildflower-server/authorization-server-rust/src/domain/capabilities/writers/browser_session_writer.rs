@@ -1,7 +1,7 @@
 //! [`BrowserSessionWriter`] — the writer that starts browser sessions. A
 //! session holds a grant and is what the tokens minted under it name as their
-//! `sid`, so starting one takes the proof that the browser may hold it: for an
-//! Owner session, a redeemed same-device sign-in code; for an approved session,
+//! `sid`, so starting one takes the proof that the browser may hold it: for a
+//! same-device session, a redeemed same-device sign-in code; for a paired session,
 //! a claimed browser pairing.
 
 use crate::domain::authority::{ClaimedBrowserPairing, RedeemedSameDeviceSignInCode};
@@ -20,12 +20,12 @@ impl<'a, T: BrowserSessionsTx> BrowserSessionWriter<'a, T> {
         BrowserSessionWriter { tx }
     }
 
-    /// Store the Owner session `redeemed_sign_in_code` starts.
+    /// Store the same-device session `redeemed_sign_in_code` starts.
     ///
     /// # Errors
     ///
     /// [`AuthorizationServerError::Infrastructure`] on a store failure.
-    pub(crate) fn start_owner_session(
+    pub(crate) fn start_same_device_session(
         &mut self,
         redeemed_sign_in_code: &RedeemedSameDeviceSignInCode,
     ) -> Result<(), AuthorizationServerError> {
@@ -33,12 +33,12 @@ impl<'a, T: BrowserSessionsTx> BrowserSessionWriter<'a, T> {
             .insert_browser_session(redeemed_sign_in_code.session())
     }
 
-    /// Store the approved session `claimed_pairing` starts.
+    /// Store the paired session `claimed_pairing` starts.
     ///
     /// # Errors
     ///
     /// [`AuthorizationServerError::Infrastructure`] on a store failure.
-    pub(crate) fn start_approved_session(
+    pub(crate) fn start_paired_session(
         &mut self,
         claimed_pairing: &ClaimedBrowserPairing,
     ) -> Result<(), AuthorizationServerError> {
@@ -58,7 +58,7 @@ mod tests {
 
     /// The stored row is exactly the session the redeemed code carries.
     #[test]
-    fn start_owner_session_stores_the_proof_s_session() {
+    fn start_same_device_session_stores_the_proof_s_session() {
         let store = FakeGrantStore::default();
         let codes = SameDeviceSignInCodes::new();
         let now = Utc::now();
@@ -72,7 +72,7 @@ mod tests {
         )
         .expect("redeems");
         BrowserSessionWriter::within(&mut store.tx())
-            .start_owner_session(&redeemed)
+            .start_same_device_session(&redeemed)
             .expect("stored");
         assert_eq!(
             store

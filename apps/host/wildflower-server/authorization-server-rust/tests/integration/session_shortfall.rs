@@ -294,9 +294,9 @@ async fn another_browser_can_neither_read_nor_continue_nor_cancel() {
     let request_id =
         limited_request_id(&get_authorize(&g.router, &session_token, &app_query()).await);
     let (_, other_browser_token) = limited_browser(&db);
-    let owner_session_token = signed_in_owner_session_token(&g).await;
+    let same_device_session_token = signed_in_same_device_session_token(&g).await;
 
-    for token in [&other_browser_token, &owner_session_token] {
+    for token in [&other_browser_token, &same_device_session_token] {
         let res = get_session_shortfall(&g.router, token, &request_id).await;
         assert_eq!(res.status(), StatusCode::NOT_FOUND);
         assert_eq!(
@@ -339,16 +339,16 @@ async fn another_browser_can_neither_read_nor_continue_nor_cancel() {
 /// The Owner's session holds everything, so it never sees the limited page:
 /// it goes to the consent card, or takes the fast path.
 #[tokio::test]
-async fn an_owner_session_never_sees_the_limited_page() {
+async fn a_same_device_session_never_sees_the_limited_page() {
     let (g, owner_token, db) = spin_up();
     seed_app(&db);
-    let owner_session_token = signed_in_owner_session_token(&g).await;
+    let same_device_session_token = signed_in_same_device_session_token(&g).await;
     let query = authorize_query(
         "test-app",
         "patient%2FPatient.rs%20patient%2FObservation.rs%20offline_access%20wildflower%2Flaunch",
     );
 
-    let res = get_authorize(&g.router, &owner_session_token, &query).await;
+    let res = get_authorize(&g.router, &same_device_session_token, &query).await;
     assert_eq!(res.status(), StatusCode::FOUND);
     assert!(
         location_of(&res).ends_with("/consent"),
@@ -357,7 +357,7 @@ async fn an_owner_session_never_sees_the_limited_page() {
     );
 
     approve_a_standing_grant(&g, &owner_token, &db).await;
-    let res = get_authorize(&g.router, &owner_session_token, &app_query()).await;
+    let res = get_authorize(&g.router, &same_device_session_token, &app_query()).await;
     assert_eq!(res.status(), StatusCode::FOUND);
     assert!(
         location_of(&res).starts_with("https://app.example/cb?code="),
@@ -379,8 +379,8 @@ async fn without_a_standing_grant_continue_raises_the_request_for_the_owner() {
         "test-app",
         "patient%2FPatient.rs%20patient%2FObservation.rs%20offline_access%20wildflower%2Flaunch",
     );
-    let owner_session_token = signed_in_owner_session_token(&g).await;
-    let owner_sid = decode_jwt_payload(&owner_session_token)["sid"]
+    let same_device_session_token = signed_in_same_device_session_token(&g).await;
+    let owner_sid = decode_jwt_payload(&same_device_session_token)["sid"]
         .as_str()
         .expect("a browser session's token names its sid")
         .to_owned();

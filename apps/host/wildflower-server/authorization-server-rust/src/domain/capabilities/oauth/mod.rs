@@ -16,13 +16,13 @@
 //!    [`CodeAuthorizationStarter`] consumes one inside its scope
 //!    ([`consume_launch`]);
 //!  - in-process minted: [`SameDeviceSignIn`] redeems a one-time same-device sign-in code the
-//!    base minted for an Owner session's token, on its way to an allowed `next`;
+//!    base minted for a same-device session's token, on its way to an allowed `next`;
 //!  - bound to a browser session: [`SessionShortfall`] reads and cancels a
 //!    request waiting on the limited page of the browser that made it, and
 //!    [`CodeAuthorizationStarter`] goes on with one;
 //!  - bound to a pairing code: [`BrowserPairing`] starts a browser pairing for
 //!    a browser that isn't the Owner's, and its page's poll, holding the
-//!    request's secret pairing code, starts the approved session once the
+//!    request's secret pairing code, starts the paired session once the
 //!    Owner approves.
 
 mod authorization_status_reader;
@@ -43,7 +43,7 @@ pub(crate) use authorization_status_reader::{
 };
 pub(crate) use browser_pairing::{
     BrowserPairing, BrowserPairingPollError, BrowserPairingStartError, BrowserPairingStatus,
-    StartedBrowserPairing, APPROVED_SESSION_TTL,
+    StartedBrowserPairing, PAIRED_SESSION_TTL,
 };
 pub(crate) use client_authenticator::ClientAuthenticator;
 pub(crate) use client_token_revoker::ClientTokenRevoker;
@@ -55,7 +55,7 @@ pub(crate) use device_authorizer::{DeviceAuthorizationError, DeviceAuthorizer};
 pub(crate) use launch_contexts::{consume_launch, LaunchContexts};
 pub(crate) use public_keys_reader::PublicKeysReader;
 pub(crate) use same_device_sign_in::{
-    SameDeviceSignIn, SameDeviceSignInError, SignInRefusal, SignedIn, OWNER_SESSION_TTL,
+    SameDeviceSignIn, SameDeviceSignInError, SignInRefusal, SignedIn, SAME_DEVICE_SESSION_TTL,
 };
 pub(crate) use session_shortfall::{SessionShortfall, SessionShortfallView};
 pub(crate) use token_exchanger::{IssuedTokens, TokenExchanger};

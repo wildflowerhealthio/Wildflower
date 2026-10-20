@@ -164,7 +164,7 @@ describe('the access page', () => {
     ).toBeNull()
   })
 
-  it('lists the signed-in browsers, this one marked, an unnamed Owner session as the Owner browser and an approved one by its name', async () => {
+  it('lists the signed-in browsers, this one marked, an unnamed same-device session as the Owner browser and a paired one by its name', async () => {
     // Arrange
     const server = stubServer()
 
@@ -175,16 +175,16 @@ describe('the access page', () => {
     const browsers = await sectionTitled('Browsers')
     const rows = within(browsers).getAllByRole('listitem')
     expect(rows).toHaveLength(3)
-    const [thisRow, otherRow, approvedRow] = rows
+    const [thisRow, otherRow, pairedRow] = rows
     expect(within(thisRow).getByText('Owner browser')).toBeTruthy()
     expect(within(thisRow).getByText('This browser')).toBeTruthy()
     expect(
-      within(thisRow).getByText(/^Owner · Signed in .+ · Expires .+ · Last seen .+$/)
+      within(thisRow).getByText(/^Same device · Signed in .+ · Expires .+ · Last seen .+$/)
     ).toBeTruthy()
     expect(within(otherRow).getByText('Owner browser')).toBeTruthy()
     expect(within(otherRow).queryByText('This browser')).toBeNull()
-    expect(within(approvedRow).getByText(approvedBrowserSession.name)).toBeTruthy()
-    expect(within(approvedRow).getByText(/^Approved · Signed in /)).toBeTruthy()
+    expect(within(pairedRow).getByText(pairedBrowserSession.name)).toBeTruthy()
+    expect(within(pairedRow).getByText(/^Paired · Signed in /)).toBeTruthy()
     expect(
       server.requests.find((request) => request.url.endsWith('/authorization/browser-sessions'))
         ?.authorization
@@ -247,8 +247,8 @@ describe('the access page', () => {
       () =>
         Response.json(
           otherSessionEnded
-            ? [thisBrowserSession, approvedBrowserSession]
-            : [thisBrowserSession, otherBrowserSession, approvedBrowserSession]
+            ? [thisBrowserSession, pairedBrowserSession]
+            : [thisBrowserSession, otherBrowserSession, pairedBrowserSession]
         ),
       () => {
         otherSessionEnded = true
@@ -417,7 +417,7 @@ const pebbleGrant = {
 /** The browser session this page is signed in through. */
 const thisBrowserSession = {
   sid: 'session-this',
-  kind: 'owner',
+  kind: 'same_device',
   name: null,
   createdAt: '2026-10-17T08:00:00.000Z',
   expiresAt: '2026-10-17T16:00:00.000Z',
@@ -434,10 +434,10 @@ const otherBrowserSession = {
 } as const
 
 /** A browser that paired, under the name it was given. */
-const approvedBrowserSession = {
+const pairedBrowserSession = {
   ...otherBrowserSession,
-  sid: 'session-approved',
-  kind: 'approved',
+  sid: 'session-paired',
+  kind: 'paired',
   name: 'Kitchen tablet',
   createdAt: '2026-10-17T06:00:00.000Z',
 } as const
@@ -485,7 +485,7 @@ const stubServer = (
   answerGrants: () => Response = () =>
     Response.json([medicationsGrant, hostGrant, ownGrant, pebbleGrant]),
   answerBrowserSessions: () => Response = () =>
-    Response.json([thisBrowserSession, otherBrowserSession, approvedBrowserSession]),
+    Response.json([thisBrowserSession, otherBrowserSession, pairedBrowserSession]),
   answerRevokeBrowserSession: () => Response = () => new Response(null, { status: 204 })
 ): StubServer => {
   const requests: RecordedRequest[] = []

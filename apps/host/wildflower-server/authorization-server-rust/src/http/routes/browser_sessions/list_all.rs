@@ -21,7 +21,7 @@ use crate::live_bindings::{LiveBrowserSessionsReader, LiveSessionReader};
 struct BrowserSessionBody {
     sid: String,
     kind: BrowserSessionKind,
-    /// The name the browser was given; `null` for an Owner browser.
+    /// The name the browser was given; `null` for a same-device session.
     name: Option<String>,
     created_at: DateTime<Utc>,
     expires_at: DateTime<Utc>,

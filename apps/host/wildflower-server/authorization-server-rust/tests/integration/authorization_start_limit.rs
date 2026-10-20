@@ -144,7 +144,7 @@ async fn a_browser_signed_in_as_the_owner_passes_without_asking_the_gate() {
         "https://app.example/cb",
         &["patient/Observation.rs", "openid"],
     );
-    let owner_session_token = signed_in_owner_session_token(&g).await;
+    let same_device_session_token = signed_in_same_device_session_token(&g).await;
     let authorize = format!(
         "/oauth/authorize?{}",
         authorize_query("test-app", REQUESTED_SCOPES)
@@ -154,7 +154,9 @@ async fn a_browser_signed_in_as_the_owner_passes_without_asking_the_gate() {
         &g,
         Method::GET,
         &authorize,
-        Some(&format!("__Host-browser_session={owner_session_token}")),
+        Some(&format!(
+            "__Host-browser_session={same_device_session_token}"
+        )),
     )
     .await;
     assert_eq!(res.status(), StatusCode::FOUND);
@@ -251,8 +253,8 @@ async fn a_deciding_browser_s_request_raised_for_the_owner_asks_the_gate() {
         "https://app.example/cb",
         &["patient/Observation.rs", "openid"],
     );
-    let owner_session_token = signed_in_owner_session_token(&g).await;
-    let sid = decode_jwt_payload(&owner_session_token)["sid"]
+    let same_device_session_token = signed_in_same_device_session_token(&g).await;
+    let sid = decode_jwt_payload(&same_device_session_token)["sid"]
         .as_str()
         .expect("a browser session's token names its sid")
         .to_owned();
@@ -300,8 +302,8 @@ async fn a_deciding_browser_s_request_parked_for_the_limited_page_asks_the_gate(
         "https://app.example/cb",
         &["patient/Observation.rs", "openid"],
     );
-    let owner_session_token = signed_in_owner_session_token(&g).await;
-    let sid = decode_jwt_payload(&owner_session_token)["sid"]
+    let same_device_session_token = signed_in_same_device_session_token(&g).await;
+    let sid = decode_jwt_payload(&same_device_session_token)["sid"]
         .as_str()
         .expect("a browser session's token names its sid")
         .to_owned();
@@ -375,13 +377,15 @@ async fn a_continue_whose_start_was_counted_does_not_ask_the_gate_again() {
 async fn a_device_start_asks_the_gate_whatever_the_browser_session() {
     let gate = CountingGate::refusing();
     let (g, _owner_token, _db) = spin_up_with_authorization_start_gate(gate.clone());
-    let owner_session_token = signed_in_owner_session_token(&g).await;
+    let same_device_session_token = signed_in_same_device_session_token(&g).await;
 
     let res = send(
         &g,
         Method::POST,
         "/oauth/device_authorization",
-        Some(&format!("__Host-browser_session={owner_session_token}")),
+        Some(&format!(
+            "__Host-browser_session={same_device_session_token}"
+        )),
     )
     .await;
     assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);
@@ -392,7 +396,7 @@ async fn a_device_start_asks_the_gate_whatever_the_browser_session() {
 /// which it decides on its own consent card: the session's token and the
 /// request's id.
 async fn owner_decided_request(g: &AuthorizationServer) -> (String, String) {
-    let owner_session_token = signed_in_owner_session_token(g).await;
+    let same_device_session_token = signed_in_same_device_session_token(g).await;
     let res = send(
         g,
         Method::GET,
@@ -400,7 +404,9 @@ async fn owner_decided_request(g: &AuthorizationServer) -> (String, String) {
             "/oauth/authorize?{}",
             authorize_query("new-app", REQUESTED_SCOPES)
         ),
-        Some(&format!("__Host-browser_session={owner_session_token}")),
+        Some(&format!(
+            "__Host-browser_session={same_device_session_token}"
+        )),
     )
     .await;
     let location = location_of(&res);
@@ -409,7 +415,7 @@ async fn owner_decided_request(g: &AuthorizationServer) -> (String, String) {
         .trim_start_matches("authorize/")
         .trim_end_matches("/consent")
         .to_owned();
-    (owner_session_token, request_id)
+    (same_device_session_token, request_id)
 }
 
 /// `POST /authorization/oauth-consents/{request_id}/ask-owner` as `token`.
@@ -447,7 +453,7 @@ fn is_decidable_in_requesting_browser(db: &TestDb) -> bool {
 async fn asking_the_owner_is_refused_by_the_limit_and_raises_nothing() {
     let gate = CountingGate::refusing();
     let (g, _owner_token, db) = spin_up_with_authorization_start_gate(gate.clone());
-    let (owner_session_token, request_id) = owner_decided_request(&g).await;
+    let (same_device_session_token, request_id) = owner_decided_request(&g).await;
     assert_eq!(
         gate.asked(),
         0,
@@ -455,7 +461,7 @@ async fn asking_the_owner_is_refused_by_the_limit_and_raises_nothing() {
     );
 
     assert_eq!(
-        ask_owner(&g, &owner_session_token, &request_id).await,
+        ask_owner(&g, &same_device_session_token, &request_id).await,
         StatusCode::TOO_MANY_REQUESTS
     );
     assert_eq!(gate.asked(), 1);
@@ -471,17 +477,17 @@ async fn asking_the_owner_spends_only_when_it_raises_a_request() {
         asked: AtomicUsize::new(0),
     });
     let (g, _owner_token, db) = spin_up_with_authorization_start_gate(gate.clone());
-    let (owner_session_token, request_id) = owner_decided_request(&g).await;
+    let (same_device_session_token, request_id) = owner_decided_request(&g).await;
 
     assert_eq!(
-        ask_owner(&g, &owner_session_token, &request_id).await,
+        ask_owner(&g, &same_device_session_token, &request_id).await,
         StatusCode::NO_CONTENT
     );
     assert_eq!(gate.asked(), 1);
     assert!(!is_decidable_in_requesting_browser(&db), "raised");
 
     assert_eq!(
-        ask_owner(&g, &owner_session_token, &request_id).await,
+        ask_owner(&g, &same_device_session_token, &request_id).await,
         StatusCode::NO_CONTENT
     );
     assert_eq!(gate.asked(), 1, "already raised: nothing spent");

@@ -75,7 +75,7 @@ pub struct AuthorizationServerState {
     /// the [`PendingConsentWatcher`](crate::PendingConsentWatcher) rereads its
     /// request on.
     pub(crate) pending_consents_recomputed_tx: watch::Sender<()>,
-    /// The Owner's grant, [`crate::OWNER_SCOPES`] — what an Owner
+    /// The Owner's grant, [`crate::OWNER_SCOPES`] — what a same-device
     /// session holds, the authority it decides consents with.
     pub(crate) owner_grant: wildflowerhealthio_scopes::Grant,
     /// The outstanding same-device sign-in codes: minted in-process by the

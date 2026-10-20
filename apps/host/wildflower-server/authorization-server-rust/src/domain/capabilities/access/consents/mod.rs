@@ -375,7 +375,7 @@ mod tests {
         Grant::parse(["wildflower/*.cruds", "system/*.cruds"])
     }
 
-    /// An approved browser's grant: every approval scope a request from a
+    /// A paired browser's grant: every approval scope a request from a
     /// client trusted on first use takes beyond its resource scopes (it
     /// decides requests, creates grants, creates and updates clients), plus
     /// `resource_scopes`.
@@ -1044,7 +1044,7 @@ mod tests {
         assert_eq!(outcome, ConsentOutcome::Approved { redirect: None });
     }
 
-    /// An approved browser holding every approval scope approves a
+    /// A paired browser holding every approval scope approves a
     /// registered app within its own scopes.
     #[test]
     fn an_approver_holding_the_approval_scopes_approves_a_registered_app() {

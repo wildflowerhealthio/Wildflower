@@ -67,8 +67,8 @@ mod tests {
     fn end_revokes_only_the_named_session() {
         let store = FakeGrantStore::default();
         let now = Utc::now();
-        let signed_out = BrowserSession::new_owner(vec![], Duration::hours(8), now);
-        let other = BrowserSession::new_owner(vec![], Duration::hours(8), now);
+        let signed_out = BrowserSession::new_same_device_session(vec![], Duration::hours(8), now);
+        let other = BrowserSession::new_same_device_session(vec![], Duration::hours(8), now);
         store.tx().insert_browser_session(&signed_out).unwrap();
         store.tx().insert_browser_session(&other).unwrap();
         let ender = BrowserSessionEnder::new(store);

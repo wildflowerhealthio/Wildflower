@@ -73,14 +73,17 @@ async fn status_of(g: &AuthorizationServer, session_token: &str, request_id: &st
 }
 
 /// A request from a browser signed in as the Owner, parked on the consent
-/// card: the Owner session token and the request id.
+/// card: the same-device session token and the request id.
 async fn parked_on_the_card(g: &AuthorizationServer) -> (String, String) {
-    let owner_session_token = signed_in_owner_session_token(g).await;
-    let res =
-        authorize_with_cookie(g, &format!("__Host-browser_session={owner_session_token}")).await;
+    let same_device_session_token = signed_in_same_device_session_token(g).await;
+    let res = authorize_with_cookie(
+        g,
+        &format!("__Host-browser_session={same_device_session_token}"),
+    )
+    .await;
     let (page, request_id) = parked_page(&res);
     assert_eq!(page, "consent");
-    (owner_session_token, request_id)
+    (same_device_session_token, request_id)
 }
 
 #[tokio::test]
@@ -92,11 +95,11 @@ async fn a_browser_signed_in_as_the_owner_goes_to_the_consent_card() {
         "https://app.example/cb",
         &["patient/Observation.rs", "openid"],
     );
-    let owner_session_token = signed_in_owner_session_token(&g).await;
+    let same_device_session_token = signed_in_same_device_session_token(&g).await;
 
     for cookie in [
-        format!("__Host-browser_session={owner_session_token}"),
-        format!("theme=dark; __Host-browser_session={owner_session_token}"),
+        format!("__Host-browser_session={same_device_session_token}"),
+        format!("theme=dark; __Host-browser_session={same_device_session_token}"),
     ] {
         let res = authorize_with_cookie(&g, &cookie).await;
         assert_eq!(parked_page(&res).0, "consent", "{cookie}");
@@ -112,7 +115,7 @@ async fn a_browser_without_a_session_goes_to_pairing() {
         "https://app.example/cb",
         &["patient/Observation.rs", "openid"],
     );
-    let revoked = signed_in_owner_session_token(&g).await;
+    let revoked = signed_in_same_device_session_token(&g).await;
     revocation_store_handle(&db)
         .revoke_subject_as_of_now(
             wildflowerhealthio_authorization_server::BROWSER_SESSION_CLIENT_ID,
@@ -205,11 +208,11 @@ async fn approving_on_the_owner_s_bearer_sends_the_code_to_the_client_and_settle
         "https://app.example/cb",
         &["patient/Observation.rs", "openid"],
     );
-    let (owner_session_token, request_id) = parked_on_the_card(&g).await;
+    let (same_device_session_token, request_id) = parked_on_the_card(&g).await;
 
     let res = decide(
         &g,
-        &owner_session_token,
+        &same_device_session_token,
         &request_id,
         "approve",
         r#"{"approvedScopes":["patient/Observation.rs","openid"],"patient":null,"acknowledgedRegistrationChange":false}"#,
@@ -228,7 +231,7 @@ async fn approving_on_the_owner_s_bearer_sends_the_code_to_the_client_and_settle
     assert!(query.contains_key("code"), "{redirect}");
 
     // A wait page left open on the request settles on the same callback.
-    let status = status_of(&g, &owner_session_token, &request_id).await;
+    let status = status_of(&g, &same_device_session_token, &request_id).await;
     assert_eq!(status["status"], "approved");
     assert_eq!(status["redirect"], decision["redirect"]);
 }
@@ -242,13 +245,13 @@ async fn a_scope_that_was_not_requested_is_not_granted() {
         "https://app.example/cb",
         &["patient/Observation.rs", "openid"],
     );
-    let (owner_session_token, request_id) = parked_on_the_card(&g).await;
+    let (same_device_session_token, request_id) = parked_on_the_card(&g).await;
 
     // The card can't add scopes; a hand-made approval that does gets only
     // what was requested.
     let res = decide(
         &g,
-        &owner_session_token,
+        &same_device_session_token,
         &request_id,
         "approve",
         r#"{"approvedScopes":["patient/Observation.rs","patient/Condition.rs"],"patient":null,"acknowledgedRegistrationChange":false}"#,
@@ -285,11 +288,11 @@ async fn a_scope_that_was_not_requested_is_not_granted() {
 async fn an_unacknowledged_new_registration_is_refused() {
     let (g, _host_owner_token, _db) = spin_up();
     // `test-app` is registered nowhere: the request is `new`.
-    let (owner_session_token, request_id) = parked_on_the_card(&g).await;
+    let (same_device_session_token, request_id) = parked_on_the_card(&g).await;
 
     let res = decide(
         &g,
-        &owner_session_token,
+        &same_device_session_token,
         &request_id,
         "approve",
         r#"{"approvedScopes":["patient/Observation.rs"],"patient":null,"acknowledgedRegistrationChange":false}"#,
@@ -301,7 +304,7 @@ async fn an_unacknowledged_new_registration_is_refused() {
         "RegistrationNotAcknowledged"
     );
     assert_eq!(
-        status_of(&g, &owner_session_token, &request_id).await["status"],
+        status_of(&g, &same_device_session_token, &request_id).await["status"],
         "pending"
     );
 }
@@ -315,9 +318,9 @@ async fn denying_sends_access_denied_to_the_client_and_settles_the_wait_page() {
         "https://app.example/cb",
         &["patient/Observation.rs", "openid"],
     );
-    let (owner_session_token, request_id) = parked_on_the_card(&g).await;
+    let (same_device_session_token, request_id) = parked_on_the_card(&g).await;
 
-    let res = decide(&g, &owner_session_token, &request_id, "deny", "").await;
+    let res = decide(&g, &same_device_session_token, &request_id, "deny", "").await;
     assert_eq!(res.status(), StatusCode::OK);
     let decision = body_json(res.into_body()).await;
     assert_eq!(decision["status"], "denied");
@@ -327,7 +330,7 @@ async fn denying_sends_access_denied_to_the_client_and_settles_the_wait_page() {
          &error_description=The+request+was+declined.&state=xyz"
     );
 
-    let status = status_of(&g, &owner_session_token, &request_id).await;
+    let status = status_of(&g, &same_device_session_token, &request_id).await;
     assert_eq!(status["status"], "denied");
     assert_eq!(status["redirect"], decision["redirect"]);
 }

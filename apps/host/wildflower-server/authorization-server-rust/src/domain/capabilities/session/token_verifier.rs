@@ -280,7 +280,7 @@ mod tests {
     fn a_token_is_revoked_with_its_browser_session() {
         let (store, key) = store_with_key();
         let now = Utc::now();
-        let session = BrowserSession::new_owner(vec![], Duration::hours(8), now);
+        let session = BrowserSession::new_same_device_session(vec![], Duration::hours(8), now);
         store.tx().insert_browser_session(&session).expect("insert");
         let under_session = mint_under_session(&key, ORIGIN, ORIGIN, Some(&session.sid));
         let under_no_session = mint(&key, ORIGIN, ORIGIN);

@@ -175,7 +175,7 @@ impl<'a, T: GrantTx> RequestApprover<'a, T> {
 
     /// Approve the browser pairing `pairing_request`, as read, under
     /// `delegated_scopes` at `now`, recording `browser_name` (the approver's
-    /// rename; `None` keeps the browser's own name). The approved session is
+    /// rename; `None` keeps the browser's own name). The paired session is
     /// started later, when the pairing page's poll claims the request.
     /// Returns `false` when the request was no longer pending, in which case
     /// nothing changed.
@@ -214,11 +214,14 @@ mod tests {
         FakeGrantStore,
     };
 
-    /// A pending code request `id`, as the approver takes it, made in an
-    /// Owner session that stands.
+    /// A pending code request `id`, as the approver takes it, made in a
+    /// same-device session that stands.
     fn pending_code_request(store: &FakeGrantStore, id: &str) -> PendingCodeRequest {
-        let standing =
-            BrowserSession::new_owner(crate::owner_scopes(), Duration::hours(8), Utc::now());
+        let standing = BrowserSession::new_same_device_session(
+            crate::owner_scopes(),
+            Duration::hours(8),
+            Utc::now(),
+        );
         store.tx().insert_browser_session(&standing).unwrap();
         pending_code_request_in_session(store, id, &standing.sid)
     }
@@ -346,10 +349,13 @@ mod tests {
     fn approve_for_code_denies_a_request_whose_browser_session_has_ended() {
         let store = FakeGrantStore::default();
         let now = Utc::now();
-        let standing = BrowserSession::new_owner(vec![], Duration::hours(8), now);
-        let revoked = BrowserSession::new_owner(vec![], Duration::hours(8), now);
-        let expired =
-            BrowserSession::new_owner(vec![], Duration::hours(8), now - Duration::hours(9));
+        let standing = BrowserSession::new_same_device_session(vec![], Duration::hours(8), now);
+        let revoked = BrowserSession::new_same_device_session(vec![], Duration::hours(8), now);
+        let expired = BrowserSession::new_same_device_session(
+            vec![],
+            Duration::hours(8),
+            now - Duration::hours(9),
+        );
         for session in [&standing, &revoked, &expired] {
             store.tx().insert_browser_session(session).unwrap();
         }
@@ -390,7 +396,7 @@ mod tests {
     #[test]
     fn approve_for_code_bounds_the_code_by_the_request_s_browser_session() {
         let store = FakeGrantStore::default();
-        let paired = BrowserSession::new_approved(
+        let paired = BrowserSession::new_paired_session(
             "Firefox on Linux".to_owned(),
             vec![
                 "wildflower/launch".to_owned(),

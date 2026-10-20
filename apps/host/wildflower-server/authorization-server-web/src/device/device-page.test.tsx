@@ -97,7 +97,7 @@ const deviceConsentFor = (
 /** The path of the session read the page makes on load. */
 const SESSION_PATH = '/authorization/session'
 
-/** The scopes an Owner session holds. */
+/** The scopes a same-device session holds. */
 const OWNER_SCOPES = ['system/*.cruds', 'wildflower/*.cruds']
 
 /**

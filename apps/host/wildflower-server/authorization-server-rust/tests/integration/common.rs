@@ -187,7 +187,7 @@ pub fn paired_browser_session(db: &TestDb) -> (String, String) {
 /// and return its `sid` and a token minted under it. Every authorization code
 /// a request made in it earns carries only what `scopes` also allow.
 pub fn paired_browser_session_holding(db: &TestDb, scopes: &[&str]) -> (String, String) {
-    let session = BrowserSession::new_approved(
+    let session = BrowserSession::new_paired_session(
         "Firefox on Linux".to_owned(),
         scopes.iter().map(|scope| (*scope).to_owned()).collect(),
         Duration::hours(24),
@@ -1069,9 +1069,9 @@ pub fn browser_session_token(res: &axum::response::Response) -> String {
         .to_owned()
 }
 
-/// Sign a browser in as the Owner, returning the Owner session token its
+/// Sign a browser in as the Owner, returning the same-device session token its
 /// `__Host-browser_session` cookie holds.
-pub async fn signed_in_owner_session_token(g: &AuthorizationServer) -> String {
+pub async fn signed_in_same_device_session_token(g: &AuthorizationServer) -> String {
     let code = g.same_device_sign_in_code_minter.mint();
     browser_session_token(&sign_in(g, &code, "/").await)
 }
@@ -1084,8 +1084,8 @@ pub async fn signed_in_session_token_that_cannot_decide(
     g: &AuthorizationServer,
     db: &TestDb,
 ) -> String {
-    let owner_session_token = signed_in_owner_session_token(g).await;
-    let sid = decode_jwt_payload(&owner_session_token)["sid"]
+    let same_device_session_token = signed_in_same_device_session_token(g).await;
+    let sid = decode_jwt_payload(&same_device_session_token)["sid"]
         .as_str()
         .expect("a browser session's token names its sid")
         .to_owned();

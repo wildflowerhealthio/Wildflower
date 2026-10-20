@@ -195,7 +195,11 @@ mod tests {
         let mut tx = store.tx();
         let mut writer = RefreshFamilyWriter::within(&mut tx);
         let signed_in_at = Utc::now() - chrono::Duration::hours(1);
-        let session = BrowserSession::new_owner(vec![], chrono::Duration::hours(8), signed_in_at);
+        let session = BrowserSession::new_same_device_session(
+            vec![],
+            chrono::Duration::hours(8),
+            signed_in_at,
+        );
         store.tx().insert_browser_session(&session).unwrap();
         for (family_id, sid) in [("under-session", Some(&session.sid)), ("no-session", None)] {
             store

@@ -289,10 +289,10 @@ async fn a_paired_browser_takes_the_fast_path_under_its_own_session_until_it_is_
 async fn the_code_names_the_requesting_browser_s_session_not_the_approver_s() {
     let (g, _owner_token, db) = spin_up();
     seed_app(&db);
-    let owner_session_token = signed_in_owner_session_token(&g).await;
+    let same_device_session_token = signed_in_same_device_session_token(&g).await;
     let request_id = park_and_approve(
         &g,
-        &owner_session_token,
+        &same_device_session_token,
         &db.paired_browser_token,
         &app_query(),
         APPROVE_APP,
@@ -307,7 +307,7 @@ async fn the_code_names_the_requesting_browser_s_session_not_the_approver_s() {
     let access_token = issued["access_token"].as_str().expect("an access token");
     let refresh_token = issued["refresh_token"].as_str().expect("a refresh token");
     assert_eq!(sid_of(access_token), db.paired_browser_sid);
-    assert_ne!(sid_of(access_token), sid_of(&owner_session_token));
+    assert_ne!(sid_of(access_token), sid_of(&same_device_session_token));
     assert_eq!(
         family_sid(&db, refresh_token).as_deref(),
         Some(db.paired_browser_sid.as_str())
@@ -318,12 +318,12 @@ async fn the_code_names_the_requesting_browser_s_session_not_the_approver_s() {
 /// but the code carries only what the requesting browser's session also
 /// holds: a browser paired without `patient/Observation.rs` goes on past the
 /// limited page and gets a code without it. A request the Owner's own session makes later takes the fast
-/// path on that grant with everything, the Owner session bounding nothing.
+/// path on that grant with everything, the same-device session bounding nothing.
 #[tokio::test]
 async fn an_owner_approval_from_another_browser_is_bounded_by_the_requesting_session() {
     let (g, _owner_token, db) = spin_up();
     seed_app(&db);
-    let owner_session_token = signed_in_owner_session_token(&g).await;
+    let same_device_session_token = signed_in_same_device_session_token(&g).await;
     let (_, paired_token) =
         paired_browser_session_holding(&db, &["wildflower/launch", "patient/Patient.rs"]);
     let request_id =
@@ -334,7 +334,7 @@ async fn an_owner_approval_from_another_browser_is_bounded_by_the_requesting_ses
     );
     let res = approve_oauth_consent(
         &g,
-        &owner_session_token,
+        &same_device_session_token,
         &request_id,
         APPROVE_APP.to_owned(),
     )
@@ -346,7 +346,7 @@ async fn an_owner_approval_from_another_browser_is_bounded_by_the_requesting_ses
     let issued = redeem(&g, &code_of(status["redirect"].as_str().expect("redirect"))).await;
     assert_eq!(issued["scope"], "patient/Patient.rs offline_access");
 
-    let res = get_authorize(&g.router, &owner_session_token, &app_query()).await;
+    let res = get_authorize(&g.router, &same_device_session_token, &app_query()).await;
     assert_eq!(res.status(), StatusCode::FOUND);
     let issued = redeem(&g, &code_of(&location_of(&res))).await;
     assert_eq!(
@@ -397,7 +397,7 @@ async fn a_leaked_request_id_collects_nothing() {
 
 /// The Owner signs in through `/oauth/sign-in` in the browser whose wait page
 /// is polling (a Custom Tab sharing Chrome's cookies, a desktop default
-/// browser), so the Owner session's cookie replaces the paired session's. The
+/// browser), so the same-device session's cookie replaces the paired session's. The
 /// poll answers that cookie, whose grant covers
 /// `wildflower/AuthorizationRequest.r` and `.u`, with the approved redirect,
 /// and the code still names the requesting browser's session. A signed-in
@@ -429,18 +429,18 @@ async fn the_wait_page_reads_the_status_after_the_owner_signs_in_in_the_same_bro
         ))
         .await
         .expect("oneshot");
-    let owner_session_token = browser_session_token(&signed_in);
-    assert_ne!(sid_of(&owner_session_token), db.paired_browser_sid);
+    let same_device_session_token = browser_session_token(&signed_in);
+    assert_ne!(sid_of(&same_device_session_token), db.paired_browser_sid);
     let res = approve_oauth_consent(
         &g,
-        &owner_session_token,
+        &same_device_session_token,
         &request_id,
         APPROVE_APP.to_owned(),
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
 
-    let res = get_authorization_status(&g.router, &owner_session_token, &request_id).await;
+    let res = get_authorization_status(&g.router, &same_device_session_token, &request_id).await;
     assert_eq!(res.status(), StatusCode::OK);
     let status = body_json(res.into_body()).await;
     assert_eq!(status["status"], "approved");
@@ -453,7 +453,8 @@ async fn the_wait_page_reads_the_status_after_the_owner_signs_in_in_the_same_bro
     let access_token = issued["access_token"].as_str().expect("an access token");
     assert_eq!(sid_of(access_token), db.paired_browser_sid);
 
-    let unknown = get_authorization_status(&g.router, &owner_session_token, "no-such-id").await;
+    let unknown =
+        get_authorization_status(&g.router, &same_device_session_token, "no-such-id").await;
     assert_eq!(unknown.status(), StatusCode::NOT_FOUND);
     let unknown_error = body_json(unknown.into_body()).await["error"].clone();
     let cannot_decide = signed_in_session_token_that_cannot_decide(&g, &db).await;

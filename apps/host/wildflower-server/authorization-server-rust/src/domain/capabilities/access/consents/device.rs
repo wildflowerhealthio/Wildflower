@@ -4,7 +4,7 @@
 //! approval obtains a [`DelegatedScopes`] proof and hands it to the writers in
 //! the same scope — the [`RequestApprover`] transitions the request, and for a device the
 //! [`GrantRecorder`] records the standing device grant. A browser pairing
-//! records no grant: the pairing page's poll starts the approved session.
+//! records no grant: the pairing page's poll starts the paired session.
 
 use chrono::{DateTime, Utc};
 

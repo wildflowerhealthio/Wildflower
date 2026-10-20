@@ -122,7 +122,7 @@ describe('grantsQueryOptions', () => {
 const BROWSER_SESSION_BODY = [
   {
     sid: 'session-1',
-    kind: 'owner',
+    kind: 'same_device',
     name: null,
     createdAt: '2026-10-17T08:00:00.000Z',
     expiresAt: '2026-10-17T16:00:00.000Z',

@@ -1,7 +1,7 @@
 //! `POST /oauth/pair/start` and `POST /oauth/pair/poll` — the endpoints the
 //! pairing page (`GET /oauth/pair`, an authorization page) calls on its own
 //! origin: start a browser pairing, then poll it until the Owner decides it.
-//! The poll that finds it approved hands the browser its approved browser
+//! The poll that finds it approved hands the browser its paired browser
 //! session as its `__Host-browser_session` cookie.
 //!
 //! Pairing is no OAuth flow, so the bodies are JSON, not form-encoded. A JSON
@@ -20,7 +20,7 @@ use utoipa::ToSchema;
 use super::device_name_hint::device_name_from_user_agent;
 use crate::domain::capabilities::oauth::{
     BrowserPairingPollError, BrowserPairingStartError, BrowserPairingStatus, StartedBrowserPairing,
-    APPROVED_SESSION_TTL,
+    PAIRED_SESSION_TTL,
 };
 use crate::http::browser_session_set_cookie;
 use crate::http::errors::InternalError;
@@ -160,7 +160,7 @@ pub(super) async fn handle_browser_pairing_start(
 }
 
 /// Poll a browser pairing. The poll that finds it approved starts the
-/// browser's approved session and sets it as the browser's
+/// browser's paired session and sets it as the browser's
 /// `__Host-browser_session` cookie.
 #[utoipa::path(
     post,
@@ -180,7 +180,7 @@ pub(super) async fn handle_browser_pairing_poll(
         Ok(BrowserPairingStatus::Approved { session_token }) => (
             [(
                 header::SET_COOKIE,
-                browser_session_set_cookie(&session_token, APPROVED_SESSION_TTL),
+                browser_session_set_cookie(&session_token, PAIRED_SESSION_TTL),
             )],
             Json(BrowserPairingStatusBody::Approved),
         )
@@ -206,10 +206,10 @@ pub(super) async fn handle_browser_pairing_poll(
             InternalError::new("poll a browser pairing", error).into_response()
         }
         Err(BrowserPairingPollError::SessionNotStored(error)) => {
-            InternalError::new("store an approved browser session", error).into_response()
+            InternalError::new("store a paired browser session", error).into_response()
         }
         Err(BrowserPairingPollError::Issuance(error)) => {
-            InternalError::new("mint an approved browser session's token", error).into_response()
+            InternalError::new("mint a paired browser session's token", error).into_response()
         }
     };
     CacheSuppressed(response).into_response()

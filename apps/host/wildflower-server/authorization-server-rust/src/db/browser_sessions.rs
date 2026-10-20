@@ -284,7 +284,7 @@ mod tests {
     fn a_session_round_trips_and_is_revoked_once() {
         let store = store();
         let now = chrono::Utc::now();
-        let session = BrowserSession::new_owner(
+        let session = BrowserSession::new_same_device_session(
             vec!["system/*.cruds".to_owned(), "wildflower/*.cruds".to_owned()],
             Duration::hours(8),
             now,
@@ -335,11 +335,22 @@ mod tests {
     fn live_sessions_are_the_unrevoked_unexpired_ones_newest_first() {
         let store = store();
         let now = chrono::Utc::now();
-        let older = BrowserSession::new_owner(vec![], Duration::hours(8), now - Duration::hours(2));
-        let newer = BrowserSession::new_owner(vec![], Duration::hours(8), now - Duration::hours(1));
-        let expired =
-            BrowserSession::new_owner(vec![], Duration::hours(8), now - Duration::hours(9));
-        let revoked = BrowserSession::new_owner(vec![], Duration::hours(8), now);
+        let older = BrowserSession::new_same_device_session(
+            vec![],
+            Duration::hours(8),
+            now - Duration::hours(2),
+        );
+        let newer = BrowserSession::new_same_device_session(
+            vec![],
+            Duration::hours(8),
+            now - Duration::hours(1),
+        );
+        let expired = BrowserSession::new_same_device_session(
+            vec![],
+            Duration::hours(8),
+            now - Duration::hours(9),
+        );
+        let revoked = BrowserSession::new_same_device_session(vec![], Duration::hours(8), now);
         for session in [&older, &newer, &expired, &revoked] {
             store
                 .write(|tx| tx.insert_browser_session(session))
@@ -365,7 +376,8 @@ mod tests {
     fn a_touch_moves_last_seen_only_past_the_guard() {
         let store = store();
         let signed_in_at = chrono::Utc::now();
-        let session = BrowserSession::new_owner(vec![], Duration::hours(8), signed_in_at);
+        let session =
+            BrowserSession::new_same_device_session(vec![], Duration::hours(8), signed_in_at);
         store
             .write(|tx| tx.insert_browser_session(&session))
             .expect("insert");
@@ -445,12 +457,16 @@ mod tests {
         let store = store();
         let now = chrono::Utc::now();
         let cutoff = now - Duration::hours(24);
-        let session =
-            |created_at| BrowserSession::new_owner(vec![], Duration::hours(8), created_at);
+        let session = |created_at| {
+            BrowserSession::new_same_device_session(vec![], Duration::hours(8), created_at)
+        };
         let expired_long_ago = session(now - Duration::days(3));
         // Still unexpired, but revoked a day and more ago.
-        let revoked_long_ago =
-            BrowserSession::new_owner(vec![], Duration::hours(48), now - Duration::hours(30));
+        let revoked_long_ago = BrowserSession::new_same_device_session(
+            vec![],
+            Duration::hours(48),
+            now - Duration::hours(30),
+        );
         let expired_recently = session(now - Duration::hours(10));
         let named_by_a_live_family = session(now - Duration::days(3));
         let named_by_a_dead_family = session(now - Duration::days(3));

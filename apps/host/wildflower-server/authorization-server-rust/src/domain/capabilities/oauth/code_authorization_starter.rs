@@ -759,7 +759,7 @@ mod tests {
 
     /// The grant of a browser session that holds all the Owner holds, so it
     /// falls short of no request.
-    static OWNER_SESSION_GRANT: std::sync::LazyLock<Grant> =
+    static SAME_DEVICE_SESSION_GRANT: std::sync::LazyLock<Grant> =
         std::sync::LazyLock::new(|| Grant::parse(crate::owner_scopes()));
 
     fn request<'a>(client_id: &'a str, scope: &'a str) -> AuthorizeRequest<'a> {
@@ -773,7 +773,7 @@ mod tests {
             client_state: "xyz",
             launch: None,
             aud: None,
-            browser_session_grant: &OWNER_SESSION_GRANT,
+            browser_session_grant: &SAME_DEVICE_SESSION_GRANT,
             can_decide_consents: false,
             may_raise_for_owner: &|| true,
             sid: REQUESTING_SID,
@@ -798,7 +798,7 @@ mod tests {
             .tx()
             .insert_browser_session(&BrowserSession {
                 sid: REQUESTING_SID.to_owned(),
-                ..BrowserSession::new_approved(
+                ..BrowserSession::new_paired_session(
                     "Firefox on Linux".to_owned(),
                     vec!["wildflower/launch".to_owned()],
                     Duration::hours(24),

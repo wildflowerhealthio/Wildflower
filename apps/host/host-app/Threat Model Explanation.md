@@ -68,7 +68,7 @@ the tunnel token together.
 The host app holds no token. To act as the Owner it mints a same-device
 sign-in code in process (256 random bits, hashed in memory, 60 seconds,
 single use) and opens `https://<domain>/oauth/sign-in?code=…&next=…` in the
-in-app browser; the server turns it into an Owner browser session
+in-app browser; the server turns it into a same-device browser session
 ([Jargon Explanation](../../../slices/authorization/docs/Jargon%20Explanation.md#same-device-sign-in)).
 Two consequences:
 

@@ -25,13 +25,13 @@ Distinct human/machine roles whose names collide easily — get these straight
 first. "Host" alone is ambiguous (the host app, the HTTP `Host` header, the
 `__Host-` cookie prefix), so these docs say **Wildflower host app**.
 
-| Role                    | Who they are                                                                                                                     | Where they show up                                                                        |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| **OAuth client**        | Remote app requesting access (the SMART-on-FHIR caller, or the Wildflower host app itself).                                      | `client_id`, `redirect_uri`, `/oauth/...` endpoints, the [`clients`](#client) table       |
-| **Owner**               | Human with absolute control over the data this authorization server protects. Approves consent, gates inbound requests.          | `/authorization/...` endpoints, `RequireAuthMiddleware`, tokens holding the Owner's grant |
-| **Wildflower host app** | The app on the Owner's device that runs this server in its own process. See [Wildflower host app](#wildflower-host-app).         | The host app's client (`WILDFLOWER_HOST_APP_CLIENT_ID`), the in-process consent decider   |
-| **Signed-in browser**   | A browser the server has signed in: the Owner's on the same device, or an approved one. See [Browser session](#browser-session). | The browser-session client, the `__Host-browser_session` cookie                           |
-| **Resource owner**      | OAuth-spec name for the Owner — the person whose data is being shared.                                                           | OAuth spec only; we say "Owner"                                                           |
+| Role                    | Who they are                                                                                                                  | Where they show up                                                                        |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| **OAuth client**        | Remote app requesting access (the SMART-on-FHIR caller, or the Wildflower host app itself).                                   | `client_id`, `redirect_uri`, `/oauth/...` endpoints, the [`clients`](#client) table       |
+| **Owner**               | Human with absolute control over the data this authorization server protects. Approves consent, gates inbound requests.       | `/authorization/...` endpoints, `RequireAuthMiddleware`, tokens holding the Owner's grant |
+| **Wildflower host app** | The app on the Owner's device that runs this server in its own process. See [Wildflower host app](#wildflower-host-app).      | The host app's client (`WILDFLOWER_HOST_APP_CLIENT_ID`), the in-process consent decider   |
+| **Signed-in browser**   | A browser the server has signed in: the Owner's on the same device, or a paired one. See [Browser session](#browser-session). | The browser-session client, the `__Host-browser_session` cookie                           |
+| **Resource owner**      | OAuth-spec name for the Owner — the person whose data is being shared.                                                        | OAuth spec only; we say "Owner"                                                           |
 
 > **Open question:** The OAuth `client` (third-party app) is unrelated to
 > HTTP-client instances in the codebase — the word is overloaded. The
@@ -548,7 +548,7 @@ once the request is validated and its launch consumed, before the
 [fast path](#grant), the start limit and the Owner. When it isn't empty, it
 parks the request with `session_shortfall_acknowledged` unset and sends the
 browser here, unless that browser session has pressed Continue for the same
-app before. An Owner session, holding `OWNER_SCOPES`, falls short of nothing
+app before. A same-device session, holding `OWNER_SCOPES`, falls short of nothing
 and never sees the page.
 
 The page reads `GET /oauth/authorize/{id}/session-shortfall` (the app's name
@@ -692,7 +692,7 @@ running the server, and the host app runs on that device.
    card's Authorization, the server's Authorization app with `iss`; and for
    a pending request, its consent card or the device page, with `then=back`.
 3. The server redeems the code (`RedeemedSameDeviceSignInCode`, an authority
-   proof), stores the `owner` [browser session](#browser-session) it starts,
+   proof), stores the `same_device` [browser session](#browser-session) it starts,
    and mints a token through the ordinary minter, issued to the
    browser-session client (its `sub`) and holding the Owner's
    grant (`OWNER_SCOPES`, the grant the Owner decides consents with), as a
@@ -751,9 +751,9 @@ and no refresh family. The session row is its only record.
    (`ApprovableScopes::delegable_scopes`, the card's `startingScopes`). What
    the session holds bounds every code a request made in it earns.
 5. The first poll after the approval claims the request
-   (`ClaimedBrowserPairing`, an authority proof), stores the `approved` browser
+   (`ClaimedBrowserPairing`, an authority proof), stores the `paired` browser
    session it starts, named as approved, holding exactly the approved scopes
-   and lasting 24 hours (`APPROVED_SESSION_TTL`), and mints the session's token
+   and lasting 24 hours (`PAIRED_SESSION_TTL`), and mints the session's token
    for the browser-session client, for 24 hours. It answers `approved`,
    setting `__Host-browser_session=<the token>; …; Max-Age=86400`, and the page
    goes on to `next`. Later polls find the request claimed and answer
@@ -767,14 +767,14 @@ pages can have its cookie set.
 ### Browser session
 
 A browser the server has signed in, one row in `browser_sessions`, keyed by
-its `sid`. Its `kind` says how the browser came to hold it: `owner` for a
+its `sid`. Its `kind` says how the browser came to hold it: `same_device` for a
 browser signed in as the Owner with a
-[same-device sign-in](#same-device-sign-in), `approved` for any other browser,
-signed in by a [browser pairing](#browser-pairing). An Owner session has no
-`name`, holds `OWNER_SCOPES`, and expires 8 hours (`OWNER_SESSION_TTL`) after
-the sign-in. An approved session has the name the browser was approved under,
+[same-device sign-in](#same-device-sign-in), `paired` for any other browser,
+signed in by a [browser pairing](#browser-pairing). A same-device session has no
+`name`, holds `OWNER_SCOPES`, and expires 8 hours (`SAME_DEVICE_SESSION_TTL`) after
+the sign-in. A paired session has the name the browser was approved under,
 holds the scopes the Owner granted, and expires 24 hours
-(`APPROVED_SESSION_TTL`) after the pairing.
+(`PAIRED_SESSION_TTL`) after the pairing.
 
 The browser holds its session in the `__Host-browser_session` cookie, whose
 value is the session's token, issued to the browser-session client (its
@@ -851,8 +851,8 @@ session holds none of is dropped. Identity and session markers (`openid`,
 `fhirUser`, `launch`, `launch/patient`, `offline_access`) pass through. The
 request and the standing grant record the approval as made; the code's tokens
 and refresh family take the code's scopes. So a browser paired without
-`patient/Observation.rs` earns no app a code for it, whoever approves, and an
-Owner session, holding `OWNER_SCOPES`, bounds nothing. A browser whose session
+`patient/Observation.rs` earns no app a code for it, whoever approves, and a
+same-device session, holding `OWNER_SCOPES`, bounds nothing. A browser whose session
 falls short of a request is told so before anything is issued or asked, on the
 [limited page](#limited-page). Launching an app from Home needs only
 `wildflower/launch`: what the app may then do is bounded here, at its own
@@ -888,7 +888,7 @@ went on past the [limited page](#limited-page) for with it.
 
 - **Table:** `browser_sessions`
 - **Identifier:** `sid` (a random UUID).
-- **Kind:** `'owner' | 'approved'`.
+- **Kind:** `'same_device' | 'paired'`.
 
 ### Expandable consent
 
@@ -900,8 +900,8 @@ consent path, where the grant may only be narrowed within the requested set
 distinction lives in the `ApprovableScopes` constructors: `for_device`
 measures the grantable subset against `client.allowedScopes`; `for_code`
 measures it against the request's `requestedScopes`; `for_browser_pairing`,
-also expandable, against `OWNER_SCOPES`, so no approved browser session holds
-more than an Owner session. The shared scope-picker UI models the
+also expandable, against `OWNER_SCOPES`, so no paired browser session holds
+more than a same-device session. The shared scope-picker UI models the
 same split with its `expandable` vs `clamped` mode.
 
 ### Scope sets
@@ -953,8 +953,8 @@ the request as asked asks the Owner instead. A [browser pairing](#browser-pairin
 records no grant and registers no client, so it takes
 `wildflower/AuthorizationRequest.u` alone; device consent is expandable, so a
 device request's approver picks within what it holds (see
-[Scope sets](#scope-sets)). `OWNER_SCOPES` cover every approval scope, so an
-Owner session can always approve; an [approved browser](#browser-session)
+[Scope sets](#scope-sets)). `OWNER_SCOPES` cover every approval scope, so a
+same-device session can always approve; a [paired browser](#browser-session)
 can only with the scopes its pairing granted.
 
 `ApprovableScopes::missing_approval_scopes` (in `domain/authority`) is the one

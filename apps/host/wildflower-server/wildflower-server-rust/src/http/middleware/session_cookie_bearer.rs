@@ -400,7 +400,7 @@ mod tests {
         }
 
         /// A browser session's token, signed by the server's key, living `ttl`,
-        /// under a standing Owner session stored for it.
+        /// under a standing same-device session stored for it.
         fn browser_session_token(&self, ttl: Duration) -> String {
             use diesel::RunQueryDsl as _;
             use std::sync::atomic::{AtomicUsize, Ordering};
@@ -410,7 +410,7 @@ mod tests {
             diesel::sql_query(
                 "INSERT INTO browser_sessions \
                  (sid, kind, name, scopes, created_at, expires_at, last_seen_at) \
-                 VALUES (?, 'owner', NULL, '[]', '2026-01-01 00:00:00+00:00', \
+                 VALUES (?, 'same_device', NULL, '[]', '2026-01-01 00:00:00+00:00', \
                          '2099-01-01 00:00:00+00:00', '2026-01-01 00:00:00+00:00')",
             )
             .bind::<diesel::sql_types::Text, _>(&sid)

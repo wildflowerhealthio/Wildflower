@@ -91,7 +91,8 @@ mod tests {
     #[test]
     fn a_cookie_use_moves_last_seen_at_most_once_a_window() {
         let signed_in_at = Utc::now() - Duration::hours(1);
-        let session = BrowserSession::new_owner(vec![], Duration::hours(8), signed_in_at);
+        let session =
+            BrowserSession::new_same_device_session(vec![], Duration::hours(8), signed_in_at);
         let store = FakeGrantStore::default();
         store.tx().insert_browser_session(&session).expect("insert");
         let recorder = BrowserSessionUseRecorder::new(store, Arc::new(LastSeenThrottle::new()));
@@ -120,7 +121,8 @@ mod tests {
     #[test]
     fn the_update_guard_holds_the_window_across_a_restart() {
         let signed_in_at = Utc::now();
-        let session = BrowserSession::new_owner(vec![], Duration::hours(8), signed_in_at);
+        let session =
+            BrowserSession::new_same_device_session(vec![], Duration::hours(8), signed_in_at);
         let store = FakeGrantStore::default();
         store.tx().insert_browser_session(&session).expect("insert");
         let restarted = BrowserSessionUseRecorder::new(store, Arc::new(LastSeenThrottle::new()));

@@ -2,7 +2,7 @@ use crate::common::*;
 use wildflowerhealthio_authorization_server::domain::browser_session::BrowserSessionKind;
 use wildflowerhealthio_authorization_server::domain::token::VerifyError;
 
-// Browser sessions: a same-device sign-in starts an Owner session row, every
+// Browser sessions: a same-device sign-in starts a same-device session row, every
 // token, code and refresh family minted under it names it as `sid`, and
 // revoking the row ends them on the `/authorization` surface, the in-process
 // FHIR verifier and at refresh. `/authorization/browser-sessions` lists the
@@ -29,19 +29,19 @@ async fn post_token(g: &AuthorizationServer, form: String) -> axum::response::Re
         .expect("oneshot")
 }
 
-/// A sign-in starts an Owner session that lasts the eight hours its token
+/// A sign-in starts a same-device session that lasts the eight hours its token
 /// does, unnamed and holding the Owner's scopes, and the token names it.
 #[tokio::test]
-async fn a_sign_in_starts_an_owner_session_its_token_names() {
+async fn a_sign_in_starts_a_same_device_session_its_token_names() {
     let (g, _owner_token, db) = spin_up();
-    let owner_session_token = signed_in_owner_session_token(&g).await;
-    let sid = sid_of(&owner_session_token);
+    let same_device_session_token = signed_in_same_device_session_token(&g).await;
+    let sid = sid_of(&same_device_session_token);
 
     let session = store_handle(&db)
         .read(|tx| tx.browser_session_by_sid(&sid))
         .expect("read")
         .expect("the sign-in stored its session");
-    assert_eq!(session.kind, BrowserSessionKind::Owner);
+    assert_eq!(session.kind, BrowserSessionKind::SameDevice);
     assert_eq!(session.name, None);
     assert_eq!(
         session.scopes,
@@ -49,7 +49,7 @@ async fn a_sign_in_starts_an_owner_session_its_token_names() {
     );
     assert_eq!(session.expires_at - session.created_at, Duration::hours(8));
     assert_eq!(session.revoked_at, None);
-    let token_expires_at = decode_jwt_payload(&owner_session_token)["exp"]
+    let token_expires_at = decode_jwt_payload(&same_device_session_token)["exp"]
         .as_i64()
         .expect("exp");
     assert!(
@@ -57,7 +57,7 @@ async fn a_sign_in_starts_an_owner_session_its_token_names() {
         "the token ends with its session"
     );
 
-    let other = signed_in_owner_session_token(&g).await;
+    let other = signed_in_same_device_session_token(&g).await;
     assert_ne!(sid_of(&other), sid, "each sign-in starts its own session");
 }
 
@@ -67,8 +67,8 @@ async fn a_sign_in_starts_an_owner_session_its_token_names() {
 #[tokio::test]
 async fn revoking_a_session_stops_its_authorization_and_fhir_requests() {
     let (g, _owner_token, db) = spin_up();
-    let revoked = signed_in_owner_session_token(&g).await;
-    let standing = signed_in_owner_session_token(&g).await;
+    let revoked = signed_in_same_device_session_token(&g).await;
+    let standing = signed_in_same_device_session_token(&g).await;
     let grants_status = |token: String| {
         let router = g.router.clone();
         async move {
@@ -105,8 +105,8 @@ async fn revoking_a_session_stops_its_authorization_and_fhir_requests() {
 #[tokio::test]
 async fn an_app_authorized_in_a_session_is_ended_with_it() {
     let (g, owner_token, db) = spin_up();
-    let owner_session_token = signed_in_owner_session_token(&g).await;
-    let sid = sid_of(&owner_session_token);
+    let same_device_session_token = signed_in_same_device_session_token(&g).await;
+    let sid = sid_of(&same_device_session_token);
 
     let res = g
         .router
@@ -118,7 +118,7 @@ async fn an_app_authorized_in_a_session_is_ended_with_it() {
             ))
             .header(
                 "cookie",
-                format!("__Host-browser_session={owner_session_token}"),
+                format!("__Host-browser_session={same_device_session_token}"),
             ),
             Body::empty(),
         ))
@@ -225,7 +225,7 @@ async fn an_app_authorized_in_a_session_is_ended_with_it() {
 #[tokio::test]
 async fn approving_a_request_whose_session_was_revoked_denies_it() {
     let (g, owner_token, db) = spin_up();
-    let owner_session_token = signed_in_owner_session_token(&g).await;
+    let same_device_session_token = signed_in_same_device_session_token(&g).await;
 
     let res = g
         .router
@@ -237,7 +237,7 @@ async fn approving_a_request_whose_session_was_revoked_denies_it() {
             ))
             .header(
                 "cookie",
-                format!("__Host-browser_session={owner_session_token}"),
+                format!("__Host-browser_session={same_device_session_token}"),
             ),
             Body::empty(),
         ))
@@ -252,7 +252,7 @@ async fn approving_a_request_whose_session_was_revoked_denies_it() {
         .to_owned();
 
     assert!(store_handle(&db)
-        .write(|tx| tx.revoke_browser_session(&sid_of(&owner_session_token), Utc::now()))
+        .write(|tx| tx.revoke_browser_session(&sid_of(&same_device_session_token), Utc::now()))
         .expect("revoke"));
 
     let res = approve_oauth_consent(
@@ -321,8 +321,8 @@ async fn listed_browser_sessions(g: &AuthorizationServer, token: &str) -> Vec<(S
 #[tokio::test]
 async fn the_browsers_list_shows_live_sessions_and_revokes_one() {
     let (g, _owner_token, db) = spin_up();
-    let caller = signed_in_owner_session_token(&g).await;
-    let other = signed_in_owner_session_token(&g).await;
+    let caller = signed_in_same_device_session_token(&g).await;
+    let other = signed_in_same_device_session_token(&g).await;
     let (caller_sid, other_sid) = (sid_of(&caller), sid_of(&other));
 
     let res = authorization_request(&g, "GET", "/authorization/browser-sessions", &caller).await;
@@ -334,7 +334,7 @@ async fn the_browsers_list_shows_live_sessions_and_revokes_one() {
         .iter()
         .find(|row| row["sid"] == caller_sid.as_str())
         .expect("the caller's session is listed");
-    assert_eq!(caller_row["kind"], "owner");
+    assert_eq!(caller_row["kind"], "same_device");
     assert_eq!(caller_row["name"], Value::Null);
     assert_eq!(caller_row["heldByCaller"], true);
     assert_eq!(
@@ -387,7 +387,7 @@ async fn the_browsers_list_shows_live_sessions_and_revokes_one() {
 #[tokio::test]
 async fn revoking_the_caller_s_own_session_signs_it_out() {
     let (g, _owner_token, _db) = spin_up();
-    let caller = signed_in_owner_session_token(&g).await;
+    let caller = signed_in_same_device_session_token(&g).await;
     let path = format!("/authorization/browser-sessions/{}", sid_of(&caller));
 
     let res = authorization_request(&g, "DELETE", &path, &caller).await;
@@ -402,7 +402,7 @@ async fn revoking_the_caller_s_own_session_signs_it_out() {
 #[tokio::test]
 async fn the_browsers_routes_are_scope_gated() {
     let (g, _owner_token, db) = spin_up();
-    let session_token = signed_in_owner_session_token(&g).await;
+    let session_token = signed_in_same_device_session_token(&g).await;
     let reader = mint_scoped_token(&db, &["wildflower/BrowserSession.r"]);
 
     let res = authorization_request(
@@ -456,8 +456,8 @@ async fn sign_out(g: &AuthorizationServer, cookie: Option<String>) -> axum::resp
 #[tokio::test]
 async fn signing_out_revokes_the_cookie_s_session_and_clears_it() {
     let (g, _owner_token, db) = spin_up();
-    let signing_out = signed_in_owner_session_token(&g).await;
-    let other = signed_in_owner_session_token(&g).await;
+    let signing_out = signed_in_same_device_session_token(&g).await;
+    let other = signed_in_same_device_session_token(&g).await;
 
     let res = sign_out(&g, Some(format!("__Host-browser_session={signing_out}"))).await;
 
@@ -486,7 +486,7 @@ async fn signing_out_revokes_the_cookie_s_session_and_clears_it() {
 #[tokio::test]
 async fn signing_out_without_a_standing_session_still_clears_the_cookie() {
     let (g, _owner_token, _db) = spin_up();
-    let ended = signed_in_owner_session_token(&g).await;
+    let ended = signed_in_same_device_session_token(&g).await;
     let res = sign_out(&g, Some(format!("__Host-browser_session={ended}"))).await;
     assert_eq!(res.status(), StatusCode::SEE_OTHER);
 
@@ -512,7 +512,7 @@ async fn signing_out_without_a_standing_session_still_clears_the_cookie() {
 #[tokio::test]
 async fn the_session_read_answers_the_browser_session_s_expiry() {
     let (g, _owner_token, db) = spin_up();
-    let session_token = signed_in_owner_session_token(&g).await;
+    let session_token = signed_in_same_device_session_token(&g).await;
     let session = store_handle(&db)
         .read(|tx| tx.browser_session_by_sid(&sid_of(&session_token)))
         .expect("read")
