@@ -11,108 +11,98 @@
 {{#covers apps/host/wildflower-server/authorization-server-rust/src/http/routes/browser_sessions/list_all.rs}}
 {{#covers apps/host/wildflower-server/authorization-server-rust/src/http/routes/browser_sessions/revoke_by_id.rs}}
 
-These are the Owner's view of what they have let in, and the switches to take it back: **the standing grants** apps hold, **the apps** themselves, and **the browsers** the server has signed in. The Owner's access-management screens call them with the Owner's token.
+These routes are the Owner's view of what they have let in, and the switches to take it back: **the standing grants** apps hold, **the apps** themselves, and **the browsers** the server has signed in. The Owner's access-management screens call them with the Owner's token.
 
-They live under `/authorization`, behind {{#code-link apps/host/wildflower-server/authorization-server-rust/src/http/middleware/require_auth.rs require_valid_session}} (a `401` without a valid, unrevoked bearer token) and uncached. Each handler acquires its capability through `Scoped<…>`, which needs **one scope per resource and permission**: `wildflower/Grant.r` and `.d`, `wildflower/Client.r` and `.u`, `wildflower/BrowserSession.r` and `.d`. A token without it gets a `403` naming the missing scope, before the handler runs. The Owner's scopes cover every one of them.
+They live under `/authorization`, behind [`require_valid_session`](<../Middleware Explanation.md#item-require_valid_session>), and are uncached. Each handler takes its capability through `Scoped<…>`, which needs **one scope per resource and permission**: `wildflower/Grant.r` and `.d`, `wildflower/Client.r` and `.u`, `wildflower/BrowserSession.r` and `.d`. A token without it gets a `403` naming the missing scope, before the handler runs. The Owner's scopes cover every one of them. The capability is the only way to the store, so the scope can't be skipped.
 
-## `grants::router`
+## `http::routes::grants`
 
-`GET /authorization/grants` lists, and `/authorization/grants/{id}` answers both `GET` and `DELETE`.
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/grants/mod.rs self}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/http/routes/grants/mod.rs router}}
+### `router`
 
-## `handle_list_grants`
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/grants/mod.rs router}}
 
-`GET /authorization/grants`. **Every standing grant, of both kinds**, in the order they were granted: what each app or device has been allowed and keeps. Through `Scoped<LiveGrantsReader>` ([`list`](<../../Capabilities/Access/Grants Explanation.md#list>)), so the read scope can't be skipped: the capability is the only way to the store.
+### `list_all`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/http/routes/grants/list_all.rs handle_list_grants}}
+The handler reads through the [grants reader](<../../Capabilities/Access/Grants Explanation.md>)'s [`list`](<../../Capabilities/Access/Grants Explanation.md#item-GrantsReader--list>).
 
-Exercised end to end by [`access_grants_with_owner_token_returns_empty_list`](<../../Integration Tests/Smoke Explanation.md#access_grants_with_owner_token_returns_empty_list>), [`consent_approval_persists_grant`](<../../Integration Tests/Grant Flows Explanation.md#consent_approval_persists_grant>) and [`access_grants_list_with_grant_read_scope_returns_200`](<../../Integration Tests/Scope Gating Explanation.md#access_grants_list_with_grant_read_scope_returns_200>).
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/grants/list_all.rs route}}
 
-## `handle_get_grant`
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/grants/list_all.rs handle_list_grants}}
 
-`GET /authorization/grants/{id}`. One grant, or `404` when no grant has the id. Through `Scoped<LiveGrantsReader>` ([`get`](<../../Capabilities/Access/Grants Explanation.md#get>)).
+### `get_by_id`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/http/routes/grants/get_by_id.rs handle_get_grant}}
+The handler reads through [`get`](<../../Capabilities/Access/Grants Explanation.md#item-GrantsReader--get>).
 
-Exercised end to end by [`get_unknown_grant_returns_404`](<../../Integration Tests/Smoke Explanation.md#get_unknown_grant_returns_404>).
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/grants/get_by_id.rs route}}
 
-## `handle_revoke_grant`
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/grants/get_by_id.rs handle_get_grant}}
 
-`DELETE /authorization/grants/{id}`. **Revoking a grant takes back everything it let the app hold.** The grant is deleted, the refresh-token families minted under its app are expired, and the app's revocation epoch moves to now, so its live access tokens die too. No app that asked for `offline_access`, and no leaked bearer, outlives the revocation. Through `Scoped<LiveGrantsRevoker>` ([`revoke`](<../../Capabilities/Access/Grants Explanation.md#revoke>)), which owns that cascade; it needs `wildflower/Grant.d` alone, not `wildflower/Token.d`.
+### `revoke_by_id`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/http/routes/grants/revoke_by_id.rs handle_revoke_grant}}
+**Revoking a grant takes back everything it let the app hold.** The [grants revoker](<../../Capabilities/Access/Grants Explanation.md>)'s [`revoke`](<../../Capabilities/Access/Grants Explanation.md#item-GrantsRevoker--revoke>) owns the cascade: the grant is deleted, the app's refresh-token families are expired, and its revocation epoch moves to now, so its live access tokens die too. It needs `wildflower/Grant.d` alone, not `wildflower/Token.d`.
 
-The answer is `204 No Content`, or `404` when no grant has the id.
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/grants/revoke_by_id.rs route}}
 
-Exercised end to end by [`revoking_a_grant_bumps_the_client_revocation_epoch`](<../../Integration Tests/Revocation Explanation.md#revoking_a_grant_bumps_the_client_revocation_epoch>), [`revoking_a_device_grant_bumps_the_client_revocation_epoch`](<../../Integration Tests/Revocation Explanation.md#revoking_a_device_grant_bumps_the_client_revocation_epoch>), [`revoking_grant_revokes_refresh_tokens`](<../../Integration Tests/Device Code Explanation.md#revoking_grant_revokes_refresh_tokens>) and [`access_grants_delete_with_only_read_scope_returns_403_missing_delete`](<../../Integration Tests/Scope Gating Explanation.md#access_grants_delete_with_only_read_scope_returns_403_missing_delete>).
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/grants/revoke_by_id.rs handle_revoke_grant}}
 
-## `openapi_router`
+The [Smoke](<../../Integration Tests/Smoke Explanation.md>), [Grant Flows](<../../Integration Tests/Grant Flows Explanation.md>), [Revocation](<../../Integration Tests/Revocation Explanation.md>), [Device Code](<../../Integration Tests/Device Code Explanation.md>) and [Scope Gating](<../../Integration Tests/Scope Gating Explanation.md>) tests hold these routes to listing, a `404` for an unknown id, the revocation cascade, and the read and delete scopes.
 
-The app routes are the one documented part of `/authorization`: they are built as an `OpenApiRouter`, so the committed OpenAPI snapshot covers them, and the TypeScript client is checked against it. [`router`](<../../HTTP Explanation.md>) splits it, serving the routes under `/authorization` behind the session gate and putting their spec in the documented surface.
+## `http::routes::clients`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/http/routes/clients/mod.rs openapi_router}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/clients/mod.rs self}}
 
-## `ClientBody`
+### `openapi_router`
 
-**An app as the Owner's list shows it**: its row's columns but two, and whether it is **essential**. The secret's hash never leaves the server, and the registration source isn't shown. The essential apps are the host app's and the browser-session client; disabling either is refused, so the list offers no switch for them.
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/clients/mod.rs openapi_router}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/http/routes/clients/list_all.rs ClientBody}}
+### `list_all`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/http/routes/clients/list_all.rs ClientBody::from}}
+The list comes from the [clients reader](<../../Capabilities/Access/Clients Explanation.md>)'s [`list`](<../../Capabilities/Access/Clients Explanation.md#item-ClientsReader--list>), as [`ClientView`](<../../Capabilities/Access/Clients Explanation.md#item-ClientView>)s. The secret's hash never leaves the server, and the essential apps (see [`is_essential_client`](<../../Domain/Client Explanation.md#item-is_essential_client>)) are marked so the list offers no switch for them.
 
-## `handle_list_clients`
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/clients/list_all.rs ClientBody}}
 
-`GET /authorization/clients`. **Every registered app**, seeded or trusted on first use, disabled ones included, ordered by `clientId`. Through `Scoped<LiveClientsReader>` ([`list`](<../../Capabilities/Access/Clients Explanation.md#list>)).
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/clients/list_all.rs "<ClientBody as From>::from"}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/http/routes/clients/list_all.rs handle_list_clients}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/clients/list_all.rs handle_list_clients}}
 
-Exercised end to end by [`list_shows_seeded_and_trusted_on_first_use_clients_without_secrets`](<../../Integration Tests/Client Management Explanation.md#list_shows_seeded_and_trusted_on_first_use_clients_without_secrets>) and [`under_scoped_callers_are_rejected_before_the_handler`](<../../Integration Tests/Client Management Explanation.md#under_scoped_callers_are_rejected_before_the_handler>).
+### `update_by_id`
 
-## `UpdateClientBody`
+**The one thing the Owner may change about an app is whether it is disabled.** Any time sent disables the app now, stamped with the server's clock, so a disable can't be scheduled or backdated. The [clients disabler](<../../Capabilities/Access/Clients Explanation.md>)'s [`set_disabled_at`](<../../Capabilities/Access/Clients Explanation.md#item-ClientsDisabler--set_disabled_at>) is what refuses an essential app.
 
-The one thing the Owner may change about an app: **whether it is disabled**. `disabledAt` must be present; `null` re-enables. Any time sent disables the app now, stamped with the server's clock, so a disable can't be scheduled or backdated. An unknown field, or a body without `disabledAt`, fails to parse, so an empty body can't re-enable an app by omission.
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/clients/update_by_id.rs UpdateClientBody}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/http/routes/clients/update_by_id.rs UpdateClientBody}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/clients/update_by_id.rs handle_update_client}}
 
-## `handle_update_client`
+The [Client Management](<../../Integration Tests/Client Management Explanation.md>) tests hold these routes to listing without secrets, the server's own time, idempotence, refusing a body without `disabledAt`, the essential apps, a `404` for an unknown app, and a disabled app being refused at `/oauth/authorize` until it is re-enabled.
 
-`PATCH /authorization/clients/{clientId}`. **The Owner disables an app, or turns it back on.** A disabled app gets nothing at `/oauth/authorize` or `/oauth/token`. Through `Scoped<LiveClientsDisabler>` ([`set_disabled_at`](<../../Capabilities/Access/Clients Explanation.md#set_disabled_at>)). The handler throws the sent time away and passes its own now.
+## `http::routes::browser_sessions`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/http/routes/clients/update_by_id.rs handle_update_client}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/browser_sessions/mod.rs self}}
 
-| Answer | When                                                                                                                           |
-| ------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| `200`  | The app as stored. Disabling an app already disabled keeps its first `disabledAt`; re-enabling one already enabled is a no-op. |
-| `404`  | No app has this `clientId`.                                                                                                    |
-| `409`  | The app is essential: disabling it would leave the Owner no way in. Re-enabling one stays allowed.                             |
+### `router`
 
-Exercised end to end by [`any_sent_disabled_at_disables_now_with_the_servers_time`](<../../Integration Tests/Client Management Explanation.md#any_sent_disabled_at_disables_now_with_the_servers_time>), [`disable_and_enable_are_idempotent`](<../../Integration Tests/Client Management Explanation.md#disable_and_enable_are_idempotent>), [`a_body_without_disabled_at_is_rejected_and_writes_nothing`](<../../Integration Tests/Client Management Explanation.md#a_body_without_disabled_at_is_rejected_and_writes_nothing>), [`an_essential_client_cannot_be_disabled`](<../../Integration Tests/Client Management Explanation.md#an_essential_client_cannot_be_disabled>), [`an_unknown_client_is_a_404_either_way`](<../../Integration Tests/Client Management Explanation.md#an_unknown_client_is_a_404_either_way>) and [`a_disabled_client_is_refused_at_authorize_until_re_enabled`](<../../Integration Tests/Client Management Explanation.md#a_disabled_client_is_refused_at_authorize_until_re_enabled>).
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/browser_sessions/mod.rs router}}
 
-## `browser_sessions::router`
+### `list_all`
 
-`GET /authorization/browser-sessions` lists, `DELETE /authorization/browser-sessions/{sid}` revokes one.
+**Every browser signed in right now**, newest first, each marked when it is the caller's own. The [browser sessions reader](<../../Capabilities/Access/Browser Sessions Explanation.md>)'s [`list_live`](<../../Capabilities/Access/Browser Sessions Explanation.md#item-BrowserSessionsReader--list_live>) gives the list. The caller's `sid` comes from `Authenticated<LiveSessionReader>`, which reads only the caller's own claims.
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/http/routes/browser_sessions/mod.rs router}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/browser_sessions/list_all.rs BrowserSessionBody}}
 
-## `handle_list_browser_sessions`
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/browser_sessions/list_all.rs "<BrowserSessionBody as From>::from"}}
 
-`GET /authorization/browser-sessions`. **Every browser signed in right now**, newest first: neither revoked nor expired. Each says which kind it is (an Owner browser or an approved one), its name, when it began, when it ends and when it was last seen, and **whether it is the caller's own**, the session the caller's token was minted under. Through `Scoped<LiveBrowserSessionsReader>` ([`list_live`](<../../Capabilities/Access/Browser Sessions Explanation.md#list_live>)); the caller's `sid` comes from `Authenticated<LiveSessionReader>`, which reads only the caller's own claims.
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/browser_sessions/list_all.rs route}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/http/routes/browser_sessions/list_all.rs handle_list_browser_sessions}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/browser_sessions/list_all.rs handle_list_browser_sessions}}
 
-The body leaves out the session's scopes, and its `revoked_at`, which is always empty on a live session:
+### `revoke_by_id`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/http/routes/browser_sessions/list_all.rs BrowserSessionBody}}
+**Revoking a browser session ends everything minted under it**: the browser's own token, and every access token and refresh family an app it signed in to holds. The caller may revoke its own session, which signs that browser out. It goes through the [browser sessions revoker](<../../Capabilities/Access/Browser Sessions Explanation.md>)'s [`revoke`](<../../Capabilities/Access/Browser Sessions Explanation.md#item-BrowserSessionsRevoker--revoke>).
 
-Exercised end to end by [`the_browsers_list_shows_live_sessions_and_revokes_one`](<../../Integration Tests/Browser Sessions Explanation.md#the_browsers_list_shows_live_sessions_and_revokes_one>) and [`the_browsers_routes_are_scope_gated`](<../../Integration Tests/Browser Sessions Explanation.md#the_browsers_routes_are_scope_gated>).
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/browser_sessions/revoke_by_id.rs route}}
 
-## `handle_revoke_browser_session`
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/browser_sessions/revoke_by_id.rs handle_revoke_browser_session}}
 
-`DELETE /authorization/browser-sessions/{sid}`. **Revoking a browser session ends everything minted under it**: the browser's own token, and every access token and refresh family an app it signed in to holds. The caller may revoke its own session, which signs that browser out. Through `Scoped<LiveBrowserSessionsRevoker>` ([`revoke`](<../../Capabilities/Access/Browser Sessions Explanation.md#revoke>)).
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/http/routes/browser_sessions/revoke_by_id.rs handle_revoke_browser_session}}
-
-The answer is `204 No Content`, or `404` when no standing session has the `sid` (none ever did, or it is already revoked).
-
-Exercised end to end by [`revoking_the_caller_s_own_session_signs_it_out`](<../../Integration Tests/Browser Sessions Explanation.md#revoking_the_caller_s_own_session_signs_it_out>) and [`an_app_authorized_in_a_session_is_ended_with_it`](<../../Integration Tests/Browser Sessions Explanation.md#an_app_authorized_in_a_session_is_ended_with_it>).
+The [Browser Sessions](<../../Integration Tests/Browser Sessions Explanation.md>) tests hold these routes to listing live sessions, revoking one, signing out the caller's own, ending an app authorized in a revoked session, and their scopes.

@@ -5,77 +5,110 @@
 {{#covers apps/host/wildflower-server/authorization-server-rust/src/http/routes/revocations.rs}}
 {{#covers apps/host/wildflower-server/authorization-server-rust/src/http/routes/well_known_jwks.rs}}
 
-Four routes about tokens themselves rather than what they unlock. A caller **reads back its own session** and **ends it**; the Owner **revokes tokens** by id or by app; and anyone **fetches the public keys** that verify every token this server signs.
+Four routes are about tokens themselves rather than what they unlock. A caller **reads back its own session** and **ends it**. The Owner **revokes tokens**, by id or by app. Anyone **fetches the public keys** that verify every token this server signs.
 
-The first three live under `/authorization`, behind {{#code-link apps/host/wildflower-server/authorization-server-rust/src/http/middleware/require_auth.rs require_valid_session}} (a `401` without a valid, unrevoked bearer token), and are uncached. The session read and logout are **self-service**: a caller acting on its own session needs no scope, so they acquire their capability through `Authenticated<…>`, which hands over the caller's verified claims and nothing else. Revoking other tokens is an Owner's power and takes `wildflower/Token.d` through `Scoped<…>`. The key set is public and sits outside `/authorization`.
+The first three live under `/authorization`, behind [`require_valid_session`](<../Middleware Explanation.md#item-require_valid_session>): no valid, unrevoked bearer token, no answer but a `401`. The session read and logout are **self-service**: a caller acting on its own session needs no scope, so they take their capability through `Authenticated<…>`, which hands over the caller's verified claims and nothing else. Revoking other tokens is an Owner's power, and takes `wildflower/Token.d` through `Scoped<…>`. The key set is public, and sits outside `/authorization`.
 
-## `session::router`
+## `http::routes::session`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/http/routes/session.rs router}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/session.rs self}}
 
-## `handle_get_session`
+### `router`
 
-`GET /authorization/session`. **A caller reads what its own token carries**: its scopes, and when the browser session it was minted under expires. The device-login screen seeds its scope picker from the scopes, and the server's own pages show the expiry as "Signed in until".
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/session.rs router}}
 
-Everything comes from the presented token, or the session its `sid` names, so the answer can't tell the caller anything about anyone else. That is why it takes no scope, and it matters: the callers who most need to read their scopes are the under-scoped ones, just turned away with a `403`. Through `Authenticated<LiveSessionReader>` ([`scopes`](<../../Capabilities/Session/Session Reader Explanation.md#scopes>), [`browser_session_expires_at`](<../../Capabilities/Session/Session Reader Explanation.md#browser_session_expires_at>)).
+### `handle_get_session`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/http/routes/session.rs handle_get_session}}
+The answer comes through the [session reader](<../../Capabilities/Session/Session Reader Explanation.md>): [`scopes`](<../../Capabilities/Session/Session Reader Explanation.md#item-SessionReader--scopes>) from the claims, and [`browser_session_expires_at`](<../../Capabilities/Session/Session Reader Explanation.md#item-SessionReader--browser_session_expires_at>) from the session the token's `sid` names.
 
-`scopes` is empty for a token with no `scope` claim. `browserSessionExpiresAt` is `null` for a token under no browser session, or one whose `sid` names no session row. The rest of the claims are left off, so this doesn't grow into a general introspection endpoint.
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/session.rs handle_get_session}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/http/routes/session.rs SessionResponse}}
+### `SessionResponse`
 
-Exercised end to end by [`access_session_reports_the_callers_own_scopes_without_an_admin_scope`](<../../Integration Tests/Scope Gating Explanation.md#access_session_reports_the_callers_own_scopes_without_an_admin_scope>), [`access_session_without_a_token_is_401_not_an_empty_scope_list`](<../../Integration Tests/Scope Gating Explanation.md#access_session_without_a_token_is_401_not_an_empty_scope_list>) and [`the_session_read_answers_the_browser_session_s_expiry`](<../../Integration Tests/Browser Sessions Explanation.md#the_session_read_answers_the_browser_session_s_expiry>).
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/session.rs SessionResponse}}
 
-## `logout::router`
+The [Scope Gating](<../../Integration Tests/Scope Gating Explanation.md>) tests hold the route to answering an under-scoped caller and refusing one with no token, and [Browser Sessions](<../../Integration Tests/Browser Sessions Explanation.md>) holds it to the session's expiry.
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/http/routes/logout.rs router}}
+## `http::routes::logout`
 
-## `handle_logout`
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/logout.rs self}}
 
-`POST /authorization/logout`. **A caller ends its own session.** The access token is a JWT that lives out its own short lifetime, so forgetting it only ends the session in that client; logout also **denylists the presented token's `jti`** until its expiry, so a leaked copy dies with it. Through `Authenticated<LiveSessionEnder>` ([`end`](<../../Capabilities/Session/Session Ender Explanation.md#end>)), built from the already-verified claims.
+### `router`
 
-The denylisting is best-effort: a token with no `jti` or expiry has nothing to denylist, and a store failure is logged, never answered. Either way the browser is sent with a `303 See Other` to the hosted launcher's root, since this server serves no UI of its own, and the `303` turns the `POST` into a `GET`.
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/logout.rs router}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/http/routes/logout.rs handle_logout}}
+### `handle_logout`
 
-Exercised end to end by [`logout_revokes_the_presented_jti`](<../../Integration Tests/Revocation Explanation.md#logout_revokes_the_presented_jti>), [`access_logout_is_self_service_any_valid_bearer`](<../../Integration Tests/Scope Gating Explanation.md#access_logout_is_self_service_any_valid_bearer>) and [`logout_redirects_to_the_launcher_without_cookies`](<../../Integration Tests/Bearer Only Explanation.md#logout_redirects_to_the_launcher_without_cookies>).
+The [session ender](<../../Capabilities/Session/Session Ender Explanation.md>) is built from the claims [`require_valid_session`](<../Middleware Explanation.md#item-require_valid_session>) already verified, and [`end`](<../../Capabilities/Session/Session Ender Explanation.md#item-SessionEnder--end>) denylists the token's `jti`. **Denylisting is best-effort**: a token with no `jti` or expiry has nothing to denylist, and a store failure is logged, never answered. Either way the browser goes to the hosted launcher with a `303 See Other`, which turns the `POST` into a `GET`.
 
-## `revocations::router`
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/logout.rs handle_logout}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/http/routes/revocations.rs router}}
+The [Revocation](<../../Integration Tests/Revocation Explanation.md>), [Scope Gating](<../../Integration Tests/Scope Gating Explanation.md>) and [Bearer Only](<../../Integration Tests/Bearer Only Explanation.md>) tests hold logout to revoking the presented `jti`, to taking any valid bearer, and to redirecting without setting cookies.
 
-## `handle_create_revocation`
+## `http::routes::revocations`
 
-`POST /authorization/revocations`. **The Owner revokes issued tokens**, in one of two modes per request:
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/revocations.rs self}}
 
-- **One token**: `{ "jti": "…", "expiresAt": "<RFC 3339>" }` denylists that token until its own expiry. The expiry lets the daily sweep drop the row once the token would have expired anyway; the sweep also keeps every row until the longest token this server mints, issued at the moment of revocation, would have expired (see [`setup_authorization_server`](<../../Assembly/Setup Explanation.md#setup_authorization_server>)), so an `expiresAt` that is too early can't free a live token.
-- **Every token of a subject**: `{ "subject": "<client_id>" }` moves the subject's revocation epoch to now, so every token issued to it up to now is revoked. The subject is a token's `sub`, the app's `client_id`.
+The daily sweep keeps a denylisted `jti` until the longest token this server mints, issued at the moment of revocation, would have expired (see [`setup_authorization_server`](<../../Assembly/Setup Explanation.md#item-setup_authorization_server>)). So an `expiresAt` that is too early can't free a live token.
 
-It takes `wildflower/Token.d`, through `Scoped<LiveTokenRevoker>` ([`revoke_jti`](<../../Capabilities/Access/Tokens Explanation.md#revoke_jti>), [`revoke_subject`](<../../Capabilities/Access/Tokens Explanation.md#revoke_subject>)). The answer is `204 No Content`.
+### `router`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/http/routes/revocations.rs handle_create_revocation}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/revocations.rs router}}
 
-The body's fields are all optional on the wire, so a body naming neither mode, both, or a `jti` without its expiry gets a `400` that says which, rather than a generic parse error:
+### `RevocationRequest`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/http/routes/revocations.rs RevocationRequest::into_revocation}}
+**The body's fields are all optional on the wire**, so a body naming neither mode, both, or a `jti` without its expiry gets a `400` saying which, rather than a generic parse error.
 
-A `jti` whose `expiresAt` has already passed is refused too (`ExpiresAtInPast`): the token is expired already, and denylisting it would only leave a dead row. The `400` is this route's own shape, `{ "error": …, "detail": … }`; a store failure renders as every other `/authorization` failure does:
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/revocations.rs RevocationRequest}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/http/routes/revocations.rs RevocationError::into_response}}
+#### `into_revocation`
 
-Exercised end to end by [`revocations_endpoint_revokes_by_jti`](<../../Integration Tests/Revocation Explanation.md#revocations_endpoint_revokes_by_jti>), [`revocations_endpoint_bulk_revokes_by_subject`](<../../Integration Tests/Revocation Explanation.md#revocations_endpoint_bulk_revokes_by_subject>), [`revocations_endpoint_rejects_invalid_bodies`](<../../Integration Tests/Revocation Explanation.md#revocations_endpoint_rejects_invalid_bodies>), [`revocations_endpoint_requires_owner_auth`](<../../Integration Tests/Revocation Explanation.md#revocations_endpoint_requires_owner_auth>) and [`access_revocations_requires_token_delete_scope`](<../../Integration Tests/Scope Gating Explanation.md#access_revocations_requires_token_delete_scope>).
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/revocations.rs RevocationRequest::into_revocation}}
 
-## `Jwks`
+### `Revocation`
 
-The RFC 7517 key set: one [public JWK](<../../Utilities Explanation.md#publicjwk>) per signing key.
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/revocations.rs Revocation}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/http/routes/well_known_jwks.rs Jwks}}
+### `handle_create_revocation`
 
-## `handle_jwks_request`
+Each mode goes through the [token revoker](<../../Capabilities/Access/Tokens Explanation.md>): [`revoke_jti`](<../../Capabilities/Access/Tokens Explanation.md#item-TokenRevoker--revoke_jti>) or [`revoke_subject`](<../../Capabilities/Access/Tokens Explanation.md#item-TokenRevoker--revoke_subject>). A `jti` whose `expiresAt` has already passed is refused too: the token is already dead, and denylisting it would only leave a dead row.
 
-`GET /.well-known/jwks.json`. **Anyone may fetch the public half of every signing key the server holds**, the active one and any kept only to verify, so a resource server can check this server's tokens on its own. No token is asked for. Through `Live<LivePublicKeysReader>` ([`public_jwks`](<../../Capabilities/OAuth/Public Keys Reader Explanation.md#public_jwks>)), built from the router state alone. It is part of the documented surface, served beside `/oauth`.
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/revocations.rs handle_create_revocation}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/http/routes/well_known_jwks.rs handle_jwks_request}}
+### `RevocationError`
 
-Exercised end to end by [`jwks_endpoint_returns_seeded_key`](<../../Integration Tests/Smoke Explanation.md#jwks_endpoint_returns_seeded_key>).
+The `400` is this route's own shape, `{ "error": …, "detail": … }`. A store failure renders as every other `/authorization` failure does.
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/revocations.rs RevocationError}}
+
+#### `bad_request`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/revocations.rs RevocationError::bad_request}}
+
+#### `from`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/revocations.rs "<RevocationError as From>::from"}}
+
+#### `into_response`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/revocations.rs RevocationError::into_response}}
+
+The [Revocation](<../../Integration Tests/Revocation Explanation.md>) tests hold the route to both modes, to refusing each bad body, and to the Owner's scope. [Scope Gating](<../../Integration Tests/Scope Gating Explanation.md>) holds it to `wildflower/Token.d` exactly.
+
+## `http::routes::well_known_jwks`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/well_known_jwks.rs self}}
+
+### `Jwks`
+
+Each key is a [public JWK](<../../Utilities Explanation.md#item-PublicJwk>).
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/well_known_jwks.rs Jwks}}
+
+### `handle_jwks_request`
+
+**Anyone may fetch the public half of every signing key the server holds**: the active one, and any kept only to verify. No token is asked for. The [public keys reader](<../../Capabilities/OAuth/Public Keys Reader Explanation.md>) is built from the router state alone, through [`public_jwks`](<../../Capabilities/OAuth/Public Keys Reader Explanation.md#item-PublicKeysReader--public_jwks>).
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/well_known_jwks.rs handle_jwks_request}}
+
+The [Smoke](<../../Integration Tests/Smoke Explanation.md>) tests hold it to serving the seeded key.
