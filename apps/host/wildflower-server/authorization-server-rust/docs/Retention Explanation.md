@@ -42,7 +42,7 @@ The four deletes run in one transaction, so a failure rolls back to the pre-swee
 
 ## Why the insert-path prune shrank
 
-`insert_authorization_request` used to delete **every** expired request before inserting — a 0-day retention that ran on each `/authorize` and `/oauth/device_authorization`. That predates the sweep and is incompatible with any window at all: rows were gone long before a daily tick could apply a 7-day policy.
+The request insert used to delete **every** expired request before inserting — a 0-day retention that ran on each `/authorize` and `/oauth/device_authorization`. That predates the sweep and is incompatible with any window at all: rows were gone long before a daily tick could apply a 7-day policy.
 
 What remains there is the narrow half the sweep can't cover. An expired request still sitting at `status = 'pending'` under the same `user_code` occupies the partial unique index (`WHERE status = 'pending' AND user_code IS NOT NULL`), so a colliding insert is a hard error — and the stale row may be up to a sweep interval away from being reclaimed. The insert therefore clears exactly that, and nothing wider: rows matching **this** request's `user_code` that are **already expired** and **still `pending`**. The predicate deliberately mirrors the index. Dropping the `status` filter would also delete expired _terminal_ rows, which are not in the index and so could never have collided — cutting the 7-day window short for rows the sweep is supposed to own. A code-flow request (no `user_code`) skips the branch entirely, and a collision with a _live_ pending request stays a hard error, as it always was — a live request is never silently dropped to make room for a new one.
 

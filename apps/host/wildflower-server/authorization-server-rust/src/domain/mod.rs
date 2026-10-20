@@ -4,10 +4,10 @@
 //! [`crate::db`] `table!`, and that is the only reach into the adapter.
 //!
 //! - The **entities** (one module each) own their rules. An
-//!   [`AuthorizationRequest`](authorization_request::AuthorizationRequest)
-//!   owns its lifecycle: each change is a transition on the entity, and the
-//!   store writes a transition back only where the row is still in the phase
-//!   it was read in.
+//!   [authorization request](authorization_request) owns its lifecycle, one
+//!   struct per flow: each change is a transition on the flow's struct, and
+//!   the store writes the changed request back only while the row still has
+//!   the status it was read with.
 //! - The **port**, [`grant_store`], is what persistence looks like from here:
 //!   a [`GrantStore`] opens one scope per operation, read or write, and hands
 //!   out a [`GrantTx`] of single-statement primitives, one trait per table.
@@ -102,7 +102,6 @@ pub mod token;
 // collapses onto the generic RFC 6749 §5.2 descriptions.
 pub(crate) mod token_exchange_error;
 
-pub use authorization_request::PendingCodeRequest;
 pub use grant_store::{GrantStore, GrantTx};
 
 /// Shared helpers for the crate's **source-guard** tests — the advisory-strength

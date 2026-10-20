@@ -31,13 +31,13 @@ use wildflowerhealthio_scopes::{Grant, Permission, Scope, WildflowerResource};
 
 #[cfg(doc)]
 use crate::domain::authority::{ApprovableScopes, DelegatedScopes};
-use crate::domain::authorization_request::{AuthorizationRequest, PendingCodeRequest};
+use crate::domain::authorization_request::code::CodeRequest;
+use crate::domain::authorization_request::polled::PolledRequest;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::client::presented_change::PresentedClientChange;
 use crate::domain::GrantStore;
 use crate::ports::OwnerApproval;
 
-mod delegation;
 mod device;
 mod oauth;
 
@@ -87,7 +87,8 @@ pub(crate) fn client_registering_approval_scopes() -> Vec<Scope> {
 /// name and its [presented client change](PresentedClientChange) already
 /// resolved.
 pub struct OAuthConsentView {
-    pub pending_request: PendingCodeRequest,
+    /// The request, pending as loaded.
+    pub pending_request: CodeRequest,
     pub client_name: String,
     /// How this request compares against the client's registration **as it
     /// stands now** — the warning the prompt leads with when the app, its
@@ -105,7 +106,8 @@ pub struct OAuthConsentView {
 /// approver may grant up to: a device client's full `allowed_scopes`, or for a
 /// browser pairing the Owner's scopes.
 pub struct DeviceConsentView {
-    pub request: AuthorizationRequest,
+    /// The device request or browser pairing, pending as loaded.
+    pub request: PolledRequest,
     pub client_name: String,
     /// The scopes the card's ticks start from: what the device requested, or
     /// for a browser pairing everything the reader may delegate
@@ -277,16 +279,15 @@ mod tests {
     use chrono::{DateTime, Duration, Utc};
 
     use super::*;
-    use crate::domain::authorization_request::{
-        CodeRequest, NewAuthorizationRequest, PairingRequest, RequestKind, RequestStatus,
-    };
+    use crate::domain::authorization_request::code::NewCodeRequestArgs;
+    use crate::domain::authorization_request::RequestStatus;
     use crate::domain::authorize_refusal::AuthorizeRefusal;
     use crate::domain::client::{Client, RegistrationSource};
     use crate::domain::client_redirect::build_client_error_redirect_url;
     use crate::domain::oauth_error_code::OAuthErrorCode;
     use crate::domain::test_fake::{
-        client, code_request, code_request_for, device_request, fixture_code, owned_scopes,
-        pending_request, seed_fixture_browser_session, FakeGrantStore, RecordingOwnerApproval,
+        client, code_request, code_request_for, device_request, fixture_code_args, owned_scopes,
+        pairing_request, seed_fixture_browser_session, FakeGrantStore, RecordingOwnerApproval,
     };
 
     /// A decider over a clone of `store` for `approver_grant`, with the real host app's
@@ -342,25 +343,6 @@ mod tests {
         decider(store, owner_approval, &owner_grant()).deny_device_consent(user_code, Utc::now())
     }
 
-    /// A pending browser pairing `id` from the browser-session client, keyed
-    /// by `user_code`, named `browser_name`.
-    fn pairing_request(id: &str, user_code: &str, browser_name: &str) -> AuthorizationRequest {
-        AuthorizationRequest::new(
-            NewAuthorizationRequest {
-                id: id.to_owned(),
-                client_id: crate::BROWSER_SESSION_CLIENT_ID.to_owned(),
-                requested_scopes: crate::owner_scopes(),
-                ttl: Duration::minutes(5),
-                kind: RequestKind::BrowserPairing(PairingRequest {
-                    user_code: user_code.to_owned(),
-                    browser_name: browser_name.to_owned(),
-                    last_polled_at: None,
-                }),
-            },
-            Utc::now(),
-        )
-    }
-
     /// An approval of everything requested, acknowledged — the common input.
     fn approved(scopes: &[&str]) -> ApproveOAuthConsentInput {
         ApproveOAuthConsentInput {
@@ -400,7 +382,7 @@ mod tests {
             .unwrap();
         store
             .tx()
-            .insert_authorization_request(&code_request(
+            .insert_code_request(&code_request(
                 "req-1",
                 RequestStatus::Pending,
                 Utc::now() + Duration::minutes(5),
@@ -544,15 +526,13 @@ mod tests {
         let (store, owner_approval) = live_code_store();
         store
             .tx()
-            .insert_authorization_request(&pending_request(
-                "req-1",
-                &["read"],
-                Utc::now() + Duration::minutes(5),
-                RequestKind::AuthorizationCode(CodeRequest {
+            .insert_code_request(&CodeRequest::new(
+                NewCodeRequestArgs {
                     launch: Some("launch-1".to_owned()),
                     launch_bound_patient: Some("pat-1".to_owned()),
-                    ..fixture_code()
-                }),
+                    ..fixture_code_args("req-1", "client", owned_scopes(&["read"]))
+                },
+                Utc::now(),
             ))
             .unwrap();
         for patient in [Some("pat-2"), None] {
@@ -627,7 +607,7 @@ mod tests {
         let owner_approval = Arc::new(RecordingOwnerApproval::default());
         store
             .tx()
-            .insert_authorization_request(&code_request(
+            .insert_code_request(&code_request(
                 "req-1",
                 RequestStatus::Pending,
                 Utc::now() + Duration::minutes(5),
@@ -681,7 +661,7 @@ mod tests {
         let owner_approval = Arc::new(RecordingOwnerApproval::default());
         store
             .tx()
-            .insert_authorization_request(&code_request(
+            .insert_code_request(&code_request(
                 "req-1",
                 RequestStatus::Pending,
                 Utc::now() + Duration::minutes(5),
@@ -736,7 +716,7 @@ mod tests {
             "client",
             vec!["read".to_owned(), "write".to_owned()],
         );
-        store.tx().insert_authorization_request(&request).unwrap();
+        store.tx().insert_code_request(&request).unwrap();
 
         approve_code(
             &store,
@@ -780,7 +760,7 @@ mod tests {
             .upsert_client(&client("client", &["read"]))
             .unwrap();
         let request = code_request_for("req-1", "client", vec!["write".to_owned()]);
-        store.tx().insert_authorization_request(&request).unwrap();
+        store.tx().insert_code_request(&request).unwrap();
 
         approve_code(
             &store,
@@ -833,7 +813,7 @@ mod tests {
             crate::WILDFLOWER_HOST_APP_CLIENT_ID,
             vec!["write".to_owned()],
         );
-        store.tx().insert_authorization_request(&request).unwrap();
+        store.tx().insert_code_request(&request).unwrap();
 
         let outcome = approve_code(
             &store,
@@ -885,7 +865,7 @@ mod tests {
             .unwrap();
         store
             .tx()
-            .insert_authorization_request(&device_request("dev-1", "UC-1", RequestStatus::Pending))
+            .insert_device_request(&device_request("dev-1", "UC-1", RequestStatus::Pending))
             .unwrap();
         let outcome = approve_device_consent(
             &store,
@@ -916,7 +896,7 @@ mod tests {
         let owner_approval = Arc::new(RecordingOwnerApproval::default());
         store
             .tx()
-            .insert_authorization_request(&device_request("dev-1", "UC-1", RequestStatus::Pending))
+            .insert_device_request(&device_request("dev-1", "UC-1", RequestStatus::Pending))
             .unwrap();
         deny_device_consent(&store, &owner_approval, "UC-1").unwrap();
         assert_eq!(
@@ -945,7 +925,7 @@ mod tests {
             .upsert_client(&client("client", &[scope]))
             .unwrap();
         let request = code_request_for("req-1", "client", vec![scope.to_owned()]);
-        store.tx().insert_authorization_request(&request).unwrap();
+        store.tx().insert_code_request(&request).unwrap();
         (store, Arc::new(RecordingOwnerApproval::default()))
     }
 
@@ -991,7 +971,7 @@ mod tests {
             .unwrap();
         store
             .tx()
-            .insert_authorization_request(&device_request("dev-1", "UC-1", RequestStatus::Pending))
+            .insert_device_request(&device_request("dev-1", "UC-1", RequestStatus::Pending))
             .unwrap();
         let approver_grant = approver_grant_with(&["system/Observation.r"]);
         let result = approve_device_consent(
@@ -1025,7 +1005,7 @@ mod tests {
             .unwrap();
         store
             .tx()
-            .insert_authorization_request(&device_request("dev-1", "UC-1", RequestStatus::Pending))
+            .insert_device_request(&device_request("dev-1", "UC-1", RequestStatus::Pending))
             .unwrap();
         let approver_grant = approver_grant_with(&["system/*.cruds"]);
         let outcome = approve_device_consent(
@@ -1127,7 +1107,7 @@ mod tests {
                     store.tx().upsert_client(registered_client).unwrap();
                 }
                 let request = code_request_for("req-1", "client", owned_scopes(requested_scopes));
-                store.tx().insert_authorization_request(&request).unwrap();
+                store.tx().insert_code_request(&request).unwrap();
 
                 let result = approve_code(
                     &store,
@@ -1164,7 +1144,7 @@ mod tests {
         let owner_approval = Arc::new(RecordingOwnerApproval::default());
         store
             .tx()
-            .insert_authorization_request(&code_request(
+            .insert_code_request(&code_request(
                 "req-1",
                 RequestStatus::Pending,
                 Utc::now() + Duration::minutes(5),
@@ -1201,7 +1181,7 @@ mod tests {
             crate::WILDFLOWER_HOST_APP_CLIENT_ID,
             vec!["read".to_owned(), "write".to_owned()],
         );
-        store.tx().insert_authorization_request(&request).unwrap();
+        store.tx().insert_code_request(&request).unwrap();
 
         let outcome = approve_code(
             &store,
@@ -1228,7 +1208,7 @@ mod tests {
             .unwrap();
         store
             .tx()
-            .insert_authorization_request(&device_request("dev-1", "UC-1", RequestStatus::Pending))
+            .insert_device_request(&device_request("dev-1", "UC-1", RequestStatus::Pending))
             .unwrap();
         let deciding_only =
             Grant::parse(["wildflower/AuthorizationRequest.u", "wildflower/launch"]);
@@ -1259,7 +1239,7 @@ mod tests {
 
         store
             .tx()
-            .insert_authorization_request(&pairing_request("pair-1", "UC-2", "Laptop"))
+            .insert_pairing_request(&pairing_request("pair-1", "UC-2", "Laptop"))
             .unwrap();
         let outcome = approve_device_consent(
             &store,
@@ -1285,7 +1265,7 @@ mod tests {
             let store = FakeGrantStore::default();
             store
                 .tx()
-                .insert_authorization_request(&code_request(
+                .insert_code_request(&code_request(
                     "req-1",
                     RequestStatus::Pending,
                     Utc::now() + Duration::minutes(5),
@@ -1315,11 +1295,11 @@ mod tests {
         let store = FakeGrantStore::default();
         store
             .tx()
-            .insert_authorization_request(&device_request("dev-1", "UC-1", RequestStatus::Pending))
+            .insert_device_request(&device_request("dev-1", "UC-1", RequestStatus::Pending))
             .unwrap();
         store
             .tx()
-            .insert_authorization_request(&pairing_request("pair-1", "UC-2", "Laptop"))
+            .insert_pairing_request(&pairing_request("pair-1", "UC-2", "Laptop"))
             .unwrap();
         let reader =
             ConsentReader::new(store, Grant::parse(["wildflower/AuthorizationRequest.ru"]));
@@ -1344,7 +1324,7 @@ mod tests {
         let store = FakeGrantStore::default();
         store
             .tx()
-            .insert_authorization_request(&code_request(
+            .insert_code_request(&code_request(
                 "req-1",
                 RequestStatus::Pending,
                 Utc::now() + Duration::minutes(5),
@@ -1352,13 +1332,13 @@ mod tests {
             .unwrap();
         let loaded = oauth::load_pending_code_request(&mut store.tx(), "req-1", Utc::now())
             .expect("live request");
-        assert_eq!(loaded.request().id(), "req-1");
-        assert_eq!(loaded.code(), &fixture_code());
+        assert_eq!(loaded.id, "req-1");
+        assert_eq!(loaded.sid, crate::domain::test_fake::FIXTURE_SID);
 
         // Expired / waiting on its limited page / unknown → OAuthConsentNotFound.
         store
             .tx()
-            .insert_authorization_request(&code_request(
+            .insert_code_request(&code_request(
                 "expired",
                 RequestStatus::Pending,
                 Utc::now() - Duration::minutes(1),
@@ -1366,17 +1346,13 @@ mod tests {
             .unwrap();
         store
             .tx()
-            .insert_authorization_request(&pending_request(
-                "unacknowledged",
-                &["read"],
+            .insert_code_request(&code_request(
+                "on-limited-page",
+                RequestStatus::AwaitingLimitedPage,
                 Utc::now() + Duration::minutes(5),
-                RequestKind::AuthorizationCode(CodeRequest {
-                    session_shortfall_acknowledged: false,
-                    ..fixture_code()
-                }),
             ))
             .unwrap();
-        for id in ["expired", "unacknowledged", "ghost"] {
+        for id in ["expired", "on-limited-page", "ghost"] {
             assert_eq!(
                 oauth::load_pending_code_request(&mut store.tx(), id, Utc::now()),
                 Err(AuthorizationServerError::OAuthConsentNotFound { id: id.to_owned() }),
@@ -1393,7 +1369,7 @@ mod tests {
             .unwrap();
         store
             .tx()
-            .insert_authorization_request(&code_request(
+            .insert_code_request(&code_request(
                 "req-1",
                 RequestStatus::Pending,
                 Utc::now() + Duration::minutes(5),
@@ -1401,9 +1377,9 @@ mod tests {
             .unwrap();
         let reader = ConsentReader::new(store, owner_grant());
         let view = reader.oauth_consent("req-1", Utc::now()).expect("view");
-        assert_eq!(view.pending_request.request().id(), "req-1");
+        assert_eq!(view.pending_request.id, "req-1");
         assert_eq!(
-            view.pending_request.code().redirect_uri.as_str(),
+            view.pending_request.redirect_uri.as_str(),
             "https://example.com/cb"
         );
     }
@@ -1421,7 +1397,7 @@ mod tests {
             .unwrap();
         store
             .write(|tx| {
-                tx.insert_authorization_request(&code_request(
+                tx.insert_code_request(&code_request(
                     "req-1",
                     RequestStatus::Pending,
                     Utc::now() + Duration::minutes(5),
@@ -1430,7 +1406,7 @@ mod tests {
             .unwrap();
         store
             .write(|tx| {
-                tx.insert_authorization_request(&device_request(
+                tx.insert_device_request(&device_request(
                     "dev-1",
                     "USER-CODE",
                     RequestStatus::Pending,
@@ -1463,19 +1439,17 @@ mod tests {
     #[test]
     fn raising_a_prompt_for_the_owner_leaves_it_pending_and_republishes() {
         let store = FakeGrantStore::default();
-        let request = pending_request(
-            "req-1",
-            &["read"],
-            Utc::now() + Duration::minutes(5),
-            RequestKind::AuthorizationCode(CodeRequest {
+        let request = CodeRequest::new(
+            NewCodeRequestArgs {
                 decidable_in_requesting_browser: true,
-                ..fixture_code()
-            }),
+                ..fixture_code_args("req-1", "client", owned_scopes(&["read"]))
+            },
+            Utc::now(),
         );
-        store.tx().insert_authorization_request(&request).unwrap();
+        store.tx().insert_code_request(&request).unwrap();
         store
             .tx()
-            .insert_authorization_request(&code_request(
+            .insert_code_request(&code_request(
                 "req-2",
                 RequestStatus::Denied,
                 Utc::now() + Duration::minutes(5),
@@ -1492,11 +1466,10 @@ mod tests {
             raiser
                 .store
                 .tx()
-                .authorization_request_by_id("req-1")
+                .code_request_by_id("req-1")
                 .unwrap()
                 .unwrap()
-                .code()
-                .is_some_and(|code| code.decidable_in_requesting_browser),
+                .decidable_in_requesting_browser,
             "a refused raise leaves the prompt as it was"
         );
         assert_eq!(owner_approval.count(), 0);
@@ -1508,16 +1481,11 @@ mod tests {
         let raised = raiser
             .store
             .tx()
-            .authorization_request_by_id("req-1")
+            .code_request_by_id("req-1")
             .unwrap()
             .unwrap();
-        assert_eq!(
-            raised
-                .code()
-                .map(|code| code.decidable_in_requesting_browser),
-            Some(false)
-        );
-        assert_eq!(raised.status(), RequestStatus::Pending);
+        assert!(!raised.decidable_in_requesting_browser);
+        assert_eq!(raised.state.status(), RequestStatus::Pending);
         assert_eq!(owner_approval.count(), 1);
         assert_eq!(
             raiser.raise_for_owner(

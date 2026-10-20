@@ -4,7 +4,7 @@
 //! `slices/authorization/docs/Jargon Explanation.md` ("Pending consents") for
 //! how the host learns of it.
 
-use crate::domain::authorization_request::{AuthorizationRequest, RequestKind};
+use crate::domain::authorization_request::AuthorizationRequest;
 
 /// What the host asks the Owner next: the newest authorization request
 /// waiting for the Owner's decision. The host shows one notification for it,
@@ -73,17 +73,17 @@ impl OwnerPrompt {
         registered_client_name: Option<String>,
     ) -> Self {
         let client_name = registered_client_name.unwrap_or_else(|| request.client_id().to_owned());
-        match request.kind() {
-            RequestKind::AuthorizationCode(code_request) => OwnerPrompt::AuthorizationCode {
-                id: request.id().to_owned(),
+        match request {
+            AuthorizationRequest::Code(code_request) => OwnerPrompt::AuthorizationCode {
+                id: code_request.id.clone(),
                 client_name,
                 decidable_in_requesting_browser: code_request.decidable_in_requesting_browser,
             },
-            RequestKind::DeviceCode(device_request) => OwnerPrompt::DeviceCode {
+            AuthorizationRequest::Device(device_request) => OwnerPrompt::DeviceCode {
                 user_code: device_request.user_code.clone(),
                 client_name,
             },
-            RequestKind::BrowserPairing(pairing_request) => OwnerPrompt::BrowserPairing {
+            AuthorizationRequest::Pairing(pairing_request) => OwnerPrompt::BrowserPairing {
                 user_code: pairing_request.user_code.clone(),
                 browser_name: pairing_request.browser_name.clone(),
             },

@@ -1,6 +1,6 @@
 //! [`SessionShortfall`] — the limited page's side of a request whose browser
 //! session holds less than the request asks for. `/oauth/authorize` parks such
-//! a request unacknowledged and sends the browser to the limited page, which
+//! a request awaiting the limited page and sends the browser there, which
 //! reads what the session lacks and then goes on
 //! ([`CodeAuthorizationStarter::continue_past_session_shortfall`]) or cancels.
 //! Every operation answers only the browser session the request was made in,
@@ -13,12 +13,12 @@ use chrono::{DateTime, Utc};
 
 use super::PollingBrowserSession;
 use crate::domain::authority::session_shortfall;
-use crate::domain::authorization_request::PendingCodeRequest;
+use crate::domain::authorization_request::code::CodeRequest;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::client_redirect::{
     build_client_error_redirect_url, REQUEST_DECLINED_DESCRIPTION,
 };
-use crate::domain::grant_store::{write_transition, AuthorizationRequestsTx, ClientsTx as _};
+use crate::domain::grant_store::{AuthorizationRequestsTx, ClientsTx as _};
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::GrantStore;
 
@@ -35,24 +35,20 @@ pub(crate) struct SessionShortfallView {
 }
 
 /// Load request `id` for the browser session `sid` while it waits on that
-/// browser's limited page: a pending, unexpired code-flow request made in
-/// `sid` whose shortfall isn't acknowledged yet. Anything else (an unknown id,
-/// another session's request, one acknowledged, decided or expired) is
+/// browser's limited page: an unexpired code request made in `sid`, awaiting
+/// the page. Anything else (an unknown id, another session's request, one
+/// gone on, decided or expired) is
 /// [`AuthorizationServerError::AuthorizationRequestNotFound`], the status
 /// poll's `404`, so the answer says nothing about whether `id` exists.
-pub(crate) fn load_unacknowledged_code_request(
+pub(crate) fn load_code_request_awaiting_limited_page(
     tx: &mut impl AuthorizationRequestsTx,
     id: &str,
     sid: &str,
     now: DateTime<Utc>,
-) -> Result<PendingCodeRequest, AuthorizationServerError> {
+) -> Result<CodeRequest, AuthorizationServerError> {
     let not_found = || AuthorizationServerError::AuthorizationRequestNotFound { id: id.to_owned() };
-    tx.authorization_request_by_id(id)?
-        .and_then(|request| request.into_pending_code(now))
-        .filter(|pending_request| {
-            let code_request = pending_request.code();
-            !code_request.session_shortfall_acknowledged && code_request.sid == sid
-        })
+    tx.code_request_by_id(id)?
+        .filter(|request| request.is_awaiting_limited_page_at(now) && request.sid == sid)
         .ok_or_else(not_found)
 }
 
@@ -74,7 +70,7 @@ impl<S: GrantStore> SessionShortfall<S> {
     ///
     /// # Errors
     ///
-    /// See [`load_unacknowledged_code_request`]; the store's.
+    /// See [`load_code_request_awaiting_limited_page`]; the store's.
     pub(crate) fn read(
         &self,
         id: &str,
@@ -82,16 +78,15 @@ impl<S: GrantStore> SessionShortfall<S> {
         now: DateTime<Utc>,
     ) -> Result<SessionShortfallView, AuthorizationServerError> {
         self.store.read(|tx| {
-            let pending_request =
-                load_unacknowledged_code_request(tx, id, &browser_session.sid, now)?;
-            let request = pending_request.request();
+            let request =
+                load_code_request_awaiting_limited_page(tx, id, &browser_session.sid, now)?;
             let client_name = tx
-                .client_by_id(request.client_id())?
-                .map_or_else(|| request.client_id().to_owned(), |client| client.name);
+                .client_by_id(&request.client_id)?
+                .map_or_else(|| request.client_id.clone(), |client| client.name);
             Ok(SessionShortfallView {
                 client_name,
                 missing_scopes: session_shortfall(
-                    request.requested_scopes(),
+                    &request.requested_scopes,
                     &browser_session.grant,
                 ),
             })
@@ -101,33 +96,35 @@ impl<S: GrantStore> SessionShortfall<S> {
     /// Deny request `id`, made in the browser session `sid`, and return the
     /// client callback carrying `error=access_denied`. The denial holds only
     /// while the request still waits on the page, so a Continue that
-    /// acknowledged it meanwhile wins and this answers not found. The Owner
+    /// went on with it meanwhile wins and this answers not found. The Owner
     /// was never told of a request still waiting here, so nothing is
     /// republished.
     ///
     /// # Errors
     ///
-    /// See [`load_unacknowledged_code_request`]; the store's.
+    /// See [`load_code_request_awaiting_limited_page`]; the store's.
     pub(crate) fn cancel(
         &self,
         id: &str,
         sid: &str,
         now: DateTime<Utc>,
     ) -> Result<String, AuthorizationServerError> {
-        let pending_request = self.store.write(|tx| {
-            let pending_request = load_unacknowledged_code_request(tx, id, sid, now)?;
-            if write_transition(tx, pending_request.request().deny_on_limited_page(now))? {
-                Ok(pending_request)
+        let not_found =
+            || AuthorizationServerError::AuthorizationRequestNotFound { id: id.to_owned() };
+        let cancelled = self.store.write(|tx| {
+            let request = load_code_request_awaiting_limited_page(tx, id, sid, now)?;
+            let cancelled = request.deny_on_limited_page(now).map_err(|_| not_found())?;
+            if tx.replace_code_request(&request, &cancelled)? {
+                Ok(cancelled)
             } else {
-                Err(AuthorizationServerError::AuthorizationRequestNotFound { id: id.to_owned() })
+                Err(not_found())
             }
         })?;
-        let code_request = pending_request.code();
         Ok(build_client_error_redirect_url(
-            &code_request.redirect_uri,
+            &cancelled.redirect_uri,
             OAuthErrorCode::AccessDenied,
             REQUEST_DECLINED_DESCRIPTION,
-            &code_request.client_state,
+            &cancelled.client_state,
         ))
     }
 }
@@ -139,45 +136,45 @@ mod tests {
     use wildflowerhealthio_scopes::Grant;
 
     use super::*;
-    use crate::domain::authorization_request::{
-        AuthorizationRequest, CodeRequest, RequestKind, RequestStatus,
-    };
+    use crate::domain::authorization_request::code::NewCodeRequestArgs;
+    use crate::domain::authorization_request::RequestStatus;
     use crate::domain::test_fake::{
-        client, fixture_code, pending_request, with_status, FakeGrantStore, FIXTURE_SID,
+        client, code_with_status, fixture_code_args, owned_scopes, FakeGrantStore, FIXTURE_SID,
     };
 
     /// A code request `id`, asking for `patient/Patient.r` and
-    /// `patient/Observation.r`, expiring at `expires_at`, whose browser has
-    /// gone on past its limited page or not.
-    fn code_request(
-        id: &str,
-        expires_at: DateTime<Utc>,
-        session_shortfall_acknowledged: bool,
-    ) -> AuthorizationRequest {
-        pending_request(
-            id,
-            &["openid", "patient/Patient.r", "patient/Observation.r"],
-            expires_at,
-            RequestKind::AuthorizationCode(CodeRequest {
-                session_shortfall_acknowledged,
-                ..fixture_code()
-            }),
+    /// `patient/Observation.r`, expiring at `expires_at`, awaiting its
+    /// limited page or gone on past it.
+    fn code_request(id: &str, expires_at: DateTime<Utc>, awaits_limited_page: bool) -> CodeRequest {
+        let now = Utc::now();
+        CodeRequest::new(
+            NewCodeRequestArgs {
+                ttl: expires_at - now,
+                awaits_limited_page,
+                ..fixture_code_args(
+                    id,
+                    "client",
+                    owned_scopes(&["openid", "patient/Patient.r", "patient/Observation.r"]),
+                )
+            },
+            now,
         )
     }
 
     /// [`code_request`] `id`, live for five minutes, waiting on its limited
     /// page.
-    fn unacknowledged(id: &str) -> AuthorizationRequest {
-        code_request(id, Utc::now() + Duration::minutes(5), false)
+    fn awaiting_limited_page(id: &str) -> CodeRequest {
+        code_request(id, Utc::now() + Duration::minutes(5), true)
     }
 
     fn status_of(session_shortfall: &SessionShortfall<FakeGrantStore>, id: &str) -> RequestStatus {
         session_shortfall
             .store
             .tx()
-            .authorization_request_by_id(id)
+            .code_request_by_id(id)
             .unwrap()
             .expect("present")
+            .state
             .status()
     }
 
@@ -199,7 +196,7 @@ mod tests {
             .unwrap();
         store
             .tx()
-            .insert_authorization_request(&unacknowledged("req-1"))
+            .insert_code_request(&awaiting_limited_page("req-1"))
             .unwrap();
         let session_shortfall = SessionShortfall::new(store);
         let view = session_shortfall
@@ -218,43 +215,35 @@ mod tests {
         );
     }
 
-    /// Another session, an acknowledged request, an expired one, a decided
-    /// one and an unknown id all read as not found.
+    /// Another session, a request gone on past the page, an expired one, a
+    /// decided one and an unknown id all read as not found.
     #[test]
     fn only_the_requesting_session_reads_a_request_still_waiting_on_its_page() {
         let store = FakeGrantStore::default();
         let now = Utc::now();
         store
             .tx()
-            .insert_authorization_request(&unacknowledged("waiting"))
+            .insert_code_request(&awaiting_limited_page("waiting"))
             .unwrap();
         store
             .tx()
-            .insert_authorization_request(&code_request(
-                "acknowledged",
-                now + Duration::minutes(5),
-                true,
-            ))
+            .insert_code_request(&code_request("gone-on", now + Duration::minutes(5), false))
             .unwrap();
         store
             .tx()
-            .insert_authorization_request(&code_request(
-                "expired",
-                now - Duration::seconds(1),
-                false,
-            ))
+            .insert_code_request(&code_request("expired", now - Duration::seconds(1), true))
             .unwrap();
         store
             .tx()
-            .insert_authorization_request(&with_status(
-                unacknowledged("denied"),
+            .insert_code_request(&code_with_status(
+                code_request("denied", now + Duration::minutes(5), false),
                 RequestStatus::Denied,
             ))
             .unwrap();
         let session_shortfall = SessionShortfall::new(store);
         for (id, sid) in [
             ("waiting", "another-sid"),
-            ("acknowledged", FIXTURE_SID),
+            ("gone-on", FIXTURE_SID),
             ("expired", FIXTURE_SID),
             ("denied", FIXTURE_SID),
             ("ghost", FIXTURE_SID),
@@ -280,7 +269,7 @@ mod tests {
         let store = FakeGrantStore::default();
         store
             .tx()
-            .insert_authorization_request(&unacknowledged("req-1"))
+            .insert_code_request(&awaiting_limited_page("req-1"))
             .unwrap();
         let session_shortfall = SessionShortfall::new(store);
         let callback = session_shortfall
@@ -305,18 +294,18 @@ mod tests {
             .is_err());
     }
 
-    /// A Cancel that read the request before a Continue acknowledged it
+    /// A Cancel that read the request before a Continue went on with it
     /// doesn't deny it after: the Continue wins and the Cancel lands nowhere.
     #[test]
-    fn a_cancel_racing_a_continue_leaves_the_acknowledged_request_alone() {
+    fn a_cancel_racing_a_continue_leaves_the_continued_request_alone() {
         let store = FakeGrantStore::default();
         store
             .tx()
-            .insert_authorization_request(&unacknowledged("req-1"))
+            .insert_code_request(&awaiting_limited_page("req-1"))
             .unwrap();
         let session_shortfall = SessionShortfall::new(store);
         let now = Utc::now();
-        let read_by_cancel = load_unacknowledged_code_request(
+        let read_by_cancel = load_code_request_awaiting_limited_page(
             &mut session_shortfall.store.tx(),
             "req-1",
             FIXTURE_SID,
@@ -324,22 +313,20 @@ mod tests {
         )
         .expect("the Cancel reads it first");
         let continued = read_by_cancel
-            .request()
             .acknowledge_session_shortfall(Duration::minutes(5), now)
-            .expect("the Continue acknowledges it");
+            .expect("the Continue goes on with it");
         assert!(session_shortfall
             .store
             .tx()
-            .replace_authorization_request(&continued)
+            .replace_code_request(&read_by_cancel, &continued)
             .unwrap());
         let cancelled = read_by_cancel
-            .request()
             .deny_on_limited_page(now)
             .expect("the Cancel's read still waits");
         assert!(!session_shortfall
             .store
             .tx()
-            .replace_authorization_request(&cancelled)
+            .replace_code_request(&read_by_cancel, &cancelled)
             .unwrap());
         assert_eq!(
             status_of(&session_shortfall, "req-1"),

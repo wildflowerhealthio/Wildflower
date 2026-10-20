@@ -8,14 +8,13 @@
 
 use chrono::{DateTime, Utc};
 
-use super::delegation::deny_pending_request;
 use super::{
     ApproveOAuthConsentInput, ConsentDecider, ConsentOutcome, ConsentRaiser, ConsentReader,
     OAuthConsentView, OwnerRaising,
 };
 use crate::domain::authority::DelegatedScopes;
 use crate::domain::authorization_request::code::resolved::ResolvedCodeRequest;
-use crate::domain::authorization_request::PendingCodeRequest;
+use crate::domain::authorization_request::code::CodeRequest;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::authorize_refusal::AuthorizeRefusal;
 use crate::domain::capabilities::writers::{
@@ -25,7 +24,7 @@ use crate::domain::client_redirect::{
     build_client_error_redirect_url, build_client_redirect_url, BROWSER_SIGNED_OUT_DESCRIPTION,
     REQUEST_DECLINED_DESCRIPTION,
 };
-use crate::domain::grant_store::{write_transition, AuthorizationRequestsTx, ClientsTx};
+use crate::domain::grant_store::{AuthorizationRequestsTx, ClientsTx};
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::{GrantStore, GrantTx};
 
@@ -83,19 +82,22 @@ impl<S: GrantStore> ConsentRaiser<S> {
     ) -> Result<OwnerRaising, AuthorizationServerError> {
         let raising = self.store.write(|tx| {
             let pending_request = load_pending_code_request(tx, id, now)?;
-            if tx.is_client_disabled(pending_request.request().client_id())? {
+            if tx.is_client_disabled(&pending_request.client_id)? {
                 return Err(consent_not_found(id));
             }
-            if !pending_request.code().decidable_in_requesting_browser {
+            if !pending_request.decidable_in_requesting_browser {
                 return Ok(OwnerRaising::AlreadyRaised);
             }
             if !may_raise_for_owner() {
                 return Ok(OwnerRaising::StartLimited);
             }
-            if write_transition(tx, pending_request.request().raise_for_owner(now))? {
+            let raised = pending_request
+                .raise_for_owner(now)
+                .map_err(|_| consent_not_found(id))?;
+            if tx.replace_code_request(&pending_request, &raised)? {
                 Ok(OwnerRaising::Raised)
             } else {
-                Err(AuthorizationServerError::OAuthConsentNotFound { id: id.to_owned() })
+                Err(consent_not_found(id))
             }
         })?;
         if raising == OwnerRaising::Raised {
@@ -155,7 +157,7 @@ impl<S: GrantStore> ConsentDecider<S> {
     ) -> Result<ConsentOutcome, AuthorizationServerError> {
         self.decide_and_republish(|tx| {
             let pending_request = load_pending_code_request(tx, id, now)?;
-            deny_pending_request(tx, pending_request.request(), now, || consent_not_found(id))?;
+            deny_pending_request(tx, &pending_request, now, id)?;
             Ok(denial_outcome(
                 &pending_request,
                 REQUEST_DECLINED_DESCRIPTION,
@@ -174,13 +176,12 @@ impl<S: GrantStore> ConsentDecider<S> {
         now: DateTime<Utc>,
     ) -> Result<ConsentOutcome, AuthorizationServerError> {
         let pending_request = load_pending_code_request(tx, id, now)?;
-        let request = pending_request.request();
-        let requested_redirect_uri = &pending_request.code().redirect_uri;
+        let requested_redirect_uri = &pending_request.redirect_uri;
         let resolved = resolve(tx, &pending_request)?;
         // The client was disabled since the request was made: it can't be
         // approved, so it ends here, and the app hears why.
         if resolved.is_client_disabled() {
-            deny_pending_request(tx, request, now, || consent_not_found(id))?;
+            deny_pending_request(tx, &pending_request, now, id)?;
             return Ok(denial_outcome(
                 &pending_request,
                 AuthorizeRefusal::DisabledClient.description(),
@@ -205,14 +206,11 @@ impl<S: GrantStore> ConsentDecider<S> {
                 id: id.to_owned(),
             });
         }
-        if !pending_request
-            .code()
-            .admits_patient(input.patient.as_deref())
-        {
+        if !pending_request.admits_patient(input.patient.as_deref()) {
             return Err(AuthorizationServerError::LaunchPatientMismatch { id: id.to_owned() });
         }
         let Some(delegated_scopes) = maybe_delegated_scopes else {
-            deny_pending_request(tx, request, now, || consent_not_found(id))?;
+            deny_pending_request(tx, &pending_request, now, id)?;
             return Ok(denial_outcome(
                 &pending_request,
                 REQUEST_DECLINED_DESCRIPTION,
@@ -237,7 +235,7 @@ impl<S: GrantStore> ConsentDecider<S> {
             }
         };
         GrantRecorder::within(tx).record_code_grant(
-            request.client_id(),
+            &pending_request.client_id,
             requested_redirect_uri,
             &delegated_scopes,
             input.patient.as_deref(),
@@ -247,39 +245,59 @@ impl<S: GrantStore> ConsentDecider<S> {
             redirect: Some(build_client_redirect_url(
                 requested_redirect_uri,
                 &issued_code.code,
-                &pending_request.code().client_state,
+                &pending_request.client_state,
             )),
         })
     }
 }
 
-/// The code-flow prompt `id`, pending at `now` and past its browser's
-/// limited page (`session_shortfall_acknowledged`): the Owner can't read,
-/// approve, deny or be asked about a request its own browser hasn't gone on
-/// with. Anything else is not found.
+/// The code-flow prompt `id`, pending at `now`: the Owner can't read,
+/// approve, deny or be asked about a request still waiting on its browser's
+/// limited page. Anything else is not found.
 pub(super) fn load_pending_code_request(
     tx: &mut impl AuthorizationRequestsTx,
     id: &str,
     now: DateTime<Utc>,
-) -> Result<PendingCodeRequest, AuthorizationServerError> {
-    tx.authorization_request_by_id(id)?
-        .and_then(|request| request.into_pending_code(now))
-        .filter(|pending_request| pending_request.code().session_shortfall_acknowledged)
+) -> Result<CodeRequest, AuthorizationServerError> {
+    tx.code_request_by_id(id)?
+        .filter(|request| request.is_pending_at(now))
         .ok_or_else(|| consent_not_found(id))
+}
+
+/// Deny the prompt `id`, `pending_request` as read, at `now`, in the caller's
+/// write scope `tx` — the shared tail of every deny path (an explicit deny,
+/// an approval that grants nothing, and one for a client disabled since).
+///
+/// The deny lands only on a request still pending: when another surface
+/// decided it first (or it expired) since it was read, nothing changes and
+/// the prompt is not found, as an approval that loses the same race is.
+fn deny_pending_request(
+    tx: &mut impl AuthorizationRequestsTx,
+    pending_request: &CodeRequest,
+    now: DateTime<Utc>,
+    id: &str,
+) -> Result<(), AuthorizationServerError> {
+    let denied = pending_request
+        .deny(now)
+        .map_err(|_| consent_not_found(id))?;
+    if tx.replace_code_request(pending_request, &denied)? {
+        Ok(())
+    } else {
+        Err(consent_not_found(id))
+    }
 }
 
 /// `pending_request` resolved against its client's registration as `tx`
 /// holds it now.
 fn resolve(
     tx: &mut impl ClientsTx,
-    pending_request: &PendingCodeRequest,
+    pending_request: &CodeRequest,
 ) -> Result<ResolvedCodeRequest, AuthorizationServerError> {
-    let request = pending_request.request();
-    let maybe_existing_client = tx.client_by_id(request.client_id())?;
+    let maybe_existing_client = tx.client_by_id(&pending_request.client_id)?;
     Ok(ResolvedCodeRequest::resolve(
-        request.client_id(),
-        &pending_request.code().redirect_uri,
-        request.requested_scopes(),
+        &pending_request.client_id,
+        &pending_request.redirect_uri,
+        &pending_request.requested_scopes,
         maybe_existing_client.as_ref(),
     ))
 }
@@ -292,14 +310,13 @@ fn consent_not_found(id: &str) -> AuthorizationServerError {
 /// The outcome of denying `pending_request`: the client callback carrying
 /// `error=access_denied`, `description` as its `error_description`, and the
 /// client's `state` (RFC 6749 §4.1.2.1).
-fn denial_outcome(pending_request: &PendingCodeRequest, description: &str) -> ConsentOutcome {
-    let code_request = pending_request.code();
+fn denial_outcome(pending_request: &CodeRequest, description: &str) -> ConsentOutcome {
     ConsentOutcome::Denied {
         redirect: Some(build_client_error_redirect_url(
-            &code_request.redirect_uri,
+            &pending_request.redirect_uri,
             OAuthErrorCode::AccessDenied,
             description,
-            &code_request.client_state,
+            &pending_request.client_state,
         )),
     }
 }

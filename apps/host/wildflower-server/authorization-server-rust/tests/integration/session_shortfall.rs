@@ -8,8 +8,6 @@
 //! request can read, continue or cancel it. Once a browser session has gone on
 //! for an app, its later requests for that app skip the page.
 
-use wildflowerhealthio_authorization_server::domain::authorization_request::AuthorizationRequest;
-
 use crate::common::*;
 
 /// `test-app`'s query for `patient/Patient.rs patient/Observation.rs
@@ -451,21 +449,18 @@ async fn an_expired_request_on_the_limited_page_goes_no_further() {
     let request_id =
         limited_request_id(&get_authorize(&g.router, &session_token, &app_query()).await);
     let parked = store_handle(&db)
-        .read(|tx| tx.authorization_request_by_id(&request_id))
+        .read(|tx| tx.code_request_by_id(&request_id))
         .expect("read")
         .expect("parked");
+    let lapsed_at = Utc::now() - Duration::minutes(5) - Duration::seconds(1);
     store_handle(&db)
         .write(|tx| {
-            tx.insert_authorization_request(&AuthorizationRequest::new(
-                NewAuthorizationRequest {
-                    id: "lapsed".to_owned(),
-                    client_id: parked.client_id().to_owned(),
-                    requested_scopes: parked.requested_scopes().to_vec(),
-                    ttl: Duration::minutes(5),
-                    kind: parked.kind().clone(),
-                },
-                Utc::now() - Duration::minutes(5) - Duration::seconds(1),
-            ))
+            tx.insert_code_request(&CodeRequest {
+                id: "lapsed".to_owned(),
+                requested_at: lapsed_at,
+                expires_at: lapsed_at + Duration::minutes(5),
+                ..parked
+            })
         })
         .expect("plant a lapsed copy");
 

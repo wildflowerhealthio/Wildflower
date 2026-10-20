@@ -97,9 +97,7 @@ pub(crate) fn purge_expired(
 mod tests {
     use super::*;
     use crate::domain::authorization_code::AuthorizationCode;
-    use crate::domain::authorization_request::{
-        AuthorizationRequest, DeviceRequest, NewAuthorizationRequest, RequestKind,
-    };
+    use crate::domain::authorization_request::device::{DeviceRequest, NewDeviceRequestArgs};
     use crate::domain::browser_session::{BrowserSession, BrowserSessionKind};
     use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
     use crate::domain::test_fake::FakeGrantStore;
@@ -136,18 +134,15 @@ mod tests {
         }
     }
 
-    fn request(id: &str, expires_at: DateTime<Utc>) -> AuthorizationRequest {
-        AuthorizationRequest::new(
-            NewAuthorizationRequest {
+    fn request(id: &str, expires_at: DateTime<Utc>) -> DeviceRequest {
+        DeviceRequest::new(
+            NewDeviceRequestArgs {
                 id: id.to_string(),
                 client_id: "client-1".to_string(),
                 requested_scopes: vec!["openid".to_string()],
                 ttl: Duration::minutes(5),
-                kind: RequestKind::DeviceCode(DeviceRequest {
-                    user_code: format!("UC-{id}"),
-                    device_name: None,
-                    last_polled_at: None,
-                }),
+                user_code: format!("UC-{id}"),
+                device_name: None,
             },
             expires_at - Duration::minutes(5),
         )
@@ -219,15 +214,15 @@ mod tests {
 
         store
             .tx()
-            .insert_authorization_request(&request("old", now() - Duration::days(8)))
+            .insert_device_request(&request("old", now() - Duration::days(8)))
             .expect("seed old request");
         store
             .tx()
-            .insert_authorization_request(&request("recent", now() - Duration::days(6)))
+            .insert_device_request(&request("recent", now() - Duration::days(6)))
             .expect("seed recent request");
         store
             .tx()
-            .insert_authorization_request(&request("live", now() + Duration::minutes(5)))
+            .insert_device_request(&request("live", now() + Duration::minutes(5)))
             .expect("seed live request");
 
         // Ended a day and an hour ago — past the 24-hour window; an hour short

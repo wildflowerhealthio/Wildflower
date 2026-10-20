@@ -15,8 +15,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use url::Url;
-use wildflowerhealthio_authorization_server::domain::authorization_request::{
-    AuthorizationRequest, DeviceRequest, NewAuthorizationRequest, RequestKind,
+use wildflowerhealthio_authorization_server::domain::authorization_request::device::{
+    DeviceRequest, NewDeviceRequestArgs,
 };
 use wildflowerhealthio_authorization_server::domain::grant_store::AuthorizationRequestsTx as _;
 use wildflowerhealthio_authorization_server::{GrantStore, OwnerPrompt, SqliteGrantStore};
@@ -272,19 +272,16 @@ fn park_device_requests(server_dir: &std::path::Path, count: usize) -> Vec<Strin
             let requested_at = chrono::Utc::now() + chrono::Duration::milliseconds(index as i64);
             store
                 .write(|tx| {
-                    tx.insert_authorization_request(&AuthorizationRequest::new(
-                        NewAuthorizationRequest {
+                    tx.insert_device_request(&DeviceRequest::new(
+                        NewDeviceRequestArgs {
                             id: format!("device-code-{index}"),
                             client_id:
                                 wildflowerhealthio_authorization_server::WILDFLOWER_HOST_APP_CLIENT_ID
                                     .to_owned(),
                             requested_scopes: vec!["openid".to_owned()],
                             ttl: chrono::Duration::minutes(10),
-                            kind: RequestKind::DeviceCode(DeviceRequest {
-                                user_code: user_code.clone(),
-                                device_name: None,
-                                last_polled_at: None,
-                            }),
+                            user_code: user_code.clone(),
+                            device_name: None,
                         },
                         requested_at,
                     ))

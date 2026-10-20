@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use tokio::sync::watch;
 use url::Url;
-use wildflowerhealthio_authorization_server::domain::authorization_request::{
-    AuthorizationRequest, CodeRequest, NewAuthorizationRequest, RequestKind,
+use wildflowerhealthio_authorization_server::domain::authorization_request::code::{
+    CodeRequest, NewCodeRequestArgs,
 };
 use wildflowerhealthio_authorization_server::domain::grant_store::AuthorizationRequestsTx as _;
 use wildflowerhealthio_authorization_server::{
@@ -52,23 +52,21 @@ impl TestAuthorizationServer {
         SqliteGrantStore::new(pool)
             .unwrap()
             .write(|tx| {
-                tx.insert_authorization_request(&AuthorizationRequest::new(
-                    NewAuthorizationRequest {
+                tx.insert_code_request(&CodeRequest::new(
+                    NewCodeRequestArgs {
                         id: id.to_owned(),
                         client_id: "lifting".to_owned(),
                         requested_scopes: vec!["openid".to_owned()],
                         ttl: chrono::Duration::minutes(5),
-                        kind: RequestKind::AuthorizationCode(CodeRequest {
-                            redirect_uri: Url::parse("https://lifting.example/callback").unwrap(),
-                            code_challenge: "c".repeat(43),
-                            client_state: "state".to_owned(),
-                            sid: "requesting-browser".to_owned(),
-                            launch: None,
-                            launch_bound_patient: None,
-                            pre_approved_scopes: Vec::new(),
-                            decidable_in_requesting_browser: false,
-                            session_shortfall_acknowledged: true,
-                        }),
+                        redirect_uri: Url::parse("https://lifting.example/callback").unwrap(),
+                        code_challenge: "c".repeat(43),
+                        client_state: "state".to_owned(),
+                        sid: "requesting-browser".to_owned(),
+                        launch: None,
+                        launch_bound_patient: None,
+                        pre_approved_scopes: Vec::new(),
+                        decidable_in_requesting_browser: false,
+                        awaits_limited_page: false,
                     },
                     chrono::Utc::now(),
                 ))

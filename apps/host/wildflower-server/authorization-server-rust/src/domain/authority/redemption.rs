@@ -33,13 +33,12 @@ use super::token_entitlement::TokenEntitlement;
 use crate::crypto_util::pkce::{compute_code_challenge, is_valid_code_verifier_length};
 use crate::crypto_util::random_token::token_storage_hash;
 use crate::domain::authorization_code::AuthorizationCode;
-use crate::domain::authorization_request::{
-    device_grant_name, Approval, RequestStatus, DEVICE_CODE_POLL_INTERVAL,
-};
+use crate::domain::authorization_request::approval::Approval;
+use crate::domain::authorization_request::device::device_grant_name;
+use crate::domain::authorization_request::polled::{Polled as _, PolledState};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::grant_store::{
-    write_transition, AuthorizationCodesTx, AuthorizationRequestsTx, BrowserSessionsTx, GrantsTx,
-    RefreshTokensTx,
+    AuthorizationCodesTx, AuthorizationRequestsTx, BrowserSessionsTx, GrantsTx, RefreshTokensTx,
 };
 use crate::domain::refresh_token::RefreshTokenFamily;
 use crate::domain::token_exchange_error::{InvalidGrantReason, TokenExchangeError};
@@ -274,13 +273,9 @@ impl ConsumedDeviceRequest {
     ) -> Result<Result<Self, TokenExchangeError>, AuthorizationServerError> {
         // One outcome collapses "no such device_code", "wrong client", and
         // "not a device request".
-        let Some((request, device_request)) = tx
-            .authorization_request_by_id(device_code)?
-            .filter(|request| request.client_id() == authenticated_client.client_id())
-            .and_then(|request| {
-                let device_request = request.device()?.clone();
-                Some((request, device_request))
-            })
+        let Some(request) = tx
+            .device_request_by_id(device_code)?
+            .filter(|request| request.client_id == authenticated_client.client_id())
         else {
             return Ok(Err(TokenExchangeError::InvalidGrant(
                 InvalidGrantReason::DeviceRequestNotFound {
@@ -291,45 +286,43 @@ impl ConsumedDeviceRequest {
         if request.is_expired_at(now) {
             return Ok(Err(TokenExchangeError::ExpiredToken));
         }
-        let approval = match request.status() {
-            RequestStatus::Pending => {
-                if device_request
-                    .last_polled_at
-                    .is_some_and(|last_polled| now - last_polled < DEVICE_CODE_POLL_INTERVAL)
-                {
+        let approval = match &request.state {
+            PolledState::Pending => {
+                if request.is_polled_too_soon_at(now) {
                     return Ok(Err(TokenExchangeError::SlowDown));
                 }
-                write_transition(tx, request.stamp_device_poll(now))?;
+                if let Ok(stamped) = request.stamp_poll(now) {
+                    tx.replace_device_request(&request, &stamped)?;
+                }
                 return Ok(Err(TokenExchangeError::AuthorizationPending));
             }
-            RequestStatus::Denied => return Ok(Err(TokenExchangeError::AccessDenied)),
+            PolledState::Denied => return Ok(Err(TokenExchangeError::AccessDenied)),
             // A claimed request already minted its token: as RFC 8628 §3.5
             // has it, the device code has expired.
-            RequestStatus::Claimed => return Ok(Err(TokenExchangeError::ExpiredToken)),
-            RequestStatus::Approved => request.approval().cloned().ok_or_else(|| {
-                AuthorizationServerError::infrastructure(
-                    "claiming a device request",
-                    "an approved request carries no approval",
-                )
-            })?,
+            PolledState::Claimed(_) => return Ok(Err(TokenExchangeError::ExpiredToken)),
+            PolledState::Approved(approval) => approval.clone(),
         };
-        if !write_transition(tx, request.claim(now))? {
+        let claimed = request.claim(now).map_err(|_| {
+            AuthorizationServerError::infrastructure(
+                "claiming a device request",
+                "an approved, unexpired request is not claimable",
+            )
+        })?;
+        if !tx.replace_device_request(&request, &claimed)? {
             return Ok(Err(TokenExchangeError::InvalidGrant(
                 InvalidGrantReason::DeviceCodeAlreadyRedeemed {
-                    client_id: request.client_id().to_owned(),
+                    client_id: request.client_id.clone(),
                 },
             )));
         }
-        let grant_name = device_grant_name(
-            device_request.device_name.as_deref(),
-            authenticated_client.name(),
-        );
+        let grant_name =
+            device_grant_name(request.device_name.as_deref(), authenticated_client.name());
         let grant_id = tx
-            .device_grant_by_client_and_device_name(request.client_id(), grant_name)?
+            .device_grant_by_client_and_device_name(&request.client_id, grant_name)?
             .map(|grant| grant.id);
         Ok(Ok(ConsumedDeviceRequest {
             token_scopes: token_scope_spellings(&approval.granted_scopes),
-            client_id: request.client_id().to_owned(),
+            client_id: request.client_id.clone(),
             approval,
             grant_id,
         }))
@@ -590,6 +583,8 @@ mod tests {
     use crate::domain::authorization_code::AUTHORIZATION_CODE_TTL;
     use crate::domain::browser_session::BrowserSession;
 
+    use crate::domain::authorization_request::RequestStatus;
+    use crate::domain::authorization_request::DEVICE_CODE_POLL_INTERVAL;
     use crate::domain::refresh_token::RefreshToken;
     use crate::domain::test_fake::{
         approve_stored, authenticated_public_client, client, device_request, FakeGrantStore,
@@ -756,7 +751,7 @@ mod tests {
         let stranger = authenticated(&store, "stranger");
         store
             .tx()
-            .insert_authorization_request(&device_request("dev", "CODE", RequestStatus::Pending))
+            .insert_device_request(&device_request("dev", "CODE", RequestStatus::Pending))
             .unwrap();
 
         assert!(matches!(

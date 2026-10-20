@@ -14,10 +14,14 @@ use crate::domain::authority::{
     RedeemedAuthorizationCode,
 };
 use crate::domain::authorization_code::{AuthorizationCode, AUTHORIZATION_CODE_TTL};
-use crate::domain::authorization_request::{
-    Approval, AuthorizationRequest, CodeRequest, DeviceRequest, NewAuthorizationRequest,
-    RequestKind, RequestStatus, RequestTransition, TransitionRefused,
+use crate::domain::authorization_request::approval::Approval;
+use crate::domain::authorization_request::code::{CodeRequest, NewCodeRequestArgs};
+use crate::domain::authorization_request::device::{DeviceRequest, NewDeviceRequestArgs};
+use crate::domain::authorization_request::pairing::{
+    NewPairingRequestArgs, PairingApproval, PairingRequest,
 };
+use crate::domain::authorization_request::polled::Polled as _;
+use crate::domain::authorization_request::{AuthorizationRequest, RequestStatus};
 use crate::domain::browser_session::BrowserSession;
 use crate::domain::client::{AllowedGrantType, Client, ClientKind, RegistrationSource};
 use crate::domain::client_credentials::ClientCredentials;
@@ -28,100 +32,104 @@ use crate::ports::{OwnerApproval, RevocationCheck};
 
 /// A device-code request fixture from client `client` asking for `openid`,
 /// started now and pending for five minutes, then moved to `status` (see
-/// [`with_status`]).
-pub(crate) fn device_request(
-    id: &str,
-    user_code: &str,
-    status: RequestStatus,
-) -> AuthorizationRequest {
-    let now = Utc::now();
-    with_status(
-        pending_request(
-            id,
-            &["openid"],
-            now + Duration::minutes(5),
-            RequestKind::DeviceCode(DeviceRequest {
+/// [`device_with_status`]).
+pub(crate) fn device_request(id: &str, user_code: &str, status: RequestStatus) -> DeviceRequest {
+    device_with_status(
+        DeviceRequest::new(
+            NewDeviceRequestArgs {
+                id: id.to_owned(),
+                client_id: "client".to_owned(),
+                requested_scopes: owned_scopes(&["openid"]),
+                ttl: Duration::minutes(5),
                 user_code: user_code.to_owned(),
                 device_name: None,
-                last_polled_at: None,
-            }),
+            },
+            Utc::now(),
         ),
         status,
     )
 }
 
+/// A pending browser pairing fixture `id` from the browser-session client,
+/// asking for the Owner's scopes, keyed by `user_code`, named `browser_name`,
+/// live for five minutes.
+pub(crate) fn pairing_request(id: &str, user_code: &str, browser_name: &str) -> PairingRequest {
+    PairingRequest::new(
+        NewPairingRequestArgs {
+            id: id.to_owned(),
+            client_id: crate::BROWSER_SESSION_CLIENT_ID.to_owned(),
+            requested_scopes: crate::owner_scopes(),
+            ttl: Duration::minutes(5),
+            user_code: user_code.to_owned(),
+            browser_name: browser_name.to_owned(),
+        },
+        Utc::now(),
+    )
+}
+
 /// A pending code request fixture `id` from `client_id`, asking for
-/// `requested_scopes`, carrying [`fixture_code`], live for five minutes.
+/// `requested_scopes`, carrying [`fixture_code_args`], live for five minutes.
 pub(crate) fn code_request_for(
     id: &str,
     client_id: &str,
     requested_scopes: Vec<String>,
-) -> AuthorizationRequest {
-    let now = Utc::now();
-    AuthorizationRequest::new(
-        NewAuthorizationRequest {
-            id: id.to_owned(),
-            client_id: client_id.to_owned(),
-            requested_scopes,
-            ttl: Duration::minutes(5),
-            kind: RequestKind::AuthorizationCode(fixture_code()),
-        },
-        now,
+) -> CodeRequest {
+    CodeRequest::new(
+        fixture_code_args(id, client_id, requested_scopes),
+        Utc::now(),
     )
 }
 
-/// A pending request fixture from client `client`, asking for `scopes`,
-/// started now and expiring at `expires_at`, carrying `kind`.
-pub(crate) fn pending_request(
-    id: &str,
-    scopes: &[&str],
-    expires_at: DateTime<Utc>,
-    kind: RequestKind,
-) -> AuthorizationRequest {
-    let now = Utc::now();
-    AuthorizationRequest::new(
-        NewAuthorizationRequest {
-            id: id.to_owned(),
-            client_id: "client".to_owned(),
-            requested_scopes: owned_scopes(scopes),
-            ttl: expires_at - now,
-            kind,
-        },
-        now,
-    )
-}
-
-/// `request` moved from pending to `status` by its own transitions, taken
-/// just before it expires: an approval grants what it asked for.
-pub(crate) fn with_status(
-    request: AuthorizationRequest,
-    status: RequestStatus,
-) -> AuthorizationRequest {
-    let decided_at = request.expires_at() - Duration::milliseconds(1);
-    let approve = |request: &AuthorizationRequest| {
-        approve_as_its_kind(
-            request,
-            Approval {
-                granted_scopes: request.requested_scopes().to_vec(),
-                patient: None,
-            },
-            None,
-            decided_at,
-        )
-        .expect("a pending fixture approves")
-        .into_request()
+/// `request`, a pending device request, moved to `status` by its own
+/// transitions, taken just before it expires: an approval grants what it
+/// asked for.
+pub(crate) fn device_with_status(request: DeviceRequest, status: RequestStatus) -> DeviceRequest {
+    let decided_at = request.expires_at - Duration::milliseconds(1);
+    let approve = |request: &DeviceRequest| {
+        request
+            .approve(
+                fixture_approval(&request.requested_scopes),
+                None,
+                decided_at,
+            )
+            .expect("a pending fixture approves")
     };
     match status {
         RequestStatus::Pending => request,
         RequestStatus::Approved => approve(&request),
-        RequestStatus::Denied => request
-            .deny(decided_at)
-            .expect("a pending fixture denies")
-            .into_request(),
+        RequestStatus::Denied => request.deny(decided_at).expect("a pending fixture denies"),
         RequestStatus::Claimed => approve(&request)
             .claim(decided_at)
-            .expect("an approved fixture is claimed")
-            .into_request(),
+            .expect("an approved fixture is claimed"),
+        RequestStatus::AwaitingLimitedPage => panic!("a device request has no limited page"),
+    }
+}
+
+/// `request`, a pending code request, moved to `status` by its own
+/// transitions, taken just before it expires: an approval grants what it
+/// asked for.
+pub(crate) fn code_with_status(request: CodeRequest, status: RequestStatus) -> CodeRequest {
+    let decided_at = request.expires_at - Duration::milliseconds(1);
+    match status {
+        RequestStatus::Pending => request,
+        RequestStatus::AwaitingLimitedPage => CodeRequest {
+            state:
+                crate::domain::authorization_request::code::CodeRequestState::AwaitingLimitedPage,
+            ..request
+        },
+        RequestStatus::Approved => request
+            .approve(fixture_approval(&request.requested_scopes), decided_at)
+            .expect("a pending fixture approves"),
+        RequestStatus::Denied => request.deny(decided_at).expect("a pending fixture denies"),
+        RequestStatus::Claimed => panic!("a code request is never claimed"),
+    }
+}
+
+/// An approval of `requested_scopes`, binding no patient.
+fn fixture_approval(requested_scopes: &[String]) -> Approval {
+    Approval {
+        granted_scopes: requested_scopes.to_vec(),
+        patient: None,
     }
 }
 
@@ -157,30 +165,56 @@ pub(crate) fn approve_stored(
     granted_scopes: &[&str],
     requester_name: Option<&str>,
 ) {
-    let request = store
-        .tx()
+    let mut tx = store.tx();
+    let request = tx
         .authorization_request_by_id(id)
         .unwrap()
         .expect("the request is stored");
-    let approved = approve_as_its_kind(
-        &request,
-        Approval {
-            granted_scopes: owned_scopes(granted_scopes),
-            patient: None,
-        },
-        requester_name.map(str::to_owned),
-        Utc::now(),
-    )
-    .expect("the stored request is pending");
-    assert!(store.tx().replace_authorization_request(&approved).unwrap());
+    let approval = Approval {
+        granted_scopes: owned_scopes(granted_scopes),
+        patient: None,
+    };
+    let now = Utc::now();
+    let requester_name = requester_name.map(str::to_owned);
+    let landed = match request {
+        AuthorizationRequest::Code(read) => {
+            let approved = read.approve(approval, now).expect("pending");
+            tx.replace_code_request(&read, &approved)
+        }
+        AuthorizationRequest::Device(read) => {
+            let approved = read
+                .approve(approval, requester_name, now)
+                .expect("pending");
+            tx.replace_device_request(&read, &approved)
+        }
+        AuthorizationRequest::Pairing(read) => {
+            let approval = PairingApproval {
+                granted_scopes: approval.granted_scopes,
+            };
+            let approved = read
+                .approve(approval, requester_name, now)
+                .expect("pending");
+            tx.replace_pairing_request(&read, &approved)
+        }
+    };
+    assert!(landed.unwrap());
 }
 
-/// What the code request fixtures carry: the `https://example.com/cb`
+/// How the code request fixtures start: `id` from `client_id`, asking for
+/// `requested_scopes`, live for five minutes, with the `https://example.com/cb`
 /// redirect, a PKCE challenge, the client `state`, and browser session
-/// [`FIXTURE_SID`]; no launch, past its limited page, and not decidable in
-/// the requesting browser.
-pub(crate) fn fixture_code() -> CodeRequest {
-    CodeRequest {
+/// [`FIXTURE_SID`]; no launch, pending (not on its limited page), and not
+/// decidable in the requesting browser.
+pub(crate) fn fixture_code_args(
+    id: &str,
+    client_id: &str,
+    requested_scopes: Vec<String>,
+) -> NewCodeRequestArgs {
+    NewCodeRequestArgs {
+        id: id.to_owned(),
+        client_id: client_id.to_owned(),
+        requested_scopes,
+        ttl: Duration::minutes(5),
         redirect_uri: Url::parse("https://example.com/cb").unwrap(),
         code_challenge: "c".repeat(43),
         client_state: "state".to_owned(),
@@ -189,23 +223,26 @@ pub(crate) fn fixture_code() -> CodeRequest {
         launch_bound_patient: None,
         pre_approved_scopes: Vec::new(),
         decidable_in_requesting_browser: false,
-        session_shortfall_acknowledged: true,
+        awaits_limited_page: false,
     }
 }
 
 /// A code request fixture from client `client` asking for `read`, carrying
-/// [`fixture_code`], expiring at `expires_at`, moved to `status`.
+/// [`fixture_code_args`], expiring at `expires_at`, moved to `status` (see
+/// [`code_with_status`]).
 pub(crate) fn code_request(
     id: &str,
     status: RequestStatus,
     expires_at: DateTime<Utc>,
-) -> AuthorizationRequest {
-    with_status(
-        pending_request(
-            id,
-            &["read"],
-            expires_at,
-            RequestKind::AuthorizationCode(fixture_code()),
+) -> CodeRequest {
+    let now = Utc::now();
+    code_with_status(
+        CodeRequest::new(
+            NewCodeRequestArgs {
+                ttl: expires_at - now,
+                ..fixture_code_args(id, "client", owned_scopes(&["read"]))
+            },
+            now,
         ),
         status,
     )
@@ -374,21 +411,5 @@ impl RevocationCheck for NothingRevoked {
         _subject: &str,
     ) -> Result<bool, String> {
         Ok(false)
-    }
-}
-
-/// Approve `request` at `now` with `approval` through its own kind's
-/// transition, naming its device or browser `requester_name` (`None` keeps
-/// its own; a code request has none).
-fn approve_as_its_kind(
-    request: &AuthorizationRequest,
-    approval: Approval,
-    requester_name: Option<String>,
-    now: DateTime<Utc>,
-) -> Result<RequestTransition, TransitionRefused> {
-    match request.kind() {
-        RequestKind::AuthorizationCode(_) => request.approve_code(approval, now),
-        RequestKind::DeviceCode(_) => request.approve_device(approval, requester_name, now),
-        RequestKind::BrowserPairing(_) => request.approve_pairing(approval, requester_name, now),
     }
 }

@@ -15,7 +15,7 @@ use diesel::sqlite::SqliteConnection;
 use super::authorization_code::authorization_code_grants;
 use super::device::device_grants;
 use crate::db::shared::{JsonStrings, UrlText};
-use crate::domain::authorization_request::GrantType;
+use crate::domain::authorization_request::FlowType;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
 
@@ -46,7 +46,7 @@ struct GrantViewRow {
     granted_at: DateTime<Utc>,
     last_used_at: Option<DateTime<Utc>>,
     patient: Option<String>,
-    grant_type: GrantType,
+    grant_type: FlowType,
     redirect_uri: Option<UrlText>,
     device_name: Option<String>,
 }
@@ -66,7 +66,7 @@ impl TryFrom<GrantViewRow> for Grant {
             )
         };
         match row.grant_type {
-            GrantType::AuthorizationCode => {
+            FlowType::AuthorizationCode => {
                 let redirect_uri = row.redirect_uri.ok_or_else(make_missing_payload_error)?.0;
                 Ok(Grant::AuthorizationCode(AuthorizationCodeGrant {
                     id: row.id,
@@ -78,7 +78,7 @@ impl TryFrom<GrantViewRow> for Grant {
                     redirect_uri,
                 }))
             }
-            GrantType::DeviceCode => {
+            FlowType::DeviceCode => {
                 let device_name = row.device_name.ok_or_else(make_missing_payload_error)?;
                 Ok(Grant::DeviceCode(DeviceGrant {
                     id: row.id,
@@ -92,7 +92,7 @@ impl TryFrom<GrantViewRow> for Grant {
             }
             // The view unions the two grant tables only, and a browser
             // pairing records no grant, so no row carries this tag.
-            GrantType::BrowserPairing => Err(AuthorizationServerError::infrastructure(
+            FlowType::BrowserPairing => Err(AuthorizationServerError::infrastructure(
                 "grants view row tagged as a browser pairing, which records no grant",
                 &row.id,
             )),

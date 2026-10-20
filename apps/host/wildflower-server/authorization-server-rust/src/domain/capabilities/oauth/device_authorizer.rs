@@ -12,10 +12,8 @@ use url::Url;
 use crate::crypto_util::oauth_user_code::generate_oauth_user_code;
 use crate::crypto_util::random_token::generate_authorization_code;
 use crate::domain::authority::AuthenticatedClient;
-use crate::domain::authorization_request::{
-    AuthorizationRequest, DeviceRequest, NewAuthorizationRequest, RequestKind,
-    DEVICE_CODE_POLL_INTERVAL,
-};
+use crate::domain::authorization_request::device::{DeviceRequest, NewDeviceRequestArgs};
+use crate::domain::authorization_request::DEVICE_CODE_POLL_INTERVAL;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::grant_store::AuthorizationRequestsTx;
 use crate::domain::GrantStore;
@@ -114,17 +112,14 @@ impl<S: GrantStore> DeviceAuthorizer<S> {
             .write(|tx| -> Result<_, DeviceAuthorizationError> {
                 let user_code = generate_unique_user_code(tx)?
                     .ok_or(DeviceAuthorizationError::UserCodeExhausted)?;
-                tx.insert_authorization_request(&AuthorizationRequest::new(
-                    NewAuthorizationRequest {
+                tx.insert_device_request(&DeviceRequest::new(
+                    NewDeviceRequestArgs {
                         id: device_code.clone(),
                         client_id: authenticated_client.client_id().to_owned(),
                         requested_scopes,
                         ttl: DEVICE_AUTHORIZATION_TTL,
-                        kind: RequestKind::DeviceCode(DeviceRequest {
-                            user_code: user_code.clone(),
-                            device_name,
-                            last_polled_at: None,
-                        }),
+                        user_code: user_code.clone(),
+                        device_name,
                     },
                     now,
                 ))?;
@@ -158,7 +153,7 @@ pub(super) fn generate_unique_user_code(
             let mut rng = rand::rng();
             generate_oauth_user_code(&mut rng)
         };
-        if tx.authorization_request_by_user_code(&candidate)?.is_none() {
+        if tx.polled_request_by_user_code(&candidate)?.is_none() {
             return Ok(Some(candidate));
         }
     }
@@ -171,6 +166,7 @@ mod tests {
 
     use super::*;
 
+    use crate::domain::authorization_request::polled::PolledRequest;
     use crate::domain::test_fake::{
         authenticated_public_client, client, owned_scopes, FakeGrantStore, RecordingOwnerApproval,
     };
@@ -213,25 +209,22 @@ mod tests {
         let parked_request = authorizer
             .store
             .tx()
-            .authorization_request_by_user_code(&device_codes.user_code)
+            .polled_request_by_user_code(&device_codes.user_code)
             .unwrap()
             .expect("parked_request under the user code");
         assert_eq!(
             parked_request,
-            AuthorizationRequest::new(
-                NewAuthorizationRequest {
+            PolledRequest::Device(DeviceRequest::new(
+                NewDeviceRequestArgs {
                     id: device_codes.device_code,
                     client_id: "app".to_owned(),
                     requested_scopes: owned_scopes(&["patient/Patient.r", "openid"]),
                     ttl: DEVICE_AUTHORIZATION_TTL,
-                    kind: RequestKind::DeviceCode(DeviceRequest {
-                        user_code: device_codes.user_code,
-                        device_name: Some("Kitchen iPad".to_owned()),
-                        last_polled_at: None,
-                    }),
+                    user_code: device_codes.user_code,
+                    device_name: Some("Kitchen iPad".to_owned()),
                 },
                 now,
-            )
+            ))
         );
         assert_eq!(owner_approval.count(), 1);
     }

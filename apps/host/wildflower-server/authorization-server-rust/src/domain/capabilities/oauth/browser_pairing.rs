@@ -21,13 +21,12 @@ use chrono::{DateTime, Duration, Utc};
 use super::device_authorizer::{generate_unique_user_code, DEVICE_AUTHORIZATION_TTL};
 use crate::crypto_util::random_token::generate_authorization_code;
 use crate::domain::authority::{ClaimedBrowserPairing, TokenEntitlement};
-use crate::domain::authorization_request::{
-    AuthorizationRequest, NewAuthorizationRequest, PairingRequest, RequestKind, RequestStatus,
-    DEVICE_CODE_POLL_INTERVAL,
-};
+use crate::domain::authorization_request::pairing::{NewPairingRequestArgs, PairingRequest};
+use crate::domain::authorization_request::polled::{Polled as _, PolledState};
+use crate::domain::authorization_request::DEVICE_CODE_POLL_INTERVAL;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::writers::{AccessTokenMinter, BrowserSessionWriter};
-use crate::domain::grant_store::{write_transition, AuthorizationRequestsTx, ClientsTx};
+use crate::domain::grant_store::{AuthorizationRequestsTx, ClientsTx};
 use crate::domain::sign_in_redirect::{SignInDestinations, SignInRedirect};
 use crate::domain::token::TokenIssuanceError;
 use crate::domain::{GrantStore, GrantTx};
@@ -183,17 +182,14 @@ impl<S: GrantStore> BrowserPairing<S> {
             }
             let user_code = generate_unique_user_code(tx)?
                 .ok_or(BrowserPairingStartError::UserCodeExhausted)?;
-            tx.insert_authorization_request(&AuthorizationRequest::new(
-                NewAuthorizationRequest {
+            tx.insert_pairing_request(&PairingRequest::new(
+                NewPairingRequestArgs {
                     id: pairing_code.clone(),
                     client_id: BROWSER_SESSION_CLIENT_ID.to_owned(),
                     requested_scopes: pairing_requested_scopes(),
                     ttl: DEVICE_AUTHORIZATION_TTL,
-                    kind: RequestKind::BrowserPairing(PairingRequest {
-                        user_code: user_code.clone(),
-                        browser_name: browser_name.clone(),
-                        last_polled_at: None,
-                    }),
+                    user_code: user_code.clone(),
+                    browser_name: browser_name.clone(),
                 },
                 now,
             ))?;
@@ -228,20 +224,17 @@ impl<S: GrantStore> BrowserPairing<S> {
         now: DateTime<Utc>,
     ) -> Result<BrowserPairingStatus, BrowserPairingPollError> {
         let polled = self.store.write(|tx| {
-            let Some(request) = tx
-                .authorization_request_by_id(pairing_code)?
-                .filter(|request| request.pairing().is_some())
-            else {
+            let Some(request) = tx.pairing_request_by_id(pairing_code)? else {
                 return Err(BrowserPairingPollError::NotFound);
             };
             if request.is_expired_at(now) {
                 return Ok(PolledPairing::Answered(BrowserPairingStatus::Expired));
             }
-            match request.status() {
-                RequestStatus::Pending => record_poll(tx, &request, browser_name, now),
-                RequestStatus::Approved => self.claim_paired_session(tx, &request, now),
-                RequestStatus::Denied => Ok(PolledPairing::Answered(BrowserPairingStatus::Denied)),
-                RequestStatus::Claimed => {
+            match request.state {
+                PolledState::Pending => record_poll(tx, &request, browser_name, now),
+                PolledState::Approved(_) => self.claim_paired_session(tx, &request, now),
+                PolledState::Denied => Ok(PolledPairing::Answered(BrowserPairingStatus::Denied)),
+                PolledState::Claimed(_) => {
                     Ok(PolledPairing::Answered(BrowserPairingStatus::Expired))
                 }
             }
@@ -265,7 +258,7 @@ impl<S: GrantStore> BrowserPairing<S> {
     fn claim_paired_session(
         &self,
         tx: &mut impl GrantTx,
-        pairing_request: &AuthorizationRequest,
+        pairing_request: &PairingRequest,
         now: DateTime<Utc>,
     ) -> Result<PolledPairing, BrowserPairingPollError> {
         let Some(claimed_pairing) =
@@ -301,24 +294,20 @@ enum PolledPairing {
 /// has).
 fn record_poll(
     tx: &mut impl AuthorizationRequestsTx,
-    request: &AuthorizationRequest,
+    request: &PairingRequest,
     browser_name: &str,
     now: DateTime<Utc>,
 ) -> Result<PolledPairing, BrowserPairingPollError> {
-    let Some(pairing_request) = request.pairing() else {
-        return Err(BrowserPairingPollError::NotFound);
-    };
-    if pairing_request
-        .last_polled_at
-        .is_some_and(|last_polled_at| now - last_polled_at < DEVICE_CODE_POLL_INTERVAL)
-    {
+    if request.is_polled_too_soon_at(now) {
         return Ok(PolledPairing::Answered(BrowserPairingStatus::SlowDown));
     }
     let browser_name = Some(browser_name.trim())
         .filter(|browser_name| !browser_name.is_empty())
-        .unwrap_or(&pairing_request.browser_name);
-    write_transition(tx, request.stamp_pairing_poll(browser_name, now))?;
-    if pairing_request.browser_name == browser_name {
+        .unwrap_or(&request.browser_name);
+    if let Ok(stamped) = request.stamp_poll(browser_name, now) {
+        tx.replace_pairing_request(request, &stamped)?;
+    }
+    if request.browser_name == browser_name {
         Ok(PolledPairing::Answered(BrowserPairingStatus::Pending))
     } else {
         Ok(PolledPairing::Renamed)
@@ -346,6 +335,8 @@ mod tests {
     use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 
     use super::*;
+    use crate::domain::authorization_request::polled::PolledRequest;
+    use crate::domain::authorization_request::RequestStatus;
     use crate::domain::browser_session::BrowserSessionKind;
     use crate::domain::test_fake::{
         approve_stored, client, seed_active_signing_key, FakeGrantStore, RecordingOwnerApproval,
@@ -412,25 +403,22 @@ mod tests {
         let parked = pairing
             .store
             .tx()
-            .authorization_request_by_user_code(&started.user_code)
+            .polled_request_by_user_code(&started.user_code)
             .unwrap()
             .expect("parked under its user code");
         assert_eq!(
             parked,
-            AuthorizationRequest::new(
-                NewAuthorizationRequest {
+            PolledRequest::Pairing(PairingRequest::new(
+                NewPairingRequestArgs {
                     id: started.pairing_code.clone(),
                     client_id: BROWSER_SESSION_CLIENT_ID.to_owned(),
                     requested_scopes: crate::owner_scopes(),
                     ttl: DEVICE_AUTHORIZATION_TTL,
-                    kind: RequestKind::BrowserPairing(PairingRequest {
-                        user_code: started.user_code.clone(),
-                        browser_name: "Firefox on Linux".to_owned(),
-                        last_polled_at: None,
-                    }),
+                    user_code: started.user_code.clone(),
+                    browser_name: "Firefox on Linux".to_owned(),
                 },
                 now,
-            )
+            ))
         );
         assert_eq!(owner_approval.count(), 1);
     }
@@ -488,11 +476,9 @@ mod tests {
             pairing
                 .store
                 .tx()
-                .authorization_request_by_id(&started.pairing_code)
+                .pairing_request_by_id(&started.pairing_code)
                 .unwrap()
-                .unwrap()
-                .pairing()
-                .map(|pairing_request| pairing_request.browser_name.clone())
+                .map(|pairing_request| pairing_request.browser_name)
         };
         assert!(matches!(
             poll("Firefox on Linux", now),
@@ -589,13 +575,13 @@ mod tests {
         let read = pairing
             .store
             .tx()
-            .authorization_request_by_id(&denied.pairing_code)
+            .pairing_request_by_id(&denied.pairing_code)
             .unwrap()
             .expect("parked");
         assert!(pairing
             .store
             .tx()
-            .replace_authorization_request(&read.deny(Utc::now()).unwrap())
+            .replace_pairing_request(&read, &read.deny(Utc::now()).unwrap())
             .unwrap());
         assert!(matches!(
             pairing.poll(&denied.pairing_code, "", Utc::now()).unwrap(),
@@ -624,7 +610,7 @@ mod tests {
         pairing
             .store
             .tx()
-            .insert_authorization_request(&crate::domain::test_fake::device_request(
+            .insert_device_request(&crate::domain::test_fake::device_request(
                 "a-device-code",
                 "DEVI-CE00",
                 RequestStatus::Approved,

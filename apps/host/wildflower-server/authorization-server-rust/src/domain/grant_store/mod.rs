@@ -39,7 +39,7 @@ mod signing_keys;
 mod store;
 
 pub use authorization_codes::AuthorizationCodesTx;
-pub use authorization_requests::{write_transition, AuthorizationRequestsTx};
+pub use authorization_requests::AuthorizationRequestsTx;
 pub use browser_sessions::BrowserSessionsTx;
 pub use clients::ClientsTx;
 pub use grants::GrantsTx;

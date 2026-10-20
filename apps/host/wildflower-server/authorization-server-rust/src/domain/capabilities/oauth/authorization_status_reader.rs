@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 use url::Url;
 use wildflowerhealthio_scopes::{Grant, Scope};
 
-use crate::domain::authorization_request::{CodeRequest, RequestStatus};
+use crate::domain::authorization_request::code::{CodeRequest, CodeRequestState};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::access::consents::{
     consent_decider_scopes, consent_reader_scopes,
@@ -95,7 +95,8 @@ impl<S: GrantStore> AuthorizationStatusReader<S> {
 
     /// The current status of the code request `id`, for the browser holding
     /// the browser session `poller` (`None` when it holds none). A pending
-    /// request past its expiry reads as expired, and so does a claimed one.
+    /// request past its expiry reads as expired; one still on its browser's
+    /// limited page reads as pending, as it is undecided.
     ///
     /// A request `poller` may not read (see [`PollingBrowserSession`]), a
     /// device request or a browser pairing (each has its own poll), and any
@@ -114,34 +115,32 @@ impl<S: GrantStore> AuthorizationStatusReader<S> {
     ) -> Result<AuthorizationStatusView, AuthorizationStatusError> {
         self.store.read(|tx| {
             let request = tx
-                .authorization_request_by_id(id)?
-                .filter(|request| {
-                    request.code().is_some_and(|code_request| {
-                        poller.is_some_and(|poller| poller.can_read(code_request))
-                    })
-                })
+                .code_request_by_id(id)?
+                .filter(|request| poller.is_some_and(|poller| poller.can_read(request)))
                 .ok_or_else(|| AuthorizationStatusError::NotFound { id: id.to_owned() })?;
-            let Some(code_request) = request.code() else {
-                return Err(AuthorizationStatusError::NotFound { id: id.to_owned() });
-            };
-            Ok(match request.status() {
-                RequestStatus::Pending if request.is_expired_at(now) => {
+            Ok(match request.state {
+                // A request still on its browser's limited page is as
+                // undecided as one waiting for the Owner.
+                CodeRequestState::AwaitingLimitedPage | CodeRequestState::Pending
+                    if request.is_expired_at(now) =>
+                {
                     AuthorizationStatusView::Expired
                 }
-                RequestStatus::Pending => AuthorizationStatusView::Pending,
-                RequestStatus::Claimed => AuthorizationStatusView::Expired,
-                RequestStatus::Denied => AuthorizationStatusView::Denied {
-                    redirect_uri: code_request.redirect_uri.clone(),
-                    client_state: code_request.client_state.clone(),
+                CodeRequestState::AwaitingLimitedPage | CodeRequestState::Pending => {
+                    AuthorizationStatusView::Pending
+                }
+                CodeRequestState::Denied => AuthorizationStatusView::Denied {
+                    redirect_uri: request.redirect_uri,
+                    client_state: request.client_state,
                 },
-                RequestStatus::Approved => {
+                CodeRequestState::Approved(_) => {
                     let code = tx
                         .authorization_code_by_request_id(id)?
                         .ok_or(AuthorizationStatusError::ApprovedWithoutCode)?;
                     AuthorizationStatusView::Approved {
-                        redirect_uri: code_request.redirect_uri.clone(),
+                        redirect_uri: request.redirect_uri,
                         code: code.code,
-                        client_state: code_request.client_state.clone(),
+                        client_state: request.client_state,
                     }
                 }
             })
@@ -157,6 +156,7 @@ mod tests {
 
     use super::*;
     use crate::domain::authorization_code::{AuthorizationCode, AUTHORIZATION_CODE_TTL};
+    use crate::domain::authorization_request::RequestStatus;
     use crate::domain::test_fake::{code_request, device_request, FakeGrantStore, FIXTURE_SID};
 
     /// A browser session `sid` holding `scopes`.
@@ -180,7 +180,7 @@ mod tests {
         let now = Utc::now();
         store
             .tx()
-            .insert_authorization_request(&code_request(
+            .insert_code_request(&code_request(
                 "pending",
                 RequestStatus::Pending,
                 now + Duration::minutes(5),
@@ -188,7 +188,7 @@ mod tests {
             .unwrap();
         store
             .tx()
-            .insert_authorization_request(&code_request(
+            .insert_code_request(&code_request(
                 "stale",
                 RequestStatus::Pending,
                 now - Duration::minutes(1),
@@ -196,7 +196,7 @@ mod tests {
             .unwrap();
         store
             .tx()
-            .insert_authorization_request(&code_request(
+            .insert_code_request(&code_request(
                 "denied",
                 RequestStatus::Denied,
                 now + Duration::minutes(5),
@@ -204,7 +204,7 @@ mod tests {
             .unwrap();
         store
             .tx()
-            .insert_authorization_request(&code_request(
+            .insert_code_request(&code_request(
                 "approved",
                 RequestStatus::Approved,
                 now + Duration::minutes(5),
@@ -265,7 +265,7 @@ mod tests {
         let now = Utc::now();
         store
             .tx()
-            .insert_authorization_request(&code_request(
+            .insert_code_request(&code_request(
                 "parked",
                 RequestStatus::Pending,
                 now + Duration::minutes(5),
@@ -273,7 +273,7 @@ mod tests {
             .unwrap();
         store
             .tx()
-            .insert_authorization_request(&device_request("device", "CODE", RequestStatus::Pending))
+            .insert_device_request(&device_request("device", "CODE", RequestStatus::Pending))
             .unwrap();
         let reader = AuthorizationStatusReader::new(store);
         let request_reader =
@@ -312,6 +312,39 @@ mod tests {
                 "{id} polled from {poller:?}"
             );
         }
+    }
+
+    /// A request still on its browser's limited page reads as pending to the
+    /// wait page, as it is undecided; past its expiry, as expired.
+    #[test]
+    fn a_request_on_its_limited_page_reads_as_pending() {
+        let store = FakeGrantStore::default();
+        let now = Utc::now();
+        store
+            .tx()
+            .insert_code_request(&code_request(
+                "on-limited-page",
+                RequestStatus::AwaitingLimitedPage,
+                now + Duration::minutes(5),
+            ))
+            .unwrap();
+        let reader = AuthorizationStatusReader::new(store);
+        assert_eq!(
+            reader
+                .status("on-limited-page", Some(&requester()), now)
+                .unwrap(),
+            AuthorizationStatusView::Pending
+        );
+        assert_eq!(
+            reader
+                .status(
+                    "on-limited-page",
+                    Some(&requester()),
+                    now + Duration::minutes(5)
+                )
+                .unwrap(),
+            AuthorizationStatusView::Expired
+        );
     }
 
     /// The scopes that read any code-flow request's status are the consent

@@ -207,9 +207,12 @@ which is no OAuth grant.
 - **Table:** `authorizationRequests`
 - **Discriminator:** `grantType: 'authorization_code' | 'device_code' | 'browser_pairing'`
   (the two OAuth flows match the OAuth `grant_type` request parameter).
-- **Status field:** `'pending' | 'approved' | 'denied' | 'claimed'`. Expiry
-  is read from `expiresAt`, never stored as a status; `claimed` is an approved
-  device request or pairing whose poll redeemed the approval.
+- **Status field:**
+  `'awaiting_limited_page' | 'pending' | 'approved' | 'denied' | 'claimed'`.
+  Expiry is read from `expiresAt`, never stored as a status;
+  `awaiting_limited_page` is a code-flow request waiting on its browser's
+  [limited page](#limited-page); `claimed` is an approved device request or
+  pairing whose poll redeemed the approval.
 - **TTL:** 5 minutes.
 - **Identifier:** `id` (UUID — for code flow, the request id; for
   device flow, the `device_code`; for a pairing, its pairing code).
@@ -224,12 +227,12 @@ started by a SMART App Launch also carries the consumed `launch` and the
 patient its [LaunchContext](#launchcontext) binds (`launch_bound_patient`).
 Device-flow rows leave those columns null.
 
-`session_shortfall_acknowledged` is never null. A code-flow row whose browser
-session falls short of what it asks for parks with it unset until its browser
-goes on from the [limited page](#limited-page), unless that session went on
-for the same app before (a row in `session_shortfall_acknowledgements`).
-Every other row, device-flow rows and browser pairings included, has it
-set.
+A code-flow row whose browser session falls short of what it asks for parks
+as `awaiting_limited_page` until its browser goes on from the
+[limited page](#limited-page), which makes it `pending`, unless that session
+went on for the same app before (a row in
+`session_shortfall_acknowledgements`). Only `pending` requests are asked of
+the Owner.
 
 ### LaunchContext
 
@@ -546,7 +549,7 @@ the session holds none of, and those it narrows to the part the session
 holds, each named as the request spells it. `/oauth/authorize` works it out
 once the request is validated and its launch consumed, before the
 [fast path](#grant), the start limit and the Owner. When it isn't empty, it
-parks the request with `session_shortfall_acknowledged` unset and sends the
+parks the request as `awaiting_limited_page` and sends the
 browser here, unless that browser session has pressed Continue for the same
 app before. A same-device session, holding `OWNER_SCOPES`, falls short of nothing
 and never sees the page.
@@ -557,8 +560,8 @@ allowed to read and search Observations, which Strength expects. Strength may
 not be able to do everything." The scopes are in the words the scope picker
 uses (`scopes-react`'s `fluentScope`), and the message sits above two buttons:
 
-- **Continue** posts `/oauth/authorize/{id}/continue`, which acknowledges the
-  shortfall, gives the request a fresh five minutes, and takes the branch the
+- **Continue** posts `/oauth/authorize/{id}/continue`, which makes the
+  request `pending`, gives it a fresh five minutes, and takes the branch the
   start would have taken. A standing grant
   that still covers the request issues a code, narrowed to the session.
   Otherwise the request is raised for the Owner, and the browser goes to the

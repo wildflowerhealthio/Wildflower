@@ -6,7 +6,7 @@ use axum::routing::{get, MethodRouter};
 use axum::Json;
 use serde::Serialize;
 
-use crate::domain::authorization_request::RequestKind;
+use crate::domain::authorization_request::polled::PolledRequest;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::{DeviceConsentView, Scoped};
 use crate::http::state::AuthorizationServerState;
@@ -64,16 +64,15 @@ async fn handle_get_device_consent(
         approvable_scopes,
         missing_approval_scopes,
     } = consents.device_consent(&user_code, Utc::now())?;
-    let (kind, device_name) = match request.kind() {
-        RequestKind::BrowserPairing(pairing_request) => (
+    let (kind, device_name) = match &request {
+        PolledRequest::Pairing(pairing_request) => (
             DeviceConsentKind::Browser,
             Some(pairing_request.browser_name.clone()),
         ),
-        RequestKind::DeviceCode(device_request) => (
+        PolledRequest::Device(device_request) => (
             DeviceConsentKind::Device,
             device_request.device_name.clone(),
         ),
-        RequestKind::AuthorizationCode(_) => (DeviceConsentKind::Device, None),
     };
     Ok(Json(DeviceConsent {
         kind,

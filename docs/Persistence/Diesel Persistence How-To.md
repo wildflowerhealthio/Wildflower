@@ -76,7 +76,7 @@ The same `sql_type = Text` newtype shape extends to any typed inner —
 - `text_enum_column!(Enum)` — binds a strum-stringified domain enum straight
   through (the enum carries the `AsExpression`/`FromSqlRow` derives on its
   `domain` definition; the macro adds only `FromSql`/`ToSql`). Used for
-  `GrantType`, `RequestStatus`.
+  `FlowType`, `RequestStatus`.
 
 `UrlText(Url)` (also in `db/shared.rs`) is the hand-written equivalent for a
 `Url` inner. As with `JsonText`, reads re-parse, so an out-of-domain stored

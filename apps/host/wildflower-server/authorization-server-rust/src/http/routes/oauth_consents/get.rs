@@ -98,18 +98,17 @@ async fn handle_get_oauth_consent(
         presented_client_change,
         missing_approval_scopes,
     } = consents.oauth_consent(&id, Utc::now())?;
-    let request = pending_request.request();
-    let code_request = pending_request.code();
     Ok(Json(OAuthConsent {
         id: id.clone(),
-        client_id: request.client_id().to_owned(),
-        client_name,
-        scopes: request.requested_scopes().to_vec(),
-        redirect_uri: code_request.redirect_uri.clone(),
-        pre_approved_scopes: code_request.pre_approved_scopes.clone(),
-        patient: request
+        patient: pending_request
+            .state
             .approval()
             .and_then(|approval| approval.patient.clone()),
+        client_id: pending_request.client_id,
+        client_name,
+        scopes: pending_request.requested_scopes,
+        redirect_uri: pending_request.redirect_uri,
+        pre_approved_scopes: pending_request.pre_approved_scopes,
         registration: presented_client_change.into(),
         missing_approval_scopes,
     }))

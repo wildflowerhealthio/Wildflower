@@ -147,12 +147,13 @@ async fn device_consent_threads_patient_onto_request() {
 
     // The posted patient is persisted onto the now-approved request.
     let request = store_handle(&db)
-        .read(|tx| tx.authorization_request_by_id("dev-patient"))
+        .read(|tx| tx.device_request_by_id("dev-patient"))
         .expect("query request")
         .expect("request present");
-    assert_eq!(request.status(), RequestStatus::Approved);
+    assert_eq!(request.state.status(), RequestStatus::Approved);
     assert_eq!(
         request
+            .state
             .approval()
             .and_then(|approval| approval.patient.as_deref()),
         Some("Patient/123")
@@ -201,10 +202,14 @@ async fn device_consent_allows_expansion_beyond_requested() {
 
     // The expansion is persisted onto the grant — `write` was never requested.
     let request = store_handle(&db)
-        .read(|tx| tx.authorization_request_by_id("dev-expand"))
+        .read(|tx| tx.device_request_by_id("dev-expand"))
         .expect("query request")
         .expect("request present");
-    let granted = &request.approval().expect("granted scopes").granted_scopes;
+    let granted = &request
+        .state
+        .approval()
+        .expect("granted scopes")
+        .granted_scopes;
     assert!(granted.contains(&"read".to_string()));
     assert!(granted.contains(&"write".to_string()));
 }
@@ -347,15 +352,10 @@ async fn device_consent_approver_can_adjust_device_name() {
     assert_eq!(res.status(), StatusCode::OK);
 
     let request = store_handle(&db)
-        .read(|tx| tx.authorization_request_by_id("dev-rename"))
+        .read(|tx| tx.device_request_by_id("dev-rename"))
         .expect("query request")
         .expect("request present");
-    assert_eq!(
-        request
-            .device()
-            .and_then(|device_request| device_request.device_name.as_deref()),
-        Some("Reception iPad")
-    );
+    assert_eq!(request.device_name.as_deref(), Some("Reception iPad"));
 }
 
 /// The headline behavior of this ticket: approving a device-code consent mints a
