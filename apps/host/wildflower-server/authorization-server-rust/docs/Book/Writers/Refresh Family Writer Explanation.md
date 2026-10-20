@@ -1,63 +1,37 @@
 # Refresh Family Writer
 
+<!-- markdownlint-disable-file link-fragments -- the item-… anchors are added when the book is built. -->
+
 {{#covers apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/refresh_family_writer.rs}}
 
-A refresh token is a standing credential: with it, an app gets fresh access tokens long after the person who approved it has left. Refresh tokens come in [families](<../Domain/Refresh Token Explanation.md#refreshtokenfamily>). A family starts with one token when a grant is redeemed, and each refresh consumes the token presented and adds its successor, so one token in a family is live at a time. The family holds what every token in it is good for: the app, the scopes, the patient, the deadline.
+A refresh token is a standing credential: with it, an app gets fresh access tokens long after the person who approved it has left. Refresh tokens come in [families](<../Domain/Refresh Token Explanation.md#item-RefreshTokenFamily>). A family starts with one token when a grant is redeemed, and each refresh consumes the token presented and adds its successor, so one token in a family is live at a time. The family holds what every token in it is good for: the app, the scopes, the patient, the deadline.
 
-The refresh-family writer starts families and rotates tokens. **Both take a redemption proof**, so a refresh token is only ever minted for scopes a consumed code or a claimed device request recorded, and only ever rotated within a family that validated for the app presenting it.
+The refresh-family writer starts families and rotates tokens. **Both take a [redemption proof](<../Authority/Redemption Explanation.md>)**: a [`GrantRedemption`](<../Authority/Redemption Explanation.md#item-GrantRedemption>) to start a family, so a refresh token is only ever minted for scopes a consumed code or a claimed device request recorded; a [`ValidatedRefreshToken`](<../Authority/Redemption Explanation.md#item-ValidatedRefreshToken>) to rotate one, so a token is only ever rotated within a family that validated for the app presenting it.
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/refresh_family_writer.rs RefreshFamilyWriter}}
+A rotation is also a use. **An app refreshing is its browser session in use**, so the session's `last_seen_at` moves, and **a device refreshing is its pairing in use**, so the [device grant](<../Domain/Grant Explanation.md#item-DeviceGrant>) that earned the family is stamped used. A code grant isn't stamped on a refresh: it is used when it stands in for the Owner at `/oauth/authorize`, which the request approver stamps.
 
-{{#covered apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/refresh_family_writer.rs RefreshFamilyWriter::within}}
+## `domain::capabilities::writers::refresh_family_writer`
 
-`within` builds the writer over the token exchange's open write scope.
+The rotation tests validate their tokens with the [refresh-family fixture](<Test Fixtures Explanation.md#refresh-family-writer>), and start from a redeemed code built by the test fake's {{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/test_fake/fixtures.rs redeemed_code}}.
 
-## `only_offline_access_earns_a_refresh_token`
+### `RefreshFamilyWriter`
 
-**A family comes only with `offline_access`.** The token exchange asks the redemption's [`earns_refresh_token`](<../Authority/Redemption Explanation.md#earns_refresh_token>) before it starts one; the writer itself doesn't ask.
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/refresh_family_writer.rs RefreshFamilyWriter}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/refresh_family_writer.rs tests::only_offline_access_earns_a_refresh_token}}
+#### `within`
 
-A code redeemed for `openid` alone earns none; one redeemed for `openid offline_access` does.
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/refresh_family_writer.rs RefreshFamilyWriter::within}}
 
-## `start_family`
+#### `start_family`
 
-A redeemed code or a claimed device request ([`GrantRedemption`](<../Authority/Redemption Explanation.md#grantredemption>)) starts a new family with its first token, and the token's plaintext goes back to the app; the store keeps only its hash. **The family records the redemption verbatim**: its app, scopes and patient, the standing grant behind it, a hash of the code it consumed, so a replay of that code can expire the family, and the browser session the code was issued under, so revoking that browser ends it. A device-flow family has neither code nor session. The family's deadline is [`REFRESH_TOKEN_FAMILY_TTL`](<../Domain/Refresh Token Explanation.md#refresh_token_family_ttl>) from now, and rotation never extends it.
+**A family comes only with `offline_access`**: the token exchange asks the redemption's [`is_refresh_token_earned`](<../Authority/Redemption Explanation.md#item-GrantRedemption--is_refresh_token_earned>) first, and the writer itself doesn't ask. The family's deadline is [`REFRESH_TOKEN_FAMILY_TTL`](<../Domain/Refresh Token Explanation.md#item-REFRESH_TOKEN_FAMILY_TTL>) from now, and rotation never extends it.
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/refresh_family_writer.rs RefreshFamilyWriter::start_family}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/refresh_family_writer.rs RefreshFamilyWriter::start_family tests="tests::only_offline_access_earns_a_refresh_token tests::start_family_records_the_redemption"}}
 
-### What it looks like
+#### `rotate`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/refresh_family_writer.rs tests::start_family_records_the_redemption}}
+The consume is the single-use claim ([`consume_refresh_token`](<../Domain/Refresh Token Explanation.md#item-consume_refresh_token>)).
 
-With a standing grant planted for the app, the returned plaintext resolves to an unconsumed first token whose family records the app, the scopes, the patient, the code's hash, the grant, and the deadline.
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/refresh_family_writer.rs RefreshFamilyWriter::rotate tests="tests::rotate_consumes_then_replay_expires_the_family tests::rotate_marks_the_family_s_browser_session_seen tests::rotate_stamps_the_device_grant_that_earned_the_family"}}
 
-Exercised end to end by [`offline_access_issues_rotating_refresh_token`](<../Integration Tests/Device Code Explanation.md#offline_access_issues_rotating_refresh_token>) and [`device_approval_mints_durable_grant_and_links_refresh_family`](<../Integration Tests/Device Code Explanation.md#device_approval_mints_durable_grant_and_links_refresh_family>).
-
-## Test fixtures
-
-`validated` validates a token for the app `client` through the real [`validate`](<../Authority/Redemption Explanation.md#validate>), with nothing revoked, as the token exchange's read scope would:
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/refresh_family_writer.rs tests::validated}}
-
-## `rotate`
-
-**The presented token is consumed, and only if that consume won is its successor added.** The consume ([`consume_refresh_token`](<../Domain/Refresh Token Explanation.md#consume_refresh_token>)) is the single-use claim.
-
-**A token presented after it was consumed is a replay.** Either the token leaked or the app is badly broken; either way the lineage can't be trusted, so the whole family is expired at `now` before the refusal, and the app must be authorized again. A token that vanished between validation and rotation is refused with nothing to expire. Both refusals are the inner `Err`, so the exchange's scope keeps the family's end.
-
-**An app refreshing is its browser session in use.** A family started under a browser session moves that session's `last_seen_at` to now.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/refresh_family_writer.rs RefreshFamilyWriter::rotate}}
-
-### What it looks like
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/refresh_family_writer.rs tests::rotate_consumes_then_replay_expires_the_family}}
-
-The first rotation returns a successor that resolves in the store. Rotating the same presented token again is `RefreshTokenReplayed`, and the successor's family now has its deadline at the replay's instant.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/refresh_family_writer.rs tests::rotate_marks_the_family_s_browser_session_seen}}
-
-Two families, one started under a browser session and one under none. Rotating the second leaves the session's `last_seen_at` where it was; rotating the first moves it to the rotation's instant.
-
-Exercised end to end by [`offline_access_issues_rotating_refresh_token`](<../Integration Tests/Device Code Explanation.md#offline_access_issues_rotating_refresh_token>) and [`token_exchange_with_basic_auth_redeems_refresh_token`](<../Integration Tests/Client Auth Explanation.md#token_exchange_with_basic_auth_redeems_refresh_token>).
+End to end, the [Device Code](<../Integration Tests/Device Code Explanation.md>) and [Client Auth](<../Integration Tests/Client Auth Explanation.md>) tests hold rotation at `/oauth/token`, and that a device approval's grant is linked to the family it earns.

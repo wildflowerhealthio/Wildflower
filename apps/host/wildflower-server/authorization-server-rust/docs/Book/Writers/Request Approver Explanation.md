@@ -1,95 +1,55 @@
 # Request Approver
 
+<!-- markdownlint-disable-file link-fragments -- the item-… anchors are added when the book is built. -->
+
 {{#covers apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs}}
 
-The request approver moves a pending [authorization request](<../Domain/Authorization Request Explanation.md>) to approved, through the request's own transition for its kind ([`approve_code`](<../Domain/Authorization Request Explanation.md#approve_code>), [`approve_device`](<../Domain/Authorization Request Explanation.md#approve_device>), [`approve_pairing`](<../Domain/Authorization Request Explanation.md#approve_pairing>)) written with the [guarded replace](<../Domain/Authorization Request Explanation.md#the-guarded-replace-first-decision-wins>). For the code flow it also issues the [authorization code](<../Domain/Authorization Code Explanation.md>) the app redeems at `/oauth/token`.
+The request approver moves a pending [authorization request](<../Domain/Authorization Request Explanation.md>) to approved, through the flow's own transition ([code](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--approve>), [device](<../Domain/Authorization Request/Polled Requests Explanation.md#item-DeviceRequest--approve>), [pairing](<../Domain/Authorization Request/Polled Requests Explanation.md#item-PairingRequest--approve>)) written with the [guarded replace](<../Domain/Authorization Request Explanation.md#transitions-and-the-guarded-replace>). For the code flow it also issues the [authorization code](<../Domain/Authorization Code Explanation.md>) the app redeems at `/oauth/token`.
 
-**The scopes a request records are exactly the proof's**, never a list the flow put together. A device request and a browser pairing are approved on a [`DelegatedScopes`](<../Authority/Delegated Scopes Explanation.md#delegatedscopes>): the Owner's ticks, clamped to what the approver may delegate. A code request may also be approved with no one at the prompt, on a standing grant that already covers it, so it takes either of two proofs. **A code carries the proof's scopes bounded by the browser session the request was made in.**
+**The scopes a request records are exactly the proof's**, never a list the flow put together. A device request and a browser pairing are approved on [delegated scopes](<../Authority/Delegated Scopes Explanation.md#item-DelegatedScopes>): the approver's ticks, clamped to what it may delegate. A code request may also be approved with no one at the prompt, on a [standing grant](<../Authority/Standing Grant Explanation.md#item-StandingGrantCoverage>) that already covers it, so it takes either of two proofs.
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs RequestApprover}}
+**A code is bound to the browser session the request was made in, not the approver's.** The Owner may approve from another browser, but revoking the browser the app runs in still ends what the code starts, and the code carries only what that browser holds ([`session_bounded_scopes`](<../Authority/Delegated Scopes Explanation.md#item-session_bounded_scopes>)).
 
-{{#covered apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs RequestApprover::within}}
+## `domain::capabilities::writers::request_approver`
 
-`within` builds the approver over the caller's open scope.
+The tests park requests and approve them with the [request-approver fixtures](<Test Fixtures Explanation.md#request-approver>).
 
-## `CodeAuthority`
+### `CodeAuthority`
 
-On whose authority a code request is approved. **Asking "who can issue a code with no human?" finds one answer, by name: `StandingGrant`.** The set is an enum rather than a trait so the list is closed and read in one place.
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs CodeAuthority}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs CodeAuthority}}
+#### `authorized_scopes`
 
-The Owner's approval authorizes the scopes it delegates; a standing grant authorizes the requested scopes it [covers](<../Authority/Standing Grant Explanation.md#standinggrantcoverage>).
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs CodeAuthority::authorized_scopes}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs CodeAuthority::authorized_scopes}}
+### `CodeApproval`
 
-## `CodeApproval`
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs CodeApproval}}
 
-What approving a code request came to. Besides a code, two outcomes issue nothing: the request was decided or expired since it was read, or the browser it was made in has signed out, in which case the request is denied instead.
+### `RequestApprover`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs CodeApproval}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs RequestApprover}}
 
-## Test fixtures
+#### `within`
 
-`pending_code_request` stores a pending code request asking for `read`, made in an Owner session that stands, and hands it over as the approver takes it. `pending_code_request_in_session` does the same in a browser session the test chooses:
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs RequestApprover::within}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs tests::pending_code_request}}
+#### `approve_for_code`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs tests::pending_code_request_in_session}}
+The session is checked with [`is_live`](<../Domain/Browser Session Explanation.md#item-BrowserSession--is_live>) and the code lives for [`AUTHORIZATION_CODE_TTL`](<../Domain/Authorization Code Explanation.md#item-AUTHORIZATION_CODE_TTL>).
 
-`stored` reads a request back. `approve` approves a code request on the Owner's authority for `patient/Patient.r`, issuing `the-code`:
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs RequestApprover::approve_for_code tests="tests::approve_for_code_records_the_proofs_scopes_on_request_and_code tests::approve_for_code_stamps_only_the_standing_grant_it_issues_under tests::approve_for_code_issues_nothing_when_the_request_is_no_longer_pending tests::approve_for_code_denies_a_request_whose_browser_session_has_ended tests::approve_for_code_bounds_the_code_by_the_request_s_browser_session"}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs tests::stored}}
+End to end, the [Session Required](<../Integration Tests/Session Required Explanation.md>), [Browser Sessions](<../Integration Tests/Browser Sessions Explanation.md>) and [Grant Flows](<../Integration Tests/Grant Flows Explanation.md>) tests hold the same at the routes: the code names the requesting browser's session, an Owner approval from another browser is bounded by it, a request whose session was revoked is denied, and a standing grant issues a code with nobody asked.
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs tests::approve}}
+#### `approve_for_device`
 
-## `approve_for_code`
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs RequestApprover::approve_for_device tests="tests::approve_for_device_records_scopes_and_name_only_while_pending"}}
 
-The code request is approved under `authority`, and a code issued for it. The code is bound to the request's app, redirect and PKCE challenge, to the patient the approver chose (if any), and to **the browser session the request was made in, not the approver's**: the Owner may approve from another browser, but revoking the browser the app runs in still ends what the code starts. It expires [`AUTHORIZATION_CODE_TTL`](<../Domain/Authorization Code Explanation.md#authorization_code_ttl>) after `now`. The caller generates the code, so a test can name it.
+End to end, the [Device Code](<../Integration Tests/Device Code Explanation.md>) tests hold the approval's patient and the approver's rename of the device.
 
-First the request's browser session is read. **A request whose session is no longer live (revoked, expired, or gone) is denied rather than approved**, and the app hears `access_denied`; no code exists that no live session bounds. A request that is no longer pending, at either write, issues nothing.
+#### `approve_browser_pairing`
 
-The request records the authority's scopes. The code carries only those the request's browser session also holds ([`session_bounded_scopes`](<../Authority/Delegated Scopes Explanation.md#session_bounded_scopes>)), so a browser paired with less than the Owner holds earns an app no more than it holds, whoever approved.
+**The approval starts no session.** The paired session starts when the pairing page's poll [claims](<../Authority/Browser Pairing Explanation.md#item-ClaimedBrowserPairing--claim>) the approved request. It has no unit test of its own; the [Browser Pairing](<../Integration Tests/Browser Pairing Explanation.md>) tests hold it end to end.
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs RequestApprover::approve_for_code}}
-
-### What it looks like
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs tests::approve_for_code_records_the_proofs_scopes_on_request_and_code}}
-
-The issued code is bound to the request's app, redirect, challenge and session, with the proof's scopes and the patient, and expires a code lifetime later. The stored request is approved with the same scopes and patient, and the code is stored against it.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs tests::approve_for_code_issues_nothing_when_the_request_is_no_longer_pending}}
-
-A request denied after it was read approves to `RequestNotPending`, and no code is stored for it.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs tests::approve_for_code_denies_a_request_whose_browser_session_has_ended}}
-
-Requests made in a revoked session, an expired one and one never stored are each denied, with no code. A request made in the standing session gets a code naming that session.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs tests::approve_for_code_bounds_the_code_by_the_request_s_browser_session}}
-
-The Owner approves `openid`, `patient/Patient.read` and `patient/Observation.rs` for a request made in a browser paired with `patient/Patient.rs`. The code carries `openid`, which no one needs to hold, and `patient/Patient.read`, which the session holds in its other spelling; `patient/Observation.rs` is dropped. The request records all three.
-
-Exercised end to end by [`the_code_names_the_requesting_browser_s_session_not_the_approver_s`](<../Integration Tests/Session Required Explanation.md#the_code_names_the_requesting_browser_s_session_not_the_approver_s>), [`an_owner_approval_from_another_browser_is_bounded_by_the_requesting_session`](<../Integration Tests/Session Required Explanation.md#an_owner_approval_from_another_browser_is_bounded_by_the_requesting_session>), [`approving_a_request_whose_session_was_revoked_denies_it`](<../Integration Tests/Browser Sessions Explanation.md#approving_a_request_whose_session_was_revoked_denies_it>) and [`pre_approved_scopes_skip_consent_on_reauthorize`](<../Integration Tests/Grant Flows Explanation.md#pre_approved_scopes_skip_consent_on_reauthorize>).
-
-## `approve_for_device`
-
-A device request, as it was read, is approved under the Owner's delegated scopes, binding the patient (if any) and recording the device's name. The approver may rename the device; `None` keeps the name the device gave. It answers `false`, having changed nothing, when the request was no longer pending.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs RequestApprover::approve_for_device}}
-
-### What it looks like
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs tests::approve_for_device_records_scopes_and_name_only_while_pending}}
-
-The request is approved under the approver's name for the device. Approving the same read again answers `false`.
-
-Exercised end to end by [`device_consent_threads_patient_onto_request`](<../Integration Tests/Device Code Explanation.md#device_consent_threads_patient_onto_request>) and [`device_consent_approver_can_adjust_device_name`](<../Integration Tests/Device Code Explanation.md#device_consent_approver_can_adjust_device_name>).
-
-## `approve_browser_pairing`
-
-A browser pairing, as it was read, is approved under the Owner's delegated scopes, recording the browser's name (the approver's rename, or `None` to keep the browser's own). A pairing binds no patient. **The approval starts no session.** The approved session is started later, when the pairing page's poll [claims](<../Authority/Browser Pairing Explanation.md#claim>) the request. It answers `false`, having changed nothing, when the request was no longer pending.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs RequestApprover::approve_browser_pairing}}
-
-No unit test of its own. Exercised end to end by [`a_browser_pairs_and_holds_a_day_long_session_with_the_approved_scopes`](<../Integration Tests/Browser Pairing Explanation.md#a_browser_pairs_and_holds_a_day_long_session_with_the_approved_scopes>).
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs RequestApprover::approve_browser_pairing}}
