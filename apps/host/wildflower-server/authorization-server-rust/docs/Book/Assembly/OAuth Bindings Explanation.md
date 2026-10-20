@@ -2,13 +2,17 @@
 
 {{#covers apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs}}
 
-`/oauth` is the front door: apps, devices and browsers that hold no token for this server yet. **No claims unlock its capabilities**, so each is a [`FromState`](<Live Bindings Explanation.md#fromstate>) binding, built from the shared state alone and acquired through `Live<…>`. Where one has a gate, the gate is a proof its method takes, such as an authenticated client at `/oauth/token`, not the extractor.
+`/oauth` is the front door: apps, devices and browsers that hold no token for this server yet. **No claims unlock its capabilities**, so each is a [`FromState`](<Live Bindings Explanation.md#item-FromState>) binding, built from the shared state alone and acquired through `Live<…>`. Where one has a gate, the gate is a proof its method takes, such as an authenticated client at `/oauth/token`, not the extractor.
 
-Three handles here aren't for handlers at all. [`setup_authorization_server`](<Setup Explanation.md#setup_authorization_server>) gives them to the host, which calls them in-process: one mints launches, one mints sign-in codes, one waits on a consent.
+Three handles here aren't for handlers at all. [`setup_authorization_server`](<Setup Explanation.md#item-setup_authorization_server>) gives them to the host, which calls them in-process: one mints launches, one mints sign-in codes, one waits on a consent.
 
-## The front-door bindings
+## `live_bindings::oauth`
 
-Each is a capability over the concrete store, plus what it needs from the state. Three of them start a request the Owner must hear about, so they also get the [`OwnerApproval`](<Ports and Adapters Explanation.md#ownerapproval>) port, which the shared state implements.
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs self}}
+
+### The front-door bindings
+
+Each is a capability over the concrete store, plus what it needs from the state. Three of them start a request the Owner must hear about, so they also get the [`OwnerApproval`](<Ports and Adapters Explanation.md#item-OwnerApproval>) port, which the shared state implements.
 
 | Binding                         | Built for                                                                           | Takes from the state, beside the store                                        |
 | ------------------------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
@@ -25,96 +29,92 @@ Each is a capability over the concrete store, plus what it needs from the state.
 
 The capabilities themselves are on the [OAuth](<../Capabilities/OAuth Explanation.md>) pages.
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveCodeAuthorizationStarter}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveCodeAuthorizationStarter}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveCodeAuthorizationStarter::from_state}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveCodeAuthorizationStarter::from_state}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveSameDeviceSignIn}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveSameDeviceSignIn}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveSameDeviceSignIn::from_state}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveSameDeviceSignIn::from_state}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveSessionShortfall}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveSessionShortfall}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveBrowserPairing}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveBrowserPairing}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveBrowserPairing::from_state}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveBrowserPairing::from_state}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveDeviceAuthorizer}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveDeviceAuthorizer}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveDeviceAuthorizer::from_state}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveDeviceAuthorizer::from_state}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveAuthorizationStatusReader}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveAuthorizationStatusReader}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LivePublicKeysReader}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LivePublicKeysReader}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveClientAuthenticator}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveClientAuthenticator}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveTokenExchanger}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveTokenExchanger}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveTokenExchanger::from_state}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveTokenExchanger::from_state}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveClientTokenRevoker}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveClientTokenRevoker}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveClientTokenRevoker::from_state}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveClientTokenRevoker::from_state}}
 
-No binding has a unit test of its own; the routes that build them are exercised end to end by the [Integration Tests](<../Integration Tests Explanation.md>).
+No binding has a unit test of its own. The routes that build them are held end to end by the [Integration Tests](<../Integration Tests Explanation.md>).
 
-## `LaunchContextMinter`
+### `LaunchContextMinter`
 
-**How the host's own launchers start a SMART app launch.** An app launched from a launcher gets a `launch` value in its URL, which it hands to `/oauth/authorize`; the launch context it names is minted here, in-process. Cheap to clone: the store wraps a pool. Built over the store by `setup_authorization_server`.
+**How the host's own launchers start a SMART app launch.** An app launched from a launcher gets a `launch` value in its URL, which it hands to `/oauth/authorize`. The [launch context](<../Domain/Launch Context Explanation.md>) it names is minted here, in-process.
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LaunchContextMinter}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LaunchContextMinter}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LaunchContextMinter::new}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LaunchContextMinter::new}}
 
-No unit test of its own.
+#### `mint`
 
-## `LaunchContextMinter::mint`
+The `launch` value is a fresh random nonce ({{#code-link apps/host/wildflower-server/authorization-server-rust/src/crypto_util/random_token.rs generate_launch_nonce}}), and the context is built by [`for_client`](<../Domain/Launch Context Explanation.md#item-LaunchContext--for_client>).
 
-**A launch for one app**: it binds no patient, expires five minutes from now, and works for one `/oauth/authorize` by that client. The `launch` value is a fresh random nonce ({{#code-link apps/host/wildflower-server/authorization-server-rust/src/crypto_util/random_token.rs generate_launch_nonce}}); the context itself is the [launch context](<../Domain/Launch Context Explanation.md#for_client>).
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LaunchContextMinter::mint}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LaunchContextMinter::mint}}
+The [OAuth Endpoints](<../Integration Tests/OAuth Endpoints Explanation.md#item-authorize_consumes_a_smart_launch_once>) tests hold it to being consumed once.
 
-Exercised end to end by [`authorize_consumes_a_smart_launch_once`](<../Integration Tests/OAuth Endpoints Explanation.md#authorize_consumes_a_smart_launch_once>).
+#### `mint_for_server_launcher`
 
-## `mint_for_any_client`
+The context is built by [`for_server_launcher`](<../Domain/Launch Context Explanation.md#item-LaunchContext--for_server_launcher>).
 
-**A launch any app may use**, for the base launching a server's launcher, which can be any app. Otherwise as above: no patient, five minutes, one `/oauth/authorize`, by whichever client presents it first ([`for_any_client`](<../Domain/Launch Context Explanation.md#for_any_client>)).
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LaunchContextMinter::mint_for_server_launcher}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LaunchContextMinter::mint_for_any_client}}
+The [OAuth Endpoints](<../Integration Tests/OAuth Endpoints Explanation.md#item-authorize_consumes_a_server_launcher_launch_once>) tests hold it to being consumed once, by whichever client presents it first.
 
-Exercised end to end by [`authorize_consumes_a_launch_for_any_client_once`](<../Integration Tests/OAuth Endpoints Explanation.md#authorize_consumes_a_launch_for_any_client_once>).
+### `SameDeviceSignInCodeMinter`
 
-## `SameDeviceSignInCodeMinter`
+**How the host signs the Owner's own browser in.** The host, on the device running the server, mints a code and opens `/oauth/sign-in?code=…&next=…` in the browser.
 
-**How the host signs the Owner's own browser in.** The host, on the device running the server, mints a code and opens `/oauth/sign-in?code=…&next=…` in the browser. Cheap to clone: the outstanding codes are shared with the state.
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs SameDeviceSignInCodeMinter}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs SameDeviceSignInCodeMinter}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs SameDeviceSignInCodeMinter::new}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs SameDeviceSignInCodeMinter::new}}
+#### `mint`
 
-No unit test of its own.
+Only the code's hash is kept, in memory, so a restart drops every outstanding code ([Same-Device Sign-In Codes](<../Domain/Same Device Sign In Codes Explanation.md>)).
 
-## `SameDeviceSignInCodeMinter::mint`
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs SameDeviceSignInCodeMinter::mint}}
 
-**Mint a one-time code.** Whoever presents it at `/oauth/sign-in` first, within 60 seconds, is signed in as the Owner. Only its hash is kept, in memory, so a restart drops every outstanding code ([Same Device Sign In Codes](<../Domain/Same Device Sign In Codes Explanation.md>)).
+The [Same-Device Sign-In](<../Integration Tests/Same Device Sign In Explanation.md#item-a_code_signs_in_once>) tests hold a code to signing in once.
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs SameDeviceSignInCodeMinter::mint}}
+### `PendingConsentWatcher`
 
-Exercised end to end by [`a_code_signs_in_once`](<../Integration Tests/Same Device Sign In Explanation.md#a_code_signs_in_once>).
+**How the host learns a consent it opened a page for is settled**, so it can close the page. The state pings it every time the [Owner prompt](<../Domain/Owner Prompt Explanation.md>) is recomputed: after every transition that may change which requests wait, and on the reaper's tick, which is how an expiry is noticed. The ping comes whether or not the prompt changed, so a request decided while a newer one stays newest is still seen to settle.
 
-## `PendingConsentWatcher`
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs PendingConsentWatcher}}
 
-**How the host learns a consent it opened a page for is settled**, so it can close the page. Cheap to clone. It holds the store and a receiver on the ping the state sends every time the newest pending consent is recomputed: after every transition that may change which requests are pending, and on the reaper's tick, which is how an expiry is noticed. The ping comes whether or not the newest changed, so a request decided while a newer one stays newest is still seen to settle.
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs PendingConsentWatcher::new}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs PendingConsentWatcher}}
+#### `until_settled`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs PendingConsentWatcher::new}}
+After every ping it rereads the request with the store's `is_awaiting_owner` (see [Owner Prompt](<../Domain/Owner Prompt Explanation.md>)), which counts a request still on its limited page as unsettled.
 
-## `until_settled`
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs PendingConsentWatcher::until_settled}}
 
-**Wait until the request no longer waits for the Owner**: decided, expired, or gone. It answers at once for one already settled. Otherwise it rereads the request ([`is_pending_in`](<../Domain/Pending Consent Explanation.md#is_pending_in>)) on a blocking thread after every ping. It fails when a read fails, or when the server stops before the request settles.
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs PendingConsentWatcher::until_settled}}
-
-Exercised end to end by [`the_pending_consent_watcher_sees_an_older_request_decided_under_a_newer_one`](<../Integration Tests/OAuth Endpoints Explanation.md#the_pending_consent_watcher_sees_an_older_request_decided_under_a_newer_one>).
+The [OAuth Endpoints](<../Integration Tests/OAuth Endpoints Explanation.md#item-the_pending_consent_watcher_sees_an_older_request_decided_under_a_newer_one>) tests hold it to seeing an older request decided under a newer one.

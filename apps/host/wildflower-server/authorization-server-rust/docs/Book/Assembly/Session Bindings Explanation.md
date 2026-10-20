@@ -2,64 +2,66 @@
 
 {{#covers apps/host/wildflower-server/authorization-server-rust/src/live_bindings/session.rs}}
 
-These bindings are about the caller's own token. **The token verifier** is what every gate runs to turn a bearer into verified claims, and the host's FHIR server runs the same one in-process. The rest act on the caller's own browser session or token: record that a browser's cookie was used, end a browser's own session at sign-out, and the two self-service `/authorization` capabilities, which need a verified token and no scope.
+These bindings are about the caller's own token. **The token verifier** is what every gate runs to turn a bearer into verified claims, and the host's FHIR server runs the same one in-process. The rest act on the caller's own browser session or token, and the two `/authorization` self-service capabilities need a verified token but no scope.
 
-## `LiveTokenVerifier`
+## `live_bindings::session`
 
-**Verify a presented access token**: signed with one of the stored keys, unexpired, naming this server's origin as `iss` and `aud`, and not revoked. Built from the state for the two bearer gates, over the store (for the keys and the browser session a token names), the revocation check, and the origin ([Token Verifier](<../Capabilities/Session/Token Verifier Explanation.md>)).
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/session.rs self}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/session.rs LiveTokenVerifier}}
+### `LiveTokenVerifier`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/session.rs LiveTokenVerifier::from_state}}
+The [token verifier](<../Capabilities/Session/Token Verifier Explanation.md>), over the store, the revocation check and the origin.
 
-## `InProcessTokenVerifier`
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/session.rs LiveTokenVerifier}}
 
-**The token verifier, handed to the host**, so the FHIR server verifies each bearer exactly as this server's own gates do, without a network hop. Cheap to clone. Built once by [`setup_authorization_server`](<Setup Explanation.md#setup_authorization_server>).
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/session.rs LiveTokenVerifier::from_state}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/session.rs InProcessTokenVerifier}}
+### `InProcessTokenVerifier`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/session.rs InProcessTokenVerifier::new}}
+**The token verifier, handed to the host**, so the FHIR server verifies each bearer exactly as this server's own gates do, without a network hop. [`setup_authorization_server`](<Setup Explanation.md#item-setup_authorization_server>) builds it once.
 
-No unit test of its own.
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/session.rs InProcessTokenVerifier}}
 
-## `verify`
+#### `new`
 
-A token that doesn't pass is `TokenRejected` or `Revoked`. A key or revocation store that can't be read is an error too, so verification **fails closed** ([`VerifyError`](<../Domain/Token Explanation.md#verifyerror>)).
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/session.rs InProcessTokenVerifier::new}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/session.rs InProcessTokenVerifier::verify}}
+#### `verify`
 
-Exercised end to end by [`revoking_a_session_stops_its_authorization_and_fhir_requests`](<../Integration Tests/Browser Sessions Explanation.md#revoking_a_session_stops_its_authorization_and_fhir_requests>), which checks a revoked session's token is refused by the in-process verifier as well as by `/authorization`.
+Verification **fails closed**: a key or revocation store that can't be read is an [`AccessTokenVerifyError`](<../Domain/Access Token Explanation.md#item-AccessTokenVerifyError>) too. The [Browser Sessions](<../Integration Tests/Browser Sessions Explanation.md>) tests check that a revoked session's token is refused here as well as at `/authorization`.
 
-## `LiveBrowserSessionUseRecorder`
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/session.rs InProcessTokenVerifier::verify}}
 
-**Record that a browser's session was used**, moving its last-seen time. Built by `record_browser_session_cookie_use`, which the host's cookie-to-bearer layer calls once it has accepted the cookie, over the store and the last-seen throttle, so a page load's many requests write once ([Browser Session Use Recorder](<../Capabilities/Session/Browser Session Use Recorder Explanation.md>)).
+### `LiveBrowserSessionUseRecorder`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/session.rs LiveBrowserSessionUseRecorder}}
+The [browser session use recorder](<../Capabilities/Session/Browser Session Use Recorder Explanation.md>), over the store and the last-seen throttle, so a page load's many requests write once.
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/session.rs LiveBrowserSessionUseRecorder::from_state}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/session.rs LiveBrowserSessionUseRecorder}}
 
-## `LiveBrowserSessionEnder`
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/session.rs LiveBrowserSessionUseRecorder::from_state}}
 
-**End a browser's own browser session** at `/oauth/sign-out`, over the claims of the browser's own cookie. Built over the store ([Browser Session Ender](<../Capabilities/Session/Browser Session Ender Explanation.md>)).
+### `LiveBrowserSessionEnder`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/session.rs LiveBrowserSessionEnder}}
+The [browser session ender](<../Capabilities/Session/Browser Session Ender Explanation.md>), over the store.
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/session.rs LiveBrowserSessionEnder::from_state}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/session.rs LiveBrowserSessionEnder}}
 
-## `LiveSessionEnder`
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/session.rs LiveBrowserSessionEnder::from_state}}
 
-**Logout's self-revoke**: denylist the caller's own token. Acquired through `Authenticated<LiveSessionEnder>`, which hands `build` the caller's verified claims, so it can revoke nothing but the token presented. Built over the revocation port and those claims ([Session Ender](<../Capabilities/Session/Session Ender Explanation.md>)).
+### `LiveSessionEnder`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/session.rs LiveSessionEnder}}
+The [session ender](<../Capabilities/Session/Session Ender Explanation.md>). `Authenticated<LiveSessionEnder>` hands `build` the caller's verified claims, so **it can revoke nothing but the token presented**.
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/session.rs LiveSessionEnder::build}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/session.rs LiveSessionEnder}}
 
-## `LiveSessionReader`
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/session.rs LiveSessionEnder::build}}
 
-**A caller reads back its own session**: its scopes, its `sid`, and when its browser session expires. Acquired through `Authenticated<LiveSessionReader>` by `GET /authorization/session`, and by the browsers list for the caller's own `sid`. Built over the store and the caller's claims ([Session Reader](<../Capabilities/Session/Session Reader Explanation.md>)).
+### `LiveSessionReader`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/session.rs LiveSessionReader}}
+The [session reader](<../Capabilities/Session/Session Reader Explanation.md>), over the store and the caller's claims, so it can read nothing but the caller's own session.
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/live_bindings/session.rs LiveSessionReader::build}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/session.rs LiveSessionReader}}
 
-The other bindings have no test of their own; the routes and gates that build them are exercised end to end, as the [Session Routes](<../HTTP/Routes/Session Routes Explanation.md>) and [Middleware](<../HTTP/Middleware Explanation.md>) pages show.
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/session.rs LiveSessionReader::build}}
+
+These bindings have no unit tests of their own. The [Session Routes](<../HTTP/Routes/Session Routes Explanation.md>) and [Middleware](<../HTTP/Middleware Explanation.md>) that build them are held end to end by the integration tests.

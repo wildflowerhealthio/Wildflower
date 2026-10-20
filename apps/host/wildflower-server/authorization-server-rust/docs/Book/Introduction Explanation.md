@@ -75,4 +75,4 @@ The first pass goes bottom up, one layer per chapter, each needing only the ones
 8. **[Persistence](<Persistence Explanation.md>)**: the SQLite behind the Grant Store.
 9. **[Utilities](<Utilities Explanation.md>)**: the small cryptographic helpers.
 
-The second pass, **[Integration Tests](<Integration Tests Explanation.md>)**, goes top down. Each file in `tests/integration/` gets a page, and each test a section: the promise the test holds the server to, the test itself, and links back to the sections the promise rests on. The first page, [Grant Flows](<Integration Tests/Grant Flows Explanation.md>), follows one app's request from the front door to its token.
+The second pass, **[Integration Tests](<Integration Tests Explanation.md>)**, goes top down. Each file in `tests/integration/` gets a page, and each test a section: the promise the test holds the server to, the test itself, and links back to the sections the promise rests on. They follow the order the Domain part builds in, from the tokens' own checks to the flows. [Grant Flows](<Integration Tests/Grant Flows Explanation.md>) follows one app's request from the front door to its token.
