@@ -432,20 +432,39 @@ fn intersection_in_either_spelling(
         })
 }
 
-/// The `requested` scopes a code issued in the browser session holding
-/// `session_grant` would not carry in full, as the request spells them, in
-/// order: each held access ([`is_held_access`]) the session does not cover,
-/// whether [`session_bounded_scopes`] drops it or narrows it to the part the
-/// session holds. Empty when the session holds all the request asks for.
-/// `/oauth/authorize` sends the browser to the limited page when it is not
-/// empty, and the limited page lists it.
+/// What a code issued in the browser session holding `session_grant` would
+/// not carry of the `requested` scopes, in the request's order: for each held
+/// access ([`is_held_access`]) the session does not cover, the part of it the
+/// session lacks ([`Grant::uncovered_part`], in either SMART spelling), whether
+/// [`session_bounded_scopes`] drops the scope or narrows it to the part the
+/// session holds. A session holding `system/*.cuds` and `system/Patient.r`
+/// lacks `system/MedicationRequest.r` of `system/MedicationRequest.rs`, and
+/// nothing of `system/Patient.rs`. Empty when the session holds all the
+/// request asks for.
 pub(crate) fn session_shortfall(requested: &[String], session_grant: &Grant) -> Vec<String> {
-    uncovered_held_access(requested, session_grant)
+    let session_lacks = uncovered_part_in_either_spelling(session_grant);
+    let lacking: Vec<Scope> = requested
+        .iter()
+        .map(|rendered| Scope::from(rendered.as_str()))
+        .filter(is_held_access)
+        .filter_map(|requested_scope| session_lacks(&requested_scope))
+        .collect();
+    render_scopes(&lacking)
 }
 
-/// Whether `holder` covers a scope in either SMART spelling: each held scope
-/// and each asked scope also counts in its alternate canonical form.
+/// Whether `holder` covers a scope in either SMART spelling: nothing of it is
+/// left uncovered ([`uncovered_part_in_either_spelling`]).
 fn coverage_in_either_spelling(holder: &Grant) -> impl Fn(&Scope) -> bool {
+    let holder_lacks = uncovered_part_in_either_spelling(holder);
+    move |scope: &Scope| holder_lacks(scope).is_none()
+}
+
+/// The part of a scope `holder`'s scopes do not cover between them
+/// ([`Grant::uncovered_part`]), each held scope also counting in its alternate
+/// canonical form, or `None` when they cover all of it. With every held word
+/// also counted as its letters, a held scope covers an asked scope in either
+/// of the asked scope's spellings alike, so the asked scope needs no twin.
+fn uncovered_part_in_either_spelling(holder: &Grant) -> impl Fn(&Scope) -> Option<Scope> {
     let authority = Grant::new(
         holder
             .scopes
@@ -454,12 +473,7 @@ fn coverage_in_either_spelling(holder: &Grant) -> impl Fn(&Scope) -> bool {
             .flatten()
             .collect(),
     );
-    move |scope: &Scope| {
-        authority.covers(scope)
-            || scope
-                .as_alternate_canonical_form()
-                .is_some_and(|twin| authority.covers(&twin))
-    }
+    move |scope: &Scope| authority.uncovered_part(scope)
 }
 
 #[cfg(test)]
@@ -1005,8 +1019,8 @@ mod tests {
         );
     }
 
-    /// The shortfall is every requested scope the session bound drops or
-    /// narrows, spelled as requested, in the request's order: nothing for a
+    /// The shortfall is what the session lacks of every requested scope the
+    /// session bound drops or narrows, in the request's order: nothing for a
     /// session that holds all the request asks for.
     #[test]
     fn the_session_shortfall_is_what_the_session_bound_drops_or_narrows() {
@@ -1023,7 +1037,7 @@ mod tests {
         assert_eq!(
             session_shortfall(&requested, &session_grant),
             [
-                "patient/Observation.rs",
+                "patient/Observation.s",
                 "patient/Condition.rs",
                 "system/*.cruds",
                 "wildflower/launch",
@@ -1041,6 +1055,53 @@ mod tests {
             ],
         );
         assert!(session_shortfall(&requested, &Grant::parse(crate::owner_scopes())).is_empty());
+    }
+
+    /// A session's scopes cover a requested scope between them, and the
+    /// shortfall names only the part none of them holds: `system/*.cuds` and
+    /// `system/Patient.r` hold all of `system/Patient.rs` and all but `r` of
+    /// `system/MedicationRequest.rs`.
+    #[test]
+    fn the_session_shortfall_is_the_part_the_session_s_scopes_together_lack() {
+        let requested = owned_scopes(&["system/Patient.rs", "system/MedicationRequest.rs"]);
+        let session_grant = Grant::parse(["system/*.cuds", "system/Patient.r"]);
+        assert_eq!(
+            session_shortfall(&requested, &session_grant),
+            ["system/MedicationRequest.r"],
+        );
+        assert_eq!(
+            session_bounded_scopes(&requested, &session_grant),
+            ["system/Patient.rs", "system/MedicationRequest.s"],
+        );
+        // A word request lacks its leftover in letters; a held word counts as
+        // its letters.
+        assert_eq!(
+            session_shortfall(
+                &owned_scopes(&["patient/Observation.read", "patient/Patient.rs"]),
+                &Grant::parse(["patient/Observation.r", "patient/Patient.read"]),
+            ),
+            ["patient/Observation.s"],
+        );
+    }
+
+    /// An approver's scopes cover a requested scope between them, so one
+    /// holding `system/*.cuds` and `system/Patient.r` may approve
+    /// `system/Patient.rs` as asked.
+    #[test]
+    fn an_approver_s_scopes_together_cover_a_requested_scope() {
+        let approver = grant(&["system/*.cuds", "system/Patient.r"]);
+        let approvable = approvable(&["system/Patient.rs"], &["system/Patient.rs"]);
+        assert_eq!(
+            approvable.missing_approval_scopes(&approver),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            DelegatedScopes::clamp(&approver, owned_scopes(&["system/Patient.rs"]), &approvable)
+                .expect("the approver covers it")
+                .expect("granted")
+                .scopes(),
+            ["system/Patient.rs"],
+        );
     }
 
     /// Only a code approval for a client trusted on first use writes the

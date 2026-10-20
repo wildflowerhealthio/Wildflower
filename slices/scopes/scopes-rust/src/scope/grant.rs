@@ -42,11 +42,48 @@ impl Grant {
         crate::render_scopes(&self.scopes)
     }
 
-    /// Does any scope in this grant cover `scope`? This is the coverage test a
-    /// client's `allowed_scopes` are run through when deciding what an approval
-    /// may grant (see [`Scope::covers`]).
+    /// Does this grant cover `scope`, its scopes between them? True when no
+    /// part of it is left uncovered ([`uncovered_part`](Grant::uncovered_part)),
+    /// so `system/*.cuds` and `system/Patient.r` together cover
+    /// `system/Patient.rs`, though neither does alone ([`Scope::covers`]).
     pub fn covers(&self, scope: &Scope) -> bool {
-        self.scopes.iter().any(|s| s.covers(scope))
+        self.uncovered_part(scope).is_none()
+    }
+
+    /// The part of `scope` this grant does not cover, or `None` when it covers
+    /// all of it.
+    ///
+    /// A resource scope is covered interaction by interaction: every held
+    /// scope of the same kind whose context and resource type cover `scope`'s
+    /// grants its interactions toward it, and what none grants is left, on
+    /// `scope`'s own context and resource type. Against `system/*.cuds` and
+    /// `system/Patient.r`, `system/MedicationRequest.rs` leaves
+    /// `system/MedicationRequest.r`. The leftover is spelled as a letter bag;
+    /// a scope the grant grants nothing of is left whole, as spelled. A held
+    /// v1 word grants nothing toward a letter request, as in
+    /// [`Scope::covers`]. Held scopes on narrower resource types never count
+    /// toward a wildcard, so `system/*.rs` against `system/Patient.rs` is left
+    /// whole: what remains of it can't be written as one scope.
+    ///
+    /// A known or unknown scope is covered only by its identical twin.
+    pub fn uncovered_part(&self, scope: &Scope) -> Option<Scope> {
+        match scope {
+            Scope::FhirResource(requested) => requested
+                .uncovered_part(self.scopes.iter().filter_map(|held| match held {
+                    Scope::FhirResource(held) => Some(held),
+                    _ => None,
+                }))
+                .map(Scope::FhirResource),
+            Scope::WildflowerResource(requested) => requested
+                .uncovered_part(self.scopes.iter().filter_map(|held| match held {
+                    Scope::WildflowerResource(held) => Some(held),
+                    _ => None,
+                }))
+                .map(Scope::WildflowerResource),
+            Scope::Known(_) | Scope::Unknown(_) => {
+                (!self.scopes.contains(scope)).then(|| scope.clone())
+            }
+        }
     }
 
     /// The `required` scopes this grant does **not** cover, preserving the order
@@ -93,15 +130,16 @@ impl Grant {
     /// Order is first-occurrence, so widening appends only what is genuinely new,
     /// and the result is idempotent — collapsing twice changes nothing.
     ///
-    /// **What a merge costs.** The interactions a collapsed grant reaches are
-    /// exactly those the original reached; the *spellings* it admits are a
-    /// superset. `patient/Patient.r` and `patient/Patient.s` together admit
-    /// neither's combination, but the merged `patient/Patient.rs` admits a
-    /// literal `.rs` request — and likewise `read ∪ write = *` admits a literal
-    /// `.*`. Such a request asks for nothing the grant did not already confer
-    /// interaction-by-interaction, which is why this is a restatement and not a
-    /// widening. Merging *across* grammars would break that, and is refused
-    /// ([`Permission::union`](crate::Permission)).
+    /// **What a merge costs.** A collapsed grant reaches exactly the
+    /// interactions the original reached, and [`covers`](Grant::covers), which
+    /// takes the grant's scopes together, admits exactly the requests it did.
+    /// Its scopes taken *one by one* admit more: no one of `patient/Patient.r`
+    /// and `patient/Patient.s` admits a literal `.rs` request, but the merged
+    /// `patient/Patient.rs` does — and likewise `read ∪ write = *` admits a
+    /// literal `.*`. Such a request asks for nothing the grant did not already
+    /// confer interaction-by-interaction, which is why this is a restatement
+    /// and not a widening. Merging *across* grammars would break that, and is
+    /// refused ([`Permission::union`](crate::Permission)).
     pub fn collapse(&mut self) {
         self.scopes = without_subsumed(merge_restatable(std::mem::take(&mut self.scopes)));
     }
@@ -228,6 +266,100 @@ mod tests {
         let covered = [Scope::from("wildflower/Apps.r")];
         assert!(grant.covers_all(&covered));
         assert!(grant.missing_scopes(&covered).is_empty());
+    }
+
+    /// The uncovered part of `scope` against a grant of `held`, rendered.
+    fn uncovered_part(held: &[&str], scope: &str) -> Option<String> {
+        Grant::parse(held)
+            .uncovered_part(&Scope::from(scope))
+            .map(|part| part.to_string())
+    }
+
+    /// A grant's scopes cover a request between them, interaction by
+    /// interaction, where no one of them does alone.
+    #[test]
+    fn covers_takes_the_held_scopes_together() {
+        let grant = Grant::parse(["system/*.cuds", "system/Patient.r"]);
+        assert!(grant.covers(&Scope::from("system/Patient.rs")));
+        assert!(grant.covers(&Scope::from("patient/Patient.rs")));
+        assert!(!grant.covers(&Scope::from("system/MedicationRequest.rs")));
+        assert!(Grant::parse(["wildflower/Grant.r", "wildflower/*.c"])
+            .covers(&Scope::from("wildflower/Grant.cr")));
+    }
+
+    /// What a grant leaves of a request is the request's own context and
+    /// resource type with the interactions no held scope grants, as letters.
+    #[test]
+    fn uncovered_part_is_the_interactions_no_held_scope_grants() {
+        let held = ["system/*.cuds", "system/Patient.r"];
+        assert_eq!(uncovered_part(&held, "system/Patient.rs"), None);
+        assert_eq!(
+            uncovered_part(&held, "system/MedicationRequest.rs"),
+            Some("system/MedicationRequest.r".to_owned())
+        );
+        assert_eq!(
+            uncovered_part(&held, "user/Observation.cruds"),
+            Some("user/Observation.r".to_owned())
+        );
+        assert_eq!(
+            uncovered_part(&["wildflower/Grant.r"], "wildflower/Grant.cru"),
+            Some("wildflower/Grant.cu".to_owned())
+        );
+        // A request the grant grants nothing of is left whole, as spelled.
+        assert_eq!(
+            uncovered_part(&["patient/Patient.rs"], "patient/Observation.read"),
+            Some("patient/Observation.read".to_owned())
+        );
+    }
+
+    /// Held scopes count toward a request as `Permission::contains` lets them:
+    /// letters held apart cover a v1 word, a held word covers no letters, and
+    /// the leftover of a word request is letters.
+    #[test]
+    fn uncovered_part_follows_the_word_and_letter_rule() {
+        let letters_apart = ["patient/Patient.r", "patient/*.s"];
+        assert_eq!(uncovered_part(&letters_apart, "patient/Patient.read"), None);
+        assert_eq!(
+            uncovered_part(&["patient/Patient.r"], "patient/Patient.read"),
+            Some("patient/Patient.s".to_owned())
+        );
+        assert_eq!(
+            uncovered_part(
+                &["patient/Patient.read", "patient/Patient.write"],
+                "patient/Patient.*"
+            ),
+            None
+        );
+        assert_eq!(
+            uncovered_part(&["patient/Patient.read"], "patient/Patient.rs"),
+            Some("patient/Patient.rs".to_owned())
+        );
+        assert_eq!(
+            uncovered_part(
+                &["patient/Patient.read", "patient/Patient.s"],
+                "patient/Patient.rs"
+            ),
+            Some("patient/Patient.r".to_owned())
+        );
+    }
+
+    /// A wildcard request against held scopes on named types alone is left
+    /// whole, and a known scope needs its identical twin.
+    #[test]
+    fn uncovered_part_leaves_a_wildcard_held_only_in_narrower_parts_whole() {
+        assert_eq!(
+            uncovered_part(&["system/Patient.rs"], "system/*.rs"),
+            Some("system/*.rs".to_owned())
+        );
+        assert_eq!(
+            uncovered_part(&["system/Patient.rs", "system/*.r"], "system/*.rs"),
+            Some("system/*.s".to_owned())
+        );
+        assert_eq!(uncovered_part(&["openid"], "openid"), None);
+        assert_eq!(
+            uncovered_part(&["system/*.cruds"], "wildflower/launch"),
+            Some("wildflower/launch".to_owned())
+        );
     }
 
     /// Widen `standing` by `additional` and read back the wire strings.
@@ -366,12 +498,12 @@ mod tests {
     /// collapsing grants no interaction on any resource that wasn't granted
     /// before, and loses none either.
     ///
-    /// Coverage of whole scope *strings* is deliberately not preserved — that is
-    /// what merging buys. Folding `.r` and `.s` into `.rs` makes a literal `.rs`
-    /// request admissible where the pair admitted only `.r` and `.s` separately,
-    /// and `read ∪ write = *` does the same in the word grammar. The interactions
-    /// reachable are identical either way, which is the invariant that matters
-    /// for an authorization ceiling.
+    /// Coverage of whole scope *strings* by one scope alone is deliberately not
+    /// preserved — that is what merging buys. Folding `.r` and `.s` into `.rs`
+    /// gives one scope admitting a literal `.rs` request where neither of the
+    /// pair did alone, and `read ∪ write = *` does the same in the word
+    /// grammar. The interactions reachable are identical either way, which is
+    /// the invariant that matters for an authorization ceiling.
     #[test]
     fn collapse_preserves_exactly_the_interactions_granted() {
         let raw = [

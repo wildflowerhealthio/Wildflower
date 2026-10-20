@@ -69,6 +69,28 @@ impl FhirResourceScope {
             && self.permission.contains(other.permission)
     }
 
+    /// The part of `self` (a requested scope) none of the `held` scopes grants
+    /// between them, or `None` when together they grant all of it. A held
+    /// scope counts when its context and resource type cover `self`'s, for the
+    /// interactions it grants ([`Permission::not_granted_by`](super::Permission::not_granted_by)).
+    pub(in crate::scope) fn uncovered_part<'a>(
+        &self,
+        held: impl IntoIterator<Item = &'a FhirResourceScope>,
+    ) -> Option<Self> {
+        let held_permissions = held
+            .into_iter()
+            .filter(|held| {
+                held.context.covers(self.context) && held.resource.covers(&self.resource)
+            })
+            .map(|held| held.permission);
+        self.permission
+            .not_granted_by(held_permissions)
+            .map(|permission| FhirResourceScope {
+                permission,
+                ..self.clone()
+            })
+    }
+
     /// The broadest scope both `self` and `other` cover, or `None` when they
     /// share no access: the narrower context, the narrower resource type, and
     /// the shared interactions ([`Permission::intersection`](super::Permission::intersection)).
