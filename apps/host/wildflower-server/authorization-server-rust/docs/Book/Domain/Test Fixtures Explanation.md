@@ -58,7 +58,7 @@ Every code-request fixture starts from the crate-wide arguments, overriding what
 
 The code request's own tests keep the same clock, start a request with `started`, and approve it with `approval`.
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/code/mod.rs tests::at keep-docs}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/code/mod.rs tests::at}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/code/mod.rs tests::started}}
 
@@ -66,7 +66,7 @@ The code request's own tests keep the same clock, start a request with `started`
 
 The resolution tests present the fixture client's redirect.
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/code/resolved.rs tests::redirect keep-docs}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/code/resolved.rs tests::redirect}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/code/resolved.rs tests::resolve}}
 
@@ -74,27 +74,27 @@ The resolution tests present the fixture client's redirect.
 
 The shared tests in `polled` count in seconds, for the poll interval; the device and pairing tests count in minutes.
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/polled.rs tests::at keep-docs}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/polled.rs tests::at}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/polled.rs tests::device_request}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/polled.rs tests::approval keep-docs}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/polled.rs tests::approval}}
 
 A device request's own tests:
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/device.rs tests::at keep-docs}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/device.rs tests::at}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/device.rs tests::started keep-docs}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/device.rs tests::started}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/device.rs tests::approval keep-docs}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/device.rs tests::approval}}
 
 A pairing's own tests:
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/pairing.rs tests::at keep-docs}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/pairing.rs tests::at}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/pairing.rs tests::started keep-docs}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/pairing.rs tests::started}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/pairing.rs tests::approval keep-docs}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/pairing.rs tests::approval}}
 
 ## Errors
 

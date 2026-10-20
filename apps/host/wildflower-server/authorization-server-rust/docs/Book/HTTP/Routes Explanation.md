@@ -13,26 +13,26 @@ The HTTP layer's [`router`](<../HTTP Explanation.md#item-http--router>) mounts t
 
 ## Before a token
 
-| Method | Path                                      | Who calls it                               | Handler                                                                                                                       |
-| ------ | ----------------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/.well-known/jwks.json`                  | anyone checking a token this server signed | [`handle_jwks_request`](<Routes/Session Routes Explanation.md#item-handle_jwks_request>)                                      |
-| GET    | `/oauth/authorize`                        | an app, sending the person's browser       | [`handle_authorize_request`](<Routes/Authorize Explanation.md#item-handle_authorize_request>)                                 |
-| GET    | `/oauth/authorize/{id}`                   | the wait page                              | [`handle_authorization_status_request`](<Routes/Authorization Pages Explanation.md#item-handle_authorization_status_request>) |
-| GET    | `/oauth/authorize/{id}/session-shortfall` | the limited page                           | [`handle_session_shortfall_read`](<Routes/Authorization Pages Explanation.md#item-handle_session_shortfall_read>)             |
-| POST   | `/oauth/authorize/{id}/continue`          | the limited page                           | [`handle_session_shortfall_continue`](<Routes/Authorization Pages Explanation.md#item-handle_session_shortfall_continue>)     |
-| POST   | `/oauth/authorize/{id}/cancel`            | the limited page                           | [`handle_session_shortfall_cancel`](<Routes/Authorization Pages Explanation.md#item-handle_session_shortfall_cancel>)         |
-| GET    | `/oauth/authorize/{id}/wait`              | a browser waiting for the Owner            | [`wait_page::router`](<Routes/Authorization Pages Explanation.md#item-wait_page--router>)                                     |
-| GET    | `/oauth/authorize/{id}/consent`           | a browser that decides in place            | [`authorization_pages::router`](<Routes/Authorization Pages Explanation.md#item-authorization_pages--router>)                 |
-| GET    | `/oauth/authorize/{id}/limited`           | a browser whose session falls short        | [`authorization_pages::router`](<Routes/Authorization Pages Explanation.md#item-authorization_pages--router>)                 |
-| GET    | `/oauth/device`                           | the Owner, from a device's code            | [`authorization_pages::router`](<Routes/Authorization Pages Explanation.md#item-authorization_pages--router>)                 |
-| GET    | `/oauth/pair`                             | a browser without a session                | [`authorization_pages::router`](<Routes/Authorization Pages Explanation.md#item-authorization_pages--router>)                 |
-| POST   | `/oauth/token`                            | an app's back end, a device                | [`handle_token_request`](<Routes/Token Endpoint Explanation.md#item-handle_token_request>)                                    |
-| POST   | `/oauth/revoke`                           | an app's back end                          | [`handle_token_revocation_request`](<Routes/Token Endpoint Explanation.md#item-handle_token_revocation_request>)              |
-| POST   | `/oauth/device_authorization`             | a device                                   | [`handle_device_authorization_request`](<Routes/Device Authorization Explanation.md#item-handle_device_authorization_request>) |
-| POST   | `/oauth/pair/start`                       | the pairing page                           | [`handle_browser_pairing_start`](<Routes/Pairing and Sign In Explanation.md#item-handle_browser_pairing_start>)               |
-| POST   | `/oauth/pair/poll`                        | the pairing page                           | [`handle_browser_pairing_poll`](<Routes/Pairing and Sign In Explanation.md#item-handle_browser_pairing_poll>)                 |
-| GET    | `/oauth/sign-in`                          | the base app, opening the Owner's browser  | [`handle_sign_in`](<Routes/Pairing and Sign In Explanation.md#item-handle_sign_in>)                                           |
-| POST   | `/oauth/sign-out`                         | the **Sign out** form on the server's pages | [`handle_sign_out`](<Routes/Pairing and Sign In Explanation.md#item-handle_sign_out>)                                        |
+| Method | Path                                      | Who calls it                                | Handler                                                                                                                        |
+| ------ | ----------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/.well-known/jwks.json`                  | anyone checking a token this server signed  | [`handle_jwks_request`](<Routes/Session Routes Explanation.md#item-handle_jwks_request>)                                       |
+| GET    | `/oauth/authorize`                        | an app, sending the person's browser        | [`handle_authorize_request`](<Routes/Authorize Explanation.md#item-handle_authorize_request>)                                  |
+| GET    | `/oauth/authorize/{id}`                   | the wait page                               | [`handle_authorization_status_request`](<Routes/Authorization Pages Explanation.md#item-handle_authorization_status_request>)  |
+| GET    | `/oauth/authorize/{id}/session-shortfall` | the limited page                            | [`handle_session_shortfall_read`](<Routes/Authorization Pages Explanation.md#item-handle_session_shortfall_read>)              |
+| POST   | `/oauth/authorize/{id}/continue`          | the limited page                            | [`handle_session_shortfall_continue`](<Routes/Authorization Pages Explanation.md#item-handle_session_shortfall_continue>)      |
+| POST   | `/oauth/authorize/{id}/cancel`            | the limited page                            | [`handle_session_shortfall_cancel`](<Routes/Authorization Pages Explanation.md#item-handle_session_shortfall_cancel>)          |
+| GET    | `/oauth/authorize/{id}/wait`              | a browser waiting for the Owner             | [`wait_page::router`](<Routes/Authorization Pages Explanation.md#item-wait_page--router>)                                      |
+| GET    | `/oauth/authorize/{id}/consent`           | a browser that decides in place             | [`authorization_pages::router`](<Routes/Authorization Pages Explanation.md#item-authorization_pages--router>)                  |
+| GET    | `/oauth/authorize/{id}/limited`           | a browser whose session falls short         | [`authorization_pages::router`](<Routes/Authorization Pages Explanation.md#item-authorization_pages--router>)                  |
+| GET    | `/oauth/device`                           | the Owner, from a device's code             | [`authorization_pages::router`](<Routes/Authorization Pages Explanation.md#item-authorization_pages--router>)                  |
+| GET    | `/oauth/pair`                             | a browser without a session                 | [`authorization_pages::router`](<Routes/Authorization Pages Explanation.md#item-authorization_pages--router>)                  |
+| POST   | `/oauth/token`                            | an app's back end, a device                 | [`handle_token_request`](<Routes/Token Endpoint Explanation.md#item-handle_token_request>)                                     |
+| POST   | `/oauth/revoke`                           | an app's back end                           | [`handle_token_revocation_request`](<Routes/Token Endpoint Explanation.md#item-handle_token_revocation_request>)               |
+| POST   | `/oauth/device_authorization`             | a device                                    | [`handle_device_authorization_request`](<Routes/Device Authorization Explanation.md#item-handle_device_authorization_request>) |
+| POST   | `/oauth/pair/start`                       | the pairing page                            | [`handle_browser_pairing_start`](<Routes/Pairing and Sign In Explanation.md#item-handle_browser_pairing_start>)                |
+| POST   | `/oauth/pair/poll`                        | the pairing page                            | [`handle_browser_pairing_poll`](<Routes/Pairing and Sign In Explanation.md#item-handle_browser_pairing_poll>)                  |
+| GET    | `/oauth/sign-in`                          | the base app, opening the Owner's browser   | [`handle_sign_in`](<Routes/Pairing and Sign In Explanation.md#item-handle_sign_in>)                                            |
+| POST   | `/oauth/sign-out`                         | the **Sign out** form on the server's pages | [`handle_sign_out`](<Routes/Pairing and Sign In Explanation.md#item-handle_sign_out>)                                          |
 
 ## The Owner's surface
 

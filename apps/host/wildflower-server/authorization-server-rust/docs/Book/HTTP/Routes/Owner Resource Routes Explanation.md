@@ -63,7 +63,7 @@ The list comes from the [clients reader](<../../Capabilities/Access/Clients Expl
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/clients/list_all.rs ClientBody}}
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/clients/list_all.rs "<ClientBody as From>::from"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/clients/list_all.rs ClientBody::from}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/clients/list_all.rs handle_list_clients}}
 
@@ -91,7 +91,7 @@ The [Client Management](<../../Integration Tests/Client Management Explanation.m
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/browser_sessions/list_all.rs BrowserSessionBody}}
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/browser_sessions/list_all.rs "<BrowserSessionBody as From>::from"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/browser_sessions/list_all.rs BrowserSessionBody::from}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/browser_sessions/list_all.rs route}}
 

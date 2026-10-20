@@ -97,6 +97,7 @@
     - [Consent Routes](authorization-server/http/routes/consent-routes.md)
     - [Owner Resource Routes](authorization-server/http/routes/owner-resource-routes.md)
     - [Session Routes](authorization-server/http/routes/session-routes.md)
+  - [Test Fixtures](authorization-server/http/test-fixtures.md)
 - [Assembly](authorization-server/assembly.md)
   - [Setup](authorization-server/assembly/setup.md)
   - [Live Bindings](authorization-server/assembly/live-bindings.md)

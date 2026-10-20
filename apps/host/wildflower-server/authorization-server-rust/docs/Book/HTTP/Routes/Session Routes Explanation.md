@@ -87,7 +87,7 @@ The `400` is this route's own shape, `{ "error": …, "detail": … }`. A store 
 
 #### `from`
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/revocations.rs "<RevocationError as From>::from"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/revocations.rs RevocationError::from}}
 
 #### `into_response`
 

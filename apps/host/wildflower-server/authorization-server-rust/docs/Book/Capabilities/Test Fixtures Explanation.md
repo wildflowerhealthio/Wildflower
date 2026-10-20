@@ -130,7 +130,7 @@ The device authorizer, the token exchanger and the client token revoker each aut
 
 ## Browser Pairing
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/browser_pairing.rs tests::SERVER_ORIGIN keep-docs}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/browser_pairing.rs tests::SERVER_ORIGIN}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/browser_pairing.rs tests::NEXT}}
 
@@ -140,7 +140,7 @@ The device authorizer, the token exchanger and the client token revoker each aut
 
 ## Same-Device Sign-In
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/same_device_sign_in.rs tests::SERVER_ORIGIN keep-docs}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/same_device_sign_in.rs tests::SERVER_ORIGIN}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/same_device_sign_in.rs tests::OWNER_SCOPES}}
 
@@ -152,21 +152,21 @@ The device authorizer, the token exchanger and the client token revoker each aut
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/token_exchanger.rs tests::VERIFIER}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/token_exchanger.rs tests::SERVER_ORIGIN keep-docs}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/token_exchanger.rs tests::SERVER_ORIGIN}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/token_exchanger.rs tests::exchanger}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/token_exchanger.rs tests::authenticated keep-docs}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/token_exchanger.rs tests::authenticated}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/token_exchanger.rs tests::issue_code}}
 
 ## Client Token Revoker
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/client_token_revoker.rs tests::SERVER_ORIGIN keep-docs}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/client_token_revoker.rs tests::SERVER_ORIGIN}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/client_token_revoker.rs tests::revoker}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/client_token_revoker.rs tests::authenticated keep-docs}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/client_token_revoker.rs tests::authenticated}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/client_token_revoker.rs tests::plant_family}}
 
@@ -200,14 +200,14 @@ The device authorizer, the token exchanger and the client token revoker each aut
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/session/session_ender.rs tests::RecordingRevoker}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/session/session_ender.rs tests::claims keep-docs}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/session/session_ender.rs tests::claims}}
 
 ## Browser Session Ender
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/session/browser_session_ender.rs tests::claims keep-docs}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/session/browser_session_ender.rs tests::claims}}
 
 ## Browser Session Use Recorder
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/session/browser_session_use_recorder.rs tests::claims keep-docs}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/session/browser_session_use_recorder.rs tests::claims}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/session/browser_session_use_recorder.rs tests::last_seen}}

@@ -34,7 +34,7 @@ Two test modules name a helper alike (`redirect`, `SESSION_TTL`); the second of 
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authority/redemption.rs tests::REDIRECT}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/authority/redemption.rs tests::redirect keep-docs}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authority/redemption.rs tests::redirect}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authority/redemption.rs tests::VERIFIER}}
 
@@ -56,7 +56,7 @@ Two test modules name a helper alike (`redirect`, `SESSION_TTL`); the second of 
 
 `approved_pairing` approves its request through the shared {{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/test_fake/fixtures.rs approve_stored}} fixture, as the Owner would on the device page.
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/authority/browser_pairing.rs tests::SESSION_TTL keep-docs}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authority/browser_pairing.rs tests::SESSION_TTL}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authority/browser_pairing.rs tests::pairing}}
 
