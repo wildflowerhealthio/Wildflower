@@ -18,8 +18,6 @@
   },
   "devDependencies": {
     "@effect/language-service": "catalog:",
-    "@tanstack/router-plugin": "catalog:",
-    "@tanstack/virtual-file-routes": "catalog:",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "ajv": "catalog:",
     "effect": "catalog:",
@@ -38,7 +36,6 @@
     "typescript-eslint": "^8.57.1",
     "vite": "catalog:",
     "vite-plus": "catalog:",
-    "why-is-node-running": "catalog:",
     "yaml": "^2.9.0"
   },
   "overrides": {},

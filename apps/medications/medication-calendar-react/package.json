@@ -27,9 +27,7 @@
     "@wildflowerhealthio/medication-calendar-core": "workspace:*",
     "@wildflowerhealthio/medication-core": "workspace:*",
     "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
-    "@wildflowerhealthio/react-tundraish": "workspace:*",
     "effect": "catalog:",
-    "fast-check": "catalog:",
     "jsdom": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
@@ -41,7 +39,6 @@
     "@wildflowerhealthio/medication-calendar-core": "workspace:*",
     "@wildflowerhealthio/medication-core": "workspace:*",
     "@wildflowerhealthio/react-kitchen-sink": "workspace:*",
-    "@wildflowerhealthio/react-tundraish": "workspace:*",
     "react": "catalog:"
   }
 }

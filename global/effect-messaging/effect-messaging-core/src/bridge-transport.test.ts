@@ -75,9 +75,9 @@ describe('BridgeTransport — unhandled-tag drop and decode resilience', () => {
         // Register Tick only — Ping has no handler. The typed record requires
         // every inbound tag, so the deliberately partial set is cast through
         // `unknown` (partial and full records don't structurally overlap).
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
         const tickOnly = [
           { Tick: () => Queue.offer(ticked, undefined).pipe(Effect.asVoid) },
-          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
         ] as unknown as Bridge.HandlersByBridge<readonly [typeof TwoInbound], 'WebToHost'>
         const transport = yield* BridgeTransport.makeHostTransport({
           bridges: [TwoInbound] as const,

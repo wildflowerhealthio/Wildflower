@@ -127,7 +127,7 @@ jobs:
       # Its links name GITHUB_SHA, the commit checked out.
       - name: Install mdbook
         if: inputs.book
-        uses: taiki-e/install-action@v2.87.27
+        uses: taiki-e/install-action@v2.87.29
         with:
           tool: mdbook@0.5.4
 

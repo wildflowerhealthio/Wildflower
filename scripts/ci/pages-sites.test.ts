@@ -137,13 +137,16 @@ describe('pages-sites / affectedSites', () => {
     sites.map(({ name }) => name).toSorted()
 
   it('should preview every site a change to a shared slice reaches', () => {
-    // A change to branding-core reaches every site: each one depends on it.
+    // A change to branding-core reaches every site but the OHIF viewer, which
+    // serves a prebuilt bundle and imports nothing of branding-core.
     const affected = findAffectedPackages(
       ['slices/branding/branding-core/src/site.ts'],
       workspacePackages
     )
 
-    expect(siteNames(affectedSites(affected, workspacePackages))).toEqual(siteNames(PAGES_SITES))
+    expect(siteNames(affectedSites(affected, workspacePackages))).toEqual(
+      siteNames(PAGES_SITES).filter((name) => name !== 'ohif-viewer')
+    )
   })
 
   it('should preview only the app a change to its own package reaches', () => {

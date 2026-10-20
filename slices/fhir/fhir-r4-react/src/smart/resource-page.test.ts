@@ -162,13 +162,13 @@ const flakySmartClient = (
   response: unknown
 ): { readonly client: Client; readonly attempts: () => number } => {
   let attempts = 0
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test-only stub, only `request` is exercised
   const client = {
     request: (): Promise<unknown> => {
       const failure = failures[attempts]
       attempts += 1
       return failure === undefined ? Promise.resolve(response) : Promise.reject(failure)
     },
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test-only stub, only `request` is exercised
   } as unknown as Client
   return { client, attempts: () => attempts }
 }

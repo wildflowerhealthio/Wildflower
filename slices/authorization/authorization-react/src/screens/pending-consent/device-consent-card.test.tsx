@@ -82,6 +82,7 @@ describe('DeviceConsentCard', () => {
     // scopes and have them granted as-is. With no one-patient subject to pick, the approve
     // payload carries the requested scope untouched and no `patient` claim.
     let capturedPayload: unknown
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test stub: only `devices.ApproveDeviceConsent` is touched on this path
     const clientLayer = Layer.succeed(AuthorizationServerHttpApiClient, {
       devices: {
         ApproveDeviceConsent: (input: { readonly payload: unknown }) => {
@@ -89,7 +90,6 @@ describe('DeviceConsentCard', () => {
           return Effect.succeed({ status: 'approved' })
         },
       },
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test stub: only `devices.ApproveDeviceConsent` is touched on this path
     } as unknown as AuthorizationServerHttpApiClient['Type'])
     runAuthedStub.mockImplementationOnce((effect) =>
       Effect.runPromise(
@@ -258,6 +258,7 @@ describe('DeviceConsentCard', () => {
 
     test('approves everything it opens with ticked', async () => {
       let capturedPayload: unknown
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test stub: only `devices.ApproveDeviceConsent` is touched on this path
       const clientLayer = Layer.succeed(AuthorizationServerHttpApiClient, {
         devices: {
           ApproveDeviceConsent: (input: { readonly payload: unknown }) => {
@@ -265,7 +266,6 @@ describe('DeviceConsentCard', () => {
             return Effect.succeed({ status: 'approved' })
           },
         },
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test stub: only `devices.ApproveDeviceConsent` is touched on this path
       } as unknown as AuthorizationServerHttpApiClient['Type'])
       runAuthedStub.mockImplementationOnce((effect) =>
         Effect.runPromise(
