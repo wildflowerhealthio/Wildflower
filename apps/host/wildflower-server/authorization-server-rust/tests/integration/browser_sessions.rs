@@ -31,7 +31,8 @@ async fn post_token(g: &AuthorizationServer, form: String) -> axum::response::Re
 }
 
 /// A sign-in starts a same-device session that lasts the eight hours its token
-/// does, unnamed and holding the Owner's scopes, and the token names it.
+/// does, unnamed and holding the Owner's scopes, and the token names it. A
+/// second sign-in gets a different `sid`.
 #[tokio::test]
 async fn a_sign_in_starts_a_same_device_session_its_token_names() {
     let (g, _owner_token, db) = spin_up();
@@ -318,7 +319,8 @@ async fn listed_browser_sessions(g: &AuthorizationServer, token: &str) -> Vec<(S
 
 /// The list holds the live sessions, newest first, each row carrying the
 /// session's columns and the caller's marked. Revoking one through the API
-/// takes it off the list and ends its token; revoking it again is a `404`.
+/// takes it off the list and ends its token; revoking it again is a `404`. A
+/// fresh session's `lastSeenAt` equals its `createdAt`.
 #[tokio::test]
 async fn the_browsers_list_shows_live_sessions_and_revokes_one() {
     let (g, _owner_token, db) = spin_up();

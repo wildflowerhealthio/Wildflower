@@ -428,8 +428,10 @@ impl ValidatedRefreshToken {
     /// the wrong client is answered exactly like an unknown one so a stranger
     /// can't probe validity, and is refused before any consume so it can't
     /// burn the rightful client's token. A family begun at the epoch itself
-    /// still validates. Runs in a `read` scope, outside the write lock (see
-    /// the type's doc).
+    /// still validates. Bumping a client's revocation epoch revokes every
+    /// token it held at that instant, so a family begun before it is refused
+    /// like an access token issued before it. Runs in a `read` scope, outside
+    /// the write lock (see the type's doc).
     ///
     /// # Errors
     ///
@@ -495,7 +497,9 @@ impl ValidatedRefreshToken {
 
     /// The store-only half of validation: the family `presented_hash`
     /// belongs to, required to be `authenticated_client`'s, unexpired at
-    /// `now`, and not minted under a revoked browser session.
+    /// `now`, and not minted under a revoked browser session. A revoked family
+    /// is one whose deadline was pulled back to the revocation instant, so the
+    /// deadline check covers both.
     fn live_family(
         tx: &mut (impl RefreshTokensTx + BrowserSessionsTx),
         authenticated_client: &AuthenticatedClient,
@@ -594,7 +598,8 @@ impl ValidatedRefreshToken {
 /// Why the consumed `code` may not be redeemed by `authenticated_client`
 /// with `redirect_uri` and the presented verifier at `now`, if anything: it
 /// must be the client's, for that redirect, unexpired, and its PKCE challenge
-/// must match the verifier.
+/// must match the verifier. Each failure is its own `InvalidGrantReason`, for
+/// the log; the code is already spent, so none can be retried into a token.
 fn check_code_bindings(
     code: &AuthorizationCode,
     authenticated_client: &AuthenticatedClient,

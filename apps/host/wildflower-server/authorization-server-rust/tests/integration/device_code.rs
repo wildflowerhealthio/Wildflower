@@ -583,7 +583,8 @@ async fn device_authorization_sets_cache_suppression_headers() {
 /// Granting `offline_access` issues a rotating refresh token, and the full
 /// rotation contract holds: redeeming swaps generations, replaying a consumed
 /// generation revokes the whole family (OAuth 2.1 rotation semantics), so the
-/// rotated-to token dies with it.
+/// rotated-to token dies with it. The family records the app's standing
+/// grant.
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn offline_access_issues_rotating_refresh_token() {
@@ -806,7 +807,9 @@ async fn refresh_token_is_bound_to_issuing_client() {
 }
 
 /// Revoking a grant on the Owner surface also kills the client's refresh
-/// tokens — standing consent and standing credentials die together.
+/// tokens: every refresh family of that client has its deadline pulled back
+/// to the revocation and its live token stamped consumed, and the rows stay
+/// for the audit trail.
 #[tokio::test]
 async fn revoking_grant_revokes_refresh_tokens() {
     let (g, owner_token, db) = spin_up();

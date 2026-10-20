@@ -228,7 +228,8 @@ async fn a_browser_session_is_revoked_by_its_jti() {
 
 /// Revoking the browser-session client's subject is a `204`
 /// that signs every browser out at once, while a token issued to
-/// another client keeps working.
+/// another client keeps working. The epoch is second-granular, so a token
+/// issued in the revoking second is revoked too.
 #[tokio::test]
 async fn revoking_the_browser_session_client_s_subject_signs_every_browser_out() {
     let (g, owner_token, _db) = spin_up();

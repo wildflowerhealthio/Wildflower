@@ -145,7 +145,9 @@ fn paired_session_token(cookies: &[String]) -> String {
 /// it on the device page with the Owner's scopes all ticked, unticks some,
 /// and approves; the browser's next poll hands it a
 /// 24 h paired session holding exactly the approved scopes, which the gates
-/// accept and which writes no grant.
+/// accept and which writes no grant. A pending poll sets no cookie and
+/// renames the browser to the name the page gives; the pairing starts one
+/// session only, so the poll after that reads `expired`.
 #[tokio::test]
 async fn a_browser_pairs_and_holds_a_day_long_session_with_the_approved_scopes() {
     let (g, _owner_token, db) = spin_up();
@@ -382,8 +384,10 @@ async fn a_declined_pairing_sets_no_cookie() {
     assert!(cookies.is_empty());
 }
 
-/// A `next` off the server's origin starts nothing, and a poll by an unknown
-/// pairing code, or by a user code, finds nothing.
+/// A `next` off the server's origin starts nothing, whether absolute,
+/// protocol-relative, backslashed or the launcher's (`400
+/// BrowserPairingNextNotAllowed`); a poll by an unknown pairing code, or by a
+/// user code, finds nothing (`404 BrowserPairingNotFound`).
 #[tokio::test]
 async fn a_foreign_next_or_an_unknown_code_starts_and_finds_nothing() {
     let (g, _owner_token, db) = spin_up();

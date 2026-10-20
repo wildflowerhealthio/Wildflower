@@ -357,7 +357,9 @@ async fn denying_sends_access_denied_to_the_client_and_settles_the_wait_page() {
 }
 
 /// The card is served on the request's own path, under the wait page's
-/// headers. Its scripts, stylesheets and fonts are pinned by
+/// headers: scripts, styles, fonts and connections come only from this
+/// origin, forms submit only here and to the launcher's origin, and the page
+/// can't be framed. Its scripts, stylesheets and fonts are pinned by
 /// `authorization_pages.rs`'s unit tests against a build they define.
 #[tokio::test]
 async fn the_consent_card_is_locked_down_and_uncached() {

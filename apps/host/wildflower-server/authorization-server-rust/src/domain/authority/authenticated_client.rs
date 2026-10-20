@@ -24,8 +24,9 @@ pub(crate) struct AuthenticatedClient {
 }
 
 /// The ways client authentication can fail. The first five are the caller's
-/// fault and render as `401 invalid_client` (the description names which);
-/// the last two are server-side and render as `500 server_error`.
+/// fault and render as `401 invalid_client` (the description names which),
+/// with a `Basic` challenge when the credentials came in the `Authorization`
+/// header; the last two are server-side and render as `500 server_error`.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum ClientAuthenticationError {
     /// No client row has this `client_id`.
@@ -55,7 +56,8 @@ impl AuthenticatedClient {
     /// Look up the client the credentials name and verify them: unknown and
     /// disabled clients are refused; a public client passes on identity alone; a
     /// confidential client must present the secret matching its stored argon2id
-    /// PHC string (compared in constant time inside the verifier).
+    /// PHC string (compared in constant time inside the verifier). A secret a
+    /// public client sends anyway is ignored.
     ///
     /// # Errors
     ///

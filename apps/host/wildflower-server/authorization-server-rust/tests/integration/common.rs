@@ -250,8 +250,8 @@ fn mint_token_under_session(
     .expect("mint token")
 }
 
-/// The pending consent the host would currently be showing — the latest value
-/// on the slice's pending-consent watch channel.
+/// The Owner prompt the host would currently be showing: the latest value on
+/// the channel the server publishes it on.
 pub fn owner_prompt(db: &TestDb) -> Option<OwnerPrompt> {
     db.pending_consent_rx.borrow().clone()
 }
@@ -1069,7 +1069,8 @@ pub async fn sign_in(g: &AuthorizationServer, code: &str, next: &str) -> axum::r
         .expect("oneshot")
 }
 
-/// The Owner token a sign-in's `Set-Cookie` hands the browser.
+/// The same-device session token a sign-in's `Set-Cookie` hands
+/// the browser. Panics on any other number of cookies.
 pub fn browser_session_token(res: &axum::response::Response) -> String {
     let cookies = set_cookie_values(res);
     let [cookie] = cookies.as_slice() else {

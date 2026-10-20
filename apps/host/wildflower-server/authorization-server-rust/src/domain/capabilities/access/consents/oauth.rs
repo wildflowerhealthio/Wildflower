@@ -166,7 +166,12 @@ impl<S: GrantStore> ConsentDecider<S> {
     }
 
     /// [`approve_oauth_consent`](Self::approve_oauth_consent)'s flow, inside its write scope
-    /// `tx`.
+    /// `tx`. The checks run in order: a disabled client's prompt is denied;
+    /// the [`DelegatedScopes`] proof comes first after that, so an approver
+    /// lacking an approval scope is refused before anything else; then the
+    /// acknowledgement of a registration change; then the launch's patient.
+    /// Each refusal is an error that writes nothing, and only then does a
+    /// clamp that left nothing become a deny.
     fn approve_oauth_in(
         &self,
         tx: &mut impl GrantTx,

@@ -258,15 +258,20 @@ pub(crate) struct DelegatedScopes {
 }
 
 impl DelegatedScopes {
-    /// Require that the `approver_grant` holds the `approvable` prompt's
-    /// approval scopes
-    /// ([`missing_approval_scopes`](ApprovableScopes::missing_approval_scopes)),
-    /// clamp the `owner_approved_scopes` to the `approvable` scopes' grantable
-    /// subset, then require that the `approver_grant` covers every held access
-    /// ([`is_held_access`]) that survives.
+    /// The approval rule, in three steps:
     ///
-    /// `Ok(None)` when nothing survives — the caller denies rather than
-    /// recording an empty grant. Identity and session
+    /// 1. Require that the `approver_grant` holds the `approvable` prompt's
+    ///    approval scopes
+    ///    ([`missing_approval_scopes`](ApprovableScopes::missing_approval_scopes)),
+    ///    whatever was ticked, even nothing.
+    /// 2. Clamp the `owner_approved_scopes` to the `approvable` scopes'
+    ///    grantable subset: `Ok(None)` when nothing survives, and the caller
+    ///    denies rather than recording an empty grant.
+    /// 3. Require that the `approver_grant` covers every held access
+    ///    ([`is_held_access`]) that survives, in either spelling; one it lacks
+    ///    fails the whole approval, naming it.
+    ///
+    /// Identity and session
     /// markers (`openid`, `offline_access`, …) are no held access and pass the
     /// approver check; a resource scope or `wildflower/launch` the approver
     /// lacks fails the whole approval (a `403`) rather than being silently

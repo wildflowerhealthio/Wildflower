@@ -123,6 +123,9 @@ impl<S: GrantStore> TokenExchanger<S> {
     /// under our write lock could stall both connections for the busy
     /// timeout. The `write` scope then re-validates the store-only facts,
     /// since the family may have ended between the two, rotates, and mints.
+    /// An epoch bumped between the two scopes doesn't stop this one rotation,
+    /// as the epoch isn't read again; but the family still began before the
+    /// epoch, so its next refresh is refused.
     ///
     /// # Errors
     ///

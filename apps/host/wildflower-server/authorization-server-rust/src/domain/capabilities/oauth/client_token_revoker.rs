@@ -154,6 +154,8 @@ enum PresentedToken {
 /// End the family a presented refresh token belongs to, any of its
 /// generations, when it is the client's and still alive, in the caller's
 /// scope `tx`. A family that has already ended keeps the instant it ended at.
+/// Ending the family touches no access token already minted from it; those
+/// live out their own lifetimes.
 fn end_refresh_family(
     tx: &mut impl RefreshTokensTx,
     authenticated_client: &AuthenticatedClient,

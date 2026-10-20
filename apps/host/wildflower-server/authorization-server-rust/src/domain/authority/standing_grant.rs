@@ -40,6 +40,8 @@ impl GrantCoverage {
     /// which of `requested_scopes` it covers. A request that
     /// [would change its registration](PresentedClientChange::would_change_registration) never
     /// resolves past [`GrantCoverage::Uncovered`], whatever the grant says.
+    /// `/oauth/authorize` resolves it in the scope that parks the request, and
+    /// again when the browser goes on past the limited page.
     ///
     /// "Covers" is [`wildflowerhealthio_scopes::allowed_scope_covers`], not string equality: a
     /// standing grant is a set of permissions, so `patient/*.cruds` answers for

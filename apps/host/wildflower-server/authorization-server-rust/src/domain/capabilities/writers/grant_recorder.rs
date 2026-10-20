@@ -134,6 +134,8 @@ impl<'a, T: GrantTx> GrantRecorder<'a, T> {
 /// `delegated` scopes and (when the row doesn't allow it yet) the redirect —
 /// inside the caller's transaction, after reading the row under its write lock,
 /// so the write follows the row as it stands, not as an earlier read saw it.
+/// The store's upsert keeps the row's registration time and `disabled_at`, so
+/// a widening never brings a disabled client back.
 fn write_registration<T: GrantTx>(
     tx: &mut T,
     client_id: &str,

@@ -57,7 +57,8 @@ async fn gate_rejects_a_revoked_jti() {
 }
 
 /// Bumping a subject's revocation epoch rejects every token issued to that
-/// client before the epoch.
+/// client before the epoch. The epoch is set a second ahead, because a
+/// token's `iat` is whole seconds.
 #[tokio::test]
 async fn gate_rejects_after_subject_epoch_bump() {
     let (g, owner_token, db) = spin_up();

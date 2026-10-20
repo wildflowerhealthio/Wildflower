@@ -315,9 +315,9 @@ async fn a_body_without_disabled_at_is_rejected_and_writes_nothing() {
     }
 }
 
-/// The host app's and the browser-session client can't be disabled: the
-/// PATCH is a `409 EssentialClient` and writes nothing. Enabling them stays
-/// allowed.
+/// The host app's and the browser-session client can't be disabled, as that
+/// would leave the Owner no way in: the PATCH is a `409 EssentialClient` and
+/// writes nothing. Enabling them stays allowed.
 #[tokio::test]
 async fn an_essential_client_cannot_be_disabled() {
     let (g, owner_token, db) = spin_up();

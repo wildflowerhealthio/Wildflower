@@ -104,7 +104,9 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
     /// token, both lasting [`SAME_DEVICE_SESSION_TTL`], to go on to `next`.
     /// A `next` that isn't allowed, or a disabled browser-session client, is
     /// refused before the code is touched, so the code stays redeemable. The
-    /// session is stored and its token signed in one write scope.
+    /// session is stored and its token signed in one write scope. A failure
+    /// after the code is taken spends it: the code leaves memory even when the
+    /// scope rolls back, so signing in again takes a new code.
     ///
     /// # Errors
     ///
