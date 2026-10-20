@@ -21,7 +21,19 @@ interface DocMarkdownOptions {
    * goes, or undefined to show the link's text alone.
    */
   readonly resolve: (destination: string) => Promise<string | undefined>
+  /**
+   * Where a link to a file relative to the item's source goes
+   * (`../docs/How-To.md`), which the book's pages can't reach as written.
+   * Absent, the link stays as written.
+   */
+  readonly fileLink?: (relative: string) => string
 }
+
+/** A destination that is a path relative to the source file: no scheme, no fragment alone, not rooted. */
+const isRelativeFile = (destination: string): boolean =>
+  !/^[a-z][a-z0-9+.-]*:/i.test(destination) &&
+  !destination.startsWith('#') &&
+  !destination.startsWith('/')
 
 /** A link destination rustdoc reads as a path to an item, not a URL. */
 const RUST_PATH = /^(?:[a-z]+@)?[A-Za-z_]\w*(?:::[A-Za-z_]\w*)*(?:\(\)|!)?$/
@@ -135,14 +147,20 @@ const labelPath = (label: string): string => label.replace(/^`+|`+$/g, '').trim(
 const resolveLinks = async (
   prose: string,
   definitions: ReadonlyMap<string, string>,
-  resolve: DocMarkdownOptions['resolve']
+  resolve: DocMarkdownOptions['resolve'],
+  fileLink: DocMarkdownOptions['fileLink']
 ): Promise<string> => {
   // What each link becomes is resolved after the scan, as `resolve` is async.
   const parts: Promise<string>[] = []
   /** `implied`: the destination is the link's own text, as in a bare `[`X`]`. */
   const link = async (text: string, destination: string, implied = false): Promise<string> => {
     const path = withoutGenerics(destination)
-    if (!RUST_PATH.test(path)) return implied ? text : `[${text}](${destination})`
+    if (!RUST_PATH.test(path)) {
+      if (implied) return text
+      const to =
+        fileLink !== undefined && isRelativeFile(destination) ? fileLink(destination) : destination
+      return `[${text}](${to})`
+    }
     const url = await resolve(path)
     return url === undefined ? text : `[${text}](${url})`
   }
@@ -231,7 +249,7 @@ const renderDocMarkdown = async (
     withoutDefinitions.map(async (piece) =>
       piece.prose
         ? demoteHeadings(
-            await resolveLinks(piece.text, definitions, options.resolve),
+            await resolveLinks(piece.text, definitions, options.resolve, options.fileLink),
             options.headingLevel
           )
         : piece.text

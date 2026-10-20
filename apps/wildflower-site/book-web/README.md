@@ -141,7 +141,9 @@ A path outside the crate (`std::…`, another crate) ends at 5. As rustdoc
 does, a path's generic arguments are dropped before it is read
 (``[`AsRef<str>`]`` names `AsRef`, ``[`Pass<T>`]`` names `Pass`), and a
 bare ``[`X`]`` whose text is no path (``[`&str`]``, ``[`a + b`]``) is its
-text alone. Links to URLs stay as written.
+text alone. Links to URLs stay as written, and a link to a file relative to
+the source (`../docs/How-To.md`) goes to that file on GitHub, as the book's
+pages can't reach it as written.
 
 Each `{{#item}}` puts `<div id="item-…">` before its prose, so a link can
 land on it: `item-`, then the symbol's segments joined by `--`, each with any

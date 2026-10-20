@@ -49,6 +49,16 @@ describe('renderDocMarkdown', () => {
     expect(rendered).toBe('Takes `AsRef<str>`, [`Pass<T>`](#Pass), a list, `a + b` and `&str`.')
   })
 
+  it('sends a link to a file relative to the source through fileLink, and leaves URLs and fragments alone', async () => {
+    const rendered = await renderDocMarkdown(
+      'See the [How-To](../docs/How%20To.md#setup), [the site](https://example.org/) and [below](#below).',
+      { headingLevel: 2, resolve: known(), fileLink: (relative) => `https://repo/${relative}` }
+    )
+    expect(rendered).toBe(
+      'See the [How-To](https://repo/../docs/How%20To.md#setup), [the site](https://example.org/) and [below](#below).'
+    )
+  })
+
   it('demotes headings below the given level, at most to six, but not in code blocks', async () => {
     const rendered = await renderDocMarkdown(
       '# Errors\n\nFails.\n\n## Detail\n\n```text\n# not a heading\n```\n\n###### Deep',
