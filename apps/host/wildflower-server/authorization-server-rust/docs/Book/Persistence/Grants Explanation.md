@@ -5,143 +5,88 @@
 {{#covers apps/host/wildflower-server/authorization-server-rust/src/db/grants/authorization_code.rs}}
 {{#covers apps/host/wildflower-server/authorization-server-rust/src/db/grants/device.rs}}
 
-A [grant](<../Domain/Grant Explanation.md>) is the Owner's standing yes, and it comes in two kinds. The store keeps **one table per kind**: `authorization_code_grants` and `device_grants`, each carrying every column its kind needs, the shared ones and its own. A write or a keyed lookup of one kind is therefore one statement on one table, and the store never has to keep a parent row and a child row in step.
+A [grant](<../Domain/Grant Explanation.md>) is the Owner's standing yes, and it comes in two kinds. The store keeps **one table per kind**, `authorization_code_grants` and `device_grants`, each carrying every column its kind needs. A write or a keyed lookup of one kind is one statement on one table, and the store never has to keep a parent row and a child row in step.
 
-Each table's identity is a unique key, declared in the schema:
+Each table's identity is a unique key declared in the schema. `(client_id, redirect_uri)` holds code grants to **one standing consent per app per redirect URI**, so two approvals racing to insert can't both succeed; `(client_id, device_name)` holds device grants to **one pairing per app per device name**.
 
-| Table                       | Unique key                  | What it means                                                                                         |
-| --------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `authorization_code_grants` | `(client_id, redirect_uri)` | **One standing consent per app per redirect URI.** Two approvals racing to insert can't both succeed. |
-| `device_grants`             | `(client_id, device_name)`  | **One pairing per app per device name.** `device_name` is `NOT NULL`, so the key covers every row.    |
+The Owner's list and the lookup by id span both kinds. Those read a `grants` view, a `UNION ALL` of the two tables that tags each row with its kind and leaves the other kind's own column `NULL`. Grant ids are UUIDs minted when the grant is first recorded, so an id names at most one row across both tables.
 
-The Owner's list and the by-id lookup span both kinds. Those read a `grants` view, a `UNION ALL` of the two tables that tags each row with its kind (`authorization_code` or `device_code`) and leaves the other kind's own column NULL. Grant ids are UUIDs minted when the grant is first recorded, so an id names at most one row across both tables.
+## `db::grants`
 
-Each `GrantsTx` method on {{#code-link apps/host/wildflower-server/authorization-server-rust/src/db/grant_store.rs SqliteGrantTx}} is one line in `db/grants/mod.rs` handing its connection to the statement below, which lives in its kind's file (`authorization_code.rs`, `device.rs`) or, when it spans both kinds, in `general.rs`. Every section names the port method it implements; the port's section says what the domain relies on.
+Each [`GrantsTx`](<../Grant Store/Grants Explanation.md#item-GrantsTx>) method on `SqliteGrantTx` is one line handing its connection to a statement below, in its kind's file or, when it spans both kinds, in `general`.
 
-## Test fixtures
+## `db::grants::general`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/db/grants/general.rs tests::arb_shared}}
+### `GrantViewRow`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/db/grants/general.rs tests::arb_grant}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/grants/general.rs GrantViewRow}}
 
-Any grant of either kind: the shared columns from `arb_shared`, plus a redirect URI for a code grant or a printable device name for a device grant.
+#### Into a `Grant`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/db/grants/general.rs tests::revoke_grant}}
+The view selects each kind's own column from that kind's table, where it is `NOT NULL`, so a row missing its own column can't arise; the check is there anyway, and is a logged 500, never a panic. The round trip draws grants of either kind from [`arb_grant`](<Test Fixtures Explanation.md#item-tests--arb_grant>).
 
-A revoke the tests can drive against the real store: both deletes and the app's refresh-family expiry in one write scope, then `GrantNotFound` if neither delete removed a row. It runs the same three statements as {{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/access/grants.rs GrantsRevoker::revoke}}, but not in the same shape: the real revoke reports the miss inside the scope, so a miss expires nothing, and it revokes the app's access tokens before it opens the scope.
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/grants/general.rs Grant::try_from tests="tests::create_and_fetch_round_trip"}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/db/grants/authorization_code.rs tests::upsert_code_grant}}
+### `all_grants`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/db/grants/device.rs tests::upsert_device_grant}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/grants/general.rs all_grants tests="tests::code_and_device_grants_coexist_per_client"}}
 
-The record-a-grant step of an approval, against the real store: read the standing grant for the key; if there is one, fold the new approval into it and update; if not, insert a fresh one. These follow {{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/grant_recorder.rs GrantRecorder::record_code_grant}} and {{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/grant_recorder.rs GrantRecorder::record_device_grant}}, minus the code grant's registration write.
+### `grant_by_id`
 
-## `create_authorization_code_grant`
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/grants/general.rs grant_by_id}}
 
-A first approval of an app at a redirect URI. A plain insert of the whole grant; the unique `(client_id, redirect_uri)` key refuses a second row for the same pair. Port: [`create_authorization_code_grant`](<../Grant Store/Grants Explanation.md#create_authorization_code_grant>).
+### `delete_authorization_code_grant`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/db/grants/authorization_code.rs create_authorization_code_grant}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/grants/general.rs delete_authorization_code_grant}}
 
-The caller hands over the concrete kind, so the store never looks inside a `Grant` to choose a table. No unit test of its own; the test under [`update_authorization_code_grant`](#update_authorization_code_grant) inserts through it.
+### `delete_device_grant`
 
-## `create_device_grant`
+**Standing consent and standing credentials end together.** The revoke runs both deletes and [`expire_refresh_token_families_for_client`](<Refresh Tokens Explanation.md#item-SqliteGrantTx--expire_refresh_token_families_for_client>) in one write scope, so either the grant is gone and every refresh family the app holds has ended, or nothing changed. The test drives them through [`revoke_grant`](<Test Fixtures Explanation.md#item-tests--revoke_grant>), which runs the same three statements as [`GrantsRevoker::revoke`](<../Capabilities/Access/Grants Explanation.md#item-GrantsRevoker--revoke>).
 
-A first pairing of a device. The same plain insert, into `device_grants`; the unique `(client_id, device_name)` key refuses a second row for the same pair. Port: [`create_device_grant`](<../Grant Store/Grants Explanation.md#create_device_grant>).
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/grants/general.rs delete_device_grant tests="tests::revoke_removes_the_row_and_expires_the_clients_families"}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/db/grants/device.rs create_device_grant}}
+## `db::grants::authorization_code`
 
-No unit test of its own; the test under [`update_device_grant`](#update_device_grant) inserts through it.
+### `create_authorization_code_grant`
 
-## `grant_by_id`
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/grants/authorization_code.rs create_authorization_code_grant}}
 
-One grant by its id, whichever kind it is: the row is read off the `grants` view and rebuilt into a `Grant`. Port: [`grant_by_id`](<../Grant Store/Grants Explanation.md#grant_by_id>).
+### `grant_by_client_and_redirect`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/db/grants/general.rs grant_by_id}}
+`/oauth/authorize` asks it whether a request can skip the Owner ({{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/authority/standing_grant.rs GrantCoverage::resolve}}), an approval asks it for the grant to fold into, and a code redemption asks it for the grant id to record on its refresh family. The redirect URI is matched on its exact string.
 
-A view row carries the shared columns, the kind tag and both kinds' own columns. Rebuilding it reads the tag and takes the matching column:
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/grants/authorization_code.rs grant_by_client_and_redirect}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/db/grants/general.rs Grant::try_from}}
+### `update_authorization_code_grant`
 
-The view selects each kind's own column from that kind's table, where it is `NOT NULL`, so a row missing its own column can't arise. The check is there anyway, as is one for a row tagged as a browser pairing: either is an infrastructure error, a logged 500, never a panic.
+The test drives the read-then-create-or-update of an approval through [`upsert_code_grant`](<Test Fixtures Explanation.md#item-tests--upsert_code_grant>), which follows the [grant recorder](<../Writers/Grant Recorder Explanation.md>) minus its registration write.
 
-### What it looks like
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/grants/authorization_code.rs update_authorization_code_grant tests="tests::upsert_action_inserts_then_unions_scopes_over_sqlite"}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/db/grants/general.rs tests::create_and_fetch_round_trip}}
+### `stamp_authorization_code_grant_used`
 
-Any grant of either kind, inserted into its own table, comes back off the view equal to what went in.
+A code issued without asking the Owner stamps the grant that let it through.
 
-## `all_grants`
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/grants/authorization_code.rs stamp_authorization_code_grant_used tests="tests::a_reapproval_keeps_the_stamp_over_sqlite"}}
 
-Every grant, both kinds, oldest `granted_at` first: the Owner's approved apps and paired devices ({{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/access/grants.rs GrantsReader::list}}). Port: [`all_grants`](<../Grant Store/Grants Explanation.md#all_grants>).
+## `db::grants::device`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/db/grants/general.rs all_grants}}
+### `create_device_grant`
 
-A row that can't be rebuilt fails the whole read. No unit test of its own; the tests below count grants with it.
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/grants/device.rs create_device_grant}}
 
-## `grant_by_client_and_redirect`
+### `device_grant_by_client_and_device_name`
 
-The standing consent, if any, for this app at this redirect URI: a lookup on the `authorization_code_grants` key. It is how `/oauth/authorize` decides whether a request can skip the Owner ({{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/authority/standing_grant.rs GrantCoverage::resolve}}), how an approval finds the grant to fold into, and how a code redemption finds the grant id to record on its refresh family. Port: [`grant_by_client_and_redirect`](<../Grant Store/Grants Explanation.md#grant_by_client_and_redirect>).
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/grants/device.rs device_grant_by_client_and_device_name}}
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/db/grants/authorization_code.rs grant_by_client_and_redirect}}
+### `update_device_grant`
 
-It reads the concrete table and returns the concrete kind, so a device grant can never satisfy it. The redirect URI is matched on its exact string. No unit test of its own; the test under the device lookup below exercises it too.
+The test pairs through [`upsert_device_grant`](<Test Fixtures Explanation.md#item-tests--upsert_device_grant>), the device counterpart.
 
-## `device_grant_by_client_and_device_name`
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/grants/device.rs update_device_grant tests="tests::upsert_action_inserts_then_unions_scopes_over_sqlite"}}
 
-The pairing, if any, for this app under this device name: a lookup on the `device_grants` key. An approval finds the grant to fold a re-pairing into, and a device's token exchange finds the grant id to record on its refresh family. Port: [`device_grant_by_client_and_device_name`](<../Grant Store/Grants Explanation.md#device_grant_by_client_and_device_name>).
+### `stamp_device_grant_used`
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/db/grants/device.rs device_grant_by_client_and_device_name}}
+A refresh family the grant earned rotating stamps it.
 
-### What it looks like
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/db/grants/general.rs tests::code_and_device_grants_coexist_per_client}}
-
-A code grant and a device grant for the same app live side by side; each kind's lookup finds its own; a device lookup under the code grant's redirect URI finds nothing; and the cross-kind list holds both.
-
-## `update_authorization_code_grant`
-
-A re-approval of an app at a redirect URI it already holds a grant for. The caller has read the standing grant and folded the new approval into it with [`absorb_reapproval`](<../Domain/Grant Explanation.md#absorb_reapproval>) in the same write scope; this writes the result back. It overwrites `scopes`, `granted_at` and `patient` on the row with the grant's id, and leaves the key columns and `last_used_at` alone. Port: [`update_authorization_code_grant`](<../Grant Store/Grants Explanation.md#update_authorization_code_grant>).
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/db/grants/authorization_code.rs update_authorization_code_grant}}
-
-The read and this write share one `BEGIN IMMEDIATE` scope, which takes the write lock as it opens. Two approvals at once therefore run one after the other: the second reads the first's union and adds to it, rather than both reading the old row and one overwriting the other.
-
-### What it looks like
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/db/grants/authorization_code.rs tests::upsert_action_inserts_then_unions_scopes_over_sqlite}}
-
-A first approval inserts; a second, with one scope repeated and one new, updates the same row (same id, still one grant) to the union, and its patient replaces the first.
-
-## `update_device_grant`
-
-A re-pairing of a device the app already holds a grant for under that name. The same write-back as for a code grant: `scopes`, `granted_at` and `patient` on the row with the grant's id, after the caller's read and fold in the same scope. Port: [`update_device_grant`](<../Grant Store/Grants Explanation.md#update_device_grant>).
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/db/grants/device.rs update_device_grant}}
-
-### What it looks like
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/db/grants/device.rs tests::upsert_action_inserts_then_unions_scopes_over_sqlite}}
-
-Re-pairing the same device updates its one grant to the union of scopes; pairing under a different device name records a second grant.
-
-## `delete_authorization_code_grant`
-
-Half of the Owner revoking a grant: delete the code grant with this id, and say whether a row went. Port: [`delete_authorization_code_grant`](<../Grant Store/Grants Explanation.md#delete_authorization_code_grant>).
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/db/grants/general.rs delete_authorization_code_grant}}
-
-The revoke doesn't pick a table by kind; it runs this and [`delete_device_grant`](#delete_device_grant) both, and since ids are unique across the two tables, at most one removes a row. No unit test of its own; the test under `delete_device_grant` drives both.
-
-## `delete_device_grant`
-
-The other half: delete the device grant with this id, and say whether a row went. Port: [`delete_device_grant`](<../Grant Store/Grants Explanation.md#delete_device_grant>).
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/db/grants/general.rs delete_device_grant}}
-
-**Standing consent and standing credentials end together.** The revoke runs both deletes and [`expire_refresh_token_families_for_client`](<Refresh Tokens Explanation.md#expire_refresh_token_families_for_client>) in one write scope, so either the grant is gone and every refresh family the app holds has ended, or nothing changed.
-
-### What it looks like
-
-{{#code apps/host/wildflower-server/authorization-server-rust/src/db/grants/general.rs tests::revoke_removes_the_row_and_expires_the_clients_families}}
-
-After the revoke the grant is gone from both the view and its own table; the app's refresh family has its deadline pulled to the revocation instant and its live token stamped spent at that instant, both rows kept; and a second revoke of the same id is a miss.
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/grants/device.rs stamp_device_grant_used tests="tests::a_repairing_keeps_the_stamp_over_sqlite"}}

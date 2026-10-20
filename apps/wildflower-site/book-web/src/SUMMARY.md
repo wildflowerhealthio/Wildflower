@@ -115,6 +115,7 @@
   - [Authorization Codes](authorization-server/persistence/authorization-codes.md)
   - [Refresh Tokens](authorization-server/persistence/refresh-tokens.md)
   - [Signing Keys](authorization-server/persistence/signing-keys.md)
+  - [Test Fixtures](authorization-server/persistence/test-fixtures.md)
 - [Utilities](authorization-server/utilities.md)
 - [Integration Tests](authorization-server/integration-tests.md)
   - [Smoke](authorization-server/integration-tests/smoke.md)
