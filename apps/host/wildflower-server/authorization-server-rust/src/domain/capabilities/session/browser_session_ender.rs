@@ -79,12 +79,12 @@ mod tests {
         assert!(ender
             .store
             .tx()
-            .browser_session_is_revoked(&signed_out.sid)
+            .is_browser_session_revoked(&signed_out.sid)
             .unwrap());
         assert!(!ender
             .store
             .tx()
-            .browser_session_is_revoked(&other.sid)
+            .is_browser_session_revoked(&other.sid)
             .unwrap());
     }
 }

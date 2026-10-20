@@ -86,14 +86,14 @@ pub fn consent_sign_in_url(public_origin: &Url, code: &str, consent: &ConsentKey
         .join("/oauth/")
         .expect("an absolute path joined to an origin is a URL");
     match consent {
-        ConsentKey::OAuth { id } => {
+        ConsentKey::AuthorizationCode { id } => {
             page.path_segments_mut()
                 .expect("a URL joined to an origin has path segments")
                 .pop_if_empty()
                 .extend(["authorize", id, "consent"]);
             page.query_pairs_mut().append_pair("then", "back");
         }
-        ConsentKey::Device { user_code } | ConsentKey::Browser { user_code } => {
+        ConsentKey::DeviceCode { user_code } | ConsentKey::BrowserPairing { user_code } => {
             page.path_segments_mut()
                 .expect("a URL joined to an origin has path segments")
                 .pop_if_empty()
@@ -347,7 +347,7 @@ mod tests {
         let url = consent_sign_in_url(
             &ruth_origin(),
             "code-1",
-            &ConsentKey::OAuth {
+            &ConsentKey::AuthorizationCode {
                 id: "req/1 ?".to_owned(),
             },
         );
@@ -370,7 +370,7 @@ mod tests {
         let url = consent_sign_in_url(
             &ruth_origin(),
             "code-1",
-            &ConsentKey::Device {
+            &ConsentKey::DeviceCode {
                 user_code: "ABCD-EFGH".to_owned(),
             },
         );
@@ -382,7 +382,7 @@ mod tests {
         let url = consent_sign_in_url(
             &ruth_origin(),
             "code-1",
-            &ConsentKey::Browser {
+            &ConsentKey::BrowserPairing {
                 user_code: "WXYZ-BCDF".to_owned(),
             },
         );

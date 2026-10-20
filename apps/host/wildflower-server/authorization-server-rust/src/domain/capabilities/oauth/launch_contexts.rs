@@ -44,19 +44,21 @@ impl<S: GrantStore> LaunchContexts<S> {
         self.insert_and_prune_expired(LaunchContext::for_client(nonce, client_id, None, now), now)
     }
 
-    /// Persist a fresh launch context `nonce` that any client may consume, and
-    /// return it. Otherwise as [`LaunchContexts::mint`]: no patient, the same
+    /// Persist a fresh launch context `nonce` for the base's launch of a
+    /// server's launcher, and return it. Any client may consume it: the
+    /// launcher can be any app the Owner set, so the base can't name its
+    /// client. Otherwise as [`LaunchContexts::mint`]: no patient, the same
     /// expiry, the same prune.
     ///
     /// # Errors
     ///
     /// [`AuthorizationServerError::Infrastructure`] on a store failure.
-    pub(crate) fn mint_for_any_client(
+    pub(crate) fn mint_for_server_launcher(
         &self,
         nonce: String,
         now: DateTime<Utc>,
     ) -> Result<LaunchContext, AuthorizationServerError> {
-        self.insert_and_prune_expired(LaunchContext::for_any_client(nonce, now), now)
+        self.insert_and_prune_expired(LaunchContext::for_server_launcher(nonce, now), now)
     }
 
     /// Insert `launch_context`, deleting the contexts expired at `now` in the
@@ -171,12 +173,12 @@ mod tests {
     /// A context minted for any client binds no patient and is consumed once,
     /// by whichever client presents it first.
     #[test]
-    fn a_context_for_any_client_is_consumed_once_by_any_client() {
+    fn a_context_for_the_server_launcher_is_consumed_once_by_any_client() {
         let store = FakeGrantStore::default();
         let launch_contexts = LaunchContexts::new(store);
         let now = Utc::now();
         let minted = launch_contexts
-            .mint_for_any_client("nonce-1".to_owned(), now)
+            .mint_for_server_launcher("nonce-1".to_owned(), now)
             .expect("mint");
         assert_eq!(minted.client_id(), None);
         assert_eq!(minted.patient(), None);

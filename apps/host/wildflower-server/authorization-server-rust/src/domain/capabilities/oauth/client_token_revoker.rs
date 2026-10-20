@@ -259,7 +259,7 @@ mod tests {
         .unwrap()
     }
 
-    fn jti_is_denylisted(revocation_store: &RevocationStore, access_token: &str) -> bool {
+    fn is_jti_denylisted(revocation_store: &RevocationStore, access_token: &str) -> bool {
         let payload = access_token.split('.').nth(1).expect("a JWT");
         let claims: serde_json::Value =
             serde_json::from_slice(&base64::url_safe_no_pad_decode(payload).expect("base64url"))
@@ -306,13 +306,13 @@ mod tests {
 
         let own = access_token(&revoker.store, "app", SERVER_ORIGIN);
         revoker.revoke(&stranger, &own, now).unwrap();
-        assert!(!jti_is_denylisted(&revocation_store, &own));
+        assert!(!is_jti_denylisted(&revocation_store, &own));
         revoker.revoke(&app, &own, now).unwrap();
-        assert!(jti_is_denylisted(&revocation_store, &own));
+        assert!(is_jti_denylisted(&revocation_store, &own));
 
         let foreign = access_token(&revoker.store, "app", "https://other.example");
         revoker.revoke(&app, &foreign, now).unwrap();
-        assert!(!jti_is_denylisted(&revocation_store, &foreign));
+        assert!(!is_jti_denylisted(&revocation_store, &foreign));
 
         revoker.revoke(&app, "not-a-token", now).unwrap();
     }

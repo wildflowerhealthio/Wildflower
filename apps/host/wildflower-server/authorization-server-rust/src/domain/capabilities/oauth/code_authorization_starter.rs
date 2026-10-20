@@ -30,6 +30,7 @@ use crate::domain::authorization_request::{
     AuthorizationRequest, CodeRequest, NewAuthorizationRequest, PendingCodeRequest, RequestKind,
 };
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::authorize_refusal::AuthorizeRefusal;
 use crate::domain::capabilities::writers::{CodeApproval, CodeAuthority, RequestApprover};
 use crate::domain::client_redirect::{
     BROWSER_SIGNED_OUT_DESCRIPTION, SCOPES_NOT_REGISTERED_DESCRIPTION,
@@ -38,7 +39,6 @@ use crate::domain::client_registration::ResolvedCodeRequest;
 use crate::domain::grant_store::write_transition;
 use crate::domain::launch_context::LaunchRefusal;
 use crate::domain::oauth_error_code::OAuthErrorCode;
-use crate::domain::oauth_error_kind::OAuthErrorKind;
 use crate::domain::{GrantStore, GrantTx};
 use crate::ports::OwnerApproval;
 
@@ -130,7 +130,7 @@ pub(crate) enum AuthorizationStartError {
     /// front rather than parking a request it can never complete.
     NoActiveSigningKey,
     /// A failure on a request whose `redirect_uri` is not trusted.
-    LocalPage(OAuthErrorKind),
+    LocalPage(AuthorizeRefusal),
     /// A spec'd error once `redirect_uri` is validated, with the sentence the
     /// redirect carries as its `error_description`. The URL is boxed to keep
     /// the error small enough for `clippy::result_large_err`.
@@ -303,17 +303,17 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
             &requested_scopes,
             maybe_existing_client.as_ref(),
         );
-        if resolved.client_disabled() {
+        if resolved.is_client_disabled() {
             return Err(AuthorizationStartError::LocalPage(
-                OAuthErrorKind::DisabledClient,
+                AuthorizeRefusal::DisabledClient,
             ));
         }
         // A redirect is trustworthy only when a client we already know already
         // registered it.
-        let redirect_trusted = resolved.redirect_is_registered();
-        if resolved.registration_is_fixed() && !redirect_trusted {
+        let redirect_trusted = resolved.is_redirect_registered();
+        if resolved.is_registration_fixed() && !redirect_trusted {
             return Err(AuthorizationStartError::LocalPage(
-                OAuthErrorKind::RedirectUriNotAllowed,
+                AuthorizeRefusal::RedirectUriNotAllowed,
             ));
         }
         validate_code_params(
@@ -322,7 +322,7 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
             redirect_trusted,
             &self.server_origin,
         )?;
-        if resolved.registration_is_fixed() && !resolved.scopes_are_registered() {
+        if resolved.is_registration_fixed() && !resolved.are_scopes_registered() {
             return Err(AuthorizationStartError::Redirectable {
                 redirect_uri: Box::new(requested_redirect_uri),
                 error: OAuthErrorCode::InvalidScope,
@@ -337,14 +337,14 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
                 .is_empty();
         let coverage = GrantCoverage::resolve(
             tx,
-            resolved.registration_verdict(),
+            resolved.presented_client_change(),
             authorize_query.client_id,
             &requested_redirect_uri,
             &requested_scopes,
         )?;
         let waits_on_limited_page =
             !session_shortfall(&requested_scopes, authorize_query.browser_session_grant).is_empty()
-                && !tx.session_shortfall_acknowledged_for_client(
+                && !tx.is_session_shortfall_acknowledged_for_client(
                     authorize_query.sid,
                     authorize_query.client_id,
                 )?;
@@ -461,17 +461,17 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
         );
         // The client was disabled since the request parked: the browser can't
         // go on with it, so it ends here, and the app hears why.
-        if resolved.client_disabled() {
+        if resolved.is_client_disabled() {
             return refuse_waiting_request(
                 tx,
                 &parked_request,
-                OAuthErrorKind::DisabledClient,
+                AuthorizeRefusal::DisabledClient,
                 now,
             );
         }
         let coverage = GrantCoverage::resolve(
             tx,
-            resolved.registration_verdict(),
+            resolved.presented_client_change(),
             request.client_id(),
             &parked_request.code().redirect_uri,
             request.requested_scopes(),
@@ -524,7 +524,7 @@ struct Decided {
 fn refuse_waiting_request(
     tx: &mut impl GrantTx,
     parked_request: &PendingCodeRequest,
-    refusal: OAuthErrorKind,
+    refusal: AuthorizeRefusal,
     now: DateTime<Utc>,
 ) -> Result<Decided, AuthorizationStartError> {
     let id = parked_request.request().id();
@@ -639,10 +639,10 @@ fn issue_under_standing_grant(
 /// §4.1.2.1); either failure is an unconditional local page.
 fn parse_redirect_uri(redirect_uri: &str) -> Result<Url, AuthorizationStartError> {
     let parsed = Url::parse(redirect_uri)
-        .map_err(|_| AuthorizationStartError::LocalPage(OAuthErrorKind::InvalidRedirectUri))?;
+        .map_err(|_| AuthorizationStartError::LocalPage(AuthorizeRefusal::InvalidRedirectUri))?;
     if parsed.scheme() != "http" && parsed.scheme() != "https" {
         return Err(AuthorizationStartError::LocalPage(
-            OAuthErrorKind::InvalidScheme,
+            AuthorizeRefusal::InvalidScheme,
         ));
     }
     Ok(parsed)
@@ -657,7 +657,7 @@ fn validate_code_params(
     redirect_trusted: bool,
     server_origin: &str,
 ) -> Result<(), AuthorizationStartError> {
-    let fail = |error: OAuthErrorCode, local: OAuthErrorKind| {
+    let fail = |error: OAuthErrorCode, local: AuthorizeRefusal| {
         start_error(
             authorize_query,
             redirect_uri,
@@ -670,7 +670,7 @@ fn validate_code_params(
     if authorize_query.response_type != "code" {
         return Err(fail(
             OAuthErrorCode::UnsupportedResponseType,
-            OAuthErrorKind::UnsupportedResponseType,
+            AuthorizeRefusal::UnsupportedResponseType,
         ));
     }
     // Only S256 PKCE is supported; anything else is `invalid_request` (RFC
@@ -678,13 +678,13 @@ fn validate_code_params(
     if authorize_query.code_challenge_method != "S256" {
         return Err(fail(
             OAuthErrorCode::InvalidRequest,
-            OAuthErrorKind::UnsupportedCodeChallengeMethod,
+            AuthorizeRefusal::UnsupportedCodeChallengeMethod,
         ));
     }
     if !is_valid_s256_code_challenge(authorize_query.code_challenge) {
         return Err(fail(
             OAuthErrorCode::InvalidRequest,
-            OAuthErrorKind::InvalidCodeChallenge,
+            AuthorizeRefusal::InvalidCodeChallenge,
         ));
     }
     // A declared SMART `aud` must name this server.
@@ -695,7 +695,7 @@ fn validate_code_params(
         if aud != server_origin {
             return Err(fail(
                 OAuthErrorCode::InvalidRequest,
-                OAuthErrorKind::InvalidAudience,
+                AuthorizeRefusal::InvalidAudience,
             ));
         }
     }
@@ -705,11 +705,11 @@ fn validate_code_params(
 /// The reason a client is told for `launch_refusal`. Another app's launch
 /// reads exactly like one that doesn't exist, so a client learns nothing about
 /// it; only the server's own log tells the two apart.
-fn launch_refusal_kind(launch_refusal: LaunchRefusal) -> OAuthErrorKind {
+fn launch_refusal_kind(launch_refusal: LaunchRefusal) -> AuthorizeRefusal {
     match launch_refusal {
-        LaunchRefusal::Unknown | LaunchRefusal::ForAnotherApp => OAuthErrorKind::LaunchUnknown,
-        LaunchRefusal::AlreadyUsed => OAuthErrorKind::LaunchAlreadyUsed,
-        LaunchRefusal::Expired => OAuthErrorKind::LaunchExpired,
+        LaunchRefusal::Unknown | LaunchRefusal::ForAnotherApp => AuthorizeRefusal::LaunchUnknown,
+        LaunchRefusal::AlreadyUsed => AuthorizeRefusal::LaunchAlreadyUsed,
+        LaunchRefusal::Expired => AuthorizeRefusal::LaunchExpired,
     }
 }
 
@@ -721,7 +721,7 @@ fn start_error(
     redirect_uri: &Url,
     redirect_trusted: bool,
     error: OAuthErrorCode,
-    local: OAuthErrorKind,
+    local: AuthorizeRefusal,
 ) -> AuthorizationStartError {
     if redirect_trusted {
         AuthorizationStartError::Redirectable {
@@ -1001,14 +1001,14 @@ mod tests {
         assert!(matches!(
             code_authorization_starter.start(&bad_type, ids(), Utc::now()),
             Err(AuthorizationStartError::LocalPage(
-                OAuthErrorKind::UnsupportedResponseType
+                AuthorizeRefusal::UnsupportedResponseType
             ))
         ));
 
         assert!(matches!(
             code_authorization_starter.start(&request("host", "openid"), ids(), Utc::now()),
             Err(AuthorizationStartError::LocalPage(
-                OAuthErrorKind::RedirectUriNotAllowed
+                AuthorizeRefusal::RedirectUriNotAllowed
             ))
         ));
     }
@@ -1090,12 +1090,12 @@ mod tests {
         }
 
         /// Plant a launch `nonce` any client may consume.
-        fn mint_for_any_client(
+        fn mint_for_server_launcher(
             &self,
             nonce: String,
             now: DateTime<Utc>,
         ) -> Result<LaunchContext, AuthorizationServerError> {
-            let launch_context = LaunchContext::for_any_client(nonce, now);
+            let launch_context = LaunchContext::for_server_launcher(nonce, now);
             self.0.tx().insert_launch_context(&launch_context)?;
             Ok(launch_context)
         }
@@ -1175,7 +1175,7 @@ mod tests {
             assert!(matches!(
                 code_authorization_starter.start(&untrusted_query, ids(), Utc::now()),
                 Err(AuthorizationStartError::LocalPage(
-                    OAuthErrorKind::InvalidAudience
+                    AuthorizeRefusal::InvalidAudience
                 ))
             ));
         }
@@ -1269,7 +1269,7 @@ mod tests {
         code_authorization_starter: &CodeAuthorizationStarter<FakeGrantStore>,
         launch: &str,
         now: DateTime<Utc>,
-    ) -> Option<OAuthErrorKind> {
+    ) -> Option<AuthorizeRefusal> {
         let untrusted_query = AuthorizeRequest {
             launch: Some(launch),
             ..request("newcomer", "openid")
@@ -1295,12 +1295,12 @@ mod tests {
         for launch in ["for-other-app", "forged"] {
             assert_eq!(
                 launch_refusal_description(&code_authorization_starter, launch, now),
-                Some(OAuthErrorKind::LaunchUnknown.description()),
+                Some(AuthorizeRefusal::LaunchUnknown.description()),
                 "{launch} is refused",
             );
             assert_eq!(
                 launch_refusal_page(&code_authorization_starter, launch, now),
-                Some(OAuthErrorKind::LaunchUnknown),
+                Some(AuthorizeRefusal::LaunchUnknown),
             );
         }
         assert!(
@@ -1332,11 +1332,11 @@ mod tests {
         );
 
         launch_contexts_of(&code_authorization_starter)
-            .mint_for_any_client("launch-2".to_owned(), minted_at)
+            .mint_for_server_launcher("launch-2".to_owned(), minted_at)
             .unwrap();
         assert_eq!(
             launch_refusal_page(&code_authorization_starter, "launch-2", past_the_ttl),
-            Some(OAuthErrorKind::LaunchExpired),
+            Some(AuthorizeRefusal::LaunchExpired),
         );
     }
 
@@ -1351,7 +1351,7 @@ mod tests {
             .mint("app", "launch-1".to_owned(), now)
             .unwrap();
         launch_contexts
-            .mint_for_any_client("launch-2".to_owned(), now)
+            .mint_for_server_launcher("launch-2".to_owned(), now)
             .unwrap();
         for launch in ["launch-1", "launch-2"] {
             launch_contexts
@@ -1361,11 +1361,11 @@ mod tests {
         }
         assert_eq!(
             launch_refusal_description(&code_authorization_starter, "launch-1", now),
-            Some(OAuthErrorKind::LaunchAlreadyUsed.description()),
+            Some(AuthorizeRefusal::LaunchAlreadyUsed.description()),
         );
         assert_eq!(
             launch_refusal_page(&code_authorization_starter, "launch-2", now),
-            Some(OAuthErrorKind::LaunchAlreadyUsed),
+            Some(AuthorizeRefusal::LaunchAlreadyUsed),
         );
     }
 
@@ -1621,7 +1621,7 @@ mod tests {
             code_authorization_starter
                 .store
                 .tx()
-                .newest_pending_consent(Utc::now())
+                .owner_prompt(Utc::now())
                 .unwrap(),
             None
         );
@@ -1781,9 +1781,9 @@ mod tests {
             code_authorization_starter
                 .store
                 .tx()
-                .newest_pending_consent(Utc::now())
+                .owner_prompt(Utc::now())
                 .unwrap(),
-            Some(crate::domain::pending_consent::NewestPendingConsent::OAuth { .. })
+            Some(crate::domain::owner_prompt::OwnerPrompt::AuthorizationCode { .. })
         ));
     }
 
@@ -1879,7 +1879,7 @@ mod tests {
         assert!(!code_authorization_starter
             .store
             .tx()
-            .session_shortfall_acknowledged_for_client(REQUESTING_SID, "other-app")
+            .is_session_shortfall_acknowledged_for_client(REQUESTING_SID, "other-app")
             .unwrap());
     }
 

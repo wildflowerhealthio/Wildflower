@@ -52,7 +52,7 @@ pub trait BrowserSessionsTx {
     /// # Errors
     ///
     /// [`AuthorizationServerError::Infrastructure`] if the read fails.
-    fn browser_session_is_revoked(&mut self, sid: &str) -> Result<bool, AuthorizationServerError>;
+    fn is_browser_session_revoked(&mut self, sid: &str) -> Result<bool, AuthorizationServerError>;
 
     /// Stamp the browser session `sid` revoked at `now`, returning `true` iff a
     /// session that wasn't already revoked was transitioned. The row is kept.
@@ -87,7 +87,7 @@ pub trait BrowserSessionsTx {
     /// # Errors
     ///
     /// [`AuthorizationServerError::Infrastructure`] if the read fails.
-    fn session_shortfall_acknowledged_for_client(
+    fn is_session_shortfall_acknowledged_for_client(
         &mut self,
         sid: &str,
         client_id: &str,

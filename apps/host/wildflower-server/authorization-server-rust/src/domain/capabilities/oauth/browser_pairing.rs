@@ -178,7 +178,7 @@ impl<S: GrantStore> BrowserPairing<S> {
         let pairing_code = generate_authorization_code();
         let browser_name = user_agent_name.unwrap_or_else(|| UNRECOGNIZED_BROWSER_NAME.to_owned());
         let user_code = self.store.write(|tx| {
-            if browser_session_client_is_disabled(tx)? {
+            if is_browser_session_client_disabled(tx)? {
                 return Err(BrowserPairingStartError::BrowserSessionClientDisabled);
             }
             let user_code = generate_unique_user_code(tx)?
@@ -327,7 +327,7 @@ fn record_poll(
 
 /// Whether the browser-session client is disabled. Its row is seeded at
 /// boot, so a missing one is an error, not an enabled client.
-fn browser_session_client_is_disabled(
+fn is_browser_session_client_disabled(
     tx: &mut impl ClientsTx,
 ) -> Result<bool, AuthorizationServerError> {
     let browser_session_client = tx.client_by_id(BROWSER_SESSION_CLIENT_ID)?.ok_or_else(|| {

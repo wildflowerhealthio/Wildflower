@@ -5,20 +5,21 @@ use chrono::{DateTime, Utc};
 use url::Url;
 
 use super::FakeGrantTx;
-use crate::domain::authorization_code::IssuedAuthorizationCode;
+use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::authorization_request::{
     AuthorizationRequest, RequestStatus, RequestTransition,
 };
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::browser_session::BrowserSession;
 use crate::domain::client::Client;
+use crate::domain::consent_key::ConsentKey;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
 use crate::domain::grant_store::{
     AuthorizationCodesTx, AuthorizationRequestsTx, BrowserSessionsTx, ClientsTx, GrantsTx,
     LaunchContextsTx, RefreshTokensTx, SigningKeysTx,
 };
 use crate::domain::launch_context::LaunchContext;
-use crate::domain::pending_consent::NewestPendingConsent;
+use crate::domain::owner_prompt::OwnerPrompt;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::domain::signing_key::SigningKey;
 
@@ -28,6 +29,15 @@ impl ClientsTx for FakeGrantTx<'_> {
         client_id: &str,
     ) -> Result<Option<Client>, AuthorizationServerError> {
         Ok(self.store.clients.borrow().get(client_id).cloned())
+    }
+
+    fn is_client_disabled(&mut self, client_id: &str) -> Result<bool, AuthorizationServerError> {
+        Ok(self
+            .store
+            .clients
+            .borrow()
+            .get(client_id)
+            .is_some_and(|client| client.disabled_at.is_some()))
     }
 
     fn upsert_client(&mut self, client: &Client) -> Result<(), AuthorizationServerError> {
@@ -120,10 +130,10 @@ impl AuthorizationRequestsTx for FakeGrantTx<'_> {
             .cloned())
     }
 
-    fn newest_pending_consent(
+    fn owner_prompt(
         &mut self,
         now: DateTime<Utc>,
-    ) -> Result<Option<NewestPendingConsent>, AuthorizationServerError> {
+    ) -> Result<Option<OwnerPrompt>, AuthorizationServerError> {
         let requests = self.store.authorization_requests.borrow();
         let clients = self.store.clients.borrow();
         // Mirrors the SQL: a disabled client's request is skipped, a client
@@ -136,7 +146,7 @@ impl AuthorizationRequestsTx for FakeGrantTx<'_> {
         let newest = requests
             .values()
             .filter(|request| {
-                request.pending_at(now)
+                request.is_pending_at(now)
                     && request.phase().session_shortfall_acknowledged
                     && !client_disabled(request.client_id())
             })
@@ -147,8 +157,27 @@ impl AuthorizationRequestsTx for FakeGrantTx<'_> {
             let registered_client_name = clients
                 .get(request.client_id())
                 .map(|client| client.name.clone());
-            NewestPendingConsent::for_request(request, registered_client_name)
+            OwnerPrompt::for_request(request, registered_client_name)
         }))
+    }
+
+    fn is_awaiting_owner(
+        &mut self,
+        consent_key: &ConsentKey,
+        now: DateTime<Utc>,
+    ) -> Result<bool, AuthorizationServerError> {
+        let request = match consent_key {
+            ConsentKey::DeviceCode { user_code } | ConsentKey::BrowserPairing { user_code } => {
+                self.pending_authorization_request_by_user_code(user_code)?
+            }
+            ConsentKey::AuthorizationCode { id } => self.authorization_request_by_id(id)?,
+        };
+        match request {
+            Some(request) if request.is_pending_at(now) => {
+                Ok(!self.is_client_disabled(request.client_id())?)
+            }
+            _ => Ok(false),
+        }
     }
 
     fn insert_authorization_request(
@@ -193,14 +222,14 @@ impl AuthorizationCodesTx for FakeGrantTx<'_> {
     fn redeem_authorization_code(
         &mut self,
         code: &str,
-    ) -> Result<Option<IssuedAuthorizationCode>, AuthorizationServerError> {
+    ) -> Result<Option<AuthorizationCode>, AuthorizationServerError> {
         Ok(self.store.authorization_codes.borrow_mut().remove(code))
     }
 
     fn authorization_code_by_request_id(
         &mut self,
         request_id: &str,
-    ) -> Result<Option<IssuedAuthorizationCode>, AuthorizationServerError> {
+    ) -> Result<Option<AuthorizationCode>, AuthorizationServerError> {
         Ok(self
             .store
             .authorization_codes
@@ -212,7 +241,7 @@ impl AuthorizationCodesTx for FakeGrantTx<'_> {
 
     fn issue_authorization_code(
         &mut self,
-        code: &IssuedAuthorizationCode,
+        code: &AuthorizationCode,
     ) -> Result<(), AuthorizationServerError> {
         self.store
             .authorization_codes
@@ -315,7 +344,7 @@ impl BrowserSessionsTx for FakeGrantTx<'_> {
         Ok(live)
     }
 
-    fn browser_session_is_revoked(&mut self, sid: &str) -> Result<bool, AuthorizationServerError> {
+    fn is_browser_session_revoked(&mut self, sid: &str) -> Result<bool, AuthorizationServerError> {
         Ok(self
             .store
             .browser_sessions
@@ -357,7 +386,7 @@ impl BrowserSessionsTx for FakeGrantTx<'_> {
         )
     }
 
-    fn session_shortfall_acknowledged_for_client(
+    fn is_session_shortfall_acknowledged_for_client(
         &mut self,
         sid: &str,
         client_id: &str,
@@ -462,7 +491,7 @@ impl RefreshTokensTx for FakeGrantTx<'_> {
         }
     }
 
-    fn refresh_token_exists(&mut self, token_hash: &str) -> Result<bool, AuthorizationServerError> {
+    fn has_refresh_token(&mut self, token_hash: &str) -> Result<bool, AuthorizationServerError> {
         Ok(self.store.tokens.borrow().contains_key(token_hash))
     }
 

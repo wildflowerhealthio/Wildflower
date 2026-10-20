@@ -103,8 +103,6 @@ fn server_config(server_dir: PathBuf) -> WildflowerServerConfig {
             .expect("authorization URL"),
         host_app_client_scopes:
             wildflowerhealthio_authorization_server::default_host_app_client_scopes(),
-        wildflower_host_app_client_id:
-            wildflowerhealthio_authorization_server::WILDFLOWER_HOST_APP_CLIENT_ID.to_owned(),
         // A relay nothing listens at: the tunnel dials and retries in the
         // background, which the server's lifecycle doesn't wait on, and the
         // domain below never answers.
@@ -1311,7 +1309,7 @@ async fn the_fhir_ui_sends_its_sign_in_through_the_authorization_server() {
             &serde_json::json!({
                 "approvedScopes": ["user/*.cruds"],
                 "patient": null,
-                "acknowledgedRegistration": true,
+                "acknowledgedRegistrationChange": true,
             }),
         ))
         .await

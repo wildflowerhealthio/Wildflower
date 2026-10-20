@@ -9,7 +9,7 @@ use utoipa::ToSchema;
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::{OAuthConsentView, Scoped};
-use crate::domain::client_registration::ClientRegistrationVerdict;
+use crate::domain::client_registration::PresentedClientChange;
 use crate::http::state::AuthorizationServerState;
 use crate::live_bindings::LiveConsentReader;
 
@@ -43,7 +43,7 @@ pub(crate) struct OAuthConsent {
 }
 
 /// Wire shape of [`OAuthConsent::registration`] — the
-/// [`ClientRegistrationVerdict`] verdict, `status`-tagged.
+/// [`PresentedClientChange`], `status`-tagged.
 ///
 /// `{"status":"registered"}` for a request that matches the registration,
 /// `{"status":"new"}` for a client this authorization server has never seen, and
@@ -65,13 +65,13 @@ pub(crate) enum ClientRegistrationBody {
     },
 }
 
-/// Render the domain verdict onto the wire.
-impl From<ClientRegistrationVerdict> for ClientRegistrationBody {
-    fn from(registration: ClientRegistrationVerdict) -> Self {
+/// Render the domain change onto the wire.
+impl From<PresentedClientChange> for ClientRegistrationBody {
+    fn from(registration: PresentedClientChange) -> Self {
         match registration {
-            ClientRegistrationVerdict::Registered => ClientRegistrationBody::Registered,
-            ClientRegistrationVerdict::New => ClientRegistrationBody::New,
-            ClientRegistrationVerdict::WouldWiden {
+            PresentedClientChange::NoChange => ClientRegistrationBody::Registered,
+            PresentedClientChange::WouldCreate => ClientRegistrationBody::New,
+            PresentedClientChange::WouldWiden {
                 redirect_uri_is_new,
                 unregistered_requested_scopes: new_scopes,
             } => ClientRegistrationBody::Changed {
@@ -95,7 +95,7 @@ async fn handle_get_oauth_consent(
     let OAuthConsentView {
         pending_request,
         client_name,
-        registration_verdict,
+        presented_client_change,
         missing_approval_scopes,
     } = consents.oauth_consent(&id, Utc::now())?;
     let request = pending_request.request();
@@ -110,7 +110,7 @@ async fn handle_get_oauth_consent(
         patient: request
             .approval()
             .and_then(|approval| approval.patient.clone()),
-        registration: registration_verdict.into(),
+        registration: presented_client_change.into(),
         missing_approval_scopes,
     }))
 }

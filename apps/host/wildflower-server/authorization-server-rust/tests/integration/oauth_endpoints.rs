@@ -232,14 +232,10 @@ async fn authorize_disallowed_scope_parks_a_pending_request() {
 /// never notifies it and the flow hangs until the 5-minute TTL — the bug this
 /// covers.
 #[tokio::test]
-async fn authorize_publishes_the_parked_request_as_the_newest_pending_consent() {
+async fn authorize_publishes_the_parked_request_as_the_owner_prompt() {
     let (g, _owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
-    assert_eq!(
-        newest_pending_consent(&db),
-        None,
-        "no request has been parked yet"
-    );
+    assert_eq!(owner_prompt(&db), None, "no request has been parked yet");
 
     let res = get_authorize(
         &g.router,
@@ -250,8 +246,8 @@ async fn authorize_publishes_the_parked_request_as_the_newest_pending_consent() 
     let request_id = parked_request_id(&res);
 
     assert_eq!(
-        newest_pending_consent(&db),
-        Some(NewestPendingConsent::OAuth {
+        owner_prompt(&db),
+        Some(OwnerPrompt::AuthorizationCode {
             id: request_id.clone(),
             client_name: "Integration Test Client".to_owned(),
             decidable_in_requesting_browser: false,
@@ -264,7 +260,7 @@ async fn authorize_publishes_the_parked_request_as_the_newest_pending_consent() 
 /// so it must not linger as the newest pending consent. Covers approve
 /// and deny separately — they take different paths to the same republish.
 #[tokio::test]
-async fn deciding_an_oauth_consent_clears_the_newest_pending_consent() {
+async fn deciding_an_oauth_consent_clears_the_owner_prompt() {
     for decision in ["approve", "deny"] {
         let (g, owner_token, db) = spin_up();
         seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
@@ -276,7 +272,7 @@ async fn deciding_an_oauth_consent_clears_the_newest_pending_consent() {
         .await;
         let request_id = parked_request_id(&res);
         assert!(
-            newest_pending_consent(&db).is_some(),
+            owner_prompt(&db).is_some(),
             "{decision}: the request should be pending before it is decided",
         );
 
@@ -290,14 +286,14 @@ async fn deciding_an_oauth_consent_clears_the_newest_pending_consent() {
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {owner_token}"))
                 .header("content-type", "application/json"),
-                Body::from(r#"{"approvedScopes":["read"],"acknowledgedRegistration":true}"#),
+                Body::from(r#"{"approvedScopes":["read"],"acknowledgedRegistrationChange":true}"#),
             ))
             .await
             .expect("oneshot");
         assert_eq!(res.status(), StatusCode::OK, "{decision} should succeed");
 
         assert_eq!(
-            newest_pending_consent(&db),
+            owner_prompt(&db),
             None,
             "{decision}: the request must clear once it is decided",
         );
@@ -329,7 +325,7 @@ async fn the_pending_consent_watcher_sees_an_older_request_decided_under_a_newer
         .await,
     );
     let watcher = g.pending_consent_watcher.clone();
-    let older_key = ConsentKey::OAuth {
+    let older_key = ConsentKey::AuthorizationCode {
         id: older_id.clone(),
     };
     let older_settled = tokio::spawn(async move { watcher.until_settled(older_key).await });
@@ -347,7 +343,7 @@ async fn the_pending_consent_watcher_sees_an_older_request_decided_under_a_newer
                 .header("host", "127.0.0.1")
                 .header("authorization", format!("Bearer {owner_token}"))
                 .header("content-type", "application/json"),
-            Body::from(r#"{"approvedScopes":["read"],"acknowledgedRegistration":true}"#),
+            Body::from(r#"{"approvedScopes":["read"],"acknowledgedRegistrationChange":true}"#),
         ))
         .await
         .expect("oneshot");
@@ -359,8 +355,8 @@ async fn the_pending_consent_watcher_sees_an_older_request_decided_under_a_newer
         .expect("the watcher's task")
         .expect("the watcher's reads");
     assert_eq!(
-        newest_pending_consent(&db),
-        Some(NewestPendingConsent::OAuth {
+        owner_prompt(&db),
+        Some(OwnerPrompt::AuthorizationCode {
             id: newer_id,
             client_name: "Integration Test Client".to_owned(),
             decidable_in_requesting_browser: false,
@@ -374,7 +370,7 @@ async fn the_pending_consent_watcher_sees_an_older_request_decided_under_a_newer
 /// `pending`. A spurious notification here would ask the Owner to re-approve something
 /// they already consented to, on a request that is already `approved`.
 #[tokio::test]
-async fn a_fast_pathed_authorize_never_becomes_the_newest_pending_consent() {
+async fn a_fast_pathed_authorize_never_becomes_the_owner_prompt() {
     let (g, owner_token, db) = spin_up();
     seed_test_client(&db);
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
@@ -385,11 +381,11 @@ async fn a_fast_pathed_authorize_never_becomes_the_newest_pending_consent() {
         &db.paired_browser_token,
         "test-app",
         "read",
-        r#"{"approvedScopes":["read"],"acknowledgedRegistration":true}"#,
+        r#"{"approvedScopes":["read"],"acknowledgedRegistrationChange":true}"#,
     )
     .await;
     assert_eq!(
-        newest_pending_consent(&db),
+        owner_prompt(&db),
         None,
         "the approved first request left nothing pending"
     );
@@ -409,7 +405,7 @@ async fn a_fast_pathed_authorize_never_becomes_the_newest_pending_consent() {
         "expected the fast path's client redirect, got {location}"
     );
     assert_eq!(
-        newest_pending_consent(&db),
+        owner_prompt(&db),
         None,
         "a fully pre-approved request must never be published as pending",
     );
@@ -555,7 +551,8 @@ async fn authorize_consumes_a_smart_launch_once() {
         &g,
         &owner_token,
         &request_id,
-        r#"{"approvedScopes":["read"],"patient":null,"acknowledgedRegistration":true}"#.to_owned(),
+        r#"{"approvedScopes":["read"],"patient":null,"acknowledgedRegistrationChange":true}"#
+            .to_owned(),
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -573,12 +570,12 @@ async fn authorize_consumes_a_smart_launch_once() {
 /// it at `/oauth/authorize`; a replay redirects to the client's callback with
 /// `invalid_request`, "This launch was already used."
 #[tokio::test]
-async fn authorize_consumes_a_launch_for_any_client_once() {
+async fn authorize_consumes_a_server_launcher_launch_once() {
     let (g, _owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
     let launch = g
         .launch_context_minter
-        .mint_for_any_client()
+        .mint_for_server_launcher()
         .expect("mint a launch");
     let query = smart_launch_query(&format!("launch={launch}"));
 

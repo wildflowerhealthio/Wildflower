@@ -4,7 +4,7 @@
 //! each exposing a `MethodRouter`; the DTO shared with the device flow
 //! (`ConsentResult`) lives in [`crate::http::wire_representations`], the `get`
 //! response shape and the approve body beside their routes (both carry the
-//! registration verdict this flow alone has), and the consent logic in
+//! presented client change this flow alone has), and the consent logic in
 //! `domain::capabilities`. `router()` is the only path table.
 
 mod approve;

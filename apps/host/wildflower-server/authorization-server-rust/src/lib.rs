@@ -36,7 +36,6 @@ use wildflowerhealthio_scopes::{
 use wildflowerhealthio_token_revocation::RevocationStore;
 
 use crate::domain::browser_session::LONGEST_BROWSER_SESSION_TTL;
-use crate::domain::essential_client_guard::EssentialClientGuard;
 use crate::domain::last_seen_throttle::LastSeenThrottle;
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
 use crate::domain::sign_in_redirect::SignInDestinations;
@@ -53,7 +52,8 @@ pub use seeding::seed_dev_app_clients;
 // `GrantStore` is the seam with its read and write scopes, `GrantTx` the
 // bundle of per-table primitives a scope hands out (each concern's trait is
 // in `domain::grant_store`).
-pub use domain::pending_consent::{ConsentKey, NewestPendingConsent};
+pub use domain::consent_key::ConsentKey;
+pub use domain::owner_prompt::OwnerPrompt;
 pub use domain::{GrantStore, GrantTx};
 
 /// The admin scopes the `/authorization` surface enforces — the registry meant to
@@ -80,13 +80,8 @@ pub use ports::{AdmitEveryAuthorizationStart, AuthorizationStartGate};
 pub use wildflowerhealthio_persistence::DieselPool;
 
 /// `client_id` of the Wildflower host app's OAuth client, seeded at bootstrap
-/// with a server-defined registration.
-///
-/// This is the standalone/test fallback: the live Tauri app sources the id from
-/// `tauri-shared-config.json` and threads it via
-/// [`AuthorizationServerConfig::wildflower_host_app_client_id`], so the id can't
-/// drift from the host's config. Rendered by
-/// [`default_wildflower_host_app_client_id`].
+/// with a server-defined registration. Like [`BROWSER_SESSION_CLIENT_ID`], it
+/// is an essential client: it can't be disabled.
 pub const WILDFLOWER_HOST_APP_CLIENT_ID: &str = "c4e755b6a4c1abf2aae6d0d83f2545a5";
 
 /// `client_id` of the browser-session client: the browsers the server has
@@ -155,14 +150,6 @@ pub fn owner_scopes() -> Vec<String> {
 #[must_use]
 pub fn default_host_app_client_scopes() -> Vec<String> {
     vec![Scope::Known(KnownScope::Openid).to_string()]
-}
-
-/// The default Wildflower host app `client_id` — [`WILDFLOWER_HOST_APP_CLIENT_ID`]. Standalone
-/// and test builds seed [`AuthorizationServerConfig::wildflower_host_app_client_id`] from this;
-/// the live Tauri app sources the value from `tauri-shared-config.json` instead.
-#[must_use]
-pub fn default_wildflower_host_app_client_id() -> String {
-    WILDFLOWER_HOST_APP_CLIENT_ID.to_string()
 }
 
 /// How often the background sweep drops denylist rows whose token has already
@@ -261,13 +248,12 @@ pub fn setup_authorization_server(
     pool: DieselPool,
     revocation_store: RevocationStore,
     config: &AuthorizationServerConfig,
-    owner_approval_tx: watch::Sender<Option<NewestPendingConsent>>,
+    owner_approval_tx: watch::Sender<Option<OwnerPrompt>>,
     authorization_start_gate: Arc<dyn AuthorizationStartGate>,
 ) -> anyhow::Result<AuthorizationServer> {
     let store = seeding::open_and_seed_store(
         pool,
         &config.host_app_client_scopes,
-        &config.wildflower_host_app_client_id,
         &config.fhir_ui_client_id,
         &config.server_origin,
     )?;
@@ -280,10 +266,6 @@ pub fn setup_authorization_server(
         revocation_store: revocation_store.clone(),
         server_origin: server_origin.clone(),
         device_page: Arc::new(http::device_page_url(&config.server_origin)),
-        essential_client_guard: EssentialClientGuard::new(
-            config.wildflower_host_app_client_id.clone().into(),
-            BROWSER_SESSION_CLIENT_ID.into(),
-        ),
         launcher_base: config.launcher_base.clone(),
         owner_approval_tx,
         pending_consents_recomputed_tx,

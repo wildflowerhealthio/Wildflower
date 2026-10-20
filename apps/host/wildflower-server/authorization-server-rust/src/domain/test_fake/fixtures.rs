@@ -13,7 +13,7 @@ use crate::domain::authority::{
     ApprovableScopes, AuthenticatedClient, DelegatedScopes, PresentedAuthorizationCode,
     RedeemedAuthorizationCode,
 };
-use crate::domain::authorization_code::{IssuedAuthorizationCode, AUTHORIZATION_CODE_TTL};
+use crate::domain::authorization_code::{AuthorizationCode, AUTHORIZATION_CODE_TTL};
 use crate::domain::authorization_request::{
     Approval, AuthorizationRequest, CodeRequest, DeviceRequest, NewAuthorizationRequest,
     RequestKind, RequestStatus, RequestTransition, TransitionRefused,
@@ -291,7 +291,7 @@ pub(crate) fn redeemed_code(
     let code = generate_authorization_code();
     store
         .tx()
-        .issue_authorization_code(&IssuedAuthorizationCode {
+        .issue_authorization_code(&AuthorizationCode {
             code: code.clone(),
             request_id: "req".to_owned(),
             client_id: client_id.to_owned(),

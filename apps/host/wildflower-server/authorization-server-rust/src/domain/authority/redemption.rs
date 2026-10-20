@@ -32,7 +32,7 @@ use super::authenticated_client::AuthenticatedClient;
 use super::token_entitlement::TokenEntitlement;
 use crate::crypto_util::pkce::{compute_code_challenge, is_valid_code_verifier_length};
 use crate::crypto_util::random_token::token_storage_hash;
-use crate::domain::authorization_code::IssuedAuthorizationCode;
+use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::authorization_request::{
     device_grant_name, Approval, RequestStatus, DEVICE_CODE_POLL_INTERVAL,
 };
@@ -127,7 +127,7 @@ impl<'a> GrantRedemption<'a> {
 
     /// Whether the grant carries [`KnownScope::OfflineAccess`] and so earns a
     /// refresh-token family alongside its access token.
-    pub(crate) fn earns_refresh_token(self) -> bool {
+    pub(crate) fn is_refresh_token_earned(self) -> bool {
         self.granted_scopes()
             .iter()
             .any(|scope| scope == KnownScope::OfflineAccess.as_str())
@@ -138,7 +138,7 @@ impl<'a> GrantRedemption<'a> {
 /// to the redeeming client and `redirect_uri`, unexpired, and matching the
 /// PKCE verifier. Carries the code's granted scopes.
 pub(crate) struct RedeemedAuthorizationCode {
-    code: IssuedAuthorizationCode,
+    code: AuthorizationCode,
     token_scopes: Vec<String>,
     grant_id: Option<String>,
 }
@@ -483,7 +483,7 @@ impl ValidatedRefreshToken {
         // Revoking a browser session ends every family minted under it. A
         // family with no session (the device flow) has none to check.
         if let Some(sid) = family.sid.as_deref() {
-            if tx.browser_session_is_revoked(sid)? {
+            if tx.is_browser_session_revoked(sid)? {
                 return Err(TokenExchangeError::InvalidGrant(
                     InvalidGrantReason::RefreshTokenSessionRevoked {
                         family_id: family.family_id,
@@ -540,7 +540,7 @@ impl ValidatedRefreshToken {
 /// must be the client's, for that redirect, unexpired, and its PKCE challenge
 /// must match the verifier.
 fn check_code_bindings(
-    code: &IssuedAuthorizationCode,
+    code: &AuthorizationCode,
     authenticated_client: &AuthenticatedClient,
     redirect_uri: &Url,
     presented: &PresentedAuthorizationCode<'_>,
@@ -613,7 +613,7 @@ mod tests {
         let code = generate_authorization_code();
         store
             .tx()
-            .issue_authorization_code(&IssuedAuthorizationCode {
+            .issue_authorization_code(&AuthorizationCode {
                 code: code.clone(),
                 request_id: "req".to_owned(),
                 client_id: client_id.to_owned(),

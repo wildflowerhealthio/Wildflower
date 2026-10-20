@@ -37,11 +37,11 @@ impl ConsentRequest {
         let domain = &self.domain;
         let requester_name = &self.pending_consent.requester_name;
         let (title, body) = match self.pending_consent.key {
-            ConsentKey::Device { .. } | ConsentKey::OAuth { .. } => (
+            ConsentKey::DeviceCode { .. } | ConsentKey::AuthorizationCode { .. } => (
                 "Access request",
                 format!("{requester_name} wants access to {domain}"),
             ),
-            ConsentKey::Browser { .. } => (
+            ConsentKey::BrowserPairing { .. } => (
                 "Sign-in request",
                 format!("{requester_name}, a remote browser, wants to sign in to {domain}"),
             ),
@@ -446,7 +446,7 @@ impl ConsentNotificationCoalescer {
 
 #[cfg(test)]
 mod tests {
-    use wildflowerhealthio_authorization_server::NewestPendingConsent;
+    use wildflowerhealthio_authorization_server::OwnerPrompt;
     use wildflowerhealthio_unit_runner::{RunStop, StopReason, UnitStatus};
 
     use super::*;
@@ -459,7 +459,7 @@ mod tests {
     }
 
     /// A status reporting `pending_consent` as the newest request waiting.
-    fn running_with(pending_consent: Option<NewestPendingConsent>) -> UnitStatus<ServerDetail> {
+    fn running_with(pending_consent: Option<OwnerPrompt>) -> UnitStatus<ServerDetail> {
         UnitStatus {
             run_state: RunState::Running,
             running_since: None,
@@ -475,16 +475,16 @@ mod tests {
         }
     }
 
-    fn oauth(id: &str) -> NewestPendingConsent {
-        NewestPendingConsent::OAuth {
+    fn oauth(id: &str) -> OwnerPrompt {
+        OwnerPrompt::AuthorizationCode {
             id: id.to_owned(),
             client_name: "Lifting".to_owned(),
             decidable_in_requesting_browser: false,
         }
     }
 
-    fn device(user_code: &str) -> NewestPendingConsent {
-        NewestPendingConsent::Device {
+    fn device(user_code: &str) -> OwnerPrompt {
+        OwnerPrompt::DeviceCode {
             user_code: user_code.to_owned(),
             client_name: "Pebble".to_owned(),
         }
@@ -499,11 +499,11 @@ mod tests {
     }
 
     fn oauth_key(id: &str) -> ConsentKey {
-        ConsentKey::OAuth { id: id.to_owned() }
+        ConsentKey::AuthorizationCode { id: id.to_owned() }
     }
 
     fn device_key(user_code: &str) -> ConsentKey {
-        ConsentKey::Device {
+        ConsentKey::DeviceCode {
             user_code: user_code.to_owned(),
         }
     }
@@ -645,8 +645,8 @@ mod tests {
         assert_eq!(removed.withdrawn, [RUTH]);
     }
 
-    fn oauth_decidable_in_requesting_browser(id: &str) -> NewestPendingConsent {
-        NewestPendingConsent::OAuth {
+    fn oauth_decidable_in_requesting_browser(id: &str) -> OwnerPrompt {
+        OwnerPrompt::AuthorizationCode {
             id: id.to_owned(),
             client_name: "Lifting".to_owned(),
             decidable_in_requesting_browser: true,
@@ -1263,7 +1263,7 @@ mod tests {
     fn a_browser_pairing_s_notification_names_the_remote_browser() {
         let request = ConsentRequest {
             domain: RUTH.to_owned(),
-            pending_consent: NewestPendingConsent::BrowserPairing {
+            pending_consent: OwnerPrompt::BrowserPairing {
                 user_code: "WXYZ-BCDF".to_owned(),
                 browser_name: "Firefox on Linux".to_owned(),
             }

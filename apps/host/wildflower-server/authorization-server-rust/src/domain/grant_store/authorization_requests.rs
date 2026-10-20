@@ -7,7 +7,8 @@ use crate::domain::authorization_request::{
     AuthorizationRequest, RequestTransition, TransitionRefused,
 };
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::pending_consent::NewestPendingConsent;
+use crate::domain::consent_key::ConsentKey;
+use crate::domain::owner_prompt::OwnerPrompt;
 
 /// The authorization requests the Owner decides. Every method is one primitive on the caller's
 /// [`GrantStore`](super::GrantStore) scope: a single statement, or a few
@@ -59,10 +60,26 @@ pub trait AuthorizationRequestsTx {
     ///
     /// [`AuthorizationServerError::Infrastructure`] if the read fails or the
     /// row is malformed.
-    fn newest_pending_consent(
+    fn owner_prompt(
         &mut self,
         now: DateTime<Utc>,
-    ) -> Result<Option<NewestPendingConsent>, AuthorizationServerError>;
+    ) -> Result<Option<OwnerPrompt>, AuthorizationServerError>;
+
+    /// Whether the request `consent_key` names still waits for the Owner at
+    /// `now`: pending (a code request still on its browser's limited page
+    /// included), not past its expiry, and its client not disabled (the rule
+    /// on [`OwnerPrompt`]). A request that isn't there, or is decided or
+    /// expired, doesn't.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if a read fails or the
+    /// row is malformed.
+    fn is_awaiting_owner(
+        &mut self,
+        consent_key: &ConsentKey,
+        now: DateTime<Utc>,
+    ) -> Result<bool, AuthorizationServerError>;
 
     /// Persist a freshly started request.
     ///

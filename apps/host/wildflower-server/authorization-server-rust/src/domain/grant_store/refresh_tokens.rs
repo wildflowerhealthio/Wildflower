@@ -52,7 +52,7 @@ pub trait RefreshTokensTx {
     /// Stamp the live token `token_hash` consumed at `now`, returning `true` iff
     /// a live (un-consumed) row was actually transitioned — the guarded half of
     /// a refresh-token consume. The `consumed_at IS NULL` guard makes a replay a
-    /// `false`, and pairing this with [`Self::refresh_token_exists`] in one
+    /// `false`, and pairing this with [`Self::has_refresh_token`] in one
     /// write scope is how
     /// `consume_refresh_token`
     /// resolves the three-state consume without a dedicated store method.
@@ -73,7 +73,7 @@ pub trait RefreshTokensTx {
     /// # Errors
     ///
     /// [`AuthorizationServerError::Infrastructure`] if the query fails.
-    fn refresh_token_exists(&mut self, token_hash: &str) -> Result<bool, AuthorizationServerError>;
+    fn has_refresh_token(&mut self, token_hash: &str) -> Result<bool, AuthorizationServerError>;
 
     /// End a token family (pull its `expires_at` back to `now` and stamp its
     /// still-live token consumed at the same instant). Rows are kept, not

@@ -19,8 +19,10 @@ use crate::domain::capabilities::oauth::{
     CodeAuthorizationStarter, DeviceAuthorizer, LaunchContexts, PublicKeysReader, SameDeviceSignIn,
     SessionShortfall, TokenExchanger,
 };
-use crate::domain::pending_consent::ConsentKey;
+use crate::domain::consent_key::ConsentKey;
+use crate::domain::grant_store::AuthorizationRequestsTx as _;
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
+use crate::domain::GrantStore as _;
 use crate::ports::OwnerApproval;
 
 /// Start an authorization-code flow — built by the `/oauth/authorize` handler.
@@ -176,17 +178,17 @@ impl LaunchContextMinter {
             .map(|launch_context| launch_context.nonce)
     }
 
-    /// Mint a launch any OAuth client may consume and return its `launch`
-    /// value, for the base's launch of a server's launcher, which can be any
-    /// app. It binds no patient, expires five minutes from now, and works for
+    /// Mint a launch for the base's launch of a server's launcher and return
+    /// its `launch` value. Any OAuth client may consume it: the launcher can
+    /// be any app the Owner set, so the base can't name its client. It binds no patient, expires five minutes from now, and works for
     /// one `/oauth/authorize`, by whichever client presents it first.
     ///
     /// # Errors
     ///
     /// [`AuthorizationServerError::Infrastructure`] on a store failure.
-    pub fn mint_for_any_client(&self) -> Result<String, AuthorizationServerError> {
+    pub fn mint_for_server_launcher(&self) -> Result<String, AuthorizationServerError> {
         self.launch_contexts
-            .mint_for_any_client(generate_launch_nonce(), Utc::now())
+            .mint_for_server_launcher(generate_launch_nonce(), Utc::now())
             .map(|launch_context| launch_context.nonce)
     }
 }
@@ -261,12 +263,13 @@ impl PendingConsentWatcher {
             pending_consents_recomputed_rx.borrow_and_update();
             let store = self.store.clone();
             let read_consent = consent.clone();
-            let pending =
-                tokio::task::spawn_blocking(move || read_consent.is_pending_in(&store, Utc::now()))
-                    .await
-                    .map_err(|error| {
-                        AuthorizationServerError::infrastructure("reading a pending consent", error)
-                    })??;
+            let pending = tokio::task::spawn_blocking(move || {
+                store.read(|tx| tx.is_awaiting_owner(&read_consent, Utc::now()))
+            })
+            .await
+            .map_err(|error| {
+                AuthorizationServerError::infrastructure("reading a pending consent", error)
+            })??;
             if !pending {
                 return Ok(());
             }

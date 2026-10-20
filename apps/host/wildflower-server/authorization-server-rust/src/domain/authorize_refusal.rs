@@ -1,7 +1,7 @@
-//! [`OAuthErrorKind`] — why `/oauth/authorize` refused a request. RFC 6749
+//! [`AuthorizeRefusal`] — why `/oauth/authorize` refused a request. RFC 6749
 //! §4.1.2.1 allows redirecting an error only to a validated `redirect_uri`:
 //! once the redirect is trusted, a refusal goes back to the client with
-//! [`OAuthErrorKind::description`] as its `error_description`; before that
+//! [`AuthorizeRefusal::description`] as its `error_description`; before that
 //! point, or for a redirect nobody has vouched for, it renders as a local page
 //! with the same sentence as its body. The HTML rendering lives in
 //! `http::errors`; this is the vocabulary.
@@ -10,7 +10,7 @@
 /// back to a trusted redirect as the `error_description`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(test, derive(strum::EnumIter))]
-pub enum OAuthErrorKind {
+pub enum AuthorizeRefusal {
     /// The `redirect_uri` is not a well-formed URL.
     InvalidRedirectUri,
     /// The `redirect_uri` is not `http` or `https`.
@@ -37,7 +37,7 @@ pub enum OAuthErrorKind {
     InvalidAudience,
 }
 
-impl OAuthErrorKind {
+impl AuthorizeRefusal {
     /// The sentence saying why: the local page's body, and the
     /// `error_description` when the refusal goes back to the client. Plain
     /// ASCII without `"` or `\`, as RFC 6749 §4.1.2.1 requires of an
@@ -45,29 +45,29 @@ impl OAuthErrorKind {
     #[must_use]
     pub fn description(self) -> &'static str {
         match self {
-            OAuthErrorKind::InvalidRedirectUri => {
+            AuthorizeRefusal::InvalidRedirectUri => {
                 "The supplied redirect_uri is not a well-formed URL."
             }
-            OAuthErrorKind::InvalidScheme => "The supplied redirect_uri must use http or https.",
-            OAuthErrorKind::DisabledClient => "The supplied client_id has been disabled.",
-            OAuthErrorKind::RedirectUriNotAllowed => {
+            AuthorizeRefusal::InvalidScheme => "The supplied redirect_uri must use http or https.",
+            AuthorizeRefusal::DisabledClient => "The supplied client_id has been disabled.",
+            AuthorizeRefusal::RedirectUriNotAllowed => {
                 "The supplied redirect_uri is not registered for this client."
             }
-            OAuthErrorKind::UnsupportedResponseType => {
+            AuthorizeRefusal::UnsupportedResponseType => {
                 "The app asked for a kind of sign-in this server doesn't support."
             }
-            OAuthErrorKind::UnsupportedCodeChallengeMethod => {
+            AuthorizeRefusal::UnsupportedCodeChallengeMethod => {
                 "The app's sign-in request uses a security method this server doesn't support."
             }
-            OAuthErrorKind::InvalidCodeChallenge => {
+            AuthorizeRefusal::InvalidCodeChallenge => {
                 "The app's sign-in request has a malformed security check."
             }
-            OAuthErrorKind::LaunchUnknown => "This launch isn't recognized. Open the app again.",
-            OAuthErrorKind::LaunchAlreadyUsed => {
+            AuthorizeRefusal::LaunchUnknown => "This launch isn't recognized. Open the app again.",
+            AuthorizeRefusal::LaunchAlreadyUsed => {
                 "This launch was already used. Open the app again."
             }
-            OAuthErrorKind::LaunchExpired => "This launch has expired. Open the app again.",
-            OAuthErrorKind::InvalidAudience => {
+            AuthorizeRefusal::LaunchExpired => "This launch has expired. Open the app again.",
+            AuthorizeRefusal::InvalidAudience => {
                 "The app asked for a different server than this one."
             }
         }
@@ -97,7 +97,7 @@ mod tests {
     /// `error_description`.
     #[test]
     fn every_description_is_a_valid_error_description() {
-        for kind in OAuthErrorKind::iter() {
+        for kind in AuthorizeRefusal::iter() {
             assert!(
                 is_error_description(kind.description()),
                 "{kind:?}: {:?}",

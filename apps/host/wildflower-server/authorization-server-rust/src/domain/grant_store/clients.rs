@@ -19,6 +19,14 @@ pub trait ClientsTx {
     fn client_by_id(&mut self, client_id: &str)
         -> Result<Option<Client>, AuthorizationServerError>;
 
+    /// Whether `client_id`'s client is disabled. A client with no row is not:
+    /// one trusted on first use has none until the Owner approves it.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the read fails.
+    fn is_client_disabled(&mut self, client_id: &str) -> Result<bool, AuthorizationServerError>;
+
     /// Insert a client, or update its policy fields if one with the same
     /// `client_id` already exists (`ON CONFLICT … DO UPDATE`), preserving
     /// `registered_at` and `disabled_at`. Used by the seeding every boot runs,

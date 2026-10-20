@@ -33,7 +33,7 @@ pub(crate) struct ApproveOAuthConsentBody {
     /// redirect address. Required (not defaulted) so a client that has not been
     /// updated to show the warning cannot approve a `new` or `changed` prompt by
     /// omission; it is ignored when the prompt carries no warning.
-    pub(crate) acknowledged_registration: bool,
+    pub(crate) acknowledged_registration_change: bool,
 }
 
 /// `POST /oauth-consents/{id}/approve` — the Owner approves a consent prompt,
@@ -43,7 +43,7 @@ pub(crate) struct ApproveOAuthConsentBody {
 /// own scopes: an approval delegating a resource scope beyond them is rejected
 /// with a `403`. Approving a prompt whose client, redirect, or scopes are
 /// outside the current registration without
-/// [`acknowledged_registration`](ApproveOAuthConsentBody::acknowledged_registration)
+/// [`acknowledged_registration_change`](ApproveOAuthConsentBody::acknowledged_registration_change)
 /// is rejected with a `409` and writes nothing, as is an approval naming a
 /// patient other than the one the request's SMART launch binds. The write
 /// scope lives in the consent capability's `approve_oauth_consent`.
@@ -61,7 +61,7 @@ async fn handle_approve_oauth_consent(
         ApproveOAuthConsentInput {
             owner_approved_scopes: body.approved_scopes,
             patient: body.patient,
-            acknowledged_registration: body.acknowledged_registration,
+            acknowledged_registration_change: body.acknowledged_registration_change,
         },
         generate_authorization_code,
         Utc::now(),

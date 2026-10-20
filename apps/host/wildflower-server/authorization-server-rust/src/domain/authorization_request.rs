@@ -419,7 +419,7 @@ impl AuthorizationRequest {
     /// Whether the request still awaits a decision at `now`: pending, and not
     /// past its expiry.
     #[must_use]
-    pub fn pending_at(&self, now: DateTime<Utc>) -> bool {
+    pub fn is_pending_at(&self, now: DateTime<Utc>) -> bool {
         self.status == RequestStatus::Pending && !self.is_expired_at(now)
     }
 
@@ -438,7 +438,7 @@ impl AuthorizationRequest {
     /// [`PendingCodeRequest`]; `None` otherwise.
     #[must_use]
     pub fn into_pending_code(self, now: DateTime<Utc>) -> Option<PendingCodeRequest> {
-        if !self.pending_at(now) {
+        if !self.is_pending_at(now) {
             return None;
         }
         let code_request = self.code()?.clone();
@@ -656,7 +656,7 @@ impl AuthorizationRequest {
 
     /// Refuse a transition on a request no longer pending at `now`.
     fn require_pending(&self, now: DateTime<Utc>) -> Result<(), TransitionRefused> {
-        if self.pending_at(now) {
+        if self.is_pending_at(now) {
             Ok(())
         } else {
             Err(TransitionRefused::NotPending)
@@ -811,10 +811,10 @@ mod tests {
         let request = started(device());
         assert_eq!(request.requested_at(), at(0));
         assert_eq!(request.expires_at(), at(5));
-        assert!(request.pending_at(at(4)));
+        assert!(request.is_pending_at(at(4)));
         assert!(!request.is_expired_at(at(4)));
         assert!(request.is_expired_at(at(5)));
-        assert!(!request.pending_at(at(5)));
+        assert!(!request.is_pending_at(at(5)));
         assert_eq!(request.approval(), None);
     }
 

@@ -405,7 +405,7 @@ describe('ConsentPage — scopes', () => {
         {
           approvedScopes: ['user/Observation.rs'],
           patient: null,
-          acknowledgedRegistration: false,
+          acknowledgedRegistrationChange: false,
         },
       ])
     })
@@ -456,7 +456,7 @@ describe('ConsentPage — patient search', () => {
         {
           approvedScopes: ['launch/patient', 'openid'],
           patient: 'pat-1',
-          acknowledgedRegistration: false,
+          acknowledgedRegistrationChange: false,
         },
       ])
     })

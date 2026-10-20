@@ -17,7 +17,7 @@ use wildflowerhealthio_authorization_server::domain::grant_store::SigningKeysTx 
 use wildflowerhealthio_authorization_server::domain::token::{mint_access_token, NewJwtArgs};
 use wildflowerhealthio_authorization_server::{
     authorization_server_auth_middleware, setup_authorization_server, AdmitEveryAuthorizationStart,
-    AuthorizationServerConfig, GrantStore, NewestPendingConsent, SqliteGrantStore,
+    AuthorizationServerConfig, GrantStore, OwnerPrompt, SqliteGrantStore,
 };
 use wildflowerhealthio_persistence::{Connection, DieselPool};
 use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
@@ -35,8 +35,6 @@ fn set_up_authorization_server(
         server_origin: Url::parse(SERVER_ORIGIN).expect("server origin URL"),
         host_app_client_scopes:
             wildflowerhealthio_authorization_server::default_host_app_client_scopes(),
-        wildflower_host_app_client_id:
-            wildflowerhealthio_authorization_server::default_wildflower_host_app_client_id(),
         fhir_ui_client_id: "fhir-ui-client".to_string(),
         launcher_base: LauncherBase::parse("https://launcher.test/launcher/")
             .expect("launcher base URL"),
@@ -48,8 +46,7 @@ fn set_up_authorization_server(
         authorization_url: Url::parse("https://authorization.test/authorization/")
             .expect("authorization URL"),
     };
-    let (pending_consent_tx, _pending_consent_rx) =
-        watch::channel::<Option<NewestPendingConsent>>(None);
+    let (pending_consent_tx, _pending_consent_rx) = watch::channel::<Option<OwnerPrompt>>(None);
     let revocation_store = wildflowerhealthio_token_revocation::RevocationStore::new(
         Connection::open_in_memory().expect("open revocation db"),
     )

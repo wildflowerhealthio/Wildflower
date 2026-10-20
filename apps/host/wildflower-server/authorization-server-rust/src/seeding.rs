@@ -36,7 +36,6 @@ use crate::domain::GrantStore as _;
 pub fn open_and_seed_store(
     pool: DieselPool,
     host_app_client_scopes: &[String],
-    wildflower_host_app_client_id: &str,
     fhir_ui_client_id: &str,
     server_origin: &url::Url,
 ) -> anyhow::Result<SqliteGrantStore> {
@@ -55,7 +54,7 @@ pub fn open_and_seed_store(
     store.write(|tx| -> anyhow::Result<()> {
         ensure_some_active_signing_key(tx, candidate_signing_key)
             .context("failed to seed signing key")?;
-        ensure_essential_clients(tx, host_app_client_scopes, wildflower_host_app_client_id)
+        ensure_essential_clients(tx, host_app_client_scopes)
             .context("failed to seed the essential clients")?;
         ensure_fhir_ui_client(tx, fhir_ui_client_id, server_origin)
             .context("failed to seed the FHIR server UI client")
@@ -112,13 +111,13 @@ fn ensure_some_active_signing_key(
     Ok(())
 }
 
-/// Ensure the essential clients — the host app's client and the browser-session
-/// client ([`crate::BROWSER_SESSION_CLIENT_ID`]) — match the code's definitions.
+/// Ensure the essential clients — the host app's client
+/// ([`crate::WILDFLOWER_HOST_APP_CLIENT_ID`]) and the browser-session client
+/// ([`crate::BROWSER_SESSION_CLIENT_ID`]) — match the code's definitions.
 /// Upserted on every boot so their policy always matches: the host app's
-/// client is allowed `host_app_client_scopes` under
-/// `wildflower_host_app_client_id` (the live app sources both from
-/// `tauri-shared-config.json`; see [`crate::default_host_app_client_scopes`] /
-/// [`crate::default_wildflower_host_app_client_id`]), and the browser-session
+/// client is allowed `host_app_client_scopes` (the live app sources them from
+/// `tauri-shared-config.json`; see [`crate::default_host_app_client_scopes`]),
+/// and the browser-session
 /// client the Owner's scopes ([`crate::OWNER_SCOPES`]), the most any browser
 /// session may hold. This corrects stored rows that have drifted
 /// (registration time and any admin disable are preserved).
@@ -131,10 +130,9 @@ fn ensure_some_active_signing_key(
 fn ensure_essential_clients(
     tx: &mut impl ClientsTx,
     host_app_client_scopes: &[String],
-    wildflower_host_app_client_id: &str,
 ) -> anyhow::Result<()> {
     let wildflower_host_app_client = Client {
-        client_id: wildflower_host_app_client_id.to_string(),
+        client_id: crate::WILDFLOWER_HOST_APP_CLIENT_ID.to_string(),
         name: "Wildflower Host".to_string(),
         kind: ClientKind::Public,
         redirect_uris: vec![],
@@ -688,42 +686,31 @@ mod tests {
         assert_eq!(production.allowed_scopes, STRENGTH_DEV_SCOPES);
     }
 
-    /// The host app's client is seeded under the `client_id` and scopes threaded
-    /// through `open_and_seed_store` (from `AuthorizationServerConfig`, which the
-    /// live app sources from `tauri-shared-config.json`), NOT hardcoded
-    /// literals: a regression that re-hardcodes either here, letting it drift
-    /// from the config, fails this test.
+    /// The host app's client is seeded under
+    /// [`crate::WILDFLOWER_HOST_APP_CLIENT_ID`] with the scopes threaded
+    /// through `open_and_seed_store` (from `AuthorizationServerConfig`, which
+    /// the live app sources from `tauri-shared-config.json`), NOT a hardcoded
+    /// scope list: a regression that re-hardcodes the scopes here, letting
+    /// them drift from the config, fails this test.
     #[test]
-    fn seeds_the_host_app_s_client_under_the_configured_id() {
+    fn seeds_the_host_app_s_client_with_the_configured_scopes() {
         let pool =
             wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
         let scopes = vec!["openid".to_string(), "fhirUser".to_string()];
         let store = open_and_seed_store(
             pool,
             &scopes,
-            "custom-host-client",
             "fhir-ui-client",
             &url::Url::parse("https://ruth.relay.example").expect("origin"),
         )
         .expect("seed store");
 
         let seeded = store
-            .read(|tx| tx.client_by_id("custom-host-client"))
+            .read(|tx| tx.client_by_id(crate::WILDFLOWER_HOST_APP_CLIENT_ID))
             .expect("query client")
-            .expect("the host app's client seeded under the configured id");
-        assert_eq!(seeded.client_id, "custom-host-client");
+            .expect("the host app's client seeded under its constant id");
         assert_eq!(seeded.name, "Wildflower Host");
         assert_eq!(seeded.allowed_scopes, scopes);
-
-        // Nothing is seeded under the fallback const's literal — proving the id
-        // came from the argument, not `WILDFLOWER_HOST_APP_CLIENT_ID`.
-        assert!(
-            store
-                .read(|tx| tx.client_by_id(crate::WILDFLOWER_HOST_APP_CLIENT_ID))
-                .expect("query fallback id")
-                .is_none(),
-            "seeding must use the configured id, not the hardcoded fallback",
-        );
     }
 
     /// The three clients seeding owns are server-defined, so a request is held
@@ -735,7 +722,6 @@ mod tests {
         let store = open_and_seed_store(
             pool,
             &crate::default_host_app_client_scopes(),
-            "custom-host-client",
             "fhir-ui-client",
             &url::Url::parse("https://ruth.relay.example").expect("origin"),
         )
@@ -747,7 +733,7 @@ mod tests {
                 .map(|client| client.registration_source)
         };
         for client_id in [
-            "custom-host-client",
+            crate::WILDFLOWER_HOST_APP_CLIENT_ID,
             crate::BROWSER_SESSION_CLIENT_ID,
             "fhir-ui-client",
         ] {
@@ -772,7 +758,6 @@ mod tests {
         let store = open_and_seed_store(
             pool,
             &crate::default_host_app_client_scopes(),
-            &crate::default_wildflower_host_app_client_id(),
             "fhir-ui-client",
             &url::Url::parse("https://ruth.relay.example").expect("origin"),
         )
@@ -795,7 +780,6 @@ mod tests {
         let store = open_and_seed_store(
             pool,
             &["openid".to_string()],
-            "host-client",
             "fhir-ui-client",
             &url::Url::parse("https://ruth.relay.example").expect("origin"),
         )
@@ -819,14 +803,8 @@ mod tests {
         let pool =
             wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
         let origin = url::Url::parse("https://ruth.relay.example").expect("origin");
-        let store = open_and_seed_store(
-            pool,
-            &["openid".to_string()],
-            "host-client",
-            "fhir-ui-client",
-            &origin,
-        )
-        .expect("seed store");
+        let store = open_and_seed_store(pool, &["openid".to_string()], "fhir-ui-client", &origin)
+            .expect("seed store");
 
         let seeded = store
             .read(|tx| tx.client_by_id("fhir-ui-client"))

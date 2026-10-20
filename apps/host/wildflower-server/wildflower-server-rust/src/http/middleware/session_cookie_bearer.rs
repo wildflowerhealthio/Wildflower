@@ -371,8 +371,6 @@ mod tests {
                 server_origin: server_origin(),
                 host_app_client_scopes:
                     wildflowerhealthio_authorization_server::default_host_app_client_scopes(),
-                wildflower_host_app_client_id:
-                    wildflowerhealthio_authorization_server::default_wildflower_host_app_client_id(),
                 fhir_ui_client_id: "fhir-ui-client".to_string(),
                 launcher_base: LauncherBase::parse("https://launcher.test/launcher/")
                     .expect("launcher base"),

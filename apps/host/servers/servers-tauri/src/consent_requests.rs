@@ -307,7 +307,7 @@ mod tests {
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
 
-    use wildflowerhealthio_authorization_server::NewestPendingConsent;
+    use wildflowerhealthio_authorization_server::OwnerPrompt;
 
     use wildflowerhealthio_servers::ConsentKey;
     use wildflowerhealthio_tauri_unit_runner::{RunState, UnitId, UnitStatus};
@@ -387,7 +387,7 @@ mod tests {
             health: None,
             tunnel: None,
             certificate: None,
-            pending_consent: newest.map(|id| NewestPendingConsent::OAuth {
+            pending_consent: newest.map(|id| OwnerPrompt::AuthorizationCode {
                 id: id.to_owned(),
                 client_name: "Lifting".to_owned(),
                 decidable_in_requesting_browser: false,
@@ -408,7 +408,7 @@ mod tests {
     }
 
     fn oauth(id: &str) -> ConsentKey {
-        ConsentKey::OAuth { id: id.to_owned() }
+        ConsentKey::AuthorizationCode { id: id.to_owned() }
     }
 
     /// The servers' statuses with [`RUTH`]'s run running and reporting

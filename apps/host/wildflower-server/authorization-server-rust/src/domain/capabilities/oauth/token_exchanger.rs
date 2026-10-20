@@ -239,7 +239,7 @@ impl<S: GrantStore> TokenExchanger<S> {
         now: DateTime<Utc>,
     ) -> Result<(AccessTokenMinter<'_>, Option<String>), TokenExchangeError> {
         let minter = AccessTokenMinter::with_active_key(tx, &self.server_origin, ACCESS_TOKEN_TTL)?;
-        let refresh_token = if redemption.earns_refresh_token() {
+        let refresh_token = if redemption.is_refresh_token_earned() {
             Some(RefreshFamilyWriter::within(tx).start_family(redemption, now)?)
         } else {
             None
@@ -291,7 +291,7 @@ mod tests {
     use super::*;
     use crate::crypto_util::pkce::compute_code_challenge;
     use crate::crypto_util::random_token::generate_authorization_code;
-    use crate::domain::authorization_code::{IssuedAuthorizationCode, AUTHORIZATION_CODE_TTL};
+    use crate::domain::authorization_code::{AuthorizationCode, AUTHORIZATION_CODE_TTL};
     use crate::domain::client::Client;
     use crate::domain::token::{verify_jwt, VerifyOptions};
 
@@ -328,7 +328,7 @@ mod tests {
         let now = Utc::now();
         store
             .tx()
-            .issue_authorization_code(&IssuedAuthorizationCode {
+            .issue_authorization_code(&AuthorizationCode {
                 code: code.clone(),
                 request_id: "req".to_owned(),
                 client_id: client_id.to_owned(),

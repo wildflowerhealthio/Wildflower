@@ -141,10 +141,10 @@ mod tests {
     /// A context for any client is stored with no client and consumed once, by
     /// whichever client presents it first.
     #[test]
-    fn a_context_for_any_client_is_consumed_once_by_any_client() {
+    fn a_context_for_the_server_launcher_is_consumed_once_by_any_client() {
         let store = store();
         let now = chrono::Utc::now();
-        let context = LaunchContext::for_any_client("nonce-1".to_owned(), now);
+        let context = LaunchContext::for_server_launcher("nonce-1".to_owned(), now);
         store
             .write(|tx| tx.insert_launch_context(&context))
             .expect("insert");

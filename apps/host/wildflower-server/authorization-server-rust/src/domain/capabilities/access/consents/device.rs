@@ -214,7 +214,7 @@ fn load_pending_request_by_user_code(
     now: DateTime<Utc>,
 ) -> Result<AuthorizationRequest, AuthorizationServerError> {
     tx.pending_authorization_request_by_user_code(user_code)?
-        .filter(|request| request.pending_at(now) && request.code().is_none())
+        .filter(|request| request.is_pending_at(now) && request.code().is_none())
         .ok_or_else(|| consent_not_found(user_code))
 }
 

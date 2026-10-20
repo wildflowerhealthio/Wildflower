@@ -413,7 +413,7 @@ describe('oauthConsentMutationOptions approve', () => {
       payload: {
         approvedScopes: ['patient/Observation.rs', 'patient/Condition.rs'],
         patient: null,
-        acknowledgedRegistration: false,
+        acknowledgedRegistrationChange: false,
       },
     })
 

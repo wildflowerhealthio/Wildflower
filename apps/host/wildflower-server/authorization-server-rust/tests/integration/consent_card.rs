@@ -135,7 +135,7 @@ async fn a_browser_without_a_session_goes_to_pairing() {
             location_of(&res)
         );
     }
-    assert_eq!(newest_pending_consent(&db), None, "nothing was parked");
+    assert_eq!(owner_prompt(&db), None, "nothing was parked");
 }
 
 #[tokio::test]
@@ -153,8 +153,8 @@ async fn a_browser_session_that_cannot_decide_consents_goes_to_the_wait_page() {
     let (page, request_id) = parked_page(&res);
     assert_eq!(page, "wait");
     assert_eq!(
-        newest_pending_consent(&db),
-        Some(NewestPendingConsent::OAuth {
+        owner_prompt(&db),
+        Some(OwnerPrompt::AuthorizationCode {
             id: request_id,
             client_name: "Integration Test Client".to_owned(),
             decidable_in_requesting_browser: false,
@@ -174,8 +174,8 @@ async fn the_newest_pending_consent_says_whether_its_browser_can_decide_it() {
 
     let (_, request_id) = parked_on_the_card(&g).await;
     assert_eq!(
-        newest_pending_consent(&db),
-        Some(NewestPendingConsent::OAuth {
+        owner_prompt(&db),
+        Some(OwnerPrompt::AuthorizationCode {
             id: request_id,
             client_name: "Integration Test Client".to_owned(),
             decidable_in_requesting_browser: true,
@@ -187,8 +187,8 @@ async fn the_newest_pending_consent_says_whether_its_browser_can_decide_it() {
     );
     assert_eq!(page, "wait");
     assert_eq!(
-        newest_pending_consent(&db),
-        Some(NewestPendingConsent::OAuth {
+        owner_prompt(&db),
+        Some(OwnerPrompt::AuthorizationCode {
             id: request_id,
             client_name: "Integration Test Client".to_owned(),
             decidable_in_requesting_browser: false,
@@ -212,7 +212,7 @@ async fn approving_on_the_owner_s_bearer_sends_the_code_to_the_client_and_settle
         &owner_session_token,
         &request_id,
         "approve",
-        r#"{"approvedScopes":["patient/Observation.rs","openid"],"patient":null,"acknowledgedRegistration":false}"#,
+        r#"{"approvedScopes":["patient/Observation.rs","openid"],"patient":null,"acknowledgedRegistrationChange":false}"#,
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -251,7 +251,7 @@ async fn a_scope_that_was_not_requested_is_not_granted() {
         &owner_session_token,
         &request_id,
         "approve",
-        r#"{"approvedScopes":["patient/Observation.rs","patient/Condition.rs"],"patient":null,"acknowledgedRegistration":false}"#,
+        r#"{"approvedScopes":["patient/Observation.rs","patient/Condition.rs"],"patient":null,"acknowledgedRegistrationChange":false}"#,
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -292,7 +292,7 @@ async fn an_unacknowledged_new_registration_is_refused() {
         &owner_session_token,
         &request_id,
         "approve",
-        r#"{"approvedScopes":["patient/Observation.rs"],"patient":null,"acknowledgedRegistration":false}"#,
+        r#"{"approvedScopes":["patient/Observation.rs"],"patient":null,"acknowledgedRegistrationChange":false}"#,
     )
     .await;
     assert_eq!(res.status(), StatusCode::CONFLICT);

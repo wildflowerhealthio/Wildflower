@@ -122,7 +122,7 @@ impl Client {
     /// stands, and approving one never widens it. True for a registration the
     /// server defines.
     #[must_use]
-    pub fn registration_is_fixed(&self) -> bool {
+    pub fn is_registration_fixed(&self) -> bool {
         self.registration_source == RegistrationSource::ServerDefined
     }
 

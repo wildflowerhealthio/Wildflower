@@ -59,7 +59,7 @@ pub mod client_credentials;
 // consent action can return the same URL.
 pub mod client_redirect;
 // A code request resolved against its client's registration as it stands now:
-// the client's name, whether it is disabled, the registration verdict, the
+// the client's name, whether it is disabled, the presented client change, the
 // approvable scopes. Derived on every read, never stored, so `/authorize`, the
 // limited page's Continue and the consent surfaces agree.
 pub(crate) mod client_registration;
@@ -68,7 +68,10 @@ pub(crate) mod client_registration;
 pub mod authorization_server_error;
 // The clients the Owner can't lose without being stuck, which can't be
 // disabled.
-pub(crate) mod essential_client_guard;
+pub(crate) mod essential_client;
+// One authorization request, named by the key its consent surface looks it
+// up by: the host's wire shape for a consent.
+pub mod consent_key;
 pub mod grant;
 // The in-memory gate on how often a browser session's cookie use moves its
 // `last_seen_at`.
@@ -81,15 +84,15 @@ pub mod launch_context;
 pub mod oauth_error_code;
 // Why `/oauth/authorize` refused a request: the body of a local page, or the
 // `error_description` on a trusted redirect; the HTML lives in `http::errors`.
-pub mod oauth_error_kind;
+pub mod authorize_refusal;
 // The one-time codes the base signs a browser in as the Owner with, kept in
 // memory as hashes, and where a sign-in may send the browser next.
 pub(crate) mod same_device_sign_in_codes;
 pub(crate) mod sign_in_redirect;
-// The newest pending consent the host notifies — device-code and
-// authorization-code requests alike, so it carries whichever key its consent
-// page reads by.
-pub mod pending_consent;
+// What the host asks the Owner next: the newest request waiting for the
+// Owner's decision, device-code and authorization-code requests and browser
+// pairings alike, so it carries whichever key its consent page reads by.
+pub mod owner_prompt;
 pub mod refresh_token;
 // The retention windows for the four accumulating tables plus the sweep that
 // applies them — the policy half of the startup/daily reaper `setup_authorization_server`

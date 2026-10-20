@@ -136,7 +136,7 @@ async fn an_app_authorized_in_a_session_is_ended_with_it() {
         &g,
         &owner_token,
         &request_id,
-        r#"{"approvedScopes":["read","offline_access"],"acknowledgedRegistration":true}"#
+        r#"{"approvedScopes":["read","offline_access"],"acknowledgedRegistrationChange":true}"#
             .to_string(),
     )
     .await;
@@ -259,7 +259,7 @@ async fn approving_a_request_whose_session_was_revoked_denies_it() {
         &g,
         &owner_token,
         &request_id,
-        r#"{"approvedScopes":["read"],"acknowledgedRegistration":true}"#.to_string(),
+        r#"{"approvedScopes":["read"],"acknowledgedRegistrationChange":true}"#.to_string(),
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -470,10 +470,10 @@ async fn signing_out_revokes_the_cookie_s_session_and_clears_it() {
     assert_cache_suppressed(&res, "the sign-out");
     let store = store_handle(&db);
     assert!(store
-        .read(|tx| tx.browser_session_is_revoked(&sid_of(&signing_out)))
+        .read(|tx| tx.is_browser_session_revoked(&sid_of(&signing_out)))
         .expect("read"));
     assert!(!store
-        .read(|tx| tx.browser_session_is_revoked(&sid_of(&other)))
+        .read(|tx| tx.is_browser_session_revoked(&sid_of(&other)))
         .expect("read"));
     assert!(matches!(
         g.in_process_token_verifier.verify(&signing_out),

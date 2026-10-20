@@ -39,7 +39,7 @@ impl PollingBrowserSession {
     /// Whether this session may read the status of the code request
     /// `code_request`: it was made in this session, or this session's grant
     /// covers [`any_request_status_scopes`].
-    fn may_read(&self, code_request: &CodeRequest) -> bool {
+    fn can_read(&self, code_request: &CodeRequest) -> bool {
         code_request.sid == self.sid || self.grant.covers_all(&any_request_status_scopes())
     }
 }
@@ -117,7 +117,7 @@ impl<S: GrantStore> AuthorizationStatusReader<S> {
                 .authorization_request_by_id(id)?
                 .filter(|request| {
                     request.code().is_some_and(|code_request| {
-                        poller.is_some_and(|poller| poller.may_read(code_request))
+                        poller.is_some_and(|poller| poller.can_read(code_request))
                     })
                 })
                 .ok_or_else(|| AuthorizationStatusError::NotFound { id: id.to_owned() })?;
@@ -156,7 +156,7 @@ mod tests {
     use wildflowerhealthio_scopes::{render_scopes, Permission, WildflowerResource};
 
     use super::*;
-    use crate::domain::authorization_code::{IssuedAuthorizationCode, AUTHORIZATION_CODE_TTL};
+    use crate::domain::authorization_code::{AuthorizationCode, AUTHORIZATION_CODE_TTL};
     use crate::domain::test_fake::{code_request, device_request, FakeGrantStore, FIXTURE_SID};
 
     /// A browser session `sid` holding `scopes`.
@@ -212,7 +212,7 @@ mod tests {
             .unwrap();
         store
             .tx()
-            .issue_authorization_code(&IssuedAuthorizationCode {
+            .issue_authorization_code(&AuthorizationCode {
                 code: "the-code".to_owned(),
                 request_id: "approved".to_owned(),
                 client_id: "client".to_owned(),

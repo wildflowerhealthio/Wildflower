@@ -10,7 +10,7 @@ use wildflowerhealthio_scopes::{Permission, Scope, WildflowerResource};
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::client::Client;
-use crate::domain::essential_client_guard::EssentialClientGuard;
+use crate::domain::essential_client::is_essential_client;
 use crate::domain::grant_store::ClientsTx as _;
 use crate::domain::GrantStore;
 
@@ -35,7 +35,7 @@ pub(crate) fn clients_disabler_scopes() -> Vec<Scope> {
 }
 
 /// A registered client as the Owner's "Trusted apps" list shows it — the stored
-/// row plus whether it is essential (see [`EssentialClientGuard`]), which
+/// row plus whether it is essential (see [`is_essential_client`]), which
 /// can't be disabled, so the UI offers no switch for it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ClientView {
@@ -46,17 +46,12 @@ pub(crate) struct ClientView {
 /// Read access to registered clients — `GET /authorization/clients`.
 pub(crate) struct ClientsReader<S: GrantStore> {
     store: S,
-    essential_client_guard: EssentialClientGuard,
 }
 
 impl<S: GrantStore> ClientsReader<S> {
-    /// Build the reader over a store handle and the essential-client guard,
-    /// both lifted from the state.
-    pub(crate) fn new(store: S, essential_client_guard: EssentialClientGuard) -> Self {
-        ClientsReader {
-            store,
-            essential_client_guard,
-        }
+    /// Build the reader over a store handle lifted from the state.
+    pub(crate) fn new(store: S) -> Self {
+        ClientsReader { store }
     }
 
     /// Every registered client, ordered by `client_id`, disabled ones included.
@@ -66,7 +61,7 @@ impl<S: GrantStore> ClientsReader<S> {
             .read(|tx| tx.list_clients())?
             .into_iter()
             .map(|client| ClientView {
-                essential: self.essential_client_guard.is_essential(&client.client_id),
+                essential: is_essential_client(&client.client_id),
                 client,
             })
             .collect())
@@ -79,17 +74,12 @@ impl<S: GrantStore> ClientsReader<S> {
 /// `disabled_at`).
 pub(crate) struct ClientsDisabler<S: GrantStore> {
     store: S,
-    essential_client_guard: EssentialClientGuard,
 }
 
 impl<S: GrantStore> ClientsDisabler<S> {
-    /// Build the disabler over a store handle and the essential-client guard,
-    /// both lifted from the state.
-    pub(crate) fn new(store: S, essential_client_guard: EssentialClientGuard) -> Self {
-        ClientsDisabler {
-            store,
-            essential_client_guard,
-        }
+    /// Build the disabler over a store handle lifted from the state.
+    pub(crate) fn new(store: S) -> Self {
+        ClientsDisabler { store }
     }
 
     /// Set `client_id`'s `disabled_at` in one write scope and return the row as
@@ -106,7 +96,7 @@ impl<S: GrantStore> ClientsDisabler<S> {
     /// [`AuthorizationServerError::ClientNotFound`] when no such client exists.
     /// Disabling an essential client is
     /// [`AuthorizationServerError::EssentialClient`] (see
-    /// [`EssentialClientGuard`]). Re-enabling one stays allowed, so an
+    /// [`is_essential_client`]). Re-enabling one stays allowed, so an
     /// essential client disabled out of band (direct SQL) can still be
     /// recovered.
     pub(crate) fn set_disabled_at(
@@ -114,7 +104,7 @@ impl<S: GrantStore> ClientsDisabler<S> {
         client_id: &str,
         stamp: Option<DateTime<Utc>>,
     ) -> Result<ClientView, AuthorizationServerError> {
-        let essential = self.essential_client_guard.is_essential(client_id);
+        let essential = is_essential_client(client_id);
         if essential && stamp.is_some() {
             return Err(AuthorizationServerError::EssentialClient {
                 client_id: client_id.to_owned(),
@@ -155,10 +145,6 @@ mod tests {
     const HOST: &str = crate::WILDFLOWER_HOST_APP_CLIENT_ID;
     const BROWSER_SESSION_CLIENT: &str = crate::BROWSER_SESSION_CLIENT_ID;
 
-    fn essential_client_guard() -> EssentialClientGuard {
-        EssentialClientGuard::new(HOST.into(), BROWSER_SESSION_CLIENT.into())
-    }
-
     /// A disabler over a fresh fake seeded with `rows`; tests reach the fake
     /// through its `store` field to arrange and observe rows.
     fn disabler_with(rows: &[Client]) -> ClientsDisabler<FakeGrantStore> {
@@ -166,7 +152,7 @@ mod tests {
         for row in rows {
             store.tx().upsert_client(row).unwrap();
         }
-        ClientsDisabler::new(store, essential_client_guard())
+        ClientsDisabler::new(store)
     }
 
     fn at(seconds: i64) -> DateTime<Utc> {
@@ -208,9 +194,7 @@ mod tests {
             store.tx().upsert_client(&client(id, &["openid"])).unwrap();
         }
 
-        let listed = ClientsReader::new(store, essential_client_guard())
-            .list()
-            .unwrap();
+        let listed = ClientsReader::new(store).list().unwrap();
         let summary: Vec<(&str, bool)> = listed
             .iter()
             .map(|view| (view.client.client_id.as_str(), view.essential))

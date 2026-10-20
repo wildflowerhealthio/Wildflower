@@ -44,12 +44,10 @@ impl OwnerApproval for AuthorizationServerState {
     /// changes nothing on the watch above.
     fn republish_active(&self) {
         self.owner_approval_tx.send_if_modified(|current| {
-            let next = match self.store.read(|tx| tx.newest_pending_consent(Utc::now())) {
+            let next = match self.store.read(|tx| tx.owner_prompt(Utc::now())) {
                 Ok(next) => next,
                 Err(error) => {
-                    tracing::warn!(
-                        "newest_pending_consent query failed; keeping the last: {error}"
-                    );
+                    tracing::warn!("owner_prompt query failed; keeping the last: {error}");
                     return false;
                 }
             };

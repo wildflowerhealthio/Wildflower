@@ -94,7 +94,7 @@ impl BrowserSessionsTx for SqliteGrantTx<'_> {
 
     /// Whether the browser session `sid` is revoked or missing: no row with that
     /// `sid` and `revoked_at IS NULL` exists.
-    fn browser_session_is_revoked(&mut self, sid: &str) -> Result<bool, AuthorizationServerError> {
+    fn is_browser_session_revoked(&mut self, sid: &str) -> Result<bool, AuthorizationServerError> {
         let conn = &mut *self.conn;
         diesel::select(not(exists(
             browser_sessions::table
@@ -103,7 +103,7 @@ impl BrowserSessionsTx for SqliteGrantTx<'_> {
         )))
         .get_result(conn)
         .map_err(|e| {
-            AuthorizationServerError::infrastructure("browser_session_is_revoked failed", e)
+            AuthorizationServerError::infrastructure("is_browser_session_revoked failed", e)
         })
     }
 
@@ -156,7 +156,7 @@ impl BrowserSessionsTx for SqliteGrantTx<'_> {
 
     /// Whether the browser session `sid` has gone on past its limited page for
     /// `client_id` before.
-    fn session_shortfall_acknowledged_for_client(
+    fn is_session_shortfall_acknowledged_for_client(
         &mut self,
         sid: &str,
         client_id: &str,
@@ -168,7 +168,7 @@ impl BrowserSessionsTx for SqliteGrantTx<'_> {
         .get_result(conn)
         .map_err(|e| {
             AuthorizationServerError::infrastructure(
-                "session_shortfall_acknowledged_for_client failed",
+                "is_session_shortfall_acknowledged_for_client failed",
                 e,
             )
         })
@@ -303,10 +303,10 @@ mod tests {
             .expect("read")
             .is_none());
         assert!(!store
-            .read(|tx| tx.browser_session_is_revoked(&session.sid))
+            .read(|tx| tx.is_browser_session_revoked(&session.sid))
             .expect("read"));
         assert!(store
-            .read(|tx| tx.browser_session_is_revoked("no-such-sid"))
+            .read(|tx| tx.is_browser_session_revoked("no-such-sid"))
             .expect("read"));
 
         let revoked_at = now + Duration::minutes(1);
@@ -322,7 +322,7 @@ mod tests {
             .expect("still there");
         assert_eq!(stored.revoked_at, Some(revoked_at));
         assert!(store
-            .read(|tx| tx.browser_session_is_revoked(&session.sid))
+            .read(|tx| tx.is_browser_session_revoked(&session.sid))
             .expect("read"));
         assert!(!store
             .write(|tx| tx.revoke_browser_session("no-such-sid", now))
@@ -414,7 +414,7 @@ mod tests {
     fn a_session_shortfall_acknowledgement_is_per_session_and_client() {
         let store = store();
         assert!(!store
-            .read(|tx| tx.session_shortfall_acknowledged_for_client("sid-1", "app"))
+            .read(|tx| tx.is_session_shortfall_acknowledged_for_client("sid-1", "app"))
             .expect("read"));
         for _ in 0..2 {
             store
@@ -428,7 +428,7 @@ mod tests {
         ] {
             assert_eq!(
                 store
-                    .read(|tx| tx.session_shortfall_acknowledged_for_client(sid, client_id))
+                    .read(|tx| tx.is_session_shortfall_acknowledged_for_client(sid, client_id))
                     .expect("read"),
                 acknowledged,
                 "{sid} {client_id}"
@@ -514,7 +514,7 @@ mod tests {
         for (session, kept) in [(&expired_long_ago, false), (&expired_recently, true)] {
             assert_eq!(
                 store
-                    .read(|tx| tx.session_shortfall_acknowledged_for_client(&session.sid, "app"))
+                    .read(|tx| tx.is_session_shortfall_acknowledged_for_client(&session.sid, "app"))
                     .expect("read"),
                 kept,
                 "acknowledgement of the session created {}",

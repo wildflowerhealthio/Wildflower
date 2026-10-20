@@ -280,7 +280,7 @@ async fn a_deciding_browser_s_request_raised_for_the_owner_asks_the_gate() {
     .await;
     assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);
     assert_eq!(gate.asked(), 1);
-    assert!(newest_pending_consent(&db).is_none(), "nothing was parked");
+    assert!(owner_prompt(&db).is_none(), "nothing was parked");
 }
 
 /// A deciding browser whose session falls short of the request asks the
@@ -430,9 +430,9 @@ async fn ask_owner(g: &AuthorizationServer, token: &str, request_id: &str) -> St
 
 /// Whether the newest pending consent, the code request, is decidable in
 /// its requesting browser.
-fn decidable_in_requesting_browser(db: &TestDb) -> bool {
-    match newest_pending_consent(db) {
-        Some(NewestPendingConsent::OAuth {
+fn is_decidable_in_requesting_browser(db: &TestDb) -> bool {
+    match owner_prompt(db) {
+        Some(OwnerPrompt::AuthorizationCode {
             decidable_in_requesting_browser,
             ..
         }) => decidable_in_requesting_browser,
@@ -459,7 +459,7 @@ async fn asking_the_owner_is_refused_by_the_limit_and_raises_nothing() {
         StatusCode::TOO_MANY_REQUESTS
     );
     assert_eq!(gate.asked(), 1);
-    assert!(decidable_in_requesting_browser(&db), "left as it was");
+    assert!(is_decidable_in_requesting_browser(&db), "left as it was");
 }
 
 /// Admitted, asking the Owner raises the request; asking again about the
@@ -478,7 +478,7 @@ async fn asking_the_owner_spends_only_when_it_raises_a_request() {
         StatusCode::NO_CONTENT
     );
     assert_eq!(gate.asked(), 1);
-    assert!(!decidable_in_requesting_browser(&db), "raised");
+    assert!(!is_decidable_in_requesting_browser(&db), "raised");
 
     assert_eq!(
         ask_owner(&g, &owner_session_token, &request_id).await,

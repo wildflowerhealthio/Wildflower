@@ -16,6 +16,7 @@ use super::{
 use crate::domain::authority::DelegatedScopes;
 use crate::domain::authorization_request::PendingCodeRequest;
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::authorize_refusal::AuthorizeRefusal;
 use crate::domain::capabilities::writers::{
     CodeApproval, CodeAuthority, GrantRecorder, RequestApprover,
 };
@@ -26,13 +27,11 @@ use crate::domain::client_redirect::{
 use crate::domain::client_registration::ResolvedCodeRequest;
 use crate::domain::grant_store::{write_transition, AuthorizationRequestsTx, ClientsTx};
 use crate::domain::oauth_error_code::OAuthErrorCode;
-use crate::domain::oauth_error_kind::OAuthErrorKind;
-use crate::domain::pending_consent::client_is_disabled;
 use crate::domain::{GrantStore, GrantTx};
 
 impl<S: GrantStore> ConsentReader<S> {
     /// Load a pending authorization-code consent prompt for the launcher, with
-    /// the client's display name and its registration verdict resolved against
+    /// the client's display name and its presented client change resolved against
     /// the current row, and the approval scopes the reader lacks.
     ///
     /// # Errors
@@ -47,7 +46,7 @@ impl<S: GrantStore> ConsentReader<S> {
         self.store.read(|tx| {
             let pending_request = load_pending_code_request(tx, id, now)?;
             let resolved = resolve(tx, &pending_request)?;
-            if resolved.client_disabled() {
+            if resolved.is_client_disabled() {
                 return Err(consent_not_found(id));
             }
             Ok(OAuthConsentView {
@@ -55,7 +54,7 @@ impl<S: GrantStore> ConsentReader<S> {
                     .approvable_scopes()
                     .missing_approval_scopes(&self.reader_grant),
                 client_name: resolved.client_name().to_owned(),
-                registration_verdict: resolved.registration_verdict().clone(),
+                presented_client_change: resolved.presented_client_change().clone(),
                 pending_request,
             })
         })
@@ -75,7 +74,7 @@ impl<S: GrantStore> ConsentRaiser<S> {
     ///
     /// [`AuthorizationServerError::OAuthConsentNotFound`] when `id` names no
     /// live code-flow prompt, or its client is disabled (the rule on
-    /// [`NewestPendingConsent`](crate::domain::pending_consent::NewestPendingConsent)).
+    /// [`OwnerPrompt`](crate::domain::owner_prompt::OwnerPrompt)).
     pub(crate) fn raise_for_owner(
         &self,
         id: &str,
@@ -84,7 +83,7 @@ impl<S: GrantStore> ConsentRaiser<S> {
     ) -> Result<OwnerRaising, AuthorizationServerError> {
         let raising = self.store.write(|tx| {
             let pending_request = load_pending_code_request(tx, id, now)?;
-            if client_is_disabled(tx, pending_request.request().client_id())? {
+            if tx.is_client_disabled(pending_request.request().client_id())? {
                 return Err(consent_not_found(id));
             }
             if !pending_request.code().decidable_in_requesting_browser {
@@ -125,9 +124,9 @@ impl<S: GrantStore> ConsentDecider<S> {
     /// [`ApprovableScopes::missing_approval_scopes`](crate::domain::authority::ApprovableScopes::missing_approval_scopes));
     /// [`RegistrationNotAcknowledged`](AuthorizationServerError::RegistrationNotAcknowledged)
     /// when the
-    /// [registration verdict](crate::domain::client_registration::ClientRegistrationVerdict)
+    /// [presented client change](crate::domain::client_registration::PresentedClientChange)
     /// finds the request new or changed and the Owner didn't
-    /// [acknowledge](ApproveOAuthConsentInput::acknowledged_registration) it;
+    /// [acknowledge](ApproveOAuthConsentInput::acknowledged_registration_change) it;
     /// [`LaunchPatientMismatch`](AuthorizationServerError::LaunchPatientMismatch)
     /// when the request's SMART launch bound another patient;
     /// [`OAuthConsentNotFound`](AuthorizationServerError::OAuthConsentNotFound)
@@ -180,11 +179,11 @@ impl<S: GrantStore> ConsentDecider<S> {
         let resolved = resolve(tx, &pending_request)?;
         // The client was disabled since the request was made: it can't be
         // approved, so it ends here, and the app hears why.
-        if resolved.client_disabled() {
+        if resolved.is_client_disabled() {
             deny_pending_request(tx, request, now, || consent_not_found(id))?;
             return Ok(denial_outcome(
                 &pending_request,
-                OAuthErrorKind::DisabledClient.description(),
+                AuthorizeRefusal::DisabledClient.description(),
             ));
         }
         // The proof every write below demands: the approver holds this prompt's
@@ -197,8 +196,10 @@ impl<S: GrantStore> ConsentDecider<S> {
             input.owner_approved_scopes,
             resolved.approvable_scopes(),
         )?;
-        if resolved.registration_verdict().needs_acknowledgement()
-            && !input.acknowledged_registration
+        if resolved
+            .presented_client_change()
+            .would_change_registration()
+            && !input.acknowledged_registration_change
         {
             return Err(AuthorizationServerError::RegistrationNotAcknowledged {
                 id: id.to_owned(),

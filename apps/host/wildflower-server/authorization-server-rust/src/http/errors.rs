@@ -275,27 +275,27 @@ impl IntoResponse for AuthorizationServerError {
     }
 }
 
-pub(crate) use crate::domain::oauth_error_kind::OAuthErrorKind;
+pub(crate) use crate::domain::authorize_refusal::AuthorizeRefusal;
 
-/// The local page's title for `kind`; its body is [`OAuthErrorKind::description`].
-fn title(kind: OAuthErrorKind) -> &'static str {
+/// The local page's title for `kind`; its body is [`AuthorizeRefusal::description`].
+fn title(kind: AuthorizeRefusal) -> &'static str {
     match kind {
-        OAuthErrorKind::InvalidRedirectUri => "Invalid redirect URI",
-        OAuthErrorKind::InvalidScheme => "Invalid redirect URI scheme",
-        OAuthErrorKind::DisabledClient => "Disabled client",
-        OAuthErrorKind::RedirectUriNotAllowed => "Redirect URI not allowed",
-        OAuthErrorKind::UnsupportedResponseType => "Unsupported response type",
-        OAuthErrorKind::UnsupportedCodeChallengeMethod => "Unsupported PKCE method",
-        OAuthErrorKind::InvalidCodeChallenge => "Invalid PKCE code challenge",
-        OAuthErrorKind::LaunchUnknown => "Launch not recognized",
-        OAuthErrorKind::LaunchAlreadyUsed => "Launch already used",
-        OAuthErrorKind::LaunchExpired => "Launch expired",
-        OAuthErrorKind::InvalidAudience => "Wrong server",
+        AuthorizeRefusal::InvalidRedirectUri => "Invalid redirect URI",
+        AuthorizeRefusal::InvalidScheme => "Invalid redirect URI scheme",
+        AuthorizeRefusal::DisabledClient => "Disabled client",
+        AuthorizeRefusal::RedirectUriNotAllowed => "Redirect URI not allowed",
+        AuthorizeRefusal::UnsupportedResponseType => "Unsupported response type",
+        AuthorizeRefusal::UnsupportedCodeChallengeMethod => "Unsupported PKCE method",
+        AuthorizeRefusal::InvalidCodeChallenge => "Invalid PKCE code challenge",
+        AuthorizeRefusal::LaunchUnknown => "Launch not recognized",
+        AuthorizeRefusal::LaunchAlreadyUsed => "Launch already used",
+        AuthorizeRefusal::LaunchExpired => "Launch expired",
+        AuthorizeRefusal::InvalidAudience => "Wrong server",
     }
 }
 
 /// The local page `/oauth/authorize` renders for a refusal it may not redirect.
-pub fn oauth_error_html(kind: OAuthErrorKind) -> String {
+pub fn oauth_error_html(kind: AuthorizeRefusal) -> String {
     local_error_page(title(kind), kind.description())
 }
 

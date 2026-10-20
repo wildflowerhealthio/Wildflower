@@ -76,7 +76,6 @@ mod source_guards {
             "State<",
             ".store",
             ".revocation_store",
-            ".essential_client_guard",
             ".owner_approval_tx",
             ".pending_consents_recomputed_tx",
             ".server_origin",

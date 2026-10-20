@@ -48,10 +48,10 @@ pub(crate) const REQUEST_DECLINED_DESCRIPTION: &str = "The request was declined.
 /// redirecting the user-agent back to the client's already-parsed
 /// `redirect_uri` with `error`, `error_description` and `state` appended, in
 /// that order (RFC 6749 §4.1.2.1). `description` is one of the fixed
-/// sentences ([`OAuthErrorKind::description`] or this module's consts), never
+/// sentences ([`AuthorizeRefusal::description`] or this module's consts), never
 /// request input.
 ///
-/// [`OAuthErrorKind::description`]: crate::domain::oauth_error_kind::OAuthErrorKind::description
+/// [`AuthorizeRefusal::description`]: crate::domain::authorize_refusal::AuthorizeRefusal::description
 pub(crate) fn build_client_error_redirect_url(
     redirect_uri: &Url,
     error: OAuthErrorCode,

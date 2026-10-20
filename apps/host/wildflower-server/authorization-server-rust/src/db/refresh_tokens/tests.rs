@@ -96,7 +96,7 @@ proptest! {
             .write(|tx| tx.stamp_refresh_token_consumed_if_live(&live.token_hash, now))
             .expect("second stamp"));
         prop_assert!(store
-            .write(|tx| tx.refresh_token_exists(&live.token_hash))
+            .write(|tx| tx.has_refresh_token(&live.token_hash))
             .expect("exists probe"));
     }
 }
@@ -108,7 +108,7 @@ fn unknown_hash_neither_stamps_nor_exists() {
         .write(|tx| tx.stamp_refresh_token_consumed_if_live("never-issued", Utc::now()))
         .expect("stamp"));
     assert!(!store
-        .write(|tx| tx.refresh_token_exists("never-issued"))
+        .write(|tx| tx.has_refresh_token("never-issued"))
         .expect("exists probe"));
 }
 

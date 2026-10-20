@@ -125,11 +125,11 @@ impl RefreshTokensTx for SqliteGrantTx<'_> {
     /// Whether any token row (live or consumed) bears `token_hash` — the existence
     /// probe that tells a replay from a miss after
     /// [`Self::stamp_refresh_token_consumed_if_live`] reported no live row.
-    fn refresh_token_exists(&mut self, token_hash: &str) -> Result<bool, AuthorizationServerError> {
+    fn has_refresh_token(&mut self, token_hash: &str) -> Result<bool, AuthorizationServerError> {
         let conn = &mut *self.conn;
         diesel::select(diesel::dsl::exists(refresh_tokens::table.find(token_hash)))
             .get_result(conn)
-            .map_err(|e| AuthorizationServerError::infrastructure("refresh_token_exists failed", e))
+            .map_err(|e| AuthorizationServerError::infrastructure("has_refresh_token failed", e))
     }
 
     /// End a token family by pulling its `expires_at` back to `now`, and

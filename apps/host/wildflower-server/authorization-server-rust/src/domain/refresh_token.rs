@@ -120,7 +120,7 @@ pub(crate) fn consume_refresh_token(
 ) -> Result<RefreshTokenConsumeOutcome, AuthorizationServerError> {
     if tx.stamp_refresh_token_consumed_if_live(token_hash, now)? {
         Ok(RefreshTokenConsumeOutcome::Consumed)
-    } else if tx.refresh_token_exists(token_hash)? {
+    } else if tx.has_refresh_token(token_hash)? {
         Ok(RefreshTokenConsumeOutcome::Replayed)
     } else {
         Ok(RefreshTokenConsumeOutcome::NotFound)

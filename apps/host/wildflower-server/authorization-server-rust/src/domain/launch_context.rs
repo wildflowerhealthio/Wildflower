@@ -13,8 +13,9 @@ pub const LAUNCH_CONTEXT_TTL: Duration = Duration::minutes(5);
 /// capability, and consumed single-use by the `/oauth/authorize` request that
 /// presents it. Diesel-mapped 1:1 to the `launch_contexts` table.
 ///
-/// A launch is for one OAuth client ([`LaunchContext::for_client`]) or for any
-/// client ([`LaunchContext::for_any_client`]). Only a launch for one client can
+/// A launch is for one OAuth client ([`LaunchContext::for_client`]) or for a
+/// server's launcher, which any client may consume
+/// ([`LaunchContext::for_server_launcher`]). Only a launch for one client can
 /// bind a patient: the client and patient fields are private so no other shape
 /// can be built, and the table's CHECK holds the same rule.
 #[derive(Debug, Clone, PartialEq, Eq, Queryable, Selectable, Insertable)]
@@ -58,10 +59,12 @@ impl LaunchContext {
         }
     }
 
-    /// A fresh, unconsumed launch `nonce` that any client may consume, binding
-    /// no patient, expiring [`LAUNCH_CONTEXT_TTL`] after `now`.
+    /// A fresh, unconsumed launch `nonce` for the base's launch of a server's
+    /// launcher, expiring [`LAUNCH_CONTEXT_TTL`] after `now`. Any client may
+    /// consume it: the launcher can be any app the Owner set, so the base
+    /// can't name its client. It binds no patient.
     #[must_use]
-    pub fn for_any_client(nonce: String, now: DateTime<Utc>) -> Self {
+    pub fn for_server_launcher(nonce: String, now: DateTime<Utc>) -> Self {
         LaunchContext {
             nonce,
             client_id: None,
@@ -121,10 +124,10 @@ mod tests {
         assert!(for_app.admits_client("app"));
         assert!(!for_app.admits_client("other-app"));
 
-        let for_any_client = LaunchContext::for_any_client("n2".to_owned(), now);
-        assert_eq!(for_any_client.client_id(), None);
-        assert_eq!(for_any_client.patient(), None);
-        assert!(for_any_client.admits_client("app"));
-        assert!(for_any_client.admits_client("other-app"));
+        let for_server_launcher = LaunchContext::for_server_launcher("n2".to_owned(), now);
+        assert_eq!(for_server_launcher.client_id(), None);
+        assert_eq!(for_server_launcher.patient(), None);
+        assert!(for_server_launcher.admits_client("app"));
+        assert!(for_server_launcher.admits_client("other-app"));
     }
 }

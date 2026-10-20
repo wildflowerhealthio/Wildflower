@@ -83,7 +83,7 @@ async fn list_shows_seeded_and_trusted_on_first_use_clients_without_secrets() {
         &g,
         &owner_token,
         &request_id,
-        r#"{"approvedScopes":["read"],"acknowledgedRegistration":true}"#.to_string(),
+        r#"{"approvedScopes":["read"],"acknowledgedRegistrationChange":true}"#.to_string(),
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);

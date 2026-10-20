@@ -70,11 +70,11 @@ async fn park_and_approve(
 }
 
 /// The approval of `app_query`'s scopes.
-const APPROVE_APP: &str = r#"{"approvedScopes":["patient/Patient.rs","patient/Observation.rs","offline_access"],"acknowledgedRegistration":true}"#;
+const APPROVE_APP: &str = r#"{"approvedScopes":["patient/Patient.rs","patient/Observation.rs","offline_access"],"acknowledgedRegistrationChange":true}"#;
 
 /// The approval of `fhir_ui_query`'s scope.
 const APPROVE_FHIR_UI: &str =
-    r#"{"approvedScopes":["user/*.cruds"],"acknowledgedRegistration":true}"#;
+    r#"{"approvedScopes":["user/*.cruds"],"acknowledgedRegistrationChange":true}"#;
 
 /// The `next` a pairing-page `Location` (`pair?next=…`, relative to
 /// `/oauth/authorize`) carries, decoded.
@@ -184,7 +184,7 @@ async fn a_browser_without_a_session_is_sent_to_pairing_even_with_a_standing_gra
         .mint("test-app")
         .expect("mint a launch");
     let launched_app_query = format!("{}&launch={launch}", app_query());
-    let pending_before = newest_pending_consent(&db);
+    let pending_before = owner_prompt(&db);
 
     let mut nexts = Vec::new();
     for query in [fhir_ui_query(), launched_app_query.clone()] {
@@ -194,11 +194,7 @@ async fn a_browser_without_a_session_is_sent_to_pairing_even_with_a_standing_gra
         assert_eq!(next, format!("/oauth/authorize?{query}"));
         nexts.push(next);
     }
-    assert_eq!(
-        newest_pending_consent(&db),
-        pending_before,
-        "nothing parked"
-    );
+    assert_eq!(owner_prompt(&db), pending_before, "nothing parked");
 
     for next in nexts {
         let started = start_pairing(&g, &next).await;

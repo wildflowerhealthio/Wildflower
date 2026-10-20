@@ -170,7 +170,7 @@ mod tests {
         assert!(revoker
             .store
             .tx()
-            .browser_session_is_revoked(&session.sid)
+            .is_browser_session_revoked(&session.sid)
             .unwrap());
         for sid in [session.sid.as_str(), "no-such-sid"] {
             assert_eq!(

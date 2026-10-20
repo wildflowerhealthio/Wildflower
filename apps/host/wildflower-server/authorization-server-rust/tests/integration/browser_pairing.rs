@@ -146,8 +146,8 @@ async fn a_browser_pairs_and_holds_a_day_long_session_with_the_approved_scopes()
     let (g, _owner_token, db) = spin_up();
     let started = start_pairing(&g).await;
     assert_eq!(
-        newest_pending_consent(&db),
-        Some(NewestPendingConsent::BrowserPairing {
+        owner_prompt(&db),
+        Some(OwnerPrompt::BrowserPairing {
             user_code: started.user_code.clone(),
             browser_name: "Firefox on Linux".to_owned(),
         })
@@ -192,7 +192,7 @@ async fn a_browser_pairs_and_holds_a_day_long_session_with_the_approved_scopes()
     .await;
     assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(body_json(res.into_body()).await["status"], "approved");
-    assert_eq!(newest_pending_consent(&db), None);
+    assert_eq!(owner_prompt(&db), None);
 
     let (status, cookies) = poll_status(&g, &started.pairing_code, "Ruth's laptop").await;
     assert_eq!(status, "approved");
@@ -399,7 +399,7 @@ async fn a_foreign_next_or_an_unknown_code_starts_and_finds_nothing() {
             "BrowserPairingNextNotAllowed"
         );
     }
-    assert_eq!(newest_pending_consent(&db), None);
+    assert_eq!(owner_prompt(&db), None);
 
     let started = start_pairing(&g).await;
     for presented in ["no-such-code", started.user_code.as_str()] {

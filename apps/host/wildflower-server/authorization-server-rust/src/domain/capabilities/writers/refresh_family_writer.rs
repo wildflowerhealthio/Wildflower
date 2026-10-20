@@ -31,7 +31,7 @@ impl<'a, T: GrantTx> RefreshFamilyWriter<'a, T> {
 
     /// Mint a new family with its first token and return the token's
     /// plaintext. The caller checks
-    /// [`earns_refresh_token`](GrantRedemption::earns_refresh_token) first. The
+    /// [`is_refresh_token_earned`](GrantRedemption::is_refresh_token_earned) first. The
     /// family records the redemption's scopes and patient verbatim, the code
     /// it consumed (so a replay of that code can revoke the lineage), the
     /// standing grant behind it, and the browser session it was made under (so
@@ -137,8 +137,8 @@ mod tests {
         let store = FakeGrantStore::default();
         let without = redeemed_code(&store, "a", &["openid"]);
         let with = redeemed_code(&store, "b", &["openid", "offline_access"]);
-        assert!(!GrantRedemption::AuthorizationCode(&without).earns_refresh_token());
-        assert!(GrantRedemption::AuthorizationCode(&with).earns_refresh_token());
+        assert!(!GrantRedemption::AuthorizationCode(&without).is_refresh_token_earned());
+        assert!(GrantRedemption::AuthorizationCode(&with).is_refresh_token_earned());
     }
 
     /// The family records the redemption's scopes, patient, code hash, and

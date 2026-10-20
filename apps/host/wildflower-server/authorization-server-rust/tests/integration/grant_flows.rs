@@ -41,7 +41,7 @@ async fn auth_code_grant_happy_path_end_to_end() {
         .header("host", "127.0.0.1")
         .header("authorization", format!("Bearer {owner_token}"))
         .header("content-type", "application/json"),
-        Body::from(r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#),
+        Body::from(r#"{"approvedScopes":["read"],"acknowledgedRegistrationChange":false}"#),
     );
     let res = g.router.clone().oneshot(approve).await.expect("oneshot");
     assert_eq!(res.status(), StatusCode::OK);
@@ -222,7 +222,7 @@ async fn auth_code_grant_owner_narrows_requested_scope() {
         .header("authorization", format!("Bearer {owner_token}"))
         .header("content-type", "application/json"),
         Body::from(
-            r#"{"approvedScopes":["patient/Observation.s"],"acknowledgedRegistration":false}"#,
+            r#"{"approvedScopes":["patient/Observation.s"],"acknowledgedRegistrationChange":false}"#,
         ),
     );
     let res = g.router.clone().oneshot(approve).await.expect("oneshot");
@@ -292,7 +292,7 @@ async fn an_approver_lacking_a_requested_resource_scope_is_refused_and_the_reque
             "patient/Observation.rs",
         ],
     );
-    let approve_body = r#"{"approvedScopes":["patient/Observation.rs","patient/Condition.rs"],"acknowledgedRegistration":false}"#;
+    let approve_body = r#"{"approvedScopes":["patient/Observation.rs","patient/Condition.rs"],"acknowledgedRegistrationChange":false}"#;
 
     let res =
         approve_oauth_consent(&g, &narrow_approver, &request_id, approve_body.to_string()).await;
@@ -338,7 +338,7 @@ async fn minted_jwt_scope_claim_carries_alternate_canonical_forms() {
         &session_token,
         "test-app",
         "patient%2FObservation.read",
-        r#"{"approvedScopes":["patient/Observation.read"],"acknowledgedRegistration":false}"#,
+        r#"{"approvedScopes":["patient/Observation.read"],"acknowledgedRegistrationChange":false}"#,
     )
     .await;
 
@@ -398,7 +398,7 @@ async fn consent_approval_persists_grant() {
         &db.paired_browser_token,
         "test-app",
         "read",
-        r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#,
+        r#"{"approvedScopes":["read"],"acknowledgedRegistrationChange":false}"#,
     )
     .await;
 
@@ -447,7 +447,7 @@ async fn pre_approved_scopes_skip_consent_on_reauthorize() {
         &db.paired_browser_token,
         "test-app",
         "read",
-        r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#,
+        r#"{"approvedScopes":["read"],"acknowledgedRegistrationChange":false}"#,
     )
     .await;
 
@@ -509,7 +509,7 @@ async fn a_narrower_request_is_pre_approved_by_a_broader_standing_grant() {
         &db.paired_browser_token,
         "test-app",
         "patient%2FObservation.rs",
-        r#"{"approvedScopes":["patient/Observation.rs"],"acknowledgedRegistration":false}"#,
+        r#"{"approvedScopes":["patient/Observation.rs"],"acknowledgedRegistrationChange":false}"#,
     )
     .await;
 
@@ -563,7 +563,7 @@ async fn consent_approvals_union_scopes_into_grant() {
         &db.paired_browser_token,
         "test-app",
         "read",
-        r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#,
+        r#"{"approvedScopes":["read"],"acknowledgedRegistrationChange":false}"#,
     )
     .await;
     // Second request asks for both, but the Owner only approves `write` —
@@ -574,7 +574,7 @@ async fn consent_approvals_union_scopes_into_grant() {
         &db.paired_browser_token,
         "test-app",
         "read%20write",
-        r#"{"approvedScopes":["write"],"acknowledgedRegistration":false}"#,
+        r#"{"approvedScopes":["write"],"acknowledgedRegistrationChange":false}"#,
     )
     .await;
 
@@ -756,11 +756,11 @@ async fn auth_code_replay_revokes_issued_refresh_family() {
 // warning, and the `clients` row is created or widened only on approval.
 // ---------------------------------------------------------------------------
 
-/// The consent prompt carries the registration verdict, recomputed from the
+/// The consent prompt carries the presented client change, recomputed from the
 /// current row: `registered` for a request that matches the registration, `new`
 /// for a client with no row at all.
 #[tokio::test]
-async fn consent_prompt_reports_the_registration_verdict() {
+async fn consent_prompt_reports_the_presented_client_change() {
     let (g, owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
 
@@ -811,7 +811,7 @@ async fn approving_a_new_app_without_acknowledgement_is_rejected() {
         &g,
         &owner_token,
         &request_id,
-        r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#.to_string(),
+        r#"{"approvedScopes":["read"],"acknowledgedRegistrationChange":false}"#.to_string(),
     )
     .await;
     assert_eq!(res.status(), StatusCode::CONFLICT);
@@ -867,7 +867,7 @@ async fn approving_a_new_app_registers_it_and_the_next_request_fast_paths() {
         &g,
         &owner_token,
         &request_id,
-        r#"{"approvedScopes":["read"],"acknowledgedRegistration":true}"#.to_string(),
+        r#"{"approvedScopes":["read"],"acknowledgedRegistrationChange":true}"#.to_string(),
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -956,7 +956,7 @@ async fn approving_a_changed_app_widens_its_registration() {
         &g,
         &owner_token,
         &request_id,
-        r#"{"approvedScopes":["read","write"],"acknowledgedRegistration":true}"#.to_string(),
+        r#"{"approvedScopes":["read","write"],"acknowledgedRegistrationChange":true}"#.to_string(),
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -1013,7 +1013,7 @@ async fn denying_a_new_app_registers_nothing() {
         .is_none());
 }
 
-/// The fast path is gated on the verdict, not on grant coverage alone: once the
+/// The fast path is gated on the presented client change, not on grant coverage alone: once the
 /// registration no longer covers the request, a standing grant that *does* cover
 /// every requested scope must NOT skip the Owner — they have not seen this
 /// combination.
@@ -1027,7 +1027,7 @@ async fn a_changed_request_never_takes_the_fast_path() {
         &db.paired_browser_token,
         "test-app",
         "read",
-        r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#,
+        r#"{"approvedScopes":["read"],"acknowledgedRegistrationChange":false}"#,
     )
     .await;
 

@@ -1,4 +1,4 @@
-//! `authorization_codes` — the single-use codes ([`IssuedAuthorizationCode`])
+//! `authorization_codes` — the single-use codes ([`AuthorizationCode`])
 //! an approval issues and `/oauth/token` redeems: the [`AuthorizationCodesTx`]
 //! primitives on [`SqliteGrantTx`].
 
@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 
 use crate::db::grant_store::SqliteGrantTx;
-use crate::domain::authorization_code::IssuedAuthorizationCode;
+use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::grant_store::AuthorizationCodesTx;
 
@@ -34,10 +34,10 @@ impl AuthorizationCodesTx for SqliteGrantTx<'_> {
     fn redeem_authorization_code(
         &mut self,
         code: &str,
-    ) -> Result<Option<IssuedAuthorizationCode>, AuthorizationServerError> {
+    ) -> Result<Option<AuthorizationCode>, AuthorizationServerError> {
         let conn = &mut *self.conn;
         diesel::delete(authorization_codes::table.find(code))
-            .returning(IssuedAuthorizationCode::as_returning())
+            .returning(AuthorizationCode::as_returning())
             .get_result(conn)
             .optional()
             .map_err(|e| {
@@ -50,11 +50,11 @@ impl AuthorizationCodesTx for SqliteGrantTx<'_> {
     fn authorization_code_by_request_id(
         &mut self,
         request_id: &str,
-    ) -> Result<Option<IssuedAuthorizationCode>, AuthorizationServerError> {
+    ) -> Result<Option<AuthorizationCode>, AuthorizationServerError> {
         let conn = &mut *self.conn;
         authorization_codes::table
             .filter(authorization_codes::request_id.eq(request_id))
-            .select(IssuedAuthorizationCode::as_select())
+            .select(AuthorizationCode::as_select())
             .first(conn)
             .optional()
             .map_err(|e| {
@@ -68,7 +68,7 @@ impl AuthorizationCodesTx for SqliteGrantTx<'_> {
     /// Persist a freshly-minted authorization code.
     fn issue_authorization_code(
         &mut self,
-        code: &IssuedAuthorizationCode,
+        code: &AuthorizationCode,
     ) -> Result<(), AuthorizationServerError> {
         let conn = &mut *self.conn;
         diesel::insert_into(authorization_codes::table)
@@ -112,7 +112,7 @@ mod tests {
     use crate::domain::grant_store::*;
     use proptest::prelude::*;
 
-    fn arb_authorization_code() -> impl Strategy<Value = IssuedAuthorizationCode> {
+    fn arb_authorization_code() -> impl Strategy<Value = AuthorizationCode> {
         (
             "[a-zA-Z0-9_-]{1,40}",
             "[a-zA-Z0-9_-]{1,32}",
@@ -137,7 +137,7 @@ mod tests {
                     issued_at,
                     expires_at,
                     sid,
-                )| IssuedAuthorizationCode {
+                )| AuthorizationCode {
                     code,
                     request_id,
                     client_id,
@@ -173,7 +173,7 @@ mod tests {
     fn redeem_returns_the_row_exactly_once() {
         let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let now = chrono::Utc::now();
-        let code = IssuedAuthorizationCode {
+        let code = AuthorizationCode {
             code: "the-code".to_string(),
             request_id: "req-1".to_string(),
             client_id: "client-a".to_string(),
@@ -210,7 +210,7 @@ mod tests {
     fn delete_expired_codes_respects_the_cutoff() {
         let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let now = chrono::Utc::now();
-        let sample = |name: &str, expires_at| IssuedAuthorizationCode {
+        let sample = |name: &str, expires_at| AuthorizationCode {
             code: name.to_string(),
             request_id: format!("req-{name}"),
             client_id: "client-a".to_string(),
@@ -260,7 +260,7 @@ mod tests {
     fn corrupt_redirect_uri_is_a_typed_read_error() {
         let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let now = chrono::Utc::now();
-        let code = IssuedAuthorizationCode {
+        let code = AuthorizationCode {
             code: "the-code".to_string(),
             request_id: "req-1".to_string(),
             client_id: "client-a".to_string(),

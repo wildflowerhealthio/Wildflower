@@ -12,7 +12,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use crate::domain::authorization_code::IssuedAuthorizationCode;
+use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::authorization_request::AuthorizationRequest;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::browser_session::BrowserSession;
@@ -47,7 +47,7 @@ pub(crate) struct FakeTables {
     clients: RefCell<HashMap<String, Client>>,
     signing_keys: RefCell<Vec<SigningKey>>,
     authorization_requests: RefCell<HashMap<String, AuthorizationRequest>>,
-    authorization_codes: RefCell<HashMap<String, IssuedAuthorizationCode>>,
+    authorization_codes: RefCell<HashMap<String, AuthorizationCode>>,
     families: RefCell<HashMap<String, RefreshTokenFamily>>,
     tokens: RefCell<HashMap<String, RefreshToken>>,
     code_grants: RefCell<HashMap<String, AuthorizationCodeGrant>>,
@@ -64,7 +64,7 @@ struct Snapshot {
     clients: HashMap<String, Client>,
     signing_keys: Vec<SigningKey>,
     authorization_requests: HashMap<String, AuthorizationRequest>,
-    authorization_codes: HashMap<String, IssuedAuthorizationCode>,
+    authorization_codes: HashMap<String, AuthorizationCode>,
     families: HashMap<String, RefreshTokenFamily>,
     tokens: HashMap<String, RefreshToken>,
     code_grants: HashMap<String, AuthorizationCodeGrant>,

@@ -97,8 +97,7 @@ the row is created or widened only when the Owner approves — see
 Two clients are seeded by the server at startup, both `kind: 'public'` with
 empty `redirectUris`:
 
-- `WILDFLOWER_HOST_APP_CLIENT_ID` (configured as `wildflower_host_app_client_id`
-  in `tauri-shared-config.json`), named `Wildflower Host`, the
+- `WILDFLOWER_HOST_APP_CLIENT_ID`, named `Wildflower Host`, the
   [Wildflower host app](#wildflower-host-app)'s. It is allowed only its own
   scopes (`host_app_client_scopes`, `openid`), not the Owner's. The host app holds
   no token of its own (see [Wildflower host app](#wildflower-host-app)).
@@ -124,7 +123,7 @@ recovered; while the browser-session client is disabled that way,
 `/oauth/sign-in` signs no browser in and `/oauth/pair` starts no
 [browser pairing](#browser-pairing). `GET /authorization/clients` flags both
 `essential`, and the "Trusted Apps" list offers them no switch. The rule lives
-in one place, `EssentialClientGuard`, which the client reader and disabler
+in one place, `is_essential_client`, which the client reader and disabler
 share.
 
 ### Trust on first use
@@ -133,7 +132,7 @@ An authorization-code request **presents** a client registration: its
 `client_id`, `redirect_uri`, and scopes (`PresentedClientRegistration` in
 Rust). `/oauth/authorize` judges whether to accept it as it stands against
 the current [`clients`](#client) row, and computes a **registration verdict**
-(`ClientRegistrationVerdict`):
+(`PresentedClientChange` in Rust):
 
 - **`registered`** — the row exists, the `redirect_uri` resolves to an
   allowlist entry, and every requested scope is covered by `allowedScopes`.
@@ -151,7 +150,7 @@ now. Nothing is persisted for a `new` client until approval; a denied or
 expired prompt leaves no trace of it.
 
 Approving a `new` or `changed` prompt requires the Owner's explicit
-`acknowledgedRegistration` (the consent UI's "I recognise this app and this
+`acknowledgedRegistrationChange` (the consent UI's "I recognise this app and this
 redirect address" checkbox) — the server rejects the approval without it.
 Writing the row, created or widened, takes both `wildflower/Client.c` and
 `wildflower/Client.u` of the approver (see [Approval scopes](#approval-scopes)).
@@ -439,7 +438,7 @@ browser without a session at
 `/oauth/authorize`, which is only sent to [pairing](#browser-pairing) and
 parks nothing.
 
-The newest is a `NewestPendingConsent`, discriminated because the flows have
+The newest is an `OwnerPrompt`, discriminated because the flows have
 no shared lookup key, with the name of what asks: the client's (its registered
 name, or its `client_id` while it has none), or a pairing browser's:
 
@@ -449,7 +448,7 @@ name, or its `client_id` while it has none), or a pairing browser's:
 | Authorization code | `{ kind: 'oauth', id, clientName }`          | the consent card, `/oauth/authorize/{id}/consent` |
 | Browser pairing    | `{ kind: 'browser', userCode, browserName }` | the device page, `/oauth/device?user_code=`       |
 
-The Rust side recomputes it (`newest_pending_consent`) after every transition
+The Rust side recomputes it (`owner_prompt`) after every transition
 that could change it — either flow's insert, approve, or deny — and publishes
 it on a `watch` channel. The Tauri host carries each server's newest pending
 consent in the server's status, posts a notification ("‹client› wants access

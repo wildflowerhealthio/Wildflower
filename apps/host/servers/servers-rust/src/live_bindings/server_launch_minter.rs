@@ -50,7 +50,7 @@ impl ServerLaunchMinter {
     ///
     /// [`LaunchError::AuthorizationServer`] when the authorization server couldn't record it.
     pub fn mint(&self) -> Result<String, LaunchError> {
-        Ok(self.0.mint_for_any_client()?)
+        Ok(self.0.mint_for_server_launcher()?)
     }
 }
 

@@ -19,7 +19,7 @@ use wildflowerhealthio_authorization_server::domain::authorization_request::{
     AuthorizationRequest, DeviceRequest, NewAuthorizationRequest, RequestKind,
 };
 use wildflowerhealthio_authorization_server::domain::grant_store::AuthorizationRequestsTx as _;
-use wildflowerhealthio_authorization_server::{GrantStore, NewestPendingConsent, SqliteGrantStore};
+use wildflowerhealthio_authorization_server::{GrantStore, OwnerPrompt, SqliteGrantStore};
 use wildflowerhealthio_servers::{
     LaunchError, RunPolicy, ServerDetail, ServerLaunchMinter, ServerStatus, ServerUnit,
 };
@@ -59,8 +59,6 @@ fn server_config(server_dir: PathBuf) -> WildflowerServerConfig {
             .expect("authorization URL"),
         host_app_client_scopes:
             wildflowerhealthio_authorization_server::default_host_app_client_scopes(),
-        wildflower_host_app_client_id:
-            wildflowerhealthio_authorization_server::WILDFLOWER_HOST_APP_CLIENT_ID.to_owned(),
         // A relay nothing listens at: the tunnel dials and retries in the
         // background, which the server's lifecycle doesn't wait on, and the
         // reachability monitor finds the server unreachable.
@@ -310,7 +308,7 @@ async fn a_running_servers_newest_consent_is_its_detail_named_for_its_client() {
 
     // The host app's client is seeded as the run sets its server up, so the
     // newest request carries its registered name.
-    let newest = NewestPendingConsent::Device {
+    let newest = OwnerPrompt::DeviceCode {
         user_code: user_codes[1].clone(),
         client_name: "Wildflower Host".to_owned(),
     };

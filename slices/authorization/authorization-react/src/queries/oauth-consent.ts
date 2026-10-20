@@ -17,7 +17,7 @@ type ApproveOAuthPayload = {
    * `registration.status` is `new` or `changed`; send `false` for `registered`,
    * where no checkbox is shown.
    */
-  readonly acknowledgedRegistration: boolean
+  readonly acknowledgedRegistrationChange: boolean
 }
 
 /** The Owner's decision on an OAuth consent: approve with a payload, or deny. */
@@ -68,7 +68,7 @@ const oauthConsentMutationOptions = (
               payload: {
                 approvedScopes: [...decision.payload.approvedScopes],
                 patient: decision.payload.patient,
-                acknowledgedRegistration: decision.payload.acknowledgedRegistration,
+                acknowledgedRegistrationChange: decision.payload.acknowledgedRegistrationChange,
               },
             })
           : c['oauth-consent'].DenyOAuthConsent({ path: { id: decision.id } })

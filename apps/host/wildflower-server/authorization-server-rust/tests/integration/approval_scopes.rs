@@ -28,8 +28,7 @@ const APPROVER_SCOPES: &[&str] = &[
 
 /// An approval of what [`REQUESTED_SCOPES`] asks, acknowledging any
 /// registration warning.
-const APPROVE_REQUESTED: &str =
-    r#"{"approvedScopes":["patient/Observation.rs","openid"],"acknowledgedRegistration":true}"#;
+const APPROVE_REQUESTED: &str = r#"{"approvedScopes":["patient/Observation.rs","openid"],"acknowledgedRegistrationChange":true}"#;
 
 /// The token of a signed-in browser whose session holds `scopes` rather than
 /// the Owner's: an approved browser, as far as the gates can tell.
@@ -327,8 +326,8 @@ async fn a_browser_session_without_client_update_starting_a_new_app_s_request_wa
     let location = location_of(&authorize_with(without_client_update).await);
     assert!(location.ends_with("/wait"), "{location}");
     assert!(matches!(
-        newest_pending_consent(&db),
-        Some(NewestPendingConsent::OAuth {
+        owner_prompt(&db),
+        Some(OwnerPrompt::AuthorizationCode {
             decidable_in_requesting_browser: false,
             ..
         })
@@ -338,8 +337,8 @@ async fn a_browser_session_without_client_update_starting_a_new_app_s_request_wa
     let location = location_of(&authorize_with(with_client_scopes).await);
     assert!(location.ends_with("/consent"), "{location}");
     assert!(matches!(
-        newest_pending_consent(&db),
-        Some(NewestPendingConsent::OAuth {
+        owner_prompt(&db),
+        Some(OwnerPrompt::AuthorizationCode {
             decidable_in_requesting_browser: true,
             ..
         })
@@ -370,14 +369,14 @@ async fn a_browser_session_lacking_a_requested_resource_scope_waits_for_the_owne
     )
     .await;
     let request_id = limited_request_id(&res);
-    assert_eq!(newest_pending_consent(&db), None);
+    assert_eq!(owner_prompt(&db), None);
 
     let location =
         continue_past_session_shortfall(&g.router, &without_resource_scope, &request_id).await;
     assert_eq!(location, format!("/oauth/authorize/{request_id}/wait"));
     assert!(matches!(
-        newest_pending_consent(&db),
-        Some(NewestPendingConsent::OAuth {
+        owner_prompt(&db),
+        Some(OwnerPrompt::AuthorizationCode {
             decidable_in_requesting_browser: false,
             ..
         })
@@ -437,8 +436,8 @@ async fn asking_the_owner_raises_a_request_decidable_in_the_requesting_browser()
         .trim_end_matches("/consent")
         .to_owned();
     assert!(matches!(
-        newest_pending_consent(&db),
-        Some(NewestPendingConsent::OAuth {
+        owner_prompt(&db),
+        Some(OwnerPrompt::AuthorizationCode {
             decidable_in_requesting_browser: true,
             ..
         })
@@ -451,8 +450,8 @@ async fn asking_the_owner_raises_a_request_decidable_in_the_requesting_browser()
         StatusCode::NO_CONTENT
     );
     assert!(matches!(
-        newest_pending_consent(&db),
-        Some(NewestPendingConsent::OAuth {
+        owner_prompt(&db),
+        Some(OwnerPrompt::AuthorizationCode {
             decidable_in_requesting_browser: false,
             ..
         })

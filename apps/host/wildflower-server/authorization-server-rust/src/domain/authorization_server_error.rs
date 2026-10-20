@@ -34,7 +34,7 @@ pub enum AuthorizationServerError {
     /// The Owner tried to disable an essential client — the
     /// `PATCH /authorization/clients/{clientId}` **409**. Disabling it would
     /// leave the Owner no way in (see
-    /// `EssentialClientGuard`).
+    /// [`is_essential_client`](crate::domain::essential_client::is_essential_client)).
     /// Nothing is written when it is raised.
     EssentialClient { client_id: String },
     /// No authorization request has this id — the `/oauth/authorize/{id}`
@@ -64,7 +64,7 @@ pub enum AuthorizationServerError {
     /// registration) without acknowledging that warning — the consent approve
     /// surface's **409**. Semantic and client-facing: the launcher must show the
     /// registration warning and send
-    /// `acknowledgedRegistration: true`. Nothing is written when it is raised.
+    /// `acknowledgedRegistrationChange: true`. Nothing is written when it is raised.
     RegistrationNotAcknowledged { id: String },
     /// The Owner approved an authorization-code consent whose SMART launch
     /// bound a patient, naming a different patient (or none) — the consent

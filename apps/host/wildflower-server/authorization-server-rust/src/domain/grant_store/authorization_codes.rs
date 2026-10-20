@@ -3,7 +3,7 @@
 
 use chrono::{DateTime, Utc};
 
-use crate::domain::authorization_code::IssuedAuthorizationCode;
+use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 
 /// The issued authorization codes. Every method is one primitive on the caller's
@@ -17,11 +17,11 @@ pub trait AuthorizationCodesTx {
     /// # Errors
     ///
     /// [`AuthorizationServerError::Infrastructure`] if the delete-returning query fails or
-    /// a returned row cannot be mapped to an [`IssuedAuthorizationCode`].
+    /// a returned row cannot be mapped to an [`AuthorizationCode`].
     fn redeem_authorization_code(
         &mut self,
         code: &str,
-    ) -> Result<Option<IssuedAuthorizationCode>, AuthorizationServerError>;
+    ) -> Result<Option<AuthorizationCode>, AuthorizationServerError>;
 
     /// Look up the code issued for a given `request_id`, or `None` when absent —
     /// used by the authorize-status poll to build the final redirect URL.
@@ -29,11 +29,11 @@ pub trait AuthorizationCodesTx {
     /// # Errors
     ///
     /// [`AuthorizationServerError::Infrastructure`] if the read fails or a returned row
-    /// cannot be mapped to an [`IssuedAuthorizationCode`].
+    /// cannot be mapped to an [`AuthorizationCode`].
     fn authorization_code_by_request_id(
         &mut self,
         request_id: &str,
-    ) -> Result<Option<IssuedAuthorizationCode>, AuthorizationServerError>;
+    ) -> Result<Option<AuthorizationCode>, AuthorizationServerError>;
 
     /// Persist a freshly-minted authorization code.
     ///
@@ -43,7 +43,7 @@ pub trait AuthorizationCodesTx {
     /// unique-constraint violation on the code).
     fn issue_authorization_code(
         &mut self,
-        code: &IssuedAuthorizationCode,
+        code: &AuthorizationCode,
     ) -> Result<(), AuthorizationServerError>;
 
     /// Delete every authorization code whose `expires_at` fell before `cutoff`,

@@ -11,7 +11,7 @@
 use url::Url;
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::client_registration::ClientRegistrationVerdict;
+use crate::domain::client_registration::PresentedClientChange;
 use crate::domain::grant_store::GrantsTx;
 
 /// How far a standing grant covers a request. Only [`Full`](Self::Full) is a
@@ -30,8 +30,8 @@ pub(crate) enum GrantCoverage {
 impl GrantCoverage {
     /// Look up the standing grant for `(requested_client_id,
     /// requested_redirect_uri)` and compute
-    /// which of `requested_scopes` it covers. A request whose `registration`
-    /// verdict is not [`Registered`](ClientRegistrationVerdict::Registered) never
+    /// which of `requested_scopes` it covers. A request that
+    /// [would change its registration](PresentedClientChange::would_change_registration) never
     /// resolves past [`GrantCoverage::Uncovered`], whatever the grant says.
     ///
     /// "Covers" is [`wildflowerhealthio_scopes::allowed_scope_covers`], not string equality: a
@@ -44,12 +44,12 @@ impl GrantCoverage {
     /// [`AuthorizationServerError::Infrastructure`] on a store failure.
     pub(crate) fn resolve(
         tx: &mut impl GrantsTx,
-        registration_verdict: &ClientRegistrationVerdict,
+        presented_client_change: &PresentedClientChange,
         requested_client_id: &str,
         requested_redirect_uri: &Url,
         requested_scopes: &[String],
     ) -> Result<GrantCoverage, AuthorizationServerError> {
-        if !registration_verdict.is_registered() {
+        if presented_client_change.would_change_registration() {
             return Ok(GrantCoverage::Uncovered);
         }
         let Some(grant) =
@@ -147,7 +147,7 @@ mod tests {
         let store = store_with_grant(&["patient/*.cruds", "openid"], Some("pat-1"));
         let coverage = GrantCoverage::resolve(
             &mut store.tx(),
-            &ClientRegistrationVerdict::Registered,
+            &PresentedClientChange::NoChange,
             "client",
             &redirect(),
             &owned_scopes(&["patient/Observation.r", "openid"]),
@@ -166,7 +166,7 @@ mod tests {
         let store = store_with_grant(&["openid"], None);
         let coverage = GrantCoverage::resolve(
             &mut store.tx(),
-            &ClientRegistrationVerdict::Registered,
+            &PresentedClientChange::NoChange,
             "client",
             &redirect(),
             &owned_scopes(&["patient/Observation.r", "openid"]),
@@ -185,7 +185,7 @@ mod tests {
         let requested = owned_scopes(&["openid"]);
         let outside = GrantCoverage::resolve(
             &mut store.tx(),
-            &ClientRegistrationVerdict::New,
+            &PresentedClientChange::WouldCreate,
             "client",
             &redirect(),
             &requested,
@@ -196,7 +196,7 @@ mod tests {
 
         let no_grant = GrantCoverage::resolve(
             &mut store.tx(),
-            &ClientRegistrationVerdict::Registered,
+            &PresentedClientChange::NoChange,
             "stranger",
             &redirect(),
             &requested,

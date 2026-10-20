@@ -60,6 +60,21 @@ impl ClientsTx for SqliteGrantTx<'_> {
             .map_err(|e| AuthorizationServerError::infrastructure("client_by_id failed", e))
     }
 
+    /// One read of the client's `disabled_at`; a client with no row reads as
+    /// enabled.
+    fn is_client_disabled(&mut self, client_id: &str) -> Result<bool, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        let disabled_at = clients::table
+            .find(client_id)
+            .select(clients::disabled_at)
+            .first::<Option<DateTime<Utc>>>(conn)
+            .optional()
+            .map_err(|e| {
+                AuthorizationServerError::infrastructure("is_client_disabled failed", e)
+            })?;
+        Ok(disabled_at.flatten().is_some())
+    }
+
     /// Every registered client, ordered by `client_id`.
     fn list_clients(&mut self) -> Result<Vec<Client>, AuthorizationServerError> {
         let conn = &mut *self.conn;

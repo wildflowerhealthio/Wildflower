@@ -210,7 +210,8 @@ const OAuthConsentCard = ({
           patient: draftHasPatientScope ? draft.patient : null,
           // `registered` shows no checkbox and always sends `false`; the server
           // ignores the flag for that status anyway.
-          acknowledgedRegistration: registrationNeedsAcknowledgment && registrationAcknowledged,
+          acknowledgedRegistrationChange:
+            registrationNeedsAcknowledgment && registrationAcknowledged,
         },
       },
       {

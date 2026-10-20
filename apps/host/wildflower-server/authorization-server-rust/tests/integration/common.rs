@@ -36,7 +36,7 @@ pub use wildflowerhealthio_authorization_server::crypto_util::base64;
 pub use wildflowerhealthio_authorization_server::crypto_util::client_secret::hash_client_secret;
 pub use wildflowerhealthio_authorization_server::crypto_util::pkce::compute_code_challenge;
 pub use wildflowerhealthio_authorization_server::crypto_util::random_token::token_storage_hash;
-pub use wildflowerhealthio_authorization_server::domain::authorization_code::IssuedAuthorizationCode;
+pub use wildflowerhealthio_authorization_server::domain::authorization_code::AuthorizationCode;
 pub use wildflowerhealthio_authorization_server::domain::authorization_request::{
     Approval, AuthorizationRequest, CodeRequest, DeviceRequest, NewAuthorizationRequest,
     RequestKind, RequestStatus,
@@ -54,7 +54,7 @@ pub use wildflowerhealthio_authorization_server::domain::refresh_token::{
 };
 pub use wildflowerhealthio_authorization_server::domain::token::{mint_access_token, NewJwtArgs};
 pub use wildflowerhealthio_authorization_server::{
-    ConsentKey, GrantStore, NewestPendingConsent, SqliteGrantStore,
+    ConsentKey, GrantStore, OwnerPrompt, SqliteGrantStore,
 };
 pub use wildflowerhealthio_persistence::{Connection, DieselPool};
 pub use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
@@ -72,7 +72,7 @@ pub struct TestDb {
     /// can assert *what the host would notify* after a request lands,
     /// which is the only observable difference between "parked a request" and
     /// "parked a request and asked the Owner about it".
-    pending_consent_rx: watch::Receiver<Option<NewestPendingConsent>>,
+    pending_consent_rx: watch::Receiver<Option<OwnerPrompt>>,
     /// The browser session token of a browser the Owner paired, which holds
     /// `wildflower/launch` and every FHIR scope (`system/*.cruds`): a browser
     /// `/oauth/authorize` accepts, whose session falls short of no FHIR
@@ -105,8 +105,6 @@ pub fn spin_up_with_authorization_start_gate(
         server_origin: Url::parse(SERVER_ORIGIN).expect("SERVER_ORIGIN is a valid URL"),
         host_app_client_scopes:
             wildflowerhealthio_authorization_server::default_host_app_client_scopes(),
-        wildflower_host_app_client_id:
-            wildflowerhealthio_authorization_server::default_wildflower_host_app_client_id(),
         fhir_ui_client_id: "fhir-ui-client".to_string(),
         launcher_base: LauncherBase::parse(LAUNCHER_BASE).expect("LAUNCHER_BASE is a valid URL"),
         authorization_app_base: AuthorizationAppBase::parse(AUTHORIZATION_APP_BASE)
@@ -114,8 +112,7 @@ pub fn spin_up_with_authorization_start_gate(
         launcher_url: Url::parse(LAUNCHER_URL).expect("LAUNCHER_URL is a valid URL"),
         authorization_url: Url::parse(AUTHORIZATION_URL).expect("AUTHORIZATION_URL is a valid URL"),
     };
-    let (pending_consent_tx, pending_consent_rx) =
-        watch::channel::<Option<NewestPendingConsent>>(None);
+    let (pending_consent_tx, pending_consent_rx) = watch::channel::<Option<OwnerPrompt>>(None);
     // The shared revocation store lives on the rusqlite connection the host
     // wires into both the authorization server and the FHIR server (#269). A second handle on
     // the same connection (see `revocation_store_handle`) lets tests
@@ -241,7 +238,7 @@ fn mint_token_under_session(
 
 /// The pending consent the host would currently be showing — the latest value
 /// on the slice's pending-consent watch channel.
-pub fn newest_pending_consent(db: &TestDb) -> Option<NewestPendingConsent> {
+pub fn owner_prompt(db: &TestDb) -> Option<OwnerPrompt> {
     db.pending_consent_rx.borrow().clone()
 }
 
@@ -436,7 +433,7 @@ pub fn plant_authorization_code(
         .expect("insert request");
     store
         .write(|tx| {
-            tx.issue_authorization_code(&IssuedAuthorizationCode {
+            tx.issue_authorization_code(&AuthorizationCode {
                 code: code.to_string(),
                 request_id,
                 client_id: client_id.to_string(),
@@ -734,7 +731,7 @@ pub async fn approve_oauth_consent(
 /// `auth_code_grant_happy_path_end_to_end`. Uses the shared
 /// `https://app.example/cb` redirect and [`CODE_VERIFIER`]'s challenge.
 ///
-/// `approve_body` carries `acknowledgedRegistration` like any real approval;
+/// `approve_body` carries `acknowledgedRegistrationChange` like any real approval;
 /// callers seed a client whose registration already covers the request, so the
 /// flag is ignored.
 pub async fn authorize_and_approve(

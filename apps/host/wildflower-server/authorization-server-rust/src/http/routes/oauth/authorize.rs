@@ -14,7 +14,7 @@ use crate::domain::capabilities::oauth::{
 use crate::domain::client_redirect::{build_client_error_redirect_url, build_client_redirect_url};
 use crate::http::browser_session_cookie::{can_decide_consents, carried_browser_session};
 use crate::http::errors::InternalError;
-use crate::http::errors::{oauth_error_html, OAuthErrorKind};
+use crate::http::errors::{oauth_error_html, AuthorizeRefusal};
 use crate::http::extractors::Live;
 use crate::http::middleware::{start_limited_response, DeferredStartLimit};
 
@@ -51,7 +51,7 @@ pub(super) enum AuthorizeError {
     /// the redirect is not on its registration) any later validation failure.
     /// Renders a local HTML page — redirecting to an unvouched-for URI would be
     /// an open redirect (RFC 6749 §4.1.2.1).
-    LocalPage(OAuthErrorKind),
+    LocalPage(AuthorizeRefusal),
     /// A spec'd error once `redirect_uri` is validated — 302 back to the
     /// client. Carries the already-built `Location` (the client `redirect_uri`
     /// merged with `error` + `error_description` + `state`, RFC 6749
@@ -78,7 +78,7 @@ impl From<AuthorizationStartError> for AuthorizeError {
             AuthorizationStartError::NoActiveSigningKey => AuthorizeError::ServiceUnavailable,
             AuthorizationStartError::StartLimited => AuthorizeError::StartLimited,
             AuthorizationStartError::LocalPage(kind) => {
-                if kind == OAuthErrorKind::RedirectUriNotAllowed {
+                if kind == AuthorizeRefusal::RedirectUriNotAllowed {
                     tracing::warn!("redirect_uri not on a server-defined registration");
                 }
                 AuthorizeError::LocalPage(kind)

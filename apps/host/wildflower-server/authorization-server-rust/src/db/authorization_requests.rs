@@ -16,8 +16,9 @@ use crate::domain::authorization_request::{
     RequestKind, RequestStatus, RequestTransition, StoredAuthorizationRequest,
 };
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::grant_store::AuthorizationRequestsTx;
-use crate::domain::pending_consent::NewestPendingConsent;
+use crate::domain::consent_key::ConsentKey;
+use crate::domain::grant_store::{AuthorizationRequestsTx, ClientsTx};
+use crate::domain::owner_prompt::OwnerPrompt;
 
 diesel::table! {
     authorization_requests (id) {
@@ -277,11 +278,11 @@ impl AuthorizationRequestsTx for SqliteGrantTx<'_> {
     /// The client's name comes from its registration through a left join: a
     /// client trusted on first use has none until the Owner approves it. A
     /// disabled client's request is skipped, a client with no row's kept (the
-    /// rule on [`NewestPendingConsent`]).
-    fn newest_pending_consent(
+    /// rule on [`OwnerPrompt`]).
+    fn owner_prompt(
         &mut self,
         now: DateTime<Utc>,
-    ) -> Result<Option<NewestPendingConsent>, AuthorizationServerError> {
+    ) -> Result<Option<OwnerPrompt>, AuthorizationServerError> {
         let row = authorization_requests::table
             .left_join(clients::table.on(clients::client_id.eq(authorization_requests::client_id)))
             .filter(authorization_requests::status.eq(RequestStatus::Pending))
@@ -292,17 +293,33 @@ impl AuthorizationRequestsTx for SqliteGrantTx<'_> {
             .select((Row::as_select(), clients::name.nullable()))
             .first::<(Row, Option<String>)>(self.conn)
             .optional()
-            .map_err(|e| {
-                AuthorizationServerError::infrastructure("newest_pending_consent failed", e)
-            })?;
+            .map_err(|e| AuthorizationServerError::infrastructure("owner_prompt failed", e))?;
         row.map(|(row, registered_client_name)| {
             let request = AuthorizationRequest::try_from(row)?;
-            Ok(NewestPendingConsent::for_request(
-                &request,
-                registered_client_name,
-            ))
+            Ok(OwnerPrompt::for_request(&request, registered_client_name))
         })
         .transpose()
+    }
+
+    /// The request by the key `consent_key` carries, then its client's
+    /// `disabled_at`, both within the caller's scope.
+    fn is_awaiting_owner(
+        &mut self,
+        consent_key: &ConsentKey,
+        now: DateTime<Utc>,
+    ) -> Result<bool, AuthorizationServerError> {
+        let request = match consent_key {
+            ConsentKey::DeviceCode { user_code } | ConsentKey::BrowserPairing { user_code } => {
+                self.pending_authorization_request_by_user_code(user_code)?
+            }
+            ConsentKey::AuthorizationCode { id } => self.authorization_request_by_id(id)?,
+        };
+        match request {
+            Some(request) if request.is_pending_at(now) => {
+                Ok(!self.is_client_disabled(request.client_id())?)
+            }
+            _ => Ok(false),
+        }
     }
 
     /// An already-expired pending row holding this request's `user_code` (as
@@ -833,16 +850,14 @@ mod tests {
         }
     }
 
-    fn newest(store: &SqliteGrantStore) -> Option<NewestPendingConsent> {
-        store
-            .read(|tx| tx.newest_pending_consent(Utc::now()))
-            .expect("query")
+    fn newest(store: &SqliteGrantStore) -> Option<OwnerPrompt> {
+        store.read(|tx| tx.owner_prompt(Utc::now())).expect("query")
     }
 
     /// The newest pending request across every kind is the one the host is
     /// told of, its client named by its `client_id` until it is registered.
     #[test]
-    fn newest_pending_consent_picks_the_newest_request_across_every_kind() {
+    fn owner_prompt_picks_the_newest_request_across_every_kind() {
         let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let now = Utc::now();
         insert(
@@ -856,7 +871,7 @@ mod tests {
         );
         assert_eq!(
             newest(&store),
-            Some(NewestPendingConsent::Device {
+            Some(OwnerPrompt::DeviceCode {
                 user_code: "UC-1".to_owned(),
                 client_name: "device-client".to_owned(),
             })
@@ -864,7 +879,7 @@ mod tests {
         insert(&store, &code_request("req-1"));
         assert_eq!(
             newest(&store),
-            Some(NewestPendingConsent::OAuth {
+            Some(OwnerPrompt::AuthorizationCode {
                 id: "req-1".to_owned(),
                 client_name: "app".to_owned(),
                 decidable_in_requesting_browser: false,
@@ -887,7 +902,7 @@ mod tests {
         insert(&store, &pairing);
         assert_eq!(
             newest(&store),
-            Some(NewestPendingConsent::BrowserPairing {
+            Some(OwnerPrompt::BrowserPairing {
                 user_code: "UC-2".to_owned(),
                 browser_name: "Firefox on Linux".to_owned(),
             })
@@ -896,7 +911,7 @@ mod tests {
 
     /// Expired, decided and still-unacknowledged requests are no candidates.
     #[test]
-    fn newest_pending_consent_skips_what_no_longer_waits_for_the_owner() {
+    fn owner_prompt_skips_what_no_longer_waits_for_the_owner() {
         let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let ten_minutes_ago = Utc::now() - Duration::minutes(10);
         insert(
@@ -932,7 +947,7 @@ mod tests {
     /// A disabled client's request is no candidate; a client with no row
     /// stays one.
     #[test]
-    fn newest_pending_consent_skips_a_disabled_client() {
+    fn owner_prompt_skips_a_disabled_client() {
         let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let now = Utc::now();
         insert(
@@ -955,7 +970,7 @@ mod tests {
         insert(&store, &code_request("req-1"));
         assert_eq!(
             newest(&store),
-            Some(NewestPendingConsent::Device {
+            Some(OwnerPrompt::DeviceCode {
                 user_code: "UC-1".to_owned(),
                 client_name: "device-client".to_owned(),
             })
@@ -964,7 +979,7 @@ mod tests {
 
     /// A registered client is named by its registered name.
     #[test]
-    fn newest_pending_consent_names_a_registered_client_by_its_name() {
+    fn owner_prompt_names_a_registered_client_by_its_name() {
         let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         store
             .write(|tx| {
@@ -977,11 +992,136 @@ mod tests {
         insert(&store, &code_request("req-1"));
         assert_eq!(
             newest(&store),
-            Some(NewestPendingConsent::OAuth {
+            Some(OwnerPrompt::AuthorizationCode {
                 id: "req-1".to_owned(),
                 client_name: "app display name".to_owned(),
                 decidable_in_requesting_browser: false,
             })
         );
+    }
+
+    /// [`AuthorizationRequestsTx::is_awaiting_owner`], by each kind of
+    /// [`ConsentKey`].
+    mod is_awaiting_owner {
+        use chrono::{DateTime, Duration, Utc};
+
+        use crate::db::SqliteGrantStore;
+        use crate::domain::authorization_request::RequestStatus;
+        use crate::domain::consent_key::ConsentKey;
+        use crate::domain::grant_store::*;
+        use crate::domain::owner_prompt::OwnerPrompt;
+        use crate::domain::test_fake::{code_request, device_request};
+
+        fn awaiting(store: &SqliteGrantStore, key: &ConsentKey, now: DateTime<Utc>) -> bool {
+            store.read(|tx| tx.is_awaiting_owner(key, now)).unwrap()
+        }
+
+        fn oauth(id: &str) -> ConsentKey {
+            ConsentKey::AuthorizationCode { id: id.to_owned() }
+        }
+
+        fn device(user_code: &str) -> ConsentKey {
+            ConsentKey::DeviceCode {
+                user_code: user_code.to_owned(),
+            }
+        }
+
+        #[test]
+        fn a_request_awaits_the_owner_until_it_is_decided_or_expires() {
+            let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
+            let now = Utc::now();
+            for (id, status, expires_at) in [
+                (
+                    "waiting",
+                    RequestStatus::Pending,
+                    now + Duration::minutes(5),
+                ),
+                ("stale", RequestStatus::Pending, now - Duration::minutes(1)),
+                (
+                    "approved",
+                    RequestStatus::Approved,
+                    now + Duration::minutes(5),
+                ),
+                ("denied", RequestStatus::Denied, now + Duration::minutes(5)),
+            ] {
+                store
+                    .write(|tx| {
+                        tx.insert_authorization_request(&code_request(id, status, expires_at))
+                    })
+                    .unwrap();
+            }
+            store
+                .write(|tx| {
+                    tx.insert_authorization_request(&device_request(
+                        "device-waiting",
+                        "ABCD-EFGH",
+                        RequestStatus::Pending,
+                    ))
+                })
+                .unwrap();
+            store
+                .write(|tx| {
+                    tx.insert_authorization_request(&device_request(
+                        "device-denied",
+                        "WXYZ-WXYZ",
+                        RequestStatus::Denied,
+                    ))
+                })
+                .unwrap();
+
+            let pending = |key: ConsentKey| awaiting(&store, &key, now);
+            assert!(pending(oauth("waiting")));
+            assert!(pending(device("ABCD-EFGH")));
+            assert!(!pending(oauth("stale")));
+            assert!(!pending(oauth("approved")));
+            assert!(!pending(oauth("denied")));
+            assert!(!pending(device("WXYZ-WXYZ")));
+            assert!(!pending(oauth("ghost")));
+            assert!(!pending(device("GHST-GHST")));
+        }
+
+        /// A disabled client's request does not await the Owner: `owner_prompt`
+        /// skips it, and its key isn't awaiting; a client with no row stays a
+        /// candidate.
+        #[test]
+        fn a_disabled_client_s_request_does_not_await_the_owner() {
+            use crate::domain::client::Client;
+            use crate::domain::test_fake::{client, code_request_for};
+
+            let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
+            let now = Utc::now();
+            store
+                .write(|tx| {
+                    tx.insert_authorization_request(&code_request_for(
+                        "unregistered",
+                        "stranger",
+                        vec!["read".to_owned()],
+                    ))
+                })
+                .unwrap();
+            assert!(awaiting(&store, &oauth("unregistered"), now));
+            store
+                .write(|tx| {
+                    tx.upsert_client(&Client {
+                        disabled_at: Some(now),
+                        ..client("disabled-app", &["read"])
+                    })
+                })
+                .unwrap();
+            store
+                .write(|tx| {
+                    tx.insert_authorization_request(&code_request_for(
+                        "disabled",
+                        "disabled-app",
+                        vec!["read".to_owned()],
+                    ))
+                })
+                .unwrap();
+            assert!(!awaiting(&store, &oauth("disabled"), now));
+            assert!(matches!(
+                store.read(|tx| tx.owner_prompt(now)).unwrap(),
+                Some(OwnerPrompt::AuthorizationCode { id, .. }) if id == "unregistered"
+            ));
+        }
     }
 }

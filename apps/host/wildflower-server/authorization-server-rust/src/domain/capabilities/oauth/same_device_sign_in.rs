@@ -123,7 +123,7 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
                 SignInRefusal::RedirectNotAllowed,
             ))?;
         let session_token = self.store.write(|tx| {
-            if browser_session_client_is_disabled(tx)? {
+            if is_browser_session_client_disabled(tx)? {
                 return Err(SameDeviceSignInError::Refused(
                     SignInRefusal::BrowserSessionClientDisabled,
                 ));
@@ -158,7 +158,7 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
 /// client, which the Owner can't disable, so only a row disabled out of
 /// band (direct SQL) is. Its row is seeded at boot, so a missing one is an
 /// error, not an enabled client.
-fn browser_session_client_is_disabled(
+fn is_browser_session_client_disabled(
     tx: &mut impl ClientsTx,
 ) -> Result<bool, AuthorizationServerError> {
     let browser_session_client = tx.client_by_id(BROWSER_SESSION_CLIENT_ID)?.ok_or_else(|| {

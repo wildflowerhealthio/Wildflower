@@ -524,7 +524,7 @@ async fn offline_access_issues_rotating_refresh_token() {
         &db.paired_browser_token,
         "test-app",
         "read%20offline_access",
-        r#"{"approvedScopes":["read","offline_access"],"acknowledgedRegistration":false}"#,
+        r#"{"approvedScopes":["read","offline_access"],"acknowledgedRegistrationChange":false}"#,
     )
     .await;
 
@@ -747,7 +747,7 @@ async fn revoking_grant_revokes_refresh_tokens() {
         &db.paired_browser_token,
         "test-app",
         "read",
-        r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#,
+        r#"{"approvedScopes":["read"],"acknowledgedRegistrationChange":false}"#,
     )
     .await;
     let store = store_handle(&db);

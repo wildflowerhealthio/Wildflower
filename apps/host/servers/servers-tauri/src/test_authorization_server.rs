@@ -11,7 +11,7 @@ use wildflowerhealthio_authorization_server::domain::authorization_request::{
 use wildflowerhealthio_authorization_server::domain::grant_store::AuthorizationRequestsTx as _;
 use wildflowerhealthio_authorization_server::{
     setup_authorization_server, AdmitEveryAuthorizationStart, AuthorizationServerConfig,
-    GrantStore, LaunchContextMinter, NewestPendingConsent, PendingConsentWatcher,
+    GrantStore, LaunchContextMinter, OwnerPrompt, PendingConsentWatcher,
     SameDeviceSignInCodeMinter, SqliteGrantStore,
 };
 use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
@@ -26,7 +26,7 @@ pub(crate) struct TestAuthorizationServer {
     pub(crate) launch_context_minter: LaunchContextMinter,
     pub(crate) same_device_sign_in_code_minter: SameDeviceSignInCodeMinter,
     pub(crate) pending_consent_watcher: PendingConsentWatcher,
-    _pending_consent_rx: watch::Receiver<Option<NewestPendingConsent>>,
+    _pending_consent_rx: watch::Receiver<Option<OwnerPrompt>>,
     database_dir: tempfile::TempDir,
 }
 
@@ -96,8 +96,6 @@ pub(crate) fn test_authorization_server() -> TestAuthorizationServer {
             server_origin: Url::parse(&format!("https://{DOMAIN}")).unwrap(),
             host_app_client_scopes:
                 wildflowerhealthio_authorization_server::default_host_app_client_scopes(),
-            wildflower_host_app_client_id:
-                wildflowerhealthio_authorization_server::default_wildflower_host_app_client_id(),
             fhir_ui_client_id: "fhir-ui-client".to_string(),
             launcher_base: LauncherBase::parse("https://launcher.test/launcher/").unwrap(),
             authorization_app_base: AuthorizationAppBase::parse(

@@ -21,9 +21,8 @@ use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 use wildflowerhealthio_token_revocation::RevocationStore;
 
 use crate::db::SqliteGrantStore;
-use crate::domain::essential_client_guard::EssentialClientGuard;
 use crate::domain::last_seen_throttle::LastSeenThrottle;
-use crate::domain::pending_consent::NewestPendingConsent;
+use crate::domain::owner_prompt::OwnerPrompt;
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
 use crate::domain::sign_in_redirect::SignInDestinations;
 use crate::ports::{AuthorizationStartGate, Revocation, RevocationCheck};
@@ -62,19 +61,14 @@ pub struct AuthorizationServerState {
     /// each [`DeviceAuthorizer`](crate::domain::capabilities::oauth::DeviceAuthorizer)
     /// built from the state shares it.
     pub(crate) device_page: Arc<Url>,
-    /// The guard on the essential clients, built at
-    /// [`crate::setup_authorization_server`]: the host app's client, under
-    /// [`AuthorizationServerConfig::wildflower_host_app_client_id`](crate::AuthorizationServerConfig::wildflower_host_app_client_id),
-    /// and the browser-session client, [`crate::BROWSER_SESSION_CLIENT_ID`].
-    pub(crate) essential_client_guard: EssentialClientGuard,
     /// The hosted launcher logout lands the browser on, pinned from
     /// [`AuthorizationServerConfig`](crate::AuthorizationServerConfig) at [`crate::setup_authorization_server`].
     pub(crate) launcher_base: LauncherBase,
-    /// Watch sender publishing the [`NewestPendingConsent`] the host notifies
+    /// Watch sender publishing the [`OwnerPrompt`] the host notifies
     /// and the base shows on the server's page. Handlers whose write may change it call the
     /// [`OwnerApproval::republish_active`](crate::ports::OwnerApproval::republish_active)
     /// seam after the write completes.
-    pub(crate) owner_approval_tx: watch::Sender<Option<NewestPendingConsent>>,
+    pub(crate) owner_approval_tx: watch::Sender<Option<OwnerPrompt>>,
     /// Pinged each time
     /// [`OwnerApproval::republish_active`](crate::ports::OwnerApproval::republish_active)
     /// recomputes the newest pending consent, whether or not it changed: what

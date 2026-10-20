@@ -1,7 +1,7 @@
 //! [`ServerDetail`], what a server's run reports to `UnitRunner` beyond its
 //! run state.
 
-use wildflowerhealthio_authorization_server::NewestPendingConsent;
+use wildflowerhealthio_authorization_server::OwnerPrompt;
 use wildflowerhealthio_tunnel::TunnelState;
 use wildflowerhealthio_wildflower_server::{CertificateState, ServerHealth};
 
@@ -29,7 +29,7 @@ pub struct ServerDetail {
     pub certificate: Option<CertificateState>,
     /// The newest consent waiting for the Owner's answer on this server, as
     /// its authorization server publishes it; `None` when nothing waits.
-    pub pending_consent: Option<NewestPendingConsent>,
+    pub pending_consent: Option<OwnerPrompt>,
     /// How the host mints the launches it opens this server's launcher with.
     /// A run always sets it; it is `None` only in a detail built without a
     /// server, as the domain's tests build theirs.

@@ -109,7 +109,7 @@ and 90 days respectively). See the
 - `/authorization/oauth-consents/:id` (+ `/approve`, `/deny`) — Owner actions
   on a pending OAuth code-flow request. The consent carries a `registration`
   verdict (`registered` / `new` / `changed`); approving a `new` or `changed`
-  one requires `acknowledgedRegistration: true`. A decision answers with the
+  one requires `acknowledgedRegistrationChange: true`. A decision answers with the
   client's callback (`redirect`: the code on an approval, `access_denied` on a
   denial), for the consent card to leave for.
 - `/authorization/devices/:userCode` (+ `/approve`, `/deny`) — Owner actions

@@ -62,7 +62,7 @@ impl<'a, T: GrantTx> GrantRecorder<'a, T> {
         now: DateTime<Utc>,
     ) -> Result<(), AuthorizationServerError> {
         let delegated = delegated_scopes.scopes();
-        if delegated_scopes.writes_registration() {
+        if delegated_scopes.would_write_registration() {
             write_registration(self.tx, client_id, redirect_uri, delegated, now)?;
         }
         match self
@@ -191,7 +191,7 @@ fn new_registration(
 /// already covers leaves it untouched. `allowed_scopes` is only ever read
 /// through [`wildflowerhealthio_scopes::allowed_scope_covers`] (at `/authorize`, at
 /// `/device_authorization`, and in
-/// [`classify_registration`](crate::domain::client_registration::classify_registration)),
+/// [`PresentedClientChange::from_presented_registration`](crate::domain::client_registration::PresentedClientChange::from_presented_registration)),
 /// so a collapsed row admits exactly the requests the un-collapsed one did.
 fn widen_registration(
     mut client: Client,

@@ -5,7 +5,6 @@ use std::path::Path;
 #[derive(serde::Deserialize)]
 struct TauriSharedConfig {
     host_app_client_scopes: String,
-    wildflower_host_app_client_id: String,
     launcher_base_url: String,
     authorization_app_base_url: String,
     background_service_label: String,
@@ -47,10 +46,6 @@ fn main() {
     println!(
         "cargo:rustc-env=WILDFLOWER_HOST_APP_CLIENT_SCOPES={}",
         config.host_app_client_scopes
-    );
-    println!(
-        "cargo:rustc-env=WILDFLOWER_HOST_APP_CLIENT_ID={}",
-        config.wildflower_host_app_client_id
     );
     println!(
         "cargo:rustc-env=WILDFLOWER_LAUNCHER_BASE_URL={}",

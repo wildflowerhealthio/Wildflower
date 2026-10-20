@@ -16,7 +16,7 @@ use chrono::{DateTime, Utc};
 use wildflowerhealthio_scopes::Grant;
 
 use crate::domain::authority::{session_bounded_scopes, DelegatedScopes, StandingGrantCoverage};
-use crate::domain::authorization_code::{IssuedAuthorizationCode, AUTHORIZATION_CODE_TTL};
+use crate::domain::authorization_code::{AuthorizationCode, AUTHORIZATION_CODE_TTL};
 use crate::domain::authorization_request::{Approval, AuthorizationRequest, PendingCodeRequest};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::grant_store::write_transition;
@@ -51,7 +51,7 @@ impl CodeAuthority<'_> {
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum CodeApproval {
     /// The request was approved and this code issued for it.
-    Issued(Box<IssuedAuthorizationCode>),
+    Issued(Box<AuthorizationCode>),
     /// The request was no longer pending (a concurrent decision or expiry
     /// won); nothing changed.
     RequestNotPending,
@@ -127,7 +127,7 @@ impl<'a, T: GrantTx> RequestApprover<'a, T> {
         if !write_transition(self.tx, request.approve_code(approval, now))? {
             return Ok(CodeApproval::RequestNotPending);
         }
-        let authorization_code = IssuedAuthorizationCode {
+        let authorization_code = AuthorizationCode {
             code,
             request_id: request.id().to_owned(),
             client_id: request.client_id().to_owned(),
@@ -287,7 +287,7 @@ mod tests {
         };
         assert_eq!(
             *issued_code,
-            IssuedAuthorizationCode {
+            AuthorizationCode {
                 code: "the-code".to_owned(),
                 request_id: "req-1".to_owned(),
                 client_id: "client".to_owned(),

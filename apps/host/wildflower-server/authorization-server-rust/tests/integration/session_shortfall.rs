@@ -37,7 +37,7 @@ fn seed_app(db: &TestDb) {
 }
 
 /// The approval of `app_query`'s scopes.
-const APPROVE_APP: &str = r#"{"approvedScopes":["patient/Patient.rs","patient/Observation.rs","offline_access"],"acknowledgedRegistration":true}"#;
+const APPROVE_APP: &str = r#"{"approvedScopes":["patient/Patient.rs","patient/Observation.rs","offline_access"],"acknowledgedRegistrationChange":true}"#;
 
 /// A browser paired with `wildflower/launch` and `patient/Patient.rs` alone:
 /// it falls short of `app_query` by `patient/Observation.rs`.
@@ -96,7 +96,7 @@ async fn the_fast_path_stops_at_the_limited_page_then_issues_the_narrowed_code()
 
     let request_id =
         limited_request_id(&get_authorize(&g.router, &session_token, &app_query()).await);
-    assert_eq!(newest_pending_consent(&db), None, "the Owner isn't asked");
+    assert_eq!(owner_prompt(&db), None, "the Owner isn't asked");
     assert_eq!(
         store_handle(&db)
             .read(|tx| tx.authorization_code_by_request_id(&request_id))
@@ -123,7 +123,7 @@ async fn the_fast_path_stops_at_the_limited_page_then_issues_the_narrowed_code()
     );
     let issued = redeem(&g, &code_of(&callback)).await;
     assert_eq!(issued["scope"], "patient/Patient.rs offline_access");
-    assert_eq!(newest_pending_consent(&db), None);
+    assert_eq!(owner_prompt(&db), None);
 
     let res = post_session_shortfall(&g.router, &session_token, &request_id, "continue").await;
     assert_eq!(
@@ -240,7 +240,7 @@ async fn the_owner_neither_sees_nor_decides_a_request_waiting_on_its_limited_pag
     let request_id =
         limited_request_id(&get_authorize(&g.router, &session_token, &app_query()).await);
 
-    assert_eq!(newest_pending_consent(&db), None);
+    assert_eq!(owner_prompt(&db), None);
     let owner_request = |method: &str, action: &str| {
         let uri = format!("/authorization/oauth-consents/{request_id}{action}");
         build_request(
@@ -276,8 +276,8 @@ async fn the_owner_neither_sees_nor_decides_a_request_waiting_on_its_limited_pag
         format!("/oauth/authorize/{request_id}/wait")
     );
     assert!(matches!(
-        newest_pending_consent(&db),
-        Some(NewestPendingConsent::OAuth { ref id, .. }) if *id == request_id
+        owner_prompt(&db),
+        Some(OwnerPrompt::AuthorizationCode { ref id, .. }) if *id == request_id
     ));
     let res = approve_oauth_consent(&g, &owner_token, &request_id, APPROVE_APP.to_owned()).await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -415,8 +415,8 @@ async fn without_a_standing_grant_continue_raises_the_request_for_the_owner() {
         serde_json::json!(["wildflower/launch"])
     );
     assert!(matches!(
-        newest_pending_consent(&db),
-        Some(NewestPendingConsent::OAuth {
+        owner_prompt(&db),
+        Some(OwnerPrompt::AuthorizationCode {
             ref id,
             decidable_in_requesting_browser: false,
             ..
@@ -431,8 +431,8 @@ async fn without_a_standing_grant_continue_raises_the_request_for_the_owner() {
         format!("/oauth/authorize/{request_id}/wait")
     );
     assert!(matches!(
-        newest_pending_consent(&db),
-        Some(NewestPendingConsent::OAuth {
+        owner_prompt(&db),
+        Some(OwnerPrompt::AuthorizationCode {
             ref id,
             decidable_in_requesting_browser: false,
             ..

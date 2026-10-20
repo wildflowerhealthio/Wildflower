@@ -540,7 +540,7 @@ describe('OAuthConsentCard — registration warning', () => {
     const lastCall = mutate.mock.calls.at(-1)?.[0]
     expect(lastCall).toMatchObject({
       kind: 'approve',
-      payload: { acknowledgedRegistration: false },
+      payload: { acknowledgedRegistrationChange: false },
     })
   })
 
@@ -571,7 +571,7 @@ describe('OAuthConsentCard — registration warning', () => {
     const lastCall = mutate.mock.calls.at(-1)?.[0]
     expect(lastCall).toMatchObject({
       kind: 'approve',
-      payload: { acknowledgedRegistration: true },
+      payload: { acknowledgedRegistrationChange: true },
     })
   })
 

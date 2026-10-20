@@ -298,7 +298,7 @@ mod tests {
         assert!(!session_shortfall
             .store
             .tx()
-            .session_shortfall_acknowledged_for_client(FIXTURE_SID, "client")
+            .is_session_shortfall_acknowledged_for_client(FIXTURE_SID, "client")
             .unwrap());
         assert!(session_shortfall
             .cancel("req-1", FIXTURE_SID, Utc::now())

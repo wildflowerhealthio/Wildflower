@@ -94,7 +94,7 @@ impl<S: GrantStore> TokenVerifier<S> {
         )?;
         if let Some(sid) = claims.sid.as_deref() {
             if tx
-                .browser_session_is_revoked(sid)
+                .is_browser_session_revoked(sid)
                 .map_err(VerifyError::BrowserSessionStoreUnavailable)?
             {
                 return Err(VerifyError::Revoked);

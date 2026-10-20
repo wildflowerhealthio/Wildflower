@@ -78,7 +78,7 @@ impl FixedScopeCapability for LiveClientsReader {
     }
 
     fn build(state: Arc<AuthorizationServerState>) -> Self {
-        ClientsReader::new(state.store.clone(), state.essential_client_guard.clone())
+        ClientsReader::new(state.store.clone())
     }
 }
 
@@ -95,7 +95,7 @@ impl FixedScopeCapability for LiveClientsDisabler {
     }
 
     fn build(state: Arc<AuthorizationServerState>) -> Self {
-        ClientsDisabler::new(state.store.clone(), state.essential_client_guard.clone())
+        ClientsDisabler::new(state.store.clone())
     }
 }
 

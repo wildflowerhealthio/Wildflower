@@ -20,7 +20,7 @@ pub const AUTHORIZATION_CODE_TTL: Duration = Duration::seconds(60);
 #[derive(Debug, Clone, PartialEq, Eq, Queryable, Selectable, Insertable)]
 #[diesel(table_name = authorization_codes)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
-pub struct IssuedAuthorizationCode {
+pub struct AuthorizationCode {
     /// Opaque single-use token the client presents at `/token` to redeem.
     pub code: String,
     /// `id` of the `AuthorizationRequest` this code was issued against.

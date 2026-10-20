@@ -31,13 +31,13 @@ enum ApprovalFlow {
 
 impl ApprovalFlow {
     /// Whether approving records a standing grant: a code or device approval.
-    fn records_grant(self) -> bool {
+    fn would_record_grant(self) -> bool {
         self != ApprovalFlow::BrowserPairing
     }
 
     /// Whether approving creates or widens the client's registration: a code
     /// approval for a client trusted on first use.
-    fn writes_registration(self) -> bool {
+    fn would_write_registration(self) -> bool {
         self == ApprovalFlow::Code {
             registration_is_fixed: false,
         }
@@ -46,7 +46,7 @@ impl ApprovalFlow {
     /// Whether the approver must hold every resource scope the request asks
     /// for: a code approval, which approves the request as asked. Device and
     /// pairing consent is expandable instead.
-    fn approves_as_asked(self) -> bool {
+    fn would_approve_as_asked(self) -> bool {
         matches!(self, ApprovalFlow::Code { .. })
     }
 }
@@ -177,10 +177,10 @@ impl ApprovableScopes {
     /// holds, and [`DelegatedScopes::clamp`] bounds that per scope instead.
     pub(crate) fn missing_approval_scopes(&self, approver_grant: &Grant) -> Vec<String> {
         let mut approval_scopes = consent_decider_scopes();
-        if self.flow.records_grant() {
+        if self.flow.would_record_grant() {
             approval_scopes.extend(grant_creating_approval_scopes());
         }
-        if self.flow.writes_registration() {
+        if self.flow.would_write_registration() {
             approval_scopes.extend(client_registering_approval_scopes());
         }
         let uncovered_approval_scopes: Vec<Scope> = approval_scopes
@@ -188,7 +188,7 @@ impl ApprovableScopes {
             .filter(|required| !approver_grant.covers(required))
             .collect();
         let mut missing = render_scopes(&uncovered_approval_scopes);
-        if self.flow.approves_as_asked() {
+        if self.flow.would_approve_as_asked() {
             missing.extend(uncovered_held_access(
                 &self.grantable_subset(self.requested_scopes.clone()),
                 approver_grant,
@@ -249,7 +249,7 @@ impl DelegatedScopes {
         if approver_missing_scopes.is_empty() {
             Ok(Some(DelegatedScopes {
                 scopes: grantable,
-                writes_registration: approvable.flow.writes_registration(),
+                writes_registration: approvable.flow.would_write_registration(),
             }))
         } else {
             Err(AuthorizationServerError::InsufficientApproverScope {
@@ -267,7 +267,7 @@ impl DelegatedScopes {
     /// Whether the approval behind this proof creates or widens its client's
     /// registration (a code approval for a client trusted on first use, whose
     /// approver held `wildflower/Client.c` and `wildflower/Client.u`).
-    pub(crate) fn writes_registration(&self) -> bool {
+    pub(crate) fn would_write_registration(&self) -> bool {
         self.writes_registration
     }
 }
@@ -998,7 +998,7 @@ mod tests {
             )
             .expect("the owner covers everything")
             .expect("granted")
-            .writes_registration()
+            .would_write_registration()
         };
         let requested = owned_scopes(&["openid"]);
         let registered = client("app", &["openid"]);

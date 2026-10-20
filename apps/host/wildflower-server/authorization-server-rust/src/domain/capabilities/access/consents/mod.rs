@@ -12,7 +12,7 @@
 //!
 //! A code-flow prompt is resolved against its client's registration once
 //! ([`ResolvedCodeRequest`](crate::domain::client_registration::ResolvedCodeRequest)):
-//! the read and the approval carry its **registration verdict**, and neither
+//! the read and the approval carry its **presented client change**, and neither
 //! goes on for a disabled client.
 //!
 //! Approving a request takes its **approval scopes**, the power to decide it
@@ -33,7 +33,7 @@ use wildflowerhealthio_scopes::{Grant, Permission, Scope, WildflowerResource};
 use crate::domain::authority::{ApprovableScopes, DelegatedScopes};
 use crate::domain::authorization_request::{AuthorizationRequest, PendingCodeRequest};
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::client_registration::ClientRegistrationVerdict;
+use crate::domain::client_registration::PresentedClientChange;
 use crate::domain::GrantStore;
 use crate::ports::OwnerApproval;
 
@@ -84,7 +84,7 @@ pub(crate) fn client_registering_approval_scopes() -> Vec<Scope> {
 
 /// A consent prompt loaded for the launcher or the host to render — the data a
 /// `GET` authorization-code consent handler needs, with the client's display
-/// name and its [registration verdict](ClientRegistrationVerdict) already
+/// name and its [presented client change](PresentedClientChange) already
 /// resolved.
 pub struct OAuthConsentView {
     pub pending_request: PendingCodeRequest,
@@ -93,7 +93,7 @@ pub struct OAuthConsentView {
     /// stands now** — the warning the prompt leads with when the app, its
     /// redirect, or its scopes are new to the Owner. Recomputed on every read,
     /// never stored.
-    pub registration_verdict: ClientRegistrationVerdict,
+    pub presented_client_change: PresentedClientChange,
     /// The approval scopes the reader's own grant does not cover, rendered
     /// ([`ApprovableScopes::missing_approval_scopes`]): what it lacks to
     /// approve this request as asked. Empty when it may approve.
@@ -146,14 +146,14 @@ pub struct ApproveOAuthConsentInput {
     /// approval fails with [`AuthorizationServerError::LaunchPatientMismatch`].
     pub patient: Option<String>,
     /// The Owner's explicit acknowledgement that they recognise this app and
-    /// its redirect address. Required when the
-    /// [registration verdict](ClientRegistrationVerdict) is
-    /// [`New`](ClientRegistrationVerdict::New) or
-    /// [`WouldWiden`](ClientRegistrationVerdict::WouldWiden) — approving without it fails
+    /// its redirect address. Required when approving
+    /// [would change the registration](PresentedClientChange::would_change_registration)
+    /// ([`WouldCreate`](PresentedClientChange::WouldCreate) or
+    /// [`WouldWiden`](PresentedClientChange::WouldWiden)) — approving without it fails
     /// with [`AuthorizationServerError::RegistrationNotAcknowledged`]. Ignored for a
-    /// [`Registered`](ClientRegistrationVerdict::Registered) request, which shows no
+    /// [`NoChange`](PresentedClientChange::NoChange) request, which shows no
     /// warning to acknowledge.
-    pub acknowledged_registration: bool,
+    pub acknowledged_registration_change: bool,
 }
 
 /// The Owner's approval of a device-code consent prompt.
@@ -280,10 +280,10 @@ mod tests {
     use crate::domain::authorization_request::{
         CodeRequest, NewAuthorizationRequest, PairingRequest, RequestKind, RequestStatus,
     };
+    use crate::domain::authorize_refusal::AuthorizeRefusal;
     use crate::domain::client::{Client, RegistrationSource};
     use crate::domain::client_redirect::build_client_error_redirect_url;
     use crate::domain::oauth_error_code::OAuthErrorCode;
-    use crate::domain::oauth_error_kind::OAuthErrorKind;
     use crate::domain::test_fake::{
         client, code_request, code_request_for, device_request, fixture_code, owned_scopes,
         pending_request, seed_fixture_browser_session, FakeGrantStore, RecordingOwnerApproval,
@@ -366,7 +366,7 @@ mod tests {
         ApproveOAuthConsentInput {
             owner_approved_scopes: scopes.iter().map(|s| (*s).to_owned()).collect(),
             patient: None,
-            acknowledged_registration: true,
+            acknowledged_registration_change: true,
         }
     }
 
@@ -440,7 +440,7 @@ mod tests {
                 redirect: Some(build_client_error_redirect_url(
                     &url::Url::parse("https://example.com/cb").unwrap(),
                     OAuthErrorCode::AccessDenied,
-                    OAuthErrorKind::DisabledClient.description(),
+                    AuthorizeRefusal::DisabledClient.description(),
                     "state",
                 )),
             }
@@ -640,7 +640,7 @@ mod tests {
             ApproveOAuthConsentInput {
                 owner_approved_scopes: vec!["read".to_owned()],
                 patient: None,
-                acknowledged_registration: false,
+                acknowledged_registration_change: false,
             },
             &owner_grant(),
             || panic!("must not mint a code for an unacknowledged registration"),
@@ -769,7 +769,7 @@ mod tests {
     /// The clamp for a client trusted on first use is `allowed_scopes ∪
     /// requested_scopes`: a scope outside the registration can be granted (that
     /// is what the warning is for) and is then unioned into the row, so the next
-    /// identical request is `Registered`.
+    /// identical request is `NoChange`.
     #[test]
     fn approve_oauth_consent_may_grant_a_scope_outside_the_registration() {
         let store = FakeGrantStore::default();
@@ -1409,7 +1409,7 @@ mod tests {
     }
 
     /// A client row the store cannot read fails the prompt read instead of
-    /// rendering as an unknown (`New`) client, on both consent surfaces.
+    /// rendering as an unknown (`WouldCreate`) client, on both consent surfaces.
     #[test]
     fn consent_reader_surfaces_a_client_read_failure() {
         use crate::db::SqliteGrantStore;
