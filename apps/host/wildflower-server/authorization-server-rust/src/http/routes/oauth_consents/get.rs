@@ -1,3 +1,6 @@
+//! `GET /authorization/oauth-consents/{id}`: the consent card an app's request
+//! is decided on, and the body it is drawn from.
+
 use chrono::Utc;
 use std::sync::Arc;
 

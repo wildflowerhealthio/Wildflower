@@ -1,3 +1,6 @@
+//! `GET /authorization/browser-sessions`: the browsers signed in right now, as
+//! the Owner's Browsers list shows them.
+
 use std::sync::Arc;
 
 use axum::routing::{get, MethodRouter};

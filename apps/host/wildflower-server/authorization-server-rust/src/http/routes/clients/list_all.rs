@@ -1,3 +1,6 @@
+//! `GET /authorization/clients`: the Owner's list of every registered app, and
+//! the body each app is shown with.
+
 use axum::Json;
 use chrono::{DateTime, Utc};
 use serde::Serialize;

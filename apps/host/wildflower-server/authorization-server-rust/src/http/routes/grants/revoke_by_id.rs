@@ -1,3 +1,6 @@
+//! `DELETE /authorization/grants/{id}`: the Owner takes back a standing grant,
+//! and with it every token the app holds under it.
+
 use std::sync::Arc;
 
 use axum::extract::Path;

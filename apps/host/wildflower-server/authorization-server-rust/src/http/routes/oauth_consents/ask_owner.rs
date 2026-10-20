@@ -1,3 +1,6 @@
+//! `POST /authorization/oauth-consents/{id}/ask-owner`: a browser that can't
+//! decide its own request hands it to the Owner.
+
 use chrono::Utc;
 use std::sync::Arc;
 

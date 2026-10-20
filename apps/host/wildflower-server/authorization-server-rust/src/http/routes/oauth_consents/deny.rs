@@ -1,3 +1,6 @@
+//! `POST /authorization/oauth-consents/{id}/deny`: the Owner declines an app's
+//! request from its consent card.
+
 use chrono::Utc;
 use std::sync::Arc;
 

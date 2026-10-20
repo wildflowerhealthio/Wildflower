@@ -1,3 +1,6 @@
+//! `GET /authorization/grants/{id}`: one standing grant, for the Owner's view of
+//! what an app or device holds.
+
 use std::sync::Arc;
 
 use axum::extract::Path;

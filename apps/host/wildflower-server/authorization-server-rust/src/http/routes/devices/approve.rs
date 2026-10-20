@@ -1,3 +1,6 @@
+//! `POST /authorization/devices/{userCode}/approve`: the Owner approves a device
+//! or a browser pairing at the device page.
+
 use std::sync::Arc;
 
 use axum::extract::Path;

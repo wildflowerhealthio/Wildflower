@@ -1,3 +1,6 @@
+//! `POST /authorization/devices/{userCode}/deny`: the Owner declines a device or
+//! a browser pairing at the device page.
+
 use chrono::Utc;
 use std::sync::Arc;
 

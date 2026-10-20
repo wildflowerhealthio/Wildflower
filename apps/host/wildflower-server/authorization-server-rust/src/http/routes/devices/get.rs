@@ -1,3 +1,6 @@
+//! `GET /authorization/devices/{userCode}`: the device page's consent prompt for
+//! a device or a browser pairing, looked up by the code it shows.
+
 use chrono::Utc;
 use std::sync::Arc;
 

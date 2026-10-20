@@ -1,3 +1,6 @@
+//! `POST /authorization/oauth-consents/{id}/approve`: the Owner approves an app's
+//! request from its consent card.
+
 use std::sync::Arc;
 
 use axum::extract::Path;

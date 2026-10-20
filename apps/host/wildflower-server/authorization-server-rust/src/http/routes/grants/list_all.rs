@@ -1,3 +1,6 @@
+//! `GET /authorization/grants`: the Owner's list of every standing grant, so
+//! they can see what each app and device keeps.
+
 use std::sync::Arc;
 
 use axum::response::IntoResponse;

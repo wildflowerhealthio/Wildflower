@@ -1,3 +1,6 @@
+//! `PATCH /authorization/clients/{clientId}`: the Owner disables an app, or
+//! turns it back on.
+
 use axum::extract::Path;
 use axum::Json;
 use chrono::{DateTime, Utc};

@@ -1,3 +1,6 @@
+//! `DELETE /authorization/browser-sessions/{sid}`: the Owner signs a browser
+//! out, ending everything minted under its session.
+
 use std::sync::Arc;
 
 use axum::extract::Path;
