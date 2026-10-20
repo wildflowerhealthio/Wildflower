@@ -1,0 +1,26 @@
+[book]
+title = "Wildflower, Read in Order"
+description = "The Wildflower code, read in domain order: chapters of prose with the source they explain."
+language = "en"
+src = "src"
+
+[build]
+build-dir = "book"
+# A SUMMARY.md entry without its file is a mistake, not a page to create.
+create-missing = false
+
+# Includes the chapters into src/'s stubs ({{#chapter}}) and expands their
+# {{#code}} and {{#code-link}} directives (scripts/directives.ts).
+[preprocessor.code]
+command = "node scripts/code-preprocessor.ts"
+
+
+[output.html]
+default-theme = "navy"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/wildflowerhealthio/Wildflower"
+# Loads src/vendor/mermaid.min.js, copied in from node_modules by
+# scripts/build-book.ts so the pages load nothing from another origin, on the
+# pages with a diagram.
+additional-js = ["assets/mermaid-init.js"]
+additional-css = ["assets/book.css"]

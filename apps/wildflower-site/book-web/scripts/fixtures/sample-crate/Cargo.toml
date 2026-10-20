@@ -1,0 +1,5 @@
+# A fixture for book-web's directive tests; not a workspace member.
+[package]
+name = "wildflowerhealthio-sample-crate"
+version = "0.0.0"
+edition = "2024"

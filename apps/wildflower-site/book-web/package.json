@@ -1,0 +1,24 @@
+{
+  "name": "@wildflowerhealthio/book-web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The book at `wildflowerhealth.io/book/`: chapters of prose read in domain order, with the source they explain inlined at build time. mdbook renders it; `scripts/code-preprocessor.ts`, an mdbook preprocessor, turns each `{{#code <path> <item>}}` directive into the item's source (found with tree-sitter for Rust and the TypeScript parser for TS) and links it to GitHub and the code index. The chapters live beside the code they explain, in `docs/Book/` folders; `src/` holds the reading order and the stubs that include them.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build-book": "node scripts/build-book.ts",
+    "check": "vp check",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "mermaid": "catalog:",
+    "smol-toml": "catalog:",
+    "tree-sitter-rust": "catalog:",
+    "typescript": "catalog:",
+    "typescript-7": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:",
+    "web-tree-sitter": "catalog:"
+  }
+}

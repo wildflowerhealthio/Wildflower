@@ -2,6 +2,13 @@ const config = {
   config: {
     default: true,
     'line-length': false,
+    // The book's `{{#item}}` directives put `<div id="item-…">` anchors on its
+    // pages at build time, so a chapter's link to one (`#item-Grant`) has
+    // nothing to land on in the Markdown itself
+    // (apps/wildflower-site/book-web/README.md).
+    'link-fragments': {
+      ignored_pattern: '^item-',
+    },
     'relative-links': {
       root_path: '.',
     },

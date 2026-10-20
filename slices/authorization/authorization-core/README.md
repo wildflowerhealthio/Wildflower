@@ -62,7 +62,7 @@ The two request tables, `authorizationCodes`, and the refresh-token lineage
 are the ones that would otherwise only grow — a background sweep reclaims
 them a fixed window past their own `expires_at` (7 days for the requests and
 codes, 90 days for the lineage). See the
-[Retention Explanation](../../../apps/host/wildflower-server/authorization-server-rust/docs/Retention%20Explanation.md).
+[Retention](../../../apps/host/wildflower-server/authorization-server-rust/docs/Book/Domain/Retention%20Explanation.md) page of the authorization server book.
 
 ## Routes
 

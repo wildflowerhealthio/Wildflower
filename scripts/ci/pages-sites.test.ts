@@ -11,6 +11,7 @@ import { findAffectedPackages, loadPackages, type Pkg } from '../affected-packag
 import {
   affectedSites,
   APP_PAGES_SITES,
+  BOOK_PACKAGE,
   MARKETING_PAGES_SITE,
   missingRequiredFiles,
   PAGES_SITES,
@@ -151,6 +152,15 @@ describe('pages-sites / affectedSites', () => {
     expect(siteNames(affectedSites(affected, workspacePackages))).toEqual(['plots'])
   })
 
+  it('should preview the marketing site, which carries the book, for a change to the book', () => {
+    const affected = findAffectedPackages(
+      ['apps/wildflower-site/book-web/scripts/directives.ts'],
+      workspacePackages
+    )
+
+    expect(siteNames(affectedSites(affected, workspacePackages))).toEqual(['marketing'])
+  })
+
   it('should preview no site for a change no site depends on', () => {
     const affected = findAffectedPackages(['apps/host/host-app/src/main.tsx'], workspacePackages)
 
@@ -189,7 +199,10 @@ describe('pages-sites / affectedSites', () => {
           affectedSites(affected, workspacePackages).map(({ name }) => name)
         )
         for (const site of PAGES_SITES) {
-          expect(previewed.has(site.name)).toBe(affected.affected.has(site.packageName))
+          expect(previewed.has(site.name)).toBe(
+            affected.affected.has(site.packageName) ||
+              (site.includesBook && affected.affected.has(BOOK_PACKAGE))
+          )
         }
       }),
       { numRuns: numRunsFor({ base: 30 }) }
