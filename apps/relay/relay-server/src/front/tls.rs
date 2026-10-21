@@ -47,8 +47,17 @@ impl Front {
         visitor: Visitor,
         shutdown_rx: broadcast::Receiver<bool>,
     ) {
-        let Ok(relay) = client.local_addr() else {
-            return;
+        let relay = match client.local_addr() {
+            Ok(relay) => relay,
+            Err(error) => {
+                // The socket failed before a byte was read from it.
+                let refusal = Refusal::NotAHello {
+                    first_bytes: FirstBytes::of(&[]),
+                    ended: NotAHello::ReadFailed(error),
+                };
+                self.refuse(&visitor, refusal);
+                return;
+            }
         };
         let (hello_bytes, server_name) = match self.read_server_name(&mut client).await {
             Ok(read) => read,
