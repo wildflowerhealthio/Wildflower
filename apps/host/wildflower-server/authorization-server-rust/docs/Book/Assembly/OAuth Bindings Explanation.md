@@ -19,6 +19,7 @@ Each is a capability over the concrete store, plus what it needs from the state.
 | `LiveCodeAuthorizationStarter`  | `/oauth/authorize`                                                                  | `OwnerApproval`, the server's origin                                          |
 | `LiveSameDeviceSignIn`          | `/oauth/sign-in`                                                                    | the sign-in codes, where a browser may go next, the origin, the Owner's grant |
 | `LiveSessionShortfall`          | the limited page's read and cancel                                                  | nothing                                                                       |
+| `LiveSessionWidening`           | the limited page's ask to widen the session, and its poll                           | `OwnerApproval`, the revocation store, the origin                             |
 | `LiveBrowserPairing`            | `/oauth/pair/*`                                                                     | `OwnerApproval`, where a browser may go next, the origin                      |
 | `LiveDeviceAuthorizer`          | `/oauth/device_authorization`                                                       | `OwnerApproval`, the device page's URL                                        |
 | `LiveAuthorizationStatusReader` | the wait page's status poll                                                         | nothing                                                                       |
@@ -38,6 +39,10 @@ The capabilities themselves are on the [OAuth](<../Capabilities/OAuth Explanatio
 {{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveSameDeviceSignIn::from_state}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveSessionShortfall}}
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveSessionWidening}}
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveSessionWidening::from_state}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs LiveBrowserPairing}}
 

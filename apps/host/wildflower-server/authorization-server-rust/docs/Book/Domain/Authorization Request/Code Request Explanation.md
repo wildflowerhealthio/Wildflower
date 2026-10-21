@@ -76,6 +76,12 @@ The limited page's Continue.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/code/mod.rs CodeRequest::acknowledge_session_shortfall tests="tests::acknowledge_session_shortfall_goes_on_past_the_limited_page_once"}}
 
+#### `extend_limited_page_wait`
+
+The browser asked the Owner to widen its session from the page: the request waits there as long as the [session widening](<Session Widening Explanation.md>) waits for the Owner.
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/code/mod.rs CodeRequest::extend_limited_page_wait tests="tests::extend_limited_page_wait_keeps_the_request_waiting_longer"}}
+
 #### `deny_on_limited_page`
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authorization_request/code/mod.rs CodeRequest::deny_on_limited_page tests="tests::deny_on_limited_page_applies_only_while_the_request_waits_there"}}

@@ -3,8 +3,9 @@
 {{#covers apps/host/wildflower-server/authorization-server-rust/src/db/authorization_requests/mod.rs}}
 {{#covers apps/host/wildflower-server/authorization-server-rust/src/db/authorization_requests/code_request_row.rs}}
 {{#covers apps/host/wildflower-server/authorization-server-rust/src/db/authorization_requests/user_code_request_row.rs}}
+{{#covers apps/host/wildflower-server/authorization-server-rust/src/db/authorization_requests/session_widening_request_row.rs}}
 
-The [authorization requests](<../Domain/Authorization Request Explanation.md>) live in two tables, by how a request is keyed. `code_authorization_requests` holds the [code requests](<../Domain/Authorization Request/Code Request Explanation.md>), keyed by id. `user_code_requests` holds the [device requests and browser pairings](<../Domain/Authorization Request/Polled Requests Explanation.md>), keyed by the poller's secret, found by the `user_code` the Owner enters, and told apart by a `flow` column. Only this module knows those two flows share a table.
+The [authorization requests](<../Domain/Authorization Request Explanation.md>) live in three tables, by how a request is keyed. `code_authorization_requests` holds the [code requests](<../Domain/Authorization Request/Code Request Explanation.md>), keyed by id. `user_code_requests` holds the [device requests and browser pairings](<../Domain/Authorization Request/Polled Requests Explanation.md>), keyed by the poller's secret, found by the `user_code` the Owner enters, and told apart by a `flow` column. Only this module knows those two flows share a table. `session_widening_requests` holds the [session widenings](<../Domain/Authorization Request/Session Widening Explanation.md>), keyed by id.
 
 **A decision lands once.** Every write of a transition is the flow's guarded replace: one `UPDATE` of the whole row, guarded on the key and the status the request was read with, so of two transitions read from one row the first to land wins and the other matches nothing ([the guarded replace](<../Domain/Authorization Request Explanation.md#transitions-and-the-guarded-replace>)). **At most one pending request holds a `user_code`**: a partial unique index holds it, and a request decided or claimed is outside the index.
 
@@ -40,11 +41,23 @@ The tests' requests are built by the helpers on the [Test Fixtures](<Test Fixtur
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/db/authorization_requests/user_code_request_row.rs PolledRequest::try_from}}
 
+## `db::authorization_requests::session_widening_request_row`
+
+### `SessionWideningRequestRow`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/authorization_requests/session_widening_request_row.rs SessionWideningRequestRow}}
+
+#### Into a `SessionWideningRequest`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/authorization_requests/session_widening_request_row.rs SessionWideningRequestRow::malformed}}
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/authorization_requests/session_widening_request_row.rs SessionWideningRequest::try_from}}
+
 ## `db::authorization_requests`
 
 ### `approval_from_columns`
 
-Both conversions read the approval through it.
+The conversions read the approval through it.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/db/authorization_requests/mod.rs approval_from_columns tests="tests::a_malformed_row_fails_the_read tests::corrupt_enum_columns_are_typed_read_errors"}}
 
@@ -58,6 +71,8 @@ The port is [`AuthorizationRequestsTx`](<../Grant Store/Authorization Requests E
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/db/authorization_requests/mod.rs SqliteGrantTx::user_code_request_by_id}}
 
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/authorization_requests/mod.rs SqliteGrantTx::session_widening_request_by_id}}
+
 #### Inserting a request
 
 Bulk reclamation of expired rows is the retention sweep's, so an insert leaves an unrelated expired row alone. The one row it clears is an expired pending one holding the new request's `user_code`, which would otherwise hold the slot in the partial unique index.
@@ -70,6 +85,8 @@ Bulk reclamation of expired rows is the retention sweep's, so an insert leaves a
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/db/authorization_requests/mod.rs SqliteGrantTx::replace_user_code_row tests="tests::approvals_never_fight_poll_stamps"}}
 
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/authorization_requests/mod.rs SqliteGrantTx::replace_session_widening_request}}
+
 #### `owner_prompt`
 
 The one request the host notifies about and opens: the [Owner prompt](<../Domain/Owner Prompt Explanation.md>).
@@ -79,6 +96,8 @@ The one request the host notifies about and opens: the [Owner prompt](<../Domain
 {{#item apps/host/wildflower-server/authorization-server-rust/src/db/authorization_requests/mod.rs SqliteGrantTx::newest_pending_code_request}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/db/authorization_requests/mod.rs SqliteGrantTx::newest_pending_user_code_request}}
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/authorization_requests/mod.rs SqliteGrantTx::newest_pending_session_widening_request}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/db/authorization_requests/mod.rs later_of}}
 
@@ -95,3 +114,5 @@ The cutoff is the sweep's, [`purge_expired`](<../Domain/Retention Explanation.md
 {{#item apps/host/wildflower-server/authorization-server-rust/src/db/authorization_requests/mod.rs SqliteGrantTx::delete_code_requests_expired_before tests="tests::delete_expired_requests_respects_the_cutoff"}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/db/authorization_requests/mod.rs SqliteGrantTx::delete_polled_requests_expired_before}}
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/authorization_requests/mod.rs SqliteGrantTx::delete_session_widening_requests_expired_before}}

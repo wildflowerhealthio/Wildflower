@@ -8,7 +8,7 @@
 
 While a request waits, **the browser waits on a page this server serves, on its own origin**, so the address bar names the server being approved. `/oauth/authorize` sends the browser to one of three pages beside it: the wait page while the Owner decides elsewhere, the consent card when this browser decides itself, the limited page when its session holds less than the app asks for. Two more pages are reached another way: the device page, where the Owner confirms a device's code, and the pairing page, where a browser without a session asks for one.
 
-The pages are static. Each is the same bytes for every request, and reads the request id or code from its own URL, so nothing a caller sends can reach the markup. What changes is answered by JSON routes beside them: the status poll the wait page drives, and the three calls the limited page makes. All of it is uncached, and all of it is locked down by the same security headers.
+The pages are static. Each is the same bytes for every request, and reads the request id or code from its own URL, so nothing a caller sends can reach the markup. What changes is answered by JSON routes beside them: the status poll the wait page drives, and the calls the limited page makes. All of it is uncached, and all of it is locked down by the same security headers.
 
 ## `http::routes::oauth::pages`
 
@@ -98,7 +98,7 @@ The unit tests serve a [fake build](<../Test Fixtures Explanation.md#authorizati
 
 **A page is the same uncached bytes whatever its URL holds.**
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/oauth/authorization_pages.rs page tests="tests::the_consent_card_is_the_same_uncached_page_for_every_request tests::the_limited_page_is_the_same_uncached_page_for_every_request tests::the_device_page_is_the_same_uncached_page_with_or_without_a_code tests::the_pairing_page_is_the_same_uncached_page_whatever_its_next"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/oauth/authorization_pages.rs page tests="tests::the_consent_card_is_the_same_uncached_page_for_every_request tests::the_limited_page_is_the_same_uncached_page_for_every_request tests::the_widening_card_is_the_same_uncached_page_for_every_widening tests::the_device_page_is_the_same_uncached_page_with_or_without_a_code tests::the_pairing_page_is_the_same_uncached_page_whatever_its_next"}}
 
 ### `asset`
 
@@ -154,7 +154,7 @@ An absolute URL, since a device shows it to a person who types it elsewhere.
 
 ## `http::routes::oauth::session_shortfall`
 
-A browser whose session holds less than an app asks for is told so on the [limited page](<../../Domain/Authorization Request/Code Request Explanation.md#the-limited-page>) before anyone else is bothered. The page makes three calls on its own origin: read what the session lacks, go on, or cancel. **Each answers only the browser session the request was made in**; any other browser, with another session or none, gets the same `404` as an unknown id.
+A browser whose session holds less than an app asks for is told so on the [limited page](<../../Domain/Authorization Request/Code Request Explanation.md#the-limited-page>) before anyone else is bothered. The page makes three calls on its own origin: read what the session lacks, go on, or cancel; and it can ask the Owner to widen the session, through the [session widening routes](<Session Widening Routes Explanation.md>). **Each answers only the browser session the request was made in**; any other browser, with another session or none, gets the same `404` as an unknown id.
 
 The two posts carry no body, so another page could send them as a simple request. What refuses one is the host's cookie-to-bearer layer, which answers `403` to a write carrying the cookie from any origin but the server's. Every answer is uncached, since a Continue may carry the app's redirect with a code. The [Session Shortfall](<../../Integration Tests/Session Shortfall Explanation.md>) integration tests hold all three.
 
