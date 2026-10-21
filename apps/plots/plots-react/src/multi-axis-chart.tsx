@@ -18,9 +18,10 @@ import styles from './multi-axis-chart.module.css'
 
 interface MultiAxisChartProps {
   /**
-   * The value axes `ValueAxis.assign` produced, in selection order. A series
-   * keeps its colour for as long as it stays selected, so removing one never
-   * repaints the others; a newcomer takes the lowest colour left free.
+   * The value axes `ValueAxis.assign` produced, each with one or more series.
+   * A series keeps its colour for as long as it stays selected, so removing
+   * one never repaints the others; a newcomer takes the lowest colour left
+   * free.
    */
   readonly axes: readonly ValueAxis.ValueAxis[]
   /**
@@ -39,29 +40,30 @@ interface MultiAxisChartProps {
 const TOOLTIP_ROOM = 280 + 12
 
 /**
- * Each axis' palette index, parallel to `axes`: `ColourSlots.assign`, carried
- * from one render to the next so a survivor keeps its colour.
+ * Each value series' palette index: `ColourSlots.assign` over every axis'
+ * series, carried from one render to the next so a survivor keeps its colour.
  *
  * @remarks
  * Derived state rather than an effect: when the selection changes the new
  * assignment is stored during render, so the first paint already wears it.
+ * The assignment returned is the stored one itself while the selection
+ * holds, so the figure is not rebuilt for an unchanged one.
  */
-const useColours = (axes: readonly ValueAxis.ValueAxis[]): readonly number[] => {
-  const ids = axes.map((axis) => axis.series.id)
+const useColours = (axes: readonly ValueAxis.ValueAxis[]): ColourSlots.ColourSlots => {
+  const ids = axes.flatMap((axis) => axis.series.map((series) => series.id))
   const [kept, setKept] = useState<ColourSlots.ColourSlots>(() =>
     ColourSlots.assign(new Map(), ids)
   )
   const current = ColourSlots.assign(kept, ids)
   if (current !== kept) setKept(current)
-  // `current` is the stored assignment itself while the selection holds, so
-  // the figure is not rebuilt for an unchanged one.
-  return useMemo(() => axes.map((axis) => current.get(axis.series.id) ?? 0), [axes, current])
+  return current
 }
 
 /**
- * Plots' chart: every selected series on one time axis, each
- * against its own colour-matched value axis — two on the left, two on the
- * right — with each series' `low` / `high` band shaded behind the lines and a
+ * Plots' chart: every selected series on one time axis, each against its
+ * value axis — its own, colour-matched, or one it shares with series of the
+ * same unit and a similar range; two axes on the left, two on the right —
+ * with each series' `low` / `high` band shaded behind the lines and a
  * crosshair that reads every series at the pointer's time.
  *
  * @remarks
@@ -89,19 +91,14 @@ const useColours = (axes: readonly ValueAxis.ValueAxis[]): readonly number[] => 
  */
 const MultiAxisChart = ({ axes, lanes, xDomain, onHover }: MultiAxisChartProps): JSX.Element => {
   const { containerRef, container, width: figureWidth } = usePlotContainer()
+  const valueSeries = useMemo(() => axes.flatMap((axis) => axis.series), [axes])
   const bucketsBySeriesId = useMemo(
-    () =>
-      Buckets.ofDenseSeries(
-        axes.map((axis) => axis.series),
-        xDomain,
-        bucketCountFor(axes, figureWidth)
-      ),
-    [axes, xDomain, figureWidth]
+    () => Buckets.ofDenseSeries(valueSeries, xDomain, bucketCountFor(axes, figureWidth)),
+    [valueSeries, axes, xDomain, figureWidth]
   )
   const stops = useMemo(
-    () =>
-      Crosshair.stops([...axes.map((axis) => axis.series), ...lanes], xDomain, bucketsBySeriesId),
-    [axes, lanes, xDomain, bucketsBySeriesId]
+    () => Crosshair.stops([...valueSeries, ...lanes], xDomain, bucketsBySeriesId),
+    [valueSeries, lanes, xDomain, bucketsBySeriesId]
   )
   const [hover, setHover] = useState<{
     readonly stops: readonly number[]

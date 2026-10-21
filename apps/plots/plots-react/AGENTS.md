@@ -23,7 +23,10 @@ and opaque series ids.
 - `src/chart-marks.ts` — `chartOptions`, the figure's marks, bottom layer
   first:
   - a value axis per `ValueAxis` (ticks from the axis, labels mapped back
-    through `ValueAxis.denormalise`), two per side stepping outward;
+    through `ValueAxis.denormalise`), two per side stepping outward. An axis
+    with one series wears its colour and its `labelWithUnit`; a shared axis
+    wears `SHARED_AXIS_COLOUR` (a neutral text step) and its unit alone
+    (`axisLabel`), and its series keep their own colours;
   - bands: a point series' readings' `low` / `high` as an area, a level
     series' levels' as one rectangle each, and a bucketed series' min–max
     envelope as an area in place of its readings' band;
@@ -44,16 +47,18 @@ and opaque series ids.
     (the lane sits outside the frame). Each lane grows the figure and its
     bottom margin by `LANE_HEIGHT`, so the frame keeps its height; past
     `SpanSeries.LANE_CAP` lanes `chartOptions` throws.
-- `src/crosshair-tooltip.tsx` — `CrosshairTooltip`: one row per axis with
-  `Series.levelAt`'s value, unit and `note`; the detail line is the reading's
-  date for a point series and `start – end` (or `ongoing`) for a level series.
+- `src/crosshair-tooltip.tsx` — `CrosshairTooltip`: one row per value series,
+  axis by axis, with `Series.levelAt`'s value, unit and `note`; the detail
+  line is the reading's date for a point series and `start – end` (or
+  `ongoing`) for a level series.
   A bucketed series' row reads `Buckets.at` instead: the bucket mean in the
   unit, detailed `mean of n readings, min–max`. Each lane then lists a row per
   span under the crosshair (`SpanSeries.spansAt`) — its category, the lane's
   label, its start and end — or one `—` row in a gap.
-- `src/legend.tsx` — `Legend`, the key above the figure: an entry per axis,
-  then one per lane listing its categories (`laneCategories`, which
-  `MultiAxisChart` derives once per lane with `SpanSeries.categoriesOf`).
+- `src/legend.tsx` — `Legend`, the key above the figure: an entry per value
+  series, axis by axis, naming its axis' side, then one per lane listing its
+  categories (`laneCategories`, which `MultiAxisChart` derives once per lane
+  with `SpanSeries.categoriesOf`).
 - `src/series-colors.ts` — `seriesColors`, the `--color-series-N` /
   `-soft` tokens for a palette index, and `spanColour`, the `--color-span-N`
   token for a span category's colour slot (neutral for `null`).
@@ -118,10 +123,10 @@ and opaque series ids.
   read one series against another it moves, so the overlay is the product (the
   epic's decision log records it). Every other dataviz rule holds: colours come
   from `ColourSlots.assign` in fixed palette order and never cycle, a series
-  keeps its colour while it stays selected, a series colour paints marks, axis
-  lines and legend keys only — tick labels, the legend and the tooltip wear the
-  text tokens — and dark mode comes from the tokens, never a chart-local
-  colour.
+  keeps its colour while it stays selected, a series colour paints marks, its
+  own axis' lines and legend keys only (a shared axis is neutral) — tick
+  labels, the legend and the tooltip wear the text tokens — and dark mode
+  comes from the tokens, never a chart-local colour.
 - **Plot's axis label ignores `dx`.** A stacked axis shifts its ticks with
   `dx` but places its label from the frame edge, so each axis sets its own
   `labelOffset` to the far side of its gutter; drop that and the labels on one

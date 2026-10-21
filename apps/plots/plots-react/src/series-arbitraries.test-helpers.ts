@@ -30,7 +30,7 @@ const valueArb = fc.integer({ min: -100_000, max: 100_000 }).map((cents) => cent
 
 /**
  * A point series of sorted, distinct days inside the window, some readings
- * carrying a band.
+ * carrying a band, in a unit of its own so it never shares a value axis.
  */
 const pointSeriesArb = (
   tag: string,
@@ -49,7 +49,7 @@ const pointSeriesArb = (
       kind: 'points',
       id: `p:${tag}`,
       label: `Points ${tag}`,
-      unit: 'u',
+      unit: `unit ${tag}`,
       valueScale: 'fitted',
       interpolation,
       points: points
@@ -63,7 +63,8 @@ const pointSeriesArb = (
 
 /**
  * A level series of back-to-back or gapped levels in either line style, some
- * carrying a band or a note, the last possibly open.
+ * carrying a band or a note, the last possibly open, in a unit of its own so
+ * it never shares a value axis.
  */
 const levelSeriesArb = (tag: string): fc.Arbitrary<LevelSeries.LevelSeries> =>
   fc
@@ -101,7 +102,7 @@ const levelSeriesArb = (tag: string): fc.Arbitrary<LevelSeries.LevelSeries> =>
         kind: 'levels',
         id: `l:${tag}`,
         label: `Levels ${tag}`,
-        unit: 'u',
+        unit: `unit ${tag}`,
         valueScale: 'from-zero',
         levels: built,
       }

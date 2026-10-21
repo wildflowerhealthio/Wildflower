@@ -1,24 +1,32 @@
-import type { ValueSeries } from './series.ts'
+import type { ValueScale, ValueSeries } from './series.ts'
 
 /**
- * How many value series the chart plots at once, which is how many value axes
- * it has. Span lanes take no value axis and count against `SpanSeries.LANE_CAP`
- * instead.
+ * How many value series the chart plots at once, and so the most value axes
+ * it can have. Span lanes take no value axis and count against
+ * `SpanSeries.LANE_CAP` instead.
  *
  * @remarks
- * A rendering limit: each series needs its own value axis, and two per side is
- * as many as fit without the gutters swallowing the plot. {@link assign}
- * throws past it rather than dropping one silently, so a selection UI caps
- * against this constant.
+ * A rendering limit: series that share no axis each need their own, and two
+ * per side is as many as fit without the gutters swallowing the plot.
+ * {@link assign} throws past it rather than dropping one silently, so a
+ * selection UI caps against this constant. It counts series, not axes, even
+ * though series that share an axis leave gutters free.
  */
 const CAP = 4
 
 /** A closed numeric interval, `[low, high]`, with `low <= high`. */
 type Domain = readonly [number, number]
 
-/** One series' value axis: which side it hangs on, and the scale it draws. */
+/**
+ * One value axis: the series drawn against it, which side it hangs on, and
+ * the scale it draws.
+ */
 interface ValueAxis {
-  readonly series: ValueSeries
+  /**
+   * The series drawn against this axis, in selection order: one, or several
+   * that {@link assign} found share a unit and a similar range.
+   */
+  readonly series: readonly [ValueSeries, ...ValueSeries[]]
   readonly side: 'left' | 'right'
   /** Position among the axes on this same `side`, `0` being the one nearest the plot. */
   readonly index: number
@@ -229,46 +237,133 @@ const plottedValuesOf = (series: ValueSeries): readonly number[] =>
   ])
 
 /**
- * The domain a series' own values — and its bands — need, fitted as its
- * `valueScale` says.
+ * The lowest and highest of `values`, which must not be empty.
  *
  * @remarks
- * Band bounds join the extent so a value inside its normal range still shows
- * the band around it. A `'from-zero'` axis starts at zero whatever the values
- * are, and a `'zero-to-one'` axis is pinned. Nothing to plot yields `[0, 1]`,
- * so the axis draws empty rather than not at all.
+ * A fold rather than `Math.min(...values)`: an axis shared by several dense
+ * series can hold more values than a spread call takes arguments.
  */
-const domainFor = (series: ValueSeries): Domain => {
-  if (series.valueScale === 'zero-to-one') return [0, 1]
-  const values = plottedValuesOf(series)
-  if (values.length === 0) return [0, 1]
-  if (series.valueScale === 'from-zero') {
-    const top = Math.max(...values)
-    return top <= 0 ? [0, 1] : [0, niceDomain(0, top, DEFAULT_TICK_COUNT)[1]]
-  }
-  return niceDomain(Math.min(...values), Math.max(...values), DEFAULT_TICK_COUNT)
+const extentOfValues = (values: readonly number[]): Domain =>
+  values.reduce<Domain>(
+    ([low, high], value) => [Math.min(low, value), Math.max(high, value)],
+    [Infinity, -Infinity]
+  )
+
+/** A `'from-zero'` axis over `values`: zero to their highest, rounded up; `[0, 1]` when none is above zero. */
+const fromZeroDomain = (values: readonly number[]): Domain => {
+  const [, top] = extentOfValues(values)
+  return top <= 0 ? [0, 1] : [0, niceDomain(0, top, DEFAULT_TICK_COUNT)[1]]
 }
 
 /**
- * Give each selected series its own value axis.
+ * The domain several series drawn on one axis need: every one's values and
+ * bands, fitted as their `valueScale`s say.
+ *
+ * @remarks
+ * Band bounds join the extent so a value inside its normal range still shows
+ * the band around it. An axis whose series are all `'zero-to-one'` is pinned;
+ * one with any `'from-zero'` series starts at zero whatever the values are.
+ * Nothing to plot yields `[0, 1]`, so the axis draws empty rather than not at
+ * all.
+ */
+const sharedDomainFor = (series: readonly ValueSeries[]): Domain => {
+  if (series.every((member) => member.valueScale === 'zero-to-one')) return [0, 1]
+  const values = series.flatMap(plottedValuesOf)
+  if (values.length === 0) return [0, 1]
+  if (series.some((member) => member.valueScale === 'from-zero')) return fromZeroDomain(values)
+  const [low, high] = extentOfValues(values)
+  return niceDomain(low, high, DEFAULT_TICK_COUNT)
+}
+
+/**
+ * The domain a series' own values — and its bands — need, fitted as its
+ * `valueScale` says: the axis it would get alone.
+ */
+const domainFor = (series: ValueSeries): Domain => sharedDomainFor([series])
+
+/**
+ * The least fraction of a shared axis' domain each of its series' own domains
+ * must cover. Below it a series would be squashed into a sliver of the axis,
+ * its changes unreadable beside the others'.
+ */
+const MIN_SHARED_COVERAGE = 1 / 3
+
+/** How much of `domain` the part of `own` inside it covers, as a fraction. */
+const coverageOf = (own: Domain, domain: Domain): number => {
+  const width = domain[1] - domain[0]
+  if (!(width > 0)) return 1
+  const overlap = Math.min(own[1], domain[1]) - Math.max(own[0], domain[0])
+  return Math.max(0, overlap) / width
+}
+
+/**
+ * Whether two value scales can be drawn on one axis: `'fitted'` and
+ * `'from-zero'` can, the shared axis then starting at zero; `'zero-to-one'`
+ * only with itself.
+ */
+const scalesCanShare = (left: ValueScale, right: ValueScale): boolean =>
+  (left === 'zero-to-one') === (right === 'zero-to-one')
+
+/**
+ * Whether `series` can join the axis `members` already share.
+ *
+ * @remarks
+ * Three conditions, all needed:
+ * - **Same unit**, and a unit at all: a series with `unit: null` never shares,
+ *   since nothing says its values are comparable with another's.
+ * - **Compatible scales**, as {@link scalesCanShare} says.
+ * - **Similar ranges**: with `series` added, each member's own domain
+ *   ({@link domainFor}) still covers at least {@link MIN_SHARED_COVERAGE} of
+ *   the shared one ({@link sharedDomainFor}) — for a `'fitted'` member of an
+ *   axis drawn from zero, of that from-zero domain. A `'fitted'` series with a
+ *   value below zero never shares an axis drawn from zero, which would not
+ *   hold it.
+ */
+const canJoin = (
+  members: readonly [ValueSeries, ...ValueSeries[]],
+  series: ValueSeries
+): boolean => {
+  const [first] = members
+  if (series.unit === null || series.unit !== first.unit) return false
+  if (!scalesCanShare(first.valueScale, series.valueScale)) return false
+  const together = [...members, series]
+  const isDrawnFromZero = together.some((member) => member.valueScale === 'from-zero')
+  const holdsBelowZero = together.some(
+    (member) => member.valueScale === 'fitted' && plottedValuesOf(member).some((value) => value < 0)
+  )
+  if (isDrawnFromZero && holdsBelowZero) return false
+  const shared = sharedDomainFor(together)
+  return together.every((member) => coverageOf(domainFor(member), shared) >= MIN_SHARED_COVERAGE)
+}
+
+/**
+ * Group the selected series onto value axes and give each axis its side.
  *
  * @param selected - The series to plot, in selection order
- * @returns One slot per input, in the same order
+ * @returns One axis per group, in the selection order of each group's first
+ *   series, each listing its series in selection order
  * @throws When `selected` holds more than {@link CAP} series
  *
  * @remarks
- * Sides alternate in selection order, so the two most recently added series
- * never crowd the same gutter and a series keeps its side as long as nothing
- * before it is removed.
+ * Each series, in selection order, joins the first axis it {@link canJoin},
+ * or opens a new one. Sides alternate in axis order, so the two most recently
+ * opened axes never crowd the same gutter and an axis keeps its side as long
+ * as nothing before it is removed.
  */
 const assign = (selected: readonly ValueSeries[]): readonly ValueAxis[] => {
   if (selected.length > CAP) {
     throw new Error(`Plots draws at most ${CAP} series at once; got ${selected.length}`)
   }
-  return selected.map((series, position): ValueAxis => {
-    const domain = domainFor(series)
+  const groups: [ValueSeries, ...ValueSeries[]][] = []
+  for (const series of selected) {
+    const joined = groups.find((members) => canJoin(members, series))
+    if (joined === undefined) groups.push([series])
+    else joined.push(series)
+  }
+  return groups.map((members, position): ValueAxis => {
+    const domain = sharedDomainFor(members)
     return {
-      series,
+      series: members,
       side: position % 2 === 0 ? 'left' : 'right',
       index: Math.floor(position / 2),
       domain,

@@ -49,7 +49,7 @@ const renderRow = (
   render(
     <CrosshairTooltip
       axes={axes}
-      colours={[0]}
+      colours={new Map(axes.flatMap((axis) => axis.series).map((series) => [series.id, 0]))}
       lanes={[]}
       bucketsBySeriesId={bucketsBySeriesId}
       time={time}
@@ -168,7 +168,7 @@ describe('CrosshairTooltip span lanes', () => {
     render(
       <CrosshairTooltip
         axes={[]}
-        colours={[]}
+        colours={new Map()}
         lanes={[lane]}
         bucketsBySeriesId={new Map()}
         time={time}

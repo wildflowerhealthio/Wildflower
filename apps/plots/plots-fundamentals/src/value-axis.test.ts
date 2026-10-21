@@ -24,14 +24,77 @@ const seriesArb: fc.Arbitrary<Series.ValueSeries> = fc.oneof(
   fc.array(magnitude, { maxLength: 6 }).map(fromZeroSeries)
 )
 
+/** `series` under its own id and unit, so no two of a selection share an axis by accident. */
+const withOwnUnit = (series: Series.ValueSeries, position: number): Series.ValueSeries => ({
+  ...series,
+  id: `s${position}`,
+  unit: `unit ${position}`,
+})
+
+/** A selection of up to `ValueAxis.CAP` series, each in a unit of its own. */
+const distinctUnitSelectionArb = fc
+  .array(seriesArb, { minLength: 1, maxLength: ValueAxis.CAP })
+  .map((selected) => selected.map(withOwnUnit))
+
+/**
+ * Readings that all fall in one moderate band, so two of them often have
+ * ranges alike enough to share an axis.
+ */
+const similarRangeArb: fc.Arbitrary<Series.ValueSeries> = fc
+  .array(fc.double({ min: 50, max: 150, noNaN: true }), { minLength: 1, maxLength: 8 })
+  .map((values) =>
+    pointSeriesOf(values.map((value, index) => ({ time: DateTime.unsafeMake(index), value })))
+  )
+
+/**
+ * A selection of up to `ValueAxis.CAP` series whose units collide often —
+ * including `null` — and whose value scales mix, so axes are shared in every
+ * way {@link ValueAxis.assign} allows.
+ */
+const mixedSelectionArb = fc
+  .array(
+    fc.record({
+      series: fc.oneof(seriesArb, similarRangeArb),
+      unit: fc.constantFrom<string | null>('u', 'v', null),
+      zeroToOne: fc.boolean(),
+    }),
+    { minLength: 1, maxLength: ValueAxis.CAP }
+  )
+  .map((drafts) =>
+    drafts.map(({ series, unit, zeroToOne }, position): Series.ValueSeries => ({
+      ...series,
+      id: `s${position}`,
+      unit,
+      ...(zeroToOne ? { valueScale: 'zero-to-one' as const } : {}),
+    }))
+  )
+
+/** A point series `id` in `unit` with one reading per value, a day apart. */
+const readingsOf = (
+  id: string,
+  unit: string | null,
+  values: readonly number[],
+  valueScale: Series.ValueScale = 'fitted'
+): Series.ValueSeries => ({
+  ...pointSeriesOf(
+    values.map((value, index) => ({ time: DateTime.unsafeMake(index * 86_400_000), value })),
+    valueScale
+  ),
+  id,
+  unit,
+})
+
+/** Each axis' series ids, in axis order. */
+const seriesIdsByAxis = (axes: readonly ValueAxis.ValueAxis[]): readonly (readonly string[])[] =>
+  axes.map((axis) => axis.series.map((series) => series.id))
+
 describe('ValueAxis.assign', () => {
-  test('one slot per input, in order, with sides alternating left/right', () => {
+  test('series in units of their own get one axis each, in order, with sides alternating left/right', () => {
     fc.assert(
-      fc.property(fc.array(seriesArb, { minLength: 1, maxLength: ValueAxis.CAP }), (selected) => {
-        const slots = ValueAxis.assign(selected)
-        expect(slots).toHaveLength(selected.length)
-        expect(slots.map((slot) => slot.series)).toEqual(selected)
-        expect(slots.map((slot) => slot.side)).toEqual(
+      fc.property(distinctUnitSelectionArb, (selected) => {
+        const axes = ValueAxis.assign(selected)
+        expect(axes.map((axis) => axis.series)).toEqual(selected.map((series) => [series]))
+        expect(axes.map((axis) => axis.side)).toEqual(
           selected.map((_, position) => (position % 2 === 0 ? 'left' : 'right'))
         )
       }),
@@ -39,13 +102,80 @@ describe('ValueAxis.assign', () => {
     )
   })
 
+  test('every series is on exactly one axis, axes in the selection order of their first series', () => {
+    fc.assert(
+      fc.property(mixedSelectionArb, (selected) => {
+        const axes = ValueAxis.assign(selected)
+        const positionOf = (series: Series.ValueSeries): number => selected.indexOf(series)
+        const placed = axes.flatMap((axis) => axis.series)
+        expect(placed.toSorted((left, right) => positionOf(left) - positionOf(right))).toEqual(
+          selected
+        )
+        for (const axis of axes) {
+          const positions = axis.series.map(positionOf)
+          expect(positions).toEqual(positions.toSorted((left, right) => left - right))
+        }
+        const firstPositions = axes.map((axis) => positionOf(axis.series[0]))
+        expect(firstPositions).toEqual(firstPositions.toSorted((left, right) => left - right))
+        expect(axes.map((axis) => axis.side)).toEqual(
+          axes.map((_, position) => (position % 2 === 0 ? 'left' : 'right'))
+        )
+      }),
+      { numRuns: RUNS }
+    )
+  })
+
+  test('a shared axis holds one non-null unit, one kind of scale, and ranges each a third of it', () => {
+    fc.assert(
+      fc.property(mixedSelectionArb, (selected) => {
+        for (const axis of ValueAxis.assign(selected)) {
+          if (axis.series.length === 1) continue
+          const [first] = axis.series
+          expect(first.unit).not.toBeNull()
+          const isZeroToOne = first.valueScale === 'zero-to-one'
+          for (const series of axis.series) {
+            expect(series.unit).toBe(first.unit)
+            expect(series.valueScale === 'zero-to-one').toBe(isZeroToOne)
+            const [ownLow, ownHigh] = ValueAxis.domainFor(series)
+            const [low, high] = axis.domain
+            const covered = Math.min(ownHigh, high) - Math.max(ownLow, low)
+            expect(covered).toBeGreaterThanOrEqual((high - low) / 3)
+          }
+        }
+      }),
+      { numRuns: RUNS }
+    )
+  })
+
+  test("every one of an axis' series' values normalises into [0, 1]", () => {
+    fc.assert(
+      fc.property(mixedSelectionArb, (selected) => {
+        for (const axis of ValueAxis.assign(selected)) {
+          if (axis.series.some((series) => series.valueScale === 'zero-to-one')) continue
+          for (const series of axis.series) {
+            const values: readonly (number | undefined)[] = (
+              series.kind === 'points' ? series.points : series.levels
+            ).flatMap((mark) => [mark.value, mark.low, mark.high])
+            for (const value of values) {
+              if (value === undefined) continue
+              const fraction = ValueAxis.normalise(value, axis.domain)
+              expect(fraction).toBeGreaterThanOrEqual(0)
+              expect(fraction).toBeLessThanOrEqual(1)
+            }
+          }
+        }
+      }),
+      { numRuns: RUNS }
+    )
+  })
+
   test('index counts up within a side, so no two axes on one side collide', () => {
     fc.assert(
-      fc.property(fc.array(seriesArb, { minLength: 1, maxLength: ValueAxis.CAP }), (selected) => {
+      fc.property(mixedSelectionArb, (selected) => {
         for (const side of ['left', 'right'] as const) {
           const indices = ValueAxis.assign(selected)
-            .filter((slot) => slot.side === side)
-            .map((slot) => slot.index)
+            .filter((axis) => axis.side === side)
+            .map((axis) => axis.index)
           expect(indices).toEqual(indices.map((_, position) => position))
         }
       }),
@@ -65,8 +195,73 @@ describe('ValueAxis.assign', () => {
     )
   })
 
-  test('an empty selection yields no slots', () => {
+  test('an empty selection yields no axes', () => {
     expect(ValueAxis.assign([])).toEqual([])
+  })
+
+  test('systolic and diastolic blood pressure share one mm[Hg] axis', () => {
+    const systolic = readingsOf('systolic', 'mm[Hg]', [118, 135, 150, 105, 128])
+    const diastolic = readingsOf('diastolic', 'mm[Hg]', [76, 88, 95, 65, 80])
+    const axes = ValueAxis.assign([systolic, diastolic])
+    expect(seriesIdsByAxis(axes)).toEqual([['systolic', 'diastolic']])
+    expect(axes[0].domain).toEqual([60, 160])
+  })
+
+  test('heart rate and respiratory rate, both per minute, keep their own axes', () => {
+    const heartRate = readingsOf('heart-rate', '/min', [60, 72, 100, 85])
+    const respiratoryRate = readingsOf('respiratory-rate', '/min', [12, 16, 20, 14])
+    expect(seriesIdsByAxis(ValueAxis.assign([heartRate, respiratoryRate]))).toEqual([
+      ['heart-rate'],
+      ['respiratory-rate'],
+    ])
+  })
+
+  test('series with no unit never share, however alike', () => {
+    const first = readingsOf('first', null, [1, 2, 3])
+    const second = readingsOf('second', null, [1, 2, 3])
+    expect(seriesIdsByAxis(ValueAxis.assign([first, second]))).toEqual([['first'], ['second']])
+  })
+
+  test("a 'zero-to-one' series shares only with another 'zero-to-one' series", () => {
+    const flagged = readingsOf('flagged', '{flag}', [0, 1, 1], 'zero-to-one')
+    const alsoFlagged = readingsOf('also-flagged', '{flag}', [1, 0], 'zero-to-one')
+    const fraction = readingsOf('fraction', '{flag}', [0, 0.5, 1])
+    expect(seriesIdsByAxis(ValueAxis.assign([flagged, fraction, alsoFlagged]))).toEqual([
+      ['flagged', 'also-flagged'],
+      ['fraction'],
+    ])
+  })
+
+  test("a 'fitted' series shares a 'from-zero' axis, drawn from zero, when it fills a third of that", () => {
+    const dose = levelSeriesOf([levelFrom(0, null, 1000)])
+    const doseInMg: Series.ValueSeries = { ...dose, id: 'dose', unit: 'mg' }
+    const wide = readingsOf('wide', 'mg', [400, 650, 900])
+    const axes = ValueAxis.assign([wide, doseInMg])
+    expect(seriesIdsByAxis(axes)).toEqual([['wide', 'dose']])
+    expect(axes[0].domain[0]).toBe(0)
+
+    // On its own axis this one would fill it; from zero it is a sliver.
+    const narrow = readingsOf('narrow', 'mg', [880, 890, 900])
+    expect(seriesIdsByAxis(ValueAxis.assign([narrow, doseInMg]))).toEqual([['narrow'], ['dose']])
+  })
+
+  test("a 'fitted' series below zero never shares an axis drawn from zero", () => {
+    const dose: Series.ValueSeries = {
+      ...levelSeriesOf([levelFrom(0, null, 100)]),
+      id: 'dose',
+      unit: 'mg',
+    }
+    const change = readingsOf('change', 'mg', [-5, 40, 90])
+    expect(seriesIdsByAxis(ValueAxis.assign([change, dose]))).toEqual([['change'], ['dose']])
+  })
+
+  test('a series that would squash an axis member opens its own, and later ones still join', () => {
+    const systolic = readingsOf('systolic', 'mm[Hg]', [118, 135, 150, 105, 128])
+    const outlier = readingsOf('outlier', 'mm[Hg]', [1000, 1010])
+    const diastolic = readingsOf('diastolic', 'mm[Hg]', [76, 88, 95, 65, 80])
+    const axes = ValueAxis.assign([systolic, outlier, diastolic])
+    expect(seriesIdsByAxis(axes)).toEqual([['systolic', 'diastolic'], ['outlier']])
+    expect(axes.map((axis) => axis.side)).toEqual(['left', 'right'])
   })
 })
 

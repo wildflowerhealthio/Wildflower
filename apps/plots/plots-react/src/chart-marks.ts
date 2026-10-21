@@ -3,16 +3,18 @@ import type { DateTime } from 'effect'
 
 import {
   type Buckets,
+  type ColourSlots,
   type Level,
   type LevelSeries,
   type PointSeries,
+  type Series,
   SpanSeries,
   type TimeDomain,
   ValueAxis,
 } from '@wildflowerhealthio/plots-fundamentals'
 
-import { seriesColors, spanColour } from './series-colors.ts'
-import { axisTickFormat, labelWithUnit } from './value-format.ts'
+import { colourSlotOf, seriesColors, spanColour } from './series-colors.ts'
+import { axisLabel, axisTickFormat } from './value-format.ts'
 
 /**
  * Horizontal room each stacked value axis takes in its gutter: tick marks,
@@ -22,6 +24,12 @@ const AXIS_GUTTER = 64
 
 /** How far inside its gutter's outer edge an axis' rotated label sits. */
 const LABEL_INSET = 3
+
+/**
+ * What a shared axis' line and tick marks wear: a muted text step, since no
+ * one series' colour names it. Its series' lines and legend keys keep theirs.
+ */
+const SHARED_AXIS_COLOUR = 'var(--color-neutral-5)'
 
 /** Room on a side that carries no value axis, so the last x tick label is not clipped. */
 const BARE_SIDE_MARGIN = 24
@@ -284,22 +292,23 @@ const levelBandMarks = (
 }
 
 /**
- * The band behind an axis' series, whichever kind it is — for a bucketed
- * series, its envelope. The chart draws every band in a layer beneath every
- * line, so one series' band never washes over another's line.
+ * The band behind one of an axis' series, whichever kind it is — for a
+ * bucketed series, its envelope. The chart draws every band in a layer
+ * beneath every line, so one series' band never washes over another's line.
  *
  * @param buckets - The series' buckets when it is drawn as them
  */
 const seriesBandMarks = (
   axis: ValueAxis.ValueAxis,
+  series: Series.ValueSeries,
   colour: number,
   domainEnd: DateTime.Utc,
   buckets: readonly Buckets.Bucket[] | undefined
 ): readonly Plot.Markish[] => {
-  if (axis.series.kind === 'levels') return levelBandMarks(axis, axis.series, colour, domainEnd)
+  if (series.kind === 'levels') return levelBandMarks(axis, series, colour, domainEnd)
   return buckets === undefined
-    ? pointBandMarks(axis, axis.series, colour)
-    : bucketEnvelopeMarks(axis, axis.series, buckets, colour)
+    ? pointBandMarks(axis, series, colour)
+    : bucketEnvelopeMarks(axis, series, buckets, colour)
 }
 
 /**
@@ -448,20 +457,21 @@ const levelSeriesMarks = (
 }
 
 /**
- * The marks that draw an axis' series itself, whichever kind it is.
+ * The marks that draw one of an axis' series itself, whichever kind it is.
  *
  * @param buckets - The series' buckets when it is drawn as them
  */
 const seriesLineMarks = (
   axis: ValueAxis.ValueAxis,
+  series: Series.ValueSeries,
   colour: number,
   domainEnd: DateTime.Utc,
   buckets: readonly Buckets.Bucket[] | undefined
 ): readonly Plot.Markish[] => {
-  if (axis.series.kind === 'levels') return levelSeriesMarks(axis, axis.series, colour, domainEnd)
+  if (series.kind === 'levels') return levelSeriesMarks(axis, series, colour, domainEnd)
   return buckets === undefined
-    ? pointSeriesMarks(axis, axis.series, colour)
-    : bucketMeanMarks(axis, axis.series, buckets, colour)
+    ? pointSeriesMarks(axis, series, colour)
+    : bucketMeanMarks(axis, series, buckets, colour)
 }
 
 /**
@@ -541,33 +551,44 @@ const spanLaneMarks = (
 }
 
 /**
- * A value axis' own marks: a series-coloured axis line and tick marks at its
- * offset, labels in the text colour, placed at its ticks on the shared `0..1`
- * scale and labelled back in the series' own values.
+ * The colour an axis' line and tick marks wear: its series' colour when it
+ * has one series, {@link SHARED_AXIS_COLOUR} when several share it.
+ */
+const axisColour = (axis: ValueAxis.ValueAxis, colours: ColourSlots.ColourSlots): string => {
+  const [first, ...others] = axis.series
+  return others.length === 0
+    ? seriesColors(colourSlotOf(colours, first.id)).mark
+    : SHARED_AXIS_COLOUR
+}
+
+/**
+ * A value axis' own marks: an axis line and tick marks at its offset in
+ * {@link axisColour}, labels in the text colour, placed at its ticks on the
+ * shared `0..1` scale and labelled back in its series' own values.
  */
 const valueAxisMarks = (
   axis: ValueAxis.ValueAxis,
-  colour: number,
+  colours: ColourSlots.ColourSlots,
   xDomain: TimeDomain.TimeDomain
 ): Plot.Markish[] => {
-  const colors = seriesColors(colour)
+  const stroke = axisColour(axis, colours)
   const offset = axisOffset(axis)
   return [
     Plot.ruleX([toDate(axis.side === 'left' ? xDomain[0] : xDomain[1])], {
       y1: 0,
       y2: 1,
       dx: offset,
-      stroke: colors.mark,
+      stroke,
     }),
     Plot.axisY(
       axis.ticks.map((tick) => ValueAxis.normalise(tick, axis.domain)),
       {
         anchor: axis.side,
         dx: offset,
-        stroke: colors.mark,
+        stroke,
         fill: 'currentColor',
         tickFormat: axisTickFormat(axis),
-        label: labelWithUnit(axis.series),
+        label: axisLabel(axis),
         labelAnchor: 'center',
         labelArrow: 'none',
         // Plot places an axis label from the frame edge and ignores `dx`, so
@@ -580,14 +601,13 @@ const valueAxisMarks = (
 
 /**
  * The figure's options, bottom layer first: time grid and axis, every value
- * axis, every band, every series' lines and dots in axis order, and the span
- * lanes under the time axis.
+ * axis, every band, every series' lines and dots in axis order (an axis'
+ * series in its own order), and the span lanes under the time axis.
  *
  * @param lanes - The span series, in selection order, one lane each from the
  *   top
- * @param colours - Each axis' palette index, parallel to `axes` — from
- *   `ColourSlots.assign`, so a series keeps its colour when an earlier one is
- *   removed
+ * @param colours - Each series' palette index, from `ColourSlots.assign`,
+ *   so a series keeps its colour when an earlier one is removed
  * @param bucketsBySeriesId - The series drawn as buckets, from
  *   `Buckets.ofDenseSeries`: a mean line over a min–max envelope, no dots
  *
@@ -604,7 +624,7 @@ const chartOptions = (
   axes: readonly ValueAxis.ValueAxis[],
   lanes: readonly SpanSeries.SpanSeries[],
   xDomain: TimeDomain.TimeDomain,
-  colours: readonly number[],
+  colours: ColourSlots.ColourSlots,
   bucketsBySeriesId: ReadonlyMap<string, readonly Buckets.Bucket[]>
 ): Plot.PlotOptions | null => {
   if (lanes.length > SpanSeries.LANE_CAP) {
@@ -615,15 +635,28 @@ const chartOptions = (
   if (axes.length === 0 && lanes.length === 0) return null
   const lanesHeight = lanes.length * LANE_HEIGHT
   const domainEnd = xDomain[1]
+  const plotted = axes.flatMap((axis) => axis.series.map((series) => ({ axis, series })))
   const marks: Plot.Markish[] = [
     Plot.gridX({ strokeOpacity: 0.08, tickSpacing: X_TICK_SPACING }),
     Plot.axisX({ label: null, tickSpacing: X_TICK_SPACING }),
-    ...axes.flatMap((axis, position) => valueAxisMarks(axis, colours[position], xDomain)),
-    ...axes.flatMap((axis, position) =>
-      seriesBandMarks(axis, colours[position], domainEnd, bucketsBySeriesId.get(axis.series.id))
+    ...axes.flatMap((axis) => valueAxisMarks(axis, colours, xDomain)),
+    ...plotted.flatMap(({ axis, series }) =>
+      seriesBandMarks(
+        axis,
+        series,
+        colourSlotOf(colours, series.id),
+        domainEnd,
+        bucketsBySeriesId.get(series.id)
+      )
     ),
-    ...axes.flatMap((axis, position) =>
-      seriesLineMarks(axis, colours[position], domainEnd, bucketsBySeriesId.get(axis.series.id))
+    ...plotted.flatMap(({ axis, series }) =>
+      seriesLineMarks(
+        axis,
+        series,
+        colourSlotOf(colours, series.id),
+        domainEnd,
+        bucketsBySeriesId.get(series.id)
+      )
     ),
     ...lanes.flatMap((lane, index) => spanLaneMarks(lane, index, xDomain)),
   ]

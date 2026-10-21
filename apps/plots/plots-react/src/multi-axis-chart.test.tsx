@@ -102,7 +102,7 @@ const plotAreaOf = (container: HTMLElement): HTMLElement => {
 
 describe('MultiAxisChart axes', () => {
   test(
-    'draws one value axis per series, labelled with ValueAxis.ticksFor and coloured as its line',
+    'draws a value axis per series in a unit of its own, labelled with ValueAxis.ticksFor and coloured as its line',
     () => {
       fc.assert(
         fc.property(selectionArb(pointSeriesArb), (selected) => {
@@ -139,7 +139,11 @@ describe('MultiAxisChart axes', () => {
 
   test('hangs each axis on the side ValueAxis.assign chose, stepping outward by index', () => {
     const axes = ValueAxis.assign(
-      ['a', 'b', 'c', 'd'].map((tag): PointSeries.PointSeries => ({ ...readings, id: `p:${tag}` }))
+      ['a', 'b', 'c', 'd'].map((tag): PointSeries.PointSeries => ({
+        ...readings,
+        id: `p:${tag}`,
+        unit: tag,
+      }))
     )
     const { container } = renderChart(axes)
     const frame = frameOf(container)
@@ -162,13 +166,70 @@ describe('MultiAxisChart axes', () => {
   })
 })
 
+describe('MultiAxisChart shared axes', () => {
+  const systolic: PointSeries.PointSeries = {
+    kind: 'points',
+    id: 'p:systolic',
+    label: 'Systolic',
+    unit: 'mm[Hg]',
+    valueScale: 'fitted',
+    interpolation: 'linear',
+    points: [
+      { time: atDay(0), value: 118 },
+      { time: atDay(30), value: 150 },
+      { time: atDay(60), value: 105 },
+    ],
+  }
+  const diastolic: PointSeries.PointSeries = {
+    ...systolic,
+    id: 'p:diastolic',
+    label: 'Diastolic',
+    points: [
+      { time: atDay(0), value: 76 },
+      { time: atDay(30), value: 95 },
+      { time: atDay(60), value: 65 },
+    ],
+  }
+
+  test('draws one neutral axis labelled with the unit, and each series in its own colour', () => {
+    const axes = ValueAxis.assign([systolic, diastolic])
+    expect(axes).toHaveLength(1)
+    const { container } = renderChart(axes)
+
+    const tickGroups = container.querySelectorAll('[aria-label="y-axis tick"]')
+    expect(tickGroups).toHaveLength(1)
+    expect(tickGroups[0].getAttribute('stroke')).toBe('var(--color-neutral-5)')
+    const axisLabel = container.querySelector('[aria-label="y-axis label"] text')
+    expect(axisLabel?.textContent).toBe('mm[Hg]')
+    expect(markStrokes(container, 'line')).toEqual([seriesColors(0).mark, seriesColors(1).mark])
+
+    const legendEntries = [...container.querySelectorAll('ul[aria-label="Series"] > li')]
+    expect(legendEntries.map((entry) => entry.textContent)).toEqual([
+      'Systolic (mm[Hg])left axis',
+      'Diastolic (mm[Hg])left axis',
+    ])
+  })
+
+  test('the crosshair reads every series on a shared axis', () => {
+    const { container } = renderChart(ValueAxis.assign([systolic, diastolic]))
+    fireEvent.pointerMove(plotAreaOf(container), { clientX: 0 })
+    const rows = screen.getAllByTestId('crosshair-row').map((row) => row.textContent)
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toContain('Systolic')
+    expect(rows[1]).toContain('Diastolic')
+  })
+})
+
 describe('MultiAxisChart time axis', () => {
   test('draws a grid line at every labelled time tick and nowhere else, at any width', () => {
     const options = chartOptions(
       ValueAxis.assign([readings, levels]),
       [],
       testWindow,
-      [0, 1],
+      new Map([
+        [readings.id, 0],
+        [levels.id, 1],
+      ]),
       new Map()
     )
     if (options === null) throw new Error('a non-empty selection has a figure')
@@ -810,9 +871,9 @@ describe('MultiAxisChart span lanes', () => {
       ...lane,
       id: `s:${index}`,
     }))
-    expect(() => chartOptions([], lanes, testWindow, [], new Map())).toThrow(/at most 2/)
+    expect(() => chartOptions([], lanes, testWindow, new Map(), new Map())).toThrow(/at most 2/)
     expect(
-      chartOptions([], lanes.slice(0, SpanSeries.LANE_CAP), testWindow, [], new Map())
+      chartOptions([], lanes.slice(0, SpanSeries.LANE_CAP), testWindow, new Map(), new Map())
     ).not.toBeNull()
   })
 })

@@ -1,16 +1,16 @@
 import type { JSX } from 'react'
 
-import type { SpanSeries, ValueAxis } from '@wildflowerhealthio/plots-fundamentals'
+import type { ColourSlots, SpanSeries, ValueAxis } from '@wildflowerhealthio/plots-fundamentals'
 
-import { seriesColors, spanColour } from './series-colors.ts'
+import { colourSlotOf, seriesColors, spanColour } from './series-colors.ts'
 import { labelWithUnit } from './value-format.ts'
 import styles from './legend.module.css'
 
 interface LegendProps {
-  /** The chart's value axes, in selection order. */
+  /** The chart's value axes, in `ValueAxis.assign`'s order. */
   readonly axes: readonly ValueAxis.ValueAxis[]
-  /** Each axis' palette index, parallel to `axes`. */
-  readonly colours: readonly number[]
+  /** Each value series' palette index, from `ColourSlots.assign`. */
+  readonly colours: ColourSlots.ColourSlots
   /** The chart's span lanes, in selection order. */
   readonly lanes: readonly SpanSeries.SpanSeries[]
   /** Each lane's categories (`SpanSeries.categoriesOf`), parallel to `lanes`. */
@@ -18,8 +18,8 @@ interface LegendProps {
 }
 
 /**
- * The key above the figure: one entry per axis, a line key in its series'
- * colour beside its label and unit.
+ * The key above the figure: one entry per value series, axis by axis, a line
+ * key in its colour beside its label and unit and the side its axis hangs on.
  *
  * @remarks
  * Present for every non-empty chart, one series included: with four synthetic
@@ -33,17 +33,19 @@ interface LegendProps {
  */
 const Legend = ({ axes, colours, lanes, laneCategories }: LegendProps): JSX.Element => (
   <ul className={styles.legend} aria-label="Series">
-    {axes.map((axis, position) => (
-      <li key={axis.series.id} className={styles.entry}>
-        <span
-          className={styles.key}
-          style={{ background: seriesColors(colours[position]).mark }}
-          aria-hidden="true"
-        />
-        <span className={styles.label}>{labelWithUnit(axis.series)}</span>
-        <span className={styles.side}>{axis.side === 'left' ? 'left axis' : 'right axis'}</span>
-      </li>
-    ))}
+    {axes.flatMap((axis) =>
+      axis.series.map((series) => (
+        <li key={series.id} className={styles.entry}>
+          <span
+            className={styles.key}
+            style={{ background: seriesColors(colourSlotOf(colours, series.id)).mark }}
+            aria-hidden="true"
+          />
+          <span className={styles.label}>{labelWithUnit(series)}</span>
+          <span className={styles.side}>{axis.side === 'left' ? 'left axis' : 'right axis'}</span>
+        </li>
+      ))
+    )}
     {lanes.map((lane, position) => (
       <li key={lane.id} className={styles.entry}>
         <span className={styles.label}>{lane.label}</span>

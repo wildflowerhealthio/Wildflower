@@ -1,4 +1,4 @@
-import { SpanSeries, ValueAxis } from '@wildflowerhealthio/plots-fundamentals'
+import { type ColourSlots, SpanSeries, ValueAxis } from '@wildflowerhealthio/plots-fundamentals'
 
 /** A series' colours: its mark colour and the fill behind its `low` / `high` band. */
 interface SeriesColors {
@@ -31,6 +31,19 @@ const seriesColors = (position: number): SeriesColors => {
   }
 }
 
+/**
+ * The palette index `colours` gives series `seriesId`.
+ *
+ * @throws When `colours` holds none for it: the chart colours every series
+ *   it draws with `ColourSlots.assign` first, so a miss is a bug, not a
+ *   series to paint in some default
+ */
+const colourSlotOf = (colours: ColourSlots.ColourSlots, seriesId: string): number => {
+  const slot = colours.get(seriesId)
+  if (slot === undefined) throw new Error(`Series ${seriesId} has no colour slot`)
+  return slot
+}
+
 /** What a span in the neutral category wears: a muted text step, not a lane colour. */
 const NEUTRAL_SPAN_COLOUR = 'var(--color-neutral-5)'
 
@@ -56,4 +69,4 @@ const spanColour = (colourSlot: number | null): string => {
 }
 
 export type { SeriesColors }
-export { seriesColors, spanColour }
+export { colourSlotOf, seriesColors, spanColour }
