@@ -29,6 +29,11 @@ val keystoreProperties = Properties().apply {
 android {
     compileSdk = 36
     namespace = "io.wildflowerhealth.hostapp"
+    // The NDK the Tauri CLI compiled the Rust library with. Without it the
+    // plugin looks for its own default NDK version, and where that is not
+    // installed it packs the library unstripped and leaves out the release
+    // symbol table below, without failing the build.
+    System.getenv("NDK_HOME")?.let { ndkPath = it }
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
         applicationId = "io.wildflowerhealth.hostapp"
