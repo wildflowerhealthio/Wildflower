@@ -143,7 +143,7 @@ up on the way home (`authorization-flow.ts`, `sign-in.ts`).
 
 `arrivingSmartLaunchFrom` (`arriving-launch.ts`) reads the SMART launch a page
 was opened with, `iss` and the EHR's `launch` (`SMART_LAUNCH_PARAMS`), off its
-query string. The fhirclient-based SMART apps read it through
+query string. The SMART apps read it through
 `fhir-r4-react/smart`, which re-exports both. A page that signs in with this package turns a launch into its
 `?server=` with `searchAfterArrivingLaunch` (`server-target.ts`): `iss` and
 `launch` leave the URL, and `?server=` becomes the server `iss` names, in
@@ -196,7 +196,7 @@ S256 implementation here, and a property test pins the two together.
 ### Deriving the redirect URI
 
 `redirectUriForPage(href)` returns the page's own directory URL — the
-derivation the fhirclient-based apps use through `fhir-r4-react/smart`'s
+derivation the SMART apps use through `fhir-r4-react/smart`'s
 `appRootRedirectUri` — or `undefined`
 when the page is served somewhere a sign-in must not return to (a non-http(s)
 origin, or plaintext http off loopback).
@@ -260,17 +260,29 @@ exempt in both:
 browsers treat `http://127.0.0.1` as trustworthy, which is what lets an HTTPS
 page drive a desktop host.
 
-### Not the other SMART client
+### The SMART apps
 
-This is **not** the fhirclient-based standalone launch in
-`slices/fhir/fhir-r4-react/src/smart/*`, which the React SMART apps use.
-The two share this package's helpers — `normalizeServerUrl`,
-`insecureTargetReason` and `arrivingSmartLaunchFrom`, which `fhir-r4-react`
-re-exports, and the endpoint checks: its probe runs a configuration through
-`smartIssuerFrom`, and its authorize navigation runs fhirclient's authorize URL
-through `endpointUrlFrom`, the reason-carrying form of `usableEndpointUrl` —
-but not the launch itself: the launch here is hand-rolled and Effect-native,
-and the one there delegates to `fhirclient`.
+The React SMART apps sign in through this client too, by way of
+`slices/fhir/fhir-r4-react/src/smart/*`. Its `authorizeSmartLaunch` runs
+`beginSignIn` for an EHR launch and a standalone launch alike, and its
+`readySmartClient` runs `completeSignIn` on the redirect target, under the
+app's own `client_id`. What it adds is what the apps need beyond a token:
+
+- **The registration across the redirect.** A SMART app's redirect target
+  completes the sign-in without knowing which app registration started it, so
+  `fhir-r4-react` keeps the `client_id`, scope and redirect URI beside this
+  package's pending record, under its own `sessionStorage` key.
+- **Open servers.** A FHIR server whose SMART configuration names no
+  authorization endpoint is connected with no sign-in at all: the page goes
+  straight to its redirect target with a `state`, and the app reads the server
+  with no token.
+- **A FHIR client.** The redeemed `Session` becomes a `SmartClient` whose
+  `request` reads the FHIR server, sending the bearer token only to the FHIR
+  base the session names.
+
+`normalizeServerUrl`, `insecureTargetReason` and `arrivingSmartLaunchFrom` are
+re-exported there, and the standalone probe runs a configuration through
+`smartIssuerFrom` to explain an unusable server before it connects.
 
 ## Bootstrap URL (dev-mode workaround)
 
