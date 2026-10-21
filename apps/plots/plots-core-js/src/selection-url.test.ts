@@ -5,10 +5,13 @@ import { describe, expect, test } from 'vite-plus/test'
 
 import { medicationSource } from '@wildflowerhealthio/plots-medications'
 import { observationSource } from '@wildflowerhealthio/plots-observations'
+import { PLOT_VIEWS } from './plot-view.ts'
 import {
   DEFAULT_RANGE,
+  DEFAULT_VIEW,
   RANGE_PARAM,
   SERIES_PARAM,
+  VIEW_PARAM,
   type Selection,
   capIsFull,
   decodeSelection,
@@ -64,13 +67,16 @@ const selection: fc.Arbitrary<Selection> = fc.record({
       })
     ),
   range: fc.constantFrom(...RANGE_PRESETS),
+  view: fc.constantFrom(...PLOT_VIEWS),
 })
 
 /** Query parameters the page's URL carries beside the selection, e.g. `?patient=`. */
 const otherParams: fc.Arbitrary<URLSearchParams> = fc
   .array(
     fc.tuple(
-      fc.string({ maxLength: 8 }).filter((key) => key !== SERIES_PARAM && key !== RANGE_PARAM),
+      fc
+        .string({ maxLength: 8 })
+        .filter((key) => key !== SERIES_PARAM && key !== RANGE_PARAM && key !== VIEW_PARAM),
       fc.string({ maxLength: 8 })
     ),
     { maxLength: 6 }
@@ -102,7 +108,9 @@ describe('encodeSelection / decodeSelection', () => {
       fc.property(
         fc.uniqueArray(seriesIdArb, { minLength: 2, maxLength: ValueAxis.CAP }),
         (ids) => {
-          const decoded = decodeSelection(encodeSelection({ series: ids, range: 'all' }))
+          const decoded = decodeSelection(
+            encodeSelection({ series: ids, range: 'all', view: 'chart' })
+          )
           expect(decoded.series).toEqual(ids)
         }
       ),
@@ -111,9 +119,15 @@ describe('encodeSelection / decodeSelection', () => {
   })
 
   test.each(RANGE_PRESETS)('the %s preset is written as its own name and read back', (range) => {
-    const query = encodeSelection({ series: [], range }).toString()
-    expect(query).toBe(`${RANGE_PARAM}=${range}`)
+    const query = encodeSelection({ series: [], range, view: 'chart' }).toString()
+    expect(query).toBe(`${RANGE_PARAM}=${range}&${VIEW_PARAM}=chart`)
     expect(decodeSelection(new URLSearchParams(query)).range).toBe(range)
+  })
+
+  test.each(PLOT_VIEWS)('the %s view is written as its own name and read back', (view) => {
+    const query = encodeSelection({ series: [], range: 'all', view }).toString()
+    expect(query).toBe(`${RANGE_PARAM}=all&${VIEW_PARAM}=${view}`)
+    expect(decodeSelection(new URLSearchParams(query)).view).toBe(view)
   })
 
   test('withSelection replaces the selection and keeps every other key as it was', () => {
@@ -123,6 +137,7 @@ describe('encodeSelection / decodeSelection', () => {
         expect(decodeSelection(written)).toEqual(later)
         written.delete(SERIES_PARAM)
         written.delete(RANGE_PARAM)
+        written.delete(VIEW_PARAM)
         expect(written.toString()).toBe(others.toString())
       }),
       { numRuns: RUNS }
@@ -230,6 +245,22 @@ describe('encodeSelection / decodeSelection', () => {
         { numRuns: RUNS }
       )
       expect(decodeSelection(new URLSearchParams()).range).toBe(DEFAULT_RANGE)
+    })
+
+    test('an absent or unrecognised view falls back to the chart', () => {
+      fc.assert(
+        fc.property(
+          fc.string().filter((value) => !(PLOT_VIEWS as readonly string[]).includes(value)),
+          (junk) => {
+            const params = new URLSearchParams()
+            params.set(VIEW_PARAM, junk)
+            expect(decodeSelection(params).view).toBe(DEFAULT_VIEW)
+          }
+        ),
+        { numRuns: RUNS }
+      )
+      expect(DEFAULT_VIEW).toBe('chart')
+      expect(decodeSelection(new URLSearchParams()).view).toBe(DEFAULT_VIEW)
     })
 
     test('arbitrary query strings decode to something rather than throwing', () => {

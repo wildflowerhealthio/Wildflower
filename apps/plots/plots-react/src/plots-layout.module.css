@@ -56,7 +56,8 @@
 }
 
 /*
- * The seven presets outgrow a small phone's column, so the row scrolls
+ * The seven presets and the view switch outgrow a small phone's column, so
+ * they wrap onto a second line; a row that still does not fit scrolls
  * sideways there rather than overflowing the page. The padding, cancelled by
  * the negative margin, leaves room for the buttons' focus rings.
  */

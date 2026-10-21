@@ -14,6 +14,7 @@ describe('PlotsLayout', () => {
         seriesPanel={<p>panel content</p>}
         selectedSeriesCount={0}
         rangePresets={<p>presets content</p>}
+        viewSwitch={<p>view switch content</p>}
         status={<p>Loading…</p>}
       >
         <p>chart content</p>
@@ -28,13 +29,15 @@ describe('PlotsLayout', () => {
     expect(screen.getByText('chart content')).toBeDefined()
   })
 
-  it('should put the presets and the status line above the chart', () => {
+  it('should put the toolbar note above the toolbar, and the toolbar and status line above the chart', () => {
     // Act
     render(
       <PlotsLayout
         seriesPanel={null}
         selectedSeriesCount={0}
         rangePresets={<p>presets content</p>}
+        viewSwitch={<p>view switch content</p>}
+        toolbarNote={<p>toolbar note</p>}
         status={<p>Loading…</p>}
       >
         <p>chart content</p>
@@ -46,7 +49,9 @@ describe('PlotsLayout', () => {
       (screen.getByText(earlier).compareDocumentPosition(screen.getByText(later)) &
         Node.DOCUMENT_POSITION_FOLLOWING) !==
       0
-    expect(precedes('presets content', 'Loading…')).toBe(true)
+    expect(precedes('toolbar note', 'presets content')).toBe(true)
+    expect(precedes('presets content', 'view switch content')).toBe(true)
+    expect(precedes('view switch content', 'Loading…')).toBe(true)
     expect(precedes('Loading…', 'chart content')).toBe(true)
   })
 
@@ -57,13 +62,14 @@ describe('PlotsLayout', () => {
         seriesPanel={null}
         selectedSeriesCount={0}
         rangePresets={<p>presets content</p>}
+        viewSwitch={<p>view switch content</p>}
         status={status}
       >
         <p>chart content</p>
       </PlotsLayout>
     )
 
-    // Assert: the chart column holds only the presets row and the chart.
+    // Assert: the chart column holds only the toolbar and the chart.
     const chartColumn = screen.getByText('presets content').parentElement?.parentElement
     expect(chartColumn?.children).toHaveLength(2)
   })
@@ -77,6 +83,7 @@ describe('PlotsLayout', () => {
           seriesPanel={null}
           selectedSeriesCount={selectedSeriesCount}
           rangePresets={null}
+          viewSwitch={null}
         >
           {null}
         </PlotsLayout>
@@ -93,7 +100,12 @@ describe('PlotsLayout', () => {
     // Arrange
     const user = userEvent.setup()
     render(
-      <PlotsLayout seriesPanel={<p>panel content</p>} selectedSeriesCount={2} rangePresets={null}>
+      <PlotsLayout
+        seriesPanel={<p>panel content</p>}
+        selectedSeriesCount={2}
+        rangePresets={null}
+        viewSwitch={null}
+      >
         {null}
       </PlotsLayout>
     )

@@ -5,26 +5,34 @@ import { useId, useState } from 'react'
 import styles from './plots-layout.module.css'
 
 interface PlotsLayoutProps {
-  /** The series picker, docked beside the chart or folded above it. */
+  /** The series picker, docked beside the view or folded above it. */
   readonly seriesPanel: ReactNode
   /** How many series are selected, for the narrow layout's disclosure label. */
   readonly selectedSeriesCount: number
-  /** The range presets, on the row above the chart. */
+  /** The range presets, on the toolbar above the view. */
   readonly rangePresets: ReactNode
-  /** A loading or error line, shown under the presets; omitted or `null` when there is nothing to say. */
+  /** The view switch, beside the range presets. */
+  readonly viewSwitch: ReactNode
+  /**
+   * A note on the toolbar's controls — why one is disabled — full width above
+   * them; omitted or `null` when there is nothing to say.
+   */
+  readonly toolbarNote?: ReactNode
+  /** A loading or error line, shown under the toolbar; omitted or `null` when there is nothing to say. */
   readonly status?: ReactNode
-  /** The chart. */
+  /** The selection in the shown view: the chart, the table or the scatter. */
   readonly children: ReactNode
 }
 
 /**
- * The viewer page: the series panel and the chart column, with the range
- * presets (and any status line) above the chart.
+ * The viewer page: the series panel and the view column, with the toolbar —
+ * the range presets and the view switch, under any note on them — and any
+ * status line above the view.
  *
  * @remarks
- * From 900px wide the panel is an 18rem column beside the chart and always
+ * From 900px wide the panel is an 18rem column beside the view and always
  * shown. Narrower, the page is one column and the panel folds behind a
- * `Series (n selected)` disclosure above the chart, closed at first. The
+ * `Series (n selected)` disclosure above the view, closed at first. The
  * breakpoint lives only in the stylesheet: the disclosure is a button with
  * `aria-expanded` rather than a `<details>`, because a closed `<details>`
  * hides its content whatever the CSS says, so docking the same panel on a
@@ -34,6 +42,8 @@ const PlotsLayout = ({
   seriesPanel,
   selectedSeriesCount,
   rangePresets,
+  viewSwitch,
+  toolbarNote,
   status,
   children,
 }: PlotsLayoutProps): JSX.Element => {
@@ -65,7 +75,11 @@ const PlotsLayout = ({
         </div>
       </aside>
       <div className={styles.main}>
-        <div className={styles.toolbar}>{rangePresets}</div>
+        {toolbarNote}
+        <div className={styles.toolbar}>
+          {rangePresets}
+          {viewSwitch}
+        </div>
         {status !== undefined && status !== null && <div className={styles.status}>{status}</div>}
         <div className={styles.chart}>{children}</div>
       </div>

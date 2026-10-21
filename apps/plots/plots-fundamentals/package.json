@@ -2,7 +2,7 @@
   "name": "@wildflowerhealthio/plots-fundamentals",
   "version": "0.0.0",
   "private": true,
-  "description": "Plots' domain-free plot vocabulary: PointSeries / LevelSeries / Level and SpanSeries (what a chart draws: readings, held values, and labelled time spans drawn as lanes), ValueAxis (value domains, ticks and axis assignment), Buckets (a dense series summarised per fixed-width time slice), Crosshair (where it snaps), ColourSlots (which colour a series keeps), TimeDomain, SeriesId (the escaped field grammar every series id is written in), and SeriesSource (a health-viewer domain source as one value). Pure — no DOM, no React, and no dependency on any slice; domain packages map their records onto this vocabulary.",
+  "description": "Plots' domain-free plot vocabulary: PointSeries / LevelSeries / Level and SpanSeries (what a chart draws: readings, held values, and labelled time spans drawn as lanes), ValueAxis (value domains, ticks and axis assignment), Buckets (a dense series summarised per fixed-width time slice), Crosshair (where it snaps), ReadingTable (the series as rows by instant), Scatter (one series' readings paired with another's values), ColourSlots (which colour a series keeps), TimeDomain, SeriesId (the escaped field grammar every series id is written in), and SeriesSource (a health-viewer domain source as one value). Pure — no DOM, no React, and no dependency on any slice; domain packages map their records onto this vocabulary.",
   "license": "MIT",
   "type": "module",
   "exports": {

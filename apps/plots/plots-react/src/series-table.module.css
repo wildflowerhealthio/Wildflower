@@ -1,0 +1,51 @@
+/*
+ * The selection as a table: the time column, then a column per series.
+ * Numbers line up in tabular figures; the wrapper scrolls sideways when the
+ * columns outgrow a narrow screen rather than overflowing the page.
+ */
+.series-table {
+  overflow-x: auto;
+}
+
+.series-table__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.series-table__heading,
+.series-table__time,
+.series-table__cell {
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--color-divider);
+  text-align: left;
+  vertical-align: top;
+}
+
+.series-table__heading {
+  font-weight: var(--font-weight-3);
+  color: var(--color-neutral-3);
+}
+
+.series-table__time {
+  font-weight: inherit;
+  white-space: nowrap;
+  color: var(--color-neutral-4);
+}
+
+.series-table__cell {
+  color: var(--color-neutral-1);
+}
+
+.series-table__entry {
+  display: block;
+}
+
+.series-table__empty {
+  margin: 0;
+  padding: var(--space-10) var(--space-5);
+  text-align: center;
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-5);
+}

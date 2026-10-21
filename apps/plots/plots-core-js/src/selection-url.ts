@@ -1,11 +1,13 @@
 import { type Series, SpanSeries, ValueAxis } from '@wildflowerhealthio/plots-fundamentals'
 
+import { type PlotView, isPlotView } from './plot-view.ts'
 import { seriesKindOfId } from './series-sources.ts'
 import { type RangePreset, isRangePreset } from './time-range.ts'
 
 /**
- * What the viewer's URL carries of its own: what is plotted, and over what
- * window. Whose record is open is `smart-app-react`'s `?patient=`, beside it.
+ * What the viewer's URL carries of its own: what is plotted, over what
+ * window, and in which view. Whose record is open is `smart-app-react`'s
+ * `?patient=`, beside it.
  */
 interface Selection {
   /**
@@ -17,6 +19,7 @@ interface Selection {
    */
   readonly series: readonly string[]
   readonly range: RangePreset
+  readonly view: PlotView
 }
 
 /**
@@ -62,25 +65,34 @@ const SERIES_PARAM = 's'
 /** Query key holding the {@link RangePreset}. */
 const RANGE_PARAM = 'r'
 
+/** Query key holding the {@link PlotView}. */
+const VIEW_PARAM = 'v'
+
 /** The preset a selection falls back to when the URL names none or names a bad one. */
 const DEFAULT_RANGE: RangePreset = 'all'
 
-/** Render a selection as query parameters — one `s` per series in order, and one `r`. */
+/** The view a selection falls back to when the URL names none or names a bad one. */
+const DEFAULT_VIEW: PlotView = 'chart'
+
+/** Render a selection as query parameters — one `s` per series in order, one `r` and one `v`. */
 const encodeSelection = (selection: Selection): URLSearchParams => {
   const params = new URLSearchParams()
   for (const id of selection.series) params.append(SERIES_PARAM, id)
   params.set(RANGE_PARAM, selection.range)
+  params.set(VIEW_PARAM, selection.view)
   return params
 }
 
 /**
- * A copy of `params` with `selection` as its `s` and `r`, and every other key
- * kept as it was — the page's `?patient=` and anything else the URL carries.
+ * A copy of `params` with `selection` as its `s`, `r` and `v`, and every other
+ * key kept as it was — the page's `?patient=` and anything else the URL
+ * carries.
  */
 const withSelection = (params: URLSearchParams, selection: Selection): URLSearchParams => {
   const selectionParams = new URLSearchParams(params)
   selectionParams.delete(SERIES_PARAM)
   selectionParams.delete(RANGE_PARAM)
+  selectionParams.delete(VIEW_PARAM)
   for (const [key, value] of encodeSelection(selection)) selectionParams.append(key, value)
   return selectionParams
 }
@@ -98,7 +110,9 @@ const withSelection = (params: URLSearchParams, selection: Selection): URLSearch
  * or level series and the first `SpanSeries.LANE_CAP` span series are kept,
  * each cap counted on its own — the chart draws no more, and it throws past
  * either cap rather than truncating, so a hand-edited link is cut here.
- * An absent or bad `r` means {@link DEFAULT_RANGE}.
+ * An absent or bad `r` means {@link DEFAULT_RANGE}, and an absent or bad `v`
+ * {@link DEFAULT_VIEW}. A `v` naming a view the series cannot make is kept:
+ * which view is shown is the page's `shownViewOf`.
  */
 const decodeSelection = (params: URLSearchParams): Selection => {
   const series: string[] = []
@@ -111,17 +125,21 @@ const decodeSelection = (params: URLSearchParams): Selection => {
     }
   }
   const range = params.get(RANGE_PARAM)
+  const view = params.get(VIEW_PARAM)
   return {
     series,
     range: range !== null && isRangePreset(range) ? range : DEFAULT_RANGE,
+    view: view !== null && isPlotView(view) ? view : DEFAULT_VIEW,
   }
 }
 
 export type { Selection, SelectionCaps }
 export {
   DEFAULT_RANGE,
+  DEFAULT_VIEW,
   RANGE_PARAM,
   SERIES_PARAM,
+  VIEW_PARAM,
   capIsFull,
   decodeSelection,
   encodeSelection,

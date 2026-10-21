@@ -18,7 +18,7 @@ same paged-read drain (`useFetchEveryPage`) and read-status lines.
   are grouped, what each axis spans and what window a preset selects are the
   slice's functions —
   `readRecord`, `groupForPanel`, `ValueAxis.assign`, `Series.extentOfAll`,
-  `xDomain`. No domain package is imported here: `plots-observations`
+  `xDomain`, `scatterAxesOf`, `shownViewOf`. No domain package is imported here: `plots-observations`
   and `plots-medications` arrive through core.
 - **The page is patient → record read → layout.** `App` settles on the
   patient — one patient, or All patients, whose reads are unscoped (`null`)
@@ -34,7 +34,7 @@ same paged-read drain (`useFetchEveryPage`) and read-status lines.
   `usePatientChoice`'s. Nothing writes the URL on mount: before the handshake
   completes the URL still carries the OAuth `code` / `state` fhirclient reads,
   and replacing the query would lose them.
-- **Every selection change is an updater.** Series, range and the
+- **Every selection change is an updater.** Series, range, view and the
   reconciliation all go through `updateSelection((latest) => …)`, never a
   copy of the selection a render saw, so changes made in one tick compose.
 - **Reconcile only a complete record.** Selected ids with no series are

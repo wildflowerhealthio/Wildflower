@@ -1,7 +1,11 @@
 import {
+  type PlotView,
   type RangePreset,
+  type ScatterAxes,
   type Selection,
   groupForPanel,
+  scatterAxesOf,
+  shownViewOf,
   xDomain,
 } from '@wildflowerhealthio/plots-core-js'
 import { Series } from '@wildflowerhealthio/plots-fundamentals'
@@ -9,11 +13,15 @@ import {
   PlotsLayout,
   MultiAxisChart,
   RangePresets,
+  ScatterChart,
+  ScatterUnavailableNote,
   SeriesPanel,
+  SeriesTable,
+  ViewSwitch,
 } from '@wildflowerhealthio/plots-react'
 import { LoadingLine, LoadingMoreLine, ReadFailureLine } from '@wildflowerhealthio/smart-app-react'
 import type { DateTime } from 'effect'
-import { Match } from 'effect'
+import { Match, Option } from 'effect'
 import type { JSX } from 'react'
 import { useCallback, useEffect, useMemo } from 'react'
 
@@ -48,15 +56,51 @@ interface RecordViewProps extends SelectionProps {
   readonly record: Extract<RecordRead, { readonly kind: 'read' }>
 }
 
+/** What {@link useShownView} decides about the view the selection asks for. */
+interface ShownView {
+  /** The view on screen: the selection's, or the chart for a scatter it can't make. */
+  readonly view: PlotView
+  /** Which series a scatter of the selection plots, or why it can't be drawn. */
+  readonly scatterAxes: ScatterAxes
+  /** The scatter's X and Y series, once the record holds both. */
+  readonly scatterSeries: Option.Option<{
+    readonly x: Series.ValueSeries
+    readonly y: Series.ValueSeries
+  }>
+}
+
 /**
- * The record as the reader sees it: the series panel, the range presets and
- * the chart of the selected series, with the read's status beside them and
- * what the chart left out under it.
+ * The view to show for `selection`, through core's `scatterAxesOf` and
+ * `shownViewOf`, with the scatter's series looked up in the record.
+ */
+const useShownView = (
+  selection: Selection,
+  seriesById: ReadonlyMap<string, Series.Series>
+): ShownView => {
+  const scatterAxes = useMemo(() => scatterAxesOf(selection.series), [selection.series])
+  const scatterSeries = useMemo(() => {
+    if (scatterAxes.kind !== 'paired') return Option.none()
+    const valueSeriesOf = (seriesId: string): Option.Option<Series.ValueSeries> =>
+      Option.fromNullable(seriesById.get(seriesId)).pipe(Option.filter(Series.isValueSeries))
+    return Option.all({
+      x: valueSeriesOf(scatterAxes.xSeriesId),
+      y: valueSeriesOf(scatterAxes.ySeriesId),
+    })
+  }, [scatterAxes, seriesById])
+  return { view: shownViewOf(selection.view, scatterAxes), scatterAxes, scatterSeries }
+}
+
+/**
+ * The record as the reader sees it: the series panel, the range presets, the
+ * view switch and the selected series in the shown view — the chart, the
+ * table or the scatter — with the read's status beside them and what the
+ * read left out under the view.
  *
  * @remarks
  * The page only composes: `groupForPanel` for the panel, the selected point
  * and level series as the chart's series, the selected span series as its
- * lanes, `xDomain` for its window.
+ * lanes, `xDomain` for every view's window, and {@link useShownView} for
+ * which view is on screen.
  *
  * Once the record is complete, selected ids it holds no series for — a link
  * shared from another patient's record — are dropped from the selection; not
@@ -96,8 +140,9 @@ const RecordView = ({
     [selection.series, seriesById]
   )
   const valueSeries = useMemo(() => selectedSeries.filter(Series.isValueSeries), [selectedSeries])
+  const shownView = useShownView(selection, seriesById)
   const lanes = useMemo(() => selectedSeries.filter(Series.isSpanSeries), [selectedSeries])
-  const chartTimeDomain = useMemo(
+  const viewTimeDomain = useMemo(
     () => xDomain(selection.range, openedAt, Series.extentOfAll(selectedSeries)),
     [selection.range, openedAt, selectedSeries]
   )
@@ -105,6 +150,12 @@ const RecordView = ({
   const changeSelectedSeries = useCallback(
     (selectedSeriesIds: readonly string[]) => {
       onSelectionUpdate((latestSelection) => ({ ...latestSelection, series: selectedSeriesIds }))
+    },
+    [onSelectionUpdate]
+  )
+  const changeView = useCallback(
+    (view: PlotView) => {
+      onSelectionUpdate((latestSelection) => ({ ...latestSelection, view }))
     },
     [onSelectionUpdate]
   )
@@ -134,9 +185,33 @@ const RecordView = ({
       }
       selectedSeriesCount={selection.series.length}
       rangePresets={<RangePresets selectedPreset={selection.range} onPresetChange={changeRange} />}
+      viewSwitch={
+        <ViewSwitch
+          shownView={shownView.view}
+          scatterAxes={shownView.scatterAxes}
+          onViewChange={changeView}
+        />
+      }
+      toolbarNote={<ScatterUnavailableNote scatterAxes={shownView.scatterAxes} />}
       status={statusLines.length === 0 ? null : statusLines}
     >
-      <MultiAxisChart series={valueSeries} lanes={lanes} xDomain={chartTimeDomain} />
+      {Match.value(shownView.view).pipe(
+        Match.when('chart', () => (
+          <MultiAxisChart series={valueSeries} lanes={lanes} xDomain={viewTimeDomain} />
+        )),
+        Match.when('table', () => (
+          <SeriesTable series={selectedSeries} timeWindow={viewTimeDomain} />
+        )),
+        Match.when('scatter', () =>
+          shownView.scatterSeries.pipe(
+            Option.map(({ x, y }) => (
+              <ScatterChart key="scatter" x={x} y={y} timeWindow={viewTimeDomain} />
+            )),
+            Option.getOrNull
+          )
+        ),
+        Match.exhaustive
+      )}
       {leftOutNotes.length > 0 && <p className={styles.note}>{leftOutNotes.join(' · ')}</p>}
     </PlotsLayout>
   )

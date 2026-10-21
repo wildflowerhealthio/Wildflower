@@ -82,6 +82,15 @@ functions read in the namespace's context (`ValueAxis.assign`, not
   series' stops are its reading times, a span series' its spans' ends — and a
   bucketed series' are its bucket middles; `nearestStop` snaps the
   pointer to one.
+- **`ReadingTable`** (`src/reading-table.ts`) — `of(columns, window)`: the
+  selected series as a table, a column per series and a `Row` per instant
+  inside the window where any has an `Entry` — a value series' level start
+  (a reading), a span's start or end — newest first. Each row has one `Cell`
+  per column: empty where that series has nothing there, several entries
+  where readings share an instant or one span hands off to another.
+- **`Scatter`** (`src/scatter.ts`) — `of(x, y, window)`: each of `x`'s
+  readings inside the window as a `Pair` with the level `Series.levelAt`
+  reads off `y` at its time, and the `unpairedCount` of readings with none.
 - **`ColourSlots`** (`src/colour-slots.ts`) — `assign(previous, selectedIds)`:
   a series keeps its colour while it stays selected; newcomers take the lowest
   free slot; throws past `ValueAxis.CAP`.

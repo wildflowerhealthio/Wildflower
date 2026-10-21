@@ -1,0 +1,6 @@
+/* Why the Scatter button is disabled: a status line, full width above the toolbar. */
+.view-switch__note {
+  margin: 0;
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-5);
+}

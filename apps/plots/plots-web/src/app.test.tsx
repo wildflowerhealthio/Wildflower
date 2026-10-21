@@ -468,7 +468,46 @@ describe('App', () => {
     expect(selectionInUrl()).toEqual({
       series: [metforminSeries?.id],
       range: '90d',
+      view: 'chart',
     })
+  })
+
+  it('should restore the view from the URL, switch it, and fall back to the chart when Scatter is disabled', async () => {
+    // Arrange — two value series, so a scatter can be drawn
+    const params = new URLSearchParams()
+    params.append(SERIES_PARAM, glucoseSeries?.id ?? '')
+    params.append(SERIES_PARAM, metforminSeries?.id ?? '')
+    params.set('v', 'scatter')
+    window.history.replaceState(null, '', `/health-viewer/?${params.toString()}`)
+    launchWith(stubClient('p1', recordResponses()))
+    renderApp()
+    const glucoseRow = await waitFor(() => seriesCheckbox(glucoseSeries?.label ?? ''))
+
+    // Assert — restored
+    const viewButton = (name: string): HTMLElement => screen.getByRole('button', { name })
+    expect(viewButton('Scatter').getAttribute('aria-pressed')).toBe('true')
+    expect(
+      document.querySelector(
+        `svg[aria-label="${metforminSeries?.label} against ${glucoseSeries?.label}"]`
+      )
+    ).not.toBeNull()
+
+    // Act
+    fireEvent.click(viewButton('Table'))
+
+    // Assert
+    expect(screen.getByRole('table', { name: 'Readings' })).toBeDefined()
+    expect(selectionInUrl().view).toBe('table')
+
+    // Act — back to the scatter, then leave it one series
+    fireEvent.click(viewButton('Scatter'))
+    fireEvent.click(glucoseRow)
+
+    // Assert — the scatter can't be drawn, so the chart shows and the note above says why
+    expect(viewButton('Scatter')).toHaveProperty('disabled', true)
+    expect(viewButton('Chart').getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByText('Scatter needs one more series selected')).toBeDefined()
+    expect(selectionInUrl().view).toBe('scatter')
   })
 
   it('should drop a selected series the record does not hold, once both reads have finished paging', async () => {

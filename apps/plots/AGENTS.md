@@ -17,15 +17,17 @@ plots-fundamentals   plot vocabulary and chart math; imports no slice
 plots-observations   FHIR R4 Observation → PointSeries, SpanSeries
 plots-medications    medication-core DoseRegimen → LevelSeries
       ▲
-plots-core-js           closed list of sources, catalogue, URL codec, range presets
+plots-core-js           closed list of sources, catalogue, URL codec, range presets, views
       ▲
-plots-react          the Plot chart, series panel, range presets and page layout
+plots-react          the Plot chart, table, scatter, series panel, controls and page layout
 ```
 
 - **`plots-fundamentals`** — the plot vocabulary, as `effect`-style
   namespaces from one flat entry: `Level`, `PointSeries`, `LevelSeries`,
   `SpanSeries` (labelled time spans, drawn as a lane), `Series`, `ValueAxis` (domains, ticks, axis assignment and sharing), `Buckets` (a dense
-  series summarised per time slice), `Crosshair`,
+  series summarised per time slice), `Crosshair`, `ReadingTable` (the
+  series as rows by instant), `Scatter` (one series' readings paired with
+  another's values),
   `ColourSlots`, `TimeDomain`, `SeriesId` (the escaped field grammar ids are
   written in) and `SeriesSource` (a domain source as one value). See its
   [AGENTS.md](./plots-fundamentals/AGENTS.md).
@@ -41,8 +43,8 @@ plots-react          the Plot chart, series panel, range presets and page layout
   grammar, and the Medications catalogue group. See its
   [AGENTS.md](./plots-medications/AGENTS.md).
 - **`plots-core-js`** — the assembly: `SERIES_SOURCES` and `readRecord`,
-  the catalogue panel's grouping and search, the range presets, and the URL
-  codec a shared link round-trips through. See its
+  the catalogue panel's grouping and search, the range presets, the views,
+  and the URL codec a shared link round-trips through. See its
   [AGENTS.md](./plots-core-js/AGENTS.md).
 - **`plots-react`** — the browser layer: `MultiAxisChart` draws the
   axes `ValueAxis.assign` returns as one Observable Plot figure — a value
@@ -56,7 +58,9 @@ plots-react          the Plot chart, series panel, range presets and page layout
   `SpanSeries.spansAt` per lane. `SeriesPanel` lays out `groupForPanel`'s
   catalogue as searchable, collapsible groups of checkboxes capped at
   `ValueAxis.CAP` value series and `SpanSeries.LANE_CAP` lanes; `RangePresets`
-  picks a `RangePreset`; `PlotsLayout` docks the panel beside the chart
+  picks a `RangePreset`; `ViewSwitch` picks a `PlotView` — the chart,
+  `SeriesTable` (`ReadingTable.of`) or `ScatterChart` (`Scatter.of`);
+  `PlotsLayout` docks the panel beside the chart
   from 900px and folds it into a `Series (n selected)` disclosure below that.
   It imports no domain package. See its
   [AGENTS.md](./plots-react/AGENTS.md).
