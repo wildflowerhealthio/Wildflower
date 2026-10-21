@@ -108,7 +108,7 @@ impl<S: GrantStore> TokenVerifier<S> {
         )?;
         if let Some(sid) = claims.sid.as_deref() {
             if claims.subject == BROWSER_SESSION_CLIENT_ID {
-                check_session_s_own_token(tx, sid, Utc::now())?;
+                ensure_own_session_live(tx, sid, Utc::now())?;
             } else if tx
                 .is_browser_session_revoked(sid)
                 .map_err(AccessTokenVerifyError::BrowserSessionStoreUnavailable)?
@@ -126,7 +126,7 @@ impl<S: GrantStore> TokenVerifier<S> {
 /// before its token does: the host ends a same-device session by expiring
 /// it. The tokens apps were issued under the session outlive its expiry, and
 /// only its revocation ends them.
-fn check_session_s_own_token(
+fn ensure_own_session_live(
     tx: &mut impl BrowserSessionsTx,
     sid: &str,
     now: DateTime<Utc>,

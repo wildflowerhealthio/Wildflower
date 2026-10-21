@@ -37,9 +37,15 @@ async fn authorize_destination(g: &AuthorizationServer, session_token: &str) -> 
     location_of(&res)
 }
 
-/// Whether `location` is a consent card's.
+/// Whether `location`, relative to `/oauth/authorize`, is a consent card's.
 fn is_consent_card(location: &str) -> bool {
     location.starts_with("authorize/") && location.ends_with("/consent")
+}
+
+/// Whether `location`, relative to `/oauth/authorize`, is the pairing
+/// page's: where a browser without a live session is sent.
+fn is_pairing_page(location: &str) -> bool {
+    location.starts_with("pair?")
 }
 
 /// The browser session `sid` as `db` holds it.
@@ -72,7 +78,7 @@ async fn closing_a_launch_ends_only_its_session() {
     let closed_session = stored_session(&db, &sid_of(&closed_token));
     assert!(closed_session.expires_at <= Utc::now(), "expired");
     assert_eq!(closed_session.revoked_at, None, "not revoked");
-    assert!(!is_consent_card(
+    assert!(is_pairing_page(
         &authorize_destination(&g, &closed_token).await
     ));
     assert_eq!(
@@ -120,17 +126,20 @@ async fn a_second_launch_reaches_consent() {
 async fn a_restart_ends_same_device_sessions_but_not_paired_ones() {
     let (g, _owner_token, db) = spin_up();
     let (_code, same_device_token) = launch(&g).await;
+    assert!(is_consent_card(
+        &authorize_destination(&g, &same_device_token).await
+    ));
 
     let restarted = restart(&db);
 
     let same_device_session = stored_session(&db, &sid_of(&same_device_token));
     assert!(same_device_session.expires_at <= Utc::now(), "expired");
     assert_eq!(same_device_session.revoked_at, None, "not revoked");
-    assert!(!is_consent_card(
+    assert!(is_pairing_page(
         &authorize_destination(&restarted, &same_device_token).await
     ));
     assert!(stored_session(&db, &db.paired_browser_sid).is_live(Utc::now()));
-    assert!(g
+    assert!(restarted
         .in_process_token_verifier
         .verify(&db.paired_browser_token)
         .is_ok());

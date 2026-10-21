@@ -556,7 +556,8 @@ changing how servers run or what the host notifies about them.
   closed, the host ends the Owner session its sign-in code started
   (`SameDeviceSignInCode::end_signed_in_session`, on a blocking thread), so a
   Custom Tab's session doesn't outlive it in Chrome; moving to the background
-  and back doesn't end it, and a desktop, which hears no close, relies on the
+  and back doesn't end it, unless the server's run restarts meanwhile (as
+  iOS's return from a suspend does), and a desktop, which hears no close, relies on the
   server's start ending every Owner session. It never changes the run policy. Errors are
   `{kind, message}`: `serverNotRunning`, `tokenRejected`, `tunnelUnknown`,
   `notYetProbed`, `unreachable`, `noValidCertificate`, `untrustedCertificate` (a valid certificate from

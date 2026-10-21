@@ -26,6 +26,6 @@ The tests verify against a [fake store with one signing key, and a recording rev
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/session/token_verifier.rs TokenVerifier::verify_signed_and_session_live}}
 
-### `check_session_s_own_token`
+### `ensure_own_session_live`
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/session/token_verifier.rs check_session_s_own_token tests="tests::a_session_s_own_token_ends_with_the_session_s_expiry"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/session/token_verifier.rs ensure_own_session_live tests="tests::a_session_s_own_token_ends_with_the_session_s_expiry"}}
