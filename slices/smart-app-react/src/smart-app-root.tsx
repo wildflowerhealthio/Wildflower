@@ -202,8 +202,8 @@ const replaceWindowLocation = (url: string): void => {
  * and reports the launch failure the page arrived with (a failed handshake
  * among them), once.
  *
- * The case is latched on mount: fhirclient's `oauth2.ready()` strips
- * `code`/`state` once the exchange completes, so re-reading the URL later
+ * The case is latched on mount: completing the handshake strips
+ * `code`/`state` from the URL, so re-reading the URL later
  * would flip a finished launch back to the connect menu. See the
  * guardrails in `slices/smart-app-react/AGENTS.md`.
  */
@@ -275,9 +275,9 @@ function SmartAppRoot({
   useEffect(() => {
     if (!telemetryStarted) return undefined
     return whenSmartHandshakeReady(queryClient, (readyClient) => {
-      const fhirServerUrl = URL.parse(readyClient.state.serverUrl)
+      const fhirServerUrl = URL.parse(readyClient.serverUrl)
       if (fhirServerUrl === null) {
-        redactServerHost(readyClient.state.serverUrl)
+        redactServerHost(readyClient.serverUrl)
         Sentry.captureException(new Error("The SMART handshake's FHIR server is not a URL"), {
           tags: { source: 'fhir-server-host' },
         })

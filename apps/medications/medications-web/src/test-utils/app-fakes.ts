@@ -3,6 +3,7 @@ import type {
   MedicationRequestCursor,
   MedicationRequestPage,
   PatientPage,
+  SmartClient,
   SmartHandshake,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
@@ -10,7 +11,6 @@ import { MedicationRequest, Patient } from '@wildflowerhealthio/fhir-r4/resource
 import type { InteractionCatalog } from '@wildflowerhealthio/medication-interaction-core-js'
 import { stubRouteTabsBrowserApis } from '@wildflowerhealthio/react-tundraish/test-helpers'
 import { Effect, Option, Schema } from 'effect'
-import type Client from 'fhirclient/lib/Client'
 import { afterEach, beforeEach, expect, vi } from 'vite-plus/test'
 
 // The seams `App` composes: the handshake hook (its state is driven per
@@ -75,13 +75,19 @@ const interactionCatalogModuleFake = (): Record<string, unknown> => ({
 /** The directory the app is served from in these tests. */
 const BASEPATH = '/medications/'
 
-/** A completed handshake whose launch put `patientId` in context. */
-const handshakeLaunchedWith = (patientId: string | null): SmartHandshake => ({
-  kind: 'ready',
-  // The client is only forwarded to the (mocked) reads, and its launch patient read.
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test-only stub, forwarded to a mock
-  client: { patient: { id: patientId } } as unknown as Client,
-})
+/**
+ * A completed handshake whose launch put `patientId` in context. The client is
+ * only forwarded to the (mocked) reads, so a request of its own is a test bug.
+ */
+const handshakeLaunchedWith = (patientId: string | null): SmartHandshake => {
+  const client: SmartClient = {
+    serverUrl: 'https://fhir.example',
+    accessToken: 'token',
+    launchPatientId: Option.fromNullable(patientId),
+    request: (url) => Effect.dieMessage(`unexpected request ${url}`),
+  }
+  return { kind: 'ready', client }
+}
 
 /** A launch with patient `p1` in context, which the app opens on. */
 const readyHandshake = handshakeLaunchedWith('p1')

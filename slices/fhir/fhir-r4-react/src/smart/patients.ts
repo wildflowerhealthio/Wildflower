@@ -1,7 +1,6 @@
 import { Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import type { Option } from 'effect'
 import { Effect, Schema } from 'effect'
-import type Client from 'fhirclient/lib/Client'
 
 import {
   BundleDecodeError,
@@ -12,6 +11,7 @@ import {
   type ResourcePage,
   type ResourcePageCursor,
 } from './resource-page.ts'
+import type { FhirRequestError, SmartClient } from './smart-client.ts'
 
 /** The decoded FHIR R4 `Patient` resource. */
 type PatientResource = Schema.Schema.Type<typeof Patient.Schema>
@@ -59,21 +59,17 @@ const patientRead: PagedResourceRead<
  * app reads. The one chosen is read directly with {@link fetchPatient}.
  */
 const fetchPatientPage = (
-  client: Client,
+  client: SmartClient,
   cursor: PatientPageCursor
 ): Effect.Effect<PatientPage, ResourcePageRequestError | BundleDecodeError> =>
   fetchResourcePage(client, patientRead, cursor)
 
 /**
- * Whether a rejected `client.request` is the server answering that it holds no
- * such resource: fhirclient's `HttpError` with status 404 Not Found or 410
- * Gone.
+ * Whether a failed `client.request` is the server answering that it holds no
+ * such resource: 404 Not Found or 410 Gone.
  */
-const isNoSuchResource = (cause: unknown): boolean =>
-  typeof cause === 'object' &&
-  cause !== null &&
-  'status' in cause &&
-  (cause.status === 404 || cause.status === 410)
+const isNoSuchResource = (cause: FhirRequestError): boolean =>
+  cause._tag === 'FhirHttpError' && (cause.status === 404 || cause.status === 410)
 
 /** Decode `resource` as a `Patient`, failing with what did not decode. */
 const decodePatient = (resource: unknown): Effect.Effect<PatientResource, BundleDecodeError> =>
@@ -85,7 +81,7 @@ const decodePatient = (resource: unknown): Effect.Effect<PatientResource, Bundle
  * Read one `Patient` by id.
  *
  * @param client - The SMART client the read is issued through
- * @param id - The patient's logical id, e.g. the `client.patient.id` a launch put in context
+ * @param id - The patient's logical id, e.g. the `client.launchPatientId` a launch put in context
  * @returns An effect yielding the decoded `Patient`, or `None` when the
  *          server answers 404 or 410
  *
@@ -97,13 +93,11 @@ const decodePatient = (resource: unknown): Effect.Effect<PatientResource, Bundle
  * patient" is the one answer a caller acts on rather than reports.
  */
 const fetchPatient = (
-  client: Client,
+  client: SmartClient,
   id: string
 ): Effect.Effect<Option.Option<PatientResource>, ResourcePageRequestError | BundleDecodeError> =>
-  Effect.tryPromise({
-    try: () => client.request<unknown>(`Patient/${encodeURIComponent(id)}`),
-    catch: (cause) => new ResourcePageRequestError({ cause }),
-  }).pipe(
+  client.request(`Patient/${encodeURIComponent(id)}`).pipe(
+    Effect.mapError((cause) => new ResourcePageRequestError({ cause })),
     Effect.flatMap(decodePatient),
     Effect.asSome,
     Effect.catchIf(

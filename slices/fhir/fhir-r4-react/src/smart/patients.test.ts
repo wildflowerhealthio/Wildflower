@@ -1,12 +1,16 @@
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, Option } from 'effect'
 import * as fc from 'fast-check'
-import type Client from 'fhirclient/lib/Client'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { fetchPatient, fetchPatientPage } from './patients.ts'
 import { BundleDecodeError, ResourcePageRequestError } from './resource-page.ts'
-import { stubSmartClient } from './stub-smart-client.test-helpers.ts'
+import { FhirHttpError, FhirRequestDropped, type FhirRequestError } from './smart-client.ts'
+import {
+  scriptedSmartClient,
+  stubSmartClient,
+  type StubSmartClient,
+} from './stub-smart-client.test-helpers.ts'
 
 /** A searchset bundle wrapping `resources`, with no `next` link. */
 const bundle = (resources: readonly unknown[]): unknown => ({
@@ -18,10 +22,9 @@ const bundle = (resources: readonly unknown[]): unknown => ({
 
 const patientWire = (id: string): unknown => ({ resourceType: 'Patient', id })
 
-/** A client whose every request rejects with `cause`, as fhirclient's `request` rejects. */
-const rejectingClient = (cause: unknown): Client =>
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test-only stub, only `request` is exercised
-  ({ request: () => Promise.reject(cause) }) as unknown as Client
+/** A client whose every request fails with `cause`. */
+const failingClient = (cause: FhirRequestError): StubSmartClient['client'] =>
+  scriptedSmartClient([{ failure: cause }]).client
 
 describe('fetchPatientPage', () => {
   test('opens the picker sorted by family name, 200 to a page', async () => {
@@ -73,16 +76,27 @@ describe('fetchPatient', () => {
   })
 
   test.each([404, 410])('reads no patient when the server answers %i', async (status) => {
-    const client = rejectingClient(Object.assign(new Error(`${status}`), { status }))
+    const client = failingClient(
+      new FhirHttpError({ url: 'https://fhir.example/Patient/pat-1', status })
+    )
 
     expect(await Effect.runPromise(fetchPatient(client, 'pat-1'))).toEqual(Option.none())
   })
 
   test.each([
-    { case: 'another HTTP status', cause: Object.assign(new Error('500'), { status: 500 }) },
-    { case: 'no response at all', cause: new TypeError('Failed to fetch') },
+    {
+      case: 'another HTTP status',
+      cause: new FhirHttpError({ url: 'https://fhir.example/Patient/p', status: 500 }),
+    },
+    {
+      case: 'no response at all',
+      cause: new FhirRequestDropped({
+        url: 'https://fhir.example/Patient/p',
+        cause: new TypeError('Failed to fetch'),
+      }),
+    },
   ])('fails the read on $case', async ({ cause }) => {
-    const failure = await Effect.runPromise(Effect.flip(fetchPatient(rejectingClient(cause), 'p')))
+    const failure = await Effect.runPromise(Effect.flip(fetchPatient(failingClient(cause), 'p')))
 
     expect(failure).toBeInstanceOf(ResourcePageRequestError)
     expect(failure.cause).toBe(cause)

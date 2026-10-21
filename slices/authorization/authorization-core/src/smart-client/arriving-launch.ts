@@ -1,8 +1,8 @@
 /**
  * The SMART launch a page's URL asks it to start, read the same way by every
- * Wildflower page a launch can open: the fhirclient-based SMART apps (through
+ * Wildflower page a launch can open: the SMART apps (through
  * `fhir-r4-react/smart`, which re-exports it) and the pages that sign in with
- * this package.
+ * this package directly.
  */
 
 import { Option } from 'effect'
@@ -39,8 +39,7 @@ const SMART_LAUNCH_PARAMS = ['iss', 'launch'] as const
  * A launch is a non-empty `iss`: with `launch` it is an EHR launch, and without
  * it a standalone launch against `iss` (the link `fhir-r4-react/smart`'s
  * `appLaunchUrl` builds for a server with no launcher). A lone `launch` names
- * no server, so it is no launch. An empty `launch` counts as absent, as it does
- * for fhirclient.
+ * no server, so it is no launch. An empty `launch` counts as absent.
  *
  * A URL carrying any authorization-response parameter (`code`, `state`,
  * `error`, `error_description` or `error_uri`; see `isAuthorizationResponse`)

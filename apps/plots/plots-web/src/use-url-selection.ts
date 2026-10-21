@@ -35,7 +35,7 @@ const writeSelectionToUrl = (selection: Selection): void => {
  * the first with a copy of a stale selection.
  *
  * Nothing is written until the selection first changes: before the handshake
- * completes the URL still carries the OAuth `code` / `state` fhirclient reads,
+ * completes the URL still carries the OAuth `code` / `state` it reads,
  * and replacing the query would lose them.
  */
 const useUrlSelection = (): UrlSelection => {

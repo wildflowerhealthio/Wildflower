@@ -1,6 +1,5 @@
 import { DocumentReference } from '@wildflowerhealthio/fhir-r4/resources'
 import type { Effect, Schema } from 'effect'
-import type Client from 'fhirclient/lib/Client'
 
 import {
   RESOURCE_PAGE_SIZE,
@@ -11,6 +10,7 @@ import {
   type ResourcePage,
   type ResourcePageCursor,
 } from './resource-page.ts'
+import type { SmartClient } from './smart-client.ts'
 
 /** The decoded FHIR R4 `DocumentReference` resource. */
 type DocumentReferenceResource = Schema.Schema.Type<typeof DocumentReference.Schema>
@@ -83,7 +83,7 @@ const documentReferenceRead: PagedResourceRead<
  *
  * @remarks
  * The patient id is a parameter rather than something this reader lifts off
- * `client.patient.id`, so the caller decides what "no patient in context" means
+ * `client.launchPatientId`, so the caller decides what "no patient in context" means
  * for its launch; `null` drops the `patient=` filter entirely.
  *
  * The `category` filter supports FHIR's comma-OR syntax, so a caller can pass
@@ -92,7 +92,7 @@ const documentReferenceRead: PagedResourceRead<
  * uses to span every registered format.
  */
 const fetchDocumentReferencePage = (
-  client: Client,
+  client: SmartClient,
   cursor: DocumentReferencePageCursor
 ): Effect.Effect<DocumentReferencePage, ResourcePageRequestError | BundleDecodeError> =>
   fetchResourcePage(client, documentReferenceRead, cursor)

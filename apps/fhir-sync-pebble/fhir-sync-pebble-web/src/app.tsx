@@ -105,7 +105,7 @@ interface Session {
  * settings page against the FHIR server it was granted a token for.
  *
  * @remarks
- * This is the only component that sees the fhirclient `Client`: it turns the
+ * This is the only component that sees the SMART client: it turns the
  * handshake into a router context (reads) and the connection the watch will
  * get (the grant), and nothing below it holds the client.
  *
@@ -129,16 +129,11 @@ const App = (): JSX.Element => {
   const client = handshake.kind === 'ready' ? handshake.client : undefined
   const session = useMemo<Session | undefined>(() => {
     if (client === undefined) return undefined
-    const accessToken = client.state.tokenResponse?.access_token
     return {
-      context: buildSmartRouterContext(
-        { serverUrl: client.state.serverUrl, accessToken },
-        FetchHttpClient.layer,
-        queryClient
-      ),
+      context: buildSmartRouterContext(client, FetchHttpClient.layer, queryClient),
       connection: PebbleSettings.fromGrant({
-        accessToken,
-        fhirBaseUrl: client.state.serverUrl,
+        accessToken: client.accessToken,
+        fhirBaseUrl: client.serverUrl,
       }),
     }
   }, [client, queryClient])

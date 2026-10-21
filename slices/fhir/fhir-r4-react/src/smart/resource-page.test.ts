@@ -12,8 +12,6 @@ import {
   TestContext,
 } from 'effect'
 import * as fc from 'fast-check'
-import type Client from 'fhirclient/lib/Client'
-import HttpError from 'fhirclient/lib/HttpError'
 import { describe, expect, test, vi } from 'vite-plus/test'
 
 import {
@@ -26,7 +24,14 @@ import {
   type ResourcePage,
   type ResourcePageCursor,
 } from './resource-page.ts'
-import { stubSmartClient } from './stub-smart-client.test-helpers.ts'
+import {
+  FhirHttpError,
+  FhirRequestDropped,
+  FhirResponseNotJson,
+  type FhirRequestError,
+  type SmartClient,
+} from './smart-client.ts'
+import { scriptedSmartClient, stubSmartClient } from './stub-smart-client.test-helpers.ts'
 
 type ObservationType = Schema.Schema.Type<typeof Observation.Schema>
 type ObservationEncoded = Schema.Schema.Encoded<typeof Observation.Schema>
@@ -132,9 +137,12 @@ const bundle = (resources: readonly unknown[], link: unknown): unknown => ({
   ...(link === undefined ? {} : { link }),
 })
 
+/** The URL the first page of `observationRead` for `pat-1` is requested at. */
+const FIRST_PAGE_URL = 'https://fhir.example/Observation?patient=pat-1'
+
 /**
  * What `fetch` rejects with when no HTTP response arrived, as each browser words
- * it: Firefox, Chrome, Safari. The reader must recognise all of them by type.
+ * it: Firefox, Chrome, Safari.
  */
 const DROPPED_REQUEST_MESSAGES = [
   'NetworkError when attempting to fetch resource.',
@@ -142,35 +150,27 @@ const DROPPED_REQUEST_MESSAGES = [
   'Load failed',
 ] as const
 
-const droppedRequestArb: fc.Arbitrary<TypeError> = fc
+const droppedRequestArb: fc.Arbitrary<FhirRequestDropped> = fc
   .constantFrom(...DROPPED_REQUEST_MESSAGES)
-  .map((message) => new TypeError(message))
+  .map((message) => new FhirRequestDropped({ url: FIRST_PAGE_URL, cause: new TypeError(message) }))
+
+/** The failure a client gives for a response with error status `status`. */
+const httpError = (status: number): FhirHttpError =>
+  new FhirHttpError({ url: FIRST_PAGE_URL, status })
 
 /**
- * A rejection fhirclient gives for an HTTP error response: the `HttpError` its
- * `checkResponse` throws for any response that is not `ok`.
- */
-const httpError = (status: number): HttpError =>
-  new HttpError(new Response(null, { status, statusText: `status ${status}` }))
-
-/**
- * A stub fhirclient `Client` whose `request` rejects with each of `failures` in
- * turn and then resolves to `response`, counting the attempts it was asked for.
+ * A stub client whose `request` fails with each of `failures` in turn and then
+ * succeeds with `response`, counting the attempts it was asked for.
  */
 const flakySmartClient = (
-  failures: readonly unknown[],
+  failures: readonly FhirRequestError[],
   response: unknown
-): { readonly client: Client; readonly attempts: () => number } => {
-  let attempts = 0
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test-only stub, only `request` is exercised
-  const client = {
-    request: (): Promise<unknown> => {
-      const failure = failures[attempts]
-      attempts += 1
-      return failure === undefined ? Promise.resolve(response) : Promise.reject(failure)
-    },
-  } as unknown as Client
-  return { client, attempts: () => attempts }
+): { readonly client: SmartClient; readonly attempts: () => number } => {
+  const { client, queries } = scriptedSmartClient([
+    ...failures.map((failure) => ({ failure })),
+    { success: response },
+  ])
+  return { client, attempts: () => queries.length }
 }
 
 /**
@@ -290,10 +290,8 @@ describe('fetchResourcePage', () => {
   )
 
   test('a request failure surfaces as ResourcePageRequestError', async () => {
-    const requestError = new Error('network down')
-    const { client } = stubSmartClient(null)
-    // Override the stub's request to reject
-    client.request = () => Promise.reject(requestError)
+    const requestError = httpError(500)
+    const { client } = scriptedSmartClient([{ failure: requestError }])
 
     const exit = await Effect.runPromiseExit(
       fetchResourcePage(client, observationRead, { first: 'pat-1' })
@@ -335,7 +333,13 @@ describe('fetchResourcePage', () => {
   })
 
   test('a request the network keeps dropping fails after its retries, carrying the last cause', async () => {
-    const drops = [1, 2, 3, 4, 5].map((attempt) => new TypeError(`Failed to fetch (${attempt})`))
+    const drops = [1, 2, 3, 4, 5].map(
+      (attempt) =>
+        new FhirRequestDropped({
+          url: FIRST_PAGE_URL,
+          cause: new TypeError(`Failed to fetch (${attempt})`),
+        })
+    )
     const { client, attempts } = flakySmartClient(drops, bundle([], undefined))
 
     const exit = await runOnTestClock(
@@ -353,8 +357,8 @@ describe('fetchResourcePage', () => {
     { name: 'HTTP 404', cause: httpError(404) },
     { name: 'HTTP 500', cause: httpError(500) },
     {
-      name: 'an aborted request',
-      cause: new DOMException('The operation was aborted.', 'AbortError'),
+      name: 'a body that is not JSON',
+      cause: new FhirResponseNotJson({ url: FIRST_PAGE_URL, cause: new SyntaxError('Unexpected') }),
     },
   ])('$name fails at once, without a retry', async ({ cause }) => {
     const { client, attempts } = flakySmartClient([cause, cause], bundle([], undefined))
@@ -459,7 +463,7 @@ describe('fetchAllResourcePages', () => {
             droppedEntryCount: 0,
             nextPageUrl: 'https://fhir.example/next?page=1',
           })
-        : Effect.fail(new ResourcePageRequestError({ cause: 'down' }))
+        : Effect.fail(new ResourcePageRequestError({ cause: httpError(503) }))
 
     // Act
     const failure = await Effect.runPromise(

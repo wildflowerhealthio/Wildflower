@@ -1,21 +1,22 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
-import type Client from 'fhirclient/lib/Client'
 import { StrictMode, type JSX } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
+
+import type { SmartClient } from './smart-client.ts'
+import { stubSmartClient } from './stub-smart-client.test-helpers.ts'
 
 // The exchange is the one thing worth stubbing: it is the single-use POST this
 // hook exists to fire exactly once. `vi.hoisted` so the spy exists before the
 // module mock that closes over it is applied.
-const { readyMock } = vi.hoisted(() => ({ readyMock: vi.fn<() => Promise<Client>>() }))
+const { readyMock } = vi.hoisted(() => ({ readyMock: vi.fn<() => Promise<SmartClient>>() }))
 vi.mock('./smart-launch.ts', () => ({ readySmartClient: readyMock }))
 
 const { isSmartHandshakeQuery, useSmartHandshake, whenSmartHandshakeReady } =
   await import('./use-smart-handshake.ts')
 
-// A `Client` stub: the hook only ever hands it back, so nothing reads its shape.
-// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test-only stub, never structurally read
-const fakeClient = {} as unknown as Client
+// The hook only ever hands the client back, so any client will do.
+const fakeClient = stubSmartClient(null).client
 
 /** Renders the handshake's `kind`, so the test asserts on visible text. */
 const Probe = (): JSX.Element => <span>{useSmartHandshake().kind}</span>
@@ -77,7 +78,7 @@ describe('whenSmartHandshakeReady', () => {
     // Arrange
     readyMock.mockResolvedValue(fakeClient)
     const queryClient = new QueryClient()
-    const onReady = vi.fn<(client: Client) => void>()
+    const onReady = vi.fn<(client: SmartClient) => void>()
     whenSmartHandshakeReady(queryClient, onReady)
 
     // Act
@@ -99,7 +100,7 @@ describe('whenSmartHandshakeReady', () => {
     await waitFor(() => {
       expect(screen.getByText('ready')).toBeDefined()
     })
-    const onReady = vi.fn<(client: Client) => void>()
+    const onReady = vi.fn<(client: SmartClient) => void>()
 
     // Act
     whenSmartHandshakeReady(queryClient, onReady)
@@ -112,7 +113,7 @@ describe('whenSmartHandshakeReady', () => {
     // Arrange
     readyMock.mockRejectedValue(new Error('authorization code already redeemed'))
     const queryClient = new QueryClient()
-    const onReady = vi.fn<(client: Client) => void>()
+    const onReady = vi.fn<(client: SmartClient) => void>()
     whenSmartHandshakeReady(queryClient, onReady)
     expect(readyMock).not.toHaveBeenCalled()
 
@@ -131,7 +132,7 @@ describe('whenSmartHandshakeReady', () => {
     // Arrange
     readyMock.mockResolvedValue(fakeClient)
     const queryClient = new QueryClient()
-    const onReady = vi.fn<(client: Client) => void>()
+    const onReady = vi.fn<(client: SmartClient) => void>()
     const stopListening = whenSmartHandshakeReady(queryClient, onReady)
 
     // Act

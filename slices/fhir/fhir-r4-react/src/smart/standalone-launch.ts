@@ -6,7 +6,11 @@ import {
 import { trimTrailingSlashes } from '@wildflowerhealthio/fhir-r4/clients'
 import { Either, Schema } from 'effect'
 
-import { authorizeOpenServer, authorizeSmartLaunch } from './smart-launch.ts'
+import {
+  authorizeOpenServer,
+  authorizeSmartLaunch,
+  type SmartLaunchConfig,
+} from './smart-launch.ts'
 
 /**
  * What probing a FHIR server's `.well-known/smart-configuration` told us about
@@ -29,15 +33,6 @@ type SmartSupport =
   | { readonly kind: 'open' } // HTTP non-ok, or JSON without authorization_endpoint
   | { readonly kind: 'unreachable'; readonly message: string } // fetch rejected (network/CORS — indistinguishable)
   | { readonly kind: 'unusable'; readonly reason: string } // config names endpoints this page will not use
-
-/** The inputs a standalone launch needs: the server, and the app's own client. */
-interface StandaloneLaunchConfig {
-  /** The FHIR server base the user picked — used verbatim as the base URL. */
-  readonly iss: string
-  readonly clientId: string
-  readonly scope: string
-  readonly redirectUri: string
-}
 
 /**
  * A configuration that names an `authorization_endpoint` — the one field that
@@ -105,7 +100,7 @@ const detectSmartSupport = async (
  * On `smart`/`open` the browser redirects away (`authorizeSmartLaunch` sends
  * it to the provider, `authorizeOpenServer` straight to the redirect target),
  * so the page usually leaves. `authorizeSmartLaunch` rejects, without
- * navigating, when the authorize URL fhirclient builds is not usable from this
+ * navigating, when its own discovery refuses the server's endpoints for this
  * page; the rejection propagates. On `unreachable` or `unusable` there is no
  * redirect — the `SmartSupport` is returned so the caller can render the
  * error and offer a retry.
@@ -118,17 +113,12 @@ const detectSmartSupport = async (
  *   `unusable` always are.
  */
 const startStandaloneLaunch = async (
-  config: StandaloneLaunchConfig,
+  config: SmartLaunchConfig,
   fetchFn: typeof fetch = globalThis.fetch
 ): Promise<SmartSupport> => {
   const support = await detectSmartSupport(config.iss, fetchFn)
   if (support.kind === 'smart') {
-    await authorizeSmartLaunch({
-      clientId: config.clientId,
-      scope: config.scope,
-      redirectUri: config.redirectUri,
-      iss: config.iss,
-    })
+    await authorizeSmartLaunch(config, undefined)
   } else if (support.kind === 'open') {
     await authorizeOpenServer({ fhirServiceUrl: config.iss, redirectUri: config.redirectUri })
   }
@@ -156,5 +146,4 @@ export {
   normalizeServerUrl,
   startStandaloneLaunch,
   type SmartSupport,
-  type StandaloneLaunchConfig,
 }

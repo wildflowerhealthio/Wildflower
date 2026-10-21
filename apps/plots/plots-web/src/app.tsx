@@ -25,7 +25,7 @@ import styles from './app.module.css'
  *
  * @remarks
  * Whose record is `smart-app-react`'s `usePatientChoice`: the URL's
- * `?patient=`, else the launch's patient (`client.patient.id`); with neither
+ * `?patient=`, else the launch's patient (`client.launchPatientId`); with neither
  * the page is the `PatientPicker`. "All patients" reads every patient's
  * Observations and MedicationRequests unscoped, charted together. The title's
  * `PatientChoiceLine` names the choice and goes back to the picker.
@@ -46,7 +46,7 @@ export const App = (): JSX.Element => {
 
   const client = handshake.kind === 'ready' ? handshake.client : undefined
   const { patientChoice, choosePatient, changePatient } = usePatientChoice(
-    client?.patient.id ?? null
+    client === undefined ? null : Option.getOrNull(client.launchPatientId)
   )
 
   const body = Match.value(handshake).pipe(
