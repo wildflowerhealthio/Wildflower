@@ -691,8 +691,18 @@ struct Captured(Arc<Mutex<Vec<u8>>>);
 
 impl Captured {
     fn text(&self) -> String {
+        self.text_since(0)
+    }
+
+    /// How many bytes have been written so far.
+    fn len(&self) -> usize {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner).len()
+    }
+
+    /// What was written after the first `start` bytes.
+    fn text_since(&self, start: usize) -> String {
         let bytes = self.0.lock().unwrap_or_else(PoisonError::into_inner);
-        String::from_utf8_lossy(&bytes).into_owned()
+        String::from_utf8_lossy(&bytes[start..]).into_owned()
     }
 }
 
@@ -776,16 +786,18 @@ async fn each_refusal_names_the_visitor_only_in_the_connection_log() {
     let full = start_front_with(router(&[]), no_tunnels(), limits).await;
 
     // The connection log's line for the connection from `visitor`, once it
-    // is written.
-    let line_for = |visitor: SocketAddr| {
+    // is written: the last one written after the log was `start` bytes
+    // long. Other tests in this binary log to the same subscriber, and
+    // may have had a visitor on the same port earlier.
+    let line_for = |start: usize, visitor: SocketAddr| {
         let connection_log = connection_log.clone();
         async move {
             let marker = format!("visitor={visitor} ");
             let find = || {
                 connection_log
-                    .text()
+                    .text_since(start)
                     .lines()
-                    .find(|line| line.contains(&marker))
+                    .rfind(|line| line.contains(&marker))
                     .map(str::to_owned)
             };
             eventually(|| find().is_some()).await;
@@ -804,6 +816,7 @@ async fn each_refusal_names_the_visitor_only_in_the_connection_log() {
     };
 
     // A client that is not speaking TLS.
+    let start = connection_log.len();
     let mut client = TcpStream::connect(harness.https).await.unwrap();
     let visitor = client.local_addr().unwrap();
     client
@@ -812,25 +825,27 @@ async fn each_refusal_names_the_visitor_only_in_the_connection_log() {
         .unwrap();
     assert_closed_silently(client).await;
     check(
-        line_for(visitor).await,
+        line_for(start, visitor).await,
         visitor,
         "not_a_hello",
         &[r#"first_bytes="GET / HTTP/1.1\r\nHost: abc.relay.""#],
     );
 
     // A client that closes without sending anything.
+    let start = connection_log.len();
     let mut client = TcpStream::connect(harness.https).await.unwrap();
     let visitor = client.local_addr().unwrap();
     client.shutdown().await.unwrap();
     assert_closed_silently(client).await;
     check(
-        line_for(visitor).await,
+        line_for(start, visitor).await,
         visitor,
         "not_a_hello",
         &[r#"first_bytes="""#, "closed before a whole ClientHello"],
     );
 
     // A hello with an IP literal for its server name.
+    let start = connection_log.len();
     let mut client = TcpStream::connect(harness.https).await.unwrap();
     let visitor = client.local_addr().unwrap();
     client
@@ -843,13 +858,14 @@ async fn each_refusal_names_the_visitor_only_in_the_connection_log() {
         .unwrap();
     assert_closed_silently(client).await;
     check(
-        line_for(visitor).await,
+        line_for(start, visitor).await,
         visitor,
         "no_server_name",
         &["sni_ip=192.0.2.10 ", r#"alpn=["h2", "http/1.1"]"#],
     );
 
     // A name no tunnel has.
+    let start = connection_log.len();
     let mut client = TcpStream::connect(harness.https).await.unwrap();
     let visitor = client.local_addr().unwrap();
     client
@@ -858,13 +874,14 @@ async fn each_refusal_names_the_visitor_only_in_the_connection_log() {
         .unwrap();
     assert_closed_silently(client).await;
     check(
-        line_for(visitor).await,
+        line_for(start, visitor).await,
         visitor,
         "unknown_tunnel",
         &["server_name=nobody.relay.example.com"],
     );
 
     // A tunnel whose device is not connected.
+    let start = connection_log.len();
     let mut client = TcpStream::connect(harness.https).await.unwrap();
     let visitor = client.local_addr().unwrap();
     client
@@ -873,31 +890,33 @@ async fn each_refusal_names_the_visitor_only_in_the_connection_log() {
         .unwrap();
     assert_closed_silently(client).await;
     check(
-        line_for(visitor).await,
+        line_for(start, visitor).await,
         visitor,
         "tunnel_down",
         &["tunnel=abc", "refused: tunnel is down"],
     );
 
     // Three bytes of a hello, and then nothing until the deadline.
+    let start = connection_log.len();
     let mut client = TcpStream::connect(harness.https).await.unwrap();
     let visitor = client.local_addr().unwrap();
     client.write_all(&[0x16, 0x03, 0x01]).await.unwrap();
     assert_closed_silently(client).await;
     check(
-        line_for(visitor).await,
+        line_for(start, visitor).await,
         visitor,
         "hello_timeout",
         &["bytes_received=3"],
     );
 
     // A connection while the front's one slot is held.
+    let start = connection_log.len();
     let held = TcpStream::connect(full.https).await.unwrap();
     let over = TcpStream::connect(full.https).await.unwrap();
     let visitor = over.local_addr().unwrap();
     assert_closed_silently(over).await;
     check(
-        line_for(visitor).await,
+        line_for(start, visitor).await,
         visitor,
         "over_connection_limit",
         &[],

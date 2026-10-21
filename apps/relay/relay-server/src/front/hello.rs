@@ -258,12 +258,19 @@ mod tests {
 
     /// The ClientHello a real rustls client sends for `server_name`.
     fn client_hello(server_name: ServerName<'static>) -> Vec<u8> {
-        let config =
+        client_hello_offering(server_name, &[])
+    }
+
+    /// The ClientHello a real rustls client sends for `server_name`,
+    /// offering `alpn`.
+    fn client_hello_offering(server_name: ServerName<'static>, alpn: &[&[u8]]) -> Vec<u8> {
+        let mut config =
             ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
                 .with_safe_default_protocol_versions()
                 .expect("protocol versions")
                 .with_root_certificates(RootCertStore::empty())
                 .with_no_client_auth();
+        config.alpn_protocols = alpn.iter().map(|protocol| protocol.to_vec()).collect();
         let mut conn = ClientConnection::new(Arc::new(config), server_name).expect("client");
         let mut hello = Vec::new();
         while conn.wants_write() {
@@ -274,6 +281,23 @@ mod tests {
 
     fn dns(name: &str) -> ServerName<'static> {
         ServerName::try_from(name.to_owned()).expect("dns name")
+    }
+
+    /// A DNS name as long as [`IP_LITERAL`], to build a hello for and then
+    /// swap for it: rustls itself sends no SNI for an IP.
+    const NAME_FOR_IP: &str = "abcdef.com";
+
+    /// The IP literal [`as_ip_literal`] puts in place of [`NAME_FOR_IP`].
+    const IP_LITERAL: &str = "192.0.2.10";
+
+    /// `bytes`, holding a hello for [`NAME_FOR_IP`], with that name swapped
+    /// for [`IP_LITERAL`].
+    fn as_ip_literal(bytes: &mut [u8]) {
+        let at = bytes
+            .windows(NAME_FOR_IP.len())
+            .position(|window| window == NAME_FOR_IP.as_bytes())
+            .expect("the name is in the hello");
+        bytes[at..at + NAME_FOR_IP.len()].copy_from_slice(IP_LITERAL.as_bytes());
     }
 
     /// A TLS application-data record, standing in for whatever a client
@@ -367,25 +391,12 @@ mod tests {
 
     #[test]
     fn an_ip_literal_sent_as_the_server_name_and_the_alpn_offered_are_kept() {
-        // A hello for a DNS name as long as the IP, with the name swapped
-        // for the IP: rustls drops it, and `sni_ip_literal` finds it.
-        let mut config =
-            ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
-                .with_safe_default_protocol_versions()
-                .expect("protocol versions")
-                .with_root_certificates(RootCertStore::empty())
-                .with_no_client_auth();
-        config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
-        let mut conn = ClientConnection::new(Arc::new(config), dns("abcdef.com")).expect("client");
-        let mut hello = Vec::new();
-        while conn.wants_write() {
-            conn.write_tls(&mut hello).expect("write hello");
-        }
-        let at = hello
-            .windows(10)
-            .position(|window| window == b"abcdef.com")
-            .expect("the name is in the hello");
-        hello[at..at + 10].copy_from_slice(b"192.0.2.10");
+        // rustls drops the IP literal, and `sni_ip_literal` finds it.
+        let mut hello = client_hello_offering(
+            dns(NAME_FOR_IP),
+            &[b"h2".as_slice(), b"http/1.1".as_slice()],
+        );
+        as_ip_literal(&mut hello);
         // Bytes the client sent behind the hello, ending mid-record, do
         // not hide the name.
         hello.extend_from_slice(&APP_DATA_RECORD[..7]);
@@ -393,7 +404,7 @@ mod tests {
         assert_eq!(
             HelloParser::default().feed(&hello),
             ClientHello::NoServerName(UnnamedHello {
-                sni_ip: Some(std::net::IpAddr::from([192, 0, 2, 10])),
+                sni_ip: IP_LITERAL.parse().ok(),
                 alpn: vec![b"h2".to_vec(), b"http/1.1".to_vec()],
             })
         );
@@ -401,23 +412,16 @@ mod tests {
 
     #[test]
     fn a_hello_split_across_records_still_yields_its_ip_literal() {
-        let hello = client_hello(dns("abcdef.com"));
+        let hello = client_hello(dns(NAME_FOR_IP));
         let mut handshake = hello[5..].to_vec();
-        let at = handshake
-            .windows(10)
-            .position(|window| window == b"abcdef.com")
-            .expect("the name is in the hello");
-        handshake[at..at + 10].copy_from_slice(b"192.0.2.10");
+        as_ip_literal(&mut handshake);
         let mut records = Vec::new();
         for fragment in handshake.chunks(100) {
             records.extend_from_slice(&[HANDSHAKE_RECORD, 0x03, 0x01]);
             records.extend_from_slice(&u16::try_from(fragment.len()).unwrap().to_be_bytes());
             records.extend_from_slice(fragment);
         }
-        assert_eq!(
-            sni_ip_literal(&records),
-            Some(std::net::IpAddr::from([192, 0, 2, 10]))
-        );
+        assert_eq!(sni_ip_literal(&records), IP_LITERAL.parse().ok());
         assert_eq!(sni_ip_literal(&records[..records.len() / 2]), None);
     }
 
