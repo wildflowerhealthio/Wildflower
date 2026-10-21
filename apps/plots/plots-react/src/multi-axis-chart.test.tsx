@@ -7,6 +7,7 @@ import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
 import {
   Buckets,
+  ColourSlots,
   type LevelSeries,
   type PointSeries,
   Series,
@@ -102,7 +103,7 @@ const plotAreaOf = (container: HTMLElement): HTMLElement => {
 
 describe('MultiAxisChart axes', () => {
   test(
-    'draws a value axis per series in a unit of its own, labelled with ValueAxis.ticksFor and coloured as its line',
+    "draws each axis ValueAxis.assign returns, labelled with ValueAxis.ticksFor, in its one series' colour or neutral when shared",
     () => {
       fc.assert(
         fc.property(selectionArb(pointSeriesArb), (selected) => {
@@ -114,7 +115,6 @@ describe('MultiAxisChart axes', () => {
           expect(tickLabelGroups).toHaveLength(axes.length)
           expect(tickGroups).toHaveLength(axes.length)
 
-          const lineStrokes = markStrokes(container, 'line')
           axes.forEach((axis, position) => {
             const expectedLabels = ValueAxis.ticksFor(axis.domain).map((tick) =>
               formatAxisValue(tick, tickDecimals(axis))
@@ -124,11 +124,17 @@ describe('MultiAxisChart axes', () => {
             )
             expect(renderedLabels).toEqual(expectedLabels)
 
-            const token = seriesColors(position).mark
+            // Fresh colours follow selection order, so a series' slot is its position.
+            const token =
+              axis.sharedUnit === null
+                ? seriesColors(selected.indexOf(axis.series[0])).mark
+                : NEUTRAL_COLOUR
             expect(tickGroups[position].getAttribute('stroke')).toBe(token)
-            // Point series only: exactly one line mark per axis, in axis order.
-            expect(lineStrokes[position]).toBe(token)
           })
+          // Point series only: exactly one line mark per series, in selection order.
+          expect(markStrokes(container, 'line')).toEqual(
+            selected.map((_, position) => seriesColors(position).mark)
+          )
           cleanup()
         }),
         { numRuns: RENDER_RUNS }
@@ -673,6 +679,97 @@ describe('MultiAxisChart selection order', () => {
       'p:second (%)right axis',
     ])
   })
+})
+
+describe('MultiAxisChart shared axes, any selection', () => {
+  test(
+    'the legend and the readout list every series axis by axis, each keyed in its own colour',
+    () => {
+      fc.assert(
+        fc.property(
+          fc.oneof(selectionArb(pointSeriesArb), selectionArb(levelSeriesArb)),
+          (selected) => {
+            const axes = ValueAxis.assign(selected)
+            const listed = axes.flatMap((axis) =>
+              axis.series.map((series) => ({ series, side: axis.side }))
+            )
+            const { container } = renderChart(selected)
+            fireEvent.pointerMove(plotAreaOf(container), { clientX: 0 })
+
+            const legendEntries = [...container.querySelectorAll('ul[aria-label="Series"] > li')]
+            const rows = screen.getAllByTestId('crosshair-row')
+            expect(legendEntries).toHaveLength(selected.length)
+            expect(rows).toHaveLength(selected.length)
+            listed.forEach(({ series, side }, position) => {
+              // Fresh colours follow selection order, so a series' slot is its position.
+              const key = `background: ${seriesColors(selected.indexOf(series)).mark}`
+              expect(legendEntries[position].textContent).toContain(series.label)
+              expect(legendEntries[position].textContent).toContain(`${side} axis`)
+              expect(
+                legendEntries[position].querySelector('[aria-hidden]')?.getAttribute('style')
+              ).toContain(key)
+              expect(rows[position].textContent).toContain(series.label)
+              expect(
+                rows[position].querySelector('[aria-hidden]')?.getAttribute('style')
+              ).toContain(key)
+            })
+            cleanup()
+          }
+        ),
+        { numRuns: RENDER_RUNS }
+      )
+    },
+    RENDER_TIMEOUT
+  )
+
+  test(
+    'a bucketed series draws its envelope in its own band colour, inside the axis it shares',
+    () => {
+      fc.assert(
+        fc.property(
+          selectionArb(pointSeriesArb),
+          fc.integer({ min: 1, max: 12 }),
+          (selected, bucketCount) => {
+            const axes = ValueAxis.assign(selected)
+            const colours = ColourSlots.assign(
+              new Map(),
+              selected.map((series) => series.id)
+            )
+            const bucketsBySeriesId = Buckets.ofDenseSeries(selected, testWindow, bucketCount)
+            const options = chartOptions(axes, selected, [], testWindow, colours, bucketsBySeriesId)
+            if (options === null) throw new Error('a non-empty selection has a figure')
+            const container = document.createElement('div')
+            container.append(Plot.plot({ ...options, width: FALLBACK_WIDTH }))
+
+            const expectedFills = selected.flatMap((series, position) =>
+              bucketsBySeriesId.has(series.id) ||
+              (series.kind === 'points' &&
+                series.points.some((point) => point.low !== undefined && point.high !== undefined))
+                ? [seriesColors(position).band]
+                : []
+            )
+            expect(markFills(container, 'area')).toEqual(expectedFills)
+
+            for (const axis of axes) {
+              for (const series of axis.series) {
+                const buckets = bucketsBySeriesId.get(series.id)
+                if (buckets === undefined) continue
+                for (const vertex of bucketVertices(axis, buckets)) {
+                  for (const fraction of [vertex.min, vertex.mean, vertex.max]) {
+                    if (Number.isNaN(fraction)) continue
+                    expect(fraction).toBeGreaterThanOrEqual(0)
+                    expect(fraction).toBeLessThanOrEqual(1)
+                  }
+                }
+              }
+            }
+          }
+        ),
+        { numRuns: RENDER_RUNS }
+      )
+    },
+    RENDER_TIMEOUT
+  )
 })
 
 describe('MultiAxisChart empty state', () => {
