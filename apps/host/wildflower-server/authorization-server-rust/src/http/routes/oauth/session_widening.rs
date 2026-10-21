@@ -64,7 +64,8 @@ pub(super) enum SessionWideningStatusBody {
 /// notification. The widening asks for exactly what the session lacks of the
 /// request, and the request keeps waiting on the page as long as the widening
 /// waits for the Owner. It spends from the authorization start limit, as a
-/// request raised for the Owner does, before anything else is read.
+/// request raised for the Owner does, before anything else is read; a refusal
+/// is the limit's `429`.
 #[utoipa::path(
     post,
     tag = "OAuth 2.0",
@@ -72,8 +73,7 @@ pub(super) enum SessionWideningStatusBody {
     params(("id" = String, Path, description = "Authorization request id")),
     responses(
         (status = 200, description = "The widening filed for the Owner", body = AskedSessionWideningBody),
-        (status = 404, description = "No request with that id waits on this browser's limited page, or this browser's session lacks nothing it could be widened by", body = AuthorizationRequestNotFound),
-        (status = 429, description = "The authorization start limit refused the request")
+        (status = 404, description = "No request with that id waits on this browser's limited page, or this browser's session lacks nothing it could be widened by", body = AuthorizationRequestNotFound)
     )
 )]
 pub(super) async fn handle_session_widening_ask(

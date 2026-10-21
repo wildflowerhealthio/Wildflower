@@ -1,0 +1,39 @@
+/*
+ * The session widening's card: what asks, for which app, the scopes the Owner
+ * may untick, then Decline and Approve side by side. Token-driven, like the
+ * device-consent card it sits beside.
+ */
+
+.session-widening-card__intro {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-3);
+  line-height: var(--line-height-4);
+  color: var(--color-neutral-3);
+}
+
+.session-widening-card__name {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-4);
+  font-weight: var(--font-weight-3);
+  line-height: var(--line-height-3);
+  color: var(--color-neutral-1);
+}
+
+.session-widening-card__footnote {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-5);
+  text-align: center;
+}
+
+.session-widening-card__actions {
+  display: flex;
+  gap: var(--space-5);
+  margin-top: var(--space-3);
+}
+
+.session-widening-card__actions > button {
+  flex: 1 1 0;
+}

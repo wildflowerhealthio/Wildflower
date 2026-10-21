@@ -42,6 +42,7 @@ import {
   parsePendingAuthorization,
   redirectUriForRoute,
   SERVER_QUERY_PARAM,
+  type AuthorizationRequestExtras,
   type Session,
   type SignInEnvironment,
   type SignInError,
@@ -145,6 +146,15 @@ const PENDING_AUTHORIZATION_KEY = 'launcher-web.pending-authorization'
 const RETURN_TO_PARAM = 'returnTo'
 
 /**
+ * The landing's query parameter asking its sign-in to show the server's limited
+ * page again, as OpenID Connect's `prompt=consent`. Request access sets it (see
+ * `session/sign-in-again.ts`), so a browser whose session holds less than the
+ * launcher asks for can ask the Owner to widen it, even after it went on past
+ * that page before.
+ */
+const PROMPT_PARAM = 'prompt'
+
+/**
  * The outcome of a sign-in step that can fail with something worth showing the
  * reader. Both halves of the flow fail with a {@link SignInError}, and every
  * variant carries a `reason` written for a reader, so one shape renders them
@@ -188,11 +198,12 @@ const runStep = <A>(effect: Effect.Effect<A, SignInError>): Promise<SignInStep<A
 /**
  * Start a sign-in against `serverUrl`, yielding the authorization URL for the
  * caller to navigate to. `returnTo` (raw, from {@link returnToOnPage}) rides the
- * pending record and comes back as the redeemed session's `returnTo`. `launch`
- * is the {@link EhrLaunch}'s token when the sign-in is to the server the page
- * was launched against; without it the sign-in is a standalone launch. The
- * pending record is written before the URL comes back, so a caller cannot leave
- * on a flow whose verifier was never saved.
+ * pending record and comes back as the redeemed session's `returnTo`.
+ * `request.launch` is the {@link EhrLaunch}'s token when the sign-in is to the
+ * server the page was launched against; without it the sign-in is a standalone
+ * launch. `request.prompt` (from {@link promptOnPage}) asks the server to show
+ * its limited page again. The pending record is written before the URL comes
+ * back, so a caller cannot leave on a flow whose verifier was never saved.
  *
  * It discovers at `serverUrl`, the FHIR base for a Wildflower server and a
  * plain SMART server alike (`beginSignIn`).
@@ -201,8 +212,8 @@ const startSignIn = (
   serverUrl: string,
   returnTo: string | undefined,
   environment: SignInEnvironment,
-  launch?: string
-): Promise<SignInStep<string>> => runStep(beginSignIn(serverUrl, returnTo, environment, launch))
+  request: AuthorizationRequestExtras = {}
+): Promise<SignInStep<string>> => runStep(beginSignIn(serverUrl, returnTo, environment, request))
 
 /**
  * The SMART EHR launch this page load was opened with — by the base opening a
@@ -369,6 +380,14 @@ const returnToOnPage = (href: string): string | undefined => {
 }
 
 /**
+ * `consent` when the page at `href` carries `?prompt=consent` (see
+ * {@link PROMPT_PARAM}), for its sign-in to ask the server to show its limited
+ * page again; `undefined` for any other value or none.
+ */
+const promptOnPage = (href: string): 'consent' | undefined =>
+  new URL(href).searchParams.get(PROMPT_PARAM) === 'consent' ? 'consent' : undefined
+
+/**
  * The in-app URL to settle on after a redeemed sign-in: the (already sanitised)
  * `returnTo`, with no `?server=`.
  *
@@ -397,6 +416,8 @@ export {
   PENDING_AUTHORIZATION_KEY,
   postSignInUrl,
   POST_SIGN_IN_ROUTE,
+  PROMPT_PARAM,
+  promptOnPage,
   REGISTERED_REDIRECT_URI,
   RETURN_TO_PARAM,
   returnToOnPage,

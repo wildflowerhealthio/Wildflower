@@ -30,6 +30,7 @@ import {
   PENDING_AUTHORIZATION_KEY,
   postSignInUrl,
   REGISTERED_REDIRECT_URI,
+  promptOnPage,
   returnToOnPage,
   scheduleExpiry,
   serverKindForSession,
@@ -155,7 +156,9 @@ describe('startSignIn', () => {
     })
 
     // Act
-    const launched = await startSignIn(SERVER_URL, undefined, signInEnvironment(page), 'nonce-1')
+    const launched = await startSignIn(SERVER_URL, undefined, signInEnvironment(page), {
+      launch: 'nonce-1',
+    })
     const standalone = await startSignIn(SERVER_URL, undefined, signInEnvironment(page))
 
     // Assert
@@ -451,6 +454,15 @@ describe('scheduleExpiry', () => {
 
     vi.advanceTimersByTime(3600 * 1000 + 1)
     expect(isAuthed(readState(store))).toBe(true)
+  })
+})
+
+describe('promptOnPage', () => {
+  it('reads prompt=consent, and nothing else', () => {
+    // Act / Assert
+    expect(promptOnPage('https://launcher.wildflowerhealth.io/?prompt=consent')).toBe('consent')
+    expect(promptOnPage('https://launcher.wildflowerhealth.io/?prompt=login')).toBeUndefined()
+    expect(promptOnPage('https://launcher.wildflowerhealth.io/?server=x')).toBeUndefined()
   })
 })
 
