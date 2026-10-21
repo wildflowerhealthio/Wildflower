@@ -113,7 +113,7 @@ package, in an order that is load-bearing:
   `SmartAppPage` to its `AppRoot`, which hands it to `App`.
 - **The router is built only under `SmartHandshakeGate`.** The app root is
   the OAuth redirect target, so its URL carries `?code=…&state=…` until
-  fhirclient takes them out as the exchange completes. A router matches the
+  the handshake takes them out as the exchange completes. A router matches the
   URL and rewrites it (`/` redirects, below), so it must not exist while the
   exchange still reads that URL. The gate runs `useSmartHandshake`, shows
   the app's `connecting` element meanwhile, shows a failed exchange and
@@ -155,7 +155,7 @@ package, in an order that is load-bearing:
 - **`/` redirects.** The app's index route's `beforeLoad` throws
   `appRootRedirect(startRoute)`, which replaces `/` in history with the
   route the launch started on (below) when one is saved, else with
-  `startRoute`: `launchStartRoute(client)` (`/patients/<client.patient.id>`
+  `startRoute`: `launchStartRoute(client)` (`/patients/<client.launchPatientId>`
   for a launch with a patient, else `/patients`), or a tab of the app's own
   (the importer's `/import`). Both are router paths, which the router puts
   under its basepath, so the redirect never leaves the app. The callback
@@ -224,7 +224,7 @@ package, in an order that is load-bearing:
   the dialog.
 - **The case is latched on mount.** `SmartAppRoot` reads
   `shouldCompleteSmartLaunch()` and `arrivingSmartLaunchFrom` (or the
-  `launched` prop) and `launchErrorFrom()` once, in `useState` initializers. fhirclient's `oauth2.ready()` strips
+  `launched` prop) and `launchErrorFrom()` once, in `useState` initializers. `readySmartClient` strips
   `code`/`state` once the exchange completes, so re-reading the URL on a later
   render would flip a finished launch back to the connect menu under the
   authenticated app — and drop the failure banner a launch landed with.
@@ -303,12 +303,12 @@ package, in an order that is load-bearing:
   ever it), and an absent or empty `patient` is no choice yet
   (`decodePatientChoice` / `withPatientChoice` in `patient-choice.ts`).
 - **The URL wins over the launch.** `usePatientChoice` reads the URL once, on
-  mount; without a choice there it opens on the launch's `client.patient.id`
+  mount; without a choice there it opens on the launch's `client.launchPatientId`
   (an EHR launch from a patient's record), and with neither it has none and
   the page shows the picker. A reload keeps the reader's own pick.
 - **Nothing is written until the reader chooses**, and a write touches only
   `patient`: before the handshake completes the URL still carries the OAuth
-  `code` / `state` fhirclient reads, and an app's own query state (the health
+  `code` / `state` the handshake reads, and an app's own query state (the health
   viewer's selection) sits beside it. A choice is written with
   `history.replaceState`, never `pushState`.
 - **Changing the patient only reopens the picker.** The URL keeps the last

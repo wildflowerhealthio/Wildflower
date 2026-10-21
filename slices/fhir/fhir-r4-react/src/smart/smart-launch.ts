@@ -1,88 +1,178 @@
 import {
   arrivingSmartLaunchFrom,
-  endpointUrlFrom,
+  AuthorizationRejected,
+  beginSignIn,
+  browserSignInEnvironment,
+  completeSignIn,
+  createState,
+  PendingRequestUnusable,
+  searchWithoutAuthorizationResponse,
   SMART_LAUNCH_PARAMS,
   type ArrivingSmartLaunch,
+  type PendingStore,
+  type SignInEnvironment,
+  type SignInError,
 } from '@wildflowerhealthio/authorization-core/smart-client'
-import { Either } from 'effect'
-import type Client from 'fhirclient/lib/Client'
-import type { fhirclient } from 'fhirclient/lib/types'
+import { trimTrailingSlashes } from '@wildflowerhealthio/fhir-r4/clients'
+import { Effect, Either, Match, Option, Schema } from 'effect'
 
-/** The slice of fhirclient's `module.exports` this module actually uses. */
-interface FhirClientModule {
-  readonly oauth2: fhirclient.SMART
-}
+import { smartClientFor, type SmartClient } from './smart-client.ts'
 
 /**
- * Configuration for a SMART App Launch handshake. `iss` (the FHIR server base,
- * the "issuer") and the opaque `launch` token are normally read from the launch
- * URL by fhirclient; pass `iss` only for a standalone launch.
+ * Configuration for a SMART App Launch: the app's registered client, where the
+ * authorization server sends the browser back to, and the FHIR server
+ * (`iss`, the "issuer") to sign in to.
  */
 interface SmartLaunchConfig {
   readonly clientId: string
   readonly scope: string
-  readonly redirectUri?: string
-  readonly iss?: string
+  readonly redirectUri: string
+  /** The FHIR server base to sign in to: an EHR launch's `iss`, or a picked server. */
+  readonly iss: string
 }
 
 /**
- * fhirclient is a CommonJS (`export =`) package whose browser build is selected
- * via its `browser` field. Under this slice's `verbatimModuleSyntax` a static
- * default import of an `export =` module is disallowed, so we load it lazily
- * with a dynamic import (which also code-splits it out of the main chunk) and
- * read `.default` — the CommonJS `module.exports` object — off the namespace.
+ * The `sessionStorage` key `authorization-core`'s sign-in keeps its pending
+ * record at, for every SMART app on this package. `sessionStorage` is per tab,
+ * so it is one key for the one sign-in a tab can be in.
  */
-const loadFhir = async (): Promise<FhirClientModule> => (await import('fhirclient')).default
+const PENDING_AUTHORIZATION_KEY = 'fhir-r4-react.pending-authorization'
 
 /**
- * Begin the SMART App Launch. Sends the browser to the EHR's authorize
- * endpoint (discovered from `iss`'s `.well-known/smart-configuration`), so the
- * page usually navigates away once the returned promise resolves.
+ * The `sessionStorage` key the {@link PendingConnection} this tab started
+ * lives at until the redirect target completes it.
+ */
+const PENDING_CONNECTION_KEY = 'fhir-r4-react.pending-connection'
+
+/**
+ * A SMART sign-in in progress: the registration its return leg redeems the
+ * code as. `authorization-core` keeps the rest (the PKCE verifier, the `state`,
+ * the token endpoint) in its own pending record.
+ */
+const PendingSignIn = Schema.TaggedStruct('PendingSignIn', {
+  clientId: Schema.String,
+  scope: Schema.String,
+  redirectUri: Schema.String,
+})
+type PendingSignIn = Schema.Schema.Type<typeof PendingSignIn>
+
+/**
+ * A connection to an open server in progress: the server, and the `state`
+ * the redirect target must come back with.
+ */
+const PendingOpenServer = Schema.TaggedStruct('PendingOpenServer', {
+  state: Schema.String,
+  serverUrl: Schema.String,
+})
+type PendingOpenServer = Schema.Schema.Type<typeof PendingOpenServer>
+
+/**
+ * What the redirect target needs to finish the connection this tab started,
+ * carried across the redirect in `sessionStorage`. It holds no credential.
+ */
+const PendingConnection = Schema.Union(PendingSignIn, PendingOpenServer)
+type PendingConnection = Schema.Schema.Type<typeof PendingConnection>
+
+const PendingConnectionJson = Schema.parseJson(PendingConnection)
+const encodePendingConnection = Schema.encodeSync(PendingConnectionJson)
+const decodePendingConnection = Schema.decodeUnknownOption(PendingConnectionJson)
+
+/** The sign-in environment for `pendingSignIn`'s registration, wired to this page. */
+const signInEnvironmentFor = (pendingSignIn: PendingSignIn): SignInEnvironment =>
+  browserSignInEnvironment(window, {
+    clientId: pendingSignIn.clientId,
+    pendingKey: PENDING_AUTHORIZATION_KEY,
+    scope: pendingSignIn.scope,
+    redirectUri: pendingSignIn.redirectUri,
+  })
+
+/** Keep `pendingConnection` for the redirect target, before the page leaves. */
+const rememberPendingConnection = (
+  pendingConnection: PendingConnection
+): Effect.Effect<void, PendingRequestUnusable> =>
+  Effect.try({
+    try: () =>
+      window.sessionStorage.setItem(
+        PENDING_CONNECTION_KEY,
+        encodePendingConnection(pendingConnection)
+      ),
+    catch: () =>
+      new PendingRequestUnusable({
+        reason:
+          'This browser would not let the page remember the connection ' +
+          '(session storage is blocked), so it cannot be completed.',
+      }),
+  })
+
+/**
+ * Take the {@link PendingConnection} out of `store`: it is single-use, so it
+ * is dropped as it is read. A storage that refuses to be read is treated as an
+ * empty one, as `authorization-core`'s `completeSignIn` treats its own record:
+ * either way there is no connection to complete.
+ */
+const takePendingConnection = (store: PendingStore): Option.Option<PendingConnection> => {
+  try {
+    const stored = store.getItem(PENDING_CONNECTION_KEY)
+    store.removeItem(PENDING_CONNECTION_KEY)
+    return stored === null ? Option.none() : decodePendingConnection(stored)
+  } catch {
+    return Option.none()
+  }
+}
+
+/**
+ * Run a connection step at the page's Promise boundary: its value, or a
+ * rejection with an `Error` whose message is the failure's reader-facing
+ * `reason`, the tagged failure as its `cause`.
+ */
+const runConnectionStep = async <A>(step: Effect.Effect<A, SignInError>): Promise<A> =>
+  Either.getOrThrowWith(
+    await Effect.runPromise(Effect.either(step)),
+    (failure) => new Error(failure.reason, { cause: failure })
+  )
+
+/**
+ * Begin the SMART App Launch against `config.iss`: discover its endpoints, keep
+ * what the redirect target needs, and send the browser to the authorization
+ * endpoint. `launch` is the EHR's launch token for an EHR launch, and
+ * `undefined` for a standalone launch.
  *
  * @remarks
- * fhirclient builds the authorize URL from whatever endpoint the server
- * advertises and checks only that one is named. So it is asked for the URL
- * (`noRedirect`), with its launch state already stored, and this function
- * makes the navigation itself, after `endpointUrlFrom` accepts the URL for
- * this page (`pageIsSecure` read from `window.location` at the call). A
- * `javascript:` URL, one carrying userinfo or a fragment, and plain http off
- * loopback from an https page are each refused: the promise rejects naming
- * the reason, and the page stays where it is.
- *
- * The check is on the URL fhirclient navigates to, not on a configuration
- * fetched beforehand, because fhirclient fetches the configuration again
- * itself. When the server names no authorize endpoint, fhirclient's URL is
- * the app's own redirect target, and it goes through the same check.
+ * `authorization-core`'s `beginSignIn` discovers the endpoints from
+ * `{iss}/.well-known/smart-configuration` and accepts the authorization
+ * endpoint only when `endpointUrlFrom` does for this page: a `javascript:`
+ * URL, one carrying userinfo or a fragment, and plain http off loopback from an
+ * https page are each refused. Then the promise rejects with discovery's
+ * reason and the page stays where it is.
  */
-const authorizeSmartLaunch = async (config: SmartLaunchConfig): Promise<void> => {
-  const FHIR = await loadFhir()
-  const authorizeUrl = await FHIR.oauth2.authorize({
-    clientId: config.clientId,
-    scope: config.scope,
-    ...(config.redirectUri === undefined ? {} : { redirectUri: config.redirectUri }),
-    ...(config.iss === undefined ? {} : { iss: config.iss }),
-    noRedirect: true,
-  })
-  if (typeof authorizeUrl !== 'string') {
-    throw new Error('fhirclient returned no authorize URL to navigate to.')
-  }
-  const usableAuthorizeUrl = endpointUrlFrom(authorizeUrl, {
-    pageIsSecure: window.location.protocol === 'https:',
-  })
-  if (Either.isLeft(usableAuthorizeUrl)) {
-    throw new Error(
-      `The server’s authorization endpoint is not one this app will go to. ${usableAuthorizeUrl.left.reason}`
-    )
-  }
-  window.location.assign(usableAuthorizeUrl.right)
-}
+const authorizeSmartLaunch = (
+  config: SmartLaunchConfig,
+  launch: string | undefined
+): Promise<void> =>
+  runConnectionStep(
+    Effect.gen(function* () {
+      const pendingSignIn = PendingSignIn.make({
+        clientId: config.clientId,
+        scope: config.scope,
+        redirectUri: config.redirectUri,
+      })
+      const authorizeUrl = yield* beginSignIn(
+        trimTrailingSlashes(config.iss),
+        undefined,
+        signInEnvironmentFor(pendingSignIn),
+        launch
+      )
+      yield* rememberPendingConnection(pendingSignIn)
+      window.location.assign(authorizeUrl)
+    })
+  )
 
 /**
  * Configuration for connecting to an **open** FHIR server — one whose
  * `.well-known/smart-configuration` names no authorization endpoint (or serves
- * no config at all). There is no OAuth handshake: fhirclient redirects straight
- * to the redirect target, which `readySmartClient` then completes into a client
- * with `state.serverUrl` set and no `tokenResponse.access_token`.
+ * no config at all). There is no OAuth handshake: the page goes straight to
+ * the redirect target, which `readySmartClient` completes into a client with
+ * no access token.
  */
 interface OpenServerConfig {
   /** The FHIR server base to connect to, used with no `Authorization` header. */
@@ -91,28 +181,108 @@ interface OpenServerConfig {
 }
 
 /**
- * Begin an open-server connection. `oauth2.authorize({ fhirServiceUrl })` skips
- * discovery and the code/token exchange entirely and redirects straight to
- * `redirectUri`, so the returned promise usually never resolves because the
- * page navigates away. fhirclient navigates itself here: the URL is the app's
- * own redirect target, not one a server advertised.
+ * Begin an open-server connection: keep the server for the redirect target
+ * and send the browser straight there, carrying a fresh `state`, so the page
+ * usually navigates away. The URL is the app's own redirect target, not one a
+ * server advertised.
  */
-const authorizeOpenServer = async (config: OpenServerConfig): Promise<void> => {
-  const FHIR = await loadFhir()
-  await FHIR.oauth2.authorize({
-    fhirServiceUrl: config.fhirServiceUrl,
-    redirectUri: config.redirectUri,
-  })
+const authorizeOpenServer = (config: OpenServerConfig): Promise<void> =>
+  runConnectionStep(
+    Effect.gen(function* () {
+      const state = createState(window.crypto)
+      yield* rememberPendingConnection(
+        PendingOpenServer.make({ state, serverUrl: trimTrailingSlashes(config.fhirServiceUrl) })
+      )
+      const redirectTarget = new URL(config.redirectUri)
+      redirectTarget.searchParams.set('state', state)
+      window.location.assign(redirectTarget.href)
+    })
+  )
+
+/** Redeem the code `search` carries for the sign-in `pendingSignIn` started. */
+const redeemSignIn = (
+  search: string,
+  pendingSignIn: PendingSignIn
+): Effect.Effect<SmartClient, SignInError> => {
+  const environment = signInEnvironmentFor(pendingSignIn)
+  return completeSignIn(search, environment).pipe(
+    Effect.flatMap(
+      Option.match({
+        onNone: () =>
+          Effect.fail(
+            new AuthorizationRejected({
+              reason:
+                'The authorization server sent this page back without an authorization code. ' +
+                'Connect again.',
+            })
+          ),
+        onSome: (session) => Effect.succeed(smartClientFor(session, environment.fetch)),
+      })
+    )
+  )
+}
+
+/** The open server `pendingOpenServer` names, once `search` comes back with its `state`. */
+const connectOpenServer = (
+  search: string,
+  pendingOpenServer: PendingOpenServer
+): Effect.Effect<SmartClient, AuthorizationRejected> =>
+  new URLSearchParams(search).get('state') === pendingOpenServer.state
+    ? Effect.succeed(
+        smartClientFor(
+          { serverUrl: pendingOpenServer.serverUrl, accessToken: undefined, patient: undefined },
+          (...request) => window.fetch(...request)
+        )
+      )
+    : Effect.fail(
+        new AuthorizationRejected({
+          reason: 'The connection came back with the wrong state parameter, so it was discarded.',
+        })
+      )
+
+/**
+ * Take the authorization response out of the address bar, keeping the rest of
+ * the URL and the history entry's state (a router's history tags it).
+ */
+const scrubAuthorizationResponse = (): void => {
+  const { pathname, search, hash } = window.location
+  window.history.replaceState(
+    window.history.state,
+    '',
+    `${pathname}${searchWithoutAuthorizationResponse(search)}${hash}`
+  )
 }
 
 /**
- * Complete the SMART handshake on the redirect page: exchanges the auth code
- * for tokens and resolves to a ready {@link Client}.
+ * Complete the connection on the redirect target: redeem the code a SMART
+ * sign-in came back with, or accept an open server's return, and resolve to a
+ * ready {@link SmartClient}.
+ *
+ * @remarks
+ * The pending connection is single-use: it is taken before the code is
+ * redeemed, so a second completion (a reload, a remount) finds nothing to
+ * complete and rejects, as a page with no connection in progress does. The
+ * callback's `code` and `state` leave the address bar once the connection
+ * settles, whichever way.
  */
-const readySmartClient = async (): Promise<Client> => {
-  const FHIR = await loadFhir()
-  return FHIR.oauth2.ready()
-}
+const readySmartClient = (): Promise<SmartClient> =>
+  runConnectionStep(
+    Effect.gen(function* () {
+      const { search } = window.location
+      const pendingConnection = takePendingConnection(window.sessionStorage)
+      if (Option.isNone(pendingConnection)) {
+        return yield* new AuthorizationRejected({
+          reason: 'This page has no connection in progress to complete. Connect again.',
+        })
+      }
+      return yield* Match.value(pendingConnection.value).pipe(
+        Match.tagsExhaustive({
+          PendingSignIn: (pendingSignIn) => redeemSignIn(search, pendingSignIn),
+          PendingOpenServer: (pendingOpenServer) => connectOpenServer(search, pendingOpenServer),
+        })
+      )
+    }).pipe(Effect.ensuring(Effect.sync(scrubAuthorizationResponse)))
+  )
 
 /**
  * Whether `search` is a SMART/OAuth redirect the app should complete with
@@ -185,6 +355,7 @@ export {
   arrivingSmartLaunchFrom,
   authorizeOpenServer,
   authorizeSmartLaunch,
+  PENDING_CONNECTION_KEY,
   readySmartClient,
   shouldCompleteSmartLaunch,
   /** Re-exported with `arrivingSmartLaunchFrom`: the parameters it reads a launch from. */

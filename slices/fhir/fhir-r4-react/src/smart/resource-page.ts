@@ -1,6 +1,7 @@
 import { Data, Effect, Either, Array as Arr, Schema, Schedule } from 'effect'
 import type { ParseError } from 'effect/ParseResult'
-import type Client from 'fhirclient/lib/Client'
+
+import type { FhirRequestError, SmartClient } from './smart-client.ts'
 
 /**
  * The page size a reader pins with `_count`, instead of a server's default
@@ -23,23 +24,9 @@ const DROPPED_REQUEST_RETRY_SCHEDULE = Schedule.exponential('250 millis').pipe(
   Schedule.intersect(Schedule.recurs(3))
 )
 
-/**
- * Whether `client.request` rejected because no HTTP response arrived at all,
- * rather than with an HTTP error.
- *
- * @remarks
- * fhirclient's `request` is `fetch(...).then(checkResponse)`: any response that
- * is not `ok` rejects with its `HttpError` (an `Error` carrying the `status`),
- * while `fetch` itself rejects with a `TypeError` when the request never got a
- * response — a CORS or Local Network Access block, a dropped connection, a
- * server that is down. An aborted request rejects with a `DOMException` named
- * `AbortError`, which is not a `TypeError` and so is not a dropped request:
- * whoever aborted it does not want it reissued.
- */
-const isDroppedRequest = (cause: unknown): boolean => cause instanceof TypeError
-
+/** A page's request failed: an HTTP error, or a request the network dropped. */
 class ResourcePageRequestError extends Data.TaggedError('ResourcePageRequestError')<{
-  readonly cause: unknown
+  readonly cause: FhirRequestError
 }> {}
 
 /**
@@ -137,14 +124,14 @@ interface PagedResourceRead<A, I, First> {
  *
  * @remarks
  * A `{ pageUrl }` cursor is passed to the client verbatim — the server's own
- * `next` link already carries scope, sort and paging state. fhirclient's default
- * `pageLimit: 1` means each call returns exactly one bundle page.
+ * `next` link already carries scope, sort and paging state — and each call
+ * reads exactly one bundle page.
  *
  * A request the network dropped — no HTTP response arrived, as when a browser's
  * CORS or Local Network Access check fails it — is reissued with exponential
  * backoff ({@link DROPPED_REQUEST_RETRY_SCHEDULE}); the search is a GET, so
- * reissuing it is safe. An HTTP error (401, 403, 404, 5xx, …) and an aborted
- * request are not retried.
+ * reissuing it is safe. An HTTP error (401, 403, 404, 5xx, …) and a body that
+ * is not JSON are not retried.
  *
  * Both the request itself and the bundle decode surface failures through the
  * error channel: an HTTP error, or a dropped request still failing after its
@@ -155,7 +142,7 @@ interface PagedResourceRead<A, I, First> {
  * partial results without losing the page.
  */
 const fetchResourcePage = <A, I, First>(
-  client: Client,
+  client: SmartClient,
   read: PagedResourceRead<A, I, First>,
   cursor: ResourcePageCursor<First>
 ): Effect.Effect<ResourcePage<A>, ResourcePageRequestError | BundleDecodeError> =>
@@ -165,13 +152,11 @@ const fetchResourcePage = <A, I, First>(
         ? cursor.pageUrl
         : `${read.resourceType}?${read.firstPageQuery(cursor.first)}`
 
-    const bundle = yield* Effect.tryPromise({
-      try: () => client.request<unknown>(query),
-      catch: (cause) => new ResourcePageRequestError({ cause }),
-    }).pipe(
+    const bundle = yield* client.request(query).pipe(
+      Effect.mapError((cause) => new ResourcePageRequestError({ cause })),
       Effect.retry({
         schedule: DROPPED_REQUEST_RETRY_SCHEDULE,
-        while: (error) => isDroppedRequest(error.cause),
+        while: (error) => error.cause._tag === 'FhirRequestDropped',
       })
     )
 

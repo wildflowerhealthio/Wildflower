@@ -1,7 +1,6 @@
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import { MedicationRequest } from '@wildflowerhealthio/fhir-r4/resources'
 import type { Effect, Schema } from 'effect'
-import type Client from 'fhirclient/lib/Client'
 
 import {
   RESOURCE_PAGE_SIZE,
@@ -11,6 +10,7 @@ import {
   type PagedResourceRead,
   type ResourcePage,
 } from './resource-page.ts'
+import type { SmartClient } from './smart-client.ts'
 
 /**
  * The schema every `MedicationRequest` entry decodes through: the R4 resource
@@ -75,7 +75,7 @@ const medicationRequestRead: PagedResourceRead<
  * which is what lets a caller append them without reordering earlier rows.
  */
 const fetchMedicationRequestPage = (
-  client: Client,
+  client: SmartClient,
   cursor: MedicationRequestCursor
 ): Effect.Effect<MedicationRequestPage, ResourcePageRequestError | BundleDecodeError> =>
   fetchResourcePage(

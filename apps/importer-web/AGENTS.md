@@ -308,7 +308,7 @@ workspace `source` condition at bundle time.
   query's results survive a switch and back, and the Anonymize tab reaches a
   download from a picked HAR with **zero writes** on the wire.
 - `app-root-routing.test.tsx` — the real root, app and router over the address
-  bar, with fhirclient's token exchange stubbed: the callback URL is left alone
+  bar, with `authorization-core`'s token exchange stubbed: the callback URL is left alone
   until the exchange completes, then the page opens on `/import`.
 
 ## References
