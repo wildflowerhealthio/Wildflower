@@ -8,10 +8,11 @@ import {
   type Grant,
 } from '@wildflowerhealthio/authorization-react'
 import { PageHeader } from '@wildflowerhealthio/react-tundraish'
-import { Match } from 'effect'
+import { Match, Option } from 'effect'
 import type { JSX } from 'react'
 
 import type { RouterContext } from './router-context.ts'
+import { SessionLifetimeSection } from './session-lifetime.tsx'
 import styles from './grant-detail.module.css'
 
 /** One labeled read-only line in the grant detail. */
@@ -73,7 +74,10 @@ const GrantDetailBody = ({
   )
 }
 
-/** The grant detail over the grant its loader warmed. */
+/**
+ * The grant detail over the grant its loader warmed, with its client's
+ * "Session lifetime" once the trusted apps have loaded.
+ */
 const GrantDetail = ({ id }: { readonly id: string }): JSX.Element => {
   const { data: grant } = useGrantQuery(id)
   const runAuthed = useRouteContext({
@@ -81,7 +85,16 @@ const GrantDetail = ({ id }: { readonly id: string }): JSX.Element => {
     select: (context: RouterContext) => context.runAuthed,
   })
   const { data: clients } = useQuery(clientsQueryOptions(runAuthed))
-  return <GrantDetailBody grant={grant} clientName={Client.displayName(clients, grant.clientId)} />
+  const client = Option.fromNullable(clients?.find(({ clientId }) => clientId === grant.clientId))
+  return (
+    <>
+      <GrantDetailBody grant={grant} clientName={Client.displayName(clients, grant.clientId)} />
+      {client.pipe(
+        Option.map((loaded) => <SessionLifetimeSection key={loaded.clientId} client={loaded} />),
+        Option.getOrNull
+      )}
+    </>
+  )
 }
 
 export { GrantDetail, GrantDetailBody }

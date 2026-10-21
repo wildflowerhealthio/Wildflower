@@ -364,6 +364,49 @@ describe('the access page', () => {
     expect(screen.getByText(medicationsGrant.redirectUri)).toBeTruthy()
     expect(router.state.location.search).toEqual({ iss: SERVER_URL })
   })
+
+  it('changes the grant’s app’s session lifetime from its detail', async () => {
+    // Arrange
+    const server = stubServer()
+    mountAccessPages(server)
+    const approvedApps = await sectionTitled('Approved Apps')
+    fireEvent.click(await within(approvedApps).findByText(medicationsClient.name))
+    const sessionLifetime = await sectionTitled('Session lifetime')
+    expect(
+      within(sessionLifetime).getByText(/These limits belong to the app, so they cover every/)
+    ).toBeTruthy()
+    const save = within(sessionLifetime).getByRole('button', { name: 'Save' })
+    expect(save).toHaveProperty('disabled', true)
+
+    // Act
+    fireEvent.change(within(sessionLifetime).getByLabelText('Sign out after unused for'), {
+      target: { value: '1800' },
+    })
+    fireEvent.click(
+      within(sessionLifetime).getByLabelText(
+        'Sign out when the browser session that signed it in ends'
+      )
+    )
+    fireEvent.click(save)
+
+    // Assert — one PATCH of the client's whole refresh policy.
+    await waitFor(() => {
+      expect(server.writes()).toEqual([
+        {
+          method: 'PATCH',
+          url: `https://ruth.wildflowerhealth.io/authorization/clients/${medicationsClient.clientId}`,
+          authorization: 'Bearer tok_owner',
+          body: {
+            refreshPolicy: {
+              idleTtlSeconds: 1800,
+              maxTtlSeconds: 2592000,
+              endsWithBrowserSession: true,
+            },
+          },
+        },
+      ])
+    })
+  })
 })
 
 // Helpers
@@ -452,6 +495,7 @@ const medicationsClient = {
   registeredAt: '2026-01-15T09:30:00.000Z',
   disabledAt: null,
   essential: false,
+  refreshPolicy: { idleTtlSeconds: 604800, maxTtlSeconds: 2592000, endsWithBrowserSession: false },
 } as const
 
 const hostClient = {
