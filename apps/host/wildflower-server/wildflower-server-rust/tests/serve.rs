@@ -1190,7 +1190,10 @@ impl UiServer {
             .expect("sign-in URL");
         sign_in_url
             .query_pairs_mut()
-            .append_pair("code", &self.handles.same_device_sign_in_code_minter.mint())
+            .append_pair(
+                "code",
+                self.handles.same_device_sign_in_code_minter.mint().as_str(),
+            )
             .append_pair("next", "/ui");
         let signed_in = self.tunnel.send(get(&path_of(sign_in_url.as_str()))).await;
         assert_eq!(signed_in.status, StatusCode::SEE_OTHER);

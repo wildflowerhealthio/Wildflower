@@ -48,6 +48,7 @@ use wildflowerhealthio_scopes::{
 use wildflowerhealthio_token_revocation::RevocationStore;
 
 use crate::domain::browser_session::LONGEST_BROWSER_SESSION_TTL;
+use crate::domain::capabilities::oauth::SameDeviceSessionEnder;
 use crate::domain::last_seen_throttle::LastSeenThrottle;
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
 use crate::domain::sign_in_redirect::SignInDestinations;
@@ -81,7 +82,8 @@ pub use http::{
     BROWSER_SESSION_HEADER_VALUE, SESSION_HEADER,
 };
 pub use live_bindings::{
-    InProcessTokenVerifier, LaunchContextMinter, PendingConsentWatcher, SameDeviceSignInCodeMinter,
+    InProcessTokenVerifier, LaunchContextMinter, PendingConsentWatcher, SameDeviceSignInCode,
+    SameDeviceSignInCodeMinter,
 };
 // The host's say over how fast authorization requests are started (see
 // `setup_authorization_server`).
@@ -201,7 +203,8 @@ pub struct AuthorizationServer {
     /// app's launch URL.
     pub launch_context_minter: LaunchContextMinter,
     /// Mints the one-time codes `/oauth/sign-in` signs the Owner's own browser
-    /// in with: for the host, in-process.
+    /// in with: for the host, in-process. Each code also ends the session it
+    /// signs in, for the host to call when the launch's view closes.
     pub same_device_sign_in_code_minter: SameDeviceSignInCodeMinter,
     /// Waits for a pending consent to be decided or expire: for the host,
     /// in-process, which closes the page it opened the request at.
@@ -226,6 +229,8 @@ pub struct AuthorizationServer {
 ///    Seeding at boot means a request that was pending
 ///    across an app restart is still reported (the row survived in SQLite, the
 ///    in-memory `watch` value didn't);
+///  - ends every same-device session an earlier run signed in, by expiring
+///    it; paired sessions stand;
 ///  - returns a `Router` whose routes are at `/.well-known/jwks.json`,
 ///    `/oauth/*`, and `/authorization/*` (authenticated bearer JWT + per-resource
 ///    scope gates via the `Scoped<…>` extractors) — the
@@ -236,7 +241,8 @@ pub struct AuthorizationServer {
 ///    SMART App Launch `launch` value through, which `/oauth/authorize` then
 ///    consumes;
 ///  - returns the [`SameDeviceSignInCodeMinter`] the host mints each
-///    same-device sign-in code through, which `/oauth/sign-in` then redeems;
+///    same-device sign-in code through, which `/oauth/sign-in` then redeems,
+///    and which ends the session it signed in when the host asks;
 ///  - returns the [`PendingConsentWatcher`] the host waits on for a pending
 ///    consent it opened to be decided or expire;
 ///  - returns the [`InProcessTokenVerifier`] the host's FHIR server verifies
@@ -259,7 +265,8 @@ pub struct AuthorizationServer {
 ///
 /// # Errors
 ///
-/// Returns an error if opening and seeding the store fails.
+/// Returns an error if opening and seeding the store fails, or ending the
+/// earlier runs' same-device sessions does.
 pub fn setup_authorization_server(
     pool: DieselPool,
     revocation_store: RevocationStore,
@@ -276,6 +283,7 @@ pub fn setup_authorization_server(
     let server_origin: Arc<str> =
         wildflowerhealthio_shared_structures::origin_string(&config.server_origin).into();
     let same_device_sign_in_codes = Arc::new(SameDeviceSignInCodes::new());
+    end_earlier_same_device_sessions(&store, &same_device_sign_in_codes)?;
     let (pending_consents_recomputed_tx, pending_consents_recomputed_rx) = watch::channel(());
     let state = Arc::new(AuthorizationServerState {
         store: store.clone(),
@@ -312,7 +320,7 @@ pub fn setup_authorization_server(
     let launch_context_minter = LaunchContextMinter::new(state.store.clone());
     let in_process_token_verifier = InProcessTokenVerifier::new(&state);
     let same_device_sign_in_code_minter =
-        SameDeviceSignInCodeMinter::new(same_device_sign_in_codes);
+        SameDeviceSignInCodeMinter::new(same_device_sign_in_codes, state.store.clone());
     let pending_consent_watcher =
         PendingConsentWatcher::new(state.store.clone(), pending_consents_recomputed_rx);
     Ok(AuthorizationServer {
@@ -323,6 +331,28 @@ pub fn setup_authorization_server(
         pending_consent_watcher,
         in_process_token_verifier,
     })
+}
+
+/// End every same-device session an earlier run of the server signed in, by
+/// expiring it: a run remembers which session each of its sign-in codes
+/// started only in memory, so the host could no longer end those when their
+/// views close. A browser left signed in as the Owner is sent through sign-in
+/// again; the host's next launch signs it in. Paired sessions stand.
+///
+/// # Errors
+///
+/// [`AuthorizationServerError::Infrastructure`](domain::authorization_server_error::AuthorizationServerError::Infrastructure)
+/// when the sessions can't be expired.
+fn end_earlier_same_device_sessions(
+    store: &SqliteGrantStore,
+    same_device_sign_in_codes: &Arc<SameDeviceSignInCodes>,
+) -> anyhow::Result<()> {
+    let ended = SameDeviceSessionEnder::new(store.clone(), same_device_sign_in_codes.clone())
+        .end_every_session(Utc::now())?;
+    if ended > 0 {
+        tracing::info!(ended, "ended the same-device sessions of earlier runs");
+    }
+    Ok(())
 }
 
 /// Spawn the background sweep that purges expired rows from the revocation

@@ -29,7 +29,9 @@ pub struct AccessTokenVerifyOptions<'a> {
 /// from its revocation checks.
 #[derive(Debug, thiserror::Error)]
 pub enum AccessTokenVerifyError {
-    /// Token did not pass cryptographic or claim validation; surface as 401.
+    /// Token did not pass cryptographic or claim validation, or it is a
+    /// browser session's own token and the session has expired; surface as
+    /// 401.
     #[error("token rejected")]
     TokenRejected,
     /// No signing keys are configured — operator misconfiguration, surface as 500.

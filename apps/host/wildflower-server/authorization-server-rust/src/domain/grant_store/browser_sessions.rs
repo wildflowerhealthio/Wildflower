@@ -4,7 +4,7 @@
 use chrono::{DateTime, Utc};
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::browser_session::BrowserSession;
+use crate::domain::browser_session::{BrowserSession, BrowserSessionKind};
 
 /// The browser sessions the server has signed in. Every method is one primitive on the caller's
 /// [`GrantStore`](super::GrantStore) scope: a single statement, or a few
@@ -65,6 +65,32 @@ pub trait BrowserSessionsTx {
         sid: &str,
         now: DateTime<Utc>,
     ) -> Result<bool, AuthorizationServerError>;
+
+    /// Expire the browser session `sid` at `now`: its `expires_at` moves to
+    /// `now`, unless it is already at or before `now`, returning `true` iff it
+    /// moved. The row is kept, and isn't revoked.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the update fails.
+    fn expire_browser_session(
+        &mut self,
+        sid: &str,
+        now: DateTime<Utc>,
+    ) -> Result<bool, AuthorizationServerError>;
+
+    /// Expire, at `now`, every browser session of `kind` expiring after `now`,
+    /// as [`expire_browser_session`](Self::expire_browser_session) does one,
+    /// returning how many moved.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the update fails.
+    fn expire_browser_sessions_of_kind(
+        &mut self,
+        kind: BrowserSessionKind,
+        now: DateTime<Utc>,
+    ) -> Result<usize, AuthorizationServerError>;
 
     /// Move the browser session `sid`'s `last_seen_at` to `seen_at`, unless
     /// it was last seen after `seen_before`, returning `true` iff it

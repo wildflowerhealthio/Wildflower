@@ -16,7 +16,8 @@
 //!   [`crate::setup_authorization_server`] hands out: the
 //!   [`LaunchContextMinter`] (the launchers outside the authorization server
 //!   mint launches through it), the [`SameDeviceSignInCodeMinter`] (the host
-//!   mints `/oauth/sign-in` codes through it) and the
+//!   mints `/oauth/sign-in` codes through it, each a [`SameDeviceSignInCode`]
+//!   that ends the session it signs in) and the
 //!   [`PendingConsentWatcher`] (the host waits on a consent through it).
 //! - `session` binds the token verifier both authN gates run (and its
 //!   in-process face, the [`InProcessTokenVerifier`] the host's FHIR server
@@ -39,7 +40,9 @@ pub(crate) use access::{
     LiveConsentDecider, LiveConsentRaiser, LiveConsentReader, LiveGrantsReader, LiveGrantsRevoker,
     LiveTokenRevoker,
 };
-pub use oauth::{LaunchContextMinter, PendingConsentWatcher, SameDeviceSignInCodeMinter};
+pub use oauth::{
+    LaunchContextMinter, PendingConsentWatcher, SameDeviceSignInCode, SameDeviceSignInCodeMinter,
+};
 pub(crate) use oauth::{
     LiveAuthorizationStatusReader, LiveBrowserPairing, LiveClientAuthenticator,
     LiveClientTokenRevoker, LiveCodeAuthorizationStarter, LiveDeviceAuthorizer,
