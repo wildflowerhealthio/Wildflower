@@ -869,6 +869,14 @@ jobs:
             ls -laR "$OUTPUTS/bundle" 2>&1 || echo "  (directory does not exist)"
             exit 1
           fi
+          # The native symbol table the release build type asks for, which
+          # Play symbolicates native crashes and ANRs with. Gradle leaves it
+          # out, without failing, when it cannot find the NDK. grep reads to
+          # the end, unlike -q, so unzip takes no SIGPIPE under pipefail.
+          if ! unzip -l "${bundles[0]}" | grep 'BUNDLE-METADATA/com.android.tools.build.debugsymbols/' > /dev/null; then
+            echo "::error::${bundles[0]} carries no native debug symbols; Gradle did not find the NDK at NDK_HOME."
+            exit 1
+          fi
           asset="$RUNNER_TEMP/wildflower-host-${{ needs.prepare.outputs.version }}.aab"
           cp "${bundles[0]}" "$asset"
           echo "path=$asset" >> "$GITHUB_OUTPUT"
