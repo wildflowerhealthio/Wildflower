@@ -91,17 +91,15 @@ const labelWithUnit = (series: Series.ValueSeries): string =>
 
 /**
  * What an axis is labelled: its one series' {@link labelWithUnit}, or, for an
- * axis several series share, their unit alone (`mm[Hg]`).
+ * axis several series share, their `sharedUnit` alone (`mm[Hg]`).
  *
  * @remarks
  * A shared axis is labelled by what its series have in common, not by their
  * names joined: two names and a unit outrun the frame's height, and the
  * legend already says which side each series is read on.
  */
-const axisLabel = (axis: ValueAxis.ValueAxis): string => {
-  const [first, ...others] = axis.series
-  return others.length === 0 || first.unit === null ? labelWithUnit(first) : first.unit
-}
+const axisLabel = (axis: ValueAxis.ValueAxis): string =>
+  axis.sharedUnit ?? labelWithUnit(axis.series[0])
 
 export {
   axisLabel,

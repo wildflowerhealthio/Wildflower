@@ -148,13 +148,17 @@ describe('ValueAxis.assign', () => {
     )
   })
 
-  test('a shared axis holds one non-null unit, one kind of scale, and values of a similar magnitude', () => {
+  test('a shared axis names its one non-null unit, holds one kind of scale, and values of a similar magnitude', () => {
     fc.assert(
       fc.property(mixedSelectionArb, (selected) => {
         for (const axis of ValueAxis.assign(selected)) {
-          if (axis.series.length === 1) continue
+          if (axis.series.length === 1) {
+            expect(axis.sharedUnit).toBeNull()
+            continue
+          }
           const [first] = axis.series
           expect(first.unit).not.toBeNull()
+          expect(axis.sharedUnit).toBe(first.unit)
           const isZeroToOne = first.valueScale === 'zero-to-one'
           for (const series of axis.series) {
             expect(series.unit).toBe(first.unit)

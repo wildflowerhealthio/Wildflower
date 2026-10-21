@@ -27,6 +27,13 @@ interface ValueAxis {
    * that {@link assign} found share a unit and a similar magnitude.
    */
   readonly series: readonly [ValueSeries, ...ValueSeries[]]
+  /**
+   * The unit this axis' series share when there are several of them, and
+   * `null` when it has one. A renderer branches on this, not on counting
+   * `series`: a shared axis is labelled with this unit and drawn in no one
+   * series' colour.
+   */
+  readonly sharedUnit: string | null
   readonly side: 'left' | 'right'
   /** Position among the axes on this same `side`, `0` being the one nearest the plot. */
   readonly index: number
@@ -403,6 +410,7 @@ const assign = (selected: readonly ValueSeries[]): readonly ValueAxis[] => {
     const [first, ...others] = members
     return {
       series: [first.series, ...others.map(({ series }) => series)],
+      sharedUnit: others.length === 0 ? null : first.series.unit,
       side: position % 2 === 0 ? 'left' : 'right',
       index: Math.floor(position / 2),
       domain,

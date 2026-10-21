@@ -61,7 +61,9 @@ functions read in the namespace's context (`ValueAxis.assign`, not
   `MAX_SHARED_RATIO` = 3 times the shared lowest, or, on an axis drawn from
   zero, each series' highest at least a third of the shared highest. A
   `'fitted'` series with a value at or below zero never shares. The shared
-  domain is rounded once, from the members' extents. `domainFor` (the axis a
+  domain is rounded once, from the members' extents. An axis' `sharedUnit`
+  is set only when several series share it, so a renderer reads "shared"
+  from it rather than deciding. `domainFor` (the axis a
   series gets alone, fitted as its `valueScale` says), `niceDomain`,
   `ticksFor` (never `-0`; a `niceDomain` result is labelled at both ends),
   `normalise` / `denormalise`.

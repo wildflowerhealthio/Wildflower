@@ -551,15 +551,13 @@ const spanLaneMarks = (
 }
 
 /**
- * The colour an axis' line and tick marks wear: its series' colour when it
- * has one series, {@link SHARED_AXIS_COLOUR} when several share it.
+ * The colour an axis' line and tick marks wear: its one series' colour, or
+ * {@link SHARED_AXIS_COLOUR} when the axis has a `sharedUnit`.
  */
-const axisColour = (axis: ValueAxis.ValueAxis, colours: ColourSlots.ColourSlots): string => {
-  const [first, ...others] = axis.series
-  return others.length === 0
-    ? seriesColors(colourSlotOf(colours, first.id)).mark
+const axisColour = (axis: ValueAxis.ValueAxis, colours: ColourSlots.ColourSlots): string =>
+  axis.sharedUnit === null
+    ? seriesColors(colourSlotOf(colours, axis.series[0].id)).mark
     : SHARED_AXIS_COLOUR
-}
 
 /**
  * A value axis' own marks: an axis line and tick marks at its offset in
