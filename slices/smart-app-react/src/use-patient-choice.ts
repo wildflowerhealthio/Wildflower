@@ -37,7 +37,7 @@ const writePatientChoiceToUrl = (patientChoice: PatientChoice): void => {
  * choice is written back as `?patient=<id>` (or `?patient=*` for every
  * patient) through `history.replaceState`, touching no other query key, so
  * an app's own URL state sits beside it. Nothing is written until the reader
- * chooses: until the handshake starts, the URL still carries the OAuth
+ * chooses: before the handshake completes, the URL still carries the OAuth
  * `code` / `state` it reads.
  *
  * Changing the patient only reopens the picker; the URL keeps the last

@@ -142,8 +142,8 @@ const runConnectionStep = async <A>(step: Effect.Effect<A, SignInError>): Promis
  * `{iss}/.well-known/smart-configuration` and accepts the authorization
  * endpoint only when `endpointUrlFrom` does for this page: a `javascript:`
  * URL, one carrying userinfo or a fragment, and plain http off loopback from an
- * https page are each refused. Then the promise rejects naming the reason and
- * the page stays where it is.
+ * https page are each refused. Then the promise rejects with discovery's
+ * reason and the page stays where it is.
  */
 const authorizeSmartLaunch = (
   config: SmartLaunchConfig,
@@ -355,7 +355,6 @@ export {
   arrivingSmartLaunchFrom,
   authorizeOpenServer,
   authorizeSmartLaunch,
-  PENDING_AUTHORIZATION_KEY,
   PENDING_CONNECTION_KEY,
   readySmartClient,
   shouldCompleteSmartLaunch,
