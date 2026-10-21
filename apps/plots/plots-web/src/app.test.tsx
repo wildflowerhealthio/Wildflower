@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type * as SmartReads from '@wildflowerhealthio/fhir-r4-react/smart'
-import type { SmartHandshake } from '@wildflowerhealthio/fhir-r4-react/smart'
+import { FhirHttpError, type SmartHandshake } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import { MedicationRequest, Observation } from '@wildflowerhealthio/fhir-r4/resources'
 import { SERIES_PARAM, decodeSelection, readRecord } from '@wildflowerhealthio/plots-core-js'
@@ -11,7 +11,7 @@ import {
   WALKTHROUGH_ANCHOR_ATTRIBUTE,
   writeSeenWalkthrough,
 } from '@wildflowerhealthio/walkthrough-core'
-import { DateTime, Schema } from 'effect'
+import { DateTime, Effect, Option, Schema } from 'effect'
 import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
@@ -47,26 +47,35 @@ const { App } = await import('./app.tsx')
 /** The FHIR server behind the stub client: response by request-URL prefix. */
 type FhirResponses = Readonly<Record<string, () => Promise<unknown>>>
 
-/** A request no entry in the table answers — a test that forgot a response. */
-class UnexpectedRequestError extends Error {}
-
 /** Every URL the stub clients were asked for, in order. */
 const requestedUrls: string[] = []
 
-/** A SMART client whose reads answer from `responses`, launched with `patientId` in context. */
+/**
+ * A SMART client whose reads answer from `responses`, launched with
+ * `patientId` in context. A response that rejects is the server answering
+ * 500; a request no entry answers dies, as a test that forgot a response.
+ */
 const stubClient = (patientId: string | null, responses: FhirResponses): SmartClient => {
-  const request = (url: string): Promise<unknown> => {
-    requestedUrls.push(url)
-    const prefix = Object.keys(responses)
-      .filter((candidate) => url.startsWith(candidate))
-      .toSorted((left, right) => right.length - left.length)[0]
-    const respond = prefix === undefined ? undefined : responses[prefix]
-    return respond === undefined
-      ? Promise.reject(new UnexpectedRequestError(`unexpected request ${url}`))
-      : respond()
+  const request = (url: string): Effect.Effect<unknown, FhirHttpError> =>
+    Effect.suspend(() => {
+      requestedUrls.push(url)
+      const prefix = Object.keys(responses)
+        .filter((candidate) => url.startsWith(candidate))
+        .toSorted((left, right) => right.length - left.length)[0]
+      const respond = prefix === undefined ? undefined : responses[prefix]
+      return respond === undefined
+        ? Effect.dieMessage(`unexpected request ${url}`)
+        : Effect.tryPromise({
+            try: respond,
+            catch: () => new FhirHttpError({ url, status: 500 }),
+          })
+    })
+  return {
+    serverUrl: 'https://fhir.example',
+    accessToken: undefined,
+    launchPatientId: Option.fromNullable(patientId),
+    request,
   }
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test-only stub: the reads touch only `request` and `patient.id`
-  return { patient: { id: patientId }, request } as unknown as SmartClient
 }
 
 /** A search-result bundle holding `resources`, pointing on to `nextUrl` when given. */

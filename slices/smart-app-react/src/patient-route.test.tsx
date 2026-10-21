@@ -16,16 +16,17 @@ import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import { patientChoiceKeyOf } from './patient-choice.ts'
 import { launchStartRoute, requirePatient, usePathPatientChoice } from './patient-route.ts'
-import { answer, stubSmartClient } from './smart-client.test-helpers.ts'
+import { answer, failWithStatus, stubSmartClient } from './smart-client.test-helpers.ts'
 
 afterEach(() => {
   cleanup()
 })
 
-/** A client whose launch put `patientId` in context; only `patient.id` is read. */
-const launchedWith = (patientId: string | null): SmartClient =>
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test-only stub: only `patient.id` is read
-  ({ patient: { id: patientId } }) as unknown as SmartClient
+/** A client whose launch put `patientId` in context, or none for `null`. */
+const launchedWith = (patientId: string | null): SmartClient => ({
+  ...stubSmartClient({}).client,
+  launchPatientId: Option.fromNullable(patientId),
+})
 
 describe('launchStartRoute', () => {
   it('should open the launch’s patient', () => {
@@ -104,7 +105,7 @@ describe('requirePatient', () => {
   it.each([404, 410])('should throw not-found on a %i', async (status) => {
     // Arrange
     const { client } = stubSmartClient({
-      'Patient/bogus': () => Promise.reject(Object.assign(new Error('gone'), { status })),
+      'Patient/bogus': failWithStatus(status),
     })
 
     // Act
@@ -120,7 +121,7 @@ describe('requirePatient', () => {
   it('should let the route render on any other failure', async () => {
     // Arrange
     const { client } = stubSmartClient({
-      'Patient/p1': () => Promise.reject(Object.assign(new Error('down'), { status: 503 })),
+      'Patient/p1': failWithStatus(503),
     })
 
     // Act / Assert

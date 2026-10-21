@@ -9,6 +9,8 @@ import {
   answer,
   bundleOf,
   type FhirResponses,
+  failWithStatus,
+  neverAnswer,
   stubSmartClient,
 } from './smart-client.test-helpers.ts'
 
@@ -51,7 +53,7 @@ afterEach(() => {
 describe('PatientPicker', () => {
   it('should say Loading… until the first page lands', () => {
     // Act
-    renderPicker({ 'Patient?': () => new Promise(() => {}) })
+    renderPicker({ 'Patient?': neverAnswer })
 
     // Assert
     expect(screen.getByText('Loading…')).toBeDefined()
@@ -125,7 +127,7 @@ describe('PatientPicker', () => {
     // Arrange
     renderPicker({
       'Patient?': answer(bundleOf([adaWire], NEXT_PATIENTS)),
-      [NEXT_PATIENTS]: () => Promise.reject(new Error('page two failed')),
+      [NEXT_PATIENTS]: failWithStatus(500),
     })
 
     // Act
@@ -139,7 +141,7 @@ describe('PatientPicker', () => {
 
   it('should say the read failed when the first page does', async () => {
     // Act
-    renderPicker({ 'Patient?': () => Promise.reject(new Error('search failed')) })
+    renderPicker({ 'Patient?': failWithStatus(500) })
 
     // Assert
     expect(await screen.findByText(/^Could not load patients:/)).toBeDefined()

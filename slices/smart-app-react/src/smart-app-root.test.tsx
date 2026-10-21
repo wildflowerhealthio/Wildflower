@@ -9,11 +9,11 @@ import {
 import { type TelemetryConsent, writeConsent } from '@wildflowerhealthio/telemetry-core'
 import type * as TelemetryWeb from '@wildflowerhealthio/telemetry-web'
 import { Option } from 'effect'
-import type Client from 'fhirclient/Client'
 import { StrictMode, type JSX } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import {
+  authorizeSmartLaunch,
   decodeLaunchError,
   encodeLaunchError,
   useSmartHandshake,
@@ -56,25 +56,25 @@ vi.mock('@wildflowerhealthio/telemetry-web', async (importOriginal) => {
   }
 })
 
-// fhirclient's `oauth2.ready()` is the token exchange the app's handshake runs;
-// by default it resolves to a client connected to `FHIR_SERVER_URL`, and the
-// spy counts how often the single-use code would have been posted. Its
-// `oauth2.authorize()` is the redirect a launch the page arrives with starts;
-// the spy counts how often the single-use launch would have been spent.
+// The FHIR server the app signs in to, faked at the wire: `fetch` answers its
+// SMART configuration (`smartConfiguration`, which a test can make fail or hang)
+// and its token endpoint (`tokenResponse`). Its requests are recorded, so a test
+// counts how often the single-use launch would have been spent (discovery) and
+// how often the single-use code would have been posted (the token request).
 const FHIR_SERVER_URL = 'https://fhir.example:8443/r4'
-const { tokenExchangeMock, authorizeMock } = vi.hoisted(() => ({
-  tokenExchangeMock: vi.fn(() => Promise.resolve(clientConnectedTo(FHIR_SERVER_URL))),
-  authorizeMock: vi.fn<(params: Record<string, unknown>) => Promise<string | void>>(),
-}))
-vi.mock('fhirclient/browser', () => ({
-  default: { oauth2: { ready: tokenExchangeMock, authorize: authorizeMock } },
-}))
+const TOKEN_ENDPOINT = 'https://fhir.example:8443/oauth/token'
+const fakeServer: {
+  smartConfiguration: () => Promise<Response>
+  tokenResponse: unknown
+  readonly requestedUrls: string[]
+} = {
+  smartConfiguration: () => Promise.resolve(Response.json(smartConfigurationOf({}))),
+  tokenResponse: { access_token: 'token-1', token_type: 'Bearer' },
+  requestedUrls: [],
+}
 
 // The root's own authorize entry, spied through to the real one: it counts
-// every authorize the root starts. Under StrictMode's second effect run the
-// mocked fhirclient import above can resolve to the real package, whose
-// `oauth2` is absent under jsdom, so a second authorize would fail before it
-// reached `authorizeMock`; this count sees it either way.
+// every authorize the root starts.
 const { authorizeFromLaunchPageSpy } = vi.hoisted(() => ({
   authorizeFromLaunchPageSpy: vi.fn<typeof AuthorizeFromLaunchPage.authorizeFromLaunchPage>(),
 }))
@@ -137,6 +137,10 @@ const FAILED_LAUNCH = encodeLaunchError({
 
 beforeEach(() => {
   stubDialogModality()
+  fakeServer.smartConfiguration = () => Promise.resolve(Response.json(smartConfigurationOf({})))
+  fakeServer.tokenResponse = { access_token: 'token-1', token_type: 'Bearer' }
+  fakeServer.requestedUrls.length = 0
+  stubFakeServerFetch()
 })
 
 afterEach(() => {
@@ -147,6 +151,7 @@ afterEach(() => {
   restoreDialogModality()
   connectMenuRenderFailure.current = undefined
   vi.unstubAllEnvs()
+  vi.unstubAllGlobals()
   vi.resetAllMocks()
 })
 
@@ -274,8 +279,8 @@ describe('SmartAppRoot', () => {
     const { rerender } = render(<Shell />)
     expect(screen.queryByTestId('app')).not.toBeNull()
 
-    // Act — fhirclient's `oauth2.ready()` strips `code`/`state` once the
-    // exchange completes; a later re-render must not re-read the URL
+    // Act — completing the handshake strips `code`/`state` from the URL; a
+    // later re-render must not re-read it
     setUrl('/')
     rerender(<Shell />)
 
@@ -389,7 +394,7 @@ describe('SmartAppRoot', () => {
 describe('SmartAppRoot on a launch', () => {
   beforeEach(async () => {
     // Discovery never settles, as while the authorize redirect is pending
-    authorizeMock.mockReturnValue(new Promise<never>(() => undefined))
+    fakeServer.smartConfiguration = () => new Promise<never>(() => undefined)
     const actual = await vi.importActual<typeof AuthorizeFromLaunchPage>(
       './authorize-from-launch-page.ts'
     )
@@ -413,17 +418,15 @@ describe('SmartAppRoot on a launch', () => {
       // Act
       renderShell({})
 
-      // Assert — the registration, with this root as the redirect; fhirclient
-      // reads `iss` and `launch` off the URL itself
+      // Assert — the registration, from this page, discovering at the `iss`
       await waitFor(() => {
-        expect(authorizeMock).toHaveBeenCalledTimes(1)
+        expect(discoveryRequests()).toHaveLength(1)
       })
-      expect(authorizeMock).toHaveBeenCalledWith({
-        ...REGISTRATION,
-        redirectUri: `${window.location.origin}/importer/`,
-        noRedirect: true,
-      })
-      expect(authorizeFromLaunchPageSpy).toHaveBeenCalledTimes(1)
+      expect(authorizeFromLaunchPageSpy).toHaveBeenCalledExactlyOnceWith(
+        REGISTRATION,
+        `${window.location.origin}/importer/${search}`,
+        undefined
+      )
     })
 
     it('should authorize a launch at a nested route with the served directory as its redirect', async () => {
@@ -435,13 +438,13 @@ describe('SmartAppRoot on a launch', () => {
 
       // Assert
       await waitFor(() => {
-        expect(authorizeMock).toHaveBeenCalledTimes(1)
+        expect(discoveryRequests()).toHaveLength(1)
       })
-      expect(authorizeMock).toHaveBeenCalledWith({
-        ...REGISTRATION,
-        redirectUri: `${window.location.origin}/strength/`,
-        noRedirect: true,
-      })
+      expect(authorizeFromLaunchPageSpy).toHaveBeenCalledExactlyOnceWith(
+        REGISTRATION,
+        `${window.location.origin}/strength/patients/123/today${EHR_LAUNCH}`,
+        '/strength/'
+      )
     })
 
     it('should show the launch page, naming the app, with no dialog', async () => {
@@ -458,7 +461,7 @@ describe('SmartAppRoot on a launch', () => {
       expect(screen.queryByTestId('app')).toBeNull()
       expect(screen.queryByTestId('connect-menu-stub')).toBeNull()
       await waitFor(() => {
-        expect(authorizeMock).toHaveBeenCalledTimes(1)
+        expect(discoveryRequests()).toHaveLength(1)
       })
     })
 
@@ -469,7 +472,7 @@ describe('SmartAppRoot on a launch', () => {
       setUrl(`/${EHR_LAUNCH}`)
       const { rerender } = render(<Shell registration={{ ...REGISTRATION }} />)
       await waitFor(() => {
-        expect(authorizeMock).toHaveBeenCalledTimes(1)
+        expect(discoveryRequests()).toHaveLength(1)
       })
 
       // Act
@@ -481,7 +484,7 @@ describe('SmartAppRoot on a launch', () => {
 
     it('should send a launch that fails to start to the app root as ?launchError, once', async () => {
       // Arrange — discovery fails, as for an unreachable iss
-      authorizeMock.mockRejectedValue(new Error('Failed to fetch'))
+      fakeServer.smartConfiguration = () => Promise.reject(new TypeError('Failed to fetch'))
       const replaceLocation = vi.fn<(url: string) => void>()
       setUrl(`/importer/${EHR_LAUNCH}`)
 
@@ -498,7 +501,9 @@ describe('SmartAppRoot on a launch', () => {
       expect(decodeLaunchError(target.searchParams.get('launchError') ?? '')).toStrictEqual(
         Option.some({
           error: 'AuthorizeFailed',
-          message: 'Failed to fetch',
+          message:
+            'Could not reach https://ruth.wildflowerhealth.io/.well-known/smart-configuration. ' +
+            'The server may be down, or the browser may have blocked the request.',
           iss: 'https://ruth.wildflowerhealth.io',
         })
       )
@@ -508,9 +513,14 @@ describe('SmartAppRoot on a launch', () => {
       const assignMock = vi.fn<(url: string) => void>()
 
       beforeEach(() => {
-        // fhirclient, asked with `noRedirect`, answers the URL the server's
-        // advertised endpoint makes; the page's `assign` records any navigation
-        authorizeMock.mockResolvedValue('javascript:alert(document.domain)//?state=xyz')
+        // The server advertises a `javascript:` authorize endpoint; the page's
+        // `assign` records any navigation
+        fakeServer.smartConfiguration = () =>
+          Promise.resolve(
+            Response.json(
+              smartConfigurationOf({ authorization_endpoint: 'javascript:alert(document.domain)' })
+            )
+          )
         setUrl(`/importer/${EHR_LAUNCH}`)
         vi.stubGlobal(
           'location',
@@ -545,8 +555,8 @@ describe('SmartAppRoot on a launch', () => {
 
         // Assert — the menu says why, with the retry right there
         expect(arrivalProblem()).toBe(
-          'Could not start the SMART launch. The server’s authorization endpoint is not one ' +
-            'this app will go to. It is a javascript: URL, not an http or https one.'
+          'Could not start the SMART launch. The server’s SMART configuration does not ' +
+            'advertise a usable authorization_endpoint and token_endpoint over https (or loopback).'
         )
       })
     })
@@ -557,7 +567,7 @@ describe('SmartAppRoot on a launch', () => {
       setUrl(`/importer/${EHR_LAUNCH}`)
       renderShell({ replaceLocation })
       await waitFor(() => {
-        expect(authorizeMock).toHaveBeenCalledTimes(1)
+        expect(discoveryRequests()).toHaveLength(1)
       })
 
       // Act — an ordinary `pageshow` (a fresh load) is not a restore
@@ -611,7 +621,7 @@ describe('SmartAppRoot on a launch', () => {
 
     // Assert — telemetry tagged for the launch, then one authorize
     await waitFor(() => {
-      expect(authorizeMock).toHaveBeenCalledTimes(1)
+      expect(discoveryRequests()).toHaveLength(1)
     })
     expect(authorizeFromLaunchPageSpy).toHaveBeenCalledTimes(1)
     expect(screen.getByText(`Launching ${APP_DESCRIPTIONS.importer.name}…`)).toBeDefined()
@@ -741,6 +751,7 @@ describe('SmartAppRoot telemetry consent', () => {
     // Arrange
     initConsentedTelemetryMock.mockReturnValue(true)
     storeConsent({ crashReports: true, performance: false })
+    await arriveFromSignIn(FHIR_SERVER_URL)
 
     // Act
     renderShell({ launched: true, children: <HandshakeProbe seen={[]} /> })
@@ -755,6 +766,7 @@ describe('SmartAppRoot telemetry consent', () => {
   it('should not tag the FHIR server’s host when the answer starts no telemetry', async () => {
     // Arrange
     storeConsent({ crashReports: false, performance: false })
+    await arriveFromSignIn(FHIR_SERVER_URL)
     const seen: QueryClient[] = []
 
     // Act
@@ -786,9 +798,10 @@ describe('SmartAppRoot telemetry consent', () => {
 
   it('should exchange the SMART code only after the visitor answers, and exactly once', async () => {
     // Arrange — a first visit to the launched branch, under StrictMode
+    await arriveFromSignIn(FHIR_SERVER_URL)
     const seen: QueryClient[] = []
     renderShell({ launched: true, children: <HandshakeProbe seen={seen} /> })
-    expect(tokenExchangeMock).not.toHaveBeenCalled()
+    expect(tokenRequests()).toHaveLength(0)
 
     // Act
     answerDialog({ crashReports: true, performance: false })
@@ -797,7 +810,7 @@ describe('SmartAppRoot telemetry consent', () => {
     await waitFor(() => {
       expect(seen[0].getQueryCache().getAll()[0]?.state.status).toBe('success')
     })
-    expect(tokenExchangeMock).toHaveBeenCalledTimes(1)
+    expect(tokenRequests()).toHaveLength(1)
   })
 
   it('should leave a failed handshake to be reported as the launch failure it redirects to', async () => {
@@ -806,7 +819,8 @@ describe('SmartAppRoot telemetry consent', () => {
     // would report it twice
     initConsentedTelemetryMock.mockReturnValue(true)
     storeConsent({ crashReports: true, performance: false })
-    tokenExchangeMock.mockRejectedValue(new Error('authorization code already redeemed'))
+    await arriveFromSignIn(FHIR_SERVER_URL)
+    fakeServer.tokenResponse = { error: 'invalid_grant' }
     const seen: QueryClient[] = []
 
     // Act
@@ -823,7 +837,7 @@ describe('SmartAppRoot telemetry consent', () => {
     // Arrange
     initConsentedTelemetryMock.mockReturnValue(true)
     storeConsent({ crashReports: true, performance: false })
-    tokenExchangeMock.mockResolvedValue(clientConnectedTo('ruth.example'))
+    await arriveFromSignIn('ruth.example')
 
     // Act
     renderShell({ launched: true, children: <HandshakeProbe seen={[]} /> })
@@ -1034,10 +1048,57 @@ function restoreDialogModality(): void {
   }
 }
 
-/** A ready fhirclient `Client` connected to `serverUrl`. */
-function clientConnectedTo(serverUrl: string): Client {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test-only stub; the root reads only `state.serverUrl`
-  return { state: { serverUrl } } as unknown as Client
+/** The fake server's SMART configuration, `overrides` replacing its fields. */
+function smartConfigurationOf(overrides: Readonly<Record<string, string>>): unknown {
+  return {
+    authorization_endpoint: 'https://fhir.example:8443/oauth/authorize',
+    token_endpoint: TOKEN_ENDPOINT,
+    code_challenge_methods_supported: ['S256'],
+    ...overrides,
+  }
+}
+
+/** Answer the page's `fetch` from {@link fakeServer}, recording every URL asked for. */
+function stubFakeServerFetch(): void {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof fetch>((input) => {
+      const url = input instanceof Request ? input.url : String(input)
+      fakeServer.requestedUrls.push(url)
+      return url.endsWith('/.well-known/smart-configuration')
+        ? fakeServer.smartConfiguration()
+        : Promise.resolve(Response.json(fakeServer.tokenResponse))
+    })
+  )
+}
+
+/** The fake server's SMART configuration requests so far: one per launch started. */
+function discoveryRequests(): string[] {
+  return fakeServer.requestedUrls.filter((url) => url.endsWith('/.well-known/smart-configuration'))
+}
+
+/** The fake server's token requests so far: one per code redeemed. */
+function tokenRequests(): string[] {
+  return fakeServer.requestedUrls.filter((url) => url === TOKEN_ENDPOINT)
+}
+
+/**
+ * Put the page where a sign-in to `serverUrl` returns: start one for real (its
+ * navigation stubbed out), then land on the app root with the code and state
+ * the authorization server would send back.
+ */
+async function arriveFromSignIn(serverUrl: string): Promise<void> {
+  const assign = vi.fn<(url: string) => void>()
+  vi.stubGlobal('location', Object.assign(new URL(window.location.href), { assign }))
+  await authorizeSmartLaunch(
+    { ...REGISTRATION, iss: serverUrl, redirectUri: `${window.location.origin}/` },
+    undefined
+  )
+  vi.unstubAllGlobals()
+  stubFakeServerFetch()
+  const state = new URL(assign.mock.calls[0]?.[0] ?? '').searchParams.get('state') ?? ''
+  setUrl(`/?code=abc&state=${state}`)
+  fakeServer.requestedUrls.length = 0
 }
 
 /** Starts the SMART handshake and records the client it was provided. */

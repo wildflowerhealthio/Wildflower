@@ -5,6 +5,8 @@ import {
   normalizeServerUrl as sharedNormalizeServerUrl,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 import { Match } from 'effect'
+
+import type { OpenServerConfig, SmartLaunchConfig } from './smart-launch.ts'
 import {
   detectSmartSupport,
   insecureTargetReason,
@@ -12,26 +14,25 @@ import {
   startStandaloneLaunch,
 } from './standalone-launch.ts'
 
-// `startStandaloneLaunch` reaches fhirclient only through `smart-launch.ts`'s
-// lazy `(await import('fhirclient/browser')).default`, so the module boundary is where
-// we stub — the same seam `smart-launch.test.ts` uses. `detectSmartSupport`'s
-// tests never touch it (they inject `fetchFn`).
-const { authorizeMock, readyMock, assignMock } = vi.hoisted(() => ({
-  authorizeMock: vi.fn<(params: Record<string, unknown>) => Promise<string | void>>(),
-  readyMock: vi.fn(),
-  assignMock: vi.fn<(url: string) => void>(),
+// `startStandaloneLaunch` hands the connection to `smart-launch.ts`, whose own
+// suite covers the sign-in and the navigation, so the module boundary is where
+// we stub. `detectSmartSupport`'s tests never touch it (they inject `fetchFn`).
+const { authorizeSmartLaunchMock, authorizeOpenServerMock } = vi.hoisted(() => ({
+  authorizeSmartLaunchMock:
+    vi.fn<(config: SmartLaunchConfig, launch: string | undefined) => Promise<void>>(),
+  authorizeOpenServerMock: vi.fn<(config: OpenServerConfig) => Promise<void>>(),
 }))
 
-vi.mock('fhirclient/browser', () => ({
-  default: { oauth2: { authorize: authorizeMock, ready: readyMock } },
+vi.mock('./smart-launch.ts', () => ({
+  authorizeSmartLaunch: authorizeSmartLaunchMock,
+  authorizeOpenServer: authorizeOpenServerMock,
 }))
 
 beforeEach(() => {
   vi.clearAllMocks()
-  // Asked with `noRedirect`, fhirclient answers the URL it would have gone to;
-  // the page is an https one whose `assign` records where it was sent.
-  authorizeMock.mockResolvedValue('https://ehr.example/authorize?state=xyz')
-  vi.stubGlobal('location', { protocol: 'https:', assign: assignMock })
+  authorizeSmartLaunchMock.mockResolvedValue(undefined)
+  authorizeOpenServerMock.mockResolvedValue(undefined)
+  vi.stubGlobal('location', { protocol: 'https:' })
 })
 
 afterEach(() => {
@@ -201,34 +202,27 @@ describe('startStandaloneLaunch', () => {
     redirectUri: 'https://app.example/',
   }
 
-  it('takes the SMART OAuth path when the probe is `smart`', async () => {
-    await startStandaloneLaunch(config, fetchReturning(jsonResponse(SMART_CONFIGURATION)))
-    expect(authorizeMock).toHaveBeenCalledTimes(1)
-    // The SMART variant carries the client and iss; it never names fhirServiceUrl.
-    const arg = authorizeArg()
-    expect(arg).toMatchObject({
-      clientId: '9769f8b274370708d0d3ebb2e3e59b7c',
-      scope: 'launch openid fhirUser',
-      redirectUri: 'https://app.example/',
-      iss: 'https://ehr.example/fhir',
-    })
-    expect(arg).not.toHaveProperty('fhirServiceUrl')
-    expect(assignMock).toHaveBeenCalledWith('https://ehr.example/authorize?state=xyz')
+  it('takes the SMART OAuth path, as a standalone launch, when the probe is `smart`', async () => {
+    const support = await startStandaloneLaunch(
+      config,
+      fetchReturning(jsonResponse(SMART_CONFIGURATION))
+    )
+    expect(authorizeSmartLaunchMock).toHaveBeenCalledExactlyOnceWith(config, undefined)
+    expect(authorizeOpenServerMock).not.toHaveBeenCalled()
+    expect(support).toEqual({ kind: 'smart' })
   })
 
   it('takes the open (no-auth) path when the probe is `open`', async () => {
-    await startStandaloneLaunch(config, fetchReturning(new Response(null, { status: 404 })))
-    expect(authorizeMock).toHaveBeenCalledTimes(1)
-    // The open variant names fhirServiceUrl and the redirect only — no client,
-    // scope, or iss, so no auth handshake is attempted.
-    const arg = authorizeArg()
-    expect(arg).toMatchObject({
+    const support = await startStandaloneLaunch(
+      config,
+      fetchReturning(new Response(null, { status: 404 }))
+    )
+    expect(authorizeOpenServerMock).toHaveBeenCalledExactlyOnceWith({
       fhirServiceUrl: 'https://ehr.example/fhir',
       redirectUri: 'https://app.example/',
     })
-    expect(arg).not.toHaveProperty('clientId')
-    expect(arg).not.toHaveProperty('scope')
-    expect(arg).not.toHaveProperty('iss')
+    expect(authorizeSmartLaunchMock).not.toHaveBeenCalled()
+    expect(support).toEqual({ kind: 'open' })
   })
 
   it('does not authorize at all when the probe is `unusable`, returning it for the UI', async () => {
@@ -238,18 +232,17 @@ describe('startStandaloneLaunch', () => {
         jsonResponse({ ...SMART_CONFIGURATION, authorization_endpoint: 'javascript:alert(1)' })
       )
     )
-    expect(authorizeMock).not.toHaveBeenCalled()
-    expect(assignMock).not.toHaveBeenCalled()
+    expect(authorizeSmartLaunchMock).not.toHaveBeenCalled()
+    expect(authorizeOpenServerMock).not.toHaveBeenCalled()
     expect(support).toMatchObject({ kind: 'unusable' })
   })
 
-  it('rejects, without navigating, when the authorize URL fhirclient builds is unusable', async () => {
-    // The probe saw a clean configuration; fhirclient's own fetch of it did not.
-    authorizeMock.mockResolvedValue('javascript:alert(1)//?state=xyz')
+  it('rejects with the SMART launch’s own refusal', async () => {
+    // The probe saw a clean configuration; the sign-in's own discovery did not.
+    authorizeSmartLaunchMock.mockRejectedValue(new Error('The server’s SMART configuration…'))
     await expect(
       startStandaloneLaunch(config, fetchReturning(jsonResponse(SMART_CONFIGURATION)))
-    ).rejects.toThrow('It is a javascript: URL')
-    expect(assignMock).not.toHaveBeenCalled()
+    ).rejects.toThrow('The server’s SMART configuration…')
   })
 
   it('does not authorize at all when the probe is `unreachable`, returning it for the UI', async () => {
@@ -257,7 +250,8 @@ describe('startStandaloneLaunch', () => {
       config,
       fetchRejecting(new TypeError('Failed to fetch'))
     )
-    expect(authorizeMock).not.toHaveBeenCalled()
+    expect(authorizeSmartLaunchMock).not.toHaveBeenCalled()
+    expect(authorizeOpenServerMock).not.toHaveBeenCalled()
     expect(support).toEqual({ kind: 'unreachable', message: 'Failed to fetch' })
   })
 })
@@ -277,12 +271,3 @@ describe('insecureTargetReason', () => {
     expect(insecureTargetReason).toBe(sharedInsecureTargetReason)
   })
 })
-
-// Helpers
-
-/** The options object `authorize` was called with on its first (only) invocation. */
-const authorizeArg = (): Record<string, unknown> => {
-  const call = authorizeMock.mock.calls[0]
-  if (call === undefined) throw new Error('authorize was not called')
-  return call[0]
-}

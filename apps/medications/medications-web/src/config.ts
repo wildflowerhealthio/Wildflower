@@ -52,7 +52,7 @@ const MEDICATIONS_CLIENT_ID = import.meta.env.DEV
 /**
  * SMART registration for every launch the app root starts, with
  * {@link MEDICATIONS_SCOPE}: one its URL carries (`iss` / `launch`, read off
- * the URL by fhirclient) and the standalone connect menu's, where the user
+ * the URL by the app root) and the standalone connect menu's, where the user
  * picks the FHIR server. So `iss` is not set here, and `redirectUri` (the app
  * root) is computed at launch time from the current origin.
  */

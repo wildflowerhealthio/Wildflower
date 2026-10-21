@@ -1,10 +1,9 @@
 /**
  * The browser side of the SMART sign-in `authorization-server-rust` serves — a standalone
  * launch, or an EHR launch when the app was opened with one — shared by every
- * static Wildflower page that signs in to a reader-chosen server. See "The
- * SMART sign-in client" in the package README for the shape of the flow, what
- * the app supplies, and why this is not the fhirclient-based launch in
- * `slices/fhir/fhir-r4-react/src/smart/*`.
+ * static Wildflower page that signs in to a reader-chosen server, the SMART
+ * apps on `fhir-r4-react/smart` included. See "The SMART sign-in client" in the
+ * package README for the shape of the flow and what the app supplies.
  */
 
 export {

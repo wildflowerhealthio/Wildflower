@@ -21,9 +21,6 @@
     "dev": "vp pack --watch",
     "test": "vp test"
   },
-  "dependencies": {
-    "fhirclient": "^3.0.1"
-  },
   "devDependencies": {
     "@effect/platform": "catalog:",
     "@tanstack/react-query": "catalog:",

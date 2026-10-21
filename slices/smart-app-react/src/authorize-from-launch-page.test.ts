@@ -5,9 +5,10 @@ import type * as Smart from '@wildflowerhealthio/fhir-r4-react/smart'
 import { authorizeFromLaunchPage } from './authorize-from-launch-page.ts'
 import { RETURN_ROUTE_STORAGE_KEY } from './return-route.ts'
 
-// Stub the one call that leaves the page: fhirclient's authorize redirect.
+// Stub the one call that leaves the page: the sign-in's authorize redirect.
 const { authorizeSmartLaunchMock } = vi.hoisted(() => ({
-  authorizeSmartLaunchMock: vi.fn<(config: SmartLaunchConfig) => Promise<void>>(),
+  authorizeSmartLaunchMock:
+    vi.fn<(config: SmartLaunchConfig, launch: string | undefined) => Promise<void>>(),
 }))
 vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async (importOriginal) => ({
   ...(await importOriginal<typeof Smart>()),
@@ -39,12 +40,37 @@ describe('authorizeFromLaunchPage', () => {
     // Act
     const failure = await authorizeFromLaunchPage(LAUNCH, LAUNCH_PAGE)
 
-    // Assert — the registration, plus the root the launch page sits in
-    expect(authorizeSmartLaunchMock).toHaveBeenCalledWith({
-      ...LAUNCH,
-      redirectUri: 'https://importer.wildflowerhealth.io/',
-    })
+    // Assert — the registration, the root the launch page sits in, and the launch
+    expect(authorizeSmartLaunchMock).toHaveBeenCalledWith(
+      {
+        ...LAUNCH,
+        redirectUri: 'https://importer.wildflowerhealth.io/',
+        iss: 'https://ehr.example/fhir',
+      },
+      'xyz'
+    )
     expect(failure).toBeNull()
+  })
+
+  it('should authorize a lone iss as a standalone launch against it', async () => {
+    // Arrange
+    authorizeSmartLaunchMock.mockResolvedValue(undefined)
+
+    // Act
+    await authorizeFromLaunchPage(
+      LAUNCH,
+      'https://importer.wildflowerhealth.io/?iss=https%3A%2F%2Fehr.example%2Ffhir'
+    )
+
+    // Assert
+    expect(authorizeSmartLaunchMock).toHaveBeenCalledWith(
+      {
+        ...LAUNCH,
+        redirectUri: 'https://importer.wildflowerhealth.io/',
+        iss: 'https://ehr.example/fhir',
+      },
+      undefined
+    )
   })
 
   it('should send a rejected authorize back to the app root, naming the reason and the iss', async () => {
@@ -76,10 +102,14 @@ describe('authorizeFromLaunchPage', () => {
 
     // Assert — still the app root as the redirect target
     expect(savedAtAuthorize).toBe('/anonymize?source=pharmacy')
-    expect(authorizeSmartLaunchMock).toHaveBeenCalledWith({
-      ...LAUNCH,
-      redirectUri: 'https://importer.wildflowerhealth.io/',
-    })
+    expect(authorizeSmartLaunchMock).toHaveBeenCalledWith(
+      {
+        ...LAUNCH,
+        redirectUri: 'https://importer.wildflowerhealth.io/',
+        iss: 'https://ehr.example/fhir',
+      },
+      'xyz'
+    )
   })
 
   it('should return a launch at a nested route to the app’s served root', async () => {
@@ -94,10 +124,14 @@ describe('authorizeFromLaunchPage', () => {
     )
 
     // Assert
-    expect(authorizeSmartLaunchMock).toHaveBeenCalledWith({
-      ...LAUNCH,
-      redirectUri: 'https://strength.wildflowerhealth.io/pr-7/',
-    })
+    expect(authorizeSmartLaunchMock).toHaveBeenCalledWith(
+      {
+        ...LAUNCH,
+        redirectUri: 'https://strength.wildflowerhealth.io/pr-7/',
+        iss: 'https://ehr.example/fhir',
+      },
+      'xyz'
+    )
     expect(window.sessionStorage.getItem(RETURN_ROUTE_STORAGE_KEY)).toBe('/patients/123/today')
   })
 })

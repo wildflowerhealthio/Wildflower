@@ -276,10 +276,10 @@ const useSourceFilesQuery = (
 
 /**
  * Query options for the source-file listing that pages through
- * {@link fetchDocumentReferencePage} via the SMART fhirclient `Client`, rather
- * than the typed Effect client.
+ * {@link fetchDocumentReferencePage} via the SMART client, rather than the
+ * typed Effect client.
  *
- * @param smartClient - The fhirclient `Client` from a completed SMART handshake
+ * @param smartClient - The client from a completed SMART handshake
  * @param options - Page size (default {@link DEFAULT_PAGE_SIZE})
  * @returns Infinite-query options whose pages are {@link SourceFilePage}s
  *
@@ -330,8 +330,8 @@ const smartSourceFilesInfiniteQueryOptions = (
 }
 
 /**
- * Lists the device's uploaded source files using the SMART fhirclient
- * transport. The SMART client comes from `useSmartHandshake`; if the
+ * Lists the device's uploaded source files through the SMART client, which
+ * comes from `useSmartHandshake`; if the
  * handshake has not completed yet the query is disabled.
  *
  * @param options - Page size

@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import { NoPageCard, NoPatientCard } from './not-found-cards.tsx'
 import { requirePatient } from './patient-route.ts'
-import { answer, stubSmartClient } from './smart-client.test-helpers.ts'
+import { answer, failWithStatus, stubSmartClient } from './smart-client.test-helpers.ts'
 
 afterEach(() => {
   cleanup()
@@ -28,7 +28,7 @@ const renderAt = (url: string): void => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const { client } = stubSmartClient({
     'Patient/p1': answer({ resourceType: 'Patient', id: 'p1' }),
-    'Patient/': () => Promise.reject(Object.assign(new Error('Not Found'), { status: 404 })),
+    'Patient/': failWithStatus(404),
   })
   const rootRoute = createRootRoute({ notFoundComponent: NoPageCard })
   const patientRoute = createRoute({

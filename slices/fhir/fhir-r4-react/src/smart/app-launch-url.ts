@@ -116,7 +116,7 @@ const smartLauncherLaunchCode = (patient: string | undefined): string =>
  *   {@link smartLauncherEhrIssuer} and `launch` its
  *   {@link smartLauncherLaunchCode} carrying `server.patient`. For any other
  *   server, a standalone launch: `launchPageUrl` with `iss` the FHIR base and no
- *   `launch`, which fhirclient takes as a standalone launch against it.
+ *   `launch`, which the app root takes as a standalone launch against it.
  *
  * @remarks
  * The EHR launch link is what the launcher page (`src/components/Launcher` in

@@ -84,8 +84,8 @@ interface AppDescription {
     readonly note: string
   }
   /**
-   * Whether the app's root starts a SMART launch from its own URL: fhirclient
-   * reads `iss` there, and `launch` too for an EHR launch, so `?iss=` alone is a
+   * Whether the app's root starts a SMART launch from its own URL: it reads
+   * `iss` there, and `launch` too for an EHR launch, so `?iss=` alone is a
    * standalone launch against that server. The root is then the URL an EHR
    * registers as the app's launch URL, and what a plain SMART server's Home in
    * the launcher links each app through ({@link SMART_APP_LAUNCH_PAGES}).

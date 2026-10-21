@@ -73,15 +73,7 @@ const LaunchedImporter = ({ page, client }: LaunchedImporterProps): JSX.Element 
   // Memoised on the (stable) resolved client so a re-render neither rebuilds the
   // context nor, through `ImporterApp`'s own memo, the router beneath it.
   const context = useMemo(
-    () =>
-      buildSmartRouterContext(
-        {
-          serverUrl: client.state.serverUrl,
-          accessToken: client.state.tokenResponse?.access_token,
-        },
-        FetchHttpClient.layer,
-        queryClient
-      ),
+    () => buildSmartRouterContext(client, FetchHttpClient.layer, queryClient),
     [client, queryClient]
   )
   return <ImporterApp page={page} context={context} />
