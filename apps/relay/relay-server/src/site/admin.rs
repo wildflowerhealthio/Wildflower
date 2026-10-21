@@ -288,31 +288,25 @@ async fn reissue_token(
     }
 }
 
+/// The status for each refusal, with its [`Display`](std::fmt::Display)
+/// reason as the plain-text body; an
+/// [`Infrastructure`](TunnelError::Infrastructure) failure is logged and
+/// answers an empty `500`.
 impl IntoResponse for TunnelError {
     fn into_response(self) -> Response {
-        let (status, reason) = match self {
-            Self::InvalidName => (
-                StatusCode::UNPROCESSABLE_ENTITY,
-                "the name is not a lowercase DNS label",
-            ),
-            Self::InvalidEmail => (
-                StatusCode::UNPROCESSABLE_ENTITY,
-                "the email is not an email address",
-            ),
-            Self::Reserved => (StatusCode::CONFLICT, "the name is reserved"),
-            Self::Taken => (StatusCode::CONFLICT, "a tunnel already has the name"),
-            Self::NotFound => (StatusCode::NOT_FOUND, "no tunnel has the name"),
-            Self::Exhausted(reason) => (StatusCode::SERVICE_UNAVAILABLE, reason),
-            Self::ClaimCodeRejected => (
-                StatusCode::UNPROCESSABLE_ENTITY,
-                "the claim code is unknown, used or expired",
-            ),
-            Self::Infrastructure { context, source } => {
-                tracing::error!("tunnel change failed: {context}: {source}");
+        let status = match self {
+            Self::InvalidName | Self::InvalidEmail | Self::ClaimCodeRejected => {
+                StatusCode::UNPROCESSABLE_ENTITY
+            }
+            Self::Reserved | Self::Taken => StatusCode::CONFLICT,
+            Self::NotFound => StatusCode::NOT_FOUND,
+            Self::Exhausted(_) => StatusCode::SERVICE_UNAVAILABLE,
+            Self::Infrastructure { .. } => {
+                tracing::error!("{self}");
                 return StatusCode::INTERNAL_SERVER_ERROR.into_response();
             }
         };
-        (status, reason).into_response()
+        (status, self.to_string()).into_response()
     }
 }
 
@@ -381,6 +375,67 @@ mod tests {
         let router = router(Arc::clone(&registry), registry.verifier());
         let token = alice.tunnel.token.expose().to_owned();
         (router, registry, token, fixture)
+    }
+
+    /// Each refusal answers its status and its reason as plain text; an
+    /// infrastructure failure answers an empty `500`, its cause unsaid.
+    #[tokio::test]
+    async fn each_tunnel_error_answers_its_status_and_reason() {
+        for (error, expected) in [
+            (
+                TunnelError::InvalidName,
+                (
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "the name is not a lowercase DNS label",
+                ),
+            ),
+            (
+                TunnelError::InvalidEmail,
+                (
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "the email is not an email address",
+                ),
+            ),
+            (
+                TunnelError::Reserved,
+                (StatusCode::CONFLICT, "the name is reserved"),
+            ),
+            (
+                TunnelError::Taken,
+                (StatusCode::CONFLICT, "a tunnel already has the name"),
+            ),
+            (
+                TunnelError::NotFound,
+                (StatusCode::NOT_FOUND, "no tunnel has the name"),
+            ),
+            (
+                TunnelError::Exhausted("no unused tunnel name was drawn"),
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "no unused tunnel name was drawn",
+                ),
+            ),
+            (
+                TunnelError::ClaimCodeRejected,
+                (
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "the claim code is unknown, used or expired",
+                ),
+            ),
+            (
+                TunnelError::infrastructure("reading the clock failed", "the clock is broken"),
+                (StatusCode::INTERNAL_SERVER_ERROR, ""),
+            ),
+        ] {
+            let response = error.clone().into_response();
+            let status = response.status();
+            let body = response.into_body().collect().await.unwrap().to_bytes();
+            assert_eq!(
+                (status, body.as_ref()),
+                (expected.0, expected.1.as_bytes()),
+                "{error:?}"
+            );
+        }
     }
 
     #[tokio::test]
