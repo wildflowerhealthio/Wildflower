@@ -75,10 +75,49 @@ the row is created or widened only when the Owner approves — see
   authentication at `/oauth/token` and `/oauth/device_authorization` fails
   with `invalid_client`. Re-enabling clears the stamp and the client works
   again exactly as registered.
+- **Refresh policy:** how long the client's
+  [refresh-token families](#refresh-token--grant_typerefresh_token) last once
+  it has signed in, in three columns:
+  - `refresh_idle_ttl_seconds`: a family ends if nothing refreshes it for
+    this long, measured from its last rotation. `NULL` for no idle limit.
+  - `refresh_max_ttl_seconds`: a family ends this long after it was issued.
+    `NULL` leaves only the 365-day ceiling.
+  - `refresh_ends_with_browser_session`: a family ends when the
+    [browser session](#browser-session) it was minted under expires. A family
+    with no `sid` (the device flow) has none to end with, so only the two
+    limits apply to it.
+
+  Every family also ends 365 days after it was issued
+  (`REFRESH_TOKEN_FAMILY_CEILING`), and revoking a browser session ends the
+  families it minted whatever the policy says. The policy is read on every
+  refresh, so a change applies to the client's families on their next one.
+  A family that has already passed a deadline stays ended if the policy is
+  loosened later. Migration `0049` seeds the policy of the clients the
+  migrations seed:
+
+  | Client                                                       | Ends with browser session | Idle       | Max      |
+  | ------------------------------------------------------------ | ------------------------- | ---------- | -------- |
+  | Wildflower Authorization                                     | yes                       | 30 minutes | —        |
+  | Launcher, Server API Console, FHIR server UI                 | yes                       | 2 hours    | —        |
+  | Medications, Plots, Strength, Importer, Synthetic Data, OHIF | no                        | 7 days     | 30 days  |
+  | FHIR Sync for Pebble                                         | no                        | 30 days    | 365 days |
+  | Wildflower Host                                              | no                        | —          | —        |
+  | Wildflower Browsers                                          | yes                       | —          | —        |
+
+  Each dev build's client has its production client's policy. A client
+  [trusted on first use](#trust-on-first-use), and any other client the
+  migrations left (the SMART sample apps), starts with a policy by its
+  scopes: with any `wildflower/` scope it ends with the browser session and
+  lasts 2 hours idle; otherwise it lasts a day idle and 7 days at most.
+  Widening the registration later leaves the policy alone, and so does the
+  seeding every boot runs: only the Owner changes it.
+
 - **Owner management:** `GET /authorization/clients` lists every row (never the
-  secret hash) with an `essential` flag. `PATCH /authorization/clients/:clientId`
-  with `{ "disabledAt": … }` answers with the updated row and sets the stamp
-  as follows:
+  secret hash) with an `essential` flag and its `refreshPolicy`.
+  `PATCH /authorization/clients/:clientId` takes one of two bodies and answers
+  with the updated row. `{ "refreshPolicy": … }` replaces the whole policy,
+  each limit in seconds between one and the ceiling, or `null`.
+  `{ "disabledAt": … }` sets the stamp as follows:
   - any UTC time disables the client now, stamped with the server's own
     now whatever time was sent. A disable can be neither scheduled nor
     backdated. Wildflower Authorization sends its current time.
@@ -89,7 +128,9 @@ the row is created or widened only when the Owner approves — see
   An unknown `clientId` is a 404. The routes are gated on
   `wildflower/Client.r` (list) and `wildflower/Client.u` (the `PATCH`). The
   Wildflower Authorization app (`apps/authorization/authorization-web`) shows
-  them as the "Trusted Apps" list on its access page.
+  them as the "Trusted Apps" list on its access page, and edits a grant's
+  client's refresh policy in the "Session lifetime" section of the grant's
+  detail.
   Disabling leaves the client's [grants](#grant) and
   refresh-token families in place — unusable while it's disabled, live again
   once it's enabled; revoke a grant to end it for good.
@@ -839,8 +880,10 @@ verifier refuses a token whose `sid` names a revoked session, on the
 `/authorization` gates and the FHIR server alike, and refresh redemption
 refuses a family whose `sid` does. A request still pending when its session
 is revoked, or expires, is denied when it is approved, so the app gets
-`access_denied` rather than a code. A `sid` that names no row is treated as revoked. Whether a session's _expiry_ ends a refresh family is the client's
-refresh policy; today it doesn't. Tokens, requests and families with no
+`access_denied` rather than a code. A `sid` that names no row is treated as revoked. Whether a session's _expiry_ ends a refresh family is the
+[client's refresh policy](#client): the Launcher's and Wildflower
+Authorization's families end with their session, a data app's outlive it.
+Tokens, requests and families with no
 `sid` (the host app's in-process tokens, the device flow) have no session to
 check.
 
@@ -1154,9 +1197,14 @@ semantics. Issued at `/oauth/token` only when the granted scopes include
 - **Rotation:** each redemption consumes the presented token and returns
   its successor in the same family. Replaying a consumed token is treated
   as theft and revokes the whole family.
-- **Lifetime:** the family has an absolute 90-day deadline
-  (`REFRESH_TOKEN_FAMILY_TTL`) measured from the original authorization;
-  rotation never extends it.
+- **Lifetime:** set by its [client's refresh policy](#client): an idle
+  limit from its last rotation, a maximum lifetime from its issue, and
+  whether it ends when its browser session expires, all checked as the
+  policy stands when a token is redeemed. Every family also ends 365 days
+  after it was issued (`REFRESH_TOKEN_FAMILY_CEILING`). The family's
+  `expires_at` is the earliest of those limits as of its last rotation, so
+  each rotation moves it: an idle limit slides forward with use, up to the
+  maximum lifetime and the ceiling.
 - **Revocation:** soft — killing a family (replay detection,
   `DELETE /authorization/grants/{id}` revoking the client's standing consent,
   or the client revoking one of the family's tokens at `POST /oauth/revoke`)
@@ -1169,8 +1217,10 @@ semantics. Issued at `/oauth/token` only when the granted scopes include
   access tokens.
 - **Browser session:** a family minted under a
   [browser session](#browser-session) records its `sid`, and redemption
-  refuses it once that session is revoked. A family with no `sid` (the device
-  flow) has none to check.
+  refuses it once that session is revoked, whatever its client's policy says.
+  If its client's policy ends families with the browser session, redemption
+  also refuses it once that session has expired. A family with no `sid` (the
+  device flow) has none to check.
 
 ### Access-token revocation (`jti` denylist + subject epoch)
 

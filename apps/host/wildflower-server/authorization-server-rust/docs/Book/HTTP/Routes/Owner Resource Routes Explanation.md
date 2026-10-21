@@ -69,13 +69,23 @@ The list comes from the [clients reader](<../../Capabilities/Access/Clients Expl
 
 ### `update_by_id`
 
-**The one thing the Owner may change about an app is whether it is disabled.** Any time sent disables the app now, stamped with the server's clock, so a disable can't be scheduled or backdated. The [clients updater](<../../Capabilities/Access/Clients Explanation.md>)'s [`set_disabled_at`](<../../Capabilities/Access/Clients Explanation.md#item-ClientsUpdater--set_disabled_at>) is what refuses an essential app.
+**The Owner may change two things about an app: whether it is disabled, and its refresh policy.** A body carries exactly one of them; one with both, or neither, is refused. Any time sent disables the app now, stamped with the server's clock, so a disable can't be scheduled or backdated. The [clients updater](<../../Capabilities/Access/Clients Explanation.md>)'s [`set_disabled_at`](<../../Capabilities/Access/Clients Explanation.md#item-ClientsUpdater--set_disabled_at>) is what refuses an essential app. A refresh policy is replaced whole, each limit in seconds, and a limit under a second or past the 365-day ceiling is refused as the body is read.
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/clients/list_all.rs RefreshPolicyBody}}
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/clients/list_all.rs RefreshPolicyBody::from}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/clients/update_by_id.rs UpdateClientBody}}
 
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/clients/update_by_id.rs DisabledAtChange}}
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/clients/update_by_id.rs RefreshPolicyChange}}
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/clients/update_by_id.rs refresh_policy_from_body}}
+
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/clients/update_by_id.rs handle_update_client}}
 
-The [Client Management](<../../Integration Tests/Client Management Explanation.md>) tests hold these routes to listing without secrets, the server's own time, idempotence, refusing a body without `disabledAt`, the essential apps, a `404` for an unknown app, and a disabled app being refused at `/oauth/authorize` until it is re-enabled.
+The [Client Management](<../../Integration Tests/Client Management Explanation.md>) tests hold these routes to listing without secrets, the server's own time, idempotence, refusing a body without `disabledAt`, the essential apps, a `404` for an unknown app, a disabled app being refused at `/oauth/authorize` until it is re-enabled, and a changed refresh policy applying on the next refresh.
 
 ## `http::routes::browser_sessions`
 

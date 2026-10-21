@@ -368,6 +368,18 @@ The helpers of [Client Management](<Client Management Explanation.md>).
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/client_management.rs refresh_as_confidential_client}}
 
+### `stored_refresh_policy`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/client_management.rs stored_refresh_policy}}
+
+### `plant_aged_family`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/client_management.rs plant_aged_family}}
+
+### `refresh_confidential`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/client_management.rs refresh_confidential}}
+
 ## `integration::oauth_endpoints`
 
 The helpers of [OAuth Endpoints](<OAuth Endpoints Explanation.md>).
