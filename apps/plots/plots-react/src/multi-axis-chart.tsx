@@ -62,7 +62,7 @@ const useColours = (axes: readonly ValueAxis.ValueAxis[]): ColourSlots.ColourSlo
 /**
  * Plots' chart: every selected series on one time axis, each against its
  * value axis — its own, colour-matched, or one it shares with series of the
- * same unit and a similar range; two axes on the left, two on the right —
+ * same unit and a similar magnitude; two axes on the left, two on the right —
  * with each series' `low` / `high` band shaded behind the lines and a
  * crosshair that reads every series at the pointer's time.
  *

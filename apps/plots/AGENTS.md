@@ -46,8 +46,9 @@ plots-react          the Plot chart, series panel, range presets and page layout
   [AGENTS.md](./plots-core-js/AGENTS.md).
 - **`plots-react`** — the browser layer: `MultiAxisChart` draws the
   axes `ValueAxis.assign` returns as one Observable Plot figure — a value
-  axis per series or per group of series sharing a unit and a similar range
-  (colour-matched when it has one series, neutral when shared), point series
+  axis per series or per group of series sharing a unit and values of a
+  similar magnitude (colour-matched when it has one series, neutral when
+  shared), point series
   as lines with dots (or, too dense for dots, a bucket-mean line over a
   min–max envelope), level series as step lines broken at gaps and dashed
   where the domain says, `low` / `high` bands, span series as thin lanes

@@ -54,10 +54,15 @@ functions read in the namespace's context (`ValueAxis.assign`, not
   more `series`: `assign` puts each series, in selection order, on the first
   axis it can share or a new one, and sides alternate in axis order (`CAP` =
   4 series). Series share an axis when their `unit`s are equal and not
-  `null`, their scales are compatible (`'fitted'` with `'from-zero'`, the
-  axis then drawn from zero; `'zero-to-one'` only with itself), and each
-  one's own `domainFor` covers at least a third of the shared domain.
-  `domainFor` (fitted as the series' `valueScale` says), `niceDomain`,
+  `null`, each plots something, their scales are compatible (`'fitted'` with
+  `'from-zero'`, the axis then drawn from zero; `'zero-to-one'` only with
+  itself), and their values are of a similar magnitude, measured on raw
+  extents (values and bands, unpadded): the shared highest at most
+  `MAX_SHARED_RATIO` = 3 times the shared lowest, or, on an axis drawn from
+  zero, each series' highest at least a third of the shared highest. A
+  `'fitted'` series with a value at or below zero never shares. The shared
+  domain is rounded once, from the members' extents. `domainFor` (the axis a
+  series gets alone, fitted as its `valueScale` says), `niceDomain`,
   `ticksFor` (never `-0`; a `niceDomain` result is labelled at both ends),
   `normalise` / `denormalise`.
 - **`Buckets`** (`src/buckets.ts`) — a dense point series summarised for
