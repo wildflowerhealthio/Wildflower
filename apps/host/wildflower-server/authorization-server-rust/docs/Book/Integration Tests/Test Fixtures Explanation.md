@@ -358,6 +358,10 @@ The helpers of [Same-Device Session Ending](<Same Device Session Ending Explanat
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/same_device_session_ending.rs is_consent_card}}
 
+### `is_pairing_page`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/same_device_session_ending.rs is_pairing_page}}
+
 ### `stored_session`
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/same_device_session_ending.rs stored_session}}

@@ -802,12 +802,15 @@ async fn open_launch_view(
 /// working, and the next launch signs the browser in again. The outcome is
 /// logged.
 async fn end_owner_session_of_closed_view(sign_in_code: SameDeviceSignInCode, view: String) {
-    match tokio::task::spawn_blocking(move || sign_in_code.end_signed_in_session()).await {
-        Ok(Ok(true)) => log::info!("[servers] ended the Owner session of the closed {view}"),
-        Ok(Ok(false)) => log::debug!("[servers] the closed {view} had no Owner session to end"),
-        Ok(Err(error)) => {
-            log::warn!("[servers] ending the Owner session of the closed {view} failed: {error}");
-        }
+    let ended = tokio::task::spawn_blocking(move || sign_in_code.end_signed_in_session())
+        .await
+        .map_err(|error| {
+            AuthorizationServerError::infrastructure("ending a closed view's Owner session", error)
+        })
+        .and_then(|ended| ended);
+    match ended {
+        Ok(true) => log::info!("[servers] ended the Owner session of the closed {view}"),
+        Ok(false) => log::debug!("[servers] the closed {view} had no Owner session to end"),
         Err(error) => {
             log::warn!("[servers] ending the Owner session of the closed {view} failed: {error}");
         }

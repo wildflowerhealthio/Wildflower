@@ -787,7 +787,9 @@ the server run that issued it. When the view closes (on iOS and Android; a
 desktop hears no close), the host ends the session its sign-in code started:
 the server remembers, in memory, which session each code started, and the
 host holds the code (`SameDeviceSignInCode::end_signed_in_session`). Leaving
-the app with the view open and coming back isn't a close, and keeps it. When
+the app with the view open and coming back isn't a close, and keeps it,
+unless the server starts again meanwhile, as it does on iOS when the app
+returns from a suspend. When
 the server starts, it ends every same-device session, the desktops' included.
 Ending a session expires it (`expires_at` moves to now); it isn't revoked. Its
 cookie stops working at once, and a refresh-token family minted under it lives
