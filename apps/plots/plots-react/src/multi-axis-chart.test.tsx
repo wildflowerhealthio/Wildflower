@@ -26,7 +26,7 @@ import {
   spanSeriesArb,
   testWindow,
 } from './series-arbitraries.test-helpers.ts'
-import { seriesColors, spanColour } from './series-colors.ts'
+import { NEUTRAL_COLOUR, seriesColors, spanColour } from './series-colors.ts'
 import { FALLBACK_WIDTH } from './use-plot.ts'
 import { formatAxisValue, formatReading, tickDecimals } from './value-format.ts'
 
@@ -198,7 +198,7 @@ describe('MultiAxisChart shared axes', () => {
 
     const tickGroups = container.querySelectorAll('[aria-label="y-axis tick"]')
     expect(tickGroups).toHaveLength(1)
-    expect(tickGroups[0].getAttribute('stroke')).toBe('var(--color-neutral-5)')
+    expect(tickGroups[0].getAttribute('stroke')).toBe(NEUTRAL_COLOUR)
     const axisLabel = container.querySelector('[aria-label="y-axis label"] text')
     expect(axisLabel?.textContent).toBe('mm[Hg]')
     expect(markStrokes(container, 'line')).toEqual([seriesColors(0).mark, seriesColors(1).mark])

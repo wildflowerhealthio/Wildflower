@@ -13,7 +13,7 @@ import {
   ValueAxis,
 } from '@wildflowerhealthio/plots-fundamentals'
 
-import { colourSlotOf, seriesColors, spanColour } from './series-colors.ts'
+import { NEUTRAL_COLOUR, colourSlotOf, seriesColors, spanColour } from './series-colors.ts'
 import { axisLabel, axisTickFormat } from './value-format.ts'
 
 /**
@@ -24,12 +24,6 @@ const AXIS_GUTTER = 64
 
 /** How far inside its gutter's outer edge an axis' rotated label sits. */
 const LABEL_INSET = 3
-
-/**
- * What a shared axis' line and tick marks wear: a muted text step, since no
- * one series' colour names it. Its series' lines and legend keys keep theirs.
- */
-const SHARED_AXIS_COLOUR = 'var(--color-neutral-5)'
 
 /** Room on a side that carries no value axis, so the last x tick label is not clipped. */
 const BARE_SIDE_MARGIN = 24
@@ -552,12 +546,13 @@ const spanLaneMarks = (
 
 /**
  * The colour an axis' line and tick marks wear: its one series' colour, or
- * {@link SHARED_AXIS_COLOUR} when the axis has a `sharedUnit`.
+ * `NEUTRAL_COLOUR` when the axis has a `sharedUnit`; its series' lines and
+ * legend keys keep their own colours.
  */
 const axisColour = (axis: ValueAxis.ValueAxis, colours: ColourSlots.ColourSlots): string =>
   axis.sharedUnit === null
     ? seriesColors(colourSlotOf(colours, axis.series[0].id)).mark
-    : SHARED_AXIS_COLOUR
+    : NEUTRAL_COLOUR
 
 /**
  * A value axis' own marks: an axis line and tick marks at its offset in

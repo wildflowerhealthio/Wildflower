@@ -44,12 +44,16 @@ const colourSlotOf = (colours: ColourSlots.ColourSlots, seriesId: string): numbe
   return slot
 }
 
-/** What a span in the neutral category wears: a muted text step, not a lane colour. */
-const NEUTRAL_SPAN_COLOUR = 'var(--color-neutral-5)'
+/**
+ * The chart's one neutral colour, a muted text step: what a span in the
+ * neutral category wears instead of a lane colour, and what a shared value
+ * axis' line and tick marks wear, since no one series' colour names it.
+ */
+const NEUTRAL_COLOUR = 'var(--color-neutral-5)'
 
 /**
  * The react-tundraish lane token for a span category's `colourSlot`: slot N
- * takes `--color-span-(N + 1)`, and `null` the neutral colour.
+ * takes `--color-span-(N + 1)`, and `null` {@link NEUTRAL_COLOUR}.
  *
  * @throws When `colourSlot` is outside `SpanSeries.COLOUR_SLOTS` — there are
  *   exactly that many validated lane colours, never cycled
@@ -59,7 +63,7 @@ const NEUTRAL_SPAN_COLOUR = 'var(--color-neutral-5)'
  * category, not the series, and fills a bar rather than stroking a line.
  */
 const spanColour = (colourSlot: number | null): string => {
-  if (colourSlot === null) return NEUTRAL_SPAN_COLOUR
+  if (colourSlot === null) return NEUTRAL_COLOUR
   if (!Number.isInteger(colourSlot) || colourSlot < 0 || colourSlot >= SpanSeries.COLOUR_SLOTS) {
     throw new Error(
       `Span colour slot ${colourSlot} is outside the ${SpanSeries.COLOUR_SLOTS} lane colours`
@@ -69,4 +73,4 @@ const spanColour = (colourSlot: number | null): string => {
 }
 
 export type { SeriesColors }
-export { colourSlotOf, seriesColors, spanColour }
+export { NEUTRAL_COLOUR, colourSlotOf, seriesColors, spanColour }

@@ -25,7 +25,7 @@ and opaque series ids.
   - a value axis per `ValueAxis` (ticks from the axis, labels mapped back
     through `ValueAxis.denormalise`), two per side stepping outward. An axis
     with one series wears its colour and its `labelWithUnit`; a shared axis
-    (one with a `sharedUnit`) wears `SHARED_AXIS_COLOUR` (a neutral text
+    (one with a `sharedUnit`) wears `NEUTRAL_COLOUR` (a neutral text
     step) and that unit alone (`axisLabel`), and its series keep their own
     colours;
   - bands: a point series' readings' `low` / `high` as an area, a level
@@ -62,7 +62,7 @@ and opaque series ids.
   with `SpanSeries.categoriesOf`).
 - `src/series-colors.ts` — `seriesColors`, the `--color-series-N` /
   `-soft` tokens for a palette index, and `spanColour`, the `--color-span-N`
-  token for a span category's colour slot (neutral for `null`).
+  token for a span category's colour slot (`NEUTRAL_COLOUR` for `null`).
 - `src/value-format.ts` — tick, value and date formatting.
 - `src/use-plot.ts` — `usePlotContainer` measures the container a figure
   mounts into, and `usePlot` mounts the figure there and redraws it at that
