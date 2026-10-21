@@ -4,15 +4,17 @@
 use std::sync::Arc;
 
 use tokio::sync::watch;
+use tower::ServiceExt as _;
 use url::Url;
 use wildflowerhealthio_authorization_server::domain::authorization_request::code::{
     CodeRequest, NewCodeRequestArgs,
 };
 use wildflowerhealthio_authorization_server::domain::grant_store::AuthorizationRequestsTx as _;
 use wildflowerhealthio_authorization_server::{
-    setup_authorization_server, AdmitEveryAuthorizationStart, AuthorizationServerConfig,
-    GrantStore, LaunchContextMinter, OwnerPrompt, PendingConsentWatcher,
-    SameDeviceSignInCodeMinter, SqliteGrantStore,
+    setup_authorization_server, standing_browser_session, AdmitEveryAuthorizationStart,
+    AuthorizationServerConfig, AuthorizationServerState, GrantStore, LaunchContextMinter,
+    OwnerPrompt, PendingConsentWatcher, SameDeviceSignInCodeMinter, SqliteGrantStore,
+    BROWSER_SESSION_COOKIE,
 };
 use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
 use wildflowerhealthio_shared_structures::launcher::LauncherBase;
@@ -20,9 +22,21 @@ use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 /// The domain of the server the authorization server is for.
 pub(crate) const DOMAIN: &str = "ruth.relay.example.com";
 
+/// The server's launcher, as its record and its authorization server have it.
+pub(crate) const LAUNCHER: &str = "https://launcher.example/app?theme=dark";
+
+/// The server's Authorization app, as its record and its authorization server
+/// have it.
+pub(crate) const AUTHORIZATION: &str = "https://authorization.example/app/?theme=dark";
+
 /// An authorization server over a temporary database, the way a server's run sets one
 /// up, with what the test reads it through.
 pub(crate) struct TestAuthorizationServer {
+    /// The authorization server's routes, which a launch's browser signs in
+    /// at.
+    router: axum::Router,
+    /// Its state, which says whether a browser session stands.
+    state: Arc<AuthorizationServerState>,
     pub(crate) launch_context_minter: LaunchContextMinter,
     pub(crate) same_device_sign_in_code_minter: SameDeviceSignInCodeMinter,
     pub(crate) pending_consent_watcher: PendingConsentWatcher,
@@ -31,6 +45,41 @@ pub(crate) struct TestAuthorizationServer {
 }
 
 impl TestAuthorizationServer {
+    /// Follow `sign_in_url`, a launch's `/oauth/sign-in`, as the launch's
+    /// browser does, returning the browser session token its cookie holds.
+    pub(crate) async fn sign_in(&self, sign_in_url: &Url) -> String {
+        let signed_in = self
+            .router
+            .clone()
+            .oneshot(
+                axum::http::Request::get(&sign_in_url[url::Position::BeforePath..])
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(signed_in.status(), axum::http::StatusCode::SEE_OTHER);
+        let set_cookie = signed_in
+            .headers()
+            .get(axum::http::header::SET_COOKIE)
+            .expect("the sign-in sets the browser session cookie")
+            .to_str()
+            .unwrap();
+        set_cookie
+            .strip_prefix(&format!("{BROWSER_SESSION_COOKIE}="))
+            .and_then(|rest| rest.split(';').next())
+            .expect("the browser session cookie")
+            .to_owned()
+    }
+
+    /// Whether the browser session `session_token` holds stands: its cookie
+    /// still signs the browser in.
+    pub(crate) fn is_signed_in(&self, session_token: &str) -> bool {
+        standing_browser_session(&self.state, session_token)
+            .unwrap()
+            .is_some()
+    }
+
     /// How many launches the authorization server has minted.
     pub(crate) fn minted_launches(&self) -> i64 {
         wildflowerhealthio_persistence::Connection::open(
@@ -100,14 +149,16 @@ pub(crate) fn test_authorization_server() -> TestAuthorizationServer {
                 "https://authorization.test/authorization/",
             )
             .unwrap(),
-            launcher_url: Url::parse("https://launcher.test/launcher/").unwrap(),
-            authorization_url: Url::parse("https://authorization.test/authorization/").unwrap(),
+            launcher_url: Url::parse(LAUNCHER).unwrap(),
+            authorization_url: Url::parse(AUTHORIZATION).unwrap(),
         },
         pending_consent_tx,
         Arc::new(AdmitEveryAuthorizationStart),
     )
     .unwrap();
     TestAuthorizationServer {
+        router: authorization_server.router,
+        state: authorization_server.state,
         launch_context_minter: authorization_server.launch_context_minter,
         same_device_sign_in_code_minter: authorization_server.same_device_sign_in_code_minter,
         pending_consent_watcher: authorization_server.pending_consent_watcher,

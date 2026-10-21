@@ -59,6 +59,7 @@ use tauri_plugin_native_page_browser::{
 use tokio::sync::{watch, Notify};
 use url::Url;
 use wildflowerhealthio_authorization_server::domain::authorization_server_error::AuthorizationServerError;
+use wildflowerhealthio_authorization_server::SameDeviceSignInCode;
 use wildflowerhealthio_servers::{
     ConsentKey, ConsentRequest, ConsentViewClaim, ConsentViews, IfShowing, LaunchError,
     ListedServer, PendingConsent, RegistryError, ServerConsentWatcher, ServerDetail,
@@ -463,15 +464,17 @@ async fn launch(
             &public_origin,
             &launch,
         );
+        let sign_in_code = sign_in_code_minter.mint();
         let sign_in_url = wildflowerhealthio_servers::sign_in_url(
             &public_origin,
-            sign_in_code_minter.mint().as_str(),
+            sign_in_code.as_str(),
             launch_url.as_str(),
         );
         open_launch_view(
             &launch_browser,
             launch_presence,
             sign_in_url,
+            sign_in_code,
             OpenMode::Replace,
         )
         .await?;
@@ -506,15 +509,17 @@ async fn open_authorization_app(
             &server.record.authorization_url,
             &public_origin,
         );
+        let sign_in_code = sign_in_code_minter.mint();
         let sign_in_url = wildflowerhealthio_servers::sign_in_url(
             &public_origin,
-            sign_in_code_minter.mint().as_str(),
+            sign_in_code.as_str(),
             authorization_app_url.as_str(),
         );
         open_launch_view(
             &launch_browser,
             launch_presence,
             sign_in_url,
+            sign_in_code,
             OpenMode::Replace,
         )
         .await?;
@@ -573,9 +578,10 @@ async fn open_pending_consent(
         else {
             return Ok(false);
         };
+        let sign_in_code = sign_in_code_minter.mint();
         let sign_in_url = wildflowerhealthio_servers::consent_sign_in_url(
             &server.record.public_origin(),
-            sign_in_code_minter.mint().as_str(),
+            sign_in_code.as_str(),
             &pending_consent.key,
         );
         // A failed open drops the claim with the rest.
@@ -583,6 +589,7 @@ async fn open_pending_consent(
             &launch_browser,
             launch_presence,
             sign_in_url,
+            sign_in_code,
             OpenMode::Stack,
         )
         .await?;
@@ -742,18 +749,24 @@ async fn listed_server(
     Ok(ListedServer::new(record, unit_status, certificate))
 }
 
-/// Open `url` in a new view of `launch_browser`, beside the views showing as
-/// `mode` says, open in `launch_presence` from before the open until the
-/// browser reports the view closed, or the open fails, and kept alive there
-/// once the browser reports that.
+/// Open `url`, a sign-in with `sign_in_code`, in a new view of
+/// `launch_browser`, beside the views showing as `mode` says, open in
+/// `launch_presence` from before the open until the browser reports the view
+/// closed, or the open fails, and kept alive there once the browser reports
+/// that. Once the browser reports the view closed, the Owner session the code
+/// signed in is ended too.
 async fn open_launch_view(
     launch_browser: &impl LaunchBrowser,
     launch_presence: impl LaunchPresence,
     url: Url,
+    sign_in_code: SameDeviceSignInCode,
     mode: OpenMode,
 ) -> Result<LaunchView, LaunchError> {
     let view = next_launch_view();
     let closed = Arc::new(Notify::new());
+    // The browser reports events off the runtime, so the close's ending is
+    // spawned onto the runtime the open runs on.
+    let runtime = tokio::runtime::Handle::current();
     // Before the open, so a close reported as the view opens finds it, and
     // a background session can start while the app is still in front.
     launch_presence.view_opened(&view);
@@ -770,6 +783,10 @@ async fn open_launch_view(
             BrowserEvent::Closed => {
                 launch_presence.view_closed(&view);
                 closed.notify_one();
+                runtime.spawn(end_owner_session_of_closed_view(
+                    sign_in_code.clone(),
+                    view.clone(),
+                ));
             }
         })
     };
@@ -778,6 +795,23 @@ async fn open_launch_view(
         return Err(error);
     }
     Ok(LaunchView { name: view, closed })
+}
+
+/// End the Owner session `sign_in_code` signed in, on a blocking thread, as
+/// its launch view `view` closed: the session is expired, so its cookie stops
+/// working, and the next launch signs the browser in again. The outcome is
+/// logged.
+async fn end_owner_session_of_closed_view(sign_in_code: SameDeviceSignInCode, view: String) {
+    match tokio::task::spawn_blocking(move || sign_in_code.end_signed_in_session()).await {
+        Ok(Ok(true)) => log::info!("[servers] ended the Owner session of the closed {view}"),
+        Ok(Ok(false)) => log::debug!("[servers] the closed {view} had no Owner session to end"),
+        Ok(Err(error)) => {
+            log::warn!("[servers] ending the Owner session of the closed {view} failed: {error}");
+        }
+        Err(error) => {
+            log::warn!("[servers] ending the Owner session of the closed {view} failed: {error}");
+        }
+    }
 }
 
 /// A launch view the in-app browser opened: its name, which the browser
@@ -879,12 +913,9 @@ mod tests {
 
     use super::*;
     use crate::test_authorization_server::{
-        test_authorization_server, TestAuthorizationServer, DOMAIN,
+        test_authorization_server, TestAuthorizationServer, AUTHORIZATION, DOMAIN, LAUNCHER,
     };
     use crate::test_statuses::not_reporting;
-
-    const LAUNCHER: &str = "https://launcher.example/app?theme=dark";
-    const AUTHORIZATION: &str = "https://authorization.example/app/?theme=dark";
 
     /// Which phone a [`PhoneBrowser`] browses as.
     #[derive(Clone, Copy)]
@@ -1368,6 +1399,68 @@ mod tests {
         assert!(presence.views().is_empty());
     }
 
+    /// How long a test waits for something a view's event set off.
+    const HANG_TIMEOUT: Duration = Duration::from_secs(5);
+
+    /// How long a test waits to see that a view's event set nothing off.
+    const QUIET_PERIOD: Duration = Duration::from_millis(200);
+
+    /// Wait, up to [`HANG_TIMEOUT`], for the browser session `session_token`
+    /// holds on `authorization_server` to end.
+    async fn until_signed_out(authorization_server: &TestAuthorizationServer, session_token: &str) {
+        tokio::time::timeout(HANG_TIMEOUT, async {
+            while authorization_server.is_signed_in(session_token) {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the session ends");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn closing_a_launch_s_view_ends_only_its_owner_session() {
+        let authorization_server = test_authorization_server();
+        let browser = PhoneBrowser::new(Phone::Ios);
+        let presence = OpenLaunchViews::default();
+        launch_launchable(&authorization_server, browser.clone(), &presence)
+            .await
+            .unwrap();
+        let first = authorization_server.sign_in(&browser.opened()[0]).await;
+        assert!(authorization_server.is_signed_in(&first));
+
+        // On iOS the second launch's view replaces the first's, closing it.
+        launch_launchable(&authorization_server, browser.clone(), &presence)
+            .await
+            .unwrap();
+        let second = authorization_server.sign_in(&browser.opened()[1]).await;
+
+        until_signed_out(&authorization_server, &first).await;
+        assert!(
+            authorization_server.is_signed_in(&second),
+            "the second launch's session stands"
+        );
+        browser.close_top();
+        until_signed_out(&authorization_server, &second).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn leaving_and_coming_back_to_a_launch_s_view_keeps_its_owner_session() {
+        let authorization_server = test_authorization_server();
+        let browser = PhoneBrowser::new(Phone::Android);
+        let presence = OpenLaunchViews::default();
+        launch_launchable(&authorization_server, browser.clone(), &presence)
+            .await
+            .unwrap();
+        let session_token = authorization_server.sign_in(&browser.opened()[0]).await;
+
+        browser.leave_and_come_back();
+        tokio::time::sleep(QUIET_PERIOD).await;
+
+        assert!(authorization_server.is_signed_in(&session_token));
+        browser.close_top();
+        until_signed_out(&authorization_server, &session_token).await;
+    }
+
     #[tokio::test(flavor = "multi_thread")]
     async fn a_launch_view_its_browser_keeps_alive_is_kept_alive_until_it_closes() {
         let authorization_server = test_authorization_server();
@@ -1816,6 +1909,7 @@ mod tests {
             browser,
             presence.clone(),
             Url::parse(&format!("https://{DOMAIN}/oauth/sign-in")).unwrap(),
+            authorization_server.same_device_sign_in_code_minter.mint(),
             OpenMode::Stack,
         )
         .await
