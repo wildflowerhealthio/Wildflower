@@ -552,7 +552,12 @@ changing how servers run or what the host notifies about them.
   Android, where the view moves the app to the background, an open view keeps
   the app present for `WhileOpen`, and a background session keeps it alive
   under the view until the browser reports it keeps the app alive itself
-  (`KeptAlive`, `launch_view_kept_alive`). It never changes the run policy. Errors are
+  (`KeptAlive`, `launch_view_kept_alive`). Once the browser reports a view
+  closed, the host ends the Owner session its sign-in code started
+  (`SameDeviceSignInCode::end_signed_in_session`, on a blocking thread), so a
+  Custom Tab's session doesn't outlive it in Chrome; moving to the background
+  and back doesn't end it, and a desktop, which hears no close, relies on the
+  server's start ending every Owner session. It never changes the run policy. Errors are
   `{kind, message}`: `serverNotRunning`, `tokenRejected`, `tunnelUnknown`,
   `notYetProbed`, `unreachable`, `noValidCertificate`, `untrustedCertificate` (a valid certificate from
   Let's Encrypt's staging CA), `authorizationServer`, `openingBrowser`, or the registry's
