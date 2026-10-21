@@ -5,7 +5,7 @@ import type { AuthorizationRouterContext } from '@wildflowerhealthio/authorizati
 import { PageHeader, PageLoading } from '@wildflowerhealthio/react-tundraish'
 import { Scope } from '@wildflowerhealthio/scopes-core'
 import { fluentScope } from '@wildflowerhealthio/scopes-react'
-import { Effect, Option, Schema } from 'effect'
+import { Duration, Effect, Match, Option, Schema } from 'effect'
 import { useEffect, type JSX } from 'react'
 
 import { followableClientCallback } from '../client-callback.ts'
@@ -16,6 +16,22 @@ const REQUEST_UNREADABLE = "Couldn't read this request. Go back to the app and t
 
 /** What the page says when Continue or Cancel failed some other way. */
 const ANSWER_FAILED = "Couldn't finish this request. Go back to the app and try again."
+
+/** What the page says while the server's owner decides whether to widen this browser's access. */
+const WAITING_FOR_OWNER =
+  "Asked the server's owner to let this browser do more. Waiting for their answer…"
+
+/** What the page says when the server's owner declined to widen this browser's access. */
+const OWNER_DECLINED = "The server's owner declined. This browser can do what it could before."
+
+/** What the page says when the server's owner didn't decide in time. */
+const OWNER_DID_NOT_ANSWER = "The server's owner didn't answer in time. You can ask again."
+
+/** What the page says when asking the server's owner, or hearing back, failed some other way. */
+const ASK_FAILED = "Couldn't ask the server's owner. Try again, or go on without asking."
+
+/** How often the page asks whether the server's owner has decided. */
+const WIDENING_POLL_INTERVAL = Duration.seconds(3)
 
 /** What the limited page says, as `GET …/session-shortfall` answers it. */
 type SessionShortfall = typeof OAuth.SessionShortfallSchema.Type
@@ -62,6 +78,46 @@ const answerShortfall = (
     )
   )
 
+/** What asking the server's owner to widen this browser's session answered. */
+type WideningAsk =
+  /** The widening the server filed, which the page polls. */
+  | { readonly kind: 'asked'; readonly wideningId: string }
+  /** The request no longer waits on this page. */
+  | { readonly kind: 'gone' }
+
+/** Where a widening stands, as the page's poll found it. */
+type WideningStatus = (typeof OAuth.SessionWideningStatusSchema.Type)['status']
+
+/** Ask the server's owner to widen this browser's session by what it lacks of `requestId`. */
+const askToWiden = (
+  requestId: string
+): Effect.Effect<WideningAsk, unknown, AuthorizationServerHttpApiClient> =>
+  Effect.flatMap(AuthorizationServerHttpApiClient, (client) =>
+    client.oauth.AskToWidenSession({ path: { id: requestId } })
+  ).pipe(
+    Effect.map(({ wideningId }): WideningAsk => ({ kind: 'asked', wideningId })),
+    Effect.catchIf(Schema.is(OAuth.AuthorizationStatusNotFoundSchema), () =>
+      Effect.succeed<WideningAsk>({ kind: 'gone' })
+    )
+  )
+
+/**
+ * Where the widening `wideningId` stands. Once it is approved, this poll collects the wider
+ * session: the server sets it as this browser's session cookie. A widening this browser can't
+ * see any more has nothing more to collect, as an expired one.
+ */
+const pollWidening = (
+  wideningId: string
+): Effect.Effect<WideningStatus, unknown, AuthorizationServerHttpApiClient> =>
+  Effect.flatMap(AuthorizationServerHttpApiClient, (client) =>
+    client.oauth.SessionWideningPoll({ path: { id: wideningId } })
+  ).pipe(
+    Effect.map(({ status }) => status),
+    Effect.catchIf(Schema.is(OAuth.SessionWideningNotFoundSchema), () =>
+      Effect.succeed<WideningStatus>('expired')
+    )
+  )
+
 /**
  * A missing scope in words that finish "This browser isn't allowed to …": the
  * resource scope's verbs and records ("read Observations"), else the known
@@ -92,6 +148,35 @@ interface LimitedPageProps {
   readonly waitPage: URL
   /** Leave the page for `destination`, replacing it in the browser's history. */
   readonly leaveFor: (destination: URL) => void
+  /** How often the page asks whether the server's owner has decided; three seconds by default. */
+  readonly wideningPollInterval?: Duration.Duration
+}
+
+/**
+ * The note above the buttons about asking the server's owner: waiting for them, their
+ * decline, their silence, or a failure to ask; none before asking, or once they widened the
+ * session (the page then reads what it still lacks).
+ */
+const wideningNoteOf = (asking: {
+  /** Asking, or hearing back, failed. */
+  readonly failed: boolean
+  /** Asked, and the Owner hasn't decided yet. */
+  readonly waiting: boolean
+  /** What the last poll found, if one has answered. */
+  readonly status: Option.Option<WideningStatus>
+}): Option.Option<string> => {
+  if (asking.failed) return Option.some(ASK_FAILED)
+  if (asking.waiting) return Option.some(WAITING_FOR_OWNER)
+  return asking.status.pipe(
+    Option.flatMap((status) =>
+      Match.value(status).pipe(
+        Match.when('declined', () => Option.some(OWNER_DECLINED)),
+        Match.when('expired', () => Option.some(OWNER_DID_NOT_ANSWER)),
+        Match.whenOr('pending', 'widened', () => Option.none<string>()),
+        Match.exhaustive
+      )
+    )
+  )
 }
 
 /**
@@ -101,16 +186,21 @@ interface LimitedPageProps {
  * to do, then **Continue** goes on (to the app with a narrowed code, or to the
  * consent card or the wait page) and **Cancel** sends the browser back to the
  * app with `access_denied`; either way it leaves for where the server's answer
- * says. A request no longer waiting here (decided, expired, or not this
- * browser's) goes to the wait page, which says how it ended. A request this
- * browser's session no longer falls short of (its grant was widened since)
- * goes on at once, with nothing to say.
+ * says. **Ask the server's owner** asks the Owner to widen this browser's
+ * session by what it lacks, then polls until they decide: once they widen it,
+ * the page reads what the session still lacks, and goes on at once when
+ * that's nothing; a decline, or no answer in time, is said above the buttons.
+ * A request no longer waiting here (decided, expired, or not this browser's)
+ * goes to the wait page, which says how it ended. A request this browser's
+ * session no longer falls short of (its grant was widened since) goes on at
+ * once, with nothing to say.
  */
 const LimitedPage = ({
   requestId,
   runAuthed,
   waitPage,
   leaveFor,
+  wideningPollInterval = WIDENING_POLL_INTERVAL,
 }: LimitedPageProps): JSX.Element => {
   const shortfallQuery = useQuery({
     queryKey: ['limited-page', 'session-shortfall', requestId],
@@ -135,6 +225,33 @@ const LimitedPage = ({
       if (answer.kind === 'next') leaveFor(new URL(answer.location))
     },
   })
+
+  const askMutation = useMutation({
+    mutationFn: () => runAuthed(askToWiden(requestId)),
+    onSuccess: (asked) => {
+      if (asked.kind === 'gone') leaveFor(waitPage)
+    },
+  })
+  const wideningId = askMutation.data?.kind === 'asked' ? askMutation.data.wideningId : null
+  const wideningQuery = useQuery({
+    queryKey: ['limited-page', 'session-widening', wideningId],
+    queryFn: () => runAuthed(pollWidening(wideningId ?? '')),
+    enabled: wideningId !== null,
+    retry: false,
+    refetchInterval: (query) =>
+      query.state.data === 'pending' ? Duration.toMillis(wideningPollInterval) : false,
+  })
+
+  // The Owner widened this browser's session, and the poll collected it: read
+  // what the session still lacks, which goes on at once when that's nothing.
+  const widened = wideningQuery.data === 'widened'
+  const { refetch: readShortfallAgain } = shortfallQuery
+  const { reset: forgetAsking } = askMutation
+  useEffect(() => {
+    if (!widened) return
+    forgetAsking()
+    void readShortfallAgain()
+  }, [widened, forgetAsking, readShortfallAgain])
 
   const gone = shortfallQuery.data?.kind === 'gone'
   useEffect(() => {
@@ -174,12 +291,29 @@ const LimitedPage = ({
     const failure = answerMutation.isError ? ANSWER_FAILED : null
     const leaving =
       answerMutation.isPending || answered?.kind === 'next' || answered?.kind === 'gone'
+    // Asked, and the Owner hasn't decided: one ask at a time.
+    const waitingForOwner =
+      askMutation.isPending ||
+      (wideningId !== null && (wideningQuery.isPending || wideningQuery.data === 'pending'))
+    const wideningNote = wideningNoteOf({
+      failed: askMutation.isError || wideningQuery.isError,
+      waiting: waitingForOwner,
+      status: Option.fromNullable(wideningQuery.data),
+    })
     return (
       <>
         <p className={styles['limited-page__message']}>
           This browser isn&apos;t allowed to {listOf(phrases)}, which {clientName} expects.{' '}
           {clientName} may not be able to do everything.
         </p>
+        {wideningNote.pipe(
+          Option.map((note) => (
+            <p key="widening-note" role="status" className={styles['limited-page__message']}>
+              {note}
+            </p>
+          )),
+          Option.getOrNull
+        )}
         {failure === null ? null : (
           <p role="alert" className={styles['limited-page__message']}>
             {failure}
@@ -195,6 +329,16 @@ const LimitedPage = ({
             }}
           >
             Cancel
+          </button>
+          <button
+            type="button"
+            className="button-2 outline"
+            disabled={leaving || waitingForOwner}
+            onClick={() => {
+              askMutation.mutate()
+            }}
+          >
+            Ask the server&apos;s owner
           </button>
           <button
             type="button"

@@ -163,7 +163,7 @@ describe('beginSignIn', () => {
 
     // Act
     const result = await runToEither(
-      beginSignIn(SERVER, undefined, environment, 'minted-launch-nonce')
+      beginSignIn(SERVER, undefined, environment, { launch: 'minted-launch-nonce' })
     )
 
     // Assert
@@ -172,6 +172,23 @@ describe('beginSignIn', () => {
     expect(url.searchParams.get('launch')).toBe('minted-launch-nonce')
     expect(url.searchParams.get('aud')).toBe(SERVER)
     expect(store.contents()).not.toContain('minted-launch-nonce')
+  })
+
+  it('asks the server to show its limited page again only when told to', async () => {
+    // Arrange
+    const environment = testEnvironment({ store: memoryStore(), fetch: discoveryOnly() })
+
+    // Act
+    const prompting = await runToEither(
+      beginSignIn(SERVER, undefined, environment, { prompt: 'consent' })
+    )
+    const plain = await runToEither(beginSignIn(SERVER, undefined, environment))
+
+    // Assert
+    if (Either.isLeft(prompting)) throw new Error(prompting.left.reason)
+    if (Either.isLeft(plain)) throw new Error(plain.left.reason)
+    expect(new URL(prompting.right).searchParams.get('prompt')).toBe('consent')
+    expect(new URL(plain.right).searchParams.has('prompt')).toBe(false)
   })
 
   it('stashes the record under the key the caller named, and nowhere else', async () => {

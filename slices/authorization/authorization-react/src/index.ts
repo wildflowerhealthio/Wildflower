@@ -16,6 +16,7 @@ export {
   grantQueryOptions,
   grantsQueryOptions,
   oauthConsentMutationOptions,
+  sessionWideningMutationOptions,
   useGrantQuery,
   useGrantsQuery,
   useClientsQuery,
@@ -38,6 +39,9 @@ export {
   type RevokeBrowserSessionVariables,
   type RevokeGrantVariables,
   type RunAuthed,
+  type SessionWideningConsent,
+  type SessionWideningDecision,
+  type SessionWideningResult,
 } from './queries/index.ts'
 
 export { TrustedAppsSection } from './components/TrustedAppsSection.tsx'
@@ -66,6 +70,15 @@ export {
   DeviceCodeEntryForm,
   type DeviceCodeEntryFormProps,
 } from './screens/device/device-code-entry-form.tsx'
+
+// The session widening's card, for a surface that sends the decision on its own
+// session: the authorization server's widening page
+// (`apps/host/wildflower-server/authorization-server-web`).
+export {
+  SessionWideningCard,
+  type SessionWideningCardProps,
+  type SessionWideningMutation,
+} from './screens/pending-consent/session-widening-card.tsx'
 
 export { formatInstant } from './format-date.ts'
 
