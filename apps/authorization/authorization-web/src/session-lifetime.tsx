@@ -74,7 +74,8 @@ const LimitPicker = ({
         value={choiceValue(limit)}
         disabled={disabled}
         onChange={(event: ChangeEvent<HTMLSelectElement>) => {
-          limitOfChoice(choices, event.target.value).pipe(Option.map(onPick))
+          const picked = limitOfChoice(choices, event.target.value)
+          if (Option.isSome(picked)) onPick(picked.value)
         }}
       >
         {choices.map((choice) => (
@@ -95,9 +96,10 @@ const LimitPicker = ({
  */
 const SessionLifetimeSection = ({ client }: { readonly client: Client.Type }): JSX.Element => {
   const { draft, setDraft, canSave, save, isSaving, error, ...choices } = useSessionLifetime(client)
+  const titleId = useId()
   return (
-    <section className={styles['session-lifetime']} aria-labelledby="session-lifetime-title">
-      <h3 id="session-lifetime-title" className="text-label-3">
+    <section className={styles['session-lifetime']} aria-labelledby={titleId}>
+      <h3 id={titleId} className="text-label-3">
         Session lifetime
       </h3>
       <p className="text-body-3">
