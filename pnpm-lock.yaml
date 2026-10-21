@@ -559,9 +559,6 @@ importers:
       '@vitejs/plugin-react':
         specifier: 'catalog:'
         version: 6.1.2(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1))(babel-plugin-react-compiler@1.0.0)
-      fhirclient:
-        specifier: ^3.0.1
-        version: 3.0.1(@types/node@26.1.0)
       jsdom:
         specifier: 'catalog:'
         version: 30.1.3
@@ -1141,9 +1138,6 @@ importers:
       events:
         specifier: 'catalog:'
         version: 3.3.0
-      fhirclient:
-        specifier: ^3.0.1
-        version: 3.0.1(@types/node@26.1.0)
       jsdom:
         specifier: 'catalog:'
         version: 30.1.3
@@ -1917,9 +1911,6 @@ importers:
       '@wildflowerhealthio/fhir-r4':
         specifier: workspace:*
         version: link:../../../slices/fhir/fhir-r4
-      fhirclient:
-        specifier: ^3.0.1
-        version: 3.0.1(@types/node@26.1.0)
       jsdom:
         specifier: 'catalog:'
         version: 30.1.3
@@ -2652,9 +2643,6 @@ importers:
       fast-check:
         specifier: 'catalog:'
         version: 3.23.2
-      fhirclient:
-        specifier: ^3.0.1
-        version: 3.0.1(@types/node@26.1.0)
       jsdom:
         specifier: 'catalog:'
         version: 30.1.3
@@ -4379,10 +4367,6 @@ importers:
         version: 1.4.0(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/ui@5.0.5(vitest@5.0.5))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.3)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1)
 
   slices/fhir/fhir-r4-react:
-    dependencies:
-      fhirclient:
-        specifier: ^3.0.1
-        version: 3.0.1(@types/node@26.1.0)
     devDependencies:
       '@effect/platform':
         specifier: 'catalog:'
@@ -5662,9 +5646,6 @@ importers:
       fast-check:
         specifier: 'catalog:'
         version: 3.23.2
-      fhirclient:
-        specifier: ^3.0.1
-        version: 3.0.1(@types/node@26.1.0)
       jsdom:
         specifier: 'catalog:'
         version: 30.1.3
@@ -8211,9 +8192,6 @@ packages:
   '@types/estree@1.0.9':
     resolution: {integrity: sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==}
 
-  '@types/fhir@0.0.41':
-    resolution: {integrity: sha512-MAQAFufNZBZ6V0F94Nhknmmh/E3iMXFK4n/L8RkSNjKtOJnvaAJERivNOj35VVx9VCQBJbE0BHSzikfBahoRhA==}
-
   '@types/fhir@0.0.44':
     resolution: {integrity: sha512-RhqRUNcUFeQSbEK9cOEYQ98sfsUFFRCUKbgozHvryiUfEAPiXuhgk2wqYV3MoD1T1qHp0gztrHDywU68bN7KYQ==}
 
@@ -9524,18 +9502,6 @@ packages:
   fflate@0.8.3:
     resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
 
-  fhirclient@3.0.1:
-    resolution: {integrity: sha512-ozmkDdnB4us8r2xyf4TvHUJi5Bly9iZf33avYvP/Vp9Hx1iHn/kmnIVGQG1+ee673sLWAP0c9dlLFQz3mGNVmA==}
-    engines: {node: '>=18'}
-    peerDependencies:
-      '@types/hapi': '>=18'
-      '@types/node': ^26
-    peerDependenciesMeta:
-      '@types/hapi':
-        optional: true
-      '@types/node':
-        optional: true
-
   file-entry-cache@8.0.0:
     resolution: {integrity: sha512-XXTUwCvisa5oacNGRP9SfNtYBNAMi+RPwBFmblZEF7N7swHYQS6/Zfk7SRwx4D5j3CH211YNRco1DEMNVfZCnQ==}
     engines: {node: '>=16.0.0'}
@@ -9830,12 +9796,6 @@ packages:
 
   jju@1.4.0:
     resolution: {integrity: sha512-8wb9Yw966OSxApiCt0K3yNJL8pnNeIv+OEq2YMidz4FKP6nonSRoOXc80iXY4JaN2FC11B9qsNmDsm+ZOfMROA==}
-
-  jose@4.15.9:
-    resolution: {integrity: sha512-1vUQX+IdDMVPj4k8kOxgUqlcK518yluMuGZwqlr44FS1ppZB/5GWh4rZG89erpOBOJjU/OBsnCVFfapsRz6nEA==}
-
-  js-base64@3.9.3:
-    resolution: {integrity: sha512-uwYQp+VJ38FVvtim6qNbit6e9uT6dwWQ4Y1+H9TxhW5hcHjpHwoxlR0nMpqUmIFOmu4VqMxwdJA88gIVuZJQ/g==}
 
   js-base64@3.9.5:
     resolution: {integrity: sha512-u0CFDUca8BbBRkMkF/fDcuoLCx9nTNbXdVtbjVnBqySA9E221u0uYKbACiYGOEk1heY69qM4caeX3OwjSyxevw==}
@@ -13508,8 +13468,6 @@ snapshots:
 
   '@types/estree@1.0.9': {}
 
-  '@types/fhir@0.0.41': {}
-
   '@types/fhir@0.0.44': {}
 
   '@types/geojson@7946.0.16': {}
@@ -13917,7 +13875,7 @@ snapshots:
       pathe: 2.0.3
       sirv: 3.0.2
       tinyrainbow: 3.2.0
-      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5(vitest@5.0.5))(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(jsdom@30.1.3)
+      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.1.0)(@vitest/browser-preview@5.0.5)(@vitest/ui@5.0.5(vitest@5.0.5))(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.1))(jsdom@30.1.3)
 
   '@vitest/utils@5.0.5':
     dependencies:
@@ -14800,14 +14758,6 @@ snapshots:
 
   fflate@0.8.3: {}
 
-  fhirclient@3.0.1(@types/node@26.1.0):
-    dependencies:
-      '@types/fhir': 0.0.41
-      jose: 4.15.9
-      js-base64: 3.9.3
-    optionalDependencies:
-      '@types/node': 26.1.0
-
   file-entry-cache@8.0.0:
     dependencies:
       flat-cache: 4.0.1
@@ -15150,10 +15100,6 @@ snapshots:
   jiti@2.7.0: {}
 
   jju@1.4.0: {}
-
-  jose@4.15.9: {}
-
-  js-base64@3.9.3: {}
 
   js-base64@3.9.5: {}
 

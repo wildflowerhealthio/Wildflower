@@ -6,7 +6,12 @@ import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 import { PatientChoiceLine } from './patient-choice-line.tsx'
 import type { PatientChoiceLineProps } from './patient-choice-line.tsx'
 import type { PatientChoice } from './patient-choice.ts'
-import { answer, type FhirResponses, stubSmartClient } from './smart-client.test-helpers.ts'
+import {
+  answer,
+  failWithStatus,
+  type FhirResponses,
+  stubSmartClient,
+} from './smart-client.test-helpers.ts'
 import styles from './patient-choice-line.module.css'
 
 /**
@@ -98,10 +103,7 @@ describe('PatientChoiceLine', () => {
 
   it('should say the server has no such patient on a 404', async () => {
     // Act
-    renderLine(
-      { kind: 'patient', patientId: 'p1' },
-      { 'Patient/p1': () => Promise.reject(Object.assign(new Error('gone'), { status: 404 })) }
-    )
+    renderLine({ kind: 'patient', patientId: 'p1' }, { 'Patient/p1': failWithStatus(404) })
 
     // Assert
     expect(

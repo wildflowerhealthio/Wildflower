@@ -1,11 +1,13 @@
 import { HttpClient, HttpClientResponse, type HttpClientRequest } from '@effect/platform'
 import { Array as Arr, Effect, Layer, Option, Order, Schema } from 'effect'
 
+import { FhirHttpError } from '@wildflowerhealthio/fhir-r4-react/smart'
+
 import type { SmartClient } from './smart-client.ts'
 
 /**
  * An in-memory FHIR server for driving the app end to end: searches and reads
- * answered from its store through a stub fhirclient client, and batch
+ * answered from its store through a stub SMART client, and batch
  * `Bundle`s applied to the same store through a stub transport the real
  * `buildSmartRouterContext` writes over.
  */
@@ -187,34 +189,28 @@ const fakeFhirServer = (): FakeFhirServer => {
     }
   }
 
-  /**
-   * A read of one resource, `Type/id`: what the store holds under it, or a
-   * 404, as fhirclient rejects one (an error carrying the `status`).
-   */
-  const read = (reference: string): Promise<unknown> => {
-    reads.push(reference)
-    const wire = store.get(reference)
-    return wire === undefined
-      ? Promise.reject(
-          Object.assign(new Error(`${reference} not found on the test server`), { status: 404 })
-        )
-      : Promise.resolve(wire)
-  }
+  /** A read of one resource, `Type/id`: what the store holds under it, or a 404. */
+  const read = (reference: string): Effect.Effect<unknown, FhirHttpError> =>
+    Effect.suspend(() => {
+      reads.push(reference)
+      return Option.match(Option.fromNullable(store.get(reference)), {
+        onNone: () =>
+          Effect.fail(new FhirHttpError({ url: `${SERVER_URL}/${reference}`, status: 404 })),
+        onSome: (wire) => Effect.succeed<unknown>(wire),
+      })
+    })
 
-  const clientFor = (patientId: string | null): SmartClient => {
-    const stub = {
-      request: (query: string): Promise<unknown> => {
-        if (!query.includes('?')) return read(query)
-        return searchesFail
-          ? Promise.reject(new Error('search refused by test server'))
-          : Promise.resolve(searchset(query))
-      },
-      patient: { id: patientId },
-      state: { serverUrl: SERVER_URL, tokenResponse: { access_token: ACCESS_TOKEN } },
-    }
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test-only stub: the app reads `request`, `patient.id` and `state`
-    return stub as unknown as SmartClient
-  }
+  const clientFor = (patientId: string | null): SmartClient => ({
+    serverUrl: SERVER_URL,
+    accessToken: ACCESS_TOKEN,
+    launchPatientId: Option.fromNullable(patientId),
+    request: (query) => {
+      if (!query.includes('?')) return read(query)
+      return searchesFail
+        ? Effect.fail(new FhirHttpError({ url: `${SERVER_URL}/${query}`, status: 403 }))
+        : Effect.sync(() => searchset(query))
+    },
+  })
 
   const transport = Layer.succeed(
     HttpClient.HttpClient,

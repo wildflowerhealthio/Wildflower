@@ -5,14 +5,11 @@ import {
   type Query,
   type QueryClient,
 } from '@tanstack/react-query'
-import type Client from 'fhirclient/Client'
 import { useEffect } from 'react'
 
 import { launchErrorBodyFor, launchErrorRedirect } from './launch-error.ts'
+import type { SmartClient } from './smart-client.ts'
 import { appRootRedirectUri, readySmartClient } from './smart-launch.ts'
-
-/** The SMART client a completed handshake hands the app: fhirclient's `Client`. */
-type SmartClient = Client
 
 /**
  * The state of completing the SMART handshake on the redirect page: still
@@ -33,7 +30,7 @@ const SMART_HANDSHAKE_QUERY_KEY = ['fhir-r4-react', 'smart-handshake'] as const
  * The handshake query every {@link useSmartHandshake} mount runs, and what
  * {@link whenSmartHandshakeReady} reads back: the token exchange under
  * {@link SMART_HANDSHAKE_QUERY_KEY}, typed so a read of its data is a
- * {@link Client}.
+ * {@link SmartClient}.
  *
  * @remarks
  * `retry: false` because re-POSTing a consumed code cannot succeed. `staleTime`
@@ -55,16 +52,13 @@ const smartHandshakeQuery = queryOptions({
  *
  * @remarks
  * The authorization code in the redirect URL is single-use: the token exchange
- * (`readySmartClient` → fhirclient's `oauth2.ready()`, the POST to
- * `/oauth/token`) may run **once, ever**. Routing it through a keyed query is
- * what makes that hold under `React.StrictMode`, whose dev-only
- * mount → unmount → mount would fire a bare `useEffect` twice and POST the same
- * code twice — the second exchange then failing against an already-redeemed
- * code (fhirclient's own guard only suppresses a *sequential* reload, after the
- * first exchange has persisted; two near-simultaneous calls both read the
- * pre-exchange state and both POST). Query-level dedup means both mounts attach
- * to the one in-flight exchange instead. The query's options are
- * {@link smartHandshakeQuery}'s.
+ * (`readySmartClient` → `authorization-core`'s `completeSignIn`, the POST to
+ * the token endpoint) may run **once, ever**. Routing it through a keyed query
+ * is what makes that hold under `React.StrictMode`, whose dev-only
+ * mount → unmount → mount would fire a bare `useEffect` twice — the second run
+ * finding the single-use pending record already taken and failing the
+ * handshake. Query-level dedup means both mounts attach to the one in-flight
+ * exchange instead. The query's options are {@link smartHandshakeQuery}'s.
  *
  * Requires a `QueryClientProvider` above it; {@link buildSmartQueryClient}
  * builds the client the app provides.
@@ -77,7 +71,7 @@ const useSmartHandshake = (): SmartHandshake => {
 }
 
 /**
- * Call `onReady` once with the ready {@link Client} when the SMART handshake on
+ * Call `onReady` once with the ready {@link SmartClient} when the SMART handshake on
  * `queryClient` completes, or at once if it already has.
  *
  * @param queryClient - The page's one client, where {@link useSmartHandshake}
@@ -94,7 +88,7 @@ const useSmartHandshake = (): SmartHandshake => {
  */
 const whenSmartHandshakeReady = (
   queryClient: QueryClient,
-  onReady: (client: Client) => void
+  onReady: (client: SmartClient) => void
 ): (() => void) => {
   let notified = false
   const notifyIfReady = (): void => {
@@ -156,6 +150,5 @@ export {
   useLaunchFailureRedirect,
   useSmartHandshake,
   whenSmartHandshakeReady,
-  type SmartClient,
   type SmartHandshake,
 }

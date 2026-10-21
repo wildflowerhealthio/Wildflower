@@ -58,7 +58,6 @@
     "@wildflowerhealthio/http-archive": "workspace:*",
     "@wildflowerhealthio/web-trace-core": "workspace:*",
     "events": "catalog:",
-    "fhirclient": "^3.0.1",
     "jsdom": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",

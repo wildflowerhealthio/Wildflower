@@ -7,7 +7,6 @@ import type { SmartHandshake } from '@wildflowerhealthio/fhir-r4-react/smart'
 import type { PebbleSettings } from '@wildflowerhealthio/fhir-sync-pebble-core'
 import { ReturnTarget, type ReturnTargetStore } from '@wildflowerhealthio/pebble-configuration'
 import { Effect, Either, Layer } from 'effect'
-import type Client from 'fhirclient/Client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 /**
@@ -28,7 +27,8 @@ vi.mock('@wildflowerhealthio/fhir-r4-react/smart', async (importOriginal) => ({
   useLaunchFailureRedirect: (): void => undefined,
 }))
 
-const { buildSmartRouterContext } = await import('@wildflowerhealthio/fhir-r4-react/smart')
+const { buildSmartRouterContext, smartClientFor } =
+  await import('@wildflowerhealthio/fhir-r4-react/smart')
 const { App, SettingsApp } = await import('./app.tsx')
 
 const SERVER_URL = 'https://fhir.example/r4'
@@ -349,9 +349,15 @@ const renderApp = (): void => {
   )
 }
 
-/** A ready fhirclient `Client` carrying what the server granted. */
-const grantedClient = ({ accessToken }: { readonly accessToken: string | undefined }): Client =>
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test-only stub: `App` reads only these fields
-  ({
-    state: { serverUrl: SERVER_URL, tokenResponse: { access_token: accessToken } },
-  }) as unknown as Client
+/**
+ * A ready client carrying what the server granted. `App` reads only its server
+ * and token, so its own requests go to a `fetch` that fails the test.
+ */
+const grantedClient = ({
+  accessToken,
+}: {
+  readonly accessToken: string | undefined
+}): SmartModule.SmartClient =>
+  smartClientFor({ serverUrl: SERVER_URL, accessToken, patient: undefined }, () =>
+    Promise.reject(new Error('the test expects no request through the client'))
+  )

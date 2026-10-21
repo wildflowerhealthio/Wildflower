@@ -20,7 +20,10 @@ const PATIENT_ID_PARAM = 'patientId'
  * when the launch saved no route of its own (`appRootRedirect`).
  */
 const launchStartRoute = (client: SmartClient): string =>
-  client.patient.id === null ? '/patients' : `/patients/${encodeURIComponent(client.patient.id)}`
+  Option.match(client.launchPatientId, {
+    onNone: () => '/patients',
+    onSome: (patientId) => `/patients/${encodeURIComponent(patientId)}`,
+  })
 
 /** `params`' {@link PATIENT_ID_PARAM} when the open route has one, else `undefined`. */
 const patientIdParamOf = (params: Readonly<Record<string, unknown>>): string | undefined => {
