@@ -89,7 +89,7 @@ Per FHIR R4 § Patient.search, the standard parameters include `_id`, `_lastUpda
 
 Implication: SMART apps that search by name through the typed client will not work. Add `_id`, `name`, `family` and `given` for a baseline US Core / SMART experience (`birthdate` already carries date prefixes via `DateSearchParam`).
 
-The SMART apps do not hit this gap, because they do not use the typed client: `fhir-r4-react/smart`'s `fetchPatientPage` / `fetchPatient` issue raw fhirclient requests (`Patient?_sort=family&_count=200`, `Patient/{id}`) and decode the answer with `Patient.Schema`. Anything they need beyond what the `HttpApi` declares — here `_sort` — is expressible there without touching this description. The gap above is still real for every consumer that does go through the typed client.
+The SMART apps do not hit this gap, because they do not use the typed client: `fhir-r4-react/smart`'s `fetchPatientPage` / `fetchPatient` issue raw SMART client requests (`Patient?_sort=family&_count=200`, `Patient/{id}`) and decode the answer with `Patient.Schema`. Anything they need beyond what the `HttpApi` declares — here `_sort` — is expressible there without touching this description. The gap above is still real for every consumer that does go through the typed client.
 
 ## Observation search parameters (subset declared)
 
@@ -99,7 +99,7 @@ Per FHIR R4 § Observation.search, the standard parameters include `_id`, `_last
 
 Notably absent: `encounter`, `performer`, and the `value-*` / `component-*` parameters. Every parameter is single-valued.
 
-The SMART viewer reads Observations around the typed client rather than through it: `fhir-r4-react/smart`'s `fetchObservationPage` issues a raw fhirclient `Observation?patient=<id>&_sort=date&_count=200` and decodes each entry with `Observation.Schema`, because `_sort` is not declared here. Its sibling `fetchObservationBasedOnOrPartOfPage` does the same narrowed by `based-on` and/or `part-of` (literal `Type/id` references the caller passes), for the observations made against one request or during one event.
+The SMART viewer reads Observations around the typed client rather than through it: `fhir-r4-react/smart`'s `fetchObservationPage` issues a raw SMART client `Observation?patient=<id>&_sort=date&_count=200` and decodes each entry with `Observation.Schema`, because `_sort` is not declared here. Its sibling `fetchObservationBasedOnOrPartOfPage` does the same narrowed by `based-on` and/or `part-of` (literal `Type/id` references the caller passes), for the observations made against one request or during one event.
 
 ## DocumentReference search parameters (subset declared)
 
@@ -256,7 +256,7 @@ Per FHIR R4 § ServiceRequest.search, the standard parameters include `_id`, `_l
 
 Notably absent: `encounter`, `requester`, `performer`, `priority`, `replaces`, `instantiates-uri`. Every parameter is single-valued (see the DocumentReference narrowings above).
 
-SMART apps read ServiceRequests around the typed client: `fhir-r4-react/smart`'s `fetchActiveServiceRequestPage` issues a raw fhirclient `ServiceRequest?patient=<id>&category=<token>&instantiates-canonical=<url>&status=active&_sort=authored&_count=200` (`patient` and `instantiates-canonical` dropped when the caller passes `null`, so an app can find which definitions a patient follows before it knows a url) and decodes each entry with `withMandatoryId(ServiceRequest.Schema)`; `fetchServiceRequestPage` is the same search without `status=active`, for a caller that reads closed requests too.
+SMART apps read ServiceRequests around the typed client: `fhir-r4-react/smart`'s `fetchActiveServiceRequestPage` issues a raw SMART client `ServiceRequest?patient=<id>&category=<token>&instantiates-canonical=<url>&status=active&_sort=authored&_count=200` (`patient` and `instantiates-canonical` dropped when the caller passes `null`, so an app can find which definitions a patient follows before it knows a url) and decodes each entry with `withMandatoryId(ServiceRequest.Schema)`; `fetchServiceRequestPage` is the same search without `status=active`, for a caller that reads closed requests too.
 
 ## ServiceRequest choice / required modeling
 
@@ -323,7 +323,7 @@ Per FHIR R4 § PlanDefinition.search, the standard parameters include `_id`, `_l
 
 Notably absent: `version`, `description`, `publisher`, `jurisdiction`, the `context*` parameters, `effective`, `type`, and the related-artifact parameters. Every parameter is single-valued.
 
-SMART apps read PlanDefinitions around the typed client: `fhir-r4-react/smart`'s `fetchPlanDefinitionPage` issues a raw fhirclient `PlanDefinition?topic=<token>&_count=200` (not patient-scoped — a `PlanDefinition` names no patient) and decodes each entry with `withMandatoryId(PlanDefinition.Schema)`.
+SMART apps read PlanDefinitions around the typed client: `fhir-r4-react/smart`'s `fetchPlanDefinitionPage` issues a raw SMART client `PlanDefinition?topic=<token>&_count=200` (not patient-scoped — a `PlanDefinition` names no patient) and decodes each entry with `withMandatoryId(PlanDefinition.Schema)`.
 
 ## PlanDefinition choice / required / backbone modeling
 
@@ -341,7 +341,7 @@ Per FHIR R4 § Procedure.search, the standard parameters include `_id`, `_lastUp
 
 Notably absent: `encounter`, `performer`, `location`, `reason-code`, `reason-reference`, `instantiates-uri`. Every parameter is single-valued.
 
-SMART apps read Procedures around the typed client: `fhir-r4-react/smart`'s `fetchProcedurePage` issues a raw fhirclient `Procedure?patient=<id>&category=<token>&instantiates-canonical=<url>&_sort=date&_count=200` (`patient` and `instantiates-canonical` dropped when `null`), every `status`, and decodes each entry with `withMandatoryId(Procedure.Schema)`.
+SMART apps read Procedures around the typed client: `fhir-r4-react/smart`'s `fetchProcedurePage` issues a raw SMART client `Procedure?patient=<id>&category=<token>&instantiates-canonical=<url>&_sort=date&_count=200` (`patient` and `instantiates-canonical` dropped when `null`), every `status`, and decodes each entry with `withMandatoryId(Procedure.Schema)`.
 
 ## Procedure choice / required / backbone modeling
 

@@ -83,7 +83,7 @@ they cover.
   (`null` for All patients).
 - **Route only after the handshake, once.** The app root is the OAuth
   redirect target, so `App` builds the router (`StrengthRouter`) under
-  `smart-app-react`'s `SmartHandshakeGate`, by when fhirclient has taken
+  `smart-app-react`'s `SmartHandshakeGate`, by when the handshake has taken
   `code` and `state` out of the URL: nothing the router does may rewrite a
   URL the token exchange still reads. It runs over the `SmartAppPage`
   `main.tsx` opens (`openSmartAppPage`: the window's history, the served
@@ -145,7 +145,7 @@ they cover.
   order, long exercise ids stay apart, and a minter names one resource with
   one id on every call.
 - `app-root-routing.test.tsx` — the real root, app and router over the
-  address bar, with fhirclient stubbed: a launch URL still launches, at the
+  address bar, with `authorization-core`'s sign-in stubbed: a launch URL still launches, at the
   root or a nested route, redirecting to the app root; the callback URL is
   left alone until the exchange completes, then the page opens the launch's
   patient's Today; and a launch from a lifter's Plan reopens it.

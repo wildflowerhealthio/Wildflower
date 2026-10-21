@@ -77,7 +77,7 @@ Forward or a link. A path param is the string the address bar holds, so an
 id such as `1.50` is never read as a number.
 
 The app root is the OAuth redirect target, so the router is built only once
-the SMART handshake has completed: by then fhirclient has taken `code` and
+the SMART handshake has completed: by then the handshake has taken `code` and
 `state` out of the address bar, and nothing the router does can rewrite a URL
 the token exchange still reads. A launch URL never reaches the router at all:
 `SmartAppRoot` starts its launch before the app mounts. The callback lands on
