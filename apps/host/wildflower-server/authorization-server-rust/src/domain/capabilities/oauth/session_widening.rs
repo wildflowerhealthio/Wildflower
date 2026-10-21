@@ -16,6 +16,7 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Duration, Utc};
 use uuid::Uuid;
+use wildflowerhealthio_scopes::Grant;
 
 use super::code_authorization_starter::AUTHORIZATION_REQUEST_TTL;
 use super::session_shortfall::load_code_request_awaiting_limited_page;
@@ -151,12 +152,12 @@ impl<S: GrantStore> SessionWidening<S> {
                 .filter(|browser_session| browser_session.is_live(now))
                 .filter(|browser_session| browser_session.kind == BrowserSessionKind::Paired)
                 .ok_or_else(not_found)?;
-            let Some(browser_name) = browser_session.name.clone() else {
+            let Some(browser_name) = browser_session.name else {
                 return Err(not_found());
             };
             let missing_scopes = session_shortfall(
                 &code_request.requested_scopes,
-                &wildflowerhealthio_scopes::Grant::parse(&browser_session.scopes),
+                &Grant::parse(&browser_session.scopes),
             );
             if missing_scopes.is_empty() {
                 return Err(not_found());
@@ -297,8 +298,6 @@ impl<S: GrantStore> SessionWidening<S> {
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
-
-    use wildflowerhealthio_scopes::Grant;
 
     use super::*;
     use crate::domain::access_token::{verify_access_token, AccessTokenVerifyOptions};
