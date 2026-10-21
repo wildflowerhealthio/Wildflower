@@ -309,18 +309,19 @@ const domainFor = (series: ValueSeries): Domain => domainOfMembers([measure(seri
 
 /**
  * How many times its lowest value a shared axis' highest may be: series whose
- * values sit within a factor of three of each other share, so lines near each
- * other relative to their size are read on one scale, and series an order of
- * magnitude apart keep their own axes.
+ * values sit within a factor of ten of each other share, so lines of the same
+ * order of magnitude are read on one scale, and series further apart keep
+ * their own axes.
  *
  * @remarks
  * Systolic and diastolic blood pressure (`118–142` and `76–92 mm[Hg]`) span
- * under twice their low and share; heart rate and respiratory rate (`60–100`
- * and `12–20 /min`) span over eight times and do not. On an axis drawn from
+ * under twice their low and share, as do heart rate and respiratory rate
+ * (`60–100` and `12–20 /min`, about eight times); a constant `5 mm[Hg]` beside
+ * systolic spans over twenty-eight times and does not. On an axis drawn from
  * zero the lowest value is zero, so there the ratio is between the highest
- * values: each member's own highest must be at least a third of the axis'.
+ * values: each member's own highest must be at least a tenth of the axis'.
  */
-const MAX_SHARED_RATIO = 3
+const MAX_SHARED_RATIO = 10
 
 /**
  * Whether two value scales can be drawn on one axis: `'fitted'` and

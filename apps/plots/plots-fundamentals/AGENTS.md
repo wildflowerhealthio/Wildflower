@@ -58,8 +58,8 @@ functions read in the namespace's context (`ValueAxis.assign`, not
   `'from-zero'`, the axis then drawn from zero; `'zero-to-one'` only with
   itself), and their values are of a similar magnitude, measured on raw
   extents (values and bands, unpadded): the shared highest at most
-  `MAX_SHARED_RATIO` = 3 times the shared lowest, or, on an axis drawn from
-  zero, each series' highest at least a third of the shared highest. A
+  `MAX_SHARED_RATIO` = 10 times the shared lowest, or, on an axis drawn from
+  zero, each series' highest at least a tenth of the shared highest. A
   `'fitted'` series with a value at or below zero never shares. The shared
   domain is rounded once, from the members' extents. An axis' `sharedUnit`
   is set only when several series share it, so a renderer reads "shared"

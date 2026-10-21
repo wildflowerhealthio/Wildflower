@@ -285,12 +285,11 @@ describe('ValueAxis.assign', () => {
     expect(seriesIdsByAxis(ValueAxis.assign([systolic, low]))).toEqual([['systolic'], ['low']])
   })
 
-  test('heart rate and respiratory rate, both per minute, keep their own axes', () => {
+  test('heart rate and respiratory rate, both per minute, share one axis', () => {
     const heartRate = readingsOf('heart-rate', '/min', [60, 72, 100, 85])
     const respiratoryRate = readingsOf('respiratory-rate', '/min', [12, 16, 20, 14])
     expect(seriesIdsByAxis(ValueAxis.assign([heartRate, respiratoryRate]))).toEqual([
-      ['heart-rate'],
-      ['respiratory-rate'],
+      ['heart-rate', 'respiratory-rate'],
     ])
   })
 
@@ -317,7 +316,7 @@ describe('ValueAxis.assign', () => {
     ])
   })
 
-  test("a 'fitted' series shares a 'from-zero' axis, drawn from zero, when its highest is a third of the axis'", () => {
+  test("a 'fitted' series shares a 'from-zero' axis, drawn from zero, when its highest is a tenth of the axis'", () => {
     const dose: Series.ValueSeries = {
       ...levelSeriesOf([levelFrom(0, null, 1000)]),
       id: 'dose',
@@ -328,7 +327,7 @@ describe('ValueAxis.assign', () => {
     expect(seriesIdsByAxis(axes)).toEqual([['near', 'dose']])
     expect(axes[0].domain[0]).toBe(0)
 
-    const far = readingsOf('far', 'mg', [100, 150, 200])
+    const far = readingsOf('far', 'mg', [20, 50, 90])
     expect(seriesIdsByAxis(ValueAxis.assign([far, dose]))).toEqual([['far'], ['dose']])
   })
 
@@ -352,7 +351,7 @@ describe('ValueAxis.assign', () => {
 
   test('a series too far from an axis opens its own, and later ones still join', () => {
     const systolic = readingsOf('systolic', 'mm[Hg]', [118, 135, 142, 125])
-    const outlier = readingsOf('outlier', 'mm[Hg]', [1000, 1010])
+    const outlier = readingsOf('outlier', 'mm[Hg]', [2000, 2010])
     const diastolic = readingsOf('diastolic', 'mm[Hg]', [76, 88, 92, 80])
     const axes = ValueAxis.assign([systolic, outlier, diastolic])
     expect(seriesIdsByAxis(axes)).toEqual([['systolic', 'diastolic'], ['outlier']])
