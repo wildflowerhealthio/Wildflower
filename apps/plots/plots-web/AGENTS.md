@@ -32,7 +32,7 @@ same paged-read drain (`useFetchEveryPage`) and read-status lines.
   through `history.replaceState` (never `pushState` — a checkbox is not a
   navigation), touching only its own keys: `?patient=` beside them is
   `usePatientChoice`'s. Nothing writes the URL on mount: before the handshake
-  completes the URL still carries the OAuth `code` / `state` fhirclient reads,
+  completes the URL still carries the OAuth `code` / `state` it reads,
   and replacing the query would lose them.
 - **Every selection change is an updater.** Series, range, view and the
   reconciliation all go through `updateSelection((latest) => …)`, never a
