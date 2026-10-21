@@ -4,6 +4,7 @@
 
 mod kind;
 pub(crate) mod presented_change;
+mod refresh_policy;
 mod registration_source;
 
 use chrono::{DateTime, Utc};
@@ -14,6 +15,7 @@ use crate::db::clients::{clients, JsonAllowedGrantTypes, JsonUrls};
 use crate::db::shared::JsonStrings;
 
 pub use kind::{AllowedGrantType, ClientKind};
+pub use refresh_policy::{refresh_limit_from_seconds, RefreshPolicy};
 pub use registration_source::RegistrationSource;
 
 /// A registered OAuth client — the identity and policy bundle that `/authorize`
@@ -55,6 +57,11 @@ pub struct Client {
     /// Who defines the registration: the server, which seeds it and holds
     /// requests to it, or the Owner's approvals, which create and widen it.
     pub registration_source: RegistrationSource,
+    /// How long the client's refresh-token families last. Set when the client
+    /// is registered and changed only by the Owner, so neither boot-time
+    /// seeding nor an approval that widens the registration rewrites it.
+    #[diesel(embed)]
+    pub refresh_policy: RefreshPolicy,
 }
 
 impl Client {

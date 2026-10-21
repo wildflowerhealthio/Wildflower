@@ -2548,6 +2548,179 @@ mod tests {
         );
     }
 
+    /// An install already at `0048` gives every client a refresh policy when
+    /// `0049` runs: the ticket's table for the first-party clients the
+    /// migrations seeded, the same policy boot-time seeding writes for the
+    /// clients it owns (so an install where those rows already exist and a
+    /// fresh one agree), and the trust-on-first-use defaults by scope for every
+    /// other row. Reverting `0049` drops the columns.
+    #[test]
+    fn an_install_already_at_0048_gives_every_client_a_refresh_policy() {
+        use std::collections::BTreeMap;
+
+        use chrono::Duration;
+        use diesel::connection::SimpleConnection as _;
+
+        use crate::db::clients::clients;
+        use crate::domain::client::{Client, RefreshPolicy};
+        use crate::seeding::{
+            BROWSER_SESSION_CLIENT_REFRESH_POLICY, DATA_APP_REFRESH_POLICY,
+            FHIR_SYNC_PEBBLE_REFRESH_POLICY, FHIR_UI_REFRESH_POLICY, HOST_APP_REFRESH_POLICY,
+        };
+
+        /// `FHIR_UI_CLIENT_ID` in `wildflower-server-rust`, which seeds the row.
+        const FHIR_UI: &str = "5ea43272eba5e825c50de39032f96bf0";
+        // The clients boot-time seeding owns, keyed by id, with the policy it
+        // inserts each one with.
+        let seeded_at_boot = [
+            (
+                crate::WILDFLOWER_HOST_APP_CLIENT_ID,
+                HOST_APP_REFRESH_POLICY,
+            ),
+            (
+                crate::BROWSER_SESSION_CLIENT_ID,
+                BROWSER_SESSION_CLIENT_REFRESH_POLICY,
+            ),
+            (FHIR_UI, FHIR_UI_REFRESH_POLICY),
+            (
+                crate::seeding::MEDICATIONS_DEV_CLIENT_ID,
+                DATA_APP_REFRESH_POLICY,
+            ),
+            (
+                crate::seeding::IMPORTER_DEV_CLIENT_ID,
+                DATA_APP_REFRESH_POLICY,
+            ),
+            (crate::seeding::PLOTS_DEV_CLIENT_ID, DATA_APP_REFRESH_POLICY),
+            (
+                crate::seeding::SYNTHETIC_DATA_DEV_CLIENT_ID,
+                DATA_APP_REFRESH_POLICY,
+            ),
+            (
+                crate::seeding::STRENGTH_DEV_CLIENT_ID,
+                DATA_APP_REFRESH_POLICY,
+            ),
+            (
+                crate::seeding::OHIF_VIEWER_DEV_CLIENT_ID,
+                DATA_APP_REFRESH_POLICY,
+            ),
+            (
+                crate::seeding::FHIR_SYNC_PEBBLE_DEV_CLIENT_ID,
+                FHIR_SYNC_PEBBLE_REFRESH_POLICY,
+            ),
+        ];
+        // Rows the Owner approved on first use, or left behind under a
+        // legacy id, with the scopes they hold.
+        let first_use = [
+            ("owner-approved-admin", r#"["openid","wildflower/Grant.r"]"#),
+            ("owner-approved-data", r#"["openid","patient/*.rs"]"#),
+            ("wildflower-react", r#"["launch","wildflower/launch"]"#),
+            ("wildflower-medication", r#"["launch","patient/*.read"]"#),
+            ("look-alike", r#"["Wildflower/Grant.r","openid"]"#),
+        ];
+
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0048"),
+        )
+        .expect("migrate to 0048");
+        let row_ids = seeded_at_boot
+            .iter()
+            .map(|(client_id, _)| (*client_id, "[]"))
+            .chain(first_use);
+        for (client_id, allowed_scopes) in row_ids {
+            conn.batch_execute(&format!(
+                "INSERT INTO clients (client_id, name, kind, redirect_uris, allowed_scopes, \
+                 allowed_grant_types, registered_at) \
+                 VALUES ('{client_id}', '{client_id}', 'public', '[]', '{allowed_scopes}', \
+                         '[]', '2026-10-01 00:00:00+00:00')"
+            ))
+            .expect("a client row at 0048");
+        }
+
+        wildflowerhealthio_persistence::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0049"),
+        )
+        .expect("upgrade through 0049");
+        let policies: BTreeMap<String, RefreshPolicy> = clients::table
+            .select(Client::as_select())
+            .load(&mut conn)
+            .expect("every row reads back as a client")
+            .into_iter()
+            .map(|client| (client.client_id, client.refresh_policy))
+            .collect();
+
+        let policy = |idle_ttl, max_ttl, ends_with_browser_session| RefreshPolicy {
+            idle_ttl,
+            max_ttl,
+            ends_with_browser_session,
+        };
+        let session_bound_two_hours = policy(Some(Duration::hours(2)), None, true);
+        let first_use_data = policy(Some(Duration::days(1)), Some(Duration::days(7)), false);
+        let expected: BTreeMap<String, RefreshPolicy> = [
+            // Wildflower Authorization.
+            (
+                "7277e898bee8ac81ea44788236e619a5",
+                policy(Some(Duration::minutes(30)), None, true),
+            ),
+            // The Launcher and the Server API Console.
+            ("03a513940b52f8c2649a5366d1a26d19", session_bound_two_hours),
+            ("664a01e8614050cd82ffe90350b81413", session_bound_two_hours),
+            // Medications, Plots, Strength, Importer, Synthetic Data, OHIF.
+            ("9769f8b274370708d0d3ebb2e3e59b7c", DATA_APP_REFRESH_POLICY),
+            ("474e103de61f9141c4b640d59bfa130e", DATA_APP_REFRESH_POLICY),
+            ("bdf9fc5cb5a28c6683b49896b0ef8a75", DATA_APP_REFRESH_POLICY),
+            ("165cd26573e5ac72378e6ad2d2198330", DATA_APP_REFRESH_POLICY),
+            ("225ba6af034a3acec6be7ff8010df67f", DATA_APP_REFRESH_POLICY),
+            ("941de68e6b59eb9dcc32df8ede89e636", DATA_APP_REFRESH_POLICY),
+            // FHIR Sync for Pebble.
+            (
+                "6847df97d54c31936d54ca1b36b3bb09",
+                FHIR_SYNC_PEBBLE_REFRESH_POLICY,
+            ),
+            // The SMART sample apps, trusted on first use with no
+            // `wildflower/` scope.
+            ("growth_chart", first_use_data),
+            ("my_web_app", first_use_data),
+            ("cc344727-6f90-496c-94fd-c7829aa9a51d", first_use_data),
+            ("owner-approved-admin", session_bound_two_hours),
+            ("owner-approved-data", first_use_data),
+            ("wildflower-react", session_bound_two_hours),
+            ("wildflower-medication", first_use_data),
+            ("look-alike", first_use_data),
+        ]
+        .into_iter()
+        .chain(seeded_at_boot)
+        .map(|(client_id, policy)| (client_id.to_owned(), policy))
+        .collect();
+        assert_eq!(policies, expected);
+        assert_eq!(
+            FHIR_SYNC_PEBBLE_REFRESH_POLICY,
+            policy(Some(Duration::days(30)), Some(Duration::days(365)), false)
+        );
+        assert_eq!(
+            DATA_APP_REFRESH_POLICY,
+            policy(Some(Duration::days(7)), Some(Duration::days(30)), false)
+        );
+
+        let migration_0049 = MIGRATIONS
+            .migrations()
+            .expect("embedded migrations")
+            .into_iter()
+            .find(|migration| migration.name().version() == MigrationVersion::from("0049"))
+            .expect("0049 is embedded");
+        migration_0049.revert(&mut conn).expect("revert 0049");
+        assert!(
+            diesel::sql_query("SELECT refresh_ends_with_browser_session FROM clients")
+                .execute(&mut conn)
+                .is_err(),
+            "the columns are gone"
+        );
+    }
+
     /// Running the migrations twice is a no-op the second time (the namespaced
     /// runner skips already-applied versions) and every expected table — plus
     /// the `grants` view — exists afterwards, so opening an existing database

@@ -12,9 +12,9 @@ The two [essential clients](<../../Domain/Client Explanation.md#item-is_essentia
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/access/clients.rs clients_reader_scopes}}
 
-### `clients_disabler_scopes`
+### `clients_updater_scopes`
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/access/clients.rs clients_disabler_scopes}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/access/clients.rs clients_updater_scopes}}
 
 ### `ClientView`
 
@@ -34,16 +34,16 @@ The test names the essential apps by the [crate's own ids](<../Test Fixtures Exp
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/access/clients.rs ClientsReader::list tests="tests::list_flags_only_the_essential_clients"}}
 
-### `ClientsDisabler`
+### `ClientsUpdater`
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/access/clients.rs ClientsDisabler}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/access/clients.rs ClientsUpdater}}
 
 #### `new`
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/access/clients.rs ClientsDisabler::new}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/access/clients.rs ClientsUpdater::new}}
 
 #### `set_disabled_at`
 
-The tests disable and enable through the [disabler fixtures](<../Test Fixtures Explanation.md#clients>), each disable stamped at a fixed second unless the test says otherwise. The property test runs any sequence of steps over two registered apps and one id never registered.
+The tests disable and enable through the [updater fixtures](<../Test Fixtures Explanation.md#clients>), each disable stamped at a fixed second unless the test says otherwise. The property test runs any sequence of steps over two registered apps and one id never registered.
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/access/clients.rs ClientsDisabler::set_disabled_at tests="tests::disable_then_enable_stamps_and_clears_only_disabled_at tests::a_repeated_disable_keeps_the_first_timestamp tests::enabling_an_enabled_client_is_a_no_op tests::an_unknown_client_is_client_not_found_either_way tests::an_essential_client_cannot_be_disabled_but_can_be_enabled tests::disable_and_enable_match_the_model"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/access/clients.rs ClientsUpdater::set_disabled_at tests="tests::disable_then_enable_stamps_and_clears_only_disabled_at tests::a_repeated_disable_keeps_the_first_timestamp tests::enabling_an_enabled_client_is_a_no_op tests::an_unknown_client_is_client_not_found_either_way tests::an_essential_client_cannot_be_disabled_but_can_be_enabled tests::disable_and_enable_match_the_model"}}

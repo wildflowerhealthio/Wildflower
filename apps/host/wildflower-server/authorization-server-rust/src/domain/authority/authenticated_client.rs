@@ -8,7 +8,7 @@
 
 use crate::crypto_util::client_secret::verify_client_secret;
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::client::{AllowedGrantType, Client, ClientKind};
+use crate::domain::client::{AllowedGrantType, Client, ClientKind, RefreshPolicy};
 use crate::domain::client_credentials::ClientCredentials;
 use crate::domain::grant_store::ClientsTx;
 
@@ -100,6 +100,12 @@ impl AuthenticatedClient {
     /// The verified client's display name.
     pub(crate) fn name(&self) -> &str {
         &self.client.name
+    }
+
+    /// How long the client's refresh-token families last, as its row stood
+    /// when it authenticated.
+    pub(crate) fn refresh_policy(&self) -> &RefreshPolicy {
+        &self.client.refresh_policy
     }
 
     /// Whether the client's registration lists `grant_type`.

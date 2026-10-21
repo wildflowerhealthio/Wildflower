@@ -69,7 +69,7 @@ The list comes from the [clients reader](<../../Capabilities/Access/Clients Expl
 
 ### `update_by_id`
 
-**The one thing the Owner may change about an app is whether it is disabled.** Any time sent disables the app now, stamped with the server's clock, so a disable can't be scheduled or backdated. The [clients disabler](<../../Capabilities/Access/Clients Explanation.md>)'s [`set_disabled_at`](<../../Capabilities/Access/Clients Explanation.md#item-ClientsDisabler--set_disabled_at>) is what refuses an essential app.
+**The one thing the Owner may change about an app is whether it is disabled.** Any time sent disables the app now, stamped with the server's clock, so a disable can't be scheduled or backdated. The [clients updater](<../../Capabilities/Access/Clients Explanation.md>)'s [`set_disabled_at`](<../../Capabilities/Access/Clients Explanation.md#item-ClientsUpdater--set_disabled_at>) is what refuses an essential app.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/clients/update_by_id.rs UpdateClientBody}}
 

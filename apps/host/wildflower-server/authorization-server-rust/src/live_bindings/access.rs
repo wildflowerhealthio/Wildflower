@@ -16,16 +16,14 @@ use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::access::browser_sessions::{
     browser_sessions_reader_scopes, browser_sessions_revoker_scopes,
 };
-use crate::domain::capabilities::access::clients::{
-    clients_disabler_scopes, clients_reader_scopes,
-};
+use crate::domain::capabilities::access::clients::{clients_reader_scopes, clients_updater_scopes};
 use crate::domain::capabilities::access::consents::{
     consent_decider_scopes, consent_reader_scopes,
 };
 use crate::domain::capabilities::access::grants::{grants_reader_scopes, grants_revoker_scopes};
 use crate::domain::capabilities::access::tokens::token_revoker_scopes;
 use crate::domain::capabilities::{
-    BrowserSessionsReader, BrowserSessionsRevoker, Capability, ClientsDisabler, ClientsReader,
+    BrowserSessionsReader, BrowserSessionsRevoker, Capability, ClientsReader, ClientsUpdater,
     ConsentDecider, ConsentRaiser, ConsentReader, FixedScopeCapability, GrantsReader,
     GrantsRevoker, TokenRevoker,
 };
@@ -83,19 +81,19 @@ impl FixedScopeCapability for LiveClientsReader {
 }
 
 /// Disable or re-enable a registered client (never disable an essential one).
-pub(crate) type LiveClientsDisabler = ClientsDisabler<SqliteGrantStore>;
+pub(crate) type LiveClientsUpdater = ClientsUpdater<SqliteGrantStore>;
 
-impl FixedScopeCapability for LiveClientsDisabler {
+impl FixedScopeCapability for LiveClientsUpdater {
     type State = Arc<AuthorizationServerState>;
     type Claims = VerifiedClaims;
     type Error = AuthorizationServerError;
 
     fn required_scopes() -> Vec<Scope> {
-        clients_disabler_scopes()
+        clients_updater_scopes()
     }
 
     fn build(state: Arc<AuthorizationServerState>) -> Self {
-        ClientsDisabler::new(state.store.clone())
+        ClientsUpdater::new(state.store.clone())
     }
 }
 
