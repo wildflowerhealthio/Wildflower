@@ -7,7 +7,9 @@
 //! The line is one `info` event with [`IDENTIFYING`], so it goes to the
 //! connection log and never to the journal: the visitor's `ip:port`, the
 //! outcome's name, how long the connection lasted, and the refusal's
-//! detail. The count keeps only the outcome.
+//! detail. The count keeps only the outcome. A refusal the operator should
+//! see, a full visitor queue or a PROXY header that could not be built, is
+//! also a `warn` line in the journal, naming no one.
 //!
 //! Connections that reach a device, and those for the relay's own
 //! hostnames, are not logged.
@@ -27,6 +29,11 @@ use crate::route::Route;
 /// they are not a ClientHello: enough to tell `GET / HTTP/1.1` from
 /// `SSH-2.0-…`, and no more.
 pub(super) const FIRST_BYTES_KEPT: usize = 32;
+
+/// How many of a hello's ALPN protocols the connection log keeps, and how
+/// many bytes of each. Real clients offer two or three short names.
+const ALPN_PROTOCOLS_KEPT: usize = 4;
+const ALPN_PROTOCOL_BYTES_KEPT: usize = 16;
 
 /// A `:443` connection just accepted: where from, and when.
 #[derive(Debug, Clone, Copy)]
@@ -126,7 +133,8 @@ impl Refusal {
         }
     }
 
-    /// Write the refusal of `visitor`'s connection to the connection log.
+    /// Write the refusal of `visitor`'s connection to the connection log,
+    /// and to the journal if the operator should see it.
     pub(super) fn log(&self, visitor: &Visitor) {
         /// One `info` line to the connection log, with the fields every
         /// refusal has, then `$detail`.
@@ -174,20 +182,31 @@ impl Refusal {
                 refusal,
             } => match refusal {
                 TunnelRefusal::Down => refused!(tunnel = %tunnel_name, "refused: tunnel is down"),
-                TunnelRefusal::Busy => refused!(
-                    tunnel = %tunnel_name,
-                    "refused: the tunnel's visitor queue stayed full past the deadline"
-                ),
+                TunnelRefusal::Busy => {
+                    tracing::warn!(
+                        "refused a connection: a tunnel's visitor queue stayed full past the \
+                         deadline"
+                    );
+                    refused!(
+                        tunnel = %tunnel_name,
+                        "refused: the tunnel's visitor queue stayed full past the deadline"
+                    );
+                }
                 TunnelRefusal::Closed(error) => refused!(
                     tunnel = %tunnel_name,
                     %error,
                     "refused: tunnel closed before the hello was sent"
                 ),
-                TunnelRefusal::ProxyHeaderFailed(error) => refused!(
-                    tunnel = %tunnel_name,
-                    %error,
-                    "refused: building the PROXY header failed"
-                ),
+                TunnelRefusal::ProxyHeaderFailed(error) => {
+                    tracing::warn!(
+                        "refused a connection: building the PROXY header failed: {error}"
+                    );
+                    refused!(
+                        tunnel = %tunnel_name,
+                        %error,
+                        "refused: building the PROXY header failed"
+                    );
+                }
             },
         }
     }
@@ -244,17 +263,24 @@ impl fmt::Display for SniIp<'_> {
 }
 
 /// ALPN protocols as a list, each quoted and escaped as [`FirstBytes`]
-/// is: `["h2", "http/1.1"]`.
+/// is: `["h2", "http/1.1"]`. At most the first [`ALPN_PROTOCOLS_KEPT`]
+/// protocols, each cut to [`ALPN_PROTOCOL_BYTES_KEPT`] bytes, then how many
+/// more there were: `["h2", "http/1.1", "a", "b", 3 more]`.
 struct Alpn<'a>(&'a [Vec<u8>]);
 
 impl fmt::Display for Alpn<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("[")?;
-        for (i, protocol) in self.0.iter().enumerate() {
+        for (i, protocol) in self.0.iter().take(ALPN_PROTOCOLS_KEPT).enumerate() {
             if i > 0 {
                 f.write_str(", ")?;
             }
-            write!(f, "\"{}\"", protocol.escape_ascii())?;
+            let kept = &protocol[..protocol.len().min(ALPN_PROTOCOL_BYTES_KEPT)];
+            write!(f, "\"{}\"", kept.escape_ascii())?;
+        }
+        let dropped = self.0.len().saturating_sub(ALPN_PROTOCOLS_KEPT);
+        if dropped > 0 {
+            write!(f, ", {dropped} more")?;
         }
         f.write_str("]")
     }
@@ -371,7 +397,19 @@ mod tests {
             tracing::subscriber::with_default(subscriber, || refusal.log(&visitor()));
 
             let (journal, connection_log) = (journal.text(), connection_log.text());
-            assert!(journal.is_empty(), "{journal}");
+            let operator_sees = matches!(
+                refusal.outcome(),
+                Outcome::TunnelBusy | Outcome::ProxyHeaderFailed
+            );
+            if operator_sees {
+                assert_eq!(journal.lines().count(), 1, "{journal}");
+                assert!(journal.contains("WARN"), "{journal}");
+                for identifying in ["203.0.113.7", "alice"] {
+                    assert!(!journal.contains(identifying), "{journal}");
+                }
+            } else {
+                assert!(journal.is_empty(), "{journal}");
+            }
             assert_eq!(connection_log.lines().count(), 1, "{connection_log}");
             assert!(connection_log.contains(" INFO "), "{connection_log}");
             assert!(
@@ -380,7 +418,14 @@ mod tests {
             );
             let outcome = format!("outcome={} ", refusal.outcome().as_str());
             assert!(connection_log.contains(&outcome), "{connection_log}");
-            assert!(connection_log.contains("elapsed=1.5"), "{connection_log}");
+            // At least the 1.5s since `visitor()`'s accept, however long
+            // the test took to get here.
+            let elapsed = connection_log
+                .split_once("elapsed=")
+                .and_then(|(_, rest)| rest.split_once('s'))
+                .and_then(|(seconds, _)| seconds.parse::<f64>().ok())
+                .expect("an elapsed time in seconds");
+            assert!(elapsed >= 1.5, "{connection_log}");
             for detail in detail {
                 assert!(
                     connection_log.contains(detail),
@@ -406,5 +451,20 @@ mod tests {
         );
 
         assert_eq!(FirstBytes::of(b"ab").to_string(), r#""ab""#);
+    }
+
+    #[test]
+    fn alpn_is_capped_and_escaped() {
+        let mut offered = vec![b"h2".to_vec(), [b'x'; 40].to_vec(), b"\x00\n".to_vec()];
+        offered.extend(std::iter::repeat_n(b"a".to_vec(), 1000));
+        assert_eq!(
+            Alpn(&offered).to_string(),
+            format!(
+                r#"["h2", "{}", "\x00\n", "a", 999 more]"#,
+                "x".repeat(ALPN_PROTOCOL_BYTES_KEPT)
+            )
+        );
+
+        assert_eq!(Alpn(&[]).to_string(), "[]");
     }
 }
