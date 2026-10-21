@@ -65,6 +65,15 @@ pub enum AuthorizationServerError {
         /// The authorization request id the wait page polled.
         id: String,
     },
+    /// No session widening the caller may see has this id — the Owner's
+    /// `/authorization/session-widenings/{id}` 404 (none pending and
+    /// unexpired), and the limited page's
+    /// `POST /oauth/session-widenings/{id}/poll` 404 (none asked in this
+    /// browser's session).
+    SessionWideningNotFound {
+        /// The session widening id the caller asked for.
+        id: String,
+    },
     /// The caller authenticated, but their token doesn't cover the scope(s) the
     /// `/authorization` operation requires — the surface's **403**. `missing_scopes`
     /// are the rendered scopes the caller must additionally hold. Raised when the
@@ -146,6 +155,9 @@ impl std::fmt::Display for AuthorizationServerError {
             }
             AuthorizationServerError::AuthorizationRequestNotFound { id } => {
                 write!(f, "no authorization request with id {id}")
+            }
+            AuthorizationServerError::SessionWideningNotFound { id } => {
+                write!(f, "no session widening with id {id}")
             }
             AuthorizationServerError::InsufficientScope { missing_scopes } => {
                 write!(

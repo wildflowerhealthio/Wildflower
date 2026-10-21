@@ -7,10 +7,13 @@
 //!   `/oauth/authorize`;
 //! - [`DeviceRequest`]: an RFC 8628 §3.1 device authorization request;
 //! - [`PairingRequest`]: a browser asking for a browser session at
-//!   `/oauth/pair`, which is no OAuth grant.
+//!   `/oauth/pair`, which is no OAuth grant;
+//! - [`SessionWideningRequest`]: a browser asking, from its limited page, for
+//!   its browser session to hold more, which is no OAuth grant either.
 //!
 //! The device and pairing flows share their shape (a `user_code` the Owner
-//! enters, a poll that claims the approval), in [`polled`]. The
+//! enters, a poll that claims the approval), in [`polled`]; a session
+//! widening is claimed by a poll too, but is keyed by its id. The
 //! [`AuthorizationRequest`] enum is only for the reads that cross flows: the
 //! Owner prompt, a consent named by its key, and a lookup by id.
 //!
@@ -28,6 +31,7 @@ pub mod code;
 pub mod device;
 pub mod pairing;
 pub mod polled;
+pub mod session_widening;
 
 use chrono::{DateTime, Duration, Utc};
 use diesel::deserialize::FromSqlRow;
@@ -38,6 +42,7 @@ use code::CodeRequest;
 use device::DeviceRequest;
 use pairing::PairingRequest;
 use polled::Polled as _;
+use session_widening::SessionWideningRequest;
 
 /// Minimum polling interval the device-code flow enforces (RFC 8628 §3.5) —
 /// advertised as `interval` in the device-authorization response and enforced
@@ -45,14 +50,15 @@ use polled::Polled as _;
 pub const DEVICE_CODE_POLL_INTERVAL: Duration = Duration::seconds(5);
 
 /// The flow a request belongs to: one of the two OAuth grant flows, or a
-/// browser pairing, which is no OAuth grant. The store keeps a device
-/// request's or pairing's flow in its `flow` column, and the cross-kind
-/// `grants` view tags its rows with the flow that earned them.
+/// browser pairing or session widening, which are no OAuth grant. The store
+/// keeps a device request's or pairing's flow in its `flow` column, and the
+/// cross-kind `grants` view tags its rows with the flow that earned them.
 ///
 /// `strum` derives the `&str` ↔ enum conversions from the `snake_case` variant
 /// names — `AuthorizationCode` → `"authorization_code"`, `DeviceCode` →
-/// `"device_code"`, matching the RFC 6749 / RFC 8628 `grant_type` values, and
-/// `BrowserPairing` → `"browser_pairing"`.
+/// `"device_code"`, matching the RFC 6749 / RFC 8628 `grant_type` values,
+/// `BrowserPairing` → `"browser_pairing"` and `SessionWidening` →
+/// `"session_widening"`.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, EnumString, AsRefStr, Display, AsExpression, FromSqlRow,
 )]
@@ -65,6 +71,9 @@ pub enum FlowType {
     DeviceCode,
     /// A browser asking the Owner for a browser session at `/oauth/pair`.
     BrowserPairing,
+    /// A browser asking the Owner, from its limited page, to widen its
+    /// browser session.
+    SessionWidening,
 }
 
 /// Where a request stands, as stored in the `status` column: the state of a
@@ -89,8 +98,8 @@ pub enum RequestStatus {
     Approved,
     /// The Owner, or the browser that made it, declined it.
     Denied,
-    /// A device request or browser pairing whose poll redeemed the approval,
-    /// once (RFC 8628 §3.4 single use).
+    /// A device request, browser pairing or session widening whose poll
+    /// redeemed the approval, once (RFC 8628 §3.4 single use).
     Claimed,
 }
 
@@ -111,27 +120,33 @@ pub enum AuthorizationRequest {
     Device(DeviceRequest),
     /// A browser pairing.
     Pairing(PairingRequest),
+    /// A session widening.
+    SessionWidening(SessionWideningRequest),
 }
 
 impl AuthorizationRequest {
     /// The request's key: the device-flow `device_code`, a browser pairing's
-    /// pairing code, or for a code request an internal UUID.
+    /// pairing code, or for a code request or session widening an internal
+    /// UUID.
     #[must_use]
     pub fn id(&self) -> &str {
         match self {
             AuthorizationRequest::Code(code_request) => &code_request.id,
             AuthorizationRequest::Device(device_request) => &device_request.id,
             AuthorizationRequest::Pairing(pairing_request) => &pairing_request.id,
+            AuthorizationRequest::SessionWidening(widening_request) => &widening_request.id,
         }
     }
 
-    /// The client that made the request.
+    /// The client that made the request; for a session widening, the app
+    /// whose request the session fell short of.
     #[must_use]
     pub fn client_id(&self) -> &str {
         match self {
             AuthorizationRequest::Code(code_request) => &code_request.client_id,
             AuthorizationRequest::Device(device_request) => &device_request.client_id,
             AuthorizationRequest::Pairing(pairing_request) => &pairing_request.client_id,
+            AuthorizationRequest::SessionWidening(widening_request) => &widening_request.client_id,
         }
     }
 
@@ -142,6 +157,9 @@ impl AuthorizationRequest {
             AuthorizationRequest::Code(code_request) => &code_request.requested_scopes,
             AuthorizationRequest::Device(device_request) => &device_request.requested_scopes,
             AuthorizationRequest::Pairing(pairing_request) => &pairing_request.requested_scopes,
+            AuthorizationRequest::SessionWidening(widening_request) => {
+                &widening_request.requested_scopes
+            }
         }
     }
 
@@ -152,6 +170,9 @@ impl AuthorizationRequest {
             AuthorizationRequest::Code(code_request) => code_request.requested_at,
             AuthorizationRequest::Device(device_request) => device_request.requested_at,
             AuthorizationRequest::Pairing(pairing_request) => pairing_request.requested_at,
+            AuthorizationRequest::SessionWidening(widening_request) => {
+                widening_request.requested_at
+            }
         }
     }
 
@@ -162,6 +183,7 @@ impl AuthorizationRequest {
             AuthorizationRequest::Code(code_request) => code_request.expires_at,
             AuthorizationRequest::Device(device_request) => device_request.expires_at,
             AuthorizationRequest::Pairing(pairing_request) => pairing_request.expires_at,
+            AuthorizationRequest::SessionWidening(widening_request) => widening_request.expires_at,
         }
     }
 
@@ -172,6 +194,9 @@ impl AuthorizationRequest {
             AuthorizationRequest::Code(code_request) => code_request.state.status(),
             AuthorizationRequest::Device(device_request) => device_request.state.status(),
             AuthorizationRequest::Pairing(pairing_request) => pairing_request.state.status(),
+            AuthorizationRequest::SessionWidening(widening_request) => {
+                widening_request.state.status()
+            }
         }
     }
 
@@ -182,15 +207,17 @@ impl AuthorizationRequest {
             AuthorizationRequest::Code(_) => FlowType::AuthorizationCode,
             AuthorizationRequest::Device(_) => FlowType::DeviceCode,
             AuthorizationRequest::Pairing(_) => FlowType::BrowserPairing,
+            AuthorizationRequest::SessionWidening(_) => FlowType::SessionWidening,
         }
     }
 
     /// The code the device page looks the request up by: a device's or a
-    /// pairing's `user_code`; `None` for a code request, keyed by its id.
+    /// pairing's `user_code`; `None` for a code request or a session
+    /// widening, keyed by its id.
     #[must_use]
     pub fn user_code(&self) -> Option<&str> {
         match self {
-            AuthorizationRequest::Code(_) => None,
+            AuthorizationRequest::Code(_) | AuthorizationRequest::SessionWidening(_) => None,
             AuthorizationRequest::Device(device_request) => Some(device_request.user_code()),
             AuthorizationRequest::Pairing(pairing_request) => Some(pairing_request.user_code()),
         }

@@ -53,6 +53,8 @@ pub struct PurgedCounts {
     /// Device requests and browser pairings deleted, from
     /// `user_code_requests`.
     pub user_code_requests: usize,
+    /// Session widenings deleted, from `session_widening_requests`.
+    pub session_widening_requests: usize,
     /// Authorization codes deleted: the abandoned ones, since redemption
     /// deletes a code as it is used.
     pub authorization_codes: usize,
@@ -67,6 +69,7 @@ impl PurgedCounts {
         self.refresh_token_families == 0
             && self.code_authorization_requests == 0
             && self.user_code_requests == 0
+            && self.session_widening_requests == 0
             && self.authorization_codes == 0
             && self.browser_sessions == 0
     }
@@ -99,6 +102,8 @@ pub(crate) fn purge_expired(
             code_authorization_requests: tx
                 .delete_code_requests_expired_before(authorization_cutoff)?,
             user_code_requests: tx.delete_polled_requests_expired_before(authorization_cutoff)?,
+            session_widening_requests: tx
+                .delete_session_widening_requests_expired_before(authorization_cutoff)?,
             authorization_codes: tx
                 .delete_authorization_codes_expired_before(authorization_cutoff)?,
             browser_sessions: tx.delete_browser_sessions_ended_before(browser_session_cutoff)?,
@@ -111,6 +116,9 @@ mod tests {
     use super::*;
     use crate::domain::authorization_code::AuthorizationCode;
     use crate::domain::authorization_request::device::{DeviceRequest, NewDeviceRequestArgs};
+    use crate::domain::authorization_request::session_widening::{
+        NewSessionWideningRequestArgs, SessionWideningRequest,
+    };
     use crate::domain::authorization_request::RequestStatus;
     use crate::domain::browser_session::{BrowserSession, BrowserSessionKind};
     use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
@@ -250,6 +258,28 @@ mod tests {
             .tx()
             .insert_device_request(&request("recent", now() - Duration::days(6)))
             .expect("seed recent request");
+        for (id, expires_at) in [
+            ("old-widening", now() - Duration::days(8)),
+            ("recent-widening", now() - Duration::days(6)),
+        ] {
+            store
+                .tx()
+                .insert_session_widening_request(&SessionWideningRequest {
+                    expires_at,
+                    ..SessionWideningRequest::new(
+                        NewSessionWideningRequestArgs {
+                            id: id.to_owned(),
+                            sid: "old".to_owned(),
+                            client_id: "client-1".to_owned(),
+                            browser_name: "Firefox on Linux".to_owned(),
+                            requested_scopes: vec!["read".to_owned()],
+                            ttl: Duration::minutes(5),
+                        },
+                        expires_at - Duration::minutes(5),
+                    )
+                })
+                .expect("seed session widening");
+        }
         store
             .tx()
             .insert_device_request(&request("live", now() + Duration::minutes(5)))
@@ -299,6 +329,7 @@ mod tests {
                 refresh_token_families: 1,
                 code_authorization_requests: 1,
                 user_code_requests: 1,
+                session_widening_requests: 1,
                 authorization_codes: 1,
                 browser_sessions: 1,
             },

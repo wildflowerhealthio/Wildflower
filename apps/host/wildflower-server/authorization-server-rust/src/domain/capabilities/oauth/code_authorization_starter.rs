@@ -13,8 +13,10 @@
 //! shortfall**: what a code issued in that session would not carry in full)
 //! waits on that browser's limited page first, and goes on from there only
 //! when the browser says to ([`CodeAuthorizationStarter::continue_past_session_shortfall`]).
-//! Once a browser session has gone on for a client, its later requests for
-//! that client skip the page, whatever the session then lacks of them.
+//! What the session holds is read from its row, which a widening the Owner
+//! approved grows. Once a browser session has gone on for a client, its later
+//! requests for that client skip the page, whatever the session then lacks of
+//! them, unless the app asks to show it again (`prompt=consent`).
 
 use std::sync::Arc;
 
@@ -23,7 +25,7 @@ use url::Url;
 use wildflowerhealthio_scopes::Grant;
 
 use super::consume_launch;
-use super::session_shortfall::load_code_request_awaiting_limited_page;
+use super::session_shortfall::{browser_session_grant, load_code_request_awaiting_limited_page};
 use crate::crypto_util::pkce::is_valid_s256_code_challenge;
 use crate::domain::authority::{session_shortfall, GrantCoverage, StandingGrantCoverage};
 use crate::domain::authorization_request::code::resolved::ResolvedCodeRequest;
@@ -69,14 +71,15 @@ pub(crate) struct AuthorizeRequest<'a> {
     /// The SMART App Launch `aud`: the FHIR server the app means to call with
     /// the token, or `None` when the app doesn't declare one.
     pub(crate) aud: Option<&'a str>,
-    /// The grant of the browser session the browser making the request
-    /// holds. A code issued for the request carries only what it also allows,
-    /// so a request asking for more waits on that browser's limited page
-    /// first.
-    pub(crate) browser_session_grant: &'a Grant,
+    /// The grant the browser's session token (its cookie) carries: what the
+    /// browser can do as a bearer on this server's pages, the consent card
+    /// among them. What the session bounds a code to is read from its row
+    /// instead, which a widening the browser hasn't taken a token for yet
+    /// may have grown.
+    pub(crate) session_token_grant: &'a Grant,
     /// Whether that browser session can decide consents. The request can be
     /// decided in that browser when it can and
-    /// [`browser_session_grant`](Self::browser_session_grant) also holds the
+    /// [`session_token_grant`](Self::session_token_grant) also holds the
     /// request's approval scopes (as the consent card and the approval check
     /// them with [`missing_approval_scopes`]); that is recorded on a parked
     /// request.
@@ -97,6 +100,11 @@ pub(crate) struct AuthorizeRequest<'a> {
     /// the parked request and on the code it earns. A browser without one
     /// never gets this far: `/oauth/authorize` sends it to pairing.
     pub(crate) sid: &'a str,
+    /// Whether the app asked (`prompt=consent`) for a session shortfall to
+    /// be shown on the limited page even when this session has gone on past
+    /// it for the client before. It changes nothing for a request the
+    /// session holds all of.
+    pub(crate) reviews_session_shortfall: bool,
 }
 
 /// The identifiers a start may need, minted by the caller (a random UUID and
@@ -251,13 +259,14 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
     /// the standing grant names the same one; otherwise the Owner decides.
     ///
     /// A request whose browser session holds less than it asks for (see
-    /// [`session_shortfall`]) is parked, once validated, admitted by the start
-    /// limit and its launch consumed, for its browser's limited page
-    /// ([`AuthorizeNextStep::ConfirmSessionShortfall`]); the fast path and
-    /// the Owner wait for
+    /// [`session_shortfall`], against the session's row) is parked, once
+    /// validated, admitted by the start limit and its launch consumed, for its
+    /// browser's limited page ([`AuthorizeNextStep::ConfirmSessionShortfall`]);
+    /// the fast path and the Owner wait for
     /// [`continue_past_session_shortfall`](Self::continue_past_session_shortfall).
     /// A session that has gone on past the page for this client before goes
-    /// on as if it had again.
+    /// on as if it had again, unless the request
+    /// [reviews the shortfall](AuthorizeRequest::reviews_session_shortfall).
     ///
     /// # Errors
     ///
@@ -377,7 +386,7 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
         let decidable_in_requesting_browser = authorize_query.can_decide_consents
             && resolved
                 .approvable_scopes()
-                .missing_approval_scopes(authorize_query.browser_session_grant)
+                .missing_approval_scopes(authorize_query.session_token_grant)
                 .is_empty();
         let coverage = GrantCoverage::resolve(
             tx,
@@ -386,12 +395,19 @@ impl<S: GrantStore> CodeAuthorizationStarter<S> {
             &requested_redirect_uri,
             &requested_scopes,
         )?;
-        let waits_on_limited_page =
-            !session_shortfall(&requested_scopes, authorize_query.browser_session_grant).is_empty()
-                && !tx.is_session_shortfall_acknowledged_for_client(
+        // A session that ended since its cookie was checked parks nothing for
+        // the limited page: the request goes on, and is denied once a code
+        // would be issued under the session.
+        let session_falls_short =
+            browser_session_grant(tx, authorize_query.sid, now)?.is_some_and(|session_grant| {
+                !session_shortfall(&requested_scopes, &session_grant).is_empty()
+            });
+        let waits_on_limited_page = session_falls_short
+            && (authorize_query.reviews_session_shortfall
+                || !tx.is_session_shortfall_acknowledged_for_client(
                     authorize_query.sid,
                     authorize_query.client_id,
-                )?;
+                )?);
         // Parking for the limited page writes a request and spends its launch,
         // so it asks the start limit as raising one for the Owner does. Continue
         // then raises it without asking again.
@@ -829,10 +845,11 @@ mod tests {
             client_state: "xyz",
             launch: None,
             aud: None,
-            browser_session_grant: &SAME_DEVICE_SESSION_GRANT,
+            session_token_grant: &SAME_DEVICE_SESSION_GRANT,
             can_decide_consents: false,
             may_raise_for_owner: &|| true,
             sid: REQUESTING_SID,
+            reviews_session_shortfall: false,
         }
     }
 
@@ -846,8 +863,8 @@ mod tests {
     }
 
     /// A starter over `store`, seeded with an active signing key and the
-    /// standing paired session [`REQUESTING_SID`], and the approval port it
-    /// republishes through.
+    /// standing paired session [`REQUESTING_SID`], holding all the Owner
+    /// holds, and the approval port it republishes through.
     fn starter(
         store: FakeGrantStore,
     ) -> (
@@ -861,7 +878,7 @@ mod tests {
                 sid: REQUESTING_SID.to_owned(),
                 ..BrowserSession::new_paired_session(
                     "Firefox on Linux".to_owned(),
-                    vec!["wildflower/launch".to_owned()],
+                    crate::owner_scopes(),
                     Duration::hours(24),
                     Utc::now(),
                 )
@@ -871,6 +888,19 @@ mod tests {
         let code_authorization_starter =
             CodeAuthorizationStarter::new(store, owner_approval.clone(), SERVER_ORIGIN.into());
         (code_authorization_starter, owner_approval)
+    }
+
+    /// Narrow [`REQUESTING_SID`]'s session in `code_authorization_starter`'s
+    /// store to `scopes`.
+    fn narrow_requesting_session(
+        code_authorization_starter: &CodeAuthorizationStarter<FakeGrantStore>,
+        scopes: &[&str],
+    ) {
+        assert!(code_authorization_starter
+            .store
+            .tx()
+            .update_browser_session_scopes(REQUESTING_SID, &owned_scopes(scopes))
+            .unwrap());
     }
 
     /// A registered client with a standing grant covering every requested
@@ -1515,11 +1545,11 @@ mod tests {
                 .upsert_client(&client("app", &["patient/Observation.rs"]))
                 .unwrap();
             let (code_authorization_starter, _) = starter(store);
-            let browser_session_grant = Grant::parse(deciding.iter().chain(extra_scopes));
+            let session_token_grant = Grant::parse(deciding.iter().chain(extra_scopes));
             let outcome = code_authorization_starter
                 .start(
                     &AuthorizeRequest {
-                        browser_session_grant: &browser_session_grant,
+                        session_token_grant: &session_token_grant,
                         can_decide_consents: true,
                         ..request("app", "patient/Observation.rs")
                     },
@@ -1621,11 +1651,10 @@ mod tests {
         launch_contexts_of(&code_authorization_starter)
             .mint("app", "launch-1".to_owned(), now)
             .unwrap();
-        let limited_grant = Grant::parse(["patient/Patient.rs"]);
+        narrow_requesting_session(&code_authorization_starter, &["patient/Patient.rs"]);
         let outcome = code_authorization_starter
             .start(
                 &AuthorizeRequest {
-                    browser_session_grant: &limited_grant,
                     launch: Some("launch-1"),
                     ..request("app", COVERED_SCOPES)
                 },
@@ -1678,10 +1707,9 @@ mod tests {
         launch_contexts_of(&code_authorization_starter)
             .mint("app", "launch-1".to_owned(), now)
             .unwrap();
-        let limited_grant = Grant::parse(["patient/Patient.rs"]);
+        narrow_requesting_session(&code_authorization_starter, &["patient/Patient.rs"]);
         let refused = code_authorization_starter.start(
             &AuthorizeRequest {
-                browser_session_grant: &limited_grant,
                 launch: Some("launch-1"),
                 may_raise_for_owner: &|| false,
                 ..request("app", COVERED_SCOPES)
@@ -1713,16 +1741,9 @@ mod tests {
     fn park_for_the_limited_page(
         code_authorization_starter: &CodeAuthorizationStarter<FakeGrantStore>,
     ) {
-        let limited_grant = Grant::parse(["patient/Patient.rs"]);
+        narrow_requesting_session(code_authorization_starter, &["patient/Patient.rs"]);
         let outcome = code_authorization_starter
-            .start(
-                &AuthorizeRequest {
-                    browser_session_grant: &limited_grant,
-                    ..request("app", COVERED_SCOPES)
-                },
-                ids(),
-                Utc::now(),
-            )
+            .start(&request("app", COVERED_SCOPES), ids(), Utc::now())
             .expect("starts");
         assert!(matches!(
             outcome,
@@ -1768,8 +1789,8 @@ mod tests {
                 .unwrap()
                 .expect("the code")
                 .granted_scopes,
-            ["openid"],
-            "the requesting session holds only wildflower/launch"
+            ["patient/Patient.r", "openid"],
+            "the requesting session holds only patient/Patient.rs"
         );
         assert_eq!(owner_approval.count(), 1);
     }
@@ -1910,12 +1931,24 @@ mod tests {
     #[test]
     fn a_session_gone_on_for_a_client_skips_the_limited_page_for_it() {
         let (code_authorization_starter, _) = starter(covered_app_store());
-        let limited_grant = Grant::parse(["patient/Patient.rs"]);
+        narrow_requesting_session(&code_authorization_starter, &["patient/Patient.rs"]);
+        code_authorization_starter
+            .store
+            .tx()
+            .insert_browser_session(&BrowserSession {
+                sid: "another-sid".to_owned(),
+                ..BrowserSession::new_paired_session(
+                    "Safari on iOS".to_owned(),
+                    owned_scopes(&["patient/Patient.rs"]),
+                    Duration::hours(24),
+                    Utc::now(),
+                )
+            })
+            .unwrap();
         let start = |request_id: &str, sid: &str, client_id: &str, scope: &str| {
             code_authorization_starter
                 .start(
                     &AuthorizeRequest {
-                        browser_session_grant: &limited_grant,
                         sid,
                         ..request(client_id, scope)
                     },
@@ -1971,7 +2004,6 @@ mod tests {
             matches!(
                 code_authorization_starter.start(
                     &AuthorizeRequest {
-                        browser_session_grant: &limited_grant,
                         may_raise_for_owner: &|| false,
                         ..request("app", "patient/Condition.r")
                     },
@@ -1997,6 +2029,79 @@ mod tests {
             .tx()
             .is_session_shortfall_acknowledged_for_client(REQUESTING_SID, "other-app")
             .unwrap());
+    }
+
+    /// What the session holds is read from its row: once the Owner has
+    /// widened it to cover the request, the next start takes the fast path,
+    /// whatever the session's token still says.
+    #[test]
+    fn a_session_widened_since_no_longer_waits_on_the_limited_page() {
+        let (code_authorization_starter, _) = starter(covered_app_store());
+        park_for_the_limited_page(&code_authorization_starter);
+        narrow_requesting_session(
+            &code_authorization_starter,
+            &["patient/Patient.rs", "patient/Observation.rs"],
+        );
+        let narrow_token_grant = Grant::parse(["patient/Patient.rs"]);
+        let outcome = code_authorization_starter
+            .start(
+                &AuthorizeRequest {
+                    session_token_grant: &narrow_token_grant,
+                    ..request("app", COVERED_SCOPES)
+                },
+                FreshIds {
+                    request_id: "req-2".to_owned(),
+                    code: "the-code".to_owned(),
+                },
+                Utc::now(),
+            )
+            .expect("starts");
+        assert!(
+            matches!(outcome, AuthorizeNextStep::RedirectToClient { .. }),
+            "{outcome:?}"
+        );
+    }
+
+    /// A request that reviews the shortfall (`prompt=consent`) stops at the
+    /// limited page although the session went on past it for the client
+    /// before; one the session holds all of goes on as usual.
+    #[test]
+    fn reviewing_the_shortfall_shows_the_limited_page_after_a_continue() {
+        let (code_authorization_starter, _) = starter(covered_app_store());
+        park_for_the_limited_page(&code_authorization_starter);
+        code_authorization_starter
+            .continue_past_session_shortfall(
+                "req-1",
+                REQUESTING_SID,
+                "the-code".to_owned(),
+                Utc::now(),
+            )
+            .expect("continues");
+        let start = |request_id: &str, scope: &str| {
+            code_authorization_starter
+                .start(
+                    &AuthorizeRequest {
+                        reviews_session_shortfall: true,
+                        ..request("app", scope)
+                    },
+                    FreshIds {
+                        request_id: request_id.to_owned(),
+                        code: format!("{request_id}-code"),
+                    },
+                    Utc::now(),
+                )
+                .expect("starts")
+        };
+        assert_eq!(
+            start("req-2", COVERED_SCOPES),
+            AuthorizeNextStep::ConfirmSessionShortfall {
+                request_id: "req-2".to_owned()
+            }
+        );
+        assert!(matches!(
+            start("req-3", "patient/Patient.r openid"),
+            AuthorizeNextStep::RedirectToClient { .. }
+        ));
     }
 
     /// A client disabled since the request parked ends it at Continue: the
