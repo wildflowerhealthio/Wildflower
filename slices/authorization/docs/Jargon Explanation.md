@@ -201,25 +201,27 @@ all-or-nothing.
 ### AuthorizationRequest
 
 A pending authorization that has been started but not yet resolved: an
-OAuth 2.0 request of either grant flow, or a [browser pairing](#browser-pairing),
-which is no OAuth grant.
+OAuth 2.0 request of either grant flow, or a [browser pairing](#browser-pairing)
+or [session widening](#session-widening), which are no OAuth grant.
 
-- **Tables:** `code_authorization_requests` (the code flow's), and
+- **Tables:** `code_authorization_requests` (the code flow's),
   `user_code_requests` (device requests and pairings, keyed by a `userCode`
-  and claimed by a poll).
+  and claimed by a poll), and `session_widening_requests` (session widenings,
+  keyed by id and claimed by a poll).
 - **Discriminator:** in `user_code_requests`,
   `flow: 'device_code' | 'browser_pairing'` (`device_code` matches the OAuth
   `grant_type` request parameter). The code table holds one flow and needs none.
 - **Status field:** `'awaiting_limited_page' | 'pending' | 'approved' | 'denied'`
   for a code request; `'pending' | 'approved' | 'denied' | 'claimed'` for a
-  device request or pairing.
+  device request, pairing or session widening.
   Expiry is read from `expiresAt`, never stored as a status;
   `awaiting_limited_page` is a code-flow request waiting on its browser's
-  [limited page](#limited-page); `claimed` is an approved device request or
-  pairing whose poll redeemed the approval.
+  [limited page](#limited-page); `claimed` is an approved device request,
+  pairing or session widening whose poll redeemed the approval.
 - **TTL:** 5 minutes.
 - **Identifier:** `id` (UUID — for code flow, the request id; for
-  device flow, the `device_code`; for a pairing, its pairing code).
+  device flow, the `device_code`; for a pairing, its pairing code; for a
+  session widening, its id).
 - **Device-flow and pairing extras:** `userCode` (the human-typed RFC 8628
   §6.1 code, formatted `BCDF-GHJK`); `lastPolledAt` (for the `slow_down`
   rate limit); `deviceName` (see [Device name](#device-name); a pairing's
@@ -234,8 +236,8 @@ A code-flow row whose browser session falls short of what it asks for parks
 as `awaiting_limited_page` until its browser goes on from the
 [limited page](#limited-page), which makes it `pending`, unless that session
 went on for the same app before (a row in
-`session_shortfall_acknowledgements`). Only `pending` requests are asked of
-the Owner.
+`session_shortfall_acknowledgements`) and the request doesn't carry
+`prompt=consent`. Only `pending` requests are asked of the Owner.
 
 ### LaunchContext
 
@@ -423,11 +425,12 @@ Optional on the wire; auth-code requests carry no device name.
 
 ### Pending consents
 
-The authorization requests waiting on the Owner, spanning **both** grant flows
-and browser pairings: a device-code request parked by
+The authorization requests waiting on the Owner, spanning **both** grant flows,
+browser pairings and session widenings: a device-code request parked by
 `/oauth/device_authorization`, an authorization-code request parked by
-`/oauth/authorize`, and a [browser pairing](#browser-pairing) started at
-`/oauth/pair` alike. The host asks
+`/oauth/authorize`, a [browser pairing](#browser-pairing) started at
+`/oauth/pair`, and a [session widening](#session-widening) asked from the
+limited page, alike. The host asks
 about one at a time, the newest by `requestedAt`, like a stack: a new request
 takes over from the one before it, and deciding it brings back the newest of
 those still pending.
@@ -442,23 +445,27 @@ never limited. A request parked for the limited page has spent from the limit
 whichever browser made it, so going on from there asks nothing. Nor is a
 browser without a session at
 `/oauth/authorize`, which is only sent to [pairing](#browser-pairing) and
-parks nothing.
+parks nothing. Asking to widen a session from the limited page spends from
+it too, as a request raised for the Owner does.
 
 The newest is an `OwnerPrompt`, discriminated because the flows have
 no shared lookup key, with the name of what asks: the client's (its registered
-name, or its `client_id` while it has none), or a pairing browser's:
+name, or its `client_id` while it has none), or a pairing or widening
+browser's:
 
-| Flow               | Newest pending consent                       | Decided at                                        |
-| ------------------ | -------------------------------------------- | ------------------------------------------------- |
-| Device (RFC 8628)  | `{ kind: 'device', userCode, clientName }`   | the device page, `/oauth/device?user_code=`       |
-| Authorization code | `{ kind: 'oauth', id, clientName }`          | the consent card, `/oauth/authorize/{id}/consent` |
-| Browser pairing    | `{ kind: 'browser', userCode, browserName }` | the device page, `/oauth/device?user_code=`       |
+| Flow               | Newest pending consent                       | Decided at                                                   |
+| ------------------ | -------------------------------------------- | ------------------------------------------------------------ |
+| Device (RFC 8628)  | `{ kind: 'device', userCode, clientName }`   | the device page, `/oauth/device?user_code=`                  |
+| Authorization code | `{ kind: 'oauth', id, clientName }`          | the consent card, `/oauth/authorize/{id}/consent`            |
+| Browser pairing    | `{ kind: 'browser', userCode, browserName }` | the device page, `/oauth/device?user_code=`                  |
+| Session widening   | `{ kind: 'widening', id, browserName }`      | the widening's card, `/oauth/session-widenings/{id}/consent` |
 
 The Rust side recomputes it (`owner_prompt`) after every transition
 that could change it — either flow's insert, approve, or deny — and publishes
 it on a `watch` channel. The Tauri host carries each server's newest pending
 consent in the server's status, posts a notification ("‹client› wants access
-to ‹domain›", or for a pairing "‹browser›, a remote browser, wants to sign in
+to ‹domain›"; for a pairing "‹browser›, a remote browser, wants to sign in
+to ‹domain›"; for a widening "‹browser›, a remote browser, wants more access
 to ‹domain›") once for each request it hasn't notified for, and on the
 desktop, where a notification can't be clicked, opens the request at once. A
 request that comes back once a newer one is decided doesn't notify again. A
@@ -494,7 +501,7 @@ TTL lapsed.
 The host also watches one request it opened, through the
 `PendingConsentWatcher` the authorization server hands it: it rereads that
 request, by its `ConsentKey` (the device request's or pairing's `user_code`,
-or the code request's `id`), each time the newest is recomputed, changed or not, so it
+or the code request's or widening's `id`), each time the newest is recomputed, changed or not, so it
 sees the request decided or expired even while a newer one stays newest. On
 iOS the host closes the page it opened the request at once it settles.
 
@@ -555,15 +562,17 @@ each it narrows, the part the session lacks. A session holding
 `/oauth/authorize` works it out once the request is validated and its launch
 consumed, before the [fast path](#grant), the start limit and the Owner.
 When it isn't empty, it parks the request as `awaiting_limited_page` and sends the browser here,
-unless that browser session has pressed Continue for the same app before. A
-same-device session, holding `OWNER_SCOPES`, falls short of nothing and never
-sees the page.
+unless that browser session has pressed Continue for the same app before and
+the request doesn't carry `prompt=consent`. What the session holds is read
+from its `browser_sessions` row, which a [session widening](#session-widening)
+grows, not from its token. A same-device session, holding `OWNER_SCOPES`,
+falls short of nothing and never sees the page.
 
 The page reads `GET /oauth/authorize/{id}/session-shortfall` (the app's name
 and the scopes the session lacks) and says, for example, "This browser isn't
 allowed to read and search Observations, which Strength expects. Strength may
 not be able to do everything." The scopes are in the words the scope picker
-uses (`scopes-react`'s `fluentScope`), and the message sits above two buttons:
+uses (`scopes-react`'s `fluentScope`), and the message sits above three buttons:
 
 - **Continue** posts `/oauth/authorize/{id}/continue`, which makes the
   request `pending`, gives it a fresh five minutes, and takes the branch the
@@ -577,25 +586,63 @@ uses (`scopes-react`'s `fluentScope`), and the message sits above two buttons:
   `access_denied`.
 - **Cancel** posts `/oauth/authorize/{id}/cancel`, which denies the request,
   and the browser goes back to the app with `access_denied`.
+- **Ask the server's owner** posts `/oauth/authorize/{id}/ask-to-widen`, which
+  files a [session widening](#session-widening) for exactly what the session
+  lacks of the request and keeps the request waiting here as long as the
+  widening waits for the Owner. The page polls the widening and says above the
+  buttons that it is waiting, that the Owner declined, or that the Owner
+  didn't answer in time. Once the Owner widens the session, the page reads
+  what the session still lacks, and goes on at once when that's nothing.
 
 Continue also remembers the (browser session, app) pair, one row in
 `session_shortfall_acknowledgements` keyed by `sid` and `client_id`. A later
 request from that session for that app skips the page and goes on as if
 acknowledged, whatever the session then lacks of it; another session, or the
-same session for another app, still stops here. The launcher is an app like
-any other: a browser paired with less than it asks for sees the page on its
-first sign-in and not again for that session. Cancel remembers nothing. The
+same session for another app, still stops here, as does a request carrying
+`prompt=consent`. The launcher is an app like any other: a browser paired
+with less than it asks for sees the page on its first sign-in and not again
+for that session, until its Request access signs in with `prompt=consent`.
+An approved session widening forgets every pair of its session, so its next
+sign-ins carry the wider session or stop here for what it still lacks. Cancel
+remembers nothing. The
 rows end with their session: the retention sweep deletes them when it
 deletes the session.
 
 Both answer `{ location }`, where the page sends the browser, which it follows
 only for `http:`/`https:`. Until Continue the request is the browser's alone:
 it isn't a [pending consent](#pending-consents) and no code is issued for it.
-The three calls answer only the browser session the request was made in, read
+The page's calls answer only the browser session the request was made in, read
 from its cookie as the status poll reads it; any other browser, with another
 session or none, gets the `404` an unknown id gets. So does a request no
 longer waiting there (continued, cancelled, decided, or past its five
 minutes), and the page then goes to the wait page, which says how it ended.
+
+### Session widening
+
+A paired browser asking the Owner, from the [limited page](#limited-page), for
+its own [browser session](#browser-session) to hold more, rather than pairing
+again, which would end the session and everything minted under it. One row in
+`session_widening_requests`, keyed by id, naming the session (`sid`), the app
+whose request the session fell short of, the session's name, and the scopes it
+lacked of that request: the most the Owner may grant. It waits five minutes,
+as the request on the page does.
+
+The Owner decides it on its own card, `/oauth/session-widenings/{id}/consent`,
+an authorization page reading `GET /authorization/session-widenings/{id}` and
+posting `…/approve` or `…/deny` (gated like the device page, on
+`wildflower/AuthorizationRequest.r` to read and `.u` to decide). The card's
+ticks start from what was asked that the approver may pass on, and the Owner
+may only untick: an approval is clamped to what was asked and to the
+approver's own grant, and records no grant. Approving grows the session's
+`scopes` by what was granted, never shrinking them, with the same `sid` and
+expiry, and forgets every client the session went on past the limited page
+for. A decline leaves the session as it was. A widening whose session has
+ended since is denied.
+
+The limited page's poll, `POST /oauth/session-widenings/{id}/poll`, answers
+only the session the widening is for. The first poll after an approval claims
+it, once: it sets the session's new token, for the same session and with what
+it holds now, as the browser's cookie, and revokes the token it replaces.
 
 ### Consent card
 
@@ -885,7 +932,8 @@ approval as made; the code's tokens and refresh family take the code's scopes.
 So a browser paired without `patient/Observation.rs` earns no app a code for
 it, whoever approves, and a same-device session, holding `OWNER_SCOPES`,
 bounds nothing. A browser whose session falls short of a request is told so before
-anything is issued or asked, on the [limited page](#limited-page). Launching
+anything is issued or asked, on the [limited page](#limited-page), where it can
+ask the Owner to widen the session ([session widening](#session-widening)). Launching
 an app from Home needs only `wildflower/launch`: what the app may then do is
 bounded here, at its own `/oauth/authorize`.
 
@@ -916,6 +964,9 @@ cookie cleared.
 The retention sweep deletes a session 24 hours after it expired or was
 revoked, unless a refresh family alive by then still names it, and the apps it
 went on past the [limited page](#limited-page) for with it.
+
+A session's scopes grow only by a [session widening](#session-widening) the
+Owner approved; its `sid` and expiry never change.
 
 - **Table:** `browser_sessions`
 - **Identifier:** `sid` (a random UUID).

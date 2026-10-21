@@ -45,7 +45,14 @@ which this doc assumes rather than repeats.
   issued and the Owner isn't asked until it presses Continue, and only the
   session that made the request can read, continue or cancel it. Once a
   session has pressed Continue for an app, its later requests for that app
-  skip the page; the bound on the code still applies.
+  skip the page, unless they carry `prompt=consent`; the bound on the code
+  still applies.
+- **A session grows only by the Owner's approval.** From the limited page a
+  browser can ask the Owner to widen its session by exactly what it lacks of
+  the request; the Owner may only untick, can grant no more than they hold,
+  and the session keeps its `sid` and expiry. Only that session can poll for
+  the answer, and its wider token replaces the narrower one, which is
+  revoked. Asking spends from the authorization start limit.
 - **Codes and refresh tokens resist theft.** PKCE S256 only, constant-time
   compares, codes bound to client and redirect; refresh families rotate and a
   replay revokes the family; only hashes are stored.
@@ -89,6 +96,7 @@ which this doc assumes rather than repeats.
 | Revoke one grant, lose another          | Revocation is per client: it bumps the client's epoch and expires all its refresh families.                                                                                             |
 | Pairing spam                            | `/oauth/pair/start` is not rate-limited and each pairing notifies the Owner.                                                                                                            |
 | Request-id guessing on the wait page    | The status poll and the limited page answer only the request's own session; the code still needs the PKCE verifier.                                                                     |
+| Widening-id guessing                    | The widening's poll answers only the session it widens; the Owner's card needs `wildflower/AuthorizationRequest.r`.                                                                     |
 | Store read failure                      | Verification fails closed (500), never open.                                                                                                                                            |
 
 ## Not in scope here

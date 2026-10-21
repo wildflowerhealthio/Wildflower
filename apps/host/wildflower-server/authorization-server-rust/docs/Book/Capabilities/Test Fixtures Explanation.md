@@ -120,7 +120,7 @@ The requests polled are the fake store's code and device requests.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/session_shortfall.rs tests::status_of}}
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/session_shortfall.rs tests::browser_session}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/session_shortfall.rs tests::seed_session}}
 
 ## Device Authorizer
 

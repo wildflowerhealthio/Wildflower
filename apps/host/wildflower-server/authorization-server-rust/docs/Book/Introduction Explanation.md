@@ -19,13 +19,14 @@ Everything else in the crate serves that sentence.
 
 ## Three ways to ask
 
-Every request for access is an [**authorization request**](<Domain/Authorization Request Explanation.md>), parked until the Owner decides it. There are three flows, each its own type with its own states.
+Every request for access is an [**authorization request**](<Domain/Authorization Request Explanation.md>), parked until the Owner decides it. There are four flows, each its own type with its own states.
 
 | Flow                   | Who asks                               | What a yes produces                      | Standard             |
 | ---------------------- | -------------------------------------- | ---------------------------------------- | -------------------- |
 | **Authorization code** | An app, running in a signed-in browser | A one-minute code, then tokens           | RFC 6749 §4.1 + PKCE |
 | **Device code**        | A device showing a user code           | Tokens, collected by the device's poll   | RFC 8628             |
 | **Browser pairing**    | A browser wanting to become a session  | A browser session, collected by its poll | Ours, not OAuth      |
+| **Session widening**   | A paired browser wanting to hold more  | A wider session, collected by its poll   | Ours, not OAuth      |
 
 The order matters. A browser **signs in or pairs first** and then makes app requests, because an app's code is always issued under the browser session it was requested in.
 
