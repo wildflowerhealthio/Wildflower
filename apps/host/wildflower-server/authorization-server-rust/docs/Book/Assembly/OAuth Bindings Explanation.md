@@ -103,6 +103,22 @@ Only the code's hash is kept, in memory, so a restart drops every outstanding co
 
 The [Same-Device Sign-In](<../Integration Tests/Same Device Sign In Explanation.md#item-a_code_signs_in_once>) tests hold a code to signing in once.
 
+### `SameDeviceSignInCode`
+
+**A minted code, which also ends the session it signs in.** The host keeps it with the view it opened the code in, and ends the Owner session when the view closes, through the [same-device session ender](<../Capabilities/OAuth/Same Device Session Ender Explanation.md>). Its `Debug` leaves the code out.
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs SameDeviceSignInCode}}
+
+#### `as_str`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs SameDeviceSignInCode::as_str}}
+
+#### `end_signed_in_session`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs SameDeviceSignInCode::end_signed_in_session}}
+
+The [Same-Device Session Ending](<../Integration Tests/Same Device Session Ending Explanation.md#item-closing_a_launch_ends_only_its_session>) tests hold it to ending exactly the session its code signed in.
+
 ### `PendingConsentWatcher`
 
 **How the host learns a consent it opened a page for is settled**, so it can close the page. The state pings it every time the [Owner prompt](<../Domain/Owner Prompt Explanation.md>) is recomputed: after every transition that may change which requests wait, and on the reaper's tick, which is how an expiry is noticed. The ping comes whether or not the prompt changed, so a request decided while a newer one stays newest is still seen to settle.

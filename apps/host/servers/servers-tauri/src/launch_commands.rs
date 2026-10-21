@@ -465,7 +465,7 @@ async fn launch(
         );
         let sign_in_url = wildflowerhealthio_servers::sign_in_url(
             &public_origin,
-            &sign_in_code_minter.mint(),
+            sign_in_code_minter.mint().as_str(),
             launch_url.as_str(),
         );
         open_launch_view(
@@ -508,7 +508,7 @@ async fn open_authorization_app(
         );
         let sign_in_url = wildflowerhealthio_servers::sign_in_url(
             &public_origin,
-            &sign_in_code_minter.mint(),
+            sign_in_code_minter.mint().as_str(),
             authorization_app_url.as_str(),
         );
         open_launch_view(
@@ -575,7 +575,7 @@ async fn open_pending_consent(
         };
         let sign_in_url = wildflowerhealthio_servers::consent_sign_in_url(
             &server.record.public_origin(),
-            &sign_in_code_minter.mint(),
+            sign_in_code_minter.mint().as_str(),
             &pending_consent.key,
         );
         // A failed open drops the claim with the rest.

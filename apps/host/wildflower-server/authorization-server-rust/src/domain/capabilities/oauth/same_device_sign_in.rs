@@ -104,9 +104,11 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
     /// token, both lasting [`SAME_DEVICE_SESSION_TTL`], to go on to `next`.
     /// A `next` that isn't allowed, or a disabled browser-session client, is
     /// refused before the code is touched, so the code stays redeemable. The
-    /// session is stored and its token signed in one write scope. A failure
-    /// after the code is taken spends it: the code leaves memory even when the
-    /// scope rolls back, so signing in again takes a new code.
+    /// session is stored and its token signed in one write scope; once it
+    /// lands, the codes remember the session by the code, so the base can end
+    /// it when the view it opened closes. A failure after the code is taken
+    /// spends it: the code leaves memory even when the scope rolls back, so
+    /// signing in again takes a new code.
     ///
     /// # Errors
     ///
@@ -129,7 +131,7 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
             .ok_or(SameDeviceSignInError::Refused(
                 SignInRefusal::RedirectNotAllowed,
             ))?;
-        let session_token = self.store.write(|tx| {
+        let (session_token, session) = self.store.write(|tx| {
             if is_browser_session_client_disabled(tx)? {
                 return Err(SameDeviceSignInError::Refused(
                     SignInRefusal::BrowserSessionClientDisabled,
@@ -148,12 +150,19 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
             BrowserSessionWriter::within(tx)
                 .start_same_device_session(&redeemed_sign_in_code)
                 .map_err(SameDeviceSignInError::SessionNotStored)?;
-            AccessTokenMinter::with_active_key(tx, &self.server_origin, SAME_DEVICE_SESSION_TTL)
-                .and_then(|minter| {
-                    minter.mint(TokenEntitlement::SameDeviceSignIn(&redeemed_sign_in_code))
-                })
-                .map_err(SameDeviceSignInError::Issuance)
+            let session_token = AccessTokenMinter::with_active_key(
+                tx,
+                &self.server_origin,
+                SAME_DEVICE_SESSION_TTL,
+            )
+            .and_then(|minter| {
+                minter.mint(TokenEntitlement::SameDeviceSignIn(&redeemed_sign_in_code))
+            })
+            .map_err(SameDeviceSignInError::Issuance)?;
+            Ok((session_token, redeemed_sign_in_code.session().clone()))
         })?;
+        self.codes
+            .record_signed_in_session(presented_code, &session);
         Ok(SignedIn {
             session_token,
             redirect,
@@ -271,6 +280,25 @@ mod tests {
             Some(SAME_DEVICE_SESSION_TTL),
             "the token lives eight hours"
         );
+    }
+
+    /// A sign-in remembers its session by the code, so the code finds the
+    /// session's `sid`, as stored.
+    #[test]
+    fn a_sign_in_remembers_its_session_by_the_code() {
+        let now = Utc::now();
+        let (sign_in, _signing_key) = sign_in_with_a_code(now);
+        sign_in.sign_in("code-1", "/", now).expect("signed in");
+        let sid = sign_in
+            .codes
+            .take_signed_in_sid("code-1")
+            .expect("the code's session");
+        assert!(sign_in
+            .store
+            .tx()
+            .browser_session_by_sid(&sid)
+            .expect("read")
+            .is_some_and(|session| session.is_live(now)));
     }
 
     /// A redeemed code is spent: presenting it again is

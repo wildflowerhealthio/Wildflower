@@ -7,6 +7,8 @@ The Owner signs a browser in by asking the base, the Wildflower app on the devic
 
 **A code is single-use, short-lived, and never stored in the clear.** Each is 256 random bits, redeemable once, for a minute. The outstanding codes live only in the server's memory and only as SHA-256 hashes: a restart drops them all, and reading the server's memory yields none.
 
+**A redeemed code is remembered with the session it started**, by the same hash, until the session expires. The base keeps the code it opened a launch with, so when the launch's view closes it ends that launch's session by the code, through the [same-device session ender](<../Capabilities/OAuth/Same Device Session Ender Explanation.md>). This too lives only in memory: a restart forgets it, and the server's start ends every same-device session anyway.
+
 ## Where a sign-in may send the browser
 
 A sign-in URL carries a `next`: where the browser goes once its session has started. **A `next` is held to an allow-list**, so a sign-in link can't be turned into a redirect to anywhere. A `next` is allowed when it is
@@ -40,6 +42,20 @@ Minting a code. The base's minter, {{#code-link apps/host/wildflower-server/auth
 Redeeming a code.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/same_device_sign_in_codes.rs SameDeviceSignInCodes::take tests="tests::a_code_is_taken_once tests::an_unknown_code_is_not_taken tests::a_code_expires_after_its_ttl"}}
+
+#### `record_signed_in_session`
+
+The [sign-in](<../Capabilities/OAuth/Same Device Sign In Explanation.md>) calls this once the session it started is stored.
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/same_device_sign_in_codes.rs SameDeviceSignInCodes::record_signed_in_session tests="tests::recording_a_session_forgets_the_expired_ones"}}
+
+#### `take_signed_in_sid`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/same_device_sign_in_codes.rs SameDeviceSignInCodes::take_signed_in_sid tests="tests::a_signed_in_session_is_taken_once_by_its_own_code"}}
+
+### `SignedInSession`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/same_device_sign_in_codes.rs SignedInSession}}
 
 ### `SAME_DEVICE_SIGN_IN_CODE_TTL`
 

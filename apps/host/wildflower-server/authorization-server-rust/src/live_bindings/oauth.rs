@@ -16,8 +16,8 @@ use crate::db::SqliteGrantStore;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::oauth::{
     AuthorizationStatusReader, BrowserPairing, ClientAuthenticator, ClientTokenRevoker,
-    CodeAuthorizationStarter, DeviceAuthorizer, LaunchContexts, PublicKeysReader, SameDeviceSignIn,
-    SessionShortfall, TokenExchanger,
+    CodeAuthorizationStarter, DeviceAuthorizer, LaunchContexts, PublicKeysReader,
+    SameDeviceSessionEnder, SameDeviceSignIn, SessionShortfall, TokenExchanger,
 };
 use crate::domain::consent_key::ConsentKey;
 use crate::domain::grant_store::AuthorizationRequestsTx as _;
@@ -217,19 +217,26 @@ impl LaunchContextMinter {
 /// Mint one-time same-device sign-in codes: how the host signs the Owner's own
 /// browser in. The host, on the device running the server, mints a code and
 /// opens `/oauth/sign-in?code=…&next=…` in the browser. Cheap to clone (the
-/// codes are shared). [`crate::setup_authorization_server`] hands one out on
+/// codes and the store are shared). [`crate::setup_authorization_server`]
+/// hands one out on
 /// [`AuthorizationServer::same_device_sign_in_code_minter`](crate::AuthorizationServer::same_device_sign_in_code_minter).
 #[derive(Clone)]
 pub struct SameDeviceSignInCodeMinter {
     /// The outstanding codes, shared with the server's state, where
     /// `/oauth/sign-in` redeems them.
     codes: Arc<SameDeviceSignInCodes>,
+    /// Ends the session each minted code signs in, for the code it hands out.
+    session_ender: SameDeviceSessionEnder<SqliteGrantStore>,
 }
 
 impl SameDeviceSignInCodeMinter {
-    /// A minter over the authorization server's outstanding codes.
-    pub(crate) fn new(codes: Arc<SameDeviceSignInCodes>) -> Self {
-        SameDeviceSignInCodeMinter { codes }
+    /// A minter over the authorization server's outstanding codes, and its
+    /// `store`, where the sessions the codes sign in are ended.
+    pub(crate) fn new(codes: Arc<SameDeviceSignInCodes>, store: SqliteGrantStore) -> Self {
+        SameDeviceSignInCodeMinter {
+            session_ender: SameDeviceSessionEnder::new(store, codes.clone()),
+            codes,
+        }
     }
 
     /// Mint a sign-in code and return it, for the `code` of
@@ -237,10 +244,53 @@ impl SameDeviceSignInCodeMinter {
     /// 60 seconds, is signed in as the Owner. Only its hash is kept, in
     /// memory, so a restart drops it.
     #[must_use]
-    pub fn mint(&self) -> String {
+    pub fn mint(&self) -> SameDeviceSignInCode {
         let code = generate_same_device_sign_in_code();
         self.codes.insert(&code, Utc::now());
-        code
+        SameDeviceSignInCode {
+            code,
+            session_ender: self.session_ender.clone(),
+        }
+    }
+}
+
+/// A same-device sign-in code the host minted, which also ends the session it
+/// signs in: the host ends a launch's Owner session when the view it opened
+/// the code in closes. Its `Debug` leaves the code out.
+#[derive(Clone)]
+pub struct SameDeviceSignInCode {
+    /// The code, for `/oauth/sign-in?code=…`.
+    code: String,
+    /// Ends the session the code signs in.
+    session_ender: SameDeviceSessionEnder<SqliteGrantStore>,
+}
+
+impl SameDeviceSignInCode {
+    /// The code, for the `code` of `/oauth/sign-in?code=…&next=…`.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.code
+    }
+
+    /// End the session this code signed a browser in with, by expiring it
+    /// now: the browser's cookie stops working, and the browser is sent
+    /// through sign-in again. Returns `true` iff a session was ended; a code
+    /// that signed nobody in, or whose session was ended already, ends
+    /// nothing. It writes to the database, so call it on a blocking thread.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] on a store failure.
+    pub fn end_signed_in_session(&self) -> Result<bool, AuthorizationServerError> {
+        self.session_ender
+            .end_session_signed_in_with(&self.code, Utc::now())
+    }
+}
+
+impl std::fmt::Debug for SameDeviceSignInCode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SameDeviceSignInCode")
+            .finish_non_exhaustive()
     }
 }
 

@@ -35,12 +35,12 @@ async fn a_code_signs_in_once() {
     let (g, _owner_token, _db) = spin_up();
     let code = g.same_device_sign_in_code_minter.mint();
 
-    let signed_in = sign_in(&g, &code, "/").await;
+    let signed_in = sign_in(&g, code.as_str(), "/").await;
     assert_eq!(signed_in.status(), StatusCode::SEE_OTHER);
     assert_cache_suppressed(&signed_in, "the sign-in");
     browser_session_token(&signed_in);
 
-    assert_refused(sign_in(&g, &code, "/").await, "a spent code").await;
+    assert_refused(sign_in(&g, code.as_str(), "/").await, "a spent code").await;
 }
 
 /// A code the base never minted, or no code at all, gets the error page: no
@@ -93,7 +93,7 @@ async fn the_browser_goes_on_to_an_allowed_next() {
         ),
     ] {
         let code = g.same_device_sign_in_code_minter.mint();
-        let res = sign_in(&g, &code, next).await;
+        let res = sign_in(&g, code.as_str(), next).await;
         assert_eq!(res.status(), StatusCode::SEE_OTHER, "{next}");
         assert_eq!(
             res.headers()
@@ -122,10 +122,10 @@ async fn a_next_anywhere_else_is_refused_and_leaves_the_code_redeemable() {
         SERVER_ORIGIN,
         "",
     ] {
-        assert_refused(sign_in(&g, &code, next).await, next).await;
+        assert_refused(sign_in(&g, code.as_str(), next).await, next).await;
     }
     assert_eq!(
-        sign_in(&g, &code, "/").await.status(),
+        sign_in(&g, code.as_str(), "/").await.status(),
         StatusCode::SEE_OTHER,
         "the code is still redeemable"
     );
@@ -137,7 +137,7 @@ async fn a_next_anywhere_else_is_refused_and_leaves_the_code_redeemable() {
 #[tokio::test]
 async fn the_cookie_holds_an_eight_hour_owner_token() {
     let (g, _owner_token, _db) = spin_up();
-    let res = sign_in(&g, &g.same_device_sign_in_code_minter.mint(), "/").await;
+    let res = sign_in(&g, g.same_device_sign_in_code_minter.mint().as_str(), "/").await;
     let cookies = set_cookie_values(&res);
     let owner_token = browser_session_token(&res);
     assert_eq!(
@@ -195,10 +195,12 @@ async fn a_browser_session_is_revoked_by_its_jti() {
                 .expect("oneshot")
         }
     };
-    let first =
-        browser_session_token(&sign_in(&g, &g.same_device_sign_in_code_minter.mint(), "/").await);
-    let second =
-        browser_session_token(&sign_in(&g, &g.same_device_sign_in_code_minter.mint(), "/").await);
+    let first = browser_session_token(
+        &sign_in(&g, g.same_device_sign_in_code_minter.mint().as_str(), "/").await,
+    );
+    let second = browser_session_token(
+        &sign_in(&g, g.same_device_sign_in_code_minter.mint().as_str(), "/").await,
+    );
     assert_ne!(jti_of(&first), jti_of(&second));
 
     let res = session(first.clone()).await;
@@ -233,10 +235,12 @@ async fn a_browser_session_is_revoked_by_its_jti() {
 #[tokio::test]
 async fn revoking_the_browser_session_client_s_subject_signs_every_browser_out() {
     let (g, owner_token, _db) = spin_up();
-    let first =
-        browser_session_token(&sign_in(&g, &g.same_device_sign_in_code_minter.mint(), "/").await);
-    let second =
-        browser_session_token(&sign_in(&g, &g.same_device_sign_in_code_minter.mint(), "/").await);
+    let first = browser_session_token(
+        &sign_in(&g, g.same_device_sign_in_code_minter.mint().as_str(), "/").await,
+    );
+    let second = browser_session_token(
+        &sign_in(&g, g.same_device_sign_in_code_minter.mint().as_str(), "/").await,
+    );
     let grants_status = |token: String| {
         let router = g.router.clone();
         async move {
@@ -287,7 +291,7 @@ async fn a_disabled_browser_session_client_signs_nobody_in_until_re_enabled() {
     assert!(store_handle(&db)
         .write(|tx| tx.set_client_disabled(browser_session_client_id, Some(Utc::now())))
         .expect("disable the client out of band"));
-    let refused = sign_in(&g, &code, "/").await;
+    let refused = sign_in(&g, code.as_str(), "/").await;
     assert_cache_suppressed(&refused, "the refusal");
     assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
     assert!(set_cookie_values(&refused).is_empty(), "no cookie");
@@ -304,7 +308,7 @@ async fn a_disabled_browser_session_client_signs_nobody_in_until_re_enabled() {
             .status(),
         StatusCode::OK
     );
-    let signed_in = sign_in(&g, &code, "/").await;
+    let signed_in = sign_in(&g, code.as_str(), "/").await;
     assert_eq!(signed_in.status(), StatusCode::SEE_OTHER);
     browser_session_token(&signed_in);
 }

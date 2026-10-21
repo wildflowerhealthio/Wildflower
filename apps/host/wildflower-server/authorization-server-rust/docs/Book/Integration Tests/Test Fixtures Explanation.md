@@ -20,6 +20,16 @@ Almost every test starts from [`spin_up`](#item-spin_up): a fresh server over a 
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/common.rs spin_up_with_authorization_start_gate}}
 
+### `restart`
+
+Sets the server up again over the same databases, as a start of a new run does, so a test can see what a start ends and what survives it.
+
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/common.rs restart}}
+
+### `set_up_over`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/common.rs set_up_over}}
+
 ### `spin_up_with_confidential_client`
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/common.rs spin_up_with_confidential_client}}
@@ -327,6 +337,30 @@ The helpers of [Revocation](<Revocation Explanation.md>).
 ### `mint_host_app_token`
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/revocation.rs mint_host_app_token}}
+
+## `integration::same_device_session_ending`
+
+The helpers of [Same-Device Session Ending](<Same Device Session Ending Explanation.md>).
+
+### `sid_of`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/same_device_session_ending.rs sid_of}}
+
+### `launch`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/same_device_session_ending.rs launch}}
+
+### `authorize_destination`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/same_device_session_ending.rs authorize_destination}}
+
+### `is_consent_card`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/same_device_session_ending.rs is_consent_card}}
+
+### `stored_session`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/same_device_session_ending.rs stored_session}}
 
 ## `integration::same_device_sign_in`
 

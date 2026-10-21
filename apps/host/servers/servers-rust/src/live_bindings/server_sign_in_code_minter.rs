@@ -6,7 +6,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::domain::{ensure_launchable, LaunchError, ServerStatus};
-use wildflowerhealthio_authorization_server::SameDeviceSignInCodeMinter;
+use wildflowerhealthio_authorization_server::{SameDeviceSignInCode, SameDeviceSignInCodeMinter};
 
 /// Mints one-time same-device sign-in codes on one run of a server, through
 /// the run's authorization server: each signs the browser that presents it at
@@ -44,9 +44,11 @@ impl ServerSignInCodeMinter {
 
     /// Mint a sign-in code and return it: it expires in 60 seconds and signs
     /// in the first browser to present it. It is kept in the run's memory
-    /// only, so no blocking thread is needed.
+    /// only, so no blocking thread is needed. The code also ends the session
+    /// it signs in, which the host does when the view it opened the code in
+    /// closes.
     #[must_use]
-    pub fn mint(&self) -> String {
+    pub fn mint(&self) -> SameDeviceSignInCode {
         self.0.mint()
     }
 }
