@@ -385,8 +385,10 @@ async fn a_browser_session_lacking_a_requested_resource_scope_waits_for_the_owne
         "https://app.example/cb",
         &["patient/Observation.rs", "openid"],
     );
+    let scopes_without_resource_scope = approver_scopes_without("patient/Observation.rs");
     let without_resource_scope =
-        approved_browser_token(&g, &db, &approver_scopes_without("patient/Observation.rs")).await;
+        approved_browser_token(&g, &db, &scopes_without_resource_scope).await;
+    narrow_browser_session_of(&db, &without_resource_scope, &scopes_without_resource_scope);
     let res = get_authorize(
         &g.router,
         &without_resource_scope,

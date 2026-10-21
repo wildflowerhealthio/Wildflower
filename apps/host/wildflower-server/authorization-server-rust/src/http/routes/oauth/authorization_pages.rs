@@ -13,6 +13,9 @@
 //!   the RFC 8628 `verification_uri`, and with `?user_code=` its
 //!   `verification_uri_complete`. The same bytes whatever the query: the page
 //!   reads the code from its own URL. Uncached.
+//! - `GET /oauth/session-widenings/{id}/consent` serves the session
+//!   widening's card, `widening.html`, where the Owner decides a browser's
+//!   ask to widen its session. The same bytes whatever the id. Uncached.
 //! - `GET /oauth/pair?next=…` serves the pairing page, `pair.html`, where a
 //!   browser that isn't the Owner's starts a browser pairing, shows its code,
 //!   and waits for the Owner's approval. The same bytes whatever the query.
@@ -28,10 +31,11 @@
 //! to the hosted launcher, so their policy lets a form submit to this origin
 //! and follow a redirect to the launcher's. The consent card and the device
 //! page call `/authorization/*` and FHIR `GET /Patient`, on the browser
-//! session's bearer, which the host's cookie→bearer layer presents for them;
+//! session's bearer, which the host's cookie→bearer layer presents for them,
+//! as the widening's card calls `/authorization/session-widenings/*`;
 //! the pairing page calls `/oauth/pair/*`, which needs no session; the
-//! limited page calls `/oauth/authorize/{id}/*`, on the browser session's
-//! cookie.
+//! limited page calls `/oauth/authorize/{id}/*` and
+//! `/oauth/session-widenings/{id}/poll`, on the browser session's cookie.
 
 use std::path::Path as FilePath;
 use std::sync::Arc;
@@ -63,6 +67,9 @@ const LIMITED_PAGE: &str = "limited.html";
 
 /// The limited page's last path segment, after `/oauth/authorize/{id}/`.
 const LIMITED_PAGE_SEGMENT: &str = "limited";
+
+/// The session widening's card in the build.
+const SESSION_WIDENING_PAGE: &str = "widening.html";
 
 /// The device verification page in the build.
 const DEVICE_PAGE: &str = "device.html";
@@ -153,6 +160,7 @@ fn router_for<S: Clone + Send + Sync + 'static>(
     let policy = content_security_policy(form_targets);
     let consent_policy = policy.clone();
     let limited_policy = policy.clone();
+    let widening_policy = policy.clone();
     let device_policy = policy.clone();
     let pair_policy = policy.clone();
     Router::new()
@@ -163,6 +171,10 @@ fn router_for<S: Clone + Send + Sync + 'static>(
         .route(
             "/authorize/{id}/limited",
             get(move || async move { page(pages, LIMITED_PAGE, &limited_policy) }),
+        )
+        .route(
+            "/session-widenings/{id}/consent",
+            get(move || async move { page(pages, SESSION_WIDENING_PAGE, &widening_policy) }),
         )
         .route(
             DEVICE_PAGE_ROUTE,
@@ -233,7 +245,7 @@ mod tests {
 
     use super::*;
 
-    /// A build as Vite lays it out: the four pages, and hashed files under
+    /// A build as Vite lays it out: the five pages, and hashed files under
     /// `assets/`, among them a `.woff` and an `.svg` the routes must refuse.
     static PAGES: Dir<'static> = Dir::new(
         "",
@@ -245,6 +257,10 @@ mod tests {
             DirEntry::File(File::new(
                 "limited.html",
                 b"<!doctype html><title>Limited access</title>",
+            )),
+            DirEntry::File(File::new(
+                "widening.html",
+                b"<!doctype html><title>Widen access</title>",
             )),
             DirEntry::File(File::new(
                 "device.html",
@@ -372,6 +388,30 @@ mod tests {
             assert_eq!(
                 body(response).await,
                 b"<!doctype html><title>Limited access</title>",
+                "{uri}"
+            );
+        }
+    }
+
+    /// A session widening's card is the same locked-down, `no-store` page
+    /// whatever the id.
+    #[tokio::test]
+    async fn the_widening_card_is_the_same_uncached_page_for_every_widening() {
+        for uri in [
+            "/session-widenings/widen-1/consent",
+            "/session-widenings/%3Cscript%3E/consent",
+        ] {
+            let response = get(uri).await;
+            assert_eq!(response.status(), StatusCode::OK, "{uri}");
+            assert_locked_down(&response, uri);
+            assert_eq!(
+                header_of(&response, header::CACHE_CONTROL),
+                "no-store",
+                "{uri}"
+            );
+            assert_eq!(
+                body(response).await,
+                b"<!doctype html><title>Widen access</title>",
                 "{uri}"
             );
         }
@@ -549,6 +589,7 @@ mod tests {
             "/device.html",
             "/pair.html",
             "/limited.html",
+            "/widening.html",
             "/device/WDJB-MJHT",
             "/authorize/req-1/consent.html",
         ] {
@@ -558,11 +599,15 @@ mod tests {
     }
 
     /// Whatever was built (or stubbed) into this binary has a consent page, a
-    /// limited page, a device page and a pairing page to serve.
+    /// limited page, a widening's card, a device page and a pairing page to
+    /// serve.
     #[test]
-    fn the_embedded_build_has_the_consent_limited_device_and_pairing_pages() {
+    fn the_embedded_build_has_every_page() {
         assert!(AUTHORIZATION_PAGES.get_file(CONSENT_PAGE).is_some());
         assert!(AUTHORIZATION_PAGES.get_file(LIMITED_PAGE).is_some());
+        assert!(AUTHORIZATION_PAGES
+            .get_file(SESSION_WIDENING_PAGE)
+            .is_some());
         assert!(AUTHORIZATION_PAGES.get_file(DEVICE_PAGE).is_some());
         assert!(AUTHORIZATION_PAGES.get_file(PAIR_PAGE).is_some());
     }

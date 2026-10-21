@@ -19,8 +19,8 @@
 #            wildflowerhealthio-authorization-server embeds the authorization
 #            pages' build (apps/host/wildflower-server/authorization-server-web,
 #            `vp build`) with `include_dir!`. A bare consent.html,
-#            limited.html, device.html and pair.html stand in; the crate's
-#            own tests serve a build they define themselves.
+#            limited.html, widening.html, device.html and pair.html stand
+#            in; the crate's own tests serve a build they define themselves.
 #
 # The paths live here rather than inline in each workflow so ci-rust.yml and
 # rust-cache-warm.yml can't drift.
@@ -62,7 +62,7 @@ stub_authorization_server_web() {
   local dist=apps/host/wildflower-server/authorization-server-web/dist
   mkdir -p "$dist"
   local page title out
-  for page in 'consent:Approve access' 'limited:Limited access' 'device:Authorize a device' 'pair:Sign in this browser'; do
+  for page in 'consent:Approve access' 'limited:Limited access' 'widening:Widen access' 'device:Authorize a device' 'pair:Sign in this browser'; do
     title="${page#*:}"
     out="$dist/${page%%:*}.html"
     {

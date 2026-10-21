@@ -1,6 +1,6 @@
 //! [`OwnerPrompt`] — what the host asks the Owner next: the newest
 //! authorization request waiting for the Owner's decision, across both grant
-//! flows and browser pairings. See
+//! flows, browser pairings and session widenings. See
 //! `slices/authorization/docs/Jargon Explanation.md` ("Pending consents") for
 //! how the host learns of it.
 
@@ -62,6 +62,15 @@ pub enum OwnerPrompt {
         /// from its user agent.
         browser_name: String,
     },
+    /// A session widening: a paired browser asking, from its limited page,
+    /// for its browser session to hold more. Decided at its consent card,
+    /// `/oauth/session-widenings/{id}/consent`.
+    SessionWidening {
+        /// The widening's id, which its consent card looks it up by.
+        id: String,
+        /// The name the browser goes by: its session's name.
+        browser_name: String,
+    },
 }
 
 impl OwnerPrompt {
@@ -89,6 +98,12 @@ impl OwnerPrompt {
                 user_code: pairing_request.user_code.clone(),
                 browser_name: pairing_request.browser_name.clone(),
             },
+            AuthorizationRequest::SessionWidening(widening_request) => {
+                OwnerPrompt::SessionWidening {
+                    id: widening_request.id.clone(),
+                    browser_name: widening_request.browser_name.clone(),
+                }
+            }
         }
     }
 }

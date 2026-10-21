@@ -10,6 +10,7 @@ use crate::domain::authorization_request::code::CodeRequest;
 use crate::domain::authorization_request::device::DeviceRequest;
 use crate::domain::authorization_request::pairing::PairingRequest;
 use crate::domain::authorization_request::polled::PolledRequest;
+use crate::domain::authorization_request::session_widening::SessionWideningRequest;
 use crate::domain::authorization_request::{AuthorizationRequest, RequestStatus};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::browser_session::BrowserSession;
@@ -171,13 +172,19 @@ fn replaced_by_another(read_id: &str, changed_id: &str) -> AuthorizationServerEr
 }
 
 impl AuthorizationRequestsTx for FakeGrantTx<'_> {
-    /// Mirrors the adapter: the code map first, then the user-code map.
+    /// Mirrors the adapter: the code map first, then the session-widening
+    /// map, then the user-code map.
     fn authorization_request_by_id(
         &mut self,
         id: &str,
     ) -> Result<Option<AuthorizationRequest>, AuthorizationServerError> {
         if let Some(code_request) = self.code_request_by_id(id)? {
             return Ok(Some(AuthorizationRequest::Code(code_request)));
+        }
+        if let Some(widening_request) = self.session_widening_request_by_id(id)? {
+            return Ok(Some(AuthorizationRequest::SessionWidening(
+                widening_request,
+            )));
         }
         Ok(self.user_code_request(id, |request| Some(AuthorizationRequest::from(request))))
     }
@@ -218,6 +225,18 @@ impl AuthorizationRequestsTx for FakeGrantTx<'_> {
         )
     }
 
+    fn session_widening_request_by_id(
+        &mut self,
+        id: &str,
+    ) -> Result<Option<SessionWideningRequest>, AuthorizationServerError> {
+        Ok(self
+            .store
+            .session_widening_requests
+            .borrow()
+            .get(id)
+            .cloned())
+    }
+
     fn polled_request_by_user_code(
         &mut self,
         user_code: &str,
@@ -234,9 +253,10 @@ impl AuthorizationRequestsTx for FakeGrantTx<'_> {
         }))
     }
 
-    /// Mirrors the adapter's two reads: the newest candidate from each map
-    /// (of two started at once, the greater id), keeping the later by
-    /// `requested_at`, and on a tie the code request.
+    /// Mirrors the adapter's three reads: the newest candidate from each map
+    /// (of two started at once, the greater id), keeping the latest by
+    /// `requested_at`, and on a tie the code request, then the user-code
+    /// request.
     fn owner_prompt(
         &mut self,
         now: DateTime<Utc>,
@@ -274,13 +294,26 @@ impl AuthorizationRequestsTx for FakeGrantTx<'_> {
                 .map(AuthorizationRequest::from)
                 .collect(),
         );
-        let later = match (code, polled) {
-            (Some(code), Some(polled)) if polled.requested_at() > code.requested_at() => {
-                Some(polled)
+        let widening = newest(
+            self.store
+                .session_widening_requests
+                .borrow()
+                .values()
+                .cloned()
+                .map(AuthorizationRequest::SessionWidening)
+                .collect(),
+        );
+        let later_of = |first: Option<AuthorizationRequest>,
+                        second: Option<AuthorizationRequest>| match (
+            first, second,
+        ) {
+            (Some(first), Some(second)) if second.requested_at() > first.requested_at() => {
+                Some(second)
             }
-            (Some(code), _) => Some(code),
-            (None, polled) => polled,
+            (Some(first), _) => Some(first),
+            (None, second) => second,
         };
+        let later = later_of(later_of(code, polled), widening);
         Ok(later.map(|request| {
             // Mirrors the SQL left join: a client with no registration has no
             // registered name.
@@ -303,6 +336,9 @@ impl AuthorizationRequestsTx for FakeGrantTx<'_> {
             ConsentKey::AuthorizationCode { id } => {
                 self.code_request_by_id(id)?.map(AuthorizationRequest::Code)
             }
+            ConsentKey::SessionWidening { id } => self
+                .session_widening_request_by_id(id)?
+                .map(AuthorizationRequest::SessionWidening),
         };
         match request {
             Some(request) if request.is_undecided_at(now) => {
@@ -342,6 +378,17 @@ impl AuthorizationRequestsTx for FakeGrantTx<'_> {
             .user_code_requests
             .borrow_mut()
             .insert(request.id.clone(), PolledRequest::Pairing(request.clone()));
+        Ok(())
+    }
+
+    fn insert_session_widening_request(
+        &mut self,
+        request: &SessionWideningRequest,
+    ) -> Result<(), AuthorizationServerError> {
+        self.store
+            .session_widening_requests
+            .borrow_mut()
+            .insert(request.id.clone(), request.clone());
         Ok(())
     }
 
@@ -388,6 +435,25 @@ impl AuthorizationRequestsTx for FakeGrantTx<'_> {
         )
     }
 
+    fn replace_session_widening_request(
+        &mut self,
+        read: &SessionWideningRequest,
+        changed: &SessionWideningRequest,
+    ) -> Result<bool, AuthorizationServerError> {
+        if changed.id != read.id {
+            return Err(replaced_by_another(&read.id, &changed.id));
+        }
+        let mut requests = self.store.session_widening_requests.borrow_mut();
+        let Some(stored) = requests.get_mut(&read.id) else {
+            return Ok(false);
+        };
+        if stored.state.status() != read.state.status() {
+            return Ok(false);
+        }
+        *stored = changed.clone();
+        Ok(true)
+    }
+
     fn delete_code_requests_expired_before(
         &mut self,
         cutoff: DateTime<Utc>,
@@ -407,6 +473,16 @@ impl AuthorizationRequestsTx for FakeGrantTx<'_> {
         requests.retain(|_, request| {
             AuthorizationRequest::from(request.clone()).expires_at() >= cutoff
         });
+        Ok(before - requests.len())
+    }
+
+    fn delete_session_widening_requests_expired_before(
+        &mut self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<usize, AuthorizationServerError> {
+        let mut requests = self.store.session_widening_requests.borrow_mut();
+        let before = requests.len();
+        requests.retain(|_, request| request.expires_at >= cutoff);
         Ok(before - requests.len())
     }
 }
@@ -616,6 +692,31 @@ impl BrowserSessionsTx for FakeGrantTx<'_> {
             .session_shortfall_acknowledgements
             .borrow_mut()
             .insert((sid.to_owned(), client_id.to_owned()));
+        Ok(())
+    }
+
+    fn update_browser_session_scopes(
+        &mut self,
+        sid: &str,
+        scopes: &[String],
+    ) -> Result<bool, AuthorizationServerError> {
+        Ok(self
+            .store
+            .browser_sessions
+            .borrow_mut()
+            .get_mut(sid)
+            .map(|session| session.scopes = scopes.to_vec())
+            .is_some())
+    }
+
+    fn forget_session_shortfall_acknowledgements(
+        &mut self,
+        sid: &str,
+    ) -> Result<(), AuthorizationServerError> {
+        self.store
+            .session_shortfall_acknowledgements
+            .borrow_mut()
+            .retain(|(acknowledged_sid, _)| acknowledged_sid != sid);
         Ok(())
     }
 

@@ -183,6 +183,23 @@ pub struct AuthorizeParams {
     /// `invalid_request`. The minted token's `aud` is the server's origin.
     #[serde(default)]
     pub aud: Option<String>,
+    /// OpenID Connect `prompt`, space-separated. Only `consent` means
+    /// anything here: a request whose browser session holds less than it asks
+    /// for stops at the limited page even when that session has gone on past
+    /// the page for this client before, so the browser can ask the Owner to
+    /// widen its session. Any other value, and `consent` for a request the
+    /// session holds all of, changes nothing.
+    #[serde(default)]
+    pub prompt: Option<String>,
+}
+
+impl AuthorizeParams {
+    /// Whether `prompt` names `consent`.
+    fn prompts_consent(&self) -> bool {
+        self.prompt
+            .as_deref()
+            .is_some_and(|prompt| prompt.split_whitespace().any(|value| value == "consent"))
+    }
 }
 
 /// The authorization endpoint (RFC 6749 §3.1), the public front door of the
@@ -215,7 +232,11 @@ pub struct AuthorizeParams {
 ///    `POST /oauth/authorize/{id}/cancel` answers the client
 ///    `access_denied`. Until then the Owner isn't asked about it. Once a
 ///    browser session has pressed Continue for a client, its later requests
-///    for that client skip the page, whatever the session then lacks.
+///    for that client skip the page, whatever the session then lacks, unless
+///    the request carries `prompt=consent`. From the page the browser can
+///    also ask the Owner to widen its session
+///    (`POST /oauth/authorize/{id}/ask-to-widen`). What the session holds is
+///    read from its row, which an approved widening has grown.
 /// 3. Unless every requested scope is pre-approved by an existing grant for
 ///    this (client, `redirect_uri`) pair, the request joins the pending-consent
 ///    queue and the browser is 302'd to a page this authorization server
@@ -304,7 +325,7 @@ pub(super) async fn handle_authorize_request(
                 }),
         )));
     };
-    let browser_session_grant = browser_session.granted();
+    let session_token_grant = browser_session.granted();
     let next_step = code_authorization_starter.start(
         &AuthorizeRequest {
             response_type: &params.response_type,
@@ -316,10 +337,11 @@ pub(super) async fn handle_authorize_request(
             client_state: &params.state,
             launch: params.launch.as_deref(),
             aud: params.aud.as_deref(),
-            browser_session_grant: &browser_session_grant,
+            session_token_grant: &session_token_grant,
             can_decide_consents: can_decide_consents(browser_session),
             may_raise_for_owner: &may_raise_for_owner,
             sid: browser_sid,
+            reviews_session_shortfall: params.prompts_consent(),
         },
         FreshIds {
             request_id: Uuid::new_v4().to_string(),

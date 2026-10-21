@@ -80,7 +80,7 @@ The unit tests serve a [fake build](<../Test Fixtures Explanation.md#authorizati
 
 ### `AUTHORIZATION_PAGES`
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/oauth/authorization_pages.rs AUTHORIZATION_PAGES tests="tests::the_embedded_build_has_the_consent_limited_device_and_pairing_pages"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/http/routes/oauth/authorization_pages.rs AUTHORIZATION_PAGES tests="tests::the_embedded_build_has_every_page"}}
 
 ### `router`
 

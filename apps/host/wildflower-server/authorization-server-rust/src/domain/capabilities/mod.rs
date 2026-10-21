@@ -46,7 +46,7 @@ pub(crate) mod writers;
 pub use access::grantable_admin_scopes;
 pub use access::{
     ApproveDeviceConsentInput, ApproveOAuthConsentInput, ConsentOutcome, DeviceConsentView,
-    OAuthConsentView,
+    OAuthConsentView, SessionWideningConsentView,
 };
 pub(crate) use access::{
     BrowserSessionView, BrowserSessionsReader, BrowserSessionsRevoker, Capability, ClientView,

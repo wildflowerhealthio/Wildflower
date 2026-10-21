@@ -94,6 +94,19 @@ pub trait BrowserSessionsTx {
         seen_before: DateTime<Utc>,
     ) -> Result<bool, AuthorizationServerError>;
 
+    /// Write `scopes` as the browser session `sid`'s grant, returning `true`
+    /// iff a session has that `sid`. Its `sid`, expiry and everything else
+    /// stay as they are.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the update fails.
+    fn update_browser_session_scopes(
+        &mut self,
+        sid: &str,
+        scopes: &[String],
+    ) -> Result<bool, AuthorizationServerError>;
+
     /// Whether the browser session `sid` has gone on past its limited page
     /// for `client_id` before.
     ///
@@ -117,6 +130,18 @@ pub trait BrowserSessionsTx {
         &mut self,
         sid: &str,
         client_id: &str,
+    ) -> Result<(), AuthorizationServerError>;
+
+    /// Forget every client the browser session `sid` went on past its
+    /// limited page for, so its next request for any of them stops at the
+    /// page again when the session still falls short of it.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the delete fails.
+    fn forget_session_shortfall_acknowledgements(
+        &mut self,
+        sid: &str,
     ) -> Result<(), AuthorizationServerError>;
 
     /// Delete every browser session that expired or was revoked before

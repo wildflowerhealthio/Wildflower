@@ -280,6 +280,26 @@ impl CodeRequest {
         })
     }
 
+    /// Keep the request waiting on its browser's limited page, with `ttl`
+    /// more from `now`: the browser asked the Owner to widen its session, and
+    /// the request waits on that decision as long as the widening does.
+    /// Decides nothing.
+    ///
+    /// # Errors
+    ///
+    /// [`NotAwaitingLimitedPage`] for a request not waiting there at `now`.
+    pub fn extend_limited_page_wait(
+        &self,
+        ttl: Duration,
+        now: DateTime<Utc>,
+    ) -> Result<Self, NotAwaitingLimitedPage> {
+        self.require_awaiting_limited_page(now)?;
+        Ok(CodeRequest {
+            expires_at: now + ttl,
+            ..self.clone()
+        })
+    }
+
     /// Deny the request at `now` while it waits on its browser's limited
     /// page: the page's Cancel, or a client disabled before the browser went
     /// on.
@@ -422,6 +442,31 @@ mod tests {
         );
         assert_eq!(
             waiting.acknowledge_session_shortfall(Duration::minutes(5), at(5)),
+            Err(NotAwaitingLimitedPage)
+        );
+    }
+
+    /// Extending the limited page's wait keeps the request there with a new
+    /// expiry, only while it waits there.
+    #[test]
+    fn extend_limited_page_wait_keeps_the_request_waiting_longer() {
+        let waiting = started(true);
+        let extended = waiting
+            .extend_limited_page_wait(Duration::minutes(5), at(3))
+            .expect("extends");
+        assert_eq!(
+            extended,
+            CodeRequest {
+                expires_at: at(8),
+                ..waiting.clone()
+            }
+        );
+        assert_eq!(
+            started(false).extend_limited_page_wait(Duration::minutes(5), at(1)),
+            Err(NotAwaitingLimitedPage)
+        );
+        assert_eq!(
+            waiting.extend_limited_page_wait(Duration::minutes(5), at(5)),
             Err(NotAwaitingLimitedPage)
         );
     }

@@ -10,7 +10,7 @@ use diesel::prelude::*;
 
 use crate::db::grant_store::SqliteGrantTx;
 use crate::db::refresh_tokens::refresh_token_families;
-use crate::db::shared::text_enum_column;
+use crate::db::shared::{text_enum_column, JsonStrings};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::browser_session::{BrowserSession, BrowserSessionKind};
 use crate::domain::grant_store::BrowserSessionsTx;
@@ -176,6 +176,23 @@ impl BrowserSessionsTx for SqliteGrantTx<'_> {
         Ok(affected == 1)
     }
 
+    /// Write `scopes` as the browser session `sid`'s grant, returning `true`
+    /// iff a session has that `sid`.
+    fn update_browser_session_scopes(
+        &mut self,
+        sid: &str,
+        scopes: &[String],
+    ) -> Result<bool, AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        let affected = diesel::update(browser_sessions::table.find(sid))
+            .set(browser_sessions::scopes.eq(JsonStrings(scopes.to_vec())))
+            .execute(conn)
+            .map_err(|e| {
+                AuthorizationServerError::infrastructure("update_browser_session_scopes failed", e)
+            })?;
+        Ok(affected == 1)
+    }
+
     /// Whether the browser session `sid` has gone on past its limited page for
     /// `client_id` before.
     fn is_session_shortfall_acknowledged_for_client(
@@ -217,6 +234,27 @@ impl BrowserSessionsTx for SqliteGrantTx<'_> {
                     e,
                 )
             })?;
+        Ok(())
+    }
+
+    /// Delete every client the browser session `sid` went on past its limited
+    /// page for.
+    fn forget_session_shortfall_acknowledgements(
+        &mut self,
+        sid: &str,
+    ) -> Result<(), AuthorizationServerError> {
+        let conn = &mut *self.conn;
+        diesel::delete(
+            session_shortfall_acknowledgements::table
+                .filter(session_shortfall_acknowledgements::sid.eq(sid)),
+        )
+        .execute(conn)
+        .map_err(|e| {
+            AuthorizationServerError::infrastructure(
+                "forget_session_shortfall_acknowledgements failed",
+                e,
+            )
+        })?;
         Ok(())
     }
 
@@ -514,6 +552,69 @@ mod tests {
                 "{sid} {client_id}"
             );
         }
+    }
+
+    /// Forgetting a session's acknowledgements takes all of its clients, and
+    /// no other session's.
+    #[test]
+    fn forgetting_a_session_s_acknowledgements_takes_only_that_session_s() {
+        let store = store();
+        for (sid, client_id) in [("sid-1", "app"), ("sid-1", "other-app"), ("sid-2", "app")] {
+            store
+                .write(|tx| tx.record_session_shortfall_acknowledgement(sid, client_id))
+                .expect("record");
+        }
+        store
+            .write(|tx| tx.forget_session_shortfall_acknowledgements("sid-1"))
+            .expect("forget");
+        for (sid, client_id, acknowledged) in [
+            ("sid-1", "app", false),
+            ("sid-1", "other-app", false),
+            ("sid-2", "app", true),
+        ] {
+            assert_eq!(
+                store
+                    .read(|tx| tx.is_session_shortfall_acknowledged_for_client(sid, client_id))
+                    .expect("read"),
+                acknowledged,
+                "{sid} {client_id}"
+            );
+        }
+    }
+
+    /// Updating a session's scopes rewrites them alone, and an unknown `sid`
+    /// updates nothing.
+    #[test]
+    fn updating_a_session_s_scopes_keeps_the_rest_of_it() {
+        let store = store();
+        let session = BrowserSession::new_paired_session(
+            "Firefox on Linux".to_owned(),
+            vec!["wildflower/launch".to_owned()],
+            Duration::hours(24),
+            chrono::Utc::now(),
+        );
+        store
+            .write(|tx| tx.insert_browser_session(&session))
+            .expect("insert");
+        let widened_scopes = vec![
+            "wildflower/launch".to_owned(),
+            "wildflower/Apps.r".to_owned(),
+        ];
+        assert!(store
+            .write(|tx| tx.update_browser_session_scopes(&session.sid, &widened_scopes))
+            .expect("update"));
+        assert_eq!(
+            store
+                .read(|tx| tx.browser_session_by_sid(&session.sid))
+                .expect("read"),
+            Some(BrowserSession {
+                scopes: widened_scopes.clone(),
+                ..session
+            })
+        );
+        assert!(!store
+            .write(|tx| tx.update_browser_session_scopes("no-such-sid", &widened_scopes))
+            .expect("update"));
     }
 
     /// The prune takes a session that expired or was revoked before the

@@ -1,6 +1,6 @@
 //! [`AuthorizationRequestsTx`] — the requests the Owner decides, from start to
-//! their retention cutoff: code requests, and the device requests and browser
-//! pairings a poll claims. A read or
+//! their retention cutoff: code requests, the device requests and browser
+//! pairings a poll claims, and session widenings. A read or
 //! write within one flow takes that flow's struct; the reads that cross flows
 //! answer with an [`AuthorizationRequest`].
 
@@ -10,6 +10,7 @@ use crate::domain::authorization_request::code::CodeRequest;
 use crate::domain::authorization_request::device::DeviceRequest;
 use crate::domain::authorization_request::pairing::PairingRequest;
 use crate::domain::authorization_request::polled::PolledRequest;
+use crate::domain::authorization_request::session_widening::SessionWideningRequest;
 use crate::domain::authorization_request::AuthorizationRequest;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::consent_key::ConsentKey;
@@ -32,7 +33,8 @@ use crate::domain::owner_prompt::OwnerPrompt;
 /// stamp's `last_polled_at` back as it read it.
 pub trait AuthorizationRequestsTx {
     /// Load the request of any flow whose key is `id` (a `device_code`, a
-    /// pairing code, or a code request's UUID), or `None` when absent.
+    /// pairing code, or a code request's or session widening's UUID), or
+    /// `None` when absent.
     ///
     /// # Errors
     ///
@@ -74,6 +76,17 @@ pub trait AuthorizationRequestsTx {
         &mut self,
         pairing_code: &str,
     ) -> Result<Option<PairingRequest>, AuthorizationServerError>;
+
+    /// Load the session widening `id`, in whatever state, or `None` when
+    /// there is no widening with that id.
+    ///
+    /// # Errors
+    ///
+    /// See the [trait](Self).
+    fn session_widening_request_by_id(
+        &mut self,
+        id: &str,
+    ) -> Result<Option<SessionWideningRequest>, AuthorizationServerError>;
 
     /// Load *any* device request or pairing bearing the human-typed
     /// `user_code`, regardless of status, or `None` when absent. Callers that
@@ -170,6 +183,17 @@ pub trait AuthorizationRequestsTx {
         request: &PairingRequest,
     ) -> Result<(), AuthorizationServerError>;
 
+    /// Persist a freshly started session widening.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the insert fails (for
+    /// example a unique-constraint violation on the id).
+    fn insert_session_widening_request(
+        &mut self,
+        request: &SessionWideningRequest,
+    ) -> Result<(), AuthorizationServerError>;
+
     /// The code flow's guarded replace (see the [trait](Self)).
     ///
     /// # Errors
@@ -204,6 +228,17 @@ pub trait AuthorizationRequestsTx {
         changed: &PairingRequest,
     ) -> Result<bool, AuthorizationServerError>;
 
+    /// A session widening's guarded replace (see the [trait](Self)).
+    ///
+    /// # Errors
+    ///
+    /// As [`replace_code_request`](Self::replace_code_request).
+    fn replace_session_widening_request(
+        &mut self,
+        read: &SessionWideningRequest,
+        changed: &SessionWideningRequest,
+    ) -> Result<bool, AuthorizationServerError>;
+
     /// Delete every code request whose `expires_at` fell before `cutoff`,
     /// returning how many went.
     ///
@@ -222,6 +257,17 @@ pub trait AuthorizationRequestsTx {
     ///
     /// [`AuthorizationServerError::Infrastructure`] if the delete fails.
     fn delete_polled_requests_expired_before(
+        &mut self,
+        cutoff: DateTime<Utc>,
+    ) -> Result<usize, AuthorizationServerError>;
+
+    /// Delete every session widening whose `expires_at` fell before
+    /// `cutoff`, returning how many went.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] if the delete fails.
+    fn delete_session_widening_requests_expired_before(
         &mut self,
         cutoff: DateTime<Utc>,
     ) -> Result<usize, AuthorizationServerError>;
