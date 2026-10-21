@@ -3,7 +3,8 @@
 //! on every boot — the signing key is inserted only when none exists (never
 //! rotated), and the two clients are *ensured* (re-applied as an upsert) so
 //! their definitions always match the host's granted scopes, correcting any
-//! drift in the stored rows.
+//! drift in the stored rows. Each client is inserted with its refresh policy,
+//! which the upsert leaves as the Owner set it.
 //!
 //! The bundled SMART sample-app clients (growth-chart, medication-viewer →
 //! `my_web_app`, PRECISE-HBR) are seeded in SQL instead — migration
@@ -402,7 +403,8 @@ const DEV_ROOT_REDIRECT_PATH: &str = "/";
 ///
 /// Upserted (not insert-if-missing) so a definition change lands on the next boot
 /// — the same treatment `ensure_essential_clients` gets, and safe here because
-/// nothing but this code owns these rows.
+/// nothing but this code owns these rows. Each is inserted with its production
+/// client's refresh policy, which the upsert never rewrites.
 ///
 /// # Errors
 ///

@@ -32,6 +32,8 @@ The migration tests drive a database to the version an install was at, and read 
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/db/clients.rs tests::arb_client}}
 
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/clients.rs tests::arb_refresh_policy}}
+
 {{#item apps/host/wildflower-server/authorization-server-rust/src/db/clients.rs tests::seeded_client_ids}}
 
 ## Browser Sessions

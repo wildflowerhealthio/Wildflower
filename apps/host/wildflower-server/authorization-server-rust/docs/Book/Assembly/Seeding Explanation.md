@@ -2,7 +2,7 @@
 
 {{#covers apps/host/wildflower-server/authorization-server-rust/src/seeding.rs}}
 
-**Some rows must exist before anyone can ask for anything**: a key to sign tokens with, and the server's own clients. Seeding writes them at every boot, and is safe to run again. The signing key is inserted only when no key is active, and never rotated. The server's own clients are **upserted**: rewritten to match the code every boot, so their registrations follow the host's configuration and a store written by another build is corrected. An upsert keeps a row's registration time and any disable the Owner set.
+**Some rows must exist before anyone can ask for anything**: a key to sign tokens with, and the server's own clients. Seeding writes them at every boot, and is safe to run again. The signing key is inserted only when no key is active, and never rotated. The server's own clients are **upserted**: rewritten to match the code every boot, so their registrations follow the host's configuration and a store written by another build is corrected. An upsert keeps a row's registration time, any disable the Owner set, and its [refresh policy](<../Domain/Client Explanation.md#item-RefreshPolicy>): each client is inserted with its policy, and from then on only the Owner changes it. Migration `0049` gave the rows that already existed the same policies, and a test holds the two together.
 
 The bundled SMART sample apps' clients are static, so a migration seeds them instead (`0003_seed_sample_clients`). Seeding in code is kept for what depends on the running host: the configured scopes and origin, and a freshly generated key.
 
@@ -34,6 +34,20 @@ The two [essential clients](<Setup Explanation.md#the-servers-own-clients>) are 
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/seeding.rs ensure_fhir_ui_client tests="tests::seeds_the_fhir_ui_client_for_this_servers_origin tests::the_clients_seeding_owns_are_server_defined"}}
 
+#### The refresh policies seeding inserts
+
+Migration `0049` seeds the same policies for these clients where their rows already exist; [`an_install_already_at_0048_gives_every_client_a_refresh_policy`](<../Persistence/SQLite Grant Store Explanation.md#item-tests--an_install_already_at_0048_gives_every_client_a_refresh_policy>) holds the two together.
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/seeding.rs HOST_APP_REFRESH_POLICY tests="tests::seeding_inserts_each_owned_client_s_refresh_policy_and_keeps_the_owner_s"}}
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/seeding.rs BROWSER_SESSION_CLIENT_REFRESH_POLICY}}
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/seeding.rs FHIR_UI_REFRESH_POLICY}}
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/seeding.rs DATA_APP_REFRESH_POLICY}}
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/seeding.rs FHIR_SYNC_PEBBLE_REFRESH_POLICY}}
+
 ### `seed_dev_app_clients`
 
 **Debug builds only: a client for each first-party app's local dev server.** The first-party apps ship from the published site, and their clients register its redirect. A debug build also gets a dev tile per app, whose launch URL points at the app's vite dev server on `localhost`, and that launch needs a client whose redirect is that exact loopback address. Each dev client is a separate client under its own id, because adding a plaintext loopback redirect to the production client would register it on a client a public website uses.
@@ -43,6 +57,7 @@ The two [essential clients](<Setup Explanation.md#the-servers-own-clients>) are 
 - **Scopes mirror each app's production client**, which is what a dev build of the app asks for.
 - **It is code, not a migration**, because migrations run in release databases too. The function, and its one call in the Tauri host, are compiled only into debug builds.
 - **It upserts**, so a change to a definition lands on the next boot. They are trusted on first use, like any app the Owner approved.
+- **Each is inserted with its production client's refresh policy**, as migration `0049` gives a dev client that already exists.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/seeding.rs seed_dev_app_clients}}
 

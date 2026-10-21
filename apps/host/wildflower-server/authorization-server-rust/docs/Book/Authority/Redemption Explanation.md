@@ -96,9 +96,11 @@ It reads its [refresh token family](<../Domain/Refresh Token Explanation.md#item
 
 The epoch is the app's revocation epoch: bumping it revokes every token the app held at that instant, so a family begun before it is refused like an access token issued before it.
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authority/redemption.rs ValidatedRefreshToken::validate tests="tests::a_refresh_token_validates_for_its_client_while_the_family_lives tests::a_refresh_token_is_refused_once_its_session_is_revoked tests::a_refresh_token_is_refused_once_its_client_epoch_passes_the_family"}}
+The app's [refresh policy](<../Domain/Client Explanation.md#item-RefreshPolicy>) is read off the authenticated client, as its row stands now, so a policy the Owner changed applies from this refresh.
 
-End to end, the [Device Code](<../Integration Tests/Device Code Explanation.md>), [Browser Sessions](<../Integration Tests/Browser Sessions Explanation.md>) and [Token Revocation](<../Integration Tests/Token Revocation Explanation.md>) tests hold each refusal at `/oauth/token`: an expired family, another app's token, a revoked browser session, and a bumped epoch.
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authority/redemption.rs ValidatedRefreshToken::validate tests="tests::a_refresh_token_validates_for_its_client_while_the_family_lives tests::a_refresh_token_is_refused_once_its_session_is_revoked tests::a_refresh_token_is_refused_once_its_client_epoch_passes_the_family tests::a_refresh_token_is_refused_once_its_family_goes_idle tests::a_replayed_token_is_not_refused_as_idle tests::a_refresh_token_is_refused_once_its_family_reaches_its_maximum_lifetime tests::a_session_tied_family_ends_when_its_session_expires tests::revoking_the_session_ends_its_families_whatever_the_policy"}}
+
+End to end, the [Device Code](<../Integration Tests/Device Code Explanation.md>), [Browser Sessions](<../Integration Tests/Browser Sessions Explanation.md>), [Token Revocation](<../Integration Tests/Token Revocation Explanation.md>) and [Client Management](<../Integration Tests/Client Management Explanation.md>) tests hold each refusal at `/oauth/token`: an expired family, another app's token, a revoked browser session, a bumped epoch, and a family past a policy the Owner just tightened.
 
 #### `revalidate`
 
@@ -108,7 +110,7 @@ It runs the store checks `validate`'s tests exercise.
 
 #### `live_family`
 
-The half both constructors run. A revoked family is one whose deadline was pulled back to the revocation instant, so the deadline check covers both. The browser session is checked with {{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/grant_store/browser_sessions.rs BrowserSessionsTx::is_browser_session_revoked}}.
+The half both constructors run. A revoked family is one whose deadline was pulled back to the revocation instant, so the deadline check covers both. The browser session is checked with {{#code-link apps/host/wildflower-server/authorization-server-rust/src/domain/grant_store/browser_sessions.rs BrowserSessionsTx::is_browser_session_revoked}}, and, for an app whose families end with it, read for its expiry. **The idle limit is checked on the live link only**: a spent link's issue time is older than the family's last rotation, so checking it would turn a replay away as idle and spare the family the rotation that ends it.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authority/redemption.rs ValidatedRefreshToken::live_family}}
 
@@ -129,6 +131,8 @@ The half both constructors run. A revoked family is one whose deadline was pulle
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authority/redemption.rs ValidatedRefreshToken::family_id}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authority/redemption.rs ValidatedRefreshToken::presented_hash}}
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/authority/redemption.rs ValidatedRefreshToken::family_deadline_once_rotated_at}}
 
 ### `GrantRedemption`
 

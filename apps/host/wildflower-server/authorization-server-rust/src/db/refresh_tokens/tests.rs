@@ -186,6 +186,46 @@ fn sample_token(token_hash: &str, family_id: &str) -> RefreshToken {
     }
 }
 
+/// Moving a family's deadline writes only that family's `expires_at`, later
+/// or earlier, and leaves its tokens as they were.
+#[test]
+fn set_expires_at_moves_only_that_family_s_deadline() {
+    let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
+    let family = sample_family("family-a", "client-1");
+    let token = sample_token("token-1", "family-a");
+    seed_family_with_token(&store, &family, &token);
+    let untouched = sample_family("family-b", "client-1");
+    seed_family_with_token(&store, &untouched, &sample_token("other", "family-b"));
+
+    for expires_at in [
+        family.expires_at + chrono::Duration::days(1),
+        family.expires_at - chrono::Duration::days(80),
+    ] {
+        store
+            .write(|tx| tx.set_refresh_token_family_expires_at("family-a", expires_at))
+            .expect("move the deadline");
+        assert_eq!(
+            store
+                .read(|tx| tx.refresh_token_with_family_by_hash("token-1"))
+                .expect("query"),
+            Some((
+                token.clone(),
+                RefreshTokenFamily {
+                    expires_at,
+                    ..family.clone()
+                }
+            ))
+        );
+    }
+    assert_eq!(
+        store
+            .read(|tx| tx.refresh_token_with_family_by_hash("other"))
+            .expect("query")
+            .map(|(_, family)| family),
+        Some(untouched)
+    );
+}
+
 /// Ending a family keeps its rows: its deadline moves to the moment it ended,
 /// its live token is stamped consumed then, a token redeemed earlier keeps its
 /// own stamp, and another family is untouched.

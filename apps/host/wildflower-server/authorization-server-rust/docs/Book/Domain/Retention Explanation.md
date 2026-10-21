@@ -19,10 +19,11 @@ None of this is a correctness problem: every read already checks expiry, so a st
 
 The plain sweep would be "delete where `expires_at` is before now". It reclaims the most, and it is the wrong tool, because these rows have audit value after they stop being usable. "Why did that device lose access on Tuesday?" is answerable only while Tuesday's lineage is still there. A cutoff at now destroys the record at the moment it stops being state and becomes evidence.
 
-So **each window is measured past the row's own expiry**: the retention clock starts when the row stopped being usable, not when it was made. For a browser session that is its expiry or its revocation, whichever came first. Two things follow:
+So **each window is measured past the row's own expiry**: the retention clock starts when the row stopped being usable, not when it was made. For a browser session that is its expiry or its revocation, whichever came first. For a refresh family it is its deadline: the earliest of its app's [refresh-policy](<Client Explanation.md#item-RefreshPolicy>) limits as of its last rotation, or the 365-day ceiling. Each rotation moves that deadline, so a family that went unused past its idle limit starts its window when it went idle, not a year later. Two things follow:
 
 - **Nothing live is ever in range.** A live family's deadline is in the future, and a cutoff of now less 90 days is behind now. The sweep can't delete something in use even with every window set to zero.
 - **A revoked family gets its full window too.** Ending a family pulls its deadline back to the moment it ended, so the clock starts there. The reuse-detection case, the one most worth auditing, is kept 90 days from the event.
+- **A tightened policy never shortens a window.** A family whose app's policy the Owner tightened after its last rotation is refused from its next refresh, but its stored deadline still says the later time, so it is kept from then: a little longer than needed, never too short.
 
 A family is deleted with every link in it, links first, since every pooled connection enforces foreign keys. Leaving orphaned links would be worse than keeping everything: an orphan reads as an unknown token, which is exactly the answer that makes replay detection do nothing.
 
@@ -42,7 +43,7 @@ The tests place rows either side of each window around one [fixed instant](<Test
 
 ### `REFRESH_TOKEN_FAMILY_RETENTION`
 
-A family that runs its full course is readable for twice its lifetime: a quarter's history, the horizon over which "what happened to this device's session" is still a live question.
+A quarter's history past the family's end, the horizon over which "what happened to this device's session" is still a live question, whether the family lasted half an hour or a year.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/retention.rs REFRESH_TOKEN_FAMILY_RETENTION}}
 
