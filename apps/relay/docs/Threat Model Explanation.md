@@ -75,11 +75,18 @@ assumes.
 
 ## Logging
 
-The relay keeps no request log. At info it logs tunnels going up and down by
-name, tunnel creation, deletion and re-tokening, and claim codes issued and
-redeemed. Visitor addresses appear only in debug-level claim rate-limit
-refusals; the rathole library logs the address each control channel comes
-from.
+The relay keeps no request log, and logs nothing of a connection that
+reaches a device. At info it logs tunnels going up and down by name, tunnel
+creation, deletion and re-tokening, claim codes issued and redeemed, and
+every refused `:443` connection, with the visitor's address, how long the
+connection lasted, and what it sent: the tunnel or server name it asked
+for; for a ClientHello without a server name, the IP address it sent in
+place of one and the first four protocols it offered (ALPN), each cut to 16
+bytes; how many bytes arrived before the hello deadline; or the first 32
+bytes it sent if they were not a ClientHello. Claim rate-limit refusals log the client's address at
+debug, and the rathole library logs the address each control channel comes
+from. All of these go to the connection log, which the relay deletes after
+24 hours; the journal names no tunnel or address.
 
 ## See also
 

@@ -71,6 +71,12 @@
 //! `:80` is not counted, and nothing reads or counts the bytes after the
 //! hello.
 //!
+//! Each refusal is also one line in the connection log (see "Configuration"
+//! below): the visitor's address, the outcome, how long the connection
+//! lasted and the refusal's detail, such as the server name asked for or
+//! the first bytes of a connection that was not TLS. A connection that
+//! reaches its tunnel, or the relay's own hostnames, is not logged.
+//!
 //! - Each tunnel's last [`TunnelOutcome`] is kept in memory only, with no
 //!   time or count: one value per served tunnel, dropped when the tunnel is
 //!   deleted, and cleared by a restart.
@@ -238,7 +244,8 @@
 //! (default `info`). The journal (stdout) names no one: no tunnel names,
 //! SNI, IP addresses, emails or claim codes, though the relay's own domain
 //! and hostnames appear. The lines that need an identifier, those with
-//! `target: logging::IDENTIFYING` and all of rathole's, go to the
+//! `target: logging::IDENTIFYING` (tunnels' names, refused visitors'
+//! addresses and what they sent) and all of rathole's, go to the
 //! connection log instead, `<WILDFLOWER_RELAY_STATE_DIR>/connection-log/`,
 //! one file per UTC hour, each deleted 24 hours after its last entry.
 //!

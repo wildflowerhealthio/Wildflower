@@ -23,7 +23,7 @@ const EMAIL = 'ruthmarks151@gmail.com'
  */
 function PrivacyPolicy(): JSX.Element {
   return (
-    <PolicyPage title="Privacy policy" updated="2026-10-17">
+    <PolicyPage title="Privacy policy" updated="2026-10-18">
       <PolicySection title="In short">
         <ul>
           <li>
@@ -161,7 +161,7 @@ function PrivacyPolicy(): JSX.Element {
           <PolicyDataCard
             title="Connection log"
             where="On the relay server, hosted by DigitalOcean."
-            when="When your device connects to or disconnects from the relay, a connection to your tunnel is refused, or your tunnel is created, changed or deleted. It names your tunnel and the network address your device connects from. It never holds what you send, or visitors' addresses."
+            when="When your device connects to or disconnects from the relay, the relay refuses a connection, or your tunnel is created, changed or deleted. It names your tunnel and the network address your device connects from. For a refused connection, such as one to your tunnel while your device is offline, it holds the visitor's network address, how long they stayed connected, and what they sent: the hostname or IP address they asked for, the names of the first few protocols their software offered, how many bytes arrived, or the first few bytes they sent if the connection wasn't encrypted. It never holds anything from a connection that reaches your device."
             keptFor="24 hours. The relay deletes each hour's file a day after its last entry."
             delete="It deletes itself within 24 hours."
           />
@@ -243,8 +243,9 @@ function PrivacyPolicy(): JSX.Element {
             It passes the caller&rsquo;s network address on to your device, for your own logs.
           </li>
           <li>
-            Its connection log names tunnels and devices&rsquo; network addresses, and is deleted
-            after 24 hours. Its other logs and its hourly counts name no one.
+            Its connection log names tunnels, devices&rsquo; network addresses, and the network
+            addresses of connections it refuses, and is deleted after 24 hours. Its other logs and
+            its hourly counts name no one.
           </li>
         </ul>
       </PolicySection>
@@ -311,8 +312,10 @@ function PrivacyPolicy(): JSX.Element {
             sent only with your explicit consent, which you give by turning the Crash reports switch
             on. Performance data and session counts are sent only with your consent, which you give
             with the switches. You can withdraw either at any time with the same switches. The relay
-            stores a tunnel&rsquo;s details because they are needed to provide the tunnel. I keep
-            emails on the basis of my legitimate interest in answering them.
+            stores a tunnel&rsquo;s details because they are needed to provide the tunnel. It keeps
+            its connection log on the basis of my legitimate interest in running the relay and
+            protecting it from abuse. I keep emails on the basis of my legitimate interest in
+            answering them.
           </li>
           <li>
             <strong>Transfers.</strong> Sentry and the relay server are in the United States. Sentry
@@ -321,7 +324,8 @@ function PrivacyPolicy(): JSX.Element {
           </li>
           <li>
             <strong>Retention.</strong> As the cards above say: 30 days for anything sent to Sentry,
-            until deleted for tunnel details, and until you ask for emails.
+            until deleted for tunnel details, 24 hours for the relay&rsquo;s connection log, and
+            until you ask for emails.
           </li>
           <li>
             <strong>Your rights.</strong> To access the data I hold about you, to have it corrected

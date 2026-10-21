@@ -5,25 +5,31 @@
 //! semaphores that enforce them and the [`ConnectionOutcomes`] `:443`
 //! records into) and the accept loops that hand each connection to its
 //! handler. A `:443` connection dropped at the connection limit is counted
-//! as [`Outcome::OverConnectionLimit`]; `:80` is never counted. The handlers and their helpers live in their
-//! own files:
+//! as [`Outcome::OverConnectionLimit`](crate::domain::Outcome::OverConnectionLimit)
+//! and logged, with its address, to the connection log; `:80` is never
+//! counted or logged. The handlers and their helpers live in their own
+//! files:
 //!
 //! - `tls`: one `:443` connection, from ClientHello to byte pipe, or to the
 //!   relay's own site for a local hostname.
 //! - `hello`: reading the ClientHello and taking its server name.
+//! - `refusal`: why a `:443` connection was refused, and its line in the
+//!   connection log.
 //! - `http`: one `:80` request, answered with a redirect or a 404.
 
 mod hello;
 mod http;
+mod refusal;
 mod tls;
 
+use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, OwnedSemaphorePermit, Semaphore};
 
-use crate::domain::Outcome;
+use self::refusal::{Refusal, Visitor};
 use crate::outcomes::ConnectionOutcomes;
 use crate::route::Router;
 use crate::site::Site;
@@ -102,17 +108,23 @@ impl Front {
                 accepted = self.accept(&listener) => accepted,
                 _ = shutdown_rx.recv() => return Ok(()),
             };
-            let Some(stream) = accepted else {
+            let Some((stream, address)) = accepted else {
                 continue;
             };
+            let visitor = Visitor {
+                address,
+                accepted_at: Instant::now(),
+            };
             let Some(permit) = self.permit() else {
-                self.outcomes.record(Outcome::OverConnectionLimit);
+                self.refuse(&visitor, Refusal::OverConnectionLimit);
                 continue;
             };
             let front = Arc::clone(&self);
             let connection_shutdown_rx = shutdown_rx.resubscribe();
             tokio::spawn(async move {
-                front.handle_tls(stream, connection_shutdown_rx).await;
+                front
+                    .handle_tls(stream, visitor, connection_shutdown_rx)
+                    .await;
                 drop(permit);
             });
         }
@@ -133,7 +145,7 @@ impl Front {
                 accepted = self.accept(&listener) => accepted,
                 _ = shutdown_rx.recv() => return Ok(()),
             };
-            let Some(stream) = accepted else {
+            let Some((stream, _address)) = accepted else {
                 continue;
             };
             let Some(permit) = self.permit() else {
@@ -147,10 +159,11 @@ impl Front {
         }
     }
 
-    /// Accept one connection, or `None` if the accept failed.
-    async fn accept(&self, listener: &TcpListener) -> Option<TcpStream> {
+    /// Accept one connection, with its peer's address, or `None` if the
+    /// accept failed.
+    async fn accept(&self, listener: &TcpListener) -> Option<(TcpStream, SocketAddr)> {
         match listener.accept().await {
-            Ok((stream, _peer)) => Some(stream),
+            Ok(accepted) => Some(accepted),
             Err(e) => {
                 tracing::warn!("front accept failed: {e}");
                 tokio::time::sleep(ACCEPT_BACKOFF).await;

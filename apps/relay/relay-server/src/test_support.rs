@@ -1,9 +1,11 @@
 //! Fixtures shared across the relay's unit tests: the settings a test relay
 //! runs with, the [`TunnelRegistry`] it builds from them over a fresh state
 //! directory, the capability bindings built from that registry, and a
-//! rathole client standing in for a device.
+//! rathole client standing in for a device, and a log writer that keeps
+//! what it is given.
 
-use std::sync::Arc;
+use std::io;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use rathole::{AsyncStream, ClientServiceEvent};
@@ -117,4 +119,37 @@ pub(crate) async fn until_connected(
         .await
         .expect("the device should connect")
         .expect("the device takes the probe visitor");
+}
+
+/// Lines a log layer writes, kept in memory.
+#[derive(Clone, Default)]
+pub(crate) struct Captured(Arc<Mutex<Vec<u8>>>);
+
+impl Captured {
+    pub(crate) fn text(&self) -> String {
+        let bytes = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        String::from_utf8_lossy(&bytes).into_owned()
+    }
+}
+
+impl io::Write for Captured {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'writer> tracing_subscriber::fmt::MakeWriter<'writer> for Captured {
+    type Writer = Self;
+
+    fn make_writer(&'writer self) -> Self {
+        self.clone()
+    }
 }
