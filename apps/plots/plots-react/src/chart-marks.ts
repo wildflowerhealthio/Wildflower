@@ -593,10 +593,32 @@ const valueAxisMarks = (
 }
 
 /**
- * The figure's options, bottom layer first: time grid and axis, every value
- * axis, every band, every series' lines and dots in axis order (an axis'
- * series in its own order), and the span lanes under the time axis.
+ * Each of `selected`, in its order, with the axis `ValueAxis.assign` put it on.
  *
+ * @throws When a series is on none of `axes`: the chart draws the axes
+ *   assigned from these very series, so a miss is a bug
+ */
+const axisOfEach = (
+  axes: readonly ValueAxis.ValueAxis[],
+  selected: readonly Series.ValueSeries[]
+): readonly { readonly axis: ValueAxis.ValueAxis; readonly series: Series.ValueSeries }[] => {
+  const axisBySeriesId = new Map(
+    axes.flatMap((axis) => axis.series.map((member) => [member.id, axis] as const))
+  )
+  return selected.map((series) => {
+    const axis = axisBySeriesId.get(series.id)
+    if (axis === undefined) throw new Error(`Series ${series.id} is on no value axis`)
+    return { axis, series }
+  })
+}
+
+/**
+ * The figure's options, bottom layer first: time grid and axis, every value
+ * axis, every band, every series' lines and dots in selection order (so the
+ * series picked last is on top), and the span lanes under the time axis.
+ *
+ * @param axes - `ValueAxis.assign` of `selected`
+ * @param selected - The value series, in selection order
  * @param lanes - The span series, in selection order, one lane each from the
  *   top
  * @param colours - Each series' palette index, from `ColourSlots.assign`,
@@ -615,6 +637,7 @@ const valueAxisMarks = (
  */
 const chartOptions = (
   axes: readonly ValueAxis.ValueAxis[],
+  selected: readonly Series.ValueSeries[],
   lanes: readonly SpanSeries.SpanSeries[],
   xDomain: TimeDomain.TimeDomain,
   colours: ColourSlots.ColourSlots,
@@ -628,7 +651,7 @@ const chartOptions = (
   if (axes.length === 0 && lanes.length === 0) return null
   const lanesHeight = lanes.length * LANE_HEIGHT
   const domainEnd = xDomain[1]
-  const plotted = axes.flatMap((axis) => axis.series.map((series) => ({ axis, series })))
+  const plotted = axisOfEach(axes, selected)
   const marks: Plot.Markish[] = [
     Plot.gridX({ strokeOpacity: 0.08, tickSpacing: X_TICK_SPACING }),
     Plot.axisX({ label: null, tickSpacing: X_TICK_SPACING }),

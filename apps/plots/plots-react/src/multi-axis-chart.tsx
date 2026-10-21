@@ -5,9 +5,10 @@ import {
   Buckets,
   ColourSlots,
   Crosshair,
+  type Series,
   SpanSeries,
   type TimeDomain,
-  type ValueAxis,
+  ValueAxis,
 } from '@wildflowerhealthio/plots-fundamentals'
 
 import { MARGIN_TOP, bucketCountFor, chartOptions, crosshairHeightFor } from './chart-marks.ts'
@@ -18,12 +19,13 @@ import styles from './multi-axis-chart.module.css'
 
 interface MultiAxisChartProps {
   /**
-   * The value axes `ValueAxis.assign` produced, each with one or more series.
-   * A series keeps its colour for as long as it stays selected, so removing
-   * one never repaints the others; a newcomer takes the lowest colour left
-   * free.
+   * The point and level series to draw, in selection order, at most
+   * `ValueAxis.CAP` of them; `ValueAxis.assign` puts them on their value
+   * axes. A series keeps its colour for as long as it stays selected, so
+   * removing one never repaints the others; a newcomer takes the lowest
+   * colour left free.
    */
-  readonly axes: readonly ValueAxis.ValueAxis[]
+  readonly series: readonly Series.ValueSeries[]
   /**
    * The span series to draw as lanes under the time axis, in selection order,
    * at most `SpanSeries.LANE_CAP` of them. They take no value axis and no
@@ -40,8 +42,9 @@ interface MultiAxisChartProps {
 const TOOLTIP_ROOM = 280 + 12
 
 /**
- * Each value series' palette index: `ColourSlots.assign` over every axis'
- * series, carried from one render to the next so a survivor keeps its colour.
+ * Each value series' palette index: `ColourSlots.assign` over the series in
+ * selection order, whatever axes they share, carried from one render to the
+ * next so a survivor keeps its colour.
  *
  * @remarks
  * Derived state rather than an effect: when the selection changes the new
@@ -49,8 +52,8 @@ const TOOLTIP_ROOM = 280 + 12
  * The assignment returned is the stored one itself while the selection
  * holds, so the figure is not rebuilt for an unchanged one.
  */
-const useColours = (axes: readonly ValueAxis.ValueAxis[]): ColourSlots.ColourSlots => {
-  const ids = axes.flatMap((axis) => axis.series.map((series) => series.id))
+const useColours = (series: readonly Series.ValueSeries[]): ColourSlots.ColourSlots => {
+  const ids = series.map(({ id }) => id)
   const [kept, setKept] = useState<ColourSlots.ColourSlots>(() =>
     ColourSlots.assign(new Map(), ids)
   )
@@ -71,7 +74,8 @@ const useColours = (axes: readonly ValueAxis.ValueAxis[]): ColourSlots.ColourSlo
  * dataviz guidance: the viewer exists to read one series against another it
  * is meant to move. Every series is drawn on a shared `0..1` scale through its
  * axis' domain, and each axis maps that scale back to the series' values —
- * the domains and ticks are `ValueAxis.assign`'s, not re-derived here.
+ * the domains and ticks are `ValueAxis.assign`'s, not re-derived here. The
+ * lines draw in selection order, so the series picked last is on top.
  *
  * Span series are drawn as thin lanes under the time axis, one per series,
  * with no value axis: a bar per span in its category's colour.
@@ -89,16 +93,16 @@ const useColours = (axes: readonly ValueAxis.ValueAxis[]): ColourSlots.ColourSlo
  * which, once per render, and the marks, the stops and the readout all take
  * that one map; a new width decides again.
  */
-const MultiAxisChart = ({ axes, lanes, xDomain, onHover }: MultiAxisChartProps): JSX.Element => {
+const MultiAxisChart = ({ series, lanes, xDomain, onHover }: MultiAxisChartProps): JSX.Element => {
   const { containerRef, container, width: figureWidth } = usePlotContainer()
-  const valueSeries = useMemo(() => axes.flatMap((axis) => axis.series), [axes])
+  const axes = useMemo(() => ValueAxis.assign(series), [series])
   const bucketsBySeriesId = useMemo(
-    () => Buckets.ofDenseSeries(valueSeries, xDomain, bucketCountFor(axes, figureWidth)),
-    [valueSeries, axes, xDomain, figureWidth]
+    () => Buckets.ofDenseSeries(series, xDomain, bucketCountFor(axes, figureWidth)),
+    [series, axes, xDomain, figureWidth]
   )
   const stops = useMemo(
-    () => Crosshair.stops([...valueSeries, ...lanes], xDomain, bucketsBySeriesId),
-    [valueSeries, lanes, xDomain, bucketsBySeriesId]
+    () => Crosshair.stops([...series, ...lanes], xDomain, bucketsBySeriesId),
+    [series, lanes, xDomain, bucketsBySeriesId]
   )
   const [hover, setHover] = useState<{
     readonly stops: readonly number[]
@@ -113,12 +117,12 @@ const MultiAxisChart = ({ axes, lanes, xDomain, onHover }: MultiAxisChartProps):
     if (hoverIsStale) onHover?.(null)
   }, [hoverIsStale, onHover])
 
-  const colours = useColours(axes)
+  const colours = useColours(series)
   // The legend re-renders on every crosshair move; its categories do not change with it.
   const laneCategories = useMemo(() => lanes.map((lane) => SpanSeries.categoriesOf(lane)), [lanes])
   const options = useMemo(
-    () => chartOptions(axes, lanes, xDomain, colours, bucketsBySeriesId),
-    [axes, lanes, xDomain, colours, bucketsBySeriesId]
+    () => chartOptions(axes, series, lanes, xDomain, colours, bucketsBySeriesId),
+    [axes, series, lanes, xDomain, colours, bucketsBySeriesId]
   )
   const figure = usePlot(container, figureWidth, options)
 
@@ -147,7 +151,7 @@ const MultiAxisChart = ({ axes, lanes, xDomain, onHover }: MultiAxisChartProps):
     onHover?.(null)
   }, [onHover])
 
-  if (axes.length === 0 && lanes.length === 0) {
+  if (series.length === 0 && lanes.length === 0) {
     return <p className={styles.empty}>Pick up to four series</p>
   }
 

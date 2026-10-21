@@ -12,10 +12,13 @@ and opaque series ids.
 
 ## Shape
 
-- `src/multi-axis-chart.tsx` — `MultiAxisChart` (`axes`, `lanes`, `xDomain`,
-  `onHover`): the legend, the figure, and the crosshair, whose stops and rule
-  take in the lanes too. Colours come from
-  `ColourSlots.assign`, carried across renders; the crosshair snaps to
+- `src/multi-axis-chart.tsx` — `MultiAxisChart` (`series`, `lanes`,
+  `xDomain`, `onHover`): the value series in selection order, put on axes by
+  `ValueAxis.assign`; the legend, the figure, and the crosshair, whose stops
+  and rule take in the lanes too. Colours come from `ColourSlots.assign` over
+  the series in selection order, carried across renders; lines draw in
+  selection order, so the series picked last is on top, while the legend and
+  tooltip list series axis by axis; the crosshair snaps to
   `Crosshair.nearestStop` over `Crosshair.stops`. Which series are drawn as
   buckets is `Buckets.ofDenseSeries` at `bucketCountFor` the figure's width,
   decided once per render and handed to the marks, the stops and the tooltip
