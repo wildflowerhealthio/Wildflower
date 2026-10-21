@@ -6,6 +6,7 @@ import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import {
   Cause,
   DateTime,
+  Duration,
   Effect,
   Exit,
   Layer,
@@ -20,7 +21,11 @@ import { type JSX, type ReactNode } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
 import { sliceRuntimeLayer } from '../router-context.ts'
-import { EssentialClientDisableRefusal, useUpdateClientMutation } from './clients.ts'
+import {
+  EssentialClientDisableRefusal,
+  useUpdateClientMutation,
+  useUpdateRefreshPolicyMutation,
+} from './clients.ts'
 import { ExpiredDeviceConsent, foldExpiredDeviceConsent } from './device-consent.ts'
 import { useRevokeBrowserSessionMutation, useRevokeGrantMutation } from './index.ts'
 import { foldExpiredConsent, oauthConsentMutationOptions } from './oauth-consent.ts'
@@ -315,6 +320,43 @@ describe('useUpdateClientMutation request', () => {
   })
 })
 
+describe('useUpdateRefreshPolicyMutation', () => {
+  test('PATCHes the whole policy in seconds and invalidates the clients list root', async () => {
+    // Arrange
+    const requests = routeRunAuthedThroughRecordingHttpClient(DateTime.unsafeMake(0))
+    const { result, queryClient } = renderWithClient(() => useUpdateRefreshPolicyMutation())
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    // Act
+    await result.current.mutateAsync({
+      clientId: 'ohif-viewer',
+      refreshPolicy: {
+        idleTtl: Option.some(Duration.minutes(30)),
+        maxTtl: Option.none(),
+        endsWithBrowserSession: true,
+      },
+    })
+
+    // Assert
+    expect(requests.map(({ method, body }) => ({ method, body }))).toEqual([
+      {
+        method: 'PATCH',
+        body: {
+          refreshPolicy: {
+            idleTtlSeconds: 1800,
+            maxTtlSeconds: null,
+            endsWithBrowserSession: true,
+          },
+        },
+      },
+    ])
+    expect(requests[0]?.url).toMatch(/\/authorization\/clients\/ohif-viewer$/)
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['authorization', 'clients'] })
+    })
+  })
+})
+
 describe('useUpdateClientMutation of an essential client', () => {
   test('a 409 EssentialClient fails with the essential-client message', async () => {
     // Arrange — the server refuses the disable.
@@ -444,6 +486,7 @@ const respondedClient = {
   registeredAt: '2026-01-15T09:30:00.000Z',
   disabledAt: null,
   essential: false,
+  refreshPolicy: { idleTtlSeconds: 604800, maxTtlSeconds: 2592000, endsWithBrowserSession: false },
 }
 
 /** One request as the recording stub saw it; `body` is the parsed JSON, if any. */

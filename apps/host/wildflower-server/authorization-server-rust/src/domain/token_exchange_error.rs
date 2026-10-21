@@ -66,13 +66,30 @@ pub(crate) enum InvalidGrantReason {
         /// The client that presented the token.
         presented_client_id: String,
     },
-    /// The family's absolute deadline passed, or it was ended (revoked or
+    /// The family's deadline passed (the one its client's refresh policy set
+    /// at its last rotation, or the ceiling), or it was ended (revoked or
     /// replayed), which moves the deadline to that moment.
     RefreshTokenExpired,
     /// The browser session the family was minted under has been revoked, or
     /// no longer exists.
     RefreshTokenSessionRevoked {
         /// The family whose browser session ended.
+        family_id: String,
+    },
+    /// The family's live token went unrefreshed for its client's idle limit.
+    RefreshTokenIdle {
+        /// The family that went idle.
+        family_id: String,
+    },
+    /// The family has lasted its client's maximum lifetime.
+    RefreshTokenMaxLifetimeReached {
+        /// The family that reached its maximum lifetime.
+        family_id: String,
+    },
+    /// The family's client ends its families with the browser session they
+    /// were minted under, and that session has expired.
+    RefreshTokenSessionExpired {
+        /// The family whose browser session expired.
         family_id: String,
     },
     /// The family began before its client's revocation epoch: bumping the

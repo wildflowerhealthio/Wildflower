@@ -19,7 +19,7 @@ pub(crate) mod tokens;
 pub(crate) use browser_sessions::{
     BrowserSessionView, BrowserSessionsReader, BrowserSessionsRevoker,
 };
-pub(crate) use clients::{ClientView, ClientsDisabler, ClientsReader};
+pub(crate) use clients::{ClientView, ClientsReader, ClientsUpdater};
 pub use consents::{
     ApproveDeviceConsentInput, ApproveOAuthConsentInput, ConsentOutcome, DeviceConsentView,
     OAuthConsentView,
@@ -45,7 +45,7 @@ pub fn grantable_admin_scopes() -> Vec<Scope> {
         grants::grants_reader_scopes(),
         grants::grants_revoker_scopes(),
         clients::clients_reader_scopes(),
-        clients::clients_disabler_scopes(),
+        clients::clients_updater_scopes(),
         consents::consent_reader_scopes(),
         consents::consent_decider_scopes(),
         consents::grant_creating_approval_scopes(),

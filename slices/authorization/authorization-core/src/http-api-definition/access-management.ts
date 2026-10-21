@@ -2,7 +2,7 @@ import { HttpApiEndpoint, HttpApiGroup } from '@effect/platform'
 import { InsufficientScopeSchema } from '@wildflowerhealthio/shared-structures-core/http-api-definition'
 import { Schema } from 'effect'
 
-import { Client } from '../domain/index.ts'
+import { Client, RefreshPolicy } from '../domain/index.ts'
 import { RequireAuthMiddleware } from './require-auth.ts'
 /**
  * A `Grant` is a materialized consent decision — the Owner approved a client for
@@ -57,9 +57,10 @@ const GrantNotFoundSchema = Schema.Struct({
 const ClientsSchema = Schema.Array(Client.Schema)
 
 /**
- * `UpdateClient`'s body — the one client field the Owner can edit.
+ * `UpdateClient`'s body — one of the two things the Owner can change about a
+ * client, each its own shape.
  *
- * `disabledAt` is required, `null` included:
+ * Whether it is disabled: `disabledAt` is required, `null` included.
  * - any time disables the client now. The server stamps its own now whatever
  *   time is sent, so a disable can be neither scheduled nor backdated
  *   (Wildflower Authorization sends its current time).
@@ -67,10 +68,18 @@ const ClientsSchema = Schema.Array(Client.Schema)
  *
  * A client that already has a `disabledAt` keeps it: disabling it again
  * doesn't move the time.
+ *
+ * Its `refreshPolicy`, replaced whole. The client's refresh-token families
+ * pick it up on their next refresh.
  */
-const UpdateClientSchema = Schema.Struct({
-  disabledAt: Schema.NullOr(Schema.DateTimeUtc),
-})
+const UpdateClientSchema = Schema.Union(
+  Schema.Struct({
+    disabledAt: Schema.NullOr(Schema.DateTimeUtc),
+  }),
+  Schema.Struct({
+    refreshPolicy: RefreshPolicy.Schema,
+  })
+)
 
 const ClientNotFoundSchema = Schema.Struct({
   error: Schema.Literal('ClientNotFound'),

@@ -3,7 +3,8 @@
 //! on every boot — the signing key is inserted only when none exists (never
 //! rotated), and the two clients are *ensured* (re-applied as an upsert) so
 //! their definitions always match the host's granted scopes, correcting any
-//! drift in the stored rows.
+//! drift in the stored rows. Each client is inserted with its refresh policy,
+//! which the upsert leaves as the Owner set it.
 //!
 //! The bundled SMART sample-app clients (growth-chart, medication-viewer →
 //! `my_web_app`, PRECISE-HBR) are seeded in SQL instead — migration
@@ -12,16 +13,63 @@
 //! the generated signing key) stay here.
 
 use anyhow::Context;
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use wildflowerhealthio_persistence::DieselPool;
 
 use wildflowerhealthio_scopes::{Permission, Scope};
 
 use crate::db::SqliteGrantStore;
-use crate::domain::client::{AllowedGrantType, Client, ClientKind, RegistrationSource};
+use crate::domain::client::{
+    AllowedGrantType, Client, ClientKind, RefreshPolicy, RegistrationSource,
+};
 use crate::domain::grant_store::{ClientsTx, SigningKeysTx};
 use crate::domain::signing_key::SigningKey;
 use crate::domain::GrantStore as _;
+
+/// The host app's client: a device paired once, so tied to no browser session
+/// and with no idle limit; only the ceiling ends its families.
+pub(crate) const HOST_APP_REFRESH_POLICY: RefreshPolicy = RefreshPolicy {
+    idle_ttl: None,
+    max_ttl: None,
+    ends_with_browser_session: false,
+};
+
+/// The browser-session client: its tokens are minted at sign-in and pairing,
+/// never refreshed, so its policy only says that nothing it holds outlives
+/// the browser session.
+pub(crate) const BROWSER_SESSION_CLIENT_REFRESH_POLICY: RefreshPolicy = RefreshPolicy {
+    idle_ttl: None,
+    max_ttl: None,
+    ends_with_browser_session: true,
+};
+
+/// The FHIR server UI's client: like the Launcher, it ends with the browser
+/// session that signed it in and lasts two hours unused.
+pub(crate) const FHIR_UI_REFRESH_POLICY: RefreshPolicy = RefreshPolicy {
+    idle_ttl: Some(Duration::hours(2)),
+    max_ttl: None,
+    ends_with_browser_session: true,
+};
+
+/// A data app's client (Medications, Plots, Strength, Importer, Synthetic
+/// Data, the OHIF viewer): a week unused, thirty days at most, outliving the
+/// browser session. Each dev twin gets its production client's policy, which
+/// migration `0049` seeds.
+#[cfg(debug_assertions)]
+pub(crate) const DATA_APP_REFRESH_POLICY: RefreshPolicy = RefreshPolicy {
+    idle_ttl: Some(Duration::days(7)),
+    max_ttl: Some(Duration::days(30)),
+    ends_with_browser_session: false,
+};
+
+/// FHIR Sync for Pebble's client: it only writes, and nobody watches it, so
+/// thirty days unused and a year at most.
+#[cfg(debug_assertions)]
+pub(crate) const FHIR_SYNC_PEBBLE_REFRESH_POLICY: RefreshPolicy = RefreshPolicy {
+    idle_ttl: Some(Duration::days(30)),
+    max_ttl: Some(Duration::days(365)),
+    ends_with_browser_session: false,
+};
 
 /// Wrap the host-owned connection `pool` in a grant store (applying
 /// migrations, which includes the SQL seed of the SMART sample-app clients)
@@ -88,6 +136,7 @@ fn ensure_fhir_ui_client(
         registered_at: Utc::now(),
         disabled_at: None,
         registration_source: RegistrationSource::ServerDefined,
+        refresh_policy: FHIR_UI_REFRESH_POLICY,
     };
     tx.upsert_client(&client)
         .context("seed the FHIR server UI client")?;
@@ -142,6 +191,7 @@ fn ensure_essential_clients(
         registered_at: Utc::now(),
         disabled_at: None,
         registration_source: RegistrationSource::ServerDefined,
+        refresh_policy: HOST_APP_REFRESH_POLICY,
     };
     tx.upsert_client(&wildflower_host_app_client)
         .context("seed the host app's client")?;
@@ -156,6 +206,7 @@ fn ensure_essential_clients(
         registered_at: Utc::now(),
         disabled_at: None,
         registration_source: RegistrationSource::ServerDefined,
+        refresh_policy: BROWSER_SESSION_CLIENT_REFRESH_POLICY,
     };
     tx.upsert_client(&browser_session_client)
         .context("seed the browser-session client")?;
@@ -221,26 +272,26 @@ struct DevAppPorts {
 /// server. FHIR Sync for Pebble has no tile; its `src/config.ts` alone names its
 /// client.
 #[cfg(debug_assertions)]
-const MEDICATIONS_DEV_CLIENT_ID: &str = "4be2ee91360733fdcb99b43a3822de5f";
+pub(crate) const MEDICATIONS_DEV_CLIENT_ID: &str = "4be2ee91360733fdcb99b43a3822de5f";
 /// The Importer dev server's client.
 #[cfg(debug_assertions)]
-const IMPORTER_DEV_CLIENT_ID: &str = "57268ff88aea38d6a22de56ae53e2c28";
+pub(crate) const IMPORTER_DEV_CLIENT_ID: &str = "57268ff88aea38d6a22de56ae53e2c28";
 /// The Plots dev server's client.
 #[cfg(debug_assertions)]
-const PLOTS_DEV_CLIENT_ID: &str = "e7efc7c805f5f8f640bb3b3d48a2d7aa";
+pub(crate) const PLOTS_DEV_CLIENT_ID: &str = "e7efc7c805f5f8f640bb3b3d48a2d7aa";
 /// The Synthetic Data Loader dev server's client.
 #[cfg(debug_assertions)]
-const SYNTHETIC_DATA_DEV_CLIENT_ID: &str = "07a31e58db3367afda5c6480e03ed993";
+pub(crate) const SYNTHETIC_DATA_DEV_CLIENT_ID: &str = "07a31e58db3367afda5c6480e03ed993";
 /// The Strength dev server's client.
 #[cfg(debug_assertions)]
-const STRENGTH_DEV_CLIENT_ID: &str = "8467e680a05f1e92e22864e923144e5a";
+pub(crate) const STRENGTH_DEV_CLIENT_ID: &str = "8467e680a05f1e92e22864e923144e5a";
 /// The OHIF imaging viewer dev server's client.
 #[cfg(debug_assertions)]
-const OHIF_VIEWER_DEV_CLIENT_ID: &str = "f9866f7b1d0d8505dc65ef4f749664b5";
+pub(crate) const OHIF_VIEWER_DEV_CLIENT_ID: &str = "f9866f7b1d0d8505dc65ef4f749664b5";
 /// The FHIR Sync for Pebble dev server's client. It has no dev tile: the app
 /// is standalone-only.
 #[cfg(debug_assertions)]
-const FHIR_SYNC_PEBBLE_DEV_CLIENT_ID: &str = "61e195d6b08bab6bf2cedb1ef3831fa7";
+pub(crate) const FHIR_SYNC_PEBBLE_DEV_CLIENT_ID: &str = "61e195d6b08bab6bf2cedb1ef3831fa7";
 
 /// The Plots dev client's scopes: exactly the scope string in
 /// `apps/plots/plots-web/src/config.ts`, which requests the same set for an EHR
@@ -352,7 +403,8 @@ const DEV_ROOT_REDIRECT_PATH: &str = "/";
 ///
 /// Upserted (not insert-if-missing) so a definition change lands on the next boot
 /// — the same treatment `ensure_essential_clients` gets, and safe here because
-/// nothing but this code owns these rows.
+/// nothing but this code owns these rows. Each is inserted with its production
+/// client's refresh policy, which the upsert never rewrites.
 ///
 /// # Errors
 ///
@@ -373,6 +425,7 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             MEDICATIONS_DEV_SCOPES,
             ports.medications_dev,
             DEV_ROOT_REDIRECT_PATH,
+            DATA_APP_REFRESH_POLICY,
         ),
         (
             IMPORTER_DEV_CLIENT_ID,
@@ -402,6 +455,7 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             .as_slice(),
             ports.importer_dev,
             DEV_ROOT_REDIRECT_PATH,
+            DATA_APP_REFRESH_POLICY,
         ),
         (
             OHIF_VIEWER_DEV_CLIENT_ID,
@@ -427,6 +481,7 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             // where OHIF's data source sends the browser back to and what it
             // passes as `redirect_uri`.
             "/fhir-viewer",
+            DATA_APP_REFRESH_POLICY,
         ),
         (
             FHIR_SYNC_PEBBLE_DEV_CLIENT_ID,
@@ -446,6 +501,7 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             .as_slice(),
             ports.fhir_sync_pebble_dev,
             DEV_ROOT_REDIRECT_PATH,
+            FHIR_SYNC_PEBBLE_REFRESH_POLICY,
         ),
         (
             PLOTS_DEV_CLIENT_ID,
@@ -455,6 +511,7 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             PLOTS_DEV_SCOPES,
             ports.plots_dev,
             DEV_ROOT_REDIRECT_PATH,
+            DATA_APP_REFRESH_POLICY,
         ),
         (
             SYNTHETIC_DATA_DEV_CLIENT_ID,
@@ -464,6 +521,7 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             SYNTHETIC_DATA_DEV_SCOPES,
             ports.synthetic_data_dev,
             DEV_ROOT_REDIRECT_PATH,
+            DATA_APP_REFRESH_POLICY,
         ),
         (
             STRENGTH_DEV_CLIENT_ID,
@@ -473,9 +531,10 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             STRENGTH_DEV_SCOPES,
             ports.strength_dev,
             DEV_ROOT_REDIRECT_PATH,
+            DATA_APP_REFRESH_POLICY,
         ),
     ];
-    for (client_id, name, scopes, port, redirect_path) in dev_clients {
+    for (client_id, name, scopes, port, redirect_path, refresh_policy) in dev_clients {
         use url::Url;
 
         let client = Client {
@@ -498,6 +557,7 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             registered_at: Utc::now(),
             disabled_at: None,
             registration_source: RegistrationSource::TrustedOnFirstUse,
+            refresh_policy,
         };
         store
             .write(|tx| tx.upsert_client(&client))
@@ -771,6 +831,53 @@ mod tests {
             source_of("growth_chart"),
             Some(RegistrationSource::TrustedOnFirstUse)
         );
+    }
+
+    /// Seeding inserts each client it owns with that client's refresh
+    /// policy, and a later boot keeps a policy the Owner changed since.
+    #[test]
+    fn seeding_inserts_each_owned_client_s_refresh_policy_and_keeps_the_owner_s() {
+        let pool =
+            wildflowerhealthio_persistence::open_in_memory_pool().expect("open in-memory pool");
+        let origin = url::Url::parse("https://ruth.relay.example").expect("origin");
+        let seed = || {
+            open_and_seed_store(
+                pool.clone(),
+                &crate::default_host_app_client_scopes(),
+                "fhir-ui-client",
+                &origin,
+            )
+            .expect("seed store")
+        };
+        let store = seed();
+        let policy_of = |store: &SqliteGrantStore, client_id: &str| {
+            store
+                .read(|tx| tx.client_by_id(client_id))
+                .expect("query client")
+                .map(|client| client.refresh_policy)
+        };
+        assert_eq!(
+            policy_of(&store, crate::WILDFLOWER_HOST_APP_CLIENT_ID),
+            Some(HOST_APP_REFRESH_POLICY)
+        );
+        assert_eq!(
+            policy_of(&store, crate::BROWSER_SESSION_CLIENT_ID),
+            Some(BROWSER_SESSION_CLIENT_REFRESH_POLICY)
+        );
+        assert_eq!(
+            policy_of(&store, "fhir-ui-client"),
+            Some(FHIR_UI_REFRESH_POLICY)
+        );
+
+        let owner_s_policy = RefreshPolicy {
+            idle_ttl: Some(Duration::minutes(15)),
+            ..FHIR_UI_REFRESH_POLICY
+        };
+        assert!(store
+            .write(|tx| tx.set_client_refresh_policy("fhir-ui-client", &owner_s_policy))
+            .expect("set the policy"));
+        let reseeded = seed();
+        assert_eq!(policy_of(&reseeded, "fhir-ui-client"), Some(owner_s_policy));
     }
 
     /// With the standalone defaults, the host app's client may be granted

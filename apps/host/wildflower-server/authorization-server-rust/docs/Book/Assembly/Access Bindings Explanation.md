@@ -34,13 +34,13 @@ List the registered apps: `wildflower/Client.r`. Built over the store; each app 
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/access.rs LiveClientsReader::build}}
 
-### `LiveClientsDisabler`
+### `LiveClientsUpdater`
 
 Disable or re-enable an app: `wildflower/Client.u`. Built over the store; it refuses to disable an essential app.
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/access.rs LiveClientsDisabler}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/access.rs LiveClientsUpdater}}
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/access.rs LiveClientsDisabler::build}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/access.rs LiveClientsUpdater::build}}
 
 ### `LiveConsentReader`
 

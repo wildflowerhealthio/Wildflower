@@ -115,7 +115,8 @@ impl<S: GrantStore> TokenExchanger<S> {
 
     /// Trade a live refresh token for a fresh access token and the refresh
     /// token's successor (RFC 6749 §6, OAuth 2.1 rotation). The family keeps
-    /// its scopes and absolute deadline — rotation never extends its life.
+    /// its scopes, and its client's refresh policy, as it stands now, decides
+    /// whether it may refresh and sets its next deadline.
     ///
     /// The one exchange with two scopes. A `read` scope validates the token,
     /// its client's revocation epoch included: the epoch lives on the
@@ -170,7 +171,8 @@ impl<S: GrantStore> TokenExchanger<S> {
                 Err(refusal) => return Ok(Err(refusal)),
             };
         let redemption = GrantRedemption::AuthorizationCode(&redeemed_code);
-        let (minter, refresh_token) = self.prepare_issuance(tx, redemption, now)?;
+        let (minter, refresh_token) =
+            self.prepare_issuance(tx, authenticated_client, redemption, now)?;
         issue(
             &minter,
             TokenEntitlement::AuthorizationCode(&redeemed_code),
@@ -197,6 +199,7 @@ impl<S: GrantStore> TokenExchanger<S> {
             };
         let (minter, refresh_token) = self.prepare_issuance(
             tx,
+            authenticated_client,
             GrantRedemption::DeviceCode(&consumed_device_request),
             now,
         )?;
@@ -242,16 +245,22 @@ impl<S: GrantStore> TokenExchanger<S> {
     }
 
     /// Load the signing key, then start `redemption`'s refresh family if the
-    /// grant earned one, inside the exchange's scope `tx`.
+    /// grant earned one, under `authenticated_client`'s refresh policy, inside
+    /// the exchange's scope `tx`.
     fn prepare_issuance(
         &self,
         tx: &mut impl GrantTx,
+        authenticated_client: &AuthenticatedClient,
         redemption: GrantRedemption<'_>,
         now: DateTime<Utc>,
     ) -> Result<(AccessTokenMinter<'_>, Option<String>), TokenExchangeError> {
         let minter = AccessTokenMinter::with_active_key(tx, &self.server_origin, ACCESS_TOKEN_TTL)?;
         let refresh_token = if redemption.is_refresh_token_earned() {
-            Some(RefreshFamilyWriter::within(tx).start_family(redemption, now)?)
+            Some(RefreshFamilyWriter::within(tx).start_family(
+                redemption,
+                authenticated_client.refresh_policy(),
+                now,
+            )?)
         } else {
             None
         };

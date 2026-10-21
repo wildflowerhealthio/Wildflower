@@ -13,6 +13,14 @@ pub use wildflowerhealthio_authorization_server::{
     WILDFLOWER_HOST_APP_CLIENT_ID,
 };
 
+/// A refresh policy with no limit of its own and no tie to a browser
+/// session: only the ceiling ends its families.
+pub const CEILING_ONLY_REFRESH_POLICY: RefreshPolicy = RefreshPolicy {
+    idle_ttl: None,
+    max_ttl: None,
+    ends_with_browser_session: false,
+};
+
 /// The server's origin: the `iss` and `aud` of every token it mints, and the
 /// only ones its bearer gates accept.
 pub const SERVER_ORIGIN: &str = "https://ruth.relay.example";
@@ -56,7 +64,7 @@ pub use wildflowerhealthio_authorization_server::domain::authorization_request::
 pub use wildflowerhealthio_authorization_server::domain::authorization_request::RequestStatus;
 pub use wildflowerhealthio_authorization_server::domain::browser_session::BrowserSession;
 pub use wildflowerhealthio_authorization_server::domain::client::{
-    AllowedGrantType, Client, ClientKind, RegistrationSource,
+    AllowedGrantType, Client, ClientKind, RefreshPolicy, RegistrationSource,
 };
 pub use wildflowerhealthio_authorization_server::domain::grant_store::{
     AuthorizationCodesTx, AuthorizationRequestsTx, BrowserSessionsTx, ClientsTx, GrantsTx,
@@ -289,6 +297,7 @@ pub fn seed_client_with_redirect(
                 registered_at: Utc::now(),
                 disabled_at: None,
                 registration_source: RegistrationSource::TrustedOnFirstUse,
+                refresh_policy: CEILING_ONLY_REFRESH_POLICY,
             })
         })
         .expect("register client");
@@ -319,6 +328,7 @@ pub fn seed_test_client(db: &TestDb) {
                 registered_at: Utc::now(),
                 disabled_at: None,
                 registration_source: RegistrationSource::TrustedOnFirstUse,
+                refresh_policy: CEILING_ONLY_REFRESH_POLICY,
             })
         })
         .expect("register the test client");
@@ -849,6 +859,7 @@ pub fn seed_confidential_client(
                 registered_at: Utc::now(),
                 disabled_at: None,
                 registration_source: RegistrationSource::TrustedOnFirstUse,
+                refresh_policy: CEILING_ONLY_REFRESH_POLICY,
             })
         })
         .expect("register confidential client");

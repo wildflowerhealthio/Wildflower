@@ -133,3 +133,5 @@ A table whose shape changes is rebuilt, and every row an install could hold is c
 {{#item apps/host/wildflower-server/authorization-server-rust/src/db/grant_store.rs tests::an_install_already_at_0046_gives_the_limited_page_its_own_status}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/db/grant_store.rs tests::an_install_already_at_0047_splits_the_authorization_requests}}
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/grant_store.rs tests::an_install_already_at_0048_gives_every_client_a_refresh_policy}}

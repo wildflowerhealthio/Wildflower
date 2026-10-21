@@ -32,7 +32,7 @@ pub(crate) use fixtures::{
     code_request_for, code_with_status, delegated_scopes, device_request, device_with_status,
     fixture_code_args, owned_scopes, pairing_request, redeemed_code, registering_delegated_scopes,
     seed_active_signing_key, seed_fixture_browser_session, NothingRevoked, RecordingOwnerApproval,
-    FIXTURE_SID,
+    CEILING_ONLY_REFRESH_POLICY, FIXTURE_SID,
 };
 
 /// An in-memory [`GrantStore`] modelling the primitive port semantics with

@@ -50,7 +50,7 @@ pub use access::{
 };
 pub(crate) use access::{
     BrowserSessionView, BrowserSessionsReader, BrowserSessionsRevoker, Capability, ClientView,
-    ClientsDisabler, ClientsReader, ConsentDecider, ConsentRaiser, ConsentReader,
+    ClientsReader, ClientsUpdater, ConsentDecider, ConsentRaiser, ConsentReader,
     FixedScopeCapability, GrantsReader, GrantsRevoker, OwnerRaising, Scoped, TokenRevoker,
 };
 

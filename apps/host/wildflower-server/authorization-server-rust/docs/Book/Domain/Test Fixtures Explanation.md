@@ -22,9 +22,11 @@ Several test modules name their helpers alike (`at`, `started`, `approval`); whe
 
 ## Client
 
-The crate-wide client fixture is a public app named `<client_id> display name`, registered for the one redirect `https://example.com/cb`, allowed every grant type, trusted on first use, with the scopes the test passes.
+The crate-wide client fixture is a public app named `<client_id> display name`, registered for the one redirect `https://example.com/cb`, allowed every grant type, trusted on first use, with the scopes the test passes. Its refresh policy sets no limit of its own, so a test about something else never runs into one.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/test_fake/fixtures.rs client}}
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/test_fake/fixtures.rs CEILING_ONLY_REFRESH_POLICY}}
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/test_fake/fixtures.rs owned_scopes}}
 
