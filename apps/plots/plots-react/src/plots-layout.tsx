@@ -40,9 +40,8 @@ interface PlotsLayoutProps {
  * hides its content whatever the CSS says, so docking the same panel on a
  * wide viewport would need a second copy of it or a JS media query.
  *
- * The panel, the presets and the view switch each carry their
- * {@link PlotsWalkthroughAnchor} for the app's walkthrough; the presets and
- * the view switch sit in a box of their own to carry it.
+ * The panel carries its {@link PlotsWalkthroughAnchor} for the app's
+ * walkthrough; the presets and the view switch carry their own.
  */
 const PlotsLayout = ({
   seriesPanel,
@@ -87,18 +86,8 @@ const PlotsLayout = ({
       <div className={styles.main}>
         {toolbarNote}
         <div className={styles.toolbar}>
-          <div
-            className={styles['toolbar-control']}
-            {...walkthroughAnchor(PlotsWalkthroughAnchor.rangePresets)}
-          >
-            {rangePresets}
-          </div>
-          <div
-            className={styles['toolbar-control']}
-            {...walkthroughAnchor(PlotsWalkthroughAnchor.viewSwitch)}
-          >
-            {viewSwitch}
-          </div>
+          {rangePresets}
+          {viewSwitch}
         </div>
         {status !== undefined && status !== null && <div className={styles.status}>{status}</div>}
         <div className={styles.chart}>{children}</div>

@@ -105,4 +105,24 @@ describe('SegmentedToggle', () => {
 
     expect(onChange).not.toHaveBeenCalled()
   })
+
+  it('passes other props to its group, adding a class to its own', () => {
+    // Arrange / Act
+    render(
+      <SegmentedToggle
+        value="medications"
+        options={twoOptions}
+        onChange={vi.fn()}
+        aria-label="View"
+        className="extra"
+        data-walkthrough="view"
+      />
+    )
+
+    // Assert
+    const group = screen.getByRole('group', { name: 'View' })
+    expect(group.getAttribute('data-walkthrough')).toBe('view')
+    expect(group.classList.contains('extra')).toBe(true)
+    expect(group.classList.length).toBe(2)
+  })
 })

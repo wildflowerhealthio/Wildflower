@@ -1,4 +1,5 @@
-import type { JSX } from 'react'
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
+import type { ComponentProps, JSX } from 'react'
 
 import styles from './segmented-toggle.module.css'
 
@@ -13,7 +14,16 @@ interface SegmentedToggleOption<T extends string> {
   readonly disabled?: boolean
 }
 
-interface SegmentedToggleProps<T extends string> {
+/**
+ * Props for {@link SegmentedToggle}: its value, options and `onChange`, and
+ * any other `<div>` prop (`id`, `data-*`, `ref`, a `className` added to its
+ * own), which go to the root group. Its `role` and children are its own, and
+ * `onChange` is the picked value's, so a caller cannot set the `<div>`'s.
+ */
+interface SegmentedToggleProps<T extends string> extends Omit<
+  ComponentProps<'div'>,
+  'children' | 'role' | 'onChange' | 'aria-label'
+> {
   readonly value: T
   readonly options: readonly SegmentedToggleOption<T>[]
   readonly onChange: (value: T) => void
@@ -33,8 +43,10 @@ const SegmentedToggle = <T extends string>({
   options,
   onChange,
   'aria-label': ariaLabel,
+  className,
+  ...rootProps
 }: SegmentedToggleProps<T>): JSX.Element => (
-  <div className={styles['tabs']} role="group" aria-label={ariaLabel}>
+  <div {...rootProps} className={cn(styles['tabs'], className)} role="group" aria-label={ariaLabel}>
     {options.map((option) => (
       <button
         key={option.value}
