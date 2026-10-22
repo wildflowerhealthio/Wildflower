@@ -30,9 +30,8 @@ import styles from './app.module.css'
  * `?patient=`, else the launch's patient (`client.patient.id`); with neither
  * the page is the `PatientPicker`. "All patients" reads every patient's
  * Observations and MedicationRequests unscoped, charted together. The title's
- * `PatientChoiceLine` names the choice and goes back to the picker; it sits
- * in a box carrying the Plots walkthrough's anchor, as it takes no extra
- * attributes.
+ * `PatientChoiceLine` names the choice and goes back to the picker, and
+ * carries the Plots walkthrough's anchor.
  *
  * The selection lives only in the URL ({@link useUrlSelection}) beside the
  * patient; every change — a series or a range in the record — is an updater
@@ -79,13 +78,12 @@ export const App = (): JSX.Element => {
       <header className={styles.header}>
         <h1 className="text-heading-3">Plots</h1>
         {client !== undefined && Option.isSome(patientChoice) && (
-          <div {...walkthroughAnchor(PlotsPageWalkthroughAnchor.patientLine)}>
-            <PatientChoiceLine
-              client={client}
-              patientChoice={patientChoice.value}
-              onPatientChange={changePatient}
-            />
-          </div>
+          <PatientChoiceLine
+            client={client}
+            patientChoice={patientChoice.value}
+            onPatientChange={changePatient}
+            {...walkthroughAnchor(PlotsPageWalkthroughAnchor.patientLine)}
+          />
         )}
       </header>
       {body}
