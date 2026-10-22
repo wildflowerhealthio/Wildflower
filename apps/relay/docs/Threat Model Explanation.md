@@ -35,10 +35,11 @@ assumes.
   name, writes a PROXY v2 header with the visitor's address and copies bytes.
   A local hostname always wins over a tunnel of the same name; `admin` is
   reserved.
-- **Claim codes.** 8 characters, one outstanding per tunnel, 15 minutes by
+- **Claim codes.** 8 characters, one outstanding per tunnel, ten days by
   default, single use, hashed at rest. Every failure answers the same `422`.
   `POST /claim` is limited per client address (5, then 1 per 12 s) and
-  globally (60, then 1 per s), before the body is parsed.
+  globally (60, then 1 per s), before the body is parsed: ten days at the global
+  rate is under a million guesses against 31⁸ (about 8.5 × 10¹¹) codes.
 - **Signed requests.** The token is never sent; the signature covers method,
   target URI and body digest. Verification is constant-time and every failure
   is a bare `401`.

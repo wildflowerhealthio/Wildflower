@@ -28,7 +28,7 @@
 //! | `WILDFLOWER_RELAY_ACME_STAGING` | `false` |
 //! | `WILDFLOWER_RELAY_ACME_CONTACT` | none (a `mailto:` address) |
 //! | `WILDFLOWER_RELAY_ADMIN_KEY` | none (the admin API is not served, so no tunnel can be created) |
-//! | `WILDFLOWER_RELAY_CLAIM_CODE_TTL_SECS` | `900` (at most `86400`) |
+//! | `WILDFLOWER_RELAY_CLAIM_CODE_TTL_SECS` | `864000`, ten days (at most `864000`) |
 
 use std::fmt::{self, Debug, Display};
 use std::net::SocketAddr;
@@ -93,10 +93,10 @@ impl RelaySettings {
     pub const ADMIN_KEY_MIN_LEN: usize = 32;
     pub const CLAIM_CODE_TTL_VAR: &'static str = "WILDFLOWER_RELAY_CLAIM_CODE_TTL_SECS";
     /// How long a claim code redeems for, unless configured.
-    pub const DEFAULT_CLAIM_CODE_TTL: Duration = Duration::from_secs(15 * 60);
+    pub const DEFAULT_CLAIM_CODE_TTL: Duration = Duration::from_secs(10 * 24 * 60 * 60);
     /// The longest claim-code lifetime accepted: a code is only safe to keep
     /// short while it is short-lived.
-    pub const MAX_CLAIM_CODE_TTL: Duration = Duration::from_secs(24 * 60 * 60);
+    pub const MAX_CLAIM_CODE_TTL: Duration = Self::DEFAULT_CLAIM_CODE_TTL;
 
     /// Read the settings from the process environment.
     ///
@@ -435,7 +435,7 @@ mod tests {
                 },
                 state_dir: PathBuf::from("relay-state"),
                 admin_key: None,
-                claim_code_ttl: Duration::from_secs(900),
+                claim_code_ttl: Duration::from_secs(864_000),
             }
         );
         assert_eq!(
@@ -506,7 +506,7 @@ mod tests {
             (AcmeSettings::CONTACT_VAR, "mailto:"),
             (RelaySettings::CLAIM_CODE_TTL_VAR, "soon"),
             (RelaySettings::CLAIM_CODE_TTL_VAR, "0"),
-            (RelaySettings::CLAIM_CODE_TTL_VAR, "86401"),
+            (RelaySettings::CLAIM_CODE_TTL_VAR, "864001"),
         ] {
             let mut pairs = REQUIRED.to_vec();
             pairs.push(bad);
