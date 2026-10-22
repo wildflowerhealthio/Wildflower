@@ -4,10 +4,10 @@ import { DateTime } from 'effect'
 import * as fc from 'fast-check'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
-import { type PointSeries, ValueAxis } from '@wildflowerhealthio/plots-fundamentals'
+import { ColourSlots, type PointSeries, ValueAxis } from '@wildflowerhealthio/plots-fundamentals'
 
 import { Legend } from './legend.tsx'
-import { seriesColors } from './series-colors.ts'
+import { colourSlotOf, seriesColors } from './series-colors.ts'
 
 afterEach(cleanup)
 
@@ -28,7 +28,7 @@ const seriesNamed = (
 })
 
 describe('Legend', () => {
-  test('lists every series in order, keyed in its series colour, with text outside it', () => {
+  test('lists every series axis by axis, keyed in its series colour, with text outside it', () => {
     fc.assert(
       fc.property(
         fc.array(
@@ -41,26 +41,31 @@ describe('Legend', () => {
           { minLength: 1, maxLength: ValueAxis.CAP }
         ),
         (entries) => {
-          const axes = ValueAxis.assign(
-            entries.map(({ label, unit }, index) => seriesNamed(label, unit, index))
+          const selected = entries.map(({ label, unit }, index) => seriesNamed(label, unit, index))
+          const axes = ValueAxis.assign(selected)
+          const colours = ColourSlots.assign(
+            new Map(),
+            selected.map((series) => series.id)
           )
           const { container } = render(
-            <Legend
-              axes={axes}
-              colours={axes.map((_, position) => position)}
-              lanes={[]}
-              laneCategories={[]}
-            />
+            <Legend axes={axes} colours={colours} lanes={[]} laneCategories={[]} />
           )
           // Structural query rather than `getAllByRole`: role queries are slow
           // enough in jsdom to time a property test out.
           const items = [...container.querySelectorAll('ul[aria-label="Series"] > li')]
-          expect(items).toHaveLength(axes.length)
+          const listed = axes.flatMap((axis) =>
+            axis.series.map((series) => ({ series, side: axis.side }))
+          )
+          expect(items).toHaveLength(selected.length)
           items.forEach((item, position) => {
-            const { label, unit } = entries[position]
+            const { series, side } = listed[position]
+            const { label, unit } = series
             expect(item.textContent).toContain(unit === null ? label : `${label} (${unit})`)
+            expect(item.textContent).toContain(`${side} axis`)
             const key = item.querySelector('[aria-hidden="true"]')
-            expect(key?.getAttribute('style')).toContain(seriesColors(position).mark)
+            expect(key?.getAttribute('style')).toContain(
+              seriesColors(colourSlotOf(colours, series.id)).mark
+            )
             // Only the key carries the series colour; the text never does.
             const coloured = [...item.querySelectorAll('[style]')]
             expect(coloured).toEqual([key])

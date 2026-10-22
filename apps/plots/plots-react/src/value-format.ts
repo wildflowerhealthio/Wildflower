@@ -85,11 +85,24 @@ const dateTimeFormat = new Intl.DateTimeFormat(undefined, {
 /** The viewer-local date and time of an instant, e.g. `Mar 4, 2024, 10:30 PM` — a span's ends. */
 const formatDateTime = (time: DateTime.Utc): string => dateTimeFormat.format(time.epochMillis)
 
-/** A series' name with its unit, e.g. `Glucose (mmol/L)` — what its axis and legend entry say. */
+/** A series' name with its unit, e.g. `Glucose (mmol/L)` — what its legend entry says. */
 const labelWithUnit = (series: Series.ValueSeries): string =>
   series.unit === null ? series.label : `${series.label} (${series.unit})`
 
+/**
+ * What an axis is labelled: its one series' {@link labelWithUnit}, or, for an
+ * axis several series share, their `sharedUnit` alone (`mm[Hg]`).
+ *
+ * @remarks
+ * A shared axis is labelled by what its series have in common, not by their
+ * names joined: two names and a unit outrun the frame's height, and the
+ * legend already says which side each series is read on.
+ */
+const axisLabel = (axis: ValueAxis.ValueAxis): string =>
+  axis.sharedUnit ?? labelWithUnit(axis.series[0])
+
 export {
+  axisLabel,
   axisTickFormat,
   formatAxisValue,
   formatDate,

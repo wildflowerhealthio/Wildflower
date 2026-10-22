@@ -3,21 +3,22 @@ import type { JSX } from 'react'
 
 import {
   Buckets,
+  type ColourSlots,
   type Level,
   Series,
   SpanSeries,
   type ValueAxis,
 } from '@wildflowerhealthio/plots-fundamentals'
 
-import { seriesColors, spanColour } from './series-colors.ts'
+import { colourSlotOf, seriesColors, spanColour } from './series-colors.ts'
 import { formatDate, formatDateTime, formatReading } from './value-format.ts'
 import styles from './crosshair-tooltip.module.css'
 
 interface CrosshairTooltipProps {
-  /** The chart's value axes, in selection order. */
+  /** The chart's value axes, in `ValueAxis.assign`'s order. */
   readonly axes: readonly ValueAxis.ValueAxis[]
-  /** Each axis' palette index, parallel to `axes`. */
-  readonly colours: readonly number[]
+  /** Each value series' palette index, from `ColourSlots.assign`. */
+  readonly colours: ColourSlots.ColourSlots
   /** The chart's span lanes, in selection order. */
   readonly lanes: readonly SpanSeries.SpanSeries[]
   /**
@@ -163,25 +164,27 @@ const CrosshairTooltip = ({
   >
     <p className={styles.time}>{formatDate(time)}</p>
     <ul className={styles.rows}>
-      {axes.map((axis, position) => {
-        const buckets = bucketsBySeriesId.get(axis.series.id)
-        const text =
-          buckets === undefined
-            ? readoutText(axis.series, Series.levelAt(axis.series, time))
-            : bucketReadoutText(axis.series, Buckets.at(buckets, time))
-        return (
-          <li key={axis.series.id} className={styles.row} data-testid="crosshair-row">
-            <span
-              className={styles.key}
-              style={{ background: seriesColors(colours[position]).mark }}
-              aria-hidden="true"
-            />
-            <span className={styles.value}>{text.value}</span>
-            <span className={styles.label}>{axis.series.label}</span>
-            {text.detail === null ? null : <span className={styles.detail}>{text.detail}</span>}
-          </li>
-        )
-      })}
+      {axes
+        .flatMap((axis) => axis.series)
+        .map((series) => {
+          const buckets = bucketsBySeriesId.get(series.id)
+          const text =
+            buckets === undefined
+              ? readoutText(series, Series.levelAt(series, time))
+              : bucketReadoutText(series, Buckets.at(buckets, time))
+          return (
+            <li key={series.id} className={styles.row} data-testid="crosshair-row">
+              <span
+                className={styles.key}
+                style={{ background: seriesColors(colourSlotOf(colours, series.id)).mark }}
+                aria-hidden="true"
+              />
+              <span className={styles.value}>{text.value}</span>
+              <span className={styles.label}>{series.label}</span>
+              {text.detail === null ? null : <span className={styles.detail}>{text.detail}</span>}
+            </li>
+          )
+        })}
       {lanes.map((lane) => (
         <SpanRows key={lane.id} lane={lane} time={time} />
       ))}

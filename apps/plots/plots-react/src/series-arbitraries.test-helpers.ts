@@ -2,6 +2,7 @@ import { DateTime } from 'effect'
 import * as fc from 'fast-check'
 
 import {
+  type Level,
   type LevelSeries,
   type PointSeries,
   type Series,
@@ -30,7 +31,7 @@ const valueArb = fc.integer({ min: -100_000, max: 100_000 }).map((cents) => cent
 
 /**
  * A point series of sorted, distinct days inside the window, some readings
- * carrying a band.
+ * carrying a band, in a unit of its own.
  */
 const pointSeriesArb = (
   tag: string,
@@ -49,7 +50,7 @@ const pointSeriesArb = (
       kind: 'points',
       id: `p:${tag}`,
       label: `Points ${tag}`,
-      unit: 'u',
+      unit: `unit ${tag}`,
       valueScale: 'fitted',
       interpolation,
       points: points
@@ -63,7 +64,7 @@ const pointSeriesArb = (
 
 /**
  * A level series of back-to-back or gapped levels in either line style, some
- * carrying a band or a note, the last possibly open.
+ * carrying a band or a note, the last possibly open, in a unit of its own.
  */
 const levelSeriesArb = (tag: string): fc.Arbitrary<LevelSeries.LevelSeries> =>
   fc
@@ -101,7 +102,7 @@ const levelSeriesArb = (tag: string): fc.Arbitrary<LevelSeries.LevelSeries> =>
         kind: 'levels',
         id: `l:${tag}`,
         label: `Levels ${tag}`,
-        unit: 'u',
+        unit: `unit ${tag}`,
         valueScale: 'from-zero',
         levels: built,
       }
@@ -141,14 +142,63 @@ const spanSeriesArb = (tag: string): fc.Arbitrary<SpanSeries.SpanSeries> =>
         })),
     }))
 
-/** One to `ValueAxis.CAP` series with distinct ids, in selection order. */
+/** The units {@link selectionArb} moves series into, so that some of them share an axis. */
+const SHARED_UNITS = ['shared a', 'shared b'] as const
+
+/** The lowest and highest value {@link inSharedUnit} moves a series' values between. */
+const SHARED_LOW = 100
+const SHARED_HIGH = 250
+
+/**
+ * `series` in `unit`, every value and band bound moved linearly from the
+ * series' own extent onto `[SHARED_LOW, SHARED_HIGH]`. Any two series moved
+ * this way are within `ValueAxis.MAX_SHARED_RATIO` of each other, so those in
+ * one unit share a value axis.
+ */
+const inSharedUnit = <S extends Series.ValueSeries>(series: S, unit: string): S => {
+  const marks = series.kind === 'points' ? series.points : series.levels
+  const bounds = marks.flatMap((mark) =>
+    [mark.value, mark.low, mark.high].filter((bound) => bound !== undefined)
+  )
+  const low = Math.min(...bounds)
+  const width = Math.max(...bounds) - low
+  const move = (value: number): number =>
+    width > 0 ? SHARED_LOW + ((value - low) / width) * (SHARED_HIGH - SHARED_LOW) : SHARED_LOW
+  const moveMark = <M extends Level.Level | PointSeries.Point>(mark: M): M => ({
+    ...mark,
+    value: move(mark.value),
+    ...(mark.low === undefined ? {} : { low: move(mark.low) }),
+    ...(mark.high === undefined ? {} : { high: move(mark.high) }),
+  })
+  return series.kind === 'points'
+    ? { ...series, unit, points: series.points.map(moveMark) }
+    : { ...series, unit, levels: series.levels.map(moveMark) }
+}
+
+/**
+ * One to `ValueAxis.CAP` series with distinct ids, in selection order. Each
+ * keeps its own unit or is moved into one of {@link SHARED_UNITS}
+ * ({@link inSharedUnit}), so a selection often puts several series on one
+ * shared axis and sometimes on none.
+ */
 const selectionArb = (
   seriesArb: (tag: string) => fc.Arbitrary<Series.ValueSeries>
 ): fc.Arbitrary<readonly Series.ValueSeries[]> =>
   fc
     .integer({ min: 1, max: ValueAxis.CAP })
     .chain((count) =>
-      fc.tuple(...Array.from({ length: count }, (_, index) => seriesArb(`s${index}`)))
+      fc.tuple(
+        ...Array.from({ length: count }, (_, index) =>
+          fc
+            .tuple(
+              seriesArb(`s${index}`),
+              fc.option(fc.constantFrom(...SHARED_UNITS), { nil: null })
+            )
+            .map(([series, sharedUnit]) =>
+              sharedUnit === null ? series : inSharedUnit(series, sharedUnit)
+            )
+        )
+      )
     )
 
 export {

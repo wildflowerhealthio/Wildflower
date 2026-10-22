@@ -7,6 +7,7 @@ import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
 import {
   Buckets,
+  ColourSlots,
   type LevelSeries,
   type PointSeries,
   Series,
@@ -26,7 +27,7 @@ import {
   spanSeriesArb,
   testWindow,
 } from './series-arbitraries.test-helpers.ts'
-import { seriesColors, spanColour } from './series-colors.ts'
+import { NEUTRAL_COLOUR, seriesColors, spanColour } from './series-colors.ts'
 import { FALLBACK_WIDTH } from './use-plot.ts'
 import { formatAxisValue, formatReading, tickDecimals } from './value-format.ts'
 
@@ -63,8 +64,8 @@ const levels: LevelSeries.LevelSeries = {
   levels: [{ start: atDay(14), end: null, value: 1000, lineStyle: 'solid', note: 'per day' }],
 }
 
-const renderChart = (axes: readonly ValueAxis.ValueAxis[]): RenderResult =>
-  render(<MultiAxisChart axes={axes} lanes={[]} xDomain={testWindow} />)
+const renderChart = (series: readonly Series.ValueSeries[]): RenderResult =>
+  render(<MultiAxisChart series={series} lanes={[]} xDomain={testWindow} />)
 
 /** The plot frame Plot clips marks to — the rendered extent of the x and y ranges. */
 interface Frame {
@@ -102,19 +103,18 @@ const plotAreaOf = (container: HTMLElement): HTMLElement => {
 
 describe('MultiAxisChart axes', () => {
   test(
-    'draws one value axis per series, labelled with ValueAxis.ticksFor and coloured as its line',
+    "draws each axis ValueAxis.assign returns, labelled with ValueAxis.ticksFor, in its one series' colour or neutral when shared",
     () => {
       fc.assert(
         fc.property(selectionArb(pointSeriesArb), (selected) => {
           const axes = ValueAxis.assign(selected)
-          const { container } = renderChart(axes)
+          const { container } = renderChart(selected)
 
           const tickLabelGroups = container.querySelectorAll('[aria-label="y-axis tick label"]')
           const tickGroups = container.querySelectorAll('[aria-label="y-axis tick"]')
           expect(tickLabelGroups).toHaveLength(axes.length)
           expect(tickGroups).toHaveLength(axes.length)
 
-          const lineStrokes = markStrokes(container, 'line')
           axes.forEach((axis, position) => {
             const expectedLabels = ValueAxis.ticksFor(axis.domain).map((tick) =>
               formatAxisValue(tick, tickDecimals(axis))
@@ -124,11 +124,17 @@ describe('MultiAxisChart axes', () => {
             )
             expect(renderedLabels).toEqual(expectedLabels)
 
-            const token = seriesColors(position).mark
+            // Fresh colours follow selection order, so a series' slot is its position.
+            const token =
+              axis.sharedUnit === null
+                ? seriesColors(selected.indexOf(axis.series[0])).mark
+                : NEUTRAL_COLOUR
             expect(tickGroups[position].getAttribute('stroke')).toBe(token)
-            // Point series only: exactly one line mark per axis, in axis order.
-            expect(lineStrokes[position]).toBe(token)
           })
+          // Point series only: exactly one line mark per series, in selection order.
+          expect(markStrokes(container, 'line')).toEqual(
+            selected.map((_, position) => seriesColors(position).mark)
+          )
           cleanup()
         }),
         { numRuns: RENDER_RUNS }
@@ -138,10 +144,13 @@ describe('MultiAxisChart axes', () => {
   )
 
   test('hangs each axis on the side ValueAxis.assign chose, stepping outward by index', () => {
-    const axes = ValueAxis.assign(
-      ['a', 'b', 'c', 'd'].map((tag): PointSeries.PointSeries => ({ ...readings, id: `p:${tag}` }))
-    )
-    const { container } = renderChart(axes)
+    const selected = ['a', 'b', 'c', 'd'].map((tag): PointSeries.PointSeries => ({
+      ...readings,
+      id: `p:${tag}`,
+      unit: tag,
+    }))
+    const axes = ValueAxis.assign(selected)
+    const { container } = renderChart(selected)
     const frame = frameOf(container)
     const tickXs = [...container.querySelectorAll('[aria-label="y-axis tick"]')].map((group) => {
       const first = group.querySelector('path')?.getAttribute('transform') ?? ''
@@ -162,13 +171,70 @@ describe('MultiAxisChart axes', () => {
   })
 })
 
+describe('MultiAxisChart shared axes', () => {
+  const systolic: PointSeries.PointSeries = {
+    kind: 'points',
+    id: 'p:systolic',
+    label: 'Systolic',
+    unit: 'mm[Hg]',
+    valueScale: 'fitted',
+    interpolation: 'linear',
+    points: [
+      { time: atDay(0), value: 118 },
+      { time: atDay(30), value: 150 },
+      { time: atDay(60), value: 105 },
+    ],
+  }
+  const diastolic: PointSeries.PointSeries = {
+    ...systolic,
+    id: 'p:diastolic',
+    label: 'Diastolic',
+    points: [
+      { time: atDay(0), value: 76 },
+      { time: atDay(30), value: 95 },
+      { time: atDay(60), value: 65 },
+    ],
+  }
+
+  test('draws one neutral axis labelled with the unit, and each series in its own colour', () => {
+    expect(ValueAxis.assign([systolic, diastolic])).toHaveLength(1)
+    const { container } = renderChart([systolic, diastolic])
+
+    const tickGroups = container.querySelectorAll('[aria-label="y-axis tick"]')
+    expect(tickGroups).toHaveLength(1)
+    expect(tickGroups[0].getAttribute('stroke')).toBe(NEUTRAL_COLOUR)
+    const axisLabel = container.querySelector('[aria-label="y-axis label"] text')
+    expect(axisLabel?.textContent).toBe('mm[Hg]')
+    expect(markStrokes(container, 'line')).toEqual([seriesColors(0).mark, seriesColors(1).mark])
+
+    const legendEntries = [...container.querySelectorAll('ul[aria-label="Series"] > li')]
+    expect(legendEntries.map((entry) => entry.textContent)).toEqual([
+      'Systolic (mm[Hg])left axis',
+      'Diastolic (mm[Hg])left axis',
+    ])
+  })
+
+  test('the crosshair reads every series on a shared axis', () => {
+    const { container } = renderChart([systolic, diastolic])
+    fireEvent.pointerMove(plotAreaOf(container), { clientX: 0 })
+    const rows = screen.getAllByTestId('crosshair-row').map((row) => row.textContent)
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toContain('Systolic')
+    expect(rows[1]).toContain('Diastolic')
+  })
+})
+
 describe('MultiAxisChart time axis', () => {
   test('draws a grid line at every labelled time tick and nowhere else, at any width', () => {
     const options = chartOptions(
       ValueAxis.assign([readings, levels]),
+      [readings, levels],
       [],
       testWindow,
-      [0, 1],
+      new Map([
+        [readings.id, 0],
+        [levels.id, 1],
+      ]),
       new Map()
     )
     if (options === null) throw new Error('a non-empty selection has a figure')
@@ -225,7 +291,7 @@ describe('MultiAxisChart marks', () => {
     () => {
       fc.assert(
         fc.property(selectionArb(pointSeriesArb), (selected) => {
-          const { container } = renderChart(ValueAxis.assign(selected))
+          const { container } = renderChart(selected)
           const frame = frameOf(container)
           const circles = [...container.querySelectorAll('svg > g[aria-label="dot"] circle')]
           const pointCount = selected.reduce((total, series) => total + Series.sizeOf(series), 0)
@@ -248,7 +314,7 @@ describe('MultiAxisChart marks', () => {
     () => {
       fc.assert(
         fc.property(selectionArb(levelSeriesArb), (selected) => {
-          const { container } = renderChart(ValueAxis.assign(selected))
+          const { container } = renderChart(selected)
           const lines = [...container.querySelectorAll('svg > g[aria-label="line"] > g')]
           const dashedLines = lines.filter((line) => line.getAttribute('stroke-dasharray') !== null)
           const lineStyles = selected.flatMap((series) =>
@@ -269,7 +335,7 @@ describe('MultiAxisChart marks', () => {
     () => {
       fc.assert(
         fc.property(selectionArb(pointSeriesArb), (selected) => {
-          const { container } = renderChart(ValueAxis.assign(selected))
+          const { container } = renderChart(selected)
           const expected = selected.flatMap((series, position) =>
             series.kind === 'points' &&
             series.points.some((point) => point.low !== undefined && point.high !== undefined)
@@ -290,7 +356,7 @@ describe('MultiAxisChart marks', () => {
     () => {
       fc.assert(
         fc.property(selectionArb(levelSeriesArb), (selected) => {
-          const { container } = renderChart(ValueAxis.assign(selected))
+          const { container } = renderChart(selected)
           const bandedCounts = selected.map((series) =>
             series.kind === 'levels'
               ? series.levels.filter((level) => level.low !== undefined && level.high !== undefined)
@@ -319,7 +385,7 @@ describe('MultiAxisChart marks', () => {
     () => {
       fc.assert(
         fc.property(pointSeriesArb('s', 'step'), (series) => {
-          const { container } = renderChart(ValueAxis.assign([series]))
+          const { container } = renderChart([series])
           const path = container.querySelector('svg > g[aria-label="line"] path')
           if (path === null) throw new Error('the series drew no line')
           const vertices = verticesOf(path)
@@ -339,7 +405,7 @@ describe('MultiAxisChart marks', () => {
   )
 
   test('draws a linear point series straight from reading to reading', () => {
-    const { container } = renderChart(ValueAxis.assign([readings]))
+    const { container } = renderChart([readings])
     const path = container.querySelector('svg > g[aria-label="line"] path')
     if (path === null) throw new Error('the series drew no line')
     expect(verticesOf(path)).toHaveLength(readings.points.length)
@@ -412,7 +478,7 @@ describe('levelRuns', () => {
 })
 
 describe('MultiAxisChart crosshair', () => {
-  const axes = ValueAxis.assign([readings, levels])
+  const selected = [readings, levels]
 
   /** The client x of `day` inside the frame, as Plot's linear time scale places it. */
   const clientXFor = (container: HTMLElement, day: number): number => {
@@ -423,7 +489,7 @@ describe('MultiAxisChart crosshair', () => {
   test('snaps to the nearest stop and lists each series’ level there', () => {
     const onHover = vi.fn()
     const { container } = render(
-      <MultiAxisChart axes={axes} lanes={[]} xDomain={testWindow} onHover={onHover} />
+      <MultiAxisChart series={selected} lanes={[]} xDomain={testWindow} onHover={onHover} />
     )
 
     // Day 34 is nearest the day-31 reading (the level starting at 14 and the
@@ -433,7 +499,7 @@ describe('MultiAxisChart crosshair', () => {
     const snapped = atDay(31)
     expect(onHover.mock.lastCall?.[0]?.epochMillis).toBe(snapped.epochMillis)
     const rows = screen.getAllByTestId('crosshair-row')
-    expect(rows).toHaveLength(axes.length)
+    expect(rows).toHaveLength(selected.length)
 
     const reading = Series.levelAt(readings, snapped)
     const level = Series.levelAt(levels, snapped)
@@ -456,14 +522,14 @@ describe('MultiAxisChart crosshair', () => {
   test('drops the crosshair when the window changes under a resting pointer', () => {
     const onHover = vi.fn()
     const { container, rerender } = render(
-      <MultiAxisChart axes={axes} lanes={[]} xDomain={testWindow} onHover={onHover} />
+      <MultiAxisChart series={selected} lanes={[]} xDomain={testWindow} onHover={onHover} />
     )
 
     fireEvent.pointerMove(plotAreaOf(container), { clientX: clientXFor(container, 34) })
     expect(screen.queryAllByTestId('crosshair-row')).not.toHaveLength(0)
 
     const later: TimeDomain.TimeDomain = [atDay(100), atDay(200)]
-    rerender(<MultiAxisChart axes={axes} lanes={[]} xDomain={later} onHover={onHover} />)
+    rerender(<MultiAxisChart series={selected} lanes={[]} xDomain={later} onHover={onHover} />)
     expect(screen.queryAllByTestId('crosshair-row')).toHaveLength(0)
     expect(screen.queryByTestId('crosshair-rule')).toBeNull()
     expect(onHover).toHaveBeenLastCalledWith(null)
@@ -472,7 +538,7 @@ describe('MultiAxisChart crosshair', () => {
   test('tells onHover only when the crosshair lands on a new stop', () => {
     const onHover = vi.fn()
     const { container } = render(
-      <MultiAxisChart axes={axes} lanes={[]} xDomain={testWindow} onHover={onHover} />
+      <MultiAxisChart series={selected} lanes={[]} xDomain={testWindow} onHover={onHover} />
     )
 
     // Days 33 and 35 both snap to the day-31 reading.
@@ -482,7 +548,9 @@ describe('MultiAxisChart crosshair', () => {
   })
 
   test('reads a level series as absent before its first level', () => {
-    const { container } = render(<MultiAxisChart axes={axes} lanes={[]} xDomain={testWindow} />)
+    const { container } = render(
+      <MultiAxisChart series={selected} lanes={[]} xDomain={testWindow} />
+    )
 
     fireEvent.pointerMove(plotAreaOf(container), { clientX: clientXFor(container, 2) })
 
@@ -494,7 +562,7 @@ describe('MultiAxisChart crosshair', () => {
   test('hides the readout when the pointer leaves', () => {
     const onHover = vi.fn()
     const { container } = render(
-      <MultiAxisChart axes={axes} lanes={[]} xDomain={testWindow} onHover={onHover} />
+      <MultiAxisChart series={selected} lanes={[]} xDomain={testWindow} onHover={onHover} />
     )
 
     fireEvent.pointerMove(plotAreaOf(container), { clientX: clientXFor(container, 34) })
@@ -507,12 +575,12 @@ describe('MultiAxisChart crosshair', () => {
 })
 
 describe('MultiAxisChart tooltip placement', () => {
-  const axes = ValueAxis.assign([readings, levels])
+  const selected = [readings, levels]
 
   /** The readout with the crosshair on `day`, a reading, inside a window of `days`. */
   const tooltipAt = (day: number, days: number): HTMLElement => {
     const { container } = render(
-      <MultiAxisChart axes={axes} lanes={[]} xDomain={[atDay(0), atDay(days)]} />
+      <MultiAxisChart series={selected} lanes={[]} xDomain={[atDay(0), atDay(days)]} />
     )
     const frame = frameOf(container)
     fireEvent.pointerMove(plotAreaOf(container), {
@@ -539,21 +607,169 @@ describe('MultiAxisChart colours', () => {
 
   test('removing an earlier series does not repaint the rest; a newcomer takes the freed colour', () => {
     const { container, rerender } = render(
-      <MultiAxisChart axes={ValueAxis.assign([readings, levels])} lanes={[]} xDomain={testWindow} />
+      <MultiAxisChart series={[readings, levels]} lanes={[]} xDomain={testWindow} />
     )
     expect(legendKeys(container)[1]).toContain(seriesColors(1).mark)
 
-    rerender(<MultiAxisChart axes={ValueAxis.assign([levels])} lanes={[]} xDomain={testWindow} />)
+    rerender(<MultiAxisChart series={[levels]} lanes={[]} xDomain={testWindow} />)
     expect(legendKeys(container)).toHaveLength(1)
     expect(legendKeys(container)[0]).toContain(seriesColors(1).mark)
     expect(markStrokes(container, 'line')).toEqual([seriesColors(1).mark])
 
-    rerender(
-      <MultiAxisChart axes={ValueAxis.assign([levels, readings])} lanes={[]} xDomain={testWindow} />
-    )
+    rerender(<MultiAxisChart series={[levels, readings]} lanes={[]} xDomain={testWindow} />)
     expect(legendKeys(container)[0]).toContain(seriesColors(1).mark)
     expect(legendKeys(container)[1]).toContain(seriesColors(0).mark)
   })
+})
+
+describe('MultiAxisChart selection order', () => {
+  /** A point series `id` in `unit` with a reading a month apart per value. */
+  const seriesIn = (
+    id: string,
+    unit: string,
+    values: readonly number[]
+  ): PointSeries.PointSeries => ({
+    ...readings,
+    id,
+    label: id,
+    unit,
+    points: values.map((value, index) => ({ time: atDay(index * 30), value })),
+  })
+  const first = seriesIn('p:first', 'mg', [100, 120, 110])
+  const second = seriesIn('p:second', '%', [40, 60, 50])
+  const third = seriesIn('p:third', 'mg', [90, 130, 100])
+  const selection = [first, second, third]
+
+  test("the third series shares the first one's axis", () => {
+    expect(
+      ValueAxis.assign(selection).map((axis) => axis.series.map((series) => series.id))
+    ).toEqual([['p:first', 'p:third'], ['p:second']])
+  })
+
+  test('colours follow selection order, picked one by one or opened from a link', () => {
+    const expected = [seriesColors(0).mark, seriesColors(1).mark, seriesColors(2).mark]
+
+    const { container, rerender } = render(
+      <MultiAxisChart series={[first]} lanes={[]} xDomain={testWindow} />
+    )
+    rerender(<MultiAxisChart series={[first, second]} lanes={[]} xDomain={testWindow} />)
+    rerender(<MultiAxisChart series={selection} lanes={[]} xDomain={testWindow} />)
+    expect(markStrokes(container, 'line')).toEqual(expected)
+    cleanup()
+
+    const opened = renderChart(selection)
+    expect(markStrokes(opened.container, 'line')).toEqual(expected)
+  })
+
+  test('lines draw in selection order, so the series picked last is on top', () => {
+    const { container } = renderChart(selection)
+    expect(markStrokes(container, 'line')).toEqual([
+      seriesColors(0).mark,
+      seriesColors(1).mark,
+      seriesColors(2).mark,
+    ])
+  })
+
+  test("the legend lists series axis by axis, a shared axis' series together", () => {
+    const { container } = renderChart(selection)
+    const legendEntries = [...container.querySelectorAll('ul[aria-label="Series"] > li')]
+    expect(legendEntries.map((entry) => entry.textContent)).toEqual([
+      'p:first (mg)left axis',
+      'p:third (mg)left axis',
+      'p:second (%)right axis',
+    ])
+  })
+})
+
+describe('MultiAxisChart shared axes, any selection', () => {
+  test(
+    'the legend and the readout list every series axis by axis, each keyed in its own colour',
+    () => {
+      fc.assert(
+        fc.property(
+          fc.oneof(selectionArb(pointSeriesArb), selectionArb(levelSeriesArb)),
+          (selected) => {
+            const axes = ValueAxis.assign(selected)
+            const listed = axes.flatMap((axis) =>
+              axis.series.map((series) => ({ series, side: axis.side }))
+            )
+            const { container } = renderChart(selected)
+            fireEvent.pointerMove(plotAreaOf(container), { clientX: 0 })
+
+            const legendEntries = [...container.querySelectorAll('ul[aria-label="Series"] > li')]
+            const rows = screen.getAllByTestId('crosshair-row')
+            expect(legendEntries).toHaveLength(selected.length)
+            expect(rows).toHaveLength(selected.length)
+            listed.forEach(({ series, side }, position) => {
+              // Fresh colours follow selection order, so a series' slot is its position.
+              const key = `background: ${seriesColors(selected.indexOf(series)).mark}`
+              expect(legendEntries[position].textContent).toContain(series.label)
+              expect(legendEntries[position].textContent).toContain(`${side} axis`)
+              expect(
+                legendEntries[position].querySelector('[aria-hidden]')?.getAttribute('style')
+              ).toContain(key)
+              expect(rows[position].textContent).toContain(series.label)
+              expect(
+                rows[position].querySelector('[aria-hidden]')?.getAttribute('style')
+              ).toContain(key)
+            })
+            cleanup()
+          }
+        ),
+        { numRuns: RENDER_RUNS }
+      )
+    },
+    RENDER_TIMEOUT
+  )
+
+  test(
+    'a bucketed series draws its envelope in its own band colour, inside the axis it shares',
+    () => {
+      fc.assert(
+        fc.property(
+          selectionArb(pointSeriesArb),
+          fc.integer({ min: 1, max: 12 }),
+          (selected, bucketCount) => {
+            const axes = ValueAxis.assign(selected)
+            const colours = ColourSlots.assign(
+              new Map(),
+              selected.map((series) => series.id)
+            )
+            const bucketsBySeriesId = Buckets.ofDenseSeries(selected, testWindow, bucketCount)
+            const options = chartOptions(axes, selected, [], testWindow, colours, bucketsBySeriesId)
+            if (options === null) throw new Error('a non-empty selection has a figure')
+            const container = document.createElement('div')
+            container.append(Plot.plot({ ...options, width: FALLBACK_WIDTH }))
+
+            const expectedFills = selected.flatMap((series, position) =>
+              bucketsBySeriesId.has(series.id) ||
+              (series.kind === 'points' &&
+                series.points.some((point) => point.low !== undefined && point.high !== undefined))
+                ? [seriesColors(position).band]
+                : []
+            )
+            expect(markFills(container, 'area')).toEqual(expectedFills)
+
+            for (const axis of axes) {
+              for (const series of axis.series) {
+                const buckets = bucketsBySeriesId.get(series.id)
+                if (buckets === undefined) continue
+                for (const vertex of bucketVertices(axis, buckets)) {
+                  for (const fraction of [vertex.min, vertex.mean, vertex.max]) {
+                    if (Number.isNaN(fraction)) continue
+                    expect(fraction).toBeGreaterThanOrEqual(0)
+                    expect(fraction).toBeLessThanOrEqual(1)
+                  }
+                }
+              }
+            }
+          }
+        ),
+        { numRuns: RENDER_RUNS }
+      )
+    },
+    RENDER_TIMEOUT
+  )
 })
 
 describe('MultiAxisChart empty state', () => {
@@ -588,7 +804,7 @@ const evenlySpread = (id: string, count: number): PointSeries.PointSeries => {
 describe('MultiAxisChart dense series', () => {
   test('draws a 10 000-reading series as a mean line over one envelope, without dots', () => {
     const dense = evenlySpread('p:dense', 10_000)
-    const { container } = renderChart(ValueAxis.assign([dense]))
+    const { container } = renderChart([dense])
     expect(container.querySelectorAll('circle')).toHaveLength(0)
     const areas = container.querySelectorAll('svg > g[aria-label="area"]')
     expect(areas).toHaveLength(1)
@@ -598,7 +814,7 @@ describe('MultiAxisChart dense series', () => {
   })
 
   test('still draws a 20-reading series reading by reading, with its dots', () => {
-    const { container } = renderChart(ValueAxis.assign([evenlySpread('p:sparse', 20)]))
+    const { container } = renderChart([evenlySpread('p:sparse', 20)])
     expect(container.querySelectorAll('svg > g[aria-label="dot"] circle')).toHaveLength(20)
     expect(container.querySelectorAll('svg > g[aria-label="area"]')).toHaveLength(0)
   })
@@ -633,8 +849,9 @@ describe('MultiAxisChart dense series', () => {
         }
       })
 
-    const axes = ValueAxis.assign([evenlySpread('p:hundred', 100)])
-    const { container } = renderChart(axes)
+    const selected = [evenlySpread('p:hundred', 100)]
+    const axes = ValueAxis.assign(selected)
+    const { container } = renderChart(selected)
     // At the fallback width the frame holds fewer buckets than readings.
     expect(bucketCountFor(axes, FALLBACK_WIDTH)).toBeLessThan(100)
     expect(container.querySelectorAll('circle')).toHaveLength(0)
@@ -646,17 +863,21 @@ describe('MultiAxisChart dense series', () => {
 
   test('the crosshair snaps to a bucket middle and reads its mean, count and range', () => {
     const dense = evenlySpread('p:dense', 10_000)
-    const axes = ValueAxis.assign([dense, levels])
+    const selected = [dense, levels]
     const onHover = vi.fn()
     const { container } = render(
-      <MultiAxisChart axes={axes} lanes={[]} xDomain={testWindow} onHover={onHover} />
+      <MultiAxisChart series={selected} lanes={[]} xDomain={testWindow} onHover={onHover} />
     )
     const frame = frameOf(container)
     fireEvent.pointerMove(plotAreaOf(container), {
       clientX: frame.x + (100 / WINDOW_DAYS) * frame.width,
     })
 
-    const buckets = Buckets.of(dense.points, testWindow, bucketCountFor(axes, FALLBACK_WIDTH))
+    const buckets = Buckets.of(
+      dense.points,
+      testWindow,
+      bucketCountFor(ValueAxis.assign(selected), FALLBACK_WIDTH)
+    )
     const snapped: unknown = onHover.mock.lastCall?.[0]
     if (!DateTime.isDateTime(snapped)) throw new Error('the crosshair did not land')
     const bucket = Buckets.at(buckets, DateTime.toUtc(snapped))
@@ -758,11 +979,7 @@ describe('MultiAxisChart span lanes', () => {
       fc.assert(
         fc.property(pointSeriesArb('p'), spanSeriesArb('s'), (points, spans) => {
           const { container } = render(
-            <MultiAxisChart
-              axes={ValueAxis.assign([points])}
-              lanes={[spans]}
-              xDomain={testWindow}
-            />
+            <MultiAxisChart series={[points]} lanes={[spans]} xDomain={testWindow} />
           )
           const inWindow = spans.spans.filter(
             (span) =>
@@ -784,7 +1001,7 @@ describe('MultiAxisChart span lanes', () => {
   )
 
   test('a lane alone draws with no value axis at all', () => {
-    const { container } = render(<MultiAxisChart axes={[]} lanes={[lane]} xDomain={testWindow} />)
+    const { container } = render(<MultiAxisChart series={[]} lanes={[lane]} xDomain={testWindow} />)
     expect(laneRects(container)).toHaveLength(1)
     expect(container.querySelectorAll('[aria-label^="y-axis"]')).toHaveLength(0)
     expect(screen.getByRole('list', { name: 'Activity categories' }).textContent).toBe('Sleeping')
@@ -792,7 +1009,7 @@ describe('MultiAxisChart span lanes', () => {
 
   test('the crosshair lists the span covering it, under the value series', () => {
     const { container } = render(
-      <MultiAxisChart axes={ValueAxis.assign([readings])} lanes={[lane]} xDomain={testWindow} />
+      <MultiAxisChart series={[readings]} lanes={[lane]} xDomain={testWindow} />
     )
     const frame = frameOf(container)
     // Day 34 is nearest the day-31 reading; the span runs from day 20 to 40.
@@ -810,9 +1027,9 @@ describe('MultiAxisChart span lanes', () => {
       ...lane,
       id: `s:${index}`,
     }))
-    expect(() => chartOptions([], lanes, testWindow, [], new Map())).toThrow(/at most 2/)
+    expect(() => chartOptions([], [], lanes, testWindow, new Map(), new Map())).toThrow(/at most 2/)
     expect(
-      chartOptions([], lanes.slice(0, SpanSeries.LANE_CAP), testWindow, [], new Map())
+      chartOptions([], [], lanes.slice(0, SpanSeries.LANE_CAP), testWindow, new Map(), new Map())
     ).not.toBeNull()
   })
 })

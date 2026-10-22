@@ -24,7 +24,7 @@ plots-react          the Plot chart, series panel, range presets and page layout
 
 - **`plots-fundamentals`** — the plot vocabulary, as `effect`-style
   namespaces from one flat entry: `Level`, `PointSeries`, `LevelSeries`,
-  `SpanSeries` (labelled time spans, drawn as a lane), `Series`, `ValueAxis` (domains, ticks, axis assignment), `Buckets` (a dense
+  `SpanSeries` (labelled time spans, drawn as a lane), `Series`, `ValueAxis` (domains, ticks, axis assignment and sharing), `Buckets` (a dense
   series summarised per time slice), `Crosshair`,
   `ColourSlots`, `TimeDomain`, `SeriesId` (the escaped field grammar ids are
   written in) and `SeriesSource` (a domain source as one value). See its
@@ -45,12 +45,14 @@ plots-react          the Plot chart, series panel, range presets and page layout
   codec a shared link round-trips through. See its
   [AGENTS.md](./plots-core-js/AGENTS.md).
 - **`plots-react`** — the browser layer: `MultiAxisChart` draws the
-  axes `ValueAxis.assign` returns as one Observable Plot figure — a
-  colour-matched value axis per series, point series as lines with dots (or,
-  too dense for dots, a bucket-mean line over a min–max envelope), level
-  series as step lines broken at gaps and dashed where the domain says, `low` /
-  `high` bands, span series as thin lanes under the time axis, a legend, and a
-  crosshair readout of `Series.levelAt` per value series and
+  axes `ValueAxis.assign` returns as one Observable Plot figure — a value
+  axis per series or per group of series sharing a unit and values of a
+  similar magnitude (colour-matched when it has one series, neutral when
+  shared), point series
+  as lines with dots (or, too dense for dots, a bucket-mean line over a
+  min–max envelope), level series as step lines broken at gaps and dashed
+  where the domain says, `low` / `high` bands, span series as thin lanes
+  under the time axis, a legend, and a crosshair readout of `Series.levelAt` per value series and
   `SpanSeries.spansAt` per lane. `SeriesPanel` lays out `groupForPanel`'s
   catalogue as searchable, collapsible groups of checkboxes capped at
   `ValueAxis.CAP` value series and `SpanSeries.LANE_CAP` lanes; `RangePresets`

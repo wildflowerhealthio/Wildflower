@@ -17,7 +17,7 @@ import type { TimeDomain } from './time-domain.ts'
  */
 type ValueScale = 'fitted' | 'from-zero' | 'zero-to-one'
 
-/** A series of values, each drawn against the series' own value axis. */
+/** A series of values, drawn against a value axis of its own or one it shares (`ValueAxis.assign`). */
 type ValueSeries = PointSeries.PointSeries | LevelSeries.LevelSeries
 
 /** Anything the chart plots; discriminate on `kind`. */

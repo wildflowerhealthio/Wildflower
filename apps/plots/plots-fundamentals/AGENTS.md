@@ -50,10 +50,23 @@ functions read in the namespace's context (`ValueAxis.assign`, not
   `boundariesOf` (level starts and stated ends; span starts and ends),
   `extentOf`, `extentOfAll` (the span of several series together) and `sizeOf`
   take any series.
-- **`ValueAxis`** (`src/value-axis.ts`) — one value axis per value series:
-  `assign` (sides alternate in selection order, `CAP` = 4 axes), `domainFor` (fitted as
-  the series' `valueScale` says), `niceDomain`, `ticksFor` (never `-0`; a
-  `niceDomain` result is labelled at both ends), `normalise` / `denormalise`.
+- **`ValueAxis`** (`src/value-axis.ts`) — value axes, each holding one or
+  more `series`: `assign` puts each series, in selection order, on the first
+  axis it can share or a new one, and sides alternate in axis order (`CAP` =
+  4 series). Series share an axis when their `unit`s are equal and not
+  `null`, each plots something, their scales are compatible (`'fitted'` with
+  `'from-zero'`, the axis then drawn from zero; `'zero-to-one'` only with
+  itself), and their values are of a similar magnitude, measured on raw
+  extents (values and bands, unpadded): the shared highest at most
+  `MAX_SHARED_RATIO` = 10 times the shared lowest, or, on an axis drawn from
+  zero, each series' highest at least a tenth of the shared highest. A
+  `'fitted'` series with a value at or below zero never shares. The shared
+  domain is rounded once, from the members' extents. An axis' `sharedUnit`
+  is set only when several series share it, so a renderer reads "shared"
+  from it rather than deciding. `domainFor` (the axis a
+  series gets alone, fitted as its `valueScale` says), `niceDomain`,
+  `ticksFor` (never `-0`; a `niceDomain` result is labelled at both ends),
+  `normalise` / `denormalise`.
 - **`Buckets`** (`src/buckets.ts`) — a dense point series summarised for
   drawing: `of(points, xDomain, bucketCount)` splits the domain into
   fixed-width, half-open slices (`start`, `end`) and keeps each slice holding

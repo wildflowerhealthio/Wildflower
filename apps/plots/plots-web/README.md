@@ -64,8 +64,9 @@ their record, lay it out.
   page halted, and what the chart leaves out.
 - **Layout** (`src/patient-record.tsx`). `groupForPanel` lays the series out
   for `SeriesPanel` (observation categories first, Medications last); the
-  selected series, in selection order, go through `ValueAxis.assign` to
-  `MultiAxisChart`, over `xDomain(range, now, Series.extentOfAll(selected))`.
+  selected series, in selection order, go to `MultiAxisChart`, which puts
+  the point and level series on axes with `ValueAxis.assign`, over
+  `xDomain(range, now, Series.extentOfAll(selected))`.
 - **URL state** (`src/use-url-selection.ts`). The selection and the range
   live only in the URL, beside `usePatientChoice`'s `?patient=`: read once
   with `decodeSelection`, written back with `withSelection` (which keeps every
