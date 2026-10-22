@@ -10,6 +10,8 @@ import {
 } from 'react'
 
 import type { PickedFile, FormatDetector } from '@wildflowerhealthio/importer-fundamentals'
+import { walkthroughAnchor } from '@wildflowerhealthio/walkthrough-core'
+import { ImporterWalkthroughAnchor } from '../walkthrough-anchors.ts'
 import { acceptLocalFile, type ReadableFile, type RejectedFile } from './local-file.ts'
 import { ServerSourceFileList } from './server-source-file-list.tsx'
 import styles from './source-picker.module.css'
@@ -179,6 +181,7 @@ const SourcePicker = ({ detectors, onPick }: SourcePickerProps): JSX.Element => 
         onDrop={onDrop}
         onDragOver={onDragOver}
         onDragLeave={() => setDragActive(false)}
+        {...walkthroughAnchor(ImporterWalkthroughAnchor.dropZone)}
       >
         Choose files, or drop them here
       </button>
@@ -193,7 +196,12 @@ const SourcePicker = ({ detectors, onPick }: SourcePickerProps): JSX.Element => 
       <button type="button" className={styles.folderButton} onClick={openPicker}>
         Choose files
       </button>
-      <button type="button" className={styles.folderButton} onClick={openFolderPicker}>
+      <button
+        type="button"
+        className={styles.folderButton}
+        onClick={openFolderPicker}
+        {...walkthroughAnchor(ImporterWalkthroughAnchor.chooseFolder)}
+      >
         Choose a folder
       </button>
       <input

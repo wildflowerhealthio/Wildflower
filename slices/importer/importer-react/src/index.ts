@@ -13,11 +13,13 @@
  * the source file when needed and persists the reviewed resources, each
  * stamped with the source file it came from.
  *
- * Only three other symbols are exported, and each for a stated reason:
+ * Only four other symbols are exported, and each for a stated reason:
  * {@link ServerSourceFileList}, because the anonymizer's shell mounts
- * it in its own `serverSource` slot; and {@link PREVIEW_HEADING} /
+ * it in its own `serverSource` slot; {@link PREVIEW_HEADING} /
  * {@link COMPLETE_HEADING}, the stable heading strings a host drives its own
- * end-to-end assertions against. Everything else — the registry, the review
+ * end-to-end assertions against; and {@link ImporterWalkthroughAnchor}, the
+ * `data-walkthrough` values on the first screen's controls, which a host's
+ * first-run walkthrough points at. Everything else — the registry, the review
  * model view, the queries, the individual pick sources — is an internal
  * building block reached through {@link ImporterScreen}, not imported directly.
  *
@@ -27,3 +29,4 @@ export { ImporterScreen } from './importer-screen.tsx'
 export { PREVIEW_HEADING } from './preview/preview-text.ts'
 export { COMPLETE_HEADING } from './results/import-results.tsx'
 export { ServerSourceFileList } from './sources/server-source-file-list.tsx'
+export { ImporterWalkthroughAnchor } from './walkthrough-anchors.ts'
