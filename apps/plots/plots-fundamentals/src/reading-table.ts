@@ -1,4 +1,4 @@
-import type { DateTime } from 'effect'
+import { Array as Arr, DateTime, Order, Record as EffectRecord, pipe } from 'effect'
 
 import type * as Level from './level.ts'
 import * as Series from './series.ts'
@@ -85,19 +85,19 @@ const timedEntriesWithin = (
  * than as a value.
  */
 const of = (columns: readonly Series.Series[], window: TimeDomain.TimeDomain): ReadingTable => {
-  const rowsByMillis = new Map<number, { readonly time: DateTime.Utc; readonly cells: Entry[][] }>()
-  columns.forEach((series, column) => {
-    for (const { time, entry } of timedEntriesWithin(series, window)) {
-      let row = rowsByMillis.get(time.epochMillis)
-      if (row === undefined) {
-        row = { time, cells: columns.map(() => []) }
-        rowsByMillis.set(time.epochMillis, row)
-      }
-      row.cells[column].push(entry)
-    }
-  })
-  const rows = [...rowsByMillis.values()].toSorted(
-    (left, right) => right.time.epochMillis - left.time.epochMillis
+  const columnEntries = columns.flatMap((series, column) =>
+    timedEntriesWithin(series, window).map((timed) => ({ ...timed, column }))
+  )
+  const rows = pipe(
+    Arr.groupBy(columnEntries, ({ time }) => String(time.epochMillis)),
+    EffectRecord.values,
+    Arr.map((entries): Row => ({
+      time: entries[0].time,
+      cells: columns.map((_, column) =>
+        entries.filter((entry) => entry.column === column).map(({ entry }) => entry)
+      ),
+    })),
+    Arr.sortWith(({ time }) => time, Order.reverse(DateTime.Order))
   )
   return { columns, rows }
 }
