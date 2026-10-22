@@ -36,7 +36,7 @@ describe('useUrlSelection', () => {
     })
 
     // Assert — the second saw the first, in state and in the URL
-    const expected = { series: [], range: '28d' }
+    const expected = { series: [], range: '28d', view: 'chart' }
     expect(result.current.selection).toEqual(expected)
     expect(selectionInUrl()).toEqual(expected)
   })

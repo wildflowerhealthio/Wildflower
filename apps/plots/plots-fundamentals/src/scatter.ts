@@ -1,0 +1,66 @@
+import { Array as Arr, DateTime, Option } from 'effect'
+
+import type * as Level from './level.ts'
+import * as Series from './series.ts'
+import type * as TimeDomain from './time-domain.ts'
+
+/** One X reading and the Y value in effect at its time. */
+interface Pair {
+  readonly time: DateTime.Utc
+  /** The X series' level starting at `time`. */
+  readonly x: Level.Level
+  /** The Y series' level in effect at `time`. */
+  readonly y: Level.Level
+}
+
+/**
+ * One value series plotted against another: each X reading paired with the
+ * Y value at its time.
+ */
+interface Scatter {
+  /** In X's reading order. */
+  readonly pairs: readonly Pair[]
+  /**
+   * The X readings in the window with no Y value at their time — before a
+   * point series Y's first reading, in a gap in a level series Y, or with an
+   * empty Y — so the plot can say what it left out.
+   */
+  readonly unpairedCount: number
+}
+
+/**
+ * The level in effect on `y` at `time`, or none when Y wasn't measured by
+ * then: `Series.levelAt`, except that before a point series' first reading
+ * there is none.
+ */
+const yLevelAt = (y: Series.ValueSeries, time: DateTime.Utc): Option.Option<Level.Level> =>
+  y.kind === 'points' &&
+  Arr.head(y.points).pipe(Option.exists((first) => DateTime.greaterThan(first.time, time)))
+    ? Option.none()
+    : Option.fromNullable(Series.levelAt(y, time))
+
+/**
+ * Pair `x`'s readings inside `window` with `y`'s value at each one's time.
+ *
+ * @remarks
+ * An X reading is one of its levels' starts (`Series.levelsWithin`), so a level
+ * series' readings are its levels. Y is read as the chart's crosshair reads it
+ * (`Series.levelAt`) — a point series Y's last reading held from then on, a
+ * level series Y naming nothing in a gap — except that an X reading before a
+ * point series Y's first reading is unpaired, where the crosshair would still
+ * name that first reading.
+ */
+const of = (
+  x: Series.ValueSeries,
+  y: Series.ValueSeries,
+  window: TimeDomain.TimeDomain
+): Scatter => {
+  const xLevels = Series.levelsWithin(x, window)
+  const pairs = Arr.filterMap(xLevels, (level) =>
+    Option.map(yLevelAt(y, level.start), (yLevel) => ({ time: level.start, x: level, y: yLevel }))
+  )
+  return { pairs, unpairedCount: xLevels.length - pairs.length }
+}
+
+export { of }
+export type { Pair, Scatter }

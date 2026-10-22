@@ -5,6 +5,7 @@ import type { SmartHandshake } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import { MedicationRequest, Observation } from '@wildflowerhealthio/fhir-r4/resources'
 import { SERIES_PARAM, decodeSelection, readRecord } from '@wildflowerhealthio/plots-core-js'
+import { seriesColors } from '@wildflowerhealthio/plots-react'
 import { Schema } from 'effect'
 import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
@@ -468,7 +469,120 @@ describe('App', () => {
     expect(selectionInUrl()).toEqual({
       series: [metforminSeries?.id],
       range: '90d',
+      view: 'chart',
     })
+  })
+
+  it('should restore the view from the URL, switch it, and fall back to the chart when Scatter is disabled', async () => {
+    // Arrange — two value series, so a scatter can be drawn
+    const params = new URLSearchParams()
+    params.append(SERIES_PARAM, glucoseSeries?.id ?? '')
+    params.append(SERIES_PARAM, metforminSeries?.id ?? '')
+    params.set('v', 'scatter')
+    window.history.replaceState(null, '', `/health-viewer/?${params.toString()}`)
+    launchWith(stubClient('p1', recordResponses()))
+    renderApp()
+    const glucoseRow = await waitFor(() => seriesCheckbox(glucoseSeries?.label ?? ''))
+
+    // Assert — restored
+    const viewButton = (name: string): HTMLElement => screen.getByRole('button', { name })
+    expect(viewButton('Scatter').getAttribute('aria-pressed')).toBe('true')
+    expect(
+      document.querySelector(
+        `svg[aria-label="${metforminSeries?.label} against ${glucoseSeries?.label}"]`
+      )
+    ).not.toBeNull()
+
+    // Act
+    fireEvent.click(viewButton('Table'))
+
+    // Assert
+    expect(screen.getByRole('table', { name: 'Readings' })).toBeDefined()
+    expect(selectionInUrl().view).toBe('table')
+
+    // Act — back to the scatter, then leave it one series
+    fireEvent.click(viewButton('Scatter'))
+    fireEvent.click(glucoseRow)
+
+    // Assert — the scatter can't be drawn, so the chart shows and the note above says why
+    expect(viewButton('Scatter')).toHaveProperty('disabled', true)
+    expect(viewButton('Chart').getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByText('Scatter needs one more value series selected')).toBeDefined()
+    expect(selectionInUrl().view).toBe('scatter')
+  })
+
+  it('should show the chart while a scatter’s series are not in the record yet', async () => {
+    // Arrange — potassium's page is held back, so the scatter can't be drawn yet
+    const secondObservationPage = deferredAnswer(bundleOf([potassiumWire]))
+    const params = new URLSearchParams()
+    params.append(SERIES_PARAM, glucoseSeries?.id ?? '')
+    params.append(SERIES_PARAM, potassiumSeries?.id ?? '')
+    params.set('v', 'scatter')
+    window.history.replaceState(null, '', `/health-viewer/?${params.toString()}`)
+    launchWith(
+      stubClient(
+        'p1',
+        recordResponses({
+          'Observation?': answer(bundleOf([glucoseWire], NEXT_OBSERVATIONS)),
+          [NEXT_OBSERVATIONS]: secondObservationPage.respond,
+        })
+      )
+    )
+    renderApp()
+    await screen.findByText('Loading more…')
+    const scatterFigure = (): Element | null =>
+      document.querySelector(
+        `svg[aria-label="${potassiumSeries?.label} against ${glucoseSeries?.label}"]`
+      )
+
+    // Assert — the chart, with glucose in its legend
+    expect(screen.getByRole('button', { name: 'Chart' }).getAttribute('aria-pressed')).toBe('true')
+    expect(within(screen.getByRole('list', { name: 'Series' })).getByText(/^Glucose/)).toBeDefined()
+    expect(scatterFigure()).toBeNull()
+
+    // Act
+    secondObservationPage.release()
+
+    // Assert — the scatter, once both series are in
+    await waitFor(() => {
+      expect(scatterFigure()).not.toBeNull()
+    })
+    expect(screen.getByRole('button', { name: 'Scatter' }).getAttribute('aria-pressed')).toBe(
+      'true'
+    )
+  })
+
+  it('should keep each series its colour across a change of view', async () => {
+    // Arrange — three value series in slots 0, 1 and 2, then the first deselected
+    const params = new URLSearchParams()
+    params.append(SERIES_PARAM, potassiumSeries?.id ?? '')
+    params.append(SERIES_PARAM, glucoseSeries?.id ?? '')
+    params.append(SERIES_PARAM, metforminSeries?.id ?? '')
+    window.history.replaceState(null, '', `/health-viewer/?${params.toString()}`)
+    launchWith(
+      stubClient(
+        'p1',
+        recordResponses({ 'Observation?': answer(bundleOf([potassiumWire, glucoseWire])) })
+      )
+    )
+    renderApp()
+    const potassiumRow = await waitFor(() => seriesCheckbox(potassiumSeries?.label ?? ''))
+    const legendKeys = (): readonly (string | null)[] =>
+      [...document.querySelectorAll('ul[aria-label="Series"] > li > span[style]')].map((key) =>
+        key.getAttribute('style')
+      )
+    fireEvent.click(potassiumRow)
+    const keptKeys = legendKeys()
+    expect(keptKeys).toHaveLength(2)
+    expect(keptKeys[0]).toContain(seriesColors(1).mark)
+    expect(keptKeys[1]).toContain(seriesColors(2).mark)
+
+    // Act
+    fireEvent.click(screen.getByRole('button', { name: 'Table' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Chart' }))
+
+    // Assert
+    expect(legendKeys()).toEqual(keptKeys)
   })
 
   it('should drop a selected series the record does not hold, once both reads have finished paging', async () => {

@@ -2,8 +2,8 @@
 
 Plots' **assembly**: the closed list of domain sources a
 patient's record is read through, and the decisions that span sources — the
-catalogue panel, the x-axis range presets, and the URL a selection is shared
-through. Chart math lives in `plots-fundamentals`; what a record means
+catalogue panel, the x-axis range presets, the views a selection is shown in,
+and the URL a selection is shared through. Chart math lives in `plots-fundamentals`; what a record means
 lives in each domain package.
 
 ## Shape
@@ -22,10 +22,15 @@ lives in each domain package.
   (opaque here, in selection order, distinct, and at most `ValueAxis.CAP`
   point or level series and `SpanSeries.LANE_CAP` span series, each counted by
   `seriesKindOfId`) and
-  the range preset as query parameters; `withSelection` writes them into a
-  query that keeps every other key (the app's `?patient=`, which is
-  `smart-app-react`'s). `selectionCapsOf` and `capIsFull` are that one
+  the range preset and the view as query parameters (`r`, `v`);
+  `withSelection` writes them into a query that keeps every other key (the
+  app's `?patient=`, which is `smart-app-react`'s). `selectionCapsOf` and `capIsFull` are that one
   counting rule, shared with the series panel.
+- `src/plot-view.ts` — the views (`chart`, `table`, `scatter`);
+  `scatterAxesOf`, which series a scatter of the selected ids plots (the
+  first two point or level series, X then Y, lanes aside) or that there are
+  too few or too many; and `shownViewOf`, the chart in place of a scatter the
+  selection cannot make.
 - `src/time-range.ts` — the range presets (`all`, `5y`, `1y`, `90d`, `28d`,
   `7d`, `24h`) and `xDomain`, the window a preset selects.
 

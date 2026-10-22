@@ -8,10 +8,11 @@ its URL carries (an EHR's `iss` and `launch`, or a lone `iss`), completes the
 handshake and renders the app when a callback is in the URL, and shows the
 standalone connect menu, where the user picks a FHIR server, on a bare visit.
 
-The chart, the series panel, the range presets and the page layout are
+The chart, the table, the scatter, the series panel, the range presets, the
+view switch and the page layout are
 [`plots-react`](../plots-react/AGENTS.md)'s;
-reading a record into series, the catalogue, the range presets and the URL codec
-are [`plots-core-js`](../plots-core-js/AGENTS.md)'s.
+reading a record into series, the catalogue, the range presets, the views and
+the URL codec are [`plots-core-js`](../plots-core-js/AGENTS.md)'s.
 This package is the SMART shell around them and the wiring between them.
 
 ## Boot structure
@@ -64,11 +65,20 @@ their record, lay it out.
   page halted, and what the chart leaves out.
 - **Layout** (`src/patient-record.tsx`). `groupForPanel` lays the series out
   for `SeriesPanel` (observation categories first, Medications last); the
-  selected series, in selection order, go to `MultiAxisChart`, which puts
-  the point and level series on axes with `ValueAxis.assign`, over
-  `xDomain(range, now, Series.extentOfAll(selected))`.
-- **URL state** (`src/use-url-selection.ts`). The selection and the range
-  live only in the URL, beside `usePatientChoice`'s `?patient=`: read once
+  selected series, in selection order, are shown over
+  `xDomain(range, now, Series.extentOfAll(selected))` in the view
+  `shownViewOf` picks: as `MultiAxisChart` (which puts the point and level
+  series on axes with `ValueAxis.assign`), as
+  `SeriesTable`, or as `ScatterChart` of the two value series
+  `scatterAxesOf` names. A scatter the selection can't make shows the chart,
+  with Scatter disabled and `ScatterUnavailableNote` above the toolbar saying
+  why. A scatter whose two series the record doesn't hold yet (a source
+  still paging, or a link from another patient's record) shows the chart too,
+  with Scatter left enabled. The page keeps each value series' colour with `useColourSlots`, above
+  the view switch, and hands it to the chart and the scatter, so a series
+  keeps its colour across views.
+- **URL state** (`src/use-url-selection.ts`). The selection, the range and
+  the view live only in the URL, beside `usePatientChoice`'s `?patient=`: read once
   with `decodeSelection`, written back with `withSelection` (which keeps every
   other key) through `history.replaceState` after every change. Every change
   is an updater over the latest selection, so two made in one tick both land.
@@ -79,7 +89,7 @@ their record, lay it out.
   `Loading more…` in the layout's status slot while any still pages; a failed
   later page is an inline `Could not load …` line that keeps every series
   already listed; a failed handshake or first page replaces the body.
-- **What the chart left out**, under it: `n undated records skipped` and
+- **What the read left out**, under the view: `n undated records skipped` and
   `n records couldn't be read` — the latter counts both what the sources could
   not read and page entries that did not decode (a MedicationRequest without an
   `id` among them).

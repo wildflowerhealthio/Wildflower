@@ -14,11 +14,13 @@ import {
   spanFrom,
   spanSeriesArb,
   spanSeriesOf,
+  windowArb,
 } from './arbitraries.test-helpers.ts'
 import * as LevelSeries from './level-series.ts'
 import * as Level from './level.ts'
 import * as PointSeries from './point-series.ts'
 import * as Series from './series.ts'
+import { type TimeDomain, contains } from './time-domain.ts'
 
 const RUNS = numRunsFor({ base: 200 })
 
@@ -28,6 +30,32 @@ describe('Series.levelsOf', () => {
       fc.property(pointSeriesArb, levelSeriesArb, (points, levels) => {
         expect(Series.levelsOf(points)).toEqual(PointSeries.toLevels(points))
         expect(Series.levelsOf(levels)).toBe(levels.levels)
+      }),
+      { numRuns: RUNS }
+    )
+  })
+})
+
+describe('Series.levelsWithin', () => {
+  /** A series with a window over it, its ends often on the series' own boundaries. */
+  const seriesWithWindowArb = fc
+    .tuple(seriesArb, windowArb, fc.nat(), fc.nat())
+    .map(([series, window, fromIndex, toIndex]): readonly [Series.ValueSeries, TimeDomain] => {
+      const instants = Series.boundariesOf(series)
+      if (instants.length === 0) return [series, window]
+      const [from, to] = [
+        instants[fromIndex % instants.length],
+        instants[toIndex % instants.length],
+      ]
+      return [series, from.epochMillis <= to.epochMillis ? [from, to] : [to, from]]
+    })
+
+  test('is exactly the levels of levelsOf that start inside the window, in series order', () => {
+    fc.assert(
+      fc.property(seriesWithWindowArb, ([series, window]) => {
+        expect(Series.levelsWithin(series, window)).toEqual(
+          Series.levelsOf(series).filter((level) => contains(window, level.start.epochMillis))
+        )
       }),
       { numRuns: RUNS }
     )

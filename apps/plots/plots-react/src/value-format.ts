@@ -1,6 +1,6 @@
-import type { DateTime } from 'effect'
+import { type DateTime, Predicate } from 'effect'
 
-import { type Series, ValueAxis } from '@wildflowerhealthio/plots-fundamentals'
+import { type Level, type Series, ValueAxis } from '@wildflowerhealthio/plots-fundamentals'
 
 /** Slack, in powers of ten, for float error in a tick step read back from two ticks. */
 const STEP_TOLERANCE = 1e-9
@@ -16,7 +16,7 @@ const STEP_TOLERANCE = 1e-9
  * true step (`57 * 0.1 - 56 * 0.1` is `0.0999…64`); {@link STEP_TOLERANCE}
  * keeps that from flooring to one decimal place too many.
  */
-const tickDecimals = (axis: ValueAxis.ValueAxis): number => {
+const tickDecimals = (axis: Pick<ValueAxis.ValueAxis, 'domain' | 'ticks'>): number => {
   const [first, second] = axis.ticks
   const [low, high] = axis.domain
   const step = second === undefined ? high - low : second - first
@@ -45,6 +45,17 @@ const formatAxisValue = (value: number, decimals: number): string =>
   axisValueFormat(decimals).format(value)
 
 /**
+ * The tick label formatter for an axis Plot calls with the value itself — the
+ * scatter's — at {@link tickDecimals} for its ticks.
+ */
+const valueTickFormat = (
+  axis: Pick<ValueAxis.ValueAxis, 'domain' | 'ticks'>
+): ((value: number) => string) => {
+  const format = axisValueFormat(tickDecimals(axis))
+  return (value) => format.format(value)
+}
+
+/**
  * The tick label formatter for `axis`, which Plot calls with a position
  * on the shared `0..1` scale.
  *
@@ -54,8 +65,8 @@ const formatAxisValue = (value: number, decimals: number): string =>
  * float error of that round trip (`0.30000000000000004` reads `0.3`).
  */
 const axisTickFormat = (axis: ValueAxis.ValueAxis): ((fraction: number) => string) => {
-  const format = axisValueFormat(tickDecimals(axis))
-  return (fraction) => format.format(ValueAxis.denormalise(fraction, axis.domain))
+  const format = valueTickFormat(axis)
+  return (fraction) => format(ValueAxis.denormalise(fraction, axis.domain))
 }
 
 /** Most decimals a reading shows in the tooltip — enough for any source's values, few enough to read. */
@@ -69,6 +80,13 @@ const readingFormat = new Intl.NumberFormat(undefined, {
 
 /** Render one value for the crosshair readout, dropping trailing zeroes. */
 const formatReading = (value: number): string => readingFormat.format(value)
+
+/**
+ * One reading as a readout says it: the value, the series' unit and the
+ * level's `note` — the domain's qualifier (`per day`), shown as given.
+ */
+const readingWithUnit = (series: Series.ValueSeries, level: Level.Level): string =>
+  [formatReading(level.value), series.unit, level.note].filter(Predicate.isNotNullable).join(' ')
 
 /** Built once, like {@link readingFormat}. */
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' })
@@ -109,5 +127,7 @@ export {
   formatDateTime,
   formatReading,
   labelWithUnit,
+  readingWithUnit,
   tickDecimals,
+  valueTickFormat,
 }

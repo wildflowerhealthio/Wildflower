@@ -85,4 +85,24 @@ describe('SegmentedToggle', () => {
 
     expect(onChange).toHaveBeenCalledExactlyOnceWith('interactions')
   })
+
+  it('disables an option marked disabled, so pressing it changes nothing', async () => {
+    const onChange = vi.fn<(value: View) => void>()
+    const user = userEvent.setup()
+    render(
+      <SegmentedToggle
+        value="medications"
+        options={[twoOptions[0], { ...twoOptions[1], disabled: true }]}
+        onChange={onChange}
+        aria-label="View"
+      />
+    )
+    const interactions = screen.getByRole('button', { name: 'Interactions' })
+    expect(interactions).toHaveProperty('disabled', true)
+    expect(screen.getByRole('button', { name: 'Medications' })).toHaveProperty('disabled', false)
+
+    await user.click(interactions)
+
+    expect(onChange).not.toHaveBeenCalled()
+  })
 })

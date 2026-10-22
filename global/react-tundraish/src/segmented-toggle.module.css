@@ -28,6 +28,11 @@
   color: var(--color-on-accent);
 }
 
+.tab:disabled {
+  color: var(--color-neutral-5);
+  cursor: not-allowed;
+}
+
 .tab:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;

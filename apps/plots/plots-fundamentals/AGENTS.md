@@ -27,6 +27,9 @@ functions read in the namespace's context (`ValueAxis.assign`, not
   last one open-ended, so the levels never overlap. `levelAt` is the same
   lookup by binary search, with one deliberate difference from
   `Level.inEffectAt`: before the first reading it still names the first one.
+  `levelsWithin` is `toLevels`' levels starting inside a window, built only
+  for the readings there. Both searches go through kitchen-sink's
+  `partitionPoint`.
 - **`LevelSeries`** (`src/level-series.ts`) — values held over intervals, each
   a `StyledLevel` with a `LineStyle` (`'solid' | 'dashed'`) the domain decides.
   Levels may overlap or leave gaps. `levelAt` reads through
@@ -46,7 +49,8 @@ functions read in the namespace's context (`ValueAxis.assign`, not
   `ValueSeries = PointSeries | LevelSeries` and `isValueSeries` /
   `isSpanSeries` tell them apart. A value series carries an opaque `id`, `label`, `unit` and a
   `ValueScale` (`'fitted' | 'from-zero' | 'zero-to-one'`). `levelsOf` is the
-  one place the two value kinds are told apart; `levelAt` reads through it.
+  one place the two value kinds are told apart; `levelAt` and `levelsWithin`
+  (the levels starting inside a window) read through the same split.
   `boundariesOf` (level starts and stated ends; span starts and ends),
   `extentOf`, `extentOfAll` (the span of several series together) and `sizeOf`
   take any series.
@@ -82,6 +86,17 @@ functions read in the namespace's context (`ValueAxis.assign`, not
   series' stops are its reading times, a span series' its spans' ends — and a
   bucketed series' are its bucket middles; `nearestStop` snaps the
   pointer to one.
+- **`ReadingTable`** (`src/reading-table.ts`) — `of(columns, window)`: the
+  selected series as a table, a column per series and a `Row` per instant
+  inside the window where any has an `Entry` — a value series' level start
+  (a reading), a span's start or end — newest first. Each row has one `Cell`
+  per column: empty where that series has nothing there, several entries
+  where readings share an instant or one span hands off to another.
+- **`Scatter`** (`src/scatter.ts`) — `of(x, y, window)`: each of `x`'s
+  readings inside the window as a `Pair` with the level `Series.levelAt`
+  reads off `y` at its time, and the `unpairedCount` of readings with none —
+  including those before a point series `y`'s first reading, where the
+  crosshair's fallback to that reading doesn't apply.
 - **`ColourSlots`** (`src/colour-slots.ts`) — `assign(previous, selectedIds)`:
   a series keeps its colour while it stays selected; newcomers take the lowest
   free slot; throws past `ValueAxis.CAP`.

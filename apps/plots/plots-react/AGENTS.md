@@ -3,20 +3,20 @@
 Plots' **browser layer**: one Observable Plot figure that draws
 the `PointSeries` and `LevelSeries` of `plots-fundamentals` on the value
 axes `ValueAxis.assign` gives them, and its `SpanSeries` as lanes under the
-time axis, and the controls around it — the series
-panel over `plots-core-js`'s catalogue, the range presets, and the page
-layout. It imports no domain package and no FHIR type — whatever a series
+time axis, the same selection as a table or a scatter, and the controls
+around them — the series panel over `plots-core-js`'s catalogue, the range
+presets, the view switch, and the page layout. It imports no domain package and no FHIR type — whatever a series
 stands for, the chart sees only points, levels, a unit, a label and the
 presentation fields the domain chose, and the panel sees only catalogue rows
 and opaque series ids.
 
 ## Shape
 
-- `src/multi-axis-chart.tsx` — `MultiAxisChart` (`series`, `lanes`,
-  `xDomain`, `onHover`): the value series in selection order, put on axes by
-  `ValueAxis.assign`; the legend, the figure, and the crosshair, whose stops
-  and rule take in the lanes too. Colours come from `ColourSlots.assign` over
-  the series in selection order, carried across renders; lines draw in
+- `src/multi-axis-chart.tsx` — `MultiAxisChart` (`series`, `colours`,
+  `lanes`, `xDomain`, `onHover`): the value series in selection order, put on
+  axes by `ValueAxis.assign`; the legend, the figure, and the crosshair, whose
+  stops and rule take in the lanes too. Each series wears the slot `colours`
+  gives it (`useColourSlots`, held by the page); lines draw in
   selection order, so the series picked last is on top, while the legend and
   tooltip list series axis by axis; the crosshair snaps to
   `Crosshair.nearestStop` over `Crosshair.stops`. Which series are drawn as
@@ -66,7 +66,16 @@ and opaque series ids.
 - `src/series-colors.ts` — `seriesColors`, the `--color-series-N` /
   `-soft` tokens for a palette index, and `spanColour`, the `--color-span-N`
   token for a span category's colour slot (`NEUTRAL_COLOUR` for `null`).
-- `src/value-format.ts` — tick, value and date formatting.
+- `src/value-format.ts` — tick, value and date formatting: `tickDecimals`
+  (as many decimals as a tick step needs), `axisTickFormat` (the time chart's
+  `0..1` ticks mapped back to values) and `valueTickFormat` (the scatter's
+  value ticks), `formatReading` for a readout value and `readingWithUnit` for
+  a reading with its unit and note, as the crosshair readout and the scatter's
+  tip both write it.
+- `src/use-colour-slots.ts` — `useColourSlots`: `ColourSlots.assign` over
+  the selected value series in selection order, carried across renders. The
+  page holds it above the view switch and hands it to `MultiAxisChart` and
+  `ScatterChart`, so a series keeps its colour across views.
 - `src/use-plot.ts` — `usePlotContainer` measures the container a figure
   mounts into, and `usePlot` mounts the figure there and redraws it at that
   width. Two hooks so the chart knows its width before it builds its marks.
@@ -83,12 +92,33 @@ and opaque series ids.
 - `src/range-presets.tsx` — `RangePresets` (`selectedPreset`,
   `onPresetChange`): react-tundraish's `SegmentedToggle` over core's
   `RANGE_PRESETS`, one `aria-pressed` button each.
+- `src/view-switch.tsx` — `ViewSwitch` (`shownView`, `scatterAxes`,
+  `onViewChange`): `SegmentedToggle` over core's `PLOT_VIEWS` (Chart · Table ·
+  Scatter), Scatter disabled unless core's `scatterAxesOf` paired two value
+  series; and `ScatterUnavailableNote`, the `role="status"` line saying why
+  (`Scatter needs two value series selected`, `… one more …`, `… only two …`),
+  rendered above the toolbar, or nothing.
+- `src/series-table.tsx` — `SeriesTable` (`series`, `timeWindow`): the rows
+  `ReadingTable.of` returns as a `<table>`, a row header per instant in
+  viewer-local date and time, a column per series headed `labelWithUnit` (a
+  lane by its label); a value cell reads the value and its `note`, a lane's
+  cell `<category> starts` / `ends`, one entry per line.
+- `src/scatter-chart.tsx` — `ScatterChart` (`x`, `y`, `timeWindow`,
+  `colours`): the
+  `Scatter.of` pairs as one Observable Plot figure through `usePlot` — each
+  axis fitted and ticked as `ValueAxis.domainFor` / `ticksFor` fit that
+  series, its tick labels at the decimals their step needs
+  (`valueTickFormat`, as the time chart's), and labelled `labelWithUnit`, an 8px dot per pair in the colour X
+  keeps (`colours`) ringed in the surface colour, and a `Plot.pointer` tip on the nearest
+  pair naming its time and both values. X readings with no Y value are counted
+  in a note under the figure.
 - `src/plots-layout.tsx` — `PlotsLayout` (`seriesPanel`,
-  `selectedSeriesCount`, `rangePresets`, `status`, the chart as `children`):
-  from 900px an 18rem sticky panel column beside the chart; narrower, one
-  column with the panel folded behind a `Series (n selected)` disclosure above
-  the chart. The presets row, then the status line when there is one, sit
-  above the chart in both.
+  `selectedSeriesCount`, `rangePresets`, `viewSwitch`, `toolbarNote`,
+  `status`, the view as `children`): from 900px an 18rem sticky panel column
+  beside the view; narrower, one column with the panel folded behind a
+  `Series (n selected)` disclosure above it. The toolbar note when there is
+  one, the toolbar row (presets, then view switch), then the status line when
+  there is one, sit above the view in both.
 
 ## Rules
 
@@ -105,8 +135,8 @@ and opaque series ids.
   synthetic `PointSeries` / `LevelSeries`
   (`series-arbitraries.test-helpers.ts`) or `CatalogRow`, not an observation or
   a dose.
-- **The selection and the range are the caller's state.** `SeriesPanel` and
-  `RangePresets` propose the next value through their callbacks and hold
+- **The selection, the range and the view are the caller's state.**
+  `SeriesPanel`, `RangePresets` and `ViewSwitch` propose the next value through their callbacks and hold
   nothing but search text and fold state. A toggled series is appended to or
   removed from the selection, so selection order — the order axes take their
   sides in — is the order the reader picked.

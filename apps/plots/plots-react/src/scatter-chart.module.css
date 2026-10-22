@@ -1,0 +1,29 @@
+/*
+ * The scatter: the figure, then any note on what it left out. Plot's SVG
+ * takes its text colour from here (`currentColor` for ticks, labels and the
+ * grid), so chart text wears a text token and only the dots wear the series
+ * colour.
+ */
+.scatter-chart {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.scatter-chart__figure {
+  color: var(--color-neutral-4);
+}
+
+.scatter-chart__figure svg {
+  display: block;
+  overflow: visible;
+  font-family: inherit;
+  font-size: var(--font-size-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.scatter-chart__note {
+  margin: 0;
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-5);
+}

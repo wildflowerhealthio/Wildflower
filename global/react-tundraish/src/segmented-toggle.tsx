@@ -6,6 +6,11 @@ import styles from './segmented-toggle.module.css'
 interface SegmentedToggleOption<T extends string> {
   readonly value: T
   readonly label: string
+  /**
+   * The option can't be picked now. Its button stays in the group, disabled;
+   * say why somewhere the reader sees before reaching it.
+   */
+  readonly disabled?: boolean
 }
 
 interface SegmentedToggleProps<T extends string> {
@@ -36,6 +41,7 @@ const SegmentedToggle = <T extends string>({
         type="button"
         className={styles['tab']}
         aria-pressed={option.value === value}
+        disabled={option.disabled === true}
         onClick={() => {
           onChange(option.value)
         }}
