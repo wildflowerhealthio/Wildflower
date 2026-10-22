@@ -48,13 +48,13 @@ const scatterUnavailableReason = (scatterAxes: ScatterAxes): Option.Option<strin
   Match.value(scatterAxes).pipe(
     Match.when({ kind: 'paired' }, () => Option.none()),
     Match.when({ kind: 'too-few-value-series', valueSeriesCount: 0 }, () =>
-      Option.some('Scatter needs two series selected')
+      Option.some('Scatter needs two value series selected')
     ),
     Match.when({ kind: 'too-few-value-series' }, () =>
-      Option.some('Scatter needs one more series selected')
+      Option.some('Scatter needs one more value series selected')
     ),
     Match.when({ kind: 'too-many-value-series' }, () =>
-      Option.some('Scatter needs only two series selected')
+      Option.some('Scatter needs only two value series selected')
     ),
     Match.exhaustive
   )

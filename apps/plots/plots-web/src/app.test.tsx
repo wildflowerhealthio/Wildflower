@@ -507,7 +507,7 @@ describe('App', () => {
     // Assert — the scatter can't be drawn, so the chart shows and the note above says why
     expect(viewButton('Scatter')).toHaveProperty('disabled', true)
     expect(viewButton('Chart').getAttribute('aria-pressed')).toBe('true')
-    expect(screen.getByText('Scatter needs one more series selected')).toBeDefined()
+    expect(screen.getByText('Scatter needs one more value series selected')).toBeDefined()
     expect(selectionInUrl().view).toBe('scatter')
   })
 

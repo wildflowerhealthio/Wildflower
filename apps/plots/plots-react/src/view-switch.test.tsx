@@ -52,14 +52,17 @@ describe('ViewSwitch', () => {
 
 describe('ScatterUnavailableNote', () => {
   it.each<[ScatterAxes, string]>([
-    [{ kind: 'too-few-value-series', valueSeriesCount: 0 }, 'Scatter needs two series selected'],
+    [
+      { kind: 'too-few-value-series', valueSeriesCount: 0 },
+      'Scatter needs two value series selected',
+    ],
     [
       { kind: 'too-few-value-series', valueSeriesCount: 1 },
-      'Scatter needs one more series selected',
+      'Scatter needs one more value series selected',
     ],
     [
       { kind: 'too-many-value-series', valueSeriesCount: 3 },
-      'Scatter needs only two series selected',
+      'Scatter needs only two value series selected',
     ],
   ])('should say why for %o', (scatterAxes, reason) => {
     // Act

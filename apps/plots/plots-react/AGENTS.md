@@ -96,7 +96,7 @@ and opaque series ids.
   `onViewChange`): `SegmentedToggle` over core's `PLOT_VIEWS` (Chart · Table ·
   Scatter), Scatter disabled unless core's `scatterAxesOf` paired two value
   series; and `ScatterUnavailableNote`, the `role="status"` line saying why
-  (`Scatter needs two series selected`, `… one more …`, `… only two …`),
+  (`Scatter needs two value series selected`, `… one more …`, `… only two …`),
   rendered above the toolbar, or nothing.
 - `src/series-table.tsx` — `SeriesTable` (`series`, `timeWindow`): the rows
   `ReadingTable.of` returns as a `<table>`, a row header per instant in
