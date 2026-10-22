@@ -9,7 +9,7 @@ interface Pair {
   readonly time: DateTime.Utc
   /** The X series' level starting at `time`. */
   readonly x: Level.Level
-  /** The level `Series.levelAt` reads off the Y series at `time`. */
+  /** The Y series' level in effect at `time`. */
   readonly y: Level.Level
 }
 
@@ -21,10 +21,23 @@ interface Scatter {
   /** In X's reading order. */
   readonly pairs: readonly Pair[]
   /**
-   * The X readings in the window with no Y value at their time — a gap in a
-   * level series, or an empty Y — so the plot can say what it left out.
+   * The X readings in the window with no Y value at their time — before a
+   * point series Y's first reading, in a gap in a level series Y, or with an
+   * empty Y — so the plot can say what it left out.
    */
   readonly unpairedCount: number
+}
+
+/**
+ * The level in effect on `y` at `time`, or `null` when Y wasn't measured by
+ * then: `Series.levelAt`, except that before a point series' first reading
+ * there is none.
+ */
+const yLevelAt = (y: Series.ValueSeries, time: DateTime.Utc): Level.Level | null => {
+  if (y.kind === 'points' && (y.points[0]?.time.epochMillis ?? Infinity) > time.epochMillis) {
+    return null
+  }
+  return Series.levelAt(y, time)
 }
 
 /**
@@ -32,10 +45,11 @@ interface Scatter {
  *
  * @remarks
  * An X reading is one of its levels' starts (`Series.levelsWithin`), so a level
- * series' readings are its levels. Y is read with `Series.levelAt` — the
- * value the chart's crosshair reads at that instant — so a point series Y
- * still names its first reading before it begins, and a level series Y names
- * nothing in a gap.
+ * series' readings are its levels. Y is read as the chart's crosshair reads it
+ * (`Series.levelAt`) — a point series Y's last reading held from then on, a
+ * level series Y naming nothing in a gap — except that an X reading before a
+ * point series Y's first reading is unpaired, where the crosshair would still
+ * name that first reading.
  */
 const of = (
   x: Series.ValueSeries,
@@ -45,7 +59,7 @@ const of = (
   const pairs: Pair[] = []
   let unpairedCount = 0
   for (const level of Series.levelsWithin(x, window)) {
-    const yLevel = Series.levelAt(y, level.start)
+    const yLevel = yLevelAt(y, level.start)
     if (yLevel === null) unpairedCount += 1
     else pairs.push({ time: level.start, x: level, y: yLevel })
   }

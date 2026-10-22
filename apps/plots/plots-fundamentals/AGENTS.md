@@ -93,7 +93,9 @@ functions read in the namespace's context (`ValueAxis.assign`, not
   where readings share an instant or one span hands off to another.
 - **`Scatter`** (`src/scatter.ts`) — `of(x, y, window)`: each of `x`'s
   readings inside the window as a `Pair` with the level `Series.levelAt`
-  reads off `y` at its time, and the `unpairedCount` of readings with none.
+  reads off `y` at its time, and the `unpairedCount` of readings with none —
+  including those before a point series `y`'s first reading, where the
+  crosshair's fallback to that reading doesn't apply.
 - **`ColourSlots`** (`src/colour-slots.ts`) — `assign(previous, selectedIds)`:
   a series keeps its colour while it stays selected; newcomers take the lowest
   free slot; throws past `ValueAxis.CAP`.
