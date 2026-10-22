@@ -21,39 +21,68 @@ type WalkthroughProps = {
    * the overlay (`useWalkthrough().skip`).
    */
   readonly onSkip: () => void
+  /**
+   * Called when the walkthrough cannot show: no step's anchor is visible, or
+   * another walkthrough is already showing (`useWalkthrough().postpone`).
+   */
+  readonly onPostpone: () => void
 }
 
-/** How long an opening walkthrough waits for every step's anchor to render. */
+/** The longest an opening walkthrough waits for the page to settle. */
 const ANCHOR_WAIT = Duration.seconds(2)
+
+/** How long the visible anchors must stay unchanged for the page to count as settled. */
+const ANCHOR_QUIET = Duration.millis(200)
 
 const SKIP_LABEL = 'Skip'
 
-/** A step whose anchor is rendered on the page, with that anchor. */
+/** A step whose anchor is visible on the page, with that anchor. */
 interface AnchoredStep {
   readonly step: WalkthroughStep
   readonly anchorElement: Element
 }
 
-/** Whether `element` takes up space on the page: not `display: none`, nor inside it. */
-const isRendered = (element: Element): boolean => element.getClientRects().length > 0
+/**
+ * Whether the visitor can see `element`: it has a box, and is not
+ * `visibility: hidden` or fully transparent.
+ *
+ * @remarks
+ * A browser without `checkVisibility` (WebKit before 17.4, which the host's
+ * iOS 14 floor still allows) checks for a box alone.
+ */
+const isVisible = (element: Element): boolean => {
+  const maybeChecking: Partial<Pick<Element, 'checkVisibility'>> = element
+  return maybeChecking.checkVisibility === undefined
+    ? element.getClientRects().length > 0
+    : element.checkVisibility({ visibilityProperty: true, opacityProperty: true })
+}
 
-/** The first rendered element carrying `anchor`, if any. */
-const findRenderedAnchor = (anchor: string): Option.Option<Element> =>
+/** The first visible element carrying `anchor`, if any. */
+const findVisibleAnchor = (anchor: string): Option.Option<Element> =>
   Array.findFirst(
-    document.querySelectorAll(`[${WALKTHROUGH_ANCHOR_ATTRIBUTE}]`),
-    (element) =>
-      element.getAttribute(WALKTHROUGH_ANCHOR_ATTRIBUTE) === anchor && isRendered(element)
+    document.querySelectorAll(`[${WALKTHROUGH_ANCHOR_ATTRIBUTE}="${CSS.escape(anchor)}"]`),
+    isVisible
   )
 
-/** `steps` without the ones whose anchor is not rendered right now. */
+/** `steps` without the ones whose anchor is not visible right now. */
 const filterAnchoredSteps = (steps: ReadonlyArray<WalkthroughStep>): ReadonlyArray<AnchoredStep> =>
   Array.filterMap(steps, (step) =>
-    Option.map(findRenderedAnchor(step.anchor), (anchorElement) => ({ step, anchorElement }))
+    Option.map(findVisibleAnchor(step.anchor), (anchorElement) => ({ step, anchorElement }))
   )
 
+/** Whether `next` holds other anchors, or other elements for them, than `previous`. */
+const anchorsChanged = (
+  previous: ReadonlyArray<AnchoredStep>,
+  next: ReadonlyArray<AnchoredStep>
+): boolean =>
+  previous.length !== next.length ||
+  next.some(({ anchorElement }, index) => previous[index]?.anchorElement !== anchorElement)
+
 /**
- * Calls `onSettled` with `steps`' anchored steps once every anchor is
- * rendered, or once {@link ANCHOR_WAIT} has passed with whichever are.
+ * Calls `onSettled` with `steps`' anchored steps once the page has settled:
+ * at once when every anchor is visible, once at least one is and they have
+ * not changed for {@link ANCHOR_QUIET}, or once {@link ANCHOR_WAIT} has
+ * passed with whichever are.
  *
  * @returns A function that stops waiting without calling `onSettled`
  */
@@ -61,37 +90,56 @@ const waitForAnchoredSteps = (
   steps: ReadonlyArray<WalkthroughStep>,
   onSettled: (anchoredSteps: ReadonlyArray<AnchoredStep>) => void
 ): (() => void) => {
+  let anchoredSteps: ReadonlyArray<AnchoredStep> = []
+  let quietTimeout: number | undefined
   const observer = new MutationObserver(() => {
-    settleWhenAllAnchored()
+    checkAnchors()
   })
-  const timeout = window.setTimeout(() => {
+  const waitTimeout = window.setTimeout(() => {
     settle()
   }, Duration.toMillis(ANCHOR_WAIT))
   const stopWaiting = (): void => {
     observer.disconnect()
-    window.clearTimeout(timeout)
+    window.clearTimeout(waitTimeout)
+    window.clearTimeout(quietTimeout)
   }
   const settle = (): void => {
     stopWaiting()
-    onSettled(filterAnchoredSteps(steps))
+    onSettled(anchoredSteps)
   }
-  const settleWhenAllAnchored = (): void => {
-    if (filterAnchoredSteps(steps).length === steps.length) settle()
+  const checkAnchors = (): void => {
+    const nextAnchoredSteps = filterAnchoredSteps(steps)
+    const changed = anchorsChanged(anchoredSteps, nextAnchoredSteps)
+    anchoredSteps = nextAnchoredSteps
+    if (anchoredSteps.length === steps.length) {
+      settle()
+    } else if (changed) {
+      window.clearTimeout(quietTimeout)
+      quietTimeout =
+        anchoredSteps.length > 0
+          ? window.setTimeout(() => {
+              settle()
+            }, Duration.toMillis(ANCHOR_QUIET))
+          : undefined
+    }
   }
   observer.observe(document.body, { childList: true, subtree: true, attributes: true })
-  settleWhenAllAnchored()
+  checkAnchors()
   return stopWaiting
 }
 
 /**
- * Restyles driver.js's popover for `step`: the module's BEM classes on its
- * parts, the step's words as plain text (driver.js writes them as HTML), and
- * the close button turned into a Skip button beside Back and Next.
+ * Fills in and restyles driver.js's popover for `step`: the step's words as
+ * plain text (driver.js is given none, since it writes them as HTML), the
+ * module's BEM classes on its parts, and the close button turned into a Skip
+ * button beside Back and Next.
  */
 const dressPopover = (popover: PopoverDOM, step: WalkthroughStep): void => {
   popover.title.textContent = step.title
+  popover.title.style.display = 'block'
   popover.title.classList.add(styles['walkthrough__title'])
   popover.description.textContent = step.body
+  popover.description.style.display = 'block'
   popover.description.classList.add(styles['walkthrough__body'])
   popover.footer.classList.add(styles['walkthrough__footer'])
   popover.progress.classList.add(styles['walkthrough__progress'])
@@ -114,6 +162,9 @@ interface WalkthroughEndings {
   readonly onSkip: () => void
 }
 
+/** The tour showing on the page; driver.js shows one at a time. */
+let showingTour: Driver | undefined
+
 /** Starts driver.js over `anchoredSteps`, reporting how the visitor leaves to `endings`. */
 const startTour = (
   anchoredSteps: ReadonlyArray<AnchoredStep>,
@@ -121,10 +172,10 @@ const startTour = (
 ): Driver => {
   const tour = driver({
     steps: anchoredSteps.map(({ step, anchorElement }) => ({
-      element: anchorElement,
+      // Looked up again when the step shows, in case the page has re-rendered
+      // the control since the walkthrough started.
+      element: () => Option.getOrElse(findVisibleAnchor(step.anchor), () => anchorElement),
       popover: {
-        title: step.title,
-        description: step.body,
         onPopoverRender: (popover) => {
           dressPopover(popover, step)
         },
@@ -152,13 +203,14 @@ const startTour = (
     },
   })
   tour.drive()
+  showingTour = tour
   return tour
 }
 
 /**
- * Calls the ending `reason` stands for: `done` is Done on the last step;
- * `close`, `escape` and `overlay` are Skip, Escape and an overlay click. The
- * rest are not the visitor's doing and record nothing.
+ * Calls the ending `reason` stands for: `done` is Done, or the right arrow
+ * key, on the last step; `close`, `escape` and `overlay` are Skip, Escape and
+ * an overlay click. The rest are not the visitor's doing and record nothing.
  */
 const endTour = (reason: DestroyReason | undefined, endings: WalkthroughEndings): void => {
   Match.value(reason).pipe(
@@ -181,26 +233,33 @@ const endTour = (reason: DestroyReason | undefined, endings: WalkthroughEndings)
  * step counter. Renders nothing of its own.
  *
  * @remarks
- * **It starts once the page has rendered.** When `open` turns true it waits,
- * up to two seconds, for every step's anchor to be rendered, then shows the
- * steps whose anchor is: a step pointing at a control the page does not show
- * (a narrow layout, a closed tab) is dropped rather than pointing at nothing.
- * When no step is left it does not start, and nothing is recorded.
+ * **It starts once the page has settled.** When `open` turns true it waits
+ * until every step's anchor is visible, or until at least one is and the
+ * visible anchors have not changed for 200 ms, or two seconds at most, then
+ * shows the steps whose anchor is visible: a step pointing at a control the
+ * page does not show (a narrow layout, a closed tab) is dropped rather than
+ * pointing at nothing.
+ * When no step is left, or another walkthrough is already showing, it calls
+ * `onPostpone` instead of starting.
  *
- * Done on the last step calls `onFinish`; Skip, Escape and a click on the
- * overlay call `onSkip`. Turning `open` false or unmounting closes the
- * popovers without calling either.
+ * Done on the last step, or the right arrow key there, calls `onFinish`; Skip,
+ * Escape and a click on the overlay call `onSkip`. Turning `open` false or
+ * unmounting closes the popovers without calling either.
  */
-const Walkthrough = ({ steps, open, onFinish, onSkip }: WalkthroughProps): null => {
+const Walkthrough = ({ steps, open, onFinish, onSkip, onPostpone }: WalkthroughProps): null => {
   const readSteps = useEffectEvent(() => steps)
   const handleFinish = useEffectEvent(onFinish)
   const handleSkip = useEffectEvent(onSkip)
+  const handlePostpone = useEffectEvent(onPostpone)
 
   useEffect(() => {
     if (!open) return undefined
     let tour: Driver | undefined
     const stopWaiting = waitForAnchoredSteps(readSteps(), (anchoredSteps) => {
-      if (anchoredSteps.length === 0) return
+      if (anchoredSteps.length === 0 || showingTour?.isActive() === true) {
+        handlePostpone()
+        return
+      }
       tour = startTour(anchoredSteps, {
         onFinish: () => {
           handleFinish()

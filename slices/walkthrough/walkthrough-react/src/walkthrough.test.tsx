@@ -15,8 +15,10 @@ import { Walkthrough } from './walkthrough.tsx'
 
 const WALKTHROUGH_ID = 'home'
 const VERSION = 1
-/** How long the walkthrough waits for its anchors before starting with those rendered. */
+/** The longest the walkthrough waits for the page to settle. */
 const ANCHOR_WAIT_MS = 2_000
+/** How long the visible anchors must stay unchanged for the page to count as settled. */
+const ANCHOR_QUIET_MS = 200
 
 const step = (anchor: string): WalkthroughStep => ({
   anchor,
@@ -71,17 +73,35 @@ const PageWithWalkthrough = ({
   steps,
   anchors,
   hiddenAnchors,
+  walkthroughId = WALKTHROUGH_ID,
+  pageKey,
 }: {
   readonly storage: WalkthroughStorage
   readonly steps: ReadonlyArray<WalkthroughStep>
   readonly anchors: ReadonlyArray<string>
   readonly hiddenAnchors?: ReadonlyArray<string>
+  readonly walkthroughId?: string
+  /** A new key remounts the page, replacing every anchor element. */
+  readonly pageKey?: string
 }): JSX.Element => {
-  const { open, finish, skip } = useWalkthrough({ storage, id: WALKTHROUGH_ID, version: VERSION })
+  const { open, finish, skip, postpone, reopen } = useWalkthrough({
+    storage,
+    id: walkthroughId,
+    version: VERSION,
+  })
   return (
     <>
-      <Page anchors={anchors} hiddenAnchors={hiddenAnchors} />
-      <Walkthrough steps={steps} open={open} onFinish={finish} onSkip={skip} />
+      <Page key={pageKey} anchors={anchors} hiddenAnchors={hiddenAnchors} />
+      <button type="button" onClick={reopen}>
+        Show {walkthroughId} walkthrough again
+      </button>
+      <Walkthrough
+        steps={steps}
+        open={open}
+        onFinish={finish}
+        onSkip={skip}
+        onPostpone={postpone}
+      />
     </>
   )
 }
@@ -152,9 +172,9 @@ describe('Walkthrough', () => {
       />
     )
 
-    // Act: two of the four anchors never render, so it starts once the wait runs out.
+    // Act: two of the four anchors never render, so it starts once the page settles.
     act(() => {
-      vi.advanceTimersByTime(ANCHOR_WAIT_MS)
+      vi.advanceTimersByTime(ANCHOR_QUIET_MS)
     })
     vi.useRealTimers()
     const first = await findPopover('About servers')
@@ -167,14 +187,15 @@ describe('Walkthrough', () => {
     expect(within(second).getByRole('button', { name: 'Done' })).toBeDefined()
   })
 
-  it('should not start, and record nothing, when no anchor renders in time', () => {
+  it('should not start, and record nothing, when no anchor renders in time, and start on reopen once one does', async () => {
     // Arrange
-    vi.useFakeTimers()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     const storage = mapWalkthroughStorage()
-    render(
+    const steps = [step('settings')]
+    const { rerender } = render(
       <PageWithWalkthrough
         storage={storage}
-        steps={[step('missing'), step('settings')]}
+        steps={steps}
         anchors={[]}
         hiddenAnchors={['settings']}
       />
@@ -184,10 +205,198 @@ describe('Walkthrough', () => {
     act(() => {
       vi.advanceTimersByTime(ANCHOR_WAIT_MS)
     })
+    vi.useRealTimers()
 
     // Assert
     expect(popoverIsShowing()).toBe(false)
     expect(recordedOutcome(storage)).toBeUndefined()
+
+    // Act
+    rerender(<PageWithWalkthrough storage={storage} steps={steps} anchors={['settings']} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Show home walkthrough again' }))
+
+    // Assert
+    expect(await findPopover('About settings')).toBeDefined()
+  })
+
+  it('should postpone a second walkthrough while one is showing', async () => {
+    // Arrange
+    const storage = mapWalkthroughStorage()
+    render(
+      <>
+        <PageWithWalkthrough storage={storage} steps={[step('servers')]} anchors={['servers']} />
+        <PageWithWalkthrough
+          storage={storage}
+          steps={[step('apps')]}
+          anchors={['apps']}
+          walkthroughId="apps"
+        />
+      </>
+    )
+    const first = await findPopover('About servers')
+
+    // Act
+    fireEvent.click(within(first).getByRole('button', { name: 'Done' }))
+    await waitFor(() => {
+      expect(recordedOutcome(storage)).toBe('Finished')
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Show apps walkthrough again' }))
+
+    // Assert
+    expect(await findPopover('About apps')).toBeDefined()
+    expect(readSeenWalkthrough(storage, 'apps', VERSION)).toBeUndefined()
+  })
+
+  it('should drop a step whose anchor is invisible to checkVisibility', async () => {
+    // Arrange: a browser with checkVisibility, reading inline visibility.
+    Object.defineProperty(Element.prototype, 'checkVisibility', {
+      configurable: true,
+      value: function (this: Element) {
+        return this.closest('[style*="visibility: hidden"]') === null
+      },
+    })
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const storage = mapWalkthroughStorage()
+    try {
+      render(
+        <>
+          <div style={{ visibility: 'hidden' }}>
+            <button type="button" {...walkthroughAnchor('drawer')}>
+              drawer
+            </button>
+          </div>
+          <PageWithWalkthrough
+            storage={storage}
+            steps={[step('drawer'), step('servers')]}
+            anchors={['servers']}
+          />
+        </>
+      )
+
+      // Act
+      act(() => {
+        vi.advanceTimersByTime(ANCHOR_WAIT_MS)
+      })
+      vi.useRealTimers()
+
+      // Assert
+      const popover = await findPopover('About servers')
+      expect(within(popover).getByText('1 of 1')).toBeDefined()
+    } finally {
+      Reflect.deleteProperty(Element.prototype, 'checkVisibility')
+    }
+  })
+
+  it('should never parse step text as HTML', async () => {
+    // Arrange: an element that reports being put on the page, even for a moment.
+    const connectedProbes = vi.fn()
+    customElements.define(
+      'walkthrough-probe',
+      class extends HTMLElement {
+        connectedCallback(): void {
+          connectedProbes()
+        }
+      }
+    )
+    const markup = '<walkthrough-probe>injected</walkthrough-probe>'
+
+    // Act
+    render(
+      <PageWithWalkthrough
+        storage={mapWalkthroughStorage()}
+        steps={[{ anchor: 'servers', title: markup, body: markup }]}
+        anchors={['servers']}
+      />
+    )
+
+    // Assert
+    const popover = await findPopover(markup)
+    expect(within(popover).getAllByText(markup)).toHaveLength(2)
+    expect(connectedProbes).not.toHaveBeenCalled()
+  })
+
+  it('should point a later step at the control the page re-rendered since it started', async () => {
+    // Arrange
+    const storage = mapWalkthroughStorage()
+    const steps = [step('servers'), step('apps')]
+    const { rerender } = render(
+      <PageWithWalkthrough storage={storage} steps={steps} anchors={['servers', 'apps']} />
+    )
+    const first = await findPopover('About servers')
+
+    // Act
+    rerender(
+      <PageWithWalkthrough
+        storage={storage}
+        steps={steps}
+        anchors={['servers', 'apps']}
+        pageKey="refetched"
+      />
+    )
+    fireEvent.click(within(first).getByRole('button', { name: 'Next' }))
+    await findPopover('About apps')
+
+    // Assert
+    const apps = screen.getByRole('button', { name: 'apps' })
+    await waitFor(() => {
+      expect(apps.classList.contains('driver-active-element')).toBe(true)
+    })
+  })
+
+  it('should record Finished on the right arrow key on the last step', async () => {
+    // Arrange
+    const storage = renderTwoStepWalkthrough()
+    await findPopover('About servers')
+
+    // Act: driver.js ignores the arrow keys while it moves between steps, so
+    // press until each press lands.
+    await waitFor(() => {
+      fireEvent.keyUp(window, { key: 'ArrowRight' })
+      expect(screen.getByRole('dialog', { name: 'About apps' })).toBeDefined()
+    })
+    await waitFor(() => {
+      fireEvent.keyUp(window, { key: 'ArrowRight' })
+      expect(recordedOutcome(storage)).toBe('Finished')
+    })
+
+    // Assert
+    expect(popoverIsShowing()).toBe(false)
+  })
+
+  it('should start once the visible anchors stop changing, without waiting for the missing ones', async () => {
+    // Arrange
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const storage = mapWalkthroughStorage()
+    const steps = [step('servers'), step('apps'), step('missing')]
+    const { rerender } = render(
+      <PageWithWalkthrough storage={storage} steps={steps} anchors={['servers']} />
+    )
+
+    // Act: a second anchor renders partway through the quiet period, restarting it.
+    act(() => {
+      vi.advanceTimersByTime(ANCHOR_QUIET_MS - 50)
+    })
+    // The async act lets the MutationObserver see the new anchor.
+    await act(async () => {
+      rerender(
+        <PageWithWalkthrough storage={storage} steps={steps} anchors={['servers', 'apps']} />
+      )
+    })
+    act(() => {
+      vi.advanceTimersByTime(ANCHOR_QUIET_MS - 50)
+    })
+
+    // Assert
+    expect(popoverIsShowing()).toBe(false)
+
+    // Act
+    act(() => {
+      vi.advanceTimersByTime(50)
+    })
+
+    // Assert
+    const popover = screen.getByRole('dialog', { name: 'About servers' })
+    expect(within(popover).getByText('1 of 2')).toBeDefined()
   })
 
   it('should wait for anchors that render after it opens', async () => {

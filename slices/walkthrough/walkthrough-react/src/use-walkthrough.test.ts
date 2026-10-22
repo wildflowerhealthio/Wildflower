@@ -1,4 +1,4 @@
-import { act, cleanup, renderHook } from '@testing-library/react'
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import {
   readSeenWalkthrough,
   type SeenWalkthrough,
@@ -122,7 +122,7 @@ describe('useWalkthrough', () => {
     )
   })
 
-  it('should throw from finish, staying open, when storage refuses the record', () => {
+  it('should throw from finish, closed with nothing kept, when storage refuses the record', async () => {
     // Arrange
     const quotaError = new Error('QuotaExceededError')
     const storage = {
@@ -137,6 +137,60 @@ describe('useWalkthrough', () => {
 
     // Act + Assert
     expect(() => result.current.finish()).toThrow(quotaError)
+    await waitFor(() => {
+      expect(result.current.open).toBe(false)
+    })
+    expect(readSeenWalkthrough(storage, WALKTHROUGH_ID, CURRENT_VERSION)).toBeUndefined()
+  })
+
+  it('should close on postpone without recording, and open again on reopen', () => {
+    // Arrange
+    const storage = mapWalkthroughStorage()
+    const { result } = renderHook(() =>
+      useWalkthrough({ storage, id: WALKTHROUGH_ID, version: CURRENT_VERSION })
+    )
+
+    // Act
+    act(() => result.current.postpone())
+
+    // Assert
+    expect(result.current.open).toBe(false)
+    expect(readSeenWalkthrough(storage, WALKTHROUGH_ID, CURRENT_VERSION)).toBeUndefined()
+
+    // Act
+    act(() => result.current.reopen())
+
+    // Assert
+    expect(result.current.open).toBe(true)
+  })
+
+  it('should read the record again when the id or version changes', () => {
+    // Arrange
+    const storage = mapWalkthroughStorage()
+    writeSeenWalkthrough(storage, 'finished', storedRecord())
+    const { result, rerender } = renderHook(
+      ({ id, version }: { readonly id: string; readonly version: number }) =>
+        useWalkthrough({ storage, id, version }),
+      { initialProps: { id: 'finished', version: CURRENT_VERSION } }
+    )
+    expect(result.current.open).toBe(false)
+
+    // Act
+    rerender({ id: 'unseen', version: CURRENT_VERSION })
+
+    // Assert
+    expect(result.current.open).toBe(true)
+
+    // Act
+    rerender({ id: 'finished', version: CURRENT_VERSION })
+
+    // Assert
+    expect(result.current.open).toBe(false)
+
+    // Act
+    rerender({ id: 'finished', version: CURRENT_VERSION + 1 })
+
+    // Assert
     expect(result.current.open).toBe(true)
   })
 })
