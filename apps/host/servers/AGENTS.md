@@ -118,7 +118,9 @@ changing how servers run or what the host notifies about them.
   the system browser — and About). The server list shows the Host's walkthrough
   (`server-list-walkthrough.ts`, on `walkthrough-react`) on a first visit, once the servers are
   read, and again when Show walkthrough again opens it with `?walkthrough=show`; its steps point
-  at the controls carrying `walkthroughAnchor`. `/servers` and `/settings` each carry `BASE_SCREEN_STATIC_DATA`
+  at the controls carrying `walkthroughAnchor`. A list with no servers and a list with servers
+  each have their own walkthrough and record, so the first server's card gets its steps once it
+  is added. `/servers` and `/settings` each carry `BASE_SCREEN_STATIC_DATA`
   in their route's `staticData`, which the app's bar reads (`isBaseScreen`)
   to tell the base's screens from its own. The server list is a card per
   server, kept current by the `server-status` event: its domain and a status

@@ -11,10 +11,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import golden from '../../servers-wire-golden.json' with { type: 'json' }
 import {
-  HOST_WALKTHROUGH_ID,
-  HOST_WALKTHROUGH_STEPS,
-  HOST_WALKTHROUGH_VERSION,
-  HostWalkthroughAnchor,
+  type HostWalkthrough,
+  NO_SERVERS_WALKTHROUGH,
+  SERVERS_WALKTHROUGH,
 } from './server-list-walkthrough.ts'
 import { hostWith } from './test-utils/host-fakes.ts'
 import { renderBase, setUpEachBaseTest, storageAnswered } from './test-utils/render-base.ts'
@@ -52,9 +51,13 @@ const renderBaseAt = (
   return history
 }
 
-/** The anchors on the page that a step of the Host's walkthrough points at. */
-const anchorsOnPage = (): ReadonlyArray<string> =>
-  HOST_WALKTHROUGH_STEPS.map(({ anchor }) => anchor).filter(
+/** The anchors of `walkthrough`'s steps, in step order. */
+const anchorsOf = (walkthrough: HostWalkthrough): ReadonlyArray<string> =>
+  walkthrough.steps.map(({ anchor }) => anchor)
+
+/** The anchors on the page that a step of `walkthrough` points at. */
+const anchorsOnPage = (walkthrough: HostWalkthrough): ReadonlyArray<string> =>
+  anchorsOf(walkthrough).filter(
     (anchor) => document.querySelector(`[${WALKTHROUGH_ANCHOR_ATTRIBUTE}="${anchor}"]`) !== null
   )
 
@@ -62,67 +65,90 @@ const anchorsOnPage = (): ReadonlyArray<string> =>
 const findPopover = (title: string): Promise<HTMLElement> =>
   screen.findByRole('dialog', { name: title })
 
-/** Keeps a record of the Host's walkthrough, as a returning visitor has. */
-const recordSeen = (): void => {
-  writeSeenWalkthrough(window.localStorage, HOST_WALKTHROUGH_ID, {
-    version: HOST_WALKTHROUGH_VERSION,
+/** Keeps a record of `walkthrough`, as a visitor who has been through it has. */
+const recordSeen = (walkthrough: HostWalkthrough): void => {
+  writeSeenWalkthrough(window.localStorage, walkthrough.id, {
+    version: walkthrough.version,
     outcome: 'Skipped',
     decidedAt: DateTime.unsafeMake('2026-10-22T12:00:00.000Z'),
   })
 }
 
-const recordedOutcome = (): string | undefined =>
-  readSeenWalkthrough(window.localStorage, HOST_WALKTHROUGH_ID, HOST_WALKTHROUGH_VERSION)?.outcome
+const recordedOutcome = (walkthrough: HostWalkthrough): string | undefined =>
+  readSeenWalkthrough(window.localStorage, walkthrough.id, walkthrough.version)?.outcome
+
+/** The title of `walkthrough`'s first step. */
+const firstStepTitle = (walkthrough: HostWalkthrough): string => {
+  const [firstStep] = walkthrough.steps
+  if (firstStep === undefined) throw new Error(`walkthrough ${walkthrough.id} has no steps`)
+  return firstStep.title
+}
 
 describe("the Host's walkthrough", () => {
-  it("should find every step's control on a server list with servers", async () => {
+  it("should find every step's control of the servers walkthrough on a list with servers", async () => {
     // Arrange
-    recordSeen()
+    recordSeen(SERVERS_WALKTHROUGH)
 
     // Act
     renderBaseAt('/servers')
     await screen.findByRole('listitem', { name: golden.listedServers[0]?.domain })
 
     // Assert
-    expect(anchorsOnPage()).toStrictEqual(HOST_WALKTHROUGH_STEPS.map(({ anchor }) => anchor))
+    expect(anchorsOnPage(SERVERS_WALKTHROUGH)).toStrictEqual(anchorsOf(SERVERS_WALKTHROUGH))
   })
 
-  it('should keep Add new server and Host Settings on a list with no servers', async () => {
+  it("should find every step's control of the no-servers walkthrough on a list with no servers", async () => {
     // Arrange
-    recordSeen()
+    recordSeen(NO_SERVERS_WALKTHROUGH)
 
     // Act
     renderBaseAt('/servers', [])
     await screen.findByText('No servers yet')
 
     // Assert
-    expect(anchorsOnPage()).toStrictEqual([
-      HostWalkthroughAnchor.addServer,
-      HostWalkthroughAnchor.hostSettings,
-    ])
+    expect(anchorsOnPage(NO_SERVERS_WALKTHROUGH)).toStrictEqual(anchorsOf(NO_SERVERS_WALKTHROUGH))
   })
 
-  it('should open on a first visit, and stay closed once skipped', async () => {
+  it('should open the servers walkthrough on a first visit, and keep it closed once skipped', async () => {
     // Arrange
-    const [firstStep] = HOST_WALKTHROUGH_STEPS
-    if (firstStep === undefined) throw new Error('the walkthrough has no steps')
+    const title = firstStepTitle(SERVERS_WALKTHROUGH)
     renderBaseAt('/servers')
 
     // Act
-    const popover = await findPopover(firstStep.title)
+    const popover = await findPopover(title)
     fireEvent.click(within(popover).getByRole('button', { name: 'Skip' }))
 
     // Assert
     await waitFor(() => {
-      expect(recordedOutcome()).toBe('Skipped')
+      expect(recordedOutcome(SERVERS_WALKTHROUGH)).toBe('Skipped')
     })
-    expect(screen.queryByRole('dialog', { name: firstStep.title })).toBeNull()
+    expect(recordedOutcome(NO_SERVERS_WALKTHROUGH)).toBeUndefined()
+    expect(screen.queryByRole('dialog', { name: title })).toBeNull()
+  })
+
+  it('should open the no-servers walkthrough on a first visit to a list with no servers', async () => {
+    // Act
+    renderBaseAt('/servers', [])
+
+    // Assert
+    await findPopover(firstStepTitle(NO_SERVERS_WALKTHROUGH))
+  })
+
+  it('should open the servers walkthrough once there are servers, after the no-servers one', async () => {
+    // Arrange
+    recordSeen(NO_SERVERS_WALKTHROUGH)
+
+    // Act
+    renderBaseAt('/servers')
+
+    // Assert
+    await findPopover(firstStepTitle(SERVERS_WALKTHROUGH))
   })
 
   it("should show again from Host Settings' Show walkthrough again, and drop the request once done", async () => {
     // Arrange
     const user = userEvent.setup()
-    recordSeen()
+    recordSeen(NO_SERVERS_WALKTHROUGH)
     const history = renderBaseAt('/settings', [])
 
     // Act
@@ -141,7 +167,7 @@ describe("the Host's walkthrough", () => {
 
     // Assert
     await waitFor(() => {
-      expect(recordedOutcome()).toBe('Finished')
+      expect(recordedOutcome(NO_SERVERS_WALKTHROUGH)).toBe('Finished')
     })
     await waitFor(() => {
       expect(history.location.search).toBe('')

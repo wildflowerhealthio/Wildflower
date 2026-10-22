@@ -15,7 +15,7 @@ import { serversQueryOptions, useServerStatusEvents } from './queries.ts'
 import { type RunHostCommand, useListenToHostEvent, useRunHostCommand } from './router-context.ts'
 import { ServerCard } from './server-card.tsx'
 import {
-  HOST_WALKTHROUGH_STEPS,
+  hostWalkthroughFor,
   HostWalkthroughAnchor,
   useServerListWalkthrough,
 } from './server-list-walkthrough.ts'
@@ -96,7 +96,10 @@ const ServerListBody = ({
  * @remarks
  * The Host's walkthrough (`useServerListWalkthrough`) points at those
  * controls on a first visit, and when Host Settings asks for it again, once
- * the servers are read: never over the reading or its failure.
+ * the servers are read: never over the reading or its failure. A list with no
+ * servers and a list with servers each have their own walkthrough
+ * (`hostWalkthroughFor`), so adding the first server brings up the steps for
+ * its card.
  *
  * When the host can't read `servers.json`, the page shows the host's error,
  * with a retry. While the webview is offline, a notice says that launching
@@ -108,7 +111,8 @@ const ServerListPage = (): JSX.Element => {
   useServerStatusEvents(listenToHostEvent)
   const servers = useQuery(serversQueryOptions(runHostCommand))
   const online = useOnline()
-  const walkthrough = useServerListWalkthrough()
+  const hostWalkthrough = hostWalkthroughFor(servers.data?.length ?? 0)
+  const walkthrough = useServerListWalkthrough(hostWalkthrough)
   return (
     <>
       <PageHeader
@@ -128,7 +132,7 @@ const ServerListPage = (): JSX.Element => {
       )}
       <ServerListBody servers={servers} runHostCommand={runHostCommand} />
       <Walkthrough
-        steps={HOST_WALKTHROUGH_STEPS}
+        steps={hostWalkthrough.steps}
         open={walkthrough.open && servers.isSuccess}
         onFinish={walkthrough.finish}
         onSkip={walkthrough.skip}
