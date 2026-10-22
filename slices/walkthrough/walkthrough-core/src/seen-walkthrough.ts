@@ -11,12 +11,13 @@ type WalkthroughOutcome = typeof WalkthroughOutcome.Type
  * @remarks
  * `version` is the version of the walkthrough's steps the visitor saw, so an
  * app that raises it shows the updated walkthrough again; `outcome` is whether
- * they finished or skipped it; `decidedAt` is when, as an ISO-8601 timestamp.
+ * they finished or skipped it; `decidedAt` is when, kept as an ISO-8601
+ * timestamp.
  */
 const SeenWalkthrough = Schema.Struct({
   version: Schema.Int,
   outcome: WalkthroughOutcome,
-  decidedAt: Schema.String,
+  decidedAt: Schema.DateTimeUtc,
 })
 type SeenWalkthrough = typeof SeenWalkthrough.Type
 

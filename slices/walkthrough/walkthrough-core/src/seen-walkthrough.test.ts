@@ -1,5 +1,5 @@
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Arbitrary } from 'effect'
+import { Arbitrary, DateTime } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 import {
@@ -112,7 +112,7 @@ describe('storage failures', () => {
     const seenWalkthrough: SeenWalkthrough = {
       version: 1,
       outcome: 'Finished',
-      decidedAt: '2026-10-22T00:00:00.000Z',
+      decidedAt: DateTime.unsafeMake('2026-10-22T00:00:00.000Z'),
     }
 
     expect(() => readSeenWalkthrough(failingStorage, WALKTHROUGH_ID, 1)).toThrow(storageError)

@@ -6,6 +6,7 @@ import {
   type WalkthroughStorage,
   writeSeenWalkthrough,
 } from '@wildflowerhealthio/walkthrough-core'
+import { DateTime } from 'effect'
 import type { JSX } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
@@ -484,7 +485,7 @@ describe('Walkthrough', () => {
     writeSeenWalkthrough(storage, WALKTHROUGH_ID, {
       version: VERSION,
       outcome: 'Skipped',
-      decidedAt: '2026-10-01T08:00:00.000Z',
+      decidedAt: DateTime.unsafeMake('2026-10-01T08:00:00.000Z'),
     })
 
     // Act

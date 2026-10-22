@@ -4,6 +4,7 @@ import {
   type SeenWalkthrough,
   writeSeenWalkthrough,
 } from '@wildflowerhealthio/walkthrough-core'
+import { DateTime } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { useWalkthrough } from './use-walkthrough.ts'
@@ -26,7 +27,7 @@ afterEach(() => {
 const storedRecord = (overrides: Partial<SeenWalkthrough> = {}): SeenWalkthrough => ({
   version: CURRENT_VERSION,
   outcome: 'Finished',
-  decidedAt: '2026-10-01T08:00:00.000Z',
+  decidedAt: DateTime.unsafeMake('2026-10-01T08:00:00.000Z'),
   ...overrides,
 })
 
@@ -92,7 +93,7 @@ describe('useWalkthrough', () => {
       expect(readSeenWalkthrough(storage, WALKTHROUGH_ID, CURRENT_VERSION)).toStrictEqual({
         version: CURRENT_VERSION,
         outcome,
-        decidedAt: NOW.toISOString(),
+        decidedAt: DateTime.unsafeMake(NOW),
       })
       expect(result.current.open).toBe(false)
     }
@@ -118,7 +119,7 @@ describe('useWalkthrough', () => {
     // Assert
     expect(result.current.open).toBe(false)
     expect(readSeenWalkthrough(storage, WALKTHROUGH_ID, CURRENT_VERSION)).toStrictEqual(
-      storedRecord({ outcome: 'Finished', decidedAt: NOW.toISOString() })
+      storedRecord({ outcome: 'Finished', decidedAt: DateTime.unsafeMake(NOW) })
     )
   })
 

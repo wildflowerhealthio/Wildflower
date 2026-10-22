@@ -4,6 +4,7 @@ import {
   type WalkthroughStorage,
   writeSeenWalkthrough,
 } from '@wildflowerhealthio/walkthrough-core'
+import { DateTime } from 'effect'
 import { useCallback, useState } from 'react'
 
 /** Options for {@link useWalkthrough}. */
@@ -78,7 +79,7 @@ const useWalkthrough = ({ storage, id, version }: UseWalkthroughOptions): Walkth
       writeSeenWalkthrough(storage, id, {
         version,
         outcome,
-        decidedAt: new Date().toISOString(),
+        decidedAt: DateTime.unsafeNow(),
       })
     },
     [setOpen, storage, id, version]
