@@ -74,8 +74,8 @@ On the device, the owner chooses **Add new server**, then
 **A self-hosted Wildflower relay**, enters `https://relay.example.com` as the
 **Wildflower Relay URL**, and then the claim code. The app redeems it, once,
 at `POST https://relay.example.com/claim` for the tunnel's name and token,
-which it saves; the code itself is kept nowhere. A code redeems within 15
-minutes (`WILDFLOWER_RELAY_CLAIM_CODE_TTL_SECS`), so it can be read out
+which it saves; the code itself is kept nowhere. A code redeems within ten
+days (`WILDFLOWER_RELAY_CLAIM_CODE_TTL_SECS`), so it can be read out
 instead of copied. Issue another if it expires: a tunnel has one outstanding
 code, so issuing a new one cancels the earlier one. Guessing is rate limited,
 per client address and across all clients.
