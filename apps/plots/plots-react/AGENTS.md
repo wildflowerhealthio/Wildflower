@@ -69,7 +69,9 @@ and opaque series ids.
 - `src/value-format.ts` — tick, value and date formatting: `tickDecimals`
   (as many decimals as a tick step needs), `axisTickFormat` (the time chart's
   `0..1` ticks mapped back to values) and `valueTickFormat` (the scatter's
-  value ticks), `formatReading` for a readout value.
+  value ticks), `formatReading` for a readout value and `readingWithUnit` for
+  a reading with its unit and note, as the crosshair readout and the scatter's
+  tip both write it.
 - `src/use-colour-slots.ts` — `useColourSlots`: `ColourSlots.assign` over
   the selected value series in selection order, carried across renders. The
   page holds it above the view switch and hands it to `MultiAxisChart` and

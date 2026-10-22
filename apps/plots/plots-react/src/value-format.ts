@@ -1,6 +1,6 @@
 import type { DateTime } from 'effect'
 
-import { type Series, ValueAxis } from '@wildflowerhealthio/plots-fundamentals'
+import { type Level, type Series, ValueAxis } from '@wildflowerhealthio/plots-fundamentals'
 
 /** Slack, in powers of ten, for float error in a tick step read back from two ticks. */
 const STEP_TOLERANCE = 1e-9
@@ -81,6 +81,15 @@ const readingFormat = new Intl.NumberFormat(undefined, {
 /** Render one value for the crosshair readout, dropping trailing zeroes. */
 const formatReading = (value: number): string => readingFormat.format(value)
 
+/**
+ * One reading as a readout says it: the value, the series' unit and the
+ * level's `note` — the domain's qualifier (`per day`), shown as given.
+ */
+const readingWithUnit = (series: Series.ValueSeries, level: Level.Level): string =>
+  [formatReading(level.value), series.unit, level.note]
+    .filter((part) => part !== null && part !== undefined)
+    .join(' ')
+
 /** Built once, like {@link readingFormat}. */
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' })
 
@@ -120,6 +129,7 @@ export {
   formatDateTime,
   formatReading,
   labelWithUnit,
+  readingWithUnit,
   tickDecimals,
   valueTickFormat,
 }

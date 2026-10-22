@@ -11,7 +11,7 @@ import {
 } from '@wildflowerhealthio/plots-fundamentals'
 
 import { colourSlotOf, seriesColors, spanColour } from './series-colors.ts'
-import { formatDate, formatDateTime, formatReading } from './value-format.ts'
+import { formatDate, formatDateTime, formatReading, readingWithUnit } from './value-format.ts'
 import styles from './crosshair-tooltip.module.css'
 
 interface CrosshairTooltipProps {
@@ -46,8 +46,7 @@ interface ReadoutText {
  * `Series.levelAt` found there.
  *
  * @remarks
- * The value is followed by the series' unit and the level's `note` — the
- * domain's qualifier (`per day`), shown as given. The detail line says how
+ * The value reads as `readingWithUnit` writes it. The detail line says how
  * old the value is: a point series' level starts at the reading it holds, so
  * it names that reading's date; a level series' level is a stated span, so it
  * names the span, open ones `ongoing`.
@@ -58,9 +57,7 @@ interface ReadoutText {
  */
 const readoutText = (series: Series.ValueSeries, level: Level.Level | null): ReadoutText => {
   if (level === null) return { value: '—', detail: null }
-  const value = [formatReading(level.value), series.unit, level.note]
-    .filter((part) => part !== null && part !== undefined)
-    .join(' ')
+  const value = readingWithUnit(series, level)
   const detail =
     series.kind === 'points'
       ? formatDate(level.start)

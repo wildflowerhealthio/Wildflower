@@ -4,7 +4,6 @@ import { useMemo } from 'react'
 
 import {
   type ColourSlots,
-  type Level,
   Scatter,
   type Series,
   type TimeDomain,
@@ -13,7 +12,7 @@ import {
 
 import { colourSlotOf, seriesColors } from './series-colors.ts'
 import { usePlot, usePlotContainer } from './use-plot.ts'
-import { formatDateTime, formatReading, labelWithUnit, valueTickFormat } from './value-format.ts'
+import { formatDateTime, labelWithUnit, readingWithUnit, valueTickFormat } from './value-format.ts'
 import styles from './scatter-chart.module.css'
 
 interface ScatterChartProps {
@@ -33,20 +32,14 @@ const SCATTER_HEIGHT = 400
 /** A dot's radius — the dataviz minimum of an 8px marker. */
 const DOT_RADIUS = 4
 
-/** A value as the readout says it: the number, its unit and the domain's note. */
-const readingText = (series: Series.ValueSeries, level: Level.Level): string =>
-  [formatReading(level.value), series.unit, level.note]
-    .filter((part) => part !== null && part !== undefined)
-    .join(' ')
-
 /** The hover readout for one pair: when X was read, then both values by series. */
 const pairTitle =
   (x: Series.ValueSeries, y: Series.ValueSeries) =>
   (pair: Scatter.Pair): string =>
     [
       formatDateTime(pair.time),
-      `${x.label}: ${readingText(x, pair.x)}`,
-      `${y.label}: ${readingText(y, pair.y)}`,
+      `${x.label}: ${readingWithUnit(x, pair.x)}`,
+      `${y.label}: ${readingWithUnit(y, pair.y)}`,
     ].join('\n')
 
 /** Where a pair sits along the x axis: X's value. */
