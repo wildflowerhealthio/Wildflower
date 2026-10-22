@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import type { SmartClient } from '@wildflowerhealthio/fhir-r4-react/smart'
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import { LinkButton } from '@wildflowerhealthio/react-tundraish'
 import { Match, Option } from 'effect'
-import type { JSX } from 'react'
+import type { ComponentProps, JSX } from 'react'
 
 import type { PatientChoice } from './patient-choice.ts'
 import { patientLineOf } from './patient-line.ts'
@@ -10,8 +11,12 @@ import { patientQuery } from './patient-query.ts'
 import { ReadFailureLine } from './read-status-lines.tsx'
 import styles from './patient-choice-line.module.css'
 
-/** Props for {@link PatientChoiceLine}. */
-interface PatientChoiceLineProps {
+/**
+ * Props for {@link PatientChoiceLine}: its own three, and any other `<div>`
+ * prop (`id`, `aria-*`, `data-*`, a `className` added to its own), which go
+ * to the root `<div>`.
+ */
+interface PatientChoiceLineProps extends Omit<ComponentProps<'div'>, 'children'> {
   /** The SMART client the patient is read through. */
   readonly client: SmartClient
   /** Whose records the page reads. */
@@ -50,8 +55,10 @@ const PatientChoiceLine = ({
   client,
   patientChoice,
   onPatientChange,
+  className,
+  ...rootProps
 }: PatientChoiceLineProps): JSX.Element => (
-  <div className={styles['patient-choice-line']}>
+  <div {...rootProps} className={cn(styles['patient-choice-line'], className)}>
     {Match.value(patientChoice).pipe(
       Match.when({ kind: 'patient' }, ({ patientId }) => (
         <PatientNameLine client={client} patientId={patientId} />

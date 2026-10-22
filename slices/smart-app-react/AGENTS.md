@@ -317,6 +317,14 @@ package, in an order that is load-bearing:
   `null` and read unscoped; an app that writes (Strength) keeps its write
   screens behind a chosen patient.
 
+## Root props pass through
+
+As in [react-tundraish](../../global/react-tundraish/AGENTS.md#root-props-pass-through),
+a component's props extend its outermost element's, less the ones it sets,
+and the rest are spread onto that element before its own attributes, with a
+caller's `className` joined through `cn`. `PatientChoiceLine` takes `<div>`
+props, so a caller anchors a walkthrough step or adds an `id` on it directly.
+
 ## References
 
 - [slices/fhir/AGENTS.md](../fhir/AGENTS.md) — the SMART primitives this package
