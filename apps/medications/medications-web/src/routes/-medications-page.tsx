@@ -84,15 +84,14 @@ function MedicationsPage({ tabs }: MedicationsPageProps): JSX.Element {
   return (
     <>
       <div className={styles['medications-page__status']}>
-        <div {...walkthroughAnchor(MedicationsWalkthroughAnchor.patientLine)}>
-          <PatientChoiceLine
-            client={client}
-            patientChoice={patientChoice}
-            onPatientChange={() => {
-              void navigate({ to: '/patients' })
-            }}
-          />
-        </div>
+        <PatientChoiceLine
+          client={client}
+          patientChoice={patientChoice}
+          onPatientChange={() => {
+            void navigate({ to: '/patients' })
+          }}
+          {...walkthroughAnchor(MedicationsWalkthroughAnchor.patientLine)}
+        />
         <ChunkBar
           phase={read.barPhase}
           pagesReceived={pagesReceived}
