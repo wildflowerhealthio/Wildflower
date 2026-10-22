@@ -27,6 +27,8 @@ functions read in the namespace's context (`ValueAxis.assign`, not
   last one open-ended, so the levels never overlap. `levelAt` is the same
   lookup by binary search, with one deliberate difference from
   `Level.inEffectAt`: before the first reading it still names the first one.
+  `levelsWithin` is `toLevels`' levels starting inside a window, built only
+  for the readings there.
 - **`LevelSeries`** (`src/level-series.ts`) — values held over intervals, each
   a `StyledLevel` with a `LineStyle` (`'solid' | 'dashed'`) the domain decides.
   Levels may overlap or leave gaps. `levelAt` reads through
@@ -46,7 +48,8 @@ functions read in the namespace's context (`ValueAxis.assign`, not
   `ValueSeries = PointSeries | LevelSeries` and `isValueSeries` /
   `isSpanSeries` tell them apart. A value series carries an opaque `id`, `label`, `unit` and a
   `ValueScale` (`'fitted' | 'from-zero' | 'zero-to-one'`). `levelsOf` is the
-  one place the two value kinds are told apart; `levelAt` reads through it.
+  one place the two value kinds are told apart; `levelAt` and `levelsWithin`
+  (the levels starting inside a window) read through the same split.
   `boundariesOf` (level starts and stated ends; span starts and ends),
   `extentOf`, `extentOfAll` (the span of several series together) and `sizeOf`
   take any series.

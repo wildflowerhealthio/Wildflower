@@ -4,7 +4,7 @@ import * as LevelSeries from './level-series.ts'
 import type * as Level from './level.ts'
 import * as PointSeries from './point-series.ts'
 import type * as SpanSeries from './span-series.ts'
-import type { TimeDomain } from './time-domain.ts'
+import { type TimeDomain, contains } from './time-domain.ts'
 
 /**
  * How a series' value axis is fitted, decided by the domain that knows what
@@ -39,6 +39,16 @@ const isSpanSeries = (series: Series): series is SpanSeries.SpanSeries => series
  */
 const levelsOf = (series: ValueSeries): readonly Level.Level[] =>
   series.kind === 'points' ? PointSeries.toLevels(series) : series.levels
+
+/**
+ * The levels of {@link levelsOf} that start inside `window`, both ends
+ * included, in series order — a point series' built only for the readings
+ * there (`PointSeries.levelsWithin`).
+ */
+const levelsWithin = (series: ValueSeries, window: TimeDomain): readonly Level.Level[] =>
+  series.kind === 'points'
+    ? PointSeries.levelsWithin(series, window)
+    : series.levels.filter((level) => contains(window, level.start.epochMillis))
 
 /**
  * The level a crosshair reads off `series` at `time`.
@@ -114,6 +124,7 @@ export {
   isValueSeries,
   levelAt,
   levelsOf,
+  levelsWithin,
   sizeOf,
 }
 export type { Series, ValueScale, ValueSeries }

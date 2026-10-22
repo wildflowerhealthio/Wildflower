@@ -46,21 +46,27 @@ interface TimedEntry {
 }
 
 /**
- * Every entry `series` contributes, in series order: a value series' level
- * starts (`Series.levelsOf`); a span series' starts and ends, each span's
- * start before its end.
+ * Every entry `series` has inside `window`, in series order: a value series'
+ * level starts (`Series.levelsWithin`); a span series' starts and ends, each
+ * span's start before its end.
  *
  * @remarks
  * Walking spans in `start` order puts a hand-off's ending span before the one
  * starting at the same instant.
  */
-const timedEntriesOf = (series: Series.Series): readonly TimedEntry[] =>
+const timedEntriesWithin = (
+  series: Series.Series,
+  window: TimeDomain.TimeDomain
+): readonly TimedEntry[] =>
   Series.isSpanSeries(series)
-    ? series.spans.flatMap((span) => [
-        { time: span.start, entry: { kind: 'span-start', span } },
-        { time: span.end, entry: { kind: 'span-end', span } },
-      ])
-    : Series.levelsOf(series).map((level) => ({
+    ? TimeDomain.pointsWithin(
+        series.spans.flatMap((span): readonly TimedEntry[] => [
+          { time: span.start, entry: { kind: 'span-start', span } },
+          { time: span.end, entry: { kind: 'span-end', span } },
+        ]),
+        window
+      )
+    : Series.levelsWithin(series, window).map((level) => ({
         time: level.start,
         entry: { kind: 'value', level },
       }))
@@ -81,8 +87,7 @@ const timedEntriesOf = (series: Series.Series): readonly TimedEntry[] =>
 const of = (columns: readonly Series.Series[], window: TimeDomain.TimeDomain): ReadingTable => {
   const rowsByMillis = new Map<number, { readonly time: DateTime.Utc; readonly cells: Entry[][] }>()
   columns.forEach((series, column) => {
-    for (const { time, entry } of timedEntriesOf(series)) {
-      if (!TimeDomain.contains(window, time.epochMillis)) continue
+    for (const { time, entry } of timedEntriesWithin(series, window)) {
       let row = rowsByMillis.get(time.epochMillis)
       if (row === undefined) {
         row = { time, cells: columns.map(() => []) }

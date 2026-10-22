@@ -2,6 +2,7 @@ import type { DateTime } from 'effect'
 
 import type * as Level from './level.ts'
 import type { ValueScale } from './series.ts'
+import type { TimeDomain } from './time-domain.ts'
 
 /**
  * How a line is drawn between two readings: straight from one to the next, or
@@ -66,6 +67,23 @@ const toLevels = (series: PointSeries): readonly Level.Level[] =>
   series.points.map((point, index) => levelOf(point, series.points[index + 1]?.time ?? null))
 
 /**
+ * The index of the first of `points` whose time is past `millis` — or, with
+ * `inclusive`, at or past it — or `points.length` when there is none. Binary
+ * search over the sorted readings.
+ */
+const firstIndexFrom = (points: readonly Point[], millis: number, inclusive: boolean): number => {
+  let low = 0
+  let high = points.length
+  while (low < high) {
+    const middle = (low + high) >>> 1
+    const pointMillis = points[middle].time.epochMillis
+    if (inclusive ? pointMillis < millis : pointMillis <= millis) low = middle + 1
+    else high = middle
+  }
+  return low
+}
+
+/**
  * The level a crosshair reads off `series` at `time` — the same level
  * {@link toLevels} holds there, found without building them all.
  *
@@ -80,23 +98,31 @@ const toLevels = (series: PointSeries): readonly Level.Level[] =>
  */
 const levelAt = (series: PointSeries, time: DateTime.Utc): Level.Level | null => {
   const points = series.points
-  const first = points[0]
-  if (first === undefined) return null
-  const target = time.epochMillis
-  let low = 0
-  let high = points.length - 1
-  let found = 0
-  while (low <= high) {
-    const middle = (low + high) >>> 1
-    if (points[middle].time.epochMillis <= target) {
-      found = middle
-      low = middle + 1
-    } else {
-      high = middle - 1
-    }
-  }
+  if (points.length === 0) return null
+  const found = Math.max(firstIndexFrom(points, time.epochMillis, false) - 1, 0)
   return levelOf(points[found], points[found + 1]?.time ?? null)
 }
 
-export { levelAt, toLevels }
+/**
+ * The levels {@link toLevels} holds that start inside `window`, both ends
+ * included — built only for the readings there.
+ *
+ * @remarks
+ * The last level inside the window still ends at the next reading, even when
+ * that reading is past the window. Binary search for the window's ends, since
+ * the table and the scatter read a window of a series that can hold
+ * thousands of readings.
+ */
+const levelsWithin = (series: PointSeries, window: TimeDomain): readonly Level.Level[] => {
+  const points = series.points
+  const from = firstIndexFrom(points, window[0].epochMillis, true)
+  const to = firstIndexFrom(points, window[1].epochMillis, false)
+  const levels: Level.Level[] = []
+  for (let index = from; index < to; index += 1) {
+    levels.push(levelOf(points[index], points[index + 1]?.time ?? null))
+  }
+  return levels
+}
+
+export { levelAt, levelsWithin, toLevels }
 export type { Interpolation, Point, PointSeries }

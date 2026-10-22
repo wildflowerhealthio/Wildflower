@@ -2,7 +2,7 @@ import type { DateTime } from 'effect'
 
 import type * as Level from './level.ts'
 import * as Series from './series.ts'
-import * as TimeDomain from './time-domain.ts'
+import type * as TimeDomain from './time-domain.ts'
 
 /** One X reading and the Y value in effect at its time. */
 interface Pair {
@@ -31,7 +31,7 @@ interface Scatter {
  * Pair `x`'s readings inside `window` with `y`'s value at each one's time.
  *
  * @remarks
- * An X reading is one of its levels' starts (`Series.levelsOf`), so a level
+ * An X reading is one of its levels' starts (`Series.levelsWithin`), so a level
  * series' readings are its levels. Y is read with `Series.levelAt` — the
  * value the chart's crosshair reads at that instant — so a point series Y
  * still names its first reading before it begins, and a level series Y names
@@ -44,8 +44,7 @@ const of = (
 ): Scatter => {
   const pairs: Pair[] = []
   let unpairedCount = 0
-  for (const level of Series.levelsOf(x)) {
-    if (!TimeDomain.contains(window, level.start.epochMillis)) continue
+  for (const level of Series.levelsWithin(x, window)) {
     const yLevel = Series.levelAt(y, level.start)
     if (yLevel === null) unpairedCount += 1
     else pairs.push({ time: level.start, x: level, y: yLevel })
