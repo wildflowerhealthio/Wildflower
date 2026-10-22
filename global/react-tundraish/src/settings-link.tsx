@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import type { LinkComponentProps } from '@tanstack/react-router'
+import type { LinkComponentProps, RegisteredRouter } from '@tanstack/react-router'
 import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import type { JSX } from 'react'
 
@@ -10,10 +10,11 @@ import styles from './settings-link.module.css'
  * Props for {@link SettingsLink}: `href` and `label`, and any other `<Link>`
  * prop (`id`, `data-*`, `ref`, a `className` added to its own), which go to
  * the root `<Link>`. Its `to`, children, `aria-label` and `title` come from
- * `href` and `label`, so a caller cannot set them.
+ * `href` and `label`, so a caller cannot set them. `TTo` is `string` so a
+ * plain-path `href` type-checks under any registered router.
  */
 interface SettingsLinkProps extends Omit<
-  LinkComponentProps,
+  LinkComponentProps<'a', RegisteredRouter, string, string>,
   'to' | 'children' | 'aria-label' | 'title'
 > {
   /** The settings screen's absolute in-app path (e.g. `/settings`). */
