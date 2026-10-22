@@ -13,7 +13,7 @@ import {
 
 import { colourSlotOf, seriesColors } from './series-colors.ts'
 import { usePlot, usePlotContainer } from './use-plot.ts'
-import { formatDateTime, formatReading, labelWithUnit } from './value-format.ts'
+import { formatDateTime, formatReading, labelWithUnit, valueTickFormat } from './value-format.ts'
 import styles from './scatter-chart.module.css'
 
 interface ScatterChartProps {
@@ -86,14 +86,14 @@ const scatterOptions = (
       Plot.gridY({ ticks: yScale.ticks, strokeOpacity: 0.08 }),
       Plot.axisX({
         ticks: xScale.ticks,
-        tickFormat: formatReading,
+        tickFormat: valueTickFormat(xScale),
         label: labelWithUnit(x),
         labelAnchor: 'center',
         labelArrow: 'none',
       }),
       Plot.axisY({
         ticks: yScale.ticks,
-        tickFormat: formatReading,
+        tickFormat: valueTickFormat(yScale),
         label: labelWithUnit(y),
         labelAnchor: 'center',
         labelArrow: 'none',

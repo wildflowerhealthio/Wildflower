@@ -66,7 +66,10 @@ and opaque series ids.
 - `src/series-colors.ts` — `seriesColors`, the `--color-series-N` /
   `-soft` tokens for a palette index, and `spanColour`, the `--color-span-N`
   token for a span category's colour slot (`NEUTRAL_COLOUR` for `null`).
-- `src/value-format.ts` — tick, value and date formatting.
+- `src/value-format.ts` — tick, value and date formatting: `tickDecimals`
+  (as many decimals as a tick step needs), `axisTickFormat` (the time chart's
+  `0..1` ticks mapped back to values) and `valueTickFormat` (the scatter's
+  value ticks), `formatReading` for a readout value.
 - `src/use-colour-slots.ts` — `useColourSlots`: `ColourSlots.assign` over
   the selected value series in selection order, carried across renders. The
   page holds it above the view switch and hands it to `MultiAxisChart` and
@@ -102,7 +105,8 @@ and opaque series ids.
   `colours`): the
   `Scatter.of` pairs as one Observable Plot figure through `usePlot` — each
   axis fitted and ticked as `ValueAxis.domainFor` / `ticksFor` fit that
-  series and labelled `labelWithUnit`, an 8px dot per pair in the colour X
+  series, its tick labels at the decimals their step needs
+  (`valueTickFormat`, as the time chart's), and labelled `labelWithUnit`, an 8px dot per pair in the colour X
   keeps (`colours`) ringed in the surface colour, and a `Plot.pointer` tip on the nearest
   pair naming its time and both values. X readings with no Y value are counted
   in a note under the figure.

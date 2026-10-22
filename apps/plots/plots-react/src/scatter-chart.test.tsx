@@ -6,6 +6,7 @@ import type { ColourSlots, LevelSeries, PointSeries } from '@wildflowerhealthio/
 import { ScatterChart } from './scatter-chart.tsx'
 import { atDay, testWindow } from './series-arbitraries.test-helpers.ts'
 import { seriesColors } from './series-colors.ts'
+import { formatAxisValue } from './value-format.ts'
 
 afterEach(cleanup)
 
@@ -41,6 +42,11 @@ const colours: ColourSlots.ColourSlots = new Map([
   ['glucose', 2],
 ])
 
+const traceColours: ColourSlots.ColourSlots = new Map([
+  ['trace', 0],
+  ['insulin', 1],
+])
+
 /** The figure's dots. */
 const dots = (container: HTMLElement): readonly Element[] => [
   ...container.querySelectorAll('svg g[aria-label="dot"] circle'),
@@ -72,6 +78,28 @@ describe('ScatterChart', () => {
     expect(container.querySelector('svg g[aria-label="dot"]')?.getAttribute('fill')).toBe(
       seriesColors(2).mark
     )
+  })
+
+  it('should label ticks at the decimals their step needs, as the time chart does', () => {
+    // Arrange — values a thousandth apart, which two decimals would round together
+    const trace: PointSeries.PointSeries = {
+      ...glucose,
+      id: 'trace',
+      points: [1, 2, 3, 4, 5, 6].map((step) => ({ time: atDay(step * 5), value: step / 1000 })),
+    }
+
+    // Act
+    const { container } = render(
+      <ScatterChart x={trace} y={insulin} timeWindow={testWindow} colours={traceColours} />
+    )
+
+    // Assert
+    const xTicks = [
+      ...container.querySelectorAll('svg g[aria-label="x-axis tick label"] text'),
+    ].map((label) => label.textContent)
+    expect(xTicks.length).toBeGreaterThan(1)
+    expect(new Set(xTicks).size).toBe(xTicks.length)
+    expect(xTicks).toContain(formatAxisValue(0.002, 3))
   })
 
   it('should keep to the window, and say when it holds no X reading', () => {
