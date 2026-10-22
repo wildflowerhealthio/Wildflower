@@ -12,11 +12,11 @@ and opaque series ids.
 
 ## Shape
 
-- `src/multi-axis-chart.tsx` — `MultiAxisChart` (`series`, `lanes`,
-  `xDomain`, `onHover`): the value series in selection order, put on axes by
-  `ValueAxis.assign`; the legend, the figure, and the crosshair, whose stops
-  and rule take in the lanes too. Colours come from `ColourSlots.assign` over
-  the series in selection order, carried across renders; lines draw in
+- `src/multi-axis-chart.tsx` — `MultiAxisChart` (`series`, `colours`,
+  `lanes`, `xDomain`, `onHover`): the value series in selection order, put on
+  axes by `ValueAxis.assign`; the legend, the figure, and the crosshair, whose
+  stops and rule take in the lanes too. Each series wears the slot `colours`
+  gives it (`useColourSlots`, held by the page); lines draw in
   selection order, so the series picked last is on top, while the legend and
   tooltip list series axis by axis; the crosshair snaps to
   `Crosshair.nearestStop` over `Crosshair.stops`. Which series are drawn as
@@ -67,6 +67,10 @@ and opaque series ids.
   `-soft` tokens for a palette index, and `spanColour`, the `--color-span-N`
   token for a span category's colour slot (`NEUTRAL_COLOUR` for `null`).
 - `src/value-format.ts` — tick, value and date formatting.
+- `src/use-colour-slots.ts` — `useColourSlots`: `ColourSlots.assign` over
+  the selected value series in selection order, carried across renders. The
+  page holds it above the view switch and hands it to `MultiAxisChart` and
+  `ScatterChart`, so a series keeps its colour across views.
 - `src/use-plot.ts` — `usePlotContainer` measures the container a figure
   mounts into, and `usePlot` mounts the figure there and redraws it at that
   width. Two hooks so the chart knows its width before it builds its marks.
@@ -94,11 +98,12 @@ and opaque series ids.
   viewer-local date and time, a column per series headed `labelWithUnit` (a
   lane by its label); a value cell reads the value and its `note`, a lane's
   cell `<category> starts` / `ends`, one entry per line.
-- `src/scatter-chart.tsx` — `ScatterChart` (`x`, `y`, `timeWindow`): the
+- `src/scatter-chart.tsx` — `ScatterChart` (`x`, `y`, `timeWindow`,
+  `colours`): the
   `Scatter.of` pairs as one Observable Plot figure through `usePlot` — each
   axis fitted and ticked as `ValueAxis.domainFor` / `ticksFor` fit that
-  series and labelled `labelWithUnit`, an 8px dot per pair in the first series
-  colour ringed in the surface colour, and a `Plot.pointer` tip on the nearest
+  series and labelled `labelWithUnit`, an 8px dot per pair in the colour X
+  keeps (`colours`) ringed in the surface colour, and a `Plot.pointer` tip on the nearest
   pair naming its time and both values. X readings with no Y value are counted
   in a note under the figure.
 - `src/plots-layout.tsx` — `PlotsLayout` (`seriesPanel`,

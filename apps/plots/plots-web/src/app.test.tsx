@@ -5,6 +5,7 @@ import type { SmartHandshake } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import { MedicationRequest, Observation } from '@wildflowerhealthio/fhir-r4/resources'
 import { SERIES_PARAM, decodeSelection, readRecord } from '@wildflowerhealthio/plots-core-js'
+import { seriesColors } from '@wildflowerhealthio/plots-react'
 import { Schema } from 'effect'
 import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
@@ -508,6 +509,39 @@ describe('App', () => {
     expect(viewButton('Chart').getAttribute('aria-pressed')).toBe('true')
     expect(screen.getByText('Scatter needs one more series selected')).toBeDefined()
     expect(selectionInUrl().view).toBe('scatter')
+  })
+
+  it('should keep each series its colour across a change of view', async () => {
+    // Arrange — three value series in slots 0, 1 and 2, then the first deselected
+    const params = new URLSearchParams()
+    params.append(SERIES_PARAM, potassiumSeries?.id ?? '')
+    params.append(SERIES_PARAM, glucoseSeries?.id ?? '')
+    params.append(SERIES_PARAM, metforminSeries?.id ?? '')
+    window.history.replaceState(null, '', `/health-viewer/?${params.toString()}`)
+    launchWith(
+      stubClient(
+        'p1',
+        recordResponses({ 'Observation?': answer(bundleOf([potassiumWire, glucoseWire])) })
+      )
+    )
+    renderApp()
+    const potassiumRow = await waitFor(() => seriesCheckbox(potassiumSeries?.label ?? ''))
+    const legendKeys = (): readonly (string | null)[] =>
+      [...document.querySelectorAll('ul[aria-label="Series"] > li > span[style]')].map((key) =>
+        key.getAttribute('style')
+      )
+    fireEvent.click(potassiumRow)
+    const keptKeys = legendKeys()
+    expect(keptKeys).toHaveLength(2)
+    expect(keptKeys[0]).toContain(seriesColors(1).mark)
+    expect(keptKeys[1]).toContain(seriesColors(2).mark)
+
+    // Act
+    fireEvent.click(screen.getByRole('button', { name: 'Table' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Chart' }))
+
+    // Assert
+    expect(legendKeys()).toEqual(keptKeys)
   })
 
   it('should drop a selected series the record does not hold, once both reads have finished paging', async () => {

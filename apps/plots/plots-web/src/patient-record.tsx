@@ -18,6 +18,7 @@ import {
   SeriesPanel,
   SeriesTable,
   ViewSwitch,
+  useColourSlots,
 } from '@wildflowerhealthio/plots-react'
 import { LoadingLine, LoadingMoreLine, ReadFailureLine } from '@wildflowerhealthio/smart-app-react'
 import type { DateTime } from 'effect'
@@ -99,8 +100,9 @@ const useShownView = (
  * @remarks
  * The page only composes: `groupForPanel` for the panel, the selected point
  * and level series as the chart's series, the selected span series as its
- * lanes, `xDomain` for every view's window, and {@link useShownView} for
- * which view is on screen.
+ * lanes, `xDomain` for every view's window, {@link useShownView} for which
+ * view is on screen, and `useColourSlots` for the colour each value series
+ * keeps across views.
  *
  * Once the record is complete, selected ids it holds no series for — a link
  * shared from another patient's record — are dropped from the selection; not
@@ -140,6 +142,8 @@ const RecordView = ({
     [selection.series, seriesById]
   )
   const valueSeries = useMemo(() => selectedSeries.filter(Series.isValueSeries), [selectedSeries])
+  // Kept here, above the view switch, so changing views never repaints a series.
+  const colours = useColourSlots(valueSeries)
   const shownView = useShownView(selection, seriesById)
   const lanes = useMemo(() => selectedSeries.filter(Series.isSpanSeries), [selectedSeries])
   const viewTimeDomain = useMemo(
@@ -197,7 +201,12 @@ const RecordView = ({
     >
       {Match.value(shownView.view).pipe(
         Match.when('chart', () => (
-          <MultiAxisChart series={valueSeries} lanes={lanes} xDomain={viewTimeDomain} />
+          <MultiAxisChart
+            series={valueSeries}
+            colours={colours}
+            lanes={lanes}
+            xDomain={viewTimeDomain}
+          />
         )),
         Match.when('table', () => (
           <SeriesTable series={selectedSeries} timeWindow={viewTimeDomain} />
@@ -205,7 +214,13 @@ const RecordView = ({
         Match.when('scatter', () =>
           shownView.scatterSeries.pipe(
             Option.map(({ x, y }) => (
-              <ScatterChart key="scatter" x={x} y={y} timeWindow={viewTimeDomain} />
+              <ScatterChart
+                key="scatter"
+                x={x}
+                y={y}
+                timeWindow={viewTimeDomain}
+                colours={colours}
+              />
             )),
             Option.getOrNull
           )

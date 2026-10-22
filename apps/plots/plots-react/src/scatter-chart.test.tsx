@@ -1,10 +1,11 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
-import type { LevelSeries, PointSeries } from '@wildflowerhealthio/plots-fundamentals'
+import type { ColourSlots, LevelSeries, PointSeries } from '@wildflowerhealthio/plots-fundamentals'
 
 import { ScatterChart } from './scatter-chart.tsx'
 import { atDay, testWindow } from './series-arbitraries.test-helpers.ts'
+import { seriesColors } from './series-colors.ts'
 
 afterEach(cleanup)
 
@@ -34,6 +35,12 @@ const insulin: LevelSeries.LevelSeries = {
   ],
 }
 
+/** The kept colours, X on a slot other than the first, as after an earlier series was deselected. */
+const colours: ColourSlots.ColourSlots = new Map([
+  ['insulin', 0],
+  ['glucose', 2],
+])
+
 /** The figure's dots. */
 const dots = (container: HTMLElement): readonly Element[] => [
   ...container.querySelectorAll('svg g[aria-label="dot"] circle'),
@@ -42,7 +49,9 @@ const dots = (container: HTMLElement): readonly Element[] => [
 describe('ScatterChart', () => {
   it('should draw a dot per paired reading, label each axis with its unit, and count the unpaired', () => {
     // Act
-    const { container } = render(<ScatterChart x={glucose} y={insulin} timeWindow={testWindow} />)
+    const { container } = render(
+      <ScatterChart x={glucose} y={insulin} timeWindow={testWindow} colours={colours} />
+    )
 
     // Assert
     expect(dots(container)).toHaveLength(2)
@@ -53,17 +62,31 @@ describe('ScatterChart', () => {
     expect(screen.getByText('1 Glucose reading has no Insulin value at its time')).toBeDefined()
   })
 
+  it('should paint the dots in the colour X keeps', () => {
+    // Act
+    const { container } = render(
+      <ScatterChart x={glucose} y={insulin} timeWindow={testWindow} colours={colours} />
+    )
+
+    // Assert
+    expect(container.querySelector('svg g[aria-label="dot"]')?.getAttribute('fill')).toBe(
+      seriesColors(2).mark
+    )
+  })
+
   it('should keep to the window, and say when it holds no X reading', () => {
     // Act
     const { container, rerender } = render(
-      <ScatterChart x={glucose} y={insulin} timeWindow={[atDay(45), atDay(60)]} />
+      <ScatterChart x={glucose} y={insulin} timeWindow={[atDay(45), atDay(60)]} colours={colours} />
     )
 
     // Assert
     expect(dots(container)).toHaveLength(1)
 
     // Act
-    rerender(<ScatterChart x={glucose} y={insulin} timeWindow={[atDay(60), atDay(70)]} />)
+    rerender(
+      <ScatterChart x={glucose} y={insulin} timeWindow={[atDay(60), atDay(70)]} colours={colours} />
+    )
 
     // Assert
     expect(dots(container)).toHaveLength(0)

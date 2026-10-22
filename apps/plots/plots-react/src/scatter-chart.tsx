@@ -3,6 +3,7 @@ import type { JSX } from 'react'
 import { useMemo } from 'react'
 
 import {
+  type ColourSlots,
   type Level,
   Scatter,
   type Series,
@@ -10,7 +11,7 @@ import {
   ValueAxis,
 } from '@wildflowerhealthio/plots-fundamentals'
 
-import { seriesColors } from './series-colors.ts'
+import { colourSlotOf, seriesColors } from './series-colors.ts'
 import { usePlot, usePlotContainer } from './use-plot.ts'
 import { formatDateTime, formatReading, labelWithUnit } from './value-format.ts'
 import styles from './scatter-chart.module.css'
@@ -22,6 +23,8 @@ interface ScatterChartProps {
   readonly y: Series.ValueSeries
   /** The time window X's readings are drawn from: the range preset's. */
   readonly timeWindow: TimeDomain.TimeDomain
+  /** Each selected value series' palette index, kept by the page with `useColourSlots`. */
+  readonly colours: ColourSlots.ColourSlots
 }
 
 /** The figure's height: square-ish beside the time chart's width, short enough to sit above the fold. */
@@ -60,13 +63,14 @@ const scaleOf = (series: Series.ValueSeries): { domain: ValueAxis.Domain; ticks:
 
 /**
  * The scatter's options: a hairline grid, an axis per series labelled with
- * its unit, a dot per pair ringed in the surface colour, and a tip on the
- * pair nearest the pointer.
+ * its unit, a dot per pair in `dotColour` ringed in the surface colour, and a
+ * tip on the pair nearest the pointer.
  */
 const scatterOptions = (
   scatter: Scatter.Scatter,
   x: Series.ValueSeries,
-  y: Series.ValueSeries
+  y: Series.ValueSeries,
+  dotColour: string
 ): Plot.PlotOptions => {
   const xScale = scaleOf(x)
   const yScale = scaleOf(y)
@@ -98,7 +102,7 @@ const scatterOptions = (
         x: xValue,
         y: yValue,
         r: DOT_RADIUS,
-        fill: seriesColors(0).mark,
+        fill: dotColour,
         stroke: 'var(--color-background)',
         strokeWidth: 2,
       }),
@@ -134,15 +138,20 @@ const unpairedNoteOf = (
  *
  * @remarks
  * Each axis is fitted as the time chart fits that series (`ValueAxis.domainFor`),
- * so a dose axis still starts at zero. The pairs are one set, in the first
- * series colour; the axes' labels say which series is which. X readings with
+ * so a dose axis still starts at zero. The pairs are one set, in the colour
+ * X wears on the time chart (`colours`); the axes' labels say which series is
+ * which. X readings with
  * no Y value at their time are counted under the figure rather than dropped
  * silently.
  */
-const ScatterChart = ({ x, y, timeWindow }: ScatterChartProps): JSX.Element => {
+const ScatterChart = ({ x, y, timeWindow, colours }: ScatterChartProps): JSX.Element => {
   const { containerRef, container, width } = usePlotContainer()
   const scatter = useMemo(() => Scatter.of(x, y, timeWindow), [x, y, timeWindow])
-  const options = useMemo(() => scatterOptions(scatter, x, y), [scatter, x, y])
+  const dotColour = seriesColors(colourSlotOf(colours, x.id)).mark
+  const options = useMemo(
+    () => scatterOptions(scatter, x, y, dotColour),
+    [scatter, x, y, dotColour]
+  )
   usePlot(container, width, options)
   return (
     <div className={styles['scatter-chart']}>

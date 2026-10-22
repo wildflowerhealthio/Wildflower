@@ -6,6 +6,8 @@ export { MultiAxisChart, type MultiAxisChartProps } from './multi-axis-chart.tsx
 
 export { seriesColors, type SeriesColors } from './series-colors.ts'
 
+export { useColourSlots } from './use-colour-slots.ts'
+
 export { usePlot, usePlotContainer, type PlotContainer, type PlotFigure } from './use-plot.ts'
 
 export { PlotsLayout, type PlotsLayoutProps } from './plots-layout.tsx'
