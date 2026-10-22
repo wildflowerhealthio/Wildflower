@@ -5,6 +5,7 @@ import {
   RunPolicy,
   type RunPolicyChoice,
 } from '@wildflowerhealthio/servers-core-js'
+import { walkthroughAnchor } from '@wildflowerhealthio/walkthrough-core'
 import type { DateTime } from 'effect'
 import { Duration, Option } from 'effect'
 import { type ChangeEvent, type JSX, useId } from 'react'
@@ -13,6 +14,7 @@ import { failureText } from './failure-text.ts'
 import { useSetServerRunPolicy } from './queries.ts'
 import { type RunHostCommand, useHostPlatform } from './router-context.ts'
 import { runPolicyText } from './run-policy-text.ts'
+import { HostWalkthroughAnchor } from './server-list-walkthrough.ts'
 import { useNow } from './use-now.ts'
 import styles from './run-policy-picker.module.css'
 
@@ -110,6 +112,7 @@ const RunPolicyPicker = ({
         className={styles['run-policy-picker']}
         data-tone={tone}
         title="Change when this server runs"
+        {...walkthroughAnchor(HostWalkthroughAnchor.runPolicy)}
       >
         <span className={styles['run-policy-picker__text']}>
           {runPolicyText(server.runPolicy, now)}

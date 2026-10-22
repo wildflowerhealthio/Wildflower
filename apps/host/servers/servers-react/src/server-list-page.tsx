@@ -7,11 +7,18 @@ import {
   SettingsLink,
 } from '@wildflowerhealthio/react-tundraish'
 import type { HostCommandError, ListedServer } from '@wildflowerhealthio/servers-core-js'
+import { walkthroughAnchor } from '@wildflowerhealthio/walkthrough-core'
+import { Walkthrough } from '@wildflowerhealthio/walkthrough-react'
 import type { JSX } from 'react'
 
 import { serversQueryOptions, useServerStatusEvents } from './queries.ts'
 import { type RunHostCommand, useListenToHostEvent, useRunHostCommand } from './router-context.ts'
 import { ServerCard } from './server-card.tsx'
+import {
+  HOST_WALKTHROUGH_STEPS,
+  HostWalkthroughAnchor,
+  useServerListWalkthrough,
+} from './server-list-walkthrough.ts'
 import { useOnline } from './use-online.ts'
 import styles from './server-list-page.module.css'
 
@@ -23,7 +30,11 @@ const NoServers = (): JSX.Element => (
       A server keeps your health records on this device, and the apps you open from the web reach
       them at its own address, through a relay.
     </p>
-    <Link to="/servers/new" className={`button button-3 filled ${styles['server-list-page__add']}`}>
+    <Link
+      to="/servers/new"
+      className={`button button-3 filled ${styles['server-list-page__add']}`}
+      {...walkthroughAnchor(HostWalkthroughAnchor.addServer)}
+    >
       Add new server
     </Link>
   </div>
@@ -46,6 +57,7 @@ const ServerCards = ({
     <Link
       to="/servers/new"
       className={`button button-3 outline ${styles['server-list-page__add']}`}
+      {...walkthroughAnchor(HostWalkthroughAnchor.addServer)}
     >
       Add new server
     </Link>
@@ -82,6 +94,10 @@ const ServerListBody = ({
  * none; Add new server either way; and the way to the base's Host Settings.
  *
  * @remarks
+ * The Host's walkthrough (`useServerListWalkthrough`) points at those
+ * controls on a first visit, and when Host Settings asks for it again, once
+ * the servers are read: never over the reading or its failure.
+ *
  * When the host can't read `servers.json`, the page shows the host's error,
  * with a retry. While the webview is offline, a notice says that launching
  * needs a connection.
@@ -92,11 +108,16 @@ const ServerListPage = (): JSX.Element => {
   useServerStatusEvents(listenToHostEvent)
   const servers = useQuery(serversQueryOptions(runHostCommand))
   const online = useOnline()
+  const walkthrough = useServerListWalkthrough()
   return (
     <>
       <PageHeader
         title="Servers"
-        actions={<SettingsLink href="/settings" label="Host Settings" />}
+        actions={
+          <span {...walkthroughAnchor(HostWalkthroughAnchor.hostSettings)}>
+            <SettingsLink href="/settings" label="Host Settings" />
+          </span>
+        }
       />
       {online ? null : (
         <p className={`text-body-2 ${styles['server-list-page__offline']}`} role="status">
@@ -104,6 +125,13 @@ const ServerListPage = (): JSX.Element => {
         </p>
       )}
       <ServerListBody servers={servers} runHostCommand={runHostCommand} />
+      <Walkthrough
+        steps={HOST_WALKTHROUGH_STEPS}
+        open={walkthrough.open && servers.isSuccess}
+        onFinish={walkthrough.finish}
+        onSkip={walkthrough.skip}
+        onPostpone={walkthrough.postpone}
+      />
     </>
   )
 }

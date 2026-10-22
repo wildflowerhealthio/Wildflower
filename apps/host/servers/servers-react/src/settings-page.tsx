@@ -14,6 +14,7 @@ import {
   useRequestNotificationPermission,
 } from './queries.ts'
 import { useRunHostCommand } from './router-context.ts'
+import { SHOW_WALKTHROUGH_AGAIN_SEARCH } from './server-list-walkthrough.ts'
 
 /** What the Notifications row says under its title for each permission. */
 const NOTIFICATION_PERMISSION_SUBTITLE: Readonly<Record<NotificationPermission, string>> = {
@@ -77,12 +78,13 @@ const versionText = (version: UseQueryResult<string, HostCommandError>): string 
 /**
  * The base's Host Settings, `/settings`, for this device's app rather than
  * any one server (whose settings the web app holds):
- * Notifications, the Telemetry row, Legal and About.
+ * Notifications, the Telemetry row, Show walkthrough again, Legal and About.
  *
  * @remarks
  * The Telemetry row reads the answer to the base's own consent dialog, by the
  * dialog's copy, and reopens it; so the page renders only inside the base's
- * `TelemetryConsentGate` (`BaseGate`).
+ * `TelemetryConsentGate` (`BaseGate`). Show walkthrough again goes to the
+ * server list, where the Host's walkthrough is, asking it to show.
  */
 const SettingsPage = (): JSX.Element => {
   const runHostCommand = useRunHostCommand()
@@ -102,6 +104,17 @@ const SettingsPage = (): JSX.Element => {
             title: 'Telemetry',
             subtitle: telemetryConsentSummary(consentControls.consent, consentControls.copy),
             onClick: consentControls.reopen,
+          },
+        ]}
+      />
+      <ItemList
+        title="Help"
+        items={[
+          {
+            id: 'walkthrough',
+            title: 'Show walkthrough again',
+            href: '/servers',
+            search: SHOW_WALKTHROUGH_AGAIN_SEARCH,
           },
         ]}
       />
