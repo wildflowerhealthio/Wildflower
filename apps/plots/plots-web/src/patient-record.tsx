@@ -57,22 +57,30 @@ interface RecordViewProps extends SelectionProps {
   readonly record: Extract<RecordRead, { readonly kind: 'read' }>
 }
 
-/** What {@link useShownView} decides about the view the selection asks for. */
-interface ShownView {
-  /** The view on screen: the selection's, or the chart for a scatter it can't make. */
-  readonly view: PlotView
+/**
+ * What {@link useShownView} decides about the view the selection asks for:
+ * the view on screen, carrying the scatter's series when it is the scatter.
+ */
+type ShownView = {
   /** Which series a scatter of the selection plots, or why it can't be drawn. */
   readonly scatterAxes: ScatterAxes
-  /** The scatter's X and Y series, once the record holds both. */
-  readonly scatterSeries: Option.Option<{
-    readonly x: Series.ValueSeries
-    readonly y: Series.ValueSeries
-  }>
-}
+} & (
+  | { readonly view: 'chart' | 'table' }
+  | {
+      readonly view: 'scatter'
+      readonly x: Series.ValueSeries
+      readonly y: Series.ValueSeries
+    }
+)
 
 /**
- * The view to show for `selection`, through core's `scatterAxesOf` and
- * `shownViewOf`, with the scatter's series looked up in the record.
+ * The view to show for `selection`: core's `shownViewOf` over
+ * `scatterAxesOf`, with the scatter's series looked up in the record.
+ *
+ * @remarks
+ * A scatter whose series the record doesn't hold — a source still paging,
+ * or a link shared from another patient's record — shows the chart, as a
+ * scatter the selection can't make does.
  */
 const useShownView = (
   selection: Selection,
@@ -88,7 +96,12 @@ const useShownView = (
       y: valueSeriesOf(scatterAxes.ySeriesId),
     })
   }, [scatterAxes, seriesById])
-  return { view: shownViewOf(selection.view, scatterAxes), scatterAxes, scatterSeries }
+  const view = shownViewOf(selection.view, scatterAxes)
+  if (view !== 'scatter') return { view, scatterAxes }
+  return Option.match(scatterSeries, {
+    onNone: (): ShownView => ({ view: 'chart', scatterAxes }),
+    onSome: ({ x, y }): ShownView => ({ view: 'scatter', x, y, scatterAxes }),
+  })
 }
 
 /**
@@ -199,8 +212,8 @@ const RecordView = ({
       toolbarNote={<ScatterUnavailableNote scatterAxes={shownView.scatterAxes} />}
       status={statusLines.length === 0 ? null : statusLines}
     >
-      {Match.value(shownView.view).pipe(
-        Match.when('chart', () => (
+      {Match.value(shownView).pipe(
+        Match.when({ view: 'chart' }, () => (
           <MultiAxisChart
             series={valueSeries}
             colours={colours}
@@ -208,23 +221,12 @@ const RecordView = ({
             xDomain={viewTimeDomain}
           />
         )),
-        Match.when('table', () => (
+        Match.when({ view: 'table' }, () => (
           <SeriesTable series={selectedSeries} timeWindow={viewTimeDomain} />
         )),
-        Match.when('scatter', () =>
-          shownView.scatterSeries.pipe(
-            Option.map(({ x, y }) => (
-              <ScatterChart
-                key="scatter"
-                x={x}
-                y={y}
-                timeWindow={viewTimeDomain}
-                colours={colours}
-              />
-            )),
-            Option.getOrNull
-          )
-        ),
+        Match.when({ view: 'scatter' }, ({ x, y }) => (
+          <ScatterChart x={x} y={y} timeWindow={viewTimeDomain} colours={colours} />
+        )),
         Match.exhaustive
       )}
       {leftOutNotes.length > 0 && <p className={styles.note}>{leftOutNotes.join(' · ')}</p>}

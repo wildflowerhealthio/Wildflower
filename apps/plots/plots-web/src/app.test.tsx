@@ -511,6 +511,47 @@ describe('App', () => {
     expect(selectionInUrl().view).toBe('scatter')
   })
 
+  it('should show the chart while a scatter’s series are not in the record yet', async () => {
+    // Arrange — potassium's page is held back, so the scatter can't be drawn yet
+    const secondObservationPage = deferredAnswer(bundleOf([potassiumWire]))
+    const params = new URLSearchParams()
+    params.append(SERIES_PARAM, glucoseSeries?.id ?? '')
+    params.append(SERIES_PARAM, potassiumSeries?.id ?? '')
+    params.set('v', 'scatter')
+    window.history.replaceState(null, '', `/health-viewer/?${params.toString()}`)
+    launchWith(
+      stubClient(
+        'p1',
+        recordResponses({
+          'Observation?': answer(bundleOf([glucoseWire], NEXT_OBSERVATIONS)),
+          [NEXT_OBSERVATIONS]: secondObservationPage.respond,
+        })
+      )
+    )
+    renderApp()
+    await screen.findByText('Loading more…')
+    const scatterFigure = (): Element | null =>
+      document.querySelector(
+        `svg[aria-label="${potassiumSeries?.label} against ${glucoseSeries?.label}"]`
+      )
+
+    // Assert — the chart, with glucose in its legend
+    expect(screen.getByRole('button', { name: 'Chart' }).getAttribute('aria-pressed')).toBe('true')
+    expect(within(screen.getByRole('list', { name: 'Series' })).getByText(/^Glucose/)).toBeDefined()
+    expect(scatterFigure()).toBeNull()
+
+    // Act
+    secondObservationPage.release()
+
+    // Assert — the scatter, once both series are in
+    await waitFor(() => {
+      expect(scatterFigure()).not.toBeNull()
+    })
+    expect(screen.getByRole('button', { name: 'Scatter' }).getAttribute('aria-pressed')).toBe(
+      'true'
+    )
+  })
+
   it('should keep each series its colour across a change of view', async () => {
     // Arrange — three value series in slots 0, 1 and 2, then the first deselected
     const params = new URLSearchParams()

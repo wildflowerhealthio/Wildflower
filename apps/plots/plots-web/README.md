@@ -72,7 +72,9 @@ their record, lay it out.
   `SeriesTable`, or as `ScatterChart` of the two value series
   `scatterAxesOf` names. A scatter the selection can't make shows the chart,
   with Scatter disabled and `ScatterUnavailableNote` above the toolbar saying
-  why. The page keeps each value series' colour with `useColourSlots`, above
+  why. A scatter whose two series the record doesn't hold yet (a source
+  still paging, or a link from another patient's record) shows the chart too,
+  with Scatter left enabled. The page keeps each value series' colour with `useColourSlots`, above
   the view switch, and hands it to the chart and the scatter, so a series
   keeps its colour across views.
 - **URL state** (`src/use-url-selection.ts`). The selection, the range and
