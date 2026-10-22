@@ -1139,6 +1139,12 @@ importers:
       '@wildflowerhealthio/shared-structures-react':
         specifier: workspace:*
         version: link:../../../slices/shared-structures/shared-structures-react
+      '@wildflowerhealthio/walkthrough-core':
+        specifier: workspace:*
+        version: link:../../../slices/walkthrough/walkthrough-core
+      '@wildflowerhealthio/walkthrough-react':
+        specifier: workspace:*
+        version: link:../../../slices/walkthrough/walkthrough-react
       effect:
         specifier: 'catalog:'
         version: 3.22.3
@@ -1331,6 +1337,12 @@ importers:
       '@wildflowerhealthio/telemetry-web':
         specifier: workspace:*
         version: link:../../../slices/telemetry/telemetry-web
+      '@wildflowerhealthio/walkthrough-core':
+        specifier: workspace:*
+        version: link:../../../slices/walkthrough/walkthrough-core
+      '@wildflowerhealthio/walkthrough-react':
+        specifier: workspace:*
+        version: link:../../../slices/walkthrough/walkthrough-react
       effect:
         specifier: 'catalog:'
         version: 3.22.3

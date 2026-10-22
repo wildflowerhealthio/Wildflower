@@ -119,11 +119,14 @@ describe('SettingsScreen', () => {
     })
   })
 
-  test('every slice row but Arrange home screen links into /settings/<slice>/', async () => {
+  test('every slice row but the two to the home screen links into /settings/<slice>/', async () => {
     renderSettingsScreen()
     await findSettingsHeading()
-    const arrange = screen.getByRole('link', { name: /Arrange home screen/ })
-    const links = sliceRowLinks().filter((link) => link !== arrange)
+    const toHome = [
+      screen.getByRole('link', { name: /Arrange home screen/ }),
+      screen.getByRole('link', { name: 'Show walkthrough again' }),
+    ]
+    const links = sliceRowLinks().filter((link) => !toHome.includes(link))
     expect(links.length).toBeGreaterThanOrEqual(2)
     for (const link of links) {
       const href = link.getAttribute('href') ?? ''
@@ -142,6 +145,13 @@ describe('SettingsScreen', () => {
     await findSettingsHeading()
     const arrange = screen.getByRole('link', { name: /Arrange home screen/ })
     expect(arrange.getAttribute('href')).toBe('/home?edit=true')
+  })
+
+  test("links Show walkthrough again to the home screen, asking for the launcher's walkthrough", async () => {
+    renderSettingsScreen()
+    await findSettingsHeading()
+    const showAgain = screen.getByRole('link', { name: 'Show walkthrough again' })
+    expect(showAgain.getAttribute('href')).toBe('/home?walkthrough=show')
   })
 
   test('ends on the Legal rows, each opening a policy page on the canonical site in a new tab', async () => {

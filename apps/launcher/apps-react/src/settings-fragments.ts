@@ -1,5 +1,7 @@
 import type { SettingsItem } from '@wildflowerhealthio/shared-structures-react'
 
+import { SHOW_WALKTHROUGH_AGAIN_SEARCH } from './routes/_auth/home/-home-walkthrough.ts'
+
 /**
  * Menu entries the unified `/settings` screen renders for apps.
  *
@@ -9,7 +11,9 @@ import type { SettingsItem } from '@wildflowerhealthio/shared-structures-react'
  * declared by the slice's `routes/settings/apps` subtree (no trailing slash,
  * matching the other slices' menu hrefs). Arrange home screen opens the home
  * screen itself with `?edit=true` (`routes/_auth/home/index.tsx`'s
- * `HomeSearch`), where the apps on it drag to reorder and hide.
+ * `HomeSearch`), where the apps on it drag to reorder and hide. Show
+ * walkthrough again opens it with `?walkthrough=show`, which shows the
+ * launcher's walkthrough (`routes/_auth/home/-home-walkthrough.ts`) again.
  */
 const appsSettingsItemsFragment: readonly SettingsItem[] = [
   {
@@ -24,6 +28,12 @@ const appsSettingsItemsFragment: readonly SettingsItem[] = [
     subtitle: 'Reorder the apps on your home screen, or hide them',
     href: '/home',
     search: { edit: true },
+  },
+  {
+    id: 'walkthrough',
+    title: 'Show walkthrough again',
+    href: '/home',
+    search: SHOW_WALKTHROUGH_AGAIN_SEARCH,
   },
 ]
 

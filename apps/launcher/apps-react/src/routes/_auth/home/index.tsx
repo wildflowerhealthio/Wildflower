@@ -1,3 +1,4 @@
+// oxlint-disable import/max-dependencies -- the home screen composes its tiles, their arranging, launching and the launcher's walkthrough
 import {
   DndContext,
   KeyboardSensor,
@@ -20,9 +21,11 @@ import {
   PageHeader,
   SettingsLink,
 } from '@wildflowerhealthio/react-tundraish'
+import { walkthroughAnchor } from '@wildflowerhealthio/walkthrough-core'
+import { Walkthrough } from '@wildflowerhealthio/walkthrough-react'
 import { useEffect, useState, type JSX } from 'react'
 
-import { Either } from 'effect'
+import { Either, Schema } from 'effect'
 import {
   appsListQueryOptions,
   useAppsListQuery,
@@ -30,6 +33,12 @@ import {
   type AppRegistration,
 } from '../../../queries.ts'
 import type { RouterContext } from '../../../router-context.ts'
+import {
+  LAUNCHER_WALKTHROUGH_STEPS,
+  LauncherWalkthroughAnchor,
+  ShowWalkthroughAgain,
+  useHomeWalkthrough,
+} from './-home-walkthrough.ts'
 import { launchBannerError } from './-launch-error.ts'
 import { launchApp, type LaunchContext } from './-launch.ts'
 import { reorderApps } from './-reorder.ts'
@@ -48,17 +57,27 @@ export interface HomeSearch {
    * Done drops it.
    */
   readonly edit?: true
+  /**
+   * Present (`?walkthrough=show`) to show the launcher's walkthrough over its
+   * record: Settings' "Show walkthrough again" row links here with it
+   * (`settings-fragments.ts`), and the walkthrough drops it once it closes.
+   */
+  readonly walkthrough?: typeof ShowWalkthroughAgain.Type
 }
 
+const isShowWalkthroughAgain = Schema.is(ShowWalkthroughAgain)
+
 /** Validate `/home`'s search: keep a string `launchError` param (the base64 error
- * body both arms set — see the Rust launch middleware and `-launch.ts`) and an
- * `edit` param of `true` (the router parses `?edit=true` to the boolean), drop
- * anything else. */
+ * body both arms set — see the Rust launch middleware and `-launch.ts`), an
+ * `edit` param of `true` (the router parses `?edit=true` to the boolean) and a
+ * `walkthrough` param of `show`, drop anything else. */
 const validateHomeSearch = (search: Record<string, unknown>): HomeSearch => {
   const launchError = search['launchError']
+  const walkthrough = search['walkthrough']
   return {
     ...(typeof launchError === 'string' ? { launchError } : {}),
     ...(search['edit'] === true ? { edit: true } : {}),
+    ...(isShowWalkthroughAgain(walkthrough) ? { walkthrough } : {}),
   }
 }
 
@@ -73,39 +92,54 @@ const validateHomeSearch = (search: Record<string, unknown>): HomeSearch => {
  * catalogue management (add / remove / configure / re-enable) lives under
  * `/settings/apps`.
  *
- * Both search params live in the URL, not in component state, so each change
- * to one keeps the other: a launch outcome arriving while the screen is being
+ * The search params live in the URL, not in component state, so each change
+ * to one keeps the others: a launch outcome arriving while the screen is being
  * arranged leaves `?edit` alone, and Done leaves a launch banner up.
+ *
+ * The launcher's walkthrough (`useHomeWalkthrough`) points at the tiles and
+ * the Settings gear on a first visit, and when Settings asks for it again;
+ * the loader has read the apps by then, and it waits while the screen is
+ * being arranged, when the gear gives way to Done.
  */
 const AppsHomeScreen = (): JSX.Element => {
   const { data: apps } = useAppsListQuery()
   const { launchError, edit } = Route.useSearch()
   const navigate = Route.useNavigate()
+  const walkthrough = useHomeWalkthrough()
   return (
-    <AppsHomeBody
-      apps={apps}
-      launchError={launchError}
-      editing={edit === true}
-      onDoneEditing={() => {
-        // Replace rather than push: Back from the home screen then returns to
-        // wherever arranging began (Settings), not into arranging again.
-        void navigate({ search: (previous) => ({ ...previous, edit: undefined }), replace: true })
-      }}
-      onLaunchResult={(launchResult) => {
-        // Reflect the outcome into the `?launchError` param: a failure shows the
-        // banner; a later success clears a stale one.
-        Either.match(launchResult, {
-          onLeft: (errorBody) => {
-            void navigate({ search: (previous) => ({ ...previous, launchError: errorBody }) })
-          },
-          onRight: () => {
-            if (launchError !== undefined) {
-              void navigate({ search: (previous) => ({ ...previous, launchError: undefined }) })
-            }
-          },
-        })
-      }}
-    />
+    <>
+      <AppsHomeBody
+        apps={apps}
+        launchError={launchError}
+        editing={edit === true}
+        onDoneEditing={() => {
+          // Replace rather than push: Back from the home screen then returns to
+          // wherever arranging began (Settings), not into arranging again.
+          void navigate({ search: (previous) => ({ ...previous, edit: undefined }), replace: true })
+        }}
+        onLaunchResult={(launchResult) => {
+          // Reflect the outcome into the `?launchError` param: a failure shows the
+          // banner; a later success clears a stale one.
+          Either.match(launchResult, {
+            onLeft: (errorBody) => {
+              void navigate({ search: (previous) => ({ ...previous, launchError: errorBody }) })
+            },
+            onRight: () => {
+              if (launchError !== undefined) {
+                void navigate({ search: (previous) => ({ ...previous, launchError: undefined }) })
+              }
+            },
+          })
+        }}
+      />
+      <Walkthrough
+        steps={LAUNCHER_WALKTHROUGH_STEPS}
+        open={walkthrough.open && edit !== true}
+        onFinish={walkthrough.finish}
+        onSkip={walkthrough.skip}
+        onPostpone={walkthrough.postpone}
+      />
+    </>
   )
 }
 
@@ -302,7 +336,9 @@ const AppsHomeBody = ({
               Done
             </button>
           ) : (
-            <SettingsLink href="/settings" label="Settings" />
+            <span {...walkthroughAnchor(LauncherWalkthroughAnchor.settings)}>
+              <SettingsLink href="/settings" label="Settings" />
+            </span>
           )
         }
       />
@@ -320,7 +356,10 @@ const AppsHomeBody = ({
             items={visible.map((app) => app.id)}
             strategy={verticalListSortingStrategy}
           >
-            <ul className={tileStyles['app-tiles']}>
+            <ul
+              className={tileStyles['app-tiles']}
+              {...walkthroughAnchor(LauncherWalkthroughAnchor.appTiles)}
+            >
               {visible.map((app) => (
                 <SortableAppTile
                   key={app.id}
