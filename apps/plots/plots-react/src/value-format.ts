@@ -1,4 +1,4 @@
-import type { DateTime } from 'effect'
+import { type DateTime, Predicate } from 'effect'
 
 import { type Level, type Series, ValueAxis } from '@wildflowerhealthio/plots-fundamentals'
 
@@ -86,9 +86,7 @@ const formatReading = (value: number): string => readingFormat.format(value)
  * level's `note` — the domain's qualifier (`per day`), shown as given.
  */
 const readingWithUnit = (series: Series.ValueSeries, level: Level.Level): string =>
-  [formatReading(level.value), series.unit, level.note]
-    .filter((part) => part !== null && part !== undefined)
-    .join(' ')
+  [formatReading(level.value), series.unit, level.note].filter(Predicate.isNotNullable).join(' ')
 
 /** Built once, like {@link readingFormat}. */
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' })
