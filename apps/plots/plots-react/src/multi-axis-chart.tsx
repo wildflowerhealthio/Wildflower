@@ -1,3 +1,4 @@
+import { walkthroughAnchor } from '@wildflowerhealthio/walkthrough-core'
 import { DateTime } from 'effect'
 import { type JSX, type PointerEvent, useCallback, useEffect, useMemo, useState } from 'react'
 
@@ -15,6 +16,7 @@ import { MARGIN_TOP, bucketCountFor, chartOptions, crosshairHeightFor } from './
 import { CrosshairTooltip } from './crosshair-tooltip.tsx'
 import { Legend } from './legend.tsx'
 import { usePlot, usePlotContainer } from './use-plot.ts'
+import { PlotsWalkthroughAnchor } from './walkthrough-anchors.ts'
 import styles from './multi-axis-chart.module.css'
 
 interface MultiAxisChartProps {
@@ -75,6 +77,9 @@ const TOOLTIP_ROOM = 280 + 12
  * middles and its row the bucket's mean. `Buckets.ofDenseSeries` decides
  * which, once per render, and the marks, the stops and the readout all take
  * that one map; a new width decides again.
+ *
+ * The chart, and the "Pick up to four series" line in its place while
+ * nothing is selected, carry `PlotsWalkthroughAnchor.chart`.
  */
 const MultiAxisChart = ({
   series,
@@ -140,14 +145,18 @@ const MultiAxisChart = ({
   }, [onHover])
 
   if (series.length === 0 && lanes.length === 0) {
-    return <p className={styles.empty}>Pick up to four series</p>
+    return (
+      <p className={styles.empty} {...walkthroughAnchor(PlotsWalkthroughAnchor.chart)}>
+        Pick up to four series
+      </p>
+    )
   }
 
   const crosshairLeft: unknown =
     hoveredMillis === null ? null : figure?.scale('x')?.apply(new Date(hoveredMillis))
 
   return (
-    <div className={styles.chart}>
+    <div className={styles.chart} {...walkthroughAnchor(PlotsWalkthroughAnchor.chart)}>
       <Legend axes={axes} colours={colours} lanes={lanes} laneCategories={laneCategories} />
       <div
         className={styles['plot-area']}

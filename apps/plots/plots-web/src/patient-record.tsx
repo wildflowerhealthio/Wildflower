@@ -20,12 +20,15 @@ import {
   ViewSwitch,
   useColourSlots,
 } from '@wildflowerhealthio/plots-react'
+import { LinkButton } from '@wildflowerhealthio/react-tundraish'
 import { LoadingLine, LoadingMoreLine, ReadFailureLine } from '@wildflowerhealthio/smart-app-react'
+import { Walkthrough } from '@wildflowerhealthio/walkthrough-react'
 import type { DateTime } from 'effect'
 import { Match, Option } from 'effect'
 import type { JSX } from 'react'
 import { useCallback, useEffect, useMemo } from 'react'
 
+import { PLOTS_WALKTHROUGH_STEPS, usePlotsWalkthrough } from './plots-walkthrough.ts'
 import type { SmartClient } from './smart-client.ts'
 import { type RecordRead, useRecordRead } from './use-record-read.ts'
 import type { SelectionUpdate } from './use-url-selection.ts'
@@ -120,6 +123,11 @@ const useShownView = (
  * Once the record is complete, selected ids it holds no series for — a link
  * shared from another patient's record — are dropped from the selection; not
  * before, or a series on a later page would be lost.
+ *
+ * The Plots walkthrough ({@link usePlotsWalkthrough}) mounts here, once every
+ * source has its first page, so it doesn't start over the loading line. It
+ * shows on a first visit, and again from Show walkthrough again in the footer
+ * under the view; the app has no settings or menu to hold that button.
  */
 const RecordView = ({
   record,
@@ -190,47 +198,64 @@ const RecordView = ({
     )),
   ]
   const leftOutNotes = leftOutNotesOf(record.undatedCount, record.unreadableCount)
+  const walkthrough = usePlotsWalkthrough()
 
   return (
-    <PlotsLayout
-      seriesPanel={
-        <SeriesPanel
-          catalogGroups={catalogGroups}
-          selectedSeriesIds={selection.series}
-          onSelectionChange={changeSelectedSeries}
-        />
-      }
-      selectedSeriesCount={selection.series.length}
-      rangePresets={<RangePresets selectedPreset={selection.range} onPresetChange={changeRange} />}
-      viewSwitch={
-        <ViewSwitch
-          shownView={shownView.view}
-          scatterAxes={shownView.scatterAxes}
-          onViewChange={changeView}
-        />
-      }
-      toolbarNote={<ScatterUnavailableNote scatterAxes={shownView.scatterAxes} />}
-      status={statusLines.length === 0 ? null : statusLines}
-    >
-      {Match.value(shownView).pipe(
-        Match.when({ view: 'chart' }, () => (
-          <MultiAxisChart
-            series={valueSeries}
-            colours={colours}
-            lanes={lanes}
-            xDomain={viewTimeDomain}
+    <>
+      <PlotsLayout
+        seriesPanel={
+          <SeriesPanel
+            catalogGroups={catalogGroups}
+            selectedSeriesIds={selection.series}
+            onSelectionChange={changeSelectedSeries}
           />
-        )),
-        Match.when({ view: 'table' }, () => (
-          <SeriesTable series={selectedSeries} timeWindow={viewTimeDomain} />
-        )),
-        Match.when({ view: 'scatter' }, ({ x, y }) => (
-          <ScatterChart x={x} y={y} timeWindow={viewTimeDomain} colours={colours} />
-        )),
-        Match.exhaustive
-      )}
-      {leftOutNotes.length > 0 && <p className={styles.note}>{leftOutNotes.join(' · ')}</p>}
-    </PlotsLayout>
+        }
+        selectedSeriesCount={selection.series.length}
+        rangePresets={
+          <RangePresets selectedPreset={selection.range} onPresetChange={changeRange} />
+        }
+        viewSwitch={
+          <ViewSwitch
+            shownView={shownView.view}
+            scatterAxes={shownView.scatterAxes}
+            onViewChange={changeView}
+          />
+        }
+        toolbarNote={<ScatterUnavailableNote scatterAxes={shownView.scatterAxes} />}
+        status={statusLines.length === 0 ? null : statusLines}
+      >
+        {Match.value(shownView).pipe(
+          Match.when({ view: 'chart' }, () => (
+            <MultiAxisChart
+              series={valueSeries}
+              colours={colours}
+              lanes={lanes}
+              xDomain={viewTimeDomain}
+            />
+          )),
+          Match.when({ view: 'table' }, () => (
+            <SeriesTable series={selectedSeries} timeWindow={viewTimeDomain} />
+          )),
+          Match.when({ view: 'scatter' }, ({ x, y }) => (
+            <ScatterChart x={x} y={y} timeWindow={viewTimeDomain} colours={colours} />
+          )),
+          Match.exhaustive
+        )}
+        {leftOutNotes.length > 0 && <p className={styles.note}>{leftOutNotes.join(' · ')}</p>}
+      </PlotsLayout>
+      <footer className={styles.footer}>
+        <LinkButton className="text-body-3" onClick={walkthrough.reopen}>
+          Show walkthrough again
+        </LinkButton>
+      </footer>
+      <Walkthrough
+        steps={PLOTS_WALKTHROUGH_STEPS}
+        open={walkthrough.open}
+        onFinish={walkthrough.finish}
+        onSkip={walkthrough.skip}
+        onPostpone={walkthrough.postpone}
+      />
+    </>
   )
 }
 

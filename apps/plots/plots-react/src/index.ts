@@ -26,3 +26,5 @@ export {
   type ScatterUnavailableNoteProps,
   type ViewSwitchProps,
 } from './view-switch.tsx'
+
+export { PlotsWalkthroughAnchor } from './walkthrough-anchors.ts'

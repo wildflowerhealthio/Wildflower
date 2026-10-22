@@ -119,6 +119,11 @@ and opaque series ids.
   `Series (n selected)` disclosure above it. The toolbar note when there is
   one, the toolbar row (presets, then view switch), then the status line when
   there is one, sit above the view in both.
+- `src/walkthrough-anchors.ts` — `PlotsWalkthroughAnchor`, the
+  `data-walkthrough` values (`walkthrough-core`'s `walkthroughAnchor`) that
+  `PlotsLayout` puts on the series panel, the presets and the view switch,
+  and `MultiAxisChart` on the chart, for the app's first-run walkthrough to
+  point at; the walkthrough itself is the app's.
 
 ## Rules
 

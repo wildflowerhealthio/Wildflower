@@ -5,11 +5,22 @@ import type { SmartHandshake } from '@wildflowerhealthio/fhir-r4-react/smart'
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import { MedicationRequest, Observation } from '@wildflowerhealthio/fhir-r4/resources'
 import { SERIES_PARAM, decodeSelection, readRecord } from '@wildflowerhealthio/plots-core-js'
-import { seriesColors } from '@wildflowerhealthio/plots-react'
-import { Schema } from 'effect'
+import { PlotsWalkthroughAnchor, seriesColors } from '@wildflowerhealthio/plots-react'
+import {
+  readSeenWalkthrough,
+  WALKTHROUGH_ANCHOR_ATTRIBUTE,
+  writeSeenWalkthrough,
+} from '@wildflowerhealthio/walkthrough-core'
+import { DateTime, Schema } from 'effect'
 import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
+import {
+  PLOTS_WALKTHROUGH_ID,
+  PLOTS_WALKTHROUGH_STEPS,
+  PLOTS_WALKTHROUGH_VERSION,
+  PlotsPageWalkthroughAnchor,
+} from './plots-walkthrough.ts'
 import type { SmartClient } from './smart-client.ts'
 
 // Only the handshake is stubbed: the page reads are the real `fhir-r4-react/smart`
@@ -632,5 +643,139 @@ describe('App', () => {
 
     // Assert
     expect(await screen.findByText('1 undated record skipped')).toBeDefined()
+  })
+})
+
+/** The anchors on the page that a step of the Plots walkthrough points at, in step order. */
+const walkthroughAnchorsOnPage = (): readonly string[] =>
+  PLOTS_WALKTHROUGH_STEPS.map(({ anchor }) => anchor).filter(
+    (anchor) => document.querySelector(`[${WALKTHROUGH_ANCHOR_ATTRIBUTE}="${anchor}"]`) !== null
+  )
+
+/** The walkthrough's popover while it shows the step titled `title`. */
+const findWalkthroughPopover = (title: string): Promise<HTMLElement> =>
+  screen.findByRole('dialog', { name: title })
+
+/** Keeps a record of the Plots walkthrough, as a returning visitor has. */
+const recordWalkthroughSeen = (): void => {
+  writeSeenWalkthrough(window.localStorage, PLOTS_WALKTHROUGH_ID, {
+    version: PLOTS_WALKTHROUGH_VERSION,
+    outcome: 'Skipped',
+    decidedAt: DateTime.unsafeMake('2026-10-22T12:00:00.000Z'),
+  })
+}
+
+const recordedWalkthroughOutcome = (): string | undefined =>
+  readSeenWalkthrough(window.localStorage, PLOTS_WALKTHROUGH_ID, PLOTS_WALKTHROUGH_VERSION)?.outcome
+
+const [firstWalkthroughStep] = PLOTS_WALKTHROUGH_STEPS
+if (firstWalkthroughStep === undefined) {
+  throw new Error('the walkthrough has no steps')
+}
+
+describe('the Plots walkthrough', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    // jsdom lays nothing out, so every element reads as unrendered, and the
+    // walkthrough would drop every step. Give each element a box.
+    vi.spyOn(Element.prototype, 'getClientRects').mockImplementation(() => {
+      const boxes = [DOMRect.fromRect({ x: 0, y: 0, width: 40, height: 20 })]
+      return Object.assign(boxes, { item: (index: number) => boxes[index] ?? null })
+    })
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    window.localStorage.clear()
+    // driver.js leaves its overlay on `body`, outside what `cleanup` unmounts.
+    document.body.innerHTML = ''
+  })
+
+  it("should find every step's control on a record with no plottable series", async () => {
+    // Arrange
+    recordWalkthroughSeen()
+    launchWith(
+      stubClient(
+        'p1',
+        recordResponses({
+          'Observation?': answer(bundleOf([])),
+          'MedicationRequest?': answer(bundleOf([])),
+        })
+      )
+    )
+
+    // Act
+    renderApp()
+    await screen.findByText('No plottable series in this record.')
+    await screen.findByText('Ada Lovelace · born 1815-12-10')
+
+    // Assert
+    expect(walkthroughAnchorsOnPage()).toStrictEqual(
+      PLOTS_WALKTHROUGH_STEPS.map(({ anchor }) => anchor)
+    )
+  })
+
+  it('should leave out the chart step while the view is the table', async () => {
+    // Arrange
+    recordWalkthroughSeen()
+    const params = new URLSearchParams({ v: 'table' })
+    params.append(SERIES_PARAM, glucoseSeries?.id ?? '')
+    window.history.replaceState(null, '', `/health-viewer/?${params.toString()}`)
+    launchWith(stubClient('p1', recordResponses()))
+
+    // Act
+    renderApp()
+    await screen.findByRole('table', { name: 'Readings' })
+    await screen.findByText('Ada Lovelace · born 1815-12-10')
+
+    // Assert
+    expect(walkthroughAnchorsOnPage()).toStrictEqual([
+      PlotsPageWalkthroughAnchor.patientLine,
+      PlotsWalkthroughAnchor.seriesPanel,
+      PlotsWalkthroughAnchor.rangePresets,
+      PlotsWalkthroughAnchor.viewSwitch,
+    ])
+  })
+
+  it('should open on a first visit once the record loads, and stay closed once skipped', async () => {
+    // Arrange
+    launchWith(stubClient('p1', recordResponses()))
+    renderApp()
+
+    // Act
+    const popover = await findWalkthroughPopover(firstWalkthroughStep.title)
+    fireEvent.click(within(popover).getByRole('button', { name: 'Skip' }))
+
+    // Assert
+    await waitFor(() => {
+      expect(recordedWalkthroughOutcome()).toBe('Skipped')
+    })
+    expect(screen.queryByRole('dialog', { name: firstWalkthroughStep.title })).toBeNull()
+  })
+
+  it('should show again from Show walkthrough again, record Done, and leave the selection in the URL alone', async () => {
+    // Arrange
+    recordWalkthroughSeen()
+    const params = new URLSearchParams({ patient: 'p1', r: '1y', v: 'chart' })
+    params.append(SERIES_PARAM, glucoseSeries?.id ?? '')
+    window.history.replaceState(null, '', `/health-viewer/?${params.toString()}`)
+    launchWith(stubClient('p1', recordResponses()))
+    renderApp()
+    await waitFor(() => seriesCheckbox(glucoseSeries?.label ?? ''))
+
+    // Act
+    fireEvent.click(screen.getByRole('button', { name: 'Show walkthrough again' }))
+    const lastPopover = await PLOTS_WALKTHROUGH_STEPS.slice(1).reduce(async (shown, { title }) => {
+      fireEvent.click(within(await shown).getByRole('button', { name: 'Next' }))
+      return findWalkthroughPopover(title)
+    }, findWalkthroughPopover(firstWalkthroughStep.title))
+    fireEvent.click(within(lastPopover).getByRole('button', { name: 'Done' }))
+
+    // Assert
+    await waitFor(() => {
+      expect(recordedWalkthroughOutcome()).toBe('Finished')
+    })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(window.location.search).toBe(`?${params.toString()}`)
   })
 })

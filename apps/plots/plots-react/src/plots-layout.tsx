@@ -1,7 +1,9 @@
 import { cn } from '@wildflowerhealthio/react-kitchen-sink'
+import { walkthroughAnchor } from '@wildflowerhealthio/walkthrough-core'
 import type { JSX, ReactNode } from 'react'
 import { useId, useState } from 'react'
 
+import { PlotsWalkthroughAnchor } from './walkthrough-anchors.ts'
 import styles from './plots-layout.module.css'
 
 interface PlotsLayoutProps {
@@ -37,6 +39,10 @@ interface PlotsLayoutProps {
  * `aria-expanded` rather than a `<details>`, because a closed `<details>`
  * hides its content whatever the CSS says, so docking the same panel on a
  * wide viewport would need a second copy of it or a JS media query.
+ *
+ * The panel, the presets and the view switch each carry their
+ * {@link PlotsWalkthroughAnchor} for the app's walkthrough; the presets and
+ * the view switch sit in a box of their own to carry it.
  */
 const PlotsLayout = ({
   seriesPanel,
@@ -51,7 +57,11 @@ const PlotsLayout = ({
   const panelBodyId = useId()
   return (
     <div className={styles.layout}>
-      <aside className={styles.panel} aria-label="Series">
+      <aside
+        className={styles.panel}
+        aria-label="Series"
+        {...walkthroughAnchor(PlotsWalkthroughAnchor.seriesPanel)}
+      >
         <button
           type="button"
           className={styles.disclosure}
@@ -77,8 +87,18 @@ const PlotsLayout = ({
       <div className={styles.main}>
         {toolbarNote}
         <div className={styles.toolbar}>
-          {rangePresets}
-          {viewSwitch}
+          <div
+            className={styles['toolbar-control']}
+            {...walkthroughAnchor(PlotsWalkthroughAnchor.rangePresets)}
+          >
+            {rangePresets}
+          </div>
+          <div
+            className={styles['toolbar-control']}
+            {...walkthroughAnchor(PlotsWalkthroughAnchor.viewSwitch)}
+          >
+            {viewSwitch}
+          </div>
         </div>
         {status !== undefined && status !== null && <div className={styles.status}>{status}</div>}
         <div className={styles.chart}>{children}</div>
