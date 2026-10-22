@@ -1,11 +1,21 @@
 import { Link } from '@tanstack/react-router'
+import type { LinkComponentProps } from '@tanstack/react-router'
 import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import type { JSX } from 'react'
 
 import { SettingsIcon } from './settings-icon.tsx'
 import styles from './settings-link.module.css'
 
-interface SettingsLinkProps {
+/**
+ * Props for {@link SettingsLink}: `href` and `label`, and any other `<Link>`
+ * prop (`id`, `data-*`, `ref`, a `className` added to its own), which go to
+ * the root `<Link>`. Its `to`, children, `aria-label` and `title` come from
+ * `href` and `label`, so a caller cannot set them.
+ */
+interface SettingsLinkProps extends Omit<
+  LinkComponentProps,
+  'to' | 'children' | 'aria-label' | 'title'
+> {
   /** The settings screen's absolute in-app path (e.g. `/settings`). */
   readonly href: string
   /** What the screen is called, as the link's accessible name and tooltip. */
@@ -20,10 +30,11 @@ interface SettingsLinkProps {
  * The destination is a plain path, like `<PageHeader backHref>`, so a slice
  * whose own route tree lacks the app's settings route can still link to it.
  */
-const SettingsLink = ({ href, label }: SettingsLinkProps): JSX.Element => (
+const SettingsLink = ({ href, label, className, ...rootProps }: SettingsLinkProps): JSX.Element => (
   <Link
+    {...rootProps}
     to={href}
-    className={cn('button button-2 ghost', styles['settings-link'])}
+    className={cn('button button-2 ghost', styles['settings-link'], className)}
     aria-label={label}
     title={label}
   >

@@ -4,13 +4,20 @@ import { StrictMode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { PatientChoiceLine } from './patient-choice-line.tsx'
+import type { PatientChoiceLineProps } from './patient-choice-line.tsx'
 import type { PatientChoice } from './patient-choice.ts'
 import { answer, type FhirResponses, stubSmartClient } from './smart-client.test-helpers.ts'
+import styles from './patient-choice-line.module.css'
 
-/** Render the line for `patientChoice` over `responses`; returns its change handler and requests. */
+/**
+ * Render the line for `patientChoice` over `responses`, with any extra root
+ * props; returns its change handler and requests.
+ */
 const renderLine = (
   patientChoice: PatientChoice,
-  responses: FhirResponses
+  responses: FhirResponses,
+  rootProps: Omit<PatientChoiceLineProps, 'client' | 'patientChoice' | 'onPatientChange'> &
+    Record<`data-${string}`, string> = {}
 ): {
   readonly onPatientChange: ReturnType<typeof vi.fn<() => void>>
   readonly requests: readonly string[]
@@ -23,6 +30,7 @@ const renderLine = (
         client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
       >
         <PatientChoiceLine
+          {...rootProps}
           client={client}
           patientChoice={patientChoice}
           onPatientChange={onPatientChange}
@@ -99,5 +107,16 @@ describe('PatientChoiceLine', () => {
     expect(
       await screen.findByText('Could not load patient p1: no such patient on this server')
     ).toBeDefined()
+  })
+
+  it('should pass other props to its root, adding a class to its own', () => {
+    // Act
+    renderLine({ kind: 'all-patients' }, {}, { className: 'extra', 'data-walkthrough': 'patient' })
+
+    // Assert
+    const root = screen.getByText('All patients').parentElement
+    expect(root?.getAttribute('data-walkthrough')).toBe('patient')
+    expect(root?.classList.contains('extra')).toBe(true)
+    expect(root?.classList.contains(styles['patient-choice-line'] ?? '')).toBe(true)
   })
 })
