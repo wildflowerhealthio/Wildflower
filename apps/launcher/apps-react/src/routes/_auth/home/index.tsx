@@ -336,9 +336,11 @@ const AppsHomeBody = ({
               Done
             </button>
           ) : (
-            <span {...walkthroughAnchor(LauncherWalkthroughAnchor.settings)}>
-              <SettingsLink href="/settings" label="Settings" />
-            </span>
+            <SettingsLink
+              href="/settings"
+              label="Settings"
+              {...walkthroughAnchor(LauncherWalkthroughAnchor.settings)}
+            />
           )
         }
       />
