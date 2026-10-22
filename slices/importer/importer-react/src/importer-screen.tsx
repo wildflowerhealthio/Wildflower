@@ -77,7 +77,7 @@ const ImporterScreen = (): JSX.Element => {
       const labeled = DecodedFile.resources(result.decoded)
       const excluded = initialExclusionsFor(labeled, diff.comparisons.get(kind))
       if (excluded.size > 0) {
-        entries.push([kind, { excludedResources: excluded, resourceOverrides: new Map() }])
+        entries.push([kind, { ...StagedImport.initial(), excludedResources: excluded }])
       }
     }
     return new Map(entries)

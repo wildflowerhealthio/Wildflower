@@ -59,11 +59,12 @@ write plan with this package alone.
   checked against nothing.
 - `src/plan-write.ts` — **`planFormatWrite(result, selection)`**, the pure half
   of the confirm: from one format's decode result it produces a `write` of
-  exactly the reviewed resources (exclusions applied, inline edits
-  substituted, in review order) with the `excluded` count, or a `skip` with
-  its **`SkipReason`** (`nothing` / `unreadable`). It adds no
-  provenance and rewrites nothing: the format's `decode` already minted the
-  source file and stamped `meta.source`.
+  exactly the reviewed resources (`StagedImport.chosenResources`: exclusions
+  applied, inline edits substituted, source Patients merged into the persons
+  they were assigned, in review order) with the `excluded` count, or a `skip`
+  with its **`SkipReason`** (`nothing` / `unreadable`). It adds no
+  provenance: the format's `decode` already minted the source file and stamped
+  `meta.source`.
 
 ## Layering
 

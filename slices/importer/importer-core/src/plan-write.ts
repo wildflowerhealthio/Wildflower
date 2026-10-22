@@ -12,11 +12,13 @@ import {
  * bundle; nothing here touches a client.
  *
  * @remarks
- * The write set is the reviewed objects themselves — the exclusions applied
- * and the inline edits substituted — with no re-parse and no rewriting: a
- * format's `decode` already minted its source-file `DocumentReference` and
- * stamped every extracted resource's `meta.source`, so the confirm has no
- * provenance to add. A source-file row the reviewer excluded is simply not
+ * The write set is `StagedImport.chosenResources`: the reviewed objects
+ * themselves — the exclusions applied, the inline edits substituted, and each
+ * source Patient the reviewer assigned to an existing person merged into it,
+ * with the references to it re-pointed — and no re-parse. A format's `decode`
+ * already minted its source-file `DocumentReference` and stamped every
+ * extracted resource's `meta.source`, so the confirm has no provenance to
+ * add. A source-file row the reviewer excluded is simply not
  * written; the resources that name it keep their `meta.source` (the id is
  * deterministic in the file's bytes and name, so a later upload of the same
  * file resolves the link).
@@ -37,7 +39,7 @@ type WritePlan =
   | { readonly _tag: 'skip'; readonly reason: SkipReason }
   | {
       readonly _tag: 'write'
-      /** The resources to submit, in review order, edits substituted. */
+      /** The resources to submit, in review order, edits substituted, source Patients merged. */
       readonly resources: readonly FhirResource[]
       /** How many previewed resources the reviewer opted out. */
       readonly excluded: number

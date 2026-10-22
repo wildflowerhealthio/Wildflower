@@ -1,5 +1,7 @@
 export * as FormatDetector from './format-detector.ts'
 export * as MetaSource from './meta-source.ts'
+export * as PatientIdentity from './patient-identity.ts'
+export * as PatientSearch from './patient-search.ts'
 export * as PickedFile from './picked-file.ts'
 export * as StagedImport from './staged-import.ts'
 export * as FileImporter from './file-importer.ts'
