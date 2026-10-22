@@ -1,0 +1,46 @@
+{
+  "name": "@wildflowerhealthio/walkthrough-core",
+  "version": "0.0.0",
+  "description": "The first-run walkthrough model for the Wildflower apps: the versioned record of a visitor finishing or skipping a walkthrough, kept in localStorage, and the steps a walkthrough is made of.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",
+    "directory": "slices/walkthrough/walkthrough-core"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "prepublishOnly": "vp run build",
+    "test": "vp test --passWithNoTests"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@wildflowerhealthio/kitchen-sink": "workspace:*",
+    "bumpp": "catalog:",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "typescript": "catalog:",
+    "typescript-7": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:"
+  }
+}
