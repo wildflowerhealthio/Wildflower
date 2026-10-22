@@ -1,0 +1,53 @@
+{
+  "name": "@wildflowerhealthio/walkthrough-react",
+  "version": "0.0.0",
+  "private": true,
+  "description": "First-run walkthroughs for the Wildflower apps in React: the hook that remembers whether the visitor has finished or skipped a walkthrough, and the popovers, drawn with driver.js, that step through the page's own controls.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wildflowerhealthio/Wildflower.git",
+    "directory": "slices/walkthrough/walkthrough-react"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "prepublishOnly": "vp run build",
+    "test": "vp test"
+  },
+  "dependencies": {
+    "driver.js": "catalog:"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@wildflowerhealthio/walkthrough-core": "workspace:*",
+    "effect": "catalog:",
+    "jsdom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "typescript": "catalog:",
+    "typescript-7": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "@wildflowerhealthio/walkthrough-core": "workspace:*",
+    "effect": "catalog:",
+    "react": "catalog:"
+  }
+}

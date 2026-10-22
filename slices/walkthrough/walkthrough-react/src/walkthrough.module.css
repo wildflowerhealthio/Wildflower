@@ -1,0 +1,133 @@
+/*
+ * driver.js's popover, restyled as a react-tundraish surface: the raised
+ * popover fill, a hairline border and a soft shadow, the UI family, and
+ * buttons in the palette's roles (Next and Done filled with the accent, Back
+ * outlined, Skip quiet text). driver.js's own stylesheet still positions the
+ * popover, the overlay and the arrow; these rules come after it, at the same
+ * specificity or above, so they win where both set a property. Every colour
+ * is a scheme-aware token, so the popover follows light and dark.
+ */
+
+/* The overlay around the highlighted control: the dialog scrim, deepened in
+ * dark mode for the same reason (see react-tundraish's dialog.module.css).
+ * driver.js paints its overlay inline, so it reads this through its
+ * `overlayColor`. */
+:root {
+  --walkthrough-scrim: rgba(37, 37, 37, 0.32);
+}
+
+:root[data-color-scheme='dark'] {
+  --walkthrough-scrim: rgba(0, 0, 0, 0.6);
+}
+
+.walkthrough {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: min(22rem, calc(100vw - 2 * var(--space-7)));
+  padding: var(--space-6) var(--space-7);
+  background-color: var(--color-raised);
+  color: var(--color-foreground);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-4);
+  box-shadow: 0 14px 34px rgba(37, 37, 37, 0.18);
+  font-family: var(--font-sans);
+}
+
+:root[data-color-scheme='dark'] .walkthrough {
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.6);
+}
+
+/* The arrow is a border triangle: driver.js colours the side facing the
+ * control, so each side gets the popover's fill. */
+.walkthrough :global(.driver-popover-arrow-side-top) {
+  border-top-color: var(--color-raised);
+}
+
+.walkthrough :global(.driver-popover-arrow-side-right) {
+  border-right-color: var(--color-raised);
+}
+
+.walkthrough :global(.driver-popover-arrow-side-bottom) {
+  border-bottom-color: var(--color-raised);
+}
+
+.walkthrough :global(.driver-popover-arrow-side-left) {
+  border-left-color: var(--color-raised);
+}
+
+.walkthrough__title {
+  margin: 0;
+  font-size: var(--font-size-4);
+  font-weight: var(--font-weight-3);
+  line-height: var(--line-height-3);
+}
+
+.walkthrough__body {
+  color: var(--color-foreground);
+  font-size: var(--font-size-3);
+  line-height: var(--line-height-4);
+}
+
+.walkthrough__footer {
+  gap: var(--space-4);
+  margin-top: var(--space-6);
+}
+
+.walkthrough__progress {
+  color: var(--color-neutral-5);
+  font-size: var(--font-size-2);
+}
+
+.walkthrough__button {
+  box-sizing: border-box;
+  padding: var(--space-3) var(--space-5);
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  border: var(--element-border-width) solid var(--element-color-border);
+  border-radius: var(--button-border-radius);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-3);
+  font-weight: var(--font-weight-2);
+  line-height: var(--line-height-3);
+  cursor: pointer;
+}
+
+.walkthrough__button:hover,
+.walkthrough__button:focus {
+  background-color: var(--color-sunken);
+}
+
+.walkthrough__button:focus-visible {
+  outline: 2px solid var(--color-accent-4);
+  outline-offset: 1px;
+}
+
+.walkthrough__button--next {
+  background-color: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+.walkthrough__button--next:hover,
+.walkthrough__button--next:focus {
+  background-color: var(--color-accent-4);
+  border-color: var(--color-accent-4);
+}
+
+/* Skip is driver.js's close button, moved into the footer: undo its corner
+ * placement, and keep it quieter than Back and Next. */
+.walkthrough__button--skip {
+  position: static;
+  width: auto;
+  height: auto;
+  background-color: transparent;
+  border-color: transparent;
+  color: var(--color-neutral-4);
+}
+
+.walkthrough__button--skip:hover,
+.walkthrough__button--skip:focus,
+.walkthrough__button--skip:focus-visible {
+  background-color: transparent;
+  color: var(--color-foreground);
+}
