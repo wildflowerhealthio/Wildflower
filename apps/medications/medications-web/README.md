@@ -109,6 +109,15 @@ the route files (`routes/patients/$patientId/<tab>.tsx`, and
 - **Savings** — `medication-sponsorship-react`'s savings-program breakdown
   of the same current medications, with the province picker.
 
+The page shows the Medications walkthrough (`routes/-medications-walkthrough.ts`,
+on `walkthrough-react`) once its first page has landed: on a first visit, and
+again when the Show walkthrough again link in the footer under the tabs opens
+the open tab with `?walkthrough=show`, which both page routes validate. The
+footer holds the link because the app has no settings or menu. Its steps point
+at the patient line and the tabs, which carry `walkthroughAnchor`, so they are
+on the page whichever tab is open; All patients has no Interactions tab, so its
+step is skipped there.
+
 A path no route names (a stale bookmark, `/index.html`), one under a patient
 too, shows the no-page card under the app's title ("There's no page at …",
 `smart-app-react`'s `NoPageCard`; the router's `notFoundMode` is `'root'`),

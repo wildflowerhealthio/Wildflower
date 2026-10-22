@@ -6,3 +6,8 @@
   gap: var(--space-6);
   margin-bottom: var(--space-9);
 }
+
+/* Under the tabs, the page's one help link: Show walkthrough again. */
+.medications-page__footer {
+  margin-top: var(--space-9);
+}
