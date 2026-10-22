@@ -1,4 +1,4 @@
-import type { DateTime } from 'effect'
+import { Array as Arr, DateTime, Option } from 'effect'
 
 import type * as Level from './level.ts'
 import * as Series from './series.ts'
@@ -29,16 +29,15 @@ interface Scatter {
 }
 
 /**
- * The level in effect on `y` at `time`, or `null` when Y wasn't measured by
+ * The level in effect on `y` at `time`, or none when Y wasn't measured by
  * then: `Series.levelAt`, except that before a point series' first reading
  * there is none.
  */
-const yLevelAt = (y: Series.ValueSeries, time: DateTime.Utc): Level.Level | null => {
-  if (y.kind === 'points' && (y.points[0]?.time.epochMillis ?? Infinity) > time.epochMillis) {
-    return null
-  }
-  return Series.levelAt(y, time)
-}
+const yLevelAt = (y: Series.ValueSeries, time: DateTime.Utc): Option.Option<Level.Level> =>
+  y.kind === 'points' &&
+  Arr.head(y.points).pipe(Option.exists((first) => DateTime.greaterThan(first.time, time)))
+    ? Option.none()
+    : Option.fromNullable(Series.levelAt(y, time))
 
 /**
  * Pair `x`'s readings inside `window` with `y`'s value at each one's time.
@@ -56,14 +55,11 @@ const of = (
   y: Series.ValueSeries,
   window: TimeDomain.TimeDomain
 ): Scatter => {
-  const pairs: Pair[] = []
-  let unpairedCount = 0
-  for (const level of Series.levelsWithin(x, window)) {
-    const yLevel = yLevelAt(y, level.start)
-    if (yLevel === null) unpairedCount += 1
-    else pairs.push({ time: level.start, x: level, y: yLevel })
-  }
-  return { pairs, unpairedCount }
+  const xLevels = Series.levelsWithin(x, window)
+  const pairs = Arr.filterMap(xLevels, (level) =>
+    Option.map(yLevelAt(y, level.start), (yLevel) => ({ time: level.start, x: level, y: yLevel }))
+  )
+  return { pairs, unpairedCount: xLevels.length - pairs.length }
 }
 
 export { of }
