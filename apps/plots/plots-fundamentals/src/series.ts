@@ -40,9 +40,15 @@ const isSpanSeries = (series: Series): series is SpanSeries.SpanSeries => series
 const levelsOf = (series: ValueSeries): readonly Level.Level[] =>
   series.kind === 'points' ? PointSeries.toLevels(series) : series.levels
 
-/** The levels of {@link levelsOf} that start inside `window`, both ends included, in series order. */
+/**
+ * The levels of {@link levelsOf} that start inside `window`, both ends
+ * included, in series order — a point series' built only for the readings
+ * there (`PointSeries.levelsWithin`).
+ */
 const levelsWithin = (series: ValueSeries, window: TimeDomain): readonly Level.Level[] =>
-  levelsOf(series).filter((level) => contains(window, level.start.epochMillis))
+  series.kind === 'points'
+    ? PointSeries.levelsWithin(series, window)
+    : series.levels.filter((level) => contains(window, level.start.epochMillis))
 
 /**
  * The level a crosshair reads off `series` at `time`.

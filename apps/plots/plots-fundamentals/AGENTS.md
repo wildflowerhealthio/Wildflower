@@ -27,6 +27,9 @@ functions read in the namespace's context (`ValueAxis.assign`, not
   last one open-ended, so the levels never overlap. `levelAt` is the same
   lookup by binary search, with one deliberate difference from
   `Level.inEffectAt`: before the first reading it still names the first one.
+  `levelsWithin` is `toLevels`' levels starting inside a window, built only
+  for the readings there. Both searches go through kitchen-sink's
+  `partitionPoint`.
 - **`LevelSeries`** (`src/level-series.ts`) — values held over intervals, each
   a `StyledLevel` with a `LineStyle` (`'solid' | 'dashed'`) the domain decides.
   Levels may overlap or leave gaps. `levelAt` reads through
