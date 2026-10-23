@@ -58,10 +58,10 @@ const NO_SERVERS_WALKTHROUGH: HostWalkthrough = {
 }
 
 /**
- * The walkthrough for a list with servers: the welcome, then the page's
- * controls in page order. It has its own
- * record, so a visitor who went through {@link NO_SERVERS_WALKTHROUGH} sees it
- * once their first server is on the list.
+ * The walkthrough for a list with servers: the server card's controls and
+ * Add new server, in page order. It has its own record, so a visitor who went
+ * through {@link NO_SERVERS_WALKTHROUGH} sees it once their first server is on
+ * the list.
  */
 const SERVERS_WALKTHROUGH: HostWalkthrough = {
   id: 'host-servers',

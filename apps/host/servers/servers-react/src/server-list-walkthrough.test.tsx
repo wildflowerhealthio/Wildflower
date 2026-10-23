@@ -137,18 +137,12 @@ describe("the Host's walkthrough", () => {
   it('should open the servers walkthrough once there are servers, after the no-servers one', async () => {
     // Arrange
     recordSeen(NO_SERVERS_WALKTHROUGH)
+
+    // Act
     renderBaseAt('/servers')
 
-    // Act: past the welcome both walkthroughs open with
-    fireEvent.click(
-      within(await findPopover('Welcome to Wildflower')).getByRole('button', { name: 'Next' })
-    )
-    fireEvent.click(
-      within(await findPopover('Reaching Your Server')).getByRole('button', { name: 'Next' })
-    )
-
     // Assert
-    await findPopover('Your Server')
+    await findPopover(firstStepTitle(SERVERS_WALKTHROUGH))
   })
 
   it("should show again from Host Settings' Show walkthrough again, and drop the request once done", async () => {
