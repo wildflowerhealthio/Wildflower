@@ -1,9 +1,17 @@
 import { Link } from '@tanstack/react-router'
-import type { JSX, ReactNode } from 'react'
+import { cn } from '@wildflowerhealthio/react-kitchen-sink'
+import type { ComponentProps, JSX, ReactNode } from 'react'
 
 import styles from './page-header.module.css'
 
-type PageHeaderProps = {
+/**
+ * Props for {@link PageHeader}: its title, subtitle, back link and actions,
+ * and any other `<header>` prop (`id`, `data-*`, `ref`, a `className` added to
+ * its own), which go to the root `<header>`. Its children come from those
+ * props, and `title` is the heading rather than the `<header>`'s tooltip, so
+ * a caller cannot set the `<header>`'s.
+ */
+interface PageHeaderProps extends Omit<ComponentProps<'header'>, 'children' | 'title'> {
   /**
    * The page title. Usually a plain string; accepts `ReactNode` so a
    * small inline mark (e.g. an "Advanced" chip) can sit beside the
@@ -66,8 +74,10 @@ const PageHeader = ({
   backHref,
   backLabel = 'Back',
   actions,
+  className,
+  ...rootProps
 }: PageHeaderProps): JSX.Element => (
-  <header className={styles['page-header']}>
+  <header {...rootProps} className={cn(styles['page-header'], className)}>
     <div className={styles['page-header__bar']}>
       <div className={styles['page-header__lead']}>
         {backHref !== undefined ? (

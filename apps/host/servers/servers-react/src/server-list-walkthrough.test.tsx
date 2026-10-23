@@ -137,12 +137,18 @@ describe("the Host's walkthrough", () => {
   it('should open the servers walkthrough once there are servers, after the no-servers one', async () => {
     // Arrange
     recordSeen(NO_SERVERS_WALKTHROUGH)
-
-    // Act
     renderBaseAt('/servers')
 
+    // Act: past the welcome both walkthroughs open with
+    fireEvent.click(
+      within(await findPopover('Welcome to Wildflower')).getByRole('button', { name: 'Next' })
+    )
+    fireEvent.click(
+      within(await findPopover('Reaching Your Server')).getByRole('button', { name: 'Next' })
+    )
+
     // Assert
-    await findPopover(firstStepTitle(SERVERS_WALKTHROUGH))
+    await findPopover('Your Server')
   })
 
   it("should show again from Host Settings' Show walkthrough again, and drop the request once done", async () => {
@@ -155,14 +161,20 @@ describe("the Host's walkthrough", () => {
     await user.click(await screen.findByRole('link', { name: 'Show walkthrough again' }))
 
     // Assert
-    const addServer = await findPopover('Add new server')
+    const welcome = await findPopover('Welcome to Wildflower')
     expect(history.location.pathname).toBe('/servers')
     expect(history.location.search).toBe('?walkthrough=show')
 
-    // Act
-    fireEvent.click(within(addServer).getByRole('button', { name: 'Next' }))
+    // Act: through to the last step, Add new server
+    fireEvent.click(within(welcome).getByRole('button', { name: 'Next' }))
     fireEvent.click(
-      within(await findPopover('Host Settings')).getByRole('button', { name: 'Done' })
+      within(await findPopover('Reaching Your Server')).getByRole('button', { name: 'Next' })
+    )
+    fireEvent.click(
+      within(await findPopover('Host Settings')).getByRole('button', { name: 'Next' })
+    )
+    fireEvent.click(
+      within(await findPopover('Add new server')).getByRole('button', { name: 'Done' })
     )
 
     // Assert
@@ -172,6 +184,6 @@ describe("the Host's walkthrough", () => {
     await waitFor(() => {
       expect(history.location.search).toBe('')
     })
-    expect(screen.queryByRole('dialog', { name: 'Host Settings' })).toBeNull()
+    expect(screen.queryByRole('dialog', { name: 'Add new server' })).toBeNull()
   })
 })

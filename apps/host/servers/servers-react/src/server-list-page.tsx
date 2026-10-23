@@ -117,6 +117,7 @@ const ServerListPage = (): JSX.Element => {
     <>
       <PageHeader
         title="Servers"
+        {...walkthroughAnchor(HostWalkthroughAnchor.pageHeader)}
         actions={
           <SettingsLink
             href="/settings"

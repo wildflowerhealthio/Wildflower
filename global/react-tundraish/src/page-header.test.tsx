@@ -97,4 +97,16 @@ describe('PageHeader', () => {
     expect(screen.getByText('GET /fhir/Patient')).toBeTruthy()
     expect(screen.queryByRole('heading', { name: 'GET /fhir/Patient' })).toBeNull()
   })
+
+  it('passes other props to its header, adding a class to its own', () => {
+    // Arrange / Act
+    render(<PageHeader title="Servers" className="extra" data-walkthrough="welcome" />)
+
+    // Assert
+    const header = screen.getByRole('banner')
+    expect(header.getAttribute('data-walkthrough')).toBe('welcome')
+    expect(header.classList.contains('extra')).toBe(true)
+    expect(header.classList.length).toBe(2)
+    expect(header.getAttribute('title')).toBeNull()
+  })
 })

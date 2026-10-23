@@ -5,6 +5,7 @@ import { Schema } from 'effect'
 
 /** The `data-walkthrough` values of the server list's controls the walkthrough points at. */
 const HostWalkthroughAnchor = {
+  pageHeader: 'page-header',
   serverCard: 'server-card',
   runPolicy: 'run-policy',
   apps: 'apps',
@@ -24,7 +25,21 @@ interface HostWalkthrough {
   readonly steps: ReadonlyArray<WalkthroughStep>
 }
 
-/** The Host Settings step, last in both walkthroughs. */
+/** The steps that open both walkthroughs: what Wildflower is, and how apps reach it. */
+const WELCOME_STEPS: ReadonlyArray<WalkthroughStep> = [
+  {
+    anchor: HostWalkthroughAnchor.pageHeader,
+    title: 'Welcome to Wildflower',
+    body: 'Wildflower keeps your health records on a server running on this device, built on FHIR, the same health records standard hospitals use.',
+  },
+  {
+    anchor: HostWalkthroughAnchor.pageHeader,
+    title: 'Reaching Your Server',
+    body: "A relay you choose makes your server available to apps. The relay can't read what passes through, and only the apps you approve get in.",
+  },
+]
+
+/** The Host Settings step, in both walkthroughs. */
 const HOST_SETTINGS_STEP: WalkthroughStep = {
   anchor: HostWalkthroughAnchor.hostSettings,
   title: 'Host Settings',
@@ -32,24 +47,27 @@ const HOST_SETTINGS_STEP: WalkthroughStep = {
 }
 
 /**
- * The walkthrough for a list with no servers, where only Add new server and
- * Host Settings are on the page.
+ * The walkthrough for a list with no servers, where only the header, Add new
+ * server and Host Settings are on the page. It ends on Add new server, so the
+ * last thing it asks is to add one.
  */
 const NO_SERVERS_WALKTHROUGH: HostWalkthrough = {
   id: 'host-no-servers',
   version: 1,
   steps: [
+    ...WELCOME_STEPS,
+    HOST_SETTINGS_STEP,
     {
       anchor: HostWalkthroughAnchor.addServer,
       title: 'Add new server',
-      body: 'A server keeps your health records on this device. You can add more than one.',
+      body: 'Start by adding a new server and connecting it to a relay.',
     },
-    HOST_SETTINGS_STEP,
   ],
 }
 
 /**
- * The walkthrough for a list with servers, in page order. It has its own
+ * The walkthrough for a list with servers: the welcome, then the page's
+ * controls in page order. It has its own
  * record, so a visitor who went through {@link NO_SERVERS_WALKTHROUGH} sees it
  * once their first server is on the list.
  */
@@ -57,6 +75,7 @@ const SERVERS_WALKTHROUGH: HostWalkthrough = {
   id: 'host-servers',
   version: 1,
   steps: [
+    ...WELCOME_STEPS,
     {
       anchor: HostWalkthroughAnchor.serverCard,
       title: 'Your Server',
