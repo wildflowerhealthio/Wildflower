@@ -85,13 +85,15 @@ utoipa-axum = "0.3"
 [workspace.lints.rust]
 unsafe_code = "forbid"
 
-# Our fork of `tauri-plugin-background-service` 1.0.1 with two fixes: Android
-# starts the foreground service with no native core (#886), and iOS stops a
+# Our fork of `tauri-plugin-background-service` 1.0.1 with these fixes: Android
+# starts the foreground service with no native core (#886); iOS stops a
 # running service gracefully, with `PlatformExpiration`, before suspending the
-# app in the background. Tracks the fixes' branch (fork PR #2, stacked on #1);
-# `deny.toml` allows this git source.
+# app in the background; and iOS registers its BGTask handlers before any
+# start can submit, and handles a BGTask expiration on the main queue. Tracks
+# the fixes' branch (fork PR #4, stacked on #2, stacked on #1); `deny.toml`
+# allows this git source.
 [patch.crates-io]
-tauri-plugin-background-service = { git = "https://github.com/wildflowerhealthio/tauri-background-service", branch = "fix/ios-background-grace-window" }
+tauri-plugin-background-service = { git = "https://github.com/wildflowerhealthio/tauri-background-service", branch = "fix/ios-bgtask-registration-and-expiration-queue" }
 # Our fork of `rathole` (wildflower/handoff), pinned to a commit while its
 # changes are reviewed upstream in wildflowerhealthio/rathole#1.
 rathole = { git = "https://github.com/wildflowerhealthio/rathole", rev = "50b5409a53cd7d0ae67baf7a66cd462118f3d8ea" }
