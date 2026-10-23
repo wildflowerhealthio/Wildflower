@@ -34,6 +34,8 @@
     "@wildflowerhealthio/react-tundraish": "workspace:*",
     "@wildflowerhealthio/shared-structures-core": "workspace:*",
     "@wildflowerhealthio/shared-structures-react": "workspace:*",
+    "@wildflowerhealthio/walkthrough-core": "workspace:*",
+    "@wildflowerhealthio/walkthrough-react": "workspace:*",
     "effect": "catalog:",
     "jsdom": "catalog:",
     "react": "catalog:",
@@ -53,6 +55,8 @@
     "@wildflowerhealthio/react-tundraish": "workspace:*",
     "@wildflowerhealthio/shared-structures-core": "workspace:*",
     "@wildflowerhealthio/shared-structures-react": "workspace:*",
+    "@wildflowerhealthio/walkthrough-core": "workspace:*",
+    "@wildflowerhealthio/walkthrough-react": "workspace:*",
     "effect": "catalog:",
     "react": "catalog:"
   }

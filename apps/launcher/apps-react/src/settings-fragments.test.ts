@@ -3,11 +3,15 @@ import { describe, expect, test } from 'vite-plus/test'
 import { appsSettingsItemsFragment } from './settings-fragments.ts'
 
 describe('appsSettingsItemsFragment', () => {
-  test('contributes the Apps row, then the Arrange home screen row', () => {
+  test('contributes the Apps row, the Arrange home screen row, then Show walkthrough again', () => {
     // If the slice ever grows another settings item, this assertion should be
     // expanded deliberately rather than silently — the unified /settings menu
     // treats fragment-declaration order as canonical.
-    expect(appsSettingsItemsFragment.map((item) => item.id)).toEqual(['apps', 'home-screen'])
+    expect(appsSettingsItemsFragment.map((item) => item.id)).toEqual([
+      'apps',
+      'home-screen',
+      'walkthrough',
+    ])
   })
 
   test('links Apps to /settings/apps — the path mounted by the slice route subtree', () => {
@@ -21,5 +25,13 @@ describe('appsSettingsItemsFragment', () => {
     expect(
       homeScreen !== undefined && 'search' in homeScreen ? homeScreen.search : undefined
     ).toEqual({ edit: true })
+  })
+
+  test('links Show walkthrough again to the home screen, asking it to show the walkthrough', () => {
+    const [, , walkthrough] = appsSettingsItemsFragment
+    expect(walkthrough?.href).toBe('/home')
+    expect(
+      walkthrough !== undefined && 'search' in walkthrough ? walkthrough.search : undefined
+    ).toEqual({ walkthrough: 'show' })
   })
 })

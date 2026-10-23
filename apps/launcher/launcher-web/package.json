@@ -39,6 +39,8 @@
     "@wildflowerhealthio/smart-app-react": "workspace:*",
     "@wildflowerhealthio/telemetry-react": "workspace:*",
     "@wildflowerhealthio/telemetry-web": "workspace:*",
+    "@wildflowerhealthio/walkthrough-core": "workspace:*",
+    "@wildflowerhealthio/walkthrough-react": "workspace:*",
     "effect": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
