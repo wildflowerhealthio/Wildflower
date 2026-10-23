@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useRunAuthed } from '@wildflowerhealthio/fhir-r4-react'
 import type { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
 import { Dialog } from '@wildflowerhealthio/react-tundraish'
+import { walkthroughAnchor } from '@wildflowerhealthio/walkthrough-core'
 import { DateTime, Match } from 'effect'
 import { useEffect, useMemo, useRef, useState, type JSX } from 'react'
 
@@ -13,6 +14,7 @@ import {
   useSmartSourceFilesQuery,
 } from '../queries/source-files.ts'
 import { formatRegistry } from '../registry.ts'
+import { ImporterWalkthroughAnchor } from '../walkthrough-anchors.ts'
 import styles from './server-source-file-list.module.css'
 
 /**
@@ -263,7 +265,12 @@ const ServerSourceFileList = ({ onPick, maxPicks }: ServerSourceFileListProps): 
 
   return (
     <div className={styles.server}>
-      <h3 className={styles.serverHeading}>Uploaded source files on the FHIR server</h3>
+      <h3
+        className={styles.serverHeading}
+        {...walkthroughAnchor(ImporterWalkthroughAnchor.serverSourceFiles)}
+      >
+        Uploaded source files on the FHIR server
+      </h3>
       {error !== null && (
         <p role="alert" className={styles.error}>
           {error}

@@ -1,11 +1,16 @@
-import { createRootRouteWithContext, useMatches } from '@tanstack/react-router'
+import { createRootRouteWithContext, Link, useMatches } from '@tanstack/react-router'
 import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import { RouteTabs } from '@wildflowerhealthio/react-tundraish'
+import { walkthroughAnchor } from '@wildflowerhealthio/walkthrough-core'
 import { Option } from 'effect'
 import type { JSX } from 'react'
 
 import type { RouterContext } from '../router.ts'
 import { ImporterNotFound } from './-importer-not-found.tsx'
+import {
+  ImporterPageWalkthroughAnchor,
+  SHOW_WALKTHROUGH_AGAIN_SEARCH,
+} from './import/-import-walkthrough.ts'
 import styles from './-importer-page.module.css'
 
 /**
@@ -32,6 +37,10 @@ const useOpenTabSubtitle = (): Option.Option<string> =>
  * The unselected tab's route is not matched, so its screen is **unmounted**,
  * not hidden: an accessibility tree only carries the surface the user is on,
  * and the screen holds its own state, so a flip-back opens fresh at the picker.
+ *
+ * The app has no settings or menu, so the footer under the tabs holds Show
+ * walkthrough again, which opens the Import tab with `?walkthrough=show`
+ * (`import/-import-walkthrough.ts`).
  */
 function ImporterPage(): JSX.Element {
   const subtitle = useOpenTabSubtitle()
@@ -50,11 +59,29 @@ function ImporterPage(): JSX.Element {
       </header>
       <RouteTabs
         tabs={[
-          { to: '/import', label: 'Import' },
-          { to: '/anonymize', label: 'Anonymize' },
+          {
+            to: '/import',
+            label: 'Import',
+            ...walkthroughAnchor(ImporterPageWalkthroughAnchor.importTab),
+          },
+          {
+            to: '/anonymize',
+            label: 'Anonymize',
+            ...walkthroughAnchor(ImporterPageWalkthroughAnchor.anonymizeTab),
+          },
         ]}
         aria-label="Importer views"
       />
+      <footer className={styles['importer-page__footer']}>
+        <Link
+          to="/import"
+          search={SHOW_WALKTHROUGH_AGAIN_SEARCH}
+          className="text-body-3"
+          {...walkthroughAnchor(ImporterPageWalkthroughAnchor.showAgain)}
+        >
+          Show walkthrough again
+        </Link>
+      </footer>
     </>
   )
 }

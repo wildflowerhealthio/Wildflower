@@ -43,7 +43,13 @@ file routes (the tree is generated into the git-ignored `src/routeTree.gen.ts`):
   tab current, offering the Import tab.
 - `index.tsx` redirects `/`, with `replace`, to the route a launch started on
   (`smart-app-react`'s `appRootRedirect`), else to `/import`.
-- `import/route.tsx` mounts `ImporterScreen`; `anonymize/route.tsx` mounts
+- `import/route.tsx` mounts `ImporterScreen` under the Importer's first-run
+  walkthrough (`-import-walkthrough.ts`, on `walkthrough-react`), whose steps
+  point at the tabs, the source picker's controls (`importer-react`'s
+  `ImporterWalkthroughAnchor`) and the root's Show walkthrough again link.
+  It shows on a first visit, and again when that link opens the Import tab
+  with `?walkthrough=show`. The link sits in a footer under the tabs, as the
+  app has no settings or menu. `anonymize/route.tsx` mounts
   `AnonymizerScreen`, beside `-server-source.tsx`, the `serverSource` adapter
   only it uses.
 

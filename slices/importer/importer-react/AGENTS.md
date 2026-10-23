@@ -23,7 +23,10 @@ The anonymize surface is the anonymizer's shell
 this package. This package exports `ServerSourceFileList` — the
 uploaded-source-files pick source, spanning every registered format's source
 files (HAR, LifeLabs PDF, DICOM) — which a host passes into that shell's
-`serverSource` slot.
+`serverSource` slot. It also exports `ImporterWalkthroughAnchor`, the
+`data-walkthrough` values (`walkthrough-core`'s `walkthroughAnchor`) on the
+source picker's controls, which a host's first-run walkthrough points at; the
+walkthrough itself is the host's.
 
 ## Layering
 

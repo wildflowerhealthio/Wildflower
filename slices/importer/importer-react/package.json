@@ -49,6 +49,7 @@
     "@wildflowerhealthio/lifelabs-pdf-importer": "workspace:*",
     "@wildflowerhealthio/lifelabs-pdf-importer-react": "workspace:*",
     "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "@wildflowerhealthio/walkthrough-core": "workspace:*",
     "@wildflowerhealthio/web-trace-core": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
@@ -76,6 +77,7 @@
     "@wildflowerhealthio/lifelabs-pdf-importer": "workspace:*",
     "@wildflowerhealthio/lifelabs-pdf-importer-react": "workspace:*",
     "@wildflowerhealthio/react-tundraish": "workspace:*",
+    "@wildflowerhealthio/walkthrough-core": "workspace:*",
     "effect": "catalog:",
     "react": "catalog:"
   }

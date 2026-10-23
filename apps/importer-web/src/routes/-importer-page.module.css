@@ -15,3 +15,8 @@
 .importer-page__subtitle {
   color: var(--color-neutral-5);
 }
+
+/* Under the tabs, the page's one help link: Show walkthrough again. */
+.importer-page__footer {
+  margin-top: var(--space-9);
+}
