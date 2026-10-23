@@ -17,20 +17,9 @@
 //! at. The client is the address the connection came from, which the site
 //! records for each request (see [`super::Site::serve`]).
 //!
-//! An unexpired access code sent to `POST /claim` is not burned: it answers
-//! `409` with the plain text `the code is an access code: redeem it at POST
-//! /access with an email and a name`, so a device with one code input learns
-//! to ask its user for both. `POST /access`
-//! `{"code", "email", "tunnel_name"?}` creates a tunnel for the email, named
-//! `tunnel_name` or, without one, two random words, burns the code and
-//! answers like `POST /claim`, with the new tunnel. A malformed, unknown,
-//! used or expired code is `422` with the plain text `the access code is
-//! unknown, used or expired`, whatever came with it; only for a code that
-//! redeems are the email and name refused, as the admin API refuses them
-//! (`422` for an unusable email or a name that is not a lowercase DNS label,
-//! `409` for one that is reserved or taken, `503` when no name is left),
-//! leaving the code to redeem on another try. Both routes spend from the
-//! same allowances.
+//! An unexpired access code sent to `POST /claim` answers `409`, unburned;
+//! `POST /access` redeems it for a new tunnel (see "Access codes" in the
+//! crate docs). Both routes spend from the same allowances.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
