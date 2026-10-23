@@ -4,9 +4,10 @@
 //! whose value is the browser's access token itself, naming its browser
 //! session as its `sid`. Revoking the token's `jti`, the browser-session
 //! client's subject, or the browser session signs the browser out, and so does
-//! the session expiring. The host ends the Owner's same-device session by
-//! expiring it, when the view of the launch that signed it in closes and when
-//! the server starts; a paired browser's session lasts through a restart.
+//! the session expiring. The host ends the Owner's same-device sessions by
+//! expiring them, once the server's last launch view closes, and the server's
+//! start ends every one but those of the launch views still open; a paired
+//! browser's session lasts through a restart.
 //!
 //! The authorization server sets it, says whether the session it holds still
 //! stands, and records the cookie's use. The host's cookie→bearer layer

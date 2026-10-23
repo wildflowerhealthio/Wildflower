@@ -151,24 +151,29 @@ impl BrowserSessionsTx for SqliteGrantTx<'_> {
         Ok(affected == 1)
     }
 
-    /// Move every `kind` session's `expires_at` back to `now`, returning how
-    /// many moved. The same guard as
+    /// Move every `kind` session's `expires_at` back to `now`, but those
+    /// `kept_sids` name, returning how many moved. The same guard as
     /// [`expire_browser_session`](BrowserSessionsTx::expire_browser_session).
-    fn expire_browser_sessions_of_kind(
+    fn expire_browser_sessions_of_kind_but(
         &mut self,
         kind: BrowserSessionKind,
+        kept_sids: &[String],
         now: DateTime<Utc>,
     ) -> Result<usize, AuthorizationServerError> {
         let conn = &mut *self.conn;
         diesel::update(
             browser_sessions::table
                 .filter(browser_sessions::kind.eq(kind))
-                .filter(browser_sessions::expires_at.gt(now)),
+                .filter(browser_sessions::expires_at.gt(now))
+                .filter(browser_sessions::sid.ne_all(kept_sids)),
         )
         .set(browser_sessions::expires_at.eq(now))
         .execute(conn)
         .map_err(|e| {
-            AuthorizationServerError::infrastructure("expire_browser_sessions_of_kind failed", e)
+            AuthorizationServerError::infrastructure(
+                "expire_browser_sessions_of_kind_but failed",
+                e,
+            )
         })
     }
 
@@ -458,13 +463,14 @@ mod tests {
         }
     }
 
-    /// Expiring the sessions of a kind expires each live one of that kind,
-    /// and no other.
+    /// Expiring the sessions of a kind expires each live one of that kind
+    /// but the kept one, and no other.
     #[test]
-    fn expiring_a_kind_expires_only_its_live_sessions() {
+    fn expiring_a_kind_expires_only_its_live_sessions_but_the_kept() {
         let store = store();
         let now = chrono::Utc::now();
         let same_device = BrowserSession::new_same_device_session(vec![], Duration::hours(8), now);
+        let kept = BrowserSession::new_same_device_session(vec![], Duration::hours(8), now);
         let expired_same_device = BrowserSession::new_same_device_session(
             vec![],
             Duration::hours(8),
@@ -476,7 +482,7 @@ mod tests {
             Duration::hours(24),
             now,
         );
-        for session in [&same_device, &expired_same_device, &paired] {
+        for session in [&same_device, &kept, &expired_same_device, &paired] {
             store
                 .write(|tx| tx.insert_browser_session(session))
                 .expect("insert");
@@ -484,13 +490,18 @@ mod tests {
 
         assert_eq!(
             store
-                .write(|tx| tx.expire_browser_sessions_of_kind(BrowserSessionKind::SameDevice, now))
+                .write(|tx| tx.expire_browser_sessions_of_kind_but(
+                    BrowserSessionKind::SameDevice,
+                    std::slice::from_ref(&kept.sid),
+                    now
+                ))
                 .expect("expire"),
             1
         );
 
         for (session, expires_at) in [
             (&same_device, now),
+            (&kept, kept.expires_at),
             (&expired_same_device, expired_same_device.expires_at),
             (&paired, paired.expires_at),
         ] {

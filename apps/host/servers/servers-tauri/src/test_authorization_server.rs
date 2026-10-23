@@ -154,6 +154,7 @@ pub(crate) fn test_authorization_server() -> TestAuthorizationServer {
         },
         pending_consent_tx,
         Arc::new(AdmitEveryAuthorizationStart),
+        &[],
     )
     .unwrap();
     TestAuthorizationServer {

@@ -48,11 +48,11 @@ Ending a same-device session moves its `expires_at` back rather than stamping `r
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/db/browser_sessions.rs SqliteGrantTx::expire_browser_session tests="tests::expiring_a_session_moves_its_expiry_back_to_now"}}
 
-#### `expire_browser_sessions_of_kind`
+#### `expire_browser_sessions_of_kind_but`
 
-A server start expires every same-device session in one `UPDATE`.
+A server start expires every same-device session but those of the host's launch views still open in one `UPDATE`.
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/db/browser_sessions.rs SqliteGrantTx::expire_browser_sessions_of_kind tests="tests::expiring_a_kind_expires_only_its_live_sessions"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/browser_sessions.rs SqliteGrantTx::expire_browser_sessions_of_kind_but tests="tests::expiring_a_kind_expires_only_its_live_sessions_but_the_kept"}}
 
 #### `touch_browser_session_last_seen`
 

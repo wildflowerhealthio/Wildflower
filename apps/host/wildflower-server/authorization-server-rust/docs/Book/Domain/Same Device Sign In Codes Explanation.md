@@ -7,7 +7,7 @@ The Owner signs a browser in by asking the base, the Wildflower app on the devic
 
 **A code is single-use, short-lived, and never stored in the clear.** Each is 256 random bits, redeemable once, for a minute. The outstanding codes live only in the server's memory and only as SHA-256 hashes: a restart drops them all, and reading the server's memory yields none.
 
-**A redeemed code is remembered with the session it started**, by the same hash, until the session expires. The base keeps the code it opened a launch with, so when the launch's view closes it ends that launch's session by the code, through the [same-device session ender](<../Capabilities/OAuth/Same Device Session Ender Explanation.md>). This too lives only in memory: a restart forgets it, and the server's start ends every same-device session anyway.
+**The set follows each code past its redemption**, by the same hash: while the session it starts is being stored, and then which session it started, until that session expires. The base holds each code it minted as a `SameDeviceSignInCode`: the code with the set of the run that minted it, and nothing of the run's store, so it outlives that run. Through it the base **withdraws** the code once the view it was opened in closes: an unredeemed code is no longer redeemable, and a code withdrawn while its session is still being stored signs nobody in, the session expired as it lands. Through it the [same-device session ender](<../Capabilities/OAuth/Same Device Session Ender Explanation.md>) finds the session to end once the server's last launch view closes, and the next run's setup the session to keep while a view is still open. A code forgets its session only once the ending has landed, so a failed ending can be tried again.
 
 ## Where a sign-in may send the browser
 
@@ -35,7 +35,7 @@ A browser pairing's `next` is held tighter: a paired browser is only ever sent o
 
 Minting a code. The base's minter, {{#code-link apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs SameDeviceSignInCodeMinter}}, calls this with each code it generates.
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/same_device_sign_in_codes.rs SameDeviceSignInCodes::insert tests="tests::only_the_hash_is_kept tests::minting_drops_the_expired_codes"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/same_device_sign_in_codes.rs SameDeviceSignInCodes::insert tests="tests::only_the_hash_is_kept tests::minting_drops_the_expired_codes tests::minting_forgets_the_expired_sessions"}}
 
 #### `take`
 
@@ -43,19 +43,57 @@ Redeeming a code.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/same_device_sign_in_codes.rs SameDeviceSignInCodes::take tests="tests::a_code_is_taken_once tests::an_unknown_code_is_not_taken tests::a_code_expires_after_its_ttl"}}
 
-#### `record_signed_in_session`
+#### `session_stored`
 
 The [sign-in](<../Capabilities/OAuth/Same Device Sign In Explanation.md>) calls this once the session it started is stored.
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/same_device_sign_in_codes.rs SameDeviceSignInCodes::record_signed_in_session tests="tests::recording_a_session_forgets_the_expired_ones"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/same_device_sign_in_codes.rs SameDeviceSignInCodes::session_stored tests="tests::a_code_withdrawn_while_signing_in_signs_nobody_in"}}
 
-#### `take_signed_in_sid`
+#### `session_not_stored`
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/same_device_sign_in_codes.rs SameDeviceSignInCodes::take_signed_in_sid tests="tests::a_signed_in_session_is_taken_once_by_its_own_code"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/same_device_sign_in_codes.rs SameDeviceSignInCodes::session_not_stored tests="tests::a_session_not_stored_spends_only_a_redeemed_code"}}
 
-### `SignedInSession`
+#### `withdraw`
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/same_device_sign_in_codes.rs SignedInSession}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/same_device_sign_in_codes.rs SameDeviceSignInCodes::withdraw tests="tests::a_withdrawn_code_is_not_taken"}}
+
+#### `signed_in_sid`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/same_device_sign_in_codes.rs SameDeviceSignInCodes::signed_in_sid tests="tests::a_signed_in_session_is_found_by_its_own_code_until_forgotten"}}
+
+#### `forget_session`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/same_device_sign_in_codes.rs SameDeviceSignInCodes::forget_session}}
+
+### `CodeSignIn`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/same_device_sign_in_codes.rs CodeSignIn}}
+
+### `SameDeviceSignInCode`
+
+**A minted code, as the base holds it.** The host keeps it with the launch view it opened the code in, and across the server's runs. Its `Debug` leaves the code out.
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/same_device_sign_in_codes.rs SameDeviceSignInCode}}
+
+#### `new`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/same_device_sign_in_codes.rs SameDeviceSignInCode::new}}
+
+#### `as_str`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/same_device_sign_in_codes.rs SameDeviceSignInCode::as_str}}
+
+#### `withdraw`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/same_device_sign_in_codes.rs SameDeviceSignInCode::withdraw}}
+
+#### `signed_in_sid`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/same_device_sign_in_codes.rs SameDeviceSignInCode::signed_in_sid}}
+
+#### `forget_session`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/same_device_sign_in_codes.rs SameDeviceSignInCode::forget_session}}
 
 ### `SAME_DEVICE_SIGN_IN_CODE_TTL`
 

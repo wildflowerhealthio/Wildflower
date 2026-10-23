@@ -66,7 +66,7 @@ pub use wildflowerhealthio_authorization_server::domain::refresh_token::{
     RefreshToken, RefreshTokenFamily,
 };
 pub use wildflowerhealthio_authorization_server::{
-    ConsentKey, GrantStore, OwnerPrompt, SqliteGrantStore,
+    ConsentKey, GrantStore, OwnerPrompt, SameDeviceSignInCode, SqliteGrantStore,
 };
 pub use wildflowerhealthio_persistence::{Connection, DieselPool};
 pub use wildflowerhealthio_shared_structures::authorization_app::AuthorizationAppBase;
@@ -126,6 +126,7 @@ pub fn spin_up_with_authorization_start_gate(
         revocation_conn.clone(),
         pending_consent_tx,
         authorization_start_gate,
+        &[],
     );
     let mut db = TestDb {
         pool,
@@ -140,25 +141,33 @@ pub fn spin_up_with_authorization_start_gate(
 }
 
 /// Set up the authorization server again over `db`'s databases, as a
-/// restart of the server does: what a run keeps only in memory is gone.
-pub fn restart(db: &TestDb) -> AuthorizationServer {
+/// restart of the server does, with the host's launch views opened with
+/// `open_views_sign_in_codes` still open: what a run keeps only in memory is
+/// gone.
+pub fn restart(
+    db: &TestDb,
+    open_views_sign_in_codes: &[SameDeviceSignInCode],
+) -> AuthorizationServer {
     set_up_over(
         db.pool.clone(),
         db.revocation_conn.clone(),
         watch::channel::<Option<OwnerPrompt>>(None).0,
         Arc::new(AdmitEveryAuthorizationStart),
+        open_views_sign_in_codes,
     )
 }
 
 /// Set up the authorization server over `pool` and the revocation database
-/// `revocation_conn`, publishing its Owner prompt on `pending_consent_tx` and
+/// `revocation_conn`, publishing its Owner prompt on `pending_consent_tx`,
 /// asking `authorization_start_gate` whether a request may start an
-/// authorization request.
+/// authorization request, and keeping the sessions
+/// `open_views_sign_in_codes` signed in.
 fn set_up_over(
     pool: DieselPool,
     revocation_conn: Connection,
     pending_consent_tx: watch::Sender<Option<OwnerPrompt>>,
     authorization_start_gate: Arc<dyn AuthorizationStartGate>,
+    open_views_sign_in_codes: &[SameDeviceSignInCode],
 ) -> AuthorizationServer {
     let config = AuthorizationServerConfig {
         server_origin: Url::parse(SERVER_ORIGIN).expect("SERVER_ORIGIN is a valid URL"),
@@ -180,6 +189,7 @@ fn set_up_over(
         &config,
         pending_consent_tx,
         authorization_start_gate,
+        open_views_sign_in_codes,
     )
     .expect("setup")
 }

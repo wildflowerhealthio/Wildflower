@@ -24,9 +24,9 @@
 //!  - in-process minted: [`SameDeviceSignIn`] redeems a one-time same-device
 //!    sign-in code the base minted, signing the Owner's browser in on the
 //!    server's own device with a same-device session's token, on its way to an
-//!    allowed `next`, and [`SameDeviceSessionEnder`] ends such a session for
-//!    the host by the code that started it, or ends them all as the server
-//!    starts;
+//!    allowed `next`, and [`SameDeviceSessionEnder`] ends such sessions for
+//!    the host by the codes that started them, or, as the server starts,
+//!    every one but those of the host's launch views still open;
 //!  - bound to a browser session: [`SessionShortfall`] reads and cancels a
 //!    request waiting on the limited page of the browser that made it, and
 //!    [`CodeAuthorizationStarter`] goes on with one;

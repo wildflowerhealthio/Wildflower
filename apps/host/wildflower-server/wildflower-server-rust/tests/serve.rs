@@ -210,7 +210,7 @@ async fn start_serving(
     let certificate = cache_self_signed_certificate(&certificate_dir(server_dir)).await;
     let server = tokio::time::timeout(
         LIFECYCLE_TIMEOUT,
-        set_up(server_config(server_dir.to_owned()), observers),
+        set_up(server_config(server_dir.to_owned()), observers, &[]),
     )
     .await
     .expect("the server sets up in time")

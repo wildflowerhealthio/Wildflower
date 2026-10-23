@@ -137,7 +137,7 @@ fn ensure_own_session_live(
     match session {
         None => Err(AccessTokenVerifyError::Revoked),
         Some(session) if session.revoked_at.is_some() => Err(AccessTokenVerifyError::Revoked),
-        Some(session) if session.expires_at <= now => Err(AccessTokenVerifyError::TokenRejected),
+        Some(session) if !session.is_live(now) => Err(AccessTokenVerifyError::TokenRejected),
         Some(_) => Ok(()),
     }
 }

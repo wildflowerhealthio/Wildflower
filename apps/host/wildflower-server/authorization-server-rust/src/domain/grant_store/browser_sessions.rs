@@ -79,16 +79,18 @@ pub trait BrowserSessionsTx {
         now: DateTime<Utc>,
     ) -> Result<bool, AuthorizationServerError>;
 
-    /// Expire, at `now`, every browser session of `kind` expiring after `now`,
-    /// as [`expire_browser_session`](Self::expire_browser_session) does one,
+    /// Expire, at `now`, every browser session of `kind` expiring after `now`
+    /// but those `kept_sids` name, as
+    /// [`expire_browser_session`](Self::expire_browser_session) does one,
     /// returning how many moved.
     ///
     /// # Errors
     ///
     /// [`AuthorizationServerError::Infrastructure`] if the update fails.
-    fn expire_browser_sessions_of_kind(
+    fn expire_browser_sessions_of_kind_but(
         &mut self,
         kind: BrowserSessionKind,
+        kept_sids: &[String],
         now: DateTime<Utc>,
     ) -> Result<usize, AuthorizationServerError>;
 

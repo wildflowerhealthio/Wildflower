@@ -1,13 +1,17 @@
 //! [`ServerUnits`]: the one place a server's record becomes a unit on the
 //! unit runner, the way the servers commands change and read the servers'
 //! units, how a launch's in-app browser view counts toward their
-//! `WhileOpen` run policy, the consents showing in those views, the consent
-//! opens waiting for their server, and the taps on consent notifications.
+//! `WhileOpen` run policy, the sign-in codes those views were opened with,
+//! the consents showing in them, the consent opens waiting for their server,
+//! and the taps on consent notifications.
 
 use std::sync::Arc;
 
 use tokio::sync::watch;
-use wildflowerhealthio_servers::{ConsentViews, ServerDetail, ServerRecord, ServerUnit};
+use wildflowerhealthio_authorization_server::SameDeviceSignInCode;
+use wildflowerhealthio_servers::{
+    ConsentViews, LaunchViewSignIns, ServerDetail, ServerRecord, ServerSignInCodeMinter, ServerUnit,
+};
 use wildflowerhealthio_tauri_unit_runner::{RunPolicy, TauriUnitRunner, UnitId, UnitStatuses};
 use wildflowerhealthio_wildflower_server::WildflowerServerConfig;
 
@@ -25,6 +29,9 @@ pub type ServerConfigBuilder =
 pub struct ServerUnits {
     runner: TauriUnitRunner<ServerDetail>,
     server_config: ServerConfigBuilder,
+    /// The sign-in codes of each server's launch views, until its last one
+    /// closes, which a run keeps the sessions of as it starts.
+    launch_view_sign_ins: LaunchViewSignIns<SameDeviceSignInCode>,
     /// The consents showing in a launch view, shared by every way one opens.
     consent_views: ConsentViews,
     /// The consent opens waiting for their server, shared by every way one
@@ -42,6 +49,7 @@ impl ServerUnits {
         Self {
             runner,
             server_config,
+            launch_view_sign_ins: LaunchViewSignIns::default(),
             consent_views: ConsentViews::default(),
             waiting_consent_opens: WaitingConsentOpens::default(),
             notification_taps: Arc::new(watch::Sender::new(0)),
@@ -50,16 +58,22 @@ impl ServerUnits {
 
     /// Set the server `record` describes on `TauriUnitRunner`, with its run
     /// policy and a factory that builds a fresh [`ServerUnit`] for each run
-    /// from `record`. A server already set is replaced: a run of its old record
-    /// stops, and it starts again from `record` if its policy wants it running.
+    /// from `record`, keeping the Owner sessions of the server's launch views
+    /// still open as it starts. A server already set is replaced: a run of its
+    /// old record stops, and it starts again from `record` if its policy wants
+    /// it running.
     ///
     /// Call it after every registry write that changes `record`.
     pub fn push(&self, record: ServerRecord) {
         let unit_id = UnitId::new(record.domain());
         let run_policy = record.run_policy;
         let server_config = Arc::clone(&self.server_config);
+        let launch_view_sign_ins = self.launch_view_sign_ins.clone();
         self.runner.set_unit(unit_id, run_policy, move || {
-            Ok(ServerUnit::new(server_config(&record)?))
+            Ok(ServerUnit::new(
+                server_config(&record)?,
+                launch_view_sign_ins.kept_at_run_start(&record.domain()),
+            ))
         });
     }
 
@@ -133,6 +147,25 @@ impl ServerUnits {
     /// browser view `view`, a launch's, still over it (Android).
     pub fn launch_view_returned_to_foreground(&self, view: &str) {
         self.runner.browser_view_returned_to_foreground(view);
+    }
+
+    /// The sign-in codes of each server's launch views, until its last one
+    /// closes.
+    pub(crate) fn launch_view_sign_ins(&self) -> &LaunchViewSignIns<SameDeviceSignInCode> {
+        &self.launch_view_sign_ins
+    }
+
+    /// The sign-in code minter of the server `domain`'s run, while one is up.
+    pub(crate) fn running_sign_in_code_minter(
+        &self,
+        domain: &str,
+    ) -> Option<ServerSignInCodeMinter> {
+        self.statuses()
+            .get(&UnitId::new(domain))?
+            .detail
+            .as_ref()?
+            .sign_in_code_minter
+            .clone()
     }
 
     /// The consents showing in a launch view, or opening in one, so each

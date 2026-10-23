@@ -103,21 +103,13 @@ Only the code's hash is kept, in memory, so a restart drops every outstanding co
 
 The [Same-Device Sign-In](<../Integration Tests/Same Device Sign In Explanation.md#item-a_code_signs_in_once>) tests hold a code to signing in once.
 
-### `SameDeviceSignInCode`
+#### `end_signed_in_sessions`
 
-**A minted code, which also ends the session it signs in.** The host keeps it with the view it opened the code in, and ends the Owner session when the view closes, through the [same-device session ender](<../Capabilities/OAuth/Same Device Session Ender Explanation.md>). Its `Debug` leaves the code out.
+**The minter also ends the sessions codes signed in**, through this run's store, whichever of the server's runs minted the codes: the host does once the server's last launch view closes. Each code is a [`SameDeviceSignInCode`](<../Domain/Same Device Sign In Codes Explanation.md#item-SameDeviceSignInCode>), which holds the code and the set of the run that minted it, but nothing of that run's store, so a view that outlives its run pins no run's database. The flow is the [same-device session ender](<../Capabilities/OAuth/Same Device Session Ender Explanation.md>).
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs SameDeviceSignInCode}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs SameDeviceSignInCodeMinter::end_signed_in_sessions}}
 
-#### `as_str`
-
-{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs SameDeviceSignInCode::as_str}}
-
-#### `end_signed_in_session`
-
-{{#item apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs SameDeviceSignInCode::end_signed_in_session}}
-
-The [Same-Device Session Ending](<../Integration Tests/Same Device Session Ending Explanation.md#item-closing_a_launch_ends_only_its_session>) tests hold it to ending exactly the session its code signed in.
+The [Same-Device Session Ending](<../Integration Tests/Same Device Session Ending Explanation.md#item-closing_a_launch_ends_only_its_session>) tests hold it to ending exactly the sessions its codes signed in, and to ending, through a restarted run, the session an earlier run's code signed in.
 
 ### `PendingConsentWatcher`
 
