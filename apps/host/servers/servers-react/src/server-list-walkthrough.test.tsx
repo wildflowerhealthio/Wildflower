@@ -141,14 +141,14 @@ describe("the Host's walkthrough", () => {
 
     // Act: past the welcome both walkthroughs open with
     fireEvent.click(
-      within(await findPopover('Welcome to Wildflower')).getByRole('button', { name: 'Next' })
+      within(await findPopover('Your Server')).getByRole('button', { name: 'Next' })
     )
     fireEvent.click(
-      within(await findPopover('Reaching Your Server')).getByRole('button', { name: 'Next' })
+      within(await findPopover('When It Runs')).getByRole('button', { name: 'Next' })
     )
 
     // Assert
-    await findPopover('Your Server')
+    await findPopover('Apps')
   })
 
   it("should show again from Host Settings' Show walkthrough again, and drop the request once done", async () => {
