@@ -75,6 +75,7 @@ pub use domain::{GrantStore, GrantTx};
 /// nothing outside this crate consumes it, and its tests pin the set. See
 /// `domain::capabilities`.
 pub use domain::capabilities::grantable_admin_scopes;
+pub use domain::same_device_sign_in_codes::SameDeviceSignInCode;
 pub use http::{
     authorization_server_auth_middleware, browser_session_clearing_set_cookie,
     ensure_bearer_header, record_browser_session_cookie_use, standing_browser_session,
@@ -82,8 +83,7 @@ pub use http::{
     BROWSER_SESSION_HEADER_VALUE, SESSION_HEADER,
 };
 pub use live_bindings::{
-    InProcessTokenVerifier, LaunchContextMinter, PendingConsentWatcher, SameDeviceSignInCode,
-    SameDeviceSignInCodeMinter,
+    InProcessTokenVerifier, LaunchContextMinter, PendingConsentWatcher, SameDeviceSignInCodeMinter,
 };
 // The host's say over how fast authorization requests are started (see
 // `setup_authorization_server`).
@@ -203,8 +203,8 @@ pub struct AuthorizationServer {
     /// app's launch URL.
     pub launch_context_minter: LaunchContextMinter,
     /// Mints the one-time codes `/oauth/sign-in` signs the Owner's own browser
-    /// in with: for the host, in-process. Each code also ends the session it
-    /// signs in, for the host to call when the launch's view closes.
+    /// in with: for the host, in-process. It also ends the sessions codes
+    /// signed in, for the host to call once their views have closed.
     pub same_device_sign_in_code_minter: SameDeviceSignInCodeMinter,
     /// Waits for a pending consent to be decided or expire: for the host,
     /// in-process, which closes the page it opened the request at.
@@ -230,7 +230,9 @@ pub struct AuthorizationServer {
 ///    across an app restart is still reported (the row survived in SQLite, the
 ///    in-memory `watch` value didn't);
 ///  - ends every same-device session an earlier run signed in, by expiring
-///    it; paired sessions stand;
+///    it, but those `open_views_sign_in_codes` signed in: the codes of the
+///    host's launch views still open, whichever run minted them. Paired
+///    sessions stand;
 ///  - returns a `Router` whose routes are at `/.well-known/jwks.json`,
 ///    `/oauth/*`, and `/authorization/*` (authenticated bearer JWT + per-resource
 ///    scope gates via the `Scoped<…>` extractors) — the
@@ -242,7 +244,7 @@ pub struct AuthorizationServer {
 ///    consumes;
 ///  - returns the [`SameDeviceSignInCodeMinter`] the host mints each
 ///    same-device sign-in code through, which `/oauth/sign-in` then redeems,
-///    and which ends the session it signed in when the host asks;
+///    and which ends the sessions codes signed in when the host asks;
 ///  - returns the [`PendingConsentWatcher`] the host waits on for a pending
 ///    consent it opened to be decided or expire;
 ///  - returns the [`InProcessTokenVerifier`] the host's FHIR server verifies
@@ -273,6 +275,7 @@ pub fn setup_authorization_server(
     config: &AuthorizationServerConfig,
     owner_approval_tx: watch::Sender<Option<OwnerPrompt>>,
     authorization_start_gate: Arc<dyn AuthorizationStartGate>,
+    open_views_sign_in_codes: &[SameDeviceSignInCode],
 ) -> anyhow::Result<AuthorizationServer> {
     let store = seeding::open_and_seed_store(
         pool,
@@ -283,7 +286,7 @@ pub fn setup_authorization_server(
     let server_origin: Arc<str> =
         wildflowerhealthio_shared_structures::origin_string(&config.server_origin).into();
     let same_device_sign_in_codes = Arc::new(SameDeviceSignInCodes::new());
-    end_earlier_same_device_sessions(&store, &same_device_sign_in_codes)?;
+    end_earlier_same_device_sessions(&store, open_views_sign_in_codes)?;
     let (pending_consents_recomputed_tx, pending_consents_recomputed_rx) = watch::channel(());
     let state = Arc::new(AuthorizationServerState {
         store: store.clone(),
@@ -334,10 +337,11 @@ pub fn setup_authorization_server(
 }
 
 /// End every same-device session an earlier run of the server signed in, by
-/// expiring it: a run remembers which session each of its sign-in codes
-/// started only in memory, so the host could no longer end those when their
-/// views close. A browser left signed in as the Owner is sent through sign-in
-/// again; the host's next launch signs it in. Paired sessions stand.
+/// expiring it, but those `open_views_sign_in_codes` signed in. The host ends
+/// a session once the last of the server's launch views has closed, and a
+/// desktop hears no close, so a session no open view holds is one the host
+/// would never end. A browser left signed in as the Owner is sent through
+/// sign-in again; the host's next launch signs it in. Paired sessions stand.
 ///
 /// # Errors
 ///
@@ -345,10 +349,10 @@ pub fn setup_authorization_server(
 /// when the sessions can't be expired.
 fn end_earlier_same_device_sessions(
     store: &SqliteGrantStore,
-    same_device_sign_in_codes: &Arc<SameDeviceSignInCodes>,
+    open_views_sign_in_codes: &[SameDeviceSignInCode],
 ) -> anyhow::Result<()> {
-    let ended = SameDeviceSessionEnder::new(store.clone(), same_device_sign_in_codes.clone())
-        .end_every_session(Utc::now())?;
+    let ended = SameDeviceSessionEnder::new(store.clone())
+        .end_every_session_but(open_views_sign_in_codes, Utc::now())?;
     if ended > 0 {
         tracing::info!(ended, "ended the same-device sessions of earlier runs");
     }

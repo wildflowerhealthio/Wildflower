@@ -12,7 +12,8 @@
 //! server's launcher and its Authorization app: [`ensure_launchable`],
 //! [`launch_url`], [`authorization_app_url`], [`sign_in_url`] and
 //! [`LaunchError`], and opening the consent waiting on a server at its page,
-//! [`consent_sign_in_url`]; [`PendingConsent`], the consent waiting on a
+//! [`consent_sign_in_url`], with [`LaunchViewSignIns`], the sign-in codes of
+//! each server's launch views until its last one closes; [`PendingConsent`], the consent waiting on a
 //! server, named by its [`ConsentKey`]; [`ServerStatus`], a server's
 //! status on `UnitRunner` as the base receives it, with [`ServerStatusTracker`], and [`ListedServer`], a server as the
 //! base lists it; and [`notifications`], what the host notifies about its
@@ -23,6 +24,7 @@ mod certificate_state_wire;
 mod enrolment;
 mod enrolment_error;
 mod launch_error;
+mod launch_view_sign_ins;
 mod listed_server;
 mod pending_consent;
 mod registry_error;
@@ -41,6 +43,7 @@ pub use enrolment::{
 };
 pub use enrolment_error::EnrolmentError;
 pub use launch_error::LaunchError;
+pub use launch_view_sign_ins::LaunchViewSignIns;
 pub use listed_server::ListedServer;
 pub use pending_consent::{ConsentKey, PendingConsent};
 pub use registry_error::RegistryError;

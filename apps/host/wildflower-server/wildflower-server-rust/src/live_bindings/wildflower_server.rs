@@ -16,7 +16,7 @@ use wildflowerhealthio_apps::ports::LaunchContextMinter;
 use wildflowerhealthio_apps::{setup_apps, AppsConfig};
 use wildflowerhealthio_authorization_server::{
     authorization_server_auth_middleware, setup_authorization_server, AuthorizationServerConfig,
-    PendingConsentWatcher, SameDeviceSignInCodeMinter,
+    PendingConsentWatcher, SameDeviceSignInCode, SameDeviceSignInCodeMinter,
 };
 use wildflowerhealthio_fhir_r4::{setup_fhir_r4, ui_login_config, BulkExportWorker, FhirR4Config};
 use wildflowerhealthio_tunnel::{TunnelDaemon, TunnelStream};
@@ -172,7 +172,11 @@ impl WildflowerServer {
 /// listener, ready to [`serve`](WildflowerServer::serve).
 ///
 /// `config` is what the host derived at build time or from its paths;
-/// `observers` carries the channels the host watches the server through.
+/// `observers` carries the channels the host watches the server through;
+/// `open_views_sign_in_codes` are the sign-in codes of the host's launch
+/// views still open on the server, whose Owner sessions the start keeps while
+/// it ends every other same-device session (see
+/// [`setup_authorization_server`]).
 ///
 /// # Errors
 ///
@@ -193,6 +197,7 @@ impl WildflowerServer {
 pub async fn set_up(
     config: WildflowerServerConfig,
     observers: ServerObservers,
+    open_views_sign_in_codes: &[SameDeviceSignInCode],
 ) -> anyhow::Result<WildflowerServer> {
     let WildflowerServerConfig {
         runtime,
@@ -317,6 +322,7 @@ pub async fn set_up(
         &authorization_server_config,
         observers.pending_consent_tx,
         Arc::new(AuthorizationStartLimit::new()),
+        open_views_sign_in_codes,
     )
     .context("failed to set up the authorization server")?;
 

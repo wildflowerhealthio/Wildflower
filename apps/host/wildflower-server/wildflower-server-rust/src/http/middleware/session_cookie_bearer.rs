@@ -391,6 +391,7 @@ mod tests {
                 &config,
                 watch::channel(None).0,
                 Arc::new(AdmitEveryAuthorizationStart),
+                &[],
             )
             .expect("set up the authorization server");
             AuthorizationServerFixture {

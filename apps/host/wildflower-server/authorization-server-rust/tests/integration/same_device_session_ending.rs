@@ -1,12 +1,12 @@
 //! Ending same-device sessions: the base ends a launch's Owner session by
-//! the sign-in code it opened the launch with, when the launch's view closes,
-//! and a server start ends every same-device session. An ended session is
-//! expired, not revoked: its cookie stops working at once, the browser is sent
-//! to pairing, and the next launch's code signs it in again. Paired sessions
-//! survive a start.
+//! the sign-in code it opened the launch with, through the server's current
+//! run, once the server's launch views have closed, and a server start ends
+//! every same-device session but those of the launch views still open. An
+//! ended session is expired, not revoked: its cookie stops working at once,
+//! the browser is sent to pairing, and the next launch's code signs it in
+//! again. Paired sessions survive a start.
 
 use crate::common::*;
-use wildflowerhealthio_authorization_server::SameDeviceSignInCode;
 
 /// The `sid` claim of `token`, unverified.
 fn sid_of(token: &str) -> String {
@@ -56,7 +56,7 @@ fn stored_session(db: &TestDb, sid: &str) -> BrowserSession {
         .expect("stored")
 }
 
-/// Closing a launch ends exactly the session its code signed in: that
+/// Ending a launch's code ends exactly the session it signed in: that
 /// session is expired, not revoked, its cookie no longer reaches the consent
 /// card, and its token no longer passes the bearer gate. Another launch's
 /// session stands, and ending by the same code again ends nothing.
@@ -68,10 +68,19 @@ async fn closing_a_launch_ends_only_its_session() {
     assert!(is_consent_card(
         &authorize_destination(&g, &closed_token).await
     ));
+    let closed_codes = [closed_code];
 
-    assert!(closed_code.end_signed_in_session().expect("end"));
-    assert!(
-        !closed_code.end_signed_in_session().expect("end again"),
+    assert_eq!(
+        g.same_device_sign_in_code_minter
+            .end_signed_in_sessions(&closed_codes)
+            .expect("end"),
+        1
+    );
+    assert_eq!(
+        g.same_device_sign_in_code_minter
+            .end_signed_in_sessions(&closed_codes)
+            .expect("end again"),
+        0,
         "ended already"
     );
 
@@ -97,12 +106,20 @@ async fn closing_a_launch_ends_only_its_session() {
     ));
 }
 
-/// A code whose view closed before it signed anyone in ends nothing.
+/// A code whose view closed before it signed anyone in ends nothing, and is
+/// withdrawn: presenting it afterwards signs nobody in.
 #[tokio::test]
-async fn a_code_that_signed_nobody_in_ends_nothing() {
+async fn a_code_that_signed_nobody_in_ends_nothing_and_is_withdrawn() {
     let (g, _owner_token, _db) = spin_up();
     let code = g.same_device_sign_in_code_minter.mint();
-    assert!(!code.end_signed_in_session().expect("end"));
+    assert_eq!(
+        g.same_device_sign_in_code_minter
+            .end_signed_in_sessions(std::slice::from_ref(&code))
+            .expect("end"),
+        0
+    );
+    let res = sign_in(&g, code.as_str(), "/").await;
+    assert!(res.headers().get(axum::http::header::SET_COOKIE).is_none());
 }
 
 /// After a launch's session ends, the next launch signs the browser in again
@@ -111,7 +128,12 @@ async fn a_code_that_signed_nobody_in_ends_nothing() {
 async fn a_second_launch_reaches_consent() {
     let (g, _owner_token, _db) = spin_up();
     let (first_code, _first_token) = launch(&g).await;
-    assert!(first_code.end_signed_in_session().expect("end"));
+    assert_eq!(
+        g.same_device_sign_in_code_minter
+            .end_signed_in_sessions(&[first_code])
+            .expect("end"),
+        1
+    );
 
     let (_second_code, second_token) = launch(&g).await;
     assert!(is_consent_card(
@@ -120,29 +142,46 @@ async fn a_second_launch_reaches_consent() {
 }
 
 /// A server start expires every same-device session an earlier run signed
-/// in, so its cookie no longer reaches the consent card, while a paired
-/// session stands. A launch on the new run signs the browser in again.
+/// in, so its cookie no longer reaches the consent card, but the session of
+/// a launch view still open, while a paired session stands. That view's
+/// session is ended later through the new run, by the code the earlier run
+/// minted. A launch on the new run signs the browser in again.
 #[tokio::test]
-async fn a_restart_ends_same_device_sessions_but_not_paired_ones() {
+async fn a_restart_ends_same_device_sessions_but_open_views_and_paired_ones() {
     let (g, _owner_token, db) = spin_up();
-    let (_code, same_device_token) = launch(&g).await;
+    let (_closed_code, closed_token) = launch(&g).await;
+    let (open_code, open_token) = launch(&g).await;
     assert!(is_consent_card(
-        &authorize_destination(&g, &same_device_token).await
+        &authorize_destination(&g, &closed_token).await
     ));
 
-    let restarted = restart(&db);
+    let restarted = restart(&db, std::slice::from_ref(&open_code));
 
-    let same_device_session = stored_session(&db, &sid_of(&same_device_token));
-    assert!(same_device_session.expires_at <= Utc::now(), "expired");
-    assert_eq!(same_device_session.revoked_at, None, "not revoked");
+    let closed_session = stored_session(&db, &sid_of(&closed_token));
+    assert!(closed_session.expires_at <= Utc::now(), "expired");
+    assert_eq!(closed_session.revoked_at, None, "not revoked");
     assert!(is_pairing_page(
-        &authorize_destination(&restarted, &same_device_token).await
+        &authorize_destination(&restarted, &closed_token).await
+    ));
+    assert!(is_consent_card(
+        &authorize_destination(&restarted, &open_token).await
     ));
     assert!(stored_session(&db, &db.paired_browser_sid).is_live(Utc::now()));
     assert!(restarted
         .in_process_token_verifier
         .verify(&db.paired_browser_token)
         .is_ok());
+
+    assert_eq!(
+        restarted
+            .same_device_sign_in_code_minter
+            .end_signed_in_sessions(&[open_code])
+            .expect("end"),
+        1
+    );
+    assert!(is_pairing_page(
+        &authorize_destination(&restarted, &open_token).await
+    ));
 
     let (_code, signed_in_again) = launch(&restarted).await;
     assert!(is_consent_card(

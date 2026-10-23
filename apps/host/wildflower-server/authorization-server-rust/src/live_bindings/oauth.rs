@@ -21,7 +21,7 @@ use crate::domain::capabilities::oauth::{
 };
 use crate::domain::consent_key::ConsentKey;
 use crate::domain::grant_store::AuthorizationRequestsTx as _;
-use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
+use crate::domain::same_device_sign_in_codes::{SameDeviceSignInCode, SameDeviceSignInCodes};
 use crate::domain::GrantStore as _;
 use crate::ports::OwnerApproval;
 
@@ -216,81 +216,56 @@ impl LaunchContextMinter {
 
 /// Mint one-time same-device sign-in codes: how the host signs the Owner's own
 /// browser in. The host, on the device running the server, mints a code and
-/// opens `/oauth/sign-in?code=…&next=…` in the browser. Cheap to clone (the
-/// codes and the store are shared). [`crate::setup_authorization_server`]
-/// hands one out on
+/// opens `/oauth/sign-in?code=…&next=…` in the browser. It also ends the
+/// sessions codes signed in, once the views they were opened in have closed.
+/// Cheap to clone (the codes and the store are shared).
+/// [`crate::setup_authorization_server`] hands one out on
 /// [`AuthorizationServer::same_device_sign_in_code_minter`](crate::AuthorizationServer::same_device_sign_in_code_minter).
 #[derive(Clone)]
 pub struct SameDeviceSignInCodeMinter {
     /// The outstanding codes, shared with the server's state, where
     /// `/oauth/sign-in` redeems them.
     codes: Arc<SameDeviceSignInCodes>,
-    /// Ends the session each minted code signs in, for the code it hands out.
-    session_ender: SameDeviceSessionEnder<SqliteGrantStore>,
+    /// The store, where the sessions codes signed in are ended.
+    store: SqliteGrantStore,
 }
 
 impl SameDeviceSignInCodeMinter {
     /// A minter over the authorization server's outstanding codes, and its
-    /// `store`, where the sessions the codes sign in are ended.
+    /// `store`, where the sessions codes signed in are ended.
     pub(crate) fn new(codes: Arc<SameDeviceSignInCodes>, store: SqliteGrantStore) -> Self {
-        SameDeviceSignInCodeMinter {
-            session_ender: SameDeviceSessionEnder::new(store, codes.clone()),
-            codes,
-        }
+        SameDeviceSignInCodeMinter { codes, store }
     }
 
     /// Mint a sign-in code and return it, for the `code` of
-    /// `/oauth/sign-in?code=…&next=…`. Whoever presents it there first, within
+    /// `/oauth/sign-in?code=…&next=…`: the first browser to present it, within
     /// 60 seconds, is signed in as the Owner. Only its hash is kept, in
     /// memory, so a restart drops it.
     #[must_use]
     pub fn mint(&self) -> SameDeviceSignInCode {
         let code = generate_same_device_sign_in_code();
         self.codes.insert(&code, Utc::now());
-        SameDeviceSignInCode {
-            code,
-            session_ender: self.session_ender.clone(),
-        }
-    }
-}
-
-/// A same-device sign-in code the host minted, which also ends the session it
-/// signs in: the host ends a launch's Owner session when the view it opened
-/// the code in closes. Its `Debug` leaves the code out.
-#[derive(Clone)]
-pub struct SameDeviceSignInCode {
-    /// The code, for `/oauth/sign-in?code=…`.
-    code: String,
-    /// Ends the session the code signs in.
-    session_ender: SameDeviceSessionEnder<SqliteGrantStore>,
-}
-
-impl SameDeviceSignInCode {
-    /// The code, for the `code` of `/oauth/sign-in?code=…&next=…`.
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.code
+        SameDeviceSignInCode::new(code, Arc::clone(&self.codes))
     }
 
-    /// End the session this code signed a browser in with, by expiring it
-    /// now: the browser's cookie stops working, and the browser is sent
-    /// through sign-in again. Returns `true` iff a session was ended; a code
-    /// that signed nobody in, or whose session was ended already, ends
-    /// nothing. It writes to the database, so call it on a blocking thread.
+    /// Withdraw `sign_in_codes`, and end the sessions they signed browsers
+    /// in with, by expiring them now in this run's store, whichever run
+    /// minted the codes: those browsers' cookies stop working, and they are
+    /// sent through sign-in again. Returns how many sessions were ended; a
+    /// code that signed nobody in, or whose session was ended already, ends
+    /// nothing. A failure leaves each code holding its session, so ending
+    /// them can be tried again. It writes to the database, so call it on a
+    /// blocking thread.
     ///
     /// # Errors
     ///
     /// [`AuthorizationServerError::Infrastructure`] on a store failure.
-    pub fn end_signed_in_session(&self) -> Result<bool, AuthorizationServerError> {
-        self.session_ender
-            .end_session_signed_in_with(&self.code, Utc::now())
-    }
-}
-
-impl std::fmt::Debug for SameDeviceSignInCode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SameDeviceSignInCode")
-            .finish_non_exhaustive()
+    pub fn end_signed_in_sessions(
+        &self,
+        sign_in_codes: &[SameDeviceSignInCode],
+    ) -> Result<usize, AuthorizationServerError> {
+        SameDeviceSessionEnder::new(self.store.clone())
+            .end_sessions_signed_in_with(sign_in_codes, Utc::now())
     }
 }
 

@@ -6,6 +6,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::domain::{ensure_launchable, LaunchError, ServerStatus};
+use wildflowerhealthio_authorization_server::domain::authorization_server_error::AuthorizationServerError;
 use wildflowerhealthio_authorization_server::{SameDeviceSignInCode, SameDeviceSignInCodeMinter};
 
 /// Mints one-time same-device sign-in codes on one run of a server, through
@@ -44,12 +45,27 @@ impl ServerSignInCodeMinter {
 
     /// Mint a sign-in code and return it: it expires in 60 seconds and signs
     /// in the first browser to present it. It is kept in the run's memory
-    /// only, so no blocking thread is needed. The code also ends the session
-    /// it signs in, which the host does when the view it opened the code in
-    /// closes.
+    /// only, so no blocking thread is needed.
     #[must_use]
     pub fn mint(&self) -> SameDeviceSignInCode {
         self.0.mint()
+    }
+
+    /// Withdraw `sign_in_codes` and end the Owner sessions they signed in,
+    /// through this run's store, whichever of the server's runs minted them,
+    /// returning how many were ended: the host does once the server's last
+    /// launch view closes. A failure leaves the codes holding their sessions,
+    /// to try again. It writes to the database, so call it on a blocking
+    /// thread.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] on a store failure.
+    pub fn end_signed_in_sessions(
+        &self,
+        sign_in_codes: &[SameDeviceSignInCode],
+    ) -> Result<usize, AuthorizationServerError> {
+        self.0.end_signed_in_sessions(sign_in_codes)
     }
 }
 

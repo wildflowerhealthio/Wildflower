@@ -28,8 +28,9 @@ changing how servers run or what the host notifies about them.
   the newest consent waiting on a server, named by its `ConsentKey`; and the
   notification decisions: the stop notification for each new stop of a server's run, and the consent
   notification for each new request waiting on a server, with the count of
-  servers with a request pending that the app icon's badge shows; and `ConsentViews`, the consents showing in
-  a view of the in-app browser, so each opens in one.
+  servers with a request pending that the app icon's badge shows; `ConsentViews`, the consents showing in
+  a view of the in-app browser, so each opens in one; and `LaunchViewSignIns`,
+  the sign-in codes of each server's launch views until its last one closes.
   - Layout: `domain/` the record (`ServerRecord`, `RelayKind`, `TunnelToken`),
     `RegistryError`, enrolment (`add_server`, `set_server_credentials`,
     `EnteredRelay`, `EnteredCredentials`, `RelayIdentity`, `EnrolmentError`),
@@ -528,13 +529,23 @@ changing how servers run or what the host notifies about them.
   Android, where the view moves the app to the background, an open view keeps
   the app present for `WhileOpen`, and a background session keeps it alive
   under the view until the browser reports it keeps the app alive itself
-  (`KeptAlive`, `launch_view_kept_alive`). Once the browser reports a view
-  closed, the host ends the Owner session its sign-in code started
-  (`SameDeviceSignInCode::end_signed_in_session`, on a blocking thread), so a
-  Custom Tab's session doesn't outlive it in Chrome; moving to the background
-  and back doesn't end it, unless the server's run restarts meanwhile (as
-  iOS's return from a suspend does), and a desktop, which hears no close, relies on the
-  server's start ending every Owner session. It never changes the run policy. Errors are
+  (`KeptAlive`, `launch_view_kept_alive`). Each view's sign-in code counts
+  among the server's `LaunchViewSignIns` (`servers-rust`) while it is open,
+  across the server's runs. Once the browser reports a view closed, its code
+  is withdrawn (`SameDeviceSignInCode::withdraw`), and once the server's last
+  open launch view closes, the host ends the Owner sessions the codes of its
+  views signed in since they last all closed, through the run up then
+  (`ServerSignInCodeMinter::end_signed_in_sessions`, on a blocking thread), so
+  a Custom Tab's session doesn't outlive the views in Chrome. Not sooner: a
+  server's views share one cookie jar on iOS and Android, so a stacked consent
+  view's sign-in replaces the cookie of the launch view under it. With no run
+  up, or a failed ending, the codes are kept for the next last close. Moving
+  to the background and back doesn't end a session, nor does a run's restart
+  (as iOS's return from a suspend brings): `ServerUnits::push` hands each run
+  the codes of the views still open (`LaunchViewSignIns::kept_at_run_start`),
+  whose sessions its start keeps while it ends every other Owner session. A
+  desktop hears no close, so its views count no code, and it relies on the
+  server's start ending them. It never changes the run policy. Errors are
   `{kind, message}`: `serverNotRunning`, `tokenRejected`, `tunnelUnknown`,
   `notYetProbed`, `unreachable`, `noValidCertificate`, `untrustedCertificate` (a valid certificate from
   Let's Encrypt's staging CA), `authorizationServer`, `openingBrowser`, or the registry's

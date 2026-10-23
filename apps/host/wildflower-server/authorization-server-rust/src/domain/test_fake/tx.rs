@@ -578,9 +578,10 @@ impl BrowserSessionsTx for FakeGrantTx<'_> {
         )
     }
 
-    fn expire_browser_sessions_of_kind(
+    fn expire_browser_sessions_of_kind_but(
         &mut self,
         kind: BrowserSessionKind,
+        kept_sids: &[String],
         now: DateTime<Utc>,
     ) -> Result<usize, AuthorizationServerError> {
         let mut expired = 0;
@@ -589,7 +590,11 @@ impl BrowserSessionsTx for FakeGrantTx<'_> {
             .browser_sessions
             .borrow_mut()
             .values_mut()
-            .filter(|session| session.kind == kind && session.expires_at > now)
+            .filter(|session| {
+                session.kind == kind
+                    && session.expires_at > now
+                    && !kept_sids.contains(&session.sid)
+            })
         {
             session.expires_at = now;
             expired += 1;

@@ -139,7 +139,7 @@ fn server_in_a_folder_on_a_runner(server_dir: tempfile::TempDir) -> ServerOnARun
         BackgroundSessionLength::AsLongAsNeeded,
     );
     unit_runner.set_unit(UnitId::from(DOMAIN), RunPolicy::Always, move || {
-        Ok(ServerUnit::new(config.clone()))
+        Ok(ServerUnit::new(config.clone(), Vec::new()))
     });
     ServerOnARunner {
         unit_runner,
