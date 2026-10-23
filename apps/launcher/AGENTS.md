@@ -27,7 +27,9 @@ the host runs, in
   homescreen shows the launcher's walkthrough (`-home-walkthrough.ts`, on
   `walkthrough-react`) on a first visit, and again when Settings' Show
   walkthrough again opens it with `?walkthrough=show`; its steps point at the
-  controls carrying `walkthroughAnchor`.
+  controls carrying `walkthroughAnchor`, and at the tiles of the Synthetic Data
+  Loader, Importer, Medications and Plots by their registration ids
+  (`appTileAnchor`).
 - `databases/` — `databases-core-js`, the `/databases` `HttpApi` and client,
   and `databases-react`, the `/settings/databases` screen.
 - `request-log/` — `request-log-core-js`, the `/requests` `HttpApi` and client,

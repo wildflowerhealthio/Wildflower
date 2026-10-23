@@ -12,13 +12,19 @@ const LAUNCHER_WALKTHROUGH_VERSION = 1
 /** The `data-walkthrough` values of the home screen's controls the walkthrough points at. */
 const LauncherWalkthroughAnchor = {
   appTiles: 'app-tiles',
-  appTile: 'app-tile',
   settings: 'settings',
 } as const
 
+/** The `data-walkthrough` value of the tile of the app registered as `appId`. */
+const appTileAnchor = (appId: string): string => `app-tile-${appId}`
+
 /**
- * The launcher's walkthrough, in page order. With no apps on the home screen,
- * only the Settings gear is on the page, so only its step shows.
+ * The launcher's walkthrough. After the tiles, it points at the tiles of the
+ * apps a newcomer most likely wants, by their registration ids on a
+ * Wildflower server: sample records, then their own, then two ways to read
+ * them. A step whose app isn't on the home screen drops out, and with no apps
+ * on the home screen, only the Settings gear is on the page, so only its step
+ * shows.
  */
 const LAUNCHER_WALKTHROUGH_STEPS: ReadonlyArray<WalkthroughStep> = [
   {
@@ -27,7 +33,27 @@ const LAUNCHER_WALKTHROUGH_STEPS: ReadonlyArray<WalkthroughStep> = [
     body: 'These are the apps on your home screen. Select a tile to open its app.',
   },
   {
-    anchor: LauncherWalkthroughAnchor.appTile,
+    anchor: appTileAnchor('synthetic-data'),
+    title: 'Synthetic Data Loader',
+    body: 'Loads a set of made-up health records into your server, so the other apps have a realistic record to show before you add your own.',
+  },
+  {
+    anchor: appTileAnchor('importer'),
+    title: 'Importer',
+    body: "Turns what your browser saw on a pharmacy, lab or patient-portal website into health records on your server. You review every record before it's saved.",
+  },
+  {
+    anchor: appTileAnchor('medications'),
+    title: 'Medications',
+    body: 'Shows every prescription on your record, arranged around when your next refill is due.',
+  },
+  {
+    anchor: appTileAnchor('plots'),
+    title: 'Plots',
+    body: "Charts your labs, vitals and prescribed doses together, so you can see a dose change against the numbers it's meant to move.",
+  },
+  {
+    anchor: LauncherWalkthroughAnchor.appTiles,
     title: 'Choosing a Patient',
     body: "Wildflower Authorization may ask you to approve an app before it opens. For an app that works with one patient's records, you choose the patient there.",
   },
@@ -98,6 +124,7 @@ const useHomeWalkthrough = (): Pick<WalkthroughPrompt, 'open' | 'finish' | 'skip
 }
 
 export {
+  appTileAnchor,
   LAUNCHER_WALKTHROUGH_ID,
   LAUNCHER_WALKTHROUGH_STEPS,
   LAUNCHER_WALKTHROUGH_VERSION,

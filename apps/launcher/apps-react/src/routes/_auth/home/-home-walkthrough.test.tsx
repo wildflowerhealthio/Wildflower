@@ -13,6 +13,7 @@ import { APPS_LIST_QUERY_KEY, type AppRegistration } from '../../../queries.ts'
 import type { RunAuthed } from '../../../router-context.ts'
 import { routeTree } from '../../../routeTree.gen.ts'
 import {
+  appTileAnchor,
   LAUNCHER_WALKTHROUGH_ID,
   LAUNCHER_WALKTHROUGH_STEPS,
   LAUNCHER_WALKTHROUGH_VERSION,
@@ -39,21 +40,22 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
+/** A home-screen app registered as `id`, its tile named `name`. */
+const appRegisteredAs = (id: string, name: string): AppRegistration => ({
+  id,
+  name,
+  onHomescreen: true,
+  url: `https://example.com/${id}`,
+  isSmart: true,
+})
+
+/** The four apps the walkthrough points at, and one it doesn't. */
 const APPS: readonly AppRegistration[] = [
-  {
-    id: 'plots',
-    name: 'Plots',
-    onHomescreen: true,
-    url: 'https://example.com/plots',
-    isSmart: true,
-  },
-  {
-    id: 'medications',
-    name: 'Medications',
-    onHomescreen: true,
-    url: 'https://example.com/medications',
-    isSmart: true,
-  },
+  appRegisteredAs('plots', 'Plots'),
+  appRegisteredAs('strength', 'Wildflower Strength'),
+  appRegisteredAs('medications', 'Medications'),
+  appRegisteredAs('importer', 'Importer'),
+  appRegisteredAs('synthetic-data', 'Synthetic Data Loader'),
 ]
 
 /**
@@ -131,6 +133,28 @@ describe("the launcher's walkthrough", () => {
 
     // Assert
     expect(anchorsOnPage()).toStrictEqual(LAUNCHER_WALKTHROUGH_STEPS.map(({ anchor }) => anchor))
+  })
+
+  it("should drop the steps of apps that aren't on the home screen", async () => {
+    // Arrange
+    recordSeen()
+
+    // Act
+    renderHomeAt('/home', [appRegisteredAs('plots', 'Plots')])
+    await screen.findByRole('link', { name: 'Plots' })
+
+    // Assert
+    const missingAnchors = [
+      appTileAnchor('synthetic-data'),
+      appTileAnchor('importer'),
+      appTileAnchor('medications'),
+    ]
+    expect(anchorsOnPage()).toStrictEqual(
+      LAUNCHER_WALKTHROUGH_STEPS.map(({ anchor }) => anchor).filter(
+        (anchor) => !missingAnchors.includes(anchor)
+      )
+    )
+    expect(anchorsOnPage()).toContain(appTileAnchor('plots'))
   })
 
   it('should keep only Settings on a home screen with no apps', async () => {

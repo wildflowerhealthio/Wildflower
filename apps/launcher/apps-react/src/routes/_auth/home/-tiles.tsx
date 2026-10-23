@@ -6,7 +6,7 @@ import { walkthroughAnchor } from '@wildflowerhealthio/walkthrough-core'
 import type { CSSProperties, JSX, MouseEvent } from 'react'
 
 import type { AppRegistration } from '../../../queries.ts'
-import { LauncherWalkthroughAnchor } from './-home-walkthrough.ts'
+import { appTileAnchor } from './-home-walkthrough.ts'
 import tileStyles from '../../../styles/app-tiles.module.css'
 
 interface SortableAppTileProps {
@@ -83,7 +83,7 @@ const TileLaunchTarget = ({
       rel="nofollow noreferrer"
       onClick={takeOver}
       onAuxClick={takeOver}
-      {...walkthroughAnchor(LauncherWalkthroughAnchor.appTile)}
+      {...walkthroughAnchor(appTileAnchor(app.id))}
     >
       <TileContent app={app} />
     </Link>
