@@ -1,4 +1,4 @@
-import { useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { useFetchEveryPage } from '@wildflowerhealthio/react-kitchen-sink'
 import { ChunkBar } from '@wildflowerhealthio/react-tundraish'
 import {
@@ -7,11 +7,19 @@ import {
   ReadFailureLine,
   usePathPatientChoice,
 } from '@wildflowerhealthio/smart-app-react'
+import { walkthroughAnchor } from '@wildflowerhealthio/walkthrough-core'
+import { Walkthrough } from '@wildflowerhealthio/walkthrough-react'
 import { Match } from 'effect'
 import type { JSX } from 'react'
 
 import { useSmartClient } from '../router-context.ts'
 import { type MedicationRead, useMedicationRead } from './-medication-read.ts'
+import {
+  MEDICATIONS_WALKTHROUGH_STEPS,
+  MedicationsWalkthroughAnchor,
+  SHOW_WALKTHROUGH_AGAIN_SEARCH,
+  useMedicationsWalkthrough,
+} from './-medications-walkthrough.ts'
 import styles from './-medications-page.module.css'
 
 /** The chunk bar's copy: the generic component with this app's wording. */
@@ -29,7 +37,10 @@ const chunkBarLabels = {
 
 /** Props for {@link MedicationsPage}. */
 interface MedicationsPageProps {
-  /** The tab strip, its links under the page's own path. */
+  /**
+   * The tab strip, its links under the page's own path, each carrying its
+   * `MedicationsWalkthroughAnchor`.
+   */
   readonly tabs: JSX.Element
 }
 
@@ -54,12 +65,21 @@ const useMedicationsPage = (): MedicationRead => {
  * (one patient's page only), the report over the current medications;
  * Savings, the savings-program breakdown. Until the first page lands the
  * tabs wait behind a loading line, or the read's failure.
+ *
+ * @remarks
+ * The Medications walkthrough (`useMedicationsWalkthrough`) points at the
+ * patient line and the tabs on a first visit, and when the footer's Show
+ * walkthrough again link asks for it, on whichever tab is open. It mounts
+ * with the tabs, once the first page has landed, so it doesn't start over
+ * the loading line. The page has no settings or menu, so the footer under
+ * the tabs holds that link.
  */
 function MedicationsPage({ tabs }: MedicationsPageProps): JSX.Element {
   const client = useSmartClient()
   const patientChoice = usePathPatientChoice()
   const navigate = useNavigate()
   const read = useMedicationsPage()
+  const walkthrough = useMedicationsWalkthrough()
   const { pagedQuery, pagesReceived } = read
   return (
     <>
@@ -70,6 +90,7 @@ function MedicationsPage({ tabs }: MedicationsPageProps): JSX.Element {
           onPatientChange={() => {
             void navigate({ to: '/patients' })
           }}
+          {...walkthroughAnchor(MedicationsWalkthroughAnchor.patientLine)}
         />
         <ChunkBar
           phase={read.barPhase}
@@ -87,7 +108,23 @@ function MedicationsPage({ tabs }: MedicationsPageProps): JSX.Element {
           <ReadFailureLine subject="medications" error={firstPageError} />
         )),
         Match.when({ hasPages: false }, () => <LoadingLine subject="medications" />),
-        Match.orElse(() => tabs)
+        Match.orElse(() => (
+          <>
+            {tabs}
+            <footer className={styles['medications-page__footer']}>
+              <Link to="." search={SHOW_WALKTHROUGH_AGAIN_SEARCH} className="text-body-3">
+                Show walkthrough again
+              </Link>
+            </footer>
+            <Walkthrough
+              steps={MEDICATIONS_WALKTHROUGH_STEPS}
+              open={walkthrough.open}
+              onFinish={walkthrough.finish}
+              onSkip={walkthrough.skip}
+              onPostpone={walkthrough.postpone}
+            />
+          </>
+        ))
       )}
     </>
   )
