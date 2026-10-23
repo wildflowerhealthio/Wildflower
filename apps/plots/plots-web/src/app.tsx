@@ -11,11 +11,13 @@ import {
   patientScopeOf,
   usePatientChoice,
 } from '@wildflowerhealthio/smart-app-react'
+import { walkthroughAnchor } from '@wildflowerhealthio/walkthrough-core'
 import { DateTime, Match, Option } from 'effect'
 import type { JSX } from 'react'
 import { useState } from 'react'
 
 import { PatientRecord } from './patient-record.tsx'
+import { PlotsPageWalkthroughAnchor } from './plots-walkthrough.ts'
 import { useUrlSelection } from './use-url-selection.ts'
 import styles from './app.module.css'
 
@@ -28,7 +30,8 @@ import styles from './app.module.css'
  * `?patient=`, else the launch's patient (`client.patient.id`); with neither
  * the page is the `PatientPicker`. "All patients" reads every patient's
  * Observations and MedicationRequests unscoped, charted together. The title's
- * `PatientChoiceLine` names the choice and goes back to the picker.
+ * `PatientChoiceLine` names the choice and goes back to the picker, and
+ * carries the Plots walkthrough's anchor.
  *
  * The selection lives only in the URL ({@link useUrlSelection}) beside the
  * patient; every change — a series or a range in the record — is an updater
@@ -79,6 +82,7 @@ export const App = (): JSX.Element => {
             client={client}
             patientChoice={patientChoice.value}
             onPatientChange={changePatient}
+            {...walkthroughAnchor(PlotsPageWalkthroughAnchor.patientLine)}
           />
         )}
       </header>

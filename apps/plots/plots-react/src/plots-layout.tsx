@@ -1,7 +1,9 @@
 import { cn } from '@wildflowerhealthio/react-kitchen-sink'
+import { walkthroughAnchor } from '@wildflowerhealthio/walkthrough-core'
 import type { JSX, ReactNode } from 'react'
 import { useId, useState } from 'react'
 
+import { PlotsWalkthroughAnchor } from './walkthrough-anchors.ts'
 import styles from './plots-layout.module.css'
 
 interface PlotsLayoutProps {
@@ -37,6 +39,9 @@ interface PlotsLayoutProps {
  * `aria-expanded` rather than a `<details>`, because a closed `<details>`
  * hides its content whatever the CSS says, so docking the same panel on a
  * wide viewport would need a second copy of it or a JS media query.
+ *
+ * The panel carries its {@link PlotsWalkthroughAnchor} for the app's
+ * walkthrough; the presets and the view switch carry their own.
  */
 const PlotsLayout = ({
   seriesPanel,
@@ -51,7 +56,11 @@ const PlotsLayout = ({
   const panelBodyId = useId()
   return (
     <div className={styles.layout}>
-      <aside className={styles.panel} aria-label="Series">
+      <aside
+        className={styles.panel}
+        aria-label="Series"
+        {...walkthroughAnchor(PlotsWalkthroughAnchor.seriesPanel)}
+      >
         <button
           type="button"
           className={styles.disclosure}

@@ -93,6 +93,15 @@ their record, lay it out.
   `n records couldn't be read` — the latter counts both what the sources could
   not read and page entries that did not decode (a MedicationRequest without an
   `id` among them).
+- **Walkthrough** (`src/plots-walkthrough.ts`, on `walkthrough-react`). Once
+  every read has its first page, `RecordView` shows the Plots walkthrough on a
+  first visit: the patient line (anchored in `App`), then the series panel,
+  the chart, the range presets and the view switch, which carry
+  `plots-react`'s `PlotsWalkthroughAnchor`. The chart's step is skipped while
+  the view is the table or the scatter. The footer under the view holds a
+  Show walkthrough again button, as the app has no settings or menu; it calls
+  `reopen` rather than adding a search param, because the page has no router
+  and a launch drops the URL's query.
 
 ### Adding a record source
 

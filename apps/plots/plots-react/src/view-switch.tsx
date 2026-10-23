@@ -1,9 +1,11 @@
 import { SegmentedToggle, type SegmentedToggleOption } from '@wildflowerhealthio/react-tundraish'
+import { walkthroughAnchor } from '@wildflowerhealthio/walkthrough-core'
 import { Match, Option } from 'effect'
 import type { JSX } from 'react'
 
 import { PLOT_VIEWS, type PlotView, type ScatterAxes } from '@wildflowerhealthio/plots-core-js'
 
+import { PlotsWalkthroughAnchor } from './walkthrough-anchors.ts'
 import styles from './view-switch.module.css'
 
 /** What each view's button reads. A `Record` so a new view is a type error here. */
@@ -25,7 +27,8 @@ interface ViewSwitchProps {
 /**
  * The view picker: one `aria-pressed` button per `PLOT_VIEWS` entry, the
  * shown one pressed, and Scatter disabled while the selection can't make one
- * — {@link ScatterUnavailableNote} says why, above the toolbar.
+ * — {@link ScatterUnavailableNote} says why, above the toolbar. It carries
+ * the walkthrough's {@link PlotsWalkthroughAnchor.viewSwitch}.
  */
 const ViewSwitch = ({ shownView, scatterAxes, onViewChange }: ViewSwitchProps): JSX.Element => {
   const options: readonly SegmentedToggleOption<PlotView>[] = PLOT_VIEWS.map((view) => ({
@@ -39,6 +42,7 @@ const ViewSwitch = ({ shownView, scatterAxes, onViewChange }: ViewSwitchProps): 
       options={options}
       onChange={onViewChange}
       aria-label="View"
+      {...walkthroughAnchor(PlotsWalkthroughAnchor.viewSwitch)}
     />
   )
 }

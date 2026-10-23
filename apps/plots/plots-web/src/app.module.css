@@ -26,3 +26,8 @@
   font-size: var(--font-size-2);
   color: var(--color-neutral-5);
 }
+
+/* Under the view, the page's one help button: Show walkthrough again. */
+.footer {
+  margin-top: var(--space-9);
+}
