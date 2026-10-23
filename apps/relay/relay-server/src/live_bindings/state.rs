@@ -16,7 +16,9 @@
 //! old one stops signing at once, and a device connected with the old one
 //! drops as rathole takes the change.
 //!
-//! Claim codes live in the same store and change nothing that is served.
+//! Claim codes and access codes live in the same store. Issuing either, or
+//! redeeming a claim code, changes nothing that is served; redeeming an
+//! access code creates a tunnel, so it is a change like any create.
 //! Issuing one runs through `TunnelRegistry::while_unchanged`, between
 //! tunnel changes, so the tunnel it is for cannot be deleted under it.
 //!
@@ -37,7 +39,9 @@ use tokio::sync::{mpsc, Mutex};
 use super::on_blocking;
 use crate::config;
 use crate::db::SqliteTunnelStore;
-use crate::domain::{ReissuedTunnel, StoredTunnel, Tunnel, TunnelError, TunnelStore};
+use crate::domain::{
+    RedeemedAccessCode, ReissuedTunnel, StoredTunnel, Tunnel, TunnelError, TunnelStore,
+};
 use crate::logging::IDENTIFYING;
 use crate::outcomes::ConnectionOutcomes;
 use crate::route::Router;
@@ -84,6 +88,12 @@ impl ChangedTunnel for StoredTunnel {
     }
 }
 
+impl ChangedTunnel for RedeemedAccessCode {
+    fn tunnel(&self) -> &Tunnel {
+        &self.stored.tunnel
+    }
+}
+
 impl ChangedTunnel for ReissuedTunnel {
     fn tunnel(&self) -> &Tunnel {
         &self.stored.tunnel
@@ -95,7 +105,7 @@ pub struct TunnelRegistry {
     /// The store the capabilities are lifted from.
     pub(crate) store: SqliteTunnelStore,
     pub(crate) front: FrontSettings,
-    /// How long an issued claim code redeems for.
+    /// How long an issued claim code or access code redeems for.
     pub(crate) claim_code_ttl: Duration,
     /// Where each change goes to rathole.
     rathole: mpsc::Sender<ConfigChange>,

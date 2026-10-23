@@ -12,8 +12,9 @@
 //! `connection_totals_flush` holds the relay task that keeps them: it moves
 //! the counts the front records in memory into the store every minute.
 //!
-//! [`LiveClaimCodesRedeemer`] is the one binding not built through `Admin<…>`:
-//! it serves the unauthenticated `POST /claim`, which builds it once from the
+//! [`LiveClaimCodesRedeemer`] and [`LiveAccessCodesRedeemer`] are the
+//! bindings not built through `Admin<…>`: they serve the unauthenticated
+//! `POST /claim` and `POST /access`, which build them once from the
 //! registry.
 //!
 //! The admin handlers name the `Live…` bindings in `Admin<…>`, the
@@ -22,6 +23,8 @@
 //! gates on OAuth scopes and answers `403` with a JSON body, where the relay
 //! gates on the signer and answers a bare `401`.
 
+mod access_codes_issuer;
+mod access_codes_redeemer;
 mod admin;
 mod claim_codes_issuer;
 mod claim_codes_redeemer;
@@ -33,6 +36,8 @@ mod tunnels_creator;
 mod tunnels_deleter;
 mod tunnels_reader;
 
+pub(crate) use access_codes_issuer::LiveAccessCodesIssuer;
+pub(crate) use access_codes_redeemer::LiveAccessCodesRedeemer;
 pub(crate) use admin::{Admin, AdminCapability};
 pub(crate) use claim_codes_issuer::LiveClaimCodesIssuer;
 pub(crate) use claim_codes_redeemer::LiveClaimCodesRedeemer;

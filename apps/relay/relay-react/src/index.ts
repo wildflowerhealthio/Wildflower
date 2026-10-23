@@ -1,8 +1,9 @@
+export { AccessCodes } from './access-codes.tsx'
 export { AdminKeyForm } from './admin-key-form.tsx'
 export { adminKeyStoreIndexedDb } from './admin-key-store-indexed-db.ts'
 export { ConnectionTotalsTables } from './connection-totals.tsx'
 export { CreateTunnelForm } from './create-tunnel-form.tsx'
-export { IssuedClaimCodePanel, type IssuedClaimCodePanelProps } from './issued-claim-code-panel.tsx'
+export { IssuedCodePanel, type IssuedCodePanelProps } from './issued-code-panel.tsx'
 export * from './queries/index.ts'
 export {
   isRefusal,

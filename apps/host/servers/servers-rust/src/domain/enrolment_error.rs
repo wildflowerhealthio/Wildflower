@@ -29,6 +29,10 @@ pub enum EnrolmentError {
     /// trimmed.
     #[error("the claim code is empty")]
     EmptyClaimCode,
+    /// The email entered with an access code is empty once its surrounding
+    /// whitespace is trimmed.
+    #[error("the email is empty")]
+    EmptyEmail,
     /// A claim code was entered for a relay that doesn't redeem them: a
     /// [`RelayKind::Rathole`](crate::RelayKind::Rathole) relay, which has no
     /// Wildflower relay site, or a Wildflower relay whose site answers
@@ -48,6 +52,20 @@ pub enum EnrolmentError {
     /// from this device or overall, in too short a time.
     #[error("the relay has had too many claim attempts: try again in a few minutes")]
     ClaimRateLimited,
+    /// The relay answered `POST /claim` with `409`: the code is an access
+    /// code, which it hasn't burned. It redeems at `POST /access` for a new
+    /// tunnel, so the user enters an email and, optionally, a subdomain, and
+    /// adds the server with them
+    /// ([`EnteredCredentials::AccessCode`](crate::EnteredCredentials::AccessCode)).
+    #[error("that code is an access code: enter your email and choose a subdomain")]
+    AccessCodeNeedsDetails,
+    /// The relay refused `POST /access` with `422`, `409` or `503`: the
+    /// access code is unknown, used or expired, or, for a code that would
+    /// redeem, the email or subdomain is unusable, reserved or taken, or no
+    /// subdomain is left to draw. `reason` is the relay's own plain-text
+    /// answer, which says which.
+    #[error("the relay refused the access code: {reason}")]
+    AccessRefused { reason: String },
     /// A relay setting entered by hand is one a server can't be built on: a
     /// self-hosted relay's `baseUrl`, or a
     /// [`RelayKind::Rathole`](crate::RelayKind::Rathole) relay's
@@ -123,9 +141,12 @@ impl EnrolmentError {
             Self::InvalidTunnelName(_) => "invalidTunnelName",
             Self::EmptyToken => "emptyToken",
             Self::EmptyClaimCode => "emptyClaimCode",
+            Self::EmptyEmail => "emptyEmail",
             Self::ClaimCodesNotOffered => "claimCodesNotOffered",
             Self::ClaimCodeRejected => "claimCodeRejected",
             Self::ClaimRateLimited => "claimRateLimited",
+            Self::AccessCodeNeedsDetails => "accessCodeNeedsDetails",
+            Self::AccessRefused { .. } => "accessRefused",
             Self::InvalidRelaySetting { .. } => "invalidRelaySetting",
             Self::RelayUnreachable { .. } => "relayUnreachable",
             Self::BadRelayResponse { .. } => "badRelayResponse",
@@ -197,6 +218,17 @@ mod tests {
             (EnrolmentError::ClaimCodesNotOffered, "claimCodesNotOffered"),
             (EnrolmentError::ClaimCodeRejected, "claimCodeRejected"),
             (EnrolmentError::ClaimRateLimited, "claimRateLimited"),
+            (EnrolmentError::EmptyEmail, "emptyEmail"),
+            (
+                EnrolmentError::AccessCodeNeedsDetails,
+                "accessCodeNeedsDetails",
+            ),
+            (
+                EnrolmentError::AccessRefused {
+                    reason: "a tunnel already has the name".to_owned(),
+                },
+                "accessRefused",
+            ),
             (
                 EnrolmentError::InvalidRelaySetting {
                     setting: "remoteAddr",
@@ -321,6 +353,17 @@ mod tests {
             ("claimCodesNotOffered", EnrolmentError::ClaimCodesNotOffered),
             ("claimCodeRejected", EnrolmentError::ClaimCodeRejected),
             ("claimRateLimited", EnrolmentError::ClaimRateLimited),
+            ("emptyEmail", EnrolmentError::EmptyEmail),
+            (
+                "accessCodeNeedsDetails",
+                EnrolmentError::AccessCodeNeedsDetails,
+            ),
+            (
+                "accessRefused",
+                EnrolmentError::AccessRefused {
+                    reason: "a tunnel already has the name".to_owned(),
+                },
+            ),
             (
                 "signedRequestRejected",
                 EnrolmentError::SignedRequestRejected {

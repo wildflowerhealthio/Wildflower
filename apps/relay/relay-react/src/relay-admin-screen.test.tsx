@@ -95,6 +95,9 @@ const answer = (
     if (!relay.tunnels.has(claimCodesFor)) return text(404, 'no tunnel has the name')
     return json(201, { code: 'ABCD-EFGH', expires_at: 1_700_000_900 })
   }
+  if (request.method === 'POST' && url.pathname === '/api/access-codes') {
+    return json(201, { code: 'JKMN-PQRS', expires_at: 1_700_000_900 })
+  }
   const tokenFor = url.pathname.match(/^\/api\/tunnels\/([^/]+)\/token$/)?.[1]
   if (request.method === 'POST' && tokenFor !== undefined) {
     if (!relay.tunnels.has(tokenFor)) return text(404, 'no tunnel has the name')
@@ -499,6 +502,34 @@ describe('RelayAdminScreen', () => {
     // Assert
     expect((await screen.findByRole('alert')).textContent).toContain('no tunnel has the name')
     expect(screen.queryByLabelText('Claim code')).toBeNull()
+  })
+
+  it('issues an access code and shows it once, with its expiry', async () => {
+    // Arrange
+    const relay = relayWith(['alice'])
+    const queryClient = renderScreen(await runtimeFor(relay, true))
+    const user = userEvent.setup()
+
+    // Act
+    await user.click(await screen.findByRole('button', { name: 'Issue access code' }))
+
+    // Assert
+    expect((await screen.findByLabelText('Access code')).textContent).toBe('JKMN-PQRS')
+    expect(screen.getByRole('heading', { name: 'New access code' })).toBeDefined()
+    expect(screen.getByText(/under the email and subdomain they choose/)).toBeDefined()
+    expect(screen.getByText(/won’t be shown again/)).toBeDefined()
+    expect(document.querySelector('time[datetime="2023-11-14T22:28:20.000Z"]')).not.toBeNull()
+    expect(relay.requests).toContain('POST /api/access-codes')
+
+    // Act
+    await user.click(screen.getByRole('button', { name: 'Done' }))
+
+    // Assert
+    expect(screen.queryByLabelText('Access code')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Issue access code' })).toBeDefined()
+    await waitFor(() => {
+      expect(queryClient.getMutationCache().getAll()).toEqual([])
+    })
   })
 
   it('drops a key the relay refuses and asks for it again, saying why', async () => {

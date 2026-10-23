@@ -65,7 +65,10 @@ Whoever runs the relay sees routing metadata:
   signing both need it. The email is whatever the operator recorded when
   creating the tunnel. A tunnel's one outstanding claim code is kept only as
   its SHA-256, until it is redeemed, replaced by a newer code, or dropped
-  when a code is issued after it expires.
+  when a code is issued after it expires. An access code, which names no
+  tunnel, is kept the same way until it is redeemed or dropped once expired;
+  redeeming one creates a tunnel under the email and name its holder enters,
+  so for such a tunnel the email is whatever they entered.
 
 Holding the token, the operator can impersonate the device's tunnel to
 rathole. Without a certificate for the device's domain, visitors' TLS still

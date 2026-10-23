@@ -4,15 +4,20 @@
 //! the code is the credential. Every way a code can fail to redeem is the
 //! one [`TunnelError::ClaimCodeRejected`], so the answer says nothing about
 //! which codes exist. Guessing is throttled by the route's rate limits.
+//!
+//! A code that would redeem as an access code instead is
+//! [`TunnelError::AccessCodeOffered`], unburned, so a device that has only
+//! the code learns to ask for an email and a name and redeem it at
+//! `POST /access`.
 
-use crate::domain::{ClaimCode, ClaimCodeStore, Tunnel, TunnelError};
+use crate::domain::{AccessCodeStore, ClaimCode, ClaimCodeStore, Tunnel, TunnelError};
 
 /// Redeeming — `POST /claim`. Holds the store, lifted from the state.
-pub(crate) struct ClaimCodesRedeemer<S: ClaimCodeStore> {
+pub(crate) struct ClaimCodesRedeemer<S: ClaimCodeStore + AccessCodeStore> {
     store: S,
 }
 
-impl<S: ClaimCodeStore> ClaimCodesRedeemer<S> {
+impl<S: ClaimCodeStore + AccessCodeStore> ClaimCodesRedeemer<S> {
     pub(crate) fn new(store: S) -> Self {
         Self { store }
     }
@@ -24,17 +29,26 @@ impl<S: ClaimCodeStore> ClaimCodesRedeemer<S> {
     /// # Errors
     ///
     /// [`TunnelError::ClaimCodeRejected`] when the code is malformed,
-    /// unknown, already redeemed or expired; whatever `now` fails with; and
-    /// [`TunnelError::Infrastructure`] if the store write fails.
+    /// unknown, already redeemed or expired;
+    /// [`TunnelError::AccessCodeOffered`] when it is an unexpired access
+    /// code, which stays unburned; whatever `now` fails with; and
+    /// [`TunnelError::Infrastructure`] if a store read or write fails.
     pub(crate) fn redeem(
         &self,
         typed_code: &str,
         now: impl FnOnce() -> Result<i64, TunnelError>,
     ) -> Result<Tunnel, TunnelError> {
-        let code = ClaimCode::parse(typed_code).ok_or(TunnelError::ClaimCodeRejected)?;
-        self.store
-            .take_claim_code(&code.hash(), now()?)?
-            .ok_or(TunnelError::ClaimCodeRejected)
+        let code_hash = ClaimCode::parse(typed_code)
+            .ok_or(TunnelError::ClaimCodeRejected)?
+            .hash();
+        let now = now()?;
+        if let Some(tunnel) = self.store.take_claim_code(&code_hash, now)? {
+            return Ok(tunnel);
+        }
+        if self.store.contains_access_code(&code_hash, now)? {
+            return Err(TunnelError::AccessCodeOffered);
+        }
+        Err(TunnelError::ClaimCodeRejected)
     }
 }
 
@@ -45,7 +59,7 @@ mod tests {
 
     use super::*;
     use crate::domain::test_fake::{stored_tunnel, FakeTunnelStore};
-    use crate::domain::{IssuedClaimCode, StoredClaimCode, TunnelStore};
+    use crate::domain::{IssuedClaimCode, StoredAccessCode, StoredClaimCode, TunnelStore};
 
     /// A store holding `alice` and `bob`, and a code for `alice` that
     /// expires at `1_900`.
@@ -132,6 +146,33 @@ mod tests {
             ))
         });
         assert_eq!(result.unwrap_err(), TunnelError::ClaimCodeRejected);
+    }
+
+    /// An unexpired access code is answered as one, and stays to redeem at
+    /// `POST /access`; an expired one is refused like any unknown code.
+    #[test]
+    fn an_access_code_is_offered_unburned() {
+        let (store, _) = issued();
+        let access_code = ClaimCode::generate(&mut StdRng::seed_from_u64(1));
+        assert!(store
+            .insert_access_code(&StoredAccessCode {
+                code_hash: access_code.hash(),
+                expires_at: 1_900,
+            })
+            .unwrap());
+        let redeemer = ClaimCodesRedeemer::new(store);
+        let typed = access_code.to_string();
+        for _ in 0..2 {
+            assert_eq!(
+                redeemer.redeem(&typed, || Ok(1_899)).unwrap_err(),
+                TunnelError::AccessCodeOffered
+            );
+        }
+        assert_eq!(redeemer.store.access_codes().len(), 1, "unburned");
+        assert_eq!(
+            redeemer.redeem(&typed, || Ok(1_900)).unwrap_err(),
+            TunnelError::ClaimCodeRejected
+        );
     }
 
     #[test]

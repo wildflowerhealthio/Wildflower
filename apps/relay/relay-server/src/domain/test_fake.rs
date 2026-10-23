@@ -8,7 +8,9 @@
 //! keeps tunnels with no diesel and no database. It is the
 //! [`ClaimCodeStore`] fake too, keeping at most one code per tunnel as the
 //! database's primary key does, and deleting a tunnel's code with it as its
-//! `ON DELETE CASCADE` does. And it is the [`ConnectionTotalsStore`] fake,
+//! `ON DELETE CASCADE` does. It is the [`AccessCodeStore`] fake, keeping no
+//! hash as both an access code and a claim code, as the adapter checks. And
+//! it is the [`ConnectionTotalsStore`] fake,
 //! one count per hour and outcome. The `SQLite` adapter's own coverage
 //! lives in `crate::db`.
 
@@ -16,8 +18,8 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 
 use crate::domain::{
-    ClaimCodeHash, ClaimCodeStore, ConnectionTotalsStore, HourlyCount, Outcome, StoredClaimCode,
-    StoredTunnel, Tunnel, TunnelError, TunnelStore,
+    AccessCodeStore, ClaimCodeHash, ClaimCodeStore, ConnectionTotalsStore, HourlyCount, Outcome,
+    StoredAccessCode, StoredClaimCode, StoredTunnel, Tunnel, TunnelError, TunnelStore,
 };
 use crate::settings::Secret;
 
@@ -25,6 +27,7 @@ use crate::settings::Secret;
 pub(crate) struct FakeTunnelStore {
     tunnels: RefCell<BTreeMap<String, StoredTunnel>>,
     claim_codes: RefCell<BTreeMap<ClaimCodeHash, StoredClaimCode>>,
+    access_codes: RefCell<BTreeMap<ClaimCodeHash, StoredAccessCode>>,
     connection_totals: RefCell<BTreeMap<(i64, Outcome), u64>>,
 }
 
@@ -74,7 +77,9 @@ impl ClaimCodeStore for FakeTunnelStore {
             ));
         }
         let mut claim_codes = self.claim_codes.borrow_mut();
-        if claim_codes.contains_key(&stored.code_hash) {
+        if claim_codes.contains_key(&stored.code_hash)
+            || self.access_codes.borrow().contains_key(&stored.code_hash)
+        {
             return Ok(false);
         }
         claim_codes.retain(|_, outstanding| outstanding.tunnel_name != stored.tunnel_name);
@@ -105,6 +110,56 @@ impl ClaimCodeStore for FakeTunnelStore {
         let before = claim_codes.len();
         claim_codes.retain(|_, stored| stored.expires_at > now);
         Ok(before - claim_codes.len())
+    }
+}
+
+impl AccessCodeStore for FakeTunnelStore {
+    fn insert_access_code(&self, stored: &StoredAccessCode) -> Result<bool, TunnelError> {
+        let mut access_codes = self.access_codes.borrow_mut();
+        if access_codes.contains_key(&stored.code_hash)
+            || self.claim_codes.borrow().contains_key(&stored.code_hash)
+        {
+            return Ok(false);
+        }
+        access_codes.insert(stored.code_hash, stored.clone());
+        Ok(true)
+    }
+
+    fn contains_access_code(
+        &self,
+        code_hash: &ClaimCodeHash,
+        now: i64,
+    ) -> Result<bool, TunnelError> {
+        Ok(self
+            .access_codes
+            .borrow()
+            .get(code_hash)
+            .is_some_and(|stored| stored.expires_at > now))
+    }
+
+    fn take_access_code_for_tunnel(
+        &self,
+        code_hash: &ClaimCodeHash,
+        now: i64,
+        tunnel: &StoredTunnel,
+    ) -> Result<Option<StoredAccessCode>, TunnelError> {
+        if !self.contains_access_code(code_hash, now)? {
+            return Ok(None);
+        }
+        if !self.insert_tunnel(tunnel)? {
+            return Err(TunnelError::infrastructure(
+                "redeeming the access code failed",
+                "UNIQUE constraint failed: tunnels.name",
+            ));
+        }
+        Ok(self.access_codes.borrow_mut().remove(code_hash))
+    }
+
+    fn delete_expired_access_codes(&self, now: i64) -> Result<usize, TunnelError> {
+        let mut access_codes = self.access_codes.borrow_mut();
+        let before = access_codes.len();
+        access_codes.retain(|_, stored| stored.expires_at > now);
+        Ok(before - access_codes.len())
     }
 }
 
@@ -142,6 +197,11 @@ impl FakeTunnelStore {
     /// Every stored claim code, by hash.
     pub(crate) fn claim_codes(&self) -> Vec<StoredClaimCode> {
         self.claim_codes.borrow().values().cloned().collect()
+    }
+
+    /// Every stored access code, by hash.
+    pub(crate) fn access_codes(&self) -> Vec<StoredAccessCode> {
+        self.access_codes.borrow().values().cloned().collect()
     }
 }
 

@@ -9,6 +9,8 @@
 //!   at most one per tunnel, addressed by the tunnel's `tunnel_name`; the
 //!   code's SHA-256 is unique across rows. Deleting the tunnel deletes its
 //!   row (`ON DELETE CASCADE`).
+//! - `access_codes` (`0004_access_codes`): the outstanding access codes,
+//!   addressed by the code's SHA-256, naming no tunnel.
 //! - `connection_totals` (`0003_connection_totals`): how many connections
 //!   had an outcome in a UTC hour, addressed by the `hour` and the
 //!   `outcome`'s name. No identifiers.
@@ -34,6 +36,13 @@ diesel::table! {
 }
 
 diesel::table! {
+    access_codes (code_hash) {
+        code_hash -> Binary,
+        expires_at -> BigInt,
+    }
+}
+
+diesel::table! {
     connection_totals (hour, outcome) {
         hour -> BigInt,
         outcome -> Text,
@@ -42,4 +51,4 @@ diesel::table! {
 }
 
 diesel::joinable!(claim_codes -> tunnels (tunnel_name));
-diesel::allow_tables_to_appear_in_same_query!(claim_codes, tunnels);
+diesel::allow_tables_to_appear_in_same_query!(access_codes, claim_codes, tunnels);

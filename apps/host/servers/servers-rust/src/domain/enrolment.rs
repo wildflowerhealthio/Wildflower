@@ -11,7 +11,12 @@
 //! only once the relay's identity is confirmed, for the tunnel name and
 //! token it stands for, with the relay settings, which must be the ones its
 //! `GET /rathole` served; the code is spent there and kept nowhere, and the
-//! registry is written next. Entered with a tunnel name and token instead, a
+//! registry is written next. A code the relay answers as an access code
+//! ([`EnrolmentError::AccessCodeNeedsDetails`], unburned) is entered again
+//! with an email and, optionally, a subdomain
+//! ([`EnteredCredentials::AccessCode`]), and redeemed with `POST /access`
+//! for a new tunnel under them, checked and spent the same way. Entered with
+//! a tunnel name and token instead, a
 //! `GET /me` signed with the token confirms the relay holds that tunnel name
 //! and token, and that it reaches the tunnel at
 //! `<tunnel name>.<relay domain>`; only then is the registry written. The
@@ -20,7 +25,7 @@
 //!
 //! A rathole relay, a rathole server with no Wildflower relay site, is
 //! entered as its settings, with a tunnel name and token: it redeems no
-//! claim codes. The settings get the same checks a `GET /rathole` response
+//! claim codes or access codes. The settings get the same checks a `GET /rathole` response
 //! does and become the record's `public_settings`; no request is made, and
 //! the tunnel coming up is the check. Its token is replaced without a
 //! request too.
@@ -33,8 +38,8 @@ use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use url::Url;
 use wildflowerhealthio_rathole_settings::{
-    parse_public_addr, ClaimedTunnel, NoisePattern, PublicRatholeSettings, RelayDomain, Transport,
-    TunnelHost, TunnelName,
+    parse_public_addr, AccessRequest, ClaimedTunnel, NoisePattern, PublicRatholeSettings,
+    RelayDomain, Transport, TunnelHost, TunnelName,
 };
 use wildflowerhealthio_unit_runner::RunPolicy;
 
@@ -134,7 +139,8 @@ impl RelayIdentity {
 
 /// The credentials the user entered to add a server with.
 ///
-/// Deserialised from `{"kind": "claimCode", "code"}` or
+/// Deserialised from `{"kind": "claimCode", "code"}`,
+/// `{"kind": "accessCode", "code", "email", "tunnelName"?}` or
 /// `{"kind": "token", "tunnelName", "token"}`. Each value is taken as typed
 /// and checked by [`add_server`], so a bad one is an [`EnrolmentError`]
 /// rather than an argument that fails to decode. `Debug` never prints the
@@ -151,6 +157,16 @@ pub enum EnteredCredentials {
     /// Wildflower relay redeems once for the tunnel's name and token. The
     /// relay ignores its case and the dash; [`add_server`] trims it.
     ClaimCode { code: String },
+    /// An access code from the relay's admin, which a Wildflower relay
+    /// redeems once for a new tunnel for `email`, named `tunnel_name` or,
+    /// without one, a name the relay draws. [`add_server`] trims the code
+    /// and the email.
+    AccessCode {
+        code: String,
+        email: String,
+        #[serde(default)]
+        tunnel_name: Option<String>,
+    },
     /// The tunnel's name and token at the relay, as its admin gave them.
     Token { tunnel_name: String, token: String },
 }
@@ -159,6 +175,13 @@ impl std::fmt::Debug for EnteredCredentials {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::ClaimCode { .. } => f.debug_struct("ClaimCode").finish_non_exhaustive(),
+            Self::AccessCode {
+                email, tunnel_name, ..
+            } => f
+                .debug_struct("AccessCode")
+                .field("email", email)
+                .field("tunnel_name", tunnel_name)
+                .finish_non_exhaustive(),
             Self::Token { tunnel_name, .. } => f
                 .debug_struct("Token")
                 .field("tunnel_name", tunnel_name)
@@ -168,21 +191,35 @@ impl std::fmt::Debug for EnteredCredentials {
 }
 
 impl EnteredCredentials {
-    /// The credentials, checked before any relay is asked: a claim code
-    /// trimmed, a tunnel name parsed and a token trimmed.
+    /// The credentials, checked before any relay is asked: a claim code or
+    /// access code and an email trimmed, a tunnel name parsed and a token
+    /// trimmed.
     ///
     /// # Errors
     ///
-    /// [`EnrolmentError::EmptyClaimCode`], [`EnrolmentError::InvalidTunnelName`]
-    /// or [`EnrolmentError::EmptyToken`].
+    /// [`EnrolmentError::EmptyClaimCode`], [`EnrolmentError::EmptyEmail`],
+    /// [`EnrolmentError::InvalidTunnelName`] or [`EnrolmentError::EmptyToken`].
     fn checked(self) -> Result<CheckedCredentials, EnrolmentError> {
         match self {
-            Self::ClaimCode { code } => {
-                let code = code.trim();
-                if code.is_empty() {
-                    return Err(EnrolmentError::EmptyClaimCode);
+            Self::ClaimCode { code } => Ok(CheckedCredentials::ClaimCode(trimmed_code(&code)?)),
+            Self::AccessCode {
+                code,
+                email,
+                tunnel_name,
+            } => {
+                let code = trimmed_code(&code)?;
+                let email = email.trim();
+                if email.is_empty() {
+                    return Err(EnrolmentError::EmptyEmail);
                 }
-                Ok(CheckedCredentials::ClaimCode(code.to_owned()))
+                let tunnel_name = tunnel_name
+                    .map(|tunnel_name| TunnelName::parse(tunnel_name).map(String::from))
+                    .transpose()?;
+                Ok(CheckedCredentials::AccessCode(AccessRequest {
+                    code,
+                    email: email.to_owned(),
+                    tunnel_name,
+                }))
             }
             Self::Token { tunnel_name, token } => Ok(CheckedCredentials::Token {
                 tunnel_name: TunnelName::parse(tunnel_name)?,
@@ -192,10 +229,26 @@ impl EnteredCredentials {
     }
 }
 
+/// A claim code or access code, trimmed.
+///
+/// # Errors
+///
+/// [`EnrolmentError::EmptyClaimCode`] for one left empty.
+fn trimmed_code(code: &str) -> Result<String, EnrolmentError> {
+    let code = code.trim();
+    if code.is_empty() {
+        return Err(EnrolmentError::EmptyClaimCode);
+    }
+    Ok(code.to_owned())
+}
+
 /// [`EnteredCredentials`] once checked.
 enum CheckedCredentials {
     /// A claim code, trimmed, for the relay to redeem.
     ClaimCode(String),
+    /// An access code with the email and tunnel name to redeem it for, as
+    /// `POST /access` takes them.
+    AccessCode(AccessRequest),
     Token {
         tunnel_name: TunnelName,
         token: TunnelToken,
@@ -225,8 +278,11 @@ struct EnrolledTunnel {
 /// signed `GET /me` follows: the code is spent once `POST /claim` answers,
 /// so nothing after it may fail and leave the user retrying a spent code,
 /// and the relay that answered, over TLS, is the one whose `GET /rathole`
-/// the claimed settings must match. Entered tunnel names and tokens are
-/// confirmed with a signed `GET /me`.
+/// the claimed settings must match. A code the relay answers as an access
+/// code is [`EnrolmentError::AccessCodeNeedsDetails`], unspent; an access
+/// code entered with an email is redeemed at `POST /access` the same way,
+/// for the tunnel it creates. Entered tunnel names and tokens are confirmed
+/// with a signed `GET /me`.
 ///
 /// `relay_client` builds the [`RelayClient`] for a Wildflower relay from its
 /// base URL; it is called once for an official or self-hosted Wildflower
@@ -234,11 +290,12 @@ struct EnrolledTunnel {
 ///
 /// # Errors
 ///
-/// [`EnrolmentError::EmptyClaimCode`], [`EnrolmentError::InvalidTunnelName`]
-/// or [`EnrolmentError::EmptyToken`] for the entered credentials, before
-/// anything is asked; [`EnrolmentError::InvalidRelaySetting`] for an entered
-/// base URL or rathole relay setting; [`EnrolmentError::ClaimCodesNotOffered`]
-/// for a claim code entered for a rathole relay;
+/// [`EnrolmentError::EmptyClaimCode`], [`EnrolmentError::EmptyEmail`],
+/// [`EnrolmentError::InvalidTunnelName`] or [`EnrolmentError::EmptyToken`]
+/// for the entered credentials, before anything is asked;
+/// [`EnrolmentError::InvalidRelaySetting`] for an entered base URL or rathole
+/// relay setting; [`EnrolmentError::ClaimCodesNotOffered`] for a claim code
+/// or access code entered for a rathole relay;
 /// [`EnrolmentError::PinMismatch`] when the relay doesn't serve the pinned
 /// identity; [`EnrolmentError::BadRelayResponse`] when the settings
 /// `POST /claim` sends aren't the ones `GET /rathole` served; any
@@ -467,9 +524,10 @@ async fn expected_public_settings(
 
 /// The tunnel `credentials` stand for at the Wildflower relay
 /// `relay_client` asks, confirmed: its `GET /rathole`, checked and passed to
-/// `expect`; then, for a claim code, its `POST /claim`, which must send the
-/// settings `GET /rathole` served, for the tunnel name and token, and nothing
-/// more is asked; for a tunnel name and token, a signed `GET /me`, which
+/// `expect`; then, for a claim code, its `POST /claim`, or, for an access
+/// code, its `POST /access`, which must send the settings `GET /rathole`
+/// served, for the tunnel name and token, and nothing more is asked; for a
+/// tunnel name and token, a signed `GET /me`, which
 /// confirms the relay holds them. `expect` runs before the code is redeemed
 /// or the signed request is sent.
 async fn enrolled_tunnel(
@@ -485,7 +543,16 @@ async fn enrolled_tunnel(
                 token,
                 rathole_settings,
             } = relay_client.claim(&code).await?;
-            check_claimed_settings(&rathole_settings, &public_settings)?;
+            check_claimed_settings(&rathole_settings, &public_settings, "/claim")?;
+            (tunnel_name, TunnelToken::new(token))
+        }
+        CheckedCredentials::AccessCode(request) => {
+            let ClaimedTunnel {
+                tunnel_name,
+                token,
+                rathole_settings,
+            } = relay_client.access(&request).await?;
+            check_claimed_settings(&rathole_settings, &public_settings, "/access")?;
             (tunnel_name, TunnelToken::new(token))
         }
         CheckedCredentials::Token { tunnel_name, token } => {
@@ -512,11 +579,13 @@ async fn confirm_tunnel(
     check_tunnel_host(&tunnel_host, tunnel_name, relay_domain)
 }
 
-/// Whether `POST /claim` sent the settings the relay's `GET /rathole`
-/// served, `public_settings`: the same domain, dial address and noise key.
+/// Whether `POST /claim` or `POST /access`, `path`, sent the settings the
+/// relay's `GET /rathole` served, `public_settings`: the same domain, dial
+/// address and noise key.
 fn check_claimed_settings(
     claimed_settings: &PublicRatholeSettings,
     public_settings: &PublicRatholeSettings,
+    path: &'static str,
 ) -> Result<(), EnrolmentError> {
     let difference = if claimed_settings.domain == public_settings.domain {
         RelayIdentity::of(public_settings).first_difference(claimed_settings)
@@ -530,7 +599,7 @@ fn check_claimed_settings(
     match difference {
         None => Ok(()),
         Some((setting, served, claimed)) => Err(EnrolmentError::BadRelayResponse {
-            path: "/claim",
+            path,
             reason: format!("it sends {setting} {claimed:?}, not the {served:?} /rathole serves"),
         }),
     }
@@ -632,6 +701,12 @@ mod tests {
     const PUBLIC_KEY: &str = "24cva5FBfzidZjaSQl4dyqGfuzDspKWe+koxXAVIQkM=";
     /// The claim code the fake relay redeems for `ruth` and [`TOKEN`].
     const CLAIM_CODE: &str = "ABCD-EFGH";
+    /// The access code the fake relay redeems for a new tunnel with
+    /// [`TOKEN`].
+    const ACCESS_CODE: &str = "JKMN-PQRS";
+    /// The name the fake relay draws for an access code redeemed without
+    /// one.
+    const DRAWN_NAME: &str = "drawn-name";
 
     fn served_settings() -> PublicRatholeSettings {
         PublicRatholeSettings {
@@ -644,9 +719,11 @@ mod tests {
     }
 
     /// A relay client that serves `public_settings` (or is unreachable when
-    /// there are none), accepts `ruth` with [`TOKEN`] and redeems
-    /// [`CLAIM_CODE`] for them. Clones share their counts, so a test keeps
-    /// one while enrolment gets another.
+    /// there are none), accepts `ruth` with [`TOKEN`], redeems
+    /// [`CLAIM_CODE`] for them, answers [`ACCESS_CODE`] at `POST /claim` as
+    /// an access code and redeems it at `POST /access` for the requested
+    /// tunnel name, or [`DRAWN_NAME`], with [`TOKEN`]. Clones share their
+    /// counts, so a test keeps one while enrolment gets another.
     #[derive(Clone)]
     struct FakeRelayClient {
         public_settings: Option<PublicRatholeSettings>,
@@ -658,6 +735,8 @@ mod tests {
         claimed_codes: Arc<Mutex<Vec<String>>>,
         /// What `POST /claim` fails with, in place of redeeming.
         claim_refusal: Option<fn() -> EnrolmentError>,
+        /// The body of every `POST /access`, in order.
+        access_requests: Arc<Mutex<Vec<AccessRequest>>>,
         /// The settings `POST /claim` sends, in place of `public_settings`.
         claimed_settings: Option<PublicRatholeSettings>,
         /// The base URL of every relay client built for enrolment.
@@ -675,6 +754,7 @@ mod tests {
                 tunnel_host_fetches: Arc::default(),
                 claimed_codes: Arc::default(),
                 claim_refusal: None,
+                access_requests: Arc::default(),
                 claimed_settings: None,
                 built_for: Arc::default(),
                 while_asked: None,
@@ -696,6 +776,18 @@ mod tests {
 
         fn claimed_codes(&self) -> Vec<String> {
             self.claimed_codes.lock().unwrap().clone()
+        }
+
+        fn access_requests(&self) -> Vec<AccessRequest> {
+            self.access_requests.lock().unwrap().clone()
+        }
+
+        /// The settings a redeemed code sends.
+        fn claimed_settings(&self) -> PublicRatholeSettings {
+            self.claimed_settings
+                .clone()
+                .or_else(|| self.public_settings.clone())
+                .unwrap()
         }
     }
 
@@ -736,17 +828,31 @@ mod tests {
             if let Some(claim_refusal) = self.claim_refusal {
                 return Err(claim_refusal());
             }
+            if code == ACCESS_CODE {
+                return Err(EnrolmentError::AccessCodeNeedsDetails);
+            }
             if code != CLAIM_CODE {
                 return Err(EnrolmentError::ClaimCodeRejected);
             }
             Ok(ClaimedTunnel {
                 tunnel_name: ruth(),
                 token: TOKEN.to_owned(),
-                rathole_settings: self
-                    .claimed_settings
-                    .clone()
-                    .or_else(|| self.public_settings.clone())
-                    .unwrap(),
+                rathole_settings: self.claimed_settings(),
+            })
+        }
+
+        async fn access(&self, request: &AccessRequest) -> Result<ClaimedTunnel, EnrolmentError> {
+            self.access_requests.lock().unwrap().push(request.clone());
+            if request.code != ACCESS_CODE {
+                return Err(EnrolmentError::AccessRefused {
+                    reason: "the access code is unknown, used or expired".to_owned(),
+                });
+            }
+            let tunnel_name = request.tunnel_name.as_deref().unwrap_or(DRAWN_NAME);
+            Ok(ClaimedTunnel {
+                tunnel_name: TunnelName::parse(tunnel_name).unwrap(),
+                token: TOKEN.to_owned(),
+                rathole_settings: self.claimed_settings(),
             })
         }
     }
@@ -832,6 +938,215 @@ mod tests {
             now(),
         )
         .await
+    }
+
+    async fn add_with_access_code(
+        registry: &Arc<dyn ServerRegistry>,
+        relay_client: &FakeRelayClient,
+        relay: EnteredRelay,
+        email: &str,
+        tunnel_name: Option<&str>,
+    ) -> Result<ServerRecord, EnrolmentError> {
+        add_server(
+            Arc::clone(registry),
+            relay,
+            EnteredCredentials::AccessCode {
+                code: format!(" {ACCESS_CODE} "),
+                email: email.to_owned(),
+                tunnel_name: tunnel_name.map(str::to_owned),
+            },
+            launcher_url(),
+            authorization_url(),
+            relay_client.builder(),
+            now(),
+        )
+        .await
+    }
+
+    /// An access code entered as a claim code is answered as one, with
+    /// nothing written, so the user can enter an email and subdomain.
+    #[tokio::test]
+    async fn an_access_code_entered_as_a_claim_code_asks_for_details() {
+        let (_data_root, registry) = registry();
+        let relay_client = FakeRelayClient::serving(served_settings());
+        let result = add_claiming(
+            &registry,
+            &relay_client,
+            EnteredRelay::WildflowerOfficial,
+            ACCESS_CODE,
+        )
+        .await;
+        assert_eq!(result.unwrap_err().kind(), "accessCodeNeedsDetails");
+        assert_eq!(registry.read_all().unwrap(), Vec::new());
+    }
+
+    /// An access code is redeemed at `POST /access` with the email and
+    /// subdomain chosen, trimmed, for the new tunnel, which is stored as if
+    /// its name and token had been entered.
+    #[tokio::test]
+    async fn adds_a_server_from_an_access_code() {
+        let (_data_root, registry) = registry();
+        let relay_client = FakeRelayClient::serving(served_settings());
+
+        let record = add_with_access_code(
+            &registry,
+            &relay_client,
+            EnteredRelay::WildflowerOfficial,
+            " ruth@example.com\n",
+            Some("ruth"),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            record,
+            ServerRecord {
+                relay: RelayKind::WildflowerOfficial,
+                tunnel_name: ruth(),
+                token: TunnelToken::new(TOKEN),
+                public_settings: served_settings(),
+                launcher_url: launcher_url(),
+                authorization_url: authorization_url(),
+                certificate_authority: ServerRecord::DEFAULT_CERTIFICATE_AUTHORITY,
+                run_policy: RunPolicy::WhileOpen,
+            }
+        );
+        assert_eq!(
+            relay_client.access_requests(),
+            vec![AccessRequest {
+                code: ACCESS_CODE.to_owned(),
+                email: "ruth@example.com".to_owned(),
+                tunnel_name: Some("ruth".to_owned()),
+            }]
+        );
+        assert_eq!(relay_client.tunnel_host_fetches.load(Ordering::SeqCst), 0);
+        assert_eq!(registry.read_all().unwrap(), vec![record]);
+    }
+
+    /// Without a subdomain the server takes the name the relay drew.
+    #[tokio::test]
+    async fn an_access_code_without_a_subdomain_takes_the_relay_s_name() {
+        let (_data_root, registry) = registry();
+        let relay_client = FakeRelayClient::serving(served_settings());
+        let record = add_with_access_code(
+            &registry,
+            &relay_client,
+            EnteredRelay::WildflowerOfficial,
+            "ruth@example.com",
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(record.domain(), format!("{DRAWN_NAME}.{RELAY_DOMAIN}"));
+        assert_eq!(relay_client.access_requests()[0].tunnel_name, None);
+    }
+
+    /// A blank email, a subdomain that isn't a tunnel name, or a rathole
+    /// relay, which redeems no codes, is refused before any relay is asked.
+    #[tokio::test]
+    async fn access_code_details_are_checked_before_a_request() {
+        for (relay, email, tunnel_name, kind) in [
+            (
+                EnteredRelay::WildflowerOfficial,
+                " ",
+                Some("ruth"),
+                "emptyEmail",
+            ),
+            (
+                EnteredRelay::WildflowerOfficial,
+                "ruth@example.com",
+                Some("Ruth"),
+                "invalidTunnelName",
+            ),
+            (
+                EnteredRelay::WildflowerOfficial,
+                "ruth@example.com",
+                Some("admin"),
+                "invalidTunnelName",
+            ),
+            (
+                rathole_relay(),
+                "ruth@example.com",
+                None,
+                "claimCodesNotOffered",
+            ),
+        ] {
+            let (_data_root, registry) = registry();
+            let result = add_server(
+                Arc::clone(&registry),
+                relay,
+                EnteredCredentials::AccessCode {
+                    code: ACCESS_CODE.to_owned(),
+                    email: email.to_owned(),
+                    tunnel_name: tunnel_name.map(str::to_owned),
+                },
+                launcher_url(),
+                authorization_url(),
+                no_client,
+                now(),
+            )
+            .await;
+            assert_eq!(
+                result.unwrap_err().kind(),
+                kind,
+                "{email:?} {tunnel_name:?}"
+            );
+            assert_eq!(registry.read_all().unwrap(), Vec::new());
+        }
+    }
+
+    /// A refused access code writes nothing; one whose answer sends other
+    /// settings than `GET /rathole` served is a bad `/access` response.
+    #[tokio::test]
+    async fn a_refused_or_mismatched_access_writes_nothing() {
+        let (_data_root, registry) = registry();
+        let relay_client = FakeRelayClient::serving(served_settings());
+        let result = add_server(
+            Arc::clone(&registry),
+            EnteredRelay::WildflowerOfficial,
+            EnteredCredentials::AccessCode {
+                code: "WXYZ-2345".to_owned(),
+                email: "ruth@example.com".to_owned(),
+                tunnel_name: None,
+            },
+            launcher_url(),
+            authorization_url(),
+            relay_client.builder(),
+            now(),
+        )
+        .await;
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "the relay refused the access code: the access code is unknown, used or expired"
+        );
+        assert_eq!(registry.read_all().unwrap(), Vec::new());
+
+        let relay_client = FakeRelayClient {
+            claimed_settings: Some(PublicRatholeSettings {
+                domain: "elsewhere.example.com".to_owned(),
+                ..served_settings()
+            }),
+            ..FakeRelayClient::serving(served_settings())
+        };
+        let result = add_with_access_code(
+            &registry,
+            &relay_client,
+            EnteredRelay::WildflowerOfficial,
+            "ruth@example.com",
+            Some("ruth"),
+        )
+        .await;
+        assert!(
+            matches!(
+                &result,
+                Err(EnrolmentError::BadRelayResponse {
+                    path: "/access",
+                    ..
+                })
+            ),
+            "{result:?}"
+        );
+        assert_eq!(registry.read_all().unwrap(), Vec::new());
     }
 
     /// A claim code is redeemed for the tunnel name and token, which are
@@ -1081,6 +1396,19 @@ mod tests {
                 serde_json::json!({"kind": "token", "tunnelName": "ruth", "token": TOKEN}),
                 token_credentials("ruth", TOKEN),
             ),
+            (
+                serde_json::json!({
+                    "kind": "accessCode",
+                    "code": CLAIM_CODE,
+                    "email": "ruth@example.com",
+                    "tunnelName": "ruth",
+                }),
+                EnteredCredentials::AccessCode {
+                    code: CLAIM_CODE.to_owned(),
+                    email: "ruth@example.com".to_owned(),
+                    tunnel_name: Some("ruth".to_owned()),
+                },
+            ),
         ] {
             let decoded = serde_json::from_value::<EnteredCredentials>(json.clone()).unwrap();
             assert_eq!(decoded, credentials, "{json}");
@@ -1095,6 +1423,13 @@ mod tests {
             serde_json::json!({"kind": "claimCode", "code": CLAIM_CODE, "tunnelName": "ruth"}),
             serde_json::json!({"kind": "token", "tunnelName": "ruth"}),
             serde_json::json!({"kind": "claim", "code": CLAIM_CODE}),
+            serde_json::json!({"kind": "accessCode", "code": CLAIM_CODE}),
+            serde_json::json!({
+                "kind": "accessCode",
+                "code": CLAIM_CODE,
+                "email": "ruth@example.com",
+                "tunnel_name": "ruth",
+            }),
         ] {
             assert!(
                 serde_json::from_value::<EnteredCredentials>(json.clone()).is_err(),
@@ -1116,6 +1451,22 @@ mod tests {
                 },
             ),
             ("token", token_credentials("ruth", "tunnel-token")),
+            (
+                "accessCode",
+                EnteredCredentials::AccessCode {
+                    code: CLAIM_CODE.to_owned(),
+                    email: "ruth@example.com".to_owned(),
+                    tunnel_name: Some("ruth".to_owned()),
+                },
+            ),
+            (
+                "accessCodeWithoutTunnelName",
+                EnteredCredentials::AccessCode {
+                    code: CLAIM_CODE.to_owned(),
+                    email: "ruth@example.com".to_owned(),
+                    tunnel_name: None,
+                },
+            ),
         ];
         for (name, entered) in &credentials {
             assert_eq!(

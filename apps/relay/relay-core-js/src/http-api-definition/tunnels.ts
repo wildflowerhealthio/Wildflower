@@ -95,10 +95,13 @@ const TunnelWithTokenSchema = Schema.Struct({
 })
 
 /**
- * A claim code just issued for a tunnel — mirrors the Rust
- * `IssuedClaimCodeBody`. The only response that carries the code, shown as
- * `ABCD-EFGH`; it redeems once, at the relay's `POST /claim`, until
- * `expires_at` or until the tunnel's next code replaces it.
+ * A claim code just issued for a tunnel, or an access code just issued —
+ * mirrors the Rust `IssuedClaimCodeBody`. The only response that carries the
+ * code, shown as `ABCD-EFGH`, and when it expires. A claim code redeems once,
+ * at the relay's `POST /claim`, until `expires_at` or until the tunnel's next
+ * code replaces it; an access code redeems once, at `POST /access`, until
+ * `expires_at`, for a new tunnel under the email and name the redeemer
+ * chooses.
  */
 const IssuedClaimCodeSchema = Schema.Struct({
   code: Schema.String,
@@ -188,6 +191,8 @@ const TunnelNamesExhaustedFromText = plainTextReason(
  * - `IssueClaimCode`: `201` with a claim code for the tunnel, shown only
  *   here, and when it expires, replacing the tunnel's earlier code; `404`
  *   when no tunnel has the name.
+ * - `IssueAccessCode`: `201` with an access code, shown only here, and when
+ *   it expires. It names no tunnel: whoever redeems it creates one.
  * - `ReissueToken`: `200` with a new token for the tunnel, shown only here.
  *   The old token stops working at once, and the device connected with it
  *   drops until it is given the new one. `404` when no tunnel has the name.
@@ -217,6 +222,11 @@ const httpApiGroup = HttpApiGroup.make('tunnels', { topLevel: false })
       .setPath(Schema.Struct({ name: Schema.String }))
       .addSuccess(IssuedClaimCodeSchema, { status: 201 })
       .addError(TunnelNotFoundFromText)
+  )
+  .add(
+    HttpApiEndpoint.post('IssueAccessCode', '/api/access-codes').addSuccess(IssuedClaimCodeSchema, {
+      status: 201,
+    })
   )
   .add(
     HttpApiEndpoint.post('ReissueToken', '/api/tunnels/:name/token')

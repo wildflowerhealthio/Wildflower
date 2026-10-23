@@ -2,6 +2,7 @@ import { ErrorBanner, PageHeader, PageLoading } from '@wildflowerhealthio/react-
 import { Option } from 'effect'
 import type { JSX } from 'react'
 
+import { AccessCodes } from './access-codes.tsx'
 import { AdminKeyForm } from './admin-key-form.tsx'
 import { ConnectionTotalsTables } from './connection-totals.tsx'
 import { CreateTunnelForm } from './create-tunnel-form.tsx'
@@ -15,12 +16,13 @@ interface RelayAdminScreenProps {
 }
 
 /**
- * Signed in: create a tunnel, the list of every tunnel, and the connection
- * totals.
+ * Signed in: create a tunnel, issue an access code, the list of every
+ * tunnel, and the connection totals.
  */
 const SignedIn = (): JSX.Element => (
   <div className={styles['relay-admin-screen__signed-in']}>
     <CreateTunnelForm />
+    <AccessCodes />
     <TunnelList />
     <ConnectionTotalsTables />
   </div>

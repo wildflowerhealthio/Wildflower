@@ -8,15 +8,16 @@
 //! path prefix, `https://example.com/relay`, is asked for
 //! `https://example.com/relay/rathole`, not `https://example.com/rathole`.
 //! `GET /me` is signed with the tunnel's token (see [`RequestSignature`]); the
-//! token is never sent. `POST /claim` sends the claim code as JSON, unsigned:
-//! the code is the credential, and the relay answers with the token.
+//! token is never sent. `POST /claim` sends the claim code as JSON, unsigned,
+//! and `POST /access` an access code with an email and tunnel name: the code
+//! is the credential, and the relay answers with the token.
 
 use std::time::Duration;
 
 use reqwest::StatusCode;
 use url::Url;
 use wildflowerhealthio_rathole_settings::{
-    ClaimRequest, ClaimedTunnel, PublicRatholeSettings, TunnelHost, TunnelName,
+    AccessRequest, ClaimRequest, ClaimedTunnel, PublicRatholeSettings, TunnelHost, TunnelName,
 };
 
 use super::request_signature::RequestSignature;
@@ -155,6 +156,22 @@ impl RelayClient for ReqwestRelayClient {
         let response = self.post_json(PATH, &request).await?;
         match response.status() {
             StatusCode::UNPROCESSABLE_ENTITY => Err(EnrolmentError::ClaimCodeRejected),
+            StatusCode::CONFLICT => Err(EnrolmentError::AccessCodeNeedsDetails),
+            StatusCode::TOO_MANY_REQUESTS => Err(EnrolmentError::ClaimRateLimited),
+            StatusCode::NOT_FOUND => Err(EnrolmentError::ClaimCodesNotOffered),
+            _ => decode_success(PATH, response).await,
+        }
+    }
+
+    async fn access(&self, request: &AccessRequest) -> Result<ClaimedTunnel, EnrolmentError> {
+        const PATH: &str = "/access";
+        let response = self.post_json(PATH, request).await?;
+        match response.status() {
+            StatusCode::UNPROCESSABLE_ENTITY
+            | StatusCode::CONFLICT
+            | StatusCode::SERVICE_UNAVAILABLE => Err(EnrolmentError::AccessRefused {
+                reason: refusal_reason(PATH, response).await?,
+            }),
             StatusCode::TOO_MANY_REQUESTS => Err(EnrolmentError::ClaimRateLimited),
             StatusCode::NOT_FOUND => Err(EnrolmentError::ClaimCodesNotOffered),
             _ => decode_success(PATH, response).await,
@@ -188,6 +205,27 @@ async fn decode_success<T: serde::de::DeserializeOwned>(
         .map_err(|error| bad(format!("{error:#}")))
 }
 
+/// The longest refusal the relay's plain-text answer is read for, in bytes:
+/// its reasons are a sentence.
+const MAX_REFUSAL_LEN: usize = 200;
+
+/// `response`'s plain-text body, the relay's reason for a refusal, cut to
+/// [`MAX_REFUSAL_LEN`] bytes on a character boundary.
+async fn refusal_reason(
+    path: &'static str,
+    response: reqwest::Response,
+) -> Result<String, EnrolmentError> {
+    let mut reason = response
+        .text()
+        .await
+        .map_err(|error| EnrolmentError::BadRelayResponse {
+            path,
+            reason: format!("{error:#}"),
+        })?;
+    reason.truncate(reason.floor_char_boundary(MAX_REFUSAL_LEN));
+    Ok(reason)
+}
+
 /// 128 random bits, hex: a nonce the relay hasn't seen, safe in a
 /// structured-field string.
 fn fresh_nonce() -> String {
@@ -208,7 +246,8 @@ mod tests {
     use tokio::sync::broadcast;
     use wildflowerhealthio_rathole_settings::{NoisePattern, Transport};
     use wildflowerhealthio_relay_server::domain::{
-        ClaimCode, ClaimCodeStore, StoredClaimCode, StoredTunnel, TunnelStore,
+        AccessCodeStore, ClaimCode, ClaimCodeStore, StoredAccessCode, StoredClaimCode,
+        StoredTunnel, TunnelStore,
     };
     use wildflowerhealthio_relay_server::{
         RatholeFeed, RelaySettings, Secret, ServedTunnels, Site, SqliteTunnelStore, Tunnel,
@@ -240,6 +279,8 @@ mod tests {
 
     /// The claim code [`TestRelay::start`] issues for `ruth`.
     const CLAIM_CODE: &str = "ABCD-EFGH";
+    /// The access code [`TestRelay::start`] issues.
+    const ACCESS_CODE: &str = "JKMN-PQRS";
 
     /// The real relay's site, with a self-signed certificate for
     /// [`RELAY_DOMAIN`] in place of the ACME one, on a loopback port, holding
@@ -254,9 +295,10 @@ mod tests {
     }
 
     impl TestRelay {
-        /// The relay with its admin API, so it serves `POST /claim`, its
-        /// store holding `ruth` and the unexpired claim code [`CLAIM_CODE`]
-        /// for it.
+        /// The relay with its admin API, so it serves `POST /claim` and
+        /// `POST /access`, its store holding `ruth`, the unexpired claim code
+        /// [`CLAIM_CODE`] for it and the unexpired access code
+        /// [`ACCESS_CODE`].
         async fn start() -> Self {
             let state_dir = tempfile::tempdir().unwrap();
             let store =
@@ -276,6 +318,12 @@ mod tests {
                 .replace_claim_code(&StoredClaimCode {
                     code_hash: ClaimCode::parse(CLAIM_CODE).unwrap().hash(),
                     tunnel_name: ruth().into(),
+                    expires_at: chrono::Utc::now().timestamp() + 600,
+                })
+                .unwrap();
+            store
+                .insert_access_code(&StoredAccessCode {
+                    code_hash: ClaimCode::parse(ACCESS_CODE).unwrap().hash(),
                     expires_at: chrono::Utc::now().timestamp() + 600,
                 })
                 .unwrap();
@@ -603,11 +651,108 @@ mod tests {
         ));
     }
 
+    /// The real relay answers an access code at `POST /claim` as one,
+    /// unspent; refuses a taken name at `POST /access` in its own words,
+    /// still unspent; then redeems it once for the chosen name.
+    #[tokio::test]
+    async fn an_access_code_redeems_once_at_the_real_relay() {
+        let relay = TestRelay::start().await;
+        let relay_client = relay.relay_client();
+        assert!(matches!(
+            relay_client.claim(ACCESS_CODE).await,
+            Err(EnrolmentError::AccessCodeNeedsDetails)
+        ));
+        let request = |tunnel_name: &str| AccessRequest {
+            code: ACCESS_CODE.to_lowercase(),
+            email: "kit@example.com".to_owned(),
+            tunnel_name: Some(tunnel_name.to_owned()),
+        };
+        let taken = relay_client.access(&request("ruth")).await;
+        assert!(
+            matches!(
+                &taken,
+                Err(EnrolmentError::AccessRefused { reason })
+                    if reason == "a tunnel already has the name"
+            ),
+            "{taken:?}"
+        );
+
+        let claimed = relay_client.access(&request("kit")).await.unwrap();
+        assert_eq!(claimed.tunnel_name, TunnelName::parse("kit").unwrap());
+        assert_eq!(claimed.rathole_settings, served_settings());
+        let tunnel_host = relay_client
+            .tunnel_host(&claimed.tunnel_name, &TunnelToken::new(claimed.token))
+            .await
+            .unwrap();
+        assert_eq!(tunnel_host.public_host, format!("kit.{RELAY_DOMAIN}"));
+
+        let spent = relay_client.access(&request("kit2")).await;
+        assert!(
+            matches!(
+                &spent,
+                Err(EnrolmentError::AccessRefused { reason })
+                    if reason == "the access code is unknown, used or expired"
+            ),
+            "{spent:?}"
+        );
+    }
+
+    /// Enrolment with an access code against the real relay, end to end:
+    /// the code entered alone asks for details, and entered with them adds
+    /// the server under the chosen subdomain.
+    #[tokio::test]
+    async fn adds_a_server_from_an_access_code_through_the_real_relay() {
+        let relay = TestRelay::start().await;
+        let data_root = tempfile::tempdir().unwrap();
+        let registry: Arc<dyn ServerRegistry> = Arc::new(JsonServerRegistry::in_data_root(
+            data_root.path(),
+            authorization_url(),
+        ));
+        let add = |credentials| {
+            add_server(
+                Arc::clone(&registry),
+                relay.relay(),
+                credentials,
+                launcher_url(),
+                authorization_url(),
+                |relay_base| Ok(relay.client_at(relay_base)),
+                chrono::Utc::now(),
+            )
+        };
+
+        let needs_details = add(EnteredCredentials::ClaimCode {
+            code: ACCESS_CODE.to_owned(),
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(needs_details.kind(), "accessCodeNeedsDetails");
+
+        let record = add(EnteredCredentials::AccessCode {
+            code: ACCESS_CODE.to_owned(),
+            email: "kit@example.com".to_owned(),
+            tunnel_name: Some("kit".to_owned()),
+        })
+        .await
+        .unwrap();
+        assert_eq!(record.domain(), format!("kit.{RELAY_DOMAIN}"));
+        assert_eq!(record.public_settings, served_settings());
+        assert_eq!(registry.read_all().unwrap(), vec![record]);
+    }
+
     #[tokio::test]
     async fn a_relay_without_its_admin_api_offers_no_claim_codes() {
         let relay = TestRelay::start_without_admin().await;
         assert!(matches!(
             relay.relay_client().claim(CLAIM_CODE).await,
+            Err(EnrolmentError::ClaimCodesNotOffered)
+        ));
+        let request = AccessRequest {
+            code: ACCESS_CODE.to_owned(),
+            email: "kit@example.com".to_owned(),
+            tunnel_name: None,
+        };
+        assert!(matches!(
+            relay.relay_client().access(&request).await,
             Err(EnrolmentError::ClaimCodesNotOffered)
         ));
     }

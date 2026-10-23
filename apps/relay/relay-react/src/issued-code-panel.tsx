@@ -1,29 +1,36 @@
 import { DateTime } from 'effect'
-import { useId, useState, type JSX } from 'react'
+import { useId, useState, type JSX, type ReactNode } from 'react'
 
 import type { IssuedClaimCode } from './queries/index.ts'
-import styles from './issued-claim-code-panel.module.css'
+import styles from './issued-code-panel.module.css'
 
-interface IssuedClaimCodePanelProps {
-  /** The tunnel the code was issued for. */
-  readonly tunnelName: string
+interface IssuedCodePanelProps {
+  /** The panel's heading, saying what the code is for. */
+  readonly title: string
+  /** What the code is, for assistive technology: `Claim code`, `Access code`. */
+  readonly codeLabel: string
   readonly issued: IssuedClaimCode
+  /** Who the operator gives the code to, ending the warning. */
+  readonly recipient: string
+  /** What the code redeems for, before the expiry. */
+  readonly children: ReactNode
   /** The operator has the code; it is not shown again. */
   readonly onDone: () => void
 }
 
 /**
- * A claim code just issued for a tunnel: the one time the relay shows it.
- * The tunnel's owner types it into their device, which redeems it once,
- * before it expires, for the tunnel's name and token. It cancels the
- * tunnel's earlier code. Copy puts the code on
- * the clipboard; Done drops it from the page.
+ * A claim code or access code just issued: the one time the relay shows it,
+ * with what it redeems for and when it expires. Copy puts the code on the
+ * clipboard; Done drops it from the page.
  */
-const IssuedClaimCodePanel = ({
-  tunnelName,
+const IssuedCodePanel = ({
+  title,
+  codeLabel,
   issued,
+  recipient,
+  children,
   onDone,
-}: IssuedClaimCodePanelProps): JSX.Element => {
+}: IssuedCodePanelProps): JSX.Element => {
   const headingId = useId()
   const [copied, setCopied] = useState(false)
   const copy = async (): Promise<void> => {
@@ -37,24 +44,24 @@ const IssuedClaimCodePanel = ({
     }
   }
   return (
-    <section className={styles['issued-claim-code-panel']} aria-labelledby={headingId}>
+    <section className={styles['issued-code-panel']} aria-labelledby={headingId}>
       <h3 id={headingId} className="text-heading-4">
-        Claim code for {tunnelName}
+        {title}
       </h3>
-      <code className={styles['issued-claim-code-panel__code']} aria-label="Claim code">
+      <code className={styles['issued-code-panel__code']} aria-label={codeLabel}>
         {issued.code}
       </code>
       <p className="text-body-2">
-        Its device redeems it once for the tunnel’s name and token. It expires at{' '}
+        {children} It expires at{' '}
         <time dateTime={DateTime.formatIso(issued.expires_at)}>
           {DateTime.formatLocal(issued.expires_at, { timeStyle: 'short' })}
         </time>
-        . Any code issued for this tunnel before it no longer works.
+        .
       </p>
-      <p className={styles['issued-claim-code-panel__warning']}>
-        This code won’t be shown again. Give it to the tunnel’s owner now.
+      <p className={styles['issued-code-panel__warning']}>
+        This code won’t be shown again. Give it to {recipient} now.
       </p>
-      <div className={styles['issued-claim-code-panel__actions']}>
+      <div className={styles['issued-code-panel__actions']}>
         <button
           type="button"
           className="button-2 outline"
@@ -72,4 +79,4 @@ const IssuedClaimCodePanel = ({
   )
 }
 
-export { IssuedClaimCodePanel, type IssuedClaimCodePanelProps }
+export { IssuedCodePanel, type IssuedCodePanelProps }

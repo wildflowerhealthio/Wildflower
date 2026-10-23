@@ -12,6 +12,7 @@ import * as RunPolicyChoice from './run-policy-choice.ts'
 import * as RunPolicy from './run-policy.ts'
 import {
   addServer,
+  asksForAccessCodeDetails,
   listServers,
   openNotifiedConsent,
   removeServer,
@@ -263,10 +264,11 @@ describe('EnteredCredentials', () => {
     expect(credentials).toEqual(Object.values(golden.enteredCredentials))
   })
 
-  it('should refuse a claim code without its code, and a token without its tunnel name', () => {
+  it('should refuse a claim code without its code, an access code without its email, and a token without its tunnel name', () => {
     // Arrange
     const malformed = [
       { kind: 'claimCode' },
+      { kind: 'accessCode', code: golden.enteredCredentials.accessCode.code },
       { kind: 'token', token: golden.enteredCredentials.token.token },
       { kind: 'claim', code: golden.enteredCredentials.claimCode.code },
     ]
@@ -343,6 +345,26 @@ describe('addServer', () => {
       const failure = failureOf(exit)
       const refusal = failure instanceof HostCommandFailed ? failure.refusal : Option.none()
       expect(refusal).toEqual(Option.some(error))
+    }
+  )
+
+  it.each(Object.values(golden.enrolmentErrors))(
+    'should ask for access code details only for the $kind refusal that says so',
+    async (error) => {
+      // Act
+      const { exit } = await runAgainstHostAnswering(
+        addServer({
+          relay: { kind: 'wildflowerOfficial' },
+          credentials: { kind: 'claimCode', code: 'ABCD-EFGH' },
+        }),
+        () => Promise.reject(error)
+      )
+
+      // Assert
+      const failure = failureOf(exit)
+      expect(failure !== undefined && asksForAccessCodeDetails(failure)).toBe(
+        error.kind === 'accessCodeNeedsDetails'
+      )
     }
   )
 })

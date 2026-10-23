@@ -55,26 +55,7 @@ impl<S: TunnelStore> TunnelsCreator<S> {
         rng: &mut R,
         now: impl FnOnce() -> Result<i64, TunnelError>,
     ) -> Result<StoredTunnel, TunnelError> {
-        let email = valid_email(email).ok_or(TunnelError::InvalidEmail)?;
-        let front = &self.front;
-        let name = match name {
-            Some(name) if !is_dns_label(name) => return Err(TunnelError::InvalidName),
-            Some(name) if front.is_reserved(name) => return Err(TunnelError::Reserved),
-            Some(name) if self.store.contains_tunnel(name)? => return Err(TunnelError::Taken),
-            Some(name) => name.to_owned(),
-            None => names::generate_unused(rng, |name| {
-                Ok::<_, TunnelError>(front.is_reserved(name) || self.store.contains_tunnel(name)?)
-            })?
-            .ok_or(TunnelError::Exhausted("no unused tunnel name was drawn"))?,
-        };
-        let stored = StoredTunnel {
-            tunnel: Tunnel {
-                name,
-                token: generate_token(rng),
-            },
-            email,
-            created_at: now()?,
-        };
+        let stored = new_stored_tunnel(&self.store, &self.front, email, name, rng, now)?;
         if !self.store.insert_tunnel(&stored)? {
             return Err(TunnelError::Taken);
         }
@@ -95,6 +76,48 @@ impl<S: TunnelStore> TunnelsCreator<S> {
     pub(crate) fn public_host(&self, name: &str) -> String {
         self.front.public_host(name)
     }
+}
+
+/// The tunnel to store for `email`, named `name` or, without one, two
+/// random words (see [`names`]) that `store` does not have and `front` does
+/// not reserve, with a random token from `rng`, created at the time `now`
+/// reads (Unix epoch seconds). Stores nothing: [`TunnelsCreator::create`]
+/// and the access-code redeemer each store it their own way.
+///
+/// # Errors
+///
+/// [`TunnelError::InvalidEmail`], [`InvalidName`](TunnelError::InvalidName),
+/// [`Reserved`](TunnelError::Reserved), [`Taken`](TunnelError::Taken) or
+/// [`Exhausted`](TunnelError::Exhausted), before `now` is read; then
+/// whatever `now` fails with; and [`TunnelError::Infrastructure`] if the
+/// store read fails.
+pub(crate) fn new_stored_tunnel<S: TunnelStore, R: Rng + ?Sized>(
+    store: &S,
+    front: &FrontSettings,
+    email: &str,
+    name: Option<&str>,
+    rng: &mut R,
+    now: impl FnOnce() -> Result<i64, TunnelError>,
+) -> Result<StoredTunnel, TunnelError> {
+    let email = valid_email(email).ok_or(TunnelError::InvalidEmail)?;
+    let name = match name {
+        Some(name) if !is_dns_label(name) => return Err(TunnelError::InvalidName),
+        Some(name) if front.is_reserved(name) => return Err(TunnelError::Reserved),
+        Some(name) if store.contains_tunnel(name)? => return Err(TunnelError::Taken),
+        Some(name) => name.to_owned(),
+        None => names::generate_unused(rng, |name| {
+            Ok::<_, TunnelError>(front.is_reserved(name) || store.contains_tunnel(name)?)
+        })?
+        .ok_or(TunnelError::Exhausted("no unused tunnel name was drawn"))?,
+    };
+    Ok(StoredTunnel {
+        tunnel: Tunnel {
+            name,
+            token: generate_token(rng),
+        },
+        email,
+        created_at: now()?,
+    })
 }
 
 /// A tunnel token: [`TOKEN_BYTES`] bytes from `rng`, base64url without

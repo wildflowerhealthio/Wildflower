@@ -10,7 +10,10 @@
 //! the token gets the tunnel's [`TunnelHost`] from `GET /me`. A device given a
 //! claim code instead sends it to `POST /claim` as a [`ClaimRequest`] and gets
 //! back a [`ClaimedTunnel`]: the tunnel's name and token with the public
-//! settings.
+//! settings. A device given an access code, which the relay answers at
+//! `POST /claim` with `409`, sends it to `POST /access` as an
+//! [`AccessRequest`], with the email and tunnel name its user chose, and
+//! gets back a [`ClaimedTunnel`] for the tunnel it created.
 //!
 //! Both ends also check a dial address with the same [`parse_public_addr`].
 //! A device decodes the relay's domain, which ends each of its servers'
@@ -78,6 +81,27 @@ pub struct ClaimRequest {
 impl fmt::Debug for ClaimRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ClaimRequest").finish_non_exhaustive()
+    }
+}
+
+/// The body of the relay's `POST /access`: an access code as the operator
+/// gave it, read as a claim code is, with the email the tunnel is created
+/// for and, optionally, the tunnel name to create it under (the relay draws
+/// one without it). The relay checks the email and name as its admin API
+/// does. `Debug` never prints the code.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AccessRequest {
+    pub code: String,
+    pub email: String,
+    pub tunnel_name: Option<String>,
+}
+
+impl fmt::Debug for AccessRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AccessRequest")
+            .field("email", &self.email)
+            .field("tunnel_name", &self.tunnel_name)
+            .finish_non_exhaustive()
     }
 }
 
@@ -186,6 +210,29 @@ mod tests {
         );
         assert!(!debug.contains("a-token"), "{debug}");
         assert!(!debug.contains("ABCD"), "{debug}");
+    }
+
+    #[test]
+    fn an_access_request_names_its_fields_and_never_prints_the_code() {
+        let request = AccessRequest {
+            code: "ABCD-EFGH".to_owned(),
+            email: "ruth@example.com".to_owned(),
+            tunnel_name: Some("ruth".to_owned()),
+        };
+        assert_eq!(
+            serde_json::to_value(&request).unwrap(),
+            serde_json::json!({
+                "code": "ABCD-EFGH",
+                "email": "ruth@example.com",
+                "tunnel_name": "ruth",
+            })
+        );
+        let without_name: AccessRequest =
+            serde_json::from_str(r#"{"code":"ABCD-EFGH","email":"ruth@example.com"}"#).unwrap();
+        assert_eq!(without_name.tunnel_name, None);
+        let debug = format!("{request:?}");
+        assert!(!debug.contains("ABCD"), "{debug}");
+        assert!(debug.contains("ruth@example.com"), "{debug}");
     }
 
     #[test]

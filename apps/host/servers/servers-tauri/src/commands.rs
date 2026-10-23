@@ -376,7 +376,7 @@ mod tests {
     use serde::Deserialize;
     use tokio_util::sync::CancellationToken;
     use wildflowerhealthio_rathole_settings::{
-        ClaimedTunnel, PublicRatholeSettings, TunnelHost, TunnelName,
+        AccessRequest, ClaimedTunnel, PublicRatholeSettings, TunnelHost, TunnelName,
     };
     use wildflowerhealthio_servers::{
         JsonServerRegistry, RelayKind, ServerDetail, ServerRecord, SERVERS_FILE_NAME,
@@ -474,6 +474,12 @@ mod tests {
                 tunnel_name: TunnelName::parse("ruth").unwrap(),
                 token: TOKEN.to_owned(),
                 rathole_settings: served_settings(),
+            })
+        }
+
+        async fn access(&self, _request: &AccessRequest) -> Result<ClaimedTunnel, EnrolmentError> {
+            Err(EnrolmentError::AccessRefused {
+                reason: "the access code is unknown, used or expired".to_owned(),
             })
         }
     }

@@ -41,6 +41,7 @@
 //! rathole client needs to dial the relay (see
 //! [`RelaySettings::public_rathole_settings`]), `GET /me`, a signed
 //! request's tunnel, `POST /claim`, which redeems a claim code (see "Claim
+//! codes" below), `POST /access`, which redeems an access code (see "Access
 //! codes" below), and on `admin.<domain>` the admin API (see "Signed
 //! requests" below). The certificate, for both names, comes from
 //! Let's Encrypt over TLS-ALPN-01, whose validation handshakes reach the
@@ -158,6 +159,10 @@
 //!   "ABCD-EFGH", "expires_at": <Unix epoch seconds>}`, or is `404` when no
 //!   tunnel has the name. The code is shown only in this answer, and
 //!   replaces the tunnel's earlier code.
+//! - `POST /api/access-codes`, without a body, issues an access code (see
+//!   "Access codes" below) and answers `201 {"code": "ABCD-EFGH",
+//!   "expires_at": <Unix epoch seconds>}`. The code is shown only in this
+//!   answer.
 //! - `POST /api/tunnels/{name}/token`, without a body, replaces the tunnel's
 //!   token with a new random one and answers `200 {"name", "token",
 //!   "public_host"}`, or is `404` when no tunnel has the name. The new token
@@ -188,8 +193,9 @@
 //! `WILDFLOWER_RELAY_ADMIN_KEY` once; the browser keeps a non-extractable
 //! signing key made from it, signs each API call with it as above, and
 //! forgets it on Sign out. The page lists the tunnels, creates one (showing
-//! its token once, to hand to the tunnel's owner), issues a claim code for
-//! one (showing it once, with its expiry), reissues one's token (after a
+//! its token once, to hand to the tunnel's owner), issues an access code
+//! (showing it once, with its expiry), issues a claim code for one
+//! (showing it once, with its expiry), reissues one's token (after a
 //! confirmation, showing the new one once) and deletes one. Each tunnel's
 //! row says what became of its last connection, and under the list two
 //! tables show the connection totals: the last 24 hours by UTC hour and the
@@ -222,12 +228,33 @@
 //! is `429`. `POST /claim` is served with the admin API, since only the admin
 //! API issues codes.
 //!
+//! ### Access codes
+//!
+//! An access code hands someone a tunnel that doesn't exist yet: it has a
+//! claim code's format, randomness, lifetime and hashing, but names no
+//! tunnel, so any number are outstanding at once. No hash is stored as both
+//! kinds, so a typed code is one or the other. Sent to `POST /claim`, an
+//! unexpired access code is not burned: it answers `409` with a plain-text
+//! body saying it is one, so a device with one code field learns to ask for
+//! an email and a subdomain. The device then sends it, unsigned, to
+//! `POST https://<domain>/access` as `{"code": "ABCD-EFGH", "email":
+//! "<owner>", "tunnel_name": "<tunnel name>"}`, `tunnel_name` optional. The
+//! code is checked first: malformed, unknown, used or expired is `422` with
+//! one plain-text body, whatever came with it. For a code that would redeem,
+//! the email and name are checked as `POST /api/tunnels` checks them (`422`,
+//! `409` or `503` with its reason), leaving the code to redeem on another
+//! try. Then the tunnel is created and the code burned in one transaction,
+//! and the answer is `POST /claim`'s for the new tunnel. Of concurrent
+//! redeems of one code, exactly one creates its tunnel. `POST /access`
+//! spends from the same limits as `POST /claim`.
+//!
 //! ## Configuration
 //!
 //! The environment is the only source of settings: every setting is a
 //! `WILDFLOWER_RELAY_*` variable (see [`settings`], and `relay.example.env`
 //! for a commented list). Tunnels come only from the admin API, which keeps
-//! them, each with its own token and outstanding claim code, in SQLite at
+//! them, each with its own token and outstanding claim code, with the
+//! outstanding access codes, in SQLite at
 //! `<WILDFLOWER_RELAY_STATE_DIR>/tunnels.db`. On every start the relay
 //! builds rathole's config for them in memory (see [`config`]); no rathole
 //! file is written or read. Each change through the admin API reaches the
@@ -242,7 +269,7 @@
 //!
 //! The relay writes two logs (see [`logging`]), both filtered by `RUST_LOG`
 //! (default `info`). The journal (stdout) names no one: no tunnel names,
-//! SNI, IP addresses, emails or claim codes, though the relay's own domain
+//! SNI, IP addresses, emails, claim codes or access codes, though the relay's own domain
 //! and hostnames appear. The lines that need an identifier, those with
 //! `target: logging::IDENTIFYING` (tunnels' names, refused visitors'
 //! addresses and what they sent) and all of rathole's, go to the
@@ -253,11 +280,14 @@
 //!
 //!  - [`domain`] — pure: the [`Tunnel`] and [`StoredTunnel`] types, the
 //!    [`TunnelStore`] persistence *port*, the claim-code types and their
-//!    [`ClaimCodeStore`](domain::ClaimCodeStore) port, the outcomes and the
+//!    [`ClaimCodeStore`](domain::ClaimCodeStore) port, the access-code types
+//!    and their [`AccessCodeStore`](domain::AccessCodeStore) port, the
+//!    outcomes and the
 //!    [`ConnectionTotalsStore`] port, the failure vocabulary
 //!    ([`TunnelError`](domain::TunnelError)), and the capabilities
 //!    (`domain::capabilities`) that decide a read, create, delete or token
-//!    reissue, issue or redeem a claim code, or read the connection totals,
+//!    reissue, issue or redeem a claim code or an access code, or read the
+//!    connection totals,
 //!    and drive the store through the ports.
 //!  - [`db`] — the [`SqliteTunnelStore`] adapter implementing the ports with
 //!    Diesel over a `wildflowerhealthio_persistence::DieselPool` onto `tunnels.db`, and its
@@ -265,7 +295,7 @@
 //!  - [`live_bindings`] — the [`TunnelRegistry`] router state that holds the
 //!    store and what serves the stored tunnels, and the bindings that build
 //!    each capability from it (for an admin-signed request, or for
-//!    `POST /claim`), run it off the async runtime and serve the change:
+//!    `POST /claim` and `POST /access`), run it off the async runtime and serve the change:
 //!    rathole's services and the [`ServedTunnels`].
 //!
 //! ## Deploying

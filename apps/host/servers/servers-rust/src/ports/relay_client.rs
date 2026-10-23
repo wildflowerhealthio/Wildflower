@@ -2,7 +2,7 @@
 //! relay's own site.
 
 use wildflowerhealthio_rathole_settings::{
-    ClaimedTunnel, PublicRatholeSettings, TunnelHost, TunnelName,
+    AccessRequest, ClaimedTunnel, PublicRatholeSettings, TunnelHost, TunnelName,
 };
 
 use crate::domain::{EnrolmentError, TunnelToken};
@@ -48,6 +48,8 @@ pub trait RelayClient: Send + Sync {
     ///
     /// [`EnrolmentError::ClaimCodeRejected`] when the relay answers `422`,
     /// which it does for every code it won't redeem;
+    /// [`EnrolmentError::AccessCodeNeedsDetails`] for `409`, an access code,
+    /// which it leaves unspent;
     /// [`EnrolmentError::ClaimRateLimited`] for `429`;
     /// [`EnrolmentError::ClaimCodesNotOffered`] for `404`, a relay site
     /// without `POST /claim`;
@@ -55,4 +57,21 @@ pub trait RelayClient: Send + Sync {
     /// [`EnrolmentError::BadRelayResponse`] for any other non-success status
     /// or a body that isn't a [`ClaimedTunnel`].
     async fn claim(&self, code: &str) -> Result<ClaimedTunnel, EnrolmentError>;
+
+    /// `POST {relay base}/access` with `request`: redeems the access code,
+    /// once, for a new tunnel for the email, named as requested or by the
+    /// relay, its token and the relay's public settings.
+    ///
+    /// # Errors
+    ///
+    /// [`EnrolmentError::AccessRefused`], with the relay's reason, when it
+    /// answers `422`, `409` or `503`: for a code it won't redeem, or an
+    /// email or name it refuses;
+    /// [`EnrolmentError::ClaimRateLimited`] for `429`;
+    /// [`EnrolmentError::ClaimCodesNotOffered`] for `404`, a relay site
+    /// without `POST /access`;
+    /// [`EnrolmentError::RelayUnreachable`] when no response comes back, and
+    /// [`EnrolmentError::BadRelayResponse`] for any other non-success status
+    /// or a body that isn't a [`ClaimedTunnel`].
+    async fn access(&self, request: &AccessRequest) -> Result<ClaimedTunnel, EnrolmentError>;
 }

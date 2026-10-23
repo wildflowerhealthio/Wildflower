@@ -14,12 +14,19 @@
 //! [`StoredClaimCode`], by its [`ClaimCodeHash`]; the admin sees it once, as
 //! an [`IssuedClaimCode`].
 //!
+//! An access code has a claim code's format and hash but names no tunnel:
+//! it redeems once for a new tunnel under the email and name the redeemer
+//! chooses. The [`AccessCodeStore`] port keeps each as a
+//! [`StoredAccessCode`]; redeeming one stores the tunnel and burns the code
+//! together, as a [`RedeemedAccessCode`].
+//!
 //! A connection to the front ends with an [`Outcome`], or, routed to a
 //! tunnel, a [`TunnelOutcome`]. The [`ConnectionTotalsStore`] port keeps how
 //! many connections had each outcome per UTC hour, as [`HourlyCount`]s, and
 //! the admin API lists them as [`HourlyTotals`]. None of these carries an
 //! identifier.
 
+mod access_code_store;
 pub(crate) mod capabilities;
 mod claim_code;
 mod claim_code_store;
@@ -28,7 +35,9 @@ mod connection_totals_store;
 mod hourly_count;
 mod issued_claim_code;
 pub mod names;
+mod redeemed_access_code;
 mod reissued_tunnel;
+mod stored_access_code;
 mod stored_claim_code;
 mod stored_tunnel;
 mod tunnel;
@@ -41,13 +50,16 @@ mod tunnel_store;
 #[cfg(test)]
 pub(crate) mod test_fake;
 
+pub use access_code_store::AccessCodeStore;
 pub use claim_code::{ClaimCode, ClaimCodeHash};
 pub use claim_code_store::ClaimCodeStore;
 pub use connection_outcome::{Outcome, TunnelOutcome};
 pub use connection_totals_store::ConnectionTotalsStore;
 pub use hourly_count::{hour_start, HourlyCount, HourlyTotals, HOUR_SECS};
 pub use issued_claim_code::IssuedClaimCode;
+pub use redeemed_access_code::RedeemedAccessCode;
 pub use reissued_tunnel::ReissuedTunnel;
+pub use stored_access_code::StoredAccessCode;
 pub use stored_claim_code::StoredClaimCode;
 pub use stored_tunnel::StoredTunnel;
 pub use tunnel::Tunnel;

@@ -4,7 +4,8 @@
 //! of Diesel `SqliteConnection`s (`wildflowerhealthio_persistence::DieselPool`), applies
 //! the embedded relay migrations once on construction, and implements the
 //! port by delegating to the query bodies in `tunnels`, the
-//! [`ClaimCodeStore`] port by delegating to those in `claim_codes`, and the
+//! [`ClaimCodeStore`] port by delegating to those in `claim_codes`, the
+//! [`AccessCodeStore`] port by delegating to those in `access_codes`, and the
 //! [`ConnectionTotalsStore`] port by delegating to those in
 //! `connection_totals`. Mirrors
 //! `apps-rust`'s `SqliteAppsStore`.
@@ -19,10 +20,10 @@ use anyhow::Context;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 use wildflowerhealthio_persistence::{DieselPool, PooledDieselConnection};
 
-use crate::db::{claim_codes, connection_totals, tunnels};
+use crate::db::{access_codes, claim_codes, connection_totals, tunnels};
 use crate::domain::{
-    ClaimCodeHash, ClaimCodeStore, ConnectionTotalsStore, HourlyCount, StoredClaimCode,
-    StoredTunnel, Tunnel, TunnelError, TunnelStore,
+    AccessCodeStore, ClaimCodeHash, ClaimCodeStore, ConnectionTotalsStore, HourlyCount,
+    StoredAccessCode, StoredClaimCode, StoredTunnel, Tunnel, TunnelError, TunnelStore,
 };
 
 /// The relay's migration namespace. Applied versions are bookkept
@@ -166,6 +167,35 @@ impl ClaimCodeStore for SqliteTunnelStore {
     }
 }
 
+/// The access-code port over the same database: thin delegations to the
+/// query bodies in `access_codes`.
+impl AccessCodeStore for SqliteTunnelStore {
+    fn insert_access_code(&self, stored: &StoredAccessCode) -> Result<bool, TunnelError> {
+        access_codes::insert_access_code(&mut self.connection()?, stored)
+    }
+
+    fn contains_access_code(
+        &self,
+        code_hash: &ClaimCodeHash,
+        now: i64,
+    ) -> Result<bool, TunnelError> {
+        access_codes::contains_access_code(&mut self.connection()?, code_hash, now)
+    }
+
+    fn take_access_code_for_tunnel(
+        &self,
+        code_hash: &ClaimCodeHash,
+        now: i64,
+        tunnel: &StoredTunnel,
+    ) -> Result<Option<StoredAccessCode>, TunnelError> {
+        access_codes::take_access_code_for_tunnel(&mut self.connection()?, code_hash, now, tunnel)
+    }
+
+    fn delete_expired_access_codes(&self, now: i64) -> Result<usize, TunnelError> {
+        access_codes::delete_expired_access_codes(&mut self.connection()?, now)
+    }
+}
+
 /// The hourly connection totals over the same database: thin delegations to
 /// the query bodies in `connection_totals`.
 impl ConnectionTotalsStore for SqliteTunnelStore {
@@ -302,6 +332,136 @@ mod tests {
             .take_claim_code(&ClaimCodeHash([3; 32]), 1_500)
             .unwrap()
             .is_some());
+    }
+
+    /// An access code hashed `byte` repeated, expiring at `expires_at`.
+    fn access_code(byte: u8, expires_at: i64) -> StoredAccessCode {
+        StoredAccessCode {
+            code_hash: ClaimCodeHash([byte; 32]),
+            expires_at,
+        }
+    }
+
+    #[test]
+    fn an_access_code_is_taken_once_while_unexpired_storing_its_tunnel() {
+        let store = SqliteTunnelStore::open_in_memory().unwrap();
+        let code = access_code(1, 1_900);
+        assert!(store.insert_access_code(&code).unwrap());
+        assert!(!store.insert_access_code(&access_code(1, 5)).unwrap());
+        assert!(store.contains_access_code(&code.code_hash, 1_899).unwrap());
+        assert!(!store.contains_access_code(&code.code_hash, 1_900).unwrap());
+
+        let bob = stored_tunnel("bob");
+        assert_eq!(
+            store
+                .take_access_code_for_tunnel(&code.code_hash, 1_900, &bob)
+                .unwrap(),
+            None
+        );
+        assert!(
+            store.list_tunnels().unwrap().is_empty(),
+            "expired: no tunnel"
+        );
+        assert_eq!(
+            store
+                .take_access_code_for_tunnel(&code.code_hash, 1_899, &bob)
+                .unwrap(),
+            Some(code.clone())
+        );
+        assert_eq!(store.list_tunnels().unwrap(), [bob]);
+        let carol = stored_tunnel("carol");
+        assert_eq!(
+            store
+                .take_access_code_for_tunnel(&code.code_hash, 1_000, &carol)
+                .unwrap(),
+            None,
+            "burned"
+        );
+        assert!(!store.contains_access_code(&code.code_hash, 1_000).unwrap());
+    }
+
+    /// A tunnel name already stored fails the redemption and leaves the
+    /// code to redeem.
+    #[test]
+    fn a_taken_name_rolls_the_redemption_back() {
+        let store = SqliteTunnelStore::open_in_memory().unwrap();
+        store.insert_tunnel(&stored_tunnel("alice")).unwrap();
+        let code = access_code(1, 1_900);
+        store.insert_access_code(&code).unwrap();
+        let mut taken = stored_tunnel("alice");
+        taken.email = "someone-else@example.com".to_owned();
+        let refused = store.take_access_code_for_tunnel(&code.code_hash, 1_000, &taken);
+        assert!(matches!(
+            refused.unwrap_err(),
+            TunnelError::Infrastructure { .. }
+        ));
+        assert!(store.contains_access_code(&code.code_hash, 1_000).unwrap());
+        assert_eq!(store.list_tunnels().unwrap(), [stored_tunnel("alice")]);
+    }
+
+    /// No hash is stored as an access code and a claim code at once,
+    /// whichever is stored first.
+    #[test]
+    fn access_codes_and_claim_codes_never_share_a_hash() {
+        let store = SqliteTunnelStore::open_in_memory().unwrap();
+        store.insert_tunnel(&stored_tunnel("alice")).unwrap();
+        assert!(store.insert_access_code(&access_code(1, 1_900)).unwrap());
+        assert!(!store
+            .replace_claim_code(&claim_code(1, "alice", 1_900))
+            .unwrap());
+        assert!(store
+            .replace_claim_code(&claim_code(2, "alice", 1_900))
+            .unwrap());
+        assert!(!store.insert_access_code(&access_code(2, 1_900)).unwrap());
+    }
+
+    #[test]
+    fn expired_access_codes_are_deleted() {
+        let store = SqliteTunnelStore::open_in_memory().unwrap();
+        for (byte, expires_at) in [(1, 1_000), (2, 1_500), (3, 2_000)] {
+            store
+                .insert_access_code(&access_code(byte, expires_at))
+                .unwrap();
+        }
+        assert_eq!(store.delete_expired_access_codes(1_500).unwrap(), 2);
+        assert_eq!(store.delete_expired_access_codes(1_500).unwrap(), 0);
+        assert!(store
+            .contains_access_code(&ClaimCodeHash([3; 32]), 1_500)
+            .unwrap());
+    }
+
+    /// Many threads, each on its own connection to the same file, redeem
+    /// the same access code at once, each for its own tunnel: exactly one
+    /// stores its tunnel.
+    #[test]
+    fn of_concurrent_access_code_takes_exactly_one_stores_its_tunnel() {
+        let dir = tempfile::tempdir().unwrap();
+        let store =
+            SqliteTunnelStore::open(&dir.path().join(SqliteTunnelStore::FILE_NAME)).unwrap();
+        let code = access_code(1, 1_900);
+        store.insert_access_code(&code).unwrap();
+        let barrier = std::sync::Barrier::new(8);
+        let taken: Vec<bool> = std::thread::scope(|scope| {
+            let takers: Vec<_> = (0..8)
+                .map(|taker| {
+                    let (store, barrier, code) = (&store, &barrier, &code);
+                    scope.spawn(move || {
+                        let tunnel = stored_tunnel(&format!("taker{taker}"));
+                        barrier.wait();
+                        store
+                            .take_access_code_for_tunnel(&code.code_hash, 1_000, &tunnel)
+                            .unwrap()
+                            .is_some()
+                    })
+                })
+                .collect();
+            takers
+                .into_iter()
+                .map(|taker| taker.join().unwrap())
+                .collect()
+        });
+        assert_eq!(taken.iter().filter(|&&won| won).count(), 1);
+        assert_eq!(store.list_tunnels().unwrap().len(), 1);
     }
 
     /// Many threads, each on its own connection to the same file, redeem

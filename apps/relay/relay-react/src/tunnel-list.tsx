@@ -8,7 +8,7 @@ import {
 import { DateTime, Option } from 'effect'
 import { useState, type JSX } from 'react'
 
-import { IssuedClaimCodePanel } from './issued-claim-code-panel.tsx'
+import { IssuedCodePanel } from './issued-code-panel.tsx'
 import {
   useDeleteTunnelMutation,
   useIssueClaimCodeMutation,
@@ -127,14 +127,19 @@ const TunnelList = (): JSX.Element => {
         tunnelName: Option.fromNullable(issue.variables),
       }).pipe(
         Option.map(({ issued, tunnelName }) => (
-          <IssuedClaimCodePanel
+          <IssuedCodePanel
             key="issued-claim-code"
-            tunnelName={tunnelName}
+            title={`Claim code for ${tunnelName}`}
+            codeLabel="Claim code"
             issued={issued}
+            recipient="the tunnel’s owner"
             onDone={() => {
               issue.reset()
             }}
-          />
+          >
+            Its device redeems it once for the tunnel’s name and token. Any code issued for this
+            tunnel before it no longer works.
+          </IssuedCodePanel>
         )),
         Option.getOrNull
       )}

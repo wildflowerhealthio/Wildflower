@@ -9,6 +9,7 @@ export {
   useConnectionTotalsQuery,
   useCreateTunnelMutation,
   useDeleteTunnelMutation,
+  useIssueAccessCodeMutation,
   useIssueClaimCodeMutation,
   useReissueTokenMutation,
   useTunnelsQuery,

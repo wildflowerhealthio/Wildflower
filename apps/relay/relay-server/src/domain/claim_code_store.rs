@@ -19,7 +19,8 @@ pub trait ClaimCodeStore {
     /// Make `stored` its tunnel's one outstanding code, replacing any code
     /// the tunnel already has, which then stops redeeming. Returns `true`
     /// when it was stored, `false`, storing nothing, when another stored
-    /// code has the same hash. The tunnel it names must be stored.
+    /// claim code or an access code has the same hash. The tunnel it names
+    /// must be stored.
     ///
     /// # Errors
     ///

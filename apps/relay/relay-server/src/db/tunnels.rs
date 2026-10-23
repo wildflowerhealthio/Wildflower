@@ -39,7 +39,7 @@ impl From<TunnelRow> for StoredTunnel {
 /// The `tunnels` row as an insert binds it, borrowed from a [`StoredTunnel`].
 #[derive(Insertable)]
 #[diesel(table_name = tunnels)]
-struct NewTunnelRow<'a> {
+pub(super) struct NewTunnelRow<'a> {
     name: &'a str,
     email: &'a str,
     token: &'a str,

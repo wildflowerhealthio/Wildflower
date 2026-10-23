@@ -10,24 +10,25 @@ assumes.
 
 - **`tunnels.db`**: each tunnel's name, owner email and token, the token in
   plaintext because rathole and request signing both key on it. Mode 0600 in
-  a 0700 state directory. Claim codes are stored as SHA-256 only.
+  a 0700 state directory. Claim codes and access codes are stored as SHA-256
+  only.
 - **The noise private key** (`WILDFLOWER_RELAY_NOISE_PRIVATE_KEY`): devices pin
   its public half. Whoever holds it can stand up a relay devices will trust.
 - **The admin key** (`WILDFLOWER_RELAY_ADMIN_KEY`): creates, deletes and
-  re-tokens tunnels and issues claim codes.
+  re-tokens tunnels and issues claim codes and access codes.
 - **The relay's own certificate and ACME account**, for `<domain>` and
   `admin.<domain>` only. The relay holds no key for any tunnel's hostname.
 - **DNS for the relay's domain**, held by the operator outside the relay.
 
 ## Entry points
 
-| Port / path                    | Who          | Authentication                                                                                   |
-| ------------------------------ | ------------ | ------------------------------------------------------------------------------------------------ |
-| `:443`, SNI = a tunnel         | Any visitor  | None at the relay; TLS is the device's. Unknown or offline tunnels are closed without a byte.    |
-| `:443`, SNI = `<domain>`       | Devices      | `GET /rathole` is public; `POST /claim` takes a claim code; `GET /me` is signed with the token.  |
-| `:443`, SNI = `admin.<domain>` | The operator | RFC 9421 HMAC-SHA256 signature with the admin key, ±60 s clock window, nonce cache. No sessions. |
-| `:80`                          | Any visitor  | Redirect or 404 only; nothing is proxied in plaintext.                                           |
-| rathole control port           | Devices      | Noise NK to the relay's key; the device proves itself with its tunnel token.                     |
+| Port / path                    | Who          | Authentication                                                                                              |
+| ------------------------------ | ------------ | ----------------------------------------------------------------------------------------------------------- |
+| `:443`, SNI = a tunnel         | Any visitor  | None at the relay; TLS is the device's. Unknown or offline tunnels are closed without a byte.               |
+| `:443`, SNI = `<domain>`       | Devices      | `GET /rathole` is public; `POST /claim` and `POST /access` take a code; `GET /me` is signed with the token. |
+| `:443`, SNI = `admin.<domain>` | The operator | RFC 9421 HMAC-SHA256 signature with the admin key, ±60 s clock window, nonce cache. No sessions.            |
+| `:80`                          | Any visitor  | Redirect or 404 only; nothing is proxied in plaintext.                                                      |
+| rathole control port           | Devices      | Noise NK to the relay's key; the device proves itself with its tunnel token.                                |
 
 ## What the relay enforces
 
@@ -40,6 +41,15 @@ assumes.
   `POST /claim` is limited per client address (5, then 1 per 12 s) and
   globally (60, then 1 per s), before the body is parsed: ten days at the global
   rate is under a million guesses against 31⁸ (about 8.5 × 10¹¹) codes.
+- **Access codes.** A claim code's format, lifetime and hashing, but no
+  tunnel: whoever holds one creates a tunnel, under an email and subdomain
+  they choose, so an outstanding access code is a standing invitation, and
+  the operator issues one only for someone they would create a tunnel for.
+  A code's hash is never stored as both kinds. A failed code is one `422`
+  whatever came with it; only a code that redeems learns whether its email
+  and subdomain are acceptable, and stays unspent until they are. `POST
+  /access` spends from `POST /claim`'s limits, so guessing either kind of
+  code shares one budget.
 - **Signed requests.** The token is never sent; the signature covers method,
   target URI and body digest. Verification is constant-time and every failure
   is a bare `401`.

@@ -1,6 +1,8 @@
-//! [`TunnelError`] — why a tunnel change or a claim was refused or failed. The
+//! [`TunnelError`] — why a tunnel change, a claim or an access code's
+//! redemption was refused or failed. The
 //! [`capabilities`](crate::domain::capabilities) and the store speak it; the admin API
-//! (`crate::site::admin`, whose rendering `POST /claim` shares) renders each
+//! (`crate::site::admin`, whose rendering `POST /claim` and `POST /access`
+//! share) renders each
 //! variant to a status and a short plain-text reason, or a logged empty `500` for
 //! [`Infrastructure`](TunnelError::Infrastructure). Nothing here knows about
 //! HTTP, and the store produces `Infrastructure` without leaking its diesel
@@ -28,6 +30,15 @@ pub enum TunnelError {
     /// redeemed or expired. One variant for all four, so `POST /claim`
     /// answers them alike and says nothing about which codes exist.
     ClaimCodeRejected,
+    /// A code offered to `POST /claim` is an unexpired access code, which
+    /// redeems only at `POST /access`, with an email and a name. Answered
+    /// only for a code that would redeem there, so it says no more than
+    /// redeeming it would.
+    AccessCodeOffered,
+    /// An access code did not redeem: it is malformed, unknown, already
+    /// redeemed or expired. One variant for all four, like
+    /// [`ClaimCodeRejected`](Self::ClaimCodeRejected).
+    AccessCodeRejected,
     /// Storing, reaching rathole or the clock failed — opaque to clients: the admin
     /// API logs `context` + `source` and answers an empty `500`. The cause is
     /// captured as text so this type stays free of the store's diesel /
@@ -63,6 +74,12 @@ impl std::fmt::Display for TunnelError {
             TunnelError::Exhausted(reason) => f.write_str(reason),
             TunnelError::ClaimCodeRejected => {
                 f.write_str("the claim code is unknown, used or expired")
+            }
+            TunnelError::AccessCodeOffered => f.write_str(
+                "the code is an access code: redeem it at POST /access with an email and a name",
+            ),
+            TunnelError::AccessCodeRejected => {
+                f.write_str("the access code is unknown, used or expired")
             }
             TunnelError::Infrastructure { context, source } => write!(f, "{context}: {source}"),
         }

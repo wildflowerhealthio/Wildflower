@@ -9,7 +9,7 @@ use diesel::prelude::*;
 use diesel::upsert::excluded;
 use wildflowerhealthio_persistence::PooledDieselConnection;
 
-use crate::db::schema::{claim_codes, tunnels};
+use crate::db::schema::{access_codes, claim_codes, tunnels};
 use crate::domain::{ClaimCodeHash, StoredClaimCode, Tunnel, TunnelError};
 use crate::settings::Secret;
 
@@ -34,7 +34,8 @@ impl<'a> From<&'a StoredClaimCode> for NewClaimCodeRow<'a> {
 }
 
 /// Make `stored` its tunnel's code, in one immediate transaction: `false`,
-/// storing nothing, if another row already has its hash (`UNIQUE`);
+/// storing nothing, if another row already has its hash (`UNIQUE`) or an
+/// access code has it;
 /// otherwise an upsert on the tunnel's name (the primary key), so a tunnel's
 /// earlier code is overwritten. Backs
 /// [`SqliteTunnelStore::replace_claim_code`](crate::db::SqliteTunnelStore).
@@ -48,11 +49,15 @@ pub(super) fn replace_claim_code(
     stored: &StoredClaimCode,
 ) -> Result<bool, TunnelError> {
     conn.immediate_transaction(|conn| {
-        let hash_taken = diesel::select(diesel::dsl::exists(
-            claim_codes::table.filter(claim_codes::code_hash.eq(&stored.code_hash.0[..])),
+        let hash = &stored.code_hash.0[..];
+        let claim_code_has_hash = diesel::select(diesel::dsl::exists(
+            claim_codes::table.filter(claim_codes::code_hash.eq(hash)),
         ))
         .get_result::<bool>(conn)?;
-        if hash_taken {
+        let access_code_has_hash =
+            diesel::select(diesel::dsl::exists(access_codes::table.find(hash)))
+                .get_result::<bool>(conn)?;
+        if claim_code_has_hash || access_code_has_hash {
             return Ok(false);
         }
         diesel::insert_into(claim_codes::table)
