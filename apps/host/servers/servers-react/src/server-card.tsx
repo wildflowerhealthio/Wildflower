@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { ErrorBanner } from '@wildflowerhealthio/react-tundraish'
 import { type ListedServer, ServerStatus } from '@wildflowerhealthio/servers-core-js'
+import { walkthroughAnchor } from '@wildflowerhealthio/walkthrough-core'
 import { Option } from 'effect'
 import { type JSX, useId } from 'react'
 
@@ -10,6 +11,7 @@ import { LaunchButton } from './launch-button.tsx'
 import { useLaunch } from './launch.ts'
 import type { RunHostCommand } from './router-context.ts'
 import { RunPolicyPicker } from './run-policy-picker.tsx'
+import { HostWalkthroughAnchor } from './server-list-walkthrough.ts'
 import { lastStopText, statusNote, statusSummary } from './server-status-text.ts'
 import styles from './server-card.module.css'
 
@@ -54,7 +56,10 @@ const ServerCard = ({
   )
   return (
     <li className={styles['server-card']} data-tone={status.tone} aria-label={server.domain}>
-      <div className={styles['server-card__title']}>
+      <div
+        className={styles['server-card__title']}
+        {...walkthroughAnchor(HostWalkthroughAnchor.serverCard)}
+      >
         <span className={styles['server-card__domain']} title={server.domain}>
           {server.domain}
         </span>

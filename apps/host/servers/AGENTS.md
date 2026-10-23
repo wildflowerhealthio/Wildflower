@@ -113,9 +113,14 @@ changing how servers run or what the host notifies about them.
   server list, `/servers/new` Add server and `/servers/$domain` a server's
   page; and `routes/settings.tsx`, `/settings` Host Settings, in its own
   `BaseLayout`, for the app on this device rather than any one
-  server (Notifications, Telemetry, Legal — the privacy policy, consumer health data
-  policy, terms of use and deletion page on the canonical site, opened in the system browser — and
-  About). `/servers` and `/settings` each carry `BASE_SCREEN_STATIC_DATA`
+  server (Notifications, Telemetry, Help's Show walkthrough again, Legal — the privacy policy,
+  consumer health data policy, terms of use and deletion page on the canonical site, opened in
+  the system browser — and About). The server list shows the Host's walkthrough
+  (`server-list-walkthrough.ts`, on `walkthrough-react`) on a first visit, once the servers are
+  read, and again when Show walkthrough again opens it with `?walkthrough=show`; its steps point
+  at the controls carrying `walkthroughAnchor`. A list with no servers and a list with servers
+  each have their own walkthrough and record, so the first server's card gets its steps once it
+  is added. `/servers` and `/settings` each carry `BASE_SCREEN_STATIC_DATA`
   in their route's `staticData`, which the app's bar reads (`isBaseScreen`)
   to tell the base's screens from its own. The server list is a card per
   server, kept current by the `server-status` event: its domain and a status

@@ -1,8 +1,10 @@
 import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import type { ListedServer } from '@wildflowerhealthio/servers-core-js'
+import { walkthroughAnchor } from '@wildflowerhealthio/walkthrough-core'
 import type { JSX } from 'react'
 
 import { useAuthorizationAppOpening } from './authorization-app-opening.ts'
+import { HostWalkthroughAnchor } from './server-list-walkthrough.ts'
 
 /**
  * A server's card's Authorization: opens its Wildflower Authorization app
@@ -40,6 +42,7 @@ const AuthorizationButton = ({
     <button
       type="button"
       className={cn('button-2 outline', className)}
+      {...walkthroughAnchor(HostWalkthroughAnchor.authorization)}
       disabled={unavailable || isOpening}
       aria-describedby={unavailable ? statusDescriptionId : undefined}
       onClick={() => {
