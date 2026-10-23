@@ -1,8 +1,10 @@
 import { cn } from '@wildflowerhealthio/react-kitchen-sink'
 import { ConfirmDialog } from '@wildflowerhealthio/react-tundraish'
+import { walkthroughAnchor } from '@wildflowerhealthio/walkthrough-core'
 import type { JSX } from 'react'
 
 import type { Launch } from './launch.ts'
+import { HostWalkthroughAnchor } from './server-list-walkthrough.ts'
 import styles from './launch-button.module.css'
 
 /**
@@ -26,7 +28,10 @@ const LaunchButton = ({
   /** The id of the element saying why Launch is disabled, while it is. */
   readonly describedBy?: string
 }): JSX.Element => (
-  <div className={cn(styles['launch-button'], className)}>
+  <div
+    className={cn(styles['launch-button'], className)}
+    {...walkthroughAnchor(HostWalkthroughAnchor.apps)}
+  >
     {launch.starting ? (
       <>
         <button

@@ -27,7 +27,8 @@ while an `@import` would be inlined and ship twice. `tundra-css` and the two
 
 A component's props extend those of its outermost element, less the ones it
 sets itself, and it spreads the rest onto that element: `SettingsLink` takes
-`<Link>` props and `SegmentedToggle` `<div>` props, so a caller puts an `id`, `aria-*`, a `data-*` attribute (a
+`<Link>` props, `PageHeader` `<header>` props and `SegmentedToggle` `<div>`
+props, so a caller puts an `id`, `aria-*`, a `data-*` attribute (a
 `walkthroughAnchor(...)`), or a `ref` on it directly. The rest go first and
 the component's own attributes after, so a caller adds but never overrides;
 a caller's `className` joins the component's own through `cn`. Every prop the
