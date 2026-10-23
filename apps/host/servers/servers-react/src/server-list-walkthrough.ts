@@ -25,27 +25,6 @@ interface HostWalkthrough {
   readonly steps: ReadonlyArray<WalkthroughStep>
 }
 
-/** The steps that open both walkthroughs: what Wildflower is, and how apps reach it. */
-const WELCOME_STEPS: ReadonlyArray<WalkthroughStep> = [
-  {
-    anchor: HostWalkthroughAnchor.pageHeader,
-    title: 'Welcome to Wildflower',
-    body: 'Wildflower keeps your health records on a server running on this device, built on FHIR, the same health records standard hospitals use.',
-  },
-  {
-    anchor: HostWalkthroughAnchor.pageHeader,
-    title: 'Reaching Your Server',
-    body: "A relay you choose makes your server available to apps. The relay can't read what passes through, and only the apps you approve get in.",
-  },
-]
-
-/** The Host Settings step, in both walkthroughs. */
-const HOST_SETTINGS_STEP: WalkthroughStep = {
-  anchor: HostWalkthroughAnchor.hostSettings,
-  title: 'Host Settings',
-  body: 'Notifications, Telemetry and Legal are here, and Show walkthrough again brings these steps back.',
-}
-
 /**
  * The walkthrough for a list with no servers, where only the header, Add new
  * server and Host Settings are on the page. It ends on Add new server, so the
@@ -55,8 +34,21 @@ const NO_SERVERS_WALKTHROUGH: HostWalkthrough = {
   id: 'host-no-servers',
   version: 1,
   steps: [
-    ...WELCOME_STEPS,
-    HOST_SETTINGS_STEP,
+    {
+      anchor: HostWalkthroughAnchor.pageHeader,
+      title: 'Welcome to Wildflower',
+      body: 'Wildflower keeps your health records on a server running on this device, built on FHIR, the same health records standard hospitals use.',
+    },
+    {
+      anchor: HostWalkthroughAnchor.pageHeader,
+      title: 'Reaching Your Server',
+      body: "A relay you choose makes your server available to apps. The relay can't read what passes through, and only the apps you approve get in.",
+    },
+    {
+      anchor: HostWalkthroughAnchor.hostSettings,
+      title: 'Host Settings',
+      body: 'Notifications, Telemetry and Legal are here, and Show walkthrough again brings these steps back.',
+    },
     {
       anchor: HostWalkthroughAnchor.addServer,
       title: 'Add new server',
@@ -75,7 +67,6 @@ const SERVERS_WALKTHROUGH: HostWalkthrough = {
   id: 'host-servers',
   version: 1,
   steps: [
-    ...WELCOME_STEPS,
     {
       anchor: HostWalkthroughAnchor.serverCard,
       title: 'Your Server',
@@ -101,7 +92,6 @@ const SERVERS_WALKTHROUGH: HostWalkthrough = {
       title: 'Add new server',
       body: 'You can add more than one server, each keeping its own health records on this device.',
     },
-    HOST_SETTINGS_STEP,
   ],
 }
 
