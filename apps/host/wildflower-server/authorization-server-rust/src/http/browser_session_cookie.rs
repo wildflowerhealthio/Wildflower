@@ -2,9 +2,12 @@
 //! signed it in (the Owner's, at `/oauth/sign-in`; a paired browser's, on
 //! the pairing page's poll): `__Host-browser_session`,
 //! whose value is the browser's access token itself, naming its browser
-//! session as its `sid`. A restart doesn't sign the browser out; revoking the
-//! token's `jti`, the browser-session client's subject, or the browser
-//! session, does.
+//! session as its `sid`. Revoking the token's `jti`, the browser-session
+//! client's subject, or the browser session signs the browser out, and so does
+//! the session expiring. The host ends the Owner's same-device sessions by
+//! expiring them, once the server's last launch view closes, and the server's
+//! start ends every one but those of the launch views still open; a paired
+//! browser's session lasts through a restart.
 //!
 //! The authorization server sets it, says whether the session it holds still
 //! stands, and records the cookie's use. The host's cookie→bearer layer
@@ -88,8 +91,9 @@ fn browser_session_cookie(value: &str, max_age_seconds: i64) -> String {
 /// The verified claims of the browser session a browser session cookie holds,
 /// or `None` once the session has ended: the gates would refuse
 /// `session_token` as a bad, expired or revoked token (by its `jti`, its
-/// subject or its browser session), checked by the same `TokenVerifier` the
-/// gates run, or it is no browser session's token at all. Their `sid` names
+/// subject or its browser session) or one whose session has expired, checked
+/// by the same `TokenVerifier` the gates run, or it is no browser session's
+/// token at all. Their `sid` names
 /// the browser session.
 ///
 /// # Errors

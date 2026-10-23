@@ -16,12 +16,12 @@ use crate::db::SqliteGrantStore;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::oauth::{
     AuthorizationStatusReader, BrowserPairing, ClientAuthenticator, ClientTokenRevoker,
-    CodeAuthorizationStarter, DeviceAuthorizer, LaunchContexts, PublicKeysReader, SameDeviceSignIn,
-    SessionShortfall, TokenExchanger,
+    CodeAuthorizationStarter, DeviceAuthorizer, LaunchContexts, PublicKeysReader,
+    SameDeviceSessionEnder, SameDeviceSignIn, SessionShortfall, TokenExchanger,
 };
 use crate::domain::consent_key::ConsentKey;
 use crate::domain::grant_store::AuthorizationRequestsTx as _;
-use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
+use crate::domain::same_device_sign_in_codes::{SameDeviceSignInCode, SameDeviceSignInCodes};
 use crate::domain::GrantStore as _;
 use crate::ports::OwnerApproval;
 
@@ -216,31 +216,56 @@ impl LaunchContextMinter {
 
 /// Mint one-time same-device sign-in codes: how the host signs the Owner's own
 /// browser in. The host, on the device running the server, mints a code and
-/// opens `/oauth/sign-in?code=…&next=…` in the browser. Cheap to clone (the
-/// codes are shared). [`crate::setup_authorization_server`] hands one out on
+/// opens `/oauth/sign-in?code=…&next=…` in the browser. It also ends the
+/// sessions codes signed in, once the views they were opened in have closed.
+/// Cheap to clone (the codes and the store are shared).
+/// [`crate::setup_authorization_server`] hands one out on
 /// [`AuthorizationServer::same_device_sign_in_code_minter`](crate::AuthorizationServer::same_device_sign_in_code_minter).
 #[derive(Clone)]
 pub struct SameDeviceSignInCodeMinter {
     /// The outstanding codes, shared with the server's state, where
     /// `/oauth/sign-in` redeems them.
     codes: Arc<SameDeviceSignInCodes>,
+    /// The store, where the sessions codes signed in are ended.
+    store: SqliteGrantStore,
 }
 
 impl SameDeviceSignInCodeMinter {
-    /// A minter over the authorization server's outstanding codes.
-    pub(crate) fn new(codes: Arc<SameDeviceSignInCodes>) -> Self {
-        SameDeviceSignInCodeMinter { codes }
+    /// A minter over the authorization server's outstanding codes, and its
+    /// `store`, where the sessions codes signed in are ended.
+    pub(crate) fn new(codes: Arc<SameDeviceSignInCodes>, store: SqliteGrantStore) -> Self {
+        SameDeviceSignInCodeMinter { codes, store }
     }
 
     /// Mint a sign-in code and return it, for the `code` of
-    /// `/oauth/sign-in?code=…&next=…`. Whoever presents it there first, within
+    /// `/oauth/sign-in?code=…&next=…`: the first browser to present it, within
     /// 60 seconds, is signed in as the Owner. Only its hash is kept, in
     /// memory, so a restart drops it.
     #[must_use]
-    pub fn mint(&self) -> String {
+    pub fn mint(&self) -> SameDeviceSignInCode {
         let code = generate_same_device_sign_in_code();
         self.codes.insert(&code, Utc::now());
-        code
+        SameDeviceSignInCode::new(code, Arc::clone(&self.codes))
+    }
+
+    /// Withdraw `sign_in_codes`, and end the sessions they signed browsers
+    /// in with, by expiring them now in this run's store, whichever run
+    /// minted the codes: those browsers' cookies stop working, and they are
+    /// sent through sign-in again. Returns how many sessions were ended; a
+    /// code that signed nobody in, or whose session was ended already, ends
+    /// nothing. A failure leaves each code holding its session, so ending
+    /// them can be tried again. It writes to the database, so call it on a
+    /// blocking thread.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthorizationServerError::Infrastructure`] on a store failure.
+    pub fn end_signed_in_sessions(
+        &self,
+        sign_in_codes: &[SameDeviceSignInCode],
+    ) -> Result<usize, AuthorizationServerError> {
+        SameDeviceSessionEnder::new(self.store.clone())
+            .end_sessions_signed_in_with(sign_in_codes, Utc::now())
     }
 }
 

@@ -42,6 +42,18 @@ The Owner's list of browsers.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/db/browser_sessions.rs SqliteGrantTx::live_browser_sessions tests="tests::live_sessions_are_the_unrevoked_unexpired_ones_newest_first"}}
 
+#### `expire_browser_session`
+
+Ending a same-device session moves its `expires_at` back rather than stamping `revoked_at`. The `expires_at > now` guard never moves a session's expiry later.
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/browser_sessions.rs SqliteGrantTx::expire_browser_session tests="tests::expiring_a_session_moves_its_expiry_back_to_now"}}
+
+#### `expire_browser_sessions_of_kind_but`
+
+A server start expires every same-device session but those of the host's launch views still open in one `UPDATE`.
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/browser_sessions.rs SqliteGrantTx::expire_browser_sessions_of_kind_but tests="tests::expiring_a_kind_expires_only_its_live_sessions_but_the_kept"}}
+
 #### `touch_browser_session_last_seen`
 
 When the server accepts a session's cookie it passes `seen_before` as `seen_at` less [`LAST_SEEN_RESOLUTION`](<../Domain/Browser Session Explanation.md#item-LAST_SEEN_RESOLUTION>), so **the column moves at most once per window, and never backwards**. A refresh family rotating passes `seen_at` as `seen_before`, so it moves the column unless the column is already later.

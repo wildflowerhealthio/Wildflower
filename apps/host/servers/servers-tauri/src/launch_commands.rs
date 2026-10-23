@@ -59,10 +59,11 @@ use tauri_plugin_native_page_browser::{
 use tokio::sync::{watch, Notify};
 use url::Url;
 use wildflowerhealthio_authorization_server::domain::authorization_server_error::AuthorizationServerError;
+use wildflowerhealthio_authorization_server::SameDeviceSignInCode;
 use wildflowerhealthio_servers::{
     ConsentKey, ConsentRequest, ConsentViewClaim, ConsentViews, IfShowing, LaunchError,
-    ListedServer, PendingConsent, RegistryError, ServerConsentWatcher, ServerDetail,
-    ServerLaunchMinter, ServerRecord, ServerRegistry, ServerSignInCodeMinter,
+    LaunchViewSignIns, ListedServer, PendingConsent, RegistryError, ServerConsentWatcher,
+    ServerDetail, ServerLaunchMinter, ServerRecord, ServerRegistry, ServerSignInCodeMinter,
 };
 use wildflowerhealthio_tauri_unit_runner::{UnitId, UnitStatus, UnitStatuses};
 
@@ -403,6 +404,12 @@ pub(crate) trait LaunchPresence: Clone + Send + Sync + 'static {
     fn view_returned_to_foreground(&self, view: &str);
     /// The launch view `view` closed.
     fn view_closed(&self, view: &str);
+    /// The sign-in codes of each server's launch views, until its last one
+    /// closes.
+    fn launch_view_sign_ins(&self) -> &LaunchViewSignIns<SameDeviceSignInCode>;
+    /// The sign-in code minter of the server `domain`'s run, while one is up,
+    /// through which a closed view's Owner session is ended.
+    fn running_sign_in_code_minter(&self, domain: &str) -> Option<ServerSignInCodeMinter>;
     /// The consents showing in a launch view, or opening in one.
     fn consent_views(&self) -> &ConsentViews;
 }
@@ -426,6 +433,14 @@ impl LaunchPresence for ServerUnits {
 
     fn view_closed(&self, view: &str) {
         self.launch_view_closed(view);
+    }
+
+    fn launch_view_sign_ins(&self) -> &LaunchViewSignIns<SameDeviceSignInCode> {
+        self.launch_view_sign_ins()
+    }
+
+    fn running_sign_in_code_minter(&self, domain: &str) -> Option<ServerSignInCodeMinter> {
+        self.running_sign_in_code_minter(domain)
     }
 
     fn consent_views(&self) -> &ConsentViews {
@@ -463,15 +478,20 @@ async fn launch(
             &public_origin,
             &launch,
         );
+        let sign_in_code = sign_in_code_minter.mint();
         let sign_in_url = wildflowerhealthio_servers::sign_in_url(
             &public_origin,
-            &sign_in_code_minter.mint(),
+            sign_in_code.as_str(),
             launch_url.as_str(),
         );
         open_launch_view(
             &launch_browser,
             launch_presence,
             sign_in_url,
+            OwnerSignIn {
+                domain: &domain,
+                sign_in_code,
+            },
             OpenMode::Replace,
         )
         .await?;
@@ -506,15 +526,20 @@ async fn open_authorization_app(
             &server.record.authorization_url,
             &public_origin,
         );
+        let sign_in_code = sign_in_code_minter.mint();
         let sign_in_url = wildflowerhealthio_servers::sign_in_url(
             &public_origin,
-            &sign_in_code_minter.mint(),
+            sign_in_code.as_str(),
             authorization_app_url.as_str(),
         );
         open_launch_view(
             &launch_browser,
             launch_presence,
             sign_in_url,
+            OwnerSignIn {
+                domain: &domain,
+                sign_in_code,
+            },
             OpenMode::Replace,
         )
         .await?;
@@ -573,9 +598,10 @@ async fn open_pending_consent(
         else {
             return Ok(false);
         };
+        let sign_in_code = sign_in_code_minter.mint();
         let sign_in_url = wildflowerhealthio_servers::consent_sign_in_url(
             &server.record.public_origin(),
-            &sign_in_code_minter.mint(),
+            sign_in_code.as_str(),
             &pending_consent.key,
         );
         // A failed open drops the claim with the rest.
@@ -583,6 +609,10 @@ async fn open_pending_consent(
             &launch_browser,
             launch_presence,
             sign_in_url,
+            OwnerSignIn {
+                domain: &domain,
+                sign_in_code,
+            },
             OpenMode::Stack,
         )
         .await?;
@@ -742,25 +772,49 @@ async fn listed_server(
     Ok(ListedServer::new(record, unit_status, certificate))
 }
 
-/// Open `url` in a new view of `launch_browser`, beside the views showing as
-/// `mode` says, open in `launch_presence` from before the open until the
-/// browser reports the view closed, or the open fails, and kept alive there
-/// once the browser reports that.
+/// The sign-in a launch view opens with: a code the server `domain`'s run
+/// minted.
+struct OwnerSignIn<'a> {
+    /// The server's domain.
+    domain: &'a str,
+    /// The code.
+    sign_in_code: SameDeviceSignInCode,
+}
+
+/// Open `url`, the sign-in `owner_sign_in`, in a new view of
+/// `launch_browser`, beside the views showing as `mode` says, open in
+/// `launch_presence` from before the open until the browser reports the view
+/// closed, or the open fails, and kept alive there once the browser reports
+/// that. Where the base hears closes, the view's code counts among the
+/// server's [`LaunchViewSignIns`] meanwhile, and is withdrawn at the close.
 async fn open_launch_view(
     launch_browser: &impl LaunchBrowser,
     launch_presence: impl LaunchPresence,
     url: Url,
+    owner_sign_in: OwnerSignIn<'_>,
     mode: OpenMode,
 ) -> Result<LaunchView, LaunchError> {
     let view = next_launch_view();
     let closed = Arc::new(Notify::new());
+    let domain = owner_sign_in.domain.to_owned();
+    let sign_in_code = owner_sign_in.sign_in_code;
+    // The browser reports events off the runtime, so the close's ending is
+    // spawned onto the runtime the open runs on.
+    let runtime = tokio::runtime::Handle::current();
     // Before the open, so a close reported as the view opens finds it, and
     // a background session can start while the app is still in front.
     launch_presence.view_opened(&view);
+    if launch_browser.view_closes() != ViewCloses::Unheard {
+        launch_presence
+            .launch_view_sign_ins()
+            .view_opened(&domain, &view, sign_in_code.clone());
+    }
     let view_events: LaunchViewEvents = {
         let launch_presence = launch_presence.clone();
         let view = view.clone();
         let closed = Arc::clone(&closed);
+        let domain = domain.clone();
+        let runtime = runtime.clone();
         Box::new(move |event| match event {
             BrowserEvent::KeptAlive => launch_presence.view_kept_alive(&view),
             BrowserEvent::MovedToBackground => launch_presence.view_moved_to_background(&view),
@@ -770,14 +824,93 @@ async fn open_launch_view(
             BrowserEvent::Closed => {
                 launch_presence.view_closed(&view);
                 closed.notify_one();
+                sign_in_code.withdraw();
+                launch_view_sign_in_closed(&launch_presence, &runtime, &domain, &view);
             }
         })
     };
     if let Err(error) = launch_browser.open(url, &view, mode, view_events).await {
         launch_presence.view_closed(&view);
+        launch_view_sign_in_closed(&launch_presence, &runtime, &domain, &view);
         return Err(error);
     }
     Ok(LaunchView { name: view, closed })
+}
+
+/// Count the launch view `view` on the server `domain` closed among
+/// `launch_presence`'s [`LaunchViewSignIns`], and, once it was the server's
+/// last, end the Owner sessions of the server's closed views through its run
+/// up now, spawned onto `runtime` ([`end_owner_sessions_of_closed_views`]).
+/// With no run up, the codes are kept, so the server's next last close ends
+/// them, or its next run's start does.
+fn launch_view_sign_in_closed(
+    launch_presence: &impl LaunchPresence,
+    runtime: &tokio::runtime::Handle,
+    domain: &str,
+    view: &str,
+) {
+    let sign_in_codes = launch_presence
+        .launch_view_sign_ins()
+        .view_closed(domain, view);
+    if sign_in_codes.is_empty() {
+        return;
+    }
+    let Some(sign_in_code_minter) = launch_presence.running_sign_in_code_minter(domain) else {
+        log::info!(
+            "[servers] {domain} isn't running, so its next start ends its closed launch views' \
+             Owner sessions"
+        );
+        launch_presence
+            .launch_view_sign_ins()
+            .not_ended(domain, sign_in_codes);
+        return;
+    };
+    runtime.spawn(end_owner_sessions_of_closed_views(
+        launch_presence.clone(),
+        sign_in_code_minter,
+        domain.to_owned(),
+        sign_in_codes,
+    ));
+}
+
+/// End the Owner sessions `sign_in_codes` signed in, through
+/// `sign_in_code_minter`, the server `domain`'s run up now, on a blocking
+/// thread, as the server's last launch view closed: the sessions are
+/// expired, so their cookies stop working, and the next launch signs the
+/// browser in again. When the ending fails, the codes are kept among
+/// `launch_presence`'s [`LaunchViewSignIns`], so the server's next last close
+/// ends them, or its next run's start does. The outcome is logged.
+async fn end_owner_sessions_of_closed_views(
+    launch_presence: impl LaunchPresence,
+    sign_in_code_minter: ServerSignInCodeMinter,
+    domain: String,
+    sign_in_codes: Vec<SameDeviceSignInCode>,
+) {
+    let ending = sign_in_codes.clone();
+    let ended =
+        tokio::task::spawn_blocking(move || sign_in_code_minter.end_signed_in_sessions(&ending))
+            .await
+            .map_err(|error| {
+                AuthorizationServerError::infrastructure(
+                    "ending closed launch views' Owner sessions",
+                    error,
+                )
+            })
+            .and_then(|ended| ended);
+    match ended {
+        Ok(ended) => {
+            log::info!("[servers] ended {ended} Owner sessions of {domain}'s closed launch views");
+        }
+        Err(error) => {
+            log::warn!(
+                "[servers] ending the Owner sessions of {domain}'s closed launch views failed: \
+                 {error}"
+            );
+            launch_presence
+                .launch_view_sign_ins()
+                .not_ended(&domain, sign_in_codes);
+        }
+    }
 }
 
 /// A launch view the in-app browser opened: its name, which the browser
@@ -879,12 +1012,9 @@ mod tests {
 
     use super::*;
     use crate::test_authorization_server::{
-        test_authorization_server, TestAuthorizationServer, DOMAIN,
+        test_authorization_server, TestAuthorizationServer, AUTHORIZATION, DOMAIN, LAUNCHER,
     };
     use crate::test_statuses::not_reporting;
-
-    const LAUNCHER: &str = "https://launcher.example/app?theme=dark";
-    const AUTHORIZATION: &str = "https://authorization.example/app/?theme=dark";
 
     /// Which phone a [`PhoneBrowser`] browses as.
     #[derive(Clone, Copy)]
@@ -1112,6 +1242,9 @@ mod tests {
     #[derive(Clone, Default)]
     struct OpenLaunchViews {
         launch_views: Arc<Mutex<LaunchViews>>,
+        launch_view_sign_ins: LaunchViewSignIns<SameDeviceSignInCode>,
+        /// The sign-in code minter of the server's run up, if any.
+        running_sign_in_code_minter: Arc<Mutex<Option<ServerSignInCodeMinter>>>,
         consent_views: ConsentViews,
     }
 
@@ -1125,6 +1258,25 @@ mod tests {
     }
 
     impl OpenLaunchViews {
+        /// Launch views of the server [`DOMAIN`] whose run is up over
+        /// `authorization_server`.
+        fn running_over(authorization_server: &TestAuthorizationServer) -> Self {
+            let presence = Self::default();
+            presence.run_over(Some(authorization_server));
+            presence
+        }
+
+        /// The server's run is up over `authorization_server`, or, with
+        /// `None`, no run is up.
+        fn run_over(&self, authorization_server: Option<&TestAuthorizationServer>) {
+            *self.running_sign_in_code_minter.lock().unwrap() =
+                authorization_server.map(|authorization_server| {
+                    ServerSignInCodeMinter::new(
+                        authorization_server.same_device_sign_in_code_minter.clone(),
+                    )
+                });
+        }
+
         fn views(&self) -> BTreeSet<String> {
             self.launch_views.lock().unwrap().open.clone()
         }
@@ -1176,6 +1328,15 @@ mod tests {
             let mut views = self.launch_views.lock().unwrap();
             assert!(views.open.remove(view), "{view}");
             views.kept_alive.remove(view);
+        }
+
+        fn launch_view_sign_ins(&self) -> &LaunchViewSignIns<SameDeviceSignInCode> {
+            &self.launch_view_sign_ins
+        }
+
+        fn running_sign_in_code_minter(&self, domain: &str) -> Option<ServerSignInCodeMinter> {
+            assert_eq!(domain, DOMAIN);
+            self.running_sign_in_code_minter.lock().unwrap().clone()
         }
 
         fn consent_views(&self) -> &ConsentViews {
@@ -1366,6 +1527,115 @@ mod tests {
         browser.close_top();
 
         assert!(presence.views().is_empty());
+    }
+
+    /// How long a test waits for something a view's event set off.
+    const HANG_TIMEOUT: Duration = Duration::from_secs(5);
+
+    /// Wait, up to [`HANG_TIMEOUT`], for the browser session `session_token`
+    /// holds on `authorization_server` to end.
+    async fn until_signed_out(authorization_server: &TestAuthorizationServer, session_token: &str) {
+        tokio::time::timeout(HANG_TIMEOUT, async {
+            while authorization_server.is_signed_in(session_token) {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the session ends");
+    }
+
+    /// How many of the server [`DOMAIN`]'s launch views' sign-in codes
+    /// `presence` counts while one is open, as a run's start would keep.
+    fn kept_sign_ins(presence: &OpenLaunchViews) -> usize {
+        presence
+            .launch_view_sign_ins()
+            .kept_at_run_start(DOMAIN)
+            .len()
+    }
+
+    /// A launch whose view replaces an earlier one's, as on iOS, leaves the
+    /// earlier view's Owner session standing, since the cookie jar the views
+    /// share may still hold it; once the server's last view closes, both
+    /// sessions end.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_server_s_owner_sessions_end_once_its_last_launch_view_closes() {
+        let authorization_server = test_authorization_server();
+        let browser = PhoneBrowser::new(Phone::Ios);
+        let presence = OpenLaunchViews::running_over(&authorization_server);
+        launch_launchable(&authorization_server, browser.clone(), &presence)
+            .await
+            .unwrap();
+        let first = authorization_server.sign_in(&browser.opened()[0]).await;
+
+        launch_launchable(&authorization_server, browser.clone(), &presence)
+            .await
+            .unwrap();
+        let second = authorization_server.sign_in(&browser.opened()[1]).await;
+        assert_eq!(presence.views().len(), 1, "the first view closed");
+        assert_eq!(kept_sign_ins(&presence), 2, "nothing ended yet");
+        assert!(authorization_server.is_signed_in(&first));
+        assert!(authorization_server.is_signed_in(&second));
+
+        browser.close_top();
+        until_signed_out(&authorization_server, &first).await;
+        until_signed_out(&authorization_server, &second).await;
+        assert_eq!(kept_sign_ins(&presence), 0);
+    }
+
+    /// Leaving the app and coming back with a launch's view over it neither
+    /// counts the view closed nor ends its Owner session.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn leaving_and_coming_back_to_a_launch_s_view_keeps_its_owner_session() {
+        let authorization_server = test_authorization_server();
+        let browser = PhoneBrowser::new(Phone::Android);
+        let presence = OpenLaunchViews::running_over(&authorization_server);
+        launch_launchable(&authorization_server, browser.clone(), &presence)
+            .await
+            .unwrap();
+        let session_token = authorization_server.sign_in(&browser.opened()[0]).await;
+
+        browser.leave_and_come_back();
+
+        assert_eq!(kept_sign_ins(&presence), 1, "the view still counts open");
+        assert!(authorization_server.is_signed_in(&session_token));
+        browser.close_top();
+        until_signed_out(&authorization_server, &session_token).await;
+    }
+
+    /// A view that closes while the server's run is down keeps its code, so
+    /// the server's next last close ends its Owner session.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_close_while_the_run_is_down_ends_the_session_with_the_next_close() {
+        let authorization_server = test_authorization_server();
+        let browser = PhoneBrowser::new(Phone::Android);
+        let presence = OpenLaunchViews::running_over(&authorization_server);
+        launch_launchable(&authorization_server, browser.clone(), &presence)
+            .await
+            .unwrap();
+        let first = authorization_server.sign_in(&browser.opened()[0]).await;
+        presence.run_over(None);
+        browser.close_top();
+
+        presence.run_over(Some(&authorization_server));
+        launch_launchable(&authorization_server, browser.clone(), &presence)
+            .await
+            .unwrap();
+        assert_eq!(kept_sign_ins(&presence), 2, "the first view's code is kept");
+        assert!(authorization_server.is_signed_in(&first));
+        browser.close_top();
+        until_signed_out(&authorization_server, &first).await;
+    }
+
+    /// A desktop hears no close, so its views count no sign-in: the server's
+    /// start ends their sessions.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_desktop_s_views_count_no_sign_in() {
+        let authorization_server = test_authorization_server();
+        let presence = OpenLaunchViews::running_over(&authorization_server);
+        launch_launchable(&authorization_server, DesktopBrowser::default(), &presence)
+            .await
+            .unwrap();
+        assert_eq!(kept_sign_ins(&presence), 0);
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -1816,6 +2086,10 @@ mod tests {
             browser,
             presence.clone(),
             Url::parse(&format!("https://{DOMAIN}/oauth/sign-in")).unwrap(),
+            OwnerSignIn {
+                domain: DOMAIN,
+                sign_in_code: authorization_server.same_device_sign_in_code_minter.mint(),
+            },
             OpenMode::Stack,
         )
         .await

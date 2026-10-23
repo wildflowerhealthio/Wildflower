@@ -6,12 +6,15 @@
 
 use std::sync::Arc;
 
+use chrono::{DateTime, Utc};
+
 use crate::domain::access_token::{
     verify_access_token, AccessTokenVerifyError, AccessTokenVerifyOptions, VerifiedClaims,
 };
 use crate::domain::grant_store::{BrowserSessionsTx, SigningKeysTx};
 use crate::domain::GrantStore;
 use crate::ports::RevocationCheck;
+use crate::BROWSER_SESSION_CLIENT_ID;
 
 /// Verify presented access tokens. Generic over the store port so it's
 /// unit-testable against the fake; the binding instantiates it over the
@@ -52,7 +55,8 @@ impl<S: GrantStore> TokenVerifier<S> {
     /// bumped the subject's epoch since it was minted, or revoked the browser
     /// session its `sid` names. A `sid` that names no session row reads as
     /// revoked, so a token naming a session the server never had is refused
-    /// too. Both authN gates, the browser-session cookie checks, and through
+    /// too. A browser session's own token is also refused once the session
+    /// has expired, which can be before the token does. Both authN gates, the browser-session cookie checks, and through
     /// [`InProcessTokenVerifier`](crate::InProcessTokenVerifier) the FHIR
     /// server, funnel through here, so it runs the *complete* check (per-`jti`
     /// denylist, per-subject epoch **and** browser session). A token with no
@@ -62,7 +66,8 @@ impl<S: GrantStore> TokenVerifier<S> {
     /// # Errors
     ///
     /// [`AccessTokenVerifyError::TokenRejected`] for a bad, expired, wrong-issuer or
-    /// wrong-audience token; [`AccessTokenVerifyError::Revoked`] for a revoked one; the
+    /// wrong-audience token, or a browser session's own token once the
+    /// session has expired; [`AccessTokenVerifyError::Revoked`] for a revoked one; the
     /// server-side variants when the key, revocation or browser-session store
     /// can't be read.
     pub(crate) fn verify(&self, token: &str) -> Result<VerifiedClaims, AccessTokenVerifyError> {
@@ -84,7 +89,7 @@ impl<S: GrantStore> TokenVerifier<S> {
 
     /// Verify `token`'s signature, `iss` and `aud` against the keys in `tx`,
     /// and refuse it when the browser session its `sid` names is revoked or
-    /// has no row.
+    /// has no row, or, for the session's own token, has expired.
     fn verify_signed_and_session_live(
         &self,
         tx: &mut (impl SigningKeysTx + BrowserSessionsTx),
@@ -102,7 +107,9 @@ impl<S: GrantStore> TokenVerifier<S> {
             },
         )?;
         if let Some(sid) = claims.sid.as_deref() {
-            if tx
+            if claims.subject == BROWSER_SESSION_CLIENT_ID {
+                ensure_own_session_live(tx, sid, Utc::now())?;
+            } else if tx
                 .is_browser_session_revoked(sid)
                 .map_err(AccessTokenVerifyError::BrowserSessionStoreUnavailable)?
             {
@@ -110,6 +117,28 @@ impl<S: GrantStore> TokenVerifier<S> {
             }
         }
         Ok(claims)
+    }
+}
+
+/// Refuse a browser session's own token, the one its cookie holds, once the
+/// session `sid` has ended at `now`: `Revoked` when the session is revoked or
+/// has no row, `TokenRejected` once it has expired. A session can expire
+/// before its token does: the host ends a same-device session by expiring
+/// it. The tokens apps were issued under the session outlive its expiry, and
+/// only its revocation ends them.
+fn ensure_own_session_live(
+    tx: &mut impl BrowserSessionsTx,
+    sid: &str,
+    now: DateTime<Utc>,
+) -> Result<(), AccessTokenVerifyError> {
+    let session = tx
+        .browser_session_by_sid(sid)
+        .map_err(AccessTokenVerifyError::BrowserSessionStoreUnavailable)?;
+    match session {
+        None => Err(AccessTokenVerifyError::Revoked),
+        Some(session) if session.revoked_at.is_some() => Err(AccessTokenVerifyError::Revoked),
+        Some(session) if !session.is_live(now) => Err(AccessTokenVerifyError::TokenRejected),
+        Some(_) => Ok(()),
     }
 }
 
@@ -325,5 +354,57 @@ mod tests {
             Err(AccessTokenVerifyError::Revoked)
         ));
         assert!(verifier.verify(&under_no_session).is_ok());
+    }
+
+    /// A browser session's own token is refused once its session expires,
+    /// before the token does, and once it is revoked; an app's token minted
+    /// under the session outlives the session's expiry, not its revocation.
+    #[test]
+    fn a_session_s_own_token_ends_with_the_session_s_expiry() {
+        let (store, key) = store_with_key();
+        let now = Utc::now();
+        let session = BrowserSession::new_same_device_session(vec![], Duration::hours(8), now);
+        store.tx().insert_browser_session(&session).expect("insert");
+        let session_s_own = mint_access_token(
+            &key,
+            &NewAccessTokenArgs {
+                client_id: BROWSER_SESSION_CLIENT_ID,
+                scopes: &["openid".to_owned()],
+                ttl: Duration::hours(8),
+                issuer: ORIGIN,
+                audience: Some(ORIGIN),
+                patient: None,
+                sid: Some(&session.sid),
+            },
+        )
+        .expect("mint");
+        let app_s = mint_under_session(&key, ORIGIN, ORIGIN, Some(&session.sid));
+        let verifier = verifier(store);
+        assert!(verifier.verify(&session_s_own).is_ok());
+
+        assert!(verifier
+            .store
+            .tx()
+            .expire_browser_session(&session.sid, Utc::now())
+            .expect("expire"));
+        assert!(matches!(
+            verifier.verify(&session_s_own),
+            Err(AccessTokenVerifyError::TokenRejected)
+        ));
+        assert!(verifier.verify(&app_s).is_ok());
+
+        assert!(verifier
+            .store
+            .tx()
+            .revoke_browser_session(&session.sid, Utc::now())
+            .expect("revoke"));
+        assert!(matches!(
+            verifier.verify(&session_s_own),
+            Err(AccessTokenVerifyError::Revoked)
+        ));
+        assert!(matches!(
+            verifier.verify(&app_s),
+            Err(AccessTokenVerifyError::Revoked)
+        ));
     }
 }

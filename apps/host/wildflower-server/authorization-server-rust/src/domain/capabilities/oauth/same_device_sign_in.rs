@@ -15,7 +15,7 @@ use crate::domain::access_token::AccessTokenIssuanceError;
 use crate::domain::authority::{RedeemedSameDeviceSignInCode, TokenEntitlement};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::writers::{AccessTokenMinter, BrowserSessionWriter};
-use crate::domain::grant_store::ClientsTx;
+use crate::domain::grant_store::{BrowserSessionsTx as _, ClientsTx};
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
 use crate::domain::sign_in_redirect::{SignInDestinations, SignInRedirect};
 use crate::domain::GrantStore;
@@ -57,7 +57,8 @@ pub(crate) enum SameDeviceSignInError {
 pub(crate) enum SignInRefusal {
     /// `next` is none of the places a sign-in may send a browser.
     RedirectNotAllowed,
-    /// The code is unknown, already redeemed, or expired.
+    /// The code is unknown, already redeemed, expired, or withdrawn as the
+    /// view it was opened in closed.
     CodeNotRedeemable,
     /// The browser-session client, which every browser session's token is
     /// issued to, is disabled.
@@ -104,7 +105,11 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
     /// token, both lasting [`SAME_DEVICE_SESSION_TTL`], to go on to `next`.
     /// A `next` that isn't allowed, or a disabled browser-session client, is
     /// refused before the code is touched, so the code stays redeemable. The
-    /// session is stored and its token signed in one write scope. A failure
+    /// session is stored and its token signed in one write scope; once it
+    /// lands, the codes remember the session by the code, so the base can end
+    /// it once the view it opened closes. A code the base withdrew while the
+    /// session was being stored, as its view closed, signs nobody in: the
+    /// session is expired at once and the token never handed out. A failure
     /// after the code is taken spends it: the code leaves memory even when the
     /// scope rolls back, so signing in again takes a new code.
     ///
@@ -113,7 +118,8 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
     /// [`SameDeviceSignInError::Refused`] for a `next` that isn't allowed
     /// ([`SignInRefusal::RedirectNotAllowed`]), a disabled browser-session client
     /// ([`SignInRefusal::BrowserSessionClientDisabled`]), or a code that is
-    /// unknown, spent or expired ([`SignInRefusal::CodeNotRedeemable`]);
+    /// unknown, spent, expired or withdrawn
+    /// ([`SignInRefusal::CodeNotRedeemable`]);
     /// [`SameDeviceSignInError::Store`] when the browser-session client can't be
     /// read; [`SameDeviceSignInError::SessionNotStored`] when the session
     /// can't be stored; [`SameDeviceSignInError::Issuance`] when minting fails.
@@ -129,7 +135,7 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
             .ok_or(SameDeviceSignInError::Refused(
                 SignInRefusal::RedirectNotAllowed,
             ))?;
-        let session_token = self.store.write(|tx| {
+        let stored = self.store.write(|tx| {
             if is_browser_session_client_disabled(tx)? {
                 return Err(SameDeviceSignInError::Refused(
                     SignInRefusal::BrowserSessionClientDisabled,
@@ -148,12 +154,31 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
             BrowserSessionWriter::within(tx)
                 .start_same_device_session(&redeemed_sign_in_code)
                 .map_err(SameDeviceSignInError::SessionNotStored)?;
-            AccessTokenMinter::with_active_key(tx, &self.server_origin, SAME_DEVICE_SESSION_TTL)
-                .and_then(|minter| {
-                    minter.mint(TokenEntitlement::SameDeviceSignIn(&redeemed_sign_in_code))
-                })
-                .map_err(SameDeviceSignInError::Issuance)
-        })?;
+            let session_token = AccessTokenMinter::with_active_key(
+                tx,
+                &self.server_origin,
+                SAME_DEVICE_SESSION_TTL,
+            )
+            .and_then(|minter| {
+                minter.mint(TokenEntitlement::SameDeviceSignIn(&redeemed_sign_in_code))
+            })
+            .map_err(SameDeviceSignInError::Issuance)?;
+            Ok((session_token, redeemed_sign_in_code.session().clone()))
+        });
+        let (session_token, session) = match stored {
+            Ok(stored) => stored,
+            Err(error) => {
+                self.codes.session_not_stored(presented_code);
+                return Err(error);
+            }
+        };
+        if !self.codes.session_stored(presented_code, &session) {
+            self.store
+                .write(|tx| tx.expire_browser_session(&session.sid, now))?;
+            return Err(SameDeviceSignInError::Refused(
+                SignInRefusal::CodeNotRedeemable,
+            ));
+        }
         Ok(SignedIn {
             session_token,
             redirect,
@@ -240,6 +265,36 @@ mod tests {
         (sign_in_over(store, codes), signing_key)
     }
 
+    /// A store that withdraws `code-1` from `codes` at the end of each write
+    /// scope, before it commits: the view the code was opened in closing
+    /// while its session is being stored.
+    struct WithdrawingStore {
+        store: FakeGrantStore,
+        codes: Arc<SameDeviceSignInCodes>,
+    }
+
+    impl GrantStore for WithdrawingStore {
+        type Tx<'a> = <FakeGrantStore as GrantStore>::Tx<'a>;
+
+        fn read<T, E: From<AuthorizationServerError>>(
+            &self,
+            f: impl FnOnce(&mut Self::Tx<'_>) -> Result<T, E>,
+        ) -> Result<T, E> {
+            self.store.read(f)
+        }
+
+        fn write<T, E: From<AuthorizationServerError>>(
+            &self,
+            f: impl FnOnce(&mut Self::Tx<'_>) -> Result<T, E>,
+        ) -> Result<T, E> {
+            self.store.write(|tx| {
+                let written = f(tx);
+                self.codes.withdraw("code-1");
+                written
+            })
+        }
+    }
+
     /// A code signs the browser in: it goes on to `next`, holding a token
     /// this server accepts, issued to the browser-session client with the
     /// Owner's scopes and living [`SAME_DEVICE_SESSION_TTL`].
@@ -271,6 +326,54 @@ mod tests {
             Some(SAME_DEVICE_SESSION_TTL),
             "the token lives eight hours"
         );
+    }
+
+    /// A sign-in remembers its session by the code, so the code finds the
+    /// session's `sid`, as stored.
+    #[test]
+    fn a_sign_in_remembers_its_session_by_the_code() {
+        let now = Utc::now();
+        let (sign_in, _signing_key) = sign_in_with_a_code(now);
+        sign_in.sign_in("code-1", "/", now).expect("signed in");
+        let sid = sign_in
+            .codes
+            .signed_in_sid("code-1")
+            .expect("the code's session");
+        assert!(sign_in
+            .store
+            .tx()
+            .browser_session_by_sid(&sid)
+            .expect("read")
+            .is_some_and(|session| session.is_live(now)));
+    }
+
+    /// A code withdrawn while its session is being stored signs nobody in:
+    /// the sign-in is refused, and the session it stored is expired.
+    #[test]
+    fn a_code_withdrawn_while_signing_in_signs_nobody_in() {
+        let now = Utc::now();
+        let (sign_in, _signing_key) = sign_in_with_a_code(now);
+        // Withdrawn as the browser-session client is read, inside the write
+        // scope, after the code is redeemed: the view closed mid-sign-in.
+        let withdrawing = WithdrawingStore {
+            store: sign_in.store.clone(),
+            codes: Arc::clone(&sign_in.codes),
+        };
+        let sign_in = SameDeviceSignIn::new(
+            withdrawing,
+            Arc::clone(&sign_in.codes),
+            Arc::clone(&sign_in.destinations),
+            Arc::clone(&sign_in.server_origin),
+            sign_in.owner_grant.clone(),
+        );
+        assert!(matches!(
+            sign_in.sign_in("code-1", "/", now),
+            Err(SameDeviceSignInError::Refused(
+                SignInRefusal::CodeNotRedeemable
+            ))
+        ));
+        let sessions = sign_in.store.store.tx().live_browser_sessions(now);
+        assert!(sessions.expect("read").is_empty(), "no session stands");
     }
 
     /// A redeemed code is spent: presenting it again is

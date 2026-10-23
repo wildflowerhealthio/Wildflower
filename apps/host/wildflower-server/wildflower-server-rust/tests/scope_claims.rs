@@ -59,6 +59,7 @@ fn set_up_authorization_server(
         &config,
         pending_consent_tx,
         Arc::new(AdmitEveryAuthorizationStart),
+        &[],
     )
     .expect("set up the authorization server")
 }
