@@ -152,7 +152,11 @@ crashes and ANRs. Gradle finds the NDK it extracts the table with through
 `NDK_HOME`, the same NDK the Tauri CLI builds with, and takes its version from
 that NDK's `source.properties`: given a path alone, the Android Gradle plugin
 still expects its own default NDK version and drops the table when they
-differ. The job fails if a bundle comes out without one. The bundle is attached to the tag's GitHub Release first, before the
+differ. The job fails if a bundle comes out without one, and says why as best it
+can: an init script reports each Gradle task with "native", "symbol" or
+"jnilib" in its name (scheduled or not, how it ended, its files), and the
+failing step lists the bundle's metadata and libraries and the symbol
+sections each library still has. The bundle is attached to the tag's GitHub Release first, before the
 Play upload, so it is there even when that upload fails.
 
 **What it builds.** One bundle for `aarch64` and `armv7`, the ABIs phones run;
