@@ -34,6 +34,15 @@ ignore = [
   # `advisory-not-detected` once these stop matching, which is the cue to drop.
   "RUSTSEC-2026-0194",
   "RUSTSEC-2026-0195",
+  # crypto-bigint < 0.7.6 — several operations meant to be constant-time could
+  # branch on secret values (subtraction, division, Montgomery multiplication),
+  # a timing side channel. The fix is only in 0.7.6+, but 0.5.5 is pinned by
+  # `elliptic-curve` 0.13, which `p256`/`p384` 0.13 pull in for
+  # `jsonwebtoken` (`rust_crypto` backend, still on 0.13 in 11.1) and the
+  # `helios-rest`/`helios-ui` pins. Our JWT code signs and verifies only RS256,
+  # so the elliptic-curve path is never exercised with our keys. Reviewed,
+  # temporary — drop once helios and jsonwebtoken move to `p256`/`p384` 0.14.
+  "RUSTSEC-2026-0387",
 ]
 # Only fail on "unmaintained" advisories for crates we depend on directly; deep
 # transitive ones (e.g. the gtk3/atk chain pulled in by Tauri, or unic-* and
