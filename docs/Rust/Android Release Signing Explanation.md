@@ -163,7 +163,8 @@ that NDK's `source.properties`: given a path alone, the Android Gradle plugin
 still expects its own default NDK version and drops the table when they
 differ. The job fails if a bundle comes out without one, and says why as best it
 can: an init script reports each Gradle task with "native", "symbol" or
-"jnilib" in its name (scheduled or not, how it ended, its files), and the
+"jnilib" in its name (scheduled or not, how it ended, its files) and the NDK
+the plugin resolved, Gradle runs at `--info` (`tauri android build -v`), and the
 failing step lists the bundle's metadata and libraries and the symbol
 sections each library still has. The bundle is attached to the tag's GitHub Release first, before the
 Play upload, so it is there even when that upload fails.

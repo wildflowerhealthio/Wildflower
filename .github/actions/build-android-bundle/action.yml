@@ -107,6 +107,18 @@ runs:
         cat > ~/.gradle/init.d/native-symbols-report.gradle <<'GROOVY'
         def isNativeTask = { task -> task.name =~ /(?i)native|symbol|jnilib/ }
         def report = { line -> println "[native-symbols] $line" }
+        // The NDK the plugin resolved for the app, whose llvm-strip and
+        // llvm-objcopy the strip and symbol table tasks run.
+        gradle.projectsEvaluated {
+          def android = gradle.rootProject.findProject(':app')?.extensions?.findByName('android')
+          if (android == null) return
+          report "app ndkPath=${android.ndkPath} ndkVersion=${android.ndkVersion}"
+          try {
+            report "app ndkDirectory=${android.ndkDirectory}"
+          } catch (e) {
+            report "app ndkDirectory unresolved: ${e.message}"
+          }
+        }
         gradle.taskGraph.whenReady { graph ->
           graph.allTasks.findAll(isNativeTask).each { report "scheduled ${it.path}" }
         }
@@ -127,7 +139,10 @@ runs:
       shell: bash
       working-directory: apps/host/host-app
       # One bundle for both ABIs, not one per ABI: Play splits it per device.
-      run: vp run tauri android build --aab --target aarch64 armv7
+      # `-v` runs Gradle at --info instead of --warn, for what the strip and
+      # symbol table tasks do with each library while the bundle still comes
+      # out without its symbol table.
+      run: vp run tauri android build -v --aab --target aarch64 armv7
 
     - name: Locate bundle
       id: bundle
@@ -161,6 +176,8 @@ runs:
             ls -lL "$lib" || true
             readelf -S -W "$lib" | grep -E '\.symtab|\.debug_' || echo "  (no .symtab or .debug_* sections)"
           done
+          echo "The NDK's strip and objcopy tools, under NDK_HOME=$NDK_HOME:"
+          ls -l "$NDK_HOME"/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-{strip,objcopy} || true
           echo "Gradle's native intermediates:"
           find -L "$INTERMEDIATES" -maxdepth 1 -iname '*native*' -exec find -L {} -type f \; || echo "  (none)"
           exit 1
