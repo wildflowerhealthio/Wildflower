@@ -91,7 +91,9 @@ jobs:
       - name: Install cargo-edit (cargo set-version)
         uses: taiki-e/install-action@v2.87.29
         with:
-          tool: cargo-edit
+          # Built from source with rust-toolchain.toml's rustc, so the newest
+          # release can outpace it. Bump this alongside the toolchain.
+          tool: cargo-edit@0.13.13
 
       - name: Set up Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2
