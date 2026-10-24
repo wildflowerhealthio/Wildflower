@@ -533,3 +533,9 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 **Discovered during**: claude/access-codes-redeemer-selection-7gyvx5 (claim codes that name no tunnel)
 **Learning**: `ReqwestRelayClient`'s tests serve the real relay on loopback under the hostname `relay.test`, resolved inside the test. reqwest honours `HTTPS_PROXY`, and `relay.test` isn't in `NO_PROXY`, so in a Claude Code cloud container every one of them fails with `RelayUnreachable` (`Connection reset by peer`), the ones untouched by a change included. Run them with the proxy unset for that process: `env -u HTTPS_PROXY -u https_proxy cargo test -p wildflowerhealthio-servers`. Separately, `wildflowerhealthio-servers-tauri` needs GTK's system libraries (`gdk-sys`), which the cloud container lacks, so it only builds in CI there.
 **Suggested destination**: apps/host/servers/AGENTS.md, or docs/Testing/Testing Reference.md
+
+## A Tauri iOS plugin's `load(webview:)` runs after its commands can
+
+**Discovered during**: claude/determined-gates-3wt19a (TestFlight crash: `BGTaskScheduler` "submission without registration" at launch)
+**Learning**: In Tauri 2.11, `PluginManager.load` (`mobile/ios-api/Sources/Tauri/Tauri.swift`) registers a plugin during setup with no webview and defers `load(webview:)` to `onWebviewCreated`, but `run_mobile_plugin` commands reach the instance before that. Setup work a command depends on, such as `BGTaskScheduler.register`, belongs in the plugin's `@_cdecl("init_plugin_…")` entry point, not `load(webview:)`. Also, iOS calls `BGTask.expirationHandler` on a background queue even when the task was registered `using: .main`, because that queue covers only the launch handler.
+**Suggested destination**: a Tauri plugin How-To, or the background-service fork's `docs/ios.md`
