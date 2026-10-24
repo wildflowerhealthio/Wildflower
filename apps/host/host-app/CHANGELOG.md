@@ -13,6 +13,11 @@ if you want to expand on a release.
 
 <!-- release-notes-start -->
 
+## v0.4.2 — 2026-10-24
+
+- Name the NDK version Gradle extracts Android debug symbols with (#1398) (b05d3091)
+- Email an issued claim code as an invitation, and date its expiry (#1397) (26371669)
+
 ## v0.4.1 — 2026-10-24
 
 - fix(ci): pin cargo-edit in release prepare (#1395) (16b5004b)
