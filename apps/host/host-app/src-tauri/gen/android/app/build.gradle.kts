@@ -32,8 +32,16 @@ android {
     // The NDK the Tauri CLI compiled the Rust library with. Without it the
     // plugin looks for its own default NDK version, and where that is not
     // installed it packs the library unstripped and leaves out the release
-    // symbol table below, without failing the build.
-    System.getenv("NDK_HOME")?.let { ndkPath = it }
+    // symbol table below, without failing the build. The version has to be
+    // named too: given only a path, the plugin still expects its default
+    // version, rejects an NDK at that path whose version differs (CXX1100),
+    // and drops the symbol table the same silent way.
+    System.getenv("NDK_HOME")?.let { ndkHome ->
+        ndkPath = ndkHome
+        ndkVersion = Properties().apply {
+            file("$ndkHome/source.properties").inputStream().use { load(it) }
+        }.getProperty("Pkg.Revision")
+    }
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
         applicationId = "io.wildflowerhealth.hostapp"
