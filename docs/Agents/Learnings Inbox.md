@@ -527,3 +527,9 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 **Discovered during**: ruthmarks/hfs-ui-login (routing `/ui` to the FHIR router past the bearer gate)
 **Learning**: `Router::route_service(path, router)` compiles, then panics at router construction with "`Router::route_service` cannot be used with `Router`s. Use `Router::nest` instead". `nest`/`nest_service` strip the prefix, which a sub-router that matches on full paths (HFS's `/ui/...`) can't take. `route(path, axum::routing::any_service(router))` keeps the full path and works. Only a test that builds the composed router catches it: `cargo check` and a unit test of the inner router both pass.
 **Suggested destination**: a Rust/axum gotchas Reference
+
+## A Tauri iOS plugin's `load(webview:)` runs after its commands can
+
+**Discovered during**: claude/determined-gates-3wt19a (TestFlight crash: `BGTaskScheduler` "submission without registration" at launch)
+**Learning**: In Tauri 2.11, `PluginManager.load` (`mobile/ios-api/Sources/Tauri/Tauri.swift`) registers a plugin during setup with no webview and defers `load(webview:)` to `onWebviewCreated`, but `run_mobile_plugin` commands reach the instance before that. Setup work a command depends on, such as `BGTaskScheduler.register`, belongs in the plugin's `@_cdecl("init_plugin_…")` entry point, not `load(webview:)`. Also, iOS calls `BGTask.expirationHandler` on a background queue even when the task was registered `using: .main`, because that queue covers only the launch handler.
+**Suggested destination**: a Tauri plugin How-To, or the background-service fork's `docs/ios.md`
