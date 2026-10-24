@@ -10,15 +10,6 @@
 # why. Yanked crates are treated as errors so the lockfile stays installable.
 yanked = "deny"
 ignore = [
-  # libgit2 < 1.7.2 (via `libgit2-sys` <- `git2` <- `vergen`) — three issues
-  # (revparse_single DoS, git_index_add heap corruption, smart-transport OOB
-  # read). `vergen` is a *build-dependency* of `rathole` (it stamps git/build
-  # info into the binary at compile time); the vulnerable runtime methods
-  # (`Repository::revparse_single`, `Index::add`, smart-transport negotiation)
-  # are never called by us — vergen only reads `HEAD`/describe at build time.
-  # The dep is transitive through rathole and outside our control until rathole
-  # bumps `vergen`/`git2`. Reviewed, build-time-only, low-risk, temporary.
-  "RUSTSEC-2024-0013",
   # rsa 0.9.x — "Marvin Attack": the crate's RSA private-key operation is not
   # constant-time, leaking key bits through timing observable to an attacker who
   # can submit ciphertexts and measure decryption timing over the network. There
@@ -43,20 +34,15 @@ ignore = [
   # `advisory-not-detected` once these stop matching, which is the cue to drop.
   "RUSTSEC-2026-0194",
   "RUSTSEC-2026-0195",
-  # zip < 9.0.0 — extraction keeps SUID/SGID bits (0367), creates symlinks whose
-  # targets leave the destination (0368), and applies permissions through
-  # symlinks (0369). All three are in `ZipArchive::extract` /
-  # `ZipStreamReader::extract`. zip enters only through helios 0.2.4 (the newest
-  # release), which asks for `zip = "0.6"` and `zip = "2.2"`, and helios never
-  # calls either `extract`: helios-fhir's 0.6 is a build-dependency whose build
-  # script only touches it with the `R6` feature, which we don't enable (and
-  # even then unpacks entry by entry through `mangled_name`), and
-  # helios-sof's 2.x only *writes* zips (`ZipWriter` over bulk-export Parquet
-  # buffers it built itself). Reviewed, low-risk, temporary until helios ships
-  # zip 9 (HeliosSoftware/hfs#2102, merged but unreleased).
-  "RUSTSEC-2026-0367",
-  "RUSTSEC-2026-0368",
-  "RUSTSEC-2026-0369",
+  # crypto-bigint < 0.7.6 — several operations meant to be constant-time could
+  # branch on secret values (subtraction, division, Montgomery multiplication),
+  # a timing side channel. The fix is only in 0.7.6+, but 0.5.5 is pinned by
+  # `elliptic-curve` 0.13, which `p256`/`p384` 0.13 pull in for
+  # `jsonwebtoken` (`rust_crypto` backend, still on 0.13 in 11.1) and the
+  # `helios-rest`/`helios-ui` pins. Our JWT code signs and verifies only RS256,
+  # so the elliptic-curve path is never exercised with our keys. Reviewed,
+  # temporary — drop once helios and jsonwebtoken move to `p256`/`p384` 0.14.
+  "RUSTSEC-2026-0387",
 ]
 # Only fail on "unmaintained" advisories for crates we depend on directly; deep
 # transitive ones (e.g. the gtk3/atk chain pulled in by Tauri, or unic-* and
@@ -86,7 +72,11 @@ allow = [
   "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.8
-exceptions = []
+exceptions = [
+  # bzip2's own permissive BSD-style license, carried by the Rust port of
+  # libbzip2. It arrives through `zip` 9's bzip2 feature, which helios enables.
+  { crate = "libbz2-rs-sys", allow = ["bzip2-1.0.6"] },
+]
 
 [bans]
 # Multiple versions of one crate are common in large trees and only bloat the

@@ -87,8 +87,9 @@ impl AuthProvider for VerifyingBearerProvider {
 }
 
 /// HFS's principal for a verified token. HFS reads its subject, issuer and
-/// scopes; it carries no tenant (FHIR is served at a fixed root) and no other
-/// claims, which HFS doesn't read.
+/// scopes; it carries no tenant (FHIR is served at a fixed root), no SMART
+/// launch context (our tokens name no `patient`, so HFS refuses a `patient/`
+/// scope grant), and no other claims, which HFS doesn't read.
 fn principal(verified: VerifiedAccessToken) -> Principal {
     Principal {
         subject: verified.subject,
@@ -101,6 +102,7 @@ fn principal(verified: VerifiedAccessToken) -> Principal {
         jti: verified.jti,
         expires_at: verified.expires_at,
         custom_claims: serde_json::Map::new(),
+        launch_context: None,
     }
 }
 

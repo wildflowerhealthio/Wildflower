@@ -94,9 +94,13 @@ unsafe_code = "forbid"
 # allows this git source.
 [patch.crates-io]
 tauri-plugin-background-service = { git = "https://github.com/wildflowerhealthio/tauri-background-service", branch = "fix/ios-bgtask-registration-and-expiration-queue" }
-# Our fork of `rathole` (wildflower/handoff), pinned to a commit while its
-# changes are reviewed upstream in wildflowerhealthio/rathole#1.
-rathole = { git = "https://github.com/wildflowerhealthio/rathole", rev = "50b5409a53cd7d0ae67baf7a66cd462118f3d8ea" }
+# Our fork of `rathole`, pinned to a commit while its changes are reviewed
+# upstream in wildflowerhealthio/rathole#1. The commit is on
+# `ruthmarks/security-deps`, stacked on `wildflower/handoff`: it swaps vergen 7
+# (git2/libgit2) for `vergen-gitcl` and clap 3 (atty) for clap 4. Keep
+# `vergen-gitcl`/`vergen`/`vergen-lib` locked at 10.0.1 — 10.0.2+ needs rustc
+# 1.96, past the pinned toolchain.
+rathole = { git = "https://github.com/wildflowerhealthio/rathole", rev = "e50036aa302b38f9a80257734ecc60d51ffccfe0" }
 
 # Optimise the RSA and argon2 maths even in dev and test builds. The
 # authorization server's tests generate a 2048-bit signing key each, and

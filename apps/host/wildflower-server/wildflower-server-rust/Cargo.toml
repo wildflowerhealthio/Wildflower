@@ -27,7 +27,7 @@ tower-http.workspace = true
 # The FHIR web UI's login sessions, which the host builds and shares between
 # fhir-r4-rust and the middleware that presents a session's bearer to the gate.
 # Exact-pinned with the other HFS crates (see fhir-r4-rust's Cargo.toml).
-helios-auth = "=0.2.4"
+helios-auth = "=0.2.5"
 # `sync` carries the host's pending-consent, server-health and certificate
 # `watch` channels and the tunnel's visitor streams; `time` and `macros` pace and bound the reachability
 # monitor's probes and the `/health` checks, wait for a certificate's renewal

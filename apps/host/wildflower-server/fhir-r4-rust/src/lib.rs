@@ -135,8 +135,9 @@ pub fn is_fhir_r4_route(method: &Method, path: &str) -> bool {
 /// `fhir_api_gate` is the host's bearer gate, layered over the FHIR API (HFS
 /// and both overrides) and not over the web UI: HFS sends a visitor without a
 /// session to its sign-in, which a bearer gate would refuse outright. The UI
-/// is mounted over the gated API, so its pages pass by route while anything
-/// else, an unknown `/ui/…` path included, falls through to the gate.
+/// is mounted over the gated API, so every `/ui/…` path (an unknown one gets
+/// the UI's not-found page) passes by route, behind HFS's own session check,
+/// while anything else falls through to the gate.
 ///
 /// `ui_sessions` holds the web UI's signed-in sessions (built from
 /// [`ui_login_config`] by the host, which shares it with the middleware in
@@ -275,8 +276,8 @@ where
         .layer(DefaultBodyLimit::max(MAX_FHIR_BODY_BYTES))
         .layer(fhir_api_gate);
 
-    // The UI's routes sit beside the gated API, not inside it; everything they
-    // don't claim falls through to the gate.
+    // The UI's routes sit beside the gated API, not inside it; every path
+    // outside `/ui` falls through to the gate.
     let fhir_api_with_ui = mount_ui(
         fhir_api,
         spec_dir,
