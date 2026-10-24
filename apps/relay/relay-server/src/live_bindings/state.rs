@@ -47,7 +47,7 @@ use crate::logging::IDENTIFYING;
 use crate::outcomes::ConnectionOutcomes;
 use crate::route::Router;
 use crate::served::ServedTunnels;
-use crate::settings::{FrontSettings, RelaySettings};
+use crate::settings::{RelayHostnames, RelaySettings};
 use crate::site::signature::Verifier;
 
 /// How many changes can wait for rathole. Changes apply one at a time, and
@@ -110,7 +110,7 @@ impl ChangedTunnel for ReissuedTunnel {
 pub struct TunnelRegistry {
     /// The store the capabilities are lifted from.
     pub(crate) store: SqliteTunnelStore,
-    pub(crate) front: FrontSettings,
+    pub(crate) hostnames: RelayHostnames,
     /// How long an issued claim code redeems for.
     pub(crate) claim_code_ttl: Duration,
     /// Where each change goes to rathole.
@@ -159,15 +159,15 @@ impl TunnelRegistry {
         let (rathole, changes) = mpsc::channel(RATHOLE_CHANGES);
         let served = Arc::new(ServedTunnels::new(&tunnels));
         let router = Router::new(
-            &settings.front.domain,
-            settings.front.local_hostnames(),
+            settings.front.hostnames.domain().as_str(),
+            settings.front.hostnames.local_hostnames(),
             Arc::clone(&served),
         );
         let verifier = Verifier::new(Arc::clone(&served), settings.admin_key.clone());
         let outcomes = Arc::new(ConnectionOutcomes::new(Arc::clone(&served)));
         let registry = Self {
             store,
-            front: settings.front.clone(),
+            hostnames: settings.front.hostnames.clone(),
             claim_code_ttl: settings.claim_code_ttl,
             rathole,
             tunnels: served,
@@ -206,7 +206,7 @@ impl TunnelRegistry {
     /// The hostname the admin API is served on.
     #[must_use]
     pub fn admin_hostname(&self) -> String {
-        self.front.admin_hostname()
+        self.hostnames.admin_hostname()
     }
 
     /// Create or delete a tunnel, or reissue its token (as `change` says),

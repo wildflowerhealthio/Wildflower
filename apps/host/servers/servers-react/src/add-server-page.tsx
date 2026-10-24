@@ -568,27 +568,30 @@ const CredentialsStep = ({
         onAdd()
       }}
     >
-      <StepHeading headingId={headingId} title="Tunnel">
-        {Match.value(mode).pipe(
-          Match.when('claimCode', () => "Enter the claim code from your relay's admin."),
-          Match.when(
-            'claimCodeWithDetails',
-            () => 'That code is for a new server: enter your email and choose a subdomain for it.'
-          ),
-          Match.when(
-            'token',
-            () => 'Enter the tunnel name and token you were given for this relay.'
-          ),
-          Match.exhaustive
-        )}
-      </StepHeading>
       {Match.value(mode).pipe(
-        Match.when('claimCode', () => <ClaimCodeFields entries={entries} onChange={onChange} />),
+        Match.when('claimCode', () => (
+          <>
+            <StepHeading headingId={headingId} title="Tunnel">
+              Enter the claim code from your relay's admin.
+            </StepHeading>
+            <ClaimCodeFields entries={entries} onChange={onChange} />
+          </>
+        )),
         Match.when('claimCodeWithDetails', () => (
-          <ClaimCodeWithDetailsFields relay={relay} entries={entries} onChange={onChange} />
+          <>
+            <StepHeading headingId={headingId} title="Tunnel">
+              That code is for a new server: enter your email and choose a subdomain for it.
+            </StepHeading>
+            <ClaimCodeWithDetailsFields relay={relay} entries={entries} onChange={onChange} />
+          </>
         )),
         Match.when('token', () => (
-          <TokenFields relay={relay} entries={entries} onChange={onChange} />
+          <>
+            <StepHeading headingId={headingId} title="Tunnel">
+              Enter the tunnel name and token you were given for this relay.
+            </StepHeading>
+            <TokenFields relay={relay} entries={entries} onChange={onChange} />
+          </>
         )),
         Match.exhaustive
       )}

@@ -14,8 +14,8 @@ import styles from './open-claim-codes.module.css'
  */
 const OpenClaimCodes = (): JSX.Element => {
   const issue = useIssueOpenClaimCodeMutation()
-  return Option.fromNullable(issue.data).pipe(
-    Option.map((issued) => (
+  return Option.match(Option.fromNullable(issue.data), {
+    onSome: (issued) => (
       <IssuedCodePanel
         key="issued-open-claim-code"
         title="New claim code"
@@ -27,8 +27,8 @@ const OpenClaimCodes = (): JSX.Element => {
       >
         Their device redeems it once for a new tunnel, under the email and subdomain they choose.
       </IssuedCodePanel>
-    )),
-    Option.getOrElse(() => (
+    ),
+    onNone: () => (
       <section className={styles['open-claim-codes']}>
         <h2 className="text-heading-4">Claim codes for new servers</h2>
         <p className="text-body-2">
@@ -49,8 +49,8 @@ const OpenClaimCodes = (): JSX.Element => {
           </button>
         </div>
       </section>
-    ))
-  )
+    ),
+  })
 }
 
 export { OpenClaimCodes }

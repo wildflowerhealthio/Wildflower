@@ -363,7 +363,9 @@ pub use live_bindings::state::{RatholeFeed, TunnelRegistry};
 pub use outcomes::ConnectionOutcomes;
 pub use route::{Route, Router};
 pub use served::ServedTunnels;
-pub use settings::{AcmeSettings, ControlSettings, FrontSettings, RelaySettings, Secret};
+pub use settings::{
+    AcmeSettings, ControlSettings, FrontSettings, RelayHostnames, RelaySettings, Secret,
+};
 pub use site::signature::{SignedBy, Verifier};
 pub use site::Site;
 pub use tunnels::{TunnelDown, Tunnels};
@@ -387,7 +389,7 @@ pub async fn run_relay(
     let (registry, rathole) = TunnelRegistry::open(&settings).await?;
     let registry = Arc::new(registry);
     let acme = site::acme::state(
-        &settings.front.local_hostnames(),
+        &settings.front.hostnames.local_hostnames(),
         &settings.acme,
         &settings.state_dir,
     );
@@ -403,7 +405,7 @@ pub async fn run_relay(
     );
     let connection_log_dir = logging::connection_log_dir(&settings.state_dir);
     let settings = settings.front;
-    tracing::info!(domain = %settings.domain, "routes built");
+    tracing::info!(domain = %settings.hostnames.domain(), "routes built");
     let tunnels = Tunnels::default();
     let front = Front::new(
         registry.router(),

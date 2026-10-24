@@ -13,7 +13,7 @@ use rand::Rng;
 use wildflowerhealthio_rathole_settings::is_dns_label;
 
 use crate::domain::{names, StoredTunnel, Tunnel, TunnelError, TunnelStore};
-use crate::settings::{FrontSettings, Secret};
+use crate::settings::{RelayHostnames, Secret};
 
 /// How many random bytes make a tunnel's token.
 pub(crate) const TOKEN_BYTES: usize = 32;
@@ -21,16 +21,16 @@ pub(crate) const TOKEN_BYTES: usize = 32;
 /// The longest email accepted, in bytes.
 const MAX_EMAIL_LEN: usize = 254;
 
-/// Creation — `POST /api/tunnels`. Holds the store and the front's settings
+/// Creation — `POST /api/tunnels`. Holds the store and the relay's hostnames
 /// (for reserved names and public hosts), lifted from the state.
 pub(crate) struct TunnelsCreator<S: TunnelStore> {
     store: S,
-    front: FrontSettings,
+    hostnames: RelayHostnames,
 }
 
 impl<S: TunnelStore> TunnelsCreator<S> {
-    pub(crate) fn new(store: S, front: FrontSettings) -> Self {
-        Self { store, front }
+    pub(crate) fn new(store: S, hostnames: RelayHostnames) -> Self {
+        Self { store, hostnames }
     }
 
     /// Create and store a tunnel for `email`, named `name` or, without one,
@@ -55,7 +55,7 @@ impl<S: TunnelStore> TunnelsCreator<S> {
         rng: &mut R,
         now: impl FnOnce() -> Result<i64, TunnelError>,
     ) -> Result<StoredTunnel, TunnelError> {
-        let stored = new_stored_tunnel(&self.store, &self.front, email, name, rng, now)?;
+        let stored = new_stored_tunnel(&self.store, &self.hostnames, email, name, rng, now)?;
         if !self.store.insert_tunnel(&stored)? {
             return Err(TunnelError::Taken);
         }
@@ -74,12 +74,12 @@ impl<S: TunnelStore> TunnelsCreator<S> {
 
     /// `<name>.<domain>`, where the tunnel named `name` is served.
     pub(crate) fn public_host(&self, name: &str) -> String {
-        self.front.public_host(name)
+        self.hostnames.public_host(name)
     }
 }
 
 /// The tunnel to store for `email`, named `name` or, without one, two
-/// random words (see [`names`]) that `store` does not have and `front` does
+/// random words (see [`names`]) that `store` does not have and `hostnames` does
 /// not reserve, with a random token from `rng`, created at the time `now`
 /// reads (Unix epoch seconds). Stores nothing: [`TunnelsCreator::create`]
 /// and the claim-code redeemer each store it their own way.
@@ -93,7 +93,7 @@ impl<S: TunnelStore> TunnelsCreator<S> {
 /// store read fails.
 pub(crate) fn new_stored_tunnel<S: TunnelStore, R: Rng + ?Sized>(
     store: &S,
-    front: &FrontSettings,
+    hostnames: &RelayHostnames,
     email: &str,
     name: Option<&str>,
     rng: &mut R,
@@ -102,11 +102,11 @@ pub(crate) fn new_stored_tunnel<S: TunnelStore, R: Rng + ?Sized>(
     let email = valid_email(email).ok_or(TunnelError::InvalidEmail)?;
     let name = match name {
         Some(name) if !is_dns_label(name) => return Err(TunnelError::InvalidName),
-        Some(name) if front.is_reserved(name) => return Err(TunnelError::Reserved),
+        Some(name) if hostnames.is_reserved(name) => return Err(TunnelError::Reserved),
         Some(name) if store.contains_tunnel(name)? => return Err(TunnelError::Taken),
         Some(name) => name.to_owned(),
         None => names::generate_unused(rng, |name| {
-            Ok::<_, TunnelError>(front.is_reserved(name) || store.contains_tunnel(name)?)
+            Ok::<_, TunnelError>(hostnames.is_reserved(name) || store.contains_tunnel(name)?)
         })?
         .ok_or(TunnelError::Exhausted("no unused tunnel name was drawn"))?,
     };
@@ -154,8 +154,10 @@ mod tests {
 
     /// A creator for `relay.example.com` over `store`.
     fn creator<S: TunnelStore>(store: S) -> TunnelsCreator<S> {
-        let front = settings(std::path::Path::new("/nonexistent"), None).front;
-        TunnelsCreator::new(store, front)
+        let hostnames = settings(std::path::Path::new("/nonexistent"), None)
+            .front
+            .hostnames;
+        TunnelsCreator::new(store, hostnames)
     }
 
     /// A store holding `alice`.

@@ -27,18 +27,18 @@ use super::tunnels_creator::new_stored_tunnel;
 use crate::domain::{
     ClaimCode, ClaimCodeStore, ClaimCodeTarget, RedeemedClaimCode, TunnelError, TunnelStore,
 };
-use crate::settings::FrontSettings;
+use crate::settings::RelayHostnames;
 
-/// Redeeming — `POST /claim`. Holds the store and the front's settings (for
-/// reserved names), lifted from the state.
+/// Redeeming — `POST /claim`. Holds the store and the relay's hostnames
+/// (for reserved names), lifted from the state.
 pub(crate) struct ClaimCodesRedeemer<S: TunnelStore + ClaimCodeStore> {
     store: S,
-    front: FrontSettings,
+    hostnames: RelayHostnames,
 }
 
 impl<S: TunnelStore + ClaimCodeStore> ClaimCodesRedeemer<S> {
-    pub(crate) fn new(store: S, front: FrontSettings) -> Self {
-        Self { store, front }
+    pub(crate) fn new(store: S, hostnames: RelayHostnames) -> Self {
+        Self { store, hostnames }
     }
 
     /// Redeem the code `typed_code` spells (see [`ClaimCode::parse`]) at the
@@ -86,7 +86,7 @@ impl<S: TunnelStore + ClaimCodeStore> ClaimCodesRedeemer<S> {
             (ClaimCodeTarget::Open, Some(details)) => {
                 let stored = new_stored_tunnel(
                     &self.store,
-                    &self.front,
+                    &self.hostnames,
                     &details.email,
                     details.tunnel_name.as_deref(),
                     rng,
@@ -154,9 +154,11 @@ mod tests {
                 })
                 .unwrap());
         }
-        let front = settings(std::path::Path::new("/nonexistent"), None).front;
+        let hostnames = settings(std::path::Path::new("/nonexistent"), None)
+            .front
+            .hostnames;
         (
-            ClaimCodesRedeemer::new(store, front),
+            ClaimCodesRedeemer::new(store, hostnames),
             preset.to_string(),
             open.to_string(),
         )

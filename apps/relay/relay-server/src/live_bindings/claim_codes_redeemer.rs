@@ -29,7 +29,7 @@ impl LiveClaimCodesRedeemer {
         Self {
             redeemer: Arc::new(ClaimCodesRedeemer::new(
                 registry.store.clone(),
-                registry.front.clone(),
+                registry.hostnames.clone(),
             )),
             registry: Arc::clone(registry),
         }

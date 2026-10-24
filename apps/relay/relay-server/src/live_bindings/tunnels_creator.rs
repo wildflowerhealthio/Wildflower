@@ -28,7 +28,7 @@ impl AdminCapability for LiveTunnelsCreator {
         Self {
             creator: Arc::new(TunnelsCreator::new(
                 state.store.clone(),
-                state.front.clone(),
+                state.hostnames.clone(),
             )),
             registry: state,
         }

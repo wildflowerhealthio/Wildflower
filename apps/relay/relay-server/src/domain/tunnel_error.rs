@@ -17,7 +17,7 @@ pub enum TunnelError {
     /// The email is empty, too long or not `local@domain`.
     InvalidEmail,
     /// The name is one the relay keeps for itself
-    /// ([`FrontSettings::is_reserved`](crate::settings::FrontSettings::is_reserved)).
+    /// ([`RelayHostnames::is_reserved`](crate::settings::RelayHostnames::is_reserved)).
     Reserved,
     /// A stored tunnel already has the name.
     Taken,

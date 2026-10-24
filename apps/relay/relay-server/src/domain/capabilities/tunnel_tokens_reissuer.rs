@@ -159,8 +159,10 @@ mod tests {
             .reissue("alice", &mut StdRng::seed_from_u64(0))
             .unwrap();
 
-        let front = settings(std::path::Path::new("/nonexistent"), None).front;
-        let redeemer = ClaimCodesRedeemer::new(reissuer.store, front);
+        let hostnames = settings(std::path::Path::new("/nonexistent"), None)
+            .front
+            .hostnames;
+        let redeemer = ClaimCodesRedeemer::new(reissuer.store, hostnames);
         let mut rng = StdRng::seed_from_u64(2);
         assert_eq!(
             redeemer
