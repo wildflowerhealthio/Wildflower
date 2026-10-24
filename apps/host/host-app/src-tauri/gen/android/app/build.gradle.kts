@@ -66,11 +66,6 @@ android {
             isDebuggable = true
             isJniDebuggable = true
             isMinifyEnabled = false
-            packaging {                jniLibs.keepDebugSymbols.add("*/arm64-v8a/*.so")
-                jniLibs.keepDebugSymbols.add("*/armeabi-v7a/*.so")
-                jniLibs.keepDebugSymbols.add("*/x86/*.so")
-                jniLibs.keepDebugSymbols.add("*/x86_64/*.so")
-            }
         }
         getByName("release") {
             signingConfigs.findByName("release")?.let { signingConfig = it }
@@ -93,6 +88,19 @@ android {
     }
     buildFeatures {
         buildConfig = true
+    }
+}
+
+// Debug builds keep the Rust library's debug info. A build type has no
+// `packaging`, so `packaging {}` inside `getByName("debug")` would set the
+// android block's and keep it in release too, where the release strip task
+// then copies the library through untouched and the symbol table task, seeing
+// nothing stripped, extracts nothing.
+androidComponents {
+    onVariants(selector().withBuildType("debug")) { variant ->
+        variant.packaging.jniLibs.keepDebugSymbols.addAll(
+            "*/arm64-v8a/*.so", "*/armeabi-v7a/*.so", "*/x86/*.so", "*/x86_64/*.so"
+        )
     }
 }
 

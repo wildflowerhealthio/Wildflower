@@ -139,10 +139,7 @@ runs:
       shell: bash
       working-directory: apps/host/host-app
       # One bundle for both ABIs, not one per ABI: Play splits it per device.
-      # `-v` runs Gradle at --info instead of --warn, for what the strip and
-      # symbol table tasks do with each library while the bundle still comes
-      # out without its symbol table.
-      run: vp run tauri android build -v --aab --target aarch64 armv7
+      run: vp run tauri android build --aab --target aarch64 armv7
 
     - name: Locate bundle
       id: bundle

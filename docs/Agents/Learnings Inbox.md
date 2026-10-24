@@ -539,3 +539,9 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 **Discovered during**: ruthmarks/rust-security-advisories
 **Learning**: helios (HFS) 0.2.x declares `serde = "=1.0.224"` and `serde_json = "=1.0.144"` in its workspace dependencies, so `cargo update` holds both crates, and every crate that needs a newer one, at a version they accept. That blocked the patched `jsonwebtoken` 10.3+ (needs `serde ^1.0.228`) and `serde_with` 3.21+ (needs `serde_core ^1.0.225`). When `cargo update -p <crate>` reports `Locking 0 packages` with a newer version available, try `--precise <version>` to see which pin blocks it.
 **Suggested destination**: a Rust dependencies How-To
+
+## `packaging {}` inside a Gradle build type sets it for every variant
+
+**Discovered during**: claude/beautiful-tesla-gcvjkk (Android bundle with no native symbol table)
+**Learning**: The Tauri template's `app/build.gradle.kts` put `packaging { jniLibs.keepDebugSymbols.add(...) }` inside `buildTypes { getByName("debug") { … } }`. A build type has no `packaging`, so the Kotlin DSL resolves it on the enclosing `android {}` block, and the release build kept the Rust library's symbols too. The release strip task then copied the `.so` files unchanged, and `extract<Variant>NativeSymbolTables` skipped them with "the native debug metadata has already been stripped": it takes a library that stripping didn't change for one that was stripped before. That message, and most of what AGP says about stripping, appears only at `--info`, which `tauri android build -v` turns on (by default the Tauri CLI runs Gradle at `--warn`). A per-variant setting belongs in `androidComponents { onVariants(selector().withBuildType(...)) { … } }`.
+**Suggested destination**: docs/Rust/Android Release Signing Explanation.md (already summarised there), or an Android How-To
