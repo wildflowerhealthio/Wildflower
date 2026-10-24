@@ -117,6 +117,15 @@ builds and uploads the bundle, alongside the desktop, iOS and Pebble builds of
 the same release tag. To build it again for an existing tag, dispatch Tauri
 Release — Publish with that `tag` and `platforms` set to `android`.
 
+The build itself is the `.github/actions/build-android-bundle` action, which
+`.github/workflows/ci-android.yml` runs too: on every pull request that touches
+the host app's Tauri crate, its Gradle project, `Cargo.lock`,
+`rust-toolchain.toml` or the action, and on demand for any branch. Without the
+`android-play` environment there is no `keystore.properties`, so that build is
+unsigned, but it is otherwise the release's, symbol table check included. A
+change that breaks the Android build shows up on its pull request rather than
+in the next release.
+
 **Which version Play sees.** `tauri android build` writes
 `gen/android/app/tauri.properties`, which `build.gradle.kts` reads, from the
 `version` in `tauri.conf.json`:
@@ -200,7 +209,8 @@ store, and stores nothing when it fails.
 - [Android Signing Sync How-To](./Android%20Signing%20Sync%20How-To.md) — the one-time Play Console setup, and creating and storing the upload key
 - [Apple Release Signing Explanation](./Apple%20Release%20Signing%20Explanation.md) — the macOS and iOS channels of the same release
 - [CI Build Cache Explanation](./CI%20Build%20Cache%20Explanation.md) — the `release-android` cache key the Android job uses
-- `.github/workflows/tauri-release-publish.yml` — the `build-android` job, the build and upload
+- `.github/workflows/tauri-release-publish.yml` — the `build-android` job, the signing and upload
+- `.github/actions/build-android-bundle/action.yml` — the build and the symbol table check, shared with `ci-android.yml`
 - `apps/host/host-app/src-tauri/gen/android/app/build.gradle.kts` — the `release` signing configuration
 - `scripts/checks/android-play-preflight.sh` — the check, and its tests beside it
 - `scripts/release/android-signing-sync.sh` — creates the upload key and fills the environment

@@ -43,6 +43,7 @@ jobs:
       api-sync: ${{ steps.filter.outputs.api-sync }}
       actions: ${{ steps.filter.outputs.actions }}
       shell: ${{ steps.filter.outputs.shell }}
+      android: ${{ steps.filter.outputs.android }}
     steps:
       - uses: dorny/paths-filter@v4
         id: filter
@@ -161,6 +162,20 @@ jobs:
               - '.vite-hooks/**'
               - '.github/workflows/ci.yml'
               - '.github/workflows/lint-shell.yml'
+            # The host app's Android build: its Tauri crate and Gradle
+            # project, the toolchain and lockfile that pin what compiles for
+            # the Android targets, and the action the release builds with too.
+            # A change elsewhere in the Rust workspace can break it as well,
+            # but runs only the Rust checks.
+            android:
+              - 'apps/host/host-app/src-tauri/**'
+              - 'apps/host/host-app/package.json'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/ci-android.yml'
+              - '.github/workflows/tauri-release-publish.yml'
+              - '.github/actions/build-android-bundle/**'
 
   # A called workflow gets at most the permissions its calling job grants, so
   # each job below grants what its workflow's own `permissions` block asks for.
@@ -248,13 +263,21 @@ jobs:
       contents: read
     uses: ./.github/workflows/lint-shell.yml
 
+  android:
+    name: Android
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci-android.yml
+
   # The status check the `main` ruleset requires. A skipped area (the PR doesn't
   # touch it) counts as passing; a failed or cancelled job anywhere fails it.
   # `always()`, not `!cancelled()`: a cancelled run must still report a
   # failure here, because a skipped `Required` would count as passing.
   required:
     name: Required
-    needs: [changes, typescript, rust, pebble, markdown, api-sync, actions, shell]
+    needs: [changes, typescript, rust, pebble, markdown, api-sync, actions, shell, android]
     if: always()
     runs-on: ubuntu-latest
     steps:

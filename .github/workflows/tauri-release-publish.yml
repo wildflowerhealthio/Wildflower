@@ -759,75 +759,6 @@ jobs:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
         run: ./scripts/checks/android-play-preflight.sh
 
-      - name: Install Android NDK
-        # The runner image carries the Android SDK, but which NDKs it has
-        # moves with the image. The Tauri CLI builds with NDK_HOME when it is
-        # set and otherwise with the newest NDK under the SDK, so pin the one
-        # the CLI installs itself when it finds none (`NDK_VERSION` in
-        # tauri-cli's mobile/android/mod.rs).
-        #
-        # sdkmanager can exit 0 having installed nothing — a licence prompt
-        # left unanswered on stdin, for one — so it is fed `yes` and the
-        # NDK's source.properties (which the Tauri CLI reads for its version)
-        # is checked afterwards, with sdkmanager's output shown if missing.
-        #
-        # The vendored OpenSSL build is pointed at the NDK's llvm-ranlib, per
-        # Android target. The Tauri CLI points cargo at the NDK's clang and
-        # llvm-ar but not at a ranlib, and the `cc` crate then looks for
-        # `llvm-ranlib` on PATH and falls back to
-        # `aarch64-linux-android-ranlib`, which NDKs since r23 no longer ship.
-        # `RANLIB_<target>` is read before that search, and leaves the rest of
-        # the NDK's tools off PATH, where they would shadow the host's.
-        env:
-          NDK_VERSION: 29.0.13846066
-        run: |
-          set -euo pipefail
-          ndk_home="$ANDROID_HOME/ndk/$NDK_VERSION"
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" \
-            < <(yes) > "$RUNNER_TEMP/sdkmanager.log" 2>&1 || true
-          if [[ ! -f "$ndk_home/source.properties" ]]; then
-            cat "$RUNNER_TEMP/sdkmanager.log"
-            echo "::error::sdkmanager did not install NDK $NDK_VERSION at $ndk_home (its output is above)."
-            exit 1
-          fi
-          llvm_bin="$ndk_home/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          if [[ ! -x "$llvm_bin/llvm-ranlib" ]]; then
-            echo "::error::NDK $NDK_VERSION has no llvm-ranlib at $llvm_bin."
-            exit 1
-          fi
-          echo "NDK_HOME=$ndk_home" >> "$GITHUB_ENV"
-          echo "RANLIB_aarch64_linux_android=$llvm_bin/llvm-ranlib" >> "$GITHUB_ENV"
-          echo "RANLIB_armv7_linux_androideabi=$llvm_bin/llvm-ranlib" >> "$GITHUB_ENV"
-
-      - name: Set up Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v2
-        with:
-          # The two ABIs every phone Play serves runs; the x86 ones are for
-          # emulators.
-          target: aarch64-linux-android,armv7-linux-androideabi
-          rustflags: '-D warnings'
-          # Its own key: release profile and Android targets, disjoint from
-          # every other job's — see docs/Rust/CI Build Cache Explanation.md.
-          cache-shared-key: release-android
-          cache-on-failure: true
-          # A run for a merged release PR saves into that PR's merge-ref
-          # scope, which no later run can read; only a dispatch from main
-          # saves where the next release looks.
-          cache-save-if: ${{ github.event_name == 'workflow_dispatch' }}
-
-      # Its managed `pnpm` is also what the Gradle project's Rust build task
-      # calls back into the Tauri CLI with.
-      - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1.21.2
-        with:
-          cache: true
-
-      - name: Install workspace dependencies
-        run: vp install
-
-      - name: Build workspace (vp run pack)
-        run: vp run pack
-
       - name: Write keystore.properties
         # The file the release signing config in
         # src-tauri/gen/android/app/build.gradle.kts reads; without it the
@@ -845,82 +776,24 @@ jobs:
             "$RUNNER_TEMP/upload.jks" "$ANDROID_UPLOAD_KEY_ALIAS" "$ANDROID_UPLOAD_KEYSTORE_PASSWORD" \
             > apps/host/host-app/src-tauri/gen/android/keystore.properties
 
-      # Gradle drops the bundle's native symbol table without failing or
-      # saying why, so report the tasks it comes from: whether each was
-      # scheduled, how it ended (skipped and why, no source, ran) and the
-      # files it read and wrote. Gradle applies every init script under
-      # init.d to every build; this one prints nothing for other tasks.
-      - name: Report Gradle's native library tasks
-        run: |
-          set -euo pipefail
-          mkdir -p ~/.gradle/init.d
-          cat > ~/.gradle/init.d/native-symbols-report.gradle <<'GROOVY'
-          def isNativeTask = { task -> task.name =~ /(?i)native|symbol|jnilib/ }
-          def report = { line -> println "[native-symbols] $line" }
-          gradle.taskGraph.whenReady { graph ->
-            graph.allTasks.findAll(isNativeTask).each { report "scheduled ${it.path}" }
-          }
-          gradle.taskGraph.afterTask { task, state ->
-            if (!isNativeTask(task)) return
-            def outcome = state.failure ? "FAILED: ${state.failure.message}"
-              : state.skipped ? "SKIPPED: ${state.skipMessage}"
-              : state.noSource ? "NO-SOURCE"
-              : state.upToDate ? "UP-TO-DATE"
-              : "EXECUTED"
-            report "${task.path} $outcome"
-            task.inputs.files.files.take(20).each { report "  in  $it" }
-            task.outputs.files.files.take(20).each { report "  out $it" }
-          }
-          GROOVY
-
       - name: Build Android App Bundle
-        working-directory: apps/host/host-app
-        # One bundle for both ABIs, not one per ABI: Play splits it per device.
-        run: vp run tauri android build --aab --target aarch64 armv7
+        id: build
+        uses: ./.github/actions/build-android-bundle
+        with:
+          # A run for a merged release PR saves into that PR's merge-ref
+          # scope, which no later run can read; only a dispatch from main
+          # saves where the next release looks.
+          cache-save-if: ${{ github.event_name == 'workflow_dispatch' }}
 
-      - name: Locate bundle
+      - name: Name the release asset
         id: bundle
-        # Gradle names the bundle and R8's mapping file after the build
-        # variant, so find them rather than spelling it. The release asset
-        # adds the version, as every other asset on the release carries one.
+        # The release asset adds the version, as every other asset on the
+        # release carries one.
         run: |
           set -euo pipefail
-          OUTPUTS=apps/host/host-app/src-tauri/gen/android/app/build/outputs
-          shopt -s nullglob
-          bundles=("$OUTPUTS"/bundle/*Release/*.aab)
-          if [[ ${#bundles[@]} -ne 1 ]]; then
-            echo "::error::Expected exactly one .aab under $OUTPUTS/bundle, found ${#bundles[@]}. Contents:"
-            ls -laR "$OUTPUTS/bundle" 2>&1 || echo "  (directory does not exist)"
-            exit 1
-          fi
-          # The native symbol table the release build type asks for, which
-          # Play symbolicates native crashes and ANRs with. Gradle leaves it
-          # out without failing, as when it cannot find the NDK. grep reads to
-          # the end, unlike -q, so unzip takes no SIGPIPE under pipefail.
-          if ! unzip -l "${bundles[0]}" | grep 'BUNDLE-METADATA/com.android.tools.build.debugsymbols/' > /dev/null; then
-            echo "::error::${bundles[0]} has no BUNDLE-METADATA/com.android.tools.build.debugsymbols/ entry, so it carries no native symbol table. The [native-symbols] lines in the build step's log show the Gradle tasks it comes from."
-            # What went in: the bundle's metadata and libraries, then the
-            # libraries Gradle packed and the symbol tables each still has.
-            echo "Bundle metadata and native libraries:"
-            unzip -l "${bundles[0]}" | grep -E 'BUNDLE-METADATA/|\.so$' || echo "  (none)"
-            JNILIBS=apps/host/host-app/src-tauri/gen/android/app/src/main/jniLibs
-            INTERMEDIATES=apps/host/host-app/src-tauri/gen/android/app/build/intermediates
-            for lib in "$JNILIBS"/*/*.so; do
-              echo "$lib:"
-              ls -lL "$lib" || true
-              readelf -S -W "$lib" | grep -E '\.symtab|\.debug_' || echo "  (no .symtab or .debug_* sections)"
-            done
-            echo "Gradle's native intermediates:"
-            find -L "$INTERMEDIATES" -maxdepth 1 -iname '*native*' -exec find -L {} -type f \; || echo "  (none)"
-            exit 1
-          fi
           asset="$RUNNER_TEMP/wildflower-host-${{ needs.prepare.outputs.version }}.aab"
-          cp "${bundles[0]}" "$asset"
+          cp '${{ steps.build.outputs.bundle }}' "$asset"
           echo "path=$asset" >> "$GITHUB_OUTPUT"
-          # Present when R8 minified the release, which build.gradle.kts asks
-          # for; Play uses it to deobfuscate crash reports.
-          mappings=("$OUTPUTS"/mapping/*Release/mapping.txt)
-          echo "mapping=${mappings[0]:-}" >> "$GITHUB_OUTPUT"
 
       # Before the Play upload, so the bundle is on the release even when that
       # upload fails — which is where the first bundle, uploaded to Play by
@@ -951,7 +824,7 @@ jobs:
           releaseFiles: ${{ steps.bundle.outputs.path }}
           track: internal
           status: draft
-          mappingFile: ${{ steps.bundle.outputs.mapping }}
+          mappingFile: ${{ steps.build.outputs.mapping }}
 
   # Both watch apps in one job, so the Pebble SDK is installed once. The job id
   # and the `pebble-<app>` artifact names are what jobs downstream download.

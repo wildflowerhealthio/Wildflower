@@ -1,0 +1,36 @@
+name: Android
+
+on:
+  # Called by ci.yml, which runs this only on pull requests that touch the
+  # host app's Android build; the paths are its `changes` filter.
+  workflow_call:
+  # Builds any branch's bundle on demand, as the release would but unsigned,
+  # without spending a version on it.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # The release's own build, through the same action, minus the signing:
+  # with no keystore.properties Gradle builds the bundle unsigned, so this
+  # job needs none of the `android-play` environment's secrets. Draft PRs
+  # are skipped.
+  bundle:
+    name: Build App Bundle
+    if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Android Gradle Plugin 8 needs JDK 17.
+      - name: Set up JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # Restores the release's `release-android` cache and never saves it, so
+      # a pull request's build leaves the release's entry as the release left it.
+      - name: Build Android App Bundle
+        uses: ./.github/actions/build-android-bundle
