@@ -477,16 +477,20 @@
       "tunnelName": "ruth",
       "token": "tunnel-token"
     },
-    "accessCode": {
-      "kind": "accessCode",
+    "claimCodeWithDetails": {
+      "kind": "claimCode",
       "code": "ABCD-EFGH",
-      "email": "ruth@example.com",
-      "tunnelName": "ruth"
+      "details": {
+        "email": "ruth@example.com",
+        "tunnelName": "ruth"
+      }
     },
-    "accessCodeWithoutTunnelName": {
-      "kind": "accessCode",
+    "claimCodeWithDetailsWithoutTunnelName": {
+      "kind": "claimCode",
       "code": "ABCD-EFGH",
-      "email": "ruth@example.com"
+      "details": {
+        "email": "ruth@example.com"
+      }
     }
   },
   "enrolmentErrors": {
@@ -534,13 +538,13 @@
       "kind": "emptyEmail",
       "message": "the email is empty"
     },
-    "accessCodeNeedsDetails": {
-      "kind": "accessCodeNeedsDetails",
-      "message": "that code is an access code: enter your email and choose a subdomain"
+    "claimCodeNeedsDetails": {
+      "kind": "claimCodeNeedsDetails",
+      "message": "that code is for a new server: enter your email and choose a subdomain"
     },
-    "accessRefused": {
-      "kind": "accessRefused",
-      "message": "the relay refused the access code: a tunnel already has the name"
+    "claimRefused": {
+      "kind": "claimRefused",
+      "message": "the relay refused the claim code: a tunnel already has the name"
     },
     "signedRequestRejected": {
       "kind": "signedRequestRejected",

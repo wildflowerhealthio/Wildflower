@@ -7,8 +7,6 @@ import styles from './issued-code-panel.module.css'
 interface IssuedCodePanelProps {
   /** The panel's heading, saying what the code is for. */
   readonly title: string
-  /** What the code is, for assistive technology: `Claim code`, `Access code`. */
-  readonly codeLabel: string
   readonly issued: IssuedClaimCode
   /** Who the operator gives the code to, ending the warning. */
   readonly recipient: string
@@ -19,13 +17,12 @@ interface IssuedCodePanelProps {
 }
 
 /**
- * A claim code or access code just issued: the one time the relay shows it,
+ * A claim code just issued: the one time the relay shows it,
  * with what it redeems for and when it expires. Copy puts the code on the
  * clipboard; Done drops it from the page.
  */
 const IssuedCodePanel = ({
   title,
-  codeLabel,
   issued,
   recipient,
   children,
@@ -48,7 +45,7 @@ const IssuedCodePanel = ({
       <h3 id={headingId} className="text-heading-4">
         {title}
       </h3>
-      <code className={styles['issued-code-panel__code']} aria-label={codeLabel}>
+      <code className={styles['issued-code-panel__code']} aria-label="Claim code">
         {issued.code}
       </code>
       <p className="text-body-2">

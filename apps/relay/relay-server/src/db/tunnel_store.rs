@@ -4,8 +4,7 @@
 //! of Diesel `SqliteConnection`s (`wildflowerhealthio_persistence::DieselPool`), applies
 //! the embedded relay migrations once on construction, and implements the
 //! port by delegating to the query bodies in `tunnels`, the
-//! [`ClaimCodeStore`] port by delegating to those in `claim_codes`, the
-//! [`AccessCodeStore`] port by delegating to those in `access_codes`, and the
+//! [`ClaimCodeStore`] port by delegating to those in `claim_codes`, and the
 //! [`ConnectionTotalsStore`] port by delegating to those in
 //! `connection_totals`. Mirrors
 //! `apps-rust`'s `SqliteAppsStore`.
@@ -20,10 +19,10 @@ use anyhow::Context;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 use wildflowerhealthio_persistence::{DieselPool, PooledDieselConnection};
 
-use crate::db::{access_codes, claim_codes, connection_totals, tunnels};
+use crate::db::{claim_codes, connection_totals, tunnels};
 use crate::domain::{
-    AccessCodeStore, ClaimCodeHash, ClaimCodeStore, ConnectionTotalsStore, HourlyCount,
-    StoredAccessCode, StoredClaimCode, StoredTunnel, Tunnel, TunnelError, TunnelStore,
+    ClaimCodeHash, ClaimCodeStore, ClaimCodeTarget, ConnectionTotalsStore, HourlyCount,
+    StoredClaimCode, StoredTunnel, Tunnel, TunnelError, TunnelStore,
 };
 
 /// The relay's migration namespace. Applied versions are bookkept
@@ -150,49 +149,42 @@ impl TunnelStore for SqliteTunnelStore {
 /// The claim-code port over the same database: thin delegations to the
 /// query bodies in `claim_codes`.
 impl ClaimCodeStore for SqliteTunnelStore {
-    fn replace_claim_code(&self, stored: &StoredClaimCode) -> Result<bool, TunnelError> {
-        claim_codes::replace_claim_code(&mut self.connection()?, stored)
+    fn insert_claim_code(&self, stored: &StoredClaimCode) -> Result<bool, TunnelError> {
+        claim_codes::insert_claim_code(&mut self.connection()?, stored)
     }
 
-    fn take_claim_code(
+    fn claim_code_target(
+        &self,
+        code_hash: &ClaimCodeHash,
+        now: i64,
+    ) -> Result<Option<ClaimCodeTarget>, TunnelError> {
+        claim_codes::claim_code_target(&mut self.connection()?, code_hash, now)
+    }
+
+    fn take_preset_claim_code(
         &self,
         code_hash: &ClaimCodeHash,
         now: i64,
     ) -> Result<Option<Tunnel>, TunnelError> {
-        claim_codes::take_claim_code(&mut self.connection()?, code_hash, now)
+        claim_codes::take_preset_claim_code(&mut self.connection()?, code_hash, now)
     }
 
-    fn delete_expired_claim_codes(&self, now: i64) -> Result<usize, TunnelError> {
-        claim_codes::delete_expired_claim_codes(&mut self.connection()?, now)
-    }
-}
-
-/// The access-code port over the same database: thin delegations to the
-/// query bodies in `access_codes`.
-impl AccessCodeStore for SqliteTunnelStore {
-    fn insert_access_code(&self, stored: &StoredAccessCode) -> Result<bool, TunnelError> {
-        access_codes::insert_access_code(&mut self.connection()?, stored)
-    }
-
-    fn contains_access_code(
-        &self,
-        code_hash: &ClaimCodeHash,
-        now: i64,
-    ) -> Result<bool, TunnelError> {
-        access_codes::contains_access_code(&mut self.connection()?, code_hash, now)
-    }
-
-    fn take_access_code_for_tunnel(
+    fn take_open_claim_code_for_tunnel(
         &self,
         code_hash: &ClaimCodeHash,
         now: i64,
         tunnel: &StoredTunnel,
-    ) -> Result<Option<StoredAccessCode>, TunnelError> {
-        access_codes::take_access_code_for_tunnel(&mut self.connection()?, code_hash, now, tunnel)
+    ) -> Result<Option<StoredClaimCode>, TunnelError> {
+        claim_codes::take_open_claim_code_for_tunnel(
+            &mut self.connection()?,
+            code_hash,
+            now,
+            tunnel,
+        )
     }
 
-    fn delete_expired_access_codes(&self, now: i64) -> Result<usize, TunnelError> {
-        access_codes::delete_expired_access_codes(&mut self.connection()?, now)
+    fn delete_expired_claim_codes(&self, now: i64) -> Result<usize, TunnelError> {
+        claim_codes::delete_expired_claim_codes(&mut self.connection()?, now)
     }
 }
 
@@ -228,61 +220,169 @@ mod tests {
     use crate::domain::test_fake::stored_tunnel;
     use crate::settings::Secret;
 
-    /// A code hashed `byte` repeated, for `tunnel_name`, expiring at
-    /// `expires_at`.
-    fn claim_code(byte: u8, tunnel_name: &str, expires_at: i64) -> StoredClaimCode {
+    /// A code hashed `byte` repeated, for the tunnel named `tunnel_name`,
+    /// expiring at `expires_at`.
+    fn preset_code(byte: u8, tunnel_name: &str, expires_at: i64) -> StoredClaimCode {
         StoredClaimCode {
             code_hash: ClaimCodeHash([byte; 32]),
-            tunnel_name: tunnel_name.to_owned(),
+            target: ClaimCodeTarget::Preset {
+                tunnel_name: tunnel_name.to_owned(),
+            },
+            expires_at,
+        }
+    }
+
+    /// A code hashed `byte` repeated, naming no tunnel, expiring at
+    /// `expires_at`.
+    fn open_code(byte: u8, expires_at: i64) -> StoredClaimCode {
+        StoredClaimCode {
+            code_hash: ClaimCodeHash([byte; 32]),
+            target: ClaimCodeTarget::Open,
             expires_at,
         }
     }
 
     #[test]
-    fn a_claim_code_is_taken_once_while_unexpired_for_its_tunnel() {
+    fn a_code_s_target_is_read_while_it_is_unexpired() {
         let store = SqliteTunnelStore::open_in_memory().unwrap();
         store.insert_tunnel(&stored_tunnel("alice")).unwrap();
-        let code = claim_code(1, "alice", 1_900);
-        assert!(store.replace_claim_code(&code).unwrap());
-        store.insert_tunnel(&stored_tunnel("bob")).unwrap();
-        assert!(
-            !store.replace_claim_code(&claim_code(1, "bob", 5)).unwrap(),
-            "hashes are unique"
-        );
-
-        assert_eq!(store.take_claim_code(&code.code_hash, 1_900).unwrap(), None);
+        let preset = preset_code(1, "alice", 1_900);
+        let open = open_code(2, 1_900);
+        assert!(store.insert_claim_code(&preset).unwrap());
+        assert!(store.insert_claim_code(&open).unwrap());
+        for code in [&preset, &open] {
+            assert_eq!(
+                store.claim_code_target(&code.code_hash, 1_899).unwrap(),
+                Some(code.target.clone())
+            );
+            assert_eq!(
+                store.claim_code_target(&code.code_hash, 1_900).unwrap(),
+                None
+            );
+        }
         assert_eq!(
-            store.take_claim_code(&code.code_hash, 1_899).unwrap(),
-            Some(stored_tunnel("alice").tunnel)
+            store
+                .claim_code_target(&ClaimCodeHash([3; 32]), 1_000)
+                .unwrap(),
+            None
         );
-        assert_eq!(store.take_claim_code(&code.code_hash, 1_000).unwrap(), None);
-        let unknown = ClaimCodeHash([2; 32]);
-        assert_eq!(store.take_claim_code(&unknown, 1_000).unwrap(), None);
+    }
+
+    /// Hashes are unique across both kinds, whichever is stored first.
+    #[test]
+    fn no_two_codes_share_a_hash() {
+        let store = SqliteTunnelStore::open_in_memory().unwrap();
+        store.insert_tunnel(&stored_tunnel("alice")).unwrap();
+        store.insert_tunnel(&stored_tunnel("bob")).unwrap();
+        assert!(store
+            .insert_claim_code(&preset_code(1, "alice", 1_900))
+            .unwrap());
+        assert!(!store.insert_claim_code(&preset_code(1, "bob", 5)).unwrap());
+        assert!(!store.insert_claim_code(&open_code(1, 5)).unwrap());
+        assert!(store.insert_claim_code(&open_code(2, 1_900)).unwrap());
+        assert!(!store.insert_claim_code(&preset_code(2, "bob", 5)).unwrap());
+        assert_eq!(
+            store
+                .claim_code_target(&ClaimCodeHash([1; 32]), 1_000)
+                .unwrap(),
+            Some(preset_code(1, "alice", 1_900).target),
+            "the first stays"
+        );
     }
 
     #[test]
-    fn a_new_claim_code_replaces_the_tunnels_earlier_one() {
+    fn a_preset_code_is_taken_once_while_unexpired_for_its_tunnel() {
         let store = SqliteTunnelStore::open_in_memory().unwrap();
         store.insert_tunnel(&stored_tunnel("alice")).unwrap();
-        let earlier = claim_code(1, "alice", 1_900);
-        let later = claim_code(2, "alice", 2_000);
-        assert!(store.replace_claim_code(&earlier).unwrap());
-        assert!(store.replace_claim_code(&later).unwrap());
+        let code = preset_code(1, "alice", 1_900);
+        assert!(store.insert_claim_code(&code).unwrap());
 
         assert_eq!(
-            store.take_claim_code(&earlier.code_hash, 1_000).unwrap(),
+            store
+                .take_preset_claim_code(&code.code_hash, 1_900)
+                .unwrap(),
             None
         );
         assert_eq!(
-            store.take_claim_code(&later.code_hash, 1_999).unwrap(),
+            store
+                .take_preset_claim_code(&code.code_hash, 1_899)
+                .unwrap(),
+            Some(stored_tunnel("alice").tunnel)
+        );
+        assert_eq!(
+            store
+                .take_preset_claim_code(&code.code_hash, 1_000)
+                .unwrap(),
+            None
+        );
+    }
+
+    /// Each take takes only its own kind of code.
+    #[test]
+    fn a_take_leaves_the_other_kind_of_code_alone() {
+        let store = SqliteTunnelStore::open_in_memory().unwrap();
+        store.insert_tunnel(&stored_tunnel("alice")).unwrap();
+        let preset = preset_code(1, "alice", 1_900);
+        let open = open_code(2, 1_900);
+        store.insert_claim_code(&preset).unwrap();
+        store.insert_claim_code(&open).unwrap();
+        assert_eq!(
+            store
+                .take_preset_claim_code(&open.code_hash, 1_000)
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            store
+                .take_open_claim_code_for_tunnel(&preset.code_hash, 1_000, &stored_tunnel("bob"))
+                .unwrap(),
+            None
+        );
+        assert_eq!(store.list_tunnels().unwrap(), [stored_tunnel("alice")]);
+        for code in [&preset, &open] {
+            assert!(store
+                .claim_code_target(&code.code_hash, 1_000)
+                .unwrap()
+                .is_some());
+        }
+    }
+
+    #[test]
+    fn a_new_preset_code_replaces_the_tunnels_earlier_one() {
+        let store = SqliteTunnelStore::open_in_memory().unwrap();
+        store.insert_tunnel(&stored_tunnel("alice")).unwrap();
+        let earlier = preset_code(1, "alice", 1_900);
+        let later = preset_code(2, "alice", 2_000);
+        assert!(store.insert_claim_code(&earlier).unwrap());
+        assert!(store.insert_claim_code(&later).unwrap());
+
+        assert_eq!(
+            store
+                .take_preset_claim_code(&earlier.code_hash, 1_000)
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            store
+                .take_preset_claim_code(&later.code_hash, 1_999)
+                .unwrap(),
             Some(stored_tunnel("alice").tunnel)
         );
     }
 
     #[test]
-    fn a_claim_code_needs_a_stored_tunnel() {
+    fn open_codes_add_up() {
         let store = SqliteTunnelStore::open_in_memory().unwrap();
-        let refused = store.replace_claim_code(&claim_code(1, "nobody", 1_900));
+        for byte in 1..=3 {
+            assert!(store.insert_claim_code(&open_code(byte, 1_900)).unwrap());
+        }
+        assert_eq!(store.delete_expired_claim_codes(1_900).unwrap(), 3);
+    }
+
+    #[test]
+    fn a_preset_code_needs_a_stored_tunnel() {
+        let store = SqliteTunnelStore::open_in_memory().unwrap();
+        let refused = store.insert_claim_code(&preset_code(1, "nobody", 1_900));
         assert!(matches!(
             refused.unwrap_err(),
             TunnelError::Infrastructure { .. }
@@ -290,71 +390,66 @@ mod tests {
     }
 
     #[test]
-    fn deleting_a_tunnel_deletes_its_claim_codes() {
+    fn deleting_a_tunnel_deletes_its_claim_code() {
         let store = SqliteTunnelStore::open_in_memory().unwrap();
         store.insert_tunnel(&stored_tunnel("alice")).unwrap();
         store.insert_tunnel(&stored_tunnel("bob")).unwrap();
         store
-            .replace_claim_code(&claim_code(1, "alice", 1_900))
+            .insert_claim_code(&preset_code(1, "alice", 1_900))
             .unwrap();
         store
-            .replace_claim_code(&claim_code(2, "bob", 1_900))
+            .insert_claim_code(&preset_code(2, "bob", 1_900))
             .unwrap();
+        store.insert_claim_code(&open_code(3, 1_900)).unwrap();
         store.delete_tunnel("alice").unwrap();
         // Put back under the same name, the tunnel has no codes.
         store.insert_tunnel(&stored_tunnel("alice")).unwrap();
         assert_eq!(
             store
-                .take_claim_code(&ClaimCodeHash([1; 32]), 1_000)
+                .take_preset_claim_code(&ClaimCodeHash([1; 32]), 1_000)
                 .unwrap(),
             None
         );
         assert!(store
-            .take_claim_code(&ClaimCodeHash([2; 32]), 1_000)
+            .take_preset_claim_code(&ClaimCodeHash([2; 32]), 1_000)
             .unwrap()
             .is_some());
+        assert_eq!(
+            store
+                .claim_code_target(&ClaimCodeHash([3; 32]), 1_000)
+                .unwrap(),
+            Some(ClaimCodeTarget::Open)
+        );
     }
 
     #[test]
     fn expired_claim_codes_are_deleted() {
         let store = SqliteTunnelStore::open_in_memory().unwrap();
-        for (byte, name, expires_at) in
-            [(1, "alice", 1_000), (2, "bob", 1_500), (3, "carol", 2_000)]
-        {
+        for (byte, name, expires_at) in [(1, "alice", 1_000), (3, "carol", 2_000)] {
             store.insert_tunnel(&stored_tunnel(name)).unwrap();
             store
-                .replace_claim_code(&claim_code(byte, name, expires_at))
+                .insert_claim_code(&preset_code(byte, name, expires_at))
                 .unwrap();
         }
+        store.insert_claim_code(&open_code(2, 1_500)).unwrap();
         assert_eq!(store.delete_expired_claim_codes(1_500).unwrap(), 2);
         assert_eq!(store.delete_expired_claim_codes(1_500).unwrap(), 0);
         assert!(store
-            .take_claim_code(&ClaimCodeHash([3; 32]), 1_500)
+            .take_preset_claim_code(&ClaimCodeHash([3; 32]), 1_500)
             .unwrap()
             .is_some());
     }
 
-    /// An access code hashed `byte` repeated, expiring at `expires_at`.
-    fn access_code(byte: u8, expires_at: i64) -> StoredAccessCode {
-        StoredAccessCode {
-            code_hash: ClaimCodeHash([byte; 32]),
-            expires_at,
-        }
-    }
-
     #[test]
-    fn an_access_code_is_taken_once_while_unexpired_storing_its_tunnel() {
+    fn an_open_code_is_taken_once_while_unexpired_storing_its_tunnel() {
         let store = SqliteTunnelStore::open_in_memory().unwrap();
-        let code = access_code(1, 1_900);
-        assert!(store.insert_access_code(&code).unwrap());
-        assert!(!store.insert_access_code(&access_code(1, 5)).unwrap());
-        assert!(store.contains_access_code(&code.code_hash, 1_899).unwrap());
-        assert!(!store.contains_access_code(&code.code_hash, 1_900).unwrap());
+        let code = open_code(1, 1_900);
+        assert!(store.insert_claim_code(&code).unwrap());
 
         let bob = stored_tunnel("bob");
         assert_eq!(
             store
-                .take_access_code_for_tunnel(&code.code_hash, 1_900, &bob)
+                .take_open_claim_code_for_tunnel(&code.code_hash, 1_900, &bob)
                 .unwrap(),
             None
         );
@@ -364,7 +459,7 @@ mod tests {
         );
         assert_eq!(
             store
-                .take_access_code_for_tunnel(&code.code_hash, 1_899, &bob)
+                .take_open_claim_code_for_tunnel(&code.code_hash, 1_899, &bob)
                 .unwrap(),
             Some(code.clone())
         );
@@ -372,12 +467,15 @@ mod tests {
         let carol = stored_tunnel("carol");
         assert_eq!(
             store
-                .take_access_code_for_tunnel(&code.code_hash, 1_000, &carol)
+                .take_open_claim_code_for_tunnel(&code.code_hash, 1_000, &carol)
                 .unwrap(),
             None,
             "burned"
         );
-        assert!(!store.contains_access_code(&code.code_hash, 1_000).unwrap());
+        assert_eq!(
+            store.claim_code_target(&code.code_hash, 1_000).unwrap(),
+            None
+        );
     }
 
     /// A tunnel name already stored fails the redemption and leaves the
@@ -386,60 +484,32 @@ mod tests {
     fn a_taken_name_rolls_the_redemption_back() {
         let store = SqliteTunnelStore::open_in_memory().unwrap();
         store.insert_tunnel(&stored_tunnel("alice")).unwrap();
-        let code = access_code(1, 1_900);
-        store.insert_access_code(&code).unwrap();
+        let code = open_code(1, 1_900);
+        store.insert_claim_code(&code).unwrap();
         let mut taken = stored_tunnel("alice");
         taken.email = "someone-else@example.com".to_owned();
-        let refused = store.take_access_code_for_tunnel(&code.code_hash, 1_000, &taken);
+        let refused = store.take_open_claim_code_for_tunnel(&code.code_hash, 1_000, &taken);
         assert!(matches!(
             refused.unwrap_err(),
             TunnelError::Infrastructure { .. }
         ));
-        assert!(store.contains_access_code(&code.code_hash, 1_000).unwrap());
+        assert_eq!(
+            store.claim_code_target(&code.code_hash, 1_000).unwrap(),
+            Some(ClaimCodeTarget::Open)
+        );
         assert_eq!(store.list_tunnels().unwrap(), [stored_tunnel("alice")]);
     }
 
-    /// No hash is stored as an access code and a claim code at once,
-    /// whichever is stored first.
-    #[test]
-    fn access_codes_and_claim_codes_never_share_a_hash() {
-        let store = SqliteTunnelStore::open_in_memory().unwrap();
-        store.insert_tunnel(&stored_tunnel("alice")).unwrap();
-        assert!(store.insert_access_code(&access_code(1, 1_900)).unwrap());
-        assert!(!store
-            .replace_claim_code(&claim_code(1, "alice", 1_900))
-            .unwrap());
-        assert!(store
-            .replace_claim_code(&claim_code(2, "alice", 1_900))
-            .unwrap());
-        assert!(!store.insert_access_code(&access_code(2, 1_900)).unwrap());
-    }
-
-    #[test]
-    fn expired_access_codes_are_deleted() {
-        let store = SqliteTunnelStore::open_in_memory().unwrap();
-        for (byte, expires_at) in [(1, 1_000), (2, 1_500), (3, 2_000)] {
-            store
-                .insert_access_code(&access_code(byte, expires_at))
-                .unwrap();
-        }
-        assert_eq!(store.delete_expired_access_codes(1_500).unwrap(), 2);
-        assert_eq!(store.delete_expired_access_codes(1_500).unwrap(), 0);
-        assert!(store
-            .contains_access_code(&ClaimCodeHash([3; 32]), 1_500)
-            .unwrap());
-    }
-
     /// Many threads, each on its own connection to the same file, redeem
-    /// the same access code at once, each for its own tunnel: exactly one
+    /// the same open code at once, each for its own tunnel: exactly one
     /// stores its tunnel.
     #[test]
-    fn of_concurrent_access_code_takes_exactly_one_stores_its_tunnel() {
+    fn of_concurrent_open_code_takes_exactly_one_stores_its_tunnel() {
         let dir = tempfile::tempdir().unwrap();
         let store =
             SqliteTunnelStore::open(&dir.path().join(SqliteTunnelStore::FILE_NAME)).unwrap();
-        let code = access_code(1, 1_900);
-        store.insert_access_code(&code).unwrap();
+        let code = open_code(1, 1_900);
+        store.insert_claim_code(&code).unwrap();
         let barrier = std::sync::Barrier::new(8);
         let taken: Vec<bool> = std::thread::scope(|scope| {
             let takers: Vec<_> = (0..8)
@@ -449,7 +519,7 @@ mod tests {
                         let tunnel = stored_tunnel(&format!("taker{taker}"));
                         barrier.wait();
                         store
-                            .take_access_code_for_tunnel(&code.code_hash, 1_000, &tunnel)
+                            .take_open_claim_code_for_tunnel(&code.code_hash, 1_000, &tunnel)
                             .unwrap()
                             .is_some()
                     })
@@ -465,22 +535,24 @@ mod tests {
     }
 
     /// Many threads, each on its own connection to the same file, redeem
-    /// the same code at once: exactly one gets the tunnel.
+    /// the same preset code at once: exactly one gets the tunnel.
     #[test]
-    fn of_concurrent_takes_exactly_one_gets_the_tunnel() {
+    fn of_concurrent_preset_code_takes_exactly_one_gets_the_tunnel() {
         let dir = tempfile::tempdir().unwrap();
         let store =
             SqliteTunnelStore::open(&dir.path().join(SqliteTunnelStore::FILE_NAME)).unwrap();
         store.insert_tunnel(&stored_tunnel("alice")).unwrap();
-        let code = claim_code(1, "alice", 1_900);
-        store.replace_claim_code(&code).unwrap();
+        let code = preset_code(1, "alice", 1_900);
+        store.insert_claim_code(&code).unwrap();
         let barrier = std::sync::Barrier::new(8);
         let taken: Vec<Option<Tunnel>> = std::thread::scope(|scope| {
             let takers: Vec<_> = (0..8)
                 .map(|_| {
                     scope.spawn(|| {
                         barrier.wait();
-                        store.take_claim_code(&code.code_hash, 1_000).unwrap()
+                        store
+                            .take_preset_claim_code(&code.code_hash, 1_000)
+                            .unwrap()
                     })
                 })
                 .collect();
@@ -490,6 +562,64 @@ mod tests {
                 .collect()
         });
         assert_eq!(taken.iter().filter(|tunnel| tunnel.is_some()).count(), 1);
+    }
+
+    /// The relay migrations before `0004_open_claim_codes`, which rebuilds
+    /// `claim_codes`.
+    struct BeforeOpenClaimCodes;
+
+    impl diesel::migration::MigrationSource<diesel::sqlite::Sqlite> for BeforeOpenClaimCodes {
+        fn migrations(
+            &self,
+        ) -> diesel::migration::Result<
+            Vec<Box<dyn diesel::migration::Migration<diesel::sqlite::Sqlite>>>,
+        > {
+            let mut migrations = MIGRATIONS.migrations()?;
+            migrations.retain(|migration| migration.name().version().to_string().as_str() < "0004");
+            Ok(migrations)
+        }
+    }
+
+    /// A tunnel's claim code stored before `claim_codes` was rebuilt
+    /// redeems for it after.
+    #[test]
+    fn a_claim_code_stored_before_the_rebuild_still_redeems() {
+        use diesel::connection::SimpleConnection;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(SqliteTunnelStore::FILE_NAME);
+        let pool = wildflowerhealthio_persistence::open_pool(&path).unwrap();
+        {
+            let mut conn = pool.get().unwrap();
+            wildflowerhealthio_persistence::run_diesel_migrations(
+                &mut conn,
+                MIGRATION_NAMESPACE,
+                BeforeOpenClaimCodes,
+            )
+            .unwrap();
+            let hash = "01".repeat(32);
+            conn.batch_execute(&format!(
+                "INSERT INTO tunnels (name, email, token, created_at) \
+                 VALUES ('alice', 'alice@example.com', 'alice-token', 1700000000); \
+                 INSERT INTO claim_codes (tunnel_name, code_hash, expires_at) \
+                 VALUES ('alice', X'{hash}', 1900);"
+            ))
+            .unwrap();
+        }
+        let store = SqliteTunnelStore::new(pool).unwrap();
+        assert_eq!(
+            store
+                .claim_code_target(&ClaimCodeHash([1; 32]), 1_000)
+                .unwrap(),
+            Some(preset_code(1, "alice", 1_900).target)
+        );
+        assert_eq!(
+            store
+                .take_preset_claim_code(&ClaimCodeHash([1; 32]), 1_000)
+                .unwrap(),
+            Some(stored_tunnel("alice").tunnel)
+        );
+        assert!(store.insert_claim_code(&open_code(2, 1_900)).unwrap());
     }
 
     #[test]
@@ -556,15 +686,17 @@ mod tests {
     fn a_claim_code_redeems_for_the_token_stored_when_it_is_taken() {
         let store = SqliteTunnelStore::open_in_memory().unwrap();
         store.insert_tunnel(&stored_tunnel("alice")).unwrap();
-        let code = claim_code(1, "alice", 1_900);
-        store.replace_claim_code(&code).unwrap();
+        let code = preset_code(1, "alice", 1_900);
+        store.insert_claim_code(&code).unwrap();
         let reissued = Tunnel {
             name: "alice".to_owned(),
             token: Secret::new("alice-new-token".to_owned()),
         };
         store.replace_token(&reissued).unwrap();
         assert_eq!(
-            store.take_claim_code(&code.code_hash, 1_000).unwrap(),
+            store
+                .take_preset_claim_code(&code.code_hash, 1_000)
+                .unwrap(),
             Some(reissued)
         );
     }

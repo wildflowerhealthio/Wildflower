@@ -274,16 +274,16 @@ describe('RelayAdminApi over the relay wire', () => {
     )
   })
 
-  it('issues an access code with an empty POST and reads its expiry as a UTC time', async () => {
+  it('issues a claim code naming no tunnel with an empty POST and reads its expiry as a UTC time', async () => {
     // Arrange
     const relay = fakeRelay(() => json(201, { code: 'JKMN-PQRS', expires_at: 1_700_000_900 }))
 
     // Act
-    const issued = await call(relay, (client) => client.tunnels.IssueAccessCode())
+    const issued = await call(relay, (client) => client.tunnels.IssueOpenClaimCode())
 
     // Assert
     expect(relay.requests[0]?.method).toBe('POST')
-    expect(relay.requests[0]?.url).toBe('https://admin.relay.example.com/api/access-codes')
+    expect(relay.requests[0]?.url).toBe('https://admin.relay.example.com/api/claim-codes')
     expect(relay.bodies[0]).toBe('')
     expect(issued).toEqual(
       Either.right({ code: 'JKMN-PQRS', expires_at: DateTime.unsafeMake(1_700_000_900_000) })

@@ -16,11 +16,10 @@
 //!   `ABCD-EFGH`, and the Unix epoch second it stops redeeming at (see
 //!   `super::claim`). It replaces the tunnel's earlier code, which stops
 //!   redeeming.
-//! - `POST /api/access-codes` (no body): `201 {"code", "expires_at"}`, an
-//!   access code, shown only here, as `ABCD-EFGH`, and the Unix epoch second
-//!   it stops redeeming at. It names no tunnel: it redeems once, at
-//!   `POST /access`, for a new tunnel under the email and name the redeemer
-//!   chooses (see `super::claim`). It lives as long as a claim code.
+//! - `POST /api/claim-codes` (no body): `201 {"code", "expires_at"}`, a
+//!   claim code that names no tunnel, shown only here, as for a tunnel's. It
+//!   redeems once, at `POST /claim` with an email and a name, for a new
+//!   tunnel under the ones the redeemer chooses (see `super::claim`).
 //! - `POST /api/tunnels/{name}/token` (no body): `200 {"name", "token",
 //!   "public_host"}`, a new token for the tunnel, shown only here. The old
 //!   token stops signing and connecting at once, and a device connected
@@ -43,7 +42,7 @@
 //! not a lowercase DNS label or an unusable email, `409` for a name that is
 //! reserved or taken, `404` for deleting, issuing a claim code for or
 //! reissuing the token of a tunnel that does not exist, and `503` when no name, or no unused claim
-//! or access code, is left.
+//! code, is left.
 
 use std::sync::Arc;
 
@@ -58,12 +57,13 @@ use serde::{Deserialize, Serialize, Serializer};
 
 use super::signature::{authority, require_signature, Verifier};
 use crate::domain::{
-    HourlyTotals, IssuedClaimCode, Outcome, StoredTunnel, TunnelError, TunnelOutcome,
+    ClaimCodeTarget, HourlyTotals, IssuedClaimCode, Outcome, StoredTunnel, TunnelError,
+    TunnelOutcome,
 };
 use crate::live_bindings::state::TunnelRegistry;
 use crate::live_bindings::{
-    Admin, LiveAccessCodesIssuer, LiveClaimCodesIssuer, LiveConnectionTotalsReader,
-    LiveTunnelTokensReissuer, LiveTunnelsCreator, LiveTunnelsDeleter, LiveTunnelsReader,
+    Admin, LiveClaimCodesIssuer, LiveConnectionTotalsReader, LiveTunnelTokensReissuer,
+    LiveTunnelsCreator, LiveTunnelsDeleter, LiveTunnelsReader,
 };
 use crate::settings::Secret;
 
@@ -76,7 +76,7 @@ pub(super) fn router(registry: Arc<TunnelRegistry>, verifier: Arc<Verifier>) -> 
         .route("/api/tunnels/{name}", delete(remove))
         .route("/api/tunnels/{name}/claim-codes", post(issue_claim_code))
         .route("/api/tunnels/{name}/token", post(reissue_token))
-        .route("/api/access-codes", post(issue_access_code))
+        .route("/api/claim-codes", post(issue_open_claim_code))
         .route("/api/connection-totals", get(list_connection_totals))
         .route_layer(middleware::from_fn_with_state(verifier, require_signature))
         // The outer layer: the host is checked before the signature.
@@ -191,9 +191,8 @@ impl TunnelWithToken {
     }
 }
 
-/// A claim code or access code just issued, as
-/// `POST /api/tunnels/{name}/claim-codes` and `POST /api/access-codes`
-/// answer. The only place the code is ever shown.
+/// A claim code just issued, as `POST /api/tunnels/{name}/claim-codes` and
+/// `POST /api/claim-codes` answer. The only place the code is ever shown.
 #[derive(Debug, Serialize)]
 struct IssuedClaimCodeBody {
     /// `ABCD-EFGH`.
@@ -274,16 +273,16 @@ async fn issue_claim_code(
     Admin(issuer): Admin<LiveClaimCodesIssuer>,
     Path(name): Path<String>,
 ) -> Response {
-    match issuer.issue(name).await {
-        Ok(issued) => {
-            (StatusCode::CREATED, Json(IssuedClaimCodeBody::from(issued))).into_response()
-        }
-        Err(error) => error.into_response(),
-    }
+    issued_claim_code(&issuer, ClaimCodeTarget::Preset { tunnel_name: name }).await
 }
 
-async fn issue_access_code(Admin(issuer): Admin<LiveAccessCodesIssuer>) -> Response {
-    match issuer.issue().await {
+async fn issue_open_claim_code(Admin(issuer): Admin<LiveClaimCodesIssuer>) -> Response {
+    issued_claim_code(&issuer, ClaimCodeTarget::Open).await
+}
+
+/// What both issue routes answer for a code `issuer` issues for `target`.
+async fn issued_claim_code(issuer: &LiveClaimCodesIssuer, target: ClaimCodeTarget) -> Response {
+    match issuer.issue(target).await {
         Ok(issued) => {
             (StatusCode::CREATED, Json(IssuedClaimCodeBody::from(issued))).into_response()
         }
@@ -314,8 +313,8 @@ impl IntoResponse for TunnelError {
             Self::InvalidName
             | Self::InvalidEmail
             | Self::ClaimCodeRejected
-            | Self::AccessCodeRejected => StatusCode::UNPROCESSABLE_ENTITY,
-            Self::Reserved | Self::Taken | Self::AccessCodeOffered => StatusCode::CONFLICT,
+            | Self::ClaimCodeNamesTunnel => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::Reserved | Self::Taken | Self::ClaimCodeNeedsDetails => StatusCode::CONFLICT,
             Self::NotFound => StatusCode::NOT_FOUND,
             Self::Exhausted(_) => StatusCode::SERVICE_UNAVAILABLE,
             Self::Infrastructure { .. } => {
@@ -335,13 +334,13 @@ mod tests {
     use tower::ServiceExt;
 
     use super::*;
+    use crate::domain::RedeemedClaimCode;
     use crate::domain::{ClaimCode, TunnelStore};
-    use crate::live_bindings::{
-        LiveAccessCodesRedeemer, LiveClaimCodesRedeemer, LiveTunnelsCreator,
-    };
+    use crate::live_bindings::{LiveClaimCodesRedeemer, LiveTunnelsCreator};
     use crate::site::signature::tests::signed_request;
     use crate::site::signature::unix_now;
     use crate::test_support::{admin, registry, Fixture};
+    use wildflowerhealthio_rathole_settings::ClaimDetails;
 
     const ADMIN_KEY: &str = "an-admin-key-of-thirty-two-bytes";
     const ADMIN: &str = "https://admin.relay.example.com";
@@ -442,17 +441,17 @@ mod tests {
                 ),
             ),
             (
-                TunnelError::AccessCodeOffered,
+                TunnelError::ClaimCodeNeedsDetails,
                 (
                     StatusCode::CONFLICT,
-                    "the code is an access code: redeem it at POST /access with an email and a name",
+                    "the claim code names no tunnel: send it with an email and, optionally, a name",
                 ),
             ),
             (
-                TunnelError::AccessCodeRejected,
+                TunnelError::ClaimCodeNamesTunnel,
                 (
                     StatusCode::UNPROCESSABLE_ENTITY,
-                    "the access code is unknown, used or expired",
+                    "the claim code names its tunnel: send it without an email or a name",
                 ),
             ),
             (
@@ -653,8 +652,8 @@ mod tests {
         assert_eq!(issued.as_object().unwrap().len(), 2, "{issued}");
 
         let redeemer = LiveClaimCodesRedeemer::new(&tunnels);
-        let redeemed = redeemer.redeem(code.to_owned()).await.unwrap();
-        assert_eq!(redeemed, bob.tunnel);
+        let redeemed = redeemer.redeem(code.to_owned(), None).await.unwrap();
+        assert_eq!(redeemed, RedeemedClaimCode::Preset(bob.tunnel));
     }
 
     #[tokio::test]
@@ -694,13 +693,13 @@ mod tests {
         );
     }
 
-    /// An admin-signed issue answers a grouped access code and its expiry;
-    /// the code redeems at `POST /access` for a new tunnel. Unsigned and
-    /// tunnel-signed issues are `401`.
+    /// An admin-signed issue answers a grouped code that names no tunnel,
+    /// and its expiry; the code redeems at `POST /claim` for a new tunnel.
+    /// Unsigned and tunnel-signed issues are `401`.
     #[tokio::test]
-    async fn an_issued_access_code_redeems_for_a_new_tunnel() {
+    async fn an_issued_open_claim_code_redeems_for_a_new_tunnel() {
         let (router, tunnels, alice, _fixture) = router_with_alice().await;
-        let uri = format!("{ADMIN}/api/access-codes");
+        let uri = format!("{ADMIN}/api/claim-codes");
         let now = unix_now().unwrap();
         for request in [
             signed_request("POST", &uri, b"", "admin", "not-the-admin-key", now, "a"),
@@ -726,13 +725,22 @@ mod tests {
         assert!((before + ttl..=unix_now().unwrap() + ttl).contains(&expires_at));
         assert_eq!(issued.as_object().unwrap().len(), 2, "{issued}");
 
-        let redeemer = LiveAccessCodesRedeemer::new(&tunnels);
+        let redeemer = LiveClaimCodesRedeemer::new(&tunnels);
         let redeemed = redeemer
-            .redeem(code.to_owned(), "bob@example.com".to_owned(), None)
+            .redeem(
+                code.to_owned(),
+                Some(ClaimDetails {
+                    email: "bob@example.com".to_owned(),
+                    tunnel_name: None,
+                }),
+            )
             .await
             .unwrap();
         assert_eq!(tunnels.store.list_tunnels().unwrap().len(), 2);
-        assert_eq!(redeemed.stored.email, "bob@example.com");
+        let RedeemedClaimCode::Open { stored, .. } = redeemed else {
+            panic!("redeemed {redeemed:?}");
+        };
+        assert_eq!(stored.email, "bob@example.com");
     }
 
     /// An admin-signed reissue answers the tunnel with a new token, which is
@@ -741,7 +749,13 @@ mod tests {
     async fn a_reissued_token_is_shown_once_and_claim_codes_redeem_for_it() {
         let (router, tunnels, alice, _fixture) = router_with_alice().await;
         let issuer: LiveClaimCodesIssuer = admin(&tunnels);
-        let code = issuer.issue("alice".to_owned()).await.unwrap().code;
+        let code = issuer
+            .issue(ClaimCodeTarget::Preset {
+                tunnel_name: "alice".to_owned(),
+            })
+            .await
+            .unwrap()
+            .code;
 
         let (status, body) = send(
             &router,
@@ -769,8 +783,8 @@ mod tests {
         assert_eq!(stored[0].tunnel.token.expose(), token);
 
         let redeemer = LiveClaimCodesRedeemer::new(&tunnels);
-        let redeemed = redeemer.redeem(code.to_string()).await.unwrap();
-        assert_eq!(redeemed.token.expose(), token);
+        let redeemed = redeemer.redeem(code.to_string(), None).await.unwrap();
+        assert_eq!(redeemed.tunnel().token.expose(), token);
     }
 
     #[tokio::test]

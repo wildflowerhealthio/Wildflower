@@ -1769,19 +1769,19 @@ describe('Add server', () => {
     expect(document.body.textContent).not.toContain(CLAIM_CODE)
   })
 
-  it('should ask for an email and subdomain when the code is an access code, then add the server with them', async () => {
+  it('should ask for an email and subdomain when the code names no tunnel, then add the server with them', async () => {
     // Arrange
     const user = userEvent.setup()
-    let add: AddAnswer = () => Promise.reject(golden.enrolmentErrors.accessCodeNeedsDetails)
+    let add: AddAnswer = () => Promise.reject(golden.enrolmentErrors.claimCodeNeedsDetails)
     const host = renderAddServer({ add: () => add() })
     await enterRelay(user)
     await enterClaimCode(user, CLAIM_CODE)
 
     // Assert
-    const tunnel = await screen.findByText(/That code is an access code/)
+    const tunnel = await screen.findByText(/That code is for a new server/)
     const step = tunnel.closest('form')
     if (!(step instanceof HTMLElement)) throw new Error('no tunnel step')
-    expect(within(step).getByLabelText('Access code')).toHaveProperty('value', CLAIM_CODE)
+    expect(within(step).getByLabelText('Claim code')).toHaveProperty('value', CLAIM_CODE)
     const addButton = within(step).getByRole('button', { name: 'Add server' })
     expect(addButton).toHaveProperty('disabled', true)
     expect(within(step).getByText('Left empty, the relay picks one.')).toBeDefined()
@@ -1799,19 +1799,23 @@ describe('Add server', () => {
     await stepTitled('Server added')
     expect(invokesOf(host, 'server_add').map((invoke) => invoke.args?.['credentials'])).toEqual([
       { kind: 'claimCode', code: CLAIM_CODE },
-      { kind: 'accessCode', code: CLAIM_CODE, email: 'kit@example.com', tunnelName: 'kit' },
+      {
+        kind: 'claimCode',
+        code: CLAIM_CODE,
+        details: { email: 'kit@example.com', tunnelName: 'kit' },
+      },
     ])
     expect(document.body.textContent).not.toContain(CLAIM_CODE)
   })
 
-  it('should leave the subdomain out of an access code when it is blank', async () => {
+  it('should leave the subdomain out of the details when it is blank', async () => {
     // Arrange
     const user = userEvent.setup()
-    let add: AddAnswer = () => Promise.reject(golden.enrolmentErrors.accessCodeNeedsDetails)
+    let add: AddAnswer = () => Promise.reject(golden.enrolmentErrors.claimCodeNeedsDetails)
     const host = renderAddServer({ add: () => add() })
     await enterRelay(user)
     await enterClaimCode(user, CLAIM_CODE)
-    const step = (await screen.findByText(/That code is an access code/)).closest('form')
+    const step = (await screen.findByText(/That code is for a new server/)).closest('form')
     if (!(step instanceof HTMLElement)) throw new Error('no tunnel step')
 
     // Act
@@ -1822,9 +1826,9 @@ describe('Add server', () => {
     // Assert
     await stepTitled('Server added')
     expect(invokesOf(host, 'server_add')[1]?.args?.['credentials']).toEqual({
-      kind: 'accessCode',
+      kind: 'claimCode',
       code: CLAIM_CODE,
-      email: 'kit@example.com',
+      details: { email: 'kit@example.com' },
     })
   })
 
@@ -2222,8 +2226,8 @@ describe('Add server', () => {
 
   it.each(
     Object.values(golden.enrolmentErrors).filter(
-      // An access code goes back to the tunnel step for its details instead.
-      (error) => error.kind !== 'relayIdentityChanged' && error.kind !== 'accessCodeNeedsDetails'
+      // A code that names no tunnel goes back to the tunnel step for its details instead.
+      (error) => error.kind !== 'relayIdentityChanged' && error.kind !== 'claimCodeNeedsDetails'
     )
   )("should stay on Checking with the host's $kind refusal", async (refusal) => {
     // Arrange

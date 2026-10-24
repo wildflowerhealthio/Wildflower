@@ -82,7 +82,7 @@ impl<S: TunnelStore> TunnelsCreator<S> {
 /// random words (see [`names`]) that `store` does not have and `front` does
 /// not reserve, with a random token from `rng`, created at the time `now`
 /// reads (Unix epoch seconds). Stores nothing: [`TunnelsCreator::create`]
-/// and the access-code redeemer each store it their own way.
+/// and the claim-code redeemer each store it their own way.
 ///
 /// # Errors
 ///

@@ -99,9 +99,9 @@ pub use domain::notifications::stop_notifications::{
 pub use domain::{
     add_server, authorization_app_url, consent_sign_in_url, ensure_launchable, launch_url,
     remove_server, set_run_policy, set_server_credentials, sign_in_url, update_server,
-    CertificateAuthority, ConsentKey, EnrolmentError, EnteredCredentials, EnteredRelay,
-    LaunchError, ListedServer, PendingConsent, RegistryError, RelayIdentity, RelayKind,
-    RunPolicyChoice, ServerChangeError, ServerDetail, ServerRecord, ServerStatus,
+    CertificateAuthority, ConsentKey, EnrolmentError, EnteredClaimDetails, EnteredCredentials,
+    EnteredRelay, LaunchError, ListedServer, PendingConsent, RegistryError, RelayIdentity,
+    RelayKind, RunPolicyChoice, ServerChangeError, ServerDetail, ServerRecord, ServerStatus,
     ServerStatusTracker, ServerUpdate, TunnelToken, SERVERS_DIR_NAME,
 };
 pub use live_bindings::server_consent_watcher::ServerConsentWatcher;

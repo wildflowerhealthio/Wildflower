@@ -24,7 +24,7 @@ type ConnectionTotals = Schema.Schema.Type<typeof Tunnels.ConnectionTotalsSchema
 /** A tunnel just created or reissued, with its token, which the relay shows only now. */
 type TunnelWithToken = Schema.Schema.Type<typeof Tunnels.TunnelWithTokenSchema>
 
-/** A claim code or access code just issued, which the relay shows only now, and its expiry. */
+/** A claim code just issued, which the relay shows only now, and its expiry. */
 type IssuedClaimCode = Schema.Schema.Type<typeof Tunnels.IssuedClaimCodeSchema>
 
 /** `CreateTunnel`'s body: an email, and a name unless the relay is to pick one. */
@@ -116,15 +116,15 @@ const useIssueClaimCodeMutation = (): UseMutationResult<IssuedClaimCode, Error, 
 }
 
 /**
- * `IssueAccessCode`. The result holds the code, so, as with a claim code, the
- * mutation cache drops it as soon as nothing shows it.
+ * `IssueOpenClaimCode`. The result holds the code, so, as with a tunnel's,
+ * the mutation cache drops it as soon as nothing shows it.
  */
-const useIssueAccessCodeMutation = (): UseMutationResult<IssuedClaimCode, Error, void> => {
+const useIssueOpenClaimCodeMutation = (): UseMutationResult<IssuedClaimCode, Error, void> => {
   const { run } = useRelayAdmin()
   return useMutation({
     gcTime: 0,
     mutationFn: () =>
-      run(Effect.flatMap(RelayAdminHttpApiClient, (client) => client.tunnels.IssueAccessCode())),
+      run(Effect.flatMap(RelayAdminHttpApiClient, (client) => client.tunnels.IssueOpenClaimCode())),
   })
 }
 
@@ -151,8 +151,8 @@ export {
   useConnectionTotalsQuery,
   useCreateTunnelMutation,
   useDeleteTunnelMutation,
-  useIssueAccessCodeMutation,
   useIssueClaimCodeMutation,
+  useIssueOpenClaimCodeMutation,
   useReissueTokenMutation,
   useTunnelsQuery,
 }

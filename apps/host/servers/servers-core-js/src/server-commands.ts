@@ -36,14 +36,14 @@ const listServers: Effect.Effect<readonly ListedServer.Type[], HostCommandError,
  * host stores in its place, or it must accept an entered tunnel name and
  * token on a signed `GET /me`. A rathole relay is not asked, and takes no
  * claim code.
- * An access code is redeemed, once, for a new tunnel under the email and
- * tunnel name entered with it; entered as a claim code, it is refused as
- * `accessCodeNeedsDetails` (see {@link asksForAccessCodeDetails}), unspent.
+ * A claim code that names no tunnel is redeemed, once, for a new tunnel
+ * under the details entered with it; entered without them, it is refused as
+ * `claimCodeNeedsDetails` (see {@link asksForClaimCodeDetails}), unspent.
  * The host refuses as `invalidRelaySetting`, `relayUnreachable`,
  * `badRelayResponse`, `pinMismatch`, `invalidTunnelName`, `emptyToken`,
  * `emptyClaimCode`, `emptyEmail`, `claimCodesNotOffered`,
- * `claimCodeRejected`, `claimRateLimited`, `accessCodeNeedsDetails`,
- * `accessRefused` (with the relay's reason), `signedRequestRejected`,
+ * `claimCodeRejected`, `claimRateLimited`, `claimCodeNeedsDetails`,
+ * `claimRefused` (with the relay's reason), `signedRequestRejected`,
  * `alreadyRegistered` or `registry`. The new server's run policy is `whileOpen` when no other
  * server's is active, and `off` otherwise. The answer never carries the
  * token.
@@ -58,14 +58,13 @@ const addServer = ({
   invokeHostCommand('server_add', Schema.String, { relay, credentials })
 
 /**
- * Whether {@link addServer} failed because the code entered as a claim code
- * is an access code: the relay kept it unspent, and it adds the server once
- * entered again as an access code, with an email and, optionally, a tunnel
- * name.
+ * Whether {@link addServer} failed because the claim code entered names no
+ * tunnel: the relay kept it unspent, and it adds the server once entered
+ * again with details, an email and, optionally, a tunnel name.
  */
-const asksForAccessCodeDetails = (error: HostCommandError): boolean =>
+const asksForClaimCodeDetails = (error: HostCommandError): boolean =>
   error instanceof HostCommandFailed &&
-  error.refusal.pipe(Option.exists((refusal) => refusal.kind === 'accessCodeNeedsDetails'))
+  error.refusal.pipe(Option.exists((refusal) => refusal.kind === 'claimCodeNeedsDetails'))
 
 /**
  * Set when the server `domain` runs to `choice`, answering with the run
@@ -207,7 +206,7 @@ const openNotifiedConsent = ({
 
 export {
   addServer,
-  asksForAccessCodeDetails,
+  asksForClaimCodeDetails,
   launchServer,
   listServers,
   openNotifiedConsent,

@@ -95,7 +95,7 @@ const answer = (
     if (!relay.tunnels.has(claimCodesFor)) return text(404, 'no tunnel has the name')
     return json(201, { code: 'ABCD-EFGH', expires_at: 1_700_000_900 })
   }
-  if (request.method === 'POST' && url.pathname === '/api/access-codes') {
+  if (request.method === 'POST' && url.pathname === '/api/claim-codes') {
     return json(201, { code: 'JKMN-PQRS', expires_at: 1_700_000_900 })
   }
   const tokenFor = url.pathname.match(/^\/api\/tunnels\/([^/]+)\/token$/)?.[1]
@@ -504,29 +504,29 @@ describe('RelayAdminScreen', () => {
     expect(screen.queryByLabelText('Claim code')).toBeNull()
   })
 
-  it('issues an access code and shows it once, with its expiry', async () => {
+  it('issues a claim code naming no tunnel and shows it once, with its expiry', async () => {
     // Arrange
     const relay = relayWith(['alice'])
     const queryClient = renderScreen(await runtimeFor(relay, true))
     const user = userEvent.setup()
 
     // Act
-    await user.click(await screen.findByRole('button', { name: 'Issue access code' }))
+    await user.click(await screen.findByRole('button', { name: 'Issue claim code' }))
 
     // Assert
-    expect((await screen.findByLabelText('Access code')).textContent).toBe('JKMN-PQRS')
-    expect(screen.getByRole('heading', { name: 'New access code' })).toBeDefined()
+    expect((await screen.findByLabelText('Claim code')).textContent).toBe('JKMN-PQRS')
+    expect(screen.getByRole('heading', { name: 'New claim code' })).toBeDefined()
     expect(screen.getByText(/under the email and subdomain they choose/)).toBeDefined()
     expect(screen.getByText(/won’t be shown again/)).toBeDefined()
     expect(document.querySelector('time[datetime="2023-11-14T22:28:20.000Z"]')).not.toBeNull()
-    expect(relay.requests).toContain('POST /api/access-codes')
+    expect(relay.requests).toContain('POST /api/claim-codes')
 
     // Act
     await user.click(screen.getByRole('button', { name: 'Done' }))
 
     // Assert
-    expect(screen.queryByLabelText('Access code')).toBeNull()
-    expect(screen.getByRole('button', { name: 'Issue access code' })).toBeDefined()
+    expect(screen.queryByLabelText('Claim code')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Issue claim code' })).toBeDefined()
     await waitFor(() => {
       expect(queryClient.getMutationCache().getAll()).toEqual([])
     })

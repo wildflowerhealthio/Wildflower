@@ -84,15 +84,16 @@ The token the tunnel was created with, shown once, works too: under the
 claim code field, **I have a tunnel name and full length token** takes the
 tunnel name and token instead.
 
-To let someone make their own tunnel instead, choose **Issue access code**
-under **Access codes** and give them the code it shows. On the device they
-enter it where a claim code goes; the app sees it is an access code and asks
-for their email and, optionally, a subdomain, then redeems it, once, at
-`POST https://relay.example.com/access` for a new tunnel under them. Left
-empty, the relay picks the subdomain, as it does for a tunnel created without
-a name. A taken or reserved subdomain, or an unusable email, is refused
-without spending the code. Access codes expire as claim codes do, and any
-number can be outstanding. The new tunnel shows in the list like any other.
+To let someone make their own tunnel instead, choose **Issue claim code**
+under **Claim codes for new servers** and give them the code it shows. On the
+device they enter it as any claim code; the relay answers that it names no
+tunnel, so the app asks for their email and, optionally, a subdomain, then
+redeems it, once, at `POST https://relay.example.com/claim` for a new tunnel
+under them. Left empty, the relay picks the subdomain, as it does for a
+tunnel created without a name. A taken or reserved subdomain, or an unusable
+email, is refused without spending the code. These codes expire as a
+tunnel's do, and any number can be outstanding. The new tunnel shows in the
+list like any other.
 
 If a token leaks, or the owner loses it, **Reissue token** on the tunnel's
 row replaces it after a confirmation and shows the new one once. The old
@@ -106,8 +107,8 @@ The relay writes two logs. `RUST_LOG` (default `info`) sets the level for
 both.
 
 - **The journal** (`journalctl -u wildflowerhealthio-relay-server`) carries no
-  tunnel names, hostnames other than the relay's own, IP addresses, emails,
-  claim codes or access codes. A connection refused because its tunnel's visitor queue
+  tunnel names, hostnames other than the relay's own, IP addresses, emails or
+  claim codes. A connection refused because its tunnel's visitor queue
   stayed full, or because its PROXY header could not be built, is also a
   warning there, without the address or tunnel.
 - **The connection log**, in `/var/lib/wildflower-relay/connection-log/`

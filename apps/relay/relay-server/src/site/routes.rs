@@ -28,9 +28,8 @@ const RATHOLE_CACHE_CONTROL: &str = "public, max-age=60";
 ///   and the admin UI that calls it, at `/` there (see [`super::admin_ui`]).
 ///   The UI's catch-all path loses to every route above. Also `POST /claim`,
 ///   which redeems a claim code the admin API issued for a tunnel's name,
-///   token and `rathole_settings`, and `POST /access`, which redeems an
-///   access code it issued for a new tunnel's, both without authentication
-///   (see [`super::claim`]).
+///   token and `rathole_settings`, the tunnel's it names or a new one's,
+///   without authentication (see [`super::claim`]).
 pub(super) fn router(
     rathole_settings: PublicRatholeSettings,
     verifier: Arc<Verifier>,
@@ -357,8 +356,7 @@ mod tests {
     }
 
     /// Without an admin key nothing can sign as admin, and the admin API is
-    /// not mounted at all, nor `POST /claim` or `POST /access`, since no code
-    /// can be issued.
+    /// not mounted at all, nor `POST /claim`, since no code can be issued.
     #[tokio::test]
     async fn without_an_admin_key_the_admin_api_is_absent() {
         let router = signing_router();
@@ -377,13 +375,7 @@ mod tests {
             .header(header::HOST, "relay.example.com")
             .body(Body::empty())
             .unwrap();
-        let response = router.clone().oneshot(claim).await.unwrap();
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
-        let access = Request::post("/access")
-            .header(header::HOST, "relay.example.com")
-            .body(Body::empty())
-            .unwrap();
-        let response = router.oneshot(access).await.unwrap();
+        let response = router.oneshot(claim).await.unwrap();
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 }

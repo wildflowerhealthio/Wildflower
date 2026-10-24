@@ -9,8 +9,8 @@
 //! certificate. [`RelaySettings::public_rathole_settings`] is
 //! what the site serves at `GET /rathole`. The admin key signs requests as
 //! `keyid="admin"` (see [`crate::site::signature`]) and enables the admin
-//! API, and the claim-code lifetime is how long a claim code or access code
-//! it issues redeems for. The state directory holds that certificate and its ACME account,
+//! API, and the claim-code lifetime is how long a claim code it issues
+//! redeems for. The state directory holds that certificate and its ACME account,
 //! which the relay can rebuild, and the tunnels created through the admin
 //! API (see [`crate::db`]), which it cannot.
 //!
@@ -82,7 +82,7 @@ pub struct RelaySettings {
     /// The key for requests signed with `keyid="admin"`. `None` means no
     /// request can sign as admin, and the admin API is not served.
     pub admin_key: Option<Secret>,
-    /// How long a claim code or access code redeems for once issued.
+    /// How long a claim code redeems for once issued.
     pub claim_code_ttl: Duration,
 }
 

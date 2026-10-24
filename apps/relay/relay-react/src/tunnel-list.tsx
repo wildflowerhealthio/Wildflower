@@ -130,7 +130,6 @@ const TunnelList = (): JSX.Element => {
           <IssuedCodePanel
             key="issued-claim-code"
             title={`Claim code for ${tunnelName}`}
-            codeLabel="Claim code"
             issued={issued}
             recipient="the tunnel’s owner"
             onDone={() => {

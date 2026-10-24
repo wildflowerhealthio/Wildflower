@@ -11,7 +11,7 @@ changing how servers run or what the host notifies about them.
   and the `ServerRegistry` port over the list of them, with its
   `JsonServerRegistry` adapter at `<data root>/servers.json`; and enrolment,
   which checks a tunnel's credentials with its Wildflower relay, first
-  redeeming a claim code or access code for them when one was entered, through the
+  redeeming a claim code for them when one was entered, through the
   `RelayClient` port, with its `ReqwestRelayClient` adapter; and the changes
   to a registered server: its run policy, its launcher, Authorization app and
   certificate source, and its removal. `ServerUnit`, a server as a unit `UnitRunner` runs, with
@@ -47,8 +47,7 @@ changing how servers run or what the host notifies about them.
     `ConsentRequest` and `server_of_consent_notification`, and `ConsentViews`
     with `ConsentViewClaim` and `IfShowing`); `ports/` the
     `ServerRegistry` port (read all, insert, modify, remove) and the
-    `RelayClient` port (`GET /rathole`, signed `GET /me`, `POST /claim`,
-    `POST /access`);
+    `RelayClient` port (`GET /rathole`, signed `GET /me`, `POST /claim`);
     `adapters/`
     `JsonServerRegistry`, `ReqwestRelayClient` and the request signer it uses;
     `live_bindings/` `ServerUnit`, bound to `wildflower-server-rust`;
@@ -201,9 +200,9 @@ changing how servers run or what the host notifies about them.
   by URL with an Advanced pin, or a different reverse proxy, a rathole
   server by its address, key and tunnel domain); the tunnel: for a
   Wildflower relay a claim code, uppercased as typed, by default (a code the
-  host answers `accessCodeNeedsDetails` for comes back to this step as an
-  access code, kept, with Your email and an optional Subdomain, lowercased
-  as typed, whose address it gives, and is sent again as one), or, through
+  host answers `claimCodeNeedsDetails` for comes back to this step, kept,
+  with Your email and an optional Subdomain, lowercased as typed, whose
+  address it gives, and is sent again with them as its details), or, through
   the link-styled "I have a tunnel name and full length token" above the
   buttons, the tunnel name and token, with "I have a claim code" back; for a
   rathole relay only the tunnel name, lowercased as typed as is a rathole
@@ -343,24 +342,25 @@ changing how servers run or what the host notifies about them.
   settings are already tied to the relay's `GET /rathole`. The code
   is stored nowhere, and `server_set_credentials` takes a token only. A `422`
   is `EnrolmentError::ClaimCodeRejected` (unknown, used or expired: the relay
-  gives one answer for all), a `409` `AccessCodeNeedsDetails` (the code is an
-  access code, which the relay leaves unspent), a `429` `ClaimRateLimited`,
+  gives one answer for all), a `409` `ClaimCodeNeedsDetails` (the code names
+  no tunnel, and the relay leaves it unspent), a `429` `ClaimRateLimited`,
   and a `404`, a relay site run without its admin API, `ClaimCodesNotOffered`,
-  as is a claim code or access code entered for a rathole relay, refused
-  before anything is asked.
-- **An access code is spent once, for a new tunnel.** An
-  `EnteredCredentials::AccessCode` carries the code, an email and an
-  optional tunnel name; the email is trimmed (`EmptyEmail` when blank) and
-  the name parsed as a `TunnelName` before anything is asked. After the same
-  `GET /rathole` checks as a claim code, it is sent to the relay's
-  `POST /access` as an `AccessRequest` (`rathole-settings-rust`), which
-  creates the tunnel, under the name or one the relay picks, and answers
-  with its `ClaimedTunnel`, held to `GET /rathole` as a claim's is, or
-  `BadRelayResponse` for `/access`. No signed `GET /me` follows. The relay's
-  `422`, `409` and `503` there are `EnrolmentError::AccessRefused`, carrying
-  the relay's own plain-text reason (cut to 200 bytes): an unknown, used or
-  expired code, or an email or name it refuses, which leaves the code
-  unspent; `429` is `ClaimRateLimited` and `404` `ClaimCodesNotOffered`.
+  as is a claim code entered for a rathole relay, refused before anything is
+  asked.
+- **A claim code that names no tunnel is spent once, for a new one.**
+  Entered again with its `EnteredClaimDetails`, an email and an optional
+  tunnel name, the email is trimmed (`EmptyEmail` when blank) and the name
+  parsed as a `TunnelName` before anything is asked. After the same
+  `GET /rathole` checks, it is sent to the relay's `POST /claim` with them as
+  the `ClaimRequest`'s `ClaimDetails` (`rathole-settings-rust`), and the
+  relay creates the tunnel, under the name or one it picks, and answers with
+  its `ClaimedTunnel`, held to `GET /rathole` as any claim's is. No signed
+  `GET /me` follows. For a request with details, the relay's `422`, `409`
+  and `503` are `EnrolmentError::ClaimRefused`, carrying its own plain-text
+  reason (cut to 200 bytes): an unknown, used or expired code, a code that
+  names its own tunnel, or an email or name it refuses, which leaves the
+  code unspent; `429` is `ClaimRateLimited` and `404`
+  `ClaimCodesNotOffered`.
 - **A relay's identity is pinned when the server is added.** Its
   `RelayIdentity`, the `remoteAddr` its rathole client dials and its noise
   `publicKey`, is kept in the record's `public_settings`. When
@@ -414,15 +414,13 @@ changing how servers run or what the host notifies about them.
   relay one of `{kind: "wildflowerOfficial"}`,
   `{kind: "selfHostedWildflower", baseUrl, pin?}` with `pin`
   `{remoteAddr, publicKey}`, or `{kind: "rathole", remoteAddr, publicKey,
-  domain}`, and the credentials `{kind: "claimCode", code}`,
-  `{kind: "accessCode", code, email, tunnelName?}` or
-  `{kind: "token", tunnelName, token}`; and
+  domain}`, and the credentials `{kind: "claimCode", code, details?:
+  {email, tunnelName?}}` or `{kind: "token", tunnelName, token}`; and
   `invoke('server_set_credentials', { domain, token })`. An
   `EnrolmentError`'s `kind` is camelCase (`signedRequestRejected`,
   `relayIdentityChanged`, `alreadyRegistered`, ...), and so is every field of
   `servers.json`. Only the relay's own `GET /rathole` and `GET /me` keep its
-  snake_case wire shape, and so do `POST /claim`'s and `POST /access`'s
-  requests and response.
+  snake_case wire shape, and so do `POST /claim`'s request and response.
 - **Entered credentials are trimmed.** A token's surrounding whitespace is
   dropped (`TunnelToken::entered`), as the relay drops it from its own copy,
   and a token left empty is `EnrolmentError::EmptyToken`; a claim code is
@@ -748,8 +746,8 @@ changing how servers run or what the host notifies about them.
 - [slices/AGENTS.md](../../../slices/AGENTS.md) — slice layering rules these packages follow.
 - `slices/rathole-settings-rust` — `PublicRatholeSettings`, the
   `GET /rathole` response a record keeps as `public_settings`,
-  `TunnelHost`, the `GET /me` response, `ClaimRequest`, `AccessRequest` and
-  `ClaimedTunnel`, `POST /claim`'s and `POST /access`'s, and `TunnelName`.
+  `TunnelHost`, the `GET /me` response, `ClaimRequest`, `ClaimDetails` and
+  `ClaimedTunnel`, `POST /claim`'s, and `TunnelName`.
 - `apps/relay/relay-server` — the relay whose `GET /rathole`, `GET /me` and
-  `POST /claim` and `POST /access` enrolment calls; its crate docs give the
+  `POST /claim` enrolment calls; its crate docs give the
   signing rules.

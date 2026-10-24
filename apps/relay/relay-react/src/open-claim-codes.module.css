@@ -1,0 +1,14 @@
+/*
+ * Open claim codes: a heading, what one is for, any refusal and the issue
+ * button.
+ */
+.open-claim-codes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.open-claim-codes__actions {
+  display: flex;
+  justify-content: flex-start;
+}

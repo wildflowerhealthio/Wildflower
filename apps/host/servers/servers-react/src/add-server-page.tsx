@@ -8,7 +8,7 @@ import {
   TextField,
 } from '@wildflowerhealthio/react-tundraish'
 import {
-  asksForAccessCodeDetails,
+  asksForClaimCodeDetails,
   EnteredCredentials,
   type EnteredRelay,
   type RunPolicyChoice,
@@ -35,21 +35,23 @@ interface RelayEntries {
 }
 
 /**
+ * Which fields the credentials step shows a Wildflower relay: a claim code;
+ * a claim code with the details of the new tunnel it creates, once the host
+ * has said the code names none; or the tunnel name and token.
+ */
+type CredentialsMode = 'claimCode' | 'claimCodeWithDetails' | 'token'
+
+/**
  * The credentials step's fields, as typed, the code uppercased and the
  * tunnel name and subdomain lowercased, with which of them a Wildflower
  * relay is given.
  */
 interface CredentialsEntries {
-  /**
-   * A Wildflower relay's: a claim code; an access code, with an email and a
-   * subdomain; or the tunnel name and token.
-   */
-  readonly kind: EnteredCredentials.Type['kind']
-  /** A claim code or access code. */
+  readonly mode: CredentialsMode
   readonly claimCode: string
-  /** An access code's email. */
+  /** The email a claim code's new tunnel is for. */
   readonly email: string
-  /** An access code's chosen tunnel name, blank for one the relay picks. */
+  /** A claim code's new tunnel name, blank for one the relay picks. */
   readonly subdomain: string
   readonly tunnelName: string
   readonly token: string
@@ -74,7 +76,7 @@ const NO_RELAY_ENTRIES: RelayEntries = {
 }
 
 const NO_CREDENTIALS_ENTRIES: CredentialsEntries = {
-  kind: 'claimCode',
+  mode: 'claimCode',
   claimCode: '',
   email: '',
   subdomain: '',
@@ -336,40 +338,59 @@ const relayDomainOf = (relay: EnteredRelay.Type): Option.Option<string> =>
   )
 
 /**
- * The credentials `entries` give `relay`: for a Wildflower relay, the claim
- * code, the access code with its email and subdomain (left out when blank),
- * or the tunnel name and token, as `entries.kind` picks; for a rathole
- * relay, which redeems no codes, the tunnel name and token. Each as typed,
- * but a blank subdomain; the host trims them.
+ * The fields the credentials step shows for `relay`: those `entries` pick
+ * for a Wildflower relay, and the tunnel name and token for a rathole
+ * relay, which redeems no codes.
+ */
+const credentialsModeOf = (
+  relay: EnteredRelay.Type,
+  entries: CredentialsEntries
+): CredentialsMode => (relay.kind === 'rathole' ? 'token' : entries.mode)
+
+/**
+ * The credentials `entries` give `relay`, as {@link credentialsModeOf}
+ * picks: the claim code, alone or with the email and subdomain (left out
+ * when blank), or the tunnel name and token. Each as typed, but a blank
+ * subdomain; the host trims them.
  */
 const enteredCredentialsOf = (
   relay: EnteredRelay.Type,
   entries: CredentialsEntries
-): EnteredCredentials.Type => {
-  if (relay.kind === 'rathole' || entries.kind === 'token') {
-    return { kind: 'token', tunnelName: entries.tunnelName, token: entries.token }
-  }
-  if (entries.kind === 'claimCode') return { kind: 'claimCode', code: entries.claimCode }
-  const subdomain = entries.subdomain.trim()
-  return {
-    kind: 'accessCode',
-    code: entries.claimCode,
-    email: entries.email,
-    ...(subdomain === '' ? {} : { tunnelName: subdomain }),
-  }
-}
+): EnteredCredentials.Type =>
+  Match.value(credentialsModeOf(relay, entries)).pipe(
+    Match.withReturnType<EnteredCredentials.Type>(),
+    Match.when('claimCode', () => ({ kind: 'claimCode', code: entries.claimCode })),
+    Match.when('claimCodeWithDetails', () => {
+      const subdomain = entries.subdomain.trim()
+      return {
+        kind: 'claimCode',
+        code: entries.claimCode,
+        details: {
+          email: entries.email,
+          ...(subdomain === '' ? {} : { tunnelName: subdomain }),
+        },
+      }
+    }),
+    Match.when('token', () => ({
+      kind: 'token',
+      tunnelName: entries.tunnelName,
+      token: entries.token,
+    })),
+    Match.exhaustive
+  )
 
 /**
  * Whether `credentials` lack a value the host needs: a code that isn't one,
- * such as one missing a character, an access code's email left blank, or a
- * tunnel name or token left blank.
+ * such as one missing a character, a claim code's details' email left
+ * blank, or a tunnel name or token left blank.
  */
 const isIncomplete = (credentials: EnteredCredentials.Type): boolean =>
   Match.value(credentials).pipe(
-    Match.when({ kind: 'claimCode' }, ({ code }) => !EnteredCredentials.isClaimCode(code)),
     Match.when(
-      { kind: 'accessCode' },
-      ({ code, email }) => !EnteredCredentials.isClaimCode(code) || email.trim() === ''
+      { kind: 'claimCode' },
+      ({ code, details }) =>
+        !EnteredCredentials.isClaimCode(code) ||
+        (details !== undefined && details.email.trim() === '')
     ),
     Match.when(
       { kind: 'token' },
@@ -411,13 +432,14 @@ const ClaimCodeFields = ({
 )
 
 /**
- * An access code's fields: the code, uppercased as typed; the email the new
- * tunnel is for; and the subdomain, lowercased as typed, with the address it
- * gives the server through `relay`, or a note that the relay picks one when
- * it is blank, over a note that the address becomes public in the
- * Certificate Transparency logs.
+ * A claim code's fields with the details of the new tunnel it creates: the
+ * code, uppercased as typed; the email the tunnel is for; and the
+ * subdomain, lowercased as typed, with the address it gives the server
+ * through `relay`, or a note that the relay picks one when it is blank,
+ * over a note that the address becomes public in the Certificate
+ * Transparency logs.
  */
-const AccessCodeFields = ({
+const ClaimCodeWithDetailsFields = ({
   relay,
   entries,
   onChange,
@@ -431,7 +453,7 @@ const AccessCodeFields = ({
   return (
     <>
       <TextField
-        label="Access code"
+        label="Claim code"
         value={entries.claimCode}
         onChange={(claimCode) => {
           onChange({ ...entries, claimCode: claimCode.toUpperCase() })
@@ -518,9 +540,8 @@ const TokenFields = ({
  * Step 2, the tunnel. A Wildflower relay is given a claim code by default,
  * or, through a link between the fields and the buttons, the tunnel's name
  * and token, with a link back; a rathole relay only the name and token. A
- * code the relay answers as an access code comes back here, as an access
- * code, with an email and subdomain to enter. Add server waits for every
- * value they need.
+ * claim code the host says names no tunnel comes back here, kept, with an
+ * email and subdomain to enter. Add server waits for every value they need.
  */
 const CredentialsStep = ({
   relay,
@@ -536,6 +557,7 @@ const CredentialsStep = ({
   readonly onAdd: () => void
 }): JSX.Element => {
   const headingId = useId()
+  const mode = credentialsModeOf(relay, entries)
   const credentials = enteredCredentialsOf(relay, entries)
   return (
     <form
@@ -547,12 +569,11 @@ const CredentialsStep = ({
       }}
     >
       <StepHeading headingId={headingId} title="Tunnel">
-        {Match.value(credentials.kind).pipe(
+        {Match.value(mode).pipe(
           Match.when('claimCode', () => "Enter the claim code from your relay's admin."),
           Match.when(
-            'accessCode',
-            () =>
-              'That code is an access code: enter your email and choose a subdomain for your new server.'
+            'claimCodeWithDetails',
+            () => 'That code is for a new server: enter your email and choose a subdomain for it.'
           ),
           Match.when(
             'token',
@@ -561,10 +582,10 @@ const CredentialsStep = ({
           Match.exhaustive
         )}
       </StepHeading>
-      {Match.value(credentials.kind).pipe(
+      {Match.value(mode).pipe(
         Match.when('claimCode', () => <ClaimCodeFields entries={entries} onChange={onChange} />),
-        Match.when('accessCode', () => (
-          <AccessCodeFields relay={relay} entries={entries} onChange={onChange} />
+        Match.when('claimCodeWithDetails', () => (
+          <ClaimCodeWithDetailsFields relay={relay} entries={entries} onChange={onChange} />
         )),
         Match.when('token', () => (
           <TokenFields relay={relay} entries={entries} onChange={onChange} />
@@ -574,12 +595,10 @@ const CredentialsStep = ({
       {relay.kind === 'rathole' ? null : (
         <LinkButton
           onClick={() => {
-            onChange({ ...entries, kind: credentials.kind === 'token' ? 'claimCode' : 'token' })
+            onChange({ ...entries, mode: mode === 'token' ? 'claimCode' : 'token' })
           }}
         >
-          {credentials.kind === 'token'
-            ? 'I have a claim code'
-            : 'I have a tunnel name and full length token'}
+          {mode === 'token' ? 'I have a claim code' : 'I have a tunnel name and full length token'}
         </LinkButton>
       )}
       <div className={styles['add-server-page__actions']}>
@@ -714,8 +733,8 @@ const DoneStep = ({
 /**
  * Add server, `/servers/new`, a step at a time: the relay, the tunnel's
  * claim code or its name and token, the host's check and enrolment, and the
- * server added. A claim code the relay answers as an access code goes back
- * to the tunnel step as one, keeping the code, for an email and subdomain.
+ * server added. A claim code the host says names no tunnel goes back to the
+ * tunnel step, keeping the code, for an email and subdomain.
  *
  * @remarks
  * The steps and their entries live in this component's state, never the
@@ -740,9 +759,9 @@ const AddServerPage = (): JSX.Element => {
           setStep({ kind: 'done', domain })
         },
         onError: (error) => {
-          if (!asksForAccessCodeDetails(error)) return
+          if (!asksForClaimCodeDetails(error)) return
           addServer.reset()
-          setCredentialsEntries((entries) => ({ ...entries, kind: 'accessCode' }))
+          setCredentialsEntries((entries) => ({ ...entries, mode: 'claimCodeWithDetails' }))
           setStep({ kind: 'credentials', relay })
         },
       }

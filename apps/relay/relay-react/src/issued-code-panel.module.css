@@ -1,5 +1,5 @@
 /*
- * A claim code or access code just issued, shown once: the code large in a monospace block,
+ * A claim code just issued, shown once: the code large in a monospace block,
  * its expiry, the warning, and Copy / Done.
  */
 .issued-code-panel {

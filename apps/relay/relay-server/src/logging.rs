@@ -2,7 +2,7 @@
 //!
 //! - **The journal**: stdout, which systemd keeps in its journal for as long
 //!   as it keeps anything. It names no one: no tunnel names, SNI, IP
-//!   addresses, emails, claim codes or access codes. The relay's own domain and hostnames,
+//!   addresses, emails or claim codes. The relay's own domain and hostnames,
 //!   which are the operator's settings, may appear.
 //! - **The connection log**: `<state dir>/connection-log/`, one file per UTC
 //!   hour (`connection.2026-10-16-13.log`), each deleted 24 hours after its

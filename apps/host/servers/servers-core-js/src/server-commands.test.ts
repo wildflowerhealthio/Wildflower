@@ -12,7 +12,7 @@ import * as RunPolicyChoice from './run-policy-choice.ts'
 import * as RunPolicy from './run-policy.ts'
 import {
   addServer,
-  asksForAccessCodeDetails,
+  asksForClaimCodeDetails,
   listServers,
   openNotifiedConsent,
   removeServer,
@@ -264,11 +264,11 @@ describe('EnteredCredentials', () => {
     expect(credentials).toEqual(Object.values(golden.enteredCredentials))
   })
 
-  it('should refuse a claim code without its code, an access code without its email, and a token without its tunnel name', () => {
+  it('should refuse a claim code without its code, details without their email, and a token without its tunnel name', () => {
     // Arrange
     const malformed = [
       { kind: 'claimCode' },
-      { kind: 'accessCode', code: golden.enteredCredentials.accessCode.code },
+      { kind: 'claimCode', code: golden.enteredCredentials.claimCode.code, details: {} },
       { kind: 'token', token: golden.enteredCredentials.token.token },
       { kind: 'claim', code: golden.enteredCredentials.claimCode.code },
     ]
@@ -349,7 +349,7 @@ describe('addServer', () => {
   )
 
   it.each(Object.values(golden.enrolmentErrors))(
-    'should ask for access code details only for the $kind refusal that says so',
+    'should ask for claim code details only for the $kind refusal that says so',
     async (error) => {
       // Act
       const { exit } = await runAgainstHostAnswering(
@@ -362,8 +362,8 @@ describe('addServer', () => {
 
       // Assert
       const failure = failureOf(exit)
-      expect(failure !== undefined && asksForAccessCodeDetails(failure)).toBe(
-        error.kind === 'accessCodeNeedsDetails'
+      expect(failure !== undefined && asksForClaimCodeDetails(failure)).toBe(
+        error.kind === 'claimCodeNeedsDetails'
       )
     }
   )

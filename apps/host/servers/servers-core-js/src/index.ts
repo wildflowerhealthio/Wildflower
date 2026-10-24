@@ -29,7 +29,7 @@ export * as RunPolicy from './run-policy.ts'
 export * as RunPolicyChoice from './run-policy-choice.ts'
 export {
   addServer,
-  asksForAccessCodeDetails,
+  asksForClaimCodeDetails,
   launchServer,
   listServers,
   openNotifiedConsent,

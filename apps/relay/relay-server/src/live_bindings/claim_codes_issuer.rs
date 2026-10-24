@@ -11,7 +11,7 @@ use super::state::TunnelRegistry;
 use super::AdminCapability;
 use crate::db::SqliteTunnelStore;
 use crate::domain::capabilities::ClaimCodesIssuer;
-use crate::domain::{IssuedClaimCode, TunnelError};
+use crate::domain::{ClaimCodeTarget, IssuedClaimCode, TunnelError};
 use crate::logging::IDENTIFYING;
 use crate::site::signature::unix_now;
 
@@ -36,33 +36,42 @@ impl AdminCapability for LiveClaimCodesIssuer {
 }
 
 impl LiveClaimCodesIssuer {
-    /// Issue a claim code for the tunnel named `tunnel_name`, from the OS's
-    /// randomness (see [`ClaimCodesIssuer::issue`]). It runs between tunnel
-    /// changes, so the tunnel cannot be deleted under it.
+    /// Issue a claim code for `target`, from the OS's randomness (see
+    /// [`ClaimCodesIssuer::issue`]). It runs between tunnel changes, so a
+    /// preset code's tunnel cannot be deleted under it.
     ///
     /// # Errors
     ///
     /// See [`ClaimCodesIssuer::issue`].
-    pub(crate) async fn issue(&self, tunnel_name: String) -> Result<IssuedClaimCode, TunnelError> {
+    pub(crate) async fn issue(
+        &self,
+        target: ClaimCodeTarget,
+    ) -> Result<IssuedClaimCode, TunnelError> {
         let issuer = Arc::clone(&self.issuer);
-        let name = tunnel_name.clone();
+        let issued_target = target.clone();
         let issued = self
             .registry
             .while_unchanged(move || {
                 // Panics only if the OS has no randomness to give.
                 let mut rng = UnwrapErr(SysRng);
-                issuer.issue(&tunnel_name, &mut rng, || {
+                issuer.issue(&issued_target, &mut rng, || {
                     unix_now()
                         .map_err(|e| TunnelError::infrastructure("reading the clock failed", e))
                 })
             })
             .await?;
-        tracing::info!(
-            target: IDENTIFYING,
-            tunnel = %name,
-            expires_at = issued.expires_at,
-            "claim code issued"
-        );
+        match target {
+            ClaimCodeTarget::Preset { tunnel_name } => tracing::info!(
+                target: IDENTIFYING,
+                tunnel = %tunnel_name,
+                expires_at = issued.expires_at,
+                "claim code issued"
+            ),
+            ClaimCodeTarget::Open => tracing::info!(
+                expires_at = issued.expires_at,
+                "claim code issued for a new tunnel"
+            ),
+        }
         Ok(issued)
     }
 }
