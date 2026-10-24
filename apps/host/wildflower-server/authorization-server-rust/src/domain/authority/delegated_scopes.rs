@@ -38,6 +38,8 @@ use crate::domain::client::Client;
 ///   approver need not hold what the device asked for.
 /// - A browser pairing records no grant and writes no registration; like a
 ///   device prompt it is expandable.
+/// - A session widening records no grant and writes no registration either;
+///   its approver may only untick what the browser asked for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ApprovalFlow {
     /// An authorization-code prompt, whose approval records a standing grant
@@ -52,12 +54,15 @@ enum ApprovalFlow {
     Device,
     /// A browser pairing: approving records no grant and registers no client.
     BrowserPairing,
+    /// A session widening: approving widens a browser session, recording no
+    /// grant and registering no client.
+    SessionWidening,
 }
 
 impl ApprovalFlow {
     /// Whether approving records a standing grant: a code or device approval.
     fn would_record_grant(self) -> bool {
-        self != ApprovalFlow::BrowserPairing
+        matches!(self, ApprovalFlow::Code { .. } | ApprovalFlow::Device)
     }
 
     /// Whether approving creates or widens the client's registration: a code
@@ -70,7 +75,8 @@ impl ApprovalFlow {
 
     /// Whether the approver must hold every resource scope the request asks
     /// for: a code approval, which approves the request as asked. Device and
-    /// pairing consent is expandable instead.
+    /// pairing consent is expandable instead, and a widening's approver may
+    /// untick what it can't pass on.
     fn would_approve_as_asked(self) -> bool {
         matches!(self, ApprovalFlow::Code { .. })
     }
@@ -124,6 +130,19 @@ impl ApprovableScopes {
             requested_scopes: crate::owner_scopes(),
             registration_ceiling_scopes: crate::owner_scopes(),
             flow: ApprovalFlow::BrowserPairing,
+        }
+    }
+
+    /// A session widening prompt for `requested_scopes`, what the browser's
+    /// session lacked of an app's request. Its approver may only untick: what
+    /// was asked fills both halves, and the Owner's scopes
+    /// ([`OWNER_SCOPES`](crate::OWNER_SCOPES)) bound it too, so a widened
+    /// session holds no more than a paired one could.
+    pub(crate) fn for_session_widening(requested_scopes: &[String]) -> Self {
+        ApprovableScopes {
+            requested_scopes: requested_scopes.to_vec(),
+            registration_ceiling_scopes: crate::owner_scopes(),
+            flow: ApprovalFlow::SessionWidening,
         }
     }
 
@@ -202,7 +221,7 @@ impl ApprovableScopes {
     /// - `wildflower/AuthorizationRequest.u`: every approval, to decide the
     ///   request at all.
     /// - `wildflower/Grant.c`: a code or device approval, which records a
-    ///   standing grant; a browser pairing records none.
+    ///   standing grant; a browser pairing or session widening records none.
     /// - `wildflower/Client.c` and `wildflower/Client.u`: a code approval for
     ///   a client trusted on first use, which creates or widens its
     ///   registration, whichever the row needs when the approval lands; a
@@ -212,8 +231,8 @@ impl ApprovableScopes {
     ///   asked, else it goes to the Owner.
     ///
     /// A device or pairing prompt is expandable, so its approver may grant
-    /// whatever it holds, and [`DelegatedScopes::clamp`] bounds that scope by
-    /// scope instead. The Owner's scopes lack no approval scope on any prompt.
+    /// whatever it holds, and a widening's approver may untick what it doesn't
+    /// hold; [`DelegatedScopes::clamp`] bounds either scope by scope instead. The Owner's scopes lack no approval scope on any prompt.
     pub(crate) fn missing_approval_scopes(&self, approver_grant: &Grant) -> Vec<String> {
         let mut approval_scopes = consent_decider_scopes();
         if self.flow.would_record_grant() {
@@ -689,6 +708,28 @@ mod tests {
                 "offline_access",
             ])),
             ["wildflower/launch", "system/Patient.rs"],
+        );
+    }
+
+    /// A widening prompt grants only what the browser asked for, within the
+    /// Owner's scopes: unticking is all its approver can do.
+    #[test]
+    fn a_widening_prompt_grants_only_what_was_asked() {
+        let approvable = ApprovableScopes::for_session_widening(&owned_scopes(&[
+            "wildflower/Apps.r",
+            "system/Patient.rs",
+        ]));
+        assert_eq!(
+            approvable.grantable_subset(owned_scopes(&[
+                "wildflower/Apps.r",
+                "system/Observation.rs",
+                "wildflower/launch",
+            ])),
+            ["wildflower/Apps.r"],
+        );
+        assert_eq!(
+            approvable.missing_approval_scopes(&Grant::parse(Vec::<&str>::new())),
+            ["wildflower/AuthorizationRequest.u"],
         );
     }
 

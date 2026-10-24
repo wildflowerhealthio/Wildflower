@@ -98,6 +98,10 @@ The tests mint their tokens directly, with the signing key the server seeded, ra
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/common.rs paired_browser_session_holding}}
 
+### `narrow_browser_session_of`
+
+{{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/common.rs narrow_browser_session_of}}
+
 ### `browser_session_cookie`
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/common.rs browser_session_cookie}}

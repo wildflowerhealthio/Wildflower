@@ -26,8 +26,10 @@
 //!    server's own device with a same-device session's token, on its way to an
 //!    allowed `next`;
 //!  - bound to a browser session: [`SessionShortfall`] reads and cancels a
-//!    request waiting on the limited page of the browser that made it, and
-//!    [`CodeAuthorizationStarter`] goes on with one;
+//!    request waiting on the limited page of the browser that made it,
+//!    [`CodeAuthorizationStarter`] goes on with one, and [`SessionWidening`]
+//!    asks the Owner to widen that browser's session from it, and collects
+//!    the wider session token once the Owner approves;
 //!  - bound to a pairing code: [`BrowserPairing`] starts a browser pairing for
 //!    a browser that isn't the Owner's, and its page's poll, holding the
 //!    request's secret pairing code, starts the paired session once the
@@ -43,6 +45,7 @@ mod launch_contexts;
 mod public_keys_reader;
 mod same_device_sign_in;
 mod session_shortfall;
+mod session_widening;
 mod token_exchanger;
 
 pub(crate) use authorization_status_reader::{
@@ -66,4 +69,7 @@ pub(crate) use same_device_sign_in::{
     SameDeviceSignIn, SameDeviceSignInError, SignInRefusal, SignedIn, SAME_DEVICE_SESSION_TTL,
 };
 pub(crate) use session_shortfall::{SessionShortfall, SessionShortfallView};
+pub(crate) use session_widening::{
+    SessionWidening, SessionWideningPollError, SessionWideningStatus,
+};
 pub(crate) use token_exchanger::{IssuedTokens, TokenExchanger};

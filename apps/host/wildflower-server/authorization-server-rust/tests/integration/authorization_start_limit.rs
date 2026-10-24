@@ -333,14 +333,12 @@ async fn a_deciding_browser_s_request_parked_for_the_limited_page_asks_the_gate(
         .as_str()
         .expect("a browser session's token names its sid")
         .to_owned();
-    let session_token = mint_browser_session_token(
-        &db,
-        &sid,
-        &[
-            "wildflower/AuthorizationRequest.r",
-            "wildflower/AuthorizationRequest.u",
-        ],
-    );
+    let deciding_scopes = [
+        "wildflower/AuthorizationRequest.r",
+        "wildflower/AuthorizationRequest.u",
+    ];
+    let session_token = mint_browser_session_token(&db, &sid, &deciding_scopes);
+    narrow_browser_session_of(&db, &session_token, &deciding_scopes);
     let query = authorize_query("test-app", REQUESTED_SCOPES);
 
     let request_id = limited_request_id(&get_authorize(&g.router, &session_token, &query).await);

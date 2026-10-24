@@ -1,0 +1,12 @@
+/*
+ * The widening's page around its card: what it says when this browser can't
+ * decide the widening, when it is no longer pending, and once the Owner has
+ * decided.
+ */
+
+.widening-page__message {
+  margin: var(--space-9) auto 0;
+  max-width: 560px;
+  text-align: center;
+  color: var(--color-neutral-4);
+}

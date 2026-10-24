@@ -74,8 +74,10 @@ pub fn sign_in_url(public_origin: &Url, code: &str, next: &str) -> Url {
 ///
 /// The page is a path on the server, the one kind of `next` the sign-in
 /// allows on its own origin: `/oauth/authorize/{id}/consent?then=back` for
-/// an app's authorization request, `/oauth/device?user_code=…&then=back` for
-/// a device's or a browser pairing's.
+/// an app's authorization request,
+/// `/oauth/session-widenings/{id}/consent?then=back` for a session widening,
+/// `/oauth/device?user_code=…&then=back` for a device's or a browser
+/// pairing's.
 ///
 /// # Panics
 ///
@@ -91,6 +93,13 @@ pub fn consent_sign_in_url(public_origin: &Url, code: &str, consent: &ConsentKey
                 .expect("a URL joined to an origin has path segments")
                 .pop_if_empty()
                 .extend(["authorize", id, "consent"]);
+            page.query_pairs_mut().append_pair("then", "back");
+        }
+        ConsentKey::SessionWidening { id } => {
+            page.path_segments_mut()
+                .expect("a URL joined to an origin has path segments")
+                .pop_if_empty()
+                .extend(["session-widenings", id, "consent"]);
             page.query_pairs_mut().append_pair("then", "back");
         }
         ConsentKey::DeviceCode { user_code } | ConsentKey::BrowserPairing { user_code } => {
@@ -387,6 +396,21 @@ mod tests {
             },
         );
         assert_eq!(next_of(&url), "/oauth/device?user_code=WXYZ-BCDF&then=back");
+    }
+
+    #[test]
+    fn a_session_widening_s_consent_opens_at_its_card_then_goes_back() {
+        let url = consent_sign_in_url(
+            &ruth_origin(),
+            "code-1",
+            &ConsentKey::SessionWidening {
+                id: "widen/1".to_owned(),
+            },
+        );
+        assert_eq!(
+            next_of(&url),
+            "/oauth/session-widenings/widen%2F1/consent?then=back"
+        );
     }
 
     /// The status of [`RUTH`] whose `unit_status` is given, with its run's

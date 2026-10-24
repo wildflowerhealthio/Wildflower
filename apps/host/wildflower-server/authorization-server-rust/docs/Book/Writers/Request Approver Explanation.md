@@ -53,3 +53,11 @@ End to end, the [Device Code](<../Integration Tests/Device Code Explanation.md>)
 **The approval starts no session.** The paired session starts when the pairing page's poll [claims](<../Authority/Browser Pairing Explanation.md#item-ClaimedBrowserPairing--claim>) the approved request. It has no unit test of its own; the [Browser Pairing](<../Integration Tests/Browser Pairing Explanation.md>) tests hold it end to end.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs RequestApprover::approve_browser_pairing}}
+
+#### `approve_session_widening`
+
+**The approval widens the session in the same scope**, and never shrinks it: the session keeps its `sid`, its expiry and everything minted under it. The browser's wider token comes later, when the limited page's poll [claims](<../Authority/Session Widening Explanation.md#item-ClaimedSessionWidening--claim>) the approved widening. The [session widening consents](<../Capabilities/Access/Session Widening Consents Explanation.md>) tests hold it.
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs SessionWideningOutcome}}
+
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/writers/request_approver.rs RequestApprover::approve_session_widening}}

@@ -1,11 +1,12 @@
-//! The limit on starting authorization requests: the layer on the two routes
-//! that start one, `GET /oauth/authorize` and
-//! `POST /oauth/device_authorization`, which asks the host's
+//! The limit on starting authorization requests: the layer on the three
+//! routes that start one, `GET /oauth/authorize`,
+//! `POST /oauth/device_authorization` and the limited page's
+//! `POST /oauth/authorize/{id}/ask-to-widen`, which asks the host's
 //! [`AuthorizationStartGate`].
 //!
 //! Anyone who knows the server's domain can start a request, and each one
 //! the server parks raises the Owner's approval popup on the server's device.
-//! The layer sits on those two routes alone, so it covers every method axum
+//! The layer sits on those three routes alone, so it covers every method axum
 //! serves them on (`HEAD /oauth/authorize` too) and no other route. Two kinds
 //! of request pass without asking the gate yet: the layer hands the route a
 //! [`DeferredStartLimit`] instead, and the route asks the gate only once it
@@ -66,6 +67,10 @@ pub(crate) enum AuthorizationStartRoute {
     Authorize,
     /// `/oauth/device_authorization`, which parks every request it accepts.
     DeviceAuthorization,
+    /// `/oauth/authorize/{id}/ask-to-widen`, which files a session widening
+    /// for the Owner; a browser without a session has nothing to widen, but
+    /// asks the gate all the same.
+    AskToWidenSession,
 }
 
 /// The answer to a start the gate refuses: `429 Too Many Requests`, uncached.
@@ -97,7 +102,8 @@ impl DeferredStartLimit {
 }
 
 /// The start limit asked at once: extracted by a route every request of which
-/// is raised for the Owner (`/oauth/device_authorization`), ahead of the
+/// is raised for the Owner (`/oauth/device_authorization`,
+/// `/oauth/authorize/{id}/ask-to-widen`), ahead of the
 /// body, so a start whose limit the layer deferred asks it before the request
 /// is parsed, like any other. Rejects with the `429` when the gate refuses.
 pub(crate) struct StartLimitAskedNow;

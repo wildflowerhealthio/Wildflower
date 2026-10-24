@@ -43,7 +43,8 @@ pub use oauth::{LaunchContextMinter, PendingConsentWatcher, SameDeviceSignInCode
 pub(crate) use oauth::{
     LiveAuthorizationStatusReader, LiveBrowserPairing, LiveClientAuthenticator,
     LiveClientTokenRevoker, LiveCodeAuthorizationStarter, LiveDeviceAuthorizer,
-    LivePublicKeysReader, LiveSameDeviceSignIn, LiveSessionShortfall, LiveTokenExchanger,
+    LivePublicKeysReader, LiveSameDeviceSignIn, LiveSessionShortfall, LiveSessionWidening,
+    LiveTokenExchanger,
 };
 pub use session::InProcessTokenVerifier;
 pub(crate) use session::{

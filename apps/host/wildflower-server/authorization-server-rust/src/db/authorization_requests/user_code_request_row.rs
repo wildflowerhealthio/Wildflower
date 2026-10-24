@@ -192,7 +192,9 @@ impl TryFrom<UserCodeRequestRow> for PolledRequest {
         match row.flow {
             FlowType::DeviceCode => DeviceRequest::try_from(row).map(PolledRequest::Device),
             FlowType::BrowserPairing => PairingRequest::try_from(row).map(PolledRequest::Pairing),
-            FlowType::AuthorizationCode => Err(row.malformed("carries a user code")),
+            FlowType::AuthorizationCode | FlowType::SessionWidening => {
+                Err(row.malformed("carries a user code"))
+            }
         }
     }
 }

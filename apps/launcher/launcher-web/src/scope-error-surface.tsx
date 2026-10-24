@@ -30,9 +30,13 @@ interface ScopeErrorSurfaceProps {
 /**
  * The `403 InsufficientScope` surface plus its **step-up** action: the read-only
  * `AuthorizationFailure`, whose `onRequestAccess` hook signs in again to the
- * session's server with `returnTo` set here (`session/sign-in-again.ts`). The
- * session's grant does not cover the missing scopes, so the new authorization
- * request goes to the Owner's consent rather than through on the old grant. See the
+ * session's server with `returnTo` set here and `prompt=consent`
+ * (`session/sign-in-again.ts`). The server decides which case it is: when this
+ * browser's own session lacks the missing scopes, the sign-in stops at its
+ * limited page, even after a Continue there before, where the browser can ask
+ * the Owner to widen its session; when the session holds them and only the
+ * launcher's grant lacks them, the new authorization request goes to the
+ * Owner's consent rather than through on the old grant. See the
  * [Scope-Gated Endpoints How-To](../../../../docs/Authorization/Scope-Gated%20Endpoints%20How-To.md)
  * for the flow end to end.
  *
@@ -59,7 +63,7 @@ const ScopeErrorSurface = ({ missingScopes }: ScopeErrorSurfaceProps): JSX.Eleme
     missingScopes.length === 0
       ? undefined
       : (): void => {
-          signInAgain(setAuthState, (target) => navigate(target), href)
+          signInAgain(setAuthState, (target) => navigate(target), href, 'consent')
         }
   return (
     <AuthorizationFailure

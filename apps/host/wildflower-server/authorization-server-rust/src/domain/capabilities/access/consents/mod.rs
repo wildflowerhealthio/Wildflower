@@ -1,8 +1,9 @@
 //! Consent capabilities — the `wildflower/AuthorizationRequest.*` capabilities
 //! behind `/authorization/oauth-consents/*` and `/authorization/devices/*`. The
 //! capabilities are declared here and their methods live with their flow, in
-//! [`oauth`] (the code-flow prompt) and [`device`] (the device page's prompt,
-//! a device request or a browser pairing). Each decision runs in one write
+//! [`oauth`] (the code-flow prompt), [`device`] (the device page's prompt,
+//! a device request or a browser pairing) and [`session_widening`] (a
+//! browser asking to widen its session). Each decision runs in one write
 //! scope: an approval's privileged writes go through the
 //! [`writers`](crate::domain::capabilities::writers) inside it, under the
 //! [`DelegatedScopes`] proof it
@@ -33,6 +34,7 @@ use wildflowerhealthio_scopes::{Grant, Permission, Scope, WildflowerResource};
 use crate::domain::authority::{ApprovableScopes, DelegatedScopes};
 use crate::domain::authorization_request::code::CodeRequest;
 use crate::domain::authorization_request::polled::PolledRequest;
+use crate::domain::authorization_request::session_widening::SessionWideningRequest;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::client::presented_change::PresentedClientChange;
 use crate::domain::GrantStore;
@@ -40,6 +42,7 @@ use crate::ports::OwnerApproval;
 
 mod device;
 mod oauth;
+mod session_widening;
 
 /// The scope gating [`ConsentReader`] — `wildflower/AuthorizationRequest.r`.
 pub(crate) fn consent_reader_scopes() -> Vec<Scope> {
@@ -130,6 +133,25 @@ pub struct DeviceConsentView {
     pub missing_approval_scopes: Vec<String>,
 }
 
+/// A session widening's consent prompt, loaded for its card: the widening,
+/// the app whose request the session fell short of, and what the approver may
+/// tick.
+pub struct SessionWideningConsentView {
+    /// The widening, pending as loaded.
+    pub request: SessionWideningRequest,
+    /// The app's registered name, or its `client_id` while it has no
+    /// registration.
+    pub client_name: String,
+    /// The scopes the card's ticks start from: what the browser asked for
+    /// that the reader may pass on
+    /// ([`ApprovableScopes::delegable_scopes`]). The approver may only untick.
+    pub starting_scopes: Vec<String>,
+    /// The approval scopes the reader's own grant does not cover
+    /// ([`ApprovableScopes::missing_approval_scopes`]): what it lacks to
+    /// approve the widening. Empty when it may approve.
+    pub missing_approval_scopes: Vec<String>,
+}
+
 // ---------------------------------------------------------------------------
 // Decision inputs / outcome.
 // ---------------------------------------------------------------------------
@@ -140,7 +162,7 @@ pub struct DeviceConsentView {
 pub enum ConsentOutcome {
     /// Approved: a code-flow approval issued its code, a device approval
     /// recorded its grant, a pairing approval let the browser's poll start its
-    /// session.
+    /// session, a widening approval widened the browser's session.
     Approved {
         /// The client callback URL carrying the code, so the approving
         /// surface can send the browser on and finish the flow inline. Always
@@ -199,7 +221,8 @@ pub struct ApproveDeviceConsentInput {
 // ---------------------------------------------------------------------------
 
 /// Read access to pending consent prompts — the `GET` sides of
-/// `/authorization/oauth-consents/{id}` and `/authorization/devices/{userCode}`.
+/// `/authorization/oauth-consents/{id}`, `/authorization/devices/{userCode}`
+/// and `/authorization/session-widenings/{id}`.
 /// Statically gated by `AuthorizationRequest.r`, and it additionally holds the
 /// caller's own [`Grant`], to say which approval scopes a prompt takes that
 /// the caller lacks.

@@ -22,7 +22,7 @@ pub(crate) use browser_sessions::{
 pub(crate) use clients::{ClientView, ClientsDisabler, ClientsReader};
 pub use consents::{
     ApproveDeviceConsentInput, ApproveOAuthConsentInput, ConsentOutcome, DeviceConsentView,
-    OAuthConsentView,
+    OAuthConsentView, SessionWideningConsentView,
 };
 pub(crate) use consents::{ConsentDecider, ConsentRaiser, ConsentReader, OwnerRaising};
 pub(crate) use grants::{GrantsReader, GrantsRevoker};

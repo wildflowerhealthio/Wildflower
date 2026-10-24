@@ -17,7 +17,7 @@ use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::oauth::{
     AuthorizationStatusReader, BrowserPairing, ClientAuthenticator, ClientTokenRevoker,
     CodeAuthorizationStarter, DeviceAuthorizer, LaunchContexts, PublicKeysReader, SameDeviceSignIn,
-    SessionShortfall, TokenExchanger,
+    SessionShortfall, SessionWidening, TokenExchanger,
 };
 use crate::domain::consent_key::ConsentKey;
 use crate::domain::grant_store::AuthorizationRequestsTx as _;
@@ -67,6 +67,26 @@ pub(crate) type LiveSessionShortfall = SessionShortfall<SqliteGrantStore>;
 impl FromState for LiveSessionShortfall {
     fn from_state(state: &Arc<AuthorizationServerState>) -> Self {
         SessionShortfall::new(state.store.clone())
+    }
+}
+
+/// Ask for and poll session widenings — built by the limited page's
+/// `/oauth/authorize/{id}/ask-to-widen` and
+/// `/oauth/session-widenings/{id}/poll` handlers. Takes the [`OwnerApproval`]
+/// port, since a widening is a request the Owner must hear about, the
+/// revocation store a claim revokes the replaced token in, and the server's
+/// origin.
+pub(crate) type LiveSessionWidening = SessionWidening<SqliteGrantStore>;
+
+impl FromState for LiveSessionWidening {
+    fn from_state(state: &Arc<AuthorizationServerState>) -> Self {
+        let owner_approval: Arc<dyn OwnerApproval> = state.clone();
+        SessionWidening::new(
+            state.store.clone(),
+            owner_approval,
+            state.revocation(),
+            state.server_origin.clone(),
+        )
     }
 }
 

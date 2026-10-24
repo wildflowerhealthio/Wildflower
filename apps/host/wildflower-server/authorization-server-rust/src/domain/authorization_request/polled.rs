@@ -1,9 +1,10 @@
 //! The polled flows — a device request and a browser pairing. Both show a
 //! `user_code` the Owner enters at the device page, are polled by what made
 //! them until the Owner decides, and are claimed once by the poll that
-//! redeems the approval. [`PolledState`] is their shared lifecycle, [`Polled`]
-//! what they share, and [`PolledRequest`] either one, as the device page
-//! loads it by its `user_code`.
+//! redeems the approval. [`PolledState`] is their shared lifecycle (a
+//! session widening, polled and claimed the same way but keyed by its id, has
+//! it too), [`Polled`] what they share, and [`PolledRequest`] either one, as
+//! the device page loads it by its `user_code`.
 
 use chrono::{DateTime, Utc};
 

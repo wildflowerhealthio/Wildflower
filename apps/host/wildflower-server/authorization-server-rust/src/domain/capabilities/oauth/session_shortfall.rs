@@ -4,21 +4,24 @@
 //! reads what the session lacks and then goes on
 //! ([`CodeAuthorizationStarter::continue_past_session_shortfall`]) or cancels.
 //! Every operation answers only the browser session the request was made in,
-//! so a leaked request id reads, continues and cancels nothing.
+//! so a leaked request id reads, continues and cancels nothing. What a session
+//! holds is read from its row ([`browser_session_grant`]), which a widening
+//! the Owner approved grows, so the page and `/oauth/authorize` see the wider
+//! session whether or not the browser has taken its wider token yet.
 //!
 //! [`CodeAuthorizationStarter::continue_past_session_shortfall`]:
 //! super::CodeAuthorizationStarter::continue_past_session_shortfall
 
 use chrono::{DateTime, Utc};
+use wildflowerhealthio_scopes::Grant;
 
-use super::PollingBrowserSession;
 use crate::domain::authority::session_shortfall;
 use crate::domain::authorization_request::code::CodeRequest;
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::client_redirect::{
     build_client_error_redirect_url, REQUEST_DECLINED_DESCRIPTION,
 };
-use crate::domain::grant_store::{AuthorizationRequestsTx, ClientsTx as _};
+use crate::domain::grant_store::{AuthorizationRequestsTx, BrowserSessionsTx, ClientsTx as _};
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::GrantStore;
 
@@ -34,6 +37,25 @@ pub(crate) struct SessionShortfallView {
     /// full ([`session_shortfall`]), in the request's order: dropped outright,
     /// or narrowed to what the session holds.
     pub(crate) missing_scopes: Vec<String>,
+}
+
+/// The grant the browser session `sid` holds at `now`, as its row records it:
+/// what a code issued under it may carry at most. `None` once the session has
+/// ended (revoked, expired, or pruned since), when no code is issued under it
+/// at all.
+///
+/// # Errors
+///
+/// [`AuthorizationServerError::Infrastructure`] on a store failure.
+pub(crate) fn browser_session_grant(
+    tx: &mut impl BrowserSessionsTx,
+    sid: &str,
+    now: DateTime<Utc>,
+) -> Result<Option<Grant>, AuthorizationServerError> {
+    Ok(tx
+        .browser_session_by_sid(sid)?
+        .filter(|browser_session| browser_session.is_live(now))
+        .map(|browser_session| Grant::parse(browser_session.scopes)))
 }
 
 /// Load request `id` for the browser session `sid` while it waits on that
@@ -68,10 +90,12 @@ impl<S: GrantStore> SessionShortfall<S> {
         SessionShortfall { store }
     }
 
-    /// What request `id` asks for that `browser_session`'s grant doesn't
+    /// What request `id` asks for that the browser session `sid` doesn't
     /// hold, and the app asking, in a read scope. The missing scopes come from
-    /// [`session_shortfall`] against the calling session's grant, the same
-    /// check `/oauth/authorize` made when it parked the request.
+    /// [`session_shortfall`] against the session's grant as its row holds it
+    /// now ([`browser_session_grant`]), the same check `/oauth/authorize`
+    /// made when it parked the request, so a session the Owner widened since
+    /// lacks only what it still lacks.
     ///
     /// # Errors
     ///
@@ -79,21 +103,19 @@ impl<S: GrantStore> SessionShortfall<S> {
     pub(crate) fn read(
         &self,
         id: &str,
-        browser_session: &PollingBrowserSession,
+        sid: &str,
         now: DateTime<Utc>,
     ) -> Result<SessionShortfallView, AuthorizationServerError> {
         self.store.read(|tx| {
-            let request =
-                load_code_request_awaiting_limited_page(tx, id, &browser_session.sid, now)?;
+            let request = load_code_request_awaiting_limited_page(tx, id, sid, now)?;
+            // An ended session holds nothing, so it lacks all the request asks.
+            let session_grant = browser_session_grant(tx, sid, now)?.unwrap_or_default();
             let client_name = tx
                 .client_by_id(&request.client_id)?
                 .map_or_else(|| request.client_id.clone(), |client| client.name);
             Ok(SessionShortfallView {
                 client_name,
-                missing_scopes: session_shortfall(
-                    &request.requested_scopes,
-                    &browser_session.grant,
-                ),
+                missing_scopes: session_shortfall(&request.requested_scopes, &session_grant),
             })
         })
     }
@@ -140,11 +162,11 @@ impl<S: GrantStore> SessionShortfall<S> {
 mod tests {
     use crate::domain::grant_store::*;
     use chrono::Duration;
-    use wildflowerhealthio_scopes::Grant;
 
     use super::*;
     use crate::domain::authorization_request::code::NewCodeRequestArgs;
     use crate::domain::authorization_request::RequestStatus;
+    use crate::domain::browser_session::BrowserSession;
     use crate::domain::test_fake::{
         client, code_with_status, fixture_code_args, owned_scopes, FakeGrantStore, FIXTURE_SID,
     };
@@ -186,12 +208,20 @@ mod tests {
             .status()
     }
 
-    /// The calling browser: session `sid`, whose grant holds `scopes`.
-    fn browser_session(sid: &str, scopes: &[&str]) -> PollingBrowserSession {
-        PollingBrowserSession {
-            sid: sid.to_owned(),
-            grant: Grant::parse(scopes.iter().copied()),
-        }
+    /// Start the paired browser session `sid` in `store`, holding `scopes`.
+    fn seed_session(store: &FakeGrantStore, sid: &str, scopes: &[&str]) {
+        store
+            .tx()
+            .insert_browser_session(&BrowserSession {
+                sid: sid.to_owned(),
+                ..BrowserSession::new_paired_session(
+                    "Firefox on Linux".to_owned(),
+                    owned_scopes(scopes),
+                    Duration::hours(24),
+                    Utc::now(),
+                )
+            })
+            .unwrap();
     }
 
     /// The page reads the app's name and what the session lacks of the
@@ -207,13 +237,10 @@ mod tests {
             .tx()
             .insert_code_request(&awaiting_limited_page("req-1"))
             .unwrap();
+        seed_session(&store, FIXTURE_SID, &["patient/Patient.rs"]);
         let session_shortfall = SessionShortfall::new(store);
         let view = session_shortfall
-            .read(
-                "req-1",
-                &browser_session(FIXTURE_SID, &["patient/Patient.rs"]),
-                Utc::now(),
-            )
+            .read("req-1", FIXTURE_SID, Utc::now())
             .expect("the requesting session reads it");
         assert_eq!(
             view,
@@ -221,6 +248,47 @@ mod tests {
                 client_name: "client display name".to_owned(),
                 missing_scopes: vec!["patient/Observation.r".to_owned()],
             }
+        );
+    }
+
+    /// What the session lacks is read from its row as it stands: a session
+    /// the Owner widened since lacks only the rest, and one that has ended
+    /// holds nothing, so it lacks every held access the request asks for.
+    #[test]
+    fn the_read_takes_what_the_session_holds_from_its_row_now() {
+        let store = FakeGrantStore::default();
+        store
+            .tx()
+            .insert_code_request(&awaiting_limited_page("req-1"))
+            .unwrap();
+        seed_session(&store, FIXTURE_SID, &["patient/Patient.rs"]);
+        store
+            .tx()
+            .update_browser_session_scopes(
+                FIXTURE_SID,
+                &owned_scopes(&["patient/Patient.rs", "patient/Observation.rs"]),
+            )
+            .unwrap();
+        let session_shortfall = SessionShortfall::new(store);
+        let now = Utc::now();
+        assert_eq!(
+            session_shortfall
+                .read("req-1", FIXTURE_SID, now)
+                .expect("reads")
+                .missing_scopes,
+            Vec::<String>::new()
+        );
+        session_shortfall
+            .store
+            .tx()
+            .revoke_browser_session(FIXTURE_SID, now)
+            .unwrap();
+        assert_eq!(
+            session_shortfall
+                .read("req-1", FIXTURE_SID, now)
+                .expect("reads")
+                .missing_scopes,
+            ["patient/Patient.r", "patient/Observation.r"]
         );
     }
 
@@ -258,7 +326,7 @@ mod tests {
             ("ghost", FIXTURE_SID),
         ] {
             assert_eq!(
-                session_shortfall.read(id, &browser_session(sid, &[]), now),
+                session_shortfall.read(id, sid, now),
                 Err(AuthorizationServerError::AuthorizationRequestNotFound { id: id.to_owned() }),
                 "{id} from {sid}"
             );

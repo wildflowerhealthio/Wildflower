@@ -139,7 +139,7 @@
           "OAuth 2.0"
         ],
         "summary": "The authorization endpoint (RFC 6749 §3.1), the public front door of the\nOAuth flow. It issues nothing to a browser without a browser session: such\na browser is sent to the pairing page first. For a browser with one it\nvalidates the request, then either auto-issues an authorization code (when\nan existing grant pre-approves every requested scope) or parks the\nuser-agent on the consent card or the wait page while the Owner decides.",
-        "description": "Nothing in-process calls this route. Registered clients (e.g.\nSMART-on-FHIR apps) discover it via the FHIR server's\n`.well-known/smart-configuration` (`authorization_endpoint`) and send the\n*user's browser* here with PKCE params to start an authorization-code\nflow:\n\n1. Browser lands here. The browser session cookie is read before anything\n   else: a browser without a live browser session is 302'd to the pairing\n   page, `/oauth/pair?next=<this request's path and query>`, and nothing is\n   parked, notified or consumed. Once the Owner approves the pairing, the\n   page sends the browser back here with its new session. A browser with a\n   session has its request parked as an `AuthorizationRequest` (5-minute\n   TTL), made in that session (`sid`). A SMART App Launch's `aud` and\n   `launch` are checked first (see their fields), and the launch is\n   consumed onto the request.\n2. A request asking for more than the browser's session holds (scopes a\n   code issued in that session would not carry in full) waits on the\n   limited page at `/oauth/authorize/{id}/limited`, which says what the\n   session lacks and offers Continue or Cancel:\n   `POST /oauth/authorize/{id}/continue` goes on as below,\n   `POST /oauth/authorize/{id}/cancel` answers the client\n   `access_denied`. Until then the Owner isn't asked about it. Once a\n   browser session has pressed Continue for a client, its later requests\n   for that client skip the page, whatever the session then lacks.\n3. Unless every requested scope is pre-approved by an existing grant for\n   this (client, `redirect_uri`) pair, the request joins the pending-consent\n   queue and the browser is 302'd to a page this authorization server\n   serves beside the endpoint, on the origin the browser used. A browser\n   whose session can decide consents and holds the request's approval\n   scopes goes to the consent card at `/oauth/authorize/{id}/consent`, where\n   it decides in place; the request records that it can be decided there\n   (`decidable_in_requesting_browser`). Any other goes to the wait page at\n   `/oauth/authorize/{id}/wait`, and the Owner is notified (the host\n   webview's popup). The wait page polls `GET /oauth/authorize/{id}` (a\n   custom extension, not part of any RFC), which answers the browser\n   session the request was made in and a session that can decide it on\n   the consent card, until the Owner decides — in the\n   popup, in a signed-in launcher, or on the consent card once that\n   browser can decide it. Either way the code is issued under the session\n   the request was made in, not the approver's.\n   RFC 6749 leaves the owner-interaction mechanism unspecified, so both\n   pages are spec-legal; likewise §4.1 explicitly allows skipping consent\n   on a previously established authorization decision, which is what the\n   grant fast path implements.\n4. Approval 302s the browser back to the client's `redirect_uri` with\n   `code` + `state` (§4.1.2); the client then redeems the short-lived\n   code at `POST /oauth/token` (§4.1.3) with its PKCE verifier.\n\nClients without a server-defined registration are **trusted on first use**: an\nunknown `client_id`, an unregistered `redirect_uri`, and scopes outside the\nregistration are all carried to the Owner's prompt as a registration warning\nrather than rejected here, and nothing is written to the `clients` table\nuntil the Owner approves. Such a request never takes the grant fast path,\nand while its redirect is untrusted every other failure renders the local\nHTML page instead of redirecting. A server-defined registration (the host\napp's, the FHIR server UI's) keeps the strict treatment, and a disabled\nclient is rejected either way. Once the redirect is trusted, a failure goes\nback to the client's `redirect_uri` with `error`, `error_description` and\n`state` (RFC 6749 §4.1.2.1) instead.\n\nThe start limit is asked only when it must be: its layer defers a request\nfrom a browser that can decide consents, and one carrying no session, and\nthe starter asks the deferred limit only before it raises the request for\nthe Owner or parks it for the limited page.",
+        "description": "Nothing in-process calls this route. Registered clients (e.g.\nSMART-on-FHIR apps) discover it via the FHIR server's\n`.well-known/smart-configuration` (`authorization_endpoint`) and send the\n*user's browser* here with PKCE params to start an authorization-code\nflow:\n\n1. Browser lands here. The browser session cookie is read before anything\n   else: a browser without a live browser session is 302'd to the pairing\n   page, `/oauth/pair?next=<this request's path and query>`, and nothing is\n   parked, notified or consumed. Once the Owner approves the pairing, the\n   page sends the browser back here with its new session. A browser with a\n   session has its request parked as an `AuthorizationRequest` (5-minute\n   TTL), made in that session (`sid`). A SMART App Launch's `aud` and\n   `launch` are checked first (see their fields), and the launch is\n   consumed onto the request.\n2. A request asking for more than the browser's session holds (scopes a\n   code issued in that session would not carry in full) waits on the\n   limited page at `/oauth/authorize/{id}/limited`, which says what the\n   session lacks and offers Continue or Cancel:\n   `POST /oauth/authorize/{id}/continue` goes on as below,\n   `POST /oauth/authorize/{id}/cancel` answers the client\n   `access_denied`. Until then the Owner isn't asked about it. Once a\n   browser session has pressed Continue for a client, its later requests\n   for that client skip the page, whatever the session then lacks, unless\n   the request carries `prompt=consent`. From the page the browser can\n   also ask the Owner to widen its session\n   (`POST /oauth/authorize/{id}/ask-to-widen`). What the session holds is\n   read from its row, which an approved widening has grown.\n3. Unless every requested scope is pre-approved by an existing grant for\n   this (client, `redirect_uri`) pair, the request joins the pending-consent\n   queue and the browser is 302'd to a page this authorization server\n   serves beside the endpoint, on the origin the browser used. A browser\n   whose session can decide consents and holds the request's approval\n   scopes goes to the consent card at `/oauth/authorize/{id}/consent`, where\n   it decides in place; the request records that it can be decided there\n   (`decidable_in_requesting_browser`). Any other goes to the wait page at\n   `/oauth/authorize/{id}/wait`, and the Owner is notified (the host\n   webview's popup). The wait page polls `GET /oauth/authorize/{id}` (a\n   custom extension, not part of any RFC), which answers the browser\n   session the request was made in and a session that can decide it on\n   the consent card, until the Owner decides — in the\n   popup, in a signed-in launcher, or on the consent card once that\n   browser can decide it. Either way the code is issued under the session\n   the request was made in, not the approver's.\n   RFC 6749 leaves the owner-interaction mechanism unspecified, so both\n   pages are spec-legal; likewise §4.1 explicitly allows skipping consent\n   on a previously established authorization decision, which is what the\n   grant fast path implements.\n4. Approval 302s the browser back to the client's `redirect_uri` with\n   `code` + `state` (§4.1.2); the client then redeems the short-lived\n   code at `POST /oauth/token` (§4.1.3) with its PKCE verifier.\n\nClients without a server-defined registration are **trusted on first use**: an\nunknown `client_id`, an unregistered `redirect_uri`, and scopes outside the\nregistration are all carried to the Owner's prompt as a registration warning\nrather than rejected here, and nothing is written to the `clients` table\nuntil the Owner approves. Such a request never takes the grant fast path,\nand while its redirect is untrusted every other failure renders the local\nHTML page instead of redirecting. A server-defined registration (the host\napp's, the FHIR server UI's) keeps the strict treatment, and a disabled\nclient is rejected either way. Once the redirect is trusted, a failure goes\nback to the client's `redirect_uri` with `error`, `error_description` and\n`state` (RFC 6749 §4.1.2.1) instead.\n\nThe start limit is asked only when it must be: its layer defers a request\nfrom a browser that can decide consents, and one carrying no session, and\nthe starter asks the deferred limit only before it raises the request for\nthe Owner or parks it for the limited page.",
         "operationId": "handle_authorize_request",
         "parameters": [
           {
@@ -222,6 +222,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "prompt",
+            "in": "query",
+            "description": "OpenID Connect `prompt`, space-separated. Only `consent` means\nanything here: a request whose browser session holds less than it asks\nfor stops at the limited page even when that session has gone on past\nthe page for this client before, so the browser can ask the Owner to\nwiden its session. Any other value, and `consent` for a request the\nsession holds all of, changes nothing.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -286,6 +295,48 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/OAuthError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oauth/authorize/{id}/ask-to-widen": {
+      "post": {
+        "tags": [
+          "OAuth 2.0"
+        ],
+        "summary": "Ask the Owner to widen this browser's session by what it lacks of request\n`id`, which waits on this browser's limited page, and raise the Owner's\nnotification. The widening asks for exactly what the session lacks of the\nrequest, and the request keeps waiting on the page as long as the widening\nwaits for the Owner. It spends from the authorization start limit, as a\nrequest raised for the Owner does, before anything else is read; a refusal\nis the limit's `429`.",
+        "operationId": "handle_session_widening_ask",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Authorization request id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The widening filed for the Owner",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AskedSessionWideningBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No request with that id waits on this browser's limited page, or this browser's session lacks nothing it could be widened by",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizationRequestNotFound"
                 }
               }
             }
@@ -621,6 +672,48 @@
         }
       }
     },
+    "/oauth/session-widenings/{id}/poll": {
+      "post": {
+        "tags": [
+          "OAuth 2.0"
+        ],
+        "summary": "Poll the widening `id`, asked in this browser's session. The poll that\nfinds it approved collects the wider session: it sets the session's new\ntoken as the browser's `__Host-browser_session` cookie and revokes the\ntoken it replaces. A widening of another session's, or none, is a `404`; a\nstore failure, or a token that couldn't be minted, is a logged `500`.",
+        "operationId": "handle_session_widening_poll",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Session widening id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Where the widening stands",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionWideningStatusBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No widening asked in this browser's session has that id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionWideningNotFound"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/oauth/token": {
       "post": {
         "tags": [
@@ -686,6 +779,19 @@
   },
   "components": {
     "schemas": {
+      "AskedSessionWideningBody": {
+        "type": "object",
+        "description": "The widening an ask filed, which the page polls.",
+        "required": [
+          "wideningId"
+        ],
+        "properties": {
+          "wideningId": {
+            "type": "string",
+            "description": "The widening's id."
+          }
+        }
+      },
       "AuthorizationRequestNotFound": {
         "type": "object",
         "description": "The JSON 404 body an unknown authorization request gets, from the status\npoll and from the limited page's calls: also the answer to a caller whose\nbrowser session may not read the request, so the two can't be told apart.",
@@ -1226,6 +1332,85 @@
             "description": "The client callback (with a code, or with `error=access_denied`), or a\npath on this server: the consent card or the wait page."
           }
         }
+      },
+      "SessionWideningNotFound": {
+        "type": "object",
+        "description": "The JSON 404 body a session widening the caller may not see gets: from the\nlimited page's poll, one asked in another browser session, or none.",
+        "required": [
+          "error",
+          "id"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Always `SessionWideningNotFound`."
+          },
+          "id": {
+            "type": "string",
+            "description": "The widening id the caller asked about."
+          }
+        }
+      },
+      "SessionWideningStatusBody": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "declined"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "widened"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "expired"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Where a widening stands. `widened` carries the browser's wider session as\nits `Set-Cookie`; the page then goes on with the app's request."
       },
       "StartedBrowserPairingBody": {
         "type": "object",
