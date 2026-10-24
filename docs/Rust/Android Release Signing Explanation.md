@@ -149,8 +149,10 @@ published once. R8's `mapping.txt` goes with it, so Play can deobfuscate crash
 reports. The Rust library's symbol table travels inside the bundle, from the
 release build type's `debugSymbolLevel`, so Play can symbolicate native
 crashes and ANRs. Gradle finds the NDK it extracts the table with through
-`NDK_HOME`, the same NDK the Tauri CLI builds with, and the job fails if a
-bundle comes out without one. The bundle is attached to the tag's GitHub Release first, before the
+`NDK_HOME`, the same NDK the Tauri CLI builds with, and takes its version from
+that NDK's `source.properties`: given a path alone, the Android Gradle plugin
+still expects its own default NDK version and drops the table when they
+differ. The job fails if a bundle comes out without one. The bundle is attached to the tag's GitHub Release first, before the
 Play upload, so it is there even when that upload fails.
 
 **What it builds.** One bundle for `aarch64` and `armv7`, the ABIs phones run;
