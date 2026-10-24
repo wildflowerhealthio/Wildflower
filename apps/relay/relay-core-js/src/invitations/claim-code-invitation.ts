@@ -3,7 +3,7 @@ import { Data, DateTime, type Schema } from 'effect'
 import type { Tunnels } from '../http-api-definition/index.ts'
 
 /**
- * What a claim code redeems for, mirroring the relay's `ClaimCodeTarget`: an
+ * What a claim code redeems for, named for the relay's `ClaimCodeTarget`: an
  * existing tunnel's name and token, or a new tunnel under the email and
  * subdomain the redeemer chooses.
  */
