@@ -1,4 +1,5 @@
 import { ErrorBanner } from '@wildflowerhealthio/react-tundraish'
+import { ClaimCodeTarget } from '@wildflowerhealthio/relay-core-js/invitations'
 import { Option } from 'effect'
 import type { JSX } from 'react'
 
@@ -20,6 +21,7 @@ const OpenClaimCodes = (): JSX.Element => {
         key="issued-open-claim-code"
         title="New claim code"
         issued={issued}
+        target={ClaimCodeTarget.Open()}
         recipient="the person adding a server"
         onDone={() => {
           issue.reset()

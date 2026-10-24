@@ -68,7 +68,9 @@ and `https://relay.example.com/health` answers once it is issued.
 2. Create a tunnel with its owner's email. Leave the name empty: the relay
    picks two random words, since the name ends up in public CT logs.
 3. Choose **Issue claim code** on the tunnel's row, and give the owner the
-   code it shows, eight characters such as `ABCD-EFGH`.
+   code it shows, eight characters such as `ABCD-EFGH`. **Email code** opens
+   a draft invitation, addressed to no one, with the code, its expiry date and
+   where to install Wildflower.
 
 On the device, the owner chooses **Add new server**, then
 **A self-hosted Wildflower relay**, enters `https://relay.example.com` as the

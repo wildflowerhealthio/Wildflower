@@ -209,6 +209,12 @@ afterEach(() => {
   })
 })
 
+/** The body of the invitation the issued code's Email link drafts. */
+const emailedBody = (): string | null =>
+  new URL(
+    screen.getByRole('link', { name: 'Email code' }).getAttribute('href') ?? ''
+  ).searchParams.get('body')
+
 describe('RelayAdminScreen', () => {
   it('lists every tunnel with its public host, email and creation date', async () => {
     // Arrange
@@ -477,6 +483,9 @@ describe('RelayAdminScreen', () => {
     expect(screen.getByText(/issued for this tunnel before it no longer works/)).toBeDefined()
     expect(document.querySelector('time[datetime="2023-11-14T22:28:20.000Z"]')).not.toBeNull()
     expect(relay.requests).toContain('POST /api/tunnels/bob/claim-codes')
+    expect(emailedBody()).toContain(
+      'Enter your claim code: ABCD-EFGH. It connects your device to the tunnel I’ve set up for you, bob.'
+    )
 
     // Act
     await user.click(screen.getByRole('button', { name: 'Done' }))
@@ -520,6 +529,8 @@ describe('RelayAdminScreen', () => {
     expect(screen.getByText(/won’t be shown again/)).toBeDefined()
     expect(document.querySelector('time[datetime="2023-11-14T22:28:20.000Z"]')).not.toBeNull()
     expect(relay.requests).toContain('POST /api/claim-codes')
+    expect(emailedBody()).toContain('Choose your email and a subdomain.')
+    expect(emailedBody()).toContain('Enter your claim code: JKMN-PQRS')
 
     // Act
     await user.click(screen.getByRole('button', { name: 'Done' }))

@@ -1,3 +1,7 @@
+import {
+  invitationMailtoOf,
+  type ClaimCodeTarget,
+} from '@wildflowerhealthio/relay-core-js/invitations'
 import { DateTime } from 'effect'
 import { useId, useState, type JSX, type ReactNode } from 'react'
 
@@ -8,6 +12,8 @@ interface IssuedCodePanelProps {
   /** The panel's heading, saying what the code is for. */
   readonly title: string
   readonly issued: IssuedClaimCode
+  /** What the code redeems for, which the invitation email explains. */
+  readonly target: ClaimCodeTarget
   /** Who the operator gives the code to, ending the warning. */
   readonly recipient: string
   /** What the code redeems for, before the expiry. */
@@ -19,11 +25,13 @@ interface IssuedCodePanelProps {
 /**
  * A claim code just issued: the one time the relay shows it,
  * with what it redeems for and when it expires. Copy puts the code on the
- * clipboard; Done drops it from the page.
+ * clipboard; Email opens a draft invitation with the code and how to install
+ * Wildflower, addressed to no one; Done drops it from the page.
  */
 const IssuedCodePanel = ({
   title,
   issued,
+  target,
   recipient,
   children,
   onDone,
@@ -51,7 +59,7 @@ const IssuedCodePanel = ({
       <p className="text-body-2">
         {children} It expires at{' '}
         <time dateTime={DateTime.formatIso(issued.expires_at)}>
-          {DateTime.formatLocal(issued.expires_at, { timeStyle: 'short' })}
+          {DateTime.formatLocal(issued.expires_at, { dateStyle: 'medium', timeStyle: 'short' })}
         </time>
         .
       </p>
@@ -68,6 +76,12 @@ const IssuedCodePanel = ({
         >
           {copied ? 'Copied' : 'Copy code'}
         </button>
+        <a
+          className="button-2 outline"
+          href={invitationMailtoOf(issued, target, DateTime.zoneMakeLocal())}
+        >
+          Email code
+        </a>
         <button type="button" className="button-2 filled" onClick={onDone}>
           Done
         </button>
