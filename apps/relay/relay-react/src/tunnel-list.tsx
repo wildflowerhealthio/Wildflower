@@ -5,6 +5,7 @@ import {
   PageLoading,
   type ItemListItem,
 } from '@wildflowerhealthio/react-tundraish'
+import { ClaimCodeTarget } from '@wildflowerhealthio/relay-core-js/invitations'
 import { DateTime, Option } from 'effect'
 import { useState, type JSX } from 'react'
 
@@ -131,6 +132,7 @@ const TunnelList = (): JSX.Element => {
             key="issued-claim-code"
             title={`Claim code for ${tunnelName}`}
             issued={issued}
+            target={ClaimCodeTarget.Preset({ tunnelName })}
             recipient="the tunnel’s owner"
             onDone={() => {
               issue.reset()

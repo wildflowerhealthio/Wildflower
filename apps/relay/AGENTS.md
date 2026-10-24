@@ -9,7 +9,7 @@ admin screen.
 
 ## Packages
 
-- `relay-core-js` — no React. Four entries:
+- `relay-core-js` — no React. Five entries:
   - `relay-core-js/http-api-definition`: `RelayAdminApi`, the admin API as the
     relay serves it (`relay-server/src/site/admin.rs`): `CreateTunnel`,
     `ListTunnels`, `DeleteTunnel`, `IssueClaimCode`, `IssueOpenClaimCode`,
@@ -28,6 +28,11 @@ admin screen.
     relay's verifier (`site/signature.rs`) expects, and `signingHttpClient`,
     an `HttpClient` layer that signs every request with the stored key and
     sends it to the absolute URL it signed.
+  - `relay-core-js/invitations`: `invitationMailtoOf`, the `mailto:` link
+    (no recipient) whose subject and body invite someone to install
+    Wildflower and redeem a just-issued claim code, by its `ClaimCodeTarget`
+    (`Preset` for a tunnel, `Open` for a new one), dated in the sender's
+    time zone.
   - `relay-core-js/key-store`: `importAdminKey`, which turns the pasted
     `WILDFLOWER_RELAY_ADMIN_KEY` into a non-extractable HMAC SHA-256
     `CryptoKey`, and `AdminKeyStore`, the port that key lives behind, with an
@@ -39,7 +44,8 @@ admin screen.
     needs, and `ClaimedTunnel` in `slices/rathole-settings-rust`.
 - `relay-react` — the admin screen (`RelayAdminScreen`): create a tunnel,
   issue a claim code for a new tunnel (`OpenClaimCodes`), the tunnel list and the connection
-  totals, each issued code shown once in an `IssuedCodePanel`, under a
+  totals, each issued code shown once in an `IssuedCodePanel` (Copy code,
+  Email code, Done), under a
   `RelayAdminProvider`, the TanStack Query hooks it is built from, and the
   browser's `AdminKeyStore`, one IndexedDB record
   (`adminKeyStoreIndexedDb`). CSS modules use BEM, the block named after the

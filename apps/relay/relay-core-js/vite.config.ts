@@ -11,6 +11,7 @@ export default defineConfig({
     entry: {
       'clients/index': 'src/clients/index.ts',
       'http-api-definition/index': 'src/http-api-definition/index.ts',
+      'invitations/index': 'src/invitations/index.ts',
       'key-store/index': 'src/key-store/index.ts',
       'signing/index': 'src/signing/index.ts',
     },

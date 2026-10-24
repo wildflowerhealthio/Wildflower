@@ -22,6 +22,10 @@
       "source": "./src/http-api-definition/index.ts",
       "default": "./dist/http-api-definition/index.js"
     },
+    "./invitations": {
+      "source": "./src/invitations/index.ts",
+      "default": "./dist/invitations/index.js"
+    },
     "./key-store": {
       "source": "./src/key-store/index.ts",
       "default": "./dist/key-store/index.js"
