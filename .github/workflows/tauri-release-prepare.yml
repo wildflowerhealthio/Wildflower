@@ -91,10 +91,8 @@ jobs:
       - name: Install cargo-edit (cargo set-version)
         uses: taiki-e/install-action@v2.87.29
         with:
-          # Pinned: install-action has no prebuilt cargo-edit, so it builds
-          # from source with the toolchain in rust-toolchain.toml. An unpinned
-          # install picks up the newest release, which can require a newer
-          # rustc than the pinned one. Bump this alongside the toolchain.
+          # Built from source with rust-toolchain.toml's rustc, so the newest
+          # release can outpace it. Bump this alongside the toolchain.
           tool: cargo-edit@0.13.13
 
       - name: Set up Rust toolchain
