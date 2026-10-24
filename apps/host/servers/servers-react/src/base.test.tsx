@@ -1769,6 +1769,69 @@ describe('Add server', () => {
     expect(document.body.textContent).not.toContain(CLAIM_CODE)
   })
 
+  it('should ask for an email and subdomain when the code names no tunnel, then add the server with them', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    let add: AddAnswer = () => Promise.reject(golden.enrolmentErrors.claimCodeNeedsDetails)
+    const host = renderAddServer({ add: () => add() })
+    await enterRelay(user)
+    await enterClaimCode(user, CLAIM_CODE)
+
+    // Assert
+    const tunnel = await screen.findByText(/That code is for a new server/)
+    const step = tunnel.closest('form')
+    if (!(step instanceof HTMLElement)) throw new Error('no tunnel step')
+    expect(within(step).getByLabelText('Claim code')).toHaveProperty('value', CLAIM_CODE)
+    const addButton = within(step).getByRole('button', { name: 'Add server' })
+    expect(addButton).toHaveProperty('disabled', true)
+    expect(within(step).getByText('Left empty, the relay picks one.')).toBeDefined()
+
+    // Act
+    add = () => Promise.resolve('kit.relay.wildflowerhealth.io')
+    await user.type(within(step).getByLabelText('Your email'), 'kit@example.com')
+    await user.type(within(step).getByLabelText('Subdomain (optional)'), 'Kit')
+    expect(
+      within(step).getByText('Your server will be available at kit.relay.wildflowerhealth.io')
+    ).toBeDefined()
+    await user.click(addButton)
+
+    // Assert
+    await stepTitled('Server added')
+    expect(invokesOf(host, 'server_add').map((invoke) => invoke.args?.['credentials'])).toEqual([
+      { kind: 'claimCode', code: CLAIM_CODE },
+      {
+        kind: 'claimCode',
+        code: CLAIM_CODE,
+        details: { email: 'kit@example.com', tunnelName: 'kit' },
+      },
+    ])
+    expect(document.body.textContent).not.toContain(CLAIM_CODE)
+  })
+
+  it('should leave the subdomain out of the details when it is blank', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    let add: AddAnswer = () => Promise.reject(golden.enrolmentErrors.claimCodeNeedsDetails)
+    const host = renderAddServer({ add: () => add() })
+    await enterRelay(user)
+    await enterClaimCode(user, CLAIM_CODE)
+    const step = (await screen.findByText(/That code is for a new server/)).closest('form')
+    if (!(step instanceof HTMLElement)) throw new Error('no tunnel step')
+
+    // Act
+    add = () => Promise.resolve('drawn-name.relay.wildflowerhealth.io')
+    await user.type(within(step).getByLabelText('Your email'), 'kit@example.com')
+    await user.click(within(step).getByRole('button', { name: 'Add server' }))
+
+    // Assert
+    await stepTitled('Server added')
+    expect(invokesOf(host, 'server_add')[1]?.args?.['credentials']).toEqual({
+      kind: 'claimCode',
+      code: CLAIM_CODE,
+      details: { email: 'kit@example.com' },
+    })
+  })
+
   it('should add a server on the Wildflower relay from a tunnel name and token, and drop the token', async () => {
     // Arrange
     const user = userEvent.setup()
@@ -2162,7 +2225,10 @@ describe('Add server', () => {
   })
 
   it.each(
-    Object.values(golden.enrolmentErrors).filter((error) => error.kind !== 'relayIdentityChanged')
+    Object.values(golden.enrolmentErrors).filter(
+      // A code that names no tunnel goes back to the tunnel step for its details instead.
+      (error) => error.kind !== 'relayIdentityChanged' && error.kind !== 'claimCodeNeedsDetails'
+    )
   )("should stay on Checking with the host's $kind refusal", async (refusal) => {
     // Arrange
     const user = userEvent.setup()

@@ -22,7 +22,10 @@ impl AdminCapability for LiveTunnelsReader {
 
     fn build(state: Arc<TunnelRegistry>) -> Self {
         Self {
-            reader: Arc::new(TunnelsReader::new(state.store.clone(), state.front.clone())),
+            reader: Arc::new(TunnelsReader::new(
+                state.store.clone(),
+                state.hostnames.clone(),
+            )),
             outcomes: state.outcomes(),
         }
     }

@@ -29,6 +29,10 @@ pub enum EnrolmentError {
     /// trimmed.
     #[error("the claim code is empty")]
     EmptyClaimCode,
+    /// The email entered with a claim code's details is empty once its
+    /// surrounding whitespace is trimmed.
+    #[error("the email is empty")]
+    EmptyEmail,
     /// A claim code was entered for a relay that doesn't redeem them: a
     /// [`RelayKind::Rathole`](crate::RelayKind::Rathole) relay, which has no
     /// Wildflower relay site, or a Wildflower relay whose site answers
@@ -48,6 +52,20 @@ pub enum EnrolmentError {
     /// from this device or overall, in too short a time.
     #[error("the relay has had too many claim attempts: try again in a few minutes")]
     ClaimRateLimited,
+    /// The relay answered a claim code sent without details with `409`: the
+    /// code names no tunnel, and it hasn't burned it. It redeems for a new
+    /// tunnel, so the user enters an email and, optionally, a subdomain, and
+    /// adds the server with them
+    /// ([`EnteredClaimDetails`](crate::EnteredClaimDetails)).
+    #[error("that code is for a new server: enter your email and choose a subdomain")]
+    ClaimCodeNeedsDetails,
+    /// The relay refused a claim code sent with details with `422`, `409`
+    /// or `503`: the code is unknown, used or expired, names its own tunnel,
+    /// or, for a code that would redeem, the email or subdomain is unusable,
+    /// reserved or taken, or no subdomain is left to draw. `reason` is the
+    /// relay's own plain-text answer, which says which.
+    #[error("the relay refused the claim code: {reason}")]
+    ClaimRefused { reason: String },
     /// A relay setting entered by hand is one a server can't be built on: a
     /// self-hosted relay's `baseUrl`, or a
     /// [`RelayKind::Rathole`](crate::RelayKind::Rathole) relay's
@@ -123,9 +141,12 @@ impl EnrolmentError {
             Self::InvalidTunnelName(_) => "invalidTunnelName",
             Self::EmptyToken => "emptyToken",
             Self::EmptyClaimCode => "emptyClaimCode",
+            Self::EmptyEmail => "emptyEmail",
             Self::ClaimCodesNotOffered => "claimCodesNotOffered",
             Self::ClaimCodeRejected => "claimCodeRejected",
             Self::ClaimRateLimited => "claimRateLimited",
+            Self::ClaimCodeNeedsDetails => "claimCodeNeedsDetails",
+            Self::ClaimRefused { .. } => "claimRefused",
             Self::InvalidRelaySetting { .. } => "invalidRelaySetting",
             Self::RelayUnreachable { .. } => "relayUnreachable",
             Self::BadRelayResponse { .. } => "badRelayResponse",
@@ -197,6 +218,17 @@ mod tests {
             (EnrolmentError::ClaimCodesNotOffered, "claimCodesNotOffered"),
             (EnrolmentError::ClaimCodeRejected, "claimCodeRejected"),
             (EnrolmentError::ClaimRateLimited, "claimRateLimited"),
+            (EnrolmentError::EmptyEmail, "emptyEmail"),
+            (
+                EnrolmentError::ClaimCodeNeedsDetails,
+                "claimCodeNeedsDetails",
+            ),
+            (
+                EnrolmentError::ClaimRefused {
+                    reason: "a tunnel already has the name".to_owned(),
+                },
+                "claimRefused",
+            ),
             (
                 EnrolmentError::InvalidRelaySetting {
                     setting: "remoteAddr",
@@ -321,6 +353,17 @@ mod tests {
             ("claimCodesNotOffered", EnrolmentError::ClaimCodesNotOffered),
             ("claimCodeRejected", EnrolmentError::ClaimCodeRejected),
             ("claimRateLimited", EnrolmentError::ClaimRateLimited),
+            ("emptyEmail", EnrolmentError::EmptyEmail),
+            (
+                "claimCodeNeedsDetails",
+                EnrolmentError::ClaimCodeNeedsDetails,
+            ),
+            (
+                "claimRefused",
+                EnrolmentError::ClaimRefused {
+                    reason: "a tunnel already has the name".to_owned(),
+                },
+            ),
             (
                 "signedRequestRejected",
                 EnrolmentError::SignedRequestRejected {

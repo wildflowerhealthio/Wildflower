@@ -1,4 +1,5 @@
-//! [`TunnelError`] — why a tunnel change or a claim was refused or failed. The
+//! [`TunnelError`] — why a tunnel change or a claim code's redemption was
+//! refused or failed. The
 //! [`capabilities`](crate::domain::capabilities) and the store speak it; the admin API
 //! (`crate::site::admin`, whose rendering `POST /claim` shares) renders each
 //! variant to a status and a short plain-text reason, or a logged empty `500` for
@@ -16,7 +17,7 @@ pub enum TunnelError {
     /// The email is empty, too long or not `local@domain`.
     InvalidEmail,
     /// The name is one the relay keeps for itself
-    /// ([`FrontSettings::is_reserved`](crate::settings::FrontSettings::is_reserved)).
+    /// ([`RelayHostnames::is_reserved`](crate::settings::RelayHostnames::is_reserved)).
     Reserved,
     /// A stored tunnel already has the name.
     Taken,
@@ -28,6 +29,16 @@ pub enum TunnelError {
     /// redeemed or expired. One variant for all four, so `POST /claim`
     /// answers them alike and says nothing about which codes exist.
     ClaimCodeRejected,
+    /// An unexpired claim code that names no tunnel came without the
+    /// details of the tunnel to create, and stays unburned. Answered only
+    /// for a code that would redeem, so it says no more than redeeming it
+    /// would.
+    ClaimCodeNeedsDetails,
+    /// An unexpired claim code that names its tunnel came with the details
+    /// of a tunnel to create, and stays unburned. Like
+    /// [`ClaimCodeNeedsDetails`](Self::ClaimCodeNeedsDetails), answered only
+    /// for a code that would redeem.
+    ClaimCodeNamesTunnel,
     /// Storing, reaching rathole or the clock failed — opaque to clients: the admin
     /// API logs `context` + `source` and answers an empty `500`. The cause is
     /// captured as text so this type stays free of the store's diesel /
@@ -63,6 +74,12 @@ impl std::fmt::Display for TunnelError {
             TunnelError::Exhausted(reason) => f.write_str(reason),
             TunnelError::ClaimCodeRejected => {
                 f.write_str("the claim code is unknown, used or expired")
+            }
+            TunnelError::ClaimCodeNeedsDetails => f.write_str(
+                "the claim code names no tunnel: send it with an email and, optionally, a name",
+            ),
+            TunnelError::ClaimCodeNamesTunnel => {
+                f.write_str("the claim code names its tunnel: send it without an email or a name")
             }
             TunnelError::Infrastructure { context, source } => write!(f, "{context}: {source}"),
         }

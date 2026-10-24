@@ -11,7 +11,7 @@
 //! (`keyid="admin"`, see [`crate::site::signature`]), checked by the
 //! [`Admin`](crate::live_bindings::Admin) extractor before the capability is
 //! built. The redeemer serves the unauthenticated `POST /claim`, where the
-//! claim code is the credential. So the structs are generic over the store port and hold their
+//! code is the credential. So the structs are generic over the store port and hold their
 //! dependencies **lifted from the state**, never the
 //! [`TunnelRegistry`](crate::live_bindings::state::TunnelRegistry) itself.
 //! The bindings that name the `SqliteTunnelStore` adapter, build a
@@ -22,11 +22,12 @@
 //!
 //! One capability per file — [`TunnelsReader`], [`TunnelsCreator`],
 //! [`TunnelsDeleter`], [`TunnelTokensReissuer`], [`ClaimCodesIssuer`],
-//! [`ClaimCodesRedeemer`], [`ConnectionTotalsReader`] — each with its store
-//! logic and its own tests. A tunnel change decides against the store,
-//! writes it and returns the tunnel it created, deleted or reissued a token
-//! for, with an `undo` for when serving fails. Claim codes change only the
-//! store, and the totals reader only reads it.
+//! [`ClaimCodesRedeemer`], [`ConnectionTotalsReader`] — each with its store logic and its own tests.
+//! A tunnel change decides against the store, writes it and returns the
+//! tunnel it created, deleted or reissued a token for, with an `undo` for
+//! when serving fails; redeeming a claim code that names no tunnel is one,
+//! creating a tunnel. Issuing claim codes and redeeming one that names its
+//! tunnel change only the store, and the totals reader only reads it.
 //!
 //! [`TunnelStore`]: crate::domain::TunnelStore
 

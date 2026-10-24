@@ -37,7 +37,8 @@ mod server_status;
 pub mod notifications;
 
 pub use enrolment::{
-    add_server, set_server_credentials, EnteredCredentials, EnteredRelay, RelayIdentity,
+    add_server, set_server_credentials, EnteredClaimDetails, EnteredCredentials, EnteredRelay,
+    RelayIdentity,
 };
 pub use enrolment_error::EnrolmentError;
 pub use launch_error::LaunchError;

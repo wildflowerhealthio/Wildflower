@@ -36,10 +36,18 @@ assumes.
   A local hostname always wins over a tunnel of the same name; `admin` is
   reserved.
 - **Claim codes.** 8 characters, one outstanding per tunnel, ten days by
-  default, single use, hashed at rest. Every failure answers the same `422`.
+  default, single use, hashed at rest. Every failure of the code answers the
+  same `422`, whatever came with it.
   `POST /claim` is limited per client address (5, then 1 per 12 s) and
   globally (60, then 1 per s), before the body is parsed: ten days at the global
   rate is under a million guesses against 31⁸ (about 8.5 × 10¹¹) codes.
+- **Claim codes that name no tunnel.** The same format, lifetime, hashing
+  and limits, but whoever holds one creates a tunnel, under an email and
+  subdomain they choose, so an outstanding one is a standing invitation, and
+  the operator issues one only for someone they would create a tunnel for.
+  Only a code that would redeem learns that it needs an email and subdomain,
+  and whether they are acceptable, and it stays unspent until they are.
+  Both kinds share one table and one budget of guesses.
 - **Signed requests.** The token is never sent; the signature covers method,
   target URI and body digest. Verification is constant-time and every failure
   is a bare `401`.

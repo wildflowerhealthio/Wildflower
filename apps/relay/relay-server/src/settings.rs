@@ -9,8 +9,8 @@
 //! certificate. [`RelaySettings::public_rathole_settings`] is
 //! what the site serves at `GET /rathole`. The admin key signs requests as
 //! `keyid="admin"` (see [`crate::site::signature`]) and enables the admin
-//! API, and the claim-code lifetime is how long a code it issues redeems
-//! for. The state directory holds that certificate and its ACME account,
+//! API, and the claim-code lifetime is how long a claim code it issues
+//! redeems for. The state directory holds that certificate and its ACME account,
 //! which the relay can rebuild, and the tunnels created through the admin
 //! API (see [`crate::db`]), which it cannot.
 //!
@@ -41,7 +41,7 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use curve25519_dalek::MontgomeryPoint;
 use wildflowerhealthio_rathole_settings::{
-    parse_public_addr, NoisePattern, PublicRatholeSettings, Transport, ADMIN_KEY_ID,
+    parse_public_addr, NoisePattern, PublicRatholeSettings, RelayDomain, Transport, ADMIN_KEY_ID,
 };
 
 use crate::front::Limits;
@@ -155,14 +155,18 @@ impl RelaySettings {
     #[must_use]
     pub fn public_rathole_settings(&self) -> PublicRatholeSettings {
         let remote_addr = self.control.public_control_addr.clone().unwrap_or_else(|| {
-            format!("{}:{}", self.front.domain, self.control.control_addr.port())
+            format!(
+                "{}:{}",
+                self.front.hostnames.domain(),
+                self.control.control_addr.port()
+            )
         });
         PublicRatholeSettings {
             remote_addr,
             transport: ControlSettings::TRANSPORT,
             noise_pattern: ControlSettings::NOISE_PATTERN,
             public_key: self.control.noise_public_key.clone(),
-            domain: self.front.domain.clone(),
+            domain: self.front.hostnames.domain().as_str().to_owned(),
         }
     }
 }
@@ -239,11 +243,10 @@ fn noise_public_key(private_key: &Secret) -> anyhow::Result<String> {
     Ok(BASE64.encode(MontgomeryPoint::mul_base_clamped(bytes).to_bytes()))
 }
 
-/// The front's own settings.
+/// The front's listeners and limits, and the [`RelayHostnames`] it serves.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FrontSettings {
-    /// Public domain suffix: `<tunnel name>.<domain>` routes to that tunnel.
-    pub domain: String,
+    pub hostnames: RelayHostnames,
     pub https_addr: SocketAddr,
     pub http_addr: SocketAddr,
     pub limits: Limits,
@@ -255,15 +258,14 @@ impl FrontSettings {
     pub const HTTP_ADDR_VAR: &'static str = "WILDFLOWER_RELAY_HTTP_ADDR";
     pub const MAX_CONNECTIONS_VAR: &'static str = "WILDFLOWER_RELAY_MAX_CONNECTIONS";
     pub const HELLO_TIMEOUT_VAR: &'static str = "WILDFLOWER_RELAY_HELLO_TIMEOUT_SECS";
-    /// The label of the admin API's hostname, `admin.<domain>`.
-    pub const ADMIN_LABEL: &'static str = "admin";
 
     /// Only the domain is required; everything else has a default.
     ///
     /// # Errors
     ///
-    /// Returns an error if the domain is unset or empty, or a variable that
-    /// is set does not parse.
+    /// Returns an error if the domain is unset or empty, is not a DNS name
+    /// once its outer dots are trimmed and it is lowercased, or a variable
+    /// that is set does not parse.
     pub fn from_lookup(lookup: impl Fn(&str) -> Option<String>) -> anyhow::Result<Self> {
         let domain = required(
             &lookup,
@@ -272,12 +274,13 @@ impl FrontSettings {
         )?
         .trim_matches('.')
         .to_ascii_lowercase();
+        let domain = RelayDomain::parse(domain).with_context(|| Self::DOMAIN_VAR)?;
         let defaults = Limits::default();
         let secs = |name, default: Duration| {
             parsed(&lookup, name, default.as_secs()).map(Duration::from_secs)
         };
         Ok(Self {
-            domain,
+            hostnames: RelayHostnames::new(domain),
             https_addr: parsed(&lookup, Self::HTTPS_ADDR_VAR, ([0, 0, 0, 0], 443).into())?,
             http_addr: parsed(&lookup, Self::HTTP_ADDR_VAR, ([0, 0, 0, 0], 80).into())?,
             limits: Limits {
@@ -290,25 +293,47 @@ impl FrontSettings {
             },
         })
     }
+}
+
+/// The hostnames under the relay's domain: `<tunnel name>.<domain>` for
+/// each tunnel, and the ones the relay serves itself, whose labels no tunnel
+/// can take.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RelayHostnames(RelayDomain);
+
+impl RelayHostnames {
+    /// The label of the admin API's hostname, `admin.<domain>`.
+    pub const ADMIN_LABEL: &'static str = "admin";
+
+    #[must_use]
+    pub fn new(domain: RelayDomain) -> Self {
+        Self(domain)
+    }
+
+    /// The public domain suffix every hostname here ends in.
+    #[must_use]
+    pub fn domain(&self) -> &RelayDomain {
+        &self.0
+    }
 
     /// The hostnames the relay serves itself rather than routing to a
     /// tunnel, and orders its certificate for: the domain itself and the
     /// admin API's [`Self::admin_hostname`].
     #[must_use]
     pub fn local_hostnames(&self) -> Vec<String> {
-        vec![self.domain.clone(), self.admin_hostname()]
+        vec![self.0.as_str().to_owned(), self.admin_hostname()]
     }
 
     /// `<name>.<domain>`, where the tunnel named `name` is served.
     #[must_use]
     pub fn public_host(&self, name: &str) -> String {
-        format!("{name}.{}", self.domain)
+        format!("{name}.{}", self.0)
     }
 
     /// `admin.<domain>`, the only hostname the admin API is served on.
     #[must_use]
     pub fn admin_hostname(&self) -> String {
-        format!("{}.{}", Self::ADMIN_LABEL, self.domain)
+        format!("{}.{}", Self::ADMIN_LABEL, self.0)
     }
 
     /// Whether `name` can't be a tunnel name: it is the admin key's `keyid`
@@ -318,7 +343,7 @@ impl FrontSettings {
     pub fn is_reserved(&self, name: &str) -> bool {
         name == ADMIN_KEY_ID
             || self.local_hostnames().iter().any(|hostname| {
-                tunnel_name_for_host(hostname, &self.domain).as_deref() == Some(name)
+                tunnel_name_for_host(hostname, self.0.as_str()).as_deref() == Some(name)
             })
     }
 }
@@ -424,7 +449,9 @@ mod tests {
                     noise_public_key: GENKEY_PUBLIC_KEY.to_owned(),
                 },
                 front: FrontSettings {
-                    domain: "relay.example.com".to_owned(),
+                    hostnames: RelayHostnames::new(
+                        RelayDomain::parse("relay.example.com").unwrap()
+                    ),
                     https_addr: "0.0.0.0:443".parse().unwrap(),
                     http_addr: "0.0.0.0:80".parse().unwrap(),
                     limits: Limits::default(),
@@ -439,7 +466,7 @@ mod tests {
             }
         );
         assert_eq!(
-            settings.front.local_hostnames(),
+            settings.front.hostnames.local_hostnames(),
             ["relay.example.com", "admin.relay.example.com"]
         );
     }
@@ -516,6 +543,24 @@ mod tests {
     }
 
     #[test]
+    fn domains_that_are_not_dns_names_are_rejected() {
+        for bad in [
+            "relay..example.com",
+            "relay/example.com",
+            "relay_example.com",
+            ".",
+        ] {
+            let mut pairs = REQUIRED.to_vec();
+            pairs.push((FrontSettings::DOMAIN_VAR, bad));
+            let err = RelaySettings::from_lookup(env(&pairs)).unwrap_err();
+            assert!(
+                format!("{err:#}").contains(FrontSettings::DOMAIN_VAR),
+                "{bad:?}: {err:#}"
+            );
+        }
+    }
+
+    #[test]
     fn bad_public_control_addrs_are_rejected() {
         for bad in [
             "relay.example.com",
@@ -549,10 +594,12 @@ mod tests {
     /// `admin.<domain>`; the domain itself has no label to reserve.
     #[test]
     fn reserved_names_are_the_admin_key_id_and_local_hostname_labels() {
-        let front = FrontSettings::from_lookup(env(&REQUIRED)).unwrap();
-        assert!(front.is_reserved("admin"));
+        let hostnames = FrontSettings::from_lookup(env(&REQUIRED))
+            .unwrap()
+            .hostnames;
+        assert!(hostnames.is_reserved("admin"));
         for name in ["relay", "example", "relay-example-com", "alice", ""] {
-            assert!(!front.is_reserved(name), "{name:?}");
+            assert!(!hostnames.is_reserved(name), "{name:?}");
         }
     }
 

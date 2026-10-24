@@ -16,9 +16,12 @@
 //! old one stops signing at once, and a device connected with the old one
 //! drops as rathole takes the change.
 //!
-//! Claim codes live in the same store and change nothing that is served.
-//! Issuing one runs through `TunnelRegistry::while_unchanged`, between
-//! tunnel changes, so the tunnel it is for cannot be deleted under it.
+//! Claim codes live in the same store. Issuing one, or redeeming one that
+//! names its tunnel, changes nothing that is served; redeeming one that
+//! names no tunnel creates a tunnel, so every redemption runs as a change,
+//! which serves only what it created. Issuing one runs through
+//! `TunnelRegistry::while_unchanged`, between tunnel changes, so the tunnel
+//! it is for cannot be deleted under it.
 //!
 //! The registry also holds the [`ConnectionOutcomes`] the front records
 //! into: a deleted tunnel's last outcome is dropped once it stops being
@@ -37,12 +40,14 @@ use tokio::sync::{mpsc, Mutex};
 use super::on_blocking;
 use crate::config;
 use crate::db::SqliteTunnelStore;
-use crate::domain::{ReissuedTunnel, StoredTunnel, Tunnel, TunnelError, TunnelStore};
+use crate::domain::{
+    RedeemedClaimCode, ReissuedTunnel, StoredTunnel, Tunnel, TunnelError, TunnelStore,
+};
 use crate::logging::IDENTIFYING;
 use crate::outcomes::ConnectionOutcomes;
 use crate::route::Router;
 use crate::served::ServedTunnels;
-use crate::settings::{FrontSettings, RelaySettings};
+use crate::settings::{RelayHostnames, RelaySettings};
 use crate::site::signature::Verifier;
 
 /// How many changes can wait for rathole. Changes apply one at a time, and
@@ -72,21 +77,32 @@ pub(crate) enum Change {
     TokenReissued,
 }
 
-/// What a change's store write returns: the tunnel it serves, as it is now
-/// stored (or, deleted, as it was).
+/// What a change's store write returns: the tunnel it changed, as it is now
+/// stored (or, deleted, as it was), or `None` when the write changed no
+/// tunnel and there is nothing to serve.
 pub(crate) trait ChangedTunnel: Send + 'static {
-    fn tunnel(&self) -> &Tunnel;
+    fn changed_tunnel(&self) -> Option<&Tunnel>;
 }
 
 impl ChangedTunnel for StoredTunnel {
-    fn tunnel(&self) -> &Tunnel {
-        &self.tunnel
+    fn changed_tunnel(&self) -> Option<&Tunnel> {
+        Some(&self.tunnel)
+    }
+}
+
+/// Redeeming a preset code changes no tunnel: it reads one already served.
+impl ChangedTunnel for RedeemedClaimCode {
+    fn changed_tunnel(&self) -> Option<&Tunnel> {
+        match self {
+            RedeemedClaimCode::Preset(_) => None,
+            RedeemedClaimCode::Open { stored, .. } => Some(&stored.tunnel),
+        }
     }
 }
 
 impl ChangedTunnel for ReissuedTunnel {
-    fn tunnel(&self) -> &Tunnel {
-        &self.stored.tunnel
+    fn changed_tunnel(&self) -> Option<&Tunnel> {
+        Some(&self.stored.tunnel)
     }
 }
 
@@ -94,7 +110,7 @@ impl ChangedTunnel for ReissuedTunnel {
 pub struct TunnelRegistry {
     /// The store the capabilities are lifted from.
     pub(crate) store: SqliteTunnelStore,
-    pub(crate) front: FrontSettings,
+    pub(crate) hostnames: RelayHostnames,
     /// How long an issued claim code redeems for.
     pub(crate) claim_code_ttl: Duration,
     /// Where each change goes to rathole.
@@ -143,15 +159,15 @@ impl TunnelRegistry {
         let (rathole, changes) = mpsc::channel(RATHOLE_CHANGES);
         let served = Arc::new(ServedTunnels::new(&tunnels));
         let router = Router::new(
-            &settings.front.domain,
-            settings.front.local_hostnames(),
+            settings.front.hostnames.domain().as_str(),
+            settings.front.hostnames.local_hostnames(),
             Arc::clone(&served),
         );
         let verifier = Verifier::new(Arc::clone(&served), settings.admin_key.clone());
         let outcomes = Arc::new(ConnectionOutcomes::new(Arc::clone(&served)));
         let registry = Self {
             store,
-            front: settings.front.clone(),
+            hostnames: settings.front.hostnames.clone(),
             claim_code_ttl: settings.claim_code_ttl,
             rathole,
             tunnels: served,
@@ -190,17 +206,19 @@ impl TunnelRegistry {
     /// The hostname the admin API is served on.
     #[must_use]
     pub fn admin_hostname(&self) -> String {
-        self.front.admin_hostname()
+        self.hostnames.admin_hostname()
     }
 
     /// Create or delete a tunnel, or reissue its token (as `change` says),
-    /// in the store and in what serves it. The create, delete and reissue
-    /// bindings all go through here; they differ only in the store write, so
-    /// they pass it in:
+    /// in the store and in what serves it. The create, delete, reissue and
+    /// claim-code redeem bindings all go through here; they differ only in
+    /// the store write, so they pass it in:
     ///
     /// 1. `write_store` creates, deletes or rewrites the tunnel in the store
     ///    and returns it, or refuses (a taken name, an unknown tunnel). It
-    ///    runs on a blocking thread, as SQLite blocks.
+    ///    runs on a blocking thread, as SQLite blocks. A write that changed
+    ///    no tunnel (see [`ChangedTunnel`]) is returned as it is, without
+    ///    the next steps.
     /// 2. The registry serves the change: rathole adds, deletes or replaces
     ///    the tunnel's service, then the tunnel is inserted into, removed
     ///    from or replaced in the [`ServedTunnels`].
@@ -230,8 +248,11 @@ impl TunnelRegistry {
         tokio::spawn(async move {
             let _changing = registry.changing.lock().await;
             let changed = on_blocking(write_store).await?;
-            if let Err(error) = registry.serve(change, changed.tunnel()).await {
-                let name = changed.tunnel().name.clone();
+            let Some(tunnel) = changed.changed_tunnel() else {
+                return Ok(changed);
+            };
+            if let Err(error) = registry.serve(change, tunnel).await {
+                let name = tunnel.name.clone();
                 if let Err(undo_error) = on_blocking(move || undo_write(&changed)).await {
                     tracing::error!(
                         target: IDENTIFYING,

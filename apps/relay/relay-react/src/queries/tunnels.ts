@@ -116,6 +116,19 @@ const useIssueClaimCodeMutation = (): UseMutationResult<IssuedClaimCode, Error, 
 }
 
 /**
+ * `IssueOpenClaimCode`. The result holds the code, so, as with a tunnel's,
+ * the mutation cache drops it as soon as nothing shows it.
+ */
+const useIssueOpenClaimCodeMutation = (): UseMutationResult<IssuedClaimCode, Error, void> => {
+  const { run } = useRelayAdmin()
+  return useMutation({
+    gcTime: 0,
+    mutationFn: () =>
+      run(Effect.flatMap(RelayAdminHttpApiClient, (client) => client.tunnels.IssueOpenClaimCode())),
+  })
+}
+
+/**
  * `ReissueToken` for the tunnel of the given name. The result holds the new
  * token, so, as with a created tunnel's, the mutation cache drops it as soon
  * as nothing shows it.
@@ -139,6 +152,7 @@ export {
   useCreateTunnelMutation,
   useDeleteTunnelMutation,
   useIssueClaimCodeMutation,
+  useIssueOpenClaimCodeMutation,
   useReissueTokenMutation,
   useTunnelsQuery,
 }

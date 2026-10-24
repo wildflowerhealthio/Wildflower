@@ -158,6 +158,10 @@
 //!   "ABCD-EFGH", "expires_at": <Unix epoch seconds>}`, or is `404` when no
 //!   tunnel has the name. The code is shown only in this answer, and
 //!   replaces the tunnel's earlier code.
+//! - `POST /api/claim-codes`, without a body, issues a claim code that
+//!   names no tunnel (see "Claim codes" below) and answers `201 {"code":
+//!   "ABCD-EFGH", "expires_at": <Unix epoch seconds>}`. The code is shown
+//!   only in this answer.
 //! - `POST /api/tunnels/{name}/token`, without a body, replaces the tunnel's
 //!   token with a new random one and answers `200 {"name", "token",
 //!   "public_host"}`, or is `404` when no tunnel has the name. The new token
@@ -189,7 +193,7 @@
 //! signing key made from it, signs each API call with it as above, and
 //! forgets it on Sign out. The page lists the tunnels, creates one (showing
 //! its token once, to hand to the tunnel's owner), issues a claim code for
-//! one (showing it once, with its expiry), reissues one's token (after a
+//! a new tunnel or for an existing one (showing it once, with its expiry), reissues one's token (after a
 //! confirmation, showing the new one once) and deletes one. Each tunnel's
 //! row says what became of its last connection, and under the list two
 //! tables show the connection totals: the last 24 hours by UTC hour and the
@@ -200,34 +204,52 @@
 //!
 //! ### Claim codes
 //!
-//! A claim code hands a device its tunnel without the operator copying the
+//! A claim code hands a device a tunnel without the operator copying a
 //! token: eight characters from `23456789ABCDEFGHJKMNPQRSTUVWXYZ` (no `0`,
 //! `1`, `I`, `L` or `O`), drawn from the OS's randomness and shown as
 //! `ABCD-EFGH`. It redeems once, until it expires,
 //! `WILDFLOWER_RELAY_CLAIM_CODE_TTL_SECS` (ten days by default) after it
-//! was issued. A tunnel has at most one outstanding code: issuing a new one
-//! cancels the earlier one. The relay stores only its SHA-256, with the
-//! tunnel and expiry, and deleting the tunnel deletes its code.
+//! was issued. The relay stores only its SHA-256, with its expiry and what
+//! it redeems for:
+//!
+//! - A **preset** code, issued for a tunnel, redeems for that tunnel's name
+//!   and token. A tunnel has at most one outstanding preset code: issuing a
+//!   new one cancels the earlier one, and deleting the tunnel deletes it.
+//! - An **open** code names no tunnel, so any number are outstanding at
+//!   once. It redeems for a new tunnel, under the email and name the
+//!   redeemer chooses.
 //!
 //! The device sends it, unsigned, to `POST https://<domain>/claim` as
 //! `{"code": "ABCD-EFGH"}`, in either case and with or without the dash.
-//! A code that redeems is burned, and answers `200` with the tunnel's
-//! `tunnel_name` and `token` beside every field of `GET /rathole`, in one
-//! object. Of concurrent redeems of one code, exactly one succeeds. Every
-//! failure, whether the code is malformed, unknown, used or expired, is the
-//! same `422` with the same plain-text body. Every attempt counts against two
-//! limits first, five at once and then one every 12 seconds from each client
-//! (an IPv4 address or an IPv6 `/64`, from the connection itself), and sixty
-//! at once and then one a second across every client; an attempt over either
-//! is `429`. `POST /claim` is served with the admin API, since only the admin
-//! API issues codes.
+//! The code is checked first: whether it is malformed, unknown, used or
+//! expired, every failure is the same `422` with the same plain-text body,
+//! whatever else came with it. A preset code that redeems is burned, and
+//! answers `200` with the tunnel's `tunnel_name` and `token` beside every
+//! field of `GET /rathole`, in one object. An open code sent so is not
+//! burned: it answers `409` with a plain-text body saying it needs details,
+//! so a device with one code field learns to ask for an email and a
+//! subdomain. The device then sends it again with `"details": {"email":
+//! "<owner>", "tunnel_name": "<tunnel name>"}`, `tunnel_name` optional. The
+//! email and name are checked as `POST /api/tunnels` checks them (`422`,
+//! `409` or `503` with its reason), leaving the code to redeem on another
+//! try. Then the tunnel is created and the code burned in one transaction,
+//! and the answer is a preset code's for the new tunnel. Details sent with a
+//! preset code are `422`, and leave it unburned. Of concurrent redeems of
+//! one code, exactly one succeeds.
+//!
+//! Every attempt counts against two limits first, five at once and then one
+//! every 12 seconds from each client (an IPv4 address or an IPv6 `/64`,
+//! from the connection itself), and sixty at once and then one a second
+//! across every client; an attempt over either is `429`. `POST /claim` is
+//! served with the admin API, since only the admin API issues codes.
 //!
 //! ## Configuration
 //!
 //! The environment is the only source of settings: every setting is a
 //! `WILDFLOWER_RELAY_*` variable (see [`settings`], and `relay.example.env`
 //! for a commented list). Tunnels come only from the admin API, which keeps
-//! them, each with its own token and outstanding claim code, in SQLite at
+//! them, each with its own token and outstanding claim code, with the
+//! outstanding open claim codes, in SQLite at
 //! `<WILDFLOWER_RELAY_STATE_DIR>/tunnels.db`. On every start the relay
 //! builds rathole's config for them in memory (see [`config`]); no rathole
 //! file is written or read. Each change through the admin API reaches the
@@ -257,7 +279,8 @@
 //!    [`ConnectionTotalsStore`] port, the failure vocabulary
 //!    ([`TunnelError`](domain::TunnelError)), and the capabilities
 //!    (`domain::capabilities`) that decide a read, create, delete or token
-//!    reissue, issue or redeem a claim code, or read the connection totals,
+//!    reissue, issue or redeem a claim code, or read the
+//!    connection totals,
 //!    and drive the store through the ports.
 //!  - [`db`] — the [`SqliteTunnelStore`] adapter implementing the ports with
 //!    Diesel over a `wildflowerhealthio_persistence::DieselPool` onto `tunnels.db`, and its
@@ -340,7 +363,9 @@ pub use live_bindings::state::{RatholeFeed, TunnelRegistry};
 pub use outcomes::ConnectionOutcomes;
 pub use route::{Route, Router};
 pub use served::ServedTunnels;
-pub use settings::{AcmeSettings, ControlSettings, FrontSettings, RelaySettings, Secret};
+pub use settings::{
+    AcmeSettings, ControlSettings, FrontSettings, RelayHostnames, RelaySettings, Secret,
+};
 pub use site::signature::{SignedBy, Verifier};
 pub use site::Site;
 pub use tunnels::{TunnelDown, Tunnels};
@@ -364,7 +389,7 @@ pub async fn run_relay(
     let (registry, rathole) = TunnelRegistry::open(&settings).await?;
     let registry = Arc::new(registry);
     let acme = site::acme::state(
-        &settings.front.local_hostnames(),
+        &settings.front.hostnames.local_hostnames(),
         &settings.acme,
         &settings.state_dir,
     );
@@ -380,7 +405,7 @@ pub async fn run_relay(
     );
     let connection_log_dir = logging::connection_log_dir(&settings.state_dir);
     let settings = settings.front;
-    tracing::info!(domain = %settings.domain, "routes built");
+    tracing::info!(domain = %settings.hostnames.domain(), "routes built");
     let tunnels = Tunnels::default();
     let front = Front::new(
         registry.router(),

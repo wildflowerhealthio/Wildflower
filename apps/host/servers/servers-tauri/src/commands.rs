@@ -376,7 +376,7 @@ mod tests {
     use serde::Deserialize;
     use tokio_util::sync::CancellationToken;
     use wildflowerhealthio_rathole_settings::{
-        ClaimedTunnel, PublicRatholeSettings, TunnelHost, TunnelName,
+        ClaimRequest, ClaimedTunnel, PublicRatholeSettings, TunnelHost, TunnelName,
     };
     use wildflowerhealthio_servers::{
         JsonServerRegistry, RelayKind, ServerDetail, ServerRecord, SERVERS_FILE_NAME,
@@ -466,8 +466,8 @@ mod tests {
             })
         }
 
-        async fn claim(&self, code: &str) -> Result<ClaimedTunnel, EnrolmentError> {
-            if code != CLAIM_CODE {
+        async fn claim(&self, request: &ClaimRequest) -> Result<ClaimedTunnel, EnrolmentError> {
+            if request.code != CLAIM_CODE || request.details.is_some() {
                 return Err(EnrolmentError::ClaimCodeRejected);
             }
             Ok(ClaimedTunnel {

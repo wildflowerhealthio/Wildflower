@@ -1,4 +1,4 @@
-//! `POST /claim` — a device redeems a claim code for its tunnel.
+//! `POST /claim` — a device redeems a claim code for a tunnel.
 //!
 //! `{"code": "ABCD-EFGH"}` (case and the dash ignored) answers
 //! `200 {"tunnel_name", "token", ...}`: the tunnel the code was issued for
@@ -7,14 +7,21 @@
 //! it redeems once. Only a tunnel's latest code redeems: issuing another
 //! cancels it.
 //!
+//! A code that names no tunnel answers `409`, unburned, when sent alone; sent
+//! with `"details": {"email", "tunnel_name"}` (`tunnel_name` optional) it
+//! redeems for a new tunnel under them, answered the same way (see "Claim
+//! codes" in the crate docs). Details sent with a code that names its tunnel
+//! are `422`, unburned.
+//!
 //! The request is not signed: the code is the credential. So that a short
-//! code is safe, every failure is one answer, `422` with the plain text
-//! `the claim code is unknown, used or expired`, whether the code is
-//! malformed, unknown, already redeemed or expired; and every attempt first
-//! spends from the [`ClaimLimiter`]'s allowances, the client's and the
-//! global one, so an attempt over either is `429` before its body is looked
-//! at. The client is the address the connection came from, which the site
-//! records for each request (see [`super::Site::serve`]).
+//! code is safe, every failure of the code is one answer, `422` with the
+//! plain text `the claim code is unknown, used or expired`, whether the code
+//! is malformed, unknown, already redeemed or expired, whatever details come
+//! with it; and every attempt first spends from the [`ClaimLimiter`]'s
+//! allowances, the client's and the global one, so an attempt over either is
+//! `429` before its body is looked at. The client is the address the
+//! connection came from, which the site records for each request (see
+//! [`super::Site::serve`]).
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -32,12 +39,13 @@ use wildflowerhealthio_rathole_settings::{
 };
 
 use super::claim_limiter::{ClaimLimiter, GLOBAL, MAX_CLIENTS, PER_CLIENT};
-use crate::domain::TunnelError;
+use crate::domain::{Tunnel, TunnelError};
 use crate::live_bindings::state::TunnelRegistry;
 use crate::live_bindings::LiveClaimCodesRedeemer;
 use crate::logging::IDENTIFYING;
 
-/// The largest body `POST /claim` reads: a code is a few bytes.
+/// The largest body `POST /claim` reads: a code, an email and a name are a
+/// few hundred bytes.
 const MAX_BODY_BYTES: usize = 1024;
 
 /// What `POST /claim` answers over its rate limits.
@@ -51,10 +59,11 @@ struct ClaimState {
     rathole_settings: PublicRatholeSettings,
 }
 
-/// `POST /claim`, redeeming codes from `registry`'s store and answering
-/// with `rathole_settings`, under the [`PER_CLIENT`] and [`GLOBAL`] limits.
+/// `POST /claim`, redeeming codes from `registry`'s store
+/// and answering with `rathole_settings`, under the [`PER_CLIENT`] and
+/// [`GLOBAL`] limits.
 pub(super) fn router(
-    registry: &TunnelRegistry,
+    registry: &Arc<TunnelRegistry>,
     rathole_settings: PublicRatholeSettings,
 ) -> axum::Router {
     let state = ClaimState {
@@ -68,6 +77,18 @@ pub(super) fn router(
         .with_state(Arc::new(state))
 }
 
+/// Whether `client` may make an attempt now, spending from its allowance and
+/// the global one.
+fn admit(state: &ClaimState, client: SocketAddr) -> bool {
+    let admitted = state
+        .limiter
+        .admit(ClientKey::from(client.ip()), Instant::now());
+    if !admitted {
+        tracing::debug!(target: IDENTIFYING, %client, "claim refused: rate limited");
+    }
+    admitted
+}
+
 /// The limits are checked before the body is decoded, so every attempt
 /// counts, however malformed.
 async fn claim(
@@ -75,22 +96,23 @@ async fn claim(
     ConnectInfo(client): ConnectInfo<SocketAddr>,
     body: Result<Json<ClaimRequest>, JsonRejection>,
 ) -> Response {
-    if !state
-        .limiter
-        .admit(ClientKey::from(client.ip()), Instant::now())
-    {
-        tracing::debug!(target: IDENTIFYING, %client, "claim refused: rate limited");
+    if !admit(&state, client) {
         return (StatusCode::TOO_MANY_REQUESTS, RATE_LIMITED).into_response();
     }
     let body = match body {
         Ok(Json(body)) => body,
         Err(rejection) => return rejection.into_response(),
     };
-    let tunnel = match state.redeemer.redeem(body.code).await {
-        Ok(tunnel) => tunnel,
-        Err(error) => return error.into_response(),
-    };
-    let tunnel_name = match TunnelName::parse(tunnel.name) {
+    match state.redeemer.redeem(body.code, body.details).await {
+        Ok(redeemed) => claimed(redeemed.tunnel(), &state.rathole_settings),
+        Err(error) => error.into_response(),
+    }
+}
+
+/// `tunnel` with `rathole_settings`, as a redeemed code answers, never
+/// cached.
+fn claimed(tunnel: &Tunnel, rathole_settings: &PublicRatholeSettings) -> Response {
+    let tunnel_name = match TunnelName::parse(tunnel.name.clone()) {
         Ok(tunnel_name) => tunnel_name,
         // The reason without the name, which the error carries: this is
         // logged to the journal.
@@ -109,7 +131,7 @@ async fn claim(
     let claimed = ClaimedTunnel {
         tunnel_name,
         token: tunnel.token.expose().to_owned(),
-        rathole_settings: state.rathole_settings.clone(),
+        rathole_settings: rathole_settings.clone(),
     };
     ([(header::CACHE_CONTROL, "no-store")], Json(claimed)).into_response()
 }
@@ -125,7 +147,7 @@ mod tests {
     use wildflowerhealthio_rathole_settings::{NoisePattern, Transport};
 
     use super::*;
-    use crate::domain::{ClaimCode, ClaimCodeStore, StoredClaimCode};
+    use crate::domain::{ClaimCode, ClaimCodeStore, ClaimCodeTarget, StoredClaimCode, TunnelStore};
     use crate::live_bindings::{
         LiveClaimCodesIssuer, LiveTunnelTokensReissuer, LiveTunnelsCreator,
     };
@@ -161,6 +183,29 @@ mod tests {
         serde_json::json!({ "code": code }).to_string()
     }
 
+    /// The code for `alice` that `registry`'s admin issues.
+    async fn issue_for_alice(registry: &Arc<TunnelRegistry>) -> ClaimCode {
+        let issuer: LiveClaimCodesIssuer = admin(registry);
+        issuer
+            .issue(ClaimCodeTarget::Preset {
+                tunnel_name: "alice".to_owned(),
+            })
+            .await
+            .unwrap()
+            .code
+    }
+
+    /// A code naming no tunnel that `registry`'s admin issues, as typed.
+    async fn issue_open(registry: &Arc<TunnelRegistry>) -> String {
+        let issuer: LiveClaimCodesIssuer = admin(registry);
+        issuer
+            .issue(ClaimCodeTarget::Open)
+            .await
+            .unwrap()
+            .code
+            .to_string()
+    }
+
     async fn send(router: &axum::Router, request: Request<Body>) -> (StatusCode, Vec<u8>) {
         let response = router.clone().oneshot(request).await.unwrap();
         let status = response.status();
@@ -188,8 +233,7 @@ mod tests {
     #[tokio::test]
     async fn an_issued_code_redeems_once_for_the_tunnel_and_the_rathole_settings() {
         let (router, registry, alice_token, _fixture) = router_with_alice().await;
-        let issuer: LiveClaimCodesIssuer = admin(&registry);
-        let code = issuer.issue("alice".to_owned()).await.unwrap().code;
+        let code = issue_for_alice(&registry).await;
 
         let typed = code.to_string().replace('-', "").to_lowercase();
         let response = router
@@ -223,9 +267,8 @@ mod tests {
     #[tokio::test]
     async fn a_new_code_cancels_the_tunnels_earlier_one() {
         let (router, registry, _, _fixture) = router_with_alice().await;
-        let issuer: LiveClaimCodesIssuer = admin(&registry);
-        let earlier = issuer.issue("alice".to_owned()).await.unwrap().code;
-        let later = issuer.issue("alice".to_owned()).await.unwrap().code;
+        let earlier = issue_for_alice(&registry).await;
+        let later = issue_for_alice(&registry).await;
 
         let (status, _) = send(
             &router,
@@ -246,8 +289,7 @@ mod tests {
     #[tokio::test]
     async fn a_code_redeems_for_the_token_reissued_after_it() {
         let (router, registry, alice_token, _fixture) = router_with_alice().await;
-        let issuer: LiveClaimCodesIssuer = admin(&registry);
-        let code = issuer.issue("alice".to_owned()).await.unwrap().code;
+        let code = issue_for_alice(&registry).await;
         let reissuer: LiveTunnelTokensReissuer = admin(&registry);
         let reissued = reissuer.reissue("alice".to_owned()).await.unwrap();
 
@@ -264,17 +306,18 @@ mod tests {
     #[tokio::test]
     async fn every_failure_is_answered_alike() {
         let (router, registry, _, _fixture) = router_with_alice().await;
-        let issuer: LiveClaimCodesIssuer = admin(&registry);
-        let used = issuer.issue("alice".to_owned()).await.unwrap().code;
+        let used = issue_for_alice(&registry).await;
         let (status, _) = send(&router, claim_request(ALICE, &code_body(&used.to_string()))).await;
         assert_eq!(status, StatusCode::OK);
         let expired = ClaimCode::parse("2345-6789").unwrap();
         let now = unix_now().unwrap();
         assert!(registry
             .store
-            .replace_claim_code(&StoredClaimCode {
+            .insert_claim_code(&StoredClaimCode {
                 code_hash: expired.hash(),
-                tunnel_name: "alice".to_owned(),
+                target: ClaimCodeTarget::Preset {
+                    tunnel_name: "alice".to_owned(),
+                },
                 expires_at: now,
             })
             .unwrap());
@@ -326,8 +369,7 @@ mod tests {
     #[tokio::test]
     async fn every_client_together_is_limited_to_the_global_burst() {
         let (router, registry, _, _fixture) = router_with_alice().await;
-        let issuer: LiveClaimCodesIssuer = admin(&registry);
-        let code = issuer.issue("alice".to_owned()).await.unwrap().code;
+        let code = issue_for_alice(&registry).await;
         for last in 0..u8::try_from(GLOBAL.burst).unwrap() {
             let (status, _) =
                 send(&router, claim_request([192, 0, 2, last], &code_body("x"))).await;
@@ -339,7 +381,154 @@ mod tests {
         let (status, _) = send(&router, fresh).await;
         assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
         let redeemer = LiveClaimCodesRedeemer::new(&registry);
-        assert!(redeemer.redeem(code.to_string()).await.is_ok());
+        assert!(redeemer.redeem(code.to_string(), None).await.is_ok());
+    }
+
+    /// `{"code", "details"}` for `code` and `details`.
+    fn details_body(code: &str, details: serde_json::Value) -> String {
+        serde_json::json!({ "code": code, "details": details }).to_string()
+    }
+
+    /// A code naming no tunnel, sent alone, answers `409`, unburned; sent
+    /// with an email and a name it answers the new tunnel with the rathole
+    /// settings, once.
+    #[tokio::test]
+    async fn an_open_code_asks_for_details_then_redeems_for_a_new_tunnel() {
+        let (router, registry, _, _fixture) = router_with_alice().await;
+        let code = issue_open(&registry).await;
+
+        let (status, body) = send(&router, claim_request(ALICE, &code_body(&code))).await;
+        assert_eq!(
+            (status, body),
+            (
+                StatusCode::CONFLICT,
+                b"the claim code names no tunnel: send it with an email and, optionally, a name"
+                    .to_vec()
+            )
+        );
+
+        let body = details_body(
+            &code.to_lowercase(),
+            serde_json::json!({ "email": "bob@example.com", "tunnel_name": "bob" }),
+        );
+        let response = router
+            .clone()
+            .oneshot(claim_request(ALICE, &body))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let mut claimed: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let token = claimed["token"].take();
+        let stored = registry
+            .store
+            .list_tunnels()
+            .unwrap()
+            .into_iter()
+            .find(|stored| stored.tunnel.name == "bob")
+            .unwrap();
+        assert_eq!(token, stored.tunnel.token.expose());
+        assert_eq!(stored.email, "bob@example.com");
+        assert_eq!(
+            claimed,
+            serde_json::json!({
+                "tunnel_name": "bob",
+                "token": null,
+                "remote_addr": "relay.example.com:2333",
+                "transport": "noise",
+                "noise_pattern": "Noise_NK_25519_ChaChaPoly_BLAKE2s",
+                "public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                "domain": "relay.example.com",
+            })
+        );
+
+        for body in [body, code_body(&code)] {
+            let (status, _) = send(&router, claim_request(ALICE, &body)).await;
+            assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "burned");
+        }
+    }
+
+    /// Details sent with a code that names its tunnel are refused, and the
+    /// code still redeems sent alone.
+    #[tokio::test]
+    async fn a_preset_code_refuses_details() {
+        let (router, registry, _, _fixture) = router_with_alice().await;
+        let code = issue_for_alice(&registry).await.to_string();
+        let body = details_body(&code, serde_json::json!({ "email": "bob@example.com" }));
+        let (status, body) = send(&router, claim_request(ALICE, &body)).await;
+        assert_eq!(
+            (status, body),
+            (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                b"the claim code names its tunnel: send it without an email or a name".to_vec()
+            )
+        );
+        let (status, _) = send(&router, claim_request(ALICE, &code_body(&code))).await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    /// A bad code is refused alike whatever comes with it; a good open
+    /// code's bad email or name is refused with its reason, and the code
+    /// still redeems.
+    #[tokio::test]
+    async fn detail_refusals_name_the_email_or_name_only_for_a_good_code() {
+        let (router, registry, _, _fixture) = router_with_alice().await;
+        let code = issue_open(&registry).await;
+
+        let bad_code = details_body(
+            "WXYZ-WXYZ",
+            serde_json::json!({ "email": "not an email", "tunnel_name": "alice" }),
+        );
+        let (status, body) = send(&router, claim_request([192, 0, 2, 1], &bad_code)).await;
+        assert_eq!(
+            (status, body),
+            (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                b"the claim code is unknown, used or expired".to_vec()
+            )
+        );
+        for (last, email, name, expected) in [
+            (
+                2,
+                "not an email",
+                "bob",
+                (
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "the email is not an email address",
+                ),
+            ),
+            (
+                3,
+                "bob@example.com",
+                "Bob",
+                (
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "the name is not a lowercase DNS label",
+                ),
+            ),
+            (
+                4,
+                "bob@example.com",
+                "alice",
+                (StatusCode::CONFLICT, "a tunnel already has the name"),
+            ),
+        ] {
+            let body = details_body(
+                &code,
+                serde_json::json!({ "email": email, "tunnel_name": name }),
+            );
+            let answer = send(&router, claim_request([192, 0, 2, last], &body)).await;
+            assert_eq!(
+                answer,
+                (expected.0, expected.1.as_bytes().to_vec()),
+                "{name}"
+            );
+        }
+        let without_name = details_body(&code, serde_json::json!({ "email": "bob@example.com" }));
+        let (status, _) = send(&router, claim_request([192, 0, 2, 5], &without_name)).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(registry.store.list_tunnels().unwrap().len(), 2);
     }
 
     #[tokio::test]

@@ -476,6 +476,21 @@
       "kind": "token",
       "tunnelName": "ruth",
       "token": "tunnel-token"
+    },
+    "claimCodeWithDetails": {
+      "kind": "claimCode",
+      "code": "ABCD-EFGH",
+      "details": {
+        "email": "ruth@example.com",
+        "tunnelName": "ruth"
+      }
+    },
+    "claimCodeWithDetailsWithoutTunnelName": {
+      "kind": "claimCode",
+      "code": "ABCD-EFGH",
+      "details": {
+        "email": "ruth@example.com"
+      }
     }
   },
   "enrolmentErrors": {
@@ -518,6 +533,18 @@
     "claimRateLimited": {
       "kind": "claimRateLimited",
       "message": "the relay has had too many claim attempts: try again in a few minutes"
+    },
+    "emptyEmail": {
+      "kind": "emptyEmail",
+      "message": "the email is empty"
+    },
+    "claimCodeNeedsDetails": {
+      "kind": "claimCodeNeedsDetails",
+      "message": "that code is for a new server: enter your email and choose a subdomain"
+    },
+    "claimRefused": {
+      "kind": "claimRefused",
+      "message": "the relay refused the claim code: a tunnel already has the name"
     },
     "signedRequestRejected": {
       "kind": "signedRequestRejected",

@@ -12,9 +12,9 @@
 //! `connection_totals_flush` holds the relay task that keeps them: it moves
 //! the counts the front records in memory into the store every minute.
 //!
-//! [`LiveClaimCodesRedeemer`] is the one binding not built through `Admin<…>`:
-//! it serves the unauthenticated `POST /claim`, which builds it once from the
-//! registry.
+//! [`LiveClaimCodesRedeemer`] is the binding not built through `Admin<…>`:
+//! it serves the unauthenticated `POST /claim`, which builds it once from
+//! the registry.
 //!
 //! The admin handlers name the `Live…` bindings in `Admin<…>`, the
 //! extractor that builds one only for a request signed with the admin key

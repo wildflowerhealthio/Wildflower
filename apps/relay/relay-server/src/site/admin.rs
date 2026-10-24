@@ -16,6 +16,10 @@
 //!   `ABCD-EFGH`, and the Unix epoch second it stops redeeming at (see
 //!   `super::claim`). It replaces the tunnel's earlier code, which stops
 //!   redeeming.
+//! - `POST /api/claim-codes` (no body): `201 {"code", "expires_at"}`, a
+//!   claim code that names no tunnel, shown only here, as for a tunnel's. It
+//!   redeems once, at `POST /claim` with an email and a name, for a new
+//!   tunnel under the ones the redeemer chooses (see `super::claim`).
 //! - `POST /api/tunnels/{name}/token` (no body): `200 {"name", "token",
 //!   "public_host"}`, a new token for the tunnel, shown only here. The old
 //!   token stops signing and connecting at once, and a device connected
@@ -53,7 +57,8 @@ use serde::{Deserialize, Serialize, Serializer};
 
 use super::signature::{authority, require_signature, Verifier};
 use crate::domain::{
-    HourlyTotals, IssuedClaimCode, Outcome, StoredTunnel, TunnelError, TunnelOutcome,
+    ClaimCodeTarget, HourlyTotals, IssuedClaimCode, Outcome, StoredTunnel, TunnelError,
+    TunnelOutcome,
 };
 use crate::live_bindings::state::TunnelRegistry;
 use crate::live_bindings::{
@@ -71,6 +76,7 @@ pub(super) fn router(registry: Arc<TunnelRegistry>, verifier: Arc<Verifier>) -> 
         .route("/api/tunnels/{name}", delete(remove))
         .route("/api/tunnels/{name}/claim-codes", post(issue_claim_code))
         .route("/api/tunnels/{name}/token", post(reissue_token))
+        .route("/api/claim-codes", post(issue_open_claim_code))
         .route("/api/connection-totals", get(list_connection_totals))
         .route_layer(middleware::from_fn_with_state(verifier, require_signature))
         // The outer layer: the host is checked before the signature.
@@ -185,8 +191,8 @@ impl TunnelWithToken {
     }
 }
 
-/// A claim code just issued, as `POST /api/tunnels/{name}/claim-codes`
-/// answers. The only place the code is ever shown.
+/// A claim code just issued, as `POST /api/tunnels/{name}/claim-codes` and
+/// `POST /api/claim-codes` answer. The only place the code is ever shown.
 #[derive(Debug, Serialize)]
 struct IssuedClaimCodeBody {
     /// `ABCD-EFGH`.
@@ -267,7 +273,16 @@ async fn issue_claim_code(
     Admin(issuer): Admin<LiveClaimCodesIssuer>,
     Path(name): Path<String>,
 ) -> Response {
-    match issuer.issue(name).await {
+    issued_claim_code(&issuer, ClaimCodeTarget::Preset { tunnel_name: name }).await
+}
+
+async fn issue_open_claim_code(Admin(issuer): Admin<LiveClaimCodesIssuer>) -> Response {
+    issued_claim_code(&issuer, ClaimCodeTarget::Open).await
+}
+
+/// What both issue routes answer for a code `issuer` issues for `target`.
+async fn issued_claim_code(issuer: &LiveClaimCodesIssuer, target: ClaimCodeTarget) -> Response {
+    match issuer.issue(target).await {
         Ok(issued) => {
             (StatusCode::CREATED, Json(IssuedClaimCodeBody::from(issued))).into_response()
         }
@@ -295,10 +310,11 @@ async fn reissue_token(
 impl IntoResponse for TunnelError {
     fn into_response(self) -> Response {
         let status = match self {
-            Self::InvalidName | Self::InvalidEmail | Self::ClaimCodeRejected => {
-                StatusCode::UNPROCESSABLE_ENTITY
-            }
-            Self::Reserved | Self::Taken => StatusCode::CONFLICT,
+            Self::InvalidName
+            | Self::InvalidEmail
+            | Self::ClaimCodeRejected
+            | Self::ClaimCodeNamesTunnel => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::Reserved | Self::Taken | Self::ClaimCodeNeedsDetails => StatusCode::CONFLICT,
             Self::NotFound => StatusCode::NOT_FOUND,
             Self::Exhausted(_) => StatusCode::SERVICE_UNAVAILABLE,
             Self::Infrastructure { .. } => {
@@ -318,11 +334,13 @@ mod tests {
     use tower::ServiceExt;
 
     use super::*;
+    use crate::domain::RedeemedClaimCode;
     use crate::domain::{ClaimCode, TunnelStore};
     use crate::live_bindings::{LiveClaimCodesRedeemer, LiveTunnelsCreator};
     use crate::site::signature::tests::signed_request;
     use crate::site::signature::unix_now;
     use crate::test_support::{admin, registry, Fixture};
+    use wildflowerhealthio_rathole_settings::ClaimDetails;
 
     const ADMIN_KEY: &str = "an-admin-key-of-thirty-two-bytes";
     const ADMIN: &str = "https://admin.relay.example.com";
@@ -420,6 +438,20 @@ mod tests {
                 (
                     StatusCode::UNPROCESSABLE_ENTITY,
                     "the claim code is unknown, used or expired",
+                ),
+            ),
+            (
+                TunnelError::ClaimCodeNeedsDetails,
+                (
+                    StatusCode::CONFLICT,
+                    "the claim code names no tunnel: send it with an email and, optionally, a name",
+                ),
+            ),
+            (
+                TunnelError::ClaimCodeNamesTunnel,
+                (
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "the claim code names its tunnel: send it without an email or a name",
                 ),
             ),
             (
@@ -620,8 +652,8 @@ mod tests {
         assert_eq!(issued.as_object().unwrap().len(), 2, "{issued}");
 
         let redeemer = LiveClaimCodesRedeemer::new(&tunnels);
-        let redeemed = redeemer.redeem(code.to_owned()).await.unwrap();
-        assert_eq!(redeemed, bob.tunnel);
+        let redeemed = redeemer.redeem(code.to_owned(), None).await.unwrap();
+        assert_eq!(redeemed, RedeemedClaimCode::Preset(bob.tunnel));
     }
 
     #[tokio::test]
@@ -661,13 +693,69 @@ mod tests {
         );
     }
 
+    /// An admin-signed issue answers a grouped code that names no tunnel,
+    /// and its expiry; the code redeems at `POST /claim` for a new tunnel.
+    /// Unsigned and tunnel-signed issues are `401`.
+    #[tokio::test]
+    async fn an_issued_open_claim_code_redeems_for_a_new_tunnel() {
+        let (router, tunnels, alice, _fixture) = router_with_alice().await;
+        let uri = format!("{ADMIN}/api/claim-codes");
+        let now = unix_now().unwrap();
+        for request in [
+            signed_request("POST", &uri, b"", "admin", "not-the-admin-key", now, "a"),
+            signed_request("POST", &uri, b"", "alice", &alice, now, "b"),
+        ] {
+            let (status, body) = send(&router, request).await;
+            assert_eq!(status, StatusCode::UNAUTHORIZED);
+            assert!(body.is_empty(), "a 401 carries no detail");
+        }
+
+        let before = unix_now().unwrap();
+        let (status, body) = send(
+            &router,
+            admin_request("POST", &uri, &serde_json::Value::Null),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+        let issued = json(&body);
+        let code = issued["code"].as_str().unwrap();
+        assert!(ClaimCode::parse(code).is_some(), "{code}");
+        let expires_at = issued["expires_at"].as_i64().unwrap();
+        let ttl = i64::try_from(tunnels.claim_code_ttl.as_secs()).unwrap();
+        assert!((before + ttl..=unix_now().unwrap() + ttl).contains(&expires_at));
+        assert_eq!(issued.as_object().unwrap().len(), 2, "{issued}");
+
+        let redeemer = LiveClaimCodesRedeemer::new(&tunnels);
+        let redeemed = redeemer
+            .redeem(
+                code.to_owned(),
+                Some(ClaimDetails {
+                    email: "bob@example.com".to_owned(),
+                    tunnel_name: None,
+                }),
+            )
+            .await
+            .unwrap();
+        assert_eq!(tunnels.store.list_tunnels().unwrap().len(), 2);
+        let RedeemedClaimCode::Open { stored, .. } = redeemed else {
+            panic!("redeemed {redeemed:?}");
+        };
+        assert_eq!(stored.email, "bob@example.com");
+    }
+
     /// An admin-signed reissue answers the tunnel with a new token, which is
     /// what is stored, and an outstanding claim code redeems for it.
     #[tokio::test]
     async fn a_reissued_token_is_shown_once_and_claim_codes_redeem_for_it() {
         let (router, tunnels, alice, _fixture) = router_with_alice().await;
         let issuer: LiveClaimCodesIssuer = admin(&tunnels);
-        let code = issuer.issue("alice".to_owned()).await.unwrap().code;
+        let code = issuer
+            .issue(ClaimCodeTarget::Preset {
+                tunnel_name: "alice".to_owned(),
+            })
+            .await
+            .unwrap()
+            .code;
 
         let (status, body) = send(
             &router,
@@ -695,8 +783,8 @@ mod tests {
         assert_eq!(stored[0].tunnel.token.expose(), token);
 
         let redeemer = LiveClaimCodesRedeemer::new(&tunnels);
-        let redeemed = redeemer.redeem(code.to_string()).await.unwrap();
-        assert_eq!(redeemed.token.expose(), token);
+        let redeemed = redeemer.redeem(code.to_string(), None).await.unwrap();
+        assert_eq!(redeemed.tunnel().token.expose(), token);
     }
 
     #[tokio::test]

@@ -12,8 +12,8 @@
 //! - `routes`: the axum router.
 //! - `admin`: the admin API on `admin.<domain>`.
 //! - `admin_ui`: the admin UI's static files on `admin.<domain>`.
-//! - `claim`: `POST /claim`, redeeming a claim code, and `claim_limiter`, its
-//!   rate limits.
+//! - `claim`: `POST /claim`, redeeming a claim code, and `claim_limiter`,
+//!   its rate limits.
 //! - `acme`: ordering and renewing the certificate.
 //! - `signature`: verifying signed requests (RFC 9421).
 

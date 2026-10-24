@@ -528,6 +528,12 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 **Learning**: `Router::route_service(path, router)` compiles, then panics at router construction with "`Router::route_service` cannot be used with `Router`s. Use `Router::nest` instead". `nest`/`nest_service` strip the prefix, which a sub-router that matches on full paths (HFS's `/ui/...`) can't take. `route(path, axum::routing::any_service(router))` keeps the full path and works. Only a test that builds the composed router catches it: `cargo check` and a unit test of the inner router both pass.
 **Suggested destination**: a Rust/axum gotchas Reference
 
+## servers-rust's real-relay tests fail behind a cloud session's HTTPS proxy
+
+**Discovered during**: claude/access-codes-redeemer-selection-7gyvx5 (claim codes that name no tunnel)
+**Learning**: `ReqwestRelayClient`'s tests serve the real relay on loopback under the hostname `relay.test`, resolved inside the test. reqwest honours `HTTPS_PROXY`, and `relay.test` isn't in `NO_PROXY`, so in a Claude Code cloud container every one of them fails with `RelayUnreachable` (`Connection reset by peer`), the ones untouched by a change included. Run them with the proxy unset for that process: `env -u HTTPS_PROXY -u https_proxy cargo test -p wildflowerhealthio-servers`. Separately, `wildflowerhealthio-servers-tauri` needs GTK's system libraries (`gdk-sys`), which the cloud container lacks, so it only builds in CI there.
+**Suggested destination**: apps/host/servers/AGENTS.md, or docs/Testing/Testing Reference.md
+
 ## A Tauri iOS plugin's `load(webview:)` runs after its commands can
 
 **Discovered during**: claude/determined-gates-3wt19a (TestFlight crash: `BGTaskScheduler` "submission without registration" at launch)

@@ -28,8 +28,8 @@ const RATHOLE_CACHE_CONTROL: &str = "public, max-age=60";
 ///   and the admin UI that calls it, at `/` there (see [`super::admin_ui`]).
 ///   The UI's catch-all path loses to every route above. Also `POST /claim`,
 ///   which redeems a claim code the admin API issued for a tunnel's name,
-///   token and `rathole_settings`, without authentication (see
-///   [`super::claim`]).
+///   token and `rathole_settings`, the tunnel's it names or a new one's,
+///   without authentication (see [`super::claim`]).
 pub(super) fn router(
     rathole_settings: PublicRatholeSettings,
     verifier: Arc<Verifier>,

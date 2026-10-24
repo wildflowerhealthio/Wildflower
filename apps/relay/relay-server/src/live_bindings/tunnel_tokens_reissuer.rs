@@ -66,7 +66,7 @@ impl LiveTunnelTokensReissuer {
 
     /// `<name>.<domain>`, where the tunnel named `name` is served.
     pub(crate) fn public_host(&self, name: &str) -> String {
-        self.registry.front.public_host(name)
+        self.registry.hostnames.public_host(name)
     }
 }
 

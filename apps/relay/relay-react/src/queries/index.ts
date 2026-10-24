@@ -10,6 +10,7 @@ export {
   useCreateTunnelMutation,
   useDeleteTunnelMutation,
   useIssueClaimCodeMutation,
+  useIssueOpenClaimCodeMutation,
   useReissueTokenMutation,
   useTunnelsQuery,
   type ConnectionTotals,

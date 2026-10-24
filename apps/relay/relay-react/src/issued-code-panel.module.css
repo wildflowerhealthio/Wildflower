@@ -2,7 +2,7 @@
  * A claim code just issued, shown once: the code large in a monospace block,
  * its expiry, the warning, and Copy / Done.
  */
-.issued-claim-code-panel {
+.issued-code-panel {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
@@ -12,7 +12,7 @@
   background: var(--card-color-background);
 }
 
-.issued-claim-code-panel__code {
+.issued-code-panel__code {
   display: block;
   padding: var(--space-3);
   border-radius: var(--radius-3);
@@ -22,12 +22,12 @@
   letter-spacing: 0.1em;
 }
 
-.issued-claim-code-panel__warning {
+.issued-code-panel__warning {
   margin: 0;
   font-weight: 600;
 }
 
-.issued-claim-code-panel__actions {
+.issued-code-panel__actions {
   display: flex;
   gap: var(--space-3);
 }

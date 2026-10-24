@@ -44,7 +44,7 @@ pub struct Router {
 impl Router {
     /// `domain` is the suffix every tunnel's hostname ends in, e.g.
     /// `relay.example.com`; `local_hostnames` are the names the relay serves
-    /// itself, e.g. [`crate::FrontSettings::local_hostnames`]. All are
+    /// itself, e.g. [`crate::RelayHostnames::local_hostnames`]. All are
     /// case-folded and stripped of surrounding dots.
     #[must_use]
     pub fn new(

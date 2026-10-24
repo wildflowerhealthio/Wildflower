@@ -10,9 +10,12 @@
 //! default name of a tunnel created without one.
 //!
 //! A [`ClaimCode`] is a short, single-use code that redeems once for a
-//! tunnel's name and token. The [`ClaimCodeStore`] port keeps each as a
-//! [`StoredClaimCode`], by its [`ClaimCodeHash`]; the admin sees it once, as
-//! an [`IssuedClaimCode`].
+//! tunnel, its [`ClaimCodeTarget`]: a stored tunnel's name and token, or a
+//! new tunnel under the email and name the redeemer chooses. The
+//! [`ClaimCodeStore`] port keeps each as a [`StoredClaimCode`], by its
+//! [`ClaimCodeHash`]; the admin sees it once, as an [`IssuedClaimCode`].
+//! Redeeming one gives a [`RedeemedClaimCode`]; for a new tunnel, storing
+//! the tunnel and burning the code are one write.
 //!
 //! A connection to the front ends with an [`Outcome`], or, routed to a
 //! tunnel, a [`TunnelOutcome`]. The [`ConnectionTotalsStore`] port keeps how
@@ -23,11 +26,13 @@
 pub(crate) mod capabilities;
 mod claim_code;
 mod claim_code_store;
+mod claim_code_target;
 mod connection_outcome;
 mod connection_totals_store;
 mod hourly_count;
 mod issued_claim_code;
 pub mod names;
+mod redeemed_claim_code;
 mod reissued_tunnel;
 mod stored_claim_code;
 mod stored_tunnel;
@@ -43,10 +48,12 @@ pub(crate) mod test_fake;
 
 pub use claim_code::{ClaimCode, ClaimCodeHash};
 pub use claim_code_store::ClaimCodeStore;
+pub use claim_code_target::ClaimCodeTarget;
 pub use connection_outcome::{Outcome, TunnelOutcome};
 pub use connection_totals_store::ConnectionTotalsStore;
 pub use hourly_count::{hour_start, HourlyCount, HourlyTotals, HOUR_SECS};
 pub use issued_claim_code::IssuedClaimCode;
+pub use redeemed_claim_code::RedeemedClaimCode;
 pub use reissued_tunnel::ReissuedTunnel;
 pub use stored_claim_code::StoredClaimCode;
 pub use stored_tunnel::StoredTunnel;

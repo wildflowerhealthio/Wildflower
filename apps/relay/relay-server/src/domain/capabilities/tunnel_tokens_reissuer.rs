@@ -82,7 +82,10 @@ mod tests {
     use super::*;
     use crate::domain::capabilities::ClaimCodesRedeemer;
     use crate::domain::test_fake::{stored_tunnel, FakeTunnelStore};
-    use crate::domain::{ClaimCode, ClaimCodeStore, StoredClaimCode};
+    use crate::domain::{
+        ClaimCode, ClaimCodeStore, ClaimCodeTarget, RedeemedClaimCode, StoredClaimCode,
+    };
+    use crate::test_support::settings;
 
     /// A store holding `alice` and `bob`.
     fn store() -> FakeTunnelStore {
@@ -144,9 +147,11 @@ mod tests {
         let code = ClaimCode::generate(&mut StdRng::seed_from_u64(1));
         assert!(reissuer
             .store
-            .replace_claim_code(&StoredClaimCode {
+            .insert_claim_code(&StoredClaimCode {
                 code_hash: code.hash(),
-                tunnel_name: "alice".to_owned(),
+                target: ClaimCodeTarget::Preset {
+                    tunnel_name: "alice".to_owned(),
+                },
                 expires_at: 1_900,
             })
             .unwrap());
@@ -154,10 +159,16 @@ mod tests {
             .reissue("alice", &mut StdRng::seed_from_u64(0))
             .unwrap();
 
-        let redeemer = ClaimCodesRedeemer::new(reissuer.store);
+        let hostnames = settings(std::path::Path::new("/nonexistent"), None)
+            .front
+            .hostnames;
+        let redeemer = ClaimCodesRedeemer::new(reissuer.store, hostnames);
+        let mut rng = StdRng::seed_from_u64(2);
         assert_eq!(
-            redeemer.redeem(&code.to_string(), || Ok(1_000)).unwrap(),
-            reissued.stored.tunnel
+            redeemer
+                .redeem(&code.to_string(), None, &mut rng, || Ok(1_000))
+                .unwrap(),
+            RedeemedClaimCode::Preset(reissued.stored.tunnel)
         );
     }
 }

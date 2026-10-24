@@ -6,9 +6,10 @@
 //! `replace_token` return the tunnel as it was or `None` on a miss,
 //! `list_tunnels` is by name — it
 //! keeps tunnels with no diesel and no database. It is the
-//! [`ClaimCodeStore`] fake too, keeping at most one code per tunnel as the
-//! database's primary key does, and deleting a tunnel's code with it as its
-//! `ON DELETE CASCADE` does. And it is the [`ConnectionTotalsStore`] fake,
+//! [`ClaimCodeStore`] fake too, keeping codes by hash and at most one per
+//! tunnel as the database's keys do, and deleting a tunnel's code with it as
+//! its `ON DELETE CASCADE` does. And it is the [`ConnectionTotalsStore`]
+//! fake,
 //! one count per hour and outcome. The `SQLite` adapter's own coverage
 //! lives in `crate::db`.
 
@@ -16,8 +17,8 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 
 use crate::domain::{
-    ClaimCodeHash, ClaimCodeStore, ConnectionTotalsStore, HourlyCount, Outcome, StoredClaimCode,
-    StoredTunnel, Tunnel, TunnelError, TunnelStore,
+    ClaimCodeHash, ClaimCodeStore, ClaimCodeTarget, ConnectionTotalsStore, HourlyCount, Outcome,
+    StoredClaimCode, StoredTunnel, Tunnel, TunnelError, TunnelStore,
 };
 use crate::settings::Secret;
 
@@ -50,7 +51,7 @@ impl TunnelStore for FakeTunnelStore {
         let deleted = self.tunnels.borrow_mut().remove(name);
         self.claim_codes
             .borrow_mut()
-            .retain(|_, stored| stored.tunnel_name != name);
+            .retain(|_, stored| !names(&stored.target, name));
         Ok(deleted)
     }
 
@@ -66,38 +67,73 @@ impl TunnelStore for FakeTunnelStore {
 }
 
 impl ClaimCodeStore for FakeTunnelStore {
-    fn replace_claim_code(&self, stored: &StoredClaimCode) -> Result<bool, TunnelError> {
-        if !self.tunnels.borrow().contains_key(&stored.tunnel_name) {
-            return Err(TunnelError::infrastructure(
-                "storing the claim code failed",
-                "FOREIGN KEY constraint failed",
-            ));
+    fn insert_claim_code(&self, stored: &StoredClaimCode) -> Result<bool, TunnelError> {
+        if let ClaimCodeTarget::Preset { tunnel_name } = &stored.target {
+            if !self.tunnels.borrow().contains_key(tunnel_name) {
+                return Err(TunnelError::infrastructure(
+                    "storing the claim code failed",
+                    "FOREIGN KEY constraint failed",
+                ));
+            }
         }
         let mut claim_codes = self.claim_codes.borrow_mut();
         if claim_codes.contains_key(&stored.code_hash) {
             return Ok(false);
         }
-        claim_codes.retain(|_, outstanding| outstanding.tunnel_name != stored.tunnel_name);
+        if let ClaimCodeTarget::Preset { tunnel_name } = &stored.target {
+            claim_codes.retain(|_, outstanding| !names(&outstanding.target, tunnel_name));
+        }
         claim_codes.insert(stored.code_hash, stored.clone());
         Ok(true)
     }
 
-    fn take_claim_code(
+    fn claim_code_target(
+        &self,
+        code_hash: &ClaimCodeHash,
+        now: i64,
+    ) -> Result<Option<ClaimCodeTarget>, TunnelError> {
+        Ok(self
+            .claim_codes
+            .borrow()
+            .get(code_hash)
+            .filter(|stored| stored.expires_at > now)
+            .map(|stored| stored.target.clone()))
+    }
+
+    fn take_preset_claim_code(
         &self,
         code_hash: &ClaimCodeHash,
         now: i64,
     ) -> Result<Option<Tunnel>, TunnelError> {
-        let mut claim_codes = self.claim_codes.borrow_mut();
-        match claim_codes.get(code_hash) {
-            Some(stored) if stored.expires_at > now => {}
-            _ => return Ok(None),
-        }
-        let taken = claim_codes.remove(code_hash).expect("just found");
+        let Some(ClaimCodeTarget::Preset { tunnel_name }) =
+            self.claim_code_target(code_hash, now)?
+        else {
+            return Ok(None);
+        };
+        self.claim_codes.borrow_mut().remove(code_hash);
         Ok(self
             .tunnels
             .borrow()
-            .get(&taken.tunnel_name)
+            .get(&tunnel_name)
             .map(|stored| stored.tunnel.clone()))
+    }
+
+    fn take_open_claim_code_for_tunnel(
+        &self,
+        code_hash: &ClaimCodeHash,
+        now: i64,
+        tunnel: &StoredTunnel,
+    ) -> Result<Option<StoredClaimCode>, TunnelError> {
+        if self.claim_code_target(code_hash, now)? != Some(ClaimCodeTarget::Open) {
+            return Ok(None);
+        }
+        if !self.insert_tunnel(tunnel)? {
+            return Err(TunnelError::infrastructure(
+                "redeeming the claim code failed",
+                "UNIQUE constraint failed: tunnels.name",
+            ));
+        }
+        Ok(self.claim_codes.borrow_mut().remove(code_hash))
     }
 
     fn delete_expired_claim_codes(&self, now: i64) -> Result<usize, TunnelError> {
@@ -106,6 +142,11 @@ impl ClaimCodeStore for FakeTunnelStore {
         claim_codes.retain(|_, stored| stored.expires_at > now);
         Ok(before - claim_codes.len())
     }
+}
+
+/// Whether `target` is a preset code for the tunnel named `tunnel_name`.
+fn names(target: &ClaimCodeTarget, tunnel_name: &str) -> bool {
+    matches!(target, ClaimCodeTarget::Preset { tunnel_name: named } if named == tunnel_name)
 }
 
 impl ConnectionTotalsStore for FakeTunnelStore {
