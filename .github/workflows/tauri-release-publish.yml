@@ -243,10 +243,6 @@ jobs:
         # `rustflags` feeds setup-rust-toolchain, whose own default is empty, so
         # each entry sets `-D warnings`. The value lands in `RUSTFLAGS`, which
         # forks the per-platform cache keys below.
-        # Windows adds `advapi32.lib` to every link: `rathole`'s build script
-        # (via libgit2-sys 0.14) needs it and doesn't link it itself — see
-        # "Windows Tauri release links need advapi32.lib" in
-        # docs/Agents/Learnings Inbox.md.
         # `environment` is the GitHub environment holding the entry's signing
         # credentials; an empty one gives that job no environment, so the
         # Developer ID `.p12` reaches only the macOS runner.
@@ -263,7 +259,7 @@ jobs:
                   rustflags: "-D warnings", environment: "apple-macos-direct" },
                 { key: "windows", name: "Windows", os: "windows-latest",
                   args: "", "rust-targets": "",
-                  rustflags: "-D warnings -C link-arg=advapi32.lib", environment: "" },
+                  rustflags: "-D warnings", environment: "" },
                 { key: "linux",   name: "Linux", os: "ubuntu-22.04",
                   args: "", "rust-targets": "",
                   rustflags: "-D warnings", environment: "" }

@@ -164,12 +164,6 @@ fixture is broken. When a source's parser matches a token by pattern, give
 that token its own leaf shape in `har-importer-core`'s `shapes.ts` that keeps
 the literal and fakes only the data part.
 
-## Windows Tauri release links need `advapi32.lib` because of `rathole`'s build script
-
-**Discovered during**: claude/deploy-actions-failures-s75kxq (v0.2.0 Publish run)
-**Learning**: `rathole` 0.5's build script depends on `vergen` 7 → `git2` → `libgit2-sys` 0.14, whose build.rs links winhttp/rpcrt4/ole32/crypt32 but not advapi32; the pinned toolchain's std no longer pulls advapi32 in implicitly, so the build-script link dies with `LNK2019: unresolved external symbol __imp_OpenProcessToken` after ~20 min of compiling. Linux CI never sees it. `tauri-release-publish.yml` passes `-C link-arg=advapi32.lib` in the Windows matrix entry's `rustflags`; if a Windows machine hits the same error locally, set `RUSTFLAGS` the same way. It goes away once rathole drops vergen 7 / git2.
-**Suggested destination**: Rust docs
-
 ## `tauri-action` picks npm when the lockfile is not inside `projectPath`
 
 **Discovered during**: claude/deploy-actions-failures-s75kxq
@@ -533,3 +527,9 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 **Discovered during**: claude/determined-gates-3wt19a (TestFlight crash: `BGTaskScheduler` "submission without registration" at launch)
 **Learning**: In Tauri 2.11, `PluginManager.load` (`mobile/ios-api/Sources/Tauri/Tauri.swift`) registers a plugin during setup with no webview and defers `load(webview:)` to `onWebviewCreated`, but `run_mobile_plugin` commands reach the instance before that. Setup work a command depends on, such as `BGTaskScheduler.register`, belongs in the plugin's `@_cdecl("init_plugin_…")` entry point, not `load(webview:)`. Also, iOS calls `BGTask.expirationHandler` on a background queue even when the task was registered `using: .main`, because that queue covers only the launch handler.
 **Suggested destination**: a Tauri plugin How-To, or the background-service fork's `docs/ios.md`
+
+## helios pins `serde` and `serde_json` exactly, which freezes them workspace-wide
+
+**Discovered during**: ruthmarks/rust-security-advisories
+**Learning**: helios (HFS) 0.2.x declares `serde = "=1.0.224"` and `serde_json = "=1.0.144"` in its workspace dependencies, so `cargo update` holds both crates, and every crate that needs a newer one, at a version they accept. That blocked the patched `jsonwebtoken` 10.3+ (needs `serde ^1.0.228`) and `serde_with` 3.21+ (needs `serde_core ^1.0.225`). When `cargo update -p <crate>` reports `Locking 0 packages` with a newer version available, try `--precise <version>` to see which pin blocks it.
+**Suggested destination**: a Rust dependencies How-To

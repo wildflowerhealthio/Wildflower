@@ -1253,15 +1253,18 @@ impl UiServer {
 async fn the_fhir_ui_sends_its_sign_in_through_the_authorization_server() {
     let server = UiServer::start().await;
 
-    // The UI's assets are served before sign-in, past the gate; a `/ui` path
-    // the UI doesn't serve falls through to the gate.
+    // The UI's assets are served before sign-in, past the gate; any other
+    // `/ui` path is the UI's own, an unknown one included, so a browser
+    // without a session is sent to its sign-in.
     assert_eq!(
         server.tunnel.send(get("/ui/assets/app.css")).await.status,
         StatusCode::OK
     );
+    let unknown_page = server.tunnel.send(get("/ui/no-such-page")).await;
+    assert_eq!(unknown_page.status, StatusCode::SEE_OTHER);
     assert_eq!(
-        server.tunnel.send(get("/ui/no-such-page")).await.status,
-        StatusCode::UNAUTHORIZED
+        unknown_page.location(),
+        "/ui/login?next=%2Fui%2Fno-such-page"
     );
 
     let login = server.tunnel.send(get("/ui/login")).await;
