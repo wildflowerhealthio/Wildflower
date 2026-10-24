@@ -13,6 +13,28 @@ if you want to expand on a release.
 
 <!-- release-notes-start -->
 
+## v0.4.1 — 2026-10-24
+
+- fix(ci): pin cargo-edit in release prepare (#1395) (16b5004b)
+- Version bumps for rustsec advisories (#1394) (2486b808)
+- chore(deps): bump uuid from 7.0.3 to 9.0.1 (#1393) (23a19b4a)
+- Relay claim codes that name no tunnel: the redeemer picks their email and subdomain (#1392) (b79b03a6)
+- fix(host): pick up the background-service fork's iOS crash fixes (#1391) (564ce1db)
+- feat(plots): first-run walkthrough (#1388) (eefe9633)
+- feat(medications): first-run walkthrough (#1387) (bc5efe62)
+- feat(launcher): first-run walkthrough (#1385) (bb14596a)
+- feat(importer): first-run walkthrough (#1386) (3a2dedeb)
+- feat(host): first-run walkthrough (#1384) (c139403f)
+- feat(react-tundraish,smart-app-react): pass root element props through PatientChoiceLine and SettingsLink (#1390) (99760111)
+- fix(deps): bump rustls-webpki, tokio, webpki-roots for RUSTSEC advisories (#1389) (bf3dfc2b)
+- feat(walkthrough): walkthrough-core + walkthrough-react on driver.js (#1383) (938d5c22)
+- feat(relay): claim codes redeem for ten days by default (#1375) (3c9b5372)
+- feat(plots): switch between chart, table and scatter views (#1371) (afbc25f1)
+- feat(plots): same-unit series with similar ranges share one value axis (#1370) (5bb1bf04)
+- relay: log refused :443 connections' detail to the connection log (#1315) (09ec4c4f)
+- release: ship native debug symbols in the Android bundle (#1372) (ad207cad)
+- refactor(relay): one wording per TunnelError reason, and an honest failure log line (#1326) (2f6da447)
+
 ## v0.4.0 — 2026-10-20
 
 - Recorder: bookmarks instead of suggested URLs, with when each was last recorded (#1120) (#1278) (57b5f0e9)
