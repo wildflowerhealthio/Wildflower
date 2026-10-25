@@ -154,7 +154,10 @@ the Play upload fails with Play's own reason.
 **Where it lands.** The bundle is uploaded to the `internal` testing track as
 a **draft** release, which a person rolls out to the track's testers from Play
 Console. Draft is also the only status the API accepts until the app has been
-published once. R8's `mapping.txt` goes with it, so Play can deobfuscate crash
+published once. The upload commits its edit without sending it for review
+(`changesNotSentForReview`), since Play refuses to send one automatically
+while the app has other changes pending in Play Console; the person rolling
+the draft out sends the changes for review from there. R8's `mapping.txt` goes with it, so Play can deobfuscate crash
 reports. The Rust library's symbol table travels inside the bundle, from the
 release build type's `debugSymbolLevel`, so Play can symbolicate native
 crashes and ANRs. Gradle finds the NDK it extracts the table with through

@@ -816,6 +816,11 @@ jobs:
         # A draft release on the internal track, for a person to roll out from
         # Play Console. Draft is also the only status the API accepts while
         # the app has never been published.
+        #
+        # `changesNotSentForReview` commits the edit without sending it for
+        # review: Play refuses to send one automatically while the app has
+        # other changes pending in Play Console, so the person rolling the
+        # draft out sends it for review from there.
         if: ${{ !contains(needs.prepare.outputs.version, '-') }}
         uses: r0adkll/upload-google-play@v1.1.5
         with:
@@ -825,6 +830,7 @@ jobs:
           track: internal
           status: draft
           mappingFile: ${{ steps.build.outputs.mapping }}
+          changesNotSentForReview: true
 
   # Both watch apps in one job, so the Pebble SDK is installed once. The job id
   # and the `pebble-<app>` artifact names are what jobs downstream download.
