@@ -1,16 +1,16 @@
 {
-  "version": "0.4.2",
-  "tag": "v0.4.2",
-  "releaseUrl": "https://github.com/wildflowerhealthio/Wildflower/releases/tag/v0.4.2",
+  "version": "0.4.3",
+  "tag": "v0.4.3",
+  "releaseUrl": "https://github.com/wildflowerhealthio/Wildflower/releases/tag/v0.4.3",
   "platforms": {
     "darwin-universal": {
-      "url": "https://github.com/wildflowerhealthio/Wildflower/releases/download/v0.4.2/Wildflower_0.4.2_universal.dmg"
+      "url": "https://github.com/wildflowerhealthio/Wildflower/releases/download/v0.4.3/Wildflower_0.4.3_universal.dmg"
     },
     "windows-x86_64": {
-      "url": "https://github.com/wildflowerhealthio/Wildflower/releases/download/v0.4.2/Wildflower_0.4.2_x64_en-US.msi"
+      "url": "https://github.com/wildflowerhealthio/Wildflower/releases/download/v0.4.3/Wildflower_0.4.3_x64_en-US.msi"
     },
     "linux-x86_64": {
-      "url": "https://github.com/wildflowerhealthio/Wildflower/releases/download/v0.4.2/host-app_0.4.2_amd64.AppImage"
+      "url": "https://github.com/wildflowerhealthio/Wildflower/releases/download/v0.4.3/host-app_0.4.3_amd64.AppImage"
     }
   }
 }
