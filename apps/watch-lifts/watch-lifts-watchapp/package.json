@@ -1,6 +1,6 @@
 {
   "name": "@wildflowerhealthio/watch-lifts-watchapp",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "private": true,
   "keywords": [
     "pebble-app"

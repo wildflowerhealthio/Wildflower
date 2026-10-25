@@ -13,6 +13,10 @@ if you want to expand on a release.
 
 <!-- release-notes-start -->
 
+## v0.4.3 — 2026-10-25
+
+- Fix the Android bundle's missing native symbol table, and build it on PRs (#1400) (2ec72086)
+
 ## v0.4.2 — 2026-10-24
 
 - Name the NDK version Gradle extracts Android debug symbols with (#1398) (b05d3091)
