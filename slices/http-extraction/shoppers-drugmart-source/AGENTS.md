@@ -17,15 +17,19 @@ rather than a copy, and what it writes is what the response kinds read.
 ## Shape
 
 - `src/response-kinds/customer-response-kind.ts` —
-  `…/api/v1/customers/pcid/<uuid>` → one demographic `Patient` per managed person,
-  plus a linked account `Patient` keyed by `pcid`.
+  `…/api/v1/customers/pcid/<uuid>` → one demographic `Patient` per managed
+  person, the holder included, and nothing for the account itself. When the
+  account lists exactly one person, the account's email and phone join that
+  person's `telecom` (each once); with several, they are dropped. The
+  account's own name and address are not read.
 - `src/response-kinds/prescription-response-kind.ts` —
   `…/prescriptions/:uuid/prescription-status` → one `MedicationRequest` + one
   `MedicationDispense` per dispense entry.
 - `src/response-kinds/prescription-history-response-kind.ts` —
   `…/prescription-history?customerId=…` → one `MedicationDispense` per history
-  entry (no Patient, no MedicationRequest), its `subject` the **account**
-  `Patient` (see [Conventional slots](#conventional-slots)).
+  entry (no Patient, no MedicationRequest), with **no `subject`** (see
+  [Conventional slots](#conventional-slots)). The `customerId` only recognizes
+  the XHR.
 - `src/response-kinds/medication-wire.ts` — the `medicationCodeableConcept`
   builder (brand/chemical text + DIN codings) shared by the two dispense-emitting
   entities.
@@ -72,9 +76,15 @@ rather than a copy, and what it writes is what the response kinds read.
 - `src/merge-resources.ts` — `mergeShoppersResources`, the source's
   `mergeResources`: a fill seen in both prescription feeds, as one
   `MedicationDispense` (see [Traps](#traps)).
+- `src/history-fill-subjects.ts` — `completeShoppersExtraction`, the source's
+  `completeFromExtraction`: when the extraction holds exactly one Patient,
+  every fill with no `subject` gets that Patient. Otherwise the fills keep no
+  `subject`, and are counted in one `Effect.logInfo` (see
+  [Traps](#traps)).
 - `src/source.ts` — `shoppersDrugMartSource`, the package's primary export: the
   `SourceDescriptor` (`name: 'shoppers-drugmart'`, display strings, the
-  pre-adopted `responseKinds`, and `mergeShoppersResources`).
+  pre-adopted `responseKinds`, `mergeShoppersResources` and
+  `completeShoppersExtraction`).
 
 ## Layering
 
@@ -93,11 +103,11 @@ and `rexall-be-well-source` alike:
 
 - **Subject** — a status-feed `MedicationRequest` or `MedicationDispense` names
   the managed **person** (`Patient/<patientId>`). A history-feed
-  `MedicationDispense` names the **account** (`Patient/<pcid>`, the URL's
-  `customerId`), with the `pcid` as the reference's `identifier` under
-  `ShoppersIdentifierSystem.PcId`: the history payload does not say which
-  managed person a fill was for. Adoption lands that reference on the account
-  `Patient` `CustomerResponseKind` emits, which `link.seealso`s every person.
+  `MedicationDispense` names nobody when the kind emits it: the history
+  payload does not say which managed person a fill was for, and prescriptions
+  are filled for a person, not an account, so the account is no Patient.
+  `completeShoppersExtraction` then files it on the extraction's one
+  Patient.
 - **DIN** — one coding on `medicationCodeableConcept` under `fhir-r4`'s
   canonical `CanadianCodingSystem.Din`
   (`http://hl7.org/fhir/NamingSystem/ca-hc-din`). The portal does not namespace
@@ -126,14 +136,21 @@ and `rexall-be-well-source` alike:
 
 ## Traps
 
+- **An account that manages more than one person is not supported** until
+  one can be tested against a real account. Nothing is guessed: its history
+  fills keep no `subject` (counted and logged), even where the prescription a
+  fill names says whom it was for, and the account's email and phone go
+  nowhere. Its status-feed requests and dispenses still name their person.
+
 - **A prescription's latest fill is in both feeds under one `dispenseId`,**
   so under one adopted id, and each copy knows something the other does not.
   `mergeShoppersResources` makes them one: the status copy's `subject`,
   `status`, `authorizingPrescription` and `location.reference`, with the
   history copy's store name as `location.display`, and its DIN coding when the
   status copy has none. It tells the copies apart by the history copy's
-  account-`pcid` subject identifier, so the result is the same in either
-  arrival order. Only a consumer that holds both copies applies it (the HAR
+  missing `subject`, so the result is the same in either arrival order. That
+  marker holds because `completeShoppersExtraction` runs only after every
+  merge. Only a consumer that holds both copies applies them (the HAR
   import).
 - **`responseKinds` order is not load-bearing, and should stay that way.** The
   three recognizers are disjoint by construction (different path segments:

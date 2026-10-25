@@ -328,10 +328,7 @@ const shoppersExchanges = (): readonly TraceExchange[] =>
     {
       url: customerUrlOf(SHOPPERS_ACCOUNT_ID),
       body: {
-        customer: {
-          pcid: SHOPPERS_ACCOUNT_ID,
-          patients: [{ id: SHOPPERS_PERSON_ID, firstName: 'Ada' }],
-        },
+        customer: { patients: [{ id: SHOPPERS_PERSON_ID, firstName: 'Ada' }] },
       },
     },
     {
@@ -387,9 +384,7 @@ describe('harImporter.decode over a Shoppers capture', () => {
     'should import a fill in both feeds as one dispense naming the person ($order)',
     async ({ exchanges }) => {
       const resources = await shoppersResourcesOf(exchanges)
-      const person = resources.find(
-        (resource) => resource.resourceType === 'Patient' && resource.link.length === 0
-      )
+      const person = resources.find((resource) => resource.resourceType === 'Patient')
       const dispenses = resources.flatMap((resource) =>
         resource.resourceType === 'MedicationDispense' ? [resource] : []
       )
@@ -402,22 +397,47 @@ describe('harImporter.decode over a Shoppers capture', () => {
       ).toEqual([{ subject: `Patient/${person?.id}`, store: SHOPPERS_STORE_NAME }])
     }
   )
+
+  it('should file a fill only the history feed lists on the account’s one person', async () => {
+    const exchanges = shoppersExchanges().map((exchange, index) =>
+      index === 2
+        ? traceExchange({
+            requestId: 'req-2',
+            url: prescriptionHistoryUrlOf(SHOPPERS_ACCOUNT_ID),
+            body: storedJson({
+              dispenses: [
+                { prescriptionId: SHOPPERS_PRESCRIPTION_ID, dispenseId: 'disp-1' },
+                { prescriptionId: SHOPPERS_PRESCRIPTION_ID, dispenseId: 'disp-earlier' },
+              ],
+            }),
+            startedAtMillis: CAPTURE_FLOOR + index * 1000,
+          })
+        : exchange
+    )
+
+    const resources = await shoppersResourcesOf(exchanges)
+
+    const person = resources.find((resource) => resource.resourceType === 'Patient')
+    expect(
+      resources.flatMap((resource) =>
+        resource.resourceType === 'MedicationDispense' ? [resource.subject?.reference] : []
+      )
+    ).toEqual([`Patient/${person?.id}`, `Patient/${person?.id}`])
+  })
 })
 
 /**
  * A two-person Shoppers account (as `customer-response-kind.test.ts` models
- * it): Sam's prescription is in the status feed with its latest fill; the
- * history feed adds an earlier fill of it, and a fill of a prescription the
- * capture has no status for. Nobody has checked this against a real
- * multi-person account.
+ * it), which the source does not support yet: Sam's prescription is in the
+ * status feed with its latest fill; the history feed adds an earlier fill of
+ * it, and a fill of a prescription the capture has no status for.
  */
-const householdExchanges = (): readonly TraceExchange[] =>
+const twoPersonExchanges = (): readonly TraceExchange[] =>
   [
     {
       url: customerUrlOf(SHOPPERS_ACCOUNT_ID),
       body: {
         customer: {
-          pcid: SHOPPERS_ACCOUNT_ID,
           patients: [
             { id: 'pt-dana', firstName: 'Dana' },
             { id: 'pt-sam', firstName: 'Sam' },
@@ -452,32 +472,34 @@ const householdExchanges = (): readonly TraceExchange[] =>
     })
   )
 
-describe('a Shoppers household account through the staged import', () => {
-  it("should file every fill the capture attributes on the person Sam's Patient merges into, and leave the rest on the account", async () => {
+describe('a two-person Shoppers capture through the staged import', () => {
+  it("should file only the status feed's fill on the person Sam's Patient merges into, leave every history-only fill with no subject, and write no account Patient", async () => {
     const result = await readOne({
-      id: '0:household.har',
-      fileName: 'household.har',
-      bytes: harBytesOf(householdExchanges()),
+      id: '0:two-person.har',
+      fileName: 'two-person.har',
+      bytes: harBytesOf(twoPersonExchanges()),
     })
     const labeled = DecodedFile.resources(result.decoded)
-    const samKey = labeled.find(
-      ({ resource }) =>
-        resource.resourceType === 'Patient' &&
-        resource.identifier.some(
-          (identifier) =>
-            identifier.system?.href === ShoppersIdentifierSystem.PatientId &&
-            identifier.value === 'pt-sam'
-        )
-    )?.key
-    const account = labeled.find(
-      ({ resource }) => resource.resourceType === 'Patient' && resource.link.length > 0
-    )?.resource
-    if (samKey === undefined || account === undefined) throw new Error('expected both Patients')
+    const patientOf = (patientId: string): DecodedFile.Resource | undefined =>
+      labeled.find(
+        ({ resource }) =>
+          resource.resourceType === 'Patient' &&
+          resource.identifier.some(
+            (identifier) =>
+              identifier.system?.href === ShoppersIdentifierSystem.PatientId &&
+              identifier.value === patientId
+          )
+      )
+    const sam = patientOf('pt-sam')
+    const dana = patientOf('pt-dana')
+    if (sam?.resource.resourceType !== 'Patient' || dana === undefined) {
+      throw new Error('expected both Patients')
+    }
     const person = {
       ...Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id: 'person-sam' }),
       id: 'person-sam',
     }
-    const selection = StagedImport.assignPatient(StagedImport.initial(), samKey, { person })
+    const selection = StagedImport.assignPatient(StagedImport.initial(), sam.key, { person })
 
     const chosen = StagedImport.chosenResources(labeled, selection)
 
@@ -487,15 +509,21 @@ describe('a Shoppers household account through the staged import', () => {
         const dispenseId = resource.identifier.find(
           (identifier) => identifier.system?.href === ShoppersIdentifierSystem.DispenseId
         )?.value
-        return [[dispenseId ?? '', resource.subject?.reference ?? null] as const]
+        return [[dispenseId ?? '', resource.subject] as const]
       })
     )
-    expect(dispenseSubjects).toEqual({
-      'disp-latest': 'Patient/person-sam',
-      'disp-earlier': 'Patient/person-sam',
-      'disp-unknown': `Patient/${account.id}`,
+    const samSubject = {
+      reference: 'Patient/person-sam',
+      identifier: sam.resource.identifier[0] ?? null,
+    }
+    expect(dispenseSubjects).toMatchObject({
+      'disp-latest': samSubject,
+      'disp-earlier': null,
+      'disp-unknown': null,
     })
-    expect(StagedImport.dispensesLeftOnAccountCount(labeled, selection)).toBe(1)
+    expect(
+      chosen.flatMap((resource) => (resource.resourceType === 'Patient' ? [resource.id] : []))
+    ).toEqual([dana.resource.id, 'person-sam'])
   })
 })
 

@@ -62,8 +62,6 @@ interface Imported {
   readonly dispenses: readonly MedicationDispense.Type[]
   /** The Patient per managed person, in portal order. */
   readonly personPatients: readonly Patient.Type[]
-  /** The account holder's Patient, keyed by `pcid`, which links to every managed person's. */
-  readonly accountPatients: readonly Patient.Type[]
 }
 
 const isDispense = (resource: FhirResource): resource is MedicationDispense.Type =>
@@ -81,9 +79,6 @@ const importHar = async (har: string): Promise<Imported> => {
     .filter((section) => section.title !== 'Source file')
     .map((section) => section.resources.map((entry) => entry.resource))
   const resources = sections.flat()
-  const patients = resources.flatMap((resource) =>
-    resource.resourceType === 'Patient' ? [resource] : []
-  )
   return {
     notes: result.decoded.notes,
     unreadableFiles: result.unreadableFiles,
@@ -95,8 +90,9 @@ const importHar = async (har: string): Promise<Imported> => {
         : []
     ),
     dispenses: resources.filter(isDispense),
-    personPatients: patients.filter((patient) => patient.link.length === 0),
-    accountPatients: patients.filter((patient) => patient.link.length > 0),
+    personPatients: resources.flatMap((resource) =>
+      resource.resourceType === 'Patient' ? [resource] : []
+    ),
   }
 }
 
@@ -236,29 +232,38 @@ describe(
       })
     })
 
-    test('property: yields a Patient per managed person, and the holder again as the account Patient linking them', async () => {
+    test("property: a one-person account's email and phone are its person's, and a family's are nobody's", async () => {
+      await assertRoundTrip(({ shoppersCase }, imported) => {
+        const { account } = shoppersCase
+        const telecomOf = (index: number): readonly string[] =>
+          (imported.personPatients[index]?.telecom ?? []).map(
+            (telecom) => `${telecom.system} ${telecom.value}`
+          )
+        account.patients.forEach((managed, index) => {
+          const own = [`phone ${managed.phoneNumber}`]
+          const accountContacts =
+            account.patients.length === 1
+              ? [`email ${managed.story.person.email}`, `phone ${account.phoneNumber}`]
+              : []
+          expect(telecomOf(index)).toEqual([...new Set([...own, ...accountContacts])])
+        })
+      })
+    })
+
+    test('property: yields a Patient per managed person, and none for the account', async () => {
       await assertRoundTrip(({ shoppersCase }, imported) => {
         expect(
           imported.personPatients.map((patient) => [
             patient.name[0]?.given,
             patient.name[0]?.family,
+            patient.link,
           ])
         ).toEqual(
           shoppersCase.patients.map(({ story: { person } }) => [
             [person.givenName],
             person.familyName,
+            [],
           ])
-        )
-        expect(imported.accountPatients).toHaveLength(1)
-        const [accountPatient] = imported.accountPatients
-        const holder = shoppersCase.account.patients[0].story.person
-        expect(accountPatient?.name[0]).toMatchObject({
-          given: [holder.givenName],
-          family: holder.familyName,
-        })
-        expect(accountPatient?.telecom.map((telecom) => telecom.system)).toEqual(['email', 'phone'])
-        expect(accountPatient?.link.map((link) => [link.type, link.other.reference])).toEqual(
-          imported.personPatients.map((patient) => ['seealso', `Patient/${patient.id}`])
         )
       })
     })
@@ -289,7 +294,7 @@ describe(
         expect(imported.dispenses).toHaveLength(fillCount)
         expect(new Set(imported.dispenses.map((dispense) => dispense.id)).size).toBe(fillCount)
         expect(imported.resources).toHaveLength(
-          shoppersCase.patients.length + 1 + prescriptions.length + fillCount
+          shoppersCase.patients.length + prescriptions.length + fillCount
         )
       })
     })
@@ -368,9 +373,10 @@ describe(
       })
     })
 
-    test('property: every latest fill names the patient, and every earlier fill the account', async () => {
+    test("property: every fill names its patient on a one-person account, and only each latest fill on a family's", async () => {
       await assertRoundTrip(({ asOf, shoppersCase }, imported) => {
-        const accountReference = `Patient/${imported.accountPatients[0]?.id}`
+        // An account managing several people is not supported: its history-only fills name nobody.
+        const isOnePersonAccount = shoppersCase.patients.length === 1
         for (const each of prescriptionsOf(shoppersCase)) {
           const request = requestFor(asOf, imported, each)
           const lastFillDate = isoDateOn(asOf, each.expected.lastFillDay)
@@ -386,7 +392,9 @@ describe(
               .map((day) => {
                 const fillDate = isoDateOn(asOf, day)
                 const subject =
-                  fillDate === lastFillDate ? request?.subject.reference : accountReference
+                  isOnePersonAccount || fillDate === lastFillDate
+                    ? request?.subject.reference
+                    : undefined
                 return `${fillDate} ${subject}`
               })
               .toSorted()

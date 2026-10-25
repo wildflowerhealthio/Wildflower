@@ -34,7 +34,8 @@ const runParse = (
 
 /**
  * A representative multi-patient customers payload modelled on the real capture
- * (two managed people, an account address/telecom), with obviously-fake values.
+ * (two managed people, and the account's own fields the kind does not read),
+ * with obviously-fake values.
  * A test can pass its own `customer` (and sibling keys) to pin a minimal shape.
  */
 const customerPayload = (overrides?: Record<string, unknown>): Record<string, unknown> =>
@@ -126,12 +127,12 @@ describe('CustomerResponseKind', () => {
   })
 
   describe('parse', () => {
-    it('emits a demographic Patient per managed person and a linked account Patient', () => {
+    it('emits a demographic Patient per managed person, in payload order, and none for the account', () => {
       // Act
       const result = parse(customerPayload())
 
-      // Assert — whole-value on the full emitted batch (demographic patients
-      // first, in payload order, then the account patient carrying the links).
+      // Assert — whole-value on the full emitted batch: with two people, the
+      // account's own name, email, phone and address become nothing.
       expect(result).toStrictEqual([
         decodePatient({
           resourceType: 'Patient',
@@ -149,29 +150,56 @@ describe('CustomerResponseKind', () => {
           telecom: [{ system: 'phone', value: '6135550111' }],
           address: [{ line: ['77 King St'], city: 'Ottawa', state: 'ON', postalCode: 'K1A 0B1' }],
         }),
-        decodePatient({
-          resourceType: 'Patient',
-          id: 'acct-uuid-1',
-          identifier: [{ system: ShoppersIdentifierSystem.PcId, value: 'acct-uuid-1' }],
-          name: [{ family: 'Okafor', given: ['Dana'] }],
-          telecom: [
-            { system: 'email', value: 'dana.okafor@example.com' },
-            { system: 'phone', value: '4165550100' },
-          ],
-          address: [{ line: ['12 Maple Ave'], city: 'Toronto', state: 'ON' }],
-          link: [
-            { other: { reference: 'Patient/pt-uuid-1' }, type: 'seealso' },
-            { other: { reference: 'Patient/pt-uuid-2' }, type: 'seealso' },
-          ],
-        }),
       ])
     })
 
-    it('drops a patient entry with no id and links only the survivors', () => {
+    it.each([
+      {
+        case: 'the same phone as the person',
+        accountPhone: '4165550100',
+        telecom: [
+          { system: 'phone', value: '4165550100' },
+          { system: 'email', value: 'dana.okafor@example.com' },
+        ],
+      },
+      {
+        case: 'another phone',
+        accountPhone: '4165550199',
+        telecom: [
+          { system: 'phone', value: '4165550100' },
+          { system: 'email', value: 'dana.okafor@example.com' },
+          { system: 'phone', value: '4165550199' },
+        ],
+      },
+    ])(
+      "gives an account's one person the account's email and phone, once each ($case)",
+      ({ accountPhone, telecom }) => {
+        const result = parse(
+          customerPayload({
+            customer: {
+              email: 'dana.okafor@example.com',
+              phoneNumber: accountPhone,
+              patients: [{ id: 'pt-uuid-1', firstName: 'Dana', phoneNumber: '4165550100' }],
+            },
+          })
+        )
+
+        expect(result).toStrictEqual([
+          decodePatient({
+            resourceType: 'Patient',
+            id: 'pt-uuid-1',
+            identifier: [{ system: ShoppersIdentifierSystem.PatientId, value: 'pt-uuid-1' }],
+            name: [{ given: ['Dana'] }],
+            telecom,
+          }),
+        ])
+      }
+    )
+
+    it('drops a patient entry with no id and keeps the rest', () => {
       // Arrange — the second patient has no id.
       const payload = customerPayload({
         customer: {
-          pcid: 'acct-uuid-1',
           patients: [
             { id: 'pt-uuid-1', firstName: 'Dana', lastName: 'Okafor' },
             { firstName: 'Ghost', lastName: 'NoId' },
@@ -182,7 +210,7 @@ describe('CustomerResponseKind', () => {
       // Act
       const result = parse(payload)
 
-      // Assert — one demographic Patient, and the account links only to it.
+      // Assert — one demographic Patient.
       expect(result).toStrictEqual([
         decodePatient({
           resourceType: 'Patient',
@@ -190,22 +218,14 @@ describe('CustomerResponseKind', () => {
           identifier: [{ system: ShoppersIdentifierSystem.PatientId, value: 'pt-uuid-1' }],
           name: [{ family: 'Okafor', given: ['Dana'] }],
         }),
-        decodePatient({
-          resourceType: 'Patient',
-          id: 'acct-uuid-1',
-          identifier: [{ system: ShoppersIdentifierSystem.PcId, value: 'acct-uuid-1' }],
-          link: [{ other: { reference: 'Patient/pt-uuid-1' }, type: 'seealso' }],
-        }),
       ])
     })
 
     it('keeps a patient with an id whose other fields are null or malformed, without those fields', () => {
       // Arrange — the phone number sent as a number, a null last name, an
-      // address part that is not a string, and an account email that is null.
+      // address part that is not a string.
       const payload = customerPayload({
         customer: {
-          pcid: 'acct-uuid-1',
-          email: null,
           patients: [
             {
               id: 'pt-uuid-1',
@@ -221,7 +241,7 @@ describe('CustomerResponseKind', () => {
       // Act
       const result = parse(payload)
 
-      // Assert — the person, and the account's link to them, survive.
+      // Assert — the person survives.
       expect(result).toStrictEqual([
         decodePatient({
           resourceType: 'Patient',
@@ -230,12 +250,6 @@ describe('CustomerResponseKind', () => {
           name: [{ given: ['Dana'] }],
           address: [{ line: ['12 Maple Ave'], state: 'ON' }],
         }),
-        decodePatient({
-          resourceType: 'Patient',
-          id: 'acct-uuid-1',
-          identifier: [{ system: ShoppersIdentifierSystem.PcId, value: 'acct-uuid-1' }],
-          link: [{ other: { reference: 'Patient/pt-uuid-1' }, type: 'seealso' }],
-        }),
       ])
     })
 
@@ -243,7 +257,6 @@ describe('CustomerResponseKind', () => {
       // Arrange
       const payload = customerPayload({
         customer: {
-          pcid: 'acct-uuid-1',
           patients: [null, 'pt-uuid-9', { id: 7, firstName: 'Numeric' }, { id: 'pt-uuid-1' }],
         },
       })
@@ -252,31 +265,17 @@ describe('CustomerResponseKind', () => {
       const result = parse(payload)
 
       // Assert
-      expect(result.map((resource) => resource.id)).toStrictEqual(['pt-uuid-1', 'acct-uuid-1'])
+      expect(result.map((resource) => resource.id)).toStrictEqual(['pt-uuid-1'])
     })
 
-    it('reads a null patients list as no managed people', () => {
-      const result = parse(customerPayload({ customer: { pcid: 'acct-uuid-1', patients: null } }))
-      expect(result.map((resource) => resource.id)).toStrictEqual(['acct-uuid-1'])
+    it('emits nothing for a null or absent patients list', () => {
+      expect(parse(customerPayload({ customer: { patients: null } }))).toStrictEqual([])
+      expect(parse(customerPayload({ customer: { firstName: 'Dana' } }))).toStrictEqual([])
     })
 
-    it('emits a bare account Patient (no link) when there are no managed people', () => {
-      // Act
-      const result = parse(customerPayload({ customer: { pcid: 'acct-uuid-1' } }))
-
-      // Assert
-      expect(result).toStrictEqual([
-        decodePatient({
-          resourceType: 'Patient',
-          id: 'acct-uuid-1',
-          identifier: [{ system: ShoppersIdentifierSystem.PcId, value: 'acct-uuid-1' }],
-        }),
-      ])
-    })
-
-    it('fails with ParseError when the required customer.pcid is missing', () => {
+    it('fails with ParseError when the payload has no customer', () => {
       expectLeftToEqual(
-        runParse(makeResponse(JSON.stringify({ customer: { firstName: 'Dana' } }))),
+        runParse(makeResponse(JSON.stringify({ stores: [] }))),
         expect.objectContaining({ _tag: 'ParseError' })
       )
     })

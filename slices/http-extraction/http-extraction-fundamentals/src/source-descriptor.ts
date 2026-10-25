@@ -1,4 +1,5 @@
 import { deepFreeze } from '@wildflowerhealthio/kitchen-sink'
+import type { Effect } from 'effect'
 
 import type * as HttpResponseKind from './http-response-kind.ts'
 
@@ -12,9 +13,10 @@ import type * as HttpResponseKind from './http-response-kind.ts'
  * creep back in through this type). A consumer that routes or reviews reads
  * `responseKinds` and works per kind; the descriptor exists so a pool
  * assembles from *sources* ("register a source" is appending one of these)
- * and so a UI can label a source without reaching into its kinds. The one
- * behaviour it carries, `mergeResources`, is one no single kind can own: it
- * spans the resources several of the source's kinds emit.
+ * and so a UI can label a source without reaching into its kinds. The two
+ * behaviours it carries, `mergeResources` and `completeFromExtraction`, are
+ * ones no single kind can own: they span the resources several of the
+ * source's kinds emit.
  *
  * - `name`: stable identifier for logs and registries (`'fhir-r4'`).
  * - `display`: user-facing strings a review or settings surface shows for the
@@ -24,12 +26,15 @@ import type * as HttpResponseKind from './http-response-kind.ts'
  *   this array by reference.
  * - `mergeResources`: optional; see {@link ResourceMerge}. Absent, two
  *   resources sharing an identity are both written, and the later one wins.
+ * - `completeFromExtraction`: optional; see {@link ExtractionCompletion}.
+ *   Absent, every resource is written as its kind (and the merge) left it.
  */
 interface SourceDescriptor<TParsed> {
   readonly name: string
   readonly display: { readonly title: string; readonly description: string }
   readonly responseKinds: readonly HttpResponseKind.HttpResponseKind<TParsed>[]
   readonly mergeResources?: ResourceMerge<TParsed>
+  readonly completeFromExtraction?: ExtractionCompletion<TParsed>
 }
 
 /**
@@ -52,6 +57,30 @@ interface SourceDescriptor<TParsed> {
 type ResourceMerge<TParsed> = (earlier: TParsed, later: TParsed) => TParsed
 
 /**
+ * How a source fills in what one of its resources does not say from what the
+ * whole extraction holds: given every resource its kinds emitted in one
+ * extraction, merged, the completion of each.
+ *
+ * @param extraction - Every resource the source's kinds emitted in one
+ *   extraction, after {@link ResourceMerge} has run, in arrival order
+ * @returns The completion of one resource of `extraction`: the resource to
+ *   write in its place, under the same identity
+ *
+ * @remarks
+ * A source needs one when a resource leaves out something only the
+ * extraction as a whole says, so no pairwise merge reaches it (a fill that
+ * does not say whom it was for, in a capture of one person's account). It
+ * sees the extraction once, after every merge, so it reads each
+ * resource as it will be written, and a merge never sees what it filled in.
+ * Effectful so the source can log what it could not complete. Like
+ * {@link ResourceMerge}, only a consumer that holds every response's
+ * resources before it writes them can apply it.
+ */
+type ExtractionCompletion<TParsed> = (
+  extraction: readonly TParsed[]
+) => Effect.Effect<(resource: TParsed) => TParsed>
+
+/**
  * Same clone-and-freeze contract as `HttpResponseKind.make`, for the
  * descriptor; the kinds themselves are already frozen by that constructor.
  */
@@ -66,6 +95,9 @@ const make = <TParsed>(descriptor: SourceDescriptor<TParsed>): SourceDescriptor<
     ...(descriptor.mergeResources === undefined
       ? {}
       : { mergeResources: descriptor.mergeResources }),
+    ...(descriptor.completeFromExtraction === undefined
+      ? {}
+      : { completeFromExtraction: descriptor.completeFromExtraction }),
   })
 
 /**
@@ -81,4 +113,4 @@ const poolOf = <TParsed>(
   sources.flatMap((source) => source.responseKinds)
 
 export { make, poolOf }
-export type { ResourceMerge, SourceDescriptor }
+export type { ExtractionCompletion, ResourceMerge, SourceDescriptor }

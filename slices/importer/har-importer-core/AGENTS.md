@@ -74,6 +74,11 @@ shell's shared `persistBatchBundle`.
   resource under the first copy's key and in its place, the later copies
   dropped. A response's pick is matched to its source by kind name. A source
   without a merge keeps every copy, and the batch write's later PUT wins.
+- `src/complete-from-extraction.ts` — **`completeFromExtraction`**, where a
+  source's `completeFromExtraction` runs: after `mergeSharedResources`, once
+  per source that gives one, over every resource that source's kinds emitted
+  in the preview. Each resource is replaced by its completion under the same
+  key. Shoppers files each history fill on the capture's one Patient here.
 - `src/decode-har.ts` — **`decodeHar`** (the byte-level parse step) and
   `toInput`. `HttpArchive.LogFromHarJson` (`http-archive`) decodes the
   archive into an `HttpArchive.Log`; each `HttpArchive.Entry` is restated

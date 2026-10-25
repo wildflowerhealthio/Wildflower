@@ -103,11 +103,10 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   `chosenResources` folds a flat labeled list through the exclusions,
   edit overrides and patient assignments into the confirm's write set — no
   re-parse at confirm, the reviewed (or edited) objects are what gets written,
-  household dispenses attributed and each source Patient assigned to a person
-  merged into it (`PatientIdentity`). `includedCount` / `excludedCount` drive
-  the shell's tallies, and `referencesNotRewrittenCount` /
-  `dispensesLeftOnAccountCount` say what a merge left pointing at a source
-  Patient or an account. Orphaned selection entries
+  each source Patient assigned to a person merged into it
+  (`PatientIdentity`). `includedCount` / `excludedCount` drive the shell's
+  tallies, and `referencesNotRewrittenCount` says what a merge left pointing
+  at a source Patient. Orphaned selection entries
   (keys a re-decode no longer produces) are inert — sets and maps of keys,
   nothing dangling.
 - `src/patient-identity.ts` — the **`PatientIdentity`** namespace, pure.
@@ -115,17 +114,15 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   (`'new' | { person }`) where a source Patient goes.
   **`mergeIntoPatient(target, source)`** appends the source's identifiers the
   target lacks (matched on `system` + `value`) and changes nothing else.
-  **`rewriteSubjects(resources, from, to)`** re-points every `Reference` whose
-  `reference` is exactly `from`, found by walking each resource against
-  `fhir-r4`'s `Reference` schema, not a field list; absolute and
+  **`rewriteSubjects(resources, sourcePatient, to)`** re-points every
+  `Reference` whose `reference` is exactly the source Patient's, found by
+  walking each resource against `fhir-r4`'s `Reference` schema, not a field
+  list; a rewritten reference with no `identifier` gets the source Patient's
+  first one, so it still names the source identity. Absolute and
   identifier-only references are left and counted
   (`referencesNotRewrittenCount`). **`mergeSourcePatients`** folds every
   merge of one confirm into its person in a single walk.
-  **`isHouseholdAccount`** (a Patient that `link.seealso`s other Patients),
-  **`attributeHouseholdDispenses`** (a dispense filed on one moves to its
-  `authorizingPrescription` request's subject when the import carries it),
-  **`dispensesLeftOnAccountCount`**, and **`searchedIdentifiers`** (none for a
-  household account) are the household rules.
+  **`searchedIdentifiers`** lists the identifiers a search tries.
 - `src/patient-search.ts` — the **`PatientSearch`** namespace:
   **`findPatientByIdentifier(sourcePatient)`**, the one server read identity
   needs. `GET Patient?identifier=system|value` per searched identifier, in the
@@ -239,11 +236,9 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
 - **A source Patient is never a person.** A person is a Patient the user
   owns, which accumulates source identifiers: a merge keeps the person's
   demographics and only adds identifiers, and a merged source Patient is not
-  written, whether or not the reviewer included it. A household account is a Patient, but a fill is attributed to the
-  clinical Patient whenever the source says who that is. A household account
-  is never matched into a person by search; only the reviewer assigns it. The
-  household rules were built from fixtures modelled on a two-person Shoppers
-  account and have not been checked against a real one. See
+  written, whether or not the reviewer included it. A source Patient names a
+  person, never an account; a source that does not say whom a record was for
+  works it out at extraction (`SourceDescriptor.completeFromExtraction`). See
   [Source Identity Explanation](../../fhir/fhir-r4/docs/Source%20Identity%20Explanation.md#person-vs-source-patient).
 - **Selection keys by a `DecodedFile.Resource`'s `key`.** Selection state must
   be serializable and survive a settings re-decode, so every axis holds string

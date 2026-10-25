@@ -10,28 +10,15 @@
  * **source Patient is never a person.** A person is a Patient the user owns,
  * and it accumulates the identifiers of every source Patient merged into it:
  * {@link mergeIntoPatient} adds them and nothing else, and
- * {@link rewriteSubjects} re-points the references. A merged source Patient is
- * not written.
- *
- * A **household account** is a source Patient that `link.seealso`s the
- * Patients of the people it manages (Shoppers' account, keyed by its `pcid`).
- * It is still a Patient and is written, but it is not a person: no search
- * matches it to one ({@link searchedIdentifiers}), and a dispense filed on it
- * is attributed to the clinical Patient whenever the import says who that is
- * ({@link attributeHouseholdDispenses}). The household rules have only been
- * checked against fixtures modelled on a two-person account, never against a
- * real multi-person account.
+ * {@link rewriteSubjects} re-points the references, each naming the source
+ * identity it came through. A merged source Patient is not written.
  *
  * @packageDocumentation
  */
 
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import type {
-  FhirResource,
-  MedicationDispense,
-  Patient,
-} from '@wildflowerhealthio/fhir-r4/resources'
-import { Array as EffectArray, Option, Schema } from 'effect'
+import type { FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
+import { Option, Schema } from 'effect'
 
 type Reference = IdentifierAndReference.ReferenceType
 type Identifier = IdentifierAndReference.IdentifierType
@@ -167,46 +154,85 @@ interface SubjectRewrite {
   readonly rewrittenCount: number
 }
 
-/** Every `Reference` whose `reference` is a key of `targets`, re-pointed at its value, in one walk. */
+/**
+ * Where a reference to one source Patient goes: the person's reference, and
+ * the identifier that says which source identity the reference came through.
+ */
+interface ReferenceTarget {
+  readonly to: PatientReference
+  readonly sourceIdentifier: Identifier | null
+}
+
+/** The {@link ReferenceTarget} for references to `sourcePatient`, re-pointed at `to`. */
+const referenceTargetOf = (sourcePatient: Patient.Type, to: PatientReference): ReferenceTarget => ({
+  to,
+  sourceIdentifier: sourcePatient.identifier[0] ?? null,
+})
+
+/**
+ * Every `Reference` whose `reference` is a key of `targets`, re-pointed at its
+ * target and given the target's source identifier when it carries none, in
+ * one walk.
+ */
 const rewriteReferences = (
   resources: readonly FhirResource[],
-  targets: ReadonlyMap<string, PatientReference>
+  targets: ReadonlyMap<string, ReferenceTarget>
 ): SubjectRewrite => {
   if (targets.size === 0) return { resources, rewrittenCount: 0 }
   let rewrittenCount = 0
   const rewritten = resources.map((resource) =>
     mapReferences(resource, (reference) => {
-      const to = reference.reference === null ? undefined : targets.get(reference.reference)
-      if (to === undefined || to === reference.reference) return reference
+      const target = reference.reference === null ? undefined : targets.get(reference.reference)
+      if (target === undefined || target.to === reference.reference) return reference
       rewrittenCount += 1
-      return { ...reference, reference: to }
+      return {
+        ...reference,
+        reference: target.to,
+        identifier: reference.identifier ?? target.sourceIdentifier,
+      }
     })
   )
   return { resources: rewritten, rewrittenCount }
 }
 
 /**
- * Every `Reference` in `resources` whose `reference` is exactly `from`,
- * re-pointed at `to`.
+ * Every `Reference` in `resources` whose `reference` is exactly
+ * `sourcePatient`'s relative reference, re-pointed at `to` and naming the
+ * source identity it came through.
  *
  * @param resources - The resources to rewrite
- * @param from - The source Patient's relative reference
+ * @param sourcePatient - The source Patient the references name
  * @param to - The person's relative reference
  * @returns The rewritten resources and the number of references rewritten
  *
  * @remarks
- * Only the `reference` changes: a rewritten reference keeps its `identifier`
- * and `display`, which name the source identity the person now carries too.
- * An absolute or identifier-only reference to the source Patient is left alone
- * ({@link referencesNotRewrittenCount} counts them). A resource with no
- * matching reference comes back as itself, and so does every resource when
- * `from` is `to`.
+ * A rewritten reference keeps its `display`, and its `identifier` when it
+ * carries one. One that carries none gets the source Patient's first
+ * identifier (its source key: the adopted source id, or a source's own id
+ * such as Shoppers' `PatientId`), so the reference still says which source
+ * identity it came through; with no identifier on the source Patient, it stays
+ * `null`. Nothing else changes. An absolute or identifier-only reference to
+ * the source Patient is left alone ({@link referencesNotRewrittenCount} counts
+ * them). A resource with no matching reference comes back as itself, and so
+ * does every resource when `to` is the source Patient's own reference or the
+ * source Patient has no `id`.
  */
 const rewriteSubjects = (
   resources: readonly FhirResource[],
-  from: PatientReference,
+  sourcePatient: Patient.Type,
   to: PatientReference
-): SubjectRewrite => rewriteReferences(resources, new Map([[from, to]]))
+): SubjectRewrite =>
+  rewriteReferences(
+    resources,
+    new Map(
+      Option.toArray(
+        Option.map(
+          patientReferenceOf(sourcePatient),
+          (from) => [from, referenceTargetOf(sourcePatient, to)] as const
+        )
+      )
+    )
+  )
 
 /** Whether `reference`'s `identifier` is one `patient` carries. */
 const carriesIdentifierOf = (reference: Reference, patient: Patient.Type): boolean => {
@@ -255,8 +281,9 @@ const referencesNotRewrittenCount = (
 
 /**
  * `resources` with each source Patient of `merges` folded into its person:
- * every reference to the source Patient re-pointed at the person, and the
- * person, carrying the source's identifiers, written.
+ * every reference to the source Patient re-pointed at the person (naming the
+ * source identity, as {@link rewriteSubjects} does), and the person, carrying
+ * the source's identifiers, written.
  *
  * @param resources - The write set, the merged source Patients already taken out
  * @param merges - Each source Patient and the person it merges into, in review order
@@ -301,119 +328,12 @@ const mergeSourcePatients = (
       Option.toArray(
         Option.map(
           patientReferenceOf(sourcePatient),
-          (from) => [from, `Patient/${person.id}`] as const
+          (from) => [from, referenceTargetOf(sourcePatient, `Patient/${person.id}`)] as const
         )
       )
     )
   )
   return rewriteReferences([...placed, ...appended], targets).resources
-}
-
-// ---------------------------------------------------------------------------
-// Household accounts
-// ---------------------------------------------------------------------------
-
-/**
- * Whether `patient` is a household account: a Patient that `link.seealso`s the
- * Patients of the people it manages, rather than a person itself.
- *
- * @remarks
- * Shoppers' account Patient (keyed by its `pcid`) is the one source that makes
- * these. An account that links nobody is the person it names, and is not a
- * household account.
- */
-const isHouseholdAccount = (patient: Patient.Type): boolean =>
-  patient.link.some((link) => link.type === 'seealso')
-
-/** The relative references of every household account `imported` carries. */
-const householdAccountReferences = (
-  imported: readonly FhirResource[]
-): ReadonlySet<PatientReference> =>
-  new Set(
-    imported.flatMap((resource) =>
-      resource.resourceType === 'Patient' && isHouseholdAccount(resource)
-        ? Option.toArray(patientReferenceOf(resource))
-        : []
-    )
-  )
-
-/** Whether `dispense`'s `subject` names one of `accounts`. */
-const isFiledOnAccount = (
-  dispense: MedicationDispense.Type,
-  accounts: ReadonlySet<PatientReference>
-): boolean =>
-  dispense.subject !== null &&
-  Option.match(IdentifierAndReference.referencedIdOf(dispense.subject, 'Patient'), {
-    onNone: () => false,
-    onSome: (id) => accounts.has(`Patient/${id}`),
-  })
-
-/**
- * `written` with every `MedicationDispense` filed on a household account
- * re-filed on the `subject` of its `authorizingPrescription` request, when
- * `imported` carries that request and it names one.
- *
- * @param written - The resources the import writes
- * @param imported - Every resource the import decoded, edits applied, whether
- *   written or not — what says which Patients are household accounts and
- *   which request names whom
- * @returns `written`, the dispenses it could attribute re-filed
- *
- * @remarks
- * A history fill's source does not say which family member it was for, so it
- * is filed on the account; the prescription it fills does. The first of the
- * dispense's `authorizingPrescription` references that resolves wins. A
- * dispense whose request is missing, or names nobody, stays on the account
- * ({@link dispensesLeftOnAccountCount} counts it). Runs before the merge
- * rewrite, so a fill lands on the request's subject and then, through the
- * merge, on the person.
- */
-const attributeHouseholdDispenses = (
-  written: readonly FhirResource[],
-  imported: readonly FhirResource[]
-): readonly FhirResource[] => {
-  const accounts = householdAccountReferences(imported)
-  if (accounts.size === 0) return written
-  const requestSubjects = new Map(
-    imported.flatMap((resource) =>
-      resource.resourceType === 'MedicationRequest' &&
-      resource.id !== null &&
-      resource.subject.reference !== null
-        ? [[resource.id, resource.subject] as const]
-        : []
-    )
-  )
-  const prescribedSubjectOf = (dispense: MedicationDispense.Type): Option.Option<Reference> =>
-    EffectArray.findFirst(dispense.authorizingPrescription, (prescription) =>
-      Option.flatMap(
-        IdentifierAndReference.referencedIdOf(prescription, 'MedicationRequest'),
-        (id) => Option.fromNullable(requestSubjects.get(id))
-      )
-    )
-  return written.map((resource) =>
-    resource.resourceType === 'MedicationDispense' && isFiledOnAccount(resource, accounts)
-      ? Option.match(prescribedSubjectOf(resource), {
-          onNone: () => resource,
-          onSome: (subject) => ({ ...resource, subject }),
-        })
-      : resource
-  )
-}
-
-/**
- * How many dispenses in `written` are still filed on a household account
- * `imported` carries — those {@link attributeHouseholdDispenses} could not
- * attribute to a person.
- */
-const dispensesLeftOnAccountCount = (
-  written: readonly FhirResource[],
-  imported: readonly FhirResource[]
-): number => {
-  const accounts = householdAccountReferences(imported)
-  return written.filter(
-    (resource) =>
-      resource.resourceType === 'MedicationDispense' && isFiledOnAccount(resource, accounts)
-  ).length
 }
 
 /** An identifier with both halves of a `system|value` search token. */
@@ -424,21 +344,16 @@ const isSearchable = (identifier: Identifier): identifier is SearchedIdentifier 
 
 /**
  * The identifiers a search for `sourcePatient`'s person tries, in order: each
- * one with both a `system` and a `value`, or none for a household account.
+ * one with both a `system` and a `value`.
  *
  * @remarks
- * A household account's identifiers (Shoppers' `pcid`) name the account, not
- * a person, so it is never matched into one by search: it defaults to `'new'`
- * and only the reviewer reassigns it. A bare value with no system could match
- * any system's identifier, so it is not searched either.
+ * A bare value with no system could match any system's identifier, so it is
+ * not searched.
  */
 const searchedIdentifiers = (sourcePatient: Patient.Type): readonly SearchedIdentifier[] =>
-  isHouseholdAccount(sourcePatient) ? [] : sourcePatient.identifier.filter(isSearchable)
+  sourcePatient.identifier.filter(isSearchable)
 
 export {
-  attributeHouseholdDispenses,
-  dispensesLeftOnAccountCount,
-  isHouseholdAccount,
   mergeIntoPatient,
   mergeSourcePatients,
   patientReferenceOf,

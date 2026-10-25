@@ -1,3 +1,4 @@
+import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
   FhirResourceSchema,
   MedicationDispense,
@@ -15,8 +16,7 @@ import * as PatientIdentity from './patient-identity.ts'
 /**
  * The patient-identity steps are pure functions over decoded resources, so
  * they are driven directly: properties over generated Patients and resources,
- * and a household fixture modelled on the Shoppers two-person account
- * (`customer-response-kind.test.ts`) as adoption leaves it.
+ * and fixtures shaped as adoption leaves a source's Patients.
  */
 
 // Schema-generated resources at fast-check's default size run to hundreds of
@@ -34,7 +34,6 @@ afterAll(() => {
 // ---------------------------------------------------------------------------
 
 const decodePatient = Schema.decodeUnknownSync(Patient.Schema)
-const decodeRequest = Schema.decodeUnknownSync(MedicationRequest.Schema)
 const decodeDispense = Schema.decodeUnknownSync(MedicationDispense.Schema)
 const encodeResource = Schema.encodeSync(FhirResourceSchema)
 const decodeResource = Schema.decodeUnknownSync(FhirResourceSchema)
@@ -188,29 +187,55 @@ describe('PatientIdentity.rewriteSubjects', () => {
       return decodeResource(respell(encodeResource(resource)))
     })
 
-  it('property: rewrites exactly the references that match, and counts them', () => {
+  /** Generated source Patients that {@link FROM} names, with or without identifiers. */
+  const sourcePatientArbitrary = patientArbitrary.map((patient): Patient.Type => ({
+    ...patient,
+    id: 'wf-merge-source-0000',
+  }))
+
+  const encodeIdentifier = Schema.encodeSync(IdentifierAndReference.IdentifierSchema)
+
+  /**
+   * The wire form of `resource` with the rewrite applied by hand: every
+   * Reference-shaped object whose `reference` is {@link FROM} names {@link TO},
+   * and carries `sourceIdentifier` when it carried no `identifier`.
+   */
+  const expectedWireOf = (resource: FhirResource, sourcePatient: Patient.Type): unknown => {
+    const [first] = sourcePatient.identifier
+    const sourceIdentifier = first === undefined ? undefined : encodeIdentifier(first)
+    const rewrite = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(rewrite)
+      if (typeof value !== 'object' || value === null) return value
+      const fields = Object.fromEntries(
+        Object.entries(value).map(([key, field]) => [key, rewrite(field)])
+      )
+      if (fields['reference'] !== FROM) return fields
+      return {
+        ...fields,
+        reference: TO,
+        ...(fields['identifier'] === undefined && sourceIdentifier !== undefined
+          ? { identifier: sourceIdentifier }
+          : {}),
+      }
+    }
+    return rewrite(encodeResource(resource))
+  }
+
+  it('property: changes nothing but the references that match, and counts them', () => {
     fc.assert(
-      fc.property(pooledResourceArbitrary, (resource) => {
+      fc.property(pooledResourceArbitrary, sourcePatientArbitrary, (resource, sourcePatient) => {
         const before = wireReferences(resource)
 
-        const { resources, rewrittenCount } = PatientIdentity.rewriteSubjects([resource], FROM, TO)
+        const { resources, rewrittenCount } = PatientIdentity.rewriteSubjects(
+          [resource],
+          sourcePatient,
+          TO
+        )
 
-        const after = resources.flatMap(wireReferences)
         expect(rewrittenCount).toBe(before.filter((reference) => reference === FROM).length)
-        expect(after).toEqual(before.map((reference) => (reference === FROM ? TO : reference)))
-      }),
-      { numRuns: numRunsFor({ base: 20 }) }
-    )
-  })
-
-  it('property: rewriting there and back leaves the structure unchanged', () => {
-    fc.assert(
-      fc.property(pooledResourceArbitrary, (resource) => {
-        const there = PatientIdentity.rewriteSubjects([resource], FROM, TO)
-        const back = PatientIdentity.rewriteSubjects(there.resources, TO, FROM)
-
-        expect(back.rewrittenCount).toBe(there.rewrittenCount)
-        expect(back.resources.map(wireOf)).toEqual([wireOf(resource)])
+        expect(resources.map((rewritten) => encodeResource(rewritten))).toEqual([
+          expectedWireOf(resource, sourcePatient),
+        ])
       }),
       { numRuns: numRunsFor({ base: 20 }) }
     )
@@ -218,8 +243,12 @@ describe('PatientIdentity.rewriteSubjects', () => {
 
   it('property: a resource with no matching reference comes back as itself', () => {
     fc.assert(
-      fc.property(resourceArbitrary, (resource) => {
-        const { resources, rewrittenCount } = PatientIdentity.rewriteSubjects([resource], FROM, TO)
+      fc.property(resourceArbitrary, sourcePatientArbitrary, (resource, sourcePatient) => {
+        const { resources, rewrittenCount } = PatientIdentity.rewriteSubjects(
+          [resource],
+          sourcePatient,
+          TO
+        )
 
         expect(rewrittenCount).toBe(0)
         expect(resources[0]).toBe(resource)
@@ -228,23 +257,53 @@ describe('PatientIdentity.rewriteSubjects', () => {
     )
   })
 
-  it('keeps the rewritten reference’s identifier and display', () => {
-    const dispense = decodeDispense({
-      resourceType: 'MedicationDispense',
-      status: 'completed',
-      subject: {
-        reference: 'Patient/src',
-        display: 'Ada',
-        identifier: { system: 'https://a.example/id', value: '1' },
-      },
+  const sourcePatient = decodePatient({
+    resourceType: 'Patient',
+    id: 'src',
+    identifier: [
+      { system: 'https://source.example/sid', value: 'src-key' },
+      { system: 'https://source.example/other', value: 'other' },
+    ],
+  })
+  const filedOn = (subject: object): MedicationDispense.Type =>
+    decodeDispense({ resourceType: 'MedicationDispense', status: 'completed', subject })
+  const rewrittenSubjectOf = (
+    dispense: MedicationDispense.Type,
+    from: Patient.Type
+  ): MedicationDispense.Type['subject'] | undefined => {
+    const [rewritten] = PatientIdentity.rewriteSubjects([dispense], from, TO).resources
+    return rewritten?.resourceType === 'MedicationDispense' ? rewritten.subject : undefined
+  }
+
+  it("gives a rewritten reference with no identifier the source Patient's first identifier", () => {
+    const dispense = filedOn({ reference: 'Patient/src', display: 'Ada' })
+
+    expect(rewrittenSubjectOf(dispense, sourcePatient)).toEqual({
+      ...dispense.subject,
+      reference: TO,
+      identifier: sourcePatient.identifier[0],
+    })
+  })
+
+  it('keeps the rewritten reference’s own identifier and display', () => {
+    const dispense = filedOn({
+      reference: 'Patient/src',
+      display: 'Ada',
+      identifier: { system: 'https://a.example/id', value: '1' },
     })
 
-    const { resources } = PatientIdentity.rewriteSubjects([dispense], 'Patient/src', TO)
-
-    expect(resources[0]?.resourceType === 'MedicationDispense' && resources[0].subject).toEqual({
+    expect(rewrittenSubjectOf(dispense, sourcePatient)).toEqual({
       ...dispense.subject,
       reference: TO,
     })
+  })
+
+  it('leaves the identifier null when the source Patient has none', () => {
+    const dispense = filedOn({ reference: 'Patient/src' })
+
+    expect(
+      rewrittenSubjectOf(dispense, decodePatient({ resourceType: 'Patient', id: 'src' }))
+    ).toEqual({ ...dispense.subject, reference: TO, identifier: null })
   })
 })
 
@@ -303,9 +362,12 @@ describe('PatientIdentity.mergeSourcePatients', () => {
       status: 'completed',
       subject: { reference },
     })
-  const subjectsOf = (resources: readonly FhirResource[]): readonly (string | null)[] =>
+  /** Each dispense's subject as `reference value`, the value its identifier carries. */
+  const subjectsOf = (resources: readonly FhirResource[]): readonly string[] =>
     resources.flatMap((resource) =>
-      resource.resourceType === 'MedicationDispense' ? [resource.subject?.reference ?? null] : []
+      resource.resourceType === 'MedicationDispense'
+        ? [`${resource.subject?.reference ?? null} ${resource.subject?.identifier?.value ?? null}`]
+        : []
     )
 
   it('writes the person once, carrying every merged source’s identifiers, and files everything on it', () => {
@@ -328,7 +390,14 @@ describe('PatientIdentity.mergeSourcePatients', () => {
       'https://rexall.example/sid|ada',
       'https://shoppers.example/sid|ada',
     ])
-    expect(subjectsOf(written)).toEqual(['Patient/ada', 'Patient/ada'])
+    expect(subjectsOf(written)).toEqual(['Patient/ada ada', 'Patient/ada ada'])
+    expect(
+      written.flatMap((resource) =>
+        resource.resourceType === 'MedicationDispense'
+          ? [resource.subject?.identifier?.system?.href]
+          : []
+      )
+    ).toEqual(['https://rexall.example/sid', 'https://shoppers.example/sid'])
   })
 
   it('folds into the copy the write set already holds rather than writing the person twice', () => {
@@ -341,7 +410,7 @@ describe('PatientIdentity.mergeSourcePatients', () => {
     expect(
       identifierKeys(written[0]?.resourceType === 'Patient' ? written[0] : rexallPatient)
     ).toEqual(['https://rexall.example/sid|ada', 'https://shoppers.example/sid|ada'])
-    expect(subjectsOf(written)).toEqual(['Patient/rexall-ada'])
+    expect(subjectsOf(written)).toEqual(['Patient/rexall-ada ada'])
   })
 
   it('keeps what the stored person carries when the write set also holds a copy of it', () => {
@@ -378,134 +447,5 @@ describe('PatientIdentity.mergeSourcePatients', () => {
     ])
 
     expect(written[0]).toBe(resources[0])
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Household accounts — modelled on the Shoppers two-person account
-// ---------------------------------------------------------------------------
-
-const PC_ID_SYSTEM = 'https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/pc-id'
-const PATIENT_ID_SYSTEM = 'https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/patient-id'
-const SID = 'https://wildflowerhealth.io/fhir/sid/shoppers-drugmart'
-
-/** One managed person's demographic Patient, as adoption leaves it. */
-const managedPerson = (id: string): Patient.Type =>
-  decodePatient({
-    resourceType: 'Patient',
-    id: `wf-${id}`,
-    identifier: [
-      { system: SID, value: id },
-      { system: PATIENT_ID_SYSTEM, value: id },
-    ],
-  })
-
-/** The account Patient, keyed by its `pcid`, `link.seealso`-ing each person it manages. */
-const account = (managed: readonly Patient.Type[]): Patient.Type =>
-  decodePatient({
-    resourceType: 'Patient',
-    id: 'wf-acct',
-    identifier: [
-      { system: SID, value: 'acct' },
-      { system: PC_ID_SYSTEM, value: 'acct' },
-    ],
-    link: managed.map((patient) => ({
-      other: { reference: `Patient/${patient.id}` },
-      type: 'seealso',
-    })),
-  })
-
-/** A status-feed request, filed on the person it was prescribed for. */
-const request = (id: string, patient: Patient.Type): FhirResource =>
-  decodeRequest({
-    resourceType: 'MedicationRequest',
-    id,
-    status: 'active',
-    intent: 'order',
-    subject: { reference: `Patient/${patient.id}` },
-  })
-
-/** A history-feed fill, filed on the account, linked to the request it fills. */
-const historyFill = (id: string, requestId: string): MedicationDispense.Type =>
-  decodeDispense({
-    resourceType: 'MedicationDispense',
-    id,
-    status: 'completed',
-    subject: { reference: 'Patient/wf-acct', identifier: { system: PC_ID_SYSTEM, value: 'acct' } },
-    authorizingPrescription: [{ reference: `MedicationRequest/${requestId}` }],
-  })
-
-const dana = managedPerson('pt-uuid-1')
-const sam = managedPerson('pt-uuid-2')
-const household = account([dana, sam])
-
-const subjectOf = (resources: readonly FhirResource[], id: string): string | null | undefined => {
-  const found = resources.find((resource) => resource.id === id)
-  return found?.resourceType === 'MedicationDispense' ? found.subject?.reference : undefined
-}
-
-describe('PatientIdentity household accounts', () => {
-  it('reads an account that links its people as a household account, and one that links nobody as a person', () => {
-    expect(PatientIdentity.isHouseholdAccount(household)).toBe(true)
-    expect(PatientIdentity.isHouseholdAccount(account([]))).toBe(false)
-  })
-
-  it('moves a history dispense whose request is in the import to that request’s subject', () => {
-    const imported = [dana, sam, household, request('rx-sam', sam), historyFill('fill', 'rx-sam')]
-
-    const written = PatientIdentity.attributeHouseholdDispenses(imported, imported)
-
-    expect(subjectOf(written, 'fill')).toBe(`Patient/${sam.id}`)
-    expect(PatientIdentity.dispensesLeftOnAccountCount(written, imported)).toBe(0)
-  })
-
-  it('leaves a dispense whose request is missing on the account, and counts it', () => {
-    const imported = [dana, sam, household, historyFill('fill', 'rx-missing')]
-
-    const written = PatientIdentity.attributeHouseholdDispenses(imported, imported)
-
-    expect(subjectOf(written, 'fill')).toBe('Patient/wf-acct')
-    expect(PatientIdentity.dispensesLeftOnAccountCount(written, imported)).toBe(1)
-  })
-
-  it('attributes from a request the import decoded even when it is not written', () => {
-    const imported = [household, request('rx-dana', dana), historyFill('fill', 'rx-dana')]
-    const written = [household, historyFill('fill', 'rx-dana')]
-
-    expect(subjectOf(PatientIdentity.attributeHouseholdDispenses(written, imported), 'fill')).toBe(
-      `Patient/${dana.id}`
-    )
-  })
-
-  it('leaves a dispense on an account that links nobody alone: that account is the person', () => {
-    const solo = account([])
-    const imported = [solo, historyFill('fill', 'rx-missing')]
-
-    const written = PatientIdentity.attributeHouseholdDispenses(imported, imported)
-
-    expect(written).toBe(imported)
-    expect(PatientIdentity.dispensesLeftOnAccountCount(written, imported)).toBe(0)
-  })
-
-  it('searches no identifier of a household account, and every identifier of an account that links nobody', () => {
-    expect(PatientIdentity.searchedIdentifiers(household)).toEqual([])
-    expect(
-      PatientIdentity.searchedIdentifiers(account([])).map((identifier) => identifier.value)
-    ).toEqual(['acct', 'acct'])
-  })
-
-  it('merges an account that links nobody like any other source Patient', () => {
-    const solo = account([])
-    const ada = person('ada')
-
-    const written = PatientIdentity.mergeSourcePatients(
-      [historyFill('fill', 'rx-missing')],
-      [{ sourcePatient: solo, person: ada }]
-    )
-
-    expect(subjectOf(written, 'fill')).toBe('Patient/ada')
-    expect(written.find((resource) => resource.id === 'ada')).toMatchObject({
-      identifier: solo.identifier,
-    })
   })
 })

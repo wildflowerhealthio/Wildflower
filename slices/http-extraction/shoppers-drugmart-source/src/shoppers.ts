@@ -13,16 +13,11 @@
  * These system URIs are best-guess namespaces under the portal host, *not*
  * captured from a canonical registry. In particular:
  *
- * - `PcId` vs `PatientId` are **two distinct identifier systems**: `pcId` names
- *   the account (the `customer.pcid`, the `customerId` in every query string),
- *   `patientId` names a person the account manages (a `customer.patients[].id`,
- *   the id a prescription's `patientId` references). Unlike the earlier design,
- *   the relationship is now **known and joinable**: the customers payload carries
- *   both — `customer.pcid` alongside each `customer.patients[].id` — so the
- *   account `Patient` links to each demographic `Patient` via `link.seealso`
- *   (see {@link CustomerResponseKind}). The two systems stay distinct because they
- *   identify different things (an account vs a person), not because the join is
- *   unknown.
+ * - Only people are identified, never the account: `PatientId` names a person
+ *   the account manages (a `customer.patients[].id`, the id a prescription's
+ *   `patientId` references). Prescriptions are filled for a person, so the
+ *   account's own id (the `customerId` in the account-wide query strings) is
+ *   no identifier here.
  * - There is deliberately **no** Shoppers DIN system: the portal does not
  *   namespace DINs, so a DIN is coded under `fhir-r4`'s canonical
  *   `CanadianCodingSystem.Din` only.
@@ -34,15 +29,8 @@ const SYSTEM_BASE = 'https://mypharmacy.shoppersdrugmart.ca/fhir'
 /** Shoppers identifier systems for the ids the portal JSON carries. */
 const ShoppersIdentifierSystem = {
   /**
-   * The account's `pcid` (PC Health id, `== customer.id == the customerId` query
-   * param). Names the account, not a managed person — distinct from
-   * {@link ShoppersIdentifierSystem.PatientId}.
-   */
-  PcId: `${SYSTEM_BASE}/identifier/pc-id`,
-  /**
    * A managed person's `patientId` (a `customer.patients[].id`, the id a
-   * prescription's `patientId` references). Joinable to `pcId` through the
-   * customers payload, but a different kind of thing — see the module remarks.
+   * prescription's `patientId` references).
    */
   PatientId: `${SYSTEM_BASE}/identifier/patient-id`,
   /** A prescription's human-facing `prescriptionNumber`. */

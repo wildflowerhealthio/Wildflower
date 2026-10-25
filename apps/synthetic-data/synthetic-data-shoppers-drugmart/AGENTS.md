@@ -17,11 +17,10 @@ The root entry exports `ShoppersHar`, the account types and
   account's `pcid`, its phone and address, the `ShoppersStore` that fills for
   it, and the `ShoppersPatient`s it manages (each a `patientId`, a phone and a
   `Story`), the account holder first. The address is typed from
-  `CustomerPayload`'s. `shoppersPatientReferenceOf` is the reference to the
+  `SourcePatient`'s. `shoppersPatientReferenceOf` is the reference to the
   Patient the Shoppers import makes of one managed person (`fhir-r4/identity`'s
   `adoptedReferenceOf` under `SHOPPERS_DRUGMART_SYSTEM`, keyed by their
-  `patientId`, never the account's `pcid`), for a result from another source
-  to be filed on.
+  `patientId`), for a result from another source to be filed on.
 - `src/shoppers-prescription.ts` — `shoppersPrescriptionsOf`: every
   prescription on the account with the ids the portal keys it by (its uuid,
   its seven-digit `prescriptionNumber`, each fill's `dispenseId`), the number
@@ -71,7 +70,8 @@ dependencies only. Never imports a `-react`, `-node` or `-tauri` package.
   renewal. Its `previousPrescription` is the number of the one before it for
   the same drug.
 - **The capture's extras are written, and listed.** The literals the source
-  never reads — each managed person's `userId` and `storeId`, the body's
+  never reads — the account's own `id`, `pcid`, name and address, each
+  managed person's `userId` and `storeId`, the body's
   `stores`, a history entry's `prescriberName`, `isArchive` and the store's
   phone, type and address, the customers XHR's `?expand=patients%2Cstores`,
   the page URLs and addresses — are typed as additions to the source's

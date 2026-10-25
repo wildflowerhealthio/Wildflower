@@ -1,3 +1,4 @@
+import { Effect } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as SourceDescriptor from './source-descriptor.ts'
@@ -19,7 +20,21 @@ describe('SourceDescriptor.make', () => {
     expect(source.mergeResources).toBe(mergeResources)
   })
 
-  it('should leave the merge absent for a source that gives none', () => {
+  it('should keep the completion a source gives, by reference', () => {
+    const completeFromExtraction: SourceDescriptor.ExtractionCompletion<unknown> = () =>
+      Effect.succeed((resource) => resource)
+
+    const source = SourceDescriptor.make<unknown>({
+      name: 'sample',
+      display,
+      responseKinds: [SimpleResponseKind],
+      completeFromExtraction,
+    })
+
+    expect(source.completeFromExtraction).toBe(completeFromExtraction)
+  })
+
+  it('should leave the merge and the completion absent for a source that gives neither', () => {
     const source = SourceDescriptor.make<unknown>({
       name: 'sample',
       display,
@@ -27,5 +42,6 @@ describe('SourceDescriptor.make', () => {
     })
 
     expect(source).not.toHaveProperty('mergeResources')
+    expect(source).not.toHaveProperty('completeFromExtraction')
   })
 })

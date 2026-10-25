@@ -3,6 +3,7 @@ import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamenta
 import { Effect, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
+import { completeShoppersExtraction } from './history-fill-subjects.ts'
 import { mergeShoppersResources } from './merge-resources.ts'
 import { customerUrlOf, prescriptionHistoryUrlOf, prescriptionStatusUrlOf } from './portal-url.ts'
 import { shoppersStoreLocatorUrl } from './shoppers.ts'
@@ -43,7 +44,7 @@ const onlyDispenseOf = (resources: readonly FhirResource[]): MedicationDispense.
 
 const customers = (): readonly FhirResource[] =>
   extract(customerUrlOf(ACCOUNT_ID), {
-    customer: { pcid: ACCOUNT_ID, patients: [{ id: PERSON_ID, firstName: 'Ada' }] },
+    customer: { patients: [{ id: PERSON_ID, firstName: 'Ada' }] },
   })
 
 /** The status feed's copy; `din` is the prescription's, when it states one. */
@@ -82,13 +83,16 @@ describe('shoppersDrugMartSource', () => {
     expect(shoppersDrugMartSource.mergeResources).toBe(mergeShoppersResources)
   })
 
-  it("should adopt a history dispense's subject onto the account Patient the customers feed keys", () => {
-    const accountPatient = customers().find(
-      (resource) => resource.resourceType === 'Patient' && resource.link.length > 0
-    )
+  it('should complete an extraction with completeShoppersExtraction', () => {
+    expect(shoppersDrugMartSource.completeFromExtraction).toBe(completeShoppersExtraction)
+  })
 
-    expect(accountPatient?.id).toEqual(expect.stringMatching(/^wf-/))
-    expect(historyCopy().subject?.reference).toBe(`Patient/${accountPatient?.id}`)
+  it("should name the status copy's subject the Patient the customers feed keys, and the history copy's nobody", () => {
+    const [personPatient] = customers()
+
+    expect(personPatient?.id).toEqual(expect.stringMatching(/^wf-/))
+    expect(statusCopy().subject?.reference).toBe(`Patient/${personPatient?.id}`)
+    expect(historyCopy().subject).toBeNull()
   })
 
   it('should give both copies of one fill the same adopted id', () => {

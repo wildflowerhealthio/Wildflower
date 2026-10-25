@@ -495,8 +495,7 @@ describe('StagedImport.excludedCount', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Patient assignments — a two-person household account (modelled on the
-// Shoppers fixture in `customer-response-kind.test.ts`, as adoption leaves it)
+// Patient assignments — two source Patients, as adoption leaves them
 // ---------------------------------------------------------------------------
 
 const decodePatient = Schema.decodeUnknownSync(Patient.Schema)
@@ -504,28 +503,19 @@ const decodeRequest = Schema.decodeUnknownSync(MedicationRequest.Schema)
 const decodeDispense = Schema.decodeUnknownSync(MedicationDispense.Schema)
 
 const SID = 'https://wildflowerhealth.io/fhir/sid/shoppers-drugmart'
-const PC_ID_SYSTEM = 'https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/pc-id'
+const OTHER_SYSTEM = 'https://other.example/id'
 
+/** A source Patient keyed under the source system, its adopted id its first identifier. */
 const sourcePerson = (id: string): FhirResource =>
   decodePatient({ resourceType: 'Patient', id, identifier: [{ system: SID, value: id }] })
 
-/** The account `link.seealso`s both people; every history fill is filed on it. */
-const householdLabeled: readonly DecodedFile.Resource[] = [
+/**
+ * Dana and Sam, a request for Sam, and one fill each: Sam's names him by
+ * reference only, Dana's by reference and an identifier of its own.
+ */
+const twoPersonLabeled: readonly DecodedFile.Resource[] = [
   { key: 'dana', title: 'Dana', resource: sourcePerson('wf-dana') },
   { key: 'sam', title: 'Sam', resource: sourcePerson('wf-sam') },
-  {
-    key: 'account',
-    title: 'Account',
-    resource: decodePatient({
-      resourceType: 'Patient',
-      id: 'wf-acct',
-      identifier: [{ system: PC_ID_SYSTEM, value: 'acct' }],
-      link: [
-        { other: { reference: 'Patient/wf-dana' }, type: 'seealso' },
-        { other: { reference: 'Patient/wf-sam' }, type: 'seealso' },
-      ],
-    }),
-  },
   {
     key: 'rx-sam',
     title: 'Request',
@@ -537,20 +527,29 @@ const householdLabeled: readonly DecodedFile.Resource[] = [
       subject: { reference: 'Patient/wf-sam' },
     }),
   },
-  ...[
-    { id: 'fill-sam', request: 'rx-sam' },
-    { id: 'fill-unknown', request: 'rx-missing' },
-  ].map(({ id, request }): DecodedFile.Resource => ({
-    key: id,
-    title: id,
+  {
+    key: 'fill-sam',
+    title: 'fill-sam',
     resource: decodeDispense({
       resourceType: 'MedicationDispense',
-      id,
+      id: 'fill-sam',
       status: 'completed',
-      subject: { reference: 'Patient/wf-acct' },
-      authorizingPrescription: [{ reference: `MedicationRequest/${request}` }],
+      subject: { reference: 'Patient/wf-sam' },
     }),
-  })),
+  },
+  {
+    key: 'fill-dana',
+    title: 'fill-dana',
+    resource: decodeDispense({
+      resourceType: 'MedicationDispense',
+      id: 'fill-dana',
+      status: 'completed',
+      subject: {
+        reference: 'Patient/wf-dana',
+        identifier: { system: OTHER_SYSTEM, value: 'dana' },
+      },
+    }),
+  },
 ]
 
 /** An existing person the reviewer merges a source Patient into. */
@@ -558,13 +557,21 @@ const existingPerson = (id: string): PatientIdentity.Target => ({
   person: { ...decodePatient({ resourceType: 'Patient', id }), id },
 })
 
+/** Each request's and dispense's subject as `reference identifier-system|value`. */
 const subjectsById = (resources: readonly FhirResource[]): Readonly<Record<string, string>> =>
   Object.fromEntries(
-    resources.flatMap((entry) =>
-      entry.resourceType === 'MedicationRequest' || entry.resourceType === 'MedicationDispense'
-        ? [[entry.id ?? '', entry.subject?.reference ?? '']]
-        : []
-    )
+    resources.flatMap((entry) => {
+      if (
+        entry.resourceType !== 'MedicationRequest' &&
+        entry.resourceType !== 'MedicationDispense'
+      ) {
+        return []
+      }
+      const identifier = entry.subject?.identifier ?? null
+      const identifierKey =
+        identifier === null ? 'none' : `${identifier.system?.href ?? ''}|${identifier.value}`
+      return [[entry.id ?? '', `${entry.subject?.reference ?? ''} ${identifierKey}`]]
+    })
   )
 
 const patientIds = (resources: readonly FhirResource[]): readonly (string | null)[] =>
@@ -587,39 +594,30 @@ describe('StagedImport patient assignments', () => {
   })
 
   it("should write every source Patient as it is when all are 'new'", () => {
-    const chosen = StagedImport.chosenResources(householdLabeled, StagedImport.initial())
+    const chosen = StagedImport.chosenResources(twoPersonLabeled, StagedImport.initial())
 
-    expect(patientIds(chosen)).toEqual(['wf-dana', 'wf-sam', 'wf-acct'])
+    expect(patientIds(chosen)).toEqual(['wf-dana', 'wf-sam'])
   })
 
-  it('should write no merged source Patient, and file every subject on its person, re-attributed dispenses included', () => {
+  it('should write no merged source Patient, and file every subject on its person, naming the source identity', () => {
     const selection = StagedImport.assignPatient(
       StagedImport.assignPatient(StagedImport.initial(), 'sam', existingPerson('person-sam')),
       'dana',
       existingPerson('person-dana')
     )
 
-    const chosen = StagedImport.chosenResources(householdLabeled, selection)
+    const chosen = StagedImport.chosenResources(twoPersonLabeled, selection)
 
-    expect(patientIds(chosen)).toEqual(['wf-acct', 'person-dana', 'person-sam'])
+    expect(patientIds(chosen)).toEqual(['person-dana', 'person-sam'])
     expect(subjectsById(chosen)).toEqual({
-      'rx-sam': 'Patient/person-sam',
-      'fill-sam': 'Patient/person-sam',
-      'fill-unknown': 'Patient/wf-acct',
+      'rx-sam': `Patient/person-sam ${SID}|wf-sam`,
+      'fill-sam': `Patient/person-sam ${SID}|wf-sam`,
+      'fill-dana': `Patient/person-dana ${OTHER_SYSTEM}|dana`,
     })
     expect(chosen.find((entry) => entry.id === 'person-sam')).toMatchObject({
       identifier: [{ value: 'wf-sam' }],
     })
-    expect(StagedImport.dispensesLeftOnAccountCount(householdLabeled, selection)).toBe(1)
-    expect(StagedImport.referencesNotRewrittenCount(householdLabeled, selection)).toBe(0)
-  })
-
-  it('should re-attribute through a request the reviewer excluded', () => {
-    const selection = StagedImport.toggleResource(StagedImport.initial(), 'rx-sam')
-
-    expect(
-      subjectsById(StagedImport.chosenResources(householdLabeled, selection))['fill-sam']
-    ).toBe('Patient/wf-sam')
+    expect(StagedImport.referencesNotRewrittenCount(twoPersonLabeled, selection)).toBe(0)
   })
 
   it('should merge a source Patient assigned to a person even when it is excluded', () => {
@@ -628,19 +626,19 @@ describe('StagedImport patient assignments', () => {
       'sam'
     )
 
-    const chosen = StagedImport.chosenResources(householdLabeled, selection)
+    const chosen = StagedImport.chosenResources(twoPersonLabeled, selection)
 
-    expect(patientIds(chosen)).toEqual(['wf-dana', 'wf-acct', 'person-sam'])
-    expect(subjectsById(chosen)['rx-sam']).toBe('Patient/person-sam')
+    expect(patientIds(chosen)).toEqual(['wf-dana', 'person-sam'])
+    expect(subjectsById(chosen)['rx-sam']).toBe(`Patient/person-sam ${SID}|wf-sam`)
   })
 
   it("should neither write nor merge an excluded source Patient left 'new'", () => {
     const selection = StagedImport.toggleResource(StagedImport.initial(), 'sam')
 
-    const chosen = StagedImport.chosenResources(householdLabeled, selection)
+    const chosen = StagedImport.chosenResources(twoPersonLabeled, selection)
 
-    expect(patientIds(chosen)).toEqual(['wf-dana', 'wf-acct'])
-    expect(subjectsById(chosen)['rx-sam']).toBe('Patient/wf-sam')
+    expect(patientIds(chosen)).toEqual(['wf-dana'])
+    expect(subjectsById(chosen)['rx-sam']).toBe('Patient/wf-sam none')
   })
 
   it("should merge the reviewer's edit of a source Patient, not the decoded original", () => {
@@ -655,11 +653,12 @@ describe('StagedImport patient assignments', () => {
       existingPerson('person-sam')
     )
 
-    const chosen = StagedImport.chosenResources(householdLabeled, selection)
+    const chosen = StagedImport.chosenResources(twoPersonLabeled, selection)
 
     expect(chosen.find((entry) => entry.id === 'person-sam')).toMatchObject({
       identifier: [{ value: 'sam-edited' }],
     })
+    expect(subjectsById(chosen)['fill-sam']).toBe(`Patient/person-sam ${SID}|sam-edited`)
   })
 
   it('should count the source Patients a merge leaves out as included', () => {
@@ -669,7 +668,7 @@ describe('StagedImport patient assignments', () => {
       existingPerson('person-sam')
     )
 
-    expect(StagedImport.includedCount(householdLabeled, selection)).toBe(householdLabeled.length)
+    expect(StagedImport.includedCount(twoPersonLabeled, selection)).toBe(twoPersonLabeled.length)
   })
 
   it('should count a reference to a merged source Patient that is not relative', () => {
@@ -690,7 +689,7 @@ describe('StagedImport patient assignments', () => {
     )
 
     expect(
-      StagedImport.referencesNotRewrittenCount([...householdLabeled, absolute], selection)
+      StagedImport.referencesNotRewrittenCount([...twoPersonLabeled, absolute], selection)
     ).toBe(1)
   })
 })

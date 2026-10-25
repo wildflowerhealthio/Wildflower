@@ -311,16 +311,18 @@ through `PatientIdentity`), each source Patient goes one of two ways:
   `system` + `value`) and nothing else: the person's demographics are the
   truth, and a source's spelling of them is not. Every `Reference` whose
   `reference` is exactly the source Patient's `Patient/<id>` is re-pointed at
-  the person; its `identifier` and `display` stay. The source Patient itself
-  is not written, whether or not the reviewer included it.
+  the person. Its `display` stays, and so does its `identifier` when it has
+  one; one with none gets the source Patient's first identifier (its source
+  key), so the reference still says which source identity it came through.
+  The source Patient itself is not written, whether or not the reviewer
+  included it.
 
 References are found by walking each resource against `fhir-r4`'s own
 `Reference` schema, not through a field table like adoption's, so a reference
 anywhere in a resource moves with the person. An absolute or identifier-only
 reference to the source Patient is left alone and counted, so the review can
-say how many references were not rewritten. That includes an account's
-`link.seealso`: a link to a merged person's source Patient follows it to the
-person.
+say how many references were not rewritten. That includes a `Patient.link`:
+a link to a merged person's source Patient follows it to the person.
 
 Merging keeps one row per human, so it writes no `Patient.link`. A later import
 finds its person by searching each of the source Patient's identifiers in
@@ -329,32 +331,13 @@ source id comes first, and the first hit wins. That works because the person
 carries the merged source's adopted identifier. Resources already stored from
 imports made before a merge are not re-linked.
 
-### Household accounts
-
-A **household account** is a source Patient that `link.seealso`s the Patients
-of the people it manages. Shoppers makes one: its account `Patient`, keyed by
-the account's `pcid` (`ShoppersIdentifierSystem.PcId`), links each managed
-person's demographic `Patient`. The history feed does not say which person a
-fill was for, so a history `MedicationDispense.subject` names the account.
-
-- **A fill goes to the clinical Patient when the import says who that is.** A
-  dispense filed on a household account is re-filed on the `subject` of its
-  `authorizingPrescription` `MedicationRequest`, when the import decoded that
-  request (written or not) and the request names a subject. This runs before
-  the merge rewrite, so a fill lands on the family member and then, through
-  the merge, on the person, in one pass.
-- **Otherwise the fill stays on the account,** and is counted separately,
-  alongside the references not rewritten.
-- **A household account is a Patient and is written,** but no search matches
-  it into a person: none of its identifiers is searched, so it defaults to
-  `'new'`, and only the reviewer assigns it elsewhere. Matching it by `pcid`
-  would attribute every earlier fill of the whole family to one person.
-- **An account that links nobody is the person it names,** and is matched,
-  merged and assigned like any other source Patient.
-
-Nobody on the team has a multi-person Shoppers account. These rules were built
-from fixtures modelled on a two-person account (`customer-response-kind.test.ts`)
-and have not been checked against a real one.
+A source Patient names one person, never an account: prescriptions are
+filled for people. Where a source's feed does not say whom a record was for,
+the source works it out at extraction, before the review sees it
+(`SourceDescriptor.completeFromExtraction`). Shoppers' history feed names
+nobody, so `shoppers-drugmart-source` files each history fill on the
+capture's one Patient. An account that manages several people is not
+supported yet: its history fills keep no `subject`.
 
 ## References
 

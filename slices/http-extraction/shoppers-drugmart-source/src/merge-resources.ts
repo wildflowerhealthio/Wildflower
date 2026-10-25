@@ -5,8 +5,6 @@ import type {
 import type { FhirResource, MedicationDispense } from '@wildflowerhealthio/fhir-r4/resources'
 import type { SourceDescriptor } from '@wildflowerhealthio/http-extraction-fundamentals'
 
-import { ShoppersIdentifierSystem } from './shoppers.ts'
-
 /**
  * The Shoppers source's `mergeResources`: one dispense seen in both the
  * prescription-status feed and the prescription-history feed, as one
@@ -19,20 +17,20 @@ type Reference = IdentifierAndReference.ReferenceType
 type Concept = typeof CodeableConcept.Schema.Type
 
 /**
- * Whether `dispense` is the history feed's copy: its `subject` names the
- * account, by a `pcid` identifier.
+ * Whether `dispense` is the history feed's copy: it has no `subject`.
  *
  * @remarks
  * The two copies are told apart by this marker because it is the difference
- * the merge is about: the history feed knows only the account, the status
- * feed knows the person. The history kind writes it on every dispense, and
- * adoption keeps a reference's own `identifier`, so it survives. Reading it
+ * the merge is about: the history feed does not say who a fill was for, the
+ * status feed names the person. The history kind writes no `subject` on any
+ * dispense and the status kind always writes one, and the source's
+ * `completeFromExtraction`, which files history fills on a person, runs only
+ * after every merge, so the marker holds whenever a merge runs. Reading it
  * off the resource, rather than asking which kind emitted it, keeps the merge
  * a function of the two resources alone, with the same answer in either
  * arrival order.
  */
-const isAccountCopy = (dispense: MedicationDispense.Type): boolean =>
-  dispense.subject?.identifier?.system?.href === ShoppersIdentifierSystem.PcId
+const isHistoryCopy = (dispense: MedicationDispense.Type): boolean => dispense.subject === null
 
 /**
  * The status copy's store link, labelled with the history copy's store name
@@ -94,9 +92,9 @@ const mergeShoppersResources: SourceDescriptor.ResourceMerge<FhirResource> = (ea
   ) {
     return later
   }
-  const earlierIsAccountCopy = isAccountCopy(earlier)
-  if (earlierIsAccountCopy === isAccountCopy(later)) return later
-  return earlierIsAccountCopy
+  const earlierIsHistoryCopy = isHistoryCopy(earlier)
+  if (earlierIsHistoryCopy === isHistoryCopy(later)) return later
+  return earlierIsHistoryCopy
     ? mergeDispenseCopies(later, earlier)
     : mergeDispenseCopies(earlier, later)
 }

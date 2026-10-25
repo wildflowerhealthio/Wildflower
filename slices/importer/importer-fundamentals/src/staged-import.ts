@@ -184,14 +184,10 @@ const sourceMerges = (
  *   reviewer has set one
  *
  * @remarks
- * Two identity steps run over the included resources, in this order:
- * `PatientIdentity.attributeHouseholdDispenses` re-files a dispense on a
- * household account onto its request's subject, and then each source Patient
- * assigned to `{ person }`, included or not, is left out and merged into that person
- * (`PatientIdentity.mergeSourcePatients`), which re-points every reference to
- * it — so a dispense lands on the account's family member and then on the
- * person in one pass. A source Patient assigned `'new'` is written as it is,
- * unless excluded.
+ * Each source Patient assigned to `{ person }`, included or not, is left out
+ * and merged into that person (`PatientIdentity.mergeSourcePatients`), which
+ * re-points every reference to it. A source Patient assigned `'new'` is
+ * written as it is, unless excluded.
  */
 const chosenResources = (
   labeled: readonly DecodedFile.Resource[],
@@ -202,11 +198,7 @@ const chosenResources = (
   const kept = included
     .filter((entry) => Option.isNone(sourceMergeOf(selection, entry)))
     .map(({ resource }) => resource)
-  const attributed = PatientIdentity.attributeHouseholdDispenses(
-    kept,
-    reviewed.map(({ resource }) => resource)
-  )
-  return PatientIdentity.mergeSourcePatients(attributed, sourceMerges(reviewed, selection))
+  return PatientIdentity.mergeSourcePatients(kept, sourceMerges(reviewed, selection))
 }
 
 /** How many labeled resources are included under a selection. */
@@ -229,19 +221,6 @@ const referencesNotRewrittenCount = (
   )
 }
 
-/**
- * How many dispenses in the write set stay filed on a household account,
- * because the import does not say which family member they were for.
- */
-const dispensesLeftOnAccountCount = (
-  labeled: readonly DecodedFile.Resource[],
-  selection: Selection
-): number =>
-  PatientIdentity.dispensesLeftOnAccountCount(
-    chosenResources(labeled, selection),
-    reviewedResources(labeled, selection).map(({ resource }) => resource)
-  )
-
 /** How many labeled resources are excluded under a selection. */
 const excludedCount = (labeled: readonly DecodedFile.Resource[], selection: Selection): number =>
   labeled.filter((entry) => !isResourceIncluded(selection, entry.key)).length
@@ -249,7 +228,6 @@ const excludedCount = (labeled: readonly DecodedFile.Resource[], selection: Sele
 export {
   assignPatient,
   chosenResources,
-  dispensesLeftOnAccountCount,
   edit,
   editedResource,
   excludedCount,

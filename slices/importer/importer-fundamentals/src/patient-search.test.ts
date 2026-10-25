@@ -14,7 +14,6 @@ import * as PatientSearch from './patient-search.ts'
 
 const TEST_ORIGIN = 'http://fhir.test'
 const SID = 'https://wildflowerhealth.io/fhir/sid/shoppers-drugmart'
-const PC_ID_SYSTEM = 'https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/pc-id'
 const PATIENT_ID_SYSTEM = 'https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/patient-id'
 
 const decodePatient = Schema.decodeUnknownSync(Patient.Schema)
@@ -112,26 +111,6 @@ describe('PatientSearch.findPatientByIdentifier', () => {
     )
 
     expect(found).toEqual(Option.some('ada'))
-  })
-
-  it("does not search a household account's PcId, so never matches it into a person", async () => {
-    const householdAccount = decodePatient({
-      resourceType: 'Patient',
-      id: 'wf-acct',
-      identifier: [
-        { system: SID, value: 'acct' },
-        { system: PC_ID_SYSTEM, value: 'acct' },
-      ],
-      link: [{ other: { reference: 'Patient/wf-person' }, type: 'seealso' }],
-    })
-
-    const { found, urls } = await search(
-      householdAccount,
-      new Map([[`${PC_ID_SYSTEM}|acct`, storedPerson('ada')]])
-    )
-
-    expect(found).toEqual(Option.none())
-    expect(urls).toEqual([])
   })
 
   it("escapes FHIR search's special characters in the token", async () => {

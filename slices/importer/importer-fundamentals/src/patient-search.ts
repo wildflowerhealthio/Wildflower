@@ -40,8 +40,7 @@ const searchTokenOf = (identifier: PatientIdentity.SearchedIdentifier): string =
  * The identifiers are tried in `sourcePatient`'s own order
  * ({@link PatientIdentity.searchedIdentifiers}), so the source's adopted id
  * (`identifier[0]`) goes first, and the first that finds a Patient wins; the
- * rest are not searched. A household account searches nothing, so it is never
- * matched into a person. A failed search fails the whole read rather than
+ * rest are not searched. A failed search fails the whole read rather than
  * reading as "no match".
  */
 const findPatientByIdentifier = (

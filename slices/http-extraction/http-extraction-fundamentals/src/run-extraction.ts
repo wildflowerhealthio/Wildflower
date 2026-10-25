@@ -8,7 +8,7 @@ import type * as HttpResponseKind from './http-response-kind.ts'
  * `Extraction.routeTo` + `parseWith` into a five-way accounting. The
  * production import path is the interactive review (an untouched review
  * writes what this runner's batches hold, once each source's `mergeResources`
- * has run over them), so this lives with the test helpers as the executable
+ * and `completeFromExtraction` have run over them), so this lives with the test helpers as the executable
  * spec the suites pin against: a format binding asserts its fixture decodes
  * through it.
  *

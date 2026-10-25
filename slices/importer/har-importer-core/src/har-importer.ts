@@ -18,6 +18,7 @@ import {
   WEB_TRACE_REDACTION_SYSTEM,
 } from '@wildflowerhealthio/web-trace-core/codec'
 
+import { completeFromExtraction } from './complete-from-extraction.ts'
 import { decodeHar } from './decode-har.ts'
 import { detectHar } from './detect-har.ts'
 import { fhirSources } from './fhir-pool.ts'
@@ -103,6 +104,7 @@ const harImporter: FileImporter.Type<HarSettings, typeof format> = {
       decodeHar(members[0].bytes, settings).pipe(
         Effect.flatMap((responses) => preview(fhirPool, responses, enabledKindNames(settings))),
         Effect.map((previews) => mergeSharedResources(fhirSources, previews)),
+        Effect.flatMap((previews) => completeFromExtraction(fhirSources, previews)),
         Effect.map((previews): DecodedFile.DecodedFile => ({
           sections: sectionsByUrl(previews),
           notes: notesFor(previews),
