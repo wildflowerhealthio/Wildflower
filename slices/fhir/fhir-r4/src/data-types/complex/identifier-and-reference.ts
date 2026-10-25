@@ -1,4 +1,4 @@
-import { Option, pipe, Schema } from 'effect'
+import { Equivalence, Option, pipe, Schema } from 'effect'
 
 import {
   OrNullAsOptional,
@@ -123,11 +123,21 @@ const referencedIdOf = (reference: ReferenceType, resourceType: string): Option.
     Option.filter((id) => id.length > 0)
   )
 
+/**
+ * Whether two identifiers name the same thing: the same `system` and the same
+ * `value`, whatever else (`use`, `period`, `assigner`) either carries.
+ */
+const identifierEquivalence: Equivalence.Equivalence<IdentifierType> = Equivalence.make(
+  (left, right) =>
+    (left.system?.href ?? null) === (right.system?.href ?? null) && left.value === right.value
+)
+
 export {
   ReferenceSchema,
   referenceTo,
   referencedIdOf,
   IdentifierSchema,
+  identifierEquivalence,
   emptyReference,
   fragmentIdOf,
   fragmentReferenceTo,

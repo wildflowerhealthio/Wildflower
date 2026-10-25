@@ -94,7 +94,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   `resourceOverrides` (per-resource inline edits over `FhirResource`, same
   keying — the reviewer's edited resource replaces the decoded original at
   confirm) and `patientAssignments` (per source Patient, same keying, a
-  `PatientIdentity.Target`: `'new'`, the default, or `{ person }`).
+  `Person.Target`: `'new'`, the default, or `{ person }`).
   `initial` / `toggleResource` / `setResourcesIncluded` (the batch
   form of `toggleResource`, so the shell can opt a whole section in or out at
   once) / `edit` / `revert` / `assignPatient` are the transitions;
@@ -104,30 +104,39 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   edit overrides and patient assignments into the confirm's write set — no
   re-parse at confirm, the reviewed (or edited) objects are what gets written,
   each source Patient assigned to a person merged into it
-  (`PatientIdentity`). `includedCount` / `excludedCount` drive the shell's
-  tallies, and `referencesNotRewrittenCount` says what a merge left pointing
-  at a source Patient. Orphaned selection entries
+  (`SourcePatientMerge`). `includedCount` / `excludedCount` drive the shell's
+  tallies, and `referencesNotRewrittenCount` (`SubjectRewrite.notRewrittenCount`)
+  says what a merge left pointing at a source Patient. Orphaned selection entries
   (keys a re-decode no longer produces) are inert — sets and maps of keys,
   nothing dangling.
-- `src/patient-identity.ts` — the **`PatientIdentity`** namespace, pure.
-  **`Person`** is a Patient the user owns (an `id` always), **`Target`**
-  (`'new' | { person }`) where a source Patient goes.
-  **`mergeIntoPatient(target, source)`** appends the source's identifiers the
-  target lacks (matched on `system` + `value`) and changes nothing else.
-  **`rewriteSubjects(resources, sourcePatient, to)`** re-points every
-  `Reference` whose `reference` is exactly the source Patient's, found by
-  walking each resource against `fhir-r4`'s `Reference` schema, not a field
-  list; a rewritten reference with no `identifier` gets the source Patient's
-  first one, so it still names the source identity. Absolute and
-  identifier-only references are left and counted
-  (`referencesNotRewrittenCount`). **`mergeSourcePatients`** folds every
-  merge of one confirm into its person in a single walk.
-  **`searchedIdentifiers`** lists the identifiers a search tries.
-- `src/patient-search.ts` — the **`PatientSearch`** namespace:
-  **`findPatientByIdentifier(sourcePatient)`**, the one server read identity
-  needs. `GET Patient?identifier=system|value` per searched identifier, in the
-  source Patient's own order, the first hit wins; requires
-  `FhirR4ResourcesHttpApiClient`.
+- `src/patient-identity/` — one Patient per human, one namespace per file,
+  pure but for the search:
+  - `person.ts` — the **`Person`** namespace. **`Person.Type`** is a Patient
+    the user owns (an `id` always), **`Person.Target`**
+    (`'new' | { person }`) where a source Patient goes.
+    **`Person.mergeSourceIdentifiers({ person, sourcePatient })`** appends
+    the source Patient's identifiers the person lacks (matched on `system` +
+    `value`, `fhir-r4`'s `IdentifierAndReference.identifierEquivalence`) and
+    changes nothing else.
+  - `subject-rewrite.ts` — the **`SubjectRewrite`** namespace.
+    **`SubjectRewrite.rewrite({ resources, moves })`** re-points every
+    `Reference` whose `reference` is exactly a moved source Patient's, found
+    by `fhir-r4`'s `ResourceReferences` walk, not a field list; a rewritten
+    reference with no `identifier` gets the source Patient's first one, so it
+    still names the source identity. Absolute and identifier-only references
+    are left and counted (**`SubjectRewrite.notRewrittenCount`**).
+  - `source-patient-merge.ts` — the **`SourcePatientMerge`** namespace:
+    **`SourcePatientMerge.Type`** (`{ sourcePatient, person }`) and
+    **`SourcePatientMerge.applyTo({ resources, merges })`**, which folds every
+    merge of one confirm into its person in a single walk.
+  - `patient-search.ts` — the **`PatientSearch`** namespace:
+    **`PatientSearch.findPatientByIdentifier(sourcePatient)`**, the one server
+    read identity needs. `GET Patient?identifier=system|value` per
+    **`PatientSearch.searchedIdentifiers`** entry, in the source Patient's own
+    order, the first hit wins; requires `FhirR4ResourcesHttpApiClient`.
+  - `test-resources.ts` — the decoders, generated Patients and resources, and
+    wire-side reference oracle the folder's tests share; imported by tests
+    only.
 - `src/picked-file.ts` — the **`PickedFile`** namespace: the picked file
   vocabulary _and_ the codec that source files one. **`Type`**
   (`{ id, fileName, bytes }`) is the one value every `decode` receives, and
@@ -168,8 +177,9 @@ Depends on `effect` (and `kitchen-sink` in tests), plus `fhir-r4` for the
 `FhirResource` (`decoded-file.ts` and `staged-import.ts` are concrete over it,
 not generic — every format binds `FhirResource`, so there is no `TParsed` left
 to abstract over), `fhir-r4/data-types` for `Meta` (the slot `MetaSource.stamp`
-writes into) and the `Reference` schema (what `PatientIdentity`'s walk finds
-references by), `fhir-r4/identity` for the shared id derivation, and `fhir`'s
+writes into) and `IdentifierAndReference`, `fhir-r4/resources`'
+`ResourceReferences` (the walk `SubjectRewrite` finds references by),
+`fhir-r4/identity` for the shared id derivation, and `fhir`'s
 wire types. Hosting the source file codec is what widened
 `fhir-r4` from a type-only import to the `DocumentReference` runtime schema
 (it builds and decodes the resource). `fhir-r4/clients` is used for one read

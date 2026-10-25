@@ -10,7 +10,7 @@ import {
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 import type * as DecodedFile from './decoded-file.ts'
-import type * as PatientIdentity from './patient-identity.ts'
+import type * as Person from './patient-identity/person.ts'
 import * as StagedImport from './staged-import.ts'
 
 /**
@@ -553,7 +553,7 @@ const twoPersonLabeled: readonly DecodedFile.Resource[] = [
 ]
 
 /** An existing person the reviewer merges a source Patient into. */
-const existingPerson = (id: string): PatientIdentity.Target => ({
+const existingPerson = (id: string): Person.Target => ({
   person: { ...decodePatient({ resourceType: 'Patient', id }), id },
 })
 

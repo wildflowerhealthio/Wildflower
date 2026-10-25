@@ -2,7 +2,9 @@ import { type FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { Option } from 'effect'
 
 import type * as DecodedFile from './decoded-file.ts'
-import * as PatientIdentity from './patient-identity.ts'
+import type * as Person from './patient-identity/person.ts'
+import * as SourcePatientMerge from './patient-identity/source-patient-merge.ts'
+import * as SubjectRewrite from './patient-identity/subject-rewrite.ts'
 
 /**
  * The pure model of an import that has been decoded but not yet written: which
@@ -47,7 +49,7 @@ interface Selection {
    * merges it into an existing one at confirm. A source Patient whose key is
    * not here goes to `'new'`; a key that is not a Patient's is inert.
    */
-  readonly patientAssignments: ReadonlyMap<string, PatientIdentity.Target>
+  readonly patientAssignments: ReadonlyMap<string, Person.Target>
 }
 
 /** The default selection: every resource included, no edits, every source Patient `'new'`. */
@@ -120,7 +122,7 @@ const revert = (selection: Selection, key: string): Selection => {
 const assignPatient = (
   selection: Selection,
   sourcePatientKey: string,
-  target: PatientIdentity.Target
+  target: Person.Target
 ): Selection => {
   const patientAssignments = new Map(selection.patientAssignments)
   patientAssignments.set(sourcePatientKey, target)
@@ -128,7 +130,7 @@ const assignPatient = (
 }
 
 /** Where the source Patient at `sourcePatientKey` goes at confirm — `'new'` unless assigned. */
-const patientTarget = (selection: Selection, sourcePatientKey: string): PatientIdentity.Target =>
+const patientTarget = (selection: Selection, sourcePatientKey: string): Person.Target =>
   selection.patientAssignments.get(sourcePatientKey) ?? 'new'
 
 /** Whether the reviewer has set an inline edit for `key`. */
@@ -155,7 +157,7 @@ const reviewedResources = (
 const sourceMergeOf = (
   selection: Selection,
   entry: DecodedFile.Resource
-): Option.Option<PatientIdentity.SourceMerge> => {
+): Option.Option<SourcePatientMerge.Type> => {
   const target = patientTarget(selection, entry.key)
   return entry.resource.resourceType === 'Patient' && target !== 'new'
     ? Option.some({ sourcePatient: entry.resource, person: target.person })
@@ -170,7 +172,7 @@ const sourceMergeOf = (
 const sourceMerges = (
   reviewed: readonly DecodedFile.Resource[],
   selection: Selection
-): readonly PatientIdentity.SourceMerge[] =>
+): readonly SourcePatientMerge.Type[] =>
   reviewed.flatMap((entry) => Option.toArray(sourceMergeOf(selection, entry)))
 
 /**
@@ -185,7 +187,7 @@ const sourceMerges = (
  *
  * @remarks
  * Each source Patient assigned to `{ person }`, included or not, is left out
- * and merged into that person (`PatientIdentity.mergeSourcePatients`), which
+ * and merged into that person (`SourcePatientMerge.applyTo`), which
  * re-points every reference to it. A source Patient assigned `'new'` is
  * written as it is, unless excluded.
  */
@@ -198,7 +200,10 @@ const chosenResources = (
   const kept = included
     .filter((entry) => Option.isNone(sourceMergeOf(selection, entry)))
     .map(({ resource }) => resource)
-  return PatientIdentity.mergeSourcePatients(kept, sourceMerges(reviewed, selection))
+  return SourcePatientMerge.applyTo({
+    resources: kept,
+    merges: sourceMerges(reviewed, selection),
+  })
 }
 
 /** How many labeled resources are included under a selection. */
@@ -212,14 +217,13 @@ const includedCount = (labeled: readonly DecodedFile.Resource[], selection: Sele
 const referencesNotRewrittenCount = (
   labeled: readonly DecodedFile.Resource[],
   selection: Selection
-): number => {
-  return PatientIdentity.referencesNotRewrittenCount(
-    chosenResources(labeled, selection),
-    sourceMerges(reviewedResources(labeled, selection), selection).map(
+): number =>
+  SubjectRewrite.notRewrittenCount({
+    resources: chosenResources(labeled, selection),
+    sourcePatients: sourceMerges(reviewedResources(labeled, selection), selection).map(
       ({ sourcePatient }) => sourcePatient
-    )
-  )
-}
+    ),
+  })
 
 /** How many labeled resources are excluded under a selection. */
 const excludedCount = (labeled: readonly DecodedFile.Resource[], selection: Selection): number =>

@@ -303,7 +303,7 @@ human**, not one per provider–human relationship.
 A **source Patient is never a person.** A person is a Patient the user owns,
 and it accumulates the identifiers of every source Patient merged into it. At
 an import's confirm (`importer-fundamentals`' `StagedImport.chosenResources`,
-through `PatientIdentity`), each source Patient goes one of two ways:
+through `SourcePatientMerge`), each source Patient goes one of two ways:
 
 - **`'new'`** — it is written as it is, and becomes the person.
 - **`{ person }`** — it is merged into an existing person. The person gains
@@ -318,8 +318,9 @@ through `PatientIdentity`), each source Patient goes one of two ways:
   included it.
 
 References are found by walking each resource against `fhir-r4`'s own
-`Reference` schema, not through a field table like adoption's, so a reference
-anywhere in a resource moves with the person. An absolute or identifier-only
+`Reference` schema (`fhir-r4/resources`' `ResourceReferences`), not through a
+field table like adoption's, so a reference anywhere in a resource moves with
+the person. An absolute or identifier-only
 reference to the source Patient is left alone and counted, so the review can
 say how many references were not rewritten. That includes a `Patient.link`:
 a link to a merged person's source Patient follows it to the person.
@@ -348,5 +349,5 @@ supported yet: its history fills keep no `subject`.
 - [web-trace-core AGENTS.md](../../../web-trace-core/AGENTS.md) — the codec that
   mints trace ids.
 - [importer-fundamentals AGENTS.md](../../../importer/importer-fundamentals/AGENTS.md)
-  — `PatientIdentity` and `PatientSearch`, which merge a source Patient into
-  its person.
+  — `Person`, `SubjectRewrite`, `SourcePatientMerge` and `PatientSearch`,
+  which merge a source Patient into its person.
