@@ -33,16 +33,16 @@ by hand:
 
 ## The shared keys
 
-| Key                   | Jobs                                                           | Environment                                                             |
-| --------------------- | -------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `workspace-linux-dev` | `ci-rust.yml` → `lint`, `test`; `rust-cache-warm.yml` → `warm` | Full workspace, `ubuntu-latest`, dev profile, default rustflags         |
-| `release-macos`       | `tauri-release-publish.yml` → `build` (macOS)                  | Release profile, `x86_64`/`aarch64-apple-darwin` for the universal app  |
-| `release-windows`     | `tauri-release-publish.yml` → `build` (Windows)                | Release profile, `windows-latest`                                       |
-| `release-linux`       | `tauri-release-publish.yml` → `build` (Linux)                  | Release profile, `ubuntu-22.04` — a different image from CI's           |
-| `release-ios`         | `tauri-release-publish.yml` → `build-ios`                      | Release profile, `aarch64-apple-ios`                                    |
-| `release-android`     | `tauri-release-publish.yml` → `build-android`                  | Release profile, `aarch64-linux-android`/`armv7-linux-androideabi`      |
-| `release-relay`       | `deploy-relay.yml` → `build`                                   | Release profile, `wildflowerhealthio-relay-server` only, `ubuntu-24.04` |
-| `registry-linux`      | `tauri-release-prepare.yml` → `prepare`                        | No compile at all; `cache-targets: false`, registry and git only        |
+| Key                   | Jobs                                                                                      | Environment                                                             |
+| --------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `workspace-linux-dev` | `ci-rust.yml` → `lint`, `test`; `rust-cache-warm.yml` → `warm`                            | Full workspace, `ubuntu-latest`, dev profile, default rustflags         |
+| `release-macos`       | `tauri-release-publish.yml` → `build` (macOS)                                             | Release profile, `x86_64`/`aarch64-apple-darwin` for the universal app  |
+| `release-windows`     | `tauri-release-publish.yml` → `build` (Windows)                                           | Release profile, `windows-latest`                                       |
+| `release-linux`       | `tauri-release-publish.yml` → `build` (Linux)                                             | Release profile, `ubuntu-22.04` — a different image from CI's           |
+| `release-ios`         | `tauri-release-publish.yml` → `build-ios`                                                 | Release profile, `aarch64-apple-ios`                                    |
+| `release-android`     | `tauri-release-publish.yml` → `build-android`; `ci-android.yml` → `bundle` (restore only) | Release profile, `aarch64-linux-android`/`armv7-linux-androideabi`      |
+| `release-relay`       | `deploy-relay.yml` → `build`                                                              | Release profile, `wildflowerhealthio-relay-server` only, `ubuntu-24.04` |
+| `registry-linux`      | `tauri-release-prepare.yml` → `prepare`                                                   | No compile at all; `cache-targets: false`, registry and git only        |
 
 Every one of them pins `cache-on-failure: true` — also the action's own default,
 stated outright because the scheme depends on it: a red run still saves the
@@ -123,7 +123,8 @@ builds it would save. A `workflow_dispatch` publish run from `main` does save
 into main's scope, so back-to-back dispatched rebuilds hit; a run triggered by
 the merged release PR saves into that PR's merge-ref scope, which no later run
 can read. The Android job, whose cache is the largest, saves only from a
-dispatch.
+dispatch. `ci-android.yml` restores the same entry, from `main`'s scope, and
+never saves one.
 
 ## The Tauri system packages
 
