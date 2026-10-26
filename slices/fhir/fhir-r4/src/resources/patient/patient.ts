@@ -234,7 +234,7 @@ const normalizeNamePart = (namePart: string): string =>
 
 /**
  * The identifier a patient's first name and birth date mint under
- * {@link NAME_BIRTH_DATE_IDENTIFIER_SYSTEM}: `family|given…|YYYY-MM-DD`, the
+ * {@link NAME_BIRTH_DATE_IDENTIFIER_SYSTEM}: `family;given…;YYYY-MM-DD`, the
  * given names joined by a space, in NFC, lower-cased with whitespace collapsed.
  *
  * @remarks
@@ -242,7 +242,10 @@ const normalizeNamePart = (namePart: string): string =>
  * sources is one identity for the importer's identity map. A name change
  * mints a different identifier, and the person keeps both. `None` unless the
  * first name's family, at least one given name, and `birthDate` are all
- * present, so a partial match never links two people.
+ * present, so a partial match never links two people. The parts are joined
+ * by `;` rather than `|`, which a FHIR token search reads as the system
+ * separator, so the value is searched as `system|family;given;date` with
+ * nothing to escape.
  */
 const nameBirthDateIdentifier = (
   patient: Type
@@ -266,7 +269,7 @@ const nameBirthDateIdentifier = (
       system: new URL(NAME_BIRTH_DATE_IDENTIFIER_SYSTEM),
       type: null,
       use: null,
-      value: valueParts.join('|'),
+      value: valueParts.join(';'),
     }))
   )
 }

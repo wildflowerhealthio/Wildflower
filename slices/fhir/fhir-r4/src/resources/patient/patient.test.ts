@@ -351,7 +351,7 @@ describe('Patient.nameBirthDateIdentifier', () => {
       )
       .map(([words, trailingWhitespace]) => `${words.join('')}${trailingWhitespace}`)
 
-  test('mints family|given…|birth date under the Wildflower system, lower-cased', () => {
+  test('mints family;given…;birth date under the Wildflower system, lower-cased', () => {
     // Arrange
     const patient = patientNamed({
       names: [humanName({ family: 'Smith', given: ['Tyra', 'Jane'] })],
@@ -370,7 +370,7 @@ describe('Patient.nameBirthDateIdentifier', () => {
       system: new URL('https://wildflowerhealth.io/fhir/identifier/patient-name-birth-date'),
       type: null,
       use: null,
-      value: 'smith|tyra jane|1990-04-02',
+      value: 'smith;tyra jane;1990-04-02',
     })
     expect(Patient.NAME_BIRTH_DATE_IDENTIFIER_SYSTEM).toBe(
       'https://wildflowerhealth.io/fhir/identifier/patient-name-birth-date'
@@ -454,7 +454,7 @@ describe('Patient.nameBirthDateIdentifier', () => {
         expect(
           Option.map(Patient.nameBirthDateIdentifier(respelled), ({ value }) => value)
         ).toEqual(
-          Option.some(`${fullName.family}|${fullName.given.join(' ')}|${birthDate}`.toLowerCase())
+          Option.some(`${fullName.family};${fullName.given.join(' ')};${birthDate}`.toLowerCase())
         )
         expect(Patient.nameBirthDateIdentifier(respelled)).toEqual(
           Patient.nameBirthDateIdentifier(plain)
@@ -474,7 +474,7 @@ describe('Patient.nameBirthDateIdentifier', () => {
             birthDate: Schema.encodeSync(TimelessDateFromString)(fullName.birthDate),
           })
         ).pipe(Option.getOrThrow)
-        const [family = '', given = '', birthDate = ''] = (minted.value ?? '').split('|')
+        const [family = '', given = '', birthDate = ''] = (minted.value ?? '').split(';')
 
         // Act
         const remintedFromOwnParts = Patient.nameBirthDateIdentifier(
