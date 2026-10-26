@@ -1,9 +1,10 @@
 # AGENTS.md — slices/importer/importer-fundamentals
 
-The **resource-agnostic, format-agnostic upstream** of the importer slice: the
+The **format-agnostic upstream** of the importer slice: the
 contract every file-format binding implements, the pure per-resource
-staged-import model (what a decoded-but-unwritten import consists of), and the
-structural failure record the sinks report against. It is the
+staged-import model (what a decoded-but-unwritten import consists of), the
+identity map that links a decode's patients and providers to the device's, and
+the structural failure record the sinks report against. It is the
 layer a concrete binding (`har-importer-core`, `lifelabs-pdf-importer`)
 sits on top of.
 
@@ -102,6 +103,28 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   `excludedCount` drive the shell's tallies. Orphaned selection entries
   (keys a re-decode no longer produces) are inert — sets and maps of keys,
   nothing dangling.
+- `src/identity-map/` — the **identity map**: which person or provider on the
+  device each identity an import discovers becomes, and the pure stage that
+  files a decoded file on that choice. One namespace per file:
+  **`Identity`** (`{ resourceType: 'Patient' | 'Practitioner', system, value }`,
+  its map **`key`** `resourceType|system|value`, `equivalence`, and
+  **`withIdentifiers`**, which appends the identifiers a resource lacks by
+  `IdentifierAndReference.identifierEquivalence` and changes nothing else);
+  **`IdentityRow`** (what the review renders: a **resource-backed** row for each
+  `Patient` / `Practitioner` the decode emitted, keyed by its `identifier[0]`
+  and carrying every identifier its search tries, its own plus the one its
+  demographics derive through `Patient.nameBirthDateIdentifier` /
+  `Practitioner.nameIdentifier`; an **id-only** row for each reference that
+  names someone by identifier alone; **`discover`** finds both through
+  `ResourceReferences.collect`, resource-backed first, once per key);
+  **`Target`** (`'new'`, a **`stored`** resource, another **`row`**, or
+  `'dontLink'`); and **`IdentityMap`** (the `ReadonlyMap<key, Target>`;
+  **`targetOf`** with its per-kind default, **`resolve`** following `row`
+  targets, **`apply`** and **`unresolved`**). `reference-slot.ts`
+  (**`ReferenceSlot`**, not exported) reads a resource's top-level `subject`,
+  `requester` and `performer`: an identifier-only reference states no type,
+  so its slot says whether it names a Patient or a Practitioner, and the slot
+  is the path `unresolved` reports, since `ResourceReferences.map` gives none.
 - `src/picked-file.ts` — the **`PickedFile`** namespace: the picked file
   vocabulary _and_ the codec that source files one. **`Type`**
   (`{ id, fileName, bytes }`) is the one value every `decode` receives, and
@@ -139,7 +162,9 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
 
 Depends on `effect` (and `kitchen-sink` in tests), plus `fhir-r4` for the
 `DocumentReference` schema, `fhir-r4/resources` for
-`FhirResource` (`decoded-file.ts` and `staged-import.ts` are concrete over it,
+`FhirResource`, `Patient`, `Practitioner` and `ResourceReferences` (the
+identity map's resources and its one reference walk; `fhir-r4/data-types`
+gives it `IdentifierAndReference` and `HumanName`) (`decoded-file.ts` and `staged-import.ts` are concrete over it,
 not generic — every format binds `FhirResource`, so there is no `TParsed` left
 to abstract over), `fhir-r4/data-types` for `Meta` (the slot `MetaSource.stamp`
 writes into), `fhir-r4/identity` for the shared id derivation, and `fhir`'s
@@ -205,6 +230,26 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
   fixed key safe. Do not push that obligation down into a `decodeFileSet` —
   one that tries to be unique across a batch cannot be, since it is not given
   the batch.
+- **Identity is the map's, never the selection's.** `StagedImport` keeps
+  exclusions and edits; which person or provider a reference lands on lives in
+  the `IdentityMap`, held beside the selections, and `IdentityMap.apply` runs
+  before the server diff, the preview and the confirm, so all three see the
+  resources that get written. `apply` is pure and idempotent and keeps the
+  file's sections and keys: a source resource linked to a stored one is
+  replaced by it **under the same review key**, the stored resource gaining
+  the source's identifiers and its own derived one and keeping its
+  demographics byte for byte; every reference to the identity, a literal
+  `Type/<source id>` or an identifier-only one, is re-pointed through
+  `ResourceReferences.map`, keeping its `display` and `identifier`; a stored
+  resource only id-only rows link is appended under a final **"Linked"**
+  section so the review shows the identifier it gained; a `'new'` resource is
+  written as decoded plus its derived identifier. A `row` target follows to the
+  end, and a combination a row's kind does not allow, a cycle, or a row the
+  file does not hold falls back to `'new'` for a resource-backed row and
+  `'dontLink'` for an id-only one. `unresolved` lists, on the applied file,
+  every missing `subject`, every slot reference that is an absolute URL, and
+  every identity the map leaves identifier-only; a `display`-only provider is
+  not one the map could link, so it is not listed.
 - **Selection keys by a `DecodedFile.Resource`'s `key`.** Selection state must
   be serializable and survive a settings re-decode, so both axes hold string
   keys; a key that disappears simply stops applying.

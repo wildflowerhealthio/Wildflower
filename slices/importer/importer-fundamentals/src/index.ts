@@ -6,6 +6,10 @@ export * as FileImporter from './file-importer.ts'
 export * as DecodedFile from './decoded-file.ts'
 export * as FormatDecode from './format-decode.ts'
 export * as DecodeFunction from './decode-function.ts'
+export * as Identity from './identity-map/identity.ts'
+export * as IdentityRow from './identity-map/identity-row.ts'
+export * as Target from './identity-map/target.ts'
+export * as IdentityMap from './identity-map/identity-map.ts'
 // Namespaced symbols are reached through their namespace above — a flat
 // re-export here would give each one a second spelling. Only modules that are
 // not namespaces export flat.
