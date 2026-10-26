@@ -298,7 +298,6 @@ export {
   patient,
   practitioner,
   request,
-  storedOf,
   unrelatedArbitrary,
   untypedSubject,
   wireFieldsOf,

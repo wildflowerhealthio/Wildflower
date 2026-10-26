@@ -15,8 +15,7 @@
 import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { Array, HashMap, HashSet, Option, pipe, Record } from 'effect'
 
-import * as LinkTarget from './link-target.ts'
-import type * as Link from './link.ts'
+import * as Link from './link.ts'
 import * as LinkableResource from './linkable-resource.ts'
 import * as Referent from './referent.ts'
 
@@ -35,21 +34,10 @@ interface Type {
   readonly resourceExistsInFile: boolean
 }
 
-/** A link that landed on a resource: the referent, and the resource its target holds. */
-interface LinkedResource {
-  readonly referent: Referent.Type
-  readonly resource: LinkableResource.WithId
-}
-
-/** The links of `links` whose target holds a resource. */
-const linkedResourcesOf = (links: readonly Link.Type[]): readonly LinkedResource[] =>
-  Array.filterMap(links, ({ referent, target }) =>
-    Option.map(LinkTarget.tryIntoResource(target), (resource) => ({ referent, resource }))
-  )
-
 /**
  * The placed resource under `placedLiteralReference`, from the links that
- * landed on it.
+ * landed on it, given the literal references the file's decoded resources
+ * carry.
  *
  * @remarks
  * A resource assumes, once, its own derived identifier (so a name-and-birth-date
@@ -57,9 +45,9 @@ const linkedResourcesOf = (links: readonly Link.Type[]): readonly LinkedResource
  * the identifiers of every referent linked to it. Should two referents carry
  * different copies of one stored resource, the last one's is written.
  */
-const placedResourceOf = (
+const make = (
   placedLiteralReference: string,
-  linkedResources: Array.NonEmptyReadonlyArray<LinkedResource>,
+  linkedResources: Array.NonEmptyReadonlyArray<Link.LinkedResource>,
   decodedLiteralReferences: HashSet.HashSet<string>
 ): Type => {
   const { resource } = Array.lastNonEmpty(linkedResources)
@@ -85,14 +73,15 @@ const byPlacedLiteralReference = (
   decodedLiteralReferences: HashSet.HashSet<string>
 ): HashMap.HashMap<string, Type> =>
   pipe(
-    linkedResourcesOf(links),
+    links,
+    Array.filterMap(Link.tryIntoLinkedResource),
     Array.groupBy(({ resource }) => LinkableResource.literalReferenceOf(resource)),
     Record.map((linkedResources, placedLiteralReference) =>
-      placedResourceOf(placedLiteralReference, linkedResources, decodedLiteralReferences)
+      make(placedLiteralReference, linkedResources, decodedLiteralReferences)
     ),
     Record.toEntries,
     HashMap.fromIterable
   )
 
-export { byPlacedLiteralReference }
+export { byPlacedLiteralReference, make }
 export type { Type }

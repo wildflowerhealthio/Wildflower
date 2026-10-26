@@ -1,19 +1,18 @@
 /**
  * Placing a decoded file on its link plan: each decoded resource written as
- * the resource the plan has for it, with its mentions redirected; and the
- * resources the file only mentions appended.
+ * the resource the plan has for it, with its mentions redirected to their
+ * referents' link targets; and the resources the file only mentions appended.
  *
  * @packageDocumentation
  */
 
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import { type FhirResource, ResourceReferences } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array, HashMap, Option, pipe } from 'effect'
 
 import * as DecodedFile from '../decoded-file.ts'
 import * as LinkPlan from './link-plan.ts'
 import * as LinkTarget from './link-target.ts'
 import * as LinkableResource from './linkable-resource.ts'
-import * as Redirection from './redirection.ts'
 
 /** The title of the section the placement appends resources the file only mentions under. */
 const LINKED_SECTION_TITLE = 'Linked'
@@ -21,6 +20,23 @@ const LINKED_SECTION_TITLE = 'Linked'
 /** The review key a resource the file only mentions is appended under. */
 const linkedKey = (onlyMentioned: LinkableResource.WithId): string =>
   `linked:${LinkableResource.literalReferenceOf(onlyMentioned)}`
+
+/**
+ * `mentioningResource` with every reference it carries that `plan` redirects
+ * placed at its referent's link target, keeping its `display` and its own
+ * `identifier`. Walks every reference, not only the mention fields, so a
+ * provider named elsewhere moves too. The same object when nothing moves.
+ */
+const redirectMentions = (plan: LinkPlan.Type, mentioningResource: FhirResource): FhirResource =>
+  ResourceReferences.map(mentioningResource, (referenceAsDecoded) =>
+    Option.match(LinkPlan.maybeRedirectOf(plan, referenceAsDecoded), {
+      onNone: () => referenceAsDecoded,
+      onSome: (placedLiteralReference) => ({
+        ...referenceAsDecoded,
+        reference: placedLiteralReference,
+      }),
+    })
+  )
 
 /**
  * `decodedResource` as it is placed under `plan`: the resource the plan
@@ -35,7 +51,7 @@ const placed = (plan: LinkPlan.Type, decodedResource: FhirResource): FhirResourc
     Option.flatMap((withId) => LinkPlan.maybePlacedResourceFor(plan, withId)),
     Option.map(({ resource }): FhirResource => resource),
     Option.getOrElse(() => decodedResource),
-    (resource) => Redirection.redirectMentions(plan, resource)
+    (resource) => redirectMentions(plan, resource)
   )
 
 /**

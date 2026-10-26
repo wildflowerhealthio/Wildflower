@@ -1,4 +1,3 @@
-// oxlint-disable import/max-dependencies -- the stage's tests read every phase's namespace
 import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
 import { Practitioner, type FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
@@ -6,7 +5,16 @@ import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { FastCheck as fc, HashMap } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vite-plus/test'
 
-import * as DecodedFile from '../decoded-file.ts'
+import {
+  DecodedFile,
+  IdentityMap,
+  LinkChoice,
+  LinkTarget,
+  Placement,
+  Referent,
+  type ReferentLinkChoices,
+  UnlinkedMention,
+} from '../index.ts'
 import {
   ABSOLUTE,
   CUSTOMER,
@@ -31,14 +39,7 @@ import {
   wireFieldsOf,
   wireOf,
 } from './identity-map.test-helpers.ts'
-import * as IdentityMap from './identity-map.ts'
-import * as LinkChoice from './link-choice.ts'
-import * as LinkTarget from './link-target.ts'
-import * as Placement from './placement.ts'
-import type * as ReferentLinkChoices from './referent-link-choices.ts'
-import * as Referent from './referent.ts'
 import * as Resolution from './resolution.ts'
-import * as UnlinkedMention from './unlinked-mention.ts'
 
 // Schema-generated resources at fast-check's default size run to hundreds of
 // kilobytes each; the properties are about structure, which the smallest size
@@ -246,7 +247,10 @@ describe('IdentityMap.apply on a printed name set to New', () => {
         'Dr. A Smith',
       ])
     }
-    expect(IdentityMap.unlinkedMentions(file, map).map(pathOf)).toEqual(['subject', 'subject'])
+    expect(UnlinkedMention.collect(IdentityMap.apply(file, map)).map(pathOf)).toEqual([
+      'subject',
+      'subject',
+    ])
   })
 
   it('changes nothing when applied again', () => {
@@ -391,7 +395,7 @@ describe('Resolution.linkTargetOf', () => {
   })
 })
 
-describe('IdentityMap.unlinkedMentions', () => {
+describe('UnlinkedMention.collect on a placed file', () => {
   const file = fileOf(
     observation('o-1'),
     observation('o-2', { reference: ABSOLUTE }),
@@ -402,7 +406,7 @@ describe('IdentityMap.unlinkedMentions', () => {
     observation('o-6', literalSubject('p-1'), [{ reference: ABSOLUTE }])
   )
   const listed = (choices: ReferentLinkChoices.Type): readonly string[] =>
-    IdentityMap.unlinkedMentions(file, choices).map(
+    UnlinkedMention.collect(IdentityMap.apply(file, choices)).map(
       (unlinked) => `${unlinked._tag} ${unlinked.mentioningResourceKey} ${pathOf(unlinked)}`
     )
 
@@ -507,7 +511,7 @@ describe('IdentityMap properties', () => {
   it('property: lists a subject exactly when the applied resource names no one by a relative literal', () => {
     fc.assert(
       fc.property(fileArbitrary, choicesArbitrary, (file, map) => {
-        const listedSubjects = IdentityMap.unlinkedMentions(file, map)
+        const listedSubjects = UnlinkedMention.collect(IdentityMap.apply(file, map))
           .filter((unlinked) => pathOf(unlinked) === 'subject')
           .map((unlinked) => unlinked.mentioningResourceKey)
         const unlinkedSubjects = DecodedFile.resources(IdentityMap.apply(file, map))
