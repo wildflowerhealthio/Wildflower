@@ -7,9 +7,9 @@
 
 import { HumanName, IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { Patient, Practitioner } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array, Match, Option } from 'effect'
+import { Array, flow, Match, Option, pipe } from 'effect'
 
-import * as LogicalReference from './logical-reference.ts'
+import * as LinkableLogicalReference from './linkable-logical-reference.ts'
 
 /** A `Patient` or a `Practitioner`. */
 type Type = Patient.Type | Practitioner.Type
@@ -23,67 +23,69 @@ const matchResourceType = Match.discriminator('resourceType')
 
 /** Whether `resource` is one the identity map links. */
 const is = (resource: { readonly resourceType: string }): resource is Type =>
-  LogicalReference.isResourceType(resource.resourceType)
+  LinkableLogicalReference.isResourceType(resource.resourceType)
 
-/** `resource` with its `id` known to be set, or `None` when it has none: nothing can point at it. */
-const tryWithId = (resource: Type): Option.Option<WithId> =>
+/** `resource` with its `id` known to be set; `None` when it has none, so nothing can point at it. */
+const tryIntoWithId = (resource: Type): Option.Option<WithId> =>
   resource.id === null ? Option.none() : Option.some({ ...resource, id: resource.id })
 
 /** `resource`'s relative literal reference, `Type/<id>`: what a mention of it carries. */
 const literalReferenceOf = (resource: WithId): string => `${resource.resourceType}/${resource.id}`
 
 /**
- * The logical reference `resource` answers to, which the identity map keys it
- * by: its `identifier[0]`, which adoption fills with the source's own id under
- * the source's system. `None` when that identifier is missing or unqualified.
+ * The linkable logical reference `resource` answers to, which the identity
+ * map keys it by: its `identifier[0]`, which adoption fills with the source's
+ * own id under the source's system. `None` when that identifier is missing
+ * or unqualified.
  */
-const maybeLogicalReferenceOf = (resource: Type): Option.Option<LogicalReference.Type> =>
+const tryIntoLogicalReference = (resource: Type): Option.Option<LinkableLogicalReference.Type> =>
   Array.head(resource.identifier).pipe(
-    Option.flatMap((identifier) => LogicalReference.maybeOf(resource.resourceType, identifier))
+    Option.flatMap((identifier) =>
+      LinkableLogicalReference.tryFromIdentifier(resource.resourceType, identifier)
+    )
   )
 
 /**
- * The name `resource`'s first `name` renders to, or `None` when it renders
- * blank. The first name, because the derived identifiers read it.
+ * The name `resource` is shown by, `HumanName.displayName`'s pick among its
+ * names (a current one first, by use); `None` when none renders.
  */
-const maybeFirstNameOf = (resource: Type): Option.Option<string> =>
-  Option.fromNullable(HumanName.displayName(resource.name.slice(0, 1)))
+const maybeDisplayName = (resource: Type): Option.Option<string> =>
+  Option.fromNullable(HumanName.displayName(resource.name))
+
+/** A Patient's birth date; a Practitioner has none. */
+const maybeBirthDate: (resource: Type) => Option.Option<string> = Match.type<Type>().pipe(
+  matchResourceType('Patient', (patient) => Option.fromNullable(patient.birthDate)),
+  matchResourceType('Practitioner', () => Option.none()),
+  Match.exhaustive
+)
 
 /**
  * The identifier `resource`'s own demographics derive, under a Wildflower
- * system: name and birth date for a Patient, the printed name for a
+ * system: name and birth date for a Patient, the displayed name for a
  * Practitioner. `None` when they do not allow one.
  */
-const maybeDerivedIdentifier = (
+const maybeDerivedIdentifier: (
   resource: Type
-): Option.Option<IdentifierAndReference.IdentifierType> =>
-  Match.value(resource).pipe(
-    matchResourceType('Patient', Patient.nameBirthDateIdentifier),
-    matchResourceType('Practitioner', (practitioner) =>
-      Option.flatMap(maybeFirstNameOf(practitioner), Practitioner.nameIdentifier)
-    ),
-    Match.exhaustive
-  )
+) => Option.Option<IdentifierAndReference.IdentifierType> = Match.type<Type>().pipe(
+  matchResourceType('Patient', Patient.nameBirthDateIdentifier),
+  matchResourceType(
+    'Practitioner',
+    flow(maybeDisplayName, Option.flatMap(Practitioner.nameIdentifier))
+  ),
+  Match.exhaustive
+)
 
 /**
- * What a review shows for `resource`: its first name, plus the birth date for
- * a Patient, or `fallback` when it has neither.
+ * What a review shows for `resource`: its displayed name, plus the birth date
+ * for a Patient, or `fallback` when it has neither.
  */
 const labelOf = (resource: Type, fallback: string): string => {
-  const birthDate = Match.value(resource).pipe(
-    matchResourceType('Patient', (patient) => patient.birthDate),
-    matchResourceType('Practitioner', () => null),
-    Match.exhaustive
-  )
-  const parts = [
-    ...Option.toArray(maybeFirstNameOf(resource)),
-    ...(birthDate === null ? [] : [birthDate]),
-  ]
+  const parts = [maybeDisplayName(resource), maybeBirthDate(resource)].flatMap(Option.toArray)
   return parts.length === 0 ? fallback : parts.join(' · ')
 }
 
 /**
- * The provisional record `logicalReference` alone stands for, or `None` when
+ * The provisional resource `logicalReference` alone stands for; `None` when
  * nothing can: a provider's printed name stands for a `Practitioner`
  * (`Practitioner.tryFromNameIdentifier`); nothing stands for a `Patient`, who
  * is never less than a demographic record.
@@ -92,14 +94,15 @@ const labelOf = (resource: Type, fallback: string): string => {
  * Exhaustive over the resource types a logical reference names, so a type
  * with no provisional form says so here rather than by omission.
  */
-const maybeProvisionalFor = (logicalReference: LogicalReference.Type): Option.Option<WithId> =>
-  Match.value(logicalReference).pipe(
-    Match.when({ type: 'Practitioner' }, ({ identifier }) =>
-      Practitioner.tryFromNameIdentifier(identifier)
-    ),
-    Match.when({ type: 'Patient' }, () => Option.none()),
-    Match.exhaustive
-  )
+const tryProvisionalFrom: (
+  logicalReference: LinkableLogicalReference.Type
+) => Option.Option<WithId> = Match.type<LinkableLogicalReference.Type>().pipe(
+  Match.when({ type: 'Practitioner' }, ({ identifier }) =>
+    Practitioner.tryFromNameIdentifier(identifier)
+  ),
+  Match.when({ type: 'Patient' }, () => Option.none()),
+  Match.exhaustive
+)
 
 /**
  * `resource` with every qualified identifier of `identifiersToAssume` it does not
@@ -116,12 +119,11 @@ const assumesIdentifiers = <TResource extends Type>(
   resource: TResource,
   identifiersToAssume: readonly IdentifierAndReference.IdentifierType[]
 ): TResource => {
-  const newIdentifiersToAssume = Array.dedupeWith(
-    Array.differenceWith(IdentifierAndReference.identifierEquivalence)(
-      identifiersToAssume.filter(IdentifierAndReference.isQualifiedIdentifier),
-      resource.identifier
-    ),
-    IdentifierAndReference.identifierEquivalence
+  const newIdentifiersToAssume = pipe(
+    identifiersToAssume,
+    Array.filter(IdentifierAndReference.isQualifiedIdentifier),
+    Array.differenceWith(IdentifierAndReference.identifierEquivalence)(resource.identifier),
+    Array.dedupeWith(IdentifierAndReference.identifierEquivalence)
   )
   return newIdentifiersToAssume.length === 0
     ? resource
@@ -134,8 +136,9 @@ export {
   labelOf,
   literalReferenceOf,
   maybeDerivedIdentifier,
-  maybeLogicalReferenceOf,
-  maybeProvisionalFor,
-  tryWithId,
+  maybeDisplayName,
+  tryIntoLogicalReference,
+  tryIntoWithId,
+  tryProvisionalFrom,
 }
 export type { Type, WithId }

@@ -8,7 +8,7 @@
  * of whichever shape its type gives it, a `DiagnosticReport.resultsInterpreter`,
  * a note's `authorReference`. Which type an identifier-only mention names is
  * the reference's own business: a logical reference states its `type`
- * (`LogicalReference.maybeOfReference`), and one that does not names nothing.
+ * (`LinkableLogicalReference.tryFromReference`), and one that does not names nothing.
  *
  * @packageDocumentation
  */

@@ -10,7 +10,7 @@ import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-ty
 import { Data, Option } from 'effect'
 
 import * as DecodedFile from '../decoded-file.ts'
-import * as LogicalReference from './logical-reference.ts'
+import * as LinkableLogicalReference from './linkable-logical-reference.ts'
 import * as Mention from './mention.ts'
 
 /**
@@ -55,7 +55,7 @@ const { OutsidePatientCompartment, Dangling, $is: is, $match: match } = Data.tag
 /** Whether a placed reference is a logical reference the map left unlinked. */
 const isDangling = (referenceAsWritten: IdentifierAndReference.ReferenceType): boolean =>
   !Mention.landsOnDevice(referenceAsWritten) &&
-  Option.isSome(LogicalReference.maybeOfReference(referenceAsWritten))
+  Option.isSome(LinkableLogicalReference.tryFromReference(referenceAsWritten))
 
 /**
  * Every resource of `placedFile` outside every patient's compartment, and

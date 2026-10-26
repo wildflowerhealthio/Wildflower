@@ -13,12 +13,12 @@ import {
   Practitioner,
   type FhirResource,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import { Arbitrary, FastCheck as fc, Schema } from 'effect'
+import { Arbitrary, FastCheck as fc, HashMap, Schema } from 'effect'
 
 import type * as DecodedFile from '../decoded-file.ts'
-import type * as IdentityMap from './identity-map.ts'
 import * as LinkChoice from './link-choice.ts'
 import type * as LinkableResource from './linkable-resource.ts'
+import type * as ReferentLinkChoices from './referent-link-choices.ts'
 
 const SOURCE_PATIENT = 'https://source.example/patient-id'
 const SOURCE_PRACTITIONER = 'https://source.example/practitioner-id'
@@ -264,16 +264,18 @@ const fileArbitrary: fc.Arbitrary<DecodedFile.DecodedFile> = fc
   )
 
 const choiceArbitrary: fc.Arbitrary<LinkChoice.Type> = fc.oneof(
-  fc.constant(LinkChoice.Create()),
+  fc.constant(LinkChoice.CreateResource()),
   fc.constant(LinkChoice.DontLink()),
-  fc.constantFrom(...STORED).map((resource) => LinkChoice.LinkToStored({ resource })),
-  fc.constantFrom(...POOL_KEYS).map((referentKey) => LinkChoice.LinkToReferent({ referentKey }))
+  fc.constantFrom(...STORED).map((resource) => LinkChoice.LinkToStoredResource({ resource })),
+  fc
+    .constantFrom(...POOL_KEYS)
+    .map((referentKey) => LinkChoice.LinkToDecodedReferent({ referentKey }))
 )
 
 /** Generated choices over the pool's keys, any choice on any referent, impossible ones included. */
-const choicesArbitrary: fc.Arbitrary<IdentityMap.Type> = fc
+const choicesArbitrary: fc.Arbitrary<ReferentLinkChoices.Type> = fc
   .array(fc.tuple(fc.constantFrom(...POOL_KEYS), choiceArbitrary), { maxLength: POOL_KEYS.length })
-  .map((entries) => new Map(entries))
+  .map(HashMap.fromIterable)
 
 export {
   ABSOLUTE,

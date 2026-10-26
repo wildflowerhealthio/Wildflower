@@ -13,11 +13,11 @@
  */
 
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import { Array, Data, Option, pipe } from 'effect'
+import { Array, Data, HashMap, Option, pipe } from 'effect'
 
 import * as DecodedFile from '../decoded-file.ts'
+import * as LinkableLogicalReference from './linkable-logical-reference.ts'
 import * as LinkableResource from './linkable-resource.ts'
-import * as LogicalReference from './logical-reference.ts'
 import * as Mention from './mention.ts'
 
 /**
@@ -26,7 +26,7 @@ import * as Mention from './mention.ts'
  */
 interface AsResource {
   readonly _tag: 'AsResource'
-  readonly logicalReference: LogicalReference.Type
+  readonly logicalReference: LinkableLogicalReference.Type
   /**
    * Every identifier a search for this referent tries: the resource's own,
    * then the one its demographics derive, when they allow one.
@@ -41,7 +41,7 @@ interface AsResource {
 /** A referent named only by mentions, by identifier alone, with no resource in the file. */
 interface ByMentionOnly {
   readonly _tag: 'ByMentionOnly'
-  readonly logicalReference: LogicalReference.Type
+  readonly logicalReference: LinkableLogicalReference.Type
   readonly label: string
 }
 
@@ -50,7 +50,7 @@ type Type = AsResource | ByMentionOnly
 const { AsResource, ByMentionOnly, $is: is, $match: match } = Data.taggedEnum<Type>()
 
 /** The identity map's key for `referent`. */
-const key = (referent: Type): string => LogicalReference.key(referent.logicalReference)
+const key = (referent: Type): string => LinkableLogicalReference.key(referent.logicalReference)
 
 /** The identifiers `referent` brings to whatever it links to. */
 const identifiersOf = (referent: Type): readonly IdentifierAndReference.IdentifierType[] =>
@@ -60,42 +60,46 @@ const identifiersOf = (referent: Type): readonly IdentifierAndReference.Identifi
   })
 
 /**
- * The referent one decoded resource is: `None` for a resource of another
- * type, and for a Patient or Practitioner with no `id` or an unqualified
+ * The referent a decoded resource is: `None` for a resource of another type,
+ * and for a Patient or Practitioner with no `id` or an unqualified
  * `identifier[0]`, which nothing can point at or be linked to, so the stage
  * writes it as it is.
  */
-const tryOfResource = (entry: DecodedFile.Resource): Option.Option<AsResource> => {
-  const { resource } = entry
-  if (!LinkableResource.is(resource)) return Option.none()
-  return Option.flatMap(LinkableResource.tryWithId(resource), (withId) =>
-    Option.map(LinkableResource.maybeLogicalReferenceOf(withId), (logicalReference) =>
+const tryFromDecodedResource = (entry: DecodedFile.Resource): Option.Option<AsResource> =>
+  pipe(
+    Option.liftPredicate(entry.resource, LinkableResource.is),
+    Option.flatMap((resource) =>
+      Option.all({
+        resource: LinkableResource.tryIntoWithId(resource),
+        logicalReference: LinkableResource.tryIntoLogicalReference(resource),
+      })
+    ),
+    Option.map(({ resource, logicalReference }) =>
       AsResource({
         logicalReference,
-        identifiers: Array.dedupeWith(
+        identifiers: pipe(
           [
-            ...withId.identifier,
-            ...Option.toArray(LinkableResource.maybeDerivedIdentifier(withId)),
-          ].filter(IdentifierAndReference.isQualifiedIdentifier),
-          IdentifierAndReference.identifierEquivalence
+            ...resource.identifier,
+            ...Option.toArray(LinkableResource.maybeDerivedIdentifier(resource)),
+          ],
+          Array.filter(IdentifierAndReference.isQualifiedIdentifier),
+          Array.dedupeWith(IdentifierAndReference.identifierEquivalence)
         ),
-        resource: withId,
+        resource,
         reviewKey: entry.key,
-        label: LinkableResource.labelOf(withId, logicalReference.identifier.value),
+        label: LinkableResource.labelOf(resource, logicalReference.identifier.value),
       })
     )
   )
-}
 
 /** The referents one decoded resource's logical-reference mentions name. */
 const mentionedIn = (entry: DecodedFile.Resource): readonly ByMentionOnly[] =>
-  Mention.of(entry.resource).flatMap(({ reference }) =>
-    pipe(
-      LogicalReference.maybeOfReference(reference),
-      Option.map((logicalReference) =>
+  pipe(
+    Mention.of(entry.resource),
+    Array.filterMap(({ reference }) =>
+      Option.map(LinkableLogicalReference.tryFromReference(reference), (logicalReference) =>
         ByMentionOnly({ logicalReference, label: logicalReference.identifier.value })
-      ),
-      Option.toArray
+      )
     )
   )
 
@@ -111,17 +115,17 @@ const mentionedIn = (entry: DecodedFile.Resource): readonly ByMentionOnly[] =>
 const discover = (decodedFile: Pick<DecodedFile.DecodedFile, 'sections'>): readonly Type[] => {
   const entries = DecodedFile.resources(decodedFile)
   const referents: readonly Type[] = [
-    ...entries.flatMap((entry) => Option.toArray(tryOfResource(entry))),
+    ...Array.filterMap(entries, tryFromDecodedResource),
     ...entries.flatMap(mentionedIn),
   ]
   return Array.dedupeWith(referents, (left, right) =>
-    LogicalReference.equivalence(left.logicalReference, right.logicalReference)
+    LinkableLogicalReference.equivalence(left.logicalReference, right.logicalReference)
   )
 }
 
 /** Every referent of `referents`, keyed by {@link key}. */
-const byKey = (referents: readonly Type[]): ReadonlyMap<string, Type> =>
-  new Map(referents.map((referent) => [key(referent), referent]))
+const byKey = (referents: readonly Type[]): HashMap.HashMap<string, Type> =>
+  HashMap.fromIterable(referents.map((referent) => [key(referent), referent] as const))
 
 export { byKey, discover, identifiersOf, is, key, match }
 export type { AsResource, ByMentionOnly, Type }

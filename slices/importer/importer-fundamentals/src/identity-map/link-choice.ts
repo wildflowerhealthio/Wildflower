@@ -2,37 +2,38 @@
  * What the reviewer chooses for a referent: what it links to on the device.
  *
  * @remarks
- * A referent with a resource may be `Create` (its own resource is written and
- * becomes the record) or `LinkToStored` (linked to a record already on the
- * device). One named only by mentions may be `LinkToStored`, `LinkToReferent`
- * (whatever that referent becomes), or `DontLink` (its mentions keep their
- * identifier-only form); and `Create` when something provisional can stand in
- * for its identity (`LinkableResource.maybeProvisionalFor`). Following
- * `LinkToReferent` to the end gives a `Destination`.
+ * A referent with a resource may be `CreateResource` (its own resource is
+ * written) or `LinkToStoredResource` (linked to a resource already on the
+ * device). One named only by mentions may be `LinkToStoredResource`,
+ * `LinkToDecodedReferent` (whatever that referent of the same import
+ * becomes), or `DontLink` (its mentions keep their identifier-only form); and
+ * `CreateResource` when something provisional can stand in for its logical
+ * reference (`LinkableResource.tryProvisionalFrom`). Following
+ * `LinkToDecodedReferent` to the end gives a `LinkTarget`.
  *
  * @packageDocumentation
  */
 
-import { Data } from 'effect'
+import { Data, HashMap, Option } from 'effect'
 
-import type * as IdentityMap from './identity-map.ts'
 import type * as LinkableResource from './linkable-resource.ts'
+import type * as ReferentLinkChoices from './referent-link-choices.ts'
 import * as Referent from './referent.ts'
 
-/** Write the referent's own resource as the record. For an identity with a provisional form, create that. */
-interface Create {
-  readonly _tag: 'Create'
+/** Write the referent's own resource. For a logical reference with a provisional form, create that. */
+interface CreateResource {
+  readonly _tag: 'CreateResource'
 }
 
-/** Link the referent to a record already stored on the device. */
-interface LinkToStored {
-  readonly _tag: 'LinkToStored'
+/** Link the referent to a resource already stored on the device. */
+interface LinkToStoredResource {
+  readonly _tag: 'LinkToStoredResource'
   readonly resource: LinkableResource.WithId
 }
 
-/** Link the referent to whatever the referent keyed `referentKey` becomes. */
-interface LinkToReferent {
-  readonly _tag: 'LinkToReferent'
+/** Link the referent to whatever the decoded referent keyed `referentKey` becomes. */
+interface LinkToDecodedReferent {
+  readonly _tag: 'LinkToDecodedReferent'
   readonly referentKey: string
 }
 
@@ -41,30 +42,44 @@ interface DontLink {
   readonly _tag: 'DontLink'
 }
 
-type Type = Create | LinkToStored | LinkToReferent | DontLink
+type Type = CreateResource | LinkToStoredResource | LinkToDecodedReferent | DontLink
 
 const {
-  Create,
-  LinkToStored,
-  LinkToReferent,
+  CreateResource,
+  LinkToStoredResource,
+  LinkToDecodedReferent,
   DontLink,
   $is: is,
   $match: match,
 } = Data.taggedEnum<Type>()
 
-/** The choice a referent takes when the reviewer has made none: `Create` with a resource, else `DontLink`. */
+/** The choice a referent takes when the reviewer has made none: `CreateResource` with a resource, else `DontLink`. */
 const defaultFor = (referent: Referent.Type): Type =>
-  Referent.match(referent, { AsResource: () => Create(), ByMentionOnly: () => DontLink() })
+  Referent.match(referent, {
+    AsResource: () => CreateResource(),
+    ByMentionOnly: () => DontLink(),
+  })
 
-/** The choice `identityMap` holds for `referent`, else its default. */
-const forReferent = (identityMap: IdentityMap.Type, referent: Referent.Type): Type =>
-  identityMap.get(Referent.key(referent)) ?? defaultFor(referent)
+/** The choice `linkChoices` holds for `referent`, else its default. */
+const forReferent = (linkChoices: ReferentLinkChoices.Type, referent: Referent.Type): Type =>
+  HashMap.get(linkChoices, Referent.key(referent)).pipe(
+    Option.getOrElse(() => defaultFor(referent))
+  )
 
-export { Create, defaultFor, DontLink, forReferent, is, LinkToReferent, LinkToStored, match }
+export {
+  CreateResource,
+  defaultFor,
+  DontLink,
+  forReferent,
+  is,
+  LinkToDecodedReferent,
+  LinkToStoredResource,
+  match,
+}
 export type {
-  Create as CreateType,
+  CreateResource as CreateResourceType,
   DontLink as DontLinkType,
-  LinkToReferent as LinkToReferentType,
-  LinkToStored as LinkToStoredType,
+  LinkToDecodedReferent as LinkToDecodedReferentType,
+  LinkToStoredResource as LinkToStoredResourceType,
   Type,
 }

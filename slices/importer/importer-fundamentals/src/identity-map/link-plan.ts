@@ -1,128 +1,149 @@
 /**
- * The link plan: everything placing a decoded file on the identity map needs,
- * worked out once from the file and the reviewer's choices, and the lookups
- * that answer the placement's and the redirection's questions.
+ * The link plan: everything placing a decoded file on the referent link
+ * choices needs, worked out once from the file and the choices, and the
+ * lookups that answer the placement's and the redirection's questions.
  *
  * @remarks
- * A referent's mentions are redirected to its destination. The plan says what
- * each referent's destination is, what the record under each literal
+ * A referent's mentions are redirected to its link target. The plan says what
+ * each referent's link target is, what the resource under each placed literal
  * reference becomes once it has assumed the identifiers of the referents
- * linked to it, and which decoded literal references move. Built by
- * {@link make}, read through {@link maybeRedirectOf} and
- * {@link maybePlacedRecordFor}, and what the batch lift hands across files.
+ * linked to it, and which decoded literal references move to a stored
+ * resource. Built by {@link make}, read through {@link maybeRedirectOf} and
+ * {@link maybePlacedResourceFor}, and what the batch lift hands across files.
  *
  * @packageDocumentation
  */
 
 import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import { Option, pipe } from 'effect'
+import { Array, HashMap, HashSet, Option, pipe } from 'effect'
 
 import * as DecodedFile from '../decoded-file.ts'
-import * as Destination from './destination.ts'
-import type * as IdentityMap from './identity-map.ts'
+import * as LinkTarget from './link-target.ts'
 import type * as Link from './link.ts'
+import * as LinkableLogicalReference from './linkable-logical-reference.ts'
 import * as LinkableResource from './linkable-resource.ts'
-import * as LogicalReference from './logical-reference.ts'
-import * as PlacedRecord from './placed-record.ts'
+import * as PlacedResource from './placed-resource.ts'
+import type * as ReferentLinkChoices from './referent-link-choices.ts'
 import * as Referent from './referent.ts'
 import * as Resolution from './resolution.ts'
 
 /** The link plan for one decoded file, built once by {@link make}. */
 interface Type {
+  /** Every referent of the file with its link target, in discovery order. */
+  readonly links: readonly Link.Type[]
   /**
-   * Each referent's destination: where a logical-reference mention is
-   * redirected, and which decoded resources a stored record replaces.
+   * Each referent's link target: where a logical-reference mention is
+   * redirected, and which decoded resources a stored resource replaces.
    */
-  readonly destinationsByReferentKey: ReadonlyMap<string, Destination.Type>
+  readonly linkTargetsByReferentKey: HashMap.HashMap<string, LinkTarget.Type>
   /**
-   * The record under each literal reference the referents land on, as it
-   * will be written: what replaces a decoded resource, what a decoded
+   * The resource under each placed literal reference the links land on, as
+   * it will be written: what replaces a decoded resource, what a decoded
    * resource assumes, and what the Linked section appends.
    */
-  readonly placedRecordsByLiteralReference: ReadonlyMap<string, PlacedRecord.Type>
+  readonly placedResourcesByPlacedLiteralReference: HashMap.HashMap<string, PlacedResource.Type>
   /**
    * `Type/<decoded id>` → `Type/<stored id>` for every decoded resource a
-   * stored record stands in for, a second resource of the same logical
+   * stored resource stands in for, a second resource of the same logical
    * reference under another id included: where a decoded literal reference
    * is redirected, and under which literal reference the resource is written.
    */
-  readonly literalReferenceRedirects: ReadonlyMap<string, string>
+  readonly decodedLiteralReferencesToStored: HashMap.HashMap<string, string>
 }
 
-/** The decoded resources of `decodedFile` that have a literal reference, with it. */
-const decodedResourcesWithId = (
+/** The decoded resources of `decodedFile` the identity map links, those with an `id`. */
+const linkableResourcesWithIdFromDecodedFile = (
   decodedFile: DecodedFile.DecodedFile
 ): readonly LinkableResource.WithId[] =>
-  DecodedFile.resources(decodedFile).flatMap(({ resource }) =>
-    LinkableResource.is(resource) ? Option.toArray(LinkableResource.tryWithId(resource)) : []
-  )
-
-/** The stored record standing in for `decodedResource`: its referent's destination, when that is `Stored`. */
-const maybeStoredStandInFor = (
-  destinationsByReferentKey: ReadonlyMap<string, Destination.Type>,
-  decodedResource: LinkableResource.WithId
-): Option.Option<LinkableResource.WithId> =>
   pipe(
-    LinkableResource.maybeLogicalReferenceOf(decodedResource),
-    Option.flatMapNullable((logicalReference) =>
-      destinationsByReferentKey.get(LogicalReference.key(logicalReference))
-    ),
-    Option.filter(Destination.is('Stored')),
-    Option.map(({ resource: stored }) => stored)
-  )
-
-/**
- * `Type/<decoded id>` → `Type/<stored id>` for every decoded resource of
- * `decodedFile` a stored record stands in for under `destinationsByReferentKey`.
- */
-const literalReferenceRedirectsOf = (
-  decodedFile: DecodedFile.DecodedFile,
-  destinationsByReferentKey: ReadonlyMap<string, Destination.Type>
-): ReadonlyMap<string, string> =>
-  new Map(
-    decodedResourcesWithId(decodedFile).flatMap((decodedResource) =>
-      pipe(
-        maybeStoredStandInFor(destinationsByReferentKey, decodedResource),
-        Option.map(
-          (stored) =>
-            [
-              LinkableResource.literalReferenceOf(decodedResource),
-              LinkableResource.literalReferenceOf(stored),
-            ] as const
-        ),
-        Option.toArray
+    DecodedFile.resources(decodedFile),
+    Array.filterMap(({ resource }) =>
+      Option.liftPredicate(resource, LinkableResource.is).pipe(
+        Option.flatMap(LinkableResource.tryIntoWithId)
       )
     )
   )
 
+/** The literal references the decoded resources of `decodedFile` carry. */
+const literalReferencesFromDecodedFile = (
+  decodedFile: DecodedFile.DecodedFile
+): HashSet.HashSet<string> =>
+  HashSet.fromIterable(
+    linkableResourcesWithIdFromDecodedFile(decodedFile).map(LinkableResource.literalReferenceOf)
+  )
+
+/** The link target of `decodedResource`'s referent under `linkTargetsByReferentKey`; `None` when it is no referent. */
+const linkTargetOfDecodedResource = (
+  linkTargetsByReferentKey: HashMap.HashMap<string, LinkTarget.Type>,
+  decodedResource: LinkableResource.Type
+): Option.Option<LinkTarget.Type> =>
+  pipe(
+    LinkableResource.tryIntoLogicalReference(decodedResource),
+    Option.map(LinkableLogicalReference.key),
+    Option.flatMap((referentKey) => HashMap.get(linkTargetsByReferentKey, referentKey))
+  )
+
 /**
- * The plan for `decodedFile` under `identityMap`: each referent's choice
+ * `Type/<decoded id>` → `Type/<stored id>` for every decoded resource of
+ * `decodedFile` a stored resource stands in for under `linkTargetsByReferentKey`.
+ */
+const decodedLiteralReferencesToStoredOf = (
+  decodedFile: DecodedFile.DecodedFile,
+  linkTargetsByReferentKey: HashMap.HashMap<string, LinkTarget.Type>
+): HashMap.HashMap<string, string> =>
+  pipe(
+    linkableResourcesWithIdFromDecodedFile(decodedFile),
+    Array.filterMap((decodedResource) =>
+      pipe(
+        linkTargetOfDecodedResource(linkTargetsByReferentKey, decodedResource),
+        Option.filter(LinkTarget.is('Stored')),
+        Option.map(
+          ({ resource: stored }) =>
+            [
+              LinkableResource.literalReferenceOf(decodedResource),
+              LinkableResource.literalReferenceOf(stored),
+            ] as const
+        )
+      )
+    ),
+    HashMap.fromIterable
+  )
+
+/**
+ * The plan for `decodedFile` under `linkChoices`: each referent's choice
  * resolved once into its link, and every field read off those links.
  */
-const make = (decodedFile: DecodedFile.DecodedFile, identityMap: IdentityMap.Type): Type => {
+const make = (
+  decodedFile: DecodedFile.DecodedFile,
+  linkChoices: ReferentLinkChoices.Type
+): Type => {
   const referents = Referent.discover(decodedFile)
   const referentsByKey = Referent.byKey(referents)
   const links = referents.map((referent): Link.Type => ({
     referent,
-    destination: Resolution.destinationOf(identityMap, referentsByKey, referent),
+    target: Resolution.linkTargetOf(linkChoices, referentsByKey, referent),
   }))
-  const destinationsByReferentKey = new Map(
-    links.map(({ referent, destination }) => [Referent.key(referent), destination])
+  const linkTargetsByReferentKey = HashMap.fromIterable(
+    links.map(({ referent, target }) => [Referent.key(referent), target] as const)
   )
   return {
-    destinationsByReferentKey,
-    placedRecordsByLiteralReference: PlacedRecord.byLiteralReference(
+    links,
+    linkTargetsByReferentKey,
+    placedResourcesByPlacedLiteralReference: PlacedResource.byPlacedLiteralReference(
       links,
-      new Set(decodedResourcesWithId(decodedFile).map(LinkableResource.literalReferenceOf))
+      literalReferencesFromDecodedFile(decodedFile)
     ),
-    literalReferenceRedirects: literalReferenceRedirectsOf(decodedFile, destinationsByReferentKey),
+    decodedLiteralReferencesToStored: decodedLiteralReferencesToStoredOf(
+      decodedFile,
+      linkTargetsByReferentKey
+    ),
   }
 }
 
 /**
  * The literal reference `referenceAsDecoded` is redirected to under `plan`:
- * for a decoded literal reference, where it moves; for a logical reference,
- * its referent's destination. `None` when it stays as decoded.
+ * for a decoded literal reference, the stored one it moves to; for a logical
+ * reference, its referent's link target. `None` when it stays as decoded.
  */
 const maybeRedirectOf = (
   plan: Type,
@@ -130,30 +151,32 @@ const maybeRedirectOf = (
 ): Option.Option<string> =>
   referenceAsDecoded.reference === null
     ? pipe(
-        LogicalReference.maybeOfReference(referenceAsDecoded),
-        Option.flatMapNullable((logicalReference) =>
-          plan.destinationsByReferentKey.get(LogicalReference.key(logicalReference))
-        ),
-        Option.flatMap(Destination.maybeRecordOf),
+        LinkableLogicalReference.tryFromReference(referenceAsDecoded),
+        Option.map(LinkableLogicalReference.key),
+        Option.flatMap((referentKey) => HashMap.get(plan.linkTargetsByReferentKey, referentKey)),
+        Option.flatMap(LinkTarget.tryIntoResource),
         Option.map(LinkableResource.literalReferenceOf)
       )
-    : Option.fromNullable(plan.literalReferenceRedirects.get(referenceAsDecoded.reference))
+    : HashMap.get(plan.decodedLiteralReferencesToStored, referenceAsDecoded.reference)
 
 /**
- * The record `decodedResource` is written as under `plan`: the placed record
- * under the literal reference its own is redirected to, which is a stored
- * record's when one stands in for it and its own otherwise. `None` when the
- * plan has no record there, so the resource is written as decoded.
+ * The resource `decodedResource` is written as under `plan`: the placed
+ * resource under the literal reference its own is redirected to, which is a
+ * stored resource's when one stands in for it and its own otherwise. `None`
+ * when the plan has no resource there, so it is written as decoded.
  */
-const maybePlacedRecordFor = (
+const maybePlacedResourceFor = (
   plan: Type,
   decodedResource: LinkableResource.WithId
-): Option.Option<PlacedRecord.Type> => {
+): Option.Option<PlacedResource.Type> => {
   const decodedLiteralReference = LinkableResource.literalReferenceOf(decodedResource)
-  const placedLiteralReference =
-    plan.literalReferenceRedirects.get(decodedLiteralReference) ?? decodedLiteralReference
-  return Option.fromNullable(plan.placedRecordsByLiteralReference.get(placedLiteralReference))
+  return pipe(
+    HashMap.get(plan.decodedLiteralReferencesToStored, decodedLiteralReference),
+    Option.getOrElse(() => decodedLiteralReference),
+    (placedLiteralReference) =>
+      HashMap.get(plan.placedResourcesByPlacedLiteralReference, placedLiteralReference)
+  )
 }
 
-export { make, maybePlacedRecordFor, maybeRedirectOf }
+export { literalReferencesFromDecodedFile, make, maybePlacedResourceFor, maybeRedirectOf }
 export type { Type }
