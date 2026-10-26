@@ -22,9 +22,6 @@ import * as LinkPlan from './link-plan.ts'
 import * as Placement from './placement.ts'
 import * as UnlinkedMention from './unlinked-mention.ts'
 
-/** Every referent's choice, keyed by `Referent.key`; a referent missing from it takes its default. */
-type Type = LinkChoice.ByReferent
-
 /**
  * `decodedFile` placed on `choices`: the file to review, diff and write.
  *
@@ -32,14 +29,15 @@ type Type = LinkChoice.ByReferent
  * A referent's mentions are redirected to its destination. Pure and
  * idempotent: applying the same choices again changes nothing.
  */
-const apply = (decodedFile: DecodedFile.DecodedFile, choices: Type): DecodedFile.DecodedFile =>
-  Placement.place(decodedFile, LinkPlan.make(decodedFile, choices))
+const apply = (
+  decodedFile: DecodedFile.DecodedFile,
+  choices: LinkChoice.ByReferent
+): DecodedFile.DecodedFile => Placement.place(decodedFile, LinkPlan.make(decodedFile, choices))
 
 /** The mentions `decodedFile` still has under `choices` that name nobody on the device. */
 const unlinkedMentions = (
   decodedFile: DecodedFile.DecodedFile,
-  choices: Type
+  choices: LinkChoice.ByReferent
 ): readonly UnlinkedMention.Type[] => UnlinkedMention.of(apply(decodedFile, choices))
 
 export { apply, unlinkedMentions }
-export type { Type }

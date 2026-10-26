@@ -146,7 +146,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     `LinkChoice.match` or `Referent.match`.
   - **`LinkPlan`** — `make`: everything the placement needs, worked out once
     from each referent's resolved destination: the **`destinations`**, the
-    **`linkedResources`** (each stored or provisional resource as it will be
+    **`destinationResources`** (each stored or provisional resource as it will be
     written, and whether it **`existsOnlyAsMentionInFile`**), the
     **`literalRedirects`**, and what each own resource assumes
     (**`assumedByOwnResource`**).
@@ -159,7 +159,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   - **`UnlinkedMention`** — `of`: on a placed file, every **`MissingSubject`**
     and every mention that **`NamesNobodyOnDevice`**, matched with
     `UnlinkedMention.match`.
-  - **`IdentityMap`** — the `ReadonlyMap<key, LinkChoice>` itself (`Type`),
+  - **`IdentityMap`** — over the choices (`LinkChoice.ByReferent`),
     **`apply`** (plan, then place) and **`unlinkedMentions`**.
 - `src/picked-file.ts` — the **`PickedFile`** namespace: the picked file
   vocabulary _and_ the codec that source files one. **`Type`**

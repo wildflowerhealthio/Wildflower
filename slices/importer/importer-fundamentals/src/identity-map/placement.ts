@@ -30,7 +30,7 @@ const standInFor = (
   pipe(
     LinkPlan.storedDestinationOf(plan.destinations, decodedResource),
     Option.flatMapNullable((stored) =>
-      plan.linkedResources.get(LinkableResource.literalOf(stored))
+      plan.destinationResources.get(LinkableResource.literalOf(stored))
     ),
     Option.map(({ resource }) => resource)
   )
@@ -56,7 +56,7 @@ const placed = (plan: LinkPlan.Type, decodedResource: FhirResource): FhirResourc
   const assumedAsLinkedCopy = pipe(
     Option.fromNullable(decodedResource.id),
     Option.flatMapNullable((id) =>
-      plan.linkedResources.get(LinkableResource.literalOf({ ...decodedResource, id }))
+      plan.destinationResources.get(LinkableResource.literalOf({ ...decodedResource, id }))
     ),
     Option.map(({ assumed }) => assumed),
     Option.getOrElse(() => [])
@@ -72,7 +72,7 @@ const placed = (plan: LinkPlan.Type, decodedResource: FhirResource): FhirResourc
 
 /** The resources `plan` appends under {@link LINKED_SECTION_TITLE}: those the file only mentions. */
 const linkedSectionResources = (plan: LinkPlan.Type): readonly DecodedFile.Resource[] =>
-  [...plan.linkedResources]
+  [...plan.destinationResources]
     .filter(([, linked]) => linked.existsOnlyAsMentionInFile)
     .map(([literal, { resource }]) => ({
       key: linkedKey(resource),

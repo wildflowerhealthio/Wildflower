@@ -213,7 +213,9 @@ describe('IdentityMap.apply on a printed name set to New', () => {
     request('rx-1', customerSubject('c-9'), namedRequester('Dr. A Smith')),
     request('rx-2', customerSubject('c-9'), namedRequester('Dr. A Smith'))
   )
-  const map: IdentityMap.Type = new Map<string, LinkChoice.Type>([[PRESCRIBER, LinkChoice.New()]])
+  const map: LinkChoice.ByReferent = new Map<string, LinkChoice.Type>([
+    [PRESCRIBER, LinkChoice.New()],
+  ])
 
   it('creates one provisional Practitioner for the name in the Linked section and points every requester at it', () => {
     const applied = IdentityMap.apply(file, map)
@@ -258,14 +260,14 @@ describe('IdentityMap.apply on a printed name set to New', () => {
         request('rx-3', customerSubject('c-9'), namedRequester('Dr. B Jones'))
       )
     )
-    const destinationOf = (choices: IdentityMap.Type, key: string): string => {
+    const destinationOf = (choices: LinkChoice.ByReferent, key: string): string => {
       const referent = referents.find((candidate) => Referent.key(candidate) === key)
       if (referent === undefined) throw new Error(`no referent ${key}`)
       return describeDestination(
         Resolution.destinationOf(choices, Referent.index(referents), referent)
       )
     }
-    const cycle: IdentityMap.Type = new Map<string, LinkChoice.Type>([
+    const cycle: LinkChoice.ByReferent = new Map<string, LinkChoice.Type>([
       [PRESCRIBER, LinkChoice.SameAs({ referentKey: jones })],
       [jones, LinkChoice.SameAs({ referentKey: PRESCRIBER })],
     ])
@@ -292,7 +294,7 @@ describe('Resolution.destinationOf', () => {
   const referents = Referent.discover(file)
   const referentOf = (key: string): Referent.Type | undefined =>
     referents.find((referent) => Referent.key(referent) === key)
-  const destinationOf = (choices: IdentityMap.Type, key: string): string => {
+  const destinationOf = (choices: LinkChoice.ByReferent, key: string): string => {
     const referent = referentOf(key)
     if (referent === undefined) throw new Error(`no referent ${key}`)
     return Resolution.destinationOf(choices, Referent.index(referents), referent)._tag
@@ -300,7 +302,7 @@ describe('Resolution.destinationOf', () => {
   const account = (n: number): string => `Patient|${CUSTOMER}|c-${n}`
 
   it('follows a chain of referents to its end', () => {
-    const choices: IdentityMap.Type = new Map<string, LinkChoice.Type>([
+    const choices: LinkChoice.ByReferent = new Map<string, LinkChoice.Type>([
       [account(1), LinkChoice.SameAs({ referentKey: account(2) })],
       [account(2), LinkChoice.SameAs({ referentKey: account(3) })],
       [account(3), LinkChoice.SameAs({ referentKey: PERSON })],
@@ -316,7 +318,7 @@ describe('Resolution.destinationOf', () => {
   })
 
   it('reads a cycle, a missing referent and an impossible choice as the referent kind’s default', () => {
-    const cycle: IdentityMap.Type = new Map<string, LinkChoice.Type>([
+    const cycle: LinkChoice.ByReferent = new Map<string, LinkChoice.Type>([
       [account(1), LinkChoice.SameAs({ referentKey: account(2) })],
       [account(2), LinkChoice.SameAs({ referentKey: account(1) })],
       [account(3), LinkChoice.SameAs({ referentKey: 'Patient|https://nowhere.example|x' })],
@@ -349,7 +351,7 @@ describe('Resolution.destinationOf', () => {
       (referent) => Referent.key(referent) === ACCOUNT
     )
     if (accountReferent === undefined) throw new Error(`no referent ${ACCOUNT}`)
-    const choices: IdentityMap.Type = new Map<string, LinkChoice.Type>([
+    const choices: LinkChoice.ByReferent = new Map<string, LinkChoice.Type>([
       [ACCOUNT, LinkChoice.SameAs({ referentKey: PRESCRIBER })],
       [PRESCRIBER, LinkChoice.ToStored({ resource: STORED_SMITH })],
     ])
@@ -378,7 +380,7 @@ describe('IdentityMap.unlinkedMentions', () => {
     request('rx-1', customerSubject('c-9'), namedRequester('Dr. A Smith')),
     observation('o-3', literalSubject('p-1'), [{ display: 'LifeLabs' }])
   )
-  const listed = (choices: IdentityMap.Type): readonly string[] =>
+  const listed = (choices: LinkChoice.ByReferent): readonly string[] =>
     IdentityMap.unlinkedMentions(file, choices).map(
       (unlinked) => `${unlinked.mentioningResourceKey} ${pathOf(unlinked)}`
     )
