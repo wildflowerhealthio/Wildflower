@@ -97,6 +97,44 @@ The importer has no HTTP wire union to derive, so there is no separate
   another" discards the read, every review edit, and any confirm outcome, and
   returns to the picker; the per-format settings persist across it.
 - **`src/registry.ts`** — the React half of the closed format registry (above).
+- **`src/identity/`** — the identity map in the screen.
+  `use-identity-map.ts` discovers the batch's referents (`discoverReferents`),
+  reads each one's default once per batch (`ReferentSearch.defaultChoices`, a
+  TanStack query keyed by the batch id, which also labels the stored resources
+  the defaults link to), keeps the reviewer's choices on top by `Referent.key`
+  across a settings re-decode in a `ReferentLinkChoices`, and memoizes the
+  **placed** batch (`applyIdentityMap`) with each referent's `LinkTarget`
+  (`LinkPlan.make`). Both are Effects on the clock, run synchronously in the
+  memo; their failures are states: a `DuplicateReferent` is `refused` (the
+  screen says why and offers the picker), and a choice the stage cannot
+  follow after a re-decode (`InvalidLinkChoice`) is dropped so its referent
+  takes its default. The screen blocks its first paint on the default search,
+  as it does on the server diff, and hands the placed batch to
+  `useServerDiff`, `PreviewPanel` and the confirm, so all three see what gets
+  written; a failed search shows an alert and leaves every referent on its
+  kind's default. `referent-rows.tsx` is the block the panel renders above the
+  format groups (its `referentRows` slot), "People and providers in this
+  import": a tally of where the referents land, then one group per
+  `LinkableLogicalReference.RESOURCE_TYPES` entry that has referents, one
+  line per referent, its label and a select of the `LinkChoice`s its kind
+  allows — `New` or a stored resource for an `AsResource` referent; a stored
+  resource, `New: <label>` (`LinkToDecodedReferent`) for each other referent
+  of its type that creates a record, `New` when
+  `LinkableResource.tryProvisionalFrom` stands for its logical reference, and
+  "Don't link" for a `ByMentionOnly` one. The lines are a memo per group, so
+  a render re-reads nothing. The stored resources offered are the default
+  search's hits plus the server's own, every page read up front when the
+  rows mount (`use-stored-resources.ts`, `GET <Type>?_count=` through
+  `fhir-r4/clients`' `searchAllPages`, capped at ten pages: a select has no
+  room for a load-more action, and a personal server holds a household, not
+  a hospital), each labelled on the way in since `LinkableResource.labelOf`
+  reads the clock. The one type-specific rule is a table over the resource
+  types: a Patient linked to a stored one whose family name, given name or
+  birth date (`Patient.demographics`, the parts the name-and-birth-date
+  identifier is minted from) differs gets a warning line, never a block; a
+  Practitioner has nothing compared. Its strings are `referent-text.ts`, which
+  says "server", never "device": the importer can be pointed at any FHIR
+  server.
 - **`src/run/`** — the two hooks that drive the flow's halves, held apart from
   the view they feed: the read (`use-import-run.ts`) and the opt-in write
   (`use-confirm-import.ts`). The confirm hook is the write half and does not
@@ -119,9 +157,11 @@ The importer has no HTTP wire union to derive, so there is no separate
   a flat map would let one format's verdict overwrite another's. Within one
   format the keys are already distinct, because `DecodeFunction.make` namespaces each
   claimed file's keys by its slot in the batch. The screen blocks the
-  first paint on it but **not** on the re-classification a settings change
-  triggers, since unmounting the panel mid-review would drop the focus of
-  whatever settings control the reviewer is using.
+  first paint on it but **not** on the re-classification a settings change or
+  a link choice triggers, since unmounting the panel mid-review would drop the
+  focus of whatever control the reviewer is using; the previous verdicts stay
+  on screen (`refreshing`) and the confirm waits for the new ones, since the
+  pre-exclusions are read off them.
   `preview-panel.tsx` renders the batch grouped by format — one group per
   `claimedFormats` entry, its settings form (the registry's own
   `SettingsPicker`, indexed by the format tag) over that format's sectioned,
@@ -204,9 +244,9 @@ The importer has no HTTP wire union to derive, so there is no separate
   fetch-and-decode through `PickedFile.FromDocumentReference` under that
   format's constants, which both a row selection and the preview modal read
   through.
-  `page-token.ts` pulls the continuation cursor out of a bundle's `next`
-  link (see the trap); `keys.ts` holds
-  the query-key roots.
+  The continuation cursor comes out of a bundle's `next` link through
+  `fhir-r4/clients`' `nextPageToken` (see the trap); `keys.ts` holds the
+  query-key roots.
 - **The source file is a reviewed resource the format minted.** Every pick's
   source file `DocumentReference` is minted inside that format's
   `decode` (by the batch decode `DecodeFunction.make` built) and arrives as its own
@@ -228,7 +268,9 @@ The importer has no HTTP wire union to derive, so there is no separate
   a review issues no writes — `decode` requires no services and is run for its
   data only, and the confirm writes exactly the reviewed objects
   (`planFormatWrite` over the format's decoded sections) with no
-  re-parse. A test pins this on the wire (zero writes to reach a review); do
+  re-parse. A test pins this on the wire (zero writes to reach a review, and
+  the reads are the source list, one identifier search per referent, the diff
+  bundle and the stored resources per referent type); do
   not add a write to the read path (e.g. an "auto-upload on pick") that would
   collapse the opt-in seam. A settings change re-runs `decode` — still the
   read half, still no writes.
@@ -311,9 +353,9 @@ The importer has no HTTP wire union to derive, so there is no separate
   still runs in that format's `decode` one step downstream, so a file the
   picker accepted whose bytes are malformed lands in the preview as its own
   unreadable row rather than a batch-wide error.
-- **`page-token.ts` reads a present-but-empty `_pageToken=` as token-less.**
-  `''` is not `null`, so TanStack Query would take it for a real cursor and
-  re-request page one forever.
+- **`fhir-r4/clients`' `nextPageToken` reads a present-but-empty
+  `_pageToken=` as token-less.** `''` is not `null`, so TanStack Query would
+  take it for a real cursor and re-request page one forever.
 - **The list carries rows, not source files.** A source file's bytes are the whole
   file, potentially megabytes (a multi-MB HAR, a PDF); `SourceFileRow` holds
   only the id, its classified format, the title, what it is a source of, and
@@ -409,7 +451,16 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   that a single-format import reports no blank "nothing to import" rows, and
   cancel. It re-wraps `TextEncoder` output through the ambient `Uint8Array` (a
   jsdom single-realm workaround; the production encode stays `new
-  TextEncoder().encode(text)`).
+  TextEncoder().encode(text)`). Its stub server holds what it is seeded with
+  and what is written to it, and answers identifier searches and paged lists from that, so it also
+  pins the identity map: the reads to reach a review, a confirm linked to a
+  stored Patient (only the stored one written, carrying the source's
+  identifier, every subject on it), a re-import that is `unchanged` and left
+  out, and one referent for one identity two files name.
+- `identity/referent-rows.test.tsx` drives `useIdentityMap` and the rows over a
+  hand-built batch and a stub search: a line per referent, people before
+  providers, `New` without a hit, a hit pre-selected, the demographics warning,
+  and a changed select placing the batch.
 - `preview/preview-panel.test.tsx` drives the pure panel by props — no router —
   and pins that a claimed format renders each decoded section under its own
   title with per-resource checkboxes, that an unreadable file renders its own
