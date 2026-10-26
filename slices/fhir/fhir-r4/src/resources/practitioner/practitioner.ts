@@ -1,4 +1,4 @@
-import { Schema } from 'effect'
+import { Option, Schema } from 'effect'
 
 import {
   OrNullAsOptional,
@@ -18,6 +18,7 @@ import {
   DomainResource,
   HumanName,
   IdentifierAndReference,
+  WILDFLOWER_CANONICAL_BASE,
 } from '../../data-types/index.ts'
 import * as PractitionerQualification from './practitioner-qualification.ts'
 
@@ -147,5 +148,40 @@ const PractitionerSchema: Schema.Schema<
 /** A decoded `Practitioner` — the type {@link PractitionerSchema} produces. */
 type Type = typeof PractitionerSchema.Type
 
-export { PractitionerSchema as Schema }
+/**
+ * The Wildflower-minted identifier system for a provider known only by the
+ * name a source prints, the name as the value: see {@link nameIdentifier}.
+ */
+const NAME_IDENTIFIER_SYSTEM = `${WILDFLOWER_CANONICAL_BASE}/identifier/practitioner-name`
+
+/**
+ * The identifier for a provider a source knows only by its printed `name`:
+ * the name, trimmed and with each run of whitespace inside it collapsed to one
+ * space, under {@link NAME_IDENTIFIER_SYSTEM}; `None` for a blank name, which
+ * identifies nobody.
+ *
+ * @remarks
+ * A source with no id for a provider, only a name on a label or a report,
+ * names them by that name, so a reference to them carries an identity
+ * (`system` and `value`) and not just a `display`. The system is shared
+ * rather than per source, so the same name from two sources is one identity
+ * for the importer's identity map.
+ */
+const nameIdentifier = (name: string): Option.Option<IdentifierAndReference.IdentifierType> => {
+  const value = name.trim().replaceAll(/\s+/g, ' ')
+  return value.length === 0
+    ? Option.none()
+    : Option.some({
+        id: null,
+        extension: [],
+        assigner: null,
+        period: null,
+        system: new URL(NAME_IDENTIFIER_SYSTEM),
+        type: null,
+        use: null,
+        value,
+      })
+}
+
+export { NAME_IDENTIFIER_SYSTEM, nameIdentifier, PractitionerSchema as Schema }
 export type { Type }

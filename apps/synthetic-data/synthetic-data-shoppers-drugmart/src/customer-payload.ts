@@ -1,6 +1,6 @@
 import type { CustomerPayload, SourcePatient } from '@wildflowerhealthio/shoppers-drugmart-source'
 
-import type { ShoppersAccount, ShoppersPatient } from './shoppers-account.ts'
+import type { ShoppersAccount, ShoppersAddress, ShoppersPatient } from './shoppers-account.ts'
 
 /**
  * The body of `…/api/v1/customers/pcid/<pcid>?expand=…`: the account and the
@@ -9,9 +9,10 @@ import type { ShoppersAccount, ShoppersPatient } from './shoppers-account.ts'
  * fixture).
  *
  * @remarks
- * The account's `id` equals its `pcid`, as the capture shows. Each managed
- * person carries the capture's `userId` (the account) and `storeId`, and the
- * body its `stores`, which the source does not read. The portal sends no birth
+ * The account's `id` equals its `pcid`, as the capture shows. The account's
+ * `id`, `pcid`, name and address, each managed person's `userId` (the
+ * account) and `storeId`, and the body's `stores` are the capture's, which the
+ * source does not read. The portal sends no birth
  * date or gender here, so the imported Patients carry neither.
  */
 
@@ -21,9 +22,18 @@ type CustomerPatient = typeof SourcePatient.Encoded & {
   readonly storeId: number
 }
 
-/** The whole customers body. */
+/** The whole customers body, with the account's fields the source does not read. */
 type CustomerBody = typeof CustomerPayload.Encoded & {
-  readonly customer: { readonly id: string; readonly patients: readonly CustomerPatient[] }
+  readonly customer: {
+    readonly id: string
+    readonly pcid: string
+    readonly firstName: string
+    readonly lastName: string
+    readonly email: string
+    readonly phoneNumber: string
+    readonly address: ShoppersAddress
+    readonly patients: readonly CustomerPatient[]
+  }
   readonly stores: readonly [{ readonly id: number; readonly storeName: string }]
 }
 
