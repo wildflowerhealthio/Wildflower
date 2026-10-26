@@ -79,7 +79,15 @@ type FormatComparisons = ReadonlyMap<FormatKind, ReadonlyMap<string, ServerCompa
  */
 type ServerDiffState =
   | { readonly _tag: 'loading' }
-  | { readonly _tag: 'ready'; readonly comparisons: FormatComparisons }
+  | {
+      readonly _tag: 'ready'
+      readonly comparisons: FormatComparisons
+      /**
+       * Whether these are the previous classification's verdicts, carried
+       * over while the changed batch's own load: the confirm waits on it.
+       */
+      readonly refreshing: boolean
+    }
   | {
       readonly _tag: 'error'
       readonly comparisons: FormatComparisons
@@ -197,9 +205,15 @@ const useServerDiff = (batch: BatchDecodeResult | undefined, batchId: number): S
   })
 
   return useMemo((): ServerDiffState => {
-    if (!enabled || rows === undefined) return { _tag: 'ready', comparisons: NO_COMPARISONS }
+    if (!enabled || rows === undefined) {
+      return { _tag: 'ready', comparisons: NO_COMPARISONS, refreshing: false }
+    }
     if (query.data !== undefined) {
-      return { _tag: 'ready', comparisons: byFormatAndKey(rows, query.data) }
+      return {
+        _tag: 'ready',
+        comparisons: byFormatAndKey(rows, query.data),
+        refreshing: query.isPlaceholderData,
+      }
     }
     if (query.isError)
       return {
@@ -211,7 +225,7 @@ const useServerDiff = (batch: BatchDecodeResult | undefined, batchId: number): S
             : new Error('Failed to check the server for existing copies'),
       }
     return { _tag: 'loading' }
-  }, [enabled, rows, query.data, query.isError, query.error])
+  }, [enabled, rows, query.data, query.isPlaceholderData, query.isError, query.error])
 }
 
 /**

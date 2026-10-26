@@ -1,7 +1,7 @@
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { DecodedFile, StagedImport } from '@wildflowerhealthio/importer-fundamentals'
 import { Data } from 'effect'
-import { type JSX, useMemo, useState } from 'react'
+import { type JSX, type ReactNode, useMemo, useState } from 'react'
 
 import type {
   BatchDecodeResult,
@@ -89,6 +89,8 @@ interface PreviewPanelProps {
   readonly confirming: boolean
   /** Whether the confirm button should be disabled (confirming or re-decoding). */
   readonly confirmDisabled?: boolean
+  /** The identity map's referent rows, rendered above the format groups. */
+  readonly referentRows?: ReactNode
 }
 
 /** One format's settings form, picked out of the registry by kind. */
@@ -173,6 +175,7 @@ const PreviewPanel = ({
   onCancel,
   confirming,
   confirmDisabled = confirming,
+  referentRows,
 }: PreviewPanelProps): JSX.Element => {
   const [editing, setEditing] = useState<EditorState>(makeClosedEditor())
 
@@ -220,6 +223,7 @@ const PreviewPanel = ({
           {`${writableCount} ${plural(writableCount, 'resource')} across ${totalFiles} files`}
         </p>
       )}
+      {referentRows}
       <div className={panelStyles['preview-panel__format-groups']}>
         {activeFormats.map((kind) => {
           const result = batch[kind]

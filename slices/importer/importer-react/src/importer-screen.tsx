@@ -3,6 +3,14 @@ import { formatKinds } from '@wildflowerhealthio/importer-core'
 import { StagedImport, DecodedFile } from '@wildflowerhealthio/importer-fundamentals'
 import { type JSX, useCallback, useMemo, useState } from 'react'
 
+import { ReferentRows } from './identity/referent-rows.tsx'
+import {
+  CHOOSE_OTHER_FILES_LABEL,
+  duplicateReferentMessage,
+  SEARCH_ERROR_MESSAGE,
+  SEARCHING_SERVER_MESSAGE,
+} from './identity/referent-text.ts'
+import { useIdentityMap } from './identity/use-identity-map.ts'
 import { PreviewPanel } from './preview/preview-panel.tsx'
 import { initialExclusionsFor, useServerDiff } from './preview/use-server-diff.ts'
 import { formatRegistry } from './registry.ts'
@@ -19,17 +27,20 @@ import styles from './importer-screen.module.css'
  *
  * @remarks
  * The screen is the opt-in seam made visible: the read half
- * (`SourcePicker` → `useImportRun` → `PreviewPanel`) writes nothing — each
- * file decodes to resources grouped by format, its own source file among
- * them, that the reviewer can exclude or edit — and only the explicit
- * confirm reaches the write half (`useConfirmImport` — one batch bundle per
- * format, verbatim from the preview, best-effort). A batch may span formats:
- * the picker identifies each file against the registered detectors,
+ * (`SourcePicker` → `useImportRun` → `useIdentityMap` → `PreviewPanel`)
+ * writes nothing — each file decodes to resources grouped by format, its own
+ * source file among them, that the reviewer can exclude or edit — and only
+ * the explicit confirm reaches the write half (`useConfirmImport` — one batch
+ * bundle per format, verbatim from the preview, best-effort). A batch may span
+ * formats: the picker identifies each file against the registered detectors,
  * `importer-core` groups and decodes by format, and the preview mounts one
  * settings form per format present — a settings change re-decodes that
  * format through `useImportRun.applySettings`. Per-resource selections are
  * keyed by format kind and stable resource key, so they survive a re-decode
- * where the resource does.
+ * where the resource does. The identity map sits between the read and the
+ * review: the batch is placed on the reviewer's link choices before the
+ * server diff, the preview and the confirm see it, so all three see the
+ * resources that get written.
  *
  * The slice owns every level of this flow rather than the host app: an app
  * mounts only this screen. Mount it inside the host's router and
@@ -65,8 +76,15 @@ const ImporterScreen = (): JSX.Element => {
   )
 
   const runState = importRun.state
-  const batch = runState._tag === 'ready' ? runState.batch : undefined
-  const diff = useServerDiff(batch, runState._tag === 'ready' ? runState.batchId : 0)
+  const batchId = runState._tag === 'ready' ? runState.batchId : 0
+  const identity = useIdentityMap(runState._tag === 'ready' ? runState.batch : undefined, batchId)
+  const identityState = identity.state
+  // The placed batch: what the diff classifies, the preview shows and the confirm writes.
+  const batch =
+    identityState._tag === 'ready' || identityState._tag === 'error'
+      ? identityState.placed
+      : undefined
+  const diff = useServerDiff(batch, batchId)
 
   const initialSelections = useMemo((): ReadonlyMap<FormatKind, StagedImport.Selection> => {
     if (diff._tag === 'loading' || batch === undefined) return new Map()
@@ -111,7 +129,10 @@ const ImporterScreen = (): JSX.Element => {
   }
 
   const confirming = confirm.state._tag === 'confirming'
-  const confirmBlocked = confirming || importRun.redecoding
+  // A re-decode or a changed link choice re-classifies the placed batch; until
+  // its verdicts land, the pre-exclusions are the previous placement's.
+  const confirmBlocked =
+    confirming || importRun.redecoding || (diff._tag === 'ready' && diff.refreshing)
 
   const body = ((): JSX.Element => {
     if (runState._tag === 'idle')
@@ -121,6 +142,28 @@ const ImporterScreen = (): JSX.Element => {
         <p role="status" className={styles.status}>
           {READING_MESSAGE}
         </p>
+      )
+    }
+    // Block the first paint on the identity map's default search, so every
+    // referent paints with its search hit already chosen.
+    if (identityState._tag === 'loading') {
+      return (
+        <p role="status" className={styles.status}>
+          {SEARCHING_SERVER_MESSAGE}
+        </p>
+      )
+    }
+    // A batch the stage refuses has nothing to review: say why, and offer the picker again.
+    if (identityState._tag === 'refused') {
+      return (
+        <>
+          <p role="alert" className={styles.error}>
+            {duplicateReferentMessage(identityState.failure)}
+          </p>
+          <button type="button" className={styles.back} onClick={startOver}>
+            {CHOOSE_OTHER_FILES_LABEL}
+          </button>
+        </>
       )
     }
     // Block the preview while there is nothing worth showing, so every row
@@ -138,13 +181,18 @@ const ImporterScreen = (): JSX.Element => {
     }
     return (
       <>
+        {identityState._tag === 'error' && (
+          <p role="alert" className={styles.error}>
+            {SEARCH_ERROR_MESSAGE}
+          </p>
+        )}
         {diff._tag === 'error' && (
           <p role="alert" className={styles.error}>
             {SERVER_DIFF_ERROR_MESSAGE}
           </p>
         )}
         <PreviewPanel
-          batch={runState.batch}
+          batch={identityState.placed}
           settings={importRun.settings}
           settingsRegistry={formatRegistry}
           selectionFor={selectionFor}
@@ -154,7 +202,16 @@ const ImporterScreen = (): JSX.Element => {
           confirming={confirming}
           confirmDisabled={confirmBlocked}
           onCancel={startOver}
-          onConfirm={() => confirm.confirm(runState.batch, selectionFor)}
+          onConfirm={() => confirm.confirm(identityState.placed, selectionFor)}
+          referentRows={
+            <ReferentRows
+              referents={identityState.referents}
+              linkChoices={identityState.linkChoices}
+              linkTargets={identityState.linkTargets}
+              found={identityState.found}
+              onChoose={identity.choose}
+            />
+          }
         />
       </>
     )
