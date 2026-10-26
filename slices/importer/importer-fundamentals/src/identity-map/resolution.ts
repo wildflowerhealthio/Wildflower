@@ -14,7 +14,7 @@ import * as LinkableResource from './linkable-resource.ts'
 import * as Referent from './referent.ts'
 
 /** What `Create` comes to for `referent`: its decoded resource, a provisional record for its logical reference, else nothing. */
-const createFor = (referent: Referent.Type): Destination.Type =>
+const destinationOfCreate = (referent: Referent.Type): Destination.Type =>
   Referent.match(referent, {
     AsResource: ({ resource }) => Destination.Decoded({ resource }),
     ByMentionOnly: ({ logicalReference }) =>
@@ -24,8 +24,12 @@ const createFor = (referent: Referent.Type): Destination.Type =>
       }),
   })
 
-/** A choice the referent's kind does not allow reads as its default: its decoded resource, or nothing. */
-const defaultFor = (referent: Referent.Type): Destination.Type =>
+/**
+ * Where `referent` comes to with no choice that its kind allows: its decoded
+ * resource, or nothing. What `LinkChoice.defaultFor` resolves to, and what a
+ * choice the kind does not allow reads as.
+ */
+const destinationWithoutChoice = (referent: Referent.Type): Destination.Type =>
   Referent.match(referent, {
     AsResource: ({ resource }) => Destination.Decoded({ resource }),
     ByMentionOnly: () => Destination.Unlinked(),
@@ -43,7 +47,7 @@ const sameType = (referent: Referent.Type, resource: { readonly resourceType: st
 const destinationOfCycle = (cycle: readonly Referent.Type[]): Destination.Type =>
   pipe(
     Array.sort(cycle, Order.mapInput(Order.string, Referent.key)),
-    Array.map(createFor),
+    Array.map(destinationOfCreate),
     Array.findFirst((destination) => !Destination.is('Unlinked')(destination)),
     Option.getOrElse(() => Destination.Unlinked())
   )
@@ -59,13 +63,15 @@ const resolveFrom = (
   current: Referent.Type
 ): Destination.Type =>
   LinkChoice.match(LinkChoice.forReferent(identityMap, current), {
-    Create: () => createFor(current),
-    DontLink: () => defaultFor(current),
+    Create: () => destinationOfCreate(current),
+    DontLink: () => destinationWithoutChoice(current),
     LinkToStored: ({ resource }) =>
-      sameType(current, resource) ? Destination.Stored({ resource }) : defaultFor(current),
+      sameType(current, resource)
+        ? Destination.Stored({ resource })
+        : destinationWithoutChoice(current),
     LinkToReferent: ({ referentKey }) =>
       Referent.match(current, {
-        AsResource: () => defaultFor(current),
+        AsResource: () => destinationWithoutChoice(current),
         ByMentionOnly: (byMentionOnly) =>
           followLinkToReferent(identityMap, referents, path, byMentionOnly, referentKey),
       }),
