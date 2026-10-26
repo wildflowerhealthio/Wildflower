@@ -26,12 +26,12 @@ interface Type {
   /** The identifiers it assumes: what a decoded copy of it in the file assumes too. */
   readonly identifiersToAssume: readonly IdentifierAndReference.IdentifierType[]
   /**
-   * Whether the placed file holds the resource where a decoded resource was:
-   * one decoded under its literal reference, or one a decoded resource is
-   * replaced by. When it does not, the resource is appended to the file so
-   * the review and the diff show what it gained.
+   * Whether a placed file of the batch holds the resource where a decoded
+   * resource was: one decoded under its literal reference, or one a decoded
+   * resource is replaced by. When none does, the resource is appended to the
+   * batch once so the review and the diff show what it gained.
    */
-  readonly resourceExistsInFile: boolean
+  readonly resourceExistsInBatch: boolean
   /**
    * What a review shows for it (`LinkableResource.labelOf`, else its literal
    * reference): the title of an entry it replaces or is appended as.
@@ -41,7 +41,7 @@ interface Type {
 
 /**
  * The placed resource under `placedLiteralReference`, from the links that
- * landed on it, given the literal references the file's decoded resources
+ * landed on it, given the literal references the batch's decoded resources
  * carry.
  *
  * @remarks
@@ -68,7 +68,7 @@ const make = (
       return {
         resource: LinkableResource.assumesIdentifiers(resource, identifiersToAssume),
         identifiersToAssume,
-        resourceExistsInFile:
+        resourceExistsInBatch:
           HashSet.has(decodedLiteralReferences, placedLiteralReference) ||
           linkedResources.some(({ referent }) => Referent.is('AsResource')(referent)),
         label,
@@ -79,7 +79,7 @@ const make = (
 
 /**
  * The placed resource under each literal reference the links land on, given
- * the literal references the file's decoded resources carry.
+ * the literal references the batch's decoded resources carry.
  */
 const byPlacedLiteralReference = (
   links: readonly Link.Type[],

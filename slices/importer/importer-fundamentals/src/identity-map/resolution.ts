@@ -86,7 +86,7 @@ const linksOf = (
     link: LinkChoice.LinkToDecodedReferentType
   ): Resolved =>
     Option.match(HashMap.get(referentsByKey, link.referentKey), {
-      onNone: () => invalid(current, link, 'LinkedReferentNotInFile'),
+      onNone: () => invalid(current, link, 'LinkedReferentNotInBatch'),
       onSome: (linked) => {
         if (!sameType(current, { resourceType: linked.logicalReference.type })) {
           return invalid(current, link, 'LinkedReferentOfAnotherType')

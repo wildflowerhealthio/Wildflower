@@ -58,13 +58,13 @@ const {
  * allow (`DontLink` or `LinkToDecodedReferent` for a referent with a
  * resource, `CreateResource` for one named only by mentions with no
  * provisional form), a stored resource or a linked referent of another type,
- * or a linked referent the file does not hold.
+ * or a linked referent the batch does not hold.
  */
 type InvalidLinkChoiceReason =
   | 'NotAllowedForReferent'
   | 'StoredResourceOfAnotherType'
   | 'LinkedReferentOfAnotherType'
-  | 'LinkedReferentNotInFile'
+  | 'LinkedReferentNotInBatch'
 
 /** A choice the stage cannot follow for the referent it is made for. */
 class InvalidLinkChoice extends Data.TaggedError('InvalidLinkChoice')<{

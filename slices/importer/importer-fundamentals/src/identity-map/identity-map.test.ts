@@ -3,11 +3,13 @@ import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
 import { Patient, Practitioner, type FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import {
+  Array,
   DateTime,
   Effect,
   Either,
   FastCheck as fc,
   HashMap,
+  Option,
   Schema,
   TestClock,
   TestContext,
@@ -35,6 +37,7 @@ import {
   STORED_SMITH,
   STORED_TYRA,
   anyChoicesArbitrary,
+  applyAcrossOnTestClock,
   applyOnTestClock,
   customerSubject,
   discoverOnTestClock,
@@ -126,6 +129,15 @@ const resolvedFor = (
       return link === undefined ? `no referent ${referentKey}` : describeLinkTarget(link.target)
     },
   })
+
+/** How `IdentityMap.applyAcross` fails on `files` under `choices`, as the failure's tag and fields. */
+const failureAcrossOf = (
+  files: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>,
+  choices: ReferentLinkChoices.Type
+): Either.Either<
+  readonly DecodedFile.DecodedFile[],
+  Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice
+> => runOnTestClock(Effect.either(IdentityMap.applyAcross(files, choices)))
 
 /** How `IdentityMap.apply` fails on `file` under `choices`, as the failure's tag and fields. */
 const failureOf = (
@@ -492,7 +504,7 @@ describe('Resolution.linksOf', () => {
         account(1),
         LinkChoice.LinkToDecodedReferent({ referentKey: 'Patient|https://nowhere.example/|x' })
       )
-    ).toBe(`Invalid ${account(1)} LinkedReferentNotInFile`)
+    ).toBe(`Invalid ${account(1)} LinkedReferentNotInBatch`)
   })
 
   it('fails on a link to a referent of another type: a subject never lands on a practitioner', () => {
@@ -584,6 +596,162 @@ describe('UnlinkedMention.collect on a placed file', () => {
       'OutsidePatientCompartment k-7 subject',
       'OutsidePatientCompartment k-8 subject',
     ])
+  })
+})
+
+describe('IdentityMap.applyAcross', () => {
+  /** How many resources of `files` are written under `literalReference`. */
+  const countWrittenAt = (
+    files: readonly DecodedFile.DecodedFile[],
+    literalReference: string
+  ): number =>
+    files
+      .flatMap(DecodedFile.resources)
+      .filter(({ resource }) => `${resource.resourceType}/${resource.id}` === literalReference)
+      .length
+
+  /** The resource keyed `key` in the file at `index` of `files`. */
+  const atFile = (
+    files: readonly DecodedFile.DecodedFile[],
+    index: number,
+    key: string
+  ): FhirResource | undefined =>
+    Array.get(files, index).pipe(
+      Option.flatMapNullable((file) => at(file, key)),
+      Option.getOrUndefined
+    )
+
+  it('links a mention in one file to the person another file holds, which assumes its id', () => {
+    const placed = applyAcrossOnTestClock(
+      Array.make(fileOf(patient({ id: 'p-1' })), fileOf(request('rx-1', customerSubject('c-9')))),
+      HashMap.make([ACCOUNT, LinkChoice.LinkToDecodedReferent({ referentKey: PERSON })])
+    )
+
+    expect(subjectAndRequesterOf(atFile(placed, 1, 'k-0')).subject?.reference).toBe('Patient/p-1')
+    expect(identifiersOf(atFile(placed, 0, 'k-0'))).toEqual([
+      `${SOURCE_PATIENT}|p-1`,
+      `${NAME_BIRTH_DATE}|banks;tyra;1990-01-02`,
+      `${CUSTOMER}|c-9`,
+    ])
+  })
+
+  it('reads a person one file decodes and another only mentions as one referent, with the resource', () => {
+    const referents = runOnTestClock(
+      Referent.discoverAcross([
+        fileOf(
+          observation('o-1', {
+            type: 'Patient',
+            identifier: { system: SOURCE_PATIENT, value: 'p-1' },
+          })
+        ),
+        fileOf(patient({ id: 'p-1' }), request('rx-1', customerSubject('c-9'))),
+        fileOf(request('rx-2', customerSubject('c-9'))),
+      ])
+    )
+
+    expect(referents.map((referent) => [referent._tag, Referent.key(referent)])).toEqual([
+      ['AsResource', PERSON],
+      ['ByMentionOnly', ACCOUNT],
+    ])
+  })
+
+  it('writes a stored person two files only mention once, in the first file’s Linked section', () => {
+    const otherAccount = `Patient|${CUSTOMER}|c-8`
+
+    const placed = applyAcrossOnTestClock(
+      Array.make(
+        fileOf(request('rx-1', customerSubject('c-9'))),
+        fileOf(request('rx-2', customerSubject('c-8')))
+      ),
+      HashMap.make(
+        [ACCOUNT, LinkChoice.LinkToStoredResource({ resource: STORED_JAN })],
+        [otherAccount, LinkChoice.LinkToStoredResource({ resource: STORED_JAN })]
+      )
+    )
+
+    expect(placed.map((file) => file.sections.map((section) => section.title))).toEqual([
+      ['Resources', Placement.LINKED_SECTION_TITLE],
+      ['Resources'],
+    ])
+    expect(countWrittenAt(placed, 'Patient/s-2')).toBe(1)
+    expect(identifiersOf(atFile(placed, 0, 'linked:Patient/s-2'))).toEqual([
+      `${DEVICE}|s-2`,
+      `${CUSTOMER}|c-9`,
+      `${CUSTOMER}|c-8`,
+    ])
+    expect(placed.map((file) => subjectAndRequesterOf(at(file, 'k-0')).subject?.reference)).toEqual(
+      ['Patient/s-2', 'Patient/s-2']
+    )
+  })
+
+  it('appends no Linked copy of a stored person another file holds, whose copy assumes the ids', () => {
+    const placed = applyAcrossOnTestClock(
+      Array.make(fileOf(request('rx-1', customerSubject('c-9'))), fileOf(STORED_JAN)),
+      HashMap.make([ACCOUNT, LinkChoice.LinkToStoredResource({ resource: STORED_JAN })])
+    )
+
+    expect(placed.map((file) => file.sections.length)).toEqual([1, 1])
+    expect(countWrittenAt(placed, 'Patient/s-2')).toBe(1)
+    expect(identifiersOf(atFile(placed, 1, 'k-0'))).toEqual([`${DEVICE}|s-2`, `${CUSTOMER}|c-9`])
+  })
+
+  it('refuses a batch with one person decoded under two ids in two files', () => {
+    expect(
+      failureAcrossOf(
+        Array.make(
+          fileOf(patient({ id: 'p-1' })),
+          fileOf({ ...patient({ id: 'p-1' }), id: 'p-1-again' })
+        ),
+        HashMap.empty()
+      )
+    ).toMatchObject({
+      _tag: 'Left',
+      left: { _tag: 'DuplicateReferent', reviewKeys: ['k-0', 'k-0'] },
+    })
+  })
+
+  /** `file`'s two sections as a batch of two files of one section each. */
+  const splitIntoFiles = (
+    file: DecodedFile.DecodedFile
+  ): Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile> =>
+    Array.match(file.sections, {
+      onEmpty: () => Array.of(file),
+      onNonEmpty: (sections) =>
+        Array.map(sections, (section) => ({ ...file, sections: [section] })),
+    })
+
+  it('property: placing a file’s sections as separate files is placing the file, the Linked section moved to the first', () => {
+    fc.assert(
+      fc.property(fileWithChoicesArbitrary, ({ file, choices }) => {
+        const placedTogether = applyOnTestClock(file, choices)
+        const placedApart = applyAcrossOnTestClock(splitIntoFiles(file), choices)
+        const isLinked = (section: DecodedFile.Section): boolean =>
+          section.title === Placement.LINKED_SECTION_TITLE
+
+        const [firstApart, ...restApart] = placedApart
+        expect(
+          fileWireOf({
+            ...file,
+            sections: [
+              ...firstApart.sections.filter((section) => !isLinked(section)),
+              ...restApart.flatMap((placedFile) => placedFile.sections),
+              ...firstApart.sections.filter(isLinked),
+            ],
+          })
+        ).toBe(fileWireOf(placedTogether))
+      }),
+      { numRuns: RUNS }
+    )
+  })
+
+  it('property: applying the same choices across the files again changes nothing, when the placed files have the decoded files’ referents', () => {
+    fc.assert(
+      fc.property(fileWithReapplicableChoicesArbitrary, ({ file, choices }) => {
+        const once = applyAcrossOnTestClock(splitIntoFiles(file), choices)
+        expect(applyAcrossOnTestClock(once, choices).map(fileWireOf)).toEqual(once.map(fileWireOf))
+      }),
+      { numRuns: RUNS }
+    )
   })
 })
 

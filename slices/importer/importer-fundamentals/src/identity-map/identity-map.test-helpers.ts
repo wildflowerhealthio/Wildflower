@@ -13,7 +13,16 @@ import {
   Practitioner,
   type FhirResource,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import { Arbitrary, Effect, FastCheck as fc, HashMap, Option, Schema, TestContext } from 'effect'
+import {
+  Arbitrary,
+  type Array,
+  Effect,
+  FastCheck as fc,
+  HashMap,
+  Option,
+  Schema,
+  TestContext,
+} from 'effect'
 
 import type * as DecodedFile from '../decoded-file.ts'
 import * as IdentityMap from './identity-map.ts'
@@ -41,6 +50,13 @@ const applyOnTestClock = (
   file: DecodedFile.DecodedFile,
   linkChoices: ReferentLinkChoices.Type
 ): DecodedFile.DecodedFile => runOnTestClock(IdentityMap.apply(file, linkChoices))
+
+/** `IdentityMap.applyAcross` run on the test clock. */
+const applyAcrossOnTestClock = (
+  files: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>,
+  linkChoices: ReferentLinkChoices.Type
+): Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile> =>
+  runOnTestClock(IdentityMap.applyAcross(files, linkChoices))
 
 /** `Referent.discover` run on the test clock. */
 const discoverOnTestClock = (file: DecodedFile.DecodedFile): readonly Referent.Type[] =>
@@ -449,6 +465,7 @@ export {
   STORED_SMITH,
   STORED_TYRA,
   anyChoicesArbitrary,
+  applyAcrossOnTestClock,
   applyOnTestClock,
   customerSubject,
   discoverOnTestClock,
