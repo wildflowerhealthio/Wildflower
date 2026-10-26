@@ -4,7 +4,7 @@
  * @remarks
  * A referent with a resource may be `New` (its own resource is written and
  * becomes the record) or `ToStored` (linked to a resource already on the
- * device). One only mentions name may be `ToStored`, `SameAs` another referent
+ * device). One named only by mentions may be `ToStored`, `SameAs` another referent
  * (whatever that one becomes), or `DontLink` (its mentions keep their
  * identifier-only form); and `New` when something provisional can stand in for
  * its identity (`Provisional.forIdentity`). Following `SameAs` to the end gives
@@ -49,7 +49,7 @@ type ByReferent = ReadonlyMap<string, Type>
 
 /** The choice a referent takes when the reviewer has made none: `New` with a resource, else `DontLink`. */
 const defaultFor = (referent: Referent.Type): Type =>
-  referent._tag === 'WithResource' ? New() : DontLink()
+  Referent.match(referent, { WithResource: () => New(), ByMentionOnly: () => DontLink() })
 
 /** The choice `choices` holds for `referent`, else its default. */
 const forReferent = (choices: ByReferent, referent: Referent.Type): Type =>

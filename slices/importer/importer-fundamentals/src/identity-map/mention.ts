@@ -26,14 +26,29 @@ import { Array, Match, Option, pipe } from 'effect'
 
 import * as Identity from './identity.ts'
 
-/** The fields a mention sits in. */
+/** The fields a mention sits in; see the module remarks for why these three. */
 type Field = 'subject' | 'requester' | 'performer'
 
-/** One mention: its field, its path in the resource, and the reference it holds. */
+/**
+ * One mention: what the identity map needs to know about it and nothing more.
+ * The mentioning resource is not among them, since every reader already holds
+ * it.
+ */
 interface Type {
+  /**
+   * The field it sits in. It gives an identifier-only reference its type (a
+   * `subject` names a `Patient`, the others a `Practitioner`), and it says
+   * whether one that lands nowhere is listed even with nothing to name (a
+   * `subject` always is).
+   */
   readonly field: Field
-  /** `subject`, `requester`, `performer`, `performer[1]` or `performer[0].actor`. */
+  /**
+   * Where it sits in the resource: `subject`, `requester`, `performer`,
+   * `performer[1]` or `performer[0].actor`. What an unlinked mention reports,
+   * since `ResourceReferences` gives no path.
+   */
   readonly path: string
+  /** The reference as the resource carries it: its literal, identifier and `display`. */
   readonly reference: IdentifierAndReference.ReferenceType
 }
 

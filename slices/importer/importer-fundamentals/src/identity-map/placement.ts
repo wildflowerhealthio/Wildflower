@@ -19,16 +19,16 @@ import * as Redirection from './redirection.ts'
 const LINKED_SECTION_TITLE = 'Linked'
 
 /** The review key a resource the file only mentions is appended under. */
-const linkedKey = (resource: LinkableResource.WithId): string =>
-  `linked:${LinkableResource.literalOf(resource)}`
+const linkedKey = (onlyMentioned: LinkableResource.WithId): string =>
+  `linked:${LinkableResource.literalOf(onlyMentioned)}`
 
-/** The stored resource standing in for `decoded`, when its referent links to one. */
+/** The stored resource, as it will be written, standing in for `decodedResource` when its referent links to one. */
 const standInFor = (
   plan: LinkPlan.Type,
-  decoded: LinkableResource.Type
+  decodedResource: LinkableResource.Type
 ): Option.Option<LinkableResource.WithId> =>
   pipe(
-    LinkPlan.storedDestinationOf(plan.destinations, decoded),
+    LinkPlan.storedDestinationOf(plan.destinations, decodedResource),
     Option.flatMapNullable((stored) =>
       plan.linkedResources.get(LinkableResource.literalOf(stored))
     ),
@@ -36,37 +36,42 @@ const standInFor = (
   )
 
 /**
- * `decoded` as it is written under `plan`: the stored resource standing in for
- * it, or itself, having assumed what its referent's own resource assumes and,
- * when it is a copy of a linked resource the file already holds (a Linked row
- * placed once before), what that resource assumed, with its mentions
- * redirected.
+ * `decodedResource` as it is written under `plan`: the stored resource
+ * standing in for it, or itself, having assumed what its referent's own
+ * resource assumes and, when it is a copy of a linked resource the file
+ * already holds (appended under Linked by an earlier placement), what that
+ * resource assumed, with its mentions redirected.
  */
-const placed = (plan: LinkPlan.Type, decoded: FhirResource): FhirResource => {
-  if (!LinkableResource.is(decoded)) return Redirection.redirectMentions(plan, decoded)
-  const standIn = standInFor(plan, decoded)
+const placed = (plan: LinkPlan.Type, decodedResource: FhirResource): FhirResource => {
+  if (!LinkableResource.is(decodedResource)) {
+    return Redirection.redirectMentions(plan, decodedResource)
+  }
+  const standIn = standInFor(plan, decodedResource)
   if (Option.isSome(standIn)) return standIn.value
   const assumedAsOwnResource = pipe(
-    LinkableResource.identityOf(decoded),
+    LinkableResource.identityOf(decodedResource),
     Option.flatMapNullable((identity) => plan.assumedByOwnResource.get(Identity.key(identity))),
     Option.getOrElse(() => [])
   )
   const assumedAsLinkedCopy = pipe(
-    Option.fromNullable(decoded.id),
+    Option.fromNullable(decodedResource.id),
     Option.flatMapNullable((id) =>
-      plan.linkedResources.get(LinkableResource.literalOf({ ...decoded, id }))
+      plan.linkedResources.get(LinkableResource.literalOf({ ...decodedResource, id }))
     ),
     Option.map(({ assumed }) => assumed),
     Option.getOrElse(() => [])
   )
   return Redirection.redirectMentions(
     plan,
-    LinkableResource.assumesIdentifiers(decoded, [...assumedAsOwnResource, ...assumedAsLinkedCopy])
+    LinkableResource.assumesIdentifiers(decodedResource, [
+      ...assumedAsOwnResource,
+      ...assumedAsLinkedCopy,
+    ])
   )
 }
 
-/** The resources `plan` appends: those the file only mentions, as rows under {@link LINKED_SECTION_TITLE}. */
-const linkedRows = (plan: LinkPlan.Type): readonly DecodedFile.Resource[] =>
+/** The resources `plan` appends under {@link LINKED_SECTION_TITLE}: those the file only mentions. */
+const linkedSectionResources = (plan: LinkPlan.Type): readonly DecodedFile.Resource[] =>
   [...plan.linkedResources]
     .filter(([, linked]) => linked.existsOnlyAsMentionInFile)
     .map(([literal, { resource }]) => ({
@@ -93,7 +98,7 @@ const place = (
       ? section
       : { ...section, resources }
   })
-  const linked = linkedRows(plan)
+  const linked = linkedSectionResources(plan)
   return linked.length === 0
     ? { ...decodedFile, sections }
     : {

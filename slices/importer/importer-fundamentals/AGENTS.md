@@ -119,14 +119,15 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   - **`Mention`** — each place a resource names its patient or a provider:
     its top-level `subject`, `requester` and `performer`, read by field. An
     identifier-only reference states no type, so the field it is mentioned in
-    says whether it names a Patient or a Practitioner; the field is also the
-    path an unlinked mention reports, since `ResourceReferences.map` gives
-    none.
+    says whether it names a Patient or a Practitioner; reading by field also
+    gives each mention the path an unlinked mention reports, since
+    `ResourceReferences.map` gives none.
   - **`Referent`** — something the import refers to that may already exist on
     the device, once per identity: **`WithResource`** when the decode emitted
     its resource (carrying every identifier a search tries, its own and the
-    derived one), **`ByMentionOnly`** when only mentions name it.
-    **`discover`** finds both, resources first, once per key.
+    derived one), **`ByMentionOnly`** when only mentions name it; built only
+    through its constructors, matched with `Referent.match`. **`discover`**
+    finds both, resources first, once per key.
   - **`LinkChoice`** — what the reviewer chooses for a referent: **`New`**,
     **`ToStored`** (a resource on the device), **`SameAs`** (another referent),
     **`DontLink`**; tagged objects built only through their constructors,
@@ -134,17 +135,21 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     default, `New` with a resource and `DontLink` without.
   - **`Destination`** — where a referent ends up once `SameAs` is followed:
     **`OnStoredResource`**, **`OnOwnResource`**, **`OnProvisionalResource`**,
-    **`Unlinked`**; `literalOf` is what its mentions are redirected to.
+    **`Unlinked`**, matched with `Destination.match`; `literalOf` is what its
+    mentions are redirected to.
   - **`Provisional`** — `forIdentity`: the resource an identity alone can stand
     for, provisional until a fuller record arrives. An exhaustive match over
     the resource types: a provider's printed name stands for a `Practitioner`
     (`Practitioner.fromNameIdentifier`); nothing stands for a `Patient`.
   - `resolution.ts` (**`Resolution`**, not exported) — `destinationOf`: a
-    referent's choice followed to its destination, every rule a `Match` arm.
-  - **`LinkPlan`** — `make`: everything the placement needs, worked out once:
-    each referent's destination, each stored or provisional resource as it
-    will be written and whether it **`existsOnlyAsMentionInFile`**, the
-    literal redirects, and what each own resource assumes.
+    referent's choice followed to its destination, every rule an arm of
+    `LinkChoice.match` or `Referent.match`.
+  - **`LinkPlan`** — `make`: everything the placement needs, worked out once
+    from each referent's resolved destination: the **`destinations`**, the
+    **`linkedResources`** (each stored or provisional resource as it will be
+    written, and whether it **`existsOnlyAsMentionInFile`**), the
+    **`literalRedirects`**, and what each own resource assumes
+    (**`assumedByOwnResource`**).
   - `redirection.ts` (**`Redirection`**, not exported) — `redirectMentions`:
     a referent's mentions are redirected to its destination, through
     `ResourceReferences.map`, keeping `display` and `identifier`.
@@ -152,7 +157,8 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     alongside, what its referent becomes, and the resources the file only
     mentions appended under **`LINKED_SECTION_TITLE`** at **`linkedKey`**.
   - **`UnlinkedMention`** — `of`: on a placed file, every **`MissingSubject`**
-    and every mention that **`NamesNobodyOnDevice`**.
+    and every mention that **`NamesNobodyOnDevice`**, matched with
+    `UnlinkedMention.match`.
   - **`IdentityMap`** — the `ReadonlyMap<key, LinkChoice>` itself (`Type`),
     **`apply`** (plan, then place) and **`unlinkedMentions`**.
 - `src/picked-file.ts` — the **`PickedFile`** namespace: the picked file
@@ -274,7 +280,7 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
   `identifier`; a resource the file only mentions is appended under a final
   **"Linked"** section so the review shows the identifier it assumed; an own
   resource is written as decoded plus its derived identifier and those of the
-  referents linked to it. A referent only mentions name may be `New` only
+  referents linked to it. A referent named only by mentions may be `New` only
   when its identity stands for something provisional (`Provisional.forIdentity`:
   a provider's printed name, as a `Practitioner` at `localResourceId(system,
   'Practitioner', name)`, so one name from two sources is one record); its

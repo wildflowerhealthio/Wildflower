@@ -35,7 +35,7 @@ import * as LinkChoice from './link-choice.ts'
 import * as Placement from './placement.ts'
 import * as Referent from './referent.ts'
 import * as Resolution from './resolution.ts'
-import type * as UnlinkedMention from './unlinked-mention.ts'
+import * as UnlinkedMention from './unlinked-mention.ts'
 
 // Schema-generated resources at fast-check's default size run to hundreds of
 // kilobytes each; the properties are about structure, which the smallest size
@@ -65,7 +65,10 @@ const identifiersOf = (resource: FhirResource | undefined): readonly string[] =>
 
 /** The path an unlinked mention reports: `subject` for a missing one. */
 const pathOf = (unlinked: UnlinkedMention.Type): string =>
-  unlinked._tag === 'MissingSubject' ? 'subject' : unlinked.mentionPath
+  UnlinkedMention.match(unlinked, {
+    MissingSubject: () => 'subject',
+    NamesNobodyOnDevice: ({ mentionPath }) => mentionPath,
+  })
 
 /** A destination as `<tag> <id>`, the id for one with a resource on the device. */
 const describeDestination = (destination: Destination.Type): string =>
@@ -76,8 +79,8 @@ const describeDestination = (destination: Destination.Type): string =>
     Unlinked: () => 'Unlinked',
   })
 
-/** A resource's `subject` and `requester`, as `apply` left them. */
-const slotsOf = (
+/** A resource's `subject` and `requester` references, as `apply` left them. */
+const subjectAndRequesterOf = (
   resource: FhirResource | undefined
 ): Record<'subject' | 'requester', IdentifierAndReference.ReferenceType | null> => ({
   subject: resource !== undefined && 'subject' in resource ? resource.subject : null,
@@ -85,7 +88,7 @@ const slotsOf = (
 })
 
 describe('IdentityMap.apply', () => {
-  it('puts a stored person in the source Patient’s place and re-points every reference to it', () => {
+  it('puts a stored person in the source Patient’s place and redirects every mention of it', () => {
     const file = fileOf(
       patient({ id: 'p-1' }),
       request('rx-1', { ...literalSubject('p-1'), display: 'Tyra' }),
@@ -106,13 +109,13 @@ describe('IdentityMap.apply', () => {
       `${NAME_BIRTH_DATE}|banks;tyra;1990-01-02`,
       `${SOURCE_PATIENT}|p-1`,
     ])
-    const { subject } = slotsOf(at(applied, 'k-1'))
+    const { subject } = subjectAndRequesterOf(at(applied, 'k-1'))
     expect([subject?.reference, subject?.display, subject?.identifier?.value]).toEqual([
       'Patient/s-1',
       'Tyra',
       'p-1',
     ])
-    expect(slotsOf(at(applied, 'k-2')).subject?.reference).toBe('Patient/s-1')
+    expect(subjectAndRequesterOf(at(applied, 'k-2')).subject?.reference).toBe('Patient/s-1')
   })
 
   it('links an account id to a stored person and writes the person, with the id, in a Linked section', () => {
@@ -126,8 +129,8 @@ describe('IdentityMap.apply', () => {
       new Map([[ACCOUNT, LinkChoice.ToStored({ resource: STORED_JAN })]])
     )
 
-    expect(slotsOf(at(applied, 'k-0')).subject?.reference).toBe('Patient/s-2')
-    expect(slotsOf(at(applied, 'k-1')).subject?.identifier?.value).toBe('c-9')
+    expect(subjectAndRequesterOf(at(applied, 'k-0')).subject?.reference).toBe('Patient/s-2')
+    expect(subjectAndRequesterOf(at(applied, 'k-1')).subject?.identifier?.value).toBe('c-9')
     expect(applied.sections.map((section) => section.title)).toEqual([
       'Resources',
       Placement.LINKED_SECTION_TITLE,
@@ -149,7 +152,7 @@ describe('IdentityMap.apply', () => {
       new Map([[ACCOUNT, LinkChoice.SameAs({ referentKey: PERSON })]])
     )
 
-    expect(slotsOf(at(applied, 'k-1')).subject?.reference).toBe('Patient/p-1')
+    expect(subjectAndRequesterOf(at(applied, 'k-1')).subject?.reference).toBe('Patient/p-1')
     expect(identifiersOf(at(applied, 'k-0'))).toEqual([
       `${SOURCE_PATIENT}|p-1`,
       `${NAME_BIRTH_DATE}|banks;tyra;1990-01-02`,
@@ -171,7 +174,7 @@ describe('IdentityMap.apply', () => {
     expect(at(applied, 'k-1')).toBe(unlinked)
   })
 
-  it('re-points a second copy of a linked person, under another id, at the stored person', () => {
+  it('redirects a second copy of a linked person, under another id, at the stored person', () => {
     const file = fileOf(
       patient({ id: 'p-1' }),
       { ...patient({ id: 'p-1' }), id: 'p-1-again' },
@@ -184,7 +187,7 @@ describe('IdentityMap.apply', () => {
     )
 
     expect([at(applied, 'k-0')?.id, at(applied, 'k-1')?.id]).toEqual(['s-1', 's-1'])
-    expect(slotsOf(at(applied, 'k-2')).subject?.reference).toBe('Patient/s-1')
+    expect(subjectAndRequesterOf(at(applied, 'k-2')).subject?.reference).toBe('Patient/s-1')
   })
 
   it('links a named prescriber to a stored practitioner', () => {
@@ -195,7 +198,7 @@ describe('IdentityMap.apply', () => {
       new Map([[PRESCRIBER, LinkChoice.ToStored({ resource: STORED_SMITH })]])
     )
 
-    const { requester } = slotsOf(at(applied, 'k-0'))
+    const { requester } = subjectAndRequesterOf(at(applied, 'k-0'))
     expect([requester?.reference, requester?.display]).toEqual(['Practitioner/sp-1', 'Dr. A Smith'])
   })
 })
@@ -232,7 +235,7 @@ describe('IdentityMap.apply on a printed name set to New', () => {
       provisional?.resourceType === 'Practitioner' ? provisional.name.map((name) => name.text) : []
     ).toEqual(['Dr. A Smith'])
     for (const key of ['k-0', 'k-1']) {
-      const { requester } = slotsOf(at(applied, key))
+      const { requester } = subjectAndRequesterOf(at(applied, key))
       expect([requester?.reference, requester?.display]).toEqual([
         `Practitioner/${PROVISIONAL_ID}`,
         'Dr. A Smith',
@@ -354,12 +357,13 @@ describe('Resolution.destinationOf', () => {
     expect(
       Resolution.destinationOf(choices, Referent.index(prescriberReferents), accountReferent)._tag
     ).toBe('Unlinked')
-    expect(slotsOf(at(IdentityMap.apply(withPrescriber, choices), 'k-0')).subject?.reference).toBe(
-      null
-    )
+    expect(
+      subjectAndRequesterOf(at(IdentityMap.apply(withPrescriber, choices), 'k-0')).subject
+        ?.reference
+    ).toBe(null)
   })
 
-  it('defaults a referent with a resource to New and one only mentions name to Don’t link', () => {
+  it('defaults a referent with a resource to New and one named only by mentions to Don’t link', () => {
     expect(LinkChoice.forReferent(new Map(), referentOf(PERSON) ?? referents[0])._tag).toBe('New')
     expect(LinkChoice.forReferent(new Map(), referentOf(account(1)) ?? referents[0])._tag).toBe(
       'DontLink'
@@ -476,14 +480,14 @@ describe('IdentityMap properties', () => {
         const listedSubjects = IdentityMap.unlinkedMentions(file, map)
           .filter((unlinked) => pathOf(unlinked) === 'subject')
           .map((unlinked) => unlinked.mentioningResourceKey)
-        const unfiled = DecodedFile.resources(IdentityMap.apply(file, map))
+        const unlinkedSubjects = DecodedFile.resources(IdentityMap.apply(file, map))
           .filter(({ resource }) => {
             const literal = wireFieldsOf(resource).subject?.reference
             return 'subject' in resource && (literal === undefined || URL.parse(literal) !== null)
           })
           .map((entry) => entry.key)
 
-        expect(listedSubjects).toEqual(unfiled)
+        expect(listedSubjects).toEqual(unlinkedSubjects)
       }),
       { numRuns: RUNS }
     )

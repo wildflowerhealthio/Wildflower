@@ -9,7 +9,7 @@
  * so all three see the resources that get written. The stage runs in phases,
  * one module each: `Referent.discover` finds the referents, `Resolution`
  * resolves each one's choice into its `Destination`, `LinkPlan.make` works out
- * what every destination becomes, `Redirection` re-points each mention and
+ * what every destination becomes, `Redirection` redirects each mention and
  * `Placement` rebuilds the file; `UnlinkedMention.of` reads what still names
  * nobody off the placed file.
  *

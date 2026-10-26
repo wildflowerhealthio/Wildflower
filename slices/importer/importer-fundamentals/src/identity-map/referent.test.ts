@@ -50,25 +50,28 @@ const wireKeys = (resource: FhirResource): readonly string[] => {
     wire.resourceType === 'Patient' || wire.resourceType === 'Practitioner'
       ? keyOf(wire.resourceType, wire.identifier?.[0])
       : []
-  const slots = [
-    ...[wire.subject].map((slot) => ['Patient', slot] as const),
+  const mentions = [
+    ...[wire.subject].map((reference) => ['Patient', reference] as const),
     ...[wire.requester, wire.performer ?? []]
       .flat()
       .map(
-        (slot) =>
-          ['Practitioner', slot !== undefined && 'actor' in slot ? slot.actor : slot] as const
+        (performer) =>
+          [
+            'Practitioner',
+            performer !== undefined && 'actor' in performer ? performer.actor : performer,
+          ] as const
       ),
   ]
-  const typeOf = (slotType: string, stated: string | undefined): readonly string[] => {
-    if (stated === undefined) return [slotType]
+  const typeOf = (fieldType: string, stated: string | undefined): readonly string[] => {
+    if (stated === undefined) return [fieldType]
     return stated === 'Patient' || stated === 'Practitioner' ? [stated] : []
   }
   return [
     ...own,
-    ...slots.flatMap(([slotType, reference]) =>
+    ...mentions.flatMap(([fieldType, reference]) =>
       reference === undefined || reference.reference !== undefined
         ? []
-        : typeOf(slotType, reference.type).flatMap((type) => keyOf(type, reference.identifier))
+        : typeOf(fieldType, reference.type).flatMap((type) => keyOf(type, reference.identifier))
     ),
   ]
 }
@@ -105,9 +108,13 @@ describe('Referent.discover', () => {
     )
 
     const systemsAndValues = (referent: Referent.Type | undefined): readonly unknown[] =>
-      referent?._tag === 'WithResource'
-        ? referent.identifiers.map((identifier) => [identifier.system?.href, identifier.value])
-        : []
+      referent === undefined
+        ? []
+        : Referent.match(referent, {
+            WithResource: ({ identifiers }) =>
+              identifiers.map((identifier) => [identifier.system?.href, identifier.value]),
+            ByMentionOnly: () => [],
+          })
     expect(systemsAndValues(patientReferent)).toEqual([
       [SOURCE_PATIENT, 'p-1'],
       [

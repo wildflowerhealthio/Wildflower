@@ -49,7 +49,8 @@ const WireReference = Schema.Struct({
   identifier: Schema.optional(WireIdentifier),
   type: Schema.optional(Schema.String),
 })
-const WireSlot = Schema.Union(Schema.Struct({ actor: WireReference }), WireReference)
+/** A `performer` on the wire: a reference, or an `actor` holding one. */
+const WirePerformer = Schema.Union(Schema.Struct({ actor: WireReference }), WireReference)
 
 /**
  * The fields of a resource's wire form the identity map reads, decoded loosely
@@ -60,7 +61,7 @@ const WireResource = Schema.Struct({
   identifier: Schema.optional(Schema.Array(WireIdentifier)),
   subject: Schema.optional(WireReference),
   requester: Schema.optional(WireReference),
-  performer: Schema.optional(Schema.Union(WireSlot, Schema.Array(WireSlot))),
+  performer: Schema.optional(Schema.Union(WirePerformer, Schema.Array(WirePerformer))),
 })
 
 /** `resource`'s wire form, read through {@link WireResource}. */

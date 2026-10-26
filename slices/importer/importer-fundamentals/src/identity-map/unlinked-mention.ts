@@ -7,7 +7,7 @@
 
 import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
-import { Option } from 'effect'
+import { Data, Option } from 'effect'
 
 import * as DecodedFile from '../decoded-file.ts'
 import * as Mention from './mention.ts'
@@ -21,8 +21,8 @@ interface MissingSubject {
 
 /**
  * A mention that, as written, lands on no resource of the device: still
- * identifier-only after placement (an unlinked or unmapped identity), or an
- * absolute URL into another system.
+ * identifier-only after placement (its referent `Unlinked`), or an absolute
+ * URL into another system.
  */
 interface NamesNobodyOnDevice {
   readonly _tag: 'NamesNobodyOnDevice'
@@ -35,6 +35,8 @@ interface NamesNobodyOnDevice {
 }
 
 type Type = MissingSubject | NamesNobodyOnDevice
+
+const { MissingSubject, NamesNobodyOnDevice, $is: is, $match: match } = Data.taggedEnum<Type>()
 
 /** Whether a mention's reference lands on a resource of the device: a literal that is not an absolute URL. */
 const landsOnDevice = (reference: IdentifierAndReference.ReferenceType): boolean =>
@@ -66,18 +68,19 @@ const of = (placedFile: DecodedFile.DecodedFile): readonly Type[] =>
   DecodedFile.resources(placedFile).flatMap(({ key, resource }): readonly Type[] => {
     const missingSubject: readonly Type[] =
       'subject' in resource && resource.subject === null
-        ? [{ _tag: 'MissingSubject', mentioningResourceKey: key }]
+        ? [MissingSubject({ mentioningResourceKey: key })]
         : []
     const landingNowhere = Mention.of(resource)
       .filter((mention) => !landsOnDevice(mention.reference) && namesSomeone(resource, mention))
-      .map((mention): Type => ({
-        _tag: 'NamesNobodyOnDevice',
-        mentioningResourceKey: key,
-        mentionPath: mention.path,
-        referenceAsWritten: mention.reference,
-      }))
+      .map((mention): Type =>
+        NamesNobodyOnDevice({
+          mentioningResourceKey: key,
+          mentionPath: mention.path,
+          referenceAsWritten: mention.reference,
+        })
+      )
     return [...missingSubject, ...landingNowhere]
   })
 
-export { of }
+export { is, match, of }
 export type { MissingSubject, NamesNobodyOnDevice, Type }

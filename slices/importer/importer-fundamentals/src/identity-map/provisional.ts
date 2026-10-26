@@ -1,6 +1,6 @@
 /**
  * What can stand in for an identity nothing else describes: the one rule by
- * which a referent only mentions name can still become a record.
+ * which a referent named only by mentions can still become a record.
  *
  * @packageDocumentation
  */
