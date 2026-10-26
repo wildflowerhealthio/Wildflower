@@ -59,7 +59,8 @@ const FIELD_RESOURCE_TYPE: Readonly<Record<Field, Identity.ResourceType>> = {
   performer: 'Practitioner',
 }
 
-const mention =
+/** The one mention at `path`, in `field`, for a reference that is present; none for a missing one. */
+const mentionAt =
   (field: Field, path: string) =>
   (reference: IdentifierAndReference.ReferenceType | null): readonly Type[] =>
     reference === null ? [] : [{ field, path, reference }]
@@ -73,24 +74,24 @@ const performerMentions = (resource: FhirResource): readonly Type[] =>
       'ServiceRequest',
       (named) =>
         named.performer.flatMap((reference, index) =>
-          mention('performer', `performer[${index}]`)(reference)
+          mentionAt('performer', `performer[${index}]`)(reference)
         )
     ),
     Match.discriminator('resourceType')('MedicationDispense', 'Procedure', (named) =>
       named.performer.flatMap((performer, index) =>
-        mention('performer', `performer[${index}].actor`)(performer.actor)
+        mentionAt('performer', `performer[${index}].actor`)(performer.actor)
       )
     ),
     Match.discriminator('resourceType')('MedicationRequest', (request) =>
-      mention('performer', 'performer')(request.performer)
+      mentionAt('performer', 'performer')(request.performer)
     ),
     Match.orElse(() => [])
   )
 
 /** Every mention in `resource`: its `subject`, `requester` and `performer`, in that order. */
 const of = (resource: FhirResource): readonly Type[] => [
-  ...('subject' in resource ? mention('subject', 'subject')(resource.subject) : []),
-  ...('requester' in resource ? mention('requester', 'requester')(resource.requester) : []),
+  ...('subject' in resource ? mentionAt('subject', 'subject')(resource.subject) : []),
+  ...('requester' in resource ? mentionAt('requester', 'requester')(resource.requester) : []),
   ...performerMentions(resource),
 ]
 
@@ -104,7 +105,7 @@ const of = (resource: FhirResource): readonly Type[] => [
  * mention fields that states no type: a prior prescription's number names no
  * person.
  */
-const identityOf = (
+const maybeIdentityOf = (
   mentioningResource: FhirResource,
   reference: IdentifierAndReference.ReferenceType
 ): Option.Option<Identity.Type> => {
@@ -121,5 +122,5 @@ const identityOf = (
   return Option.flatMap(resourceType, (type) => Identity.fromIdentifier(type, identifier))
 }
 
-export { identityOf, of }
+export { maybeIdentityOf, of }
 export type { Field, Type }

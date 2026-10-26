@@ -14,23 +14,25 @@ import type * as LinkPlan from './link-plan.ts'
 import * as Mention from './mention.ts'
 
 /**
- * The literal `referenceAsDecoded`, one reference `mentioningResource`
- * carries, is redirected to under `plan`: for a literal reference, the one its
- * source literal moves to; for an identifier-only one, its identity's
- * destination. `None` when it stays.
+ * The literal reference `referenceAsDecoded`, one reference
+ * `mentioningResource` carries, is placed at under `plan`: for a decoded
+ * literal reference, the one it is redirected to; for an identifier-only one,
+ * its identity's destination. `None` when it stays as decoded.
  */
-const destinationLiteralOf = (
+const maybePlacedLiteralReference = (
   plan: LinkPlan.Type,
   mentioningResource: FhirResource,
   referenceAsDecoded: IdentifierAndReference.ReferenceType
 ): Option.Option<string> =>
   referenceAsDecoded.reference === null
     ? pipe(
-        Mention.identityOf(mentioningResource, referenceAsDecoded),
-        Option.flatMapNullable((identity) => plan.destinations.get(Identity.key(identity))),
-        Option.flatMap(Destination.literalOf)
+        Mention.maybeIdentityOf(mentioningResource, referenceAsDecoded),
+        Option.flatMapNullable((identity) =>
+          plan.destinationsByReferentKey.get(Identity.key(identity))
+        ),
+        Option.flatMap(Destination.maybeLiteralReference)
       )
-    : Option.fromNullable(plan.literalRedirects.get(referenceAsDecoded.reference))
+    : Option.fromNullable(plan.literalReferenceRedirects.get(referenceAsDecoded.reference))
 
 /**
  * `mentioningResource` with every reference it carries that names a linked
@@ -41,9 +43,12 @@ const destinationLiteralOf = (
  */
 const redirectMentions = (plan: LinkPlan.Type, mentioningResource: FhirResource): FhirResource =>
   ResourceReferences.map(mentioningResource, (referenceAsDecoded) =>
-    Option.match(destinationLiteralOf(plan, mentioningResource, referenceAsDecoded), {
+    Option.match(maybePlacedLiteralReference(plan, mentioningResource, referenceAsDecoded), {
       onNone: () => referenceAsDecoded,
-      onSome: (destinationLiteral) => ({ ...referenceAsDecoded, reference: destinationLiteral }),
+      onSome: (placedLiteralReference) => ({
+        ...referenceAsDecoded,
+        reference: placedLiteralReference,
+      }),
     })
   )
 

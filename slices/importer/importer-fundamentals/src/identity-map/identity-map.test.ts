@@ -67,15 +67,15 @@ const identifiersOf = (resource: FhirResource | undefined): readonly string[] =>
 const pathOf = (unlinked: UnlinkedMention.Type): string =>
   UnlinkedMention.match(unlinked, {
     MissingSubject: () => 'subject',
-    NamesNobodyOnDevice: ({ mentionPath }) => mentionPath,
+    Dangling: ({ mentionPath }) => mentionPath,
   })
 
-/** A destination as `<tag> <id>`, the id for one with a resource on the device. */
+/** A destination as `<tag> <id>`, the id for one with a record on the device. */
 const describeDestination = (destination: Destination.Type): string =>
   Destination.match(destination, {
-    OnStoredResource: ({ resource }) => `OnStoredResource ${resource.id}`,
-    OnProvisionalResource: ({ resource }) => `OnProvisionalResource ${resource.id}`,
-    OnOwnResource: () => 'OnOwnResource',
+    Stored: ({ resource }) => `Stored ${resource.id}`,
+    Provisional: ({ resource }) => `Provisional ${resource.id}`,
+    Decoded: () => 'Decoded',
     Unlinked: () => 'Unlinked',
   })
 
@@ -97,7 +97,7 @@ describe('IdentityMap.apply', () => {
 
     const applied = IdentityMap.apply(
       file,
-      new Map([[PERSON, LinkChoice.ToStored({ resource: STORED_TYRA })]])
+      new Map([[PERSON, LinkChoice.LinkToStored({ resource: STORED_TYRA })]])
     )
 
     expect(applied.sections.map((section) => section.resources.map((entry) => entry.key))).toEqual([
@@ -126,7 +126,7 @@ describe('IdentityMap.apply', () => {
 
     const applied = IdentityMap.apply(
       file,
-      new Map([[ACCOUNT, LinkChoice.ToStored({ resource: STORED_JAN })]])
+      new Map([[ACCOUNT, LinkChoice.LinkToStored({ resource: STORED_JAN })]])
     )
 
     expect(subjectAndRequesterOf(at(applied, 'k-0')).subject?.reference).toBe('Patient/s-2')
@@ -149,7 +149,7 @@ describe('IdentityMap.apply', () => {
 
     const applied = IdentityMap.apply(
       file,
-      new Map([[ACCOUNT, LinkChoice.SameAs({ referentKey: PERSON })]])
+      new Map([[ACCOUNT, LinkChoice.LinkToReferent({ referentKey: PERSON })]])
     )
 
     expect(subjectAndRequesterOf(at(applied, 'k-1')).subject?.reference).toBe('Patient/p-1')
@@ -183,7 +183,7 @@ describe('IdentityMap.apply', () => {
 
     const applied = IdentityMap.apply(
       file,
-      new Map([[PERSON, LinkChoice.ToStored({ resource: STORED_TYRA })]])
+      new Map([[PERSON, LinkChoice.LinkToStored({ resource: STORED_TYRA })]])
     )
 
     expect([at(applied, 'k-0')?.id, at(applied, 'k-1')?.id]).toEqual(['s-1', 's-1'])
@@ -195,7 +195,7 @@ describe('IdentityMap.apply', () => {
 
     const applied = IdentityMap.apply(
       file,
-      new Map([[PRESCRIBER, LinkChoice.ToStored({ resource: STORED_SMITH })]])
+      new Map([[PRESCRIBER, LinkChoice.LinkToStored({ resource: STORED_SMITH })]])
     )
 
     const { requester } = subjectAndRequesterOf(at(applied, 'k-0'))
@@ -213,8 +213,8 @@ describe('IdentityMap.apply on a printed name set to New', () => {
     request('rx-1', customerSubject('c-9'), namedRequester('Dr. A Smith')),
     request('rx-2', customerSubject('c-9'), namedRequester('Dr. A Smith'))
   )
-  const map: LinkChoice.ByReferent = new Map<string, LinkChoice.Type>([
-    [PRESCRIBER, LinkChoice.New()],
+  const map: IdentityMap.Type = new Map<string, LinkChoice.Type>([
+    [PRESCRIBER, LinkChoice.Create()],
   ])
 
   it('creates one provisional Practitioner for the name in the Linked section and points every requester at it', () => {
@@ -260,16 +260,16 @@ describe('IdentityMap.apply on a printed name set to New', () => {
         request('rx-3', customerSubject('c-9'), namedRequester('Dr. B Jones'))
       )
     )
-    const destinationOf = (choices: LinkChoice.ByReferent, key: string): string => {
+    const destinationOf = (choices: IdentityMap.Type, key: string): string => {
       const referent = referents.find((candidate) => Referent.key(candidate) === key)
       if (referent === undefined) throw new Error(`no referent ${key}`)
       return describeDestination(
-        Resolution.destinationOf(choices, Referent.index(referents), referent)
+        Resolution.destinationOf(choices, Referent.byKey(referents), referent)
       )
     }
-    const cycle: LinkChoice.ByReferent = new Map<string, LinkChoice.Type>([
-      [PRESCRIBER, LinkChoice.SameAs({ referentKey: jones })],
-      [jones, LinkChoice.SameAs({ referentKey: PRESCRIBER })],
+    const cycle: IdentityMap.Type = new Map<string, LinkChoice.Type>([
+      [PRESCRIBER, LinkChoice.LinkToReferent({ referentKey: jones })],
+      [jones, LinkChoice.LinkToReferent({ referentKey: PRESCRIBER })],
     ])
 
     expect(
@@ -277,10 +277,10 @@ describe('IdentityMap.apply on a printed name set to New', () => {
         .filter((referent) => Referent.key(referent) === PRESCRIBER)
         .map((referent) => LinkChoice.forReferent(new Map(), referent)._tag)
     ).toEqual(['DontLink'])
-    expect(destinationOf(map, PRESCRIBER)).toBe(`OnProvisionalResource ${PROVISIONAL_ID}`)
-    expect(destinationOf(new Map([[ACCOUNT, LinkChoice.New()]]), ACCOUNT)).toBe('Unlinked')
-    expect(destinationOf(cycle, PRESCRIBER)).toBe(`OnProvisionalResource ${PROVISIONAL_ID}`)
-    expect(destinationOf(cycle, jones)).toBe(`OnProvisionalResource ${PROVISIONAL_ID}`)
+    expect(destinationOf(map, PRESCRIBER)).toBe(`Provisional ${PROVISIONAL_ID}`)
+    expect(destinationOf(new Map([[ACCOUNT, LinkChoice.Create()]]), ACCOUNT)).toBe('Unlinked')
+    expect(destinationOf(cycle, PRESCRIBER)).toBe(`Provisional ${PROVISIONAL_ID}`)
+    expect(destinationOf(cycle, jones)).toBe(`Provisional ${PROVISIONAL_ID}`)
   })
 })
 
@@ -294,52 +294,58 @@ describe('Resolution.destinationOf', () => {
   const referents = Referent.discover(file)
   const referentOf = (key: string): Referent.Type | undefined =>
     referents.find((referent) => Referent.key(referent) === key)
-  const destinationOf = (choices: LinkChoice.ByReferent, key: string): string => {
+  const destinationOf = (choices: IdentityMap.Type, key: string): string => {
     const referent = referentOf(key)
     if (referent === undefined) throw new Error(`no referent ${key}`)
-    return Resolution.destinationOf(choices, Referent.index(referents), referent)._tag
+    return Resolution.destinationOf(choices, Referent.byKey(referents), referent)._tag
   }
   const account = (n: number): string => `Patient|${CUSTOMER}|c-${n}`
 
   it('follows a chain of referents to its end', () => {
-    const choices: LinkChoice.ByReferent = new Map<string, LinkChoice.Type>([
-      [account(1), LinkChoice.SameAs({ referentKey: account(2) })],
-      [account(2), LinkChoice.SameAs({ referentKey: account(3) })],
-      [account(3), LinkChoice.SameAs({ referentKey: PERSON })],
+    const choices: IdentityMap.Type = new Map<string, LinkChoice.Type>([
+      [account(1), LinkChoice.LinkToReferent({ referentKey: account(2) })],
+      [account(2), LinkChoice.LinkToReferent({ referentKey: account(3) })],
+      [account(3), LinkChoice.LinkToReferent({ referentKey: PERSON })],
     ])
 
-    expect(destinationOf(choices, account(1))).toBe('OnOwnResource')
+    expect(destinationOf(choices, account(1))).toBe('Decoded')
     expect(
       destinationOf(
-        new Map([...choices, [PERSON, LinkChoice.ToStored({ resource: STORED_TYRA })]]),
+        new Map([...choices, [PERSON, LinkChoice.LinkToStored({ resource: STORED_TYRA })]]),
         account(1)
       )
-    ).toBe('OnStoredResource')
+    ).toBe('Stored')
   })
 
   it('reads a cycle, a missing referent and an impossible choice as the referent kind’s default', () => {
-    const cycle: LinkChoice.ByReferent = new Map<string, LinkChoice.Type>([
-      [account(1), LinkChoice.SameAs({ referentKey: account(2) })],
-      [account(2), LinkChoice.SameAs({ referentKey: account(1) })],
-      [account(3), LinkChoice.SameAs({ referentKey: 'Patient|https://nowhere.example|x' })],
+    const cycle: IdentityMap.Type = new Map<string, LinkChoice.Type>([
+      [account(1), LinkChoice.LinkToReferent({ referentKey: account(2) })],
+      [account(2), LinkChoice.LinkToReferent({ referentKey: account(1) })],
+      [account(3), LinkChoice.LinkToReferent({ referentKey: 'Patient|https://nowhere.example|x' })],
     ])
 
     expect(destinationOf(cycle, account(1))).toBe('Unlinked')
     expect(destinationOf(cycle, account(3))).toBe('Unlinked')
-    expect(destinationOf(new Map([[account(1), LinkChoice.New()]]), account(1))).toBe('Unlinked')
+    expect(destinationOf(new Map([[account(1), LinkChoice.Create()]]), account(1))).toBe('Unlinked')
     expect(
       destinationOf(
-        new Map([[account(1), LinkChoice.ToStored({ resource: STORED_SMITH })]]),
+        new Map([[account(1), LinkChoice.LinkToStored({ resource: STORED_SMITH })]]),
         account(1)
       )
     ).toBe('Unlinked')
-    expect(destinationOf(new Map([[PERSON, LinkChoice.DontLink()]]), PERSON)).toBe('OnOwnResource')
+    expect(destinationOf(new Map([[PERSON, LinkChoice.DontLink()]]), PERSON)).toBe('Decoded')
     expect(
-      destinationOf(new Map([[PERSON, LinkChoice.SameAs({ referentKey: account(1) })]]), PERSON)
-    ).toBe('OnOwnResource')
+      destinationOf(
+        new Map([[PERSON, LinkChoice.LinkToReferent({ referentKey: account(1) })]]),
+        PERSON
+      )
+    ).toBe('Decoded')
     expect(
-      destinationOf(new Map([[PERSON, LinkChoice.ToStored({ resource: STORED_SMITH })]]), PERSON)
-    ).toBe('OnOwnResource')
+      destinationOf(
+        new Map([[PERSON, LinkChoice.LinkToStored({ resource: STORED_SMITH })]]),
+        PERSON
+      )
+    ).toBe('Decoded')
   })
 
   it('reads a referent of another type as unlinked: a subject never lands on a practitioner', () => {
@@ -351,13 +357,13 @@ describe('Resolution.destinationOf', () => {
       (referent) => Referent.key(referent) === ACCOUNT
     )
     if (accountReferent === undefined) throw new Error(`no referent ${ACCOUNT}`)
-    const choices: LinkChoice.ByReferent = new Map<string, LinkChoice.Type>([
-      [ACCOUNT, LinkChoice.SameAs({ referentKey: PRESCRIBER })],
-      [PRESCRIBER, LinkChoice.ToStored({ resource: STORED_SMITH })],
+    const choices: IdentityMap.Type = new Map<string, LinkChoice.Type>([
+      [ACCOUNT, LinkChoice.LinkToReferent({ referentKey: PRESCRIBER })],
+      [PRESCRIBER, LinkChoice.LinkToStored({ resource: STORED_SMITH })],
     ])
 
     expect(
-      Resolution.destinationOf(choices, Referent.index(prescriberReferents), accountReferent)._tag
+      Resolution.destinationOf(choices, Referent.byKey(prescriberReferents), accountReferent)._tag
     ).toBe('Unlinked')
     expect(
       subjectAndRequesterOf(at(IdentityMap.apply(withPrescriber, choices), 'k-0')).subject
@@ -366,7 +372,9 @@ describe('Resolution.destinationOf', () => {
   })
 
   it('defaults a referent with a resource to New and one named only by mentions to Don’t link', () => {
-    expect(LinkChoice.forReferent(new Map(), referentOf(PERSON) ?? referents[0])._tag).toBe('New')
+    expect(LinkChoice.forReferent(new Map(), referentOf(PERSON) ?? referents[0])._tag).toBe(
+      'Create'
+    )
     expect(LinkChoice.forReferent(new Map(), referentOf(account(1)) ?? referents[0])._tag).toBe(
       'DontLink'
     )
@@ -380,7 +388,7 @@ describe('IdentityMap.unlinkedMentions', () => {
     request('rx-1', customerSubject('c-9'), namedRequester('Dr. A Smith')),
     observation('o-3', literalSubject('p-1'), [{ display: 'LifeLabs' }])
   )
-  const listed = (choices: LinkChoice.ByReferent): readonly string[] =>
+  const listed = (choices: IdentityMap.Type): readonly string[] =>
     IdentityMap.unlinkedMentions(file, choices).map(
       (unlinked) => `${unlinked.mentioningResourceKey} ${pathOf(unlinked)}`
     )
@@ -396,8 +404,8 @@ describe('IdentityMap.unlinkedMentions', () => {
 
   it('drops what the map links', () => {
     const choices = new Map<string, LinkChoice.Type>([
-      [ACCOUNT, LinkChoice.ToStored({ resource: STORED_JAN })],
-      [PRESCRIBER, LinkChoice.ToStored({ resource: STORED_SMITH })],
+      [ACCOUNT, LinkChoice.LinkToStored({ resource: STORED_JAN })],
+      [PRESCRIBER, LinkChoice.LinkToStored({ resource: STORED_SMITH })],
     ])
 
     expect(listed(choices)).toEqual(['k-0 subject', 'k-1 subject'])

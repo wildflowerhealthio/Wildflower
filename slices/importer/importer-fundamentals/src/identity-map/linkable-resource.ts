@@ -14,24 +14,26 @@ import * as Identity from './identity.ts'
 /** A `Patient` or a `Practitioner`. */
 type Type = Patient.Type | Practitioner.Type
 
-/** A linkable resource on, or bound for, the device: one with an `id`. */
+/** A linkable resource stored on, or bound for, the device: one with an `id`. */
 type WithId =
   | (Patient.Type & { readonly id: string })
   | (Practitioner.Type & { readonly id: string })
+
+const matchResourceType = Match.discriminator('resourceType')
 
 /** Whether `resource` is one the identity map links. */
 const is = (resource: { readonly resourceType: string }): resource is Type =>
   Identity.isResourceType(resource.resourceType)
 
-/** `resource`'s relative literal, `Type/<id>`: what a mention of it carries. */
-const literalOf = (resource: WithId): string => `${resource.resourceType}/${resource.id}`
+/** `resource`'s relative literal reference, `Type/<id>`: what a mention of it carries. */
+const literalReferenceOf = (resource: WithId): string => `${resource.resourceType}/${resource.id}`
 
 /**
  * The identity `resource` is keyed by: its `identifier[0]`, which adoption
  * fills with the source's own id under the source's system. `None` when that
  * identifier is missing or names nothing.
  */
-const identityOf = (resource: Type): Option.Option<Identity.Type> =>
+const maybeIdentityOf = (resource: Type): Option.Option<Identity.Type> =>
   Array.head(resource.identifier).pipe(
     Option.flatMap((identifier) => Identity.fromIdentifier(resource.resourceType, identifier))
   )
@@ -40,7 +42,7 @@ const identityOf = (resource: Type): Option.Option<Identity.Type> =>
  * The name `resource`'s first `name` renders to, or `None` when it renders
  * blank. The first name, because the derived identifiers read it.
  */
-const firstNameOf = (resource: Type): Option.Option<string> =>
+const maybeFirstNameOf = (resource: Type): Option.Option<string> =>
   Option.fromNullable(HumanName.displayName(resource.name.slice(0, 1)))
 
 /**
@@ -48,11 +50,13 @@ const firstNameOf = (resource: Type): Option.Option<string> =>
  * system: name and birth date for a Patient, the printed name for a
  * Practitioner. `None` when they do not allow one.
  */
-const derivedIdentifier = (resource: Type): Option.Option<IdentifierAndReference.IdentifierType> =>
+const maybeDerivedIdentifier = (
+  resource: Type
+): Option.Option<IdentifierAndReference.IdentifierType> =>
   Match.value(resource).pipe(
-    Match.discriminator('resourceType')('Patient', Patient.nameBirthDateIdentifier),
-    Match.discriminator('resourceType')('Practitioner', (practitioner) =>
-      Option.flatMap(firstNameOf(practitioner), Practitioner.nameIdentifier)
+    matchResourceType('Patient', Patient.nameBirthDateIdentifier),
+    matchResourceType('Practitioner', (practitioner) =>
+      Option.flatMap(maybeFirstNameOf(practitioner), Practitioner.nameIdentifier)
     ),
     Match.exhaustive
   )
@@ -63,43 +67,70 @@ const derivedIdentifier = (resource: Type): Option.Option<IdentifierAndReference
  */
 const labelOf = (resource: Type, fallback: string): string => {
   const birthDate = Match.value(resource).pipe(
-    Match.discriminator('resourceType')('Patient', (patient) => patient.birthDate),
-    Match.discriminator('resourceType')('Practitioner', () => null),
+    matchResourceType('Patient', (patient) => patient.birthDate),
+    matchResourceType('Practitioner', () => null),
     Match.exhaustive
   )
   const parts = [
-    ...Option.toArray(firstNameOf(resource)),
+    ...Option.toArray(maybeFirstNameOf(resource)),
     ...(birthDate === null ? [] : [birthDate]),
   ]
   return parts.length === 0 ? fallback : parts.join(' · ')
 }
 
 /**
- * `resource` with every naming identifier of `assumed` it does not already
- * carry appended after its own, matched on `system` + `value`: assumed as one
- * assumes an identity, not presumed.
+ * The provisional resource `identity` alone stands for, or `None` when nothing
+ * can: a provider's printed name stands for a `Practitioner`
+ * (`Practitioner.tryFromNameIdentifier`); no identity stands for a `Patient`,
+ * who is never less than a demographic record.
+ *
+ * @remarks
+ * Exhaustive over the resource types an identity names, so a type with no
+ * provisional form says so here rather than by omission.
+ */
+const maybeProvisionalFor = (identity: Identity.Type): Option.Option<WithId> =>
+  Match.value(identity).pipe(
+    Match.when({ resourceType: 'Practitioner' }, (named) =>
+      Practitioner.tryFromNameIdentifier(Identity.toIdentifier(named))
+    ),
+    Match.when({ resourceType: 'Patient' }, () => Option.none()),
+    Match.exhaustive
+  )
+
+/**
+ * `resource` with every naming identifier of `identifiersToAssume` it does not
+ * already carry appended after its own, matched on `system` + `value`: assumed
+ * as one assumes an identity, not presumed.
  *
  * @remarks
  * Nothing but `identifier` changes, and the resource's own identifiers stay as
  * they are, so a stored resource's demographics come back byte-identical.
- * Returns `resource` itself when there is nothing to assume, which is what
+ * Returns `resource` itself when there is nothing new to assume, which is what
  * makes the identity map idempotent.
  */
 const assumesIdentifiers = <TResource extends Type>(
   resource: TResource,
-  assumed: readonly IdentifierAndReference.IdentifierType[]
+  identifiersToAssume: readonly IdentifierAndReference.IdentifierType[]
 ): TResource => {
-  const missing = Array.dedupeWith(
+  const newIdentifiersToAssume = Array.dedupeWith(
     Array.differenceWith(IdentifierAndReference.identifierEquivalence)(
-      assumed.filter(Identity.isNaming),
+      identifiersToAssume.filter(Identity.isNaming),
       resource.identifier
     ),
     IdentifierAndReference.identifierEquivalence
   )
-  return missing.length === 0
+  return newIdentifiersToAssume.length === 0
     ? resource
-    : { ...resource, identifier: [...resource.identifier, ...missing] }
+    : { ...resource, identifier: [...resource.identifier, ...newIdentifiersToAssume] }
 }
 
-export { assumesIdentifiers, derivedIdentifier, identityOf, is, labelOf, literalOf }
+export {
+  assumesIdentifiers,
+  is,
+  labelOf,
+  literalReferenceOf,
+  maybeDerivedIdentifier,
+  maybeIdentityOf,
+  maybeProvisionalFor,
+}
 export type { Type, WithId }

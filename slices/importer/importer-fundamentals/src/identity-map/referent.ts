@@ -57,17 +57,21 @@ const identifiersOf = (referent: Type): readonly IdentifierAndReference.Identifi
     ByMentionOnly: ({ identity }) => [Identity.toIdentifier(identity)],
   })
 
-/** The referent one decoded resource is, or `None` if it is not one. */
-const withResourceOf = (entry: DecodedFile.Resource): Option.Option<AsResource> => {
+/**
+ * The referent one decoded resource is: `None` for a resource of another
+ * type, and for a Patient or Practitioner whose `identifier[0]` names nothing,
+ * which the stage writes as it is.
+ */
+const tryOfResource = (entry: DecodedFile.Resource): Option.Option<AsResource> => {
   const { resource } = entry
   if (!LinkableResource.is(resource)) return Option.none()
-  return Option.map(LinkableResource.identityOf(resource), (identity) =>
+  return Option.map(LinkableResource.maybeIdentityOf(resource), (identity) =>
     AsResource({
       identity,
       identifiers: Array.dedupeWith(
         [
           ...resource.identifier,
-          ...Option.toArray(LinkableResource.derivedIdentifier(resource)),
+          ...Option.toArray(LinkableResource.maybeDerivedIdentifier(resource)),
         ].filter(Identity.isNaming),
         IdentifierAndReference.identifierEquivalence
       ),
@@ -79,10 +83,10 @@ const withResourceOf = (entry: DecodedFile.Resource): Option.Option<AsResource> 
 }
 
 /** The referents one decoded resource's identifier-only mentions name. */
-const byMentionOnlyOf = (entry: DecodedFile.Resource): readonly ByMentionOnly[] =>
+const mentionedIn = (entry: DecodedFile.Resource): readonly ByMentionOnly[] =>
   ResourceReferences.collect(entry.resource).flatMap((reference) =>
     pipe(
-      Mention.identityOf(entry.resource, reference),
+      Mention.maybeIdentityOf(entry.resource, reference),
       Option.map((identity) => ByMentionOnly({ identity, label: identity.value })),
       Option.toArray
     )
@@ -90,19 +94,18 @@ const byMentionOnlyOf = (entry: DecodedFile.Resource): readonly ByMentionOnly[] 
 
 /**
  * Every referent a decoded file holds, once per identity: those with a
- * resource in review order, then those named only by mentions, in the order their
- * mentions are first seen.
+ * resource in review order, then those named only by mentions, in the order
+ * their mentions are first seen.
  *
  * @remarks
- * A resource with no naming `identifier[0]` is not a referent; the stage
- * writes it as it is. An identifier-only mention of an identity a resource
- * already holds is that referent, not a second one.
+ * An identifier-only mention of an identity a resource already holds is that
+ * referent, not a second one.
  */
 const discover = (decodedFile: Pick<DecodedFile.DecodedFile, 'sections'>): readonly Type[] => {
   const entries = DecodedFile.resources(decodedFile)
   const referents: readonly Type[] = [
-    ...entries.flatMap((entry) => Option.toArray(withResourceOf(entry))),
-    ...entries.flatMap(byMentionOnlyOf),
+    ...entries.flatMap((entry) => Option.toArray(tryOfResource(entry))),
+    ...entries.flatMap(mentionedIn),
   ]
   return Array.dedupeWith(referents, (left, right) =>
     Identity.equivalence(left.identity, right.identity)
@@ -110,8 +113,8 @@ const discover = (decodedFile: Pick<DecodedFile.DecodedFile, 'sections'>): reado
 }
 
 /** Every referent of `referents`, keyed by {@link key}. */
-const index = (referents: readonly Type[]): ReadonlyMap<string, Type> =>
+const byKey = (referents: readonly Type[]): ReadonlyMap<string, Type> =>
   new Map(referents.map((referent) => [key(referent), referent]))
 
-export { discover, identifiersOf, index, is, key, match }
-export type { ByMentionOnly, Type, AsResource }
+export { byKey, discover, identifiersOf, is, key, match }
+export type { AsResource, ByMentionOnly, Type }

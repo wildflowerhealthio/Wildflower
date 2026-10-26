@@ -206,24 +206,30 @@ const NAME_IDENTIFIER_SYSTEM_HREF = new URL(NAME_IDENTIFIER_SYSTEM).href
  * the same name from two sources is one record, and every later import that
  * names it adds to it rather than beside it.
  */
-const fromNameIdentifier = (
+const tryFromNameIdentifier = (
   identifier: IdentifierAndReference.IdentifierType
-): Option.Option<WithId> => {
-  if (identifier.system?.href !== NAME_IDENTIFIER_SYSTEM_HREF) return Option.none()
-  const printedName = Option.fromNullable(identifier.value).pipe(Option.filter(Str.isNonEmpty))
-  return Option.map(printedName, (name) => {
-    const id = localResourceId(NAME_IDENTIFIER_SYSTEM, 'Practitioner', name)
-    return {
-      ...decodePractitioner({
-        resourceType: 'Practitioner',
+): Option.Option<WithId> =>
+  Option.fromNullable(identifier.value).pipe(
+    Option.filter(() => identifier.system?.href === NAME_IDENTIFIER_SYSTEM_HREF),
+    Option.filter(Str.isNonEmpty),
+    Option.map((name) => {
+      const id = localResourceId(NAME_IDENTIFIER_SYSTEM, 'Practitioner', name)
+      return {
+        ...decodePractitioner({
+          resourceType: 'Practitioner',
+          id,
+          identifier: [{ system: NAME_IDENTIFIER_SYSTEM, value: name }],
+          name: [{ text: name }],
+        }),
         id,
-        identifier: [{ system: NAME_IDENTIFIER_SYSTEM, value: name }],
-        name: [{ text: name }],
-      }),
-      id,
-    }
-  })
-}
+      }
+    })
+  )
 
-export { fromNameIdentifier, NAME_IDENTIFIER_SYSTEM, nameIdentifier, PractitionerSchema as Schema }
+export {
+  NAME_IDENTIFIER_SYSTEM,
+  nameIdentifier,
+  PractitionerSchema as Schema,
+  tryFromNameIdentifier,
+}
 export type { Type, WithId }

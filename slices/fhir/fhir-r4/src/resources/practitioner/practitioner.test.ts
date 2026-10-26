@@ -191,10 +191,10 @@ describe('Practitioner.nameIdentifier', () => {
   })
 })
 
-describe('Practitioner.fromNameIdentifier', () => {
+describe('Practitioner.tryFromNameIdentifier', () => {
   test('stands a provisional Practitioner in for a name identifier, at an id derived from the name', () => {
     const provisional = Option.getOrThrow(
-      Practitioner.fromNameIdentifier(
+      Practitioner.tryFromNameIdentifier(
         Option.getOrThrow(Practitioner.nameIdentifier('Dr. A Prescriber'))
       )
     )
@@ -212,7 +212,7 @@ describe('Practitioner.fromNameIdentifier', () => {
       system: 'https://source.example/practitioner-id',
       value: 'p-1',
     })
-    expect(Option.isNone(Practitioner.fromNameIdentifier(other))).toBe(true)
+    expect(Option.isNone(Practitioner.tryFromNameIdentifier(other))).toBe(true)
   })
 
   test('is None for a name identifier with an empty value', () => {
@@ -220,6 +220,6 @@ describe('Practitioner.fromNameIdentifier', () => {
       system: Practitioner.NAME_IDENTIFIER_SYSTEM,
       value: '',
     })
-    expect(Option.isNone(Practitioner.fromNameIdentifier(empty))).toBe(true)
+    expect(Option.isNone(Practitioner.tryFromNameIdentifier(empty))).toBe(true)
   })
 })

@@ -16,6 +16,7 @@ import {
 import { Arbitrary, FastCheck as fc, Schema } from 'effect'
 
 import type * as DecodedFile from '../decoded-file.ts'
+import type * as IdentityMap from './identity-map.ts'
 import * as LinkChoice from './link-choice.ts'
 import type * as LinkableResource from './linkable-resource.ts'
 
@@ -252,14 +253,14 @@ const fileArbitrary: fc.Arbitrary<DecodedFile.DecodedFile> = fc
   )
 
 const choiceArbitrary: fc.Arbitrary<LinkChoice.Type> = fc.oneof(
-  fc.constant(LinkChoice.New()),
+  fc.constant(LinkChoice.Create()),
   fc.constant(LinkChoice.DontLink()),
-  fc.constantFrom(...STORED).map((resource) => LinkChoice.ToStored({ resource })),
-  fc.constantFrom(...POOL_KEYS).map((referentKey) => LinkChoice.SameAs({ referentKey }))
+  fc.constantFrom(...STORED).map((resource) => LinkChoice.LinkToStored({ resource })),
+  fc.constantFrom(...POOL_KEYS).map((referentKey) => LinkChoice.LinkToReferent({ referentKey }))
 )
 
 /** Generated choices over the pool's keys, any choice on any referent, impossible ones included. */
-const choicesArbitrary: fc.Arbitrary<LinkChoice.ByReferent> = fc
+const choicesArbitrary: fc.Arbitrary<IdentityMap.Type> = fc
   .array(fc.tuple(fc.constantFrom(...POOL_KEYS), choiceArbitrary), { maxLength: POOL_KEYS.length })
   .map((entries) => new Map(entries))
 

@@ -38,6 +38,29 @@ const namespaceKeys = (decodedFile: DecodedFile, prefix: string): DecodedFile =>
   })),
 })
 
-export { namespaceKeys, resources }
+/**
+ * `decodedFile` with `f` applied to every resource, keys, titles, sections
+ * and notes kept. An entry, a section and the file come back as the same
+ * object when `f` returns every resource in them unchanged.
+ */
+const mapResources = (
+  decodedFile: DecodedFile,
+  f: (resource: FhirResource) => FhirResource
+): DecodedFile => {
+  const sections = decodedFile.sections.map((section) => {
+    const entries = section.resources.map((entry) => {
+      const resource = f(entry.resource)
+      return resource === entry.resource ? entry : { ...entry, resource }
+    })
+    return entries.every((entry, at) => entry === section.resources[at])
+      ? section
+      : { ...section, resources: entries }
+  })
+  return sections.every((section, at) => section === decodedFile.sections[at])
+    ? decodedFile
+    : { ...decodedFile, sections }
+}
+
+export { mapResources, namespaceKeys, resources }
 
 export type { Resource, Section, DecodedFile }

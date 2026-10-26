@@ -2,36 +2,37 @@
  * What the reviewer chooses for a referent: what it links to on the device.
  *
  * @remarks
- * A referent with a resource may be `New` (its own resource is written and
- * becomes the record) or `ToStored` (linked to a resource already on the
- * device). One named only by mentions may be `ToStored`, `SameAs` another referent
- * (whatever that one becomes), or `DontLink` (its mentions keep their
- * identifier-only form); and `New` when something provisional can stand in for
- * its identity (`Provisional.forIdentity`). Following `SameAs` to the end gives
- * a `Destination`.
+ * A referent with a resource may be `Create` (its own resource is written and
+ * becomes the record) or `LinkToStored` (linked to a record already on the
+ * device). One named only by mentions may be `LinkToStored`, `LinkToReferent`
+ * (whatever that referent becomes), or `DontLink` (its mentions keep their
+ * identifier-only form); and `Create` when something provisional can stand in
+ * for its identity (`LinkableResource.maybeProvisionalFor`). Following
+ * `LinkToReferent` to the end gives a `Destination`.
  *
  * @packageDocumentation
  */
 
 import { Data } from 'effect'
 
+import type * as IdentityMap from './identity-map.ts'
 import type * as LinkableResource from './linkable-resource.ts'
 import * as Referent from './referent.ts'
 
-/** Write the referent's own resource; it becomes the record. For a provisional case, create one. */
-interface New {
-  readonly _tag: 'New'
+/** Write the referent's own resource as the record. For an identity with a provisional form, create that. */
+interface Create {
+  readonly _tag: 'Create'
 }
 
-/** Link the referent to a resource already on the device. */
-interface ToStored {
-  readonly _tag: 'ToStored'
+/** Link the referent to a record already stored on the device. */
+interface LinkToStored {
+  readonly _tag: 'LinkToStored'
   readonly resource: LinkableResource.WithId
 }
 
 /** Link the referent to whatever the referent keyed `referentKey` becomes. */
-interface SameAs {
-  readonly _tag: 'SameAs'
+interface LinkToReferent {
+  readonly _tag: 'LinkToReferent'
   readonly referentKey: string
 }
 
@@ -40,27 +41,30 @@ interface DontLink {
   readonly _tag: 'DontLink'
 }
 
-type Type = New | ToStored | SameAs | DontLink
+type Type = Create | LinkToStored | LinkToReferent | DontLink
 
-const { New, ToStored, SameAs, DontLink, $is: is, $match: match } = Data.taggedEnum<Type>()
+const {
+  Create,
+  LinkToStored,
+  LinkToReferent,
+  DontLink,
+  $is: is,
+  $match: match,
+} = Data.taggedEnum<Type>()
 
-/** Every referent's choice, keyed by `Referent.key`. A referent missing from it takes its default. */
-type ByReferent = ReadonlyMap<string, Type>
-
-/** The choice a referent takes when the reviewer has made none: `New` with a resource, else `DontLink`. */
+/** The choice a referent takes when the reviewer has made none: `Create` with a resource, else `DontLink`. */
 const defaultFor = (referent: Referent.Type): Type =>
-  Referent.match(referent, { AsResource: () => New(), ByMentionOnly: () => DontLink() })
+  Referent.match(referent, { AsResource: () => Create(), ByMentionOnly: () => DontLink() })
 
-/** The choice `choices` holds for `referent`, else its default. */
-const forReferent = (choices: ByReferent, referent: Referent.Type): Type =>
-  choices.get(Referent.key(referent)) ?? defaultFor(referent)
+/** The choice `identityMap` holds for `referent`, else its default. */
+const forReferent = (identityMap: IdentityMap.Type, referent: Referent.Type): Type =>
+  identityMap.get(Referent.key(referent)) ?? defaultFor(referent)
 
-export { defaultFor, DontLink, forReferent, is, match, New, SameAs, ToStored }
+export { Create, defaultFor, DontLink, forReferent, is, LinkToReferent, LinkToStored, match }
 export type {
-  ByReferent,
+  Create as CreateType,
   DontLink as DontLinkType,
-  New as NewType,
-  SameAs as SameAsType,
-  ToStored as ToStoredType,
+  LinkToReferent as LinkToReferentType,
+  LinkToStored as LinkToStoredType,
   Type,
 }

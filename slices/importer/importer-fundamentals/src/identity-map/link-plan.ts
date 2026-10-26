@@ -4,10 +4,10 @@
  *
  * @remarks
  * A referent's mentions are redirected to its destination. The plan says what
- * each referent's destination is, what each destination resource becomes once
+ * each referent's destination is, what each destination record becomes once
  * it has assumed the identifiers of the referents linked to it, and which
- * literals move. Built by {@link make}, read by the redirect and the
- * placement, and what the batch lift hands across files.
+ * literal references move. Built by {@link make}, read by the redirect and
+ * the placement, and what the batch lift hands across files.
  *
  * @packageDocumentation
  */
@@ -17,8 +17,8 @@ import { Array, Option, pipe } from 'effect'
 
 import * as DecodedFile from '../decoded-file.ts'
 import * as Destination from './destination.ts'
+import type * as IdentityMap from './identity-map.ts'
 import * as Identity from './identity.ts'
-import type * as LinkChoice from './link-choice.ts'
 import * as LinkableResource from './linkable-resource.ts'
 import * as Referent from './referent.ts'
 import * as Resolution from './resolution.ts'
@@ -26,128 +26,127 @@ import * as Resolution from './resolution.ts'
 type Identifier = IdentifierAndReference.IdentifierType
 
 /**
- * A stored or provisional resource referents link to, as it will be written.
- * An own resource is a destination too, but is written where it was decoded
+ * A stored or provisional record referents link to, as it will be written. A
+ * decoded record is a destination too, but is written where it was decoded
  * rather than through one of these.
  */
 interface DestinationResource {
-  /** The resource, having assumed every identifier the referents linked to it bring. */
+  /** The record, having assumed every identifier the referents linked to it bring. */
   readonly resource: LinkableResource.WithId
-  /** What it assumed: the identifiers a decoded copy of it in the file assumes too. */
-  readonly assumed: readonly Identifier[]
+  /** The identifiers it assumes: what a decoded copy of it in the file assumes too. */
+  readonly identifiersToAssume: readonly Identifier[]
   /**
-   * Whether the file holds no resource for it, only mentions: linked to by
-   * referents without a resource alone, and under a literal no decoded
-   * resource carries. Such a resource is appended to the file, so the review
-   * and the diff show what it gained.
+   * Whether the file holds a decoded resource under its literal reference.
+   * When it does not, and only referents without a resource link to it, the
+   * record is appended to the file so the review and the diff show what it
+   * gained.
    */
-  readonly existsOnlyAsMentionInFile: boolean
+  readonly resourceExistsInFile: boolean
 }
 
 /** The link plan for one decoded file, built once by {@link make}. */
 interface Type {
   /**
-   * Each referent's destination, by `Referent.key`: where an identifier-only
-   * mention is redirected, and which decoded resources a stored one replaces.
+   * Each referent's destination: where an identifier-only mention is
+   * redirected, and which decoded resources a stored record replaces.
    */
-  readonly destinations: ReadonlyMap<string, Destination.Type>
+  readonly destinationsByReferentKey: ReadonlyMap<string, Destination.Type>
   /**
-   * Each stored or provisional destination resource, by its literal, as it
-   * will be written: what replaces a decoded resource, and what the Linked
-   * section appends.
+   * Each stored or provisional destination record, as it will be written:
+   * what replaces a decoded resource, and what the Linked section appends.
    */
-  readonly destinationResources: ReadonlyMap<string, DestinationResource>
+  readonly destinationResourcesByLiteralReference: ReadonlyMap<string, DestinationResource>
   /**
-   * `Type/<source id>` → `Type/<stored id>` for every decoded resource a stored
-   * one stands in for, a second resource of the same identity under another id
-   * included: where a literal mention is redirected.
+   * `Type/<decoded id>` → `Type/<stored id>` for every decoded resource a
+   * stored record stands in for, a second resource of the same identity under
+   * another id included: where a decoded literal reference is redirected.
    */
-  readonly literalRedirects: ReadonlyMap<string, string>
+  readonly literalReferenceRedirects: ReadonlyMap<string, string>
   /**
-   * What a referent's own resource assumes, by `Referent.key`: the identifiers
-   * of the referents linked to it, its own included.
+   * What a referent's decoded resource assumes: the identifiers of the
+   * referents linked to it, its own included.
    */
-  readonly assumedByOwnResource: ReadonlyMap<string, readonly Identifier[]>
+  readonly identifiersToAssumeByReferentKey: ReadonlyMap<string, readonly Identifier[]>
 }
 
-/** A referent with the destination its choice resolved to. */
-interface ResolvedReferent {
+/** A link: a referent with the destination its choice resolved to. */
+interface Link {
   readonly referent: Referent.Type
   readonly destination: Destination.Type
 }
 
-/** The literals the decoded resources of `decodedFile` carry. */
-const literalsHeldBy = (decodedFile: DecodedFile.DecodedFile): ReadonlySet<string> =>
+/** The literal references the decoded resources of `decodedFile` carry. */
+const decodedLiteralReferences = (decodedFile: DecodedFile.DecodedFile): ReadonlySet<string> =>
   new Set(
     DecodedFile.resources(decodedFile).flatMap(({ resource }) =>
       resource.id === null ? [] : [`${resource.resourceType}/${resource.id}`]
     )
   )
 
-/** The stored resource `decodedResource`'s referent links to under `destinations`, when it links to one. */
-const storedDestinationOf = (
-  destinations: ReadonlyMap<string, Destination.Type>,
+/** The stored record `decodedResource`'s referent links to under `destinationsByReferentKey`, when it links to one. */
+const maybeStoredDestinationOf = (
+  destinationsByReferentKey: ReadonlyMap<string, Destination.Type>,
   decodedResource: LinkableResource.Type
 ): Option.Option<LinkableResource.WithId> =>
   pipe(
-    LinkableResource.identityOf(decodedResource),
-    Option.flatMapNullable((identity) => destinations.get(Identity.key(identity))),
-    Option.filter(Destination.is('OnStoredResource')),
+    LinkableResource.maybeIdentityOf(decodedResource),
+    Option.flatMapNullable((identity) => destinationsByReferentKey.get(Identity.key(identity))),
+    Option.filter(Destination.is('Stored')),
     Option.map(({ resource: stored }) => stored)
   )
 
-/** The stored or provisional resource `destination` links to, when it is one of those. */
-const destinationResourceOf = (
+/** The stored or provisional record `destination` links to, when it is one of those. */
+const maybeDestinationResourceOf = (
   destination: Destination.Type
 ): Option.Option<LinkableResource.WithId> =>
   Destination.match(destination, {
-    OnStoredResource: ({ resource }) => Option.some(resource),
-    OnProvisionalResource: ({ resource }) => Option.some(resource),
-    OnOwnResource: () => Option.none(),
+    Stored: ({ resource }) => Option.some(resource),
+    Provisional: ({ resource }) => Option.some(resource),
+    Decoded: () => Option.none(),
     Unlinked: () => Option.none(),
   })
 
 /**
- * Each stored or provisional resource the referents link to, by its literal,
- * as it will be written.
+ * Each stored or provisional record the referents link to, by its literal
+ * reference, as it will be written.
  *
  * @remarks
  * It assumes, once, its own derived identifier (so a name-and-birth-date
  * match finds it next time, and so a second placement adds nothing) and then
  * the identifiers of every referent linked to it. Should two referents carry
- * different copies of one stored resource, the last one's is written.
+ * different copies of one stored record, the last one's is written.
  */
 const destinationResourcesOf = (
   decodedFile: DecodedFile.DecodedFile,
-  resolved: readonly ResolvedReferent[]
+  links: readonly Link[]
 ): ReadonlyMap<string, DestinationResource> => {
-  const held = literalsHeldBy(decodedFile)
-  const links = resolved.flatMap(({ referent, destination }) =>
+  const decoded = decodedLiteralReferences(decodedFile)
+  const linksToResources = links.flatMap(({ referent, destination }) =>
     pipe(
-      destinationResourceOf(destination),
+      maybeDestinationResourceOf(destination),
       Option.map((resource) => ({ referent, resource })),
       Option.toArray
     )
   )
-  const linksByLiteral = Array.groupBy(links, ({ resource }) =>
-    LinkableResource.literalOf(resource)
+  const linksByLiteralReference = Array.groupBy(linksToResources, ({ resource }) =>
+    LinkableResource.literalReferenceOf(resource)
   )
   return new Map(
-    Object.entries(linksByLiteral).map(
-      ([literal, linksToLiteral]): [string, DestinationResource] => {
-        const { resource } = Array.lastNonEmpty(linksToLiteral)
-        const assumed = [
-          ...Option.toArray(LinkableResource.derivedIdentifier(resource)),
-          ...linksToLiteral.flatMap(({ referent }) => Referent.identifiersOf(referent)),
+    Object.entries(linksByLiteralReference).map(
+      ([literalReference, linksToResource]): [string, DestinationResource] => {
+        const { resource } = Array.lastNonEmpty(linksToResource)
+        const identifiersToAssume = [
+          ...Option.toArray(LinkableResource.maybeDerivedIdentifier(resource)),
+          ...linksToResource.flatMap(({ referent }) => Referent.identifiersOf(referent)),
         ]
         return [
-          literal,
+          literalReference,
           {
-            resource: LinkableResource.assumesIdentifiers(resource, assumed),
-            assumed,
-            existsOnlyAsMentionInFile:
-              !held.has(literal) &&
-              linksToLiteral.every(({ referent }) => Referent.is('ByMentionOnly')(referent)),
+            resource: LinkableResource.assumesIdentifiers(resource, identifiersToAssume),
+            identifiersToAssume,
+            resourceExistsInFile:
+              decoded.has(literalReference) ||
+              linksToResource.some(({ referent }) => Referent.is('AsResource')(referent)),
           },
         ]
       }
@@ -156,69 +155,71 @@ const destinationResourcesOf = (
 }
 
 /**
- * `Type/<source id>` → `Type/<stored id>` for every decoded resource of
- * `decodedFile` a stored one stands in for under `destinations`.
+ * `Type/<decoded id>` → `Type/<stored id>` for every decoded resource of
+ * `decodedFile` a stored record stands in for under `destinationsByReferentKey`.
  */
-const literalRedirectsOf = (
+const literalReferenceRedirectsOf = (
   decodedFile: DecodedFile.DecodedFile,
-  destinations: ReadonlyMap<string, Destination.Type>
+  destinationsByReferentKey: ReadonlyMap<string, Destination.Type>
 ): ReadonlyMap<string, string> =>
   new Map(
     DecodedFile.resources(decodedFile).flatMap(({ resource }) => {
       if (!LinkableResource.is(resource) || resource.id === null) return []
-      const from = LinkableResource.literalOf({ ...resource, id: resource.id })
+      const from = LinkableResource.literalReferenceOf({ ...resource, id: resource.id })
       return pipe(
-        storedDestinationOf(destinations, resource),
-        Option.map((stored) => [from, LinkableResource.literalOf(stored)] as const),
+        maybeStoredDestinationOf(destinationsByReferentKey, resource),
+        Option.map((stored) => [from, LinkableResource.literalReferenceOf(stored)] as const),
         Option.toArray
       )
     })
   )
 
 /**
- * {@link Type.assumedByOwnResource}: for each referent on its own resource,
- * the identifiers of every referent linked to it.
+ * {@link Type.identifiersToAssumeByReferentKey}: for each referent on its
+ * decoded resource, the identifiers of every referent linked to it.
  */
-const assumedByOwnResourceOf = (
-  resolved: readonly ResolvedReferent[]
+const identifiersToAssumeByReferentKeyOf = (
+  links: readonly Link[]
 ): ReadonlyMap<string, readonly Identifier[]> => {
-  const links = resolved.flatMap(({ referent, destination }) =>
+  const linksToDecoded = links.flatMap(({ referent, destination }) =>
     Destination.match(destination, {
-      OnOwnResource: ({ referent: own }) => [{ ownKey: Referent.key(own), referent }],
-      OnStoredResource: () => [],
-      OnProvisionalResource: () => [],
+      Decoded: ({ referent: decoded }) => [{ decodedKey: Referent.key(decoded), referent }],
+      Stored: () => [],
+      Provisional: () => [],
       Unlinked: () => [],
     })
   )
   return new Map(
-    Object.entries(Array.groupBy(links, ({ ownKey }) => ownKey)).map(([ownKey, linksToOwn]) => [
-      ownKey,
-      linksToOwn.flatMap(({ referent }) => Referent.identifiersOf(referent)),
-    ])
+    Object.entries(Array.groupBy(linksToDecoded, ({ decodedKey }) => decodedKey)).map(
+      ([decodedKey, linksToOne]) => [
+        decodedKey,
+        linksToOne.flatMap(({ referent }) => Referent.identifiersOf(referent)),
+      ]
+    )
   )
 }
 
 /**
- * The plan for `decodedFile` under `choices`: each referent's choice resolved
- * once, and every field read off those destinations.
+ * The plan for `decodedFile` under `identityMap`: each referent's choice
+ * resolved once, and every field read off those links.
  */
-const make = (decodedFile: DecodedFile.DecodedFile, choices: LinkChoice.ByReferent): Type => {
+const make = (decodedFile: DecodedFile.DecodedFile, identityMap: IdentityMap.Type): Type => {
   const referents = Referent.discover(decodedFile)
-  const indexed = Referent.index(referents)
-  const resolved = referents.map((referent): ResolvedReferent => ({
+  const referentsByKey = Referent.byKey(referents)
+  const links = referents.map((referent): Link => ({
     referent,
-    destination: Resolution.destinationOf(choices, indexed, referent),
+    destination: Resolution.destinationOf(identityMap, referentsByKey, referent),
   }))
-  const destinations = new Map(
-    resolved.map(({ referent, destination }) => [Referent.key(referent), destination])
+  const destinationsByReferentKey = new Map(
+    links.map(({ referent, destination }) => [Referent.key(referent), destination])
   )
   return {
-    destinations,
-    destinationResources: destinationResourcesOf(decodedFile, resolved),
-    literalRedirects: literalRedirectsOf(decodedFile, destinations),
-    assumedByOwnResource: assumedByOwnResourceOf(resolved),
+    destinationsByReferentKey,
+    destinationResourcesByLiteralReference: destinationResourcesOf(decodedFile, links),
+    literalReferenceRedirects: literalReferenceRedirectsOf(decodedFile, destinationsByReferentKey),
+    identifiersToAssumeByReferentKey: identifiersToAssumeByReferentKeyOf(links),
   }
 }
 
-export { make, storedDestinationOf }
-export type { DestinationResource, Type }
+export { make, maybeStoredDestinationOf }
+export type { DestinationResource, Link, Type }

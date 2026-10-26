@@ -1,6 +1,6 @@
 /**
- * Resolving a referent's choice into its destination, following `SameAs`
- * choices to the end.
+ * Resolving a referent's choice into its destination, following
+ * `LinkToReferent` choices to the end.
  *
  * @packageDocumentation
  */
@@ -8,25 +8,26 @@
 import { Array, Option, Order, pipe } from 'effect'
 
 import * as Destination from './destination.ts'
+import type * as IdentityMap from './identity-map.ts'
 import * as LinkChoice from './link-choice.ts'
-import * as Provisional from './provisional.ts'
+import * as LinkableResource from './linkable-resource.ts'
 import * as Referent from './referent.ts'
 
-/** What `New` comes to for `referent`: its own resource, a provisional one for its identity, else nothing. */
-const newFor = (referent: Referent.Type): Destination.Type =>
+/** What `Create` comes to for `referent`: its decoded resource, a provisional record for its identity, else nothing. */
+const createFor = (referent: Referent.Type): Destination.Type =>
   Referent.match(referent, {
-    AsResource: (withResource) => Destination.OnOwnResource({ referent: withResource }),
+    AsResource: (asResource) => Destination.Decoded({ referent: asResource }),
     ByMentionOnly: ({ identity }) =>
-      Option.match(Provisional.forIdentity(identity), {
+      Option.match(LinkableResource.maybeProvisionalFor(identity), {
         onNone: () => Destination.Unlinked(),
-        onSome: (resource) => Destination.OnProvisionalResource({ resource }),
+        onSome: (resource) => Destination.Provisional({ resource }),
       }),
   })
 
-/** A choice the referent's kind does not allow reads as its default: own resource, or nothing. */
+/** A choice the referent's kind does not allow reads as its default: its decoded resource, or nothing. */
 const defaultFor = (referent: Referent.Type): Destination.Type =>
   Referent.match(referent, {
-    AsResource: (withResource) => Destination.OnOwnResource({ referent: withResource }),
+    AsResource: (asResource) => Destination.Decoded({ referent: asResource }),
     ByMentionOnly: () => Destination.Unlinked(),
   })
 
@@ -34,15 +35,15 @@ const sameType = (referent: Referent.Type, resource: { readonly resourceType: st
   resource.resourceType === referent.identity.resourceType
 
 /**
- * Where a `SameAs` cycle comes to, whichever member the walk entered at: `New`
- * for the first member, in key order, that `New` places on a resource, else
- * unlinked. One destination for the whole cycle, since the reviewer said its
- * members are one.
+ * Where a `LinkToReferent` cycle comes to, whichever member the walk entered
+ * at: `Create` for the first member, in key order, that `Create` places on a
+ * record, else unlinked. One destination for the whole cycle, since the
+ * reviewer said its members are one.
  */
 const destinationOfCycle = (cycle: readonly Referent.Type[]): Destination.Type =>
   pipe(
     Array.sort(cycle, Order.mapInput(Order.string, Referent.key)),
-    Array.map(newFor),
+    Array.map(createFor),
     Array.findFirst((destination) => !Destination.is('Unlinked')(destination)),
     Option.getOrElse(() => Destination.Unlinked())
   )
@@ -52,65 +53,63 @@ const destinationOfCycle = (cycle: readonly Referent.Type[]): Destination.Type =
  * walked to reach it, `current` last.
  */
 const resolveFrom = (
-  choices: LinkChoice.ByReferent,
+  identityMap: IdentityMap.Type,
   referents: ReadonlyMap<string, Referent.Type>,
   path: readonly Referent.Type[],
   current: Referent.Type
 ): Destination.Type =>
-  LinkChoice.match(LinkChoice.forReferent(choices, current), {
-    New: () => newFor(current),
+  LinkChoice.match(LinkChoice.forReferent(identityMap, current), {
+    Create: () => createFor(current),
     DontLink: () => defaultFor(current),
-    ToStored: ({ resource }) =>
-      sameType(current, resource)
-        ? Destination.OnStoredResource({ resource })
-        : defaultFor(current),
-    SameAs: ({ referentKey }) =>
+    LinkToStored: ({ resource }) =>
+      sameType(current, resource) ? Destination.Stored({ resource }) : defaultFor(current),
+    LinkToReferent: ({ referentKey }) =>
       Referent.match(current, {
         AsResource: () => defaultFor(current),
         ByMentionOnly: (byMentionOnly) =>
-          followSameAs(choices, referents, path, byMentionOnly, referentKey),
+          followLinkToReferent(identityMap, referents, path, byMentionOnly, referentKey),
       }),
   })
 
 /**
- * Where `current`'s `SameAs` the referent keyed `sameAsKey` comes to: that
+ * Where `current`'s link to the referent keyed `linkedKey` comes to: that
  * referent's destination, or the cycle's when the walk has been there.
  */
-const followSameAs = (
-  choices: LinkChoice.ByReferent,
+const followLinkToReferent = (
+  identityMap: IdentityMap.Type,
   referents: ReadonlyMap<string, Referent.Type>,
   path: readonly Referent.Type[],
   current: Referent.ByMentionOnly,
-  sameAsKey: string
+  linkedKey: string
 ): Destination.Type => {
-  const sameAs = referents.get(sameAsKey)
+  const linked = referents.get(linkedKey)
   // A referent of another type is an impossible link: a `subject` never lands on a Practitioner.
-  if (sameAs === undefined || !sameType(current, sameAs.identity)) return Destination.Unlinked()
-  const cycleStart = path.findIndex((walked) => Referent.key(walked) === sameAsKey)
+  if (linked === undefined || !sameType(current, linked.identity)) return Destination.Unlinked()
+  const cycleStart = path.findIndex((walked) => Referent.key(walked) === linkedKey)
   return cycleStart === -1
-    ? resolveFrom(choices, referents, [...path, sameAs], sameAs)
+    ? resolveFrom(identityMap, referents, [...path, linked], linked)
     : destinationOfCycle(path.slice(cycleStart))
 }
 
 /**
- * The destination `referent` comes to under `choices`, given every referent of
- * the file keyed by `Referent.key`.
+ * The destination `referent` comes to under `identityMap`, given every
+ * referent of the file keyed by `Referent.key`.
  *
  * @remarks
  * A choice the referent's kind does not allow reads as its default: a referent
- * with a resource choosing `SameAs`, `DontLink` or a stored resource of
- * another type is on its own resource; one named only by mentions choosing a
- * stored resource of another type, a referent of another type, or one the
- * file does not hold is unlinked. `New` on a referent named only by mentions is
- * provisional when its identity allows it and unlinked otherwise. A `SameAs`
- * cycle resolves to `New` for the first of its members, in key order, that
- * `New` places on a resource, whichever member is resolved, so every referent
- * in it lands on the same one record.
+ * with a resource choosing `LinkToReferent`, `DontLink` or a stored record of
+ * another type is on its decoded resource; one named only by mentions choosing
+ * a stored record of another type, a referent of another type, or one the
+ * file does not hold is unlinked. `Create` on a referent named only by
+ * mentions is provisional when its identity allows it and unlinked otherwise.
+ * A `LinkToReferent` cycle resolves to `Create` for the first of its members,
+ * in key order, that `Create` places on a record, whichever member is
+ * resolved, so every referent in it lands on the same one record.
  */
 const destinationOf = (
-  choices: LinkChoice.ByReferent,
+  identityMap: IdentityMap.Type,
   referents: ReadonlyMap<string, Referent.Type>,
   referent: Referent.Type
-): Destination.Type => resolveFrom(choices, referents, [referent], referent)
+): Destination.Type => resolveFrom(identityMap, referents, [referent], referent)
 
 export { destinationOf }
