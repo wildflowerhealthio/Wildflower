@@ -126,6 +126,12 @@ const referencedIdOf = (reference: ReferenceType, resourceType: string): Option.
 /**
  * Whether two identifiers name the same thing: the same `system` and the same
  * `value`, whatever else (`use`, `period`, `assigner`) either carries.
+ *
+ * @remarks
+ * A missing `system` or `value` compares equal to another missing one, as an
+ * equivalence must hold every identifier alike to itself. Two such identifiers
+ * name nothing in common, so a caller linking records by identifier keeps only
+ * those carrying both before comparing.
  */
 const identifierEquivalence: Equivalence.Equivalence<IdentifierType> = Equivalence.make(
   (left, right) =>

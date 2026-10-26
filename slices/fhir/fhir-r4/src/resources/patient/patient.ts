@@ -224,14 +224,18 @@ type Type = typeof PatientSchema.Type
  */
 const NAME_BIRTH_DATE_IDENTIFIER_SYSTEM = `${WILDFLOWER_CANONICAL_BASE}/identifier/patient-name-birth-date`
 
-/** A name part lower-cased, trimmed, and with every run of whitespace collapsed to one space. */
+/**
+ * A name part in Unicode NFC, lower-cased, trimmed, and with every run of
+ * whitespace collapsed to one space, so an accented letter spelled as one code
+ * point or as a letter plus a combining mark mints the same identifier.
+ */
 const normalizeNamePart = (namePart: string): string =>
-  namePart.trim().replaceAll(/\s+/g, ' ').toLowerCase()
+  namePart.normalize('NFC').trim().replaceAll(/\s+/g, ' ').toLowerCase()
 
 /**
  * The identifier a patient's first name and birth date mint under
  * {@link NAME_BIRTH_DATE_IDENTIFIER_SYSTEM}: `family|given…|YYYY-MM-DD`, the
- * given names joined by a space, lower-cased with whitespace collapsed.
+ * given names joined by a space, in NFC, lower-cased with whitespace collapsed.
  *
  * @remarks
  * A person is identified by name and birth date so the same person from two

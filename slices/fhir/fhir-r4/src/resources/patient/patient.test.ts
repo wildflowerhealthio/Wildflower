@@ -377,6 +377,22 @@ describe('Patient.nameBirthDateIdentifier', () => {
     )
   })
 
+  test('mints the same identifier for a name in composed and decomposed Unicode', () => {
+    // Arrange
+    const patientWithFamily = (family: string): typeof Patient.Schema.Type =>
+      patientNamed({
+        names: [humanName({ family, given: ['Tyra'] })],
+        birthDate: '1990-04-02',
+      })
+
+    // Act
+    const composed = Patient.nameBirthDateIdentifier(patientWithFamily('Jos\u00e9'))
+    const decomposed = Patient.nameBirthDateIdentifier(patientWithFamily('Jose\u0301'))
+
+    // Assert
+    expect(decomposed).toEqual(composed)
+  })
+
   test.each([
     { reason: 'no name', names: [], birthDate: '1990-04-02' },
     {
