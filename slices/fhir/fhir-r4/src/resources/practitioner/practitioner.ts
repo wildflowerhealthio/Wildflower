@@ -20,6 +20,7 @@ import {
   IdentifierAndReference,
   WILDFLOWER_CANONICAL_BASE,
 } from '../../data-types/index.ts'
+import { localResourceId } from '../../identity/local-resource-id.ts'
 import * as PractitionerQualification from './practitioner-qualification.ts'
 
 const practitionerJsonSchema = {
@@ -183,5 +184,43 @@ const nameIdentifier = (name: string): Option.Option<IdentifierAndReference.Iden
       })
 }
 
-export { NAME_IDENTIFIER_SYSTEM, nameIdentifier, PractitionerSchema as Schema }
-export type { Type }
+/** A `Practitioner` on, or bound for, the device: one with an `id`. */
+type WithId = Type & { readonly id: string }
+
+const decodePractitioner = Schema.decodeSync(PractitionerSchema)
+
+/**
+ * The provisional `Practitioner` a name identifier stands for, until a fuller
+ * record of that provider arrives: the identifier, and the name as its one
+ * `name[0].text`, under the id `localResourceId(system, 'Practitioner', name)`.
+ *
+ * @returns `None` for an identifier under any system but
+ *   {@link NAME_IDENTIFIER_SYSTEM}, or one with no value
+ *
+ * @remarks
+ * A source that knows a provider only by name gives the importer nothing to
+ * write but the name, so the record is provisional: the least that lets a
+ * prescription point at its prescriber. The id is derived from the name, so
+ * the same name from two sources is one record, and every later import that
+ * names it adds to it rather than beside it.
+ */
+const fromNameIdentifier = (
+  identifier: IdentifierAndReference.IdentifierType
+): Option.Option<WithId> => {
+  if (identifier.system?.href !== new URL(NAME_IDENTIFIER_SYSTEM).href) return Option.none()
+  return Option.map(Option.fromNullable(identifier.value), (name) => {
+    const id = localResourceId(NAME_IDENTIFIER_SYSTEM, 'Practitioner', name)
+    return {
+      ...decodePractitioner({
+        resourceType: 'Practitioner',
+        id,
+        identifier: [{ system: NAME_IDENTIFIER_SYSTEM, value: name }],
+        name: [{ text: name }],
+      }),
+      id,
+    }
+  })
+}
+
+export { fromNameIdentifier, NAME_IDENTIFIER_SYSTEM, nameIdentifier, PractitionerSchema as Schema }
+export type { Type, WithId }

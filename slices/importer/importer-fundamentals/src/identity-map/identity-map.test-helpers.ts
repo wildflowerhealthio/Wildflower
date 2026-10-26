@@ -16,7 +16,8 @@ import {
 import { Arbitrary, FastCheck as fc, Schema } from 'effect'
 
 import type * as DecodedFile from '../decoded-file.ts'
-import * as Target from './target.ts'
+import * as LinkChoice from './link-choice.ts'
+import type * as LinkableResource from './linkable-resource.ts'
 
 const SOURCE_PATIENT = 'https://source.example/patient-id'
 const SOURCE_PRACTITIONER = 'https://source.example/practitioner-id'
@@ -161,7 +162,7 @@ const fileOf = (...resources: readonly FhirResource[]): DecodedFile.DecodedFile 
 })
 
 /** A stored resource: the decoded one with its `id` known to be set. */
-const storedOf = (resource: FhirResource): Target.StoredResource => {
+const storedOf = (resource: FhirResource): LinkableResource.WithId => {
   if (
     (resource.resourceType !== 'Patient' && resource.resourceType !== 'Practitioner') ||
     resource.id === null
@@ -180,9 +181,9 @@ const STORED_JAN = storedOf(
   patient({ id: 's-2', system: DEVICE, family: 'Doe', given: 'Jan', birthDate: null })
 )
 const STORED_SMITH = storedOf(practitioner('sp-1', 'Dr. A Smith', DEVICE))
-const STORED: readonly Target.StoredResource[] = [STORED_TYRA, STORED_JAN, STORED_SMITH]
+const STORED: readonly LinkableResource.WithId[] = [STORED_TYRA, STORED_JAN, STORED_SMITH]
 
-/** Every row key a generated file can hold. */
+/** Every referent key a generated file can hold. */
 const POOL_KEYS: readonly string[] = [
   ...POOL.map((value) => `Patient|${SOURCE_PATIENT}|${value}`),
   ...POOL.map((value) => `Patient|${CUSTOMER}|c-${value}`),
@@ -249,15 +250,16 @@ const fileArbitrary: fc.Arbitrary<DecodedFile.DecodedFile> = fc
     })
   )
 
-const targetArbitrary: fc.Arbitrary<Target.Type> = fc.oneof(
-  fc.constantFrom<Target.Type>('new', 'dontLink'),
-  fc.constantFrom(...STORED).map(Target.stored),
-  fc.constantFrom(...POOL_KEYS).map(Target.row)
+const choiceArbitrary: fc.Arbitrary<LinkChoice.Type> = fc.oneof(
+  fc.constant(LinkChoice.New()),
+  fc.constant(LinkChoice.DontLink()),
+  fc.constantFrom(...STORED).map((resource) => LinkChoice.ToStored({ resource })),
+  fc.constantFrom(...POOL_KEYS).map((referentKey) => LinkChoice.SameAs({ referentKey }))
 )
 
-/** A generated map over the pool's keys, any target on any row, impossible ones included. */
-const mapArbitrary: fc.Arbitrary<ReadonlyMap<string, Target.Type>> = fc
-  .array(fc.tuple(fc.constantFrom(...POOL_KEYS), targetArbitrary), { maxLength: POOL_KEYS.length })
+/** Generated choices over the pool's keys, any choice on any referent, impossible ones included. */
+const choicesArbitrary: fc.Arbitrary<LinkChoice.ByReferent> = fc
+  .array(fc.tuple(fc.constantFrom(...POOL_KEYS), choiceArbitrary), { maxLength: POOL_KEYS.length })
   .map((entries) => new Map(entries))
 
 export {
@@ -275,7 +277,7 @@ export {
   fileOf,
   fileWireOf,
   literalSubject,
-  mapArbitrary,
+  choicesArbitrary,
   namedRequester,
   observation,
   patient,

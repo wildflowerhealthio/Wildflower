@@ -19,7 +19,7 @@ import {
   request,
   wireFieldsOf,
 } from './identity-map.test-helpers.ts'
-import * as IdentityRow from './identity-row.ts'
+import * as Referent from './referent.ts'
 
 // Schema-generated resources at fast-check's default size run to hundreds of
 // kilobytes each; the properties are about structure, which the smallest size
@@ -32,7 +32,7 @@ afterAll(() => {
 })
 
 /**
- * The row keys a resource's wire form names: its own `identifier[0]` for a
+ * The referent keys a resource's wire form names: its own `identifier[0]` for a
  * Patient or Practitioner, and each `subject`, `requester` and `performer` (or
  * `performer[].actor`) that names a system and value and no literal, typed by
  * its own `type` when it states one.
@@ -73,7 +73,7 @@ const wireKeys = (resource: FhirResource): readonly string[] => {
   ]
 }
 
-describe('IdentityRow.discover', () => {
+describe('Referent.discover', () => {
   it('finds the Shoppers shapes: a person, the account id and a named prescriber', () => {
     const file = fileOf(
       patient({ id: 'p-1' }),
@@ -83,42 +83,46 @@ describe('IdentityRow.discover', () => {
     )
 
     expect(
-      IdentityRow.discover(file).map((row) => [row._tag, IdentityRow.key(row), row.label])
+      Referent.discover(file).map((referent) => [
+        referent._tag,
+        Referent.key(referent),
+        referent.label,
+      ])
     ).toEqual([
-      ['resource', `Patient|${SOURCE_PATIENT}|p-1`, 'Tyra Banks · 1990-01-02'],
+      ['WithResource', `Patient|${SOURCE_PATIENT}|p-1`, 'Tyra Banks · 1990-01-02'],
       [
-        'reference',
+        'ByMentionOnly',
         `Practitioner|${Practitioner.NAME_IDENTIFIER_SYSTEM}|Dr. A Smith`,
         'Dr. A Smith',
       ],
-      ['reference', `Patient|${CUSTOMER}|c-9`, 'c-9'],
+      ['ByMentionOnly', `Patient|${CUSTOMER}|c-9`, 'c-9'],
     ])
   })
 
-  it('gives a resource-backed row its own identifiers and the derived one', () => {
-    const [patientRow, practitionerRow] = IdentityRow.discover(
+  it('gives a referent with a resource its own identifiers and the derived one', () => {
+    const [patientReferent, practitionerReferent] = Referent.discover(
       fileOf(patient({ id: 'p-1' }), practitioner('pr-1', '  Dr.  B   Jones '))
     )
 
-    const systemsAndValues = (row: IdentityRow.Type | undefined): readonly unknown[] =>
-      row?._tag === 'resource'
-        ? row.identifiers.map((identifier) => [identifier.system?.href, identifier.value])
+    const systemsAndValues = (referent: Referent.Type | undefined): readonly unknown[] =>
+      referent?._tag === 'WithResource'
+        ? referent.identifiers.map((identifier) => [identifier.system?.href, identifier.value])
         : []
-    expect(systemsAndValues(patientRow)).toEqual([
+    expect(systemsAndValues(patientReferent)).toEqual([
       [SOURCE_PATIENT, 'p-1'],
       [
         'https://wildflowerhealth.io/fhir/identifier/patient-name-birth-date',
         'banks;tyra;1990-01-02',
       ],
     ])
-    expect(systemsAndValues(practitionerRow)).toEqual([
+    expect(systemsAndValues(practitionerReferent)).toEqual([
       [SOURCE_PRACTITIONER, 'pr-1'],
       [Practitioner.NAME_IDENTIFIER_SYSTEM, 'Dr. B Jones'],
     ])
-    expect(practitionerRow?.label).toBe('Dr.  B   Jones')
+    expect(practitionerReferent?.label).toBe('Dr.  B   Jones')
   })
 
-  it('makes no row of a display-only performer, an organization, a literal, or a prior prescription number', () => {
+  it('makes no referent of a display-only performer, an organization, a literal, or a prior prescription number', () => {
     const file = fileOf(
       observation('o-1', literalSubject('p-elsewhere'), [
         { display: 'LifeLabs' },
@@ -127,24 +131,24 @@ describe('IdentityRow.discover', () => {
       request('rx-1', { reference: 'Patient/p-2' })
     )
 
-    expect(IdentityRow.discover(file)).toEqual([])
+    expect(Referent.discover(file)).toEqual([])
   })
 
-  it('makes no row of a Patient with no identifier, and labels a nameless one by its id', () => {
-    const rows = IdentityRow.discover(
+  it('makes no referent of a Patient with no identifier, and labels a nameless one by its id', () => {
+    const referents = Referent.discover(
       fileOf(patient({ id: 'p-1', family: null, birthDate: null }), {
         ...patient({ id: 'p-2' }),
         identifier: [],
       })
     )
 
-    expect(rows.map((row) => row.label)).toEqual(['p-1'])
+    expect(referents.map((referent) => referent.label)).toEqual(['p-1'])
   })
 
-  it('property: finds every Patient, Practitioner and identifier-only slot, once each, and nothing else', () => {
+  it('property: finds every Patient, Practitioner and identifier-only mention, once each, and nothing else', () => {
     fc.assert(
       fc.property(fileArbitrary, (file) => {
-        const keys = IdentityRow.discover(file).map(IdentityRow.key)
+        const keys = Referent.discover(file).map(Referent.key)
         const expected = DecodedFile.resources(file).flatMap(({ resource }) => wireKeys(resource))
 
         expect(new Set(keys).size).toBe(keys.length)

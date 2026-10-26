@@ -103,29 +103,58 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   `excludedCount` drive the shell's tallies. Orphaned selection entries
   (keys a re-decode no longer produces) are inert — sets and maps of keys,
   nothing dangling.
-- `src/identity-map/` — the **identity map**: which person or provider on the
-  device each identity an import discovers becomes, and the pure stage that
-  files a decoded file on that choice. One namespace per file:
-  **`Identity`** (`{ resourceType: 'Patient' | 'Practitioner', system, value }`,
-  its map **`key`** `resourceType|system|value`, `equivalence`, and
-  **`withIdentifiers`**, which appends the identifiers a resource lacks by
-  `IdentifierAndReference.identifierEquivalence` and changes nothing else);
-  **`IdentityRow`** (what the review renders: a **resource-backed** row for each
-  `Patient` / `Practitioner` the decode emitted, keyed by its `identifier[0]`
-  and carrying every identifier its search tries, its own plus the one its
-  demographics derive through `Patient.nameBirthDateIdentifier` /
-  `Practitioner.nameIdentifier`; an **id-only** row for each reference that
-  names someone by identifier alone; **`discover`** finds both through
-  `ResourceReferences.collect`, resource-backed first, once per key);
-  **`Target`** (`'new'`, a **`stored`** resource, another **`row`**, or
-  `'dontLink'`, and what one resolves to: stored, the row's own resource, a
-  **`minted`** Practitioner for a printed name, or `'dontLink'`); and **`IdentityMap`** (the `ReadonlyMap<key, Target>`;
-  **`targetOf`** with its per-kind default, **`resolve`** following `row`
-  targets, **`apply`** and **`unresolved`**). `reference-slot.ts`
-  (**`ReferenceSlot`**, not exported) reads a resource's top-level `subject`,
-  `requester` and `performer`: an identifier-only reference states no type,
-  so its slot says whether it names a Patient or a Practitioner, and the slot
-  is the path `unresolved` reports, since `ResourceReferences.map` gives none.
+- `src/identity-map/` — the **identity map**: for every referent an import
+  discovers, what it links to on the device, and the pure stage that places a
+  decoded file on those choices. One namespace per file, one phase each:
+  - **`Identity`** — `{ resourceType: 'Patient' | 'Practitioner', system,
+    value }`: who or what an identifier names, as a value; its map **`key`**
+    `resourceType|system|value`, `equivalence`, and the conversions to and
+    from an `Identifier`. Nothing about linking.
+  - **`LinkableResource`** — a `Patient` or `Practitioner`, the types a
+    referent can have a resource for: `identityOf` (its `identifier[0]`),
+    `derivedIdentifier` (an exhaustive match: `Patient.nameBirthDateIdentifier`,
+    `Practitioner.nameIdentifier`), `labelOf`, and **`assumesIdentifiers`**,
+    which appends the identifiers a resource does not already carry, assumed as
+    one assumes an identity, and changes nothing else.
+  - **`Mention`** — each place a resource names its patient or a provider:
+    its top-level `subject`, `requester` and `performer`, read by field. An
+    identifier-only reference states no type, so the field it is mentioned in
+    says whether it names a Patient or a Practitioner; the field is also the
+    path an unlinked mention reports, since `ResourceReferences.map` gives
+    none.
+  - **`Referent`** — something the import refers to that may already exist on
+    the device, once per identity: **`WithResource`** when the decode emitted
+    its resource (carrying every identifier a search tries, its own and the
+    derived one), **`ByMentionOnly`** when only mentions name it.
+    **`discover`** finds both, resources first, once per key.
+  - **`LinkChoice`** — what the reviewer chooses for a referent: **`New`**,
+    **`ToStored`** (a resource on the device), **`SameAs`** (another referent),
+    **`DontLink`**; tagged objects built only through their constructors,
+    matched with `LinkChoice.match`. `forReferent` reads a choice with its
+    default, `New` with a resource and `DontLink` without.
+  - **`Destination`** — where a referent ends up once `SameAs` is followed:
+    **`OnStoredResource`**, **`OnOwnResource`**, **`OnProvisionalResource`**,
+    **`Unlinked`**; `literalOf` is what its mentions are redirected to.
+  - **`Provisional`** — `forIdentity`: the resource an identity alone can stand
+    for, provisional until a fuller record arrives. An exhaustive match over
+    the resource types: a provider's printed name stands for a `Practitioner`
+    (`Practitioner.fromNameIdentifier`); nothing stands for a `Patient`.
+  - `resolution.ts` (**`Resolution`**, not exported) — `destinationOf`: a
+    referent's choice followed to its destination, every rule a `Match` arm.
+  - **`LinkPlan`** — `make`: everything the placement needs, worked out once:
+    each referent's destination, each stored or provisional resource as it
+    will be written and whether it **`existsOnlyAsMentionInFile`**, the
+    literal redirects, and what each own resource assumes.
+  - `redirection.ts` (**`Redirection`**, not exported) — `redirectMentions`:
+    a referent's mentions are redirected to its destination, through
+    `ResourceReferences.map`, keeping `display` and `identifier`.
+  - **`Placement`** — `place`: each decoded resource replaced by, or written
+    alongside, what its referent becomes, and the resources the file only
+    mentions appended under **`LINKED_SECTION_TITLE`** at **`linkedKey`**.
+  - **`UnlinkedMention`** — `of`: on a placed file, every **`MissingSubject`**
+    and every mention that **`NamesNobodyOnDevice`**.
+  - **`IdentityMap`** — the `ReadonlyMap<key, LinkChoice>` itself (`Type`),
+    **`apply`** (plan, then place) and **`unlinkedMentions`**.
 - `src/picked-file.ts` — the **`PickedFile`** namespace: the picked file
   vocabulary _and_ the codec that source files one. **`Type`**
   (`{ id, fileName, bytes }`) is the one value every `decode` receives, and
@@ -232,32 +261,30 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
   one that tries to be unique across a batch cannot be, since it is not given
   the batch.
 - **Identity is the map's, never the selection's.** `StagedImport` keeps
-  exclusions and edits; which person or provider a reference lands on lives in
-  the `IdentityMap`, held beside the selections, and `IdentityMap.apply` runs
-  before the server diff, the preview and the confirm, so all three see the
-  resources that get written. `apply` is pure and idempotent and keeps the
-  file's sections and keys: a source resource linked to a stored one is
-  replaced by it **under the same review key**, the stored resource gaining
-  the source's identifiers and its own derived one and keeping its
-  demographics byte for byte; every reference to the identity, a literal
-  `Type/<source id>` or an identifier-only one, is re-pointed through
-  `ResourceReferences.map`, keeping its `display` and `identifier`; a stored
-  resource only id-only rows link is appended under a final **"Linked"**
-  section so the review shows the identifier it gained; a `'new'` resource is
-  written as decoded plus its derived identifier. An id-only row may take
-  `'new'` only when its identity is a provider's printed name
-  (`Practitioner.NAME_IDENTIFIER_SYSTEM`): `apply` then mints a minimal
-  `Practitioner` for it, its id `localResourceId(system, 'Practitioner',
-  name)` so the same name from two sources mints one resource, writes it in
-  the Linked section, and re-points the name's references at it; its default
-  stays `'dontLink'`. A `row` target follows to the end, and a combination a
-  row's kind does not allow, a row of another type, or a row the file does
-  not hold falls back to `'new'` for a resource-backed row and `'dontLink'`
-  for an id-only one; a cycle resolves to `'new'` for the row resolved, which
-  only a name row can take. `unresolved` lists, on the applied file,
-  every missing `subject`, every slot reference that is an absolute URL, and
-  every identity the map leaves identifier-only; a `display`-only provider is
-  not one the map could link, so it is not listed.
+  exclusions and edits; what a mention lands on lives in the `IdentityMap`,
+  held beside the selections, and `IdentityMap.apply` runs before the server
+  diff, the preview and the confirm, so all three see the resources that get
+  written. `apply` is pure and idempotent and keeps the file's sections and
+  keys. A referent's mentions are redirected to its destination: a decoded
+  resource linked to a stored one is replaced by it **under the same review
+  key**, the stored resource assuming the referent's identifiers and its own
+  derived one and keeping its demographics byte for byte; every mention of the
+  identity, a literal `Type/<source id>` or an identifier-only one, is
+  redirected through `ResourceReferences.map`, keeping its `display` and
+  `identifier`; a resource the file only mentions is appended under a final
+  **"Linked"** section so the review shows the identifier it assumed; an own
+  resource is written as decoded plus its derived identifier and those of the
+  referents linked to it. A referent only mentions name may be `New` only
+  when its identity stands for something provisional (`Provisional.forIdentity`:
+  a provider's printed name, as a `Practitioner` at `localResourceId(system,
+  'Practitioner', name)`, so one name from two sources is one record); its
+  default stays `DontLink`. `SameAs` follows to the end; a choice a referent's
+  kind does not allow, a referent of another type, or one the file does not
+  hold reads as the kind's default, own resource or unlinked; a cycle reads as
+  `New` for the referent resolved. `unlinkedMentions` lists, on the placed
+  file, every missing `subject`, every mention that is an absolute URL, and
+  every identity left identifier-only; a `display`-only provider is not one
+  the map could link, so it is not listed.
 - **Selection keys by a `DecodedFile.Resource`'s `key`.** Selection state must
   be serializable and survive a settings re-decode, so both axes hold string
   keys; a key that disappears simply stops applying.
