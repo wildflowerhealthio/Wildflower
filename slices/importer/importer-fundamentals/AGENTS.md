@@ -127,12 +127,12 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     stands for a `Patient`), and **`assumesIdentifiers`**, which appends the
     qualified identifiers a resource does not already carry, assumed as one assumes an
     identity, and changes nothing else.
-  - **`Mention`** — each place a resource names its patient or a provider:
-    its top-level `subject`, `requester` and `performer`, read by field, which
-    gives each mention the path an unlinked mention reports, since
-    `ResourceReferences.map` gives none. Which type an identifier-only mention
-    names is the reference's own business: a logical reference states its
-    `type`, and one that does not names nothing.
+  - **`Mention`** — each place a resource names something by a `Reference`,
+    at its path (`subject`, `performer[0].actor`), found by fhir-r4's
+    `ResourceReferences.collect` so a reference anywhere is one; and
+    `landsOnDevice`, whether a reference is a relative literal. Which type an
+    identifier-only mention names is the reference's own business: a logical
+    reference states its `type`, and one that does not names nothing.
   - **`Referent`** — something the import refers to that may already exist on
     the device, once per logical reference: **`AsResource`** when the decode emitted
     its resource (carrying every identifier a search tries, its own and the
@@ -169,11 +169,11 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     records the file only mentions appended under **`LINKED_SECTION_TITLE`**
     at **`linkedKey`**.
   - **`UnlinkedMention`** — `collect`: on a placed file, every resource
-    **`OutsidePatientCompartment`** (a `subject` slot naming no patient at
-    all; FHIR's Patient CompartmentDefinition names `subject` for every type
-    the importer handles) and every **`Dangling`** mention (one that names
-    something and lands on no record of the device), matched with
-    `UnlinkedMention.match`.
+    **`OutsidePatientCompartment`** (a `subject` slot in which nothing lands
+    on a patient of the device; FHIR's Patient CompartmentDefinition names
+    `subject` for every type the importer handles) and every **`Dangling`**
+    mention (a logical reference, in any field, the map could link and left
+    unlinked), matched with `UnlinkedMention.match`.
   - **`IdentityMap`** — the map itself (**`Type`**, every referent's choice by
     `Referent.key`), **`apply`** (plan, then place) and **`unlinkedMentions`**.
 - `src/picked-file.ts` — the **`PickedFile`** namespace: the picked file
@@ -307,10 +307,10 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
   for the first of its members, in key order, that `Create` places on a
   record, so all of it lands on one record. `unlinkedMentions` lists, on the
   placed file, every resource outside every patient's compartment (a `subject`
-  slot naming no patient at all) and every dangling mention: one that names
-  something, a logical reference or an absolute URL, and lands on no record
-  of the device. A `display`-only provider and an untyped identifier are not
-  ones the map could link, so they are not listed.
+  slot in which nothing lands on a patient of the device) and every dangling
+  mention: a logical reference, in any field, the map could link and left
+  unlinked. A `display`-only provider, an untyped identifier and an absolute
+  URL are not ones the map could link, so they are not listed on their own.
 - **Selection keys by a `DecodedFile.Resource`'s `key`.** Selection state must
   be serializable and survive a settings re-decode, so both axes hold string
   keys; a key that disappears simply stops applying.

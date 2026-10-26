@@ -391,17 +391,18 @@ describe('IdentityMap.unlinkedMentions', () => {
     request('rx-1', customerSubject('c-9'), namedRequester('Dr. A Smith')),
     observation('o-3', literalSubject('p-1'), [{ display: 'LifeLabs' }]),
     observation('o-4', { display: 'Tyra' }),
-    observation('o-5', untypedSubject('p-1'))
+    observation('o-5', untypedSubject('p-1')),
+    observation('o-6', literalSubject('p-1'), [{ reference: ABSOLUTE }])
   )
   const listed = (choices: IdentityMap.Type): readonly string[] =>
     IdentityMap.unlinkedMentions(file, choices).map(
       (unlinked) => `${unlinked._tag} ${unlinked.mentioningResourceKey} ${pathOf(unlinked)}`
     )
 
-  it('lists a resource outside every patient compartment, an absolute URL and every logical reference the map leaves unlinked', () => {
+  it('lists a resource outside every patient compartment and every logical reference the map leaves unlinked, and no absolute URL', () => {
     expect(listed(new Map())).toEqual([
       'OutsidePatientCompartment k-0 subject',
-      'Dangling k-1 subject',
+      'OutsidePatientCompartment k-1 subject',
       'Dangling k-2 subject',
       'Dangling k-2 requester',
       'OutsidePatientCompartment k-4 subject',
@@ -417,7 +418,7 @@ describe('IdentityMap.unlinkedMentions', () => {
 
     expect(listed(choices)).toEqual([
       'OutsidePatientCompartment k-0 subject',
-      'Dangling k-1 subject',
+      'OutsidePatientCompartment k-1 subject',
       'OutsidePatientCompartment k-4 subject',
       'OutsidePatientCompartment k-5 subject',
     ])

@@ -13,12 +13,12 @@
  */
 
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import { ResourceReferences } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array, Data, Option, pipe } from 'effect'
 
 import * as DecodedFile from '../decoded-file.ts'
 import * as LinkableResource from './linkable-resource.ts'
 import * as LogicalReference from './logical-reference.ts'
+import * as Mention from './mention.ts'
 
 /** A referent the decode emitted a resource for, keyed by that resource's `identifier[0]`. */
 interface AsResource {
@@ -81,9 +81,9 @@ const tryOfResource = (entry: DecodedFile.Resource): Option.Option<AsResource> =
   )
 }
 
-/** The referents one decoded resource's identifier-only mentions name. */
+/** The referents one decoded resource's logical-reference mentions name. */
 const mentionedIn = (entry: DecodedFile.Resource): readonly ByMentionOnly[] =>
-  ResourceReferences.collect(entry.resource).flatMap((reference) =>
+  Mention.of(entry.resource).flatMap(({ reference }) =>
     pipe(
       LogicalReference.maybeOfReference(reference),
       Option.map((logicalReference) =>

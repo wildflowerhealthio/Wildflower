@@ -1,5 +1,5 @@
 /**
- * The mentions a placed file still has that land on no record of the device,
+ * The mentions a placed file still has that the map could link and did not,
  * and the resources it leaves in no patient's compartment: what a review
  * lists as needing a patient or a provider.
  *
@@ -15,15 +15,17 @@ import * as Mention from './mention.ts'
 
 /**
  * A resource that, as written, is in no patient's compartment: it has a
- * `subject` slot and names no patient in it at all, the slot empty or a
- * `display` alone.
+ * `subject` slot and nothing in it lands on a patient of the device, the
+ * slot empty, a `display` alone, an absolute URL into another system, or an
+ * untyped identifier.
  *
  * @remarks
  * FHIR's CompartmentDefinition for Patient says which fields place each
  * resource type in a patient's compartment; for every type the importer
  * handles that is `subject`. The viewing apps read by patient, so a resource
- * outside every compartment is one nothing finds. A `subject` that names
- * someone and lands nowhere is a {@link Dangling} mention instead.
+ * outside every compartment is one nothing finds. A `subject` that is a
+ * logical reference the map left unlinked is a {@link Dangling} mention
+ * instead, since the map can still link it.
  */
 interface OutsidePatientCompartment {
   readonly _tag: 'OutsidePatientCompartment'
@@ -32,9 +34,9 @@ interface OutsidePatientCompartment {
 }
 
 /**
- * A mention that names something, a logical reference or an absolute URL, and
- * still lands on no record of the device after placement: its referent
- * `Unlinked`, or its target in another system.
+ * A mention the map could link and did not: a logical reference, in any
+ * field, still identifier-only after placement because its referent is
+ * `Unlinked`.
  */
 interface Dangling {
   readonly _tag: 'Dangling'
@@ -50,35 +52,29 @@ type Type = OutsidePatientCompartment | Dangling
 
 const { OutsidePatientCompartment, Dangling, $is: is, $match: match } = Data.taggedEnum<Type>()
 
-/** Whether a mention's reference lands on a record of the device: a literal reference that is not an absolute URL. */
-const landsOnDevice = (reference: IdentifierAndReference.ReferenceType): boolean =>
-  reference.reference !== null && URL.parse(reference.reference) === null
-
-/** Whether a reference names something, an absolute URL or a logical reference, as opposed to a `display` alone or an untyped identifier. */
-const namesSomething = (reference: IdentifierAndReference.ReferenceType): boolean =>
-  reference.reference !== null || Option.isSome(LogicalReference.maybeOfReference(reference))
+/** Whether a placed reference is a logical reference the map left unlinked. */
+const isDangling = (referenceAsWritten: IdentifierAndReference.ReferenceType): boolean =>
+  !Mention.landsOnDevice(referenceAsWritten) &&
+  Option.isSome(LogicalReference.maybeOfReference(referenceAsWritten))
 
 /**
  * Every resource of `placedFile` outside every patient's compartment, and
- * every mention of it that names something and lands on no record of the
- * device, in review order.
+ * every dangling mention of it, in review order.
  *
  * @param placedFile - A decoded file after placement (`IdentityMap.apply`)
  */
 const collect = (placedFile: DecodedFile.DecodedFile): readonly Type[] =>
   DecodedFile.resources(placedFile).flatMap(({ key, resource }): readonly Type[] => {
     const outsideCompartment: readonly Type[] =
-      'subject' in resource && (resource.subject === null || !namesSomething(resource.subject))
+      'subject' in resource &&
+      (resource.subject === null ||
+        (!Mention.landsOnDevice(resource.subject) && !isDangling(resource.subject)))
         ? [OutsidePatientCompartment({ mentioningResourceKey: key })]
         : []
     const dangling = Mention.of(resource)
-      .filter((mention) => !landsOnDevice(mention.reference) && namesSomething(mention.reference))
-      .map((mention): Type =>
-        Dangling({
-          mentioningResourceKey: key,
-          mentionPath: mention.path,
-          referenceAsWritten: mention.reference,
-        })
+      .filter(({ reference }) => isDangling(reference))
+      .map(({ path, reference }): Type =>
+        Dangling({ mentioningResourceKey: key, mentionPath: path, referenceAsWritten: reference })
       )
     return [...outsideCompartment, ...dangling]
   })
