@@ -5,7 +5,7 @@ import {
   extractJson,
   recognizePortal,
 } from '@wildflowerhealthio/http-extraction-fundamentals'
-import { Effect, type ParseResult, RegExp as EffectRegExp, Schema } from 'effect'
+import { Array as Arr, Effect, type ParseResult, RegExp as EffectRegExp, Schema } from 'effect'
 
 import { DecodableEntries, MalformedAsAbsent } from '../lenient-schemas.ts'
 import { portalGetMatcher, SHOPPERS_API_BASE_URL } from '../portal-url.ts'
@@ -45,21 +45,20 @@ const SourcePatient = Schema.Struct({
 type SourcePatient = typeof SourcePatient.Type
 
 /**
- * Just-enough schema for one bespoke (non-FHIR) customers payload. Only
- * `customer.pcid` (the account id) is required; every other field reads as
- * absent when `null` or malformed, as {@link SourcePatient}'s do. `patients`
- * decodes entry by entry ({@link DecodableEntries}): an entry that is not a
+ * Just-enough schema for one bespoke (non-FHIR) customers payload: the people
+ * the account manages, and the account's contact email and phone. The
+ * account's other fields (its `pcid`, name and address) are not read: an
+ * account is not a person, and every person it manages, the holder included,
+ * is one of `patients`. The email and phone read as absent when `null` or
+ * malformed, as {@link SourcePatient}'s fields do. `patients` decodes entry by
+ * entry ({@link DecodableEntries}): an entry that is not a
  * {@link SourcePatient} (no `id`, an `id` that is not a string, or not an
- * object at all) is counted, not decoded, and never fails the account.
+ * object at all) is counted, not decoded, and never fails the payload.
  */
 const CustomerPayload = Schema.Struct({
   customer: Schema.Struct({
-    pcid: Schema.String,
-    firstName: MalformedAsAbsent(Schema.String),
-    lastName: MalformedAsAbsent(Schema.String),
     email: MalformedAsAbsent(Schema.String),
     phoneNumber: MalformedAsAbsent(Schema.String),
-    address: MalformedAsAbsent(SourceAddress),
     patients: Schema.optionalWith(DecodableEntries(SourcePatient), { nullable: true }),
   }),
 })
@@ -70,14 +69,15 @@ const decodeCustomer = Schema.decode(Schema.parseJson(CustomerPayload))
 const decodePatient = Schema.decodeUnknown(Patient.Schema)
 
 /**
- * The R4 `HumanName[]` wire for a family/given pair (or a `text`-only name from a
- * combined display name); `undefined` when the source names nothing.
+ * The R4 `HumanName[]` wire for a person's family/given pair (or a `text`-only
+ * name from their combined display name); `undefined` when the source names
+ * nothing.
  */
-const nameWire = (
-  firstName: string | undefined,
-  lastName: string | undefined,
-  displayName?: string
-): ReadonlyArray<Record<string, unknown>> | undefined => {
+const nameWire = ({
+  firstName,
+  lastName,
+  displayName,
+}: SourcePatient): ReadonlyArray<Record<string, unknown>> | undefined => {
   if (firstName != null || lastName != null) {
     return [
       {
@@ -108,74 +108,59 @@ const addressWire = (
   return Object.keys(wire).length > 0 ? [wire] : undefined
 }
 
-/** A `{ system, value }` telecom entry list, omitting the slot when empty. */
+/** Contact details as the customers payload carries them, a person's or the account's. */
+interface SourceContact {
+  readonly email?: string | undefined
+  readonly phoneNumber?: string | undefined
+}
+
+/**
+ * The `telecom` wire for `contacts`, in order, each `system` + `value` once;
+ * `undefined` when there are none.
+ */
 const telecomWire = (
-  email: string | undefined,
-  phone: string | undefined
+  contacts: readonly SourceContact[]
 ): ReadonlyArray<Record<string, unknown>> | undefined => {
-  const telecom: Array<Record<string, unknown>> = []
-  if (email != null) telecom.push({ system: 'email', value: email })
-  if (phone != null) telecom.push({ system: 'phone', value: phone })
+  const telecom = Arr.dedupeWith(
+    contacts.flatMap(({ email, phoneNumber }) => [
+      ...(email == null ? [] : [{ system: 'email', value: email }]),
+      ...(phoneNumber == null ? [] : [{ system: 'phone', value: phoneNumber }]),
+    ]),
+    (left, right) => left.system === right.system && left.value === right.value
+  )
   return telecom.length > 0 ? telecom : undefined
 }
 
 /**
  * The demographic `Patient` **wire** for one managed person, keyed by its own
  * `id` (the record `subject` references resolve to), with `patientId` as
- * `identifier[0]`.
+ * `identifier[0]`, and reached at their own phone and then at each of
+ * `alsoReachedAt`.
  */
-const patientWire = (patient: SourcePatient): Record<string, unknown> => {
+const patientWire = (
+  patient: SourcePatient,
+  alsoReachedAt: readonly SourceContact[]
+): Record<string, unknown> => {
   const wire: Record<string, unknown> = {
     resourceType: 'Patient',
     id: patient.id,
     identifier: [{ system: ShoppersIdentifierSystem.PatientId, value: patient.id }],
   }
-  const name = nameWire(patient.firstName, patient.lastName, patient.displayName)
+  const name = nameWire(patient)
   if (name != null) wire['name'] = name
-  const telecom = telecomWire(undefined, patient.phoneNumber)
+  const telecom = telecomWire([{ phoneNumber: patient.phoneNumber }, ...alsoReachedAt])
   if (telecom != null) wire['telecom'] = telecom
   const address = addressWire(patient.address)
   if (address != null) wire['address'] = address
   return wire
 }
 
-/**
- * The account `Patient` **wire**, keyed by `customer.pcid`, with a `link.seealso`
- * to each managed person's demographic Patient — adoption rewrites those
- * references, materializing the account↔person join in the store.
- */
-const accountPatientWire = (
-  customer: CustomerPayload['customer'],
-  patientIds: ReadonlyArray<string>
-): Record<string, unknown> => {
-  const wire: Record<string, unknown> = {
-    resourceType: 'Patient',
-    id: customer.pcid,
-    identifier: [{ system: ShoppersIdentifierSystem.PcId, value: customer.pcid }],
-  }
-  const name = nameWire(customer.firstName, customer.lastName)
-  if (name != null) wire['name'] = name
-  const telecom = telecomWire(customer.email, customer.phoneNumber)
-  if (telecom != null) wire['telecom'] = telecom
-  const address = addressWire(customer.address)
-  if (address != null) wire['address'] = address
-  if (patientIds.length > 0) {
-    wire['link'] = patientIds.map((id) => ({
-      other: { reference: `Patient/${id}` },
-      type: 'seealso',
-    }))
-  }
-  return wire
-}
-
-/** The demographic `Patient` for one managed person. */
+/** The demographic `Patient` for one managed person, also reached at each of `alsoReachedAt`. */
 const demographicPatientOf = (
-  patient: SourcePatient
+  patient: SourcePatient,
+  alsoReachedAt: readonly SourceContact[]
 ): Effect.Effect<typeof Patient.Schema.Type, ParseResult.ParseError> =>
-  decodePatient(patientWire(patient))
-
-/** The id a managed person's demographic `Patient` is keyed by. */
-const patientIdOf = (patient: SourcePatient): string => patient.id
+  decodePatient(patientWire(patient, alsoReachedAt))
 
 /**
  * The exact customers XHR URL (`customerUrlOf`), anchored and pinned to
@@ -190,13 +175,16 @@ const customerUrl = new RegExp(
 /**
  * Entity for the Shoppers customers XHR: one bespoke JSON object carrying the
  * account and the people it manages, synthesized into a demographic `Patient`
- * per `customer.patients[]` entry plus an account `Patient` (`link.seealso`-ing
- * each). This entity — not {@link PrescriptionResponseKind} — owns the subject
- * Patient records, so a run where this XHR fails leaves those `subject`
- * references dangling (tolerated; not FK-enforced). A patient entry that does
- * not decode as a {@link SourcePatient} (one with no string `id`, or not an
- * object) drops-and-counts via `Effect.logInfo`; a malformed optional field
- * only drops that field.
+ * per `customer.patients[]` entry and nothing else: the account is not a
+ * person, so it is no Patient. When `patients` lists exactly one person, the
+ * account's email and phone are theirs too and join their `telecom`; with
+ * several, nothing says whose they are, so they are dropped. This entity — not
+ * {@link PrescriptionResponseKind} — owns the subject Patient records, so a run
+ * where this XHR fails leaves those `subject` references dangling (tolerated;
+ * not FK-enforced). A patient entry that does not decode as a
+ * {@link SourcePatient} (one with no string `id`, or not an object)
+ * drops-and-counts via `Effect.logInfo`; a malformed optional field only drops
+ * that field.
  */
 const CustomerResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> = HttpResponseKind.make(
   {
@@ -210,17 +198,18 @@ const CustomerResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> = Ht
           decoded: [],
           undecodable: 0,
         }
-        const patients = yield* Effect.forEach(sourcePatients, demographicPatientOf)
+        // The account's contact details are surely a person's only when it lists just them.
+        const accountContacts: readonly SourceContact[] =
+          sourcePatients.length === 1 && undecodable === 0 ? [customer] : []
+        const patients = yield* Effect.forEach(sourcePatients, (patient) =>
+          demographicPatientOf(patient, accountContacts)
+        )
         if (undecodable > 0) {
           yield* Effect.logInfo(
             `CustomerResponseKind: dropped ${undecodable} of ${undecodable + sourcePatients.length} patient entries that do not decode (no string id, or not an object)`
           )
         }
-
-        const account = yield* decodePatient(
-          accountPatientWire(customer, sourcePatients.map(patientIdOf))
-        )
-        return [...patients, account]
+        return patients
       }),
   }
 )

@@ -325,10 +325,7 @@ const shoppersExchanges = (): readonly TraceExchange[] =>
     {
       url: customerUrlOf(SHOPPERS_ACCOUNT_ID),
       body: {
-        customer: {
-          pcid: SHOPPERS_ACCOUNT_ID,
-          patients: [{ id: SHOPPERS_PERSON_ID, firstName: 'Ada' }],
-        },
+        customer: { patients: [{ id: SHOPPERS_PERSON_ID, firstName: 'Ada' }] },
       },
     },
     {
@@ -384,9 +381,7 @@ describe('harImporter.decode over a Shoppers capture', () => {
     'should import a fill in both feeds as one dispense naming the person ($order)',
     async ({ exchanges }) => {
       const resources = await shoppersResourcesOf(exchanges)
-      const person = resources.find(
-        (resource) => resource.resourceType === 'Patient' && resource.link.length === 0
-      )
+      const person = resources.find((resource) => resource.resourceType === 'Patient')
       const dispenses = resources.flatMap((resource) =>
         resource.resourceType === 'MedicationDispense' ? [resource] : []
       )

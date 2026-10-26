@@ -46,7 +46,7 @@ const onlyDispenseOf = (resources: readonly FhirResource[]): MedicationDispense.
 
 const customers = (): readonly FhirResource[] =>
   extract(customerUrlOf(ACCOUNT_ID), {
-    customer: { pcid: ACCOUNT_ID, patients: [{ id: PERSON_ID, firstName: 'Ada' }] },
+    customer: { patients: [{ id: PERSON_ID, firstName: 'Ada' }] },
   })
 
 /** The status feed's copy; `din` is the prescription's, when it states one. */

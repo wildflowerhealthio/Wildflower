@@ -17,8 +17,11 @@ rather than a copy, and what it writes is what the response kinds read.
 ## Shape
 
 - `src/response-kinds/customer-response-kind.ts` —
-  `…/api/v1/customers/pcid/<uuid>` → one demographic `Patient` per managed person,
-  plus a linked account `Patient` keyed by `pcid`.
+  `…/api/v1/customers/pcid/<uuid>` → one demographic `Patient` per managed
+  person, the holder included, and nothing for the account itself. When the
+  account lists exactly one person, the account's email and phone join that
+  person's `telecom` (each once); with several, they are dropped. The
+  account's own name and address are not read.
 - `src/response-kinds/prescription-response-kind.ts` —
   `…/prescriptions/:uuid/prescription-status` → one `MedicationRequest` + one
   `MedicationDispense` per dispense entry.
