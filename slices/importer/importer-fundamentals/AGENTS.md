@@ -164,7 +164,8 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     `id`, so a resource-backed referent requires one
     (`Referent.tryFromDecodedResource`).
   - **`Link`** — a referent with its link target, what the plan is built
-    from.
+    from; `tryIntoLinkedResource` is the link as a **`LinkedResource`** (the
+    referent and the resource its target holds) when the target holds one.
   - `resolution.ts` (**`Resolution`**, not exported) — `linkTargetOf`: a
     referent's choice followed to its link target, every rule an arm of
     `LinkChoice.match` or `Referent.match`.
@@ -172,8 +173,9 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     it will be written, whatever its origin: the resource having assumed its
     `identifiersToAssume` (its own derived identifier, then those of every
     referent linked to it), and whether the `resourceExistsInFile`.
-    `byPlacedLiteralReference` builds them from the links, grouping the
-    `LinkedResource`s (a link that landed on a resource) by literal reference.
+    **`make`** builds one from the linked resources under a literal
+    reference; `byPlacedLiteralReference` groups a plan's links and makes
+    each.
   - **`LinkPlan`** — `make`: everything the placement needs, worked out once:
     the **`links`**, the **`linkTargetsByReferentKey`**, the
     **`placedResourcesByPlacedLiteralReference`**, and the
@@ -186,13 +188,11 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     a decoded resource is written as: the placed resource under the literal
     reference its own is redirected to). `literalReferencesFromDecodedFile`
     is what the batch lift reuses.
-  - `redirection.ts` (**`Redirection`**, not exported) — `redirectMentions`:
-    a referent's mentions are redirected to its link target, through
-    `ResourceReferences.map`, keeping `display` and `identifier`.
   - **`Placement`** — `place`: each decoded resource written as the resource
     `LinkPlan.maybePlacedResourceFor` has for it, else kept
-    (`DecodedFile.mapResources`), its mentions redirected either way, and the
-    resources the file only mentions appended under
+    (`DecodedFile.mapResources`), its mentions redirected to their referents'
+    link targets either way (`ResourceReferences.map`, keeping `display` and
+    `identifier`), and the resources the file only mentions appended under
     **`LINKED_SECTION_TITLE`** at **`linkedKey`**, in discovery order.
   - **`UnlinkedMention`** — `collect`: on a placed file, every resource
     **`OutsidePatientCompartment`** (a `subject` slot in which nothing lands
@@ -200,8 +200,9 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     `subject` for every type the importer handles) and every **`Dangling`**
     mention (a logical reference, in any field, the map could link and left
     unlinked), matched with `UnlinkedMention.match`.
-  - **`IdentityMap`** — the stage: **`apply`** (plan, then place) and
-    **`unlinkedMentions`**, over a file and its `ReferentLinkChoices`.
+  - **`IdentityMap`** — the stage: **`apply`** (plan, then place) over a
+    file and its `ReferentLinkChoices`. What still lands nowhere is
+    `UnlinkedMention.collect` of the placed file, which the caller composes.
 - `src/picked-file.ts` — the **`PickedFile`** namespace: the picked file
   vocabulary _and_ the codec that source files one. **`Type`**
   (`{ id, fileName, bytes }`) is the one value every `decode` receives, and
@@ -308,35 +309,36 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
   one that tries to be unique across a batch cannot be, since it is not given
   the batch.
 - **Identity is the map's, never the selection's.** `StagedImport` keeps
-  exclusions and edits; what a mention lands on lives in the `IdentityMap`,
-  held beside the selections, and `IdentityMap.apply` runs before the server
-  diff, the preview and the confirm, so all three see the resources that get
-  written. `apply` is pure and idempotent and keeps the file's sections and
-  keys. A referent's mentions are redirected to its destination: a decoded
-  resource linked to a stored record is replaced by it **under the same review
-  key**, the stored record assuming the referent's identifiers and its own
-  derived one and keeping its demographics byte for byte; every mention of the
-  referent, a literal `Type/<decoded id>` or a logical reference, is
-  redirected through `ResourceReferences.map`, keeping its `display` and
-  `identifier`; a record the file only mentions is appended under a final
-  **"Linked"** section so the review shows the identifier it assumed; a
-  decoded resource that is its referent's destination is written as decoded
-  plus its derived identifier and those of the referents linked to it. A
-  referent named only by mentions may be `Create` only when its logical
-  reference stands for something provisional
-  (`LinkableResource.maybeProvisionalFor`: a provider's printed name, as a
-  `Practitioner` at `localResourceId(system, 'Practitioner', name)`, so one
-  name from two sources is one record); its default stays `DontLink`.
-  `LinkToReferent` follows to the end; a choice a referent's kind does not
-  allow, a referent of another type, or one the file does not hold reads as
-  the kind's default, decoded resource or unlinked; a cycle reads as `Create`
-  for the first of its members, in key order, that `Create` places on a
-  record, so all of it lands on one record. `unlinkedMentions` lists, on the
-  placed file, every resource outside every patient's compartment (a `subject`
-  slot in which nothing lands on a patient of the device) and every dangling
-  mention: a logical reference, in any field, the map could link and left
-  unlinked. A `display`-only provider, an untyped identifier and an absolute
-  URL are not ones the map could link, so they are not listed on their own.
+  exclusions and edits; what a mention lands on lives in the
+  `ReferentLinkChoices`, held beside the selections, and `IdentityMap.apply`
+  runs before the server diff, the preview and the confirm, so all three see
+  the resources that get written. `apply` is pure and idempotent and keeps the
+  file's sections and keys. A referent's mentions are redirected to its link
+  target: a decoded resource linked to a stored resource is replaced by it
+  **under the same review key**, the stored resource assuming the referent's
+  identifiers and its own derived one and keeping its demographics byte for
+  byte; every mention of the referent, a literal `Type/<decoded id>` or a
+  logical reference, is redirected through `ResourceReferences.map`, keeping
+  its `display` and `identifier`; a resource the file only mentions is
+  appended under a final **"Linked"** section so the review shows the
+  identifier it assumed; a decoded resource that is its referent's link
+  target is written as decoded plus its derived identifier and those of the
+  referents linked to it. A referent named only by mentions may be
+  `CreateResource` only when its logical reference stands for something
+  provisional (`LinkableResource.tryProvisionalFrom`: a provider's printed
+  name, as a `Practitioner` at `localResourceId(system, 'Practitioner', name)`,
+  so one name from two sources is one resource); its default stays
+  `DontLink`. `LinkToDecodedReferent` follows to the end; a choice a
+  referent's kind does not allow, a referent of another type, or one the file
+  does not hold reads as the kind's default, decoded resource or unlinked; a
+  cycle reads as `CreateResource` for the first of its members, in key order,
+  that it places on a resource, so all of it lands on one resource.
+  `UnlinkedMention.collect` lists, on the placed file, every resource outside
+  every patient's compartment (a `subject` slot in which nothing lands on a
+  patient of the device) and every dangling mention: a logical reference, in
+  any field, the map could link and left unlinked. A `display`-only provider,
+  an untyped identifier and an absolute URL are not ones the map could link,
+  so they are not listed on their own.
 - **Selection keys by a `DecodedFile.Resource`'s `key`.** Selection state must
   be serializable and survive a settings re-decode, so both axes hold string
   keys; a key that disappears simply stops applying.
