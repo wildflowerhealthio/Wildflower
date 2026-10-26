@@ -12,7 +12,6 @@ import { Option, pipe } from 'effect'
 import * as DecodedFile from '../decoded-file.ts'
 import * as LinkPlan from './link-plan.ts'
 import * as LinkableResource from './linkable-resource.ts'
-import * as LogicalReference from './logical-reference.ts'
 import * as Redirection from './redirection.ts'
 
 /** The title of the section the placement appends records the file only mentions under. */
@@ -22,62 +21,46 @@ const LINKED_SECTION_TITLE = 'Linked'
 const linkedKey = (onlyMentioned: LinkableResource.WithId): string =>
   `linked:${LinkableResource.literalReferenceOf(onlyMentioned)}`
 
-/** The stored record, as it will be written, standing in for `decodedResource` when its referent links to one. */
-const maybeStoredStandInFor = (
+/** The placed record under `resource`'s own literal reference, when the plan holds one. */
+const maybePlacedRecordAt = (
   plan: LinkPlan.Type,
-  decodedResource: LinkableResource.Type
+  resource: LinkableResource.WithId
 ): Option.Option<LinkableResource.WithId> =>
   pipe(
-    LinkPlan.maybeStoredDestinationOf(plan.destinationsByReferentKey, decodedResource),
-    Option.flatMapNullable((stored) =>
-      plan.destinationResourcesByLiteralReference.get(LinkableResource.literalReferenceOf(stored))
+    Option.fromNullable(
+      plan.placedRecordsByLiteralReference.get(LinkableResource.literalReferenceOf(resource))
     ),
-    Option.map(({ resource }) => resource)
+    Option.map(({ resource: placed }) => placed)
   )
 
 /**
  * `decodedResource` as it is placed under `plan`: the stored record standing
- * in for it, or itself, having assumed what its referent's decoded resource
- * assumes and, when it is a copy of a linked record the file already holds
- * (appended under Linked by an earlier placement), what that record assumed,
- * with its mentions redirected.
+ * in for it when its referent links to one; else the placed record under its
+ * own literal reference, which is itself having assumed what the referents
+ * linked to it bring, when anything links to it; else itself. Its mentions
+ * are redirected either way.
  */
 const placed = (plan: LinkPlan.Type, decodedResource: FhirResource): FhirResource => {
   if (!LinkableResource.is(decodedResource)) {
     return Redirection.redirectMentions(plan, decodedResource)
   }
-  const storedStandIn = maybeStoredStandInFor(plan, decodedResource)
+  const storedStandIn = pipe(
+    LinkPlan.maybeStoredDestinationOf(plan.destinationsByReferentKey, decodedResource),
+    Option.flatMap((stored) => maybePlacedRecordAt(plan, stored))
+  )
   if (Option.isSome(storedStandIn)) return storedStandIn.value
-  const assumedAsDecodedResource = pipe(
-    LinkableResource.maybeLogicalReferenceOf(decodedResource),
-    Option.flatMapNullable((logicalReference) =>
-      plan.identifiersToAssumeByReferentKey.get(LogicalReference.key(logicalReference))
-    ),
-    Option.getOrElse(() => [])
+  const placedRecord = pipe(
+    LinkableResource.tryWithId(decodedResource),
+    Option.flatMap((withId) => maybePlacedRecordAt(plan, withId)),
+    Option.getOrElse(() => decodedResource)
   )
-  const assumedAsLinkedCopy = pipe(
-    Option.fromNullable(decodedResource.id),
-    Option.flatMapNullable((id) =>
-      plan.destinationResourcesByLiteralReference.get(
-        LinkableResource.literalReferenceOf({ ...decodedResource, id })
-      )
-    ),
-    Option.map(({ identifiersToAssume }) => identifiersToAssume),
-    Option.getOrElse(() => [])
-  )
-  return Redirection.redirectMentions(
-    plan,
-    LinkableResource.assumesIdentifiers(decodedResource, [
-      ...assumedAsDecodedResource,
-      ...assumedAsLinkedCopy,
-    ])
-  )
+  return Redirection.redirectMentions(plan, placedRecord)
 }
 
 /** The records `plan` appends under {@link LINKED_SECTION_TITLE}: those the file only mentions. */
 const linkedSectionResources = (plan: LinkPlan.Type): readonly DecodedFile.Resource[] =>
-  [...plan.destinationResourcesByLiteralReference]
-    .filter(([, linked]) => !linked.resourceExistsInFile)
+  [...plan.placedRecordsByLiteralReference]
+    .filter(([, record]) => !record.resourceExistsInFile)
     .map(([literalReference, { resource }]) => ({
       key: linkedKey(resource),
       title: LinkableResource.labelOf(resource, literalReference),

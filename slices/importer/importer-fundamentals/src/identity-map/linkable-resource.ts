@@ -25,6 +25,10 @@ const matchResourceType = Match.discriminator('resourceType')
 const is = (resource: { readonly resourceType: string }): resource is Type =>
   LogicalReference.isResourceType(resource.resourceType)
 
+/** `resource` with its `id` known to be set, or `None` when it has none: nothing can point at it. */
+const tryWithId = (resource: Type): Option.Option<WithId> =>
+  resource.id === null ? Option.none() : Option.some({ ...resource, id: resource.id })
+
 /** `resource`'s relative literal reference, `Type/<id>`: what a mention of it carries. */
 const literalReferenceOf = (resource: WithId): string => `${resource.resourceType}/${resource.id}`
 
@@ -132,5 +136,6 @@ export {
   maybeDerivedIdentifier,
   maybeLogicalReferenceOf,
   maybeProvisionalFor,
+  tryWithId,
 }
 export type { Type, WithId }

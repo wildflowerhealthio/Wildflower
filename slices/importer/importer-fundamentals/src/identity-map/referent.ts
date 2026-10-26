@@ -20,7 +20,10 @@ import * as LinkableResource from './linkable-resource.ts'
 import * as LogicalReference from './logical-reference.ts'
 import * as Mention from './mention.ts'
 
-/** A referent the decode emitted a resource for, keyed by that resource's `identifier[0]`. */
+/**
+ * A referent the decode emitted a resource for, keyed by that resource's
+ * `identifier[0]`. The resource has an `id`, so a mention can point at it.
+ */
 interface AsResource {
   readonly _tag: 'AsResource'
   readonly logicalReference: LogicalReference.Type
@@ -29,7 +32,7 @@ interface AsResource {
    * then the one its demographics derive, when they allow one.
    */
   readonly identifiers: readonly IdentifierAndReference.IdentifierType[]
-  readonly resource: LinkableResource.Type
+  readonly resource: LinkableResource.WithId
   /** The `DecodedFile.Resource` key the resource is reviewed under. */
   readonly reviewKey: string
   readonly label: string
@@ -58,26 +61,29 @@ const identifiersOf = (referent: Type): readonly IdentifierAndReference.Identifi
 
 /**
  * The referent one decoded resource is: `None` for a resource of another
- * type, and for a Patient or Practitioner whose `identifier[0]` is unqualified,
- * which the stage writes as it is.
+ * type, and for a Patient or Practitioner with no `id` or an unqualified
+ * `identifier[0]`, which nothing can point at or be linked to, so the stage
+ * writes it as it is.
  */
 const tryOfResource = (entry: DecodedFile.Resource): Option.Option<AsResource> => {
   const { resource } = entry
   if (!LinkableResource.is(resource)) return Option.none()
-  return Option.map(LinkableResource.maybeLogicalReferenceOf(resource), (logicalReference) =>
-    AsResource({
-      logicalReference,
-      identifiers: Array.dedupeWith(
-        [
-          ...resource.identifier,
-          ...Option.toArray(LinkableResource.maybeDerivedIdentifier(resource)),
-        ].filter(IdentifierAndReference.isQualifiedIdentifier),
-        IdentifierAndReference.identifierEquivalence
-      ),
-      resource,
-      reviewKey: entry.key,
-      label: LinkableResource.labelOf(resource, logicalReference.identifier.value),
-    })
+  return Option.flatMap(LinkableResource.tryWithId(resource), (withId) =>
+    Option.map(LinkableResource.maybeLogicalReferenceOf(withId), (logicalReference) =>
+      AsResource({
+        logicalReference,
+        identifiers: Array.dedupeWith(
+          [
+            ...withId.identifier,
+            ...Option.toArray(LinkableResource.maybeDerivedIdentifier(withId)),
+          ].filter(IdentifierAndReference.isQualifiedIdentifier),
+          IdentifierAndReference.identifierEquivalence
+        ),
+        resource: withId,
+        reviewKey: entry.key,
+        label: LinkableResource.labelOf(withId, logicalReference.identifier.value),
+      })
+    )
   )
 }
 

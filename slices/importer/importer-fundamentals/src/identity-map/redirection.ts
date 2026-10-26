@@ -10,6 +10,7 @@ import { Option, pipe } from 'effect'
 
 import * as Destination from './destination.ts'
 import type * as LinkPlan from './link-plan.ts'
+import * as LinkableResource from './linkable-resource.ts'
 import * as LogicalReference from './logical-reference.ts'
 
 /**
@@ -27,7 +28,8 @@ const maybePlacedLiteralReference = (
         Option.flatMapNullable((logicalReference) =>
           plan.destinationsByReferentKey.get(LogicalReference.key(logicalReference))
         ),
-        Option.flatMap(Destination.maybeLiteralReference)
+        Option.flatMap(Destination.maybeRecordOf),
+        Option.map(LinkableResource.literalReferenceOf)
       )
     : Option.fromNullable(plan.literalReferenceRedirects.get(referenceAsDecoded.reference))
 

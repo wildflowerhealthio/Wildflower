@@ -8,8 +8,7 @@
 
 import { Data, Option } from 'effect'
 
-import * as LinkableResource from './linkable-resource.ts'
-import type * as Referent from './referent.ts'
+import type * as LinkableResource from './linkable-resource.ts'
 
 /** A record already stored on the device. */
 interface Stored {
@@ -17,10 +16,10 @@ interface Stored {
   readonly resource: LinkableResource.WithId
 }
 
-/** A record the file brought: the decoded resource of a referent, written as it is. */
+/** A record the file brought: a referent's decoded resource, written where it was decoded. */
 interface Decoded {
   readonly _tag: 'Decoded'
-  readonly referent: Referent.AsResource
+  readonly resource: LinkableResource.WithId
 }
 
 /**
@@ -41,19 +40,16 @@ type Type = Stored | Decoded | Provisional | Unlinked
 
 const { Stored, Decoded, Provisional, Unlinked, $is: is, $match: match } = Data.taggedEnum<Type>()
 
-/** The relative literal reference a destination's mentions are redirected to; `None` for one with no record to point at. */
-const maybeLiteralReference = (destination: Type): Option.Option<string> =>
+/** The record a destination's mentions are redirected to, whatever its origin; `None` for `Unlinked`. */
+const maybeRecordOf = (destination: Type): Option.Option<LinkableResource.WithId> =>
   match(destination, {
-    Stored: ({ resource }) => Option.some(LinkableResource.literalReferenceOf(resource)),
-    Provisional: ({ resource }) => Option.some(LinkableResource.literalReferenceOf(resource)),
-    Decoded: ({ referent }) =>
-      Option.map(Option.fromNullable(referent.resource.id), (id) =>
-        LinkableResource.literalReferenceOf({ ...referent.resource, id })
-      ),
+    Stored: ({ resource }) => Option.some(resource),
+    Decoded: ({ resource }) => Option.some(resource),
+    Provisional: ({ resource }) => Option.some(resource),
     Unlinked: () => Option.none(),
   })
 
-export { Decoded, is, match, maybeLiteralReference, Provisional, Stored, Unlinked }
+export { Decoded, is, match, maybeRecordOf, Provisional, Stored, Unlinked }
 export type {
   Decoded as DecodedType,
   Provisional as ProvisionalType,

@@ -16,7 +16,7 @@ import * as Referent from './referent.ts'
 /** What `Create` comes to for `referent`: its decoded resource, a provisional record for its logical reference, else nothing. */
 const createFor = (referent: Referent.Type): Destination.Type =>
   Referent.match(referent, {
-    AsResource: (asResource) => Destination.Decoded({ referent: asResource }),
+    AsResource: ({ resource }) => Destination.Decoded({ resource }),
     ByMentionOnly: ({ logicalReference }) =>
       Option.match(LinkableResource.maybeProvisionalFor(logicalReference), {
         onNone: () => Destination.Unlinked(),
@@ -27,7 +27,7 @@ const createFor = (referent: Referent.Type): Destination.Type =>
 /** A choice the referent's kind does not allow reads as its default: its decoded resource, or nothing. */
 const defaultFor = (referent: Referent.Type): Destination.Type =>
   Referent.match(referent, {
-    AsResource: (asResource) => Destination.Decoded({ referent: asResource }),
+    AsResource: ({ resource }) => Destination.Decoded({ resource }),
     ByMentionOnly: () => Destination.Unlinked(),
   })
 

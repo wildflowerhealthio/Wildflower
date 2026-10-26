@@ -149,25 +149,31 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   - **`Destination`** — where a referent ends up once `LinkToReferent` is
     followed, named for where the record comes from: **`Stored`**,
     **`Decoded`**, **`Provisional`**, **`Unlinked`**, matched with
-    `Destination.match`; `maybeLiteralReference` is what its mentions are
-    redirected to.
+    `Destination.match`; `maybeRecordOf` is the record its mentions are
+    redirected to. Every record-bearing variant carries a resource with an `id`, so a
+    resource-backed referent requires one (`Referent.tryOfResource`).
   - `resolution.ts` (**`Resolution`**, not exported) — `destinationOf`: a
     referent's choice followed to its destination, every rule an arm of
     `LinkChoice.match` or `Referent.match`.
-  - **`LinkPlan`** — `make`: everything the placement needs, worked out once
-    from each referent's **`Link`** (the referent with its destination): the
-    **`destinationsByReferentKey`**, the
-    **`destinationResourcesByLiteralReference`** (each stored or provisional
-    record as it will be written, its `identifiersToAssume`, and whether the
-    `resourceExistsInFile`), the **`literalReferenceRedirects`**, and what each
-    decoded resource assumes (**`identifiersToAssumeByReferentKey`**).
+  - **`PlacedRecord`** — the record under one literal reference as it will
+    be written, whatever its origin: the resource having assumed its
+    `identifiersToAssume` (its own derived identifier, then those of every
+    referent linked to it), and whether the `resourceExistsInFile`.
+    `byLiteralReference` builds them from each referent's **`Link`** (the
+    referent with its destination).
+  - **`LinkPlan`** — `make`: everything the placement needs, worked out once:
+    the **`destinationsByReferentKey`**, the
+    **`placedRecordsByLiteralReference`**, and the
+    **`literalReferenceRedirects`** (`Type/<decoded id>` → `Type/<stored id>`
+    for every decoded resource a stored record replaces).
   - `redirection.ts` (**`Redirection`**, not exported) — `redirectMentions`:
     a referent's mentions are redirected to its destination, through
     `ResourceReferences.map`, keeping `display` and `identifier`.
-  - **`Placement`** — `place`: each decoded resource replaced by, or written
-    alongside, what its referent becomes (`DecodedFile.mapResources`), and the
-    records the file only mentions appended under **`LINKED_SECTION_TITLE`**
-    at **`linkedKey`**.
+  - **`Placement`** — `place`: each decoded resource replaced by the stored
+    record standing in for it, else by the placed record under its own
+    literal reference, else kept (`DecodedFile.mapResources`), and the records
+    the file only mentions appended under **`LINKED_SECTION_TITLE`** at
+    **`linkedKey`**.
   - **`UnlinkedMention`** — `collect`: on a placed file, every resource
     **`OutsidePatientCompartment`** (a `subject` slot in which nothing lands
     on a patient of the device; FHIR's Patient CompartmentDefinition names
