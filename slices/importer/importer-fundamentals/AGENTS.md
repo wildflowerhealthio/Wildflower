@@ -159,21 +159,28 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     be written, whatever its origin: the resource having assumed its
     `identifiersToAssume` (its own derived identifier, then those of every
     referent linked to it), and whether the `resourceExistsInFile`.
-    `byLiteralReference` builds them from each referent's **`Link`** (the
-    referent with its destination).
+    `byLiteralReference` builds them from the links.
+  - **`Link`** — a referent with the destination its choice resolved to, what
+    the plan is built from.
   - **`LinkPlan`** — `make`: everything the placement needs, worked out once:
     the **`destinationsByReferentKey`**, the
     **`placedRecordsByLiteralReference`**, and the
     **`literalReferenceRedirects`** (`Type/<decoded id>` → `Type/<stored id>`
-    for every decoded resource a stored record replaces).
+    for every decoded resource a stored record stands in for). Read through
+    its two lookups, named for the questions the later phases ask:
+    **`maybeRedirectOf`** (where a decoded reference is redirected, a literal
+    one through the redirects and a logical one through its referent's
+    destination) and **`maybePlacedRecordFor`** (the record a decoded
+    resource is written as: the placed record under the literal reference
+    its own is redirected to).
   - `redirection.ts` (**`Redirection`**, not exported) — `redirectMentions`:
     a referent's mentions are redirected to its destination, through
     `ResourceReferences.map`, keeping `display` and `identifier`.
-  - **`Placement`** — `place`: each decoded resource replaced by the stored
-    record standing in for it, else by the placed record under its own
-    literal reference, else kept (`DecodedFile.mapResources`), and the records
-    the file only mentions appended under **`LINKED_SECTION_TITLE`** at
-    **`linkedKey`**.
+  - **`Placement`** — `place`: each decoded resource written as the record
+    `LinkPlan.maybePlacedRecordFor` has for it, else kept
+    (`DecodedFile.mapResources`), its mentions redirected either way, and the
+    records the file only mentions appended under **`LINKED_SECTION_TITLE`**
+    at **`linkedKey`**.
   - **`UnlinkedMention`** — `collect`: on a placed file, every resource
     **`OutsidePatientCompartment`** (a `subject` slot in which nothing lands
     on a patient of the device; FHIR's Patient CompartmentDefinition names

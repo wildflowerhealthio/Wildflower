@@ -15,14 +15,9 @@ import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-ty
 import { Array, Option, pipe } from 'effect'
 
 import * as Destination from './destination.ts'
+import type * as Link from './link.ts'
 import * as LinkableResource from './linkable-resource.ts'
 import * as Referent from './referent.ts'
-
-/** A link: a referent with the destination its choice resolved to. */
-interface Link {
-  readonly referent: Referent.Type
-  readonly destination: Destination.Type
-}
 
 /** The record under one literal reference, as it will be written. */
 interface Type {
@@ -50,7 +45,7 @@ interface Type {
  * different copies of one stored record, the last one's is written.
  */
 const byLiteralReference = (
-  links: readonly Link[],
+  links: readonly Link.Type[],
   decodedLiteralReferences: ReadonlySet<string>
 ): ReadonlyMap<string, Type> => {
   const linksToRecords = links.flatMap(({ referent, destination }) =>
@@ -87,4 +82,4 @@ const byLiteralReference = (
 }
 
 export { byLiteralReference }
-export type { Link, Type }
+export type { Type }

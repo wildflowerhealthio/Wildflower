@@ -9,8 +9,8 @@
  * so all three see the resources that get written. The stage runs in phases,
  * one module each: `Referent.discover` finds the referents, `Resolution`
  * resolves each one's choice into its `Destination`, `LinkPlan.make` works out
- * what every destination becomes, `Redirection` redirects each mention and
- * `Placement` rebuilds the file; `UnlinkedMention.collect` reads what still
+ * the `PlacedRecord` under every literal reference the links land on,
+ * `Redirection` redirects each mention and `Placement` rebuilds the file; `UnlinkedMention.collect` reads what still
  * lands nowhere off the placed file.
  *
  * @packageDocumentation

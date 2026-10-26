@@ -1,7 +1,7 @@
 /**
- * Placing a decoded file on its link plan: each decoded resource replaced by,
- * or written alongside, what its referent becomes, with its mentions
- * redirected; and the records the file only mentions appended.
+ * Placing a decoded file on its link plan: each decoded resource written as
+ * the record the plan has for it, with its mentions redirected; and the
+ * records the file only mentions appended.
  *
  * @packageDocumentation
  */
@@ -21,41 +21,21 @@ const LINKED_SECTION_TITLE = 'Linked'
 const linkedKey = (onlyMentioned: LinkableResource.WithId): string =>
   `linked:${LinkableResource.literalReferenceOf(onlyMentioned)}`
 
-/** The placed record under `resource`'s own literal reference, when the plan holds one. */
-const maybePlacedRecordAt = (
-  plan: LinkPlan.Type,
-  resource: LinkableResource.WithId
-): Option.Option<LinkableResource.WithId> =>
-  pipe(
-    Option.fromNullable(
-      plan.placedRecordsByLiteralReference.get(LinkableResource.literalReferenceOf(resource))
-    ),
-    Option.map(({ resource: placed }) => placed)
-  )
-
 /**
- * `decodedResource` as it is placed under `plan`: the stored record standing
- * in for it when its referent links to one; else the placed record under its
- * own literal reference, which is itself having assumed what the referents
- * linked to it bring, when anything links to it; else itself. Its mentions
- * are redirected either way.
+ * `decodedResource` as it is placed under `plan`: the record the plan writes
+ * it as, when it has one (a stored record standing in for it, or itself
+ * having assumed what the referents linked to it bring), else itself. Its
+ * mentions are redirected either way.
  */
-const placed = (plan: LinkPlan.Type, decodedResource: FhirResource): FhirResource => {
-  if (!LinkableResource.is(decodedResource)) {
-    return Redirection.redirectMentions(plan, decodedResource)
-  }
-  const storedStandIn = pipe(
-    LinkPlan.maybeStoredDestinationOf(plan.destinationsByReferentKey, decodedResource),
-    Option.flatMap((stored) => maybePlacedRecordAt(plan, stored))
+const placed = (plan: LinkPlan.Type, decodedResource: FhirResource): FhirResource =>
+  pipe(
+    Option.liftPredicate(decodedResource, LinkableResource.is),
+    Option.flatMap(LinkableResource.tryWithId),
+    Option.flatMap((withId) => LinkPlan.maybePlacedRecordFor(plan, withId)),
+    Option.map(({ resource }): FhirResource => resource),
+    Option.getOrElse(() => decodedResource),
+    (record) => Redirection.redirectMentions(plan, record)
   )
-  if (Option.isSome(storedStandIn)) return storedStandIn.value
-  const placedRecord = pipe(
-    LinkableResource.tryWithId(decodedResource),
-    Option.flatMap((withId) => maybePlacedRecordAt(plan, withId)),
-    Option.getOrElse(() => decodedResource)
-  )
-  return Redirection.redirectMentions(plan, placedRecord)
-}
 
 /** The records `plan` appends under {@link LINKED_SECTION_TITLE}: those the file only mentions. */
 const linkedSectionResources = (plan: LinkPlan.Type): readonly DecodedFile.Resource[] =>
