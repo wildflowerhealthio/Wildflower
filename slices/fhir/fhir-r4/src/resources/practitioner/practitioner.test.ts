@@ -224,9 +224,9 @@ describe('Practitioner.tryFromNameIdentifier', () => {
   })
 })
 
-describe('Practitioner.nameReference', () => {
+describe('Practitioner.tryReferenceFromName', () => {
   test('names the provider by type and name identifier, and shows the name as printed', () => {
-    const reference = Option.getOrThrow(Practitioner.nameReference(' Dr.  A Prescriber'))
+    const reference = Option.getOrThrow(Practitioner.tryReferenceFromName(' Dr.  A Prescriber'))
     expect([reference.type, reference.reference, reference.display]).toEqual([
       'Practitioner',
       null,
@@ -238,6 +238,6 @@ describe('Practitioner.nameReference', () => {
   })
 
   test('is None for a blank name', () => {
-    expect(Option.isNone(Practitioner.nameReference('  '))).toBe(true)
+    expect(Option.isNone(Practitioner.tryReferenceFromName('  '))).toBe(true)
   })
 })

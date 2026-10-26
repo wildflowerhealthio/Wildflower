@@ -1,4 +1,4 @@
-import { Option, Schema, String as Str } from 'effect'
+import { flow, Option, Schema, String as Str } from 'effect'
 
 import {
   OrNullAsOptional,
@@ -196,7 +196,7 @@ const nameIdentifier = (name: string): Option.Option<IdentifierAndReference.Iden
  * map treat the reference as a logical reference rather than guessing from
  * the field it sits in.
  */
-const nameReference = (name: string): Option.Option<IdentifierAndReference.ReferenceType> =>
+const tryReferenceFromName = (name: string): Option.Option<IdentifierAndReference.ReferenceType> =>
   Option.map(nameIdentifier(name), (identifier) => ({
     ...IdentifierAndReference.emptyReference,
     type: 'Practitioner',
@@ -210,6 +210,24 @@ type WithId = Type & { readonly id: string }
 const decodePractitioner = Schema.decodeSync(PractitionerSchema)
 
 const NAME_IDENTIFIER_SYSTEM_HREF = new URL(NAME_IDENTIFIER_SYSTEM).href
+
+/** Whether `identifier` is under {@link NAME_IDENTIFIER_SYSTEM}. */
+const isNameIdentifier = (identifier: IdentifierAndReference.IdentifierType): boolean =>
+  identifier.system?.href === NAME_IDENTIFIER_SYSTEM_HREF
+
+/** The provisional `Practitioner` for a printed `name`, at the id the name derives. */
+const provisionalForName = (name: string): WithId => {
+  const id = localResourceId(NAME_IDENTIFIER_SYSTEM, 'Practitioner', name)
+  return {
+    ...decodePractitioner({
+      resourceType: 'Practitioner',
+      id,
+      identifier: [{ system: NAME_IDENTIFIER_SYSTEM, value: name }],
+      name: [{ text: name }],
+    }),
+    id,
+  }
+}
 
 /**
  * The provisional `Practitioner` a name identifier stands for, until a fuller
@@ -226,31 +244,20 @@ const NAME_IDENTIFIER_SYSTEM_HREF = new URL(NAME_IDENTIFIER_SYSTEM).href
  * the same name from two sources is one record, and every later import that
  * names it adds to it rather than beside it.
  */
-const tryFromNameIdentifier = (
+const tryFromNameIdentifier: (
   identifier: IdentifierAndReference.IdentifierType
-): Option.Option<WithId> =>
-  Option.fromNullable(identifier.value).pipe(
-    Option.filter(() => identifier.system?.href === NAME_IDENTIFIER_SYSTEM_HREF),
-    Option.filter(Str.isNonEmpty),
-    Option.map((name) => {
-      const id = localResourceId(NAME_IDENTIFIER_SYSTEM, 'Practitioner', name)
-      return {
-        ...decodePractitioner({
-          resourceType: 'Practitioner',
-          id,
-          identifier: [{ system: NAME_IDENTIFIER_SYSTEM, value: name }],
-          name: [{ text: name }],
-        }),
-        id,
-      }
-    })
-  )
+) => Option.Option<WithId> = flow(
+  Option.liftPredicate(isNameIdentifier),
+  Option.flatMapNullable((identifier) => identifier.value),
+  Option.filter(Str.isNonEmpty),
+  Option.map(provisionalForName)
+)
 
 export {
   NAME_IDENTIFIER_SYSTEM,
   nameIdentifier,
-  nameReference,
   PractitionerSchema as Schema,
   tryFromNameIdentifier,
+  tryReferenceFromName,
 }
 export type { Type, WithId }
