@@ -12,8 +12,13 @@
  */
 
 import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import { ResourceReferences, type FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
-import { Option, pipe } from 'effect'
+import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
+import {
+  Practitioner,
+  ResourceReferences,
+  type FhirResource,
+} from '@wildflowerhealthio/fhir-r4/resources'
+import { Option, Schema, pipe } from 'effect'
 
 import * as DecodedFile from '../decoded-file.ts'
 import * as IdentityRow from './identity-row.ts'
@@ -54,9 +59,35 @@ const linkedKey = (resource: Target.StoredResource): string => `linked:${literal
 const targetOf = (map: Type, row: IdentityRow.Type): Target.Type =>
   map.get(IdentityRow.key(row)) ?? (row._tag === 'resource' ? 'new' : 'dontLink')
 
+const decodePractitioner = Schema.decodeSync(Practitioner.Schema)
+
+/** The `Practitioner` minted for a name identity: its name as `text`, the identity as identifier. */
+const mint = (identity: Identity.Type): Target.Minted => {
+  const id = localResourceId(identity.system.href, 'Practitioner', identity.value)
+  return {
+    _tag: 'minted',
+    resource: {
+      ...decodePractitioner({
+        resourceType: 'Practitioner',
+        id,
+        identifier: [{ system: identity.system.href, value: identity.value }],
+        name: [{ text: identity.value }],
+      }),
+      id,
+    },
+  }
+}
+
+/** What `'new'` means for `row`: its own resource, a minted one for a name, else `'dontLink'`. */
+const newFor = (row: IdentityRow.Type): Target.Resolved => {
+  if (row._tag === 'resource') return { _tag: 'newFromRow', row }
+  return Identity.isNameIdentity(row.identity) ? mint(row.identity) : 'dontLink'
+}
+
 const resolveFrom = (
   map: Type,
   rows: ReadonlyMap<string, IdentityRow.Type>,
+  start: IdentityRow.Type,
   row: IdentityRow.Type,
   visited: ReadonlySet<string>
 ): Target.Resolved => {
@@ -64,15 +95,16 @@ const resolveFrom = (
   if (Target.isStored(target) && target.resource.resourceType === row.identity.resourceType) {
     return target
   }
-  if (row._tag === 'resource') return { _tag: 'newFromRow', row }
+  if (row._tag === 'resource' || target === 'new') return newFor(row)
   if (!Target.isRow(target)) return 'dontLink'
   const next = rows.get(target.key)
   // A row of another type is an impossible link: a `subject` never lands on a Practitioner.
-  return next === undefined ||
-    visited.has(target.key) ||
-    next.identity.resourceType !== row.identity.resourceType
-    ? 'dontLink'
-    : resolveFrom(map, rows, next, new Set([...visited, target.key]))
+  if (next === undefined || next.identity.resourceType !== row.identity.resourceType) {
+    return 'dontLink'
+  }
+  return visited.has(target.key)
+    ? newFor(start)
+    : resolveFrom(map, rows, start, next, new Set([...visited, target.key]))
 }
 
 /** What `row` comes to under `map`, given every row of its file keyed by `IdentityRow.key`. */
@@ -80,7 +112,7 @@ const resolveIn = (
   map: Type,
   rows: ReadonlyMap<string, IdentityRow.Type>,
   row: IdentityRow.Type
-): Target.Resolved => resolveFrom(map, rows, row, new Set([IdentityRow.key(row)]))
+): Target.Resolved => resolveFrom(map, rows, row, row, new Set([IdentityRow.key(row)]))
 
 const rowIndex = (rows: readonly IdentityRow.Type[]): ReadonlyMap<string, IdentityRow.Type> =>
   new Map(rows.map((row) => [IdentityRow.key(row), row]))
@@ -93,10 +125,11 @@ const rowIndex = (rows: readonly IdentityRow.Type[]): ReadonlyMap<string, Identi
  * @remarks
  * A combination the row's kind does not allow reads as its default: a
  * resource-backed row targeting a row, `'dontLink'`, or a stored resource of
- * another type is `'new'`; an id-only row targeting `'new'`, a stored resource
- * of another type, a row of another type, or a row the file does not hold is
- * `'dontLink'`. A cycle resolves to `'new'`, and since only id-only rows target
- * rows, every row in one is id-only and so reads as `'dontLink'`.
+ * another type is `'new'`; an id-only row targeting a stored resource of
+ * another type, a row of another type, or a row the file does not hold is
+ * `'dontLink'`. `'new'` on an id-only row mints a `Practitioner` when its
+ * identity is a printed name and reads as `'dontLink'` otherwise. A cycle
+ * resolves to `'new'` for the row resolved, so only a name row in one mints.
  */
 const resolve = (
   map: Type,
@@ -111,9 +144,9 @@ const taughtBy = (row: IdentityRow.Type): readonly IdentifierAndReference.Identi
 /** The literal reference a resolution points at, or `None` for `'dontLink'` or an id-less resource. */
 const literalOfResolved = (resolved: Target.Resolved): Option.Option<string> => {
   if (resolved === 'dontLink') return Option.none()
-  return resolved._tag === 'stored'
-    ? Option.some(literalOf(resolved.resource))
-    : literalOfDecoded(resolved.row.resource)
+  return resolved._tag === 'newFromRow'
+    ? literalOfDecoded(resolved.row.resource)
+    : Option.some(literalOf(resolved.resource))
 }
 
 /**
@@ -128,7 +161,8 @@ const literalOfResolved = (resolved: Target.Resolved): Option.Option<string> => 
  *   that resource's literal, keeping its `display` and its own `identifier`.
  * - A stored resource that only id-only rows link to is appended, carrying
  *   their identifiers, under {@link LINKED_SECTION_TITLE} at the end, so the
- *   diff shows what it gained.
+ *   diff shows what it gained. So is the `Practitioner` a name row set to
+ *   `'new'` mints, once however many rows resolve to it.
  * - A row that stays `'new'` writes its resource as it is, plus its derived
  *   identifier and those of the id-only rows linked to it. A stored target
  *   gains its own derived identifier as well, so a name-and-birth-date match
@@ -183,8 +217,8 @@ const apply = (decodedFile: DecodedFile.DecodedFile, map: Type): DecodedFile.Dec
       Option.flatMapNullable(target, (key) => taught.get(key)),
       () => []
     )
-  // Every stored target, in first-linked order, and whether only id-only rows link it.
-  const storedTargets = new Map<string, { resource: Target.StoredResource; linkedOnly: boolean }>()
+  // Every stored or minted target, in first-linked order, and whether only id-only rows link it.
+  const linkTargets = new Map<string, { resource: Target.StoredResource; linkedOnly: boolean }>()
   for (const { row, resolved } of resolvedRows) {
     if (resolved === 'dontLink') continue
     if (resolved._tag === 'newFromRow') {
@@ -192,18 +226,18 @@ const apply = (decodedFile: DecodedFile.DecodedFile, map: Type): DecodedFile.Dec
       continue
     }
     const target = literalOf(resolved.resource)
-    const known = storedTargets.get(target)
+    const known = linkTargets.get(target)
     if (known === undefined) {
       teach(target, Option.toArray(IdentityRow.derivedIdentifier(resolved.resource)))
     }
     teach(target, taughtBy(row))
-    storedTargets.set(target, {
+    linkTargets.set(target, {
       resource: resolved.resource,
       linkedOnly: (known?.linkedOnly ?? true) && row._tag === 'reference',
     })
   }
-  const storedResources = new Map(
-    [...storedTargets].map(([target, { resource }]) => [
+  const linkResources = new Map(
+    [...linkTargets].map(([target, { resource }]) => [
       target,
       Identity.withIdentifiers(resource, taught.get(target) ?? []),
     ])
@@ -234,7 +268,7 @@ const apply = (decodedFile: DecodedFile.DecodedFile, map: Type): DecodedFile.Dec
     if (!Identity.isIdentifiedResource(resource)) return repointAll(resource)
     const replacement = replacementOf(resource)
     if (Option.isSome(replacement)) {
-      return storedResources.get(literalOf(replacement.value.resource)) ?? resource
+      return linkResources.get(literalOf(replacement.value.resource)) ?? resource
     }
     // What it gains as a row's `'new'` resource, and as a copy of a stored
     // target the file already holds (as a re-apply's Linked section does).
@@ -259,10 +293,10 @@ const apply = (decodedFile: DecodedFile.DecodedFile, map: Type): DecodedFile.Dec
       Option.toArray(literalOfDecoded(resource))
     )
   )
-  const linked = [...storedTargets]
+  const linked = [...linkTargets]
     .filter(([target, { linkedOnly }]) => linkedOnly && !held.has(target))
     .flatMap(([target]) =>
-      Option.toArray(Option.fromNullable(storedResources.get(target))).map((resource) => ({
+      Option.toArray(Option.fromNullable(linkResources.get(target))).map((resource) => ({
         key: linkedKey(resource),
         title: IdentityRow.labelOf(resource, target),
         resource,

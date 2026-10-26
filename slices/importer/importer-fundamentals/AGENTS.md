@@ -118,7 +118,8 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   names someone by identifier alone; **`discover`** finds both through
   `ResourceReferences.collect`, resource-backed first, once per key);
   **`Target`** (`'new'`, a **`stored`** resource, another **`row`**, or
-  `'dontLink'`); and **`IdentityMap`** (the `ReadonlyMap<key, Target>`;
+  `'dontLink'`, and what one resolves to: stored, the row's own resource, a
+  **`minted`** Practitioner for a printed name, or `'dontLink'`); and **`IdentityMap`** (the `ReadonlyMap<key, Target>`;
   **`targetOf`** with its per-kind default, **`resolve`** following `row`
   targets, **`apply`** and **`unresolved`**). `reference-slot.ts`
   (**`ReferenceSlot`**, not exported) reads a resource's top-level `subject`,
@@ -243,10 +244,17 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
   `ResourceReferences.map`, keeping its `display` and `identifier`; a stored
   resource only id-only rows link is appended under a final **"Linked"**
   section so the review shows the identifier it gained; a `'new'` resource is
-  written as decoded plus its derived identifier. A `row` target follows to the
-  end, and a combination a row's kind does not allow, a row of another type,
-  a cycle, or a row the file does not hold falls back to `'new'` for a
-  resource-backed row and `'dontLink'` for an id-only one. `unresolved` lists, on the applied file,
+  written as decoded plus its derived identifier. An id-only row may take
+  `'new'` only when its identity is a provider's printed name
+  (`Practitioner.NAME_IDENTIFIER_SYSTEM`): `apply` then mints a minimal
+  `Practitioner` for it, its id `localResourceId(system, 'Practitioner',
+  name)` so the same name from two sources mints one resource, writes it in
+  the Linked section, and re-points the name's references at it; its default
+  stays `'dontLink'`. A `row` target follows to the end, and a combination a
+  row's kind does not allow, a row of another type, or a row the file does
+  not hold falls back to `'new'` for a resource-backed row and `'dontLink'`
+  for an id-only one; a cycle resolves to `'new'` for the row resolved, which
+  only a name row can take. `unresolved` lists, on the applied file,
   every missing `subject`, every slot reference that is an absolute URL, and
   every identity the map leaves identifier-only; a `display`-only provider is
   not one the map could link, so it is not listed.

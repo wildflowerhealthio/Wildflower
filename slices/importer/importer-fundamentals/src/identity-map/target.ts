@@ -5,8 +5,11 @@
  * A resource-backed row targets a stored resource or `'new'` (its own
  * resource is written and becomes the person or provider). An id-only row
  * targets a stored resource, another row (the resource that row writes), or
- * `'dontLink'` (its references keep their identifier-only form). Following
- * `row` targets to the end gives a {@link Resolved}.
+ * `'dontLink'` (its references keep their identifier-only form). An id-only
+ * row whose identity is a printed name (`Identity.isNameIdentity`) may also
+ * target `'new'`: a minimal `Practitioner` is minted for the name, with an id
+ * derived from it, so the same name from two sources mints one resource.
+ * Following `row` targets to the end gives a {@link Resolved}.
  *
  * @packageDocumentation
  */
@@ -40,8 +43,18 @@ interface NewFromRow {
   readonly row: IdentityRow.ResourceBacked
 }
 
+/**
+ * A name identity's `'new'`: the `Practitioner` minted for it, its id
+ * `localResourceId(system, 'Practitioner', name)`, its identifier the identity
+ * and its `name[0].text` the name.
+ */
+interface Minted {
+  readonly _tag: 'minted'
+  readonly resource: Practitioner.Type & { readonly id: string }
+}
+
 /** What a row's target comes to once every `row` target on the way is followed. */
-type Resolved = Stored | NewFromRow | 'dontLink'
+type Resolved = Stored | Minted | NewFromRow | 'dontLink'
 
 /** The target linking a row to `resource`, already on the device. */
 const stored = (resource: StoredResource): Stored => ({ _tag: 'stored', resource })
@@ -57,4 +70,4 @@ const isStored = (target: Type | Resolved | undefined): target is Stored =>
 const isRow = (target: Type): target is Row => typeof target !== 'string' && target._tag === 'row'
 
 export { isRow, isStored, row, stored }
-export type { NewFromRow, Resolved, Row, Stored, StoredResource, Type }
+export type { Minted, NewFromRow, Resolved, Row, Stored, StoredResource, Type }

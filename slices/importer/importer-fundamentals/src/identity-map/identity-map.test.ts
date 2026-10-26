@@ -1,4 +1,5 @@
 import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
+import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
 import { Practitioner, type FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { FastCheck as fc } from 'effect'
@@ -164,6 +165,86 @@ describe('IdentityMap.apply', () => {
 
     const { requester } = slotsOf(at(applied, 'k-0'))
     expect([requester?.reference, requester?.display]).toEqual(['Practitioner/sp-1', 'Dr. A Smith'])
+  })
+})
+
+describe('IdentityMap.apply on a printed name set to new', () => {
+  const MINTED_ID = localResourceId(
+    Practitioner.NAME_IDENTIFIER_SYSTEM,
+    'Practitioner',
+    'Dr. A Smith'
+  )
+  const file = fileOf(
+    request('rx-1', customerSubject('c-9'), namedRequester('Dr. A Smith')),
+    request('rx-2', customerSubject('c-9'), namedRequester('Dr. A Smith'))
+  )
+  const map: IdentityMap.Type = new Map<string, Target.Type>([[PRESCRIBER, 'new']])
+
+  it('mints one Practitioner for the name in the Linked section and points every requester at it', () => {
+    const applied = IdentityMap.apply(file, map)
+
+    expect(applied.sections.map((section) => section.title)).toEqual([
+      'Resources',
+      IdentityMap.LINKED_SECTION_TITLE,
+    ])
+    expect(applied.sections[1]?.resources.map((entry) => entry.key)).toEqual([
+      `linked:Practitioner/${MINTED_ID}`,
+    ])
+    const minted = at(applied, `linked:Practitioner/${MINTED_ID}`)
+    expect(minted?.resourceType).toBe('Practitioner')
+    expect(minted?.id).toBe(MINTED_ID)
+    expect(identifiersOf(minted)).toEqual([`${Practitioner.NAME_IDENTIFIER_SYSTEM}|Dr. A Smith`])
+    expect(
+      minted?.resourceType === 'Practitioner' ? minted.name.map((name) => name.text) : []
+    ).toEqual(['Dr. A Smith'])
+    for (const key of ['k-0', 'k-1']) {
+      const { requester } = slotsOf(at(applied, key))
+      expect([requester?.reference, requester?.display]).toEqual([
+        `Practitioner/${MINTED_ID}`,
+        'Dr. A Smith',
+      ])
+    }
+    expect(IdentityMap.unresolved(file, map).map((entry) => entry.path)).toEqual([
+      'subject',
+      'subject',
+    ])
+  })
+
+  it('changes nothing when applied again', () => {
+    const once = IdentityMap.apply(file, map)
+
+    expect(fileWireOf(IdentityMap.apply(once, map))).toBe(fileWireOf(once))
+  })
+
+  it('keeps a name row’s default at don’t link, mints only for a name, and mints out of a cycle', () => {
+    const jones = `Practitioner|${Practitioner.NAME_IDENTIFIER_SYSTEM}|Dr. B Jones`
+    const rows = IdentityRow.discover(
+      fileOf(
+        ...file.sections.flatMap((section) => section.resources.map((entry) => entry.resource)),
+        request('rx-3', customerSubject('c-9'), namedRequester('Dr. B Jones'))
+      )
+    )
+    const resolved = (targets: IdentityMap.Type, key: string): string => {
+      const row = rows.find((candidate) => IdentityRow.key(candidate) === key)
+      if (row === undefined) throw new Error(`no row ${key}`)
+      const target = IdentityMap.resolve(targets, rows, row)
+      return target === 'dontLink'
+        ? target
+        : `${target._tag} ${target._tag === 'newFromRow' ? '' : target.resource.id}`
+    }
+    const cycle: IdentityMap.Type = new Map<string, Target.Type>([
+      [PRESCRIBER, Target.row(jones)],
+      [jones, Target.row(PRESCRIBER)],
+    ])
+
+    expect(
+      rows
+        .filter((row) => IdentityRow.key(row) === PRESCRIBER)
+        .map((row) => IdentityMap.targetOf(new Map(), row))
+    ).toEqual(['dontLink'])
+    expect(resolved(map, PRESCRIBER)).toBe(`minted ${MINTED_ID}`)
+    expect(resolved(new Map([[ACCOUNT, 'new']]), ACCOUNT)).toBe('dontLink')
+    expect(resolved(cycle, PRESCRIBER)).toBe(`minted ${MINTED_ID}`)
   })
 })
 

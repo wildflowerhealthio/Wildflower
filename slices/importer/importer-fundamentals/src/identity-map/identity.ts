@@ -10,7 +10,7 @@
  */
 
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import type { Patient, Practitioner } from '@wildflowerhealthio/fhir-r4/resources'
+import { Practitioner, type Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array, Equivalence, Option, Schema, String as Str } from 'effect'
 
 /** The resource types an identity names. */
@@ -77,6 +77,15 @@ const decodeIdentifier = Schema.decodeSync(IdentifierAndReference.IdentifierSche
 const toIdentifier = (identity: Type): IdentifierAndReference.IdentifierType =>
   decodeIdentifier({ system: identity.system.href, value: identity.value })
 
+/**
+ * Whether `identity` is a provider's printed name under
+ * `Practitioner.NAME_IDENTIFIER_SYSTEM`: the one id-only identity a
+ * Practitioner can be minted for, since the name is all a provider needs.
+ */
+const isNameIdentity = (identity: Type): boolean =>
+  identity.resourceType === 'Practitioner' &&
+  identity.system.href === new URL(Practitioner.NAME_IDENTIFIER_SYSTEM).href
+
 /** Whether `identifier` carries both a `system` and a `value`, so it can link two records. */
 const isLinkable = (identifier: IdentifierAndReference.IdentifierType): boolean =>
   identifier.system !== null && identifier.value !== null && Str.isNonEmpty(identifier.value)
@@ -112,6 +121,7 @@ export {
   fromIdentifier,
   isIdentifiedResource,
   isLinkable,
+  isNameIdentity,
   isResourceType,
   key,
   ofResource,
