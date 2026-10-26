@@ -80,8 +80,8 @@ const customerIdOf = (url: string): Effect.Effect<string, ParseResult.ParseError
  * The `subject` wire: the account the history is for, by identifier alone,
  * `customerId` under `ShoppersIdentifierSystem.CustomerId`, with no literal
  * `reference`. The feed names no managed person and no Patient stands for
- * the account, so the identifier is all it can say; the importer's identity
- * map resolves it to a person.
+ * the account, so the identifier is all it can say, for the importer's
+ * identity map to resolve to a person.
  */
 const accountSubjectWire = (customerId: string): Record<string, unknown> => ({
   identifier: { system: ShoppersIdentifierSystem.CustomerId, value: customerId },

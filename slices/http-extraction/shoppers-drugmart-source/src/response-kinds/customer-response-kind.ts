@@ -176,12 +176,12 @@ const customerUrl = new RegExp(
  * Entity for the Shoppers customers XHR: one bespoke JSON object carrying the
  * account and the people it manages, synthesized into a demographic `Patient`
  * per `customer.patients[]` entry and nothing else: the account is not a
- * person, so it is no Patient. When `patients` lists exactly one person, the
- * account's email and phone are theirs too and join their `telecom`; with
- * several, nothing says whose they are, so they are dropped. This entity — not
- * {@link PrescriptionResponseKind} — owns the subject Patient records, so a run
- * where this XHR fails leaves those `subject` references dangling (tolerated;
- * not FK-enforced). A patient entry that does not decode as a
+ * person, so it is no Patient. When `patients` lists exactly one entry, and it
+ * is a person, the account's email and phone are theirs too and join their
+ * `telecom`; with any other entry beside them, nothing says whose they are, so
+ * they are dropped. This entity — not {@link PrescriptionResponseKind} — owns
+ * the subject Patient records, so a run where this XHR fails leaves those
+ * `subject` references dangling (tolerated; not FK-enforced). A patient entry that does not decode as a
  * {@link SourcePatient} (one with no string `id`, or not an object)
  * drops-and-counts via `Effect.logInfo`; a malformed optional field only drops
  * that field.

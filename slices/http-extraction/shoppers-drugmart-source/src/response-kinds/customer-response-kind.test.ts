@@ -196,10 +196,13 @@ describe('CustomerResponseKind', () => {
       }
     )
 
-    it('drops a patient entry with no id and keeps the rest', () => {
-      // Arrange — the second patient has no id.
+    it("drops a patient entry with no id, keeps the rest, and gives the survivor none of the account's contacts", () => {
+      // Arrange — the second patient has no id, so nothing says the account's
+      // email and phone are the first's alone.
       const payload = customerPayload({
         customer: {
+          email: 'dana.okafor@example.com',
+          phoneNumber: '4165550100',
           patients: [
             { id: 'pt-uuid-1', firstName: 'Dana', lastName: 'Okafor' },
             { firstName: 'Ghost', lastName: 'NoId' },
@@ -210,7 +213,7 @@ describe('CustomerResponseKind', () => {
       // Act
       const result = parse(payload)
 
-      // Assert — one demographic Patient.
+      // Assert — one demographic Patient, without the account's telecom.
       expect(result).toStrictEqual([
         decodePatient({
           resourceType: 'Patient',
