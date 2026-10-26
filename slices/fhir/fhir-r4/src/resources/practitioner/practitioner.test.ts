@@ -3,7 +3,7 @@ import {
   TimelessDateFromString,
 } from '@wildflowerhealthio/kitchen-sink/schema'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Arbitrary, Schema } from 'effect'
+import { Arbitrary, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
@@ -141,6 +141,49 @@ describe('FhirR4Practitioner', () => {
           meta: Schema.NullOr(Meta.Schema),
         }),
         (override) => roundTrip({ ...samplePractitioner, ...override })
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+})
+
+describe('Practitioner.nameIdentifier', () => {
+  const decodeIdentifier = Schema.decodeUnknownSync(IdentifierAndReference.IdentifierSchema)
+
+  test('names a provider by their printed name under the practitioner-name system', () => {
+    expect(Option.getOrThrow(Practitioner.nameIdentifier('Dr. A Prescriber'))).toSchemaEqual(
+      IdentifierAndReference.IdentifierSchema,
+      decodeIdentifier({
+        system: 'https://wildflowerhealth.io/fhir/identifier/practitioner-name',
+        value: 'Dr. A Prescriber',
+      })
+    )
+  })
+
+  test('trims the name and collapses each run of whitespace inside it to one space', () => {
+    expect(Option.getOrThrow(Practitioner.nameIdentifier(' \tDr.  A\n Prescriber  ')).value).toBe(
+      'Dr. A Prescriber'
+    )
+  })
+
+  test('is None for a blank name, which identifies nobody', () => {
+    expect(Option.isNone(Practitioner.nameIdentifier(' \t '))).toBe(true)
+  })
+
+  const whitespaceArbitrary = fc.constantFrom(' ', '  ', '\t', '\n ')
+
+  test('property: one name spelled with different spacing is one identifier', () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.stringMatching(/^\S+$/), { minLength: 1, maxLength: 4 }),
+        fc.tuple(whitespaceArbitrary, whitespaceArbitrary, whitespaceArbitrary),
+        (words, [before, between, after]) => {
+          const spaced = `${before}${words.join(between)}${after}`
+          expect(Option.getOrThrow(Practitioner.nameIdentifier(spaced))).toSchemaEqual(
+            IdentifierAndReference.IdentifierSchema,
+            Option.getOrThrow(Practitioner.nameIdentifier(words.join(' ')))
+          )
+        }
       ),
       { numRuns: numRunsFor({ base: 100 }) }
     )

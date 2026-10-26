@@ -1,5 +1,13 @@
-import { CanadianCodingSystem, CodeableConcept } from '@wildflowerhealthio/fhir-r4/data-types'
-import { MedicationDispense, MedicationRequest } from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  CanadianCodingSystem,
+  CodeableConcept,
+  IdentifierAndReference,
+} from '@wildflowerhealthio/fhir-r4/data-types'
+import {
+  MedicationDispense,
+  MedicationRequest,
+  Practitioner,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { numRunsFor, utilityExpectations } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, type Either, Option, type ParseResult, Schema } from 'effect'
@@ -33,6 +41,7 @@ const STATUS_URL =
 
 const decodeRequest = Schema.decodeUnknownSync(MedicationRequest.Schema)
 const decodeDispense = Schema.decodeUnknownSync(MedicationDispense.Schema)
+const decodeReference = Schema.decodeUnknownSync(IdentifierAndReference.ReferenceSchema)
 /** `medication[x]` is loosely typed on the decoded resource; read it as a concept. */
 const decodeConcept = Schema.decodeUnknownSync(Schema.typeSchema(CodeableConcept.Schema))
 
@@ -112,7 +121,10 @@ const expectedRequest = decodeRequest({
     coding: [{ system: CanadianCodingSystem.Din, code: '02123456', display: 'atorvastatin 20mg' }],
     text: 'Atorvastatin',
   },
-  requester: { display: 'Dr. A Prescriber' },
+  requester: {
+    identifier: { system: Practitioner.NAME_IDENTIFIER_SYSTEM, value: 'Dr. A Prescriber' },
+    display: 'Dr. A Prescriber',
+  },
   statusReason: {
     coding: [{ system: PRESCRIPTION_STATUS_TYPE_SYSTEM, code: 'UNABLE_TO_RENEW_ONLINE' }],
     text: 'Unable to renew online',
@@ -384,6 +396,28 @@ describe('PrescriptionResponseKind', () => {
       // …while the fill window still closes on the next-fill date.
       expect(request?.dispenseRequest?.validityPeriod?.end).not.toBeNull()
     })
+
+    it("names the prescriber by Practitioner's name identifier, and shows the name as printed", () => {
+      const [request] = byType(
+        parse(prescriptionJson({ prescriberName: ' Dr.  A Prescriber' })),
+        'MedicationRequest'
+      )
+
+      expect(request?.requester).toStrictEqual(
+        decodeReference({
+          identifier: { system: Practitioner.NAME_IDENTIFIER_SYSTEM, value: 'Dr. A Prescriber' },
+          display: ' Dr.  A Prescriber',
+        })
+      )
+    })
+
+    it.each([undefined, '', '  '])(
+      'omits the requester when the payload names no prescriber (%j)',
+      (prescriberName) => {
+        const [request] = byType(parse(prescriptionJson({ prescriberName })), 'MedicationRequest')
+        expect(request?.requester).toBeNull()
+      }
+    )
 
     it('omits priorPrescription when the payload carries no previousPrescription', () => {
       const [request] = byType(

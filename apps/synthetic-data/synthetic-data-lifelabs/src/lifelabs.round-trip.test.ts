@@ -34,7 +34,7 @@ import { labDrawsArbitrary, laboratoryArbitrary, requisitionArbitrary } from './
  * generator on their pharmacy generator's patient reference, and every result's
  * subject must name the Patient the import produced for that person —
  * reference and source identifier as the import's own MedicationRequests
- * spell them, and never the Shoppers account (`pcid`) Patient.
+ * spell them.
  */
 
 const RUNS = numRunsFor({ base: 10 })
@@ -138,7 +138,7 @@ describe('LifeLabs results on a Rexall Patient', () => {
 })
 
 describe('LifeLabs results on a Shoppers Patient', () => {
-  test("property: every managed person's results name their own Patient, not the account's", async () => {
+  test("property: every managed person's results name their own Patient", async () => {
     await fc.assert(
       fc.asyncProperty(
         fc
@@ -160,13 +160,8 @@ describe('LifeLabs results on a Shoppers Patient', () => {
             await Effect.runPromise(ShoppersHar.render(asOf, account))
           )
           const patients = patientsIn(imported)
-          const accountPatientIds = patients
-            .filter((patient) => patient.link.length > 0)
-            .map((patient) => `Patient/${patient.id}`)
-          const personPatientIds = patients
-            .filter((patient) => patient.link.length === 0)
-            .map((patient) => `Patient/${patient.id}`)
-          expect(accountPatientIds).toHaveLength(1)
+          const personPatientIds = patients.map((patient) => `Patient/${patient.id}`)
+          expect(personPatientIds).toHaveLength(account.patients.length)
           const requestSubjects = requestSubjectsIn(imported)
           for (const [index, managed] of account.patients.entries()) {
             const story: Story.Story = {
@@ -187,7 +182,6 @@ describe('LifeLabs results on a Shoppers Patient', () => {
             expect(subjects.length).toBeGreaterThan(0)
             for (const subject of subjects) {
               expect(spelled(subject)).toEqual(spelled(asImported))
-              expect(accountPatientIds).not.toContain(subject?.reference)
             }
           }
         }

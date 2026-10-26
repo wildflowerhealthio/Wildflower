@@ -1,11 +1,12 @@
+import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import type { FhirResource, MedicationDispense } from '@wildflowerhealthio/fhir-r4/resources'
 import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
-import { Effect, Option } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { mergeShoppersResources } from './merge-resources.ts'
 import { customerUrlOf, prescriptionHistoryUrlOf, prescriptionStatusUrlOf } from './portal-url.ts'
-import { shoppersStoreLocatorUrl } from './shoppers.ts'
+import { ShoppersIdentifierSystem, shoppersStoreLocatorUrl } from './shoppers.ts'
 import { shoppersDrugMartSource } from './source.ts'
 
 /**
@@ -19,6 +20,8 @@ const PRESCRIPTION_ID = 'rx-uuid-1'
 const DISPENSE_ID = 'disp-1'
 const STORE_ID = 9000
 const STORE_NAME = 'SDM Pharmacy #9000'
+
+const decodeReference = Schema.decodeUnknownSync(IdentifierAndReference.ReferenceSchema)
 
 /** What the source's kinds make of `payload` served at `url`. */
 const extract = (url: string, payload: unknown): readonly FhirResource[] => {
@@ -43,7 +46,7 @@ const onlyDispenseOf = (resources: readonly FhirResource[]): MedicationDispense.
 
 const customers = (): readonly FhirResource[] =>
   extract(customerUrlOf(ACCOUNT_ID), {
-    customer: { pcid: ACCOUNT_ID, patients: [{ id: PERSON_ID, firstName: 'Ada' }] },
+    customer: { patients: [{ id: PERSON_ID, firstName: 'Ada' }] },
   })
 
 /** The status feed's copy; `din` is the prescription's, when it states one. */
@@ -82,13 +85,16 @@ describe('shoppersDrugMartSource', () => {
     expect(shoppersDrugMartSource.mergeResources).toBe(mergeShoppersResources)
   })
 
-  it("should adopt a history dispense's subject onto the account Patient the customers feed keys", () => {
-    const accountPatient = customers().find(
-      (resource) => resource.resourceType === 'Patient' && resource.link.length > 0
-    )
+  it("should adopt the status copy's subject onto the person's Patient, and leave the history copy's naming the account by identifier alone", () => {
+    const [personPatient] = customers()
 
-    expect(accountPatient?.id).toEqual(expect.stringMatching(/^wf-/))
-    expect(historyCopy().subject?.reference).toBe(`Patient/${accountPatient?.id}`)
+    expect(personPatient?.id).toEqual(expect.stringMatching(/^wf-/))
+    expect(statusCopy().subject?.reference).toBe(`Patient/${personPatient?.id}`)
+    expect(historyCopy().subject).toStrictEqual(
+      decodeReference({
+        identifier: { system: ShoppersIdentifierSystem.CustomerId, value: ACCOUNT_ID },
+      })
+    )
   })
 
   it('should give both copies of one fill the same adopted id', () => {
