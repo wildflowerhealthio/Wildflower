@@ -17,6 +17,14 @@ export {
 } from './field-diff.ts'
 export { trimTrailingSlashes } from './fhir-base-url.ts'
 export {
+  NEXT_RELATION,
+  nextPageToken,
+  PAGE_TOKEN_PARAM,
+  type PageLink,
+  searchAllPages,
+  type SearchsetPage,
+} from './search-pages.ts'
+export {
   FhirR4ResourcesHttpApiClient,
   type FhirR4ResourcesHttpApiClientShape,
 } from './fhir-r4-resources-http-api-client.ts'
