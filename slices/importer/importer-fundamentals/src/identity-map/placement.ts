@@ -10,9 +10,9 @@ import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { Option, pipe } from 'effect'
 
 import * as DecodedFile from '../decoded-file.ts'
-import * as Identity from './identity.ts'
 import * as LinkPlan from './link-plan.ts'
 import * as LinkableResource from './linkable-resource.ts'
+import * as LogicalReference from './logical-reference.ts'
 import * as Redirection from './redirection.ts'
 
 /** The title of the section the placement appends records the file only mentions under. */
@@ -49,9 +49,9 @@ const placed = (plan: LinkPlan.Type, decodedResource: FhirResource): FhirResourc
   const storedStandIn = maybeStoredStandInFor(plan, decodedResource)
   if (Option.isSome(storedStandIn)) return storedStandIn.value
   const assumedAsDecodedResource = pipe(
-    LinkableResource.maybeIdentityOf(decodedResource),
-    Option.flatMapNullable((identity) =>
-      plan.identifiersToAssumeByReferentKey.get(Identity.key(identity))
+    LinkableResource.maybeLogicalReferenceOf(decodedResource),
+    Option.flatMapNullable((logicalReference) =>
+      plan.identifiersToAssumeByReferentKey.get(LogicalReference.key(logicalReference))
     ),
     Option.getOrElse(() => [])
   )

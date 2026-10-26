@@ -18,8 +18,8 @@ import { Array, Option, pipe } from 'effect'
 import * as DecodedFile from '../decoded-file.ts'
 import * as Destination from './destination.ts'
 import type * as IdentityMap from './identity-map.ts'
-import * as Identity from './identity.ts'
 import * as LinkableResource from './linkable-resource.ts'
+import * as LogicalReference from './logical-reference.ts'
 import * as Referent from './referent.ts'
 import * as Resolution from './resolution.ts'
 
@@ -89,8 +89,10 @@ const maybeStoredDestinationOf = (
   decodedResource: LinkableResource.Type
 ): Option.Option<LinkableResource.WithId> =>
   pipe(
-    LinkableResource.maybeIdentityOf(decodedResource),
-    Option.flatMapNullable((identity) => destinationsByReferentKey.get(Identity.key(identity))),
+    LinkableResource.maybeLogicalReferenceOf(decodedResource),
+    Option.flatMapNullable((logicalReference) =>
+      destinationsByReferentKey.get(LogicalReference.key(logicalReference))
+    ),
     Option.filter(Destination.is('Stored')),
     Option.map(({ resource: stored }) => stored)
   )

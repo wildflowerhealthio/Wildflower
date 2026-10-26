@@ -9,15 +9,15 @@ import { type FhirResource, ResourceReferences } from '@wildflowerhealthio/fhir-
 import { Option, pipe } from 'effect'
 
 import * as Destination from './destination.ts'
-import * as Identity from './identity.ts'
 import type * as LinkPlan from './link-plan.ts'
+import * as LogicalReference from './logical-reference.ts'
 import * as Mention from './mention.ts'
 
 /**
  * The literal reference `referenceAsDecoded`, one reference
  * `mentioningResource` carries, is placed at under `plan`: for a decoded
  * literal reference, the one it is redirected to; for an identifier-only one,
- * its identity's destination. `None` when it stays as decoded.
+ * its logical reference's destination. `None` when it stays as decoded.
  */
 const maybePlacedLiteralReference = (
   plan: LinkPlan.Type,
@@ -26,9 +26,9 @@ const maybePlacedLiteralReference = (
 ): Option.Option<string> =>
   referenceAsDecoded.reference === null
     ? pipe(
-        Mention.maybeIdentityOf(mentioningResource, referenceAsDecoded),
-        Option.flatMapNullable((identity) =>
-          plan.destinationsByReferentKey.get(Identity.key(identity))
+        Mention.maybeLogicalReferenceOf(mentioningResource, referenceAsDecoded),
+        Option.flatMapNullable((logicalReference) =>
+          plan.destinationsByReferentKey.get(LogicalReference.key(logicalReference))
         ),
         Option.flatMap(Destination.maybeLiteralReference)
       )
@@ -36,7 +36,7 @@ const maybePlacedLiteralReference = (
 
 /**
  * `mentioningResource` with every reference it carries that names a linked
- * identity redirected to that identity's destination, keeping its `display`
+ * referent redirected to that referent's destination, keeping its `display`
  * and its own `identifier`. Walks every reference, not only the mention
  * fields, so a provider named elsewhere moves too. The same object when
  * nothing moves.

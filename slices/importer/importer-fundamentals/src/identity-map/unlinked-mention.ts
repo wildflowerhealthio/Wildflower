@@ -44,14 +44,14 @@ const landsOnDevice = (reference: IdentifierAndReference.ReferenceType): boolean
 
 /**
  * Whether a mention that lands nowhere is one to list: every `subject`, and a
- * `requester` or `performer` that names something, an absolute URL or an
- * identity, as opposed to a `display` alone, which names nothing the map
+ * `requester` or `performer` that names something, an absolute URL or a
+ * logical reference, as opposed to a `display` alone, which names nothing the map
  * could ever link.
  */
 const namesSomething = (mentioningResource: FhirResource, mention: Mention.Type): boolean =>
   mention.field === 'subject' ||
   mention.reference.reference !== null ||
-  Option.isSome(Mention.maybeIdentityOf(mentioningResource, mention.reference))
+  Option.isSome(Mention.maybeLogicalReferenceOf(mentioningResource, mention.reference))
 
 /**
  * Every mention of `placedFile` that lands on no record of the device, and

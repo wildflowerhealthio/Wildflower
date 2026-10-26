@@ -110,19 +110,22 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   (after the map, as it will be written) and **stored** (already on the
   device). Option-returning functions say `try` when the operation can fail
   for its input and `maybe` when the value is legitimately absent.
-  - **`Identity`** — `{ resourceType: 'Patient' | 'Practitioner', system,
-    value }`: who or what an identifier names, as a value; its map **`key`**
-    `resourceType|system|value`, `equivalence`, and the conversions to and
-    from an `Identifier`. Nothing about linking.
+  - **`LogicalReference`** — FHIR's name for a `Reference` that names its
+    target by `type` and `identifier` rather than a literal `reference`,
+    narrowed to `type: 'Patient' | 'Practitioner'` and a
+    `QualifiedIdentifier` (fhir-r4: an `Identifier` with a `system` and a
+    non-empty `value`). What an identifier-only mention carries and what a
+    resource's `resourceType` + `identifier[0]` answer to; its map **`key`**
+    `type|system|value`, `equivalence`, `maybeOf`. Nothing about linking.
   - **`LinkableResource`** — a `Patient` or `Practitioner`, the types a
-    referent can have a resource for: `maybeIdentityOf` (its `identifier[0]`),
+    referent can have a resource for: `maybeLogicalReferenceOf` (its `identifier[0]`),
     `maybeDerivedIdentifier` (an exhaustive match: `Patient.nameBirthDateIdentifier`,
     `Practitioner.nameIdentifier`), `labelOf`, `literalReferenceOf`,
     **`maybeProvisionalFor`** (the record an identity alone can stand for,
     provisional until a fuller one arrives: a provider's printed name stands
     for a `Practitioner` through `Practitioner.tryFromNameIdentifier`; nothing
     stands for a `Patient`), and **`assumesIdentifiers`**, which appends the
-    identifiers a resource does not already carry, assumed as one assumes an
+    qualified identifiers a resource does not already carry, assumed as one assumes an
     identity, and changes nothing else.
   - **`Mention`** — each place a resource names its patient or a provider:
     its top-level `subject`, `requester` and `performer`, read by field. An
@@ -131,7 +134,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     gives each mention the path an unlinked mention reports, since
     `ResourceReferences.map` gives none.
   - **`Referent`** — something the import refers to that may already exist on
-    the device, once per identity: **`AsResource`** when the decode emitted
+    the device, once per logical reference: **`AsResource`** when the decode emitted
     its resource (carrying every identifier a search tries, its own and the
     derived one), **`ByMentionOnly`** when only mentions name it; built only
     through its constructors, matched with `Referent.match`. `tryOfResource`

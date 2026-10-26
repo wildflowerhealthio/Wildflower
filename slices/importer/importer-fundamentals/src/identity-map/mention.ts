@@ -24,7 +24,7 @@ import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-ty
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array, Match, Option, pipe } from 'effect'
 
-import * as Identity from './identity.ts'
+import * as LogicalReference from './logical-reference.ts'
 
 /** The fields a mention sits in; see the module remarks for why these three. */
 type Field = 'subject' | 'requester' | 'performer'
@@ -53,7 +53,7 @@ interface Type {
 }
 
 /** The resource type a mention in each field names when its reference states none. */
-const FIELD_RESOURCE_TYPE: Readonly<Record<Field, Identity.ResourceType>> = {
+const FIELD_RESOURCE_TYPE: Readonly<Record<Field, LogicalReference.ResourceType>> = {
   subject: 'Patient',
   requester: 'Practitioner',
   performer: 'Practitioner',
@@ -96,19 +96,18 @@ const of = (resource: FhirResource): readonly Type[] => [
 ]
 
 /**
- * The identity a reference in `mentioningResource` names by identifier alone:
- * one with no literal `reference` and a naming `identifier`, whose resource
- * type is its own `type` when that is `Patient` or `Practitioner`, else, when
- * it states no type, that of the field it is mentioned in. `None` for a
- * literal reference, a display-only one, one whose `type` names something else
- * (an `Organization` performer), and an identifier-only one outside the
- * mention fields that states no type: a prior prescription's number names no
- * person.
+ * The logical reference a reference in `mentioningResource` makes: one with
+ * no literal `reference` and a qualified `identifier`, whose type is its own
+ * `type` when that is `Patient` or `Practitioner`, else, when it states no
+ * type, that of the field it is mentioned in. `None` for a literal reference,
+ * a display-only one, one whose `type` names something else (an
+ * `Organization` performer), and an identifier-only one outside the mention
+ * fields that states no type: a prior prescription's number names no person.
  */
-const maybeIdentityOf = (
+const maybeLogicalReferenceOf = (
   mentioningResource: FhirResource,
   reference: IdentifierAndReference.ReferenceType
-): Option.Option<Identity.Type> => {
+): Option.Option<LogicalReference.Type> => {
   if (reference.reference !== null || reference.identifier === null) return Option.none()
   const { identifier } = reference
   const resourceType =
@@ -118,9 +117,9 @@ const maybeIdentityOf = (
           Array.findFirst((found) => found.reference === reference),
           Option.map((found) => FIELD_RESOURCE_TYPE[found.field])
         )
-      : Option.some(reference.type).pipe(Option.filter(Identity.isResourceType))
-  return Option.flatMap(resourceType, (type) => Identity.fromIdentifier(type, identifier))
+      : Option.some(reference.type).pipe(Option.filter(LogicalReference.isResourceType))
+  return Option.flatMap(resourceType, (type) => LogicalReference.maybeOf(type, identifier))
 }
 
-export { maybeIdentityOf, of }
+export { maybeLogicalReferenceOf, of }
 export type { Field, Type }

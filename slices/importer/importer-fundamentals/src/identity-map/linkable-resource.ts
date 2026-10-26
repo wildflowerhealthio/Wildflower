@@ -9,7 +9,7 @@ import { HumanName, IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/d
 import { Patient, Practitioner } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array, Match, Option } from 'effect'
 
-import * as Identity from './identity.ts'
+import * as LogicalReference from './logical-reference.ts'
 
 /** A `Patient` or a `Practitioner`. */
 type Type = Patient.Type | Practitioner.Type
@@ -23,19 +23,19 @@ const matchResourceType = Match.discriminator('resourceType')
 
 /** Whether `resource` is one the identity map links. */
 const is = (resource: { readonly resourceType: string }): resource is Type =>
-  Identity.isResourceType(resource.resourceType)
+  LogicalReference.isResourceType(resource.resourceType)
 
 /** `resource`'s relative literal reference, `Type/<id>`: what a mention of it carries. */
 const literalReferenceOf = (resource: WithId): string => `${resource.resourceType}/${resource.id}`
 
 /**
- * The identity `resource` is keyed by: its `identifier[0]`, which adoption
- * fills with the source's own id under the source's system. `None` when that
- * identifier is missing or names nothing.
+ * The logical reference `resource` answers to, which the identity map keys it
+ * by: its `identifier[0]`, which adoption fills with the source's own id under
+ * the source's system. `None` when that identifier is missing or unqualified.
  */
-const maybeIdentityOf = (resource: Type): Option.Option<Identity.Type> =>
+const maybeLogicalReferenceOf = (resource: Type): Option.Option<LogicalReference.Type> =>
   Array.head(resource.identifier).pipe(
-    Option.flatMap((identifier) => Identity.fromIdentifier(resource.resourceType, identifier))
+    Option.flatMap((identifier) => LogicalReference.maybeOf(resource.resourceType, identifier))
   )
 
 /**
@@ -79,26 +79,26 @@ const labelOf = (resource: Type, fallback: string): string => {
 }
 
 /**
- * The provisional resource `identity` alone stands for, or `None` when nothing
- * can: a provider's printed name stands for a `Practitioner`
- * (`Practitioner.tryFromNameIdentifier`); no identity stands for a `Patient`,
- * who is never less than a demographic record.
+ * The provisional record `logicalReference` alone stands for, or `None` when
+ * nothing can: a provider's printed name stands for a `Practitioner`
+ * (`Practitioner.tryFromNameIdentifier`); nothing stands for a `Patient`, who
+ * is never less than a demographic record.
  *
  * @remarks
- * Exhaustive over the resource types an identity names, so a type with no
- * provisional form says so here rather than by omission.
+ * Exhaustive over the resource types a logical reference names, so a type
+ * with no provisional form says so here rather than by omission.
  */
-const maybeProvisionalFor = (identity: Identity.Type): Option.Option<WithId> =>
-  Match.value(identity).pipe(
-    Match.when({ resourceType: 'Practitioner' }, (named) =>
-      Practitioner.tryFromNameIdentifier(Identity.toIdentifier(named))
+const maybeProvisionalFor = (logicalReference: LogicalReference.Type): Option.Option<WithId> =>
+  Match.value(logicalReference).pipe(
+    Match.when({ type: 'Practitioner' }, ({ identifier }) =>
+      Practitioner.tryFromNameIdentifier(identifier)
     ),
-    Match.when({ resourceType: 'Patient' }, () => Option.none()),
+    Match.when({ type: 'Patient' }, () => Option.none()),
     Match.exhaustive
   )
 
 /**
- * `resource` with every naming identifier of `identifiersToAssume` it does not
+ * `resource` with every qualified identifier of `identifiersToAssume` it does not
  * already carry appended after its own, matched on `system` + `value`: assumed
  * as one assumes an identity, not presumed.
  *
@@ -114,7 +114,7 @@ const assumesIdentifiers = <TResource extends Type>(
 ): TResource => {
   const newIdentifiersToAssume = Array.dedupeWith(
     Array.differenceWith(IdentifierAndReference.identifierEquivalence)(
-      identifiersToAssume.filter(Identity.isNaming),
+      identifiersToAssume.filter(IdentifierAndReference.isQualifiedIdentifier),
       resource.identifier
     ),
     IdentifierAndReference.identifierEquivalence
@@ -130,7 +130,7 @@ export {
   labelOf,
   literalReferenceOf,
   maybeDerivedIdentifier,
-  maybeIdentityOf,
+  maybeLogicalReferenceOf,
   maybeProvisionalFor,
 }
 export type { Type, WithId }

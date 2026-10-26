@@ -13,12 +13,12 @@ import * as LinkChoice from './link-choice.ts'
 import * as LinkableResource from './linkable-resource.ts'
 import * as Referent from './referent.ts'
 
-/** What `Create` comes to for `referent`: its decoded resource, a provisional record for its identity, else nothing. */
+/** What `Create` comes to for `referent`: its decoded resource, a provisional record for its logical reference, else nothing. */
 const createFor = (referent: Referent.Type): Destination.Type =>
   Referent.match(referent, {
     AsResource: (asResource) => Destination.Decoded({ referent: asResource }),
-    ByMentionOnly: ({ identity }) =>
-      Option.match(LinkableResource.maybeProvisionalFor(identity), {
+    ByMentionOnly: ({ logicalReference }) =>
+      Option.match(LinkableResource.maybeProvisionalFor(logicalReference), {
         onNone: () => Destination.Unlinked(),
         onSome: (resource) => Destination.Provisional({ resource }),
       }),
@@ -32,7 +32,7 @@ const defaultFor = (referent: Referent.Type): Destination.Type =>
   })
 
 const sameType = (referent: Referent.Type, resource: { readonly resourceType: string }): boolean =>
-  resource.resourceType === referent.identity.resourceType
+  resource.resourceType === referent.logicalReference.type
 
 /**
  * Where a `LinkToReferent` cycle comes to, whichever member the walk entered
@@ -84,7 +84,9 @@ const followLinkToReferent = (
 ): Destination.Type => {
   const linked = referents.get(linkedKey)
   // A referent of another type is an impossible link: a `subject` never lands on a Practitioner.
-  if (linked === undefined || !sameType(current, linked.identity)) return Destination.Unlinked()
+  if (linked === undefined || !sameType(current, { resourceType: linked.logicalReference.type })) {
+    return Destination.Unlinked()
+  }
   const cycleStart = path.findIndex((walked) => Referent.key(walked) === linkedKey)
   return cycleStart === -1
     ? resolveFrom(identityMap, referents, [...path, linked], linked)
@@ -101,7 +103,8 @@ const followLinkToReferent = (
  * another type is on its decoded resource; one named only by mentions choosing
  * a stored record of another type, a referent of another type, or one the
  * file does not hold is unlinked. `Create` on a referent named only by
- * mentions is provisional when its identity allows it and unlinked otherwise.
+ * mentions is provisional when its logical reference allows it and unlinked
+ * otherwise.
  * A `LinkToReferent` cycle resolves to `Create` for the first of its members,
  * in key order, that `Create` places on a record, whichever member is
  * resolved, so every referent in it lands on the same one record.
