@@ -92,7 +92,7 @@ describe('Referent.discover', () => {
         referent.label,
       ])
     ).toEqual([
-      ['WithResource', `Patient|${SOURCE_PATIENT}|p-1`, 'Tyra Banks · 1990-01-02'],
+      ['AsResource', `Patient|${SOURCE_PATIENT}|p-1`, 'Tyra Banks · 1990-01-02'],
       [
         'ByMentionOnly',
         `Practitioner|${Practitioner.NAME_IDENTIFIER_SYSTEM}|Dr. A Smith`,
@@ -111,7 +111,7 @@ describe('Referent.discover', () => {
       referent === undefined
         ? []
         : Referent.match(referent, {
-            WithResource: ({ identifiers }) =>
+            AsResource: ({ identifiers }) =>
               identifiers.map((identifier) => [identifier.system?.href, identifier.value]),
             ByMentionOnly: () => [],
           })

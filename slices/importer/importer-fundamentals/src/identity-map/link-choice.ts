@@ -49,7 +49,7 @@ type ByReferent = ReadonlyMap<string, Type>
 
 /** The choice a referent takes when the reviewer has made none: `New` with a resource, else `DontLink`. */
 const defaultFor = (referent: Referent.Type): Type =>
-  Referent.match(referent, { WithResource: () => New(), ByMentionOnly: () => DontLink() })
+  Referent.match(referent, { AsResource: () => New(), ByMentionOnly: () => DontLink() })
 
 /** The choice `choices` holds for `referent`, else its default. */
 const forReferent = (choices: ByReferent, referent: Referent.Type): Type =>

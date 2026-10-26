@@ -15,7 +15,7 @@ import * as Referent from './referent.ts'
 /** What `New` comes to for `referent`: its own resource, a provisional one for its identity, else nothing. */
 const newFor = (referent: Referent.Type): Destination.Type =>
   Referent.match(referent, {
-    WithResource: (withResource) => Destination.OnOwnResource({ referent: withResource }),
+    AsResource: (withResource) => Destination.OnOwnResource({ referent: withResource }),
     ByMentionOnly: ({ identity }) =>
       Option.match(Provisional.forIdentity(identity), {
         onNone: () => Destination.Unlinked(),
@@ -26,7 +26,7 @@ const newFor = (referent: Referent.Type): Destination.Type =>
 /** A choice the referent's kind does not allow reads as its default: own resource, or nothing. */
 const defaultFor = (referent: Referent.Type): Destination.Type =>
   Referent.match(referent, {
-    WithResource: (withResource) => Destination.OnOwnResource({ referent: withResource }),
+    AsResource: (withResource) => Destination.OnOwnResource({ referent: withResource }),
     ByMentionOnly: () => Destination.Unlinked(),
   })
 
@@ -66,7 +66,7 @@ const resolveFrom = (
         : defaultFor(current),
     SameAs: ({ referentKey }) =>
       Referent.match(current, {
-        WithResource: () => defaultFor(current),
+        AsResource: () => defaultFor(current),
         ByMentionOnly: (byMentionOnly) =>
           followSameAs(choices, referents, path, byMentionOnly, referentKey),
       }),

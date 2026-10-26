@@ -19,7 +19,7 @@ interface OnStoredResource {
 /** The referent's own decoded resource, written as the record. */
 interface OnOwnResource {
   readonly _tag: 'OnOwnResource'
-  readonly referent: Referent.WithResource
+  readonly referent: Referent.AsResource
 }
 
 /**

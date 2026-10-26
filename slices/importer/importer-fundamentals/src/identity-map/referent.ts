@@ -22,8 +22,8 @@ import * as LinkableResource from './linkable-resource.ts'
 import * as Mention from './mention.ts'
 
 /** A referent the decode emitted a resource for, keyed by that resource's `identifier[0]`. */
-interface WithResource {
-  readonly _tag: 'WithResource'
+interface AsResource {
+  readonly _tag: 'AsResource'
   readonly identity: Identity.Type
   /**
    * Every identifier a search for this referent tries: the resource's own,
@@ -43,9 +43,9 @@ interface ByMentionOnly {
   readonly label: string
 }
 
-type Type = WithResource | ByMentionOnly
+type Type = AsResource | ByMentionOnly
 
-const { WithResource, ByMentionOnly, $is: is, $match: match } = Data.taggedEnum<Type>()
+const { AsResource, ByMentionOnly, $is: is, $match: match } = Data.taggedEnum<Type>()
 
 /** The identity map's key for `referent`. */
 const key = (referent: Type): string => Identity.key(referent.identity)
@@ -53,16 +53,16 @@ const key = (referent: Type): string => Identity.key(referent.identity)
 /** The identifiers `referent` brings to whatever it links to. */
 const identifiersOf = (referent: Type): readonly IdentifierAndReference.IdentifierType[] =>
   match(referent, {
-    WithResource: ({ identifiers }) => identifiers,
+    AsResource: ({ identifiers }) => identifiers,
     ByMentionOnly: ({ identity }) => [Identity.toIdentifier(identity)],
   })
 
 /** The referent one decoded resource is, or `None` if it is not one. */
-const withResourceOf = (entry: DecodedFile.Resource): Option.Option<WithResource> => {
+const withResourceOf = (entry: DecodedFile.Resource): Option.Option<AsResource> => {
   const { resource } = entry
   if (!LinkableResource.is(resource)) return Option.none()
   return Option.map(LinkableResource.identityOf(resource), (identity) =>
-    WithResource({
+    AsResource({
       identity,
       identifiers: Array.dedupeWith(
         [
@@ -114,4 +114,4 @@ const index = (referents: readonly Type[]): ReadonlyMap<string, Type> =>
   new Map(referents.map((referent) => [key(referent), referent]))
 
 export { discover, identifiersOf, index, is, key, match }
-export type { ByMentionOnly, Type, WithResource }
+export type { ByMentionOnly, Type, AsResource }

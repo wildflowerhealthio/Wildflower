@@ -123,7 +123,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     gives each mention the path an unlinked mention reports, since
     `ResourceReferences.map` gives none.
   - **`Referent`** — something the import refers to that may already exist on
-    the device, once per identity: **`WithResource`** when the decode emitted
+    the device, once per identity: **`AsResource`** when the decode emitted
     its resource (carrying every identifier a search tries, its own and the
     derived one), **`ByMentionOnly`** when only mentions name it; built only
     through its constructors, matched with `Referent.match`. **`discover`**
