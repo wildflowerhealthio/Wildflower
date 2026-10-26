@@ -28,7 +28,7 @@ import type { FormatKind } from './registry.ts'
 /**
  * Every referent the batch holds, once per identity across formats, in
  * format-then-review order, those with a resource first
- * (`Referent.discoverAcross`).
+ * (`Referent.discover`).
  *
  * @param batch - The batch's decode result
  * @returns The referents the reviewer makes a link choice for
@@ -36,7 +36,7 @@ import type { FormatKind } from './registry.ts'
 const discoverReferents = (
   batch: BatchDecodeResult
 ): Effect.Effect<readonly Referent.Type[], Referent.DuplicateReferent> =>
-  Referent.discoverAcross(claimedFormats(batch).map((kind) => batch[kind].decoded))
+  Referent.discover(claimedFormats(batch).map((kind) => batch[kind].decoded))
 
 /**
  * The batch with every claimed format's `decoded` placed on `linkChoices`:
@@ -49,11 +49,11 @@ const discoverReferents = (
  *
  * @remarks
  * Every claimed format is placed on one plan over the batch's referents
- * (`IdentityMap.applyAcross`), so a mention in one format links to a referent
+ * (`IdentityMap.apply`), so a mention in one format links to a referent
  * another holds. The Linked section is appended once, to the first claimed
  * format, so a stored person several formats only mention is written once.
  * Section titles and review keys are kept, so the selections survive. Fails
- * as `IdentityMap.applyAcross` does.
+ * as `IdentityMap.apply` does.
  */
 const applyIdentityMap = (
   batch: BatchDecodeResult,
@@ -63,7 +63,7 @@ const applyIdentityMap = (
     onEmpty: () => Effect.succeed(batch),
     onNonEmpty: (claimed) =>
       Effect.flatMap(
-        IdentityMap.applyAcross(
+        IdentityMap.apply(
           Array.map(claimed, (kind) => batch[kind].decoded),
           linkChoices
         ),

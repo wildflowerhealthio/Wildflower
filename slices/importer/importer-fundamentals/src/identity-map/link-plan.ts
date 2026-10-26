@@ -112,7 +112,7 @@ const linkTargetsByLogicalReferenceKeyOf = (
  * choice resolved once into its link, and every field read off those links.
  *
  * @remarks
- * The referents are the whole batch's (`Referent.discoverAcross`), so a
+ * The referents are the whole batch's (`Referent.discover`), so a
  * `LinkToDecodedReferent` naming a referent one file holds resolves from a
  * mention in another, and every file is placed on the same plan. Fails with
  * `Referent.DuplicateReferent` when two decoded resources answer to one
@@ -124,7 +124,7 @@ const make = (
   linkChoices: ReferentLinkChoices.Type
 ): Effect.Effect<Type, Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice> =>
   Effect.gen(function* () {
-    const referents = yield* Referent.discoverAcross(decodedFiles)
+    const referents = yield* Referent.discover(decodedFiles)
     const links = yield* Resolution.linksOf(linkChoices, referents)
     const placedResourcesByPlacedLiteralReference = yield* PlacedResource.byPlacedLiteralReference(
       links,

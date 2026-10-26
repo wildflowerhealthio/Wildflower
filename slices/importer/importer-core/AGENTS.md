@@ -60,11 +60,11 @@ write plan with this package alone.
   checked against nothing. Its slots are typed by **`FormatResults`**.
 - `src/identity-map.ts` — the identity map lifted over a batch, service-free
   Effects on the clock. **`discoverReferents(batch)`** is
-  `Referent.discoverAcross` over every claimed format's `decoded`: one
+  `Referent.discover` over every claimed format's `decoded`: one
   referent per identity across formats, format-then-review order, those with
   a resource first. **`applyIdentityMap(batch, linkChoices)`** places every
   claimed format's `decoded` on one plan over the batch's referents
-  (`IdentityMap.applyAcross`), so a mention in one format links to a referent
+  (`IdentityMap.apply`), so a mention in one format links to a referent
   another holds, and appends the Linked section once, to the first claimed
   format, so a stored person several formats mention is written once. Keys
   and section titles are kept; the batch is reassembled through

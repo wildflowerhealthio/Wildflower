@@ -3,9 +3,9 @@
  * referent link choices, a function of the files, the choices and the clock.
  *
  * @remarks
- * The screen runs {@link applyAcross} before the server diff, the preview and
+ * The screen runs {@link apply} before the server diff, the preview and
  * the confirm, so all three see the resources that get written. The stage
- * runs in phases, one module each: `Referent.discoverAcross` finds the batch's
+ * runs in phases, one module each: `Referent.discover` finds the batch's
  * referents, `Resolution` resolves each one's choice into its `LinkTarget`,
  * `LinkPlan.make` works out the `PlacedResource` under every literal
  * reference the links land on and `Placement` rebuilds each file with every
@@ -33,7 +33,7 @@ import type * as Referent from './referent.ts'
  * holds the referent: every file is placed on one plan over the batch's
  * referents. The resources the batch only mentions are appended once, to the
  * first file. The choices are made for the referents of decoded files, so it
- * is decoded files `applyAcross` places. Applying the same choices to the
+ * is decoded files `apply` places. Applying the same choices to the
  * placed files changes nothing when they have the decoded files' referents,
  * of the same kinds: no `LinkToDecodedReferent` cycle (its provisional
  * resource is a resource there), no mention several decoded resources answer
@@ -45,7 +45,7 @@ import type * as Referent from './referent.ts'
  * `LinkChoice.InvalidLinkChoice` when a choice cannot be followed for its
  * referent.
  */
-const applyAcross = (
+const apply = (
   decodedFiles: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>,
   linkChoices: ReferentLinkChoices.Type
 ): Effect.Effect<
@@ -59,13 +59,4 @@ const applyAcross = (
     )
   })
 
-/** One `decodedFile` placed on `linkChoices`: {@link applyAcross} a batch of one. */
-const apply = (
-  decodedFile: DecodedFile.DecodedFile,
-  linkChoices: ReferentLinkChoices.Type
-): Effect.Effect<
-  DecodedFile.DecodedFile,
-  Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice
-> => Effect.map(applyAcross(Array.of(decodedFile), linkChoices), Array.headNonEmpty)
-
-export { apply, applyAcross }
+export { apply }

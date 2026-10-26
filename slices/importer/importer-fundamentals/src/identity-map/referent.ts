@@ -205,7 +205,7 @@ const firstDuplicateAmong = (
  * resources under different ids, in one file or two, are keyed by one logical
  * reference.
  */
-const discoverAcross = (
+const discover = (
   decodedFiles: readonly Pick<DecodedFile.DecodedFile, 'sections'>[]
 ): Effect.Effect<readonly Type[], DuplicateReferent> =>
   Effect.gen(function* () {
@@ -228,16 +228,10 @@ const discoverAcross = (
     return [...asResources, ...byMentionOnly]
   })
 
-/** Every referent one decoded file holds: {@link discoverAcross} a batch of one. */
-const discover = (
-  decodedFile: Pick<DecodedFile.DecodedFile, 'sections'>
-): Effect.Effect<readonly Type[], DuplicateReferent> => discoverAcross([decodedFile])
-
 export {
   byKey,
   byLogicalReferenceKey,
   discover,
-  discoverAcross,
   DuplicateReferent,
   identifiersOf,
   is,

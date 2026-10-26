@@ -15,7 +15,7 @@ import {
 } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   Arbitrary,
-  type Array,
+  Array,
   Effect,
   FastCheck as fc,
   HashMap,
@@ -45,22 +45,23 @@ const ABSOLUTE = 'https://elsewhere.example/fhir/Patient/1'
 const runOnTestClock = <A, E>(effect: Effect.Effect<A, E>): A =>
   Effect.runSync(Effect.provide(effect, TestContext.TestContext))
 
-/** `IdentityMap.apply` run on the test clock. */
-const applyOnTestClock = (
-  file: DecodedFile.DecodedFile,
-  linkChoices: ReferentLinkChoices.Type
-): DecodedFile.DecodedFile => runOnTestClock(IdentityMap.apply(file, linkChoices))
-
-/** `IdentityMap.applyAcross` run on the test clock. */
+/** `IdentityMap.apply` over `files`, run on the test clock. */
 const applyAcrossOnTestClock = (
   files: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>,
   linkChoices: ReferentLinkChoices.Type
 ): Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile> =>
-  runOnTestClock(IdentityMap.applyAcross(files, linkChoices))
+  runOnTestClock(IdentityMap.apply(files, linkChoices))
 
-/** `Referent.discover` run on the test clock. */
+/** `IdentityMap.apply` over a batch of one `file`, run on the test clock. */
+const applyOnTestClock = (
+  file: DecodedFile.DecodedFile,
+  linkChoices: ReferentLinkChoices.Type
+): DecodedFile.DecodedFile =>
+  Array.headNonEmpty(applyAcrossOnTestClock(Array.of(file), linkChoices))
+
+/** `Referent.discover` over a batch of one `file`, run on the test clock. */
 const discoverOnTestClock = (file: DecodedFile.DecodedFile): readonly Referent.Type[] =>
-  runOnTestClock(Referent.discover(file))
+  runOnTestClock(Referent.discover([file]))
 
 const decodeResource = Schema.decodeUnknownSync(FhirResourceSchema)
 const encodeResource = Schema.encodeSync(FhirResourceSchema)

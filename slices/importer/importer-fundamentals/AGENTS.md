@@ -153,10 +153,11 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     logical reference names: the one it is the key of, else the one referent
     that answers to it, so a Shoppers account id a decoded Patient also
     carries is that Patient. `tryFromDecodedResource` and `mentionedIn` read
-    them off one decoded resource; **`discover`** finds both over a file,
-    resources first, once per identity, and fails with
-    **`DuplicateReferent`** when two resources under different ids share a
-    key; `byKey` indexes into a `HashMap`.
+    them off one decoded resource; **`discover`** finds both over a batch's
+    files, resources first, once per identity, so a person one file decodes
+    and another only mentions is one referent, and fails with
+    **`DuplicateReferent`** when two resources under different ids, in one
+    file or two, share a key; `byKey` indexes into a `HashMap`.
   - **`ReferentLinkChoices`** — the map itself (**`Type`**, a `HashMap` of
     every referent's `LinkChoice` by `Referent.key`; `empty`): what the screen
     holds and the stage places a file on.
@@ -192,7 +193,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     each.
   - **`LinkPlan`** — `make(decodedFiles, linkChoices)`: everything the
     placement needs, worked out once per batch over its referents
-    (`Referent.discoverAcross`), so a `LinkToDecodedReferent` naming a
+    (`Referent.discover`), so a `LinkToDecodedReferent` naming a
     referent one file holds resolves from a mention in another: the
     **`links`**, the **`linkTargetsByLogicalReferenceKey`**, the
     **`placedResourcesByPlacedLiteralReference`**, and the
@@ -218,12 +219,12 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     `subject` for every type the importer handles) and every **`Dangling`**
     mention (a logical reference, in any field, the map could link and left
     unlinked), matched with `UnlinkedMention.match`.
-  - **`IdentityMap`** — the stage: **`applyAcross`** (one plan over the
-    batch, place every file on it, append the Linked section to the first)
-    over a batch's files and their `ReferentLinkChoices`, failing with
-    `Referent.DuplicateReferent` or `LinkChoice.InvalidLinkChoice`;
-    **`apply`** is the same over a batch of one. What still lands nowhere is
-    `UnlinkedMention.collect` of each placed file, which the caller composes.
+  - **`IdentityMap`** — the stage: **`apply`** (one plan over the batch,
+    place every file on it, append the Linked section to the first) over a
+    batch's files and their `ReferentLinkChoices`, failing with
+    `Referent.DuplicateReferent` or `LinkChoice.InvalidLinkChoice`; one file
+    is a batch of one. What still lands nowhere is `UnlinkedMention.collect`
+    of each placed file, which the caller composes.
   - **`ReferentSearch`** — the identity map's one server read, over
     `fhir-r4/clients`' `FhirR4ResourcesHttpApiClient`: **`defaultChoice`** is
     one `GET <Type>?identifier=&_count=1` with every logical reference the
@@ -341,35 +342,39 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
 - **Identity is the map's, never the selection's.** `StagedImport` keeps
   exclusions and edits; what a mention lands on lives in the
   `ReferentLinkChoices`, held beside the selections, and `IdentityMap.apply`
-  runs before the server diff, the preview and the confirm, so all three see
-  the resources that get written. `apply` is a function of its arguments and
-  the clock, and keeps the file's sections and keys. It places a decoded
-  file: the choices are made for the decoded file's referents. Applied again
-  to the placed file it changes nothing when that file has the same
-  referents, of the same kinds: no `LinkToDecodedReferent` cycle (whose
-  provisional resource is a resource there), no mention several decoded
-  resources answer to, and no mention a linked stored resource answers to,
-  since once placed one resource answers to each of those mentions. A
-  referent's mentions are redirected to its link target: a decoded resource
-  linked to a stored resource is replaced by it **under the same review
-  key**, titled by its label, the stored resource assuming the referent's
-  identifiers and its own derived one and keeping its demographics byte for
-  byte; every mention of the referent, a literal `Type/<decoded id>` or a
-  logical reference, is redirected through `ResourceReferences.map`, keeping
-  its `display` and `identifier`; a resource the file only mentions is
-  appended under a final **"Linked"** section so the review shows the
-  identifier it assumed; a decoded resource that is its referent's link
-  target is written as decoded plus its derived identifier and those of the
-  referents linked to it. A referent named only by mentions may be
+  runs over the batch before the server diff, the preview and the confirm,
+  so all three see the resources that get written. `apply` is a function of
+  its arguments and the clock, and keeps every file's sections and keys. It
+  places a batch of decoded files on one plan over the batch's referents:
+  the choices are made for the decoded files' referents, and a referent one
+  file holds is the link target of a mention in another. Applied again to
+  the placed files it changes nothing when they have the same referents, of
+  the same kinds: no `LinkToDecodedReferent` cycle (whose provisional
+  resource is a resource there), no mention several decoded resources answer
+  to, and no mention a linked stored resource answers to, since once placed
+  one resource answers to each of those mentions. A referent's mentions are
+  redirected to its link target: a decoded resource linked to a stored
+  resource is replaced by it **under the same review key**, titled by its
+  label, the stored resource assuming the referent's identifiers and its own
+  derived one and keeping its demographics byte for byte; every mention of
+  the referent, a literal `Type/<decoded id>` or a logical reference, is
+  redirected through `ResourceReferences.map`, keeping its `display` and
+  `identifier`; a resource the batch only mentions is appended once, under a
+  final **"Linked"** section of the first file, so the review shows the
+  identifier it assumed and a stored person several files mention is
+  written once; a decoded resource that is its referent's link target is
+  written as decoded plus its derived identifier and those of the referents
+  linked to it. A referent named only by mentions may be
   `CreateResource` only when its logical reference stands for something
   provisional (`LinkableResource.tryProvisionalFrom`: a provider's printed
   name, as a `Practitioner` at `localResourceId(system, 'Practitioner', name)`,
   so one name from two sources is one resource); its default stays
   `DontLink`. `LinkToDecodedReferent` follows to the end; a choice a
   referent's kind does not allow, a stored resource or a referent of another
-  type, or a referent the file does not hold fails the stage with
+  type, or a referent the batch does not hold fails the stage with
   `InvalidLinkChoice`, and so do two decoded resources under different ids
-  keyed by one identity (`DuplicateReferent`): errors bubble to the screen
+  keyed by one identity, in one file or two (`DuplicateReferent`): errors
+  bubble to the screen
   rather than read as a default. A cycle reads as `CreateResource` for the
   first of its members, in key order, that it places on a resource, so all of
   it lands on one resource.

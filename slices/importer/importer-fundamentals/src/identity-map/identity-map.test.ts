@@ -130,23 +130,23 @@ const resolvedFor = (
     },
   })
 
-/** How `IdentityMap.applyAcross` fails on `files` under `choices`, as the failure's tag and fields. */
+/** How `IdentityMap.apply` fails on `files` under `choices`, as the failure's tag and fields. */
 const failureAcrossOf = (
   files: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>,
   choices: ReferentLinkChoices.Type
 ): Either.Either<
   readonly DecodedFile.DecodedFile[],
   Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice
-> => runOnTestClock(Effect.either(IdentityMap.applyAcross(files, choices)))
+> => runOnTestClock(Effect.either(IdentityMap.apply(files, choices)))
 
-/** How `IdentityMap.apply` fails on `file` under `choices`, as the failure's tag and fields. */
+/** How `IdentityMap.apply` fails on a batch of one `file` under `choices`. */
 const failureOf = (
   file: DecodedFile.DecodedFile,
   choices: ReferentLinkChoices.Type
 ): Either.Either<
-  DecodedFile.DecodedFile,
+  readonly DecodedFile.DecodedFile[],
   Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice
-> => runOnTestClock(Effect.either(IdentityMap.apply(file, choices)))
+> => failureAcrossOf(Array.of(file), choices)
 
 /** A resource's `subject` and `requester` references, as `apply` left them. */
 const subjectAndRequesterOf = (
@@ -156,7 +156,7 @@ const subjectAndRequesterOf = (
   requester: resource !== undefined && 'requester' in resource ? resource.requester : null,
 })
 
-describe('IdentityMap.apply', () => {
+describe('IdentityMap.apply on one file', () => {
   it('puts a stored person in the source Patient’s place and redirects every typed mention of it', () => {
     const file = fileOf(
       patient({ id: 'p-1' }),
@@ -599,7 +599,7 @@ describe('UnlinkedMention.collect on a placed file', () => {
   })
 })
 
-describe('IdentityMap.applyAcross', () => {
+describe('IdentityMap.apply across files', () => {
   /** How many resources of `files` are written under `literalReference`. */
   const countWrittenAt = (
     files: readonly DecodedFile.DecodedFile[],
@@ -637,7 +637,7 @@ describe('IdentityMap.applyAcross', () => {
 
   it('reads a person one file decodes and another only mentions as one referent, with the resource', () => {
     const referents = runOnTestClock(
-      Referent.discoverAcross([
+      Referent.discover([
         fileOf(
           observation('o-1', {
             type: 'Patient',
@@ -892,7 +892,9 @@ describe('IdentityMap.apply and the clock', () => {
     Effect.runPromise(
       Effect.gen(function* () {
         yield* TestClock.setTime(DateTime.unsafeMake(instant).epochMillis)
-        return yield* IdentityMap.apply(fileOf(renamed), HashMap.empty())
+        return Array.headNonEmpty(
+          yield* IdentityMap.apply(Array.of(fileOf(renamed)), HashMap.empty())
+        )
       }).pipe(Effect.provide(TestContext.TestContext))
     )
 
