@@ -328,6 +328,7 @@ describe(
             status: request.status,
             statusCode: request.statusReason?.coding[0]?.code,
             requester: request.requester?.display,
+            requesterIdentifier: request.requester?.identifier?.value,
           }).toEqual({
             name: each.brandName,
             din: expected.din,
@@ -340,6 +341,7 @@ describe(
             status: requestStatusOf(expected),
             statusCode: statusCodeOf(expected),
             requester: each.prescriber,
+            requesterIdentifier: each.prescriber,
           })
         }
       })

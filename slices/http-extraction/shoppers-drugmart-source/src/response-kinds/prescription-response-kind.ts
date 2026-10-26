@@ -1,5 +1,9 @@
-import { FhirString } from '@wildflowerhealthio/fhir-r4/data-types'
-import { MedicationDispense, MedicationRequest } from '@wildflowerhealthio/fhir-r4/resources'
+import { FhirString, IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
+import {
+  MedicationDispense,
+  MedicationRequest,
+  Practitioner,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   HttpResponseKind,
@@ -229,6 +233,23 @@ const statusReasonWire = (rx: SourcePrescription): Record<string, unknown> | und
   }
 }
 
+const encodeIdentifier = Schema.encodeSync(IdentifierAndReference.IdentifierSchema)
+
+/**
+ * The `requester` wire for the prescriber, whom the portal knows only by
+ * name: the name as `display`, and as the identifier `fhir-r4`'s
+ * `Practitioner.nameIdentifier` makes of it, so the reference names an
+ * identity the importer's identity map can resolve. `undefined` when the
+ * payload names no prescriber, or a blank one.
+ */
+const requesterWire = (prescriberName: string | undefined): Record<string, unknown> | undefined =>
+  prescriberName == null || FhirString.isBlank(prescriberName)
+    ? undefined
+    : {
+        identifier: encodeIdentifier(Practitioner.nameIdentifier(prescriberName)),
+        display: prescriberName,
+      }
+
 /**
  * Build the R4 `MedicationRequest` **wire** from the decoded prescription; the
  * machine `status.type` / label ride `statusReason` and `note`, so nothing is
@@ -254,7 +275,8 @@ const requestWire = (
     ]
   }
   if (medication != null) wire['medicationCodeableConcept'] = medication
-  if (rx.prescriberName != null) wire['requester'] = { display: rx.prescriberName }
+  const requester = requesterWire(rx.prescriberName)
+  if (requester != null) wire['requester'] = requester
 
   const statusReason = statusReasonWire(rx)
   if (statusReason != null) wire['statusReason'] = statusReason

@@ -102,6 +102,11 @@ and `rexall-be-well-source` alike:
   a fill was for, and no Patient stands for the account. The importer's
   identity map resolves that identifier to a person; adoption leaves it as it
   is.
+- **Prescriber** — a status-feed `MedicationRequest.requester` names the
+  prescriber, whom the portal knows only by `prescriberName`, by the
+  identifier `fhir-r4`'s `Practitioner.nameIdentifier` makes of the name
+  (under the shared `Practitioner.NAME_IDENTIFIER_SYSTEM`), with the name as
+  printed in `display`. A blank or absent name writes no `requester`.
 - **DIN** — one coding on `medicationCodeableConcept` under `fhir-r4`'s
   canonical `CanadianCodingSystem.Din`
   (`http://hl7.org/fhir/NamingSystem/ca-hc-din`). The portal does not namespace
