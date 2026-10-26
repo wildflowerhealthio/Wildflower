@@ -104,9 +104,10 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   (keys a re-decode no longer produces) are inert — sets and maps of keys,
   nothing dangling.
 - `src/identity-map/` — the **identity map**: for every referent an import
-  discovers, what it links to on the device, and the stage that places a
-  decoded file on those choices, an Effect whose only input besides its
-  arguments is the clock (which of a person's names is current). One
+  discovers, what it links to on the device, the one search that defaults it,
+  and the stage that places a batch's decoded files on those choices, an
+  Effect whose only input besides its arguments is the clock (which of a
+  person's names is current). One
   namespace per file, one phase each. Three tenses run through the names:
   **decoded** (as the file arrived), **placed** (after the map, as it will
   be written) and **stored** (already on the device). A conversion between
@@ -184,13 +185,16 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   - **`PlacedResource`** — the resource under one placed literal reference as
     it will be written, whatever its origin: the resource having assumed its
     `identifiersToAssume` (its own derived identifier, then those of every
-    referent linked to it), whether the `resourceExistsInFile`, and its
+    referent linked to it), whether the `resourceExistsInBatch`, and its
     `label`, the title of an entry it replaces or is appended as.
     **`make`** builds one from the linked resources under a literal
     reference; `byPlacedLiteralReference` groups a plan's links and makes
     each.
-  - **`LinkPlan`** — `make`: everything the placement needs, worked out once:
-    the **`links`**, the **`linkTargetsByLogicalReferenceKey`**, the
+  - **`LinkPlan`** — `make(decodedFiles, linkChoices)`: everything the
+    placement needs, worked out once per batch over its referents
+    (`Referent.discoverAcross`), so a `LinkToDecodedReferent` naming a
+    referent one file holds resolves from a mention in another: the
+    **`links`**, the **`linkTargetsByLogicalReferenceKey`**, the
     **`placedResourcesByPlacedLiteralReference`**, and the
     **`decodedLiteralReferencesToStored`** (`Type/<decoded id>` →
     `Type/<stored id>` for every decoded resource a stored one stands in for),
@@ -199,26 +203,35 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     redirected, a literal one through the redirects and a logical one through
     its referent's link target) and **`maybePlacedResourceFor`** (the resource
     a decoded resource is written as: the placed resource under the literal
-    reference its own is redirected to). `literalReferencesFromDecodedFile`
-    is what the batch lift reuses.
-  - **`Placement`** — `place`, pure: each decoded resource written as the
-    resource `LinkPlan.maybePlacedResourceFor` has for it, else kept
-    (`DecodedFile.mapResources`), titled by the stored resource's label when
-    one replaces it, its mentions redirected to their referents'
+    reference its own is redirected to).
+  - **`Placement`** — `place`, pure: each decoded resource of one file
+    written as the resource `LinkPlan.maybePlacedResourceFor` has for it,
+    else kept (`DecodedFile.mapResources`), titled by the stored resource's
+    label when one replaces it, its mentions redirected to their referents'
     link targets either way (`ResourceReferences.map`, keeping `display` and
-    `identifier`), and the resources the file only mentions appended under
-    **`LINKED_SECTION_TITLE`** at **`linkedKey`**, in discovery order.
+    `identifier`); **`appendLinkedSection`**: the resources the batch only
+    mentions appended to one placed file, under **`LINKED_SECTION_TITLE`** at
+    **`linkedKey`**, in discovery order.
   - **`UnlinkedMention`** — `collect`: on a placed file, every resource
     **`OutsidePatientCompartment`** (a `subject` slot in which nothing lands
     on a patient of the device; FHIR's Patient CompartmentDefinition names
     `subject` for every type the importer handles) and every **`Dangling`**
     mention (a logical reference, in any field, the map could link and left
     unlinked), matched with `UnlinkedMention.match`.
-  - **`IdentityMap`** — the stage: **`apply`** (plan, then place) over a
-    file and its `ReferentLinkChoices`, failing with
-    `Referent.DuplicateReferent` or `LinkChoice.InvalidLinkChoice`. What
-    still lands nowhere is `UnlinkedMention.collect` of the placed file,
-    which the caller composes.
+  - **`IdentityMap`** — the stage: **`applyAcross`** (one plan over the
+    batch, place every file on it, append the Linked section to the first)
+    over a batch's files and their `ReferentLinkChoices`, failing with
+    `Referent.DuplicateReferent` or `LinkChoice.InvalidLinkChoice`;
+    **`apply`** is the same over a batch of one. What still lands nowhere is
+    `UnlinkedMention.collect` of each placed file, which the caller composes.
+  - **`ReferentSearch`** — the identity map's one server read, over
+    `fhir-r4/clients`' `FhirR4ResourcesHttpApiClient`: **`defaultChoice`** is
+    one `GET <Type>?identifier=&_count=1` with every logical reference the
+    referent answers to (`Referent.logicalReferencesOf`) as a
+    `TokenSearchParam` token, the first hit `LinkToStoredResource`, else
+    `LinkChoice.defaultFor`; a failed search fails the read.
+    **`defaultChoices`** runs it per referent, a few at a time, into the
+    `ReferentLinkChoices` a review starts from.
 - `src/picked-file.ts` — the **`PickedFile`** namespace: the picked file
   vocabulary _and_ the codec that source files one. **`Type`**
   (`{ id, fileName, bytes }`) is the one value every `decode` receives, and
@@ -264,9 +277,10 @@ to abstract over) and for the identity map's `Patient`, `Practitioner` and
 `IdentifierAndReference` and `HumanName`, `fhir-r4/identity` for the shared id
 derivation, and `fhir`'s wire types. Hosting the source file codec is what widened
 `fhir-r4` from a type-only import to the `DocumentReference` runtime schema
-(it builds and decodes the resource) — but still no client, no other resource
-schemas, and no `persistResources`: the write sink stays at the shell
-(`fhir-r4/clients`' `persistBatchBundle`). It deliberately does **not** depend
+(it builds and decodes the resource). `ReferentSearch` reads through
+`fhir-r4/clients`' `FhirR4ResourcesHttpApiClient` as an Effect requirement; the
+shell provides the layer. No `persistResources`: the write sink stays at the
+shell (`fhir-r4/clients`' `persistBatchBundle`). It deliberately does **not** depend
 on `web-trace-core`: the digest helper (`sha256.ts`) and `meta-source.ts` are
 both verbatim-in-spirit copies of web-trace's, for the same reason — standard,
 project-neutral helpers, and moving them would invert the importer →
