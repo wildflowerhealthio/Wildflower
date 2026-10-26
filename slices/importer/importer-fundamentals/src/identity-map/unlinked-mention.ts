@@ -6,10 +6,10 @@
  */
 
 import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { Data, Option } from 'effect'
 
 import * as DecodedFile from '../decoded-file.ts'
+import * as LogicalReference from './logical-reference.ts'
 import * as Mention from './mention.ts'
 
 /** A resource of a type that carries a `subject`, with none. */
@@ -45,13 +45,13 @@ const landsOnDevice = (reference: IdentifierAndReference.ReferenceType): boolean
 /**
  * Whether a mention that lands nowhere is one to list: every `subject`, and a
  * `requester` or `performer` that names something, an absolute URL or a
- * logical reference, as opposed to a `display` alone, which names nothing the map
- * could ever link.
+ * logical reference, as opposed to a `display` alone or an untyped
+ * identifier, which name nothing the map could ever link.
  */
-const namesSomething = (mentioningResource: FhirResource, mention: Mention.Type): boolean =>
+const namesSomething = (mention: Mention.Type): boolean =>
   mention.field === 'subject' ||
   mention.reference.reference !== null ||
-  Option.isSome(Mention.maybeLogicalReferenceOf(mentioningResource, mention.reference))
+  Option.isSome(LogicalReference.maybeOfReference(mention.reference))
 
 /**
  * Every mention of `placedFile` that lands on no record of the device, and
@@ -71,7 +71,7 @@ const collect = (placedFile: DecodedFile.DecodedFile): readonly Type[] =>
         ? [MissingSubject({ mentioningResourceKey: key })]
         : []
     const dangling = Mention.of(resource)
-      .filter((mention) => !landsOnDevice(mention.reference) && namesSomething(resource, mention))
+      .filter((mention) => !landsOnDevice(mention.reference) && namesSomething(mention))
       .map((mention): Type =>
         Dangling({
           mentioningResourceKey: key,

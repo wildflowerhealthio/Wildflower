@@ -110,15 +110,22 @@ const literalSubject = (id: string): object => ({
   identifier: { system: SOURCE_PATIENT, value: id },
 })
 
-/** A Shoppers-style history `subject`: the account by identifier alone. */
+/** A Shoppers-style history `subject`: a logical reference to the account. */
 const customerSubject = (customerId: string): object => ({
+  type: 'Patient',
   identifier: { system: CUSTOMER, value: customerId },
 })
 
-/** A Shoppers-style `requester`: a prescriber known only by name. */
+/** A Shoppers-style `requester`: a logical reference to a prescriber known only by name. */
 const namedRequester = (name: string): object => ({
+  type: 'Practitioner',
   identifier: { system: Practitioner.NAME_IDENTIFIER_SYSTEM, value: name },
   display: name,
+})
+
+/** An identifier-only reference that states no type: a logical reference to nothing the map can name. */
+const untypedSubject = (value: string): object => ({
+  identifier: { system: SOURCE_PATIENT, value },
 })
 
 /** A decoded `MedicationRequest` with the given `subject` and optional `requester`. */
@@ -198,7 +205,11 @@ const valueArbitrary = fc.constantFrom(...POOL)
 const subjectArbitrary: fc.Arbitrary<object | undefined> = fc.oneof(
   valueArbitrary.map((value) => literalSubject(value)),
   valueArbitrary.map((value) => customerSubject(`c-${value}`)),
-  valueArbitrary.map((value) => ({ identifier: { system: SOURCE_PATIENT, value } })),
+  valueArbitrary.map((value) => ({
+    type: 'Patient',
+    identifier: { system: SOURCE_PATIENT, value },
+  })),
+  valueArbitrary.map(untypedSubject),
   fc.constant({ reference: ABSOLUTE }),
   fc.constant(undefined)
 )
@@ -287,6 +298,7 @@ export {
   request,
   storedOf,
   unrelatedArbitrary,
+  untypedSubject,
   wireFieldsOf,
   wireOf,
 }

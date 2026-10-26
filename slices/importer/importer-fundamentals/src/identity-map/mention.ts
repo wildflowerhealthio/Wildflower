@@ -3,11 +3,11 @@
  * top-level `subject`, `requester` or `performer`.
  *
  * @remarks
- * A reference that names only an identifier carries no type, so the field it
- * sits in is what says whose identifier it is: a `subject` names a patient, a
- * `requester` or `performer` a provider. `ResourceReferences.map` reaches a
- * reference anywhere but reports no path, so these fields are read here by
- * name, which also gives the unlinked-mention list its paths.
+ * `ResourceReferences.map` reaches a reference anywhere but reports no path,
+ * so these fields are read here by name, which gives the unlinked-mention
+ * list its paths. Which type an identifier-only mention names is the
+ * reference's own business: a logical reference states its `type`
+ * (`LogicalReference.maybeOfReference`), and one that does not names nothing.
  *
  * Why these three and no more: they are the fields through which every
  * resource the importer handles names the person it is about and the
@@ -22,9 +22,7 @@
 
 import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array, Match, Option, pipe } from 'effect'
-
-import * as LogicalReference from './logical-reference.ts'
+import { Match } from 'effect'
 
 /** The fields a mention sits in; see the module remarks for why these three. */
 type Field = 'subject' | 'requester' | 'performer'
@@ -36,10 +34,8 @@ type Field = 'subject' | 'requester' | 'performer'
  */
 interface Type {
   /**
-   * The field it sits in. It gives an identifier-only reference its type (a
-   * `subject` names a `Patient`, the others a `Practitioner`), and it says
-   * whether one that lands nowhere is listed even with nothing to name (a
-   * `subject` always is).
+   * The field it sits in: it says whether a mention that lands nowhere is
+   * listed even with nothing to name (a `subject` always is).
    */
   readonly field: Field
   /**
@@ -50,13 +46,6 @@ interface Type {
   readonly path: string
   /** The reference as the resource carries it: its literal, identifier and `display`. */
   readonly reference: IdentifierAndReference.ReferenceType
-}
-
-/** The resource type a mention in each field names when its reference states none. */
-const FIELD_RESOURCE_TYPE: Readonly<Record<Field, LogicalReference.ResourceType>> = {
-  subject: 'Patient',
-  requester: 'Practitioner',
-  performer: 'Practitioner',
 }
 
 /** The one mention at `path`, in `field`, for a reference that is present; none for a missing one. */
@@ -95,31 +84,5 @@ const of = (resource: FhirResource): readonly Type[] => [
   ...performerMentions(resource),
 ]
 
-/**
- * The logical reference a reference in `mentioningResource` makes: one with
- * no literal `reference` and a qualified `identifier`, whose type is its own
- * `type` when that is `Patient` or `Practitioner`, else, when it states no
- * type, that of the field it is mentioned in. `None` for a literal reference,
- * a display-only one, one whose `type` names something else (an
- * `Organization` performer), and an identifier-only one outside the mention
- * fields that states no type: a prior prescription's number names no person.
- */
-const maybeLogicalReferenceOf = (
-  mentioningResource: FhirResource,
-  reference: IdentifierAndReference.ReferenceType
-): Option.Option<LogicalReference.Type> => {
-  if (reference.reference !== null || reference.identifier === null) return Option.none()
-  const { identifier } = reference
-  const resourceType =
-    reference.type === null
-      ? pipe(
-          of(mentioningResource),
-          Array.findFirst((found) => found.reference === reference),
-          Option.map((found) => FIELD_RESOURCE_TYPE[found.field])
-        )
-      : Option.some(reference.type).pipe(Option.filter(LogicalReference.isResourceType))
-  return Option.flatMap(resourceType, (type) => LogicalReference.maybeOf(type, identifier))
-}
-
-export { maybeLogicalReferenceOf, of }
+export { of }
 export type { Field, Type }

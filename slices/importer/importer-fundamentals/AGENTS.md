@@ -128,11 +128,11 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     qualified identifiers a resource does not already carry, assumed as one assumes an
     identity, and changes nothing else.
   - **`Mention`** — each place a resource names its patient or a provider:
-    its top-level `subject`, `requester` and `performer`, read by field. An
-    identifier-only reference states no type, so the field it is mentioned in
-    says whether it names a Patient or a Practitioner; reading by field also
+    its top-level `subject`, `requester` and `performer`, read by field, which
     gives each mention the path an unlinked mention reports, since
-    `ResourceReferences.map` gives none.
+    `ResourceReferences.map` gives none. Which type an identifier-only mention
+    names is the reference's own business: a logical reference states its
+    `type`, and one that does not names nothing.
   - **`Referent`** — something the import refers to that may already exist on
     the device, once per logical reference: **`AsResource`** when the decode emitted
     its resource (carrying every identifier a search tries, its own and the

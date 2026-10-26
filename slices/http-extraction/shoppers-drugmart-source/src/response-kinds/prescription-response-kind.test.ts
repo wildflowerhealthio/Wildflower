@@ -122,6 +122,7 @@ const expectedRequest = decodeRequest({
     text: 'Atorvastatin',
   },
   requester: {
+    type: 'Practitioner',
     identifier: { system: Practitioner.NAME_IDENTIFIER_SYSTEM, value: 'Dr. A Prescriber' },
     display: 'Dr. A Prescriber',
   },
@@ -405,6 +406,7 @@ describe('PrescriptionResponseKind', () => {
 
       expect(request?.requester).toStrictEqual(
         decodeReference({
+          type: 'Practitioner',
           identifier: { system: Practitioner.NAME_IDENTIFIER_SYSTEM, value: 'Dr. A Prescriber' },
           display: ' Dr.  A Prescriber',
         })

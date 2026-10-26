@@ -50,5 +50,18 @@ const maybeOf = (
     ? Option.some({ type, identifier })
     : Option.none()
 
-export { equivalence, isResourceType, key, maybeOf }
+/**
+ * The logical reference `reference` makes: one with no literal `reference`,
+ * a `type` the identity map links, and a qualified `identifier`. `None` for
+ * a literal reference, a display-only one, one whose `type` names something
+ * else (an `Organization` performer), and an identifier-only one that states
+ * no type, which names nothing the map could tell apart from a patient's
+ * account number or a prior prescription's number.
+ */
+const maybeOfReference = (reference: IdentifierAndReference.ReferenceType): Option.Option<Type> =>
+  reference.reference === null && reference.identifier !== null && isResourceType(reference.type)
+    ? maybeOf(reference.type, reference.identifier)
+    : Option.none()
+
+export { equivalence, isResourceType, key, maybeOf, maybeOfReference }
 export type { ResourceType, Type }

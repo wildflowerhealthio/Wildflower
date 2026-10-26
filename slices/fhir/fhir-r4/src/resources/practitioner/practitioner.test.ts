@@ -223,3 +223,21 @@ describe('Practitioner.tryFromNameIdentifier', () => {
     expect(Option.isNone(Practitioner.tryFromNameIdentifier(empty))).toBe(true)
   })
 })
+
+describe('Practitioner.nameReference', () => {
+  test('names the provider by type and name identifier, and shows the name as printed', () => {
+    const reference = Option.getOrThrow(Practitioner.nameReference(' Dr.  A Prescriber'))
+    expect([reference.type, reference.reference, reference.display]).toEqual([
+      'Practitioner',
+      null,
+      ' Dr.  A Prescriber',
+    ])
+    expect(reference.identifier).toStrictEqual(
+      Option.getOrThrow(Practitioner.nameIdentifier('Dr. A Prescriber'))
+    )
+  })
+
+  test('is None for a blank name', () => {
+    expect(Option.isNone(Practitioner.nameReference('  '))).toBe(true)
+  })
+})

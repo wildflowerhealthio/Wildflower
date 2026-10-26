@@ -233,24 +233,21 @@ const statusReasonWire = (rx: SourcePrescription): Record<string, unknown> | und
   }
 }
 
-const encodeIdentifier = Schema.encodeSync(IdentifierAndReference.IdentifierSchema)
+const encodeReference = Schema.encodeSync(IdentifierAndReference.ReferenceSchema)
 
 /**
  * The `requester` wire for the prescriber, whom the portal knows only by
- * name: the name as `display`, and as the identifier `fhir-r4`'s
- * `Practitioner.nameIdentifier` makes of it, so the reference names an
- * identity the importer's identity map can resolve. `undefined` when the
- * payload names no prescriber, or a blank one.
+ * name: `fhir-r4`'s `Practitioner.nameReference`, a logical reference that
+ * states its type and names the provider by the name identifier, so the
+ * importer's identity map can resolve it. `undefined` when the payload names
+ * no prescriber, or a blank one.
  */
-const requesterWire = (prescriberName: string | undefined): Record<string, unknown> | undefined =>
+const requesterWire = (
+  prescriberName: string | undefined
+): typeof IdentifierAndReference.ReferenceSchema.Encoded | undefined =>
   prescriberName == null
     ? undefined
-    : Option.getOrUndefined(
-        Option.map(Practitioner.nameIdentifier(prescriberName), (identifier) => ({
-          identifier: encodeIdentifier(identifier),
-          display: prescriberName,
-        }))
-      )
+    : Option.getOrUndefined(Option.map(Practitioner.nameReference(prescriberName), encodeReference))
 
 /**
  * Build the R4 `MedicationRequest` **wire** from the decoded prescription; the

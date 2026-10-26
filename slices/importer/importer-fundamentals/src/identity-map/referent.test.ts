@@ -17,6 +17,7 @@ import {
   patient,
   practitioner,
   request,
+  untypedSubject,
   wireFieldsOf,
 } from './identity-map.test-helpers.ts'
 import * as Referent from './referent.ts'
@@ -34,8 +35,8 @@ afterAll(() => {
 /**
  * The referent keys a resource's wire form names: its own `identifier[0]` for a
  * Patient or Practitioner, and each `subject`, `requester` and `performer` (or
- * `performer[].actor`) that names a system and value and no literal, typed by
- * its own `type` when it states one.
+ * `performer[].actor`) that is a logical reference: a stated `type`, a system
+ * and value, and no literal.
  */
 const wireKeys = (resource: FhirResource): readonly string[] => {
   const wire = wireFieldsOf(resource)
@@ -50,28 +51,17 @@ const wireKeys = (resource: FhirResource): readonly string[] => {
     wire.resourceType === 'Patient' || wire.resourceType === 'Practitioner'
       ? keyOf(wire.resourceType, wire.identifier?.[0])
       : []
-  const mentions = [
-    ...[wire.subject].map((reference) => ['Patient', reference] as const),
-    ...[wire.requester, wire.performer ?? []]
-      .flat()
-      .map(
-        (performer) =>
-          [
-            'Practitioner',
-            performer !== undefined && 'actor' in performer ? performer.actor : performer,
-          ] as const
-      ),
-  ]
-  const typeOf = (fieldType: string, stated: string | undefined): readonly string[] => {
-    if (stated === undefined) return [fieldType]
-    return stated === 'Patient' || stated === 'Practitioner' ? [stated] : []
-  }
+  const mentions = [wire.subject, wire.requester, wire.performer ?? []]
+    .flat()
+    .map((mention) => (mention !== undefined && 'actor' in mention ? mention.actor : mention))
+  const typeOf = (stated: string | undefined): readonly string[] =>
+    stated === 'Patient' || stated === 'Practitioner' ? [stated] : []
   return [
     ...own,
-    ...mentions.flatMap(([fieldType, reference]) =>
+    ...mentions.flatMap((reference) =>
       reference === undefined || reference.reference !== undefined
         ? []
-        : typeOf(fieldType, reference.type).flatMap((type) => keyOf(type, reference.identifier))
+        : typeOf(reference.type).flatMap((type) => keyOf(type, reference.identifier))
     ),
   ]
 }
@@ -129,13 +119,14 @@ describe('Referent.discover', () => {
     expect(practitionerReferent?.label).toBe('Dr.  B   Jones')
   })
 
-  it('makes no referent of a display-only performer, an organization, a literal, or a prior prescription number', () => {
+  it('makes no referent of a display-only performer, an organization, a literal, an untyped identifier, or a prior prescription number', () => {
     const file = fileOf(
       observation('o-1', literalSubject('p-elsewhere'), [
         { display: 'LifeLabs' },
         { type: 'Organization', identifier: { system: SOURCE_PRACTITIONER, value: 'lab-1' } },
       ]),
-      request('rx-1', { reference: 'Patient/p-2' })
+      request('rx-1', { reference: 'Patient/p-2' }),
+      request('rx-2', untypedSubject('p-3'))
     )
 
     expect(Referent.discover(file)).toEqual([])

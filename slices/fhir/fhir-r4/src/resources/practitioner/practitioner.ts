@@ -184,6 +184,26 @@ const nameIdentifier = (name: string): Option.Option<IdentifierAndReference.Iden
       })
 }
 
+/**
+ * The logical reference to a provider a source knows only by its printed
+ * `name`: `type` `Practitioner`, {@link nameIdentifier} as the `identifier`,
+ * and the name as printed for `display`; `None` for a blank name.
+ *
+ * @remarks
+ * A reference that names its target by identifier alone must say what type
+ * it names, or an importer reading it cannot tell a provider's name from a
+ * patient's account number. Stating the type here is what lets the identity
+ * map treat the reference as a logical reference rather than guessing from
+ * the field it sits in.
+ */
+const nameReference = (name: string): Option.Option<IdentifierAndReference.ReferenceType> =>
+  Option.map(nameIdentifier(name), (identifier) => ({
+    ...IdentifierAndReference.emptyReference,
+    type: 'Practitioner',
+    identifier,
+    display: name,
+  }))
+
 /** A `Practitioner` on, or bound for, the device: one with an `id`. */
 type WithId = Type & { readonly id: string }
 
@@ -229,6 +249,7 @@ const tryFromNameIdentifier = (
 export {
   NAME_IDENTIFIER_SYSTEM,
   nameIdentifier,
+  nameReference,
   PractitionerSchema as Schema,
   tryFromNameIdentifier,
 }

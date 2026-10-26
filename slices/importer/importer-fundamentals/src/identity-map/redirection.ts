@@ -11,22 +11,19 @@ import { Option, pipe } from 'effect'
 import * as Destination from './destination.ts'
 import type * as LinkPlan from './link-plan.ts'
 import * as LogicalReference from './logical-reference.ts'
-import * as Mention from './mention.ts'
 
 /**
- * The literal reference `referenceAsDecoded`, one reference
- * `mentioningResource` carries, is placed at under `plan`: for a decoded
- * literal reference, the one it is redirected to; for an identifier-only one,
- * its logical reference's destination. `None` when it stays as decoded.
+ * The literal reference `referenceAsDecoded` is placed at under `plan`: for a
+ * decoded literal reference, the one it is redirected to; for a logical
+ * reference, its referent's destination. `None` when it stays as decoded.
  */
 const maybePlacedLiteralReference = (
   plan: LinkPlan.Type,
-  mentioningResource: FhirResource,
   referenceAsDecoded: IdentifierAndReference.ReferenceType
 ): Option.Option<string> =>
   referenceAsDecoded.reference === null
     ? pipe(
-        Mention.maybeLogicalReferenceOf(mentioningResource, referenceAsDecoded),
+        LogicalReference.maybeOfReference(referenceAsDecoded),
         Option.flatMapNullable((logicalReference) =>
           plan.destinationsByReferentKey.get(LogicalReference.key(logicalReference))
         ),
@@ -43,7 +40,7 @@ const maybePlacedLiteralReference = (
  */
 const redirectMentions = (plan: LinkPlan.Type, mentioningResource: FhirResource): FhirResource =>
   ResourceReferences.map(mentioningResource, (referenceAsDecoded) =>
-    Option.match(maybePlacedLiteralReference(plan, mentioningResource, referenceAsDecoded), {
+    Option.match(maybePlacedLiteralReference(plan, referenceAsDecoded), {
       onNone: () => referenceAsDecoded,
       onSome: (placedLiteralReference) => ({
         ...referenceAsDecoded,

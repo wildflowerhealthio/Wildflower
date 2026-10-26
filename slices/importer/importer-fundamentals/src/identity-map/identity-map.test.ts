@@ -27,6 +27,7 @@ import {
   patient,
   request,
   unrelatedArbitrary,
+  untypedSubject,
   wireFieldsOf,
   wireOf,
 } from './identity-map.test-helpers.ts'
@@ -88,11 +89,12 @@ const subjectAndRequesterOf = (
 })
 
 describe('IdentityMap.apply', () => {
-  it('puts a stored person in the source Patient’s place and redirects every mention of it', () => {
+  it('puts a stored person in the source Patient’s place and redirects every typed mention of it', () => {
     const file = fileOf(
       patient({ id: 'p-1' }),
       request('rx-1', { ...literalSubject('p-1'), display: 'Tyra' }),
-      observation('o-1', { identifier: { system: SOURCE_PATIENT, value: 'p-1' } })
+      observation('o-1', { type: 'Patient', identifier: { system: SOURCE_PATIENT, value: 'p-1' } }),
+      observation('o-2', untypedSubject('p-1'))
     )
 
     const applied = IdentityMap.apply(
@@ -101,7 +103,7 @@ describe('IdentityMap.apply', () => {
     )
 
     expect(applied.sections.map((section) => section.resources.map((entry) => entry.key))).toEqual([
-      ['k-0', 'k-1', 'k-2'],
+      ['k-0', 'k-1', 'k-2', 'k-3'],
     ])
     expect(at(applied, 'k-0')?.id).toBe('s-1')
     expect(identifiersOf(at(applied, 'k-0'))).toEqual([
@@ -116,6 +118,7 @@ describe('IdentityMap.apply', () => {
       'p-1',
     ])
     expect(subjectAndRequesterOf(at(applied, 'k-2')).subject?.reference).toBe('Patient/s-1')
+    expect(subjectAndRequesterOf(at(applied, 'k-3')).subject?.reference).toBe(null)
   })
 
   it('links an account id to a stored person and writes the person, with the id, in a Linked section', () => {

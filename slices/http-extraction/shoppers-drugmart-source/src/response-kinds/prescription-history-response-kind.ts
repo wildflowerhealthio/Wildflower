@@ -77,13 +77,15 @@ const customerIdOf = (url: string): Effect.Effect<string, ParseResult.ParseError
   decodeCustomerId(URL.parse(url)?.searchParams.get('customerId'))
 
 /**
- * The `subject` wire: the account the history is for, by identifier alone,
- * `customerId` under `ShoppersIdentifierSystem.CustomerId`, with no literal
- * `reference`. The feed names no managed person and no Patient stands for
- * the account, so the identifier is all it can say, for the importer's
- * identity map to resolve to a person.
+ * The `subject` wire: the account the history is for, as a logical reference
+ * to a `Patient` by `customerId` under `ShoppersIdentifierSystem.CustomerId`,
+ * with no literal `reference`. The feed names no managed person and no
+ * Patient stands for the account, so the identifier is all it can say, for
+ * the importer's identity map to resolve to a person; the stated `type` is
+ * what tells the map it names a patient.
  */
 const accountSubjectWire = (customerId: string): Record<string, unknown> => ({
+  type: 'Patient',
   identifier: { system: ShoppersIdentifierSystem.CustomerId, value: customerId },
 })
 
