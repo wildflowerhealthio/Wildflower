@@ -94,7 +94,7 @@ describe('ResourceReferences.collect', () => {
       fc.property(resourceArbitrary, (resource) => {
         expect(
           ResourceReferences.collect(resource)
-            .flatMap(({ reference }) => (reference === null ? [] : [reference]))
+            .flatMap(({ reference }) => (reference.reference === null ? [] : [reference.reference]))
             .toSorted()
         ).toEqual(wireReferences(resource).toSorted())
       }),
@@ -126,5 +126,24 @@ describe('ResourceReferences.map', () => {
       }),
       { numRuns: numRunsFor({ base: 20 }) }
     )
+  })
+})
+
+describe('ResourceReferences.collect paths', () => {
+  it('spells each reference’s path with fields joined by dots and array elements indexed', () => {
+    const dispense = decodeResource({
+      resourceType: 'MedicationDispense',
+      status: 'completed',
+      subject: { reference: 'Patient/p-1' },
+      performer: [{ actor: { reference: 'Practitioner/pr-1' } }, { actor: { display: 'Tech' } }],
+      authorizingPrescription: [{ reference: 'MedicationRequest/rx-1' }],
+    })
+
+    expect(ResourceReferences.collect(dispense).map(({ path }) => path)).toEqual([
+      'subject',
+      'performer[0].actor',
+      'performer[1].actor',
+      'authorizingPrescription[0]',
+    ])
   })
 })

@@ -1,7 +1,7 @@
 /**
- * Every `Reference` a decoded resource carries, at any depth: found by
- * `fhir-r4`'s own `Reference` schema rather than a list of field names, so a
- * reference anywhere in a resource is reached.
+ * Every `Reference` a decoded resource carries, at any depth, each at its
+ * path: found by `fhir-r4`'s own `Reference` schema rather than a list of
+ * field names, so a reference anywhere in a resource is reached.
  *
  * @packageDocumentation
  */
@@ -31,19 +31,39 @@ const isReference = (value: unknown): value is Reference =>
   isPlainRecord(value) && 'reference' in value && isReferenceSchema(value)
 
 /**
- * `value` with `rewrite` applied to every decoded `Reference` in it. Records
- * and arrays nothing changed in come back as themselves.
+ * A `Reference` at its path in the resource: `subject`, `performer[1]`,
+ * `performer[0].actor`, `contained[0].subject`. Fields are joined with `.`,
+ * array elements indexed with `[n]`.
  */
-const mapIn = (value: unknown, rewrite: (reference: Reference) => Reference): unknown => {
+interface ReferenceAt {
+  readonly path: string
+  readonly reference: Reference
+}
+
+const fieldPath = (parent: string, key: string): string =>
+  parent.length === 0 ? key : `${parent}.${key}`
+
+/**
+ * `value` with `rewrite` applied to every decoded `Reference` in it, each
+ * with its path under `path`. Records and arrays nothing changed in come back
+ * as themselves.
+ */
+const mapIn = (
+  value: unknown,
+  path: string,
+  rewrite: (reference: Reference, path: string) => Reference
+): unknown => {
   if (Array.isArray(value)) {
     const elements: readonly unknown[] = value
-    const mapped = elements.map((element) => mapIn(element, rewrite))
+    const mapped = elements.map((element, index) => mapIn(element, `${path}[${index}]`, rewrite))
     return mapped.every((element, index) => element === elements[index]) ? value : mapped
   }
   if (!isPlainRecord(value)) return value
-  const visited = isReference(value) ? rewrite(value) : value
+  const visited = isReference(value) ? rewrite(value, path) : value
   const fields = Object.entries(visited)
-  const mapped = fields.map(([key, field]) => [key, mapIn(field, rewrite)] as const)
+  const mapped = fields.map(
+    ([key, field]) => [key, mapIn(field, fieldPath(path, key), rewrite)] as const
+  )
   const unchanged =
     visited === value && mapped.every(([, field], index) => field === fields[index]?.[1])
   return unchanged ? value : Object.fromEntries(mapped)
@@ -65,16 +85,17 @@ const map = <TResource extends FhirResource>(
   rewrite: (reference: Reference) => Reference
 ): TResource =>
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the walk keeps the shape; see @remarks
-  mapIn(resource, rewrite) as TResource
+  mapIn(resource, '', rewrite) as TResource
 
-/** Every `Reference` `resource` carries, at any depth, each before the references nested in it. */
-const collect = (resource: FhirResource): readonly Reference[] => {
-  const found: Reference[] = []
-  mapIn(resource, (reference) => {
-    found.push(reference)
+/** Every `Reference` `resource` carries, at any depth, at its path, each before the references nested in it. */
+const collect = (resource: FhirResource): readonly ReferenceAt[] => {
+  const found: ReferenceAt[] = []
+  mapIn(resource, '', (reference, path) => {
+    found.push({ path, reference })
     return reference
   })
   return found
 }
 
 export { collect, map }
+export type { ReferenceAt }

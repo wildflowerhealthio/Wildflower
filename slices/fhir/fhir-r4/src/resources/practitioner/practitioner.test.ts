@@ -18,6 +18,7 @@ import {
   IdentifierAndReference,
   Meta,
 } from '../../data-types/index.ts'
+import { localResourceId } from '../../identity/local-resource-id.ts'
 import * as PractitionerQualification from './practitioner-qualification.ts'
 import * as Practitioner from './practitioner.ts'
 
@@ -187,5 +188,56 @@ describe('Practitioner.nameIdentifier', () => {
       ),
       { numRuns: numRunsFor({ base: 100 }) }
     )
+  })
+})
+
+describe('Practitioner.tryFromNameIdentifier', () => {
+  test('stands a provisional Practitioner in for a name identifier, at an id derived from the name', () => {
+    const provisional = Option.getOrThrow(
+      Practitioner.tryFromNameIdentifier(
+        Option.getOrThrow(Practitioner.nameIdentifier('Dr. A Prescriber'))
+      )
+    )
+    expect(provisional.id).toBe(
+      localResourceId(Practitioner.NAME_IDENTIFIER_SYSTEM, 'Practitioner', 'Dr. A Prescriber')
+    )
+    expect(provisional.identifier.map((identifier) => identifier.value)).toEqual([
+      'Dr. A Prescriber',
+    ])
+    expect(provisional.name.map((name) => name.text)).toEqual(['Dr. A Prescriber'])
+  })
+
+  test('is None for an identifier under another system', () => {
+    const other = Schema.decodeUnknownSync(IdentifierAndReference.IdentifierSchema)({
+      system: 'https://source.example/practitioner-id',
+      value: 'p-1',
+    })
+    expect(Option.isNone(Practitioner.tryFromNameIdentifier(other))).toBe(true)
+  })
+
+  test('is None for a name identifier with an empty value', () => {
+    const empty = Schema.decodeUnknownSync(IdentifierAndReference.IdentifierSchema)({
+      system: Practitioner.NAME_IDENTIFIER_SYSTEM,
+      value: '',
+    })
+    expect(Option.isNone(Practitioner.tryFromNameIdentifier(empty))).toBe(true)
+  })
+})
+
+describe('Practitioner.tryReferenceFromName', () => {
+  test('names the provider by type and name identifier, and shows the name as printed', () => {
+    const reference = Option.getOrThrow(Practitioner.tryReferenceFromName(' Dr.  A Prescriber'))
+    expect([reference.type, reference.reference, reference.display]).toEqual([
+      'Practitioner',
+      null,
+      ' Dr.  A Prescriber',
+    ])
+    expect(reference.identifier).toStrictEqual(
+      Option.getOrThrow(Practitioner.nameIdentifier('Dr. A Prescriber'))
+    )
+  })
+
+  test('is None for a blank name', () => {
+    expect(Option.isNone(Practitioner.tryReferenceFromName('  '))).toBe(true)
   })
 })
