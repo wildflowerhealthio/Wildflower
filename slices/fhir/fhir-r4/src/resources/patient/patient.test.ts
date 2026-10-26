@@ -488,3 +488,67 @@ describe('Patient.nameBirthDateIdentifier', () => {
     )
   })
 })
+
+describe('Patient.demographics', () => {
+  const patientOf = (wire: object): typeof Patient.Schema.Type =>
+    Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', ...wire })
+
+  test('should read the first name’s family and given names, normalised, and the birth date', () => {
+    const demographics = Patient.demographics(
+      patientOf({
+        name: [
+          { family: '  Van  Der Berg ', given: ['Tyra', 'Lynne'] },
+          { family: 'Other', given: ['X'] },
+        ],
+        birthDate: '1990-01-02',
+      })
+    )
+
+    expect(demographics).toEqual({
+      family: Option.some('van der berg'),
+      given: Option.some('tyra lynne'),
+      birthDate: Option.some('1990-01-02'),
+    })
+  })
+
+  test('should read None for each part the patient does not state', () => {
+    expect(Patient.demographics(patientOf({ name: [{ family: 'Banks' }] }))).toEqual({
+      family: Option.some('banks'),
+      given: Option.none(),
+      birthDate: Option.none(),
+    })
+    expect(Patient.demographics(patientOf({ birthDate: '1990-01-02' }))).toEqual({
+      family: Option.none(),
+      given: Option.none(),
+      birthDate: Option.some('1990-01-02'),
+    })
+  })
+
+  test('should always be what the name-and-birth-date identifier is minted from, joined by ;', () => {
+    const nameWordArb = fc.stringMatching(/^[A-Za-zéÉ]{1,8}$/)
+    fc.assert(
+      fc.property(
+        nameWordArb,
+        fc.array(nameWordArb, { minLength: 1 }),
+        Arbitrary.make(TimelessDateFromString),
+        (family, given, birthDate) => {
+          // Arrange
+          const patient = patientOf({ name: [{ family, given }], birthDate })
+
+          // Act
+          const demographics = Patient.demographics(patient)
+          const identifier = Patient.nameBirthDateIdentifier(patient)
+
+          // Assert
+          expect(Option.map(identifier, ({ value }) => value)).toEqual(
+            Option.map(
+              Option.all([demographics.family, demographics.given, demographics.birthDate]),
+              (parts) => parts.join(';')
+            )
+          )
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+})

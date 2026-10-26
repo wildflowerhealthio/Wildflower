@@ -233,6 +233,39 @@ const normalizeNamePart = (namePart: string): string =>
   namePart.normalize('NFC').trim().replaceAll(/\s+/g, ' ').toLowerCase()
 
 /**
+ * A patient's demographics as one person is told from another: the first
+ * name's family and given names, each normalised as {@link normalizeNamePart}
+ * does, and the birth date; each `None` when the patient does not state it.
+ */
+interface Demographics {
+  readonly family: Option.Option<string>
+  /** The given names joined by a space. */
+  readonly given: Option.Option<string>
+  readonly birthDate: Option.Option<typeof TimelessDateFromString.Type>
+}
+
+/**
+ * The {@link Demographics} of `patient`: what {@link nameBirthDateIdentifier}
+ * is minted from, and what a review compares two records of one person by,
+ * so both read the same normalised parts.
+ */
+const demographics = (patient: Type): Demographics => {
+  const firstName = Array.head(patient.name)
+  return {
+    family: firstName.pipe(
+      Option.flatMapNullable((name) => name.family),
+      Option.map(normalizeNamePart),
+      Option.filter((namePart) => namePart.length > 0)
+    ),
+    given: firstName.pipe(
+      Option.map((name) => normalizeNamePart(name.given.join(' '))),
+      Option.filter((namePart) => namePart.length > 0)
+    ),
+    birthDate: Option.fromNullable(patient.birthDate),
+  }
+}
+
+/**
  * The identifier a patient's first name and birth date mint under
  * {@link NAME_BIRTH_DATE_IDENTIFIER_SYSTEM}: `family;given…;YYYY-MM-DD`, the
  * given names joined by a space, in NFC, lower-cased with whitespace collapsed.
@@ -242,25 +275,16 @@ const normalizeNamePart = (namePart: string): string =>
  * sources is one identity for the importer's identity map. A name change
  * mints a different identifier, and the person keeps both. `None` unless the
  * first name's family, at least one given name, and `birthDate` are all
- * present, so a partial match never links two people. The parts are joined
- * by `;` rather than `|`, which a FHIR token search reads as the system
- * separator, so the value is searched as `system|family;given;date` with
- * nothing to escape.
+ * present ({@link demographics}), so a partial match never links two people.
+ * The parts are joined by `;` rather than `|`, which a FHIR token search reads
+ * as the system separator, so the value is searched as
+ * `system|family;given;date` with nothing to escape.
  */
 const nameBirthDateIdentifier = (
   patient: Type
 ): Option.Option<IdentifierAndReference.IdentifierType> => {
-  const firstName = Array.head(patient.name)
-  const family = firstName.pipe(
-    Option.flatMapNullable((name) => name.family),
-    Option.map(normalizeNamePart),
-    Option.filter((namePart) => namePart.length > 0)
-  )
-  const given = firstName.pipe(
-    Option.map((name) => normalizeNamePart(name.given.join(' '))),
-    Option.filter((namePart) => namePart.length > 0)
-  )
-  return Option.all([family, given, Option.fromNullable(patient.birthDate)]).pipe(
+  const { family, given, birthDate } = demographics(patient)
+  return Option.all([family, given, birthDate]).pipe(
     Option.map((valueParts): IdentifierAndReference.IdentifierType => ({
       id: null,
       extension: [],
@@ -274,5 +298,10 @@ const nameBirthDateIdentifier = (
   )
 }
 
-export { PatientSchema as Schema, NAME_BIRTH_DATE_IDENTIFIER_SYSTEM, nameBirthDateIdentifier }
-export type { Type }
+export {
+  demographics,
+  NAME_BIRTH_DATE_IDENTIFIER_SYSTEM,
+  nameBirthDateIdentifier,
+  PatientSchema as Schema,
+}
+export type { Demographics, Type }
