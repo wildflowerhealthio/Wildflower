@@ -168,9 +168,12 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     alongside, what its referent becomes (`DecodedFile.mapResources`), and the
     records the file only mentions appended under **`LINKED_SECTION_TITLE`**
     at **`linkedKey`**.
-  - **`UnlinkedMention`** — `collect`: on a placed file, every
-    **`MissingSubject`** and every **`Dangling`** mention (one that lands on
-    no record of the device), matched with `UnlinkedMention.match`.
+  - **`UnlinkedMention`** — `collect`: on a placed file, every resource
+    **`OutsidePatientCompartment`** (a `subject` slot naming no patient at
+    all; FHIR's Patient CompartmentDefinition names `subject` for every type
+    the importer handles) and every **`Dangling`** mention (one that names
+    something and lands on no record of the device), matched with
+    `UnlinkedMention.match`.
   - **`IdentityMap`** — the map itself (**`Type`**, every referent's choice by
     `Referent.key`), **`apply`** (plan, then place) and **`unlinkedMentions`**.
 - `src/picked-file.ts` — the **`PickedFile`** namespace: the picked file
@@ -284,26 +287,30 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
   diff, the preview and the confirm, so all three see the resources that get
   written. `apply` is pure and idempotent and keeps the file's sections and
   keys. A referent's mentions are redirected to its destination: a decoded
-  resource linked to a stored one is replaced by it **under the same review
-  key**, the stored resource assuming the referent's identifiers and its own
+  resource linked to a stored record is replaced by it **under the same review
+  key**, the stored record assuming the referent's identifiers and its own
   derived one and keeping its demographics byte for byte; every mention of the
-  identity, a literal `Type/<source id>` or an identifier-only one, is
+  referent, a literal `Type/<decoded id>` or a logical reference, is
   redirected through `ResourceReferences.map`, keeping its `display` and
-  `identifier`; a resource the file only mentions is appended under a final
-  **"Linked"** section so the review shows the identifier it assumed; an own
-  resource is written as decoded plus its derived identifier and those of the
-  referents linked to it. A referent named only by mentions may be `New` only
-  when its identity stands for something provisional (`Provisional.forIdentity`:
-  a provider's printed name, as a `Practitioner` at `localResourceId(system,
-  'Practitioner', name)`, so one name from two sources is one record); its
-  default stays `DontLink`. `SameAs` follows to the end; a choice a referent's
-  kind does not allow, a referent of another type, or one the file does not
-  hold reads as the kind's default, own resource or unlinked; a cycle reads as
-  `New` for the first of its members, in key order, that `New` places on a
-  resource, so all of it lands on one record. `unlinkedMentions` lists, on the
-  placed file, every missing `subject`, every mention that is an absolute URL, and
-  every identity left identifier-only; a `display`-only provider is not one
-  the map could link, so it is not listed.
+  `identifier`; a record the file only mentions is appended under a final
+  **"Linked"** section so the review shows the identifier it assumed; a
+  decoded resource that is its referent's destination is written as decoded
+  plus its derived identifier and those of the referents linked to it. A
+  referent named only by mentions may be `Create` only when its logical
+  reference stands for something provisional
+  (`LinkableResource.maybeProvisionalFor`: a provider's printed name, as a
+  `Practitioner` at `localResourceId(system, 'Practitioner', name)`, so one
+  name from two sources is one record); its default stays `DontLink`.
+  `LinkToReferent` follows to the end; a choice a referent's kind does not
+  allow, a referent of another type, or one the file does not hold reads as
+  the kind's default, decoded resource or unlinked; a cycle reads as `Create`
+  for the first of its members, in key order, that `Create` places on a
+  record, so all of it lands on one record. `unlinkedMentions` lists, on the
+  placed file, every resource outside every patient's compartment (a `subject`
+  slot naming no patient at all) and every dangling mention: one that names
+  something, a logical reference or an absolute URL, and lands on no record
+  of the device. A `display`-only provider and an untyped identifier are not
+  ones the map could link, so they are not listed.
 - **Selection keys by a `DecodedFile.Resource`'s `key`.** Selection state must
   be serializable and survive a settings re-decode, so both axes hold string
   keys; a key that disappears simply stops applying.

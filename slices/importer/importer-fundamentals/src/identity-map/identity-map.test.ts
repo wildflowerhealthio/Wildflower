@@ -64,10 +64,10 @@ const identifiersOf = (resource: FhirResource | undefined): readonly string[] =>
     ? resource.identifier.map((identifier) => `${identifier.system?.href}|${identifier.value}`)
     : []
 
-/** The path an unlinked mention reports: `subject` for a missing one. */
+/** The path an unlinked mention reports: `subject` for a resource outside every patient's compartment. */
 const pathOf = (unlinked: UnlinkedMention.Type): string =>
   UnlinkedMention.match(unlinked, {
-    MissingSubject: () => 'subject',
+    OutsidePatientCompartment: () => 'subject',
     Dangling: ({ mentionPath }) => mentionPath,
   })
 
@@ -389,19 +389,23 @@ describe('IdentityMap.unlinkedMentions', () => {
     observation('o-1'),
     observation('o-2', { reference: ABSOLUTE }),
     request('rx-1', customerSubject('c-9'), namedRequester('Dr. A Smith')),
-    observation('o-3', literalSubject('p-1'), [{ display: 'LifeLabs' }])
+    observation('o-3', literalSubject('p-1'), [{ display: 'LifeLabs' }]),
+    observation('o-4', { display: 'Tyra' }),
+    observation('o-5', untypedSubject('p-1'))
   )
   const listed = (choices: IdentityMap.Type): readonly string[] =>
     IdentityMap.unlinkedMentions(file, choices).map(
-      (unlinked) => `${unlinked.mentioningResourceKey} ${pathOf(unlinked)}`
+      (unlinked) => `${unlinked._tag} ${unlinked.mentioningResourceKey} ${pathOf(unlinked)}`
     )
 
-  it('lists a missing subject, an absolute URL and every identity the map leaves unlinked', () => {
+  it('lists a resource outside every patient compartment, an absolute URL and every logical reference the map leaves unlinked', () => {
     expect(listed(new Map())).toEqual([
-      'k-0 subject',
-      'k-1 subject',
-      'k-2 subject',
-      'k-2 requester',
+      'OutsidePatientCompartment k-0 subject',
+      'Dangling k-1 subject',
+      'Dangling k-2 subject',
+      'Dangling k-2 requester',
+      'OutsidePatientCompartment k-4 subject',
+      'OutsidePatientCompartment k-5 subject',
     ])
   })
 
@@ -411,7 +415,12 @@ describe('IdentityMap.unlinkedMentions', () => {
       [PRESCRIBER, LinkChoice.LinkToStored({ resource: STORED_SMITH })],
     ])
 
-    expect(listed(choices)).toEqual(['k-0 subject', 'k-1 subject'])
+    expect(listed(choices)).toEqual([
+      'OutsidePatientCompartment k-0 subject',
+      'Dangling k-1 subject',
+      'OutsidePatientCompartment k-4 subject',
+      'OutsidePatientCompartment k-5 subject',
+    ])
   })
 })
 
