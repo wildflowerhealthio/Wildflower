@@ -46,6 +46,7 @@ const WireIdentifier = Schema.Struct({
 const WireReference = Schema.Struct({
   reference: Schema.optional(Schema.String),
   identifier: Schema.optional(WireIdentifier),
+  type: Schema.optional(Schema.String),
 })
 const WireSlot = Schema.Union(Schema.Struct({ actor: WireReference }), WireReference)
 

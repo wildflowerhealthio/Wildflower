@@ -37,12 +37,18 @@ interface Unresolved {
 /** The title of the section `apply` appends stored resources that only id-only rows link to. */
 const LINKED_SECTION_TITLE = 'Linked'
 
-/** A stored resource's literal, `Type/<id>`: what references to it carry. */
-const storedKey = (resource: Target.StoredResource): string =>
+/** A resource's relative literal, `Type/<id>`: what references to it carry. */
+const literalOf = (resource: { readonly resourceType: string; readonly id: string }): string =>
   `${resource.resourceType}/${resource.id}`
 
+/** A decoded resource's literal, or `None` when it has no `id` to be referenced by. */
+const literalOfDecoded = (resource: FhirResource): Option.Option<string> =>
+  Option.map(Option.fromNullable(resource.id), (id) =>
+    literalOf({ resourceType: resource.resourceType, id })
+  )
+
 /** The review key `apply` appends a stored resource under in the Linked section. */
-const linkedKey = (resource: Target.StoredResource): string => `linked:${storedKey(resource)}`
+const linkedKey = (resource: Target.StoredResource): string => `linked:${literalOf(resource)}`
 
 /** `row`'s target in `map`, else its kind's default: `'new'` for a resource, `'dontLink'` for an id. */
 const targetOf = (map: Type, row: IdentityRow.Type): Target.Type =>
@@ -61,10 +67,20 @@ const resolveFrom = (
   if (row._tag === 'resource') return { _tag: 'newFromRow', row }
   if (!Target.isRow(target)) return 'dontLink'
   const next = rows.get(target.key)
-  return next === undefined || visited.has(target.key)
+  // A row of another type is an impossible link: a `subject` never lands on a Practitioner.
+  return next === undefined ||
+    visited.has(target.key) ||
+    next.identity.resourceType !== row.identity.resourceType
     ? 'dontLink'
     : resolveFrom(map, rows, next, new Set([...visited, target.key]))
 }
+
+/** What `row` comes to under `map`, given every row of its file keyed by `IdentityRow.key`. */
+const resolveIn = (
+  map: Type,
+  rows: ReadonlyMap<string, IdentityRow.Type>,
+  row: IdentityRow.Type
+): Target.Resolved => resolveFrom(map, rows, row, new Set([IdentityRow.key(row)]))
 
 const rowIndex = (rows: readonly IdentityRow.Type[]): ReadonlyMap<string, IdentityRow.Type> =>
   new Map(rows.map((row) => [IdentityRow.key(row), row]))
@@ -78,25 +94,26 @@ const rowIndex = (rows: readonly IdentityRow.Type[]): ReadonlyMap<string, Identi
  * A combination the row's kind does not allow reads as its default: a
  * resource-backed row targeting a row, `'dontLink'`, or a stored resource of
  * another type is `'new'`; an id-only row targeting `'new'`, a stored resource
- * of another type, or a row the file does not hold is `'dontLink'`. A cycle
- * resolves to `'new'`, and since only id-only rows target rows, every row in
- * one is id-only and so reads as `'dontLink'`.
+ * of another type, a row of another type, or a row the file does not hold is
+ * `'dontLink'`. A cycle resolves to `'new'`, and since only id-only rows target
+ * rows, every row in one is id-only and so reads as `'dontLink'`.
  */
 const resolve = (
   map: Type,
   rows: readonly IdentityRow.Type[],
   row: IdentityRow.Type
-): Target.Resolved => resolveFrom(map, rowIndex(rows), row, new Set([IdentityRow.key(row)]))
+): Target.Resolved => resolveIn(map, rowIndex(rows), row)
 
 /** The identifiers a row teaches the resource it resolves to. */
 const taughtBy = (row: IdentityRow.Type): readonly IdentifierAndReference.IdentifierType[] =>
   row._tag === 'resource' ? row.identifiers : [Identity.toIdentifier(row.identity)]
 
 /** The literal reference a resolution points at, or `None` for `'dontLink'` or an id-less resource. */
-const literalOf = (resolved: Target.Resolved): Option.Option<string> => {
+const literalOfResolved = (resolved: Target.Resolved): Option.Option<string> => {
   if (resolved === 'dontLink') return Option.none()
-  const resource = resolved._tag === 'stored' ? resolved.resource : resolved.row.resource
-  return Option.map(Option.fromNullable(resource.id), (id) => `${resource.resourceType}/${id}`)
+  return resolved._tag === 'stored'
+    ? Option.some(literalOf(resolved.resource))
+    : literalOfDecoded(resolved.row.resource)
 }
 
 /**
@@ -124,21 +141,30 @@ const literalOf = (resolved: Target.Resolved): Option.Option<string> => {
 const apply = (decodedFile: DecodedFile.DecodedFile, map: Type): DecodedFile.DecodedFile => {
   const rows = IdentityRow.discover(decodedFile)
   const index = rowIndex(rows)
+  const resolvedRows = rows.map((row) => ({ row, resolved: resolveIn(map, index, row) }))
   const resolutions = new Map(
-    rows.map((row) => [
-      IdentityRow.key(row),
-      resolveFrom(map, index, row, new Set([IdentityRow.key(row)])),
-    ])
+    resolvedRows.map(({ row, resolved }) => [IdentityRow.key(row), resolved])
   )
+  /** The stored resource replacing `resource`, when its identity's row links one. */
+  const replacementOf = (resource: Identity.IdentifiedResource): Option.Option<Target.Stored> =>
+    pipe(
+      Identity.ofResource(resource),
+      Option.flatMapNullable((identity) => resolutions.get(Identity.key(identity))),
+      Option.filter(Target.isStored)
+    )
 
-  // `Type/<source id>` → `Type/<stored id>`, for each source resource a stored one replaces.
-  const literalRepoints = new Map<string, Option.Option<string>>(
-    rows.flatMap((row) => {
-      const resolved = resolutions.get(IdentityRow.key(row))
-      return row._tag === 'resource' && row.resource.id !== null && Target.isStored(resolved)
-        ? [[`${row.resource.resourceType}/${row.resource.id}`, literalOf(resolved)]]
+  // `Type/<source id>` → `Type/<stored id>`, for every source resource a stored one replaces,
+  // including a second resource of the same identity under another id.
+  const literalRepoints = new Map(
+    DecodedFile.resources(decodedFile).flatMap(({ resource }) =>
+      Identity.isIdentifiedResource(resource)
+        ? Option.toArray(
+            Option.all([literalOfDecoded(resource), replacementOf(resource)]).pipe(
+              Option.map(([from, { resource: to }]) => [from, literalOf(to)] as const)
+            )
+          )
         : []
-    })
+    )
   )
 
   // What each target gains: a stored resource keyed by its literal, a `'new'` one by its row key.
@@ -149,16 +175,23 @@ const apply = (decodedFile: DecodedFile.DecodedFile, map: Type): DecodedFile.Dec
   ): void => {
     taught.set(target, [...(taught.get(target) ?? []), ...identifiers])
   }
+  /** What a target, by its `taught` key, gains; nothing for no key. */
+  const gainedBy = (
+    target: Option.Option<string>
+  ): readonly IdentifierAndReference.IdentifierType[] =>
+    Option.getOrElse(
+      Option.flatMapNullable(target, (key) => taught.get(key)),
+      () => []
+    )
   // Every stored target, in first-linked order, and whether only id-only rows link it.
   const storedTargets = new Map<string, { resource: Target.StoredResource; linkedOnly: boolean }>()
-  for (const row of rows) {
-    const resolved = resolutions.get(IdentityRow.key(row)) ?? 'dontLink'
+  for (const { row, resolved } of resolvedRows) {
     if (resolved === 'dontLink') continue
     if (resolved._tag === 'newFromRow') {
       teach(IdentityRow.key(resolved.row), taughtBy(row))
       continue
     }
-    const target = storedKey(resolved.resource)
+    const target = literalOf(resolved.resource)
     const known = storedTargets.get(target)
     if (known === undefined) {
       teach(target, Option.toArray(IdentityRow.derivedIdentifier(resolved.resource)))
@@ -186,9 +219,9 @@ const apply = (decodedFile: DecodedFile.DecodedFile, map: Type): DecodedFile.Dec
               Option.flatMap((identity) =>
                 Option.fromNullable(resolutions.get(Identity.key(identity)))
               ),
-              Option.flatMap(literalOf)
+              Option.flatMap(literalOfResolved)
             )
-          : Option.flatten(Option.fromNullable(literalRepoints.get(reference.reference)))
+          : Option.fromNullable(literalRepoints.get(reference.reference))
       return Option.match(literal, {
         onNone: () => reference,
         onSome: (to) => ({ ...reference, reference: to }),
@@ -199,21 +232,15 @@ const apply = (decodedFile: DecodedFile.DecodedFile, map: Type): DecodedFile.Dec
 
   const filed = (resource: FhirResource): FhirResource => {
     if (!Identity.isIdentifiedResource(resource)) return repointAll(resource)
-    const rowKey = Option.map(Identity.ofResource(resource), Identity.key)
-    const resolved = Option.flatMapNullable(rowKey, (key) => resolutions.get(key))
-    if (Option.isSome(resolved) && Target.isStored(resolved.value)) {
-      return storedResources.get(storedKey(resolved.value.resource)) ?? resource
+    const replacement = replacementOf(resource)
+    if (Option.isSome(replacement)) {
+      return storedResources.get(literalOf(replacement.value.resource)) ?? resource
     }
     // What it gains as a row's `'new'` resource, and as a copy of a stored
     // target the file already holds (as a re-apply's Linked section does).
     const gained = [
-      ...Option.getOrElse(
-        Option.flatMapNullable(rowKey, (key) => taught.get(key)),
-        () => []
-      ),
-      ...(resource.id === null
-        ? []
-        : (taught.get(`${resource.resourceType}/${resource.id}`) ?? [])),
+      ...gainedBy(Option.map(Identity.ofResource(resource), Identity.key)),
+      ...gainedBy(literalOfDecoded(resource)),
     ]
     return repointAll(Identity.withIdentifiers(resource, gained))
   }
@@ -229,7 +256,7 @@ const apply = (decodedFile: DecodedFile.DecodedFile, map: Type): DecodedFile.Dec
   })
   const held = new Set(
     DecodedFile.resources(decodedFile).flatMap(({ resource }) =>
-      resource.id === null ? [] : [`${resource.resourceType}/${resource.id}`]
+      Option.toArray(literalOfDecoded(resource))
     )
   )
   const linked = [...storedTargets]

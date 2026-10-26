@@ -34,7 +34,8 @@ afterAll(() => {
 /**
  * The row keys a resource's wire form names: its own `identifier[0]` for a
  * Patient or Practitioner, and each `subject`, `requester` and `performer` (or
- * `performer[].actor`) that names a system and value and no literal.
+ * `performer[].actor`) that names a system and value and no literal, typed by
+ * its own `type` when it states one.
  */
 const wireKeys = (resource: FhirResource): readonly string[] => {
   const wire = wireFieldsOf(resource)
@@ -58,12 +59,16 @@ const wireKeys = (resource: FhirResource): readonly string[] => {
           ['Practitioner', slot !== undefined && 'actor' in slot ? slot.actor : slot] as const
       ),
   ]
+  const typeOf = (slotType: string, stated: string | undefined): readonly string[] => {
+    if (stated === undefined) return [slotType]
+    return stated === 'Patient' || stated === 'Practitioner' ? [stated] : []
+  }
   return [
     ...own,
-    ...slots.flatMap(([type, reference]) =>
+    ...slots.flatMap(([slotType, reference]) =>
       reference === undefined || reference.reference !== undefined
         ? []
-        : keyOf(type, reference.identifier)
+        : typeOf(slotType, reference.type).flatMap((type) => keyOf(type, reference.identifier))
     ),
   ]
 }
@@ -113,9 +118,12 @@ describe('IdentityRow.discover', () => {
     expect(practitionerRow?.label).toBe('Dr.  B   Jones')
   })
 
-  it('makes no row of a display-only performer, a literal, or a prior prescription number', () => {
+  it('makes no row of a display-only performer, an organization, a literal, or a prior prescription number', () => {
     const file = fileOf(
-      observation('o-1', literalSubject('p-elsewhere'), [{ display: 'LifeLabs' }]),
+      observation('o-1', literalSubject('p-elsewhere'), [
+        { display: 'LifeLabs' },
+        { type: 'Organization', identifier: { system: SOURCE_PRACTITIONER, value: 'lab-1' } },
+      ]),
       request('rx-1', { reference: 'Patient/p-2' })
     )
 

@@ -144,6 +144,19 @@ describe('IdentityMap.apply', () => {
     expect(at(applied, 'k-1')).toBe(unlinked)
   })
 
+  it('re-points a second copy of a linked person, under another id, at the stored person', () => {
+    const file = fileOf(
+      patient({ id: 'p-1' }),
+      { ...patient({ id: 'p-1' }), id: 'p-1-again' },
+      request('rx-1', { reference: 'Patient/p-1-again' })
+    )
+
+    const applied = IdentityMap.apply(file, new Map([[PERSON, Target.stored(STORED_TYRA)]]))
+
+    expect([at(applied, 'k-0')?.id, at(applied, 'k-1')?.id]).toEqual(['s-1', 's-1'])
+    expect(slotsOf(at(applied, 'k-2')).subject?.reference).toBe('Patient/s-1')
+  })
+
   it('links a named prescriber to a stored practitioner', () => {
     const file = fileOf(request('rx-1', literalSubject('p-1'), namedRequester('Dr. A Smith')))
 
@@ -201,6 +214,22 @@ describe('IdentityMap.resolve', () => {
     expect(resolved(new Map([[PERSON, 'dontLink']]), PERSON)).toBe('newFromRow')
     expect(resolved(new Map([[PERSON, Target.row(account(1))]]), PERSON)).toBe('newFromRow')
     expect(resolved(new Map([[PERSON, Target.stored(STORED_SMITH)]]), PERSON)).toBe('newFromRow')
+  })
+
+  it('reads a row of another type as don’t link: a subject never lands on a practitioner', () => {
+    const withPrescriber = fileOf(
+      request('rx-1', customerSubject('c-9'), namedRequester('Dr. A Smith'))
+    )
+    const prescriberRows = IdentityRow.discover(withPrescriber)
+    const accountRow = prescriberRows.find((row) => IdentityRow.key(row) === ACCOUNT)
+    if (accountRow === undefined) throw new Error(`no row ${ACCOUNT}`)
+    const map: IdentityMap.Type = new Map<string, Target.Type>([
+      [ACCOUNT, Target.row(PRESCRIBER)],
+      [PRESCRIBER, Target.stored(STORED_SMITH)],
+    ])
+
+    expect(IdentityMap.resolve(map, prescriberRows, accountRow)).toBe('dontLink')
+    expect(slotsOf(at(IdentityMap.apply(withPrescriber, map), 'k-0')).subject?.reference).toBe(null)
   })
 
   it('defaults a resource-backed row to new and an id-only row to don’t link', () => {

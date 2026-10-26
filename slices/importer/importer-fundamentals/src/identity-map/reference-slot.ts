@@ -75,10 +75,11 @@ const of = (resource: FhirResource): readonly Type[] => [
 /**
  * The identity a reference in `resource` names by identifier alone: one with
  * no literal `reference` and a linkable `identifier`, whose resource type is
- * its own `type` when that is `Patient` or `Practitioner`, else its slot's.
- * `None` for a literal reference, a display-only one, and an identifier-only
- * one outside the slots that states no type: a prior prescription's number
- * names no person.
+ * its own `type` when that is `Patient` or `Practitioner`, else, when it
+ * states no type, its slot's. `None` for a literal reference, a display-only
+ * one, one whose `type` names something else (an `Organization` performer),
+ * and an identifier-only one outside the slots that states no type: a prior
+ * prescription's number names no person.
  */
 const identityOf = (
   resource: FhirResource,
@@ -86,13 +87,14 @@ const identityOf = (
 ): Option.Option<Identity.Type> => {
   if (reference.reference !== null || reference.identifier === null) return Option.none()
   const { identifier } = reference
-  const resourceType = Identity.isResourceType(reference.type)
-    ? Option.some(reference.type)
-    : pipe(
-        of(resource),
-        Array.findFirst((found) => found.reference === reference),
-        Option.map((found) => FIELD_RESOURCE_TYPE[found.field])
-      )
+  const resourceType =
+    reference.type === null
+      ? pipe(
+          of(resource),
+          Array.findFirst((found) => found.reference === reference),
+          Option.map((found) => FIELD_RESOURCE_TYPE[found.field])
+        )
+      : Option.some(reference.type).pipe(Option.filter(Identity.isResourceType))
   return Option.flatMap(resourceType, (type) => Identity.fromIdentifier(type, identifier))
 }
 

@@ -162,13 +162,13 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
 
 Depends on `effect` (and `kitchen-sink` in tests), plus `fhir-r4` for the
 `DocumentReference` schema, `fhir-r4/resources` for
-`FhirResource`, `Patient`, `Practitioner` and `ResourceReferences` (the
-identity map's resources and its one reference walk; `fhir-r4/data-types`
-gives it `IdentifierAndReference` and `HumanName`) (`decoded-file.ts` and `staged-import.ts` are concrete over it,
+`FhirResource` (`decoded-file.ts` and `staged-import.ts` are concrete over it,
 not generic — every format binds `FhirResource`, so there is no `TParsed` left
-to abstract over), `fhir-r4/data-types` for `Meta` (the slot `MetaSource.stamp`
-writes into), `fhir-r4/identity` for the shared id derivation, and `fhir`'s
-wire types. Hosting the source file codec is what widened
+to abstract over) and for the identity map's `Patient`, `Practitioner` and
+`ResourceReferences`, its one reference walk, `fhir-r4/data-types` for `Meta`
+(the slot `MetaSource.stamp` writes into) and the identity map's
+`IdentifierAndReference` and `HumanName`, `fhir-r4/identity` for the shared id
+derivation, and `fhir`'s wire types. Hosting the source file codec is what widened
 `fhir-r4` from a type-only import to the `DocumentReference` runtime schema
 (it builds and decodes the resource) — but still no client, no other resource
 schemas, and no `persistResources`: the write sink stays at the shell
@@ -244,9 +244,9 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
   resource only id-only rows link is appended under a final **"Linked"**
   section so the review shows the identifier it gained; a `'new'` resource is
   written as decoded plus its derived identifier. A `row` target follows to the
-  end, and a combination a row's kind does not allow, a cycle, or a row the
-  file does not hold falls back to `'new'` for a resource-backed row and
-  `'dontLink'` for an id-only one. `unresolved` lists, on the applied file,
+  end, and a combination a row's kind does not allow, a row of another type,
+  a cycle, or a row the file does not hold falls back to `'new'` for a
+  resource-backed row and `'dontLink'` for an id-only one. `unresolved` lists, on the applied file,
   every missing `subject`, every slot reference that is an absolute URL, and
   every identity the map leaves identifier-only; a `display`-only provider is
   not one the map could link, so it is not listed.
