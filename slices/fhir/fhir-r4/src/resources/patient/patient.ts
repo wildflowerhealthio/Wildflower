@@ -1,4 +1,4 @@
-import { Schema } from 'effect'
+import { Array, Option, Schema } from 'effect'
 
 import {
   OrNullAsOptional,
@@ -21,6 +21,7 @@ import {
   DomainResource,
   HumanName,
   IdentifierAndReference,
+  WILDFLOWER_CANONICAL_BASE,
 } from '../../data-types/index.ts'
 import * as PatientCommunication from './patient-communication.ts'
 import * as PatientContact from './patient-contact.ts'
@@ -217,5 +218,61 @@ const PatientSchema: Schema.Schema<typeof PatientStruct.Type, FhirR4.Patient, ne
 /** A decoded `Patient` — the type {@link PatientSchema} produces. */
 type Type = typeof PatientSchema.Type
 
-export { PatientSchema as Schema }
+/**
+ * The Wildflower identifier system for a person's name and birth date, under
+ * which {@link nameBirthDateIdentifier} mints its identifier.
+ */
+const NAME_BIRTH_DATE_IDENTIFIER_SYSTEM = `${WILDFLOWER_CANONICAL_BASE}/identifier/patient-name-birth-date`
+
+/**
+ * A name part in Unicode NFC, lower-cased, trimmed, and with every run of
+ * whitespace collapsed to one space, so an accented letter spelled as one code
+ * point or as a letter plus a combining mark mints the same identifier.
+ */
+const normalizeNamePart = (namePart: string): string =>
+  namePart.normalize('NFC').trim().replaceAll(/\s+/g, ' ').toLowerCase()
+
+/**
+ * The identifier a patient's first name and birth date mint under
+ * {@link NAME_BIRTH_DATE_IDENTIFIER_SYSTEM}: `family;given…;YYYY-MM-DD`, the
+ * given names joined by a space, in NFC, lower-cased with whitespace collapsed.
+ *
+ * @remarks
+ * A person is identified by name and birth date so the same person from two
+ * sources is one identity for the importer's identity map. A name change
+ * mints a different identifier, and the person keeps both. `None` unless the
+ * first name's family, at least one given name, and `birthDate` are all
+ * present, so a partial match never links two people. The parts are joined
+ * by `;` rather than `|`, which a FHIR token search reads as the system
+ * separator, so the value is searched as `system|family;given;date` with
+ * nothing to escape.
+ */
+const nameBirthDateIdentifier = (
+  patient: Type
+): Option.Option<IdentifierAndReference.IdentifierType> => {
+  const firstName = Array.head(patient.name)
+  const family = firstName.pipe(
+    Option.flatMapNullable((name) => name.family),
+    Option.map(normalizeNamePart),
+    Option.filter((namePart) => namePart.length > 0)
+  )
+  const given = firstName.pipe(
+    Option.map((name) => normalizeNamePart(name.given.join(' '))),
+    Option.filter((namePart) => namePart.length > 0)
+  )
+  return Option.all([family, given, Option.fromNullable(patient.birthDate)]).pipe(
+    Option.map((valueParts): IdentifierAndReference.IdentifierType => ({
+      id: null,
+      extension: [],
+      assigner: null,
+      period: null,
+      system: new URL(NAME_BIRTH_DATE_IDENTIFIER_SYSTEM),
+      type: null,
+      use: null,
+      value: valueParts.join(';'),
+    }))
+  )
+}
+
+export { PatientSchema as Schema, NAME_BIRTH_DATE_IDENTIFIER_SYSTEM, nameBirthDateIdentifier }
 export type { Type }
