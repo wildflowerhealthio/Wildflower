@@ -13,18 +13,38 @@ import {
   Practitioner,
   type FhirResource,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import { Arbitrary, FastCheck as fc, HashMap, Schema } from 'effect'
+import { Arbitrary, Effect, FastCheck as fc, HashMap, Option, Schema, TestContext } from 'effect'
 
 import type * as DecodedFile from '../decoded-file.ts'
+import * as IdentityMap from './identity-map.ts'
 import * as LinkChoice from './link-choice.ts'
-import type * as LinkableResource from './linkable-resource.ts'
+import * as LinkableLogicalReference from './linkable-logical-reference.ts'
+import * as LinkableResource from './linkable-resource.ts'
 import type * as ReferentLinkChoices from './referent-link-choices.ts'
+import * as Referent from './referent.ts'
 
 const SOURCE_PATIENT = 'https://source.example/patient-id'
 const SOURCE_PRACTITIONER = 'https://source.example/practitioner-id'
 const CUSTOMER = 'https://source.example/customer-id'
 const DEVICE = 'https://device.example/id'
 const ABSOLUTE = 'https://elsewhere.example/fhir/Patient/1'
+
+/**
+ * `effect` run on a `TestClock` standing at the epoch, so nothing a test
+ * asserts depends on the day it runs; throws its failure.
+ */
+const runOnTestClock = <A, E>(effect: Effect.Effect<A, E>): A =>
+  Effect.runSync(Effect.provide(effect, TestContext.TestContext))
+
+/** `IdentityMap.apply` run on the test clock. */
+const applyOnTestClock = (
+  file: DecodedFile.DecodedFile,
+  linkChoices: ReferentLinkChoices.Type
+): DecodedFile.DecodedFile => runOnTestClock(IdentityMap.apply(file, linkChoices))
+
+/** `Referent.discover` run on the test clock. */
+const discoverOnTestClock = (file: DecodedFile.DecodedFile): readonly Referent.Type[] =>
+  runOnTestClock(Referent.discover(file))
 
 const decodeResource = Schema.decodeUnknownSync(FhirResourceSchema)
 const encodeResource = Schema.encodeSync(FhirResourceSchema)
@@ -60,6 +80,7 @@ const WirePerformer = Schema.Union(Schema.Struct({ actor: WireReference }), Wire
 const WireResource = Schema.Struct({
   resourceType: Schema.String,
   identifier: Schema.optional(Schema.Array(WireIdentifier)),
+  name: Schema.optional(Schema.Array(Schema.Struct({ text: Schema.optional(Schema.String) }))),
   subject: Schema.optional(WireReference),
   requester: Schema.optional(WireReference),
   performer: Schema.optional(Schema.Union(WirePerformer, Schema.Array(WirePerformer))),
@@ -263,7 +284,7 @@ const fileArbitrary: fc.Arbitrary<DecodedFile.DecodedFile> = fc
     })
   )
 
-const choiceArbitrary: fc.Arbitrary<LinkChoice.Type> = fc.oneof(
+const anyChoiceArbitrary: fc.Arbitrary<LinkChoice.Type> = fc.oneof(
   fc.constant(LinkChoice.CreateResource()),
   fc.constant(LinkChoice.DontLink()),
   fc.constantFrom(...STORED).map((resource) => LinkChoice.LinkToStoredResource({ resource })),
@@ -273,9 +294,149 @@ const choiceArbitrary: fc.Arbitrary<LinkChoice.Type> = fc.oneof(
 )
 
 /** Generated choices over the pool's keys, any choice on any referent, impossible ones included. */
-const choicesArbitrary: fc.Arbitrary<ReferentLinkChoices.Type> = fc
-  .array(fc.tuple(fc.constantFrom(...POOL_KEYS), choiceArbitrary), { maxLength: POOL_KEYS.length })
+const anyChoicesArbitrary: fc.Arbitrary<ReferentLinkChoices.Type> = fc
+  .array(fc.tuple(fc.constantFrom(...POOL_KEYS), anyChoiceArbitrary), {
+    maxLength: POOL_KEYS.length,
+  })
   .map(HashMap.fromIterable)
+
+/** A choice `referent` can take, linking only to referents of `referents`. */
+const choiceForArbitrary = (
+  referent: Referent.Type,
+  referents: readonly Referent.Type[]
+): fc.Arbitrary<LinkChoice.Type> => {
+  const { type } = referent.logicalReference
+  const linkToStoredResource = fc
+    .constantFrom(...STORED.filter((stored) => stored.resourceType === type))
+    .map((resource) => LinkChoice.LinkToStoredResource({ resource }))
+  return Referent.match(referent, {
+    AsResource: () => fc.oneof(fc.constant(LinkChoice.CreateResource()), linkToStoredResource),
+    ByMentionOnly: ({ logicalReference }) =>
+      fc.oneof(
+        fc.constant(LinkChoice.DontLink()),
+        linkToStoredResource,
+        fc
+          .constantFrom(
+            ...referents.filter((linked) => linked.logicalReference.type === type).map(Referent.key)
+          )
+          .map((referentKey) => LinkChoice.LinkToDecodedReferent({ referentKey })),
+        ...(Option.isSome(LinkableResource.tryProvisionalFrom(logicalReference))
+          ? [fc.constant(LinkChoice.CreateResource())]
+          : [])
+      ),
+  })
+}
+
+/** Generated choices every referent of `file` can take, or none for some. */
+const choicesForArbitrary = (
+  file: DecodedFile.DecodedFile
+): fc.Arbitrary<ReferentLinkChoices.Type> => {
+  const referents = discoverOnTestClock(file)
+  return fc
+    .tuple(
+      ...referents.map((referent) =>
+        fc
+          .option(choiceForArbitrary(referent, referents), { nil: undefined })
+          .map((choice) => ({ referentKey: Referent.key(referent), choice }))
+      )
+    )
+    .map((made) =>
+      HashMap.fromIterable(
+        made.flatMap(({ referentKey, choice }) =>
+          choice === undefined ? [] : [[referentKey, choice] as const]
+        )
+      )
+    )
+}
+
+/** A generated decoded file and choices its referents can take. */
+const fileWithChoicesArbitrary: fc.Arbitrary<{
+  readonly file: DecodedFile.DecodedFile
+  readonly choices: ReferentLinkChoices.Type
+}> = fileArbitrary.chain((file) => choicesForArbitrary(file).map((choices) => ({ file, choices })))
+
+/**
+ * Whether a mention of `file` is one several of its decoded resources answer
+ * to and none is keyed by. On the decoded file it is a referent of its own;
+ * once those resources are placed on one stored resource, that resource alone
+ * answers to it, so the placed file has a referent fewer.
+ */
+const hasMentionSeveralResourcesAnswerTo = (file: DecodedFile.DecodedFile): boolean => {
+  const referents = discoverOnTestClock(file)
+  const answeredKeys = referents
+    .filter(Referent.is('AsResource'))
+    .flatMap((referent) => Referent.logicalReferencesOf(referent).map(LinkableLogicalReference.key))
+  return referents
+    .filter(Referent.is('ByMentionOnly'))
+    .some(
+      (referent) =>
+        answeredKeys.filter((answeredKey) => answeredKey === Referent.key(referent)).length > 1
+    )
+}
+
+/**
+ * Whether following the `LinkToDecodedReferent` choices of `choices` from
+ * some referent comes back to it. A cycle places its members on a provisional
+ * resource, which the placed file then holds as a resource keyed by one of
+ * them, whose `LinkToDecodedReferent` no longer fits it.
+ */
+const hasLinkCycle = (choices: ReferentLinkChoices.Type): boolean =>
+  [...HashMap.keys(choices)].some((startKey) => {
+    const walked = new Set<string>()
+    let referentKey = startKey
+    for (;;) {
+      const choice = HashMap.get(choices, referentKey)
+      if (Option.isNone(choice) || !LinkChoice.is('LinkToDecodedReferent')(choice.value)) {
+        return false
+      }
+      if (walked.has(referentKey)) return true
+      walked.add(referentKey)
+      referentKey = choice.value.referentKey
+    }
+  })
+
+/**
+ * Whether a mention of `file` names something a stored resource `choices`
+ * link to answers to, by an identifier it carries or derives (a provider's
+ * printed name). On the decoded file the mention is a referent of its own;
+ * once the stored resource is placed in the file, it answers to it.
+ */
+const hasMentionALinkedStoredResourceAnswersTo = (
+  file: DecodedFile.DecodedFile,
+  choices: ReferentLinkChoices.Type
+): boolean => {
+  const storedAnswerKeys = [...HashMap.values(choices)]
+    .filter(LinkChoice.is('LinkToStoredResource'))
+    .flatMap(({ resource }) =>
+      [
+        ...resource.identifier,
+        ...Option.toArray(runOnTestClock(LinkableResource.maybeDerivedIdentifier(resource))),
+      ].flatMap((identifier) =>
+        Option.toArray(
+          LinkableLogicalReference.tryFromIdentifier(resource.resourceType, identifier)
+        )
+      )
+    )
+    .map(LinkableLogicalReference.key)
+  return discoverOnTestClock(file)
+    .filter(Referent.is('ByMentionOnly'))
+    .some((referent) => storedAnswerKeys.includes(Referent.key(referent)))
+}
+
+/**
+ * A generated decoded file and choices whose placed file has the decoded
+ * file's referents, of the same kinds, so the choices apply to it as they did
+ * to the decoded one. That rules out a link cycle ({@link hasLinkCycle}), a
+ * mention several decoded resources answer to
+ * ({@link hasMentionSeveralResourcesAnswerTo}), and a mention a linked stored
+ * resource answers to ({@link hasMentionALinkedStoredResourceAnswersTo}).
+ */
+const fileWithReapplicableChoicesArbitrary = fileWithChoicesArbitrary.filter(
+  ({ file, choices }) =>
+    !hasLinkCycle(choices) &&
+    !hasMentionSeveralResourcesAnswerTo(file) &&
+    !hasMentionALinkedStoredResourceAnswersTo(file, choices)
+)
 
 export {
   ABSOLUTE,
@@ -287,17 +448,22 @@ export {
   STORED_JAN,
   STORED_SMITH,
   STORED_TYRA,
+  anyChoicesArbitrary,
+  applyOnTestClock,
   customerSubject,
+  discoverOnTestClock,
   fileArbitrary,
   fileOf,
   fileWireOf,
+  fileWithChoicesArbitrary,
+  fileWithReapplicableChoicesArbitrary,
   literalSubject,
-  choicesArbitrary,
   namedRequester,
   observation,
   patient,
   practitioner,
   request,
+  runOnTestClock,
   unrelatedArbitrary,
   untypedSubject,
   wireFieldsOf,

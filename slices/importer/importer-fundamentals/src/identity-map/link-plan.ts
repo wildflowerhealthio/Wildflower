@@ -15,9 +15,10 @@
  */
 
 import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import { Array, HashMap, HashSet, Option, pipe } from 'effect'
+import { Array, Effect, HashMap, HashSet, Option, pipe } from 'effect'
 
 import * as DecodedFile from '../decoded-file.ts'
+import type * as LinkChoice from './link-choice.ts'
 import * as LinkTarget from './link-target.ts'
 import type * as Link from './link.ts'
 import * as LinkableLogicalReference from './linkable-logical-reference.ts'
@@ -32,10 +33,11 @@ interface Type {
   /** Every referent of the file with its link target, in discovery order. */
   readonly links: readonly Link.Type[]
   /**
-   * Each referent's link target: where a logical-reference mention is
-   * redirected, and which decoded resources a stored resource replaces.
+   * Each referent's link target under every logical reference that names it
+   * (`Referent.byLogicalReferenceKey`), by `LinkableLogicalReference.key`:
+   * where a logical-reference mention is redirected.
    */
-  readonly linkTargetsByReferentKey: HashMap.HashMap<string, LinkTarget.Type>
+  readonly linkTargetsByLogicalReferenceKey: HashMap.HashMap<string, LinkTarget.Type>
   /**
    * The resource under each placed literal reference the links land on, as
    * it will be written: what replaces a decoded resource, what a decoded
@@ -44,101 +46,92 @@ interface Type {
   readonly placedResourcesByPlacedLiteralReference: HashMap.HashMap<string, PlacedResource.Type>
   /**
    * `Type/<decoded id>` → `Type/<stored id>` for every decoded resource a
-   * stored resource stands in for, a second resource of the same logical
-   * reference under another id included: where a decoded literal reference
-   * is redirected, and under which literal reference the resource is written.
+   * stored resource stands in for: where a decoded literal reference is
+   * redirected, and under which literal reference the resource is written.
    */
   readonly decodedLiteralReferencesToStored: HashMap.HashMap<string, string>
 }
 
-/** The decoded resources of `decodedFile` the identity map links, those with an `id`. */
-const linkableResourcesWithIdFromDecodedFile = (
+/** The literal references the decoded resources of `decodedFile` the identity map links carry, those with an `id`. */
+const literalReferencesFromDecodedFile = (
   decodedFile: DecodedFile.DecodedFile
-): readonly LinkableResource.WithId[] =>
+): HashSet.HashSet<string> =>
   pipe(
     DecodedFile.resources(decodedFile),
     Array.filterMap(({ resource }) =>
       Option.liftPredicate(resource, LinkableResource.is).pipe(
-        Option.flatMap(LinkableResource.tryIntoWithId)
+        Option.flatMap(LinkableResource.tryIntoWithId),
+        Option.map(LinkableResource.literalReferenceOf)
       )
-    )
-  )
-
-/** The literal references the decoded resources of `decodedFile` carry. */
-const literalReferencesFromDecodedFile = (
-  decodedFile: DecodedFile.DecodedFile
-): HashSet.HashSet<string> =>
-  HashSet.fromIterable(
-    linkableResourcesWithIdFromDecodedFile(decodedFile).map(LinkableResource.literalReferenceOf)
-  )
-
-/** The link target of `decodedResource`'s referent under `linkTargetsByReferentKey`; `None` when it is no referent. */
-const linkTargetOfDecodedResource = (
-  linkTargetsByReferentKey: HashMap.HashMap<string, LinkTarget.Type>,
-  decodedResource: LinkableResource.Type
-): Option.Option<LinkTarget.Type> =>
-  pipe(
-    LinkableResource.tryIntoLogicalReference(decodedResource),
-    Option.map(LinkableLogicalReference.key),
-    Option.flatMap((referentKey) => HashMap.get(linkTargetsByReferentKey, referentKey))
+    ),
+    HashSet.fromIterable
   )
 
 /**
- * `Type/<decoded id>` → `Type/<stored id>` for every decoded resource of
- * `decodedFile` a stored resource stands in for under `linkTargetsByReferentKey`.
+ * `Type/<decoded id>` → `Type/<stored id>` for every referent of `links` whose
+ * decoded resource a stored resource stands in for.
  */
 const decodedLiteralReferencesToStoredOf = (
-  decodedFile: DecodedFile.DecodedFile,
-  linkTargetsByReferentKey: HashMap.HashMap<string, LinkTarget.Type>
+  links: readonly Link.Type[]
 ): HashMap.HashMap<string, string> =>
   pipe(
-    linkableResourcesWithIdFromDecodedFile(decodedFile),
-    Array.filterMap((decodedResource) =>
-      pipe(
-        linkTargetOfDecodedResource(linkTargetsByReferentKey, decodedResource),
-        Option.filter(LinkTarget.is('Stored')),
-        Option.map(
-          ({ resource: stored }) =>
-            [
-              LinkableResource.literalReferenceOf(decodedResource),
-              LinkableResource.literalReferenceOf(stored),
-            ] as const
-        )
-      )
+    links,
+    Array.filterMap(({ referent, target }) =>
+      Option.all({
+        asResource: Option.liftPredicate(referent, Referent.is('AsResource')),
+        stored: Option.liftPredicate(target, LinkTarget.is('Stored')),
+      })
+    ),
+    Array.map(
+      ({ asResource, stored }) =>
+        [
+          LinkableResource.literalReferenceOf(asResource.resource),
+          LinkableResource.literalReferenceOf(stored.resource),
+        ] as const
     ),
     HashMap.fromIterable
   )
 
+/** Each link's target under every logical reference that names its referent (`Referent.byLogicalReferenceKey`). */
+const linkTargetsByLogicalReferenceKeyOf = (
+  links: readonly Link.Type[]
+): HashMap.HashMap<string, LinkTarget.Type> => {
+  const linkTargetsByReferentKey = HashMap.fromIterable(
+    links.map(({ referent, target }) => [Referent.key(referent), target] as const)
+  )
+  return HashMap.filterMap(
+    Referent.byLogicalReferenceKey(links.map(({ referent }) => referent)),
+    (referent) => HashMap.get(linkTargetsByReferentKey, Referent.key(referent))
+  )
+}
+
 /**
  * The plan for `decodedFile` under `linkChoices`: each referent's choice
  * resolved once into its link, and every field read off those links.
+ *
+ * @remarks
+ * Fails with `Referent.DuplicateReferent` when two decoded resources answer
+ * to one logical reference, and with `LinkChoice.InvalidLinkChoice` when a
+ * choice cannot be followed for its referent.
  */
 const make = (
   decodedFile: DecodedFile.DecodedFile,
   linkChoices: ReferentLinkChoices.Type
-): Type => {
-  const referents = Referent.discover(decodedFile)
-  const referentsByKey = Referent.byKey(referents)
-  const links = referents.map((referent): Link.Type => ({
-    referent,
-    target: Resolution.linkTargetOf(linkChoices, referentsByKey, referent),
-  }))
-  const linkTargetsByReferentKey = HashMap.fromIterable(
-    links.map(({ referent, target }) => [Referent.key(referent), target] as const)
-  )
-  return {
-    links,
-    linkTargetsByReferentKey,
-    placedResourcesByPlacedLiteralReference: PlacedResource.byPlacedLiteralReference(
+): Effect.Effect<Type, Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice> =>
+  Effect.gen(function* () {
+    const referents = yield* Referent.discover(decodedFile)
+    const links = yield* Resolution.linksOf(linkChoices, referents)
+    const placedResourcesByPlacedLiteralReference = yield* PlacedResource.byPlacedLiteralReference(
       links,
       literalReferencesFromDecodedFile(decodedFile)
-    ),
-    decodedLiteralReferencesToStored: decodedLiteralReferencesToStoredOf(
-      decodedFile,
-      linkTargetsByReferentKey
-    ),
-  }
-}
+    )
+    return {
+      links,
+      linkTargetsByLogicalReferenceKey: linkTargetsByLogicalReferenceKeyOf(links),
+      placedResourcesByPlacedLiteralReference,
+      decodedLiteralReferencesToStored: decodedLiteralReferencesToStoredOf(links),
+    }
+  })
 
 /**
  * The literal reference `referenceAsDecoded` is redirected to under `plan`:
@@ -153,7 +146,9 @@ const maybeRedirectOf = (
     ? pipe(
         LinkableLogicalReference.tryFromReference(referenceAsDecoded),
         Option.map(LinkableLogicalReference.key),
-        Option.flatMap((referentKey) => HashMap.get(plan.linkTargetsByReferentKey, referentKey)),
+        Option.flatMap((logicalReferenceKey) =>
+          HashMap.get(plan.linkTargetsByLogicalReferenceKey, logicalReferenceKey)
+        ),
         Option.flatMap(LinkTarget.tryIntoResource),
         Option.map(LinkableResource.literalReferenceOf)
       )

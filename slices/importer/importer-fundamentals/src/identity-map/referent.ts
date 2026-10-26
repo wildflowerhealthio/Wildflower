@@ -5,7 +5,10 @@
  *
  * @remarks
  * A file has many mentions and the identity map has one referent per
- * logical reference, which is what the reviewer makes a `LinkChoice` for. Today a
+ * identity, which is what the reviewer makes a `LinkChoice` for. A referent
+ * with a resource answers to every identifier it brings, the resource's own
+ * and the one its demographics derive, so a mention by one of them that no
+ * other resource answers to is that referent. Today a
  * referent is a patient or a provider; the model does not say so, and a lab
  * requisition or a location fits it the same way.
  *
@@ -13,7 +16,7 @@
  */
 
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import { Array, Data, HashMap, Option, pipe } from 'effect'
+import { Array, Data, Effect, HashMap, Option, pipe, Record } from 'effect'
 
 import * as DecodedFile from '../decoded-file.ts'
 import * as LinkableLogicalReference from './linkable-logical-reference.ts'
@@ -49,8 +52,34 @@ type Type = AsResource | ByMentionOnly
 
 const { AsResource, ByMentionOnly, $is: is, $match: match } = Data.taggedEnum<Type>()
 
+/**
+ * Two or more decoded resources of a file, under different ids, are keyed by
+ * one logical reference: one identity decoded twice. Nothing decides which of
+ * them the identity's mentions mean, so the stage refuses the file rather than
+ * write both.
+ */
+class DuplicateReferent extends Data.TaggedError('DuplicateReferent')<{
+  /** The logical reference their `identifier[0]` makes. */
+  readonly logicalReference: LinkableLogicalReference.Type
+  /** The `DecodedFile.Resource` keys of the resources, in review order. */
+  readonly reviewKeys: readonly string[]
+}> {}
+
 /** The identity map's key for `referent`. */
 const key = (referent: Type): string => LinkableLogicalReference.key(referent.logicalReference)
+
+/**
+ * Every logical reference `referent` answers to: each identifier it brings
+ * (`identifiersOf`) as a logical reference to its type, its key's first.
+ */
+const logicalReferencesOf = (referent: Type): readonly LinkableLogicalReference.Type[] =>
+  match(referent, {
+    AsResource: ({ logicalReference, identifiers }) =>
+      Array.filterMap(identifiers, (identifier) =>
+        LinkableLogicalReference.tryFromIdentifier(logicalReference.type, identifier)
+      ),
+    ByMentionOnly: ({ logicalReference }) => [logicalReference],
+  })
 
 /** The identifiers `referent` brings to whatever it links to. */
 const identifiersOf = (referent: Type): readonly IdentifierAndReference.IdentifierType[] =>
@@ -65,7 +94,9 @@ const identifiersOf = (referent: Type): readonly IdentifierAndReference.Identifi
  * `identifier[0]`, which nothing can point at or be linked to, so the stage
  * writes it as it is.
  */
-const tryFromDecodedResource = (entry: DecodedFile.Resource): Option.Option<AsResource> =>
+const tryFromDecodedResource = (
+  entry: DecodedFile.Resource
+): Effect.Effect<Option.Option<AsResource>> =>
   pipe(
     Option.liftPredicate(entry.resource, LinkableResource.is),
     Option.flatMap((resource) =>
@@ -74,21 +105,25 @@ const tryFromDecodedResource = (entry: DecodedFile.Resource): Option.Option<AsRe
         logicalReference: LinkableResource.tryIntoLogicalReference(resource),
       })
     ),
-    Option.map(({ resource, logicalReference }) =>
-      AsResource({
-        logicalReference,
-        identifiers: pipe(
-          [
-            ...resource.identifier,
-            ...Option.toArray(LinkableResource.maybeDerivedIdentifier(resource)),
-          ],
-          Array.filter(IdentifierAndReference.isQualifiedIdentifier),
-          Array.dedupeWith(IdentifierAndReference.identifierEquivalence)
-        ),
-        resource,
-        reviewKey: entry.key,
+    Effect.transposeMapOption(({ resource, logicalReference }) =>
+      Effect.all({
+        derivedIdentifier: LinkableResource.maybeDerivedIdentifier(resource),
         label: LinkableResource.labelOf(resource, logicalReference.identifier.value),
-      })
+      }).pipe(
+        Effect.map(({ derivedIdentifier, label }) =>
+          AsResource({
+            logicalReference,
+            identifiers: pipe(
+              [...resource.identifier, ...Option.toArray(derivedIdentifier)],
+              Array.filter(IdentifierAndReference.isQualifiedIdentifier),
+              Array.dedupeWith(IdentifierAndReference.identifierEquivalence)
+            ),
+            resource,
+            reviewKey: entry.key,
+            label,
+          })
+        )
+      )
     )
   )
 
@@ -103,29 +138,103 @@ const mentionedIn = (entry: DecodedFile.Resource): readonly ByMentionOnly[] =>
     )
   )
 
-/**
- * Every referent a decoded file holds, once per logical reference: those with a
- * resource in review order, then those named only by mentions, in the order
- * their mentions are first seen.
- *
- * @remarks
- * An identifier-only mention of a logical reference a resource already
- * answers to is that referent, not a second one.
- */
-const discover = (decodedFile: Pick<DecodedFile.DecodedFile, 'sections'>): readonly Type[] => {
-  const entries = DecodedFile.resources(decodedFile)
-  const referents: readonly Type[] = [
-    ...Array.filterMap(entries, tryFromDecodedResource),
-    ...entries.flatMap(mentionedIn),
-  ]
-  return Array.dedupeWith(referents, (left, right) =>
-    LinkableLogicalReference.equivalence(left.logicalReference, right.logicalReference)
-  )
-}
-
 /** Every referent of `referents`, keyed by {@link key}. */
 const byKey = (referents: readonly Type[]): HashMap.HashMap<string, Type> =>
   HashMap.fromIterable(referents.map((referent) => [key(referent), referent] as const))
 
-export { byKey, discover, identifiersOf, is, key, match }
+/**
+ * The referent each logical reference names among `referents`, by
+ * `LinkableLogicalReference.key`: the referent it is the key of, else the one
+ * referent that answers to it (`logicalReferencesOf`). A logical reference
+ * several referents answer to, and none is keyed by, names none of them.
+ */
+const byLogicalReferenceKey = (referents: readonly Type[]): HashMap.HashMap<string, Type> => {
+  const referentsByKey = byKey(referents)
+  const answeredByOne = pipe(
+    referents.flatMap((referent) =>
+      logicalReferencesOf(referent).map((logicalReference) => ({
+        logicalReferenceKey: LinkableLogicalReference.key(logicalReference),
+        referent,
+      }))
+    ),
+    Array.groupBy(({ logicalReferenceKey }) => logicalReferenceKey),
+    Record.toEntries,
+    Array.filterMap(([logicalReferenceKey, answering]) =>
+      answering.length === 1 && !HashMap.has(referentsByKey, logicalReferenceKey)
+        ? Option.some([logicalReferenceKey, answering[0].referent] as const)
+        : Option.none()
+    )
+  )
+  return HashMap.union(referentsByKey, HashMap.fromIterable(answeredByOne))
+}
+
+/**
+ * The first key two of `asResources` share under different ids, as the
+ * failure it is.
+ */
+const firstDuplicateAmong = (
+  asResources: readonly AsResource[]
+): Option.Option<DuplicateReferent> =>
+  pipe(
+    asResources,
+    Array.groupBy((asResource) => key(asResource)),
+    Record.values,
+    Array.findFirst((sharingKey) =>
+      Array.dedupe(sharingKey.map(({ resource }) => resource.id)).length < 2
+        ? Option.none()
+        : Option.some(
+            new DuplicateReferent({
+              logicalReference: sharingKey[0].logicalReference,
+              reviewKeys: sharingKey.map(({ reviewKey }) => reviewKey),
+            })
+          )
+    )
+  )
+
+/**
+ * Every referent a decoded file holds, once per identity: those with a
+ * resource in review order, then those named only by mentions, in the order
+ * their mentions are first seen.
+ *
+ * @remarks
+ * A mention of a logical reference a resource's referent is keyed by, or the
+ * only one to answer to, is that referent, not a second one. A resource
+ * decoded twice under one id is one referent, its first copy's. Fails with
+ * {@link DuplicateReferent} when two resources under different ids are keyed
+ * by one logical reference.
+ */
+const discover = (
+  decodedFile: Pick<DecodedFile.DecodedFile, 'sections'>
+): Effect.Effect<readonly Type[], DuplicateReferent> =>
+  Effect.gen(function* () {
+    const entries = DecodedFile.resources(decodedFile)
+    const decodedAsResources = Array.getSomes(
+      yield* Effect.forEach(entries, tryFromDecodedResource)
+    )
+    const duplicate = firstDuplicateAmong(decodedAsResources)
+    if (Option.isSome(duplicate)) return yield* Effect.fail(duplicate.value)
+    const asResources = Array.dedupeWith(
+      decodedAsResources,
+      (left, right) => key(left) === key(right)
+    )
+    const namedByAsResource = byLogicalReferenceKey(asResources)
+    const byMentionOnly = pipe(
+      entries.flatMap(mentionedIn),
+      Array.filter((referent) => !HashMap.has(namedByAsResource, key(referent))),
+      Array.dedupeWith((left, right) => key(left) === key(right))
+    )
+    return [...asResources, ...byMentionOnly]
+  })
+
+export {
+  byKey,
+  byLogicalReferenceKey,
+  discover,
+  DuplicateReferent,
+  identifiersOf,
+  is,
+  key,
+  logicalReferencesOf,
+  match,
+}
 export type { AsResource, ByMentionOnly, Type }

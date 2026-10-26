@@ -39,20 +39,39 @@ const redirectMentions = (plan: LinkPlan.Type, mentioningResource: FhirResource)
   )
 
 /**
- * `decodedResource` as it is placed under `plan`: the resource the plan
- * writes it as, when it has one (a stored resource standing in for it, or
- * itself having assumed what the referents linked to it bring), else itself.
- * Its mentions are redirected either way.
+ * `decodedEntry` as it is placed under `plan`: its resource written as the
+ * resource the plan has for it, when it has one (a stored resource standing in
+ * for it, or itself having assumed what the referents linked to it bring),
+ * else as itself, with its mentions redirected either way. An entry whose
+ * resource a stored one replaces takes the stored one's label as its title;
+ * any other keeps its own. The same object when nothing changes.
  */
-const placed = (plan: LinkPlan.Type, decodedResource: FhirResource): FhirResource =>
-  pipe(
+const placed = (plan: LinkPlan.Type, decodedEntry: DecodedFile.Resource): DecodedFile.Resource => {
+  const decodedResource = decodedEntry.resource
+  const maybePlacedResource = pipe(
     Option.liftPredicate(decodedResource, LinkableResource.is),
     Option.flatMap(LinkableResource.tryIntoWithId),
-    Option.flatMap((withId) => LinkPlan.maybePlacedResourceFor(plan, withId)),
-    Option.map(({ resource }): FhirResource => resource),
-    Option.getOrElse(() => decodedResource),
-    (resource) => redirectMentions(plan, resource)
+    Option.flatMap((withId) => LinkPlan.maybePlacedResourceFor(plan, withId))
   )
+  const resource = redirectMentions(
+    plan,
+    Option.match(maybePlacedResource, {
+      onNone: () => decodedResource,
+      onSome: (placedResource): FhirResource => placedResource.resource,
+    })
+  )
+  const title = pipe(
+    maybePlacedResource,
+    Option.filter((placedResource) => placedResource.resource.id !== decodedResource.id),
+    Option.match({
+      onNone: () => decodedEntry.title,
+      onSome: (placedResource) => placedResource.label,
+    })
+  )
+  return resource === decodedResource && title === decodedEntry.title
+    ? decodedEntry
+    : { ...decodedEntry, title, resource }
+}
 
 /**
  * The resources `plan` appends under {@link LINKED_SECTION_TITLE}: those the
@@ -67,25 +86,23 @@ const linkedSectionResources = (plan: LinkPlan.Type): readonly DecodedFile.Resou
     Array.filterMap((placedLiteralReference) =>
       HashMap.get(plan.placedResourcesByPlacedLiteralReference, placedLiteralReference).pipe(
         Option.filter((placedResource) => !placedResource.resourceExistsInFile),
-        Option.map(({ resource }) => ({
-          key: linkedKey(resource),
-          title: LinkableResource.labelOf(resource, placedLiteralReference),
-          resource,
-        }))
+        Option.map(({ resource, label }) => ({ key: linkedKey(resource), title: label, resource }))
       )
     )
   )
 
 /**
  * `decodedFile` placed on `plan`: the file to review, diff and write. Every
- * section keeps its keys; a resource nothing changed in comes back as the
- * same object; the resources the file only mentions are appended last.
+ * section keeps its keys; an entry nothing changed in comes back as the same
+ * object; the resources the file only mentions are appended last.
  */
 const place = (
   decodedFile: DecodedFile.DecodedFile,
   plan: LinkPlan.Type
 ): DecodedFile.DecodedFile => {
-  const placedFile = DecodedFile.mapResources(decodedFile, (resource) => placed(plan, resource))
+  const placedFile = DecodedFile.mapResources(decodedFile, (decodedEntry) =>
+    placed(plan, decodedEntry)
+  )
   const linked = linkedSectionResources(plan)
   return linked.length === 0
     ? placedFile

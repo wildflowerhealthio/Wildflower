@@ -53,6 +53,27 @@ const {
   $match: match,
 } = Data.taggedEnum<Type>()
 
+/**
+ * Why a choice cannot be followed for its referent: one its kind does not
+ * allow (`DontLink` or `LinkToDecodedReferent` for a referent with a
+ * resource, `CreateResource` for one named only by mentions with no
+ * provisional form), a stored resource or a linked referent of another type,
+ * or a linked referent the file does not hold.
+ */
+type InvalidLinkChoiceReason =
+  | 'NotAllowedForReferent'
+  | 'StoredResourceOfAnotherType'
+  | 'LinkedReferentOfAnotherType'
+  | 'LinkedReferentNotInFile'
+
+/** A choice the stage cannot follow for the referent it is made for. */
+class InvalidLinkChoice extends Data.TaggedError('InvalidLinkChoice')<{
+  /** The `Referent.key` the choice is made for. */
+  readonly referentKey: string
+  readonly choice: Type
+  readonly reason: InvalidLinkChoiceReason
+}> {}
+
 /** The choice a referent takes when the reviewer has made none: `CreateResource` with a resource, else `DontLink`. */
 const defaultFor = (referent: Referent.Type): Type =>
   Referent.match(referent, {
@@ -71,6 +92,7 @@ export {
   defaultFor,
   DontLink,
   forReferent,
+  InvalidLinkChoice,
   is,
   LinkToDecodedReferent,
   LinkToStoredResource,
@@ -79,6 +101,7 @@ export {
 export type {
   CreateResource as CreateResourceType,
   DontLink as DontLinkType,
+  InvalidLinkChoiceReason,
   LinkToDecodedReferent as LinkToDecodedReferentType,
   LinkToStoredResource as LinkToStoredResourceType,
   Type,

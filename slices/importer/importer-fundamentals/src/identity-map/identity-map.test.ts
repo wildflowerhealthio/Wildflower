@@ -1,8 +1,17 @@
 import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
-import { Practitioner, type FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import { Patient, Practitioner, type FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { FastCheck as fc, HashMap } from 'effect'
+import {
+  DateTime,
+  Effect,
+  Either,
+  FastCheck as fc,
+  HashMap,
+  Schema,
+  TestClock,
+  TestContext,
+} from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vite-plus/test'
 
 import {
@@ -20,20 +29,25 @@ import {
   CUSTOMER,
   DEVICE,
   SOURCE_PATIENT,
+  SOURCE_PRACTITIONER,
   STORED,
   STORED_JAN,
   STORED_SMITH,
   STORED_TYRA,
+  anyChoicesArbitrary,
+  applyOnTestClock,
   customerSubject,
-  fileArbitrary,
+  discoverOnTestClock,
   fileOf,
   fileWireOf,
+  fileWithChoicesArbitrary,
+  fileWithReapplicableChoicesArbitrary,
   literalSubject,
-  choicesArbitrary,
   namedRequester,
   observation,
   patient,
   request,
+  runOnTestClock,
   unrelatedArbitrary,
   untypedSubject,
   wireFieldsOf,
@@ -61,6 +75,19 @@ const NAME_BIRTH_DATE = 'https://wildflowerhealth.io/fhir/identifier/patient-nam
 const at = (file: DecodedFile.DecodedFile, key: string): FhirResource | undefined =>
   DecodedFile.resources(file).find((entry) => entry.key === key)?.resource
 
+/** A decoded Patient keyed `p-<id>` that also carries the account id `c-9`. */
+const patientWithAccount = (id: string): FhirResource =>
+  Schema.decodeUnknownSync(Patient.Schema)({
+    resourceType: 'Patient',
+    id,
+    identifier: [
+      { system: SOURCE_PATIENT, value: id },
+      { system: CUSTOMER, value: 'c-9' },
+    ],
+    name: [{ family: 'Banks', given: ['Tyra'] }],
+    birthDate: '1990-01-02',
+  })
+
 /** A resource's identifiers as `system|value`. */
 const identifiersOf = (resource: FhirResource | undefined): readonly string[] =>
   resource !== undefined && 'identifier' in resource
@@ -83,6 +110,32 @@ const describeLinkTarget = (destination: LinkTarget.Type): string =>
     Unlinked: () => 'Unlinked',
   })
 
+/**
+ * The link target `choices` resolve the referent keyed `referentKey` of
+ * `referents` to, described; or why resolving fails.
+ */
+const resolvedFor = (
+  choices: ReferentLinkChoices.Type,
+  referents: readonly Referent.Type[],
+  referentKey: string
+): string =>
+  Either.match(Resolution.linksOf(choices, referents), {
+    onLeft: ({ referentKey: invalidKey, reason }) => `Invalid ${invalidKey} ${reason}`,
+    onRight: (links) => {
+      const link = links.find(({ referent }) => Referent.key(referent) === referentKey)
+      return link === undefined ? `no referent ${referentKey}` : describeLinkTarget(link.target)
+    },
+  })
+
+/** How `IdentityMap.apply` fails on `file` under `choices`, as the failure's tag and fields. */
+const failureOf = (
+  file: DecodedFile.DecodedFile,
+  choices: ReferentLinkChoices.Type
+): Either.Either<
+  DecodedFile.DecodedFile,
+  Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice
+> => runOnTestClock(Effect.either(IdentityMap.apply(file, choices)))
+
 /** A resource's `subject` and `requester` references, as `apply` left them. */
 const subjectAndRequesterOf = (
   resource: FhirResource | undefined
@@ -100,7 +153,7 @@ describe('IdentityMap.apply', () => {
       observation('o-2', untypedSubject('p-1'))
     )
 
-    const applied = IdentityMap.apply(
+    const applied = applyOnTestClock(
       file,
       HashMap.make([PERSON, LinkChoice.LinkToStoredResource({ resource: STORED_TYRA })])
     )
@@ -130,7 +183,7 @@ describe('IdentityMap.apply', () => {
       request('rx-2', customerSubject('c-9'))
     )
 
-    const applied = IdentityMap.apply(
+    const applied = applyOnTestClock(
       file,
       HashMap.make([ACCOUNT, LinkChoice.LinkToStoredResource({ resource: STORED_JAN })])
     )
@@ -153,7 +206,7 @@ describe('IdentityMap.apply', () => {
   it('links an account id to the person another referent writes, which assumes the id', () => {
     const file = fileOf(patient({ id: 'p-1' }), request('rx-1', customerSubject('c-9')))
 
-    const applied = IdentityMap.apply(
+    const applied = applyOnTestClock(
       file,
       HashMap.make([ACCOUNT, LinkChoice.LinkToDecodedReferent({ referentKey: PERSON })])
     )
@@ -171,7 +224,7 @@ describe('IdentityMap.apply', () => {
     const unlinked = request('rx-1', customerSubject('c-9'), namedRequester('Dr. A Smith'))
     const file = fileOf(patient({ id: 'p-1' }), unlinked)
 
-    const applied = IdentityMap.apply(file, HashMap.make([ACCOUNT, LinkChoice.DontLink()]))
+    const applied = applyOnTestClock(file, HashMap.make([ACCOUNT, LinkChoice.DontLink()]))
 
     expect(identifiersOf(at(applied, 'k-0'))).toEqual([
       `${SOURCE_PATIENT}|p-1`,
@@ -180,26 +233,119 @@ describe('IdentityMap.apply', () => {
     expect(at(applied, 'k-1')).toBe(unlinked)
   })
 
-  it('redirects a second copy of a linked person, under another id, at the stored person', () => {
+  it('refuses a file with one person decoded twice under two ids, naming both review keys', () => {
     const file = fileOf(
       patient({ id: 'p-1' }),
       { ...patient({ id: 'p-1' }), id: 'p-1-again' },
       request('rx-1', { reference: 'Patient/p-1-again' })
     )
 
-    const applied = IdentityMap.apply(
+    for (const choices of [
+      HashMap.empty<string, LinkChoice.Type>(),
+      HashMap.make([PERSON, LinkChoice.LinkToStoredResource({ resource: STORED_TYRA })]),
+    ]) {
+      expect(failureOf(file, choices)).toMatchObject({
+        _tag: 'Left',
+        left: {
+          _tag: 'DuplicateReferent',
+          logicalReference: { type: 'Patient', identifier: { value: 'p-1' } },
+          reviewKeys: ['k-0', 'k-1'],
+        },
+      })
+    }
+  })
+
+  it('reads one person decoded twice under one id as one referent', () => {
+    const file = fileOf(patient({ id: 'p-1' }), patient({ id: 'p-1' }))
+
+    const applied = applyOnTestClock(
       file,
       HashMap.make([PERSON, LinkChoice.LinkToStoredResource({ resource: STORED_TYRA })])
     )
 
     expect([at(applied, 'k-0')?.id, at(applied, 'k-1')?.id]).toEqual(['s-1', 's-1'])
-    expect(subjectAndRequesterOf(at(applied, 'k-2')).subject?.reference).toBe('Patient/s-1')
+  })
+
+  it('names a stored person standing in for a decoded one by its own label, and keeps every other title', () => {
+    const file = fileOf(
+      { ...patient({ id: 'p-1', family: 'Bnaks' }) },
+      patient({ id: 'p-2', value: 'p-2', family: 'Doe', given: 'Jan' }),
+      request('rx-1', literalSubject('p-1'))
+    )
+
+    const applied = applyOnTestClock(
+      file,
+      HashMap.make([PERSON, LinkChoice.LinkToStoredResource({ resource: STORED_TYRA })])
+    )
+
+    expect(DecodedFile.resources(applied).map(({ key, title }) => [key, title])).toEqual([
+      ['k-0', 'Tyra Banks · 1990-01-02'],
+      ['k-1', 'Patient/p-2'],
+      ['k-2', 'MedicationRequest/rx-1'],
+    ])
+  })
+
+  it('redirects a mention by any identifier a decoded person carries, not only its first', () => {
+    const file = fileOf(patientWithAccount('p-1'), request('rx-1', customerSubject('c-9')))
+
+    expect(discoverOnTestClock(file).map(Referent.key)).toEqual([PERSON])
+    const applied = applyOnTestClock(file, HashMap.empty())
+    expect(subjectAndRequesterOf(at(applied, 'k-1')).subject?.reference).toBe('Patient/p-1')
+    expect(UnlinkedMention.collect(applied)).toEqual([])
+  })
+
+  it('reads a mention two decoded people answer to, by neither one’s key, as a referent of its own', () => {
+    const file = fileOf(
+      patientWithAccount('p-1'),
+      patientWithAccount('p-2'),
+      request('rx-1', customerSubject('c-9'))
+    )
+
+    expect(discoverOnTestClock(file).map(Referent.key)).toEqual([
+      PERSON,
+      `Patient|${SOURCE_PATIENT}|p-2`,
+      ACCOUNT,
+    ])
+    expect(
+      subjectAndRequesterOf(at(applyOnTestClock(file, HashMap.empty()), 'k-2')).subject?.reference
+    ).toBe(null)
+  })
+
+  it('folds a printed name into the decoded Practitioner it names, so a provisional one never stands in for it', () => {
+    const PROVISIONAL_ID = localResourceId(
+      Practitioner.NAME_IDENTIFIER_SYSTEM,
+      'Practitioner',
+      'Dr. A Smith'
+    )
+    const decodedSmith = Schema.decodeUnknownSync(Practitioner.Schema)({
+      resourceType: 'Practitioner',
+      id: PROVISIONAL_ID,
+      identifier: [
+        { system: SOURCE_PRACTITIONER, value: 'pr-1' },
+        { system: Practitioner.NAME_IDENTIFIER_SYSTEM, value: 'Dr. A Smith' },
+      ],
+      name: [{ text: 'Dr. A Smith' }],
+      qualification: [{ code: { text: 'MD' } }],
+    })
+    const file = fileOf(
+      decodedSmith,
+      request('rx-1', literalSubject('p-1'), namedRequester('Dr. A Smith'))
+    )
+
+    expect(discoverOnTestClock(file).map(Referent.key)).toEqual([
+      `Practitioner|${SOURCE_PRACTITIONER}|pr-1`,
+    ])
+    const applied = applyOnTestClock(file, HashMap.empty())
+    expect(at(applied, 'k-0')).toBe(decodedSmith)
+    expect(subjectAndRequesterOf(at(applied, 'k-1')).requester?.reference).toBe(
+      `Practitioner/${PROVISIONAL_ID}`
+    )
   })
 
   it('links a named prescriber to a stored practitioner', () => {
     const file = fileOf(request('rx-1', literalSubject('p-1'), namedRequester('Dr. A Smith')))
 
-    const applied = IdentityMap.apply(
+    const applied = applyOnTestClock(
       file,
       HashMap.make([PRESCRIBER, LinkChoice.LinkToStoredResource({ resource: STORED_SMITH })])
     )
@@ -221,8 +367,14 @@ describe('IdentityMap.apply on a printed name set to New', () => {
   )
   const map: ReferentLinkChoices.Type = HashMap.make([PRESCRIBER, LinkChoice.CreateResource()])
 
+  it('changes nothing when applied again', () => {
+    const once = applyOnTestClock(file, map)
+
+    expect(fileWireOf(applyOnTestClock(once, map))).toBe(fileWireOf(once))
+  })
+
   it('creates one provisional Practitioner for the name in the Linked section and points every requester at it', () => {
-    const applied = IdentityMap.apply(file, map)
+    const applied = applyOnTestClock(file, map)
 
     expect(applied.sections.map((section) => section.title)).toEqual([
       'Resources',
@@ -247,33 +399,20 @@ describe('IdentityMap.apply on a printed name set to New', () => {
         'Dr. A Smith',
       ])
     }
-    expect(UnlinkedMention.collect(IdentityMap.apply(file, map)).map(pathOf)).toEqual([
+    expect(UnlinkedMention.collect(applyOnTestClock(file, map)).map(pathOf)).toEqual([
       'subject',
       'subject',
     ])
   })
 
-  it('changes nothing when applied again', () => {
-    const once = IdentityMap.apply(file, map)
-
-    expect(fileWireOf(IdentityMap.apply(once, map))).toBe(fileWireOf(once))
-  })
-
-  it('defaults a name referent to Don’t link, is provisional only for a name, and one record for a whole cycle', () => {
+  it('defaults a name referent to Don’t link, refuses New for anything but a name, and makes one record for a whole cycle', () => {
     const jones = `Practitioner|${Practitioner.NAME_IDENTIFIER_SYSTEM}|Dr. B Jones`
-    const referents = Referent.discover(
+    const referents = discoverOnTestClock(
       fileOf(
         ...file.sections.flatMap((section) => section.resources.map((entry) => entry.resource)),
         request('rx-3', customerSubject('c-9'), namedRequester('Dr. B Jones'))
       )
     )
-    const linkTargetOf = (choices: ReferentLinkChoices.Type, key: string): string => {
-      const referent = referents.find((candidate) => Referent.key(candidate) === key)
-      if (referent === undefined) throw new Error(`no referent ${key}`)
-      return describeLinkTarget(
-        Resolution.linkTargetOf(choices, Referent.byKey(referents), referent)
-      )
-    }
     const cycle: ReferentLinkChoices.Type = HashMap.make(
       [PRESCRIBER, LinkChoice.LinkToDecodedReferent({ referentKey: jones })],
       [jones, LinkChoice.LinkToDecodedReferent({ referentKey: PRESCRIBER })]
@@ -284,30 +423,23 @@ describe('IdentityMap.apply on a printed name set to New', () => {
         .filter((referent) => Referent.key(referent) === PRESCRIBER)
         .map((referent) => LinkChoice.forReferent(HashMap.empty(), referent)._tag)
     ).toEqual(['DontLink'])
-    expect(linkTargetOf(map, PRESCRIBER)).toBe(`Provisional ${PROVISIONAL_ID}`)
-    expect(linkTargetOf(HashMap.make([ACCOUNT, LinkChoice.CreateResource()]), ACCOUNT)).toBe(
-      'Unlinked'
-    )
-    expect(linkTargetOf(cycle, PRESCRIBER)).toBe(`Provisional ${PROVISIONAL_ID}`)
-    expect(linkTargetOf(cycle, jones)).toBe(`Provisional ${PROVISIONAL_ID}`)
+    expect(resolvedFor(map, referents, PRESCRIBER)).toBe(`Provisional ${PROVISIONAL_ID}`)
+    expect(
+      resolvedFor(HashMap.make([ACCOUNT, LinkChoice.CreateResource()]), referents, ACCOUNT)
+    ).toBe(`Invalid ${ACCOUNT} NotAllowedForReferent`)
+    expect(resolvedFor(cycle, referents, PRESCRIBER)).toBe(`Provisional ${PROVISIONAL_ID}`)
+    expect(resolvedFor(cycle, referents, jones)).toBe(`Provisional ${PROVISIONAL_ID}`)
   })
 })
 
-describe('Resolution.linkTargetOf', () => {
+describe('Resolution.linksOf', () => {
   const file = fileOf(
     patient({ id: 'p-1' }),
     request('rx-1', customerSubject('c-1')),
     request('rx-2', customerSubject('c-2')),
     request('rx-3', customerSubject('c-3'))
   )
-  const referents = Referent.discover(file)
-  const referentOf = (key: string): Referent.Type | undefined =>
-    referents.find((referent) => Referent.key(referent) === key)
-  const linkTargetOf = (choices: ReferentLinkChoices.Type, key: string): string => {
-    const referent = referentOf(key)
-    if (referent === undefined) throw new Error(`no referent ${key}`)
-    return Resolution.linkTargetOf(choices, Referent.byKey(referents), referent)._tag
-  }
+  const referents = discoverOnTestClock(file)
   const account = (n: number): string => `Patient|${CUSTOMER}|c-${n}`
 
   it('follows a chain of referents to its end', () => {
@@ -317,81 +449,94 @@ describe('Resolution.linkTargetOf', () => {
       [account(3), LinkChoice.LinkToDecodedReferent({ referentKey: PERSON })]
     )
 
-    expect(linkTargetOf(choices, account(1))).toBe('Decoded')
+    expect(resolvedFor(choices, referents, account(1))).toBe('Decoded')
     expect(
-      linkTargetOf(
+      resolvedFor(
         HashMap.set(choices, PERSON, LinkChoice.LinkToStoredResource({ resource: STORED_TYRA })),
+        referents,
         account(1)
       )
-    ).toBe('Stored')
+    ).toBe('Stored s-1')
   })
 
-  it('reads a cycle, a missing referent and an impossible choice as the referent kind’s default', () => {
+  it('reads a cycle with nothing to create as unlinked', () => {
     const cycle: ReferentLinkChoices.Type = HashMap.make(
       [account(1), LinkChoice.LinkToDecodedReferent({ referentKey: account(2) })],
       [account(2), LinkChoice.LinkToDecodedReferent({ referentKey: account(1) })],
-      [
-        account(3),
-        LinkChoice.LinkToDecodedReferent({ referentKey: 'Patient|https://nowhere.example|x' }),
-      ]
+      [account(3), LinkChoice.LinkToDecodedReferent({ referentKey: account(1) })]
     )
 
-    expect(linkTargetOf(cycle, account(1))).toBe('Unlinked')
-    expect(linkTargetOf(cycle, account(3))).toBe('Unlinked')
-    expect(linkTargetOf(HashMap.make([account(1), LinkChoice.CreateResource()]), account(1))).toBe(
-      'Unlinked'
-    )
-    expect(
-      linkTargetOf(
-        HashMap.make([account(1), LinkChoice.LinkToStoredResource({ resource: STORED_SMITH })]),
-        account(1)
-      )
-    ).toBe('Unlinked')
-    expect(linkTargetOf(HashMap.make([PERSON, LinkChoice.DontLink()]), PERSON)).toBe('Decoded')
-    expect(
-      linkTargetOf(
-        HashMap.make([PERSON, LinkChoice.LinkToDecodedReferent({ referentKey: account(1) })]),
-        PERSON
-      )
-    ).toBe('Decoded')
-    expect(
-      linkTargetOf(
-        HashMap.make([PERSON, LinkChoice.LinkToStoredResource({ resource: STORED_SMITH })]),
-        PERSON
-      )
-    ).toBe('Decoded')
+    expect(resolvedFor(cycle, referents, account(1))).toBe('Unlinked')
+    expect(resolvedFor(cycle, referents, account(3))).toBe('Unlinked')
   })
 
-  it('reads a referent of another type as unlinked: a subject never lands on a practitioner', () => {
+  it('fails on a choice it cannot follow, naming the referent and why', () => {
+    const invalid = (referentKey: string, choice: LinkChoice.Type): string =>
+      resolvedFor(HashMap.make([referentKey, choice]), referents, referentKey)
+
+    expect(invalid(account(1), LinkChoice.CreateResource())).toBe(
+      `Invalid ${account(1)} NotAllowedForReferent`
+    )
+    expect(invalid(PERSON, LinkChoice.DontLink())).toBe(`Invalid ${PERSON} NotAllowedForReferent`)
+    expect(invalid(PERSON, LinkChoice.LinkToDecodedReferent({ referentKey: account(1) }))).toBe(
+      `Invalid ${PERSON} NotAllowedForReferent`
+    )
+    expect(invalid(account(1), LinkChoice.LinkToStoredResource({ resource: STORED_SMITH }))).toBe(
+      `Invalid ${account(1)} StoredResourceOfAnotherType`
+    )
+    expect(invalid(PERSON, LinkChoice.LinkToStoredResource({ resource: STORED_SMITH }))).toBe(
+      `Invalid ${PERSON} StoredResourceOfAnotherType`
+    )
+    expect(
+      invalid(
+        account(1),
+        LinkChoice.LinkToDecodedReferent({ referentKey: 'Patient|https://nowhere.example/|x' })
+      )
+    ).toBe(`Invalid ${account(1)} LinkedReferentNotInFile`)
+  })
+
+  it('fails on a link to a referent of another type: a subject never lands on a practitioner', () => {
     const withPrescriber = fileOf(
       request('rx-1', customerSubject('c-9'), namedRequester('Dr. A Smith'))
     )
-    const prescriberReferents = Referent.discover(withPrescriber)
-    const accountReferent = prescriberReferents.find(
-      (referent) => Referent.key(referent) === ACCOUNT
-    )
-    if (accountReferent === undefined) throw new Error(`no referent ${ACCOUNT}`)
     const choices: ReferentLinkChoices.Type = HashMap.make(
       [ACCOUNT, LinkChoice.LinkToDecodedReferent({ referentKey: PRESCRIBER })],
       [PRESCRIBER, LinkChoice.LinkToStoredResource({ resource: STORED_SMITH })]
     )
 
-    expect(
-      Resolution.linkTargetOf(choices, Referent.byKey(prescriberReferents), accountReferent)._tag
-    ).toBe('Unlinked')
-    expect(
-      subjectAndRequesterOf(at(IdentityMap.apply(withPrescriber, choices), 'k-0')).subject
-        ?.reference
-    ).toBe(null)
+    expect(resolvedFor(choices, discoverOnTestClock(withPrescriber), ACCOUNT)).toBe(
+      `Invalid ${ACCOUNT} LinkedReferentOfAnotherType`
+    )
+    expect(failureOf(withPrescriber, choices)).toMatchObject({
+      _tag: 'Left',
+      left: { _tag: 'InvalidLinkChoice', referentKey: ACCOUNT },
+    })
+  })
+
+  it('fails a choice that leads to one it cannot follow', () => {
+    const choices: ReferentLinkChoices.Type = HashMap.make(
+      [account(1), LinkChoice.LinkToDecodedReferent({ referentKey: PERSON })],
+      [PERSON, LinkChoice.DontLink()]
+    )
+
+    expect(resolvedFor(choices, referents, account(1))).toBe(
+      `Invalid ${PERSON} NotAllowedForReferent`
+    )
   })
 
   it('defaults a referent with a resource to New and one named only by mentions to Don’t link', () => {
-    expect(LinkChoice.forReferent(HashMap.empty(), referentOf(PERSON) ?? referents[0])._tag).toBe(
-      'CreateResource'
-    )
-    expect(
-      LinkChoice.forReferent(HashMap.empty(), referentOf(account(1)) ?? referents[0])._tag
-    ).toBe('DontLink')
+    const defaultsByKey = referents.map((referent) => [
+      Referent.key(referent),
+      LinkChoice.forReferent(HashMap.empty(), referent)._tag,
+    ])
+
+    expect(defaultsByKey).toEqual([
+      [PERSON, 'CreateResource'],
+      [account(1), 'DontLink'],
+      [account(2), 'DontLink'],
+      [account(3), 'DontLink'],
+    ])
+    expect(resolvedFor(HashMap.empty(), referents, PERSON)).toBe('Decoded')
   })
 })
 
@@ -403,10 +548,12 @@ describe('UnlinkedMention.collect on a placed file', () => {
     observation('o-3', literalSubject('p-1'), [{ display: 'LifeLabs' }]),
     observation('o-4', { display: 'Tyra' }),
     observation('o-5', untypedSubject('p-1')),
-    observation('o-6', literalSubject('p-1'), [{ reference: ABSOLUTE }])
+    observation('o-6', literalSubject('p-1'), [{ reference: ABSOLUTE }]),
+    observation('o-7', { reference: '#p-1' }),
+    observation('o-8', { reference: 'Patient p-1' })
   )
   const listed = (choices: ReferentLinkChoices.Type): readonly string[] =>
-    UnlinkedMention.collect(IdentityMap.apply(file, choices)).map(
+    UnlinkedMention.collect(applyOnTestClock(file, choices)).map(
       (unlinked) => `${unlinked._tag} ${unlinked.mentioningResourceKey} ${pathOf(unlinked)}`
     )
 
@@ -418,6 +565,8 @@ describe('UnlinkedMention.collect on a placed file', () => {
       'Dangling k-2 requester',
       'OutsidePatientCompartment k-4 subject',
       'OutsidePatientCompartment k-5 subject',
+      'OutsidePatientCompartment k-7 subject',
+      'OutsidePatientCompartment k-8 subject',
     ])
   })
 
@@ -432,16 +581,29 @@ describe('UnlinkedMention.collect on a placed file', () => {
       'OutsidePatientCompartment k-1 subject',
       'OutsidePatientCompartment k-4 subject',
       'OutsidePatientCompartment k-5 subject',
+      'OutsidePatientCompartment k-7 subject',
+      'OutsidePatientCompartment k-8 subject',
     ])
   })
 })
 
 describe('IdentityMap properties', () => {
-  it('property: applying the same choices again changes nothing', () => {
+  it('property: applying the same choices again changes nothing, when the placed file has the decoded file’s referents', () => {
     fc.assert(
-      fc.property(fileArbitrary, choicesArbitrary, (file, map) => {
-        const once = IdentityMap.apply(file, map)
-        expect(fileWireOf(IdentityMap.apply(once, map))).toBe(fileWireOf(once))
+      fc.property(fileWithReapplicableChoicesArbitrary, ({ file, choices }) => {
+        const once = applyOnTestClock(file, choices)
+        expect(fileWireOf(applyOnTestClock(once, choices))).toBe(fileWireOf(once))
+      }),
+      { numRuns: RUNS }
+    )
+  })
+
+  it('property: places one decoded file under one set of choices the same way every time', () => {
+    fc.assert(
+      fc.property(fileWithChoicesArbitrary, ({ file, choices }) => {
+        expect(fileWireOf(applyOnTestClock(file, choices))).toBe(
+          fileWireOf(applyOnTestClock(file, choices))
+        )
       }),
       { numRuns: RUNS }
     )
@@ -449,8 +611,8 @@ describe('IdentityMap properties', () => {
 
   it('property: keeps the file’s sections and keys, adding at most a Linked section', () => {
     fc.assert(
-      fc.property(fileArbitrary, choicesArbitrary, (file, map) => {
-        const applied = IdentityMap.apply(file, map)
+      fc.property(fileWithChoicesArbitrary, ({ file, choices }) => {
+        const applied = applyOnTestClock(file, choices)
         const shape = (sections: readonly DecodedFile.Section[]): readonly unknown[] =>
           sections.map((section) => [section.title, section.resources.map((entry) => entry.key)])
 
@@ -468,15 +630,14 @@ describe('IdentityMap properties', () => {
   it('property: a resource with no reference to a mapped identity comes back as itself', () => {
     fc.assert(
       fc.property(
-        fileArbitrary,
+        fileWithChoicesArbitrary,
         fc.array(unrelatedArbitrary, { maxLength: 3 }),
-        choicesArbitrary,
-        (file, unrelated, map) => {
+        ({ file, choices }, unrelated) => {
           const withUnrelated = {
             ...file,
             sections: [...file.sections, ...fileOf(...unrelated).sections],
           }
-          const applied = IdentityMap.apply(withUnrelated, map)
+          const applied = applyOnTestClock(withUnrelated, choices)
 
           expect(
             applied.sections[file.sections.length]?.resources.map((entry) => entry.resource)
@@ -492,8 +653,8 @@ describe('IdentityMap properties', () => {
 
   it('property: a stored resource keeps its demographics byte for byte, and its identifiers stay a set', () => {
     fc.assert(
-      fc.property(fileArbitrary, choicesArbitrary, (file, map) => {
-        for (const { resource } of DecodedFile.resources(IdentityMap.apply(file, map))) {
+      fc.property(fileWithChoicesArbitrary, ({ file, choices }) => {
+        for (const { resource } of DecodedFile.resources(applyOnTestClock(file, choices))) {
           const stored = STORED.find((candidate) => candidate.id === resource.id)
           const identifiers = identifiersOf(resource)
           expect(new Set(identifiers).size).toBe(identifiers.length)
@@ -510,20 +671,77 @@ describe('IdentityMap properties', () => {
 
   it('property: lists a subject exactly when the applied resource names no one by a relative literal', () => {
     fc.assert(
-      fc.property(fileArbitrary, choicesArbitrary, (file, map) => {
-        const listedSubjects = UnlinkedMention.collect(IdentityMap.apply(file, map))
+      fc.property(fileWithChoicesArbitrary, ({ file, choices }) => {
+        const applied = applyOnTestClock(file, choices)
+        const listedSubjects = UnlinkedMention.collect(applied)
           .filter((unlinked) => pathOf(unlinked) === 'subject')
           .map((unlinked) => unlinked.mentioningResourceKey)
-        const unlinkedSubjects = DecodedFile.resources(IdentityMap.apply(file, map))
+        // The generated literals are `Patient/<id>` or an absolute URL into another system.
+        const unlinkedSubjects = DecodedFile.resources(applied)
           .filter(({ resource }) => {
             const literal = wireFieldsOf(resource).subject?.reference
-            return 'subject' in resource && (literal === undefined || URL.parse(literal) !== null)
+            return 'subject' in resource && literal?.startsWith('Patient/') !== true
           })
           .map((entry) => entry.key)
 
         expect(listedSubjects).toEqual(unlinkedSubjects)
       }),
       { numRuns: RUNS }
+    )
+  })
+
+  it('property: succeeds on any choices, or fails naming a referent a choice was made for', () => {
+    fc.assert(
+      fc.property(fileWithChoicesArbitrary, anyChoicesArbitrary, ({ file }, choices) => {
+        Either.match(failureOf(file, choices), {
+          onRight: () => undefined,
+          onLeft: (failure) => {
+            expect(failure._tag).toBe('InvalidLinkChoice')
+            if (failure._tag === 'InvalidLinkChoice') {
+              expect(HashMap.has(choices, failure.referentKey)).toBe(true)
+            }
+          },
+        })
+      }),
+      { numRuns: RUNS }
+    )
+  })
+})
+
+describe('IdentityMap.apply and the clock', () => {
+  // A provider whose official name ended on 2026-10-31 and who goes by another since.
+  const renamed = Schema.decodeUnknownSync(Practitioner.Schema)({
+    resourceType: 'Practitioner',
+    id: 'pr-1',
+    identifier: [{ system: SOURCE_PRACTITIONER, value: 'pr-1' }],
+    name: [
+      { use: 'official', text: 'Dr. A Smith', period: { end: '2026-10-31' } },
+      { text: 'Dr. A Jones' },
+    ],
+  })
+  // Setting the test clock runs asynchronously, so these place the file through a promise.
+  const appliedAt = (instant: string): Promise<DecodedFile.DecodedFile> =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        yield* TestClock.setTime(DateTime.unsafeMake(instant).epochMillis)
+        return yield* IdentityMap.apply(fileOf(renamed), HashMap.empty())
+      }).pipe(Effect.provide(TestContext.TestContext))
+    )
+
+  it('derives a provider’s name identifier from the name current at the clock’s now', async () => {
+    expect(identifiersOf(at(await appliedAt('2026-10-30T12:00:00Z'), 'k-0'))).toEqual([
+      `${SOURCE_PRACTITIONER}|pr-1`,
+      `${Practitioner.NAME_IDENTIFIER_SYSTEM}|Dr. A Smith`,
+    ])
+    expect(identifiersOf(at(await appliedAt('2026-11-02T12:00:00Z'), 'k-0'))).toEqual([
+      `${SOURCE_PRACTITIONER}|pr-1`,
+      `${Practitioner.NAME_IDENTIFIER_SYSTEM}|Dr. A Jones`,
+    ])
+  })
+
+  it('places a file the same way twice at one instant', async () => {
+    expect(fileWireOf(await appliedAt('2026-11-02T12:00:00Z'))).toBe(
+      fileWireOf(await appliedAt('2026-11-02T12:00:00Z'))
     )
   })
 })

@@ -1,19 +1,22 @@
 /**
- * Resolving a referent's choice into its link target, following
+ * Resolving every referent's choice into its link target, following
  * `LinkToDecodedReferent` choices to the end.
  *
  * @packageDocumentation
  */
 
-import { Array, HashMap, Option, Order, pipe } from 'effect'
+import { Array, Either, HashMap, Option, Order, pipe } from 'effect'
 
 import * as LinkChoice from './link-choice.ts'
 import * as LinkTarget from './link-target.ts'
+import type * as Link from './link.ts'
 import * as LinkableResource from './linkable-resource.ts'
 import type * as ReferentLinkChoices from './referent-link-choices.ts'
 import * as Referent from './referent.ts'
 
-/** What `CreateResource` comes to for `referent`: its decoded resource, a provisional one for its logical reference, else nothing. */
+type Resolved = Either.Either<LinkTarget.Type, LinkChoice.InvalidLinkChoice>
+
+/** What `CreateResource` places `referent` on: its decoded resource, a provisional one for its logical reference, else nothing. */
 const linkTargetOfCreate = (referent: Referent.Type): LinkTarget.Type =>
   Referent.match(referent, {
     AsResource: ({ resource }) => LinkTarget.Decoded({ resource }),
@@ -23,20 +26,6 @@ const linkTargetOfCreate = (referent: Referent.Type): LinkTarget.Type =>
         onSome: (resource) => LinkTarget.Provisional({ resource }),
       }),
   })
-
-/**
- * Where `referent` comes to with no choice that its kind allows: its decoded
- * resource, or nothing. What `LinkChoice.defaultFor` resolves to, and what a
- * choice the kind does not allow reads as.
- */
-const linkTargetWithoutChoice = (referent: Referent.Type): LinkTarget.Type =>
-  Referent.match(referent, {
-    AsResource: ({ resource }) => LinkTarget.Decoded({ resource }),
-    ByMentionOnly: () => LinkTarget.Unlinked(),
-  })
-
-const sameType = (referent: Referent.Type, resource: { readonly resourceType: string }): boolean =>
-  resource.resourceType === referent.logicalReference.type
 
 /**
  * Where a `LinkToDecodedReferent` cycle comes to, whichever member the walk
@@ -52,77 +41,107 @@ const linkTargetOfCycle = (cycle: readonly Referent.Type[]): LinkTarget.Type =>
     Option.getOrElse(() => LinkTarget.Unlinked())
   )
 
-/**
- * The link target `current`'s choice comes to, `path` being the referents
- * walked to reach it, `current` last.
- */
-const resolveFrom = (
-  linkChoices: ReferentLinkChoices.Type,
-  referents: HashMap.HashMap<string, Referent.Type>,
-  path: readonly Referent.Type[],
-  current: Referent.Type
-): LinkTarget.Type =>
-  LinkChoice.match(LinkChoice.forReferent(linkChoices, current), {
-    CreateResource: () => linkTargetOfCreate(current),
-    DontLink: () => linkTargetWithoutChoice(current),
-    LinkToStoredResource: ({ resource }) =>
-      sameType(current, resource)
-        ? LinkTarget.Stored({ resource })
-        : linkTargetWithoutChoice(current),
-    LinkToDecodedReferent: ({ referentKey }) =>
-      Referent.match(current, {
-        AsResource: () => linkTargetWithoutChoice(current),
-        ByMentionOnly: (byMentionOnly) =>
-          followLinkToDecodedReferent(linkChoices, referents, path, byMentionOnly, referentKey),
-      }),
-  })
-
-/**
- * Where `current`'s link to the referent keyed `linkedKey` comes to: that
- * referent's link target, or the cycle's when the walk has been there.
- */
-const followLinkToDecodedReferent = (
-  linkChoices: ReferentLinkChoices.Type,
-  referents: HashMap.HashMap<string, Referent.Type>,
-  path: readonly Referent.Type[],
-  current: Referent.ByMentionOnly,
-  linkedKey: string
-): LinkTarget.Type =>
-  pipe(
-    HashMap.get(referents, linkedKey),
-    // A referent of another type is an impossible link: a `subject` never lands on a Practitioner.
-    Option.filter((linked) => sameType(current, { resourceType: linked.logicalReference.type })),
-    Option.match({
-      onNone: () => LinkTarget.Unlinked(),
-      onSome: (linked) => {
-        const cycleStart = path.findIndex((walked) => Referent.key(walked) === linkedKey)
-        return cycleStart === -1
-          ? resolveFrom(linkChoices, referents, [...path, linked], linked)
-          : linkTargetOfCycle(path.slice(cycleStart))
-      },
-    })
+/** `choice` as the failure it is for `referent`, for `reason`. */
+const invalid = (
+  referent: Referent.Type,
+  choice: LinkChoice.Type,
+  reason: LinkChoice.InvalidLinkChoiceReason
+): Resolved =>
+  Either.left(
+    new LinkChoice.InvalidLinkChoice({ referentKey: Referent.key(referent), choice, reason })
   )
 
+const sameType = (referent: Referent.Type, resource: { readonly resourceType: string }): boolean =>
+  resource.resourceType === referent.logicalReference.type
+
 /**
- * The link target `referent` comes to under `linkChoices`, given every
- * referent of the file keyed by `Referent.key`.
+ * Every referent of `referents` with the link target its choice under
+ * `linkChoices` resolves to, in the order given; the first choice that cannot
+ * be followed, as the failure it is, otherwise.
  *
  * @remarks
- * A choice the referent's kind does not allow reads as its default: a referent
- * with a resource choosing `LinkToDecodedReferent`, `DontLink` or a stored
- * resource of another type is on its decoded resource; one named only by
- * mentions choosing a stored resource of another type, a referent of another
- * type, or one the file does not hold is unlinked. `CreateResource` on a
- * referent named only by mentions is provisional when its logical reference
- * allows it and unlinked otherwise.
+ * A choice fails with `LinkChoice.InvalidLinkChoice` when the referent's kind
+ * does not allow it (`DontLink` or `LinkToDecodedReferent` with a resource,
+ * `CreateResource` named only by mentions with no provisional form), when it
+ * names a stored resource or a referent of another type, or a referent
+ * `referents` does not hold; a choice that leads to one fails with it.
  * A `LinkToDecodedReferent` cycle resolves to `CreateResource` for the first
  * of its members, in key order, that it places on a resource, whichever
  * member is resolved, so every referent in it lands on the same one resource.
+ * Each referent is resolved once: a walk that reaches one already resolved
+ * takes its target, which is the same whichever walk reaches it.
  */
-const linkTargetOf = (
+const linksOf = (
   linkChoices: ReferentLinkChoices.Type,
-  referents: HashMap.HashMap<string, Referent.Type>,
-  referent: Referent.Type
-): LinkTarget.Type => resolveFrom(linkChoices, referents, [referent], referent)
+  referents: readonly Referent.Type[]
+): Either.Either<readonly Link.Type[], LinkChoice.InvalidLinkChoice> => {
+  const referentsByKey = Referent.byKey(referents)
+  const resolvedByKey = new Map<string, Resolved>()
+  // The referents of the walk in progress, in order, and each one's place on it.
+  const walk: Referent.Type[] = []
+  const placeOnWalkByKey = new Map<string, number>()
 
-export { linkTargetOf }
+  const followLinkToDecodedReferent = (
+    current: Referent.ByMentionOnly,
+    link: LinkChoice.LinkToDecodedReferentType
+  ): Resolved =>
+    Option.match(HashMap.get(referentsByKey, link.referentKey), {
+      onNone: () => invalid(current, link, 'LinkedReferentNotInFile'),
+      onSome: (linked) => {
+        if (!sameType(current, { resourceType: linked.logicalReference.type })) {
+          return invalid(current, link, 'LinkedReferentOfAnotherType')
+        }
+        const cycleStart = placeOnWalkByKey.get(link.referentKey)
+        return cycleStart === undefined
+          ? resolve(linked)
+          : Either.right(linkTargetOfCycle(walk.slice(cycleStart)))
+      },
+    })
+
+  const resolveChoice = (current: Referent.Type): Resolved => {
+    const choice = LinkChoice.forReferent(linkChoices, current)
+    return LinkChoice.match(choice, {
+      CreateResource: () => {
+        const created = linkTargetOfCreate(current)
+        return LinkTarget.is('Unlinked')(created)
+          ? invalid(current, choice, 'NotAllowedForReferent')
+          : Either.right(created)
+      },
+      DontLink: () =>
+        Referent.match(current, {
+          AsResource: () => invalid(current, choice, 'NotAllowedForReferent'),
+          ByMentionOnly: () => Either.right(LinkTarget.Unlinked()),
+        }),
+      LinkToStoredResource: ({ resource }) =>
+        sameType(current, resource)
+          ? Either.right(LinkTarget.Stored({ resource }))
+          : invalid(current, choice, 'StoredResourceOfAnotherType'),
+      LinkToDecodedReferent: (link) =>
+        Referent.match(current, {
+          AsResource: () => invalid(current, choice, 'NotAllowedForReferent'),
+          ByMentionOnly: (byMentionOnly) => followLinkToDecodedReferent(byMentionOnly, link),
+        }),
+    })
+  }
+
+  const resolve = (current: Referent.Type): Resolved => {
+    const currentKey = Referent.key(current)
+    const alreadyResolved = resolvedByKey.get(currentKey)
+    if (alreadyResolved !== undefined) return alreadyResolved
+    placeOnWalkByKey.set(currentKey, walk.length)
+    walk.push(current)
+    const resolved = resolveChoice(current)
+    walk.pop()
+    placeOnWalkByKey.delete(currentKey)
+    resolvedByKey.set(currentKey, resolved)
+    return resolved
+  }
+
+  return Either.all(
+    referents.map((referent) =>
+      Either.map(resolve(referent), (target): Link.Type => ({ referent, target }))
+    )
+  )
+}
+
+export { linksOf }

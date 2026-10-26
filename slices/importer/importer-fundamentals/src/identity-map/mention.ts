@@ -29,12 +29,21 @@ type Type = ResourceReferences.ReferenceAt
 const of = (resource: FhirResource): readonly Type[] => ResourceReferences.collect(resource)
 
 /**
+ * A relative literal reference, `Type/<id>` with an optional
+ * `/_history/<version>`: FHIR's literal reference grammar
+ * (https://hl7.org/fhir/R4/references.html#literal) without the base URL,
+ * its type and id under FHIR's own patterns.
+ */
+const RELATIVE_LITERAL_REFERENCE =
+  /^[A-Z][A-Za-z]+\/[A-Za-z0-9\-.]{1,64}(\/_history\/[A-Za-z0-9\-.]{1,64})?$/
+
+/**
  * Whether a reference lands on a record of the device: a relative literal
- * reference, `Type/<id>`, as opposed to none, or an absolute URL into another
- * system.
+ * reference, `Type/<id>`, as opposed to none, an absolute URL into another
+ * system, a contained `#<id>`, or text that is no reference at all.
  */
 const landsOnDevice = (reference: IdentifierAndReference.ReferenceType): boolean =>
-  reference.reference !== null && URL.parse(reference.reference) === null
+  reference.reference !== null && RELATIVE_LITERAL_REFERENCE.test(reference.reference)
 
 export { landsOnDevice, of }
 export type { Type }

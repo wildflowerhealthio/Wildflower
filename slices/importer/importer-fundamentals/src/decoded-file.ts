@@ -39,19 +39,13 @@ const namespaceKeys = (decodedFile: DecodedFile, prefix: string): DecodedFile =>
 })
 
 /**
- * `decodedFile` with `f` applied to every resource, keys, titles, sections
- * and notes kept. An entry, a section and the file come back as the same
- * object when `f` returns every resource in them unchanged.
+ * `decodedFile` with `f` applied to every resource entry, sections and notes
+ * kept. A section and the file come back as the same object when `f` returns
+ * every entry in them as itself.
  */
-const mapResources = (
-  decodedFile: DecodedFile,
-  f: (resource: FhirResource) => FhirResource
-): DecodedFile => {
+const mapResources = (decodedFile: DecodedFile, f: (entry: Resource) => Resource): DecodedFile => {
   const sections = decodedFile.sections.map((section) => {
-    const entries = section.resources.map((entry) => {
-      const resource = f(entry.resource)
-      return resource === entry.resource ? entry : { ...entry, resource }
-    })
+    const entries = section.resources.map(f)
     return entries.every((entry, at) => entry === section.resources[at])
       ? section
       : { ...section, resources: entries }

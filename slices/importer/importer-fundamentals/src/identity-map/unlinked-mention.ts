@@ -16,8 +16,8 @@ import * as Mention from './mention.ts'
 /**
  * A resource that, as written, is in no patient's compartment: it has a
  * `subject` slot and nothing in it lands on a patient of the device, the
- * slot empty, a `display` alone, an absolute URL into another system, or an
- * untyped identifier.
+ * slot empty, a `display` alone, an absolute URL into another system, a
+ * contained `#<id>`, or an untyped identifier.
  *
  * @remarks
  * FHIR's CompartmentDefinition for Patient says which fields place each
@@ -54,7 +54,6 @@ const { OutsidePatientCompartment, Dangling, $is: is, $match: match } = Data.tag
 
 /** Whether a placed reference is a logical reference the map left unlinked. */
 const isDangling = (referenceAsWritten: IdentifierAndReference.ReferenceType): boolean =>
-  !Mention.landsOnDevice(referenceAsWritten) &&
   Option.isSome(LinkableLogicalReference.tryFromReference(referenceAsWritten))
 
 /**

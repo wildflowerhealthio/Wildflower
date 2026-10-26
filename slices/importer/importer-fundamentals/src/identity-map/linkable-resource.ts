@@ -7,7 +7,7 @@
 
 import { HumanName, IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { Patient, Practitioner } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array, flow, Match, Option, pipe } from 'effect'
+import { Array, DateTime, Effect, Match, Option, pipe } from 'effect'
 
 import * as LinkableLogicalReference from './linkable-logical-reference.ts'
 
@@ -25,18 +25,19 @@ const matchResourceType = Match.discriminator('resourceType')
 const is = (resource: { readonly resourceType: string }): resource is Type =>
   LinkableLogicalReference.isResourceType(resource.resourceType)
 
-/** `resource` with its `id` known to be set; `None` when it has none, so nothing can point at it. */
+const hasId = (resource: Type): resource is WithId => resource.id !== null
+
+/** `resource` itself, its `id` known to be set; `None` when it has none, so nothing can point at it. */
 const tryIntoWithId = (resource: Type): Option.Option<WithId> =>
-  resource.id === null ? Option.none() : Option.some({ ...resource, id: resource.id })
+  Option.liftPredicate(resource, hasId)
 
 /** `resource`'s relative literal reference, `Type/<id>`: what a mention of it carries. */
 const literalReferenceOf = (resource: WithId): string => `${resource.resourceType}/${resource.id}`
 
 /**
- * The linkable logical reference `resource` answers to, which the identity
- * map keys it by: its `identifier[0]`, which adoption fills with the source's
- * own id under the source's system. `None` when that identifier is missing
- * or unqualified.
+ * The linkable logical reference `resource` is keyed by: its `identifier[0]`,
+ * which adoption fills with the source's own id under the source's system.
+ * `None` when that identifier is missing or unqualified.
  */
 const tryIntoLogicalReference = (resource: Type): Option.Option<LinkableLogicalReference.Type> =>
   Array.head(resource.identifier).pipe(
@@ -47,10 +48,11 @@ const tryIntoLogicalReference = (resource: Type): Option.Option<LinkableLogicalR
 
 /**
  * The name `resource` is shown by, `HumanName.displayName`'s pick among its
- * names (a current one first, by use); `None` when none renders.
+ * names (a current one first, by use, judged at the clock's now); `None` when
+ * none renders.
  */
-const maybeDisplayName = (resource: Type): Option.Option<string> =>
-  Option.fromNullable(HumanName.displayName(resource.name))
+const maybeDisplayName = (resource: Type): Effect.Effect<Option.Option<string>> =>
+  Effect.map(DateTime.now, (now) => Option.fromNullable(HumanName.displayName(resource.name, now)))
 
 /** A Patient's birth date; a Practitioner has none. */
 const maybeBirthDate: (resource: Type) => Option.Option<string> = Match.type<Type>().pipe(
@@ -66,11 +68,12 @@ const maybeBirthDate: (resource: Type) => Option.Option<string> = Match.type<Typ
  */
 const maybeDerivedIdentifier: (
   resource: Type
-) => Option.Option<IdentifierAndReference.IdentifierType> = Match.type<Type>().pipe(
-  matchResourceType('Patient', Patient.nameBirthDateIdentifier),
-  matchResourceType(
-    'Practitioner',
-    flow(maybeDisplayName, Option.flatMap(Practitioner.nameIdentifier))
+) => Effect.Effect<Option.Option<IdentifierAndReference.IdentifierType>> = Match.type<Type>().pipe(
+  matchResourceType('Patient', (patient) =>
+    Effect.succeed(Patient.nameBirthDateIdentifier(patient))
+  ),
+  matchResourceType('Practitioner', (practitioner) =>
+    Effect.map(maybeDisplayName(practitioner), Option.flatMap(Practitioner.nameIdentifier))
   ),
   Match.exhaustive
 )
@@ -79,10 +82,11 @@ const maybeDerivedIdentifier: (
  * What a review shows for `resource`: its displayed name, plus the birth date
  * for a Patient, or `fallback` when it has neither.
  */
-const labelOf = (resource: Type, fallback: string): string => {
-  const parts = [maybeDisplayName(resource), maybeBirthDate(resource)].flatMap(Option.toArray)
-  return parts.length === 0 ? fallback : parts.join(' · ')
-}
+const labelOf = (resource: Type, fallback: string): Effect.Effect<string> =>
+  Effect.map(maybeDisplayName(resource), (displayName) => {
+    const parts = [displayName, maybeBirthDate(resource)].flatMap(Option.toArray)
+    return parts.length === 0 ? fallback : parts.join(' · ')
+  })
 
 /**
  * The provisional resource `logicalReference` alone stands for; `None` when
@@ -112,8 +116,8 @@ const tryProvisionalFrom: (
  * @remarks
  * Nothing but `identifier` changes, and the resource's own identifiers stay as
  * they are, so a stored resource's demographics come back byte-identical.
- * Returns `resource` itself when there is nothing new to assume, which is what
- * makes the identity map idempotent.
+ * Returns `resource` itself when there is nothing new to assume, so a resource
+ * the map changes nothing in comes back as the same object.
  */
 const assumesIdentifiers = <TResource extends Type>(
   resource: TResource,

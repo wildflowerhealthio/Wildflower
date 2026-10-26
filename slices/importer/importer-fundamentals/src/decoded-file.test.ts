@@ -50,3 +50,39 @@ describe('sectionResources', () => {
     )
   })
 })
+
+describe('mapResources', () => {
+  const file: DecodedFile.DecodedFile = {
+    sections: [
+      { title: 'First', resources: [{ key: 'k-0', title: 'Patient/a', resource: resource('a') }] },
+      {
+        title: 'Second',
+        resources: [
+          { key: 'k-1', title: 'Patient/b', resource: resource('b') },
+          { key: 'k-2', title: 'Patient/c', resource: resource('c') },
+        ],
+      },
+    ],
+    notes: ['a note'],
+  }
+
+  it('gives back the file itself when every entry comes back as itself', () => {
+    expect(DecodedFile.mapResources(file, (entry) => entry)).toBe(file)
+  })
+
+  it('replaces only the entries that changed, keeping every untouched entry and section as itself', () => {
+    const retitled = DecodedFile.mapResources(file, (entry) =>
+      entry.key === 'k-2' ? { ...entry, title: 'Patient C' } : entry
+    )
+
+    expect(retitled).not.toBe(file)
+    expect(retitled.notes).toBe(file.notes)
+    expect(retitled.sections[0]).toBe(file.sections[0])
+    expect(retitled.sections[1]?.resources[0]).toBe(file.sections[1]?.resources[0])
+    expect(retitled.sections[1]?.resources[1]).toEqual({
+      key: 'k-2',
+      title: 'Patient C',
+      resource: file.sections[1]?.resources[1]?.resource,
+    })
+  })
+})

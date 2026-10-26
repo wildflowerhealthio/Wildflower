@@ -13,7 +13,7 @@
  */
 
 import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import { Array, HashMap, HashSet, Option, pipe, Record } from 'effect'
+import { Array, Effect, HashMap, HashSet, Option, pipe, Record } from 'effect'
 
 import * as Link from './link.ts'
 import * as LinkableResource from './linkable-resource.ts'
@@ -32,6 +32,11 @@ interface Type {
    * the review and the diff show what it gained.
    */
   readonly resourceExistsInFile: boolean
+  /**
+   * What a review shows for it (`LinkableResource.labelOf`, else its literal
+   * reference): the title of an entry it replaces or is appended as.
+   */
+  readonly label: string
 }
 
 /**
@@ -41,7 +46,7 @@ interface Type {
  *
  * @remarks
  * A resource assumes, once, its own derived identifier (so a name-and-birth-date
- * match finds it next time, and so a second placement adds nothing) and then
+ * match finds it next time) and then
  * the identifiers of every referent linked to it. Should two referents carry
  * different copies of one stored resource, the last one's is written.
  */
@@ -49,19 +54,27 @@ const make = (
   placedLiteralReference: string,
   linkedResources: Array.NonEmptyReadonlyArray<Link.LinkedResource>,
   decodedLiteralReferences: HashSet.HashSet<string>
-): Type => {
+): Effect.Effect<Type> => {
   const { resource } = Array.lastNonEmpty(linkedResources)
-  const identifiersToAssume = [
-    ...Option.toArray(LinkableResource.maybeDerivedIdentifier(resource)),
-    ...linkedResources.flatMap(({ referent }) => Referent.identifiersOf(referent)),
-  ]
-  return {
-    resource: LinkableResource.assumesIdentifiers(resource, identifiersToAssume),
-    identifiersToAssume,
-    resourceExistsInFile:
-      HashSet.has(decodedLiteralReferences, placedLiteralReference) ||
-      linkedResources.some(({ referent }) => Referent.is('AsResource')(referent)),
-  }
+  return Effect.all({
+    derivedIdentifier: LinkableResource.maybeDerivedIdentifier(resource),
+    label: LinkableResource.labelOf(resource, placedLiteralReference),
+  }).pipe(
+    Effect.map(({ derivedIdentifier, label }) => {
+      const identifiersToAssume = [
+        ...Option.toArray(derivedIdentifier),
+        ...linkedResources.flatMap(({ referent }) => Referent.identifiersOf(referent)),
+      ]
+      return {
+        resource: LinkableResource.assumesIdentifiers(resource, identifiersToAssume),
+        identifiersToAssume,
+        resourceExistsInFile:
+          HashSet.has(decodedLiteralReferences, placedLiteralReference) ||
+          linkedResources.some(({ referent }) => Referent.is('AsResource')(referent)),
+        label,
+      }
+    })
+  )
 }
 
 /**
@@ -71,16 +84,19 @@ const make = (
 const byPlacedLiteralReference = (
   links: readonly Link.Type[],
   decodedLiteralReferences: HashSet.HashSet<string>
-): HashMap.HashMap<string, Type> =>
+): Effect.Effect<HashMap.HashMap<string, Type>> =>
   pipe(
     links,
     Array.filterMap(Link.tryIntoLinkedResource),
     Array.groupBy(({ resource }) => LinkableResource.literalReferenceOf(resource)),
-    Record.map((linkedResources, placedLiteralReference) =>
-      make(placedLiteralReference, linkedResources, decodedLiteralReferences)
-    ),
     Record.toEntries,
-    HashMap.fromIterable
+    Effect.forEach(([placedLiteralReference, linkedResources]) =>
+      Effect.map(
+        make(placedLiteralReference, linkedResources, decodedLiteralReferences),
+        (placedResource) => [placedLiteralReference, placedResource] as const
+      )
+    ),
+    Effect.map(HashMap.fromIterable)
   )
 
 export { byPlacedLiteralReference, make }
