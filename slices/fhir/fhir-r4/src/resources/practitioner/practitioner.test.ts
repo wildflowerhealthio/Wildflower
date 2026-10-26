@@ -3,7 +3,7 @@ import {
   TimelessDateFromString,
 } from '@wildflowerhealthio/kitchen-sink/schema'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Arbitrary, Schema } from 'effect'
+import { Arbitrary, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
@@ -151,7 +151,7 @@ describe('Practitioner.nameIdentifier', () => {
   const decodeIdentifier = Schema.decodeUnknownSync(IdentifierAndReference.IdentifierSchema)
 
   test('names a provider by their printed name under the practitioner-name system', () => {
-    expect(Practitioner.nameIdentifier('Dr. A Prescriber')).toSchemaEqual(
+    expect(Option.getOrThrow(Practitioner.nameIdentifier('Dr. A Prescriber'))).toSchemaEqual(
       IdentifierAndReference.IdentifierSchema,
       decodeIdentifier({
         system: 'https://wildflowerhealth.io/fhir/identifier/practitioner-name',
@@ -161,11 +161,13 @@ describe('Practitioner.nameIdentifier', () => {
   })
 
   test('trims the name and collapses each run of whitespace inside it to one space', () => {
-    expect(Practitioner.nameIdentifier(' \tDr.  A\n Prescriber  ').value).toBe('Dr. A Prescriber')
+    expect(Option.getOrThrow(Practitioner.nameIdentifier(' \tDr.  A\n Prescriber  ')).value).toBe(
+      'Dr. A Prescriber'
+    )
   })
 
-  test('gives a blank name no value, as FHIR decodes a blank string', () => {
-    expect(Practitioner.nameIdentifier(' \t ').value).toBeNull()
+  test('is None for a blank name, which identifies nobody', () => {
+    expect(Option.isNone(Practitioner.nameIdentifier(' \t '))).toBe(true)
   })
 
   const whitespaceArbitrary = fc.constantFrom(' ', '  ', '\t', '\n ')
@@ -177,9 +179,9 @@ describe('Practitioner.nameIdentifier', () => {
         fc.tuple(whitespaceArbitrary, whitespaceArbitrary, whitespaceArbitrary),
         (words, [before, between, after]) => {
           const spaced = `${before}${words.join(between)}${after}`
-          expect(Practitioner.nameIdentifier(spaced)).toSchemaEqual(
+          expect(Option.getOrThrow(Practitioner.nameIdentifier(spaced))).toSchemaEqual(
             IdentifierAndReference.IdentifierSchema,
-            Practitioner.nameIdentifier(words.join(' '))
+            Option.getOrThrow(Practitioner.nameIdentifier(words.join(' ')))
           )
         }
       ),

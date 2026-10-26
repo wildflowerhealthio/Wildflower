@@ -243,12 +243,14 @@ const encodeIdentifier = Schema.encodeSync(IdentifierAndReference.IdentifierSche
  * payload names no prescriber, or a blank one.
  */
 const requesterWire = (prescriberName: string | undefined): Record<string, unknown> | undefined =>
-  prescriberName == null || FhirString.isBlank(prescriberName)
+  prescriberName == null
     ? undefined
-    : {
-        identifier: encodeIdentifier(Practitioner.nameIdentifier(prescriberName)),
-        display: prescriberName,
-      }
+    : Option.getOrUndefined(
+        Option.map(Practitioner.nameIdentifier(prescriberName), (identifier) => ({
+          identifier: encodeIdentifier(identifier),
+          display: prescriberName,
+        }))
+      )
 
 /**
  * Build the R4 `MedicationRequest` **wire** from the decoded prescription; the
