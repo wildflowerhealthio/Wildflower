@@ -28,6 +28,7 @@ const makeResponse = (body: string, url: string = HISTORY_URL): HttpResponse.Htt
 
 /** The identifier-only reference to the account `customerId` names, as a history dispense's subject. */
 const accountSubject = (customerId: string = ACCOUNT_ID): Record<string, unknown> => ({
+  type: 'Patient',
   identifier: { system: ShoppersIdentifierSystem.CustomerId, value: customerId },
 })
 

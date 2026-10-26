@@ -15,6 +15,7 @@ import {
   DateTime,
   Duration,
   Effect,
+  flow,
   Option,
   pipe,
   RegExp as EffectRegExp,
@@ -233,24 +234,27 @@ const statusReasonWire = (rx: SourcePrescription): Record<string, unknown> | und
   }
 }
 
-const encodeIdentifier = Schema.encodeSync(IdentifierAndReference.IdentifierSchema)
+const encodeReference = Schema.encodeSync(IdentifierAndReference.ReferenceSchema)
 
 /**
- * The `requester` wire for the prescriber, whom the portal knows only by
- * name: the name as `display`, and as the identifier `fhir-r4`'s
- * `Practitioner.nameIdentifier` makes of it, so the reference names an
- * identity the importer's identity map can resolve. `undefined` when the
- * payload names no prescriber, or a blank one.
+ * The `requester` wire for a prescriber the portal knows only by name:
+ * `fhir-r4`'s `Practitioner.tryReferenceFromName`, a logical reference that
+ * states its type and names the provider by the name identifier, so the
+ * importer's identity map can resolve it. `undefined` for a blank name.
  */
-const requesterWire = (prescriberName: string | undefined): Record<string, unknown> | undefined =>
-  prescriberName == null
-    ? undefined
-    : Option.getOrUndefined(
-        Option.map(Practitioner.nameIdentifier(prescriberName), (identifier) => ({
-          identifier: encodeIdentifier(identifier),
-          display: prescriberName,
-        }))
-      )
+const requesterWireOfName: (
+  prescriberName: string
+) => typeof IdentifierAndReference.ReferenceSchema.Encoded | undefined = flow(
+  Practitioner.tryReferenceFromName,
+  Option.map(encodeReference),
+  Option.getOrUndefined
+)
+
+/** {@link requesterWireOfName}, or `undefined` when the payload names no prescriber. */
+const requesterWire = (
+  prescriberName: string | undefined
+): typeof IdentifierAndReference.ReferenceSchema.Encoded | undefined =>
+  prescriberName == null ? undefined : requesterWireOfName(prescriberName)
 
 /**
  * Build the R4 `MedicationRequest` **wire** from the decoded prescription; the

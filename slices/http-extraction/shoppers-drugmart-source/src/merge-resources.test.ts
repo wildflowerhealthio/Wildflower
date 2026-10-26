@@ -92,6 +92,7 @@ describe('shoppersDrugMartSource', () => {
     expect(statusCopy().subject?.reference).toBe(`Patient/${personPatient?.id}`)
     expect(historyCopy().subject).toStrictEqual(
       decodeReference({
+        type: 'Patient',
         identifier: { system: ShoppersIdentifierSystem.CustomerId, value: ACCOUNT_ID },
       })
     )

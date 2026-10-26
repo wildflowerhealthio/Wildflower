@@ -1,9 +1,10 @@
 # AGENTS.md — slices/importer/importer-fundamentals
 
-The **resource-agnostic, format-agnostic upstream** of the importer slice: the
+The **format-agnostic upstream** of the importer slice: the
 contract every file-format binding implements, the pure per-resource
-staged-import model (what a decoded-but-unwritten import consists of), and the
-structural failure record the sinks report against. It is the
+staged-import model (what a decoded-but-unwritten import consists of), the
+identity map that links a decode's patients and providers to the device's, and
+the structural failure record the sinks report against. It is the
 layer a concrete binding (`har-importer-core`, `lifelabs-pdf-importer`)
 sits on top of.
 
@@ -102,6 +103,122 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   `excludedCount` drive the shell's tallies. Orphaned selection entries
   (keys a re-decode no longer produces) are inert — sets and maps of keys,
   nothing dangling.
+- `src/identity-map/` — the **identity map**: for every referent an import
+  discovers, what it links to on the device, and the stage that places a
+  decoded file on those choices, an Effect whose only input besides its
+  arguments is the clock (which of a person's names is current). One
+  namespace per file, one phase each. Three tenses run through the names:
+  **decoded** (as the file arrived), **placed** (after the map, as it will
+  be written) and **stored** (already on the device). A conversion between
+  the model's types says its direction:
+  `tryFrom<Source>` builds the namespace's type, `tryInto<Target>` leaves it;
+  `maybe` is only for an attribute that may be absent.
+  - **`LinkableLogicalReference`** — FHIR's logical reference (a `Reference`
+    that names its target by `type` and `identifier` rather than a literal
+    `reference`), narrowed to `type: 'Patient' | 'Practitioner'` and a
+    `QualifiedIdentifier` (fhir-r4: an `Identifier` with a `system` and a
+    non-empty `value`). What an identifier-only mention carries and what a
+    resource's `resourceType` + `identifier[0]` answer to; its map **`key`**
+    `type|system|value`, `equivalence`, `tryFromIdentifier`,
+    `tryFromReference`. Nothing about linking.
+  - **`LinkableResource`** — a `Patient` or `Practitioner`, the types a
+    referent can have a resource for: `tryIntoWithId`,
+    `tryIntoLogicalReference` (its `identifier[0]`), `maybeDisplayName`
+    (`HumanName.displayName`'s pick among its names, judged at the clock's
+    `DateTime.now`, so an Effect), `maybeDerivedIdentifier` (an exhaustive
+    match: `Patient.nameBirthDateIdentifier`, `Practitioner.nameIdentifier` of
+    the displayed name) and `labelOf`, both Effects for the same reason,
+    `literalReferenceOf`, **`tryProvisionalFrom`** (the resource a logical
+    reference alone can stand for, provisional until a fuller one arrives: a
+    provider's printed name stands for a `Practitioner` through
+    `Practitioner.tryFromNameIdentifier`; nothing stands for a `Patient`), and
+    **`assumesIdentifiers`**, which appends the qualified identifiers a
+    resource does not already carry, assumed as one assumes an identity, and
+    changes nothing else.
+  - **`Mention`** — each place a resource names something by a `Reference`,
+    at its path (`subject`, `performer[0].actor`), found by fhir-r4's
+    `ResourceReferences.collect` so a reference anywhere is one; and
+    `landsOnDevice`, whether a reference is a relative literal `Type/<id>`
+    (not a contained `#<id>`, an absolute URL, or text). Which type an
+    identifier-only mention names is the reference's own business: a logical
+    reference states its `type`, and one that does not names nothing.
+  - **`Referent`** — something the import refers to that may already exist on
+    the device, once per identity: **`AsResource`** when the decode emitted
+    its resource (keyed by its `identifier[0]`, carrying every identifier a
+    search tries, its own and the derived one), **`ByMentionOnly`** when only
+    mentions name it; built only through its constructors, matched with
+    `Referent.match`. `logicalReferencesOf` is every logical reference a
+    referent answers to, and **`byLogicalReferenceKey`** the referent each
+    logical reference names: the one it is the key of, else the one referent
+    that answers to it, so a Shoppers account id a decoded Patient also
+    carries is that Patient. `tryFromDecodedResource` and `mentionedIn` read
+    them off one decoded resource; **`discover`** finds both over a file,
+    resources first, once per identity, and fails with
+    **`DuplicateReferent`** when two resources under different ids share a
+    key; `byKey` indexes into a `HashMap`.
+  - **`ReferentLinkChoices`** — the map itself (**`Type`**, a `HashMap` of
+    every referent's `LinkChoice` by `Referent.key`; `empty`): what the screen
+    holds and the stage places a file on.
+  - **`LinkChoice`** — what the reviewer chooses for a referent, a family of
+    imperatives: **`CreateResource`**, **`LinkToStoredResource`** (a resource
+    on the device), **`LinkToDecodedReferent`** (another referent of the
+    import), **`DontLink`**; tagged objects built only through their
+    constructors, matched with `LinkChoice.match`. `forReferent` reads a
+    choice off the referent link choices with its default, `CreateResource`
+    with a resource and `DontLink` without. **`InvalidLinkChoice`** is a
+    choice the stage cannot follow for its referent, with its `reason`.
+  - **`LinkTarget`** — the resource a referent is linked to once
+    `LinkToDecodedReferent` is followed, named for where it comes from:
+    **`Stored`**, **`Decoded`**, **`Provisional`**, **`Unlinked`**, matched
+    with `LinkTarget.match`; `tryIntoResource` is the resource its mentions
+    are redirected to. Every resource-bearing variant carries one with an
+    `id`, so a resource-backed referent requires one
+    (`Referent.tryFromDecodedResource`).
+  - **`Link`** — a referent with its link target, what the plan is built
+    from; `tryIntoLinkedResource` is the link as a **`LinkedResource`** (the
+    referent and the resource its target holds) when the target holds one.
+  - `resolution.ts` (**`Resolution`**, not exported) — `linksOf`: every
+    referent's choice followed to its link target, each referent resolved
+    once, every rule an arm of `LinkChoice.match` or `Referent.match`; the
+    first choice it cannot follow is its failure.
+  - **`PlacedResource`** — the resource under one placed literal reference as
+    it will be written, whatever its origin: the resource having assumed its
+    `identifiersToAssume` (its own derived identifier, then those of every
+    referent linked to it), whether the `resourceExistsInFile`, and its
+    `label`, the title of an entry it replaces or is appended as.
+    **`make`** builds one from the linked resources under a literal
+    reference; `byPlacedLiteralReference` groups a plan's links and makes
+    each.
+  - **`LinkPlan`** — `make`: everything the placement needs, worked out once:
+    the **`links`**, the **`linkTargetsByLogicalReferenceKey`**, the
+    **`placedResourcesByPlacedLiteralReference`**, and the
+    **`decodedLiteralReferencesToStored`** (`Type/<decoded id>` →
+    `Type/<stored id>` for every decoded resource a stored one stands in for),
+    all `HashMap`s. Read through its two lookups, named for the questions the
+    later phases ask: **`maybeRedirectOf`** (where a decoded reference is
+    redirected, a literal one through the redirects and a logical one through
+    its referent's link target) and **`maybePlacedResourceFor`** (the resource
+    a decoded resource is written as: the placed resource under the literal
+    reference its own is redirected to). `literalReferencesFromDecodedFile`
+    is what the batch lift reuses.
+  - **`Placement`** — `place`, pure: each decoded resource written as the
+    resource `LinkPlan.maybePlacedResourceFor` has for it, else kept
+    (`DecodedFile.mapResources`), titled by the stored resource's label when
+    one replaces it, its mentions redirected to their referents'
+    link targets either way (`ResourceReferences.map`, keeping `display` and
+    `identifier`), and the resources the file only mentions appended under
+    **`LINKED_SECTION_TITLE`** at **`linkedKey`**, in discovery order.
+  - **`UnlinkedMention`** — `collect`: on a placed file, every resource
+    **`OutsidePatientCompartment`** (a `subject` slot in which nothing lands
+    on a patient of the device; FHIR's Patient CompartmentDefinition names
+    `subject` for every type the importer handles) and every **`Dangling`**
+    mention (a logical reference, in any field, the map could link and left
+    unlinked), matched with `UnlinkedMention.match`.
+  - **`IdentityMap`** — the stage: **`apply`** (plan, then place) over a
+    file and its `ReferentLinkChoices`, failing with
+    `Referent.DuplicateReferent` or `LinkChoice.InvalidLinkChoice`. What
+    still lands nowhere is `UnlinkedMention.collect` of the placed file,
+    which the caller composes.
 - `src/picked-file.ts` — the **`PickedFile`** namespace: the picked file
   vocabulary _and_ the codec that source files one. **`Type`**
   (`{ id, fileName, bytes }`) is the one value every `decode` receives, and
@@ -141,9 +258,11 @@ Depends on `effect` (and `kitchen-sink` in tests), plus `fhir-r4` for the
 `DocumentReference` schema, `fhir-r4/resources` for
 `FhirResource` (`decoded-file.ts` and `staged-import.ts` are concrete over it,
 not generic — every format binds `FhirResource`, so there is no `TParsed` left
-to abstract over), `fhir-r4/data-types` for `Meta` (the slot `MetaSource.stamp`
-writes into), `fhir-r4/identity` for the shared id derivation, and `fhir`'s
-wire types. Hosting the source file codec is what widened
+to abstract over) and for the identity map's `Patient`, `Practitioner` and
+`ResourceReferences`, its one reference walk, `fhir-r4/data-types` for `Meta`
+(the slot `MetaSource.stamp` writes into) and the identity map's
+`IdentifierAndReference` and `HumanName`, `fhir-r4/identity` for the shared id
+derivation, and `fhir`'s wire types. Hosting the source file codec is what widened
 `fhir-r4` from a type-only import to the `DocumentReference` runtime schema
 (it builds and decodes the resource) — but still no client, no other resource
 schemas, and no `persistResources`: the write sink stays at the shell
@@ -205,6 +324,47 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
   fixed key safe. Do not push that obligation down into a `decodeFileSet` —
   one that tries to be unique across a batch cannot be, since it is not given
   the batch.
+- **Identity is the map's, never the selection's.** `StagedImport` keeps
+  exclusions and edits; what a mention lands on lives in the
+  `ReferentLinkChoices`, held beside the selections, and `IdentityMap.apply`
+  runs before the server diff, the preview and the confirm, so all three see
+  the resources that get written. `apply` is a function of its arguments and
+  the clock, and keeps the file's sections and keys. It places a decoded
+  file: the choices are made for the decoded file's referents. Applied again
+  to the placed file it changes nothing when that file has the same
+  referents, of the same kinds: no `LinkToDecodedReferent` cycle (whose
+  provisional resource is a resource there), no mention several decoded
+  resources answer to, and no mention a linked stored resource answers to,
+  since once placed one resource answers to each of those mentions. A
+  referent's mentions are redirected to its link target: a decoded resource
+  linked to a stored resource is replaced by it **under the same review
+  key**, titled by its label, the stored resource assuming the referent's
+  identifiers and its own derived one and keeping its demographics byte for
+  byte; every mention of the referent, a literal `Type/<decoded id>` or a
+  logical reference, is redirected through `ResourceReferences.map`, keeping
+  its `display` and `identifier`; a resource the file only mentions is
+  appended under a final **"Linked"** section so the review shows the
+  identifier it assumed; a decoded resource that is its referent's link
+  target is written as decoded plus its derived identifier and those of the
+  referents linked to it. A referent named only by mentions may be
+  `CreateResource` only when its logical reference stands for something
+  provisional (`LinkableResource.tryProvisionalFrom`: a provider's printed
+  name, as a `Practitioner` at `localResourceId(system, 'Practitioner', name)`,
+  so one name from two sources is one resource); its default stays
+  `DontLink`. `LinkToDecodedReferent` follows to the end; a choice a
+  referent's kind does not allow, a stored resource or a referent of another
+  type, or a referent the file does not hold fails the stage with
+  `InvalidLinkChoice`, and so do two decoded resources under different ids
+  keyed by one identity (`DuplicateReferent`): errors bubble to the screen
+  rather than read as a default. A cycle reads as `CreateResource` for the
+  first of its members, in key order, that it places on a resource, so all of
+  it lands on one resource.
+  `UnlinkedMention.collect` lists, on the placed file, every resource outside
+  every patient's compartment (a `subject` slot in which nothing lands on a
+  patient of the device) and every dangling mention: a logical reference, in
+  any field, the map could link and left unlinked. A `display`-only provider,
+  an untyped identifier, an absolute URL and a contained `#<id>` are not ones
+  the map could link, so they are not listed on their own.
 - **Selection keys by a `DecodedFile.Resource`'s `key`.** Selection state must
   be serializable and survive a settings re-decode, so both axes hold string
   keys; a key that disappears simply stops applying.

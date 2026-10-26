@@ -1,4 +1,4 @@
-import { Option, Schema } from 'effect'
+import { flow, Option, Schema, String as Str } from 'effect'
 
 import {
   OrNullAsOptional,
@@ -20,6 +20,7 @@ import {
   IdentifierAndReference,
   WILDFLOWER_CANONICAL_BASE,
 } from '../../data-types/index.ts'
+import { localResourceId } from '../../identity/local-resource-id.ts'
 import * as PractitionerQualification from './practitioner-qualification.ts'
 
 const practitionerJsonSchema = {
@@ -183,5 +184,80 @@ const nameIdentifier = (name: string): Option.Option<IdentifierAndReference.Iden
       })
 }
 
-export { NAME_IDENTIFIER_SYSTEM, nameIdentifier, PractitionerSchema as Schema }
-export type { Type }
+/**
+ * The logical reference to a provider a source knows only by its printed
+ * `name`: `type` `Practitioner`, {@link nameIdentifier} as the `identifier`,
+ * and the name as printed for `display`; `None` for a blank name.
+ *
+ * @remarks
+ * A reference that names its target by identifier alone must say what type
+ * it names, or an importer reading it cannot tell a provider's name from a
+ * patient's account number. Stating the type here is what lets the identity
+ * map treat the reference as a logical reference rather than guessing from
+ * the field it sits in.
+ */
+const tryReferenceFromName = (name: string): Option.Option<IdentifierAndReference.ReferenceType> =>
+  Option.map(nameIdentifier(name), (identifier) => ({
+    ...IdentifierAndReference.emptyReference,
+    type: 'Practitioner',
+    identifier,
+    display: name,
+  }))
+
+/** A `Practitioner` on, or bound for, the device: one with an `id`. */
+type WithId = Type & { readonly id: string }
+
+const decodePractitioner = Schema.decodeSync(PractitionerSchema)
+
+const NAME_IDENTIFIER_SYSTEM_HREF = new URL(NAME_IDENTIFIER_SYSTEM).href
+
+/** Whether `identifier` is under {@link NAME_IDENTIFIER_SYSTEM}. */
+const isNameIdentifier = (identifier: IdentifierAndReference.IdentifierType): boolean =>
+  identifier.system?.href === NAME_IDENTIFIER_SYSTEM_HREF
+
+/** The provisional `Practitioner` for a printed `name`, at the id the name derives. */
+const provisionalForName = (name: string): WithId => {
+  const id = localResourceId(NAME_IDENTIFIER_SYSTEM, 'Practitioner', name)
+  return {
+    ...decodePractitioner({
+      resourceType: 'Practitioner',
+      id,
+      identifier: [{ system: NAME_IDENTIFIER_SYSTEM, value: name }],
+      name: [{ text: name }],
+    }),
+    id,
+  }
+}
+
+/**
+ * The provisional `Practitioner` a name identifier stands for, until a fuller
+ * record of that provider arrives: the identifier, and the name as its one
+ * `name[0].text`, under the id `localResourceId(system, 'Practitioner', name)`.
+ *
+ * @returns `None` for an identifier under any system but
+ *   {@link NAME_IDENTIFIER_SYSTEM}, or one with no value or an empty one
+ *
+ * @remarks
+ * A source that knows a provider only by name gives the importer nothing to
+ * write but the name, so the record is provisional: the least that lets a
+ * prescription point at its prescriber. The id is derived from the name, so
+ * the same name from two sources is one record, and every later import that
+ * names it adds to it rather than beside it.
+ */
+const tryFromNameIdentifier: (
+  identifier: IdentifierAndReference.IdentifierType
+) => Option.Option<WithId> = flow(
+  Option.liftPredicate(isNameIdentifier),
+  Option.flatMapNullable((identifier) => identifier.value),
+  Option.filter(Str.isNonEmpty),
+  Option.map(provisionalForName)
+)
+
+export {
+  NAME_IDENTIFIER_SYSTEM,
+  nameIdentifier,
+  PractitionerSchema as Schema,
+  tryFromNameIdentifier,
+  tryReferenceFromName,
+}
+export type { Type, WithId }

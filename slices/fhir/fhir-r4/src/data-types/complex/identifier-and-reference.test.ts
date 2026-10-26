@@ -12,6 +12,7 @@ import {
   ReferenceSchema,
   referencedIdOf,
   referenceTo,
+  isQualifiedIdentifier,
 } from './identifier-and-reference.ts'
 
 // ---------------------------------------------------------------------------
@@ -277,5 +278,19 @@ describe('identifierEquivalence', () => {
     { left: { system: 'https://a.example/id', value: '1' }, right: { value: '1' } },
   ])('should tell $left from $right', ({ left, right }) => {
     expect(identifierEquivalence(decodeIdentifier(left), decodeIdentifier(right))).toBe(false)
+  })
+})
+
+describe('isQualifiedIdentifier', () => {
+  const decodeIdentifier = Schema.decodeUnknownSync(IdentifierSchema)
+
+  test.each([
+    [{ system: 'https://source.example/id', value: '7' }, true],
+    [{ system: 'https://source.example/id', value: '' }, false],
+    [{ system: 'https://source.example/id' }, false],
+    [{ value: '7' }, false],
+    [{}, false],
+  ])('%j → %s', (wire, qualified) => {
+    expect(isQualifiedIdentifier(decodeIdentifier(wire))).toBe(qualified)
   })
 })
