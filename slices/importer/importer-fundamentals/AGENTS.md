@@ -281,8 +281,9 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
   default stays `DontLink`. `SameAs` follows to the end; a choice a referent's
   kind does not allow, a referent of another type, or one the file does not
   hold reads as the kind's default, own resource or unlinked; a cycle reads as
-  `New` for the referent resolved. `unlinkedMentions` lists, on the placed
-  file, every missing `subject`, every mention that is an absolute URL, and
+  `New` for the first of its members, in key order, that `New` places on a
+  resource, so all of it lands on one record. `unlinkedMentions` lists, on the
+  placed file, every missing `subject`, every mention that is an absolute URL, and
   every identity left identifier-only; a `display`-only provider is not one
   the map could link, so it is not listed.
 - **Selection keys by a `DecodedFile.Resource`'s `key`.** Selection state must

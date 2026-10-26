@@ -72,6 +72,18 @@ const literalsHeldBy = (decodedFile: DecodedFile.DecodedFile): ReadonlySet<strin
     )
   )
 
+/** The stored resource `resource`'s referent links to under `destinations`, when it links to one. */
+const storedDestinationOf = (
+  destinations: ReadonlyMap<string, Destination.Type>,
+  resource: LinkableResource.Type
+): Option.Option<LinkableResource.WithId> =>
+  pipe(
+    LinkableResource.identityOf(resource),
+    Option.flatMapNullable((identity) => destinations.get(Identity.key(identity))),
+    Option.filter(Destination.is('OnStoredResource')),
+    Option.map(({ resource: stored }) => stored)
+  )
+
 /**
  * The plan for `decodedFile` under `choices`.
  *
@@ -85,11 +97,11 @@ const literalsHeldBy = (decodedFile: DecodedFile.DecodedFile): ReadonlySet<strin
 const make = (decodedFile: DecodedFile.DecodedFile, choices: LinkChoice.ByReferent): Type => {
   const referents = Referent.discover(decodedFile)
   const indexed = Referent.index(referents)
+  const resolved = referents.map(
+    (referent) => [referent, Resolution.destinationOf(choices, indexed, referent)] as const
+  )
   const destinations = new Map(
-    referents.map((referent) => [
-      Referent.key(referent),
-      Resolution.destinationOf(choices, indexed, referent),
-    ])
+    resolved.map(([referent, destination]) => [Referent.key(referent), destination])
   )
 
   const assumedByOwnResource = new Map<string, readonly Identifier[]>()
@@ -114,8 +126,8 @@ const make = (decodedFile: DecodedFile.DecodedFile, choices: LinkChoice.ByRefere
       byMentionsOnly: (known?.byMentionsOnly ?? true) && referent._tag === 'ByMentionOnly',
     })
   }
-  for (const referent of referents) {
-    Destination.match(destinations.get(Referent.key(referent)) ?? Destination.Unlinked(), {
+  for (const [referent, destination] of resolved) {
+    Destination.match(destination, {
       Unlinked: () => undefined,
       OnOwnResource: ({ referent: own }) => {
         accumulate(assumedByOwnResource, Referent.key(own), Referent.identifiersOf(referent))
@@ -149,10 +161,8 @@ const make = (decodedFile: DecodedFile.DecodedFile, choices: LinkChoice.ByRefere
       if (!LinkableResource.is(resource) || resource.id === null) return []
       const from = LinkableResource.literalOf({ ...resource, id: resource.id })
       return pipe(
-        LinkableResource.identityOf(resource),
-        Option.flatMapNullable((identity) => destinations.get(Identity.key(identity))),
-        Option.filter(Destination.is('OnStoredResource')),
-        Option.map(({ resource: stored }) => [from, LinkableResource.literalOf(stored)] as const),
+        storedDestinationOf(destinations, resource),
+        Option.map((stored) => [from, LinkableResource.literalOf(stored)] as const),
         Option.toArray
       )
     })
@@ -161,5 +171,5 @@ const make = (decodedFile: DecodedFile.DecodedFile, choices: LinkChoice.ByRefere
   return { destinations, linkedResources, literalRedirects, assumedByOwnResource }
 }
 
-export { make }
+export { make, storedDestinationOf }
 export type { LinkedResource, Type }

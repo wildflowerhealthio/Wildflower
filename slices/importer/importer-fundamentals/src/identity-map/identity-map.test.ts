@@ -247,7 +247,7 @@ describe('IdentityMap.apply on a printed name set to New', () => {
     expect(fileWireOf(IdentityMap.apply(once, map))).toBe(fileWireOf(once))
   })
 
-  it('defaults a name referent to Don’t link, is provisional only for a name, and out of a cycle', () => {
+  it('defaults a name referent to Don’t link, is provisional only for a name, and one record for a whole cycle', () => {
     const jones = `Practitioner|${Practitioner.NAME_IDENTIFIER_SYSTEM}|Dr. B Jones`
     const referents = Referent.discover(
       fileOf(
@@ -275,6 +275,7 @@ describe('IdentityMap.apply on a printed name set to New', () => {
     expect(destinationOf(map, PRESCRIBER)).toBe(`OnProvisionalResource ${PROVISIONAL_ID}`)
     expect(destinationOf(new Map([[ACCOUNT, LinkChoice.New()]]), ACCOUNT)).toBe('Unlinked')
     expect(destinationOf(cycle, PRESCRIBER)).toBe(`OnProvisionalResource ${PROVISIONAL_ID}`)
+    expect(destinationOf(cycle, jones)).toBe(`OnProvisionalResource ${PROVISIONAL_ID}`)
   })
 })
 

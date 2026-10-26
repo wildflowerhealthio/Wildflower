@@ -1,4 +1,4 @@
-import { Option, Schema } from 'effect'
+import { Option, Schema, String as Str } from 'effect'
 
 import {
   OrNullAsOptional,
@@ -189,13 +189,15 @@ type WithId = Type & { readonly id: string }
 
 const decodePractitioner = Schema.decodeSync(PractitionerSchema)
 
+const NAME_IDENTIFIER_SYSTEM_HREF = new URL(NAME_IDENTIFIER_SYSTEM).href
+
 /**
  * The provisional `Practitioner` a name identifier stands for, until a fuller
  * record of that provider arrives: the identifier, and the name as its one
  * `name[0].text`, under the id `localResourceId(system, 'Practitioner', name)`.
  *
  * @returns `None` for an identifier under any system but
- *   {@link NAME_IDENTIFIER_SYSTEM}, or one with no value
+ *   {@link NAME_IDENTIFIER_SYSTEM}, or one with no value or an empty one
  *
  * @remarks
  * A source that knows a provider only by name gives the importer nothing to
@@ -207,8 +209,9 @@ const decodePractitioner = Schema.decodeSync(PractitionerSchema)
 const fromNameIdentifier = (
   identifier: IdentifierAndReference.IdentifierType
 ): Option.Option<WithId> => {
-  if (identifier.system?.href !== new URL(NAME_IDENTIFIER_SYSTEM).href) return Option.none()
-  return Option.map(Option.fromNullable(identifier.value), (name) => {
+  if (identifier.system?.href !== NAME_IDENTIFIER_SYSTEM_HREF) return Option.none()
+  const printedName = Option.fromNullable(identifier.value).pipe(Option.filter(Str.isNonEmpty))
+  return Option.map(printedName, (name) => {
     const id = localResourceId(NAME_IDENTIFIER_SYSTEM, 'Practitioner', name)
     return {
       ...decodePractitioner({

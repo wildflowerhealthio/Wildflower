@@ -214,4 +214,12 @@ describe('Practitioner.fromNameIdentifier', () => {
     })
     expect(Option.isNone(Practitioner.fromNameIdentifier(other))).toBe(true)
   })
+
+  test('is None for a name identifier with an empty value', () => {
+    const empty = Schema.decodeUnknownSync(IdentifierAndReference.IdentifierSchema)({
+      system: Practitioner.NAME_IDENTIFIER_SYSTEM,
+      value: '',
+    })
+    expect(Option.isNone(Practitioner.fromNameIdentifier(empty))).toBe(true)
+  })
 })
