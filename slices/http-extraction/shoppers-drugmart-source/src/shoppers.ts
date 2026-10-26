@@ -40,6 +40,14 @@ const ShoppersIdentifierSystem = {
    */
   PcId: `${SYSTEM_BASE}/identifier/pc-id`,
   /**
+   * The account's id: the `customerId` query parameter of the account-wide
+   * XHRs (the account's `pcid`). Names the account, not a person: an account
+   * manages one or more people, and the history feed's fills name only it.
+   * It exists so the importer's identity map can resolve it to the person a
+   * reviewer says the account's fills are for.
+   */
+  CustomerId: `${SYSTEM_BASE}/identifier/customer-id`,
+  /**
    * A managed person's `patientId` (a `customer.patients[].id`, the id a
    * prescription's `patientId` references). Joinable to `pcId` through the
    * customers payload, but a different kind of thing — see the module remarks.

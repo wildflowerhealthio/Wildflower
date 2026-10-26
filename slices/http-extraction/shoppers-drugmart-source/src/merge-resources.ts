@@ -5,8 +5,6 @@ import type {
 import type { FhirResource, MedicationDispense } from '@wildflowerhealthio/fhir-r4/resources'
 import type { SourceDescriptor } from '@wildflowerhealthio/http-extraction-fundamentals'
 
-import { ShoppersIdentifierSystem } from './shoppers.ts'
-
 /**
  * The Shoppers source's `mergeResources`: one dispense seen in both the
  * prescription-status feed and the prescription-history feed, as one
@@ -19,20 +17,21 @@ type Reference = IdentifierAndReference.ReferenceType
 type Concept = typeof CodeableConcept.Schema.Type
 
 /**
- * Whether `dispense` is the history feed's copy: its `subject` names the
- * account, by a `pcid` identifier.
+ * Whether `dispense` is the history feed's copy: its `subject` has no literal
+ * `reference`.
  *
  * @remarks
  * The two copies are told apart by this marker because it is the difference
- * the merge is about: the history feed knows only the account, the status
- * feed knows the person. The history kind writes it on every dispense, and
- * adoption keeps a reference's own `identifier`, so it survives. Reading it
- * off the resource, rather than asking which kind emitted it, keeps the merge
- * a function of the two resources alone, with the same answer in either
- * arrival order.
+ * the merge is about: the history feed knows only the account, by an
+ * identifier-only reference, and the status feed knows the person, by a
+ * literal `Patient/<patientId>` reference. Adoption rewrites a literal
+ * reference and leaves an identifier-only one as it is, so the marker
+ * survives it. Reading it off the resource, rather than asking which kind
+ * emitted it, keeps the merge a function of the two resources alone, with the
+ * same answer in either arrival order.
  */
-const isAccountCopy = (dispense: MedicationDispense.Type): boolean =>
-  dispense.subject?.identifier?.system?.href === ShoppersIdentifierSystem.PcId
+const isHistoryCopy = (dispense: MedicationDispense.Type): boolean =>
+  dispense.subject?.reference == null
 
 /**
  * The status copy's store link, labelled with the history copy's store name
@@ -94,9 +93,9 @@ const mergeShoppersResources: SourceDescriptor.ResourceMerge<FhirResource> = (ea
   ) {
     return later
   }
-  const earlierIsAccountCopy = isAccountCopy(earlier)
-  if (earlierIsAccountCopy === isAccountCopy(later)) return later
-  return earlierIsAccountCopy
+  const earlierIsHistoryCopy = isHistoryCopy(earlier)
+  if (earlierIsHistoryCopy === isHistoryCopy(later)) return later
+  return earlierIsHistoryCopy
     ? mergeDispenseCopies(later, earlier)
     : mergeDispenseCopies(earlier, later)
 }

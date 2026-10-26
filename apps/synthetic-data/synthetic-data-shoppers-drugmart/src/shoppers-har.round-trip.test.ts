@@ -186,6 +186,17 @@ const dispensesOf = (
   )
 
 /**
+ * Who a dispense names as its subject: its literal reference, or, for one
+ * that names its subject by identifier alone, that identifier's
+ * `system|value`.
+ */
+const subjectOf = ({ subject }: MedicationDispense.Type): string | undefined =>
+  subject?.reference ??
+  (subject?.identifier == null
+    ? undefined
+    : `${subject.identifier.system?.href}|${subject.identifier.value}`)
+
+/**
  * Whether the portal files the prescription as archived: stopped, or
  * continued by a later prescription for the same drug.
  */
@@ -368,17 +379,15 @@ describe(
       })
     })
 
-    test('property: every latest fill names the patient, and every earlier fill the account', async () => {
+    test('property: every latest fill names the patient, and every earlier fill the account by its customerId alone', async () => {
       await assertRoundTrip(({ asOf, shoppersCase }, imported) => {
-        const accountReference = `Patient/${imported.accountPatients[0]?.id}`
+        const accountSubject = `${ShoppersIdentifierSystem.CustomerId}|${shoppersCase.account.pcid}`
         for (const each of prescriptionsOf(shoppersCase)) {
           const request = requestFor(asOf, imported, each)
           const lastFillDate = isoDateOn(asOf, each.expected.lastFillDay)
           expect(
             (request === undefined ? [] : dispensesOf(imported, request))
-              .map(
-                (dispense) => `${isoDateOf(dispense.whenHandedOver)} ${dispense.subject?.reference}`
-              )
+              .map((dispense) => `${isoDateOf(dispense.whenHandedOver)} ${subjectOf(dispense)}`)
               .toSorted(),
             each.expected.key
           ).toEqual(
@@ -386,7 +395,7 @@ describe(
               .map((day) => {
                 const fillDate = isoDateOn(asOf, day)
                 const subject =
-                  fillDate === lastFillDate ? request?.subject.reference : accountReference
+                  fillDate === lastFillDate ? request?.subject.reference : accountSubject
                 return `${fillDate} ${subject}`
               })
               .toSorted()

@@ -24,8 +24,8 @@ rather than a copy, and what it writes is what the response kinds read.
   `MedicationDispense` per dispense entry.
 - `src/response-kinds/prescription-history-response-kind.ts` —
   `…/prescription-history?customerId=…` → one `MedicationDispense` per history
-  entry (no Patient, no MedicationRequest), its `subject` the **account**
-  `Patient` (see [Conventional slots](#conventional-slots)).
+  entry (no Patient, no MedicationRequest), its `subject` the **account** by
+  identifier alone (see [Conventional slots](#conventional-slots)).
 - `src/response-kinds/medication-wire.ts` — the `medicationCodeableConcept`
   builder (brand/chemical text + DIN codings) shared by the two dispense-emitting
   entities.
@@ -93,11 +93,12 @@ and `rexall-be-well-source` alike:
 
 - **Subject** — a status-feed `MedicationRequest` or `MedicationDispense` names
   the managed **person** (`Patient/<patientId>`). A history-feed
-  `MedicationDispense` names the **account** (`Patient/<pcid>`, the URL's
-  `customerId`), with the `pcid` as the reference's `identifier` under
-  `ShoppersIdentifierSystem.PcId`: the history payload does not say which
-  managed person a fill was for. Adoption lands that reference on the account
-  `Patient` `CustomerResponseKind` emits, which `link.seealso`s every person.
+  `MedicationDispense` names the **account** by an identifier-only reference,
+  the URL's `customerId` under `ShoppersIdentifierSystem.CustomerId`, with no
+  literal `reference`: the history payload does not say which managed person
+  a fill was for, and no Patient stands for the account. The importer's
+  identity map resolves that identifier to a person; adoption leaves it as it
+  is.
 - **DIN** — one coding on `medicationCodeableConcept` under `fhir-r4`'s
   canonical `CanadianCodingSystem.Din`
   (`http://hl7.org/fhir/NamingSystem/ca-hc-din`). The portal does not namespace
@@ -132,8 +133,8 @@ and `rexall-be-well-source` alike:
   `status`, `authorizingPrescription` and `location.reference`, with the
   history copy's store name as `location.display`, and its DIN coding when the
   status copy has none. It tells the copies apart by the history copy's
-  account-`pcid` subject identifier, so the result is the same in either
-  arrival order. Only a consumer that holds both copies applies it (the HAR
+  `subject`, which has no literal `reference`, so the result is the same in
+  either arrival order. Only a consumer that holds both copies applies it (the HAR
   import).
 - **`responseKinds` order is not load-bearing, and should stay that way.** The
   three recognizers are disjoint by construction (different path segments:
