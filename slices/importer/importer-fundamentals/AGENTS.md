@@ -165,13 +165,16 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     every referent's `LinkChoice` by `Referent.key`; `empty`): what the screen
     holds and the stage places a file on.
   - **`LinkChoice`** — what the reviewer chooses for a referent, a family of
-    imperatives: **`CreateResource`**, **`LinkToStoredResource`** (a resource
-    on the device), **`LinkToDecodedReferent`** (another referent of the
-    import), **`DontLink`**; tagged objects built only through their
-    constructors, matched with `LinkChoice.match`. `forReferent` reads a
-    choice off the referent link choices with its default, `CreateResource`
-    with a resource and `DontLink` without. **`InvalidLinkChoice`** is a
-    choice the stage cannot follow for its referent, with its `reason`.
+    imperatives: **`CreateResource`**, **`UpdateStoredResource`** (the
+    referent's own resource written over its stored copy under the same
+    literal reference, keeping what the copy assumed: a re-import),
+    **`LinkToStoredResource`** (a resource on the device),
+    **`LinkToDecodedReferent`** (another referent of the import),
+    **`DontLink`**; tagged objects built only through their constructors,
+    matched with `LinkChoice.match`. `forReferent` reads a choice off the
+    referent link choices with its default, `CreateResource` with a resource
+    and `DontLink` without. **`InvalidLinkChoice`** is a choice the stage
+    cannot follow for its referent, with its `reason`.
   - **`LinkTarget`** — the resource a referent is linked to once
     `LinkToDecodedReferent` is followed, named for where it comes from:
     **`Stored`**, **`Decoded`**, **`Provisional`**, **`Unlinked`**, matched
@@ -238,7 +241,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     (`maybeDerivedLogicalReferenceOf`), so a record this source wrote is
     found ahead of a namesake; the one hit is `LinkToStoredResource`, unless
     it is the stored copy of the referent's own decoded resource (same
-    literal reference: a re-import), which is `CreateResource`; two hits are
+    literal reference: a re-import), which is `UpdateStoredResource`; two hits are
     ambiguous and no hit is `LinkChoice.defaultFor`, so the reviewer
     chooses; a failed search fails the read. **`defaultChoices`** runs it per
     referent, a few at a time, into the `ReferentLinkChoices` a review
@@ -375,9 +378,11 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
   written once; a decoded resource that is its referent's link target is
   written as decoded plus its derived identifier and those of the referents
   linked to it. On a re-import the referent's own search finds the stored
-  copy under the decoded id and defaults to `CreateResource`, while a
-  mention the copy answers to links to it as stored: the decoded resource
-  is written, assuming every identifier the stored copy carries. A referent named only by mentions may be
+  copy under the decoded id and defaults to `UpdateStoredResource`, which
+  places the decoded resource having assumed every identifier the stored
+  copy carries, whether or not a mention links to that copy, so what it
+  assumed in earlier imports is written again; `CreateResource` on such a
+  referent writes the decode without them. A referent named only by mentions may be
   `CreateResource` only when its logical reference stands for something
   provisional (`LinkableResource.tryProvisionalFrom`: a provider's printed
   name, as a `Practitioner` at `localResourceId(system, 'Practitioner', name)`,

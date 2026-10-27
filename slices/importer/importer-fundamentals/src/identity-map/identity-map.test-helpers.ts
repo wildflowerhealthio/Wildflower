@@ -305,6 +305,7 @@ const anyChoiceArbitrary: fc.Arbitrary<LinkChoice.Type> = fc.oneof(
   fc.constant(LinkChoice.CreateResource()),
   fc.constant(LinkChoice.DontLink()),
   fc.constantFrom(...STORED).map((resource) => LinkChoice.LinkToStoredResource({ resource })),
+  fc.constantFrom(...STORED).map((resource) => LinkChoice.UpdateStoredResource({ resource })),
   fc
     .constantFrom(...POOL_KEYS)
     .map((referentKey) => LinkChoice.LinkToDecodedReferent({ referentKey }))
@@ -317,6 +318,24 @@ const anyChoicesArbitrary: fc.Arbitrary<ReferentLinkChoices.Type> = fc
   })
   .map(HashMap.fromIterable)
 
+/** The stored copy of `decoded` a re-import finds: the same resource, carrying one identifier more, the device's own. */
+const storedCopyOf = (decoded: LinkableResource.WithId): LinkableResource.WithId => ({
+  ...decoded,
+  identifier: [
+    ...decoded.identifier,
+    {
+      id: null,
+      extension: [],
+      assigner: null,
+      period: null,
+      system: new URL(DEVICE),
+      type: null,
+      use: null,
+      value: decoded.id,
+    },
+  ],
+})
+
 /** A choice `referent` can take, linking only to referents of `referents`. */
 const choiceForArbitrary = (
   referent: Referent.Type,
@@ -327,7 +346,12 @@ const choiceForArbitrary = (
     .constantFrom(...STORED.filter((stored) => stored.resourceType === type))
     .map((resource) => LinkChoice.LinkToStoredResource({ resource }))
   return Referent.match(referent, {
-    AsResource: () => fc.oneof(fc.constant(LinkChoice.CreateResource()), linkToStoredResource),
+    AsResource: ({ resource }) =>
+      fc.oneof(
+        fc.constant(LinkChoice.CreateResource()),
+        fc.constant(LinkChoice.UpdateStoredResource({ resource: storedCopyOf(resource) })),
+        linkToStoredResource
+      ),
     ByMentionOnly: ({ logicalReference }) =>
       fc.oneof(
         fc.constant(LinkChoice.DontLink()),

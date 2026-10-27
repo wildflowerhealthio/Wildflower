@@ -402,7 +402,7 @@ describe('IdentityMap.apply on a re-import', () => {
   const reimport = fileOf(decodedAgain, request('rx-2', customerSubject('c-9')))
   // What `ReferentSearch.defaultChoices` gives: both searches find the stored copy.
   const defaultChoices: ReferentLinkChoices.Type = HashMap.make(
-    [PERSON, LinkChoice.CreateResource()],
+    [PERSON, LinkChoice.UpdateStoredResource({ resource: storedCopy })],
     [ACCOUNT, LinkChoice.LinkToStoredResource({ resource: storedCopy })]
   )
 
@@ -429,6 +429,29 @@ describe('IdentityMap.apply on a re-import', () => {
     expect(placed.sections.map((section) => section.title)).toEqual(['Resources'])
   })
 
+  it('keeps what the stored copy assumed when the re-import mentions none of it', () => {
+    const placed = applyOnTestClock(
+      fileOf(decodedAgain),
+      HashMap.make([PERSON, LinkChoice.UpdateStoredResource({ resource: storedCopy })])
+    )
+
+    expect(wireOf(resourceAt(placed, 'k-0'))).toBe(
+      wireOf({ ...decodedAgain, identifier: storedCopy.identifier })
+    )
+  })
+
+  it('writes the decode as new, without what the copy assumed, when the reviewer chooses New', () => {
+    const placed = applyOnTestClock(
+      fileOf(decodedAgain),
+      HashMap.make([PERSON, LinkChoice.CreateResource()])
+    )
+
+    expect(identifiersOf(resourceAt(placed, 'k-0'))).toEqual([
+      `${SOURCE_PATIENT}|p-1`,
+      `${NAME_BIRTH_DATE}|banks;tyra;1990-01-02`,
+    ])
+  })
+
   it('writes the stored copy when the reviewer links the person to it too', () => {
     const placed = applyOnTestClock(
       reimport,
@@ -436,6 +459,19 @@ describe('IdentityMap.apply on a re-import', () => {
     )
 
     expect(wireOf(resourceAt(placed, 'k-0'))).toBe(wireOf(storedCopy))
+  })
+
+  it('refuses to update a stored resource under another id, or for a referent named only by mentions', () => {
+    const referents = discoverOnTestClock(reimport)
+    const invalid = (referentKey: string, choice: LinkChoice.Type): string =>
+      resolvedFor(HashMap.make([referentKey, choice]), referents, referentKey)
+
+    expect(invalid(PERSON, LinkChoice.UpdateStoredResource({ resource: STORED_TYRA }))).toBe(
+      `Invalid ${PERSON} StoredResourceUnderAnotherId`
+    )
+    expect(invalid(ACCOUNT, LinkChoice.UpdateStoredResource({ resource: storedCopy }))).toBe(
+      `Invalid ${ACCOUNT} NotAllowedForReferent`
+    )
   })
 })
 

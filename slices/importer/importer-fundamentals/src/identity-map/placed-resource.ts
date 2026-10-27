@@ -52,10 +52,10 @@ interface Type {
  * @remarks
  * On a re-import a decoded resource and its stored copy share a literal
  * reference: the referent's own search finds the copy under the decoded id
- * (`ReferentSearch.defaultChoice` then creates the resource), while a mention
- * the copy answers to links to it as stored. The decode is the newer, so it
- * is the one written. Should two referents carry different stored copies of
- * one resource, the last one's is written.
+ * (`ReferentSearch.defaultChoice` then updates it with the decode), while a
+ * mention the copy answers to links to it as stored. The decode is the newer,
+ * so it is the one written. Should two referents carry different stored
+ * copies of one resource, the last one's is written.
  */
 const writtenCopyOf = (
   linkedResources: Array.NonEmptyReadonlyArray<Link.LinkedResource>
@@ -75,8 +75,10 @@ const writtenCopyOf = (
  * The copy written ({@link writtenCopyOf}) assumes, once, its own derived
  * identifier (so a name-and-birth-date match finds it next time), then the
  * identifiers of every other copy linked under the literal reference (a
- * stored copy's, on a re-import, so what it assumed before is kept), then
- * those of every referent linked to it.
+ * stored copy a mention links to, so what it assumed before is kept), then
+ * those of every referent linked to it. A re-import's decode already carries
+ * its stored copy's identifiers: `UpdateStoredResource` resolves to it having
+ * assumed them.
  */
 const make = (
   placedLiteralReference: string,

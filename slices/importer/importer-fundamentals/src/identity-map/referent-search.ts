@@ -101,8 +101,8 @@ const isStoredCopyOf = (referent: Referent.Type, stored: LinkableResource.WithId
  * stored resource of its type that its own identifiers name; when they name
  * none, the one its derived identifier names; else its kind's default
  * (`LinkChoice.defaultFor`). A hit that is the stored copy of the referent's
- * own decoded resource ({@link isStoredCopyOf}) is `CreateResource`, so a
- * re-import writes the newer decode over it.
+ * own decoded resource ({@link isStoredCopyOf}) is `UpdateStoredResource`, so
+ * a re-import writes the newer decode over it, keeping what the copy assumed.
  *
  * @remarks
  * The identifiers a source gave a referent are searched before the one its
@@ -131,7 +131,7 @@ const defaultChoice = (
         onNone: () => LinkChoice.defaultFor(referent),
         onSome: (resource) =>
           isStoredCopyOf(referent, resource)
-            ? LinkChoice.CreateResource()
+            ? LinkChoice.UpdateStoredResource({ resource })
             : LinkChoice.LinkToStoredResource({ resource }),
       }
     )

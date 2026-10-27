@@ -55,6 +55,19 @@ const sameType = (referent: Referent.Type, resource: { readonly resourceType: st
   resource.resourceType === referent.logicalReference.type
 
 /**
+ * What `UpdateStoredResource` places `decoded`'s referent on: `decoded`
+ * itself, having assumed every identifier `storedCopy` carries, so what the
+ * copy assumed in earlier imports is written again.
+ */
+const linkTargetOfUpdate = (
+  decoded: LinkableResource.WithId,
+  storedCopy: LinkableResource.WithId
+): LinkTarget.Type =>
+  LinkTarget.Decoded({
+    resource: LinkableResource.assumesIdentifiers(decoded, storedCopy.identifier),
+  })
+
+/**
  * Every referent of `referents` with the link target its choice under
  * `linkChoices` resolves to, in the order given; the first choice that cannot
  * be followed, as the failure it is, otherwise.
@@ -62,9 +75,11 @@ const sameType = (referent: Referent.Type, resource: { readonly resourceType: st
  * @remarks
  * A choice fails with `LinkChoice.InvalidLinkChoice` when the referent's kind
  * does not allow it (`DontLink` or `LinkToDecodedReferent` with a resource,
- * `CreateResource` named only by mentions with no provisional form), when it
- * names a stored resource or a referent of another type, or a referent
- * `referents` does not hold; a choice that leads to one fails with it.
+ * `CreateResource` named only by mentions with no provisional form,
+ * `UpdateStoredResource` named only by mentions), when it names a stored
+ * resource or a referent of another type, a stored resource to update under
+ * another id than the referent's own, or a referent `referents` does not
+ * hold; a choice that leads to one fails with it.
  * A `LinkToDecodedReferent` cycle resolves to `CreateResource` for the first
  * of its members, in key order, that it places on a resource, whichever
  * member is resolved, so every referent in it lands on the same one resource.
@@ -111,6 +126,15 @@ const linksOf = (
         Referent.match(current, {
           AsResource: () => invalid(current, choice, 'NotAllowedForReferent'),
           ByMentionOnly: () => Either.right(LinkTarget.Unlinked()),
+        }),
+      UpdateStoredResource: ({ resource: storedCopy }) =>
+        Referent.match(current, {
+          AsResource: ({ resource: decoded }) =>
+            LinkableResource.literalReferenceOf(decoded) ===
+            LinkableResource.literalReferenceOf(storedCopy)
+              ? Either.right(linkTargetOfUpdate(decoded, storedCopy))
+              : invalid(current, choice, 'StoredResourceUnderAnotherId'),
+          ByMentionOnly: () => invalid(current, choice, 'NotAllowedForReferent'),
         }),
       LinkToStoredResource: ({ resource }) =>
         sameType(current, resource)

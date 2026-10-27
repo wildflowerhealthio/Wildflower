@@ -100,6 +100,8 @@ const onlyReferent = (...resources: readonly FhirResource[]): Referent.Type => {
 const describeChoice = (choice: LinkChoice.Type): string =>
   LinkChoice.match(choice, {
     CreateResource: () => 'CreateResource',
+    UpdateStoredResource: ({ resource }) =>
+      `UpdateStoredResource ${resource.resourceType}/${resource.id}`,
     LinkToStoredResource: ({ resource }) =>
       `LinkToStoredResource ${resource.resourceType}/${resource.id}`,
     LinkToDecodedReferent: ({ referentKey }) => `LinkToDecodedReferent ${referentKey}`,
@@ -177,15 +179,15 @@ describe('ReferentSearch.defaultChoice', () => {
     expect(searchesOf(urls)).toEqual([`/Patient ${TYRA_OWN}`])
   })
 
-  it('should create the resource when the one hit is its own stored copy, under the decoded id', async () => {
+  it('should update the stored copy when the one hit is under the decoded id, so the decode keeps what the copy assumed', async () => {
     const storedCopy = { resourceType: 'Patient', id: 'p-1' }
 
     expect(
       describeChoice((await search(TYRA, serverFinding({ [TYRA_OWN]: [storedCopy] }))).choice)
-    ).toBe('CreateResource')
+    ).toBe('UpdateStoredResource Patient/p-1')
     expect(
       describeChoice((await search(TYRA, serverFinding({ [TYRA_DERIVED]: [storedCopy] }))).choice)
-    ).toBe('CreateResource')
+    ).toBe('UpdateStoredResource Patient/p-1')
   })
 
   it('should link a practitioner to a stored practitioner', async () => {
@@ -248,7 +250,7 @@ describe('ReferentSearch.defaultChoices', () => {
     expect(server.urls).toHaveLength(2)
   })
 
-  it('should create a re-imported person and link the account it assumed to the stored copy', async () => {
+  it('should update a re-imported person’s stored copy and link the account it assumed to that copy', async () => {
     const referents = discoverOnTestClock(
       fileOf(patient({ id: 'p-1' }), request('rx-1', customerSubject('c-9')))
     )
@@ -267,7 +269,7 @@ describe('ReferentSearch.defaultChoices', () => {
         Option.map(HashMap.get(choices, Referent.key(referent)), describeChoice),
       ])
     ).toEqual([
-      [`Patient|${SOURCE_PATIENT}|p-1`, Option.some('CreateResource')],
+      [`Patient|${SOURCE_PATIENT}|p-1`, Option.some('UpdateStoredResource Patient/p-1')],
       [`Patient|${CUSTOMER}|c-9`, Option.some('LinkToStoredResource Patient/p-1')],
     ])
   })
