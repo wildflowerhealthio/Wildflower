@@ -805,59 +805,67 @@ mod tests {
         );
     }
 
-    /// The marketing site publishes each first-party app's public OAuth client
-    /// registration in `suggested_apps.json`, for a server that registers the
-    /// app itself. Every entry with an `oauthClient` must match its seeded row:
-    /// a public client with no secret, the same scopes and grant types, and
-    /// every redirect it lists registered. The row is the source of truth, so a
-    /// migration that changes one fails here until the file follows.
+    /// The App Catalog publishes each first-party app's OAuth client
+    /// registration as its HALO `preassignedCredentials`, for a server that
+    /// registers the app itself. Every entry carrying the object must match
+    /// its seeded row: a public client with no secret, the same scopes and
+    /// grant types, every redirect it lists registered, and its `launchUrl`
+    /// among them, since the app's launch page is where it returns to. The row
+    /// is the source of truth, so a migration that changes one fails here
+    /// until the catalog follows.
     #[test]
-    fn suggested_apps_json_publishes_the_seeded_first_party_clients() {
-        const SUGGESTED_APPS_JSON: &str = include_str!(concat!(
+    fn app_catalog_preassigns_the_seeded_first_party_clients() {
+        const APP_CATALOG_JSON: &str = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../../../apps/wildflower-site/marketing-site-web/public/suggested_apps.json"
+            "/../../../../apps/app-catalog/app-catalog-web/public/apps.json"
         ));
-        let document: serde_json::Value =
-            serde_json::from_str(SUGGESTED_APPS_JSON).expect("suggested_apps.json is JSON");
+        let catalog: serde_json::Value =
+            serde_json::from_str(APP_CATALOG_JSON).expect("apps.json is JSON");
         let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let mut checked = 0;
-        for app in document["apps"].as_array().expect("an apps array") {
-            let Some(published) = app.get("oauthClient") else {
+        for app in catalog.as_array().expect("an array of apps") {
+            let Some(credentials) = app.get("preassignedCredentials") else {
                 continue;
             };
-            if app["publisher"]["kind"] != "first-party" {
-                continue;
-            }
-            let id = app["id"].as_str().expect("an id");
-            let client_id = published["clientId"].as_str().expect("a clientId");
+            let name = app["name"].as_str().expect("a name");
+            let client_id = credentials["clientId"].as_str().expect("a clientId");
             let client = store
                 .read(|tx| tx.client_by_id(client_id))
                 .expect("query (a decode failure surfaces here)")
-                .unwrap_or_else(|| panic!("{id}: {client_id} is seeded by a clients migration"));
+                .unwrap_or_else(|| panic!("{name}: {client_id} is seeded by a clients migration"));
 
-            assert_eq!(client.kind, ClientKind::Public, "{id}");
-            assert!(client.secret_hash.is_none(), "{id}");
-            assert_eq!(published["tokenEndpointAuthMethod"], "none", "{id}");
+            assert_eq!(client.kind, ClientKind::Public, "{name}");
+            assert!(client.secret_hash.is_none(), "{name}");
+            assert_eq!(credentials["tokenEndpointAuthMethod"], "none", "{name}");
             let scopes: Vec<String> =
                 serde_json::from_value(app["scopes"].clone()).expect("scopes are strings");
-            assert_eq!(scopes, client.allowed_scopes, "{id}: scopes");
+            assert_eq!(scopes, client.allowed_scopes, "{name}: scopes");
             let grant_types: Vec<AllowedGrantType> =
-                serde_json::from_value(published["grantTypes"].clone()).expect("grant types");
-            assert_eq!(grant_types, client.allowed_grant_types, "{id}: grantTypes");
-            for redirect in published["redirectUris"].as_array().expect("redirectUris") {
+                serde_json::from_value(credentials["grantTypes"].clone()).expect("grant types");
+            assert_eq!(
+                grant_types, client.allowed_grant_types,
+                "{name}: grantTypes"
+            );
+            for redirect in credentials["redirectUris"]
+                .as_array()
+                .expect("redirectUris")
+            {
                 let redirect = url::Url::parse(redirect.as_str().expect("a string"))
                     .expect("an absolute redirect");
                 assert!(
                     client.redirect_uris.contains(&redirect),
-                    "{id}: {redirect} is not registered for {client_id}",
+                    "{name}: {redirect} is not registered for {client_id}",
                 );
             }
+            let launch_url = url::Url::parse(app["launchUrl"].as_str().expect("a launchUrl"))
+                .expect("an absolute launch URL");
+            assert!(
+                client.redirect_uris.contains(&launch_url),
+                "{name}: its launchUrl {launch_url} is not registered for {client_id}",
+            );
             checked += 1;
         }
-        assert!(
-            checked > 0,
-            "suggested_apps.json lists no first-party OAuth client"
-        );
+        assert!(checked > 0, "apps.json preassigns no first-party client");
     }
 
     /// The launcher's client (`0012`, narrowed by `0032`) allows exactly the

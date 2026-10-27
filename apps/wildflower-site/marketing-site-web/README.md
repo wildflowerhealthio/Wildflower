@@ -73,10 +73,11 @@ vp build    # production build to dist/
   there until the file follows. Each first-party entry's `oauthClient`
   (client id, redirect URIs, grant types, `none` as its token endpoint
   authentication) and scopes are copied from the client the authorization
-  server's migrations seed for the app, and `authorization-server-rust`'s
-  `suggested_apps_json_publishes_the_seeded_first_party_clients` test holds
-  them to that row. A third-party entry's scopes are copied by hand from the
-  app.
+  server's migrations seed for the app; the App Catalog
+  (`apps/app-catalog/`) publishes the same registrations, which
+  `authorization-server-rust`'s
+  `app_catalog_preassigns_the_seeded_first_party_clients` test holds to those
+  rows. A third-party entry's scopes are copied by hand from the app.
 
 ## Styling conventions
 
