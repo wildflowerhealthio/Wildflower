@@ -1,8 +1,9 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import type { DiffSlot, FieldDiff, ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
+import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
-  type FhirResource,
+  type FhirResourceWithId,
   Observation,
   Patient,
   Practitioner,
@@ -489,8 +490,11 @@ describe('PreviewPanel', () => {
 
   it('surfaces the diff for a resource that was unchanged until the reviewer edited it', async () => {
     const onServer = { resourceType: 'Patient', id: 'pat-1' }
-    const patientResource = Schema.decodeUnknownSync(Patient.Schema)(onServer)
-    const edited = Schema.decodeUnknownSync(Patient.Schema)({ ...onServer, gender: 'male' })
+    const patientResource = Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))(onServer)
+    const edited = Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
+      ...onServer,
+      gender: 'male',
+    })
     const labeled: DecodedFile.Resource = {
       key: 'pat-1',
       title: 'Patient/pat-1',
@@ -512,7 +516,7 @@ describe('PreviewPanel', () => {
   })
 
   it('edits the resource to the server value when "keep server value" is clicked', async () => {
-    const patientResource = Schema.decodeUnknownSync(Patient.Schema)({
+    const patientResource = Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
       resourceType: 'Patient',
       id: 'pat-1',
     })
@@ -625,7 +629,7 @@ const section = (
 const labeledResource = (key: string, title: string): DecodedFile.Resource => {
   const [resourceType = 'Patient', id = key] = title.split('/')
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test fixture: the panel only reads resourceType/id off the resource
-  const resource = { resourceType, id } as FhirResource
+  const resource = { resourceType, id } as FhirResourceWithId
   return { key, title, resource }
 }
 
@@ -633,7 +637,7 @@ const labeledResource = (key: string, title: string): DecodedFile.Resource => {
 const observationOf = (key: string, references: object): DecodedFile.Resource => ({
   key,
   title: `Observation/${key}`,
-  resource: Schema.decodeUnknownSync(Observation.Schema)({
+  resource: Schema.decodeUnknownSync(withMandatoryId(Observation.Schema))({
     resourceType: 'Observation',
     id: key,
     status: 'final',

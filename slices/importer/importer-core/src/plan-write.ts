@@ -1,4 +1,4 @@
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   StagedImport,
   DecodedFile,
@@ -47,7 +47,7 @@ type WritePlan =
   | {
       readonly _tag: 'write'
       /** The resources to submit, in review order, edits substituted. */
-      readonly resources: readonly FhirResource[]
+      readonly resources: readonly FhirResourceWithId[]
       /** How many previewed resources the reviewer opted out. */
       readonly excluded: number
     }
@@ -91,7 +91,7 @@ interface BatchWritePlan {
 type SelectionFor = (format: FormatKind) => StagedImport.Selection
 
 /** Every literal reference `resources` carry, in any reference field. */
-const literalReferencesIn = (resources: readonly FhirResource[]): ReadonlySet<string> =>
+const literalReferencesIn = (resources: readonly FhirResourceWithId[]): ReadonlySet<string> =>
   new Set(
     resources.flatMap((resource) =>
       Mention.of(resource).flatMap(({ reference }) =>

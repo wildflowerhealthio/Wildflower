@@ -1,5 +1,6 @@
 import type { ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
-import { type FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
+import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
+import { type FhirResourceWithId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import type { FormatKind, ResolvedBatch } from '@wildflowerhealthio/importer-core'
 import { FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
@@ -16,8 +17,8 @@ import { byGroupAndKey, diffRowsOf, initialExclusionsFor, LINKED_GROUP } from '.
  * batch's linked records, no format's, keep theirs.
  */
 
-const patient = (id: string): FhirResource =>
-  Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
+const patient = (id: string): FhirResourceWithId =>
+  Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id })
 
 /** A format result whose one section holds one resource per `[key, id]` pair. */
 const formatResult = <K extends FormatKind>(

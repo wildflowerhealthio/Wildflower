@@ -2,7 +2,7 @@ import { HttpClient, HttpClientRequest, HttpClientResponse } from '@effect/platf
 import { Arbitrary, Effect, FastCheck as fc, Layer, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { Patient, type FhirResource } from '../resources/index.ts'
+import { Patient, type FhirResource, type FhirResourceWithId } from '../resources/index.ts'
 import {
   classifyAgainstServer,
   diffKey,
@@ -109,15 +109,6 @@ describe('classifyAgainstServer', () => {
     expect(result.classifications.get(diffKey(patient))?.status).toBe<DiffStatus>('changed')
   })
 
-  it('skips null-id resources and returns nothing for them', async () => {
-    const result = await runWith(
-      [makePatient(null)],
-      perEntry(() => ({ status: '200 OK' }))
-    )
-    expect(result.requests).toEqual([])
-    expect(result.classifications.size).toBe(0)
-  })
-
   it('never issues a request for an empty batch', async () => {
     const result = await runWith(
       [],
@@ -220,16 +211,16 @@ const parseBody = (raw: string): RecordedBundle => {
 
 const genWithId = <A extends FhirResource, I>(
   schema: Schema.Schema<A, I>,
-  id: string | null
-): A => {
+  id: string
+): A & { readonly id: string } => {
   const value = fc.sample(Arbitrary.make(schema), { numRuns: 1, seed: 11 })[0]
   if (value === undefined) throw new Error('unreachable: one sample requested')
   return { ...value, id }
 }
 
-type PatientType = Extract<FhirResource, { readonly resourceType: 'Patient' }>
+type PatientType = Extract<FhirResourceWithId, { readonly resourceType: 'Patient' }>
 
-const makePatient = (id: string | null): PatientType => genWithId(Patient.Schema, id)
+const makePatient = (id: string): PatientType => genWithId(Patient.Schema, id)
 
 const encodePatient = Schema.encodeSync(Patient.Schema)
 
@@ -294,7 +285,7 @@ const recordingHttpClientLayer = (
   )
 
 const runWith = async (
-  resources: ReadonlyArray<FhirResource>,
+  resources: ReadonlyArray<FhirResourceWithId>,
   responder: Responder
 ): Promise<{
   readonly requests: ReadonlyArray<RecordedRequest>

@@ -7,7 +7,7 @@ import {
   diffKey,
   type ServerComparison,
 } from '@wildflowerhealthio/fhir-r4/clients'
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { DecodedFile } from '@wildflowerhealthio/importer-fundamentals'
 
 import type { FormatKind, ResolvedBatch } from '@wildflowerhealthio/importer-core'
@@ -61,7 +61,7 @@ type ReviewGroup = FormatKind | typeof LINKED_GROUP
 interface DiffRow {
   readonly group: ReviewGroup
   readonly key: string
-  readonly resource: FhirResource
+  readonly resource: FhirResourceWithId
 }
 
 /**

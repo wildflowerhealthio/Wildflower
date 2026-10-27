@@ -19,6 +19,7 @@
  * @packageDocumentation
  */
 
+import { type WithMandatoryId, withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import { joinIdComponents, localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
 import { DocumentReference } from '@wildflowerhealthio/fhir-r4/resources'
 import { Context, Effect, Encoding, ParseResult, Schema } from 'effect'
@@ -130,7 +131,10 @@ const StoredFieldsSchema = Schema.Struct({
 
 const decodeStoredFields = ParseResult.decodeUnknown(StoredFieldsSchema)
 
-const decodeResource = ParseResult.decodeUnknown(DocumentReference.Schema)
+/** A source file as stored: a `DocumentReference` with the id it is stored under. */
+type SourceFile = WithMandatoryId<DocumentReference.Type>
+
+const decodeResource = ParseResult.decodeUnknown(withMandatoryId(DocumentReference.Schema))
 
 const hasCoding = (
   concept: {
@@ -151,8 +155,8 @@ const hasCoding = (
  * the schema's own issue carries the message, rather than a caller assembling
  * one.
  */
-const rejection = (resource: DocumentReference.Type, coding: Coding): string | undefined => {
-  const named = resource.id ?? '<no id>'
+const rejection = (resource: SourceFile, coding: Coding): string | undefined => {
+  const named = resource.id
   if (!hasCoding(resource.type, coding) || !resource.category.some((one) => hasCoding(one, coding)))
     return `${named}: Not a ${coding.code} document`
   const attachment = resource.content[0]?.attachment
@@ -164,7 +168,8 @@ const rejection = (resource: DocumentReference.Type, coding: Coding): string | u
 const isDocumentReference = Schema.is(Schema.typeSchema(DocumentReference.Schema))
 
 /**
- * A decoded `DocumentReference`, as itself.
+ * A decoded `DocumentReference` with an id, as itself: one with none is no
+ * stored source file.
  *
  * @remarks
  * Declared rather than `Schema.typeSchema(DocumentReference.Schema)`, whose
@@ -173,8 +178,8 @@ const isDocumentReference = Schema.is(Schema.typeSchema(DocumentReference.Schema
  * encode is the identity, so what {@link FromDocumentReference} builds is
  * exactly what it yields.
  */
-const DocumentReferenceAsItself: Schema.Schema<DocumentReference.Type> = Schema.declare(
-  (input: unknown): input is DocumentReference.Type => isDocumentReference(input)
+const DocumentReferenceAsItself: Schema.Schema<SourceFile> = Schema.declare(
+  (input: unknown): input is SourceFile => isDocumentReference(input) && input.id !== null
 )
 
 /** A `DocumentReference` that is one of this format's source files, data and all. */
@@ -235,7 +240,7 @@ const wireOf = (
 const toSourceFile = (
   picked: NamedBytes,
   ast: Schema.Schema.AnyNoContext['ast']
-): Effect.Effect<DocumentReference.Type, ParseResult.ParseIssue, Format> =>
+): Effect.Effect<SourceFile, ParseResult.ParseIssue, Format> =>
   Effect.gen(function* () {
     const format = yield* Format
     const bytes = new Uint8Array(picked.bytes)
@@ -261,8 +266,10 @@ const toSourceFile = (
  * ignoring the value's own id. Decoding a source file and encoding it again is
  * therefore the identity on the id.
  */
-const FromDocumentReference: Schema.Schema<Type, DocumentReference.Type, Format> =
-  Schema.transformOrFail(SourceFileOfFormat, ValueSchema, {
+const FromDocumentReference: Schema.Schema<Type, SourceFile, Format> = Schema.transformOrFail(
+  SourceFileOfFormat,
+  ValueSchema,
+  {
     strict: true,
     decode: (resource) => {
       const attachment = resource.content[0]?.attachment
@@ -273,10 +280,11 @@ const FromDocumentReference: Schema.Schema<Type, DocumentReference.Type, Format>
       })
     },
     encode: (picked, _options, ast) => toSourceFile(picked, ast),
-  }).annotations({
-    identifier: `PickedFileFromDocumentReference`,
-    description: `One picked file, encoded as the FHIR R4 DocumentReference it is stored as.`,
-  })
+  }
+).annotations({
+  identifier: `PickedFileFromDocumentReference`,
+  description: `One picked file, encoded as the FHIR R4 DocumentReference it is stored as.`,
+})
 
 export { Format, FromDocumentReference, categoryToken, isSourceFile }
-export type { Coding, FormatValue, NamedBytes, Type }
+export type { Coding, FormatValue, NamedBytes, SourceFile, Type }

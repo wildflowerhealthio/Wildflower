@@ -1,7 +1,8 @@
 import { Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 
-import { type FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
+import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
+import { type FhirResourceWithId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 import type * as DecodedFile from './decoded-file.ts'
@@ -18,8 +19,8 @@ import * as StagedImport from './staged-import.ts'
 // ---------------------------------------------------------------------------
 
 /** A minimal `FhirResource` — a `Patient` needs nothing but `resourceType` — keyed by `id`. */
-const resource = (id: string): FhirResource =>
-  Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
+const resource = (id: string): FhirResourceWithId =>
+  Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id })
 
 /** Build a `LabeledResource<FhirResource>` from a key and resource id. */
 const labeled = (key: string, resourceId: string, title = key): DecodedFile.Resource => ({
@@ -36,7 +37,7 @@ const threeLabeled: readonly DecodedFile.Resource[] = [
 ]
 
 /** The `id`s of a set of chosen resources, in order — what most assertions compare. */
-const idsOf = (resources: readonly FhirResource[]): readonly (string | null)[] =>
+const idsOf = (resources: readonly FhirResourceWithId[]): readonly string[] =>
   resources.map((entry) => entry.id)
 
 // ---------------------------------------------------------------------------

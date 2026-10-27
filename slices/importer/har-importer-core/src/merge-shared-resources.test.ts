@@ -1,4 +1,5 @@
-import { type FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
+import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
+import { type FhirResourceWithId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   HttpResponseKind,
   SourceDescriptor,
@@ -9,14 +10,14 @@ import { describe, expect, it } from 'vite-plus/test'
 import { mergeSharedResources } from './merge-shared-resources.ts'
 import type { PreviewedResponse } from './review.ts'
 
-const decodePatient = Schema.decodeUnknownSync(Patient.Schema)
+const decodePatient = Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))
 
 /** A Patient whose one given name says which copy it is. */
-const patientNamed = (id: string, given: string): FhirResource =>
+const patientNamed = (id: string, given: string): FhirResourceWithId =>
   decodePatient({ resourceType: 'Patient', id, name: [{ given: [given] }] })
 
 /** A kind that only its name matters for: the fold matches a pick to its source by it. */
-const kindNamed = (name: string): HttpResponseKind.HttpResponseKind<FhirResource> =>
+const kindNamed = (name: string): HttpResponseKind.HttpResponseKind<FhirResourceWithId> =>
   HttpResponseKind.make({
     name,
     tryRecognize: () => Option.none(),
@@ -24,21 +25,21 @@ const kindNamed = (name: string): HttpResponseKind.HttpResponseKind<FhirResource
   })
 
 /** Joins the two copies' names, earlier first, so the result shows what merged. */
-const joinNames: SourceDescriptor.ResourceMerge<FhirResource> = (earlier, later) =>
+const joinNames: SourceDescriptor.ResourceMerge<FhirResourceWithId> = (earlier, later) =>
   earlier.resourceType === 'Patient' && later.resourceType === 'Patient'
     ? { ...later, name: [...earlier.name, ...later.name] }
     : later
 
 const display = { title: 'Sample', description: 'A sample source.' }
 
-const mergingSource = SourceDescriptor.make<FhirResource>({
+const mergingSource = SourceDescriptor.make<FhirResourceWithId>({
   name: 'merging',
   display,
   responseKinds: [kindNamed('MergingKind')],
   mergeResources: joinNames,
 })
 
-const plainSource = SourceDescriptor.make<FhirResource>({
+const plainSource = SourceDescriptor.make<FhirResourceWithId>({
   name: 'plain',
   display,
   responseKinds: [kindNamed('PlainKind')],
@@ -48,8 +49,8 @@ const plainSource = SourceDescriptor.make<FhirResource>({
 const previewOf = (
   responseId: string,
   kindName: string,
-  resources: readonly FhirResource[]
-): PreviewedResponse<never, FhirResource> => {
+  resources: readonly FhirResourceWithId[]
+): PreviewedResponse<never, FhirResourceWithId> => {
   const ref = { id: responseId, url: `https://example.org/${responseId}` }
   return {
     ref,
@@ -64,7 +65,7 @@ const previewOf = (
 
 /** Each response's resources as `key given…` lines, to read a result at a glance. */
 const heldBy = (
-  previews: readonly PreviewedResponse<never, FhirResource>[]
+  previews: readonly PreviewedResponse<never, FhirResourceWithId>[]
 ): readonly (readonly string[])[] =>
   previews.map((preview) =>
     preview.outcome._tag === 'resources'

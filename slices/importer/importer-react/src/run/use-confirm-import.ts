@@ -8,7 +8,7 @@ import {
   type FhirR4ResourcesHttpApiClient,
   persistTransactionBundle,
 } from '@wildflowerhealthio/fhir-r4/clients'
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   planBatchWrite,
   type ResolvedBatch,
@@ -108,7 +108,7 @@ interface ConfirmImport {
  */
 const outcomesPerUnit = (
   outcomes: readonly BatchEntryOutcome[],
-  resourcesPerUnit: readonly (readonly FhirResource[])[]
+  resourcesPerUnit: readonly (readonly FhirResourceWithId[])[]
 ): readonly (readonly BatchEntryOutcome[])[] =>
   Array.mapAccum(resourcesPerUnit, outcomes, (remaining, resources) => {
     const [taken, rest] = Array.splitAt(remaining, resources.length)

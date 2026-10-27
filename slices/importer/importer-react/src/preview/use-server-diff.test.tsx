@@ -4,7 +4,8 @@ import { cleanup, type RenderHookResult, renderHook, waitFor } from '@testing-li
 import { FhirR4ResourcesRouterContext, type RunAuthed } from '@wildflowerhealthio/fhir-r4-react'
 import type * as FhirR4React from '@wildflowerhealthio/fhir-r4-react'
 import type { FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/clients'
-import { type FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
+import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
+import { type FhirResourceWithId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import type { ResolvedBatch } from '@wildflowerhealthio/importer-core'
 import { FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, Layer, Schema } from 'effect'
@@ -34,11 +35,11 @@ afterEach(() => {
 /** The time a failed classification's two retries take at TanStack's default backoff, with room. */
 const RETRIES_TIMEOUT = 8_000
 
-const patient = (id: string): FhirResource =>
-  Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
+const patient = (id: string): FhirResourceWithId =>
+  Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id })
 
 /** A HAR result holding `resources`, the other formats claiming nothing. */
-const batchOf = (resources: readonly FhirResource[]): ResolvedBatch => ({
+const batchOf = (resources: readonly FhirResourceWithId[]): ResolvedBatch => ({
   har: {
     ...FormatDecode.emptyResult('har'),
     title: 'a.har',

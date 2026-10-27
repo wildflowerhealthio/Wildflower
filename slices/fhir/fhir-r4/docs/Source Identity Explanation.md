@@ -251,6 +251,11 @@ Consequences worth knowing:
   covariance. The fix is to widen the kind list to
   `HttpResponseKind<FhirResource>[]` **before** the `.map`, as each source
   package's `response-kinds.ts` does.
+- **What comes out has an id.** The combinator returns the kind with its
+  `parse` yielding `FhirResourceWithId`, what `adoptResource` returns, so a
+  source's adopted kinds are `HttpResponseKind<FhirResourceWithId>` and its
+  `SourceDescriptor` is over that type: everything downstream of extraction
+  knows each resource has the id it is written under.
 
 Note the variant preservation inside `adoptResource` is real but unchecked: each
 `adoptX` maps a variant to itself **by construction**, and an `adoptX` that

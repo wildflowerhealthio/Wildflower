@@ -1,4 +1,4 @@
-import { type FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { Option } from 'effect'
 
 import type * as DecodedFile from './decoded-file.ts'
@@ -38,7 +38,7 @@ interface Selection {
    * resource whose key is here has its parsed value replaced by the edited one
    * at confirm.
    */
-  readonly resourceOverrides: ReadonlyMap<string, FhirResource>
+  readonly resourceOverrides: ReadonlyMap<string, FhirResourceWithId>
 }
 
 /** The default selection: every resource included, no edits. */
@@ -86,7 +86,7 @@ const setResourcesIncluded = (
  * Replace the resource at `key` with `resource` — the reviewer's inline edit.
  * `chosenResources` returns the override in place of the resolved value.
  */
-const edit = (selection: Selection, key: string, resource: FhirResource): Selection => {
+const edit = (selection: Selection, key: string, resource: FhirResourceWithId): Selection => {
   const resourceOverrides = new Map(selection.resourceOverrides)
   resourceOverrides.set(key, resource)
   return { ...selection, resourceOverrides }
@@ -108,7 +108,7 @@ const isResourceEdited = (selection: Selection, key: string): boolean =>
   selection.resourceOverrides.has(key)
 
 /** The edit override at `key`, when the reviewer has set one — else `None`. */
-const editedResource = (selection: Selection, key: string): Option.Option<FhirResource> => {
+const editedResource = (selection: Selection, key: string): Option.Option<FhirResourceWithId> => {
   const override = selection.resourceOverrides.get(key)
   return override === undefined ? Option.none() : Option.some(override)
 }
@@ -125,7 +125,7 @@ const editedResource = (selection: Selection, key: string): Option.Option<FhirRe
 const chosenResources = (
   labeled: readonly DecodedFile.Resource[],
   selection: Selection
-): readonly FhirResource[] =>
+): readonly FhirResourceWithId[] =>
   labeled
     .filter((entry) => isResourceIncluded(selection, entry.key))
     .map((entry) => selection.resourceOverrides.get(entry.key) ?? entry.resource)

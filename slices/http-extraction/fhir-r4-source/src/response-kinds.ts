@@ -1,5 +1,5 @@
 import { adoptUnderRecognizedRoot } from '@wildflowerhealthio/fhir-r4/identity'
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResource, FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import type { HttpResponseKind } from '@wildflowerhealthio/http-extraction-fundamentals'
 
 import { ObservationListResponseKind } from './response-kinds/observation-list-response-kind.ts'
@@ -29,6 +29,7 @@ const unadopted: readonly HttpResponseKind.HttpResponseKind<FhirResource>[] = [
   ObservationListResponseKind,
 ]
 
-const fhirR4ResponseKinds = unadopted.map(adoptUnderRecognizedRoot)
+const fhirR4ResponseKinds: readonly HttpResponseKind.HttpResponseKind<FhirResourceWithId>[] =
+  unadopted.map(adoptUnderRecognizedRoot)
 
 export { fhirR4ResponseKinds }

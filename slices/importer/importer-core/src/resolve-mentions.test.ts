@@ -1,4 +1,10 @@
-import { FhirResourceSchema, type FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
+import {
+  type FhirResource,
+  type FhirResourceWithId,
+  MedicationRequest,
+  Patient,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import {
   DecodedFile,
   FormatDecode,
@@ -30,14 +36,12 @@ const DEVICE = 'https://device.example/id'
 const PERSON = `Patient|${SOURCE_PATIENT}|p-1`
 const ACCOUNT = `Patient|${CUSTOMER}|c-9`
 
-const decodeResource = Schema.decodeUnknownSync(FhirResourceSchema)
-
 /** `effect` run on a `TestClock` standing at the epoch; throws its failure. */
 const runOnTestClock = <A, E>(effect: Effect.Effect<A, E>): A =>
   Effect.runSync(Effect.provide(effect, TestContext.TestContext))
 
-const patient = (id: string, system: string): FhirResource =>
-  decodeResource({
+const patient = (id: string, system: string): FhirResourceWithId =>
+  Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
     resourceType: 'Patient',
     id,
     identifier: [{ system, value: id }],
@@ -45,8 +49,8 @@ const patient = (id: string, system: string): FhirResource =>
   })
 
 /** A `MedicationRequest` naming its subject by `subject`. */
-const request = (id: string, subject: object): FhirResource =>
-  decodeResource({
+const request = (id: string, subject: object): FhirResourceWithId =>
+  Schema.decodeUnknownSync(withMandatoryId(MedicationRequest.Schema))({
     resourceType: 'MedicationRequest',
     id,
     status: 'active',
@@ -58,14 +62,14 @@ const accountSubject = { type: 'Patient', identifier: { system: CUSTOMER, value:
 
 const STORED_TYRA: LinkableResource.WithId = (() => {
   const stored = patient('s-1', DEVICE)
-  if (stored.resourceType !== 'Patient' || stored.id === null) throw new Error('unreachable')
-  return { ...stored, id: stored.id }
+  if (stored.resourceType !== 'Patient') throw new Error('unreachable')
+  return stored
 })()
 
 /** `kind`'s result holding `resources`, or the empty result of a format that claimed nothing. */
 const resultOf = <K extends FormatKind>(
   kind: K,
-  resources: readonly FhirResource[] | undefined
+  resources: readonly FhirResourceWithId[] | undefined
 ): FormatDecode.Result<K> =>
   resources === undefined
     ? FormatDecode.emptyResult(kind)
@@ -89,7 +93,7 @@ const resultOf = <K extends FormatKind>(
       }
 
 const batchOf = (formats: {
-  readonly [K in FormatKind]?: readonly FhirResource[]
+  readonly [K in FormatKind]?: readonly FhirResourceWithId[]
 }): DecodedBatch => ({
   har: resultOf('har', formats.har),
   'lifelabs-pdf': resultOf('lifelabs-pdf', formats['lifelabs-pdf']),

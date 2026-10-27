@@ -1,4 +1,4 @@
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import type { DecodedFile, PickedFile } from '@wildflowerhealthio/importer-fundamentals'
 import { checkTimeZone } from '@wildflowerhealthio/kitchen-sink'
 import type { Document } from '@wildflowerhealthio/positioned-text'
@@ -35,22 +35,10 @@ const extractionAsParseError = (cause: unknown): ParseResult.ParseError =>
     ),
   })
 
-/**
- * Every resource `toFhirResources` mints carries a derived id, and `adoptResource`
- * only ever nulls out an id it started with; so after synthesis+adoption every
- * resource must have one. A null here is an unreachable invariant break — die
- * rather than paper over it with a shared `'?'` key that would collide across
- * resources and defeat `StagedImport.Selection`.
- */
-const labelAdopted = (adopted: FhirResource): DecodedFile.Resource => {
-  const type = adopted.resourceType
-  const id = adopted.id
-  if (id === null) {
-    throw new Error(
-      `unreachable: adopted ${type} has no id — toFhirResources mints one for every resource`
-    )
-  }
-  return { key: `${type}/${id}`, title: `${type}/${id}`, resource: adopted }
+/** An adopted resource as its review row, keyed and titled by its `Type/id`. */
+const labelAdopted = (adopted: FhirResourceWithId): DecodedFile.Resource => {
+  const literalReference = `${adopted.resourceType}/${adopted.id}`
+  return { key: literalReference, title: literalReference, resource: adopted }
 }
 
 /**

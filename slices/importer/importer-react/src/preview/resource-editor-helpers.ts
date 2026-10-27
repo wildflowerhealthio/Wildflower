@@ -1,4 +1,8 @@
-import { type FhirResource, FhirResourceSchema } from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  FhirResourceSchema,
+  type FhirResourceWithId,
+  hasId,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import { Either, Schema } from 'effect'
 
 /**
@@ -219,7 +223,7 @@ const tryKeep = (
   original: unknown,
   substitutions: readonly Substitution[] = [],
   options?: { readonly force?: boolean }
-): Either.Either<FhirResource, unknown> => {
+): Either.Either<FhirResourceWithId, unknown> => {
   let parsed: unknown
   try {
     parsed = JSON.parse(text)
@@ -231,18 +235,18 @@ const tryKeep = (
     return Either.left(new PlaceholderEditedWarning(editedPlaceholders))
   }
   const decoded = Schema.decodeUnknownEither(FhirResourceSchema)(restored)
-  if (Either.isLeft(decoded)) return decoded
+  if (Either.isLeft(decoded)) return Either.left(decoded.left)
   const originalType = stringFieldOf(original, 'resourceType')
   const nextType = stringFieldOf(decoded.right, 'resourceType')
   if (originalType !== null && nextType !== originalType) {
     return Either.left(new ImmutableFieldChangedError('resourceType', originalType, nextType))
   }
   const originalId = stringFieldOf(original, 'id')
-  const nextId = stringFieldOf(decoded.right, 'id')
-  if (originalId !== null && nextId !== originalId) {
-    return Either.left(new ImmutableFieldChangedError('id', originalId, nextId))
+  const kept = decoded.right
+  if (!hasId(kept) || kept.id !== originalId) {
+    return Either.left(new ImmutableFieldChangedError('id', originalId, kept.id))
   }
-  return Either.right(decoded.right)
+  return Either.right(kept)
 }
 
 export {

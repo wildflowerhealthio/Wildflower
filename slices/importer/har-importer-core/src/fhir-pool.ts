@@ -1,5 +1,5 @@
 import { fhirR4Source } from '@wildflowerhealthio/fhir-r4-source'
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import type { SourceDescriptor } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { rexallBeWellSource } from '@wildflowerhealthio/rexall-be-well-source'
 import { shoppersDrugMartSource } from '@wildflowerhealthio/shoppers-drugmart-source'
@@ -13,7 +13,7 @@ import { shoppersDrugMartSource } from '@wildflowerhealthio/shoppers-drugmart-so
  * derived on demand, so there is no second copy to keep in sync. Registering
  * another source is one static append here.
  */
-const fhirSources: readonly SourceDescriptor.SourceDescriptor<FhirResource>[] = [
+const fhirSources: readonly SourceDescriptor.SourceDescriptor<FhirResourceWithId>[] = [
   fhirR4Source,
   rexallBeWellSource,
   shoppersDrugMartSource,

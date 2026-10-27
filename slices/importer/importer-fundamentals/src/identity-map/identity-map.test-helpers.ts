@@ -6,12 +6,15 @@
  * @packageDocumentation
  */
 
+import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
   FhirResourceSchema,
+  MedicationRequest,
   Observation,
   Patient,
   Practitioner,
   type FhirResource,
+  type FhirResourceWithId,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   Arbitrary,
@@ -91,7 +94,6 @@ const linkedOnTestClock = (
 const discoverOnTestClock = (file: DecodedFile.DecodedFile): readonly Referent.Type[] =>
   runOnTestClock(Referent.discover([file]))
 
-const decodeResource = Schema.decodeUnknownSync(FhirResourceSchema)
 const encodeResource = Schema.encodeSync(FhirResourceSchema)
 
 /** A resource as its wire JSON text: what "byte-identical" compares. */
@@ -152,8 +154,8 @@ const patient = ({
   family = 'Banks',
   given = 'Tyra',
   birthDate = '1990-01-02',
-}: PatientArgs): Patient.Type =>
-  Schema.decodeUnknownSync(Patient.Schema)({
+}: PatientArgs): Patient.Type & { readonly id: string } =>
+  Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
     resourceType: 'Patient',
     id,
     identifier: [{ system, value }],
@@ -162,8 +164,12 @@ const patient = ({
   })
 
 /** A decoded `Practitioner` named only by printed `text`, as LifeLabs writes one. */
-const practitioner = (id: string, text: string, system = SOURCE_PRACTITIONER): Practitioner.Type =>
-  Schema.decodeUnknownSync(Practitioner.Schema)({
+const practitioner = (
+  id: string,
+  text: string,
+  system = SOURCE_PRACTITIONER
+): Practitioner.Type & { readonly id: string } =>
+  Schema.decodeUnknownSync(withMandatoryId(Practitioner.Schema))({
     resourceType: 'Practitioner',
     id,
     identifier: [{ system, value: id }],
@@ -195,8 +201,8 @@ const untypedSubject = (value: string): object => ({
 })
 
 /** A decoded `MedicationRequest` with the given `subject` and optional `requester`. */
-const request = (id: string, subject: object, requester?: object): FhirResource =>
-  decodeResource({
+const request = (id: string, subject: object, requester?: object): FhirResourceWithId =>
+  Schema.decodeUnknownSync(withMandatoryId(MedicationRequest.Schema))({
     resourceType: 'MedicationRequest',
     id,
     status: 'active',
@@ -211,8 +217,8 @@ const observation = (
   id: string,
   subject?: object,
   performer: readonly object[] = []
-): FhirResource =>
-  decodeResource({
+): FhirResourceWithId =>
+  Schema.decodeUnknownSync(withMandatoryId(Observation.Schema))({
     resourceType: 'Observation',
     id,
     status: 'final',
@@ -222,7 +228,7 @@ const observation = (
   })
 
 /** A decoded file of one section, keyed `k-<index>`. */
-const fileOf = (...resources: readonly FhirResource[]): DecodedFile.DecodedFile => ({
+const fileOf = (...resources: readonly FhirResourceWithId[]): DecodedFile.DecodedFile => ({
   sections: [
     {
       title: 'Resources',
@@ -237,14 +243,11 @@ const fileOf = (...resources: readonly FhirResource[]): DecodedFile.DecodedFile 
 })
 
 /** A stored resource: the decoded one with its `id` known to be set. */
-const storedOf = (resource: FhirResource): LinkableResource.WithId => {
-  if (
-    (resource.resourceType !== 'Patient' && resource.resourceType !== 'Practitioner') ||
-    resource.id === null
-  ) {
-    throw new Error('a stored resource is a Patient or Practitioner with an id')
+const storedOf = (resource: FhirResourceWithId): LinkableResource.WithId => {
+  if (resource.resourceType !== 'Patient' && resource.resourceType !== 'Practitioner') {
+    throw new Error('a stored resource is a Patient or Practitioner')
   }
-  return { ...resource, id: resource.id }
+  return resource
 }
 
 const POOL = ['a', 'b'] as const
@@ -287,12 +290,12 @@ const performerArbitrary: fc.Arbitrary<object> = fc.oneof(
 )
 
 /** Generated resources with no reference into the pool, so no map entry can touch them. */
-const unrelatedArbitrary: fc.Arbitrary<FhirResource> = Arbitrary.make(Observation.Schema).map(
-  (generated): FhirResource => ({ ...generated, contained: [] })
-)
+const unrelatedArbitrary: fc.Arbitrary<FhirResourceWithId> = fc
+  .tuple(Arbitrary.make(Observation.Schema), fc.uuid())
+  .map(([generated, id]): FhirResourceWithId => ({ ...generated, id, contained: [] }))
 
 /** A generated resource, over the pool of identities. */
-const resourceArbitrary: fc.Arbitrary<FhirResource> = fc.oneof(
+const resourceArbitrary: fc.Arbitrary<FhirResourceWithId> = fc.oneof(
   fc
     .record({
       value: valueArbitrary,

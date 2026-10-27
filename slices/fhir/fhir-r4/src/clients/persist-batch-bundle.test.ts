@@ -8,7 +8,14 @@ import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Arbitrary, Effect, Either, FastCheck as fc, Layer, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { FhirResourceSchema, Patient, Observation, type FhirResource } from '../resources/index.ts'
+import { withMandatoryId } from '../data-types/index.ts'
+import {
+  FhirResourceSchema,
+  Patient,
+  Observation,
+  type FhirResource,
+  type FhirResourceWithId,
+} from '../resources/index.ts'
 import { FhirR4ResourcesHttpApiClient } from './fhir-r4-resources-http-api-client.ts'
 import {
   BatchEntriesRejected,
@@ -16,7 +23,6 @@ import {
   entryUrl,
   groupByStatus,
   NO_RESPONSE_STATUS,
-  NOT_SUBMITTED_STATUS,
   persistBatchBundle,
   persistBatchBundleOrFail,
   persistTransactionBundle,
@@ -32,8 +38,7 @@ import {
  *   {@link BatchEntryOutcome} at its position — its echoed status, whether
  *   that status succeeded, and any OperationOutcome diagnostics. A
  *   whole-bundle failure (5xx or transport) attributes every resource to that
- *   one cause under the no-response sentinel; a null-id resource never
- *   touches the wire and is reported as not submitted; two resources under one
+ *   one cause under the no-response sentinel; two resources under one
  *   `Type/id` are one entry, the last, whose outcome both positions get.
  */
 describe('persistBatchBundle', () => {
@@ -56,7 +61,7 @@ describe('persistBatchBundle', () => {
     // A decoded Observation holds every unset `effective[x]` as `null`; posted
     // as is, HFS reads `Observation.effective` as the null `effectiveDateTime`
     // and indexes no `date` for the period.
-    const observation = Schema.decodeUnknownSync(Observation.Schema)({
+    const observation = Schema.decodeUnknownSync(withMandatoryId(Observation.Schema))({
       resourceType: 'Observation',
       id: 'hr-1',
       status: 'final',
@@ -134,7 +139,7 @@ describe('persistBatchBundle', () => {
 
   it('fails every entry without touching the wire when a resource holds a blank string', async () => {
     // FHIR forbids a blank `string`, so encode refuses one rather than posting it.
-    const observation = Schema.decodeUnknownSync(Observation.Schema)({
+    const observation = Schema.decodeUnknownSync(withMandatoryId(Observation.Schema))({
       resourceType: 'Observation',
       id: 'blank-1',
       status: 'final',
@@ -153,42 +158,6 @@ describe('persistBatchBundle', () => {
       NO_RESPONSE_STATUS,
     ])
     expect(captured.outcomes[1]?.issues[0]?.severity).toBe('error')
-  })
-
-  it('reports a null-id resource as not submitted without touching the wire', async () => {
-    const captured = await runWith([makePatient(null)], allOk)
-    expect(captured.requests).toEqual([])
-    expect(captured.outcomes).toEqual<BatchEntryOutcome[]>([
-      {
-        target: { label: 'Patient', id: '<no-id>' },
-        status: NOT_SUBMITTED_STATUS,
-        ok: false,
-        issues: [
-          {
-            severity: 'error',
-            code: 'required',
-            text: 'The resource has no id to be written under.',
-          },
-        ],
-      },
-    ])
-  })
-
-  it('keeps the outcomes aligned with the input around a null-id resource', async () => {
-    const captured = await runWith(
-      [makePatient('p-1'), makeObservation(null), makeObservation('o-1')],
-      perEntry((_body, index) => ({ status: index === 0 ? '201 Created' : '200 OK' }))
-    )
-
-    expect(captured.requests[0]?.body.entry?.map((entry) => entry.request?.url)).toEqual([
-      'Patient/p-1',
-      'Observation/o-1',
-    ])
-    expect(captured.outcomes.map((outcome) => [outcome.target.id, outcome.status])).toEqual([
-      ['p-1', '201 Created'],
-      ['<no-id>', NOT_SUBMITTED_STATUS],
-      ['o-1', '200 OK'],
-    ])
   })
 
   it('never issues a request for an empty batch', async () => {
@@ -229,8 +198,8 @@ describe('persistTransactionBundle', () => {
   it('submits one entry per Type/id, the last occurrence, and gives each position its outcome', async () => {
     // Two overlapping exports of one record: a transaction naming it twice is
     // refused whole (FHIR R4 § 3.2.6), so it goes out once.
-    const observationWithStatus = (status: string): FhirResource =>
-      Schema.decodeUnknownSync(Observation.Schema)({
+    const observationWithStatus = (status: string): FhirResourceWithId =>
+      Schema.decodeUnknownSync(withMandatoryId(Observation.Schema))({
         resourceType: 'Observation',
         id: 'o-1',
         status,
@@ -269,18 +238,17 @@ describe('persistTransactionBundle', () => {
       { status: 400, headers: { 'content-type': 'application/fhir+json' } }
     )
     const captured = await runWith(
-      [makePatient('a'), makeObservation(null), makeObservation('b')],
+      [makePatient('a'), makeObservation('b')],
       rawResponse(refusal),
       persistTransactionBundle
     )
 
     expect(captured.outcomes.map((outcome) => [outcome.target.id, outcome.status])).toEqual([
       ['a', '400 Bad Request'],
-      ['<no-id>', NOT_SUBMITTED_STATUS],
       ['b', '400 Bad Request'],
     ])
     expect(captured.outcomes.every((outcome) => !outcome.ok)).toBe(true)
-    expect(captured.outcomes[2]?.issues).toEqual([
+    expect(captured.outcomes[1]?.issues).toEqual([
       {
         severity: 'error',
         code: 'processing',
@@ -492,15 +460,15 @@ const parseBody = (raw: string): RecordedBundle => {
 
 const genWithId = <A extends FhirResource, I>(
   schema: Schema.Schema<A, I>,
-  id: string | null
-): A => {
+  id: string
+): A & { readonly id: string } => {
   const value = fc.sample(Arbitrary.make(schema), { numRuns: 1, seed: 7 })[0]
   if (value === undefined) throw new Error('unreachable: one sample requested')
   return { ...value, id }
 }
 
-const makePatient = (id: string | null): FhirResource => genWithId(Patient.Schema, id)
-const makeObservation = (id: string | null): FhirResource => genWithId(Observation.Schema, id)
+const makePatient = (id: string): FhirResourceWithId => genWithId(Patient.Schema, id)
+const makeObservation = (id: string): FhirResourceWithId => genWithId(Observation.Schema, id)
 
 /** One response entry the stub echoes: a status, and an optional OperationOutcome. */
 interface EntryOverride {
@@ -568,7 +536,7 @@ const failingTransportLayer: Layer.Layer<HttpClient.HttpClient> = Layer.succeed(
 
 const runOrFailWith = (
   httpClientLayer: Layer.Layer<HttpClient.HttpClient>,
-  resources: ReadonlyArray<FhirResource>
+  resources: ReadonlyArray<FhirResourceWithId>
 ): Promise<Either.Either<ReadonlyArray<BatchEntryOutcome>, BatchEntriesRejected>> =>
   Effect.runPromise(
     persistBatchBundleOrFail(resources).pipe(
@@ -578,7 +546,7 @@ const runOrFailWith = (
   )
 
 const runWith = async (
-  resources: ReadonlyArray<FhirResource>,
+  resources: ReadonlyArray<FhirResourceWithId>,
   responder: Responder,
   persist: typeof persistBatchBundle = persistBatchBundle
 ): Promise<{

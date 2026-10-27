@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
 
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   type HttpResponseKind,
   SourceDescriptor,
@@ -25,7 +25,10 @@ import { defaultHarSettings, type HarSettings } from './har-settings.ts'
 import { mergeSharedResources } from './merge-shared-resources.ts'
 import { preview, type PreviewedResponse } from './review.ts'
 
-type FhirPreview = PreviewedResponse<HttpResponseKind.HttpResponseKind<FhirResource>, FhirResource>
+type FhirPreview = PreviewedResponse<
+  HttpResponseKind.HttpResponseKind<FhirResourceWithId>,
+  FhirResourceWithId
+>
 
 const fhirPool = SourceDescriptor.poolOf(fhirSources)
 

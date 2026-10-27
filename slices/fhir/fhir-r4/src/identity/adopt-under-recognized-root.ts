@@ -1,5 +1,6 @@
 import { Effect, Option, ParseResult, Schema } from 'effect'
 
+import type { FhirResourceWithId } from '../resources/fhir-resource-with-id.ts'
 import type { FhirResource } from '../resources/fhir-resource.ts'
 import { adoptResource, type SourceIdentity } from './adopt-resource.ts'
 
@@ -11,11 +12,11 @@ import { adoptResource, type SourceIdentity } from './adopt-resource.ts'
  */
 type AdoptableMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS'
 
-/** The parse signature an adopted entity's wrapper stands in for. */
-type AdoptableParse = (response: {
+/** The parse signature an adopted entity's wrapper stands in for: every resource it yields has an id. */
+type AdoptedParse = (response: {
   readonly url: string
   readonly method: Option.Option<AdoptableMethod>
-}) => Effect.Effect<readonly FhirResource[], ParseResult.ParseError>
+}) => Effect.Effect<readonly FhirResourceWithId[], ParseResult.ParseError>
 
 /**
  * The structural shape of a response kind whose parse output can be adopted
@@ -41,6 +42,20 @@ interface AdoptableEntity {
     readonly url: string
     readonly method: Option.Option<AdoptableMethod>
   }): Effect.Effect<readonly FhirResource[], ParseResult.ParseError>
+}
+
+/**
+ * `TEntity` adopted: the same kind, its `parse` yielding every resource
+ * adopted, so with an id.
+ *
+ * @remarks
+ * `parse` keeps `TEntity`'s own parameter, so a kind typed against a concrete
+ * response stays one.
+ */
+type Adopted<TEntity extends AdoptableEntity> = Omit<TEntity, 'parse'> & {
+  readonly parse: (
+    response: Parameters<TEntity['parse']>[0]
+  ) => Effect.Effect<readonly FhirResourceWithId[], ParseResult.ParseError>
 }
 
 /** The resource type an entity's `parse` declares it produces. */
@@ -90,8 +105,8 @@ const notAdoptableError = (name: string, url: string, reason: string): ParseResu
  *
  * @param entity - The kind to wrap; its declared output must be the whole
  *   `FhirResource` union ({@link EntityParsesEveryResource})
- * @returns The same kind with its `parse` adopting, every other field kept by
- *   reference
+ * @returns The same kind with its `parse` adopting, so yielding every
+ *   resource with an id ({@link Adopted}), every other field kept by reference
  *
  * @remarks
  * Design and rationale are in
@@ -106,8 +121,8 @@ const notAdoptableError = (name: string, url: string, reason: string): ParseResu
  */
 const adoptUnderRecognizedRoot = <TEntity extends AdoptableEntity>(
   entity: TEntity & EntityParsesEveryResource<TEntity>
-): TEntity => {
-  const parse: AdoptableParse = (response) =>
+): Adopted<TEntity> => {
+  const parse: AdoptedParse = (response) =>
     Option.match(entity.tryRecognize(response.url, response.method), {
       onNone: () =>
         Effect.fail(
@@ -131,9 +146,9 @@ const adoptUnderRecognizedRoot = <TEntity extends AdoptableEntity>(
           return resources.map(adoptResource(source))
         }),
     })
-  const wrapped: TEntity = { ...entity, parse }
+  const wrapped: Adopted<TEntity> = { ...entity, parse }
   Object.freeze(wrapped)
   return wrapped
 }
 
-export { adoptUnderRecognizedRoot, type AdoptableEntity }
+export { type AdoptableEntity, adoptUnderRecognizedRoot }

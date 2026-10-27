@@ -1,6 +1,14 @@
-import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
+import {
+  type IdentifierAndReference,
+  withMandatoryId,
+} from '@wildflowerhealthio/fhir-r4/data-types'
 import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
-import { Patient, Practitioner, type FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  Patient,
+  Practitioner,
+  type FhirResource,
+  type FhirResourceWithId,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import {
   Array,
@@ -76,26 +84,26 @@ const ACCOUNT = `Patient|${CUSTOMER}|c-9`
 const PRESCRIBER = `Practitioner|${Practitioner.NAME_IDENTIFIER_SYSTEM}|Dr. A Smith`
 const NAME_BIRTH_DATE = 'https://wildflowerhealth.io/fhir/identifier/patient-name-birth-date'
 
-const at = (file: DecodedFile.DecodedFile, key: string): FhirResource | undefined =>
+const at = (file: DecodedFile.DecodedFile, key: string): FhirResourceWithId | undefined =>
   DecodedFile.resources(file).find((entry) => entry.key === key)?.resource
 
 /** The resource keyed `key` in `file`; throws when there is none. */
-const resourceAt = (file: DecodedFile.DecodedFile, key: string): FhirResource => {
+const resourceAt = (file: DecodedFile.DecodedFile, key: string): FhirResourceWithId => {
   const resource = at(file, key)
   if (resource === undefined) throw new Error(`no resource keyed ${key}`)
   return resource
 }
 
 /** The linked record keyed `key`; throws when there is none. */
-const linkedAt = (linked: readonly DecodedFile.Resource[], key: string): FhirResource => {
+const linkedAt = (linked: readonly DecodedFile.Resource[], key: string): FhirResourceWithId => {
   const entry = linked.find((candidate) => candidate.key === key)
   if (entry === undefined) throw new Error(`no linked record keyed ${key}`)
   return entry.resource
 }
 
 /** A decoded Patient keyed `p-<id>` that also carries the account id `c-9`. */
-const patientWithAccount = (id: string): FhirResource =>
-  Schema.decodeUnknownSync(Patient.Schema)({
+const patientWithAccount = (id: string): FhirResourceWithId =>
+  Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
     resourceType: 'Patient',
     id,
     identifier: [
@@ -343,7 +351,7 @@ describe('the identity map on one file', () => {
       'Practitioner',
       'Dr. A Smith'
     )
-    const decodedSmith = Schema.decodeUnknownSync(Practitioner.Schema)({
+    const decodedSmith = Schema.decodeUnknownSync(withMandatoryId(Practitioner.Schema))({
       resourceType: 'Practitioner',
       id: PROVISIONAL_ID,
       identifier: [
@@ -396,7 +404,7 @@ describe('the identity map on a re-import', () => {
   )
   const storedCopy = storedOf(resourceAt(firstImport, 'k-0'))
   // The same person decoded again, with what the source says of them now, and only one account mentioned.
-  const decodedAgain = Schema.decodeUnknownSync(Patient.Schema)({
+  const decodedAgain = Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
     resourceType: 'Patient',
     id: 'p-1',
     meta: { source: 'https://source.example/visit-2' },
@@ -1003,7 +1011,7 @@ describe('identity map properties', () => {
 
 describe('the identity map and the clock', () => {
   // A provider whose official name ended on 2026-10-31 and who goes by another since.
-  const renamed = Schema.decodeUnknownSync(Practitioner.Schema)({
+  const renamed = Schema.decodeUnknownSync(withMandatoryId(Practitioner.Schema))({
     resourceType: 'Practitioner',
     id: 'pr-1',
     identifier: [{ system: SOURCE_PRACTITIONER, value: 'pr-1' }],

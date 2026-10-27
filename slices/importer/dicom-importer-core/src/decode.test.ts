@@ -6,9 +6,10 @@ import {
   type StudyFixture,
   type DicomTagMap,
 } from '@wildflowerhealthio/dicom/test-helpers'
+import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
   DocumentReference,
-  type FhirResource,
+  type FhirResourceWithId,
   type ImagingStudy,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import {
@@ -41,8 +42,8 @@ const defaultDicomSettings: DicomSettings = { timeZone: 'America/Toronto' }
  * each member. Only its `id` matters here: it is what an instance's
  * `gridfsFileId` names.
  */
-const sourceFileWithId = (id: string): DocumentReference.Type =>
-  Schema.decodeSync(DocumentReference.Schema)({
+const sourceFileWithId = (id: string): PickedFile.SourceFile =>
+  Schema.decodeSync(withMandatoryId(DocumentReference.Schema))({
     resourceType: 'DocumentReference',
     id,
     status: 'current',
@@ -298,14 +299,14 @@ const resourcesOf = (result: FormatDecode.Result<string>): readonly DecodedFile.
   DecodedFile.resources(result.decoded)
 
 /** Every decoded resource of one type, across every section. */
-const of = <K extends FhirResource['resourceType']>(
+const of = <K extends FhirResourceWithId['resourceType']>(
   result: FormatDecode.Result<string>,
   resourceType: K
-): readonly Extract<FhirResource, { readonly resourceType: K }>[] =>
+): readonly Extract<FhirResourceWithId, { readonly resourceType: K }>[] =>
   resourcesOf(result)
     .map((entry) => entry.resource)
     .filter(
-      (resource): resource is Extract<FhirResource, { readonly resourceType: K }> =>
+      (resource): resource is Extract<FhirResourceWithId, { readonly resourceType: K }> =>
         resource.resourceType === resourceType
     )
 

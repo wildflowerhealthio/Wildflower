@@ -65,7 +65,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   **`make(config)`** takes one **`Config`**: the `format`, the
   `sourceFileFormat`, a `decodeFileSet`, and — optionally — a `groupBy` and an
   `linkSourceFile`. **`WithSourceFile`** is what a `decodeFileSet` reads: a
-  `PickedFile.Type` plus the `DocumentReference` minted for it. **`groupBy`** is
+  `PickedFile.Type` plus the `PickedFile.SourceFile` minted for it. **`groupBy`** is
   called per file and returns the key it shares with its set-mates, or a `Left`
   that reports it as its own `unreadableFiles` row (pick order, ahead of any
   failing set); left out, every file is its own set, keyed by its own id. A
@@ -91,7 +91,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
 - `src/staged-import.ts` — the **`StagedImport`** namespace, the pure per-resource
   selection model. A `Selection` is two axes: `excludedResources`
   (per-resource opt-outs, keyed by a `DecodedFile.Resource`'s `key`) and
-  `resourceOverrides` (per-resource inline edits over `FhirResource`, same
+  `resourceOverrides` (per-resource inline edits over `FhirResourceWithId`, same
   keying — the reviewer's edited resource replaces the decoded original at
   confirm). `initial` / `toggleResource` / `setResourcesIncluded` (the batch
   form of `toggleResource`, so the shell can opt a whole section in or out at
@@ -294,10 +294,12 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   copy. The source file states **no instant**: what it is, not when it arrived; the
   server's own `meta.lastUpdated` is what dates a row.
   **`categoryToken`** and **`isSourceFile`** are plain projections of the
-  constants — not codec work, so not schemas. A validated `DocumentReference` is
-  **not** named here as a type of its own: a module that needs it imports
-  `DocumentReference` from `fhir-r4/resources`. Note the internal `DocumentReferenceAsItself`
-  is a `Schema.declare` over that type rather than
+  constants — not codec work, so not schemas. **`SourceFile`** is the codec's
+  encoded side, a `DocumentReference` with the id it is stored under
+  (`WithMandatoryId<DocumentReference.Type>`): what the mint yields and the read
+  leg accepts, a `DocumentReference` with no id being no stored source file.
+  Note the internal `DocumentReferenceAsItself` is a `Schema.declare` over that
+  type rather than
   `Schema.typeSchema(DocumentReference.Schema)`, whose encode walks the struct
   and turns a `null` optional into `undefined`.
 - `src/sha256.ts` — **`sha256Base64`** (+ `DigestUnavailable`), the base64
@@ -310,9 +312,9 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
 
 Depends on `effect` (and `kitchen-sink` in tests), plus `fhir-r4` for the
 `DocumentReference` schema, `fhir-r4/resources` for
-`FhirResource` (`decoded-file.ts` and `staged-import.ts` are concrete over it,
-not generic — every format binds `FhirResource`, so there is no `TParsed` left
-to abstract over) and for the identity map's `Patient`, `Practitioner` and
+`FhirResourceWithId` (`decoded-file.ts` and `staged-import.ts` are concrete over
+it, not generic — every format binds it, so there is no `TParsed` left to
+abstract over; a reviewed resource always has the id it is written under) and for the identity map's `Patient`, `Practitioner` and
 `ResourceReferences`, its one reference walk, `fhir-r4/data-types` for `Meta`
 (the slot `MetaSource.stamp` writes into) and the identity map's
 `IdentifierAndReference` and `HumanName`, `fhir-r4/identity` for the shared id

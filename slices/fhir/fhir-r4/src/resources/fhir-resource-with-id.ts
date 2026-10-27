@@ -8,4 +8,8 @@ import type { FhirResource } from './fhir-resource.ts'
  */
 type FhirResourceWithId = WithMandatoryId<FhirResource>
 
+/** Whether `resource` has an `id`, so a store can address it. */
+const hasId = (resource: FhirResource): resource is FhirResourceWithId => resource.id !== null
+
+export { hasId }
 export type { FhirResourceWithId }

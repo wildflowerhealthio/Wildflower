@@ -39,7 +39,6 @@ export {
   entryUrl,
   groupByStatus,
   NO_RESPONSE_STATUS,
-  NOT_SUBMITTED_STATUS,
   persistBatchBundle,
   persistBatchBundleOrFail,
   persistTransactionBundle,

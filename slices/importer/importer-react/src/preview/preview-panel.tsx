@@ -1,5 +1,5 @@
 import type { ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { DecodedFile, StagedImport } from '@wildflowerhealthio/importer-fundamentals'
 import { Data } from 'effect'
 import { type JSX, type ReactNode, useMemo, useState } from 'react'
@@ -253,7 +253,7 @@ const PreviewPanel = ({
     setEditing(makeOpenEditor({ format, key, resource }))
   }
   const closeEditor = (): void => setEditing(makeClosedEditor())
-  const keepEdit = (resource: FhirResource): void => {
+  const keepEdit = (resource: FhirResourceWithId): void => {
     if (editing._tag !== 'Open') return
     onSelectionChange(
       editing.format,

@@ -2,7 +2,7 @@ import { unknownErrorToString } from '@wildflowerhealthio/kitchen-sink'
 import { Array as Arr, Data, Effect, Schema } from 'effect'
 
 import type * as Bundle from '../data-types/resources/bundle.ts'
-import { type FhirResource, FhirResourceSchema } from '../resources/index.ts'
+import { FhirResourceSchema, type FhirResourceWithId } from '../resources/index.ts'
 import * as Telemetry from '../telemetry/index.ts'
 import { FhirR4ResourcesHttpApiClient } from './fhir-r4-resources-http-api-client.ts'
 import { describeResource, type ResourceWriteTarget } from './persist-resources.ts'
@@ -40,10 +40,10 @@ import { describeResource, type ResourceWriteTarget } from './persist-resources.
  * encode, a transport error, a status no refusal is declared at, or a decode
  * error on the response bundle), every entry in the submitted set is reported
  * as failed against that one cause under {@link NO_RESPONSE_STATUS} — one bad
- * server response cannot silently drop the batch. The bundle carries one entry
- * per `Type/id`, and a resource with no id is never submitted (a PUT needs an
- * id, mirroring {@link upsertResource}); the outcomes come back one per
- * resource handed in, at its position, whatever was submitted for it.
+ * server response cannot silently drop the batch. Every resource handed in has
+ * an id (`FhirResourceWithId`), which its entry is PUT to; the bundle carries
+ * one entry per `Type/id`, and the outcomes come back one per resource handed
+ * in, at its position.
  *
  * Unlike {@link persistResources}, this reports the **whole** per-entry
  * outcome — every resource's echoed HTTP status and any
@@ -79,8 +79,7 @@ interface WriteIssue {
  * `status` is the server's echoed `"NNN Text"` verbatim when there was a
  * response entry, the refusal's own `"NNN Text"` when the server refused the
  * whole bundle, the sentinel {@link NO_RESPONSE_STATUS} when the round trip
- * failed any other way or the response was truncated, and the sentinel
- * {@link NOT_SUBMITTED_STATUS} for a resource with no id — so a caller can
+ * failed any other way or the response was truncated — so a caller can
  * always group by `status` without a special case.
  */
 interface BatchEntryOutcome {
@@ -106,7 +105,7 @@ const issuesOf = (outcome: Bundle.OperationOutcomeType | null | undefined): read
  * per-resource `Update` endpoint. Kept alongside the sink because that is
  * where the client-side "which type goes to which url" already lives.
  */
-const entryUrl = (resource: FhirResource): string => `${resource.resourceType}/${resource.id ?? ''}`
+const entryUrl = (resource: FhirResourceWithId): string => `${resource.resourceType}/${resource.id}`
 
 /**
  * Whether an `entry.response.status` string reports success — FHIR echoes the
@@ -122,28 +121,12 @@ const statusOk = (status: string): boolean => {
 type BundleWriteType = 'batch' | 'transaction'
 
 /**
- * The `status` a resource gets when it was never submitted: it has no id, and
- * a PUT needs one.
- */
-const NOT_SUBMITTED_STATUS = 'Not submitted'
-
-/** The outcome of a resource with no id: never submitted, so never written. */
-const notSubmitted = (resource: FhirResource): BatchEntryOutcome => ({
-  target: describeResource(resource),
-  status: NOT_SUBMITTED_STATUS,
-  ok: false,
-  issues: [
-    { severity: 'error', code: 'required', text: 'The resource has no id to be written under.' },
-  ],
-})
-
-/**
  * The outcome of a submitted `resource` from its entry's `response`: the
  * echoed status and its issues, or {@link NO_RESPONSE_STATUS} when the
  * response bundle holds no entry or no status for it (a truncated response).
  */
 const answeredOutcome = (
-  resource: FhirResource,
+  resource: FhirResourceWithId,
   response: Bundle.EntryResponseType | null | undefined
 ): BatchEntryOutcome =>
   response === null || response === undefined
@@ -157,15 +140,12 @@ const answeredOutcome = (
 
 /**
  * The resources a bundle submits for `resources`: one per `Type/id`, the last
- * occurrence's, in the order each `Type/id` first appears, and none without an
- * id.
+ * occurrence's, in the order each `Type/id` first appears.
  */
-const submittedOnce = (resources: ReadonlyArray<FhirResource>): readonly FhirResource[] => [
-  ...new Map(
-    resources
-      .filter((resource) => resource.id !== null)
-      .map((resource) => [entryUrl(resource), resource] as const)
-  ).values(),
+const submittedOnce = (
+  resources: ReadonlyArray<FhirResourceWithId>
+): readonly FhirResourceWithId[] => [
+  ...new Map(resources.map((resource) => [entryUrl(resource), resource] as const)).values(),
 ]
 
 /**
@@ -188,19 +168,17 @@ const submittedOnce = (resources: ReadonlyArray<FhirResource>): readonly FhirRes
  * twice (two overlapping exports of the same record), the last occurrence is
  * submitted, as a server applying both PUTs in turn would leave it, and each
  * position gets that entry's outcome. A transaction must, since FHIR R4
- * § 3.2.6 refuses one whose entries overlap. A resource with no id cannot be
- * PUT, so it is never submitted, and its position reports
- * {@link NOT_SUBMITTED_STATUS}, not ok, with the reason as its issue. The
- * outcomes are aligned with the input, so a caller handing in several
- * groups' resources splits them back by each group's length.
+ * § 3.2.6 refuses one whose entries overlap. The outcomes are aligned with
+ * the input, so a caller handing in several groups' resources splits them back
+ * by each group's length.
  */
 const persistBundle = (
   bundleType: BundleWriteType,
-  resources: ReadonlyArray<FhirResource>
+  resources: ReadonlyArray<FhirResourceWithId>
 ): Effect.Effect<ReadonlyArray<BatchEntryOutcome>, never, FhirR4ResourcesHttpApiClient> =>
   Effect.gen(function* () {
     const submitted = submittedOnce(resources)
-    if (submitted.length === 0) return resources.map(notSubmitted)
+    if (submitted.length === 0) return []
 
     const client = yield* FhirR4ResourcesHttpApiClient
     // The endpoint carries `entry.resource: Schema.Any` (see http-api-definition/
@@ -275,16 +253,12 @@ const persistBundle = (
     )
 
     if (result._tag === 'failed') {
-      return resources.map((resource): BatchEntryOutcome =>
-        resource.id === null
-          ? notSubmitted(resource)
-          : {
-              target: describeResource(resource),
-              status: result.status,
-              ok: false,
-              issues: result.issues,
-            }
-      )
+      return resources.map((resource): BatchEntryOutcome => ({
+        target: describeResource(resource),
+        status: result.status,
+        ok: false,
+        issues: result.issues,
+      }))
     }
 
     // Pair each submitted entry with its response entry by position — FHIR §
@@ -297,9 +271,7 @@ const persistBundle = (
       )
     )
     return resources.map((resource) =>
-      resource.id === null
-        ? notSubmitted(resource)
-        : answeredOutcome(resource, responseByUrl.get(entryUrl(resource)))
+      answeredOutcome(resource, responseByUrl.get(entryUrl(resource)))
     )
   }).pipe(
     Effect.withSpan(Telemetry.Persist.Bundle.Span.Name, {
@@ -319,7 +291,7 @@ const persistBundle = (
  *   gives it
  */
 const persistBatchBundle = (
-  resources: ReadonlyArray<FhirResource>
+  resources: ReadonlyArray<FhirResourceWithId>
 ): Effect.Effect<ReadonlyArray<BatchEntryOutcome>, never, FhirR4ResourcesHttpApiClient> =>
   persistBundle('batch', resources)
 
@@ -334,7 +306,7 @@ const persistBatchBundle = (
  *   server's refusal, its status and its issues, when it did not
  */
 const persistTransactionBundle = (
-  resources: ReadonlyArray<FhirResource>
+  resources: ReadonlyArray<FhirResourceWithId>
 ): Effect.Effect<ReadonlyArray<BatchEntryOutcome>, never, FhirR4ResourcesHttpApiClient> =>
   persistBundle('transaction', resources)
 
@@ -342,8 +314,7 @@ const persistTransactionBundle = (
  * Some entries of a batch were not accepted: each one the server answered with
  * a non-2xx status (the refusal's, for every entry, when it refused the
  * bundle), or with no status at all ({@link NO_RESPONSE_STATUS}, which every
- * entry gets when the round trip failed any other way), and each resource
- * with no id ({@link NOT_SUBMITTED_STATUS}).
+ * entry gets when the round trip failed any other way).
  */
 class BatchEntriesRejected extends Data.TaggedError('BatchEntriesRejected')<{
   /** A one-line summary naming each rejected entry's target and status. */
@@ -362,8 +333,7 @@ const describeRejected = (outcome: BatchEntryOutcome): string =>
  * Submit a decoded batch as one FHIR `POST /` bundle, failing unless every
  * entry was accepted.
  *
- * @param resources - The batch to write, each under the id it is PUT to;
- *   a resource with no id is rejected as {@link NOT_SUBMITTED_STATUS}
+ * @param resources - The batch to write, each under the id it is PUT to
  * @returns An effect that succeeds with every entry's outcome when each one is
  *   a 2xx, and fails with {@link BatchEntriesRejected} otherwise
  *
@@ -375,7 +345,7 @@ const describeRejected = (outcome: BatchEntryOutcome): string =>
  * entries — the retry rewrites them unchanged.
  */
 const persistBatchBundleOrFail = (
-  resources: ReadonlyArray<FhirResource>
+  resources: ReadonlyArray<FhirResourceWithId>
 ): Effect.Effect<
   ReadonlyArray<BatchEntryOutcome>,
   BatchEntriesRejected,
@@ -456,7 +426,6 @@ export {
   entryUrl,
   groupByStatus,
   NO_RESPONSE_STATUS,
-  NOT_SUBMITTED_STATUS,
   persistBatchBundle,
   persistBatchBundleOrFail,
   persistTransactionBundle,

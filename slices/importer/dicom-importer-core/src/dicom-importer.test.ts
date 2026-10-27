@@ -1,7 +1,6 @@
 import { DicomHeader } from '@wildflowerhealthio/dicom'
 import { writeDicom } from '@wildflowerhealthio/dicom/test-helpers'
 import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
-import type { DocumentReference } from '@wildflowerhealthio/fhir-r4/resources'
 import { PickedFile, type FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
 import { DateTime, Effect, Either, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
@@ -20,7 +19,7 @@ import {
  * driven under `dicomImporter`'s own format constants, which is the same
  * context its batch `decode` mints under.
  */
-const mint = (bytes: Uint8Array, fileName = 'scan.dcm'): Promise<DocumentReference.Type> =>
+const mint = (bytes: Uint8Array, fileName = 'scan.dcm'): Promise<PickedFile.SourceFile> =>
   Effect.runPromise(
     Schema.encode(PickedFile.FromDocumentReference)({
       id: `0:${fileName}`,

@@ -13,6 +13,7 @@ import { adoptResource } from '@wildflowerhealthio/fhir-r4/identity'
  *
  * @packageDocumentation
  */
+import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { Effect, type ParseResult } from 'effect'
 
 import type * as Report from './entities/report.ts'
@@ -20,6 +21,11 @@ import { type ReportResources, type SynthesisOptions, toFhirResources } from './
 import { LIFELABS_SYSTEM } from './source-system.ts'
 
 const adopt = adoptResource({ system: LIFELABS_SYSTEM })
+
+/** One report's resources adopted: each under the id it is written to. */
+interface AdoptedReportResources extends Omit<ReportResources, 'resources'> {
+  readonly resources: readonly FhirResourceWithId[]
+}
 
 /**
  * Each report's resources as a decode yields them: synthesized
@@ -33,12 +39,15 @@ const adopt = adoptResource({ system: LIFELABS_SYSTEM })
 const adoptedResourcesOf = (
   reports: readonly Report.Type[],
   options: SynthesisOptions
-): Effect.Effect<readonly ReportResources[], ParseResult.ParseError> =>
+): Effect.Effect<readonly AdoptedReportResources[], ParseResult.ParseError> =>
   Effect.map(toFhirResources(reports, options), (groups) =>
-    groups.map((group) => ({ ...group, resources: group.resources.map(adopt) }))
+    groups.map((group): AdoptedReportResources => ({
+      ...group,
+      resources: group.resources.map(adopt),
+    }))
   )
 
-export { adoptedResourcesOf }
+export { type AdoptedReportResources, adoptedResourcesOf }
 export type { Type as ReportGroup } from './entities/group.ts'
 export type { Type as ReportLab } from './entities/lab.ts'
 export type { Type as ReportPatient } from './entities/patient.ts'

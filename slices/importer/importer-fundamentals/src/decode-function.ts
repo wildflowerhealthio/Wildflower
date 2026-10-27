@@ -22,7 +22,6 @@
  * @packageDocumentation
  */
 
-import type { DocumentReference } from '@wildflowerhealthio/fhir-r4/resources'
 import type { ParseResult } from 'effect'
 import { Array as Arr, Effect, Either, Schema } from 'effect'
 
@@ -44,7 +43,7 @@ type Type<in TSettings, TFormat extends string> = (
  * One file of a set as {@link Config.decodeFileSet} reads it: the pick, plus
  * the source file minted for it.
  */
-type WithSourceFile = PickedFile.Type & { readonly sourceFile: DocumentReference.Type }
+type WithSourceFile = PickedFile.Type & { readonly sourceFile: PickedFile.SourceFile }
 
 /** What {@link make} needs of a format. */
 interface Config<TFormat extends string, TSettings> {
@@ -80,7 +79,7 @@ interface Config<TFormat extends string, TSettings> {
    * `Patient/$everything`.
    */
   readonly linkSourceFile?:
-    | ((minted: DocumentReference.Type, decoded: DecodedFile.DecodedFile) => DocumentReference.Type)
+    | ((minted: PickedFile.SourceFile, decoded: DecodedFile.DecodedFile) => PickedFile.SourceFile)
     | undefined
 }
 
@@ -97,7 +96,7 @@ const sourceFileKey = (file: PickedFile.Type): string =>
 const mintSourceFile = Schema.encode(PickedFile.FromDocumentReference)
 
 /** A source file stored exactly as minted — what a format that states no {@link Config.linkSourceFile} gets. */
-const asMinted = (minted: DocumentReference.Type): DocumentReference.Type => minted
+const asMinted = (minted: PickedFile.SourceFile): PickedFile.SourceFile => minted
 
 /**
  * The member whose source file stamps `meta.source` on the set's resources: the
@@ -118,13 +117,8 @@ const representativeOf = (
     sourceFileId(one) < sourceFileId(smallest) ? one : smallest
   )
 
-/**
- * A source file's logical id. The mint always states one; `DocumentReference.id`
- * is nullable on the resource, and a source file missing it sorts first and
- * stamps a reference no resource resolves — which is what a mint that lost its
- * id should look like, rather than a crash.
- */
-const sourceFileId = (one: WithSourceFile): string => one.sourceFile.id ?? ''
+/** A source file's logical id, the one it is stored under. */
+const sourceFileId = (one: WithSourceFile): string => one.sourceFile.id
 
 /**
  * Decode one set: mint a source file per pick, decode them together, let the

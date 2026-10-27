@@ -8,11 +8,7 @@
 import { DicomHeader } from '@wildflowerhealthio/dicom'
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { adoptResource } from '@wildflowerhealthio/fhir-r4/identity'
-import {
-  type DocumentReference,
-  DocumentReferenceContext,
-  type FhirResource,
-} from '@wildflowerhealthio/fhir-r4/resources'
+import { DocumentReferenceContext, type FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   type DecodeFunction,
   DecodedFile,
@@ -172,9 +168,9 @@ const emptyContext = Schema.decodeSync(DocumentReferenceContext.Schema)({})
  * are both read back off this result.
  */
 const linkToPatientAndStudy = (
-  minted: DocumentReference.Type,
+  minted: PickedFile.SourceFile,
   decoded: DecodedFile.DecodedFile
-): DocumentReference.Type => {
+): PickedFile.SourceFile => {
   const subject = referenceTo(decoded, 'Patient')
   const study = referenceTo(decoded, 'ImagingStudy')
   return {

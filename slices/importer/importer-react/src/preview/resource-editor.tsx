@@ -1,4 +1,4 @@
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { Dialog, ErrorBanner } from '@wildflowerhealthio/react-tundraish'
 import { Either } from 'effect'
 import { type JSX, useRef, useState } from 'react'
@@ -30,7 +30,7 @@ import styles from './resource-editor.module.css'
 /** One kept edit that decoded and preserved `resourceType` / `id`. */
 interface KeptEdit {
   /** The decoded resource the reviewer chose to keep — the value the review overrides with. */
-  readonly resource: FhirResource
+  readonly resource: FhirResourceWithId
 }
 
 /** Props for {@link ResourceEditor}. */

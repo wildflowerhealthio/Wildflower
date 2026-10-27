@@ -1,5 +1,6 @@
 import { writeDicom } from '@wildflowerhealthio/dicom/test-helpers'
-import { type FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
+import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
+import { type FhirResourceWithId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import type { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
 import { DecodedFile, FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
@@ -52,8 +53,8 @@ const kindOf = (fileName: string): FormatKind | undefined => {
 const reviewKeys = (result: FormatDecode.Result<FormatKind>): readonly string[] =>
   DecodedFile.resources(result.decoded).map((resource) => resource.key)
 
-const fakeResource = (id: string): FhirResource =>
-  Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
+const fakeResource = (id: string): FhirResourceWithId =>
+  Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id })
 
 /** A fake decode: aggregates files into one FormatDecodeResult. A file whose first byte is 0 is unreadable. */
 const fakeDecode =

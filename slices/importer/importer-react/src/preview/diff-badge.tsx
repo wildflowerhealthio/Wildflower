@@ -8,7 +8,7 @@ import {
   resetFieldToServer,
   type ServerComparison,
 } from '@wildflowerhealthio/fhir-r4/clients'
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { Chip } from '@wildflowerhealthio/react-tundraish'
 import { Option } from 'effect'
 import { type JSX, useState } from 'react'
@@ -63,8 +63,8 @@ const DiffFieldList = ({
   onKeepServerValue,
 }: {
   readonly fields: readonly FieldDiff[]
-  readonly current: unknown
-  readonly onKeepServerValue: ((resource: FhirResource) => void) | undefined
+  readonly current: FhirResourceWithId
+  readonly onKeepServerValue: ((resource: FhirResourceWithId) => void) | undefined
 }): JSX.Element => (
   <ul className={styles['diff-badge__field-list']} role="group" aria-label="Field differences">
     {fields.map((field) => {
@@ -121,8 +121,8 @@ const DiffBadge = ({
   onKeepServerValue,
 }: {
   readonly comparison: ServerComparison | undefined
-  readonly current: unknown
-  readonly onKeepServerValue?: (resource: FhirResource) => void
+  readonly current: FhirResourceWithId
+  readonly onKeepServerValue?: (resource: FhirResourceWithId) => void
 }): JSX.Element | null => {
   const [pinned, setPinned] = useState(false)
   const [hovered, setHovered] = useState(false)

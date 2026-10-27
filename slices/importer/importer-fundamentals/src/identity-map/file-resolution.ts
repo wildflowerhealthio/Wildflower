@@ -7,7 +7,7 @@
  * @packageDocumentation
  */
 
-import { type FhirResource, ResourceReferences } from '@wildflowerhealthio/fhir-r4/resources'
+import { type FhirResourceWithId, ResourceReferences } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array, HashMap, Option, pipe } from 'effect'
 
 import * as DecodedFile from '../decoded-file.ts'
@@ -25,7 +25,10 @@ const linkedKey = (onlyMentioned: LinkableResource.WithId): string =>
  * `identifier`. Walks every reference, not only the mention fields, so a
  * provider named elsewhere moves too. The same object when nothing moves.
  */
-const redirectMentions = (plan: LinkPlan.Type, mentioningResource: FhirResource): FhirResource =>
+const redirectMentions = (
+  plan: LinkPlan.Type,
+  mentioningResource: FhirResourceWithId
+): FhirResourceWithId =>
   ResourceReferences.map(mentioningResource, (referenceAsDecoded) =>
     Option.match(LinkPlan.maybeRedirectOf(plan, referenceAsDecoded), {
       onNone: () => referenceAsDecoded,
@@ -58,7 +61,7 @@ const resolvedEntry = (
     plan,
     Option.match(maybeResolvedResource, {
       onNone: () => decodedResource,
-      onSome: (resolvedResource): FhirResource => resolvedResource.resource,
+      onSome: (resolvedResource): FhirResourceWithId => resolvedResource.resource,
     })
   )
   const title = pipe(

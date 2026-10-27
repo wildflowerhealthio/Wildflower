@@ -1,5 +1,6 @@
+import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
-  type FhirResource,
+  type FhirResourceWithId,
   Observation,
   Patient,
   Practitioner,
@@ -21,8 +22,8 @@ import { describe, expect, it } from 'vite-plus/test'
 import { planBatchWrite, planFormatWrite } from './plan-write.ts'
 import type { ResolvedBatch } from './resolve-mentions.ts'
 
-const resource = (id: string): FhirResource =>
-  Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
+const resource = (id: string): FhirResourceWithId =>
+  Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id })
 
 const formatResult = (keys: readonly string[]): FormatDecode.Result<string> => ({
   id: 'u',
@@ -328,7 +329,7 @@ const STORED = linkedRecordOf(
 const observationOf = (key: string, references: object): DecodedFile.Resource => ({
   key,
   title: `Observation/${key}`,
-  resource: Schema.decodeUnknownSync(Observation.Schema)({
+  resource: Schema.decodeUnknownSync(withMandatoryId(Observation.Schema))({
     resourceType: 'Observation',
     id: key,
     status: 'final',
