@@ -22,7 +22,7 @@
     "test": "vp test"
   },
   "dependencies": {
-    "fhirclient": "^2.5.4"
+    "fhirclient": "^3.0.1"
   },
   "devDependencies": {
     "@effect/platform": "catalog:",
