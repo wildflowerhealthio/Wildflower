@@ -12,7 +12,7 @@ import {
 } from '@wildflowerhealthio/fhir-r4/resources'
 import type { BatchDecodeResult } from '@wildflowerhealthio/importer-core'
 import { DecodedFile, FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
-import { Effect, Layer, Schema } from 'effect'
+import { Effect, Layer, Option, Schema } from 'effect'
 import type { JSX } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
@@ -135,12 +135,21 @@ describe('ReferentRows', () => {
   it('should place the batch on a changed select', async () => {
     await renderRows(BATCH, {})
 
+    // Tyra's own record is the one new record; the account and the prescriber land nowhere.
+    expect(screen.getByRole('status').textContent).toBe(
+      '0 records on the server, 1 new record, 2 not linked'
+    )
+
     // The account is the person the Patient line creates: its mentions follow.
     const account = screen.getByRole('combobox', { name: 'c-9' })
     await userEvent.selectOptions(account, newAsLabel(TYRA))
     await waitFor(() => {
       expect(subjectOfRequest()).toBe('Patient/p-1')
     })
+    // Two referents on one new record count once.
+    expect(screen.getByRole('status').textContent).toBe(
+      '0 records on the server, 1 new record, 1 not linked'
+    )
 
     // Unlinked again: the mention keeps its identifier-only form.
     await userEvent.selectOptions(account, DONT_LINK_LABEL)
@@ -201,6 +210,27 @@ describe('ReferentRows', () => {
       )
     })
     expect(subjectOfRequest()).toBe('Patient/s-1')
+  })
+
+  it('should keep the last review up when a re-decode refuses the batch', async () => {
+    // Arrange: a batch that places, then a re-decode of it that holds one person twice.
+    currentRunAuthed = serverHolding({})
+    const { rerender } = renderHarness(BATCH)
+    await screen.findByRole('combobox', { name: TYRA })
+
+    // Act
+    rerender(
+      harnessOver(
+        batchOf([
+          decodeResource(patientWire('p-1', SOURCE)),
+          decodeResource({ ...patientWire('p-1', SOURCE), id: 'p-1-again' }),
+        ])
+      )
+    )
+
+    // Assert: the refusal is said, and the rows of the review before it are still there.
+    expect((await screen.findByRole('alert')).textContent).toBe('DuplicateReferent')
+    expect(screen.getByRole('combobox', { name: TYRA })).toBeDefined()
   })
 
   it('should refuse a batch that holds one person twice under two ids', async () => {
@@ -404,16 +434,21 @@ const serverHolding = ({
 const Harness = ({ batch }: { readonly batch: BatchDecodeResult }): JSX.Element => {
   const { state, choose } = useIdentityMap(batch, 1)
   if (state._tag === 'loading') return <p>Loading</p>
-  if (state._tag === 'refused') return <p role="alert">{state.failure._tag}</p>
-  placed = state.placed
+  // Shown as the screen shows them: the placing, or the one before a refusal.
+  const shown = state._tag === 'refused' ? Option.getOrUndefined(state.previous) : state
+  if (shown === undefined) {
+    return <p role="alert">{state._tag === 'refused' ? state.failure._tag : 'loading'}</p>
+  }
+  placed = shown.placed
   return (
     <>
+      {state._tag === 'refused' && <p role="alert">{state.failure._tag}</p>}
       {state._tag === 'error' && <p role="alert">{state.error.message}</p>}
       <ReferentRows
-        referents={state.referents}
-        linkChoices={state.linkChoices}
-        linkTargets={state.linkTargets}
-        found={state.found}
+        referents={shown.referents}
+        linkChoices={shown.linkChoices}
+        linkTargets={shown.linkTargets}
+        found={shown.found}
         onChoose={choose}
       />
     </>

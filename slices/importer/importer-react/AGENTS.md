@@ -105,16 +105,20 @@ The importer has no HTTP wire union to derive, so there is no separate
   across a settings re-decode in a `ReferentLinkChoices`, and memoizes the
   **placed** batch (`applyIdentityMap`) with each referent's `LinkTarget`
   (`LinkPlan.make`). Both are Effects on the clock, run synchronously in the
-  memo; their failures are states: a `DuplicateReferent` is `refused` (the
-  screen says why and offers the picker), and a choice the stage cannot
-  follow after a re-decode (`InvalidLinkChoice`) is dropped so its referent
-  takes its default. The screen blocks its first paint on the default search,
+  memo; their failures are states: a `DuplicateReferent` is `refused`, with
+  the batch's last placing that succeeded when a re-decode is what refused it
+  (the screen keeps that review up under the refusal, confirm disabled, so
+  the reviewer can undo the setting; on a first decode it says why and offers
+  the picker), and a choice the stage cannot follow after a re-decode
+  (`InvalidLinkChoice`) is dropped so its referent takes its default. The screen blocks its first paint on the default search,
   as it does on the server diff, and hands the placed batch to
   `useServerDiff`, `PreviewPanel` and the confirm, so all three see what gets
   written; a failed search shows an alert and leaves every referent on its
   kind's default. `referent-rows.tsx` is the block the panel renders above the
   format groups (its `referentRows` slot), "People and providers in this
-  import": a tally of where the referents land, then one group per
+  import": a tally of the records the referents land on (a stored record or
+  a new one is counted once however many referents share it) and the
+  referents that land nowhere, then one group per
   `LinkableLogicalReference.RESOURCE_TYPES` entry that has referents, one
   line per referent, its label and a select of the `LinkChoice`s its kind
   allows — `New` or a stored resource for an `AsResource` referent; a stored

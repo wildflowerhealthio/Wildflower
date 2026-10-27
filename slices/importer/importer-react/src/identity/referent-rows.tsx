@@ -264,13 +264,27 @@ const differingDemographicsWarningFor = (
     Option.map(differingDemographicsWarning)
   )
 
-/** How many referents land on a stored record, on a new or provisional one, or nowhere. */
+/**
+ * How many records the referents land on: stored ones, and new or provisional
+ * ones, each counted once however many referents share it; and how many
+ * referents land nowhere.
+ */
 const tallyOf = (linkTargets: Iterable<LinkTarget.Type>): ReferentTally => {
   const targets = Array.fromIterable(linkTargets)
-  return {
-    onServer: Array.countBy(targets, LinkTarget.is('Stored')),
-    created: Array.countBy(
+  const recordsAmong = (isCounted: (target: LinkTarget.Type) => boolean): number =>
+    pipe(
       targets,
+      Array.filter(isCounted),
+      Array.filterMap(LinkTarget.tryIntoResource),
+      Array.dedupeWith(
+        (left, right) =>
+          LinkableResource.literalReferenceOf(left) === LinkableResource.literalReferenceOf(right)
+      ),
+      Array.length
+    )
+  return {
+    onServer: recordsAmong(LinkTarget.is('Stored')),
+    created: recordsAmong(
       (target) => LinkTarget.is('Decoded')(target) || LinkTarget.is('Provisional')(target)
     ),
     unlinked: Array.countBy(targets, LinkTarget.is('Unlinked')),

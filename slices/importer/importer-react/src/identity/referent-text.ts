@@ -37,6 +37,10 @@ const duplicateReferentMessage = ({
 }: Referent.DuplicateReferent): string =>
   `These files hold two ${logicalReference.type} records with the identifier ${logicalReference.identifier.value} under different ids (${reviewKeys.join(', ')}). The import cannot tell which one its references mean, so these files cannot be imported together.`
 
+/** Under the refusal, when the review shown is the batch as it placed before the change that refused it. */
+const REFUSED_OVER_PREVIOUS_HINT =
+  'The review below is from before that change. Undo it, or choose other files.'
+
 /** The action that leaves the refused batch for another pick. */
 const CHOOSE_OTHER_FILES_LABEL = 'Choose other files'
 
@@ -74,18 +78,21 @@ const GIVEN_NAME = 'given name'
 /** The birth date, as {@link differingDemographicsWarning} names it. */
 const BIRTH_DATE = 'birth date'
 
-/** How many referents land where. */
+/** How many records the referents land on, and how many referents land nowhere. */
 interface ReferentTally {
+  /** Stored records linked to. */
   readonly onServer: number
+  /** New or provisional records the import creates. */
   readonly created: number
+  /** Referents not linked. */
   readonly unlinked: number
 }
 
-/** The tally line: how many referents link to stored records, how many are new, how many neither. */
+/** The tally line: how many stored records are linked to, how many new records are created, how many referents are neither. */
 const referentTallyLine = ({ onServer, created, unlinked }: ReferentTally): string =>
   [
-    `${onServer} linked to ${plural(onServer, 'record')} on the server`,
-    `${created} new or provisional`,
+    `${onServer} ${plural(onServer, 'record')} on the server`,
+    `${created} new ${plural(created, 'record')}`,
     ...(unlinked > 0 ? [`${unlinked} not linked`] : []),
   ].join(', ')
 
@@ -104,6 +111,7 @@ export {
   ON_SERVER_GROUP,
   REFERENTS_HEADING,
   referentTallyLine,
+  REFUSED_OVER_PREVIOUS_HINT,
   type ReferentTally,
   SEARCH_ERROR_MESSAGE,
   SEARCHING_SERVER_MESSAGE,

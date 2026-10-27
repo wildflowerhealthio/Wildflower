@@ -1,12 +1,14 @@
 import type { FormatKind } from '@wildflowerhealthio/importer-core'
 import { formatKinds } from '@wildflowerhealthio/importer-core'
 import { StagedImport, DecodedFile } from '@wildflowerhealthio/importer-fundamentals'
+import { Match, Option } from 'effect'
 import { type JSX, useCallback, useMemo, useState } from 'react'
 
 import { ReferentRows } from './identity/referent-rows.tsx'
 import {
   CHOOSE_OTHER_FILES_LABEL,
   duplicateReferentMessage,
+  REFUSED_OVER_PREVIOUS_HINT,
   SEARCH_ERROR_MESSAGE,
   SEARCHING_SERVER_MESSAGE,
 } from './identity/referent-text.ts'
@@ -79,11 +81,16 @@ const ImporterScreen = (): JSX.Element => {
   const batchId = runState._tag === 'ready' ? runState.batchId : 0
   const identity = useIdentityMap(runState._tag === 'ready' ? runState.batch : undefined, batchId)
   const identityState = identity.state
+  // The identity map the screen shows: the batch as placed, or, when a
+  // re-decode refused it, as it placed before, so the reviewer can undo the change.
+  const shown = Match.value(identityState).pipe(
+    Match.tag('loading', () => undefined),
+    Match.tag('ready', 'error', (mapped) => mapped),
+    Match.tag('refused', ({ previous }) => Option.getOrUndefined(previous)),
+    Match.exhaustive
+  )
   // The placed batch: what the diff classifies, the preview shows and the confirm writes.
-  const batch =
-    identityState._tag === 'ready' || identityState._tag === 'error'
-      ? identityState.placed
-      : undefined
+  const batch = shown?.placed
   const diff = useServerDiff(batch, batchId)
 
   const initialSelections = useMemo((): ReadonlyMap<FormatKind, StagedImport.Selection> => {
@@ -130,9 +137,13 @@ const ImporterScreen = (): JSX.Element => {
 
   const confirming = confirm.state._tag === 'confirming'
   // A re-decode or a changed link choice re-classifies the placed batch; until
-  // its verdicts land, the pre-exclusions are the previous placement's.
+  // its verdicts land, the pre-exclusions are the previous placement's. A
+  // refused batch is never written: the review shown is the one before.
   const confirmBlocked =
-    confirming || importRun.redecoding || (diff._tag === 'ready' && diff.refreshing)
+    confirming ||
+    importRun.redecoding ||
+    (diff._tag === 'ready' && diff.refreshing) ||
+    identityState._tag === 'refused'
 
   const body = ((): JSX.Element => {
     if (runState._tag === 'idle')
@@ -153,8 +164,10 @@ const ImporterScreen = (): JSX.Element => {
         </p>
       )
     }
-    // A batch the stage refuses has nothing to review: say why, and offer the picker again.
-    if (identityState._tag === 'refused') {
+    // A batch the stage refuses on its first decode has nothing to review:
+    // say why, and offer the picker again. Refused after a re-decode, the
+    // review before it stays up, under the refusal, below.
+    if (shown === undefined && identityState._tag === 'refused') {
       return (
         <>
           <p role="alert" className={styles.error}>
@@ -172,7 +185,7 @@ const ImporterScreen = (): JSX.Element => {
     // verdicts on screen instead of coming back here: blocking on a re-decode
     // would unmount the panel, and the settings input the reviewer is typing
     // into with it.
-    if (diff._tag === 'loading') {
+    if (diff._tag === 'loading' || shown === undefined) {
       return (
         <p role="status" className={styles.status}>
           {CHECKING_SERVER_MESSAGE}
@@ -181,6 +194,11 @@ const ImporterScreen = (): JSX.Element => {
     }
     return (
       <>
+        {identityState._tag === 'refused' && (
+          <p role="alert" className={styles.error}>
+            {`${duplicateReferentMessage(identityState.failure)} ${REFUSED_OVER_PREVIOUS_HINT}`}
+          </p>
+        )}
         {identityState._tag === 'error' && (
           <p role="alert" className={styles.error}>
             {SEARCH_ERROR_MESSAGE}
@@ -192,7 +210,7 @@ const ImporterScreen = (): JSX.Element => {
           </p>
         )}
         <PreviewPanel
-          batch={identityState.placed}
+          batch={shown.placed}
           settings={importRun.settings}
           settingsRegistry={formatRegistry}
           selectionFor={selectionFor}
@@ -202,13 +220,13 @@ const ImporterScreen = (): JSX.Element => {
           confirming={confirming}
           confirmDisabled={confirmBlocked}
           onCancel={startOver}
-          onConfirm={() => confirm.confirm(identityState.placed, selectionFor)}
+          onConfirm={() => confirm.confirm(shown.placed, selectionFor)}
           referentRows={
             <ReferentRows
-              referents={identityState.referents}
-              linkChoices={identityState.linkChoices}
-              linkTargets={identityState.linkTargets}
-              found={identityState.found}
+              referents={shown.referents}
+              linkChoices={shown.linkChoices}
+              linkTargets={shown.linkTargets}
+              found={shown.found}
               onChoose={identity.choose}
             />
           }

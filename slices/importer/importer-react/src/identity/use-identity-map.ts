@@ -42,7 +42,8 @@ import { labeled, type StoredResource } from './use-stored-resources.ts'
  * The stage's failures surface as states: a failed search is `error` (every
  * referent takes its kind's default and the screen says so), and a batch two
  * decoded resources of one identity refuse (`Referent.DuplicateReferent`) is
- * `refused`, with nothing to review.
+ * `refused`, carrying the last placing of the batch that succeeded when a
+ * re-decode is what refused it.
  *
  * @packageDocumentation
  */
@@ -65,13 +66,19 @@ interface Mapped {
  * `loading` while the default search for this batch is in flight (the screen
  * paints a status line instead of the preview), `ready` once the defaults are
  * in, `error` when the search failed and every referent took its kind's
- * default, `refused` when the batch cannot be placed at all.
+ * default, `refused` when the batch cannot be placed at all, with the last
+ * placing of this batch that could be, when a re-decode is what refused it,
+ * so the screen can keep that review up while the reviewer undoes the change.
  */
 type IdentityMapState =
   | { readonly _tag: 'loading' }
   | ({ readonly _tag: 'ready' } & Mapped)
   | ({ readonly _tag: 'error'; readonly error: Error } & Mapped)
-  | { readonly _tag: 'refused'; readonly failure: Referent.DuplicateReferent }
+  | {
+      readonly _tag: 'refused'
+      readonly failure: Referent.DuplicateReferent
+      readonly previous: Option.Option<Mapped>
+    }
 
 /** The hook's surface: the state, and the one action the referent rows drive. */
 interface IdentityMapReview {
@@ -242,21 +249,33 @@ const useIdentityMap = (
     )
   }, [loading, batch, discovered, defaults, chosen])
 
+  // The last placing of this batch that succeeded, kept (and adjusted during
+  // render, as above) so a refusal after a re-decode is shown over it.
+  const [lastReady, setLastReady] = useState<
+    { readonly batchId: number; readonly mapped: Mapped } | undefined
+  >(undefined)
+  const readyNow = mapped === undefined ? undefined : Either.getOrUndefined(mapped)
+  if (readyNow !== undefined && lastReady?.mapped !== readyNow) {
+    setLastReady({ batchId, mapped: readyNow })
+  }
+  const previous: Option.Option<Mapped> =
+    lastReady?.batchId === batchId ? Option.some(lastReady.mapped) : Option.none()
+
   const choose = useCallback((referentKey: string, choice: LinkChoice.Type): void => {
-    setPerBatch((previous) =>
-      previous === undefined
-        ? previous
-        : { ...previous, chosen: HashMap.set(previous.chosen, referentKey, choice) }
+    setPerBatch((perBatchBefore) =>
+      perBatchBefore === undefined
+        ? perBatchBefore
+        : { ...perBatchBefore, chosen: HashMap.set(perBatchBefore.chosen, referentKey, choice) }
     )
   }, [])
 
   const state = useMemo((): IdentityMapState => {
     if (discovered !== undefined && Either.isLeft(discovered)) {
-      return { _tag: 'refused', failure: discovered.left }
+      return { _tag: 'refused', failure: discovered.left, previous }
     }
     if (mapped === undefined) return { _tag: 'loading' }
     return Either.match(mapped, {
-      onLeft: (failure): IdentityMapState => ({ _tag: 'refused', failure }),
+      onLeft: (failure): IdentityMapState => ({ _tag: 'refused', failure, previous }),
       onRight: (ready): IdentityMapState =>
         query.isError
           ? {
@@ -269,7 +288,7 @@ const useIdentityMap = (
             }
           : { _tag: 'ready', ...ready },
     })
-  }, [discovered, mapped, query.isError, query.error])
+  }, [discovered, mapped, previous, query.isError, query.error])
 
   return { state, choose }
 }

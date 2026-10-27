@@ -566,7 +566,7 @@ describe('ImporterScreen', () => {
     await userEvent.upload(screen.getByLabelText('Import file'), namedPatientHar('a.har'))
     const person = await screen.findByRole<HTMLSelectElement>('combobox', { name: TYRA })
     expect(person.value).toBe('stored:Patient/s-1')
-    expect(screen.getByText(/1 linked to record on the server, 0 new or provisional/)).toBeDefined()
+    expect(screen.getByText(/1 record on the server, 0 new records/)).toBeDefined()
     await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
