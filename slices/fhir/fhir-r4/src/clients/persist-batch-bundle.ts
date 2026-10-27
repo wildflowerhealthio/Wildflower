@@ -29,8 +29,9 @@ import { describeResource, type ResourceWriteTarget } from './persist-resources.
  * semantics: the server applies **every entry or none**, answering a
  * `transaction-response` of 2xx entries, or refusing the whole Bundle with an
  * error status and an OperationOutcome (`BundleRefused`), which is reported
- * against every entry: the refusal's status, and its issues. The Wildflower server (HFS on SQLite) runs a transaction
- * atomically; `fhir-r4-rust`'s `batch_bundle_at_base` tests pin it.
+ * against every entry: the refusal's status, and its issues. The Wildflower
+ * server (HFS on SQLite) runs a transaction atomically; `fhir-r4-rust`'s
+ * `batch_bundle_at_base` tests pin it.
  *
  * Each resource is encoded through {@link FhirResourceSchema} before it goes
  * in the bundle, since the endpoint's loose entry type encodes nothing.
@@ -39,10 +40,10 @@ import { describeResource, type ResourceWriteTarget } from './persist-resources.
  * encode, a transport error, a status no refusal is declared at, or a decode
  * error on the response bundle), every entry in the submitted set is reported
  * as failed against that one cause under {@link NO_RESPONSE_STATUS} — one bad
- * server response cannot silently drop the batch. The bundle carries one entry per
- * `Type/id`, and a resource with no id is never submitted (a PUT needs an id,
- * mirroring {@link upsertResource}); the outcomes come back one per resource
- * handed in, at its position, whatever was submitted for it.
+ * server response cannot silently drop the batch. The bundle carries one entry
+ * per `Type/id`, and a resource with no id is never submitted (a PUT needs an
+ * id, mirroring {@link upsertResource}); the outcomes come back one per
+ * resource handed in, at its position, whatever was submitted for it.
  *
  * Unlike {@link persistResources}, this reports the **whole** per-entry
  * outcome — every resource's echoed HTTP status and any

@@ -191,6 +191,41 @@ describe('persistBatchBundle', () => {
     ])
   })
 
+  it('never issues a request for an empty batch', async () => {
+    const captured = await runWith([], allOk)
+    expect(captured.requests).toEqual([])
+    expect(captured.outcomes).toEqual([])
+  })
+})
+
+/**
+ * Covers the transaction form of the write: the same submission typed
+ * `transaction`, so the server lands every entry or none, and a refused
+ * submission (the server answers the whole bundle with an error status and an
+ * OperationOutcome rather than a per-entry response) gives every entry that
+ * status and the server's issues. Two resources under one `Type/id` go out as
+ * one entry, which a transaction requires.
+ */
+describe('persistTransactionBundle', () => {
+  it('posts one Bundle{type:transaction} to / with one PUT entry per resource', async () => {
+    const captured = await runWith(
+      [makePatient('patient-1'), makeObservation('obs-1')],
+      allOk,
+      persistTransactionBundle
+    )
+
+    expect(captured.requests).toHaveLength(1)
+    const [request] = captured.requests
+    expect(request?.method).toBe('POST')
+    expect(request?.url).toBe(`${TEST_ORIGIN}/`)
+    expect(request?.body.type).toBe('transaction')
+    expect(request?.body.entry?.map((entry) => entry.request?.url)).toEqual([
+      'Patient/patient-1',
+      'Observation/obs-1',
+    ])
+    expect(captured.outcomes.every((outcome) => outcome.ok)).toBe(true)
+  })
+
   it('submits one entry per Type/id, the last occurrence, and gives each position its outcome', async () => {
     // Two overlapping exports of one record: a transaction naming it twice is
     // refused whole (FHIR R4 § 3.2.6), so it goes out once.
@@ -215,40 +250,6 @@ describe('persistBatchBundle', () => {
       ['p-1', '200 OK'],
       ['o-1', '201 Created'],
     ])
-  })
-
-  it('never issues a request for an empty batch', async () => {
-    const captured = await runWith([], allOk)
-    expect(captured.requests).toEqual([])
-    expect(captured.outcomes).toEqual([])
-  })
-})
-
-/**
- * Covers the transaction form of the write: the same submission typed
- * `transaction`, so the server lands every entry or none, and a refused
- * submission (the server answers the whole bundle with an error status and an
- * OperationOutcome rather than a per-entry response) gives every entry that
- * status and the server's issues.
- */
-describe('persistTransactionBundle', () => {
-  it('posts one Bundle{type:transaction} to / with one PUT entry per resource', async () => {
-    const captured = await runWith(
-      [makePatient('patient-1'), makeObservation('obs-1')],
-      allOk,
-      persistTransactionBundle
-    )
-
-    expect(captured.requests).toHaveLength(1)
-    const [request] = captured.requests
-    expect(request?.method).toBe('POST')
-    expect(request?.url).toBe(`${TEST_ORIGIN}/`)
-    expect(request?.body.type).toBe('transaction')
-    expect(request?.body.entry?.map((entry) => entry.request?.url)).toEqual([
-      'Patient/patient-1',
-      'Observation/obs-1',
-    ])
-    expect(captured.outcomes.every((outcome) => outcome.ok)).toBe(true)
   })
 
   it("gives every entry the refusal's status and the server's issues when it refuses the transaction", async () => {

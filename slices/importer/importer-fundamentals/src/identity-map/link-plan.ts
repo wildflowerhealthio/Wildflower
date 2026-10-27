@@ -5,13 +5,13 @@
  *
  * @remarks
  * A referent's mentions are redirected to its link target. The plan says what
- * each referent's link target is, what the resource under each resolved literal
- * reference becomes once it has assumed the identifiers of the referents
- * linked to it, and which decoded literal references move to a stored
- * resource. Built once per batch by {@link make}, so a referent one file holds
- * is the link target of a mention in another, and read through
- * {@link maybeRedirectOf} and {@link maybeResolvedResourceFor} by the resolution
- * of every file.
+ * each referent's link target is, what the resource under each resolved
+ * literal reference becomes once it has assumed the identifiers of the
+ * referents linked to it, and which decoded literal references move to a
+ * stored resource. Built once per batch by {@link make}, so a referent one
+ * file holds is the link target of a mention in another, and read through
+ * {@link maybeRedirectOf} and {@link maybeResolvedResourceFor} by the
+ * resolution of every file.
  *
  * @packageDocumentation
  */
@@ -138,10 +138,10 @@ const linkTargetsByLogicalReferenceKeyOf = (
  * @remarks
  * The referents are the whole batch's (`Referent.discover`), so a
  * `LinkToDecodedReferent` naming a referent one file holds is the link
- * target of a mention in another, and every file is resolved on the same plan. Fails with
- * `Referent.DuplicateReferent` when two decoded resources answer to one
- * logical reference, and with `LinkChoice.InvalidLinkChoice` when a choice
- * cannot be followed for its referent.
+ * target of a mention in another, and every file is resolved on the same
+ * plan. Fails with `Referent.DuplicateReferent` when two decoded resources
+ * answer to one logical reference, and with `LinkChoice.InvalidLinkChoice`
+ * when a choice cannot be followed for its referent.
  */
 const make = (
   decodedFiles: readonly DecodedFile.DecodedFile[],

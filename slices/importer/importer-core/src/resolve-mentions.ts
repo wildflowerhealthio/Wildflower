@@ -1,10 +1,10 @@
 import {
   type DecodedFile,
+  FileResolution,
   type FormatDecode,
   type Link,
   type LinkChoice,
   LinkPlan,
-  FileResolution,
   Referent,
   type ReferentLinkChoices,
 } from '@wildflowerhealthio/importer-fundamentals'
@@ -49,8 +49,8 @@ const discoverReferents = (
 type ResolvedBatch = DecodedBatch & {
   /**
    * The batch's linked records: the resources it only mentions, as they will
-   * be written (`FileResolution.linkedResources`), keyed by `FileResolution.linkedKey`.
-   * The batch's own slot, no format's.
+   * be written (`FileResolution.linkedResources`), keyed by
+   * `FileResolution.linkedKey`. The batch's own slot, no format's.
    */
   readonly linked: readonly DecodedFile.Resource[]
   /** Every referent of the batch with its link target, in discovery order (the plan's `links`). */
@@ -70,16 +70,16 @@ type ResolvedBatch = DecodedBatch & {
  * @remarks
  * Every claimed format is resolved on one plan over the batch's referents
  * (`LinkPlan.make` over every claimed format's decoded file), each format in
- * its own slot (`FileResolution.resolveFile`): the choices are made for the decoded
- * files' referents, so a mention in one format links to a referent another
- * holds. The resources the batch only mentions are its `linked` slot, no
- * format's, so a stored person several formats only mention is written
- * once, and the plan's `links` are its `links`. Section titles and review
- * keys are kept, so the selections survive, and a slot nothing moved in
- * comes back as it was. A batch with no claimed format comes back with no
- * linked records and no links. Which of a person's names
- * is current is judged at the clock's now, so the clock is the one input
- * besides the arguments. Fails with `Referent.DuplicateReferent` when two
+ * its own slot (`FileResolution.resolveFile`): the choices are made for the
+ * decoded files' referents, so a mention in one format links to a referent
+ * another holds. The resources the batch only mentions are its `linked`
+ * slot, no format's, so a stored person several formats only mention is
+ * written once, and the plan's `links` are its `links`. Section titles and
+ * review keys are kept, so the selections survive, and a slot nothing moved
+ * in comes back as it was. A batch with no claimed format comes back with no
+ * linked records and no links. Which of a person's names is current is
+ * judged at the clock's now, so the clock is the one input besides the
+ * arguments. Fails with `Referent.DuplicateReferent` when two
  * decoded resources under different ids are keyed by one logical reference,
  * and with `LinkChoice.InvalidLinkChoice` when a choice cannot be followed
  * for its referent.

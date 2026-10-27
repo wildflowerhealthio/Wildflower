@@ -60,7 +60,8 @@ const isDangling = (referenceAsWritten: IdentifierAndReference.ReferenceType): b
  * Every resource of `resolvedFile` outside every patient's compartment, and
  * every dangling mention of it, in review order.
  *
- * @param resolvedFile - A decoded file resolved on its batch's link plan (`FileResolution.resolveFile`)
+ * @param resolvedFile - A decoded file resolved on its batch's link plan
+ *   (`FileResolution.resolveFile`)
  */
 const collect = (resolvedFile: DecodedFile.DecodedFile): readonly Type[] =>
   DecodedFile.resources(resolvedFile).flatMap(({ key, resource }): readonly Type[] => {
