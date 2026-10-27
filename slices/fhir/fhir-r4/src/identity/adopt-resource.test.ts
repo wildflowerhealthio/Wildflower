@@ -15,6 +15,7 @@ import {
   DiagnosticReport,
   DocumentReference,
   type FhirResource,
+  FhirResourceSchema,
   Goal,
   ImagingStudy,
   MedicationDispense,
@@ -622,11 +623,25 @@ describe('adoptResource', () => {
       }
     })
 
-    test(`${resourceType}: passes a null-id resource straight through`, () => {
+    test(`${resourceType}: adopts a null-id resource under an id of its content`, () => {
       const idLess = { ...resource, id: null }
-      expect(adopt(idLess)).toBe(idLess)
+      const adopted = adopt(idLess)
+      expect(adopted.id).toMatch(/^wf-[0-9a-f]{32}$/)
+      // The same content, decoded afresh off its wire form sent in another
+      // key order, mints the same id.
+      const wire = Schema.encodeSync(FhirResourceSchema)(idLess)
+      const reordered = Object.fromEntries(Object.entries(wire).toReversed())
+      expect(adopt(Schema.decodeUnknownSync(FhirResourceSchema)(reordered)).id).toBe(adopted.id)
+      expect(adopted.id).not.toBe(adopt({ ...resource, id: 'src-1' }).id)
     })
   }
+
+  test('adopts two null-id resources of different content under different ids', () => {
+    const observation = { ...sample(Observation.Schema, 13), id: null }
+    const another = { ...sample(Observation.Schema, 14), id: null }
+    expect(another).not.toEqual(observation)
+    expect(adopt(another).id).not.toBe(adopt(observation).id)
+  })
 
   test('keeps every identifier the source already carried, and prepends its own', () => {
     const existing = [

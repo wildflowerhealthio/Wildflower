@@ -1,27 +1,31 @@
-import { Match } from 'effect'
+import { fnv1a64 } from '@wildflowerhealthio/kitchen-sink'
+import { Match, Schema } from 'effect'
 
 import {
   emptyReference,
   type IdentifierType,
   type ReferenceType,
 } from '../data-types/complex/identifier-and-reference.ts'
-import type {
-  Binary,
-  CarePlan,
-  DiagnosticReport,
-  DocumentReference,
-  FhirResource,
-  Goal,
-  ImagingStudy,
-  MedicationDispense,
-  MedicationRequest,
-  Observation,
-  Patient,
-  PlanDefinition,
-  PlanDefinitionAction,
-  Practitioner,
-  Procedure,
-  ServiceRequest,
+import type { WithMandatoryId } from '../data-types/with-mandatory-id.ts'
+import {
+  type Binary,
+  type CarePlan,
+  type DiagnosticReport,
+  type DocumentReference,
+  type FhirResource,
+  FhirResourceSchema,
+  type FhirResourceWithId,
+  type Goal,
+  type ImagingStudy,
+  type MedicationDispense,
+  type MedicationRequest,
+  type Observation,
+  type Patient,
+  type PlanDefinition,
+  type PlanDefinitionAction,
+  type Practitioner,
+  type Procedure,
+  type ServiceRequest,
 } from '../resources/index.ts'
 import { localResourceId } from './local-resource-id.ts'
 
@@ -181,7 +185,7 @@ const adoptBinary = (
   prepared: PreparedSource,
   originalId: string,
   binary: typeof Binary.Schema.Type
-): typeof Binary.Schema.Type => {
+): WithMandatoryId<typeof Binary.Schema.Type> => {
   const rewrite = rewriteReference(prepared)
   return {
     ...binary,
@@ -194,7 +198,7 @@ const adoptPatient = (
   prepared: PreparedSource,
   originalId: string,
   patient: typeof Patient.Schema.Type
-): typeof Patient.Schema.Type => {
+): WithMandatoryId<typeof Patient.Schema.Type> => {
   const rewrite = rewriteReference(prepared)
   return {
     ...patient,
@@ -214,7 +218,7 @@ const adoptObservation = (
   prepared: PreparedSource,
   originalId: string,
   observation: typeof Observation.Schema.Type
-): typeof Observation.Schema.Type => {
+): WithMandatoryId<typeof Observation.Schema.Type> => {
   const rewrite = rewriteReference(prepared)
   return {
     ...observation,
@@ -238,7 +242,7 @@ const adoptMedicationRequest = (
   prepared: PreparedSource,
   originalId: string,
   request: typeof MedicationRequest.Schema.Type
-): typeof MedicationRequest.Schema.Type => {
+): WithMandatoryId<typeof MedicationRequest.Schema.Type> => {
   const rewrite = rewriteReference(prepared)
   return {
     ...request,
@@ -273,7 +277,7 @@ const adoptMedicationDispense = (
   prepared: PreparedSource,
   originalId: string,
   dispense: typeof MedicationDispense.Schema.Type
-): typeof MedicationDispense.Schema.Type => {
+): WithMandatoryId<typeof MedicationDispense.Schema.Type> => {
   const rewrite = rewriteReference(prepared)
   return {
     ...dispense,
@@ -310,7 +314,7 @@ const adoptDocumentReference = (
   prepared: PreparedSource,
   originalId: string,
   document: typeof DocumentReference.Schema.Type
-): typeof DocumentReference.Schema.Type => {
+): WithMandatoryId<typeof DocumentReference.Schema.Type> => {
   const rewrite = rewriteReference(prepared)
   return {
     ...document,
@@ -340,7 +344,7 @@ const adoptDiagnosticReport = (
   prepared: PreparedSource,
   originalId: string,
   report: typeof DiagnosticReport.Schema.Type
-): typeof DiagnosticReport.Schema.Type => {
+): WithMandatoryId<typeof DiagnosticReport.Schema.Type> => {
   const rewrite = rewriteReference(prepared)
   return {
     ...report,
@@ -362,7 +366,7 @@ const adoptPractitioner = (
   prepared: PreparedSource,
   originalId: string,
   practitioner: typeof Practitioner.Schema.Type
-): typeof Practitioner.Schema.Type => {
+): WithMandatoryId<typeof Practitioner.Schema.Type> => {
   const rewrite = rewriteReference(prepared)
   return {
     ...practitioner,
@@ -379,7 +383,7 @@ const adoptServiceRequest = (
   prepared: PreparedSource,
   originalId: string,
   request: typeof ServiceRequest.Schema.Type
-): typeof ServiceRequest.Schema.Type => {
+): WithMandatoryId<typeof ServiceRequest.Schema.Type> => {
   const rewrite = rewriteReference(prepared)
   return {
     ...request,
@@ -403,7 +407,7 @@ const adoptImagingStudy = (
   prepared: PreparedSource,
   originalId: string,
   study: typeof ImagingStudy.Schema.Type
-): typeof ImagingStudy.Schema.Type => {
+): WithMandatoryId<typeof ImagingStudy.Schema.Type> => {
   const rewrite = rewriteReference(prepared)
   return {
     ...study,
@@ -431,7 +435,7 @@ const adoptCarePlan = (
   prepared: PreparedSource,
   originalId: string,
   plan: typeof CarePlan.Schema.Type
-): typeof CarePlan.Schema.Type => {
+): WithMandatoryId<typeof CarePlan.Schema.Type> => {
   const rewrite = rewriteReference(prepared)
   return {
     ...plan,
@@ -473,7 +477,7 @@ const adoptGoal = (
   prepared: PreparedSource,
   originalId: string,
   goal: typeof Goal.Schema.Type
-): typeof Goal.Schema.Type => {
+): WithMandatoryId<typeof Goal.Schema.Type> => {
   const rewrite = rewriteReference(prepared)
   return {
     ...goal,
@@ -502,7 +506,7 @@ const adoptPlanDefinition = (
   prepared: PreparedSource,
   originalId: string,
   plan: typeof PlanDefinition.Schema.Type
-): typeof PlanDefinition.Schema.Type => {
+): WithMandatoryId<typeof PlanDefinition.Schema.Type> => {
   const rewrite = rewriteReference(prepared)
   return {
     ...plan,
@@ -517,7 +521,7 @@ const adoptProcedure = (
   prepared: PreparedSource,
   originalId: string,
   procedure: typeof Procedure.Schema.Type
-): typeof Procedure.Schema.Type => {
+): WithMandatoryId<typeof Procedure.Schema.Type> => {
   const rewrite = rewriteReference(prepared)
   return {
     ...procedure,
@@ -548,6 +552,23 @@ const adoptProcedure = (
 }
 
 /**
+ * The id a resource that arrived with none stands under for adoption: a digest
+ * of its content, sixteen hex digits of FNV-1a 64 over its FHIR JSON.
+ *
+ * @remarks
+ * The JSON is the resource encoded through {@link FhirResourceSchema}, which
+ * writes its fields in schema order whatever order the source sent them in, so
+ * the same content always digests the same. The digest stands where the
+ * source's own id would — the hash input to {@link localResourceId} and the
+ * value of the source identifier adoption prepends — so the resource is
+ * adopted like any other.
+ */
+const contentIdOf = (resource: FhirResource): string =>
+  fnv1a64(JSON.stringify(Schema.encodeSync(FhirResourceSchema)(resource)))
+    .toString(16)
+    .padStart(16, '0')
+
+/**
  * Re-key a resource under this source's namespace: derive its local id, record
  * the source's own id as `identifier[0]`, and rewrite its references so they
  * still point at their targets.
@@ -556,8 +577,10 @@ const adoptProcedure = (
  * @returns A function from one decoded resource to its adopted form
  *
  * @remarks
- * A resource whose `id` is `null` passes through unchanged: there is no identity
- * to adopt, and `upsertResource` cannot write it either.
+ * A resource whose `id` is `null` (third-party FHIR JSON, where `id` is
+ * optional) is adopted under an id of its content ({@link contentIdOf}) in
+ * place of the source's, so every adopted resource has one, and a re-import of
+ * the same capture lands on the same id rather than beside it.
  *
  * `Binary` is adopted but gets **no** identifier — FHIR R4 gives `Binary` no
  * `identifier` element — so its original id survives only in the provenance
@@ -575,11 +598,8 @@ const adoptProcedure = (
  */
 const adoptResource = (source: SourceIdentity) => {
   const prepared = prepare(source)
-  return (resource: FhirResource): FhirResource => {
-    const originalId = resource.id
-    if (originalId === null) {
-      return resource
-    }
+  return (resource: FhirResource): FhirResourceWithId => {
+    const originalId = resource.id ?? contentIdOf(resource)
     // `Match.exhaustive` over the closed union rather than a `switch`: a
     // resource type added to `FhirResource` without an adopt function here is a
     // compile error, not a resource that silently keeps its source's id.

@@ -87,8 +87,12 @@ loudly.
 `adoptResource(source)` is the per-resource rewrite. Given a `SourceIdentity`
 (`{ system, baseUrl? }`) it:
 
-1. **Passes a null-id resource straight through.** There is no identity to adopt,
-   and `upsertResource` cannot write one either.
+1. **Takes the source's id, or one of the content.** A resource whose `id` is
+   `null` (third-party FHIR JSON, where `id` is optional) stands under a digest
+   of its content instead: FNV-1a 64 over its FHIR JSON as `FhirResourceSchema`
+   encodes it, fields in schema order, as sixteen hex digits. So every adopted
+   resource has an id (`adoptResource` returns `FhirResourceWithId`), and a
+   re-import of the same capture lands on the same one.
 2. **Derives the id** from `(system, resourceType, originalId)`.
 3. **Prepends one `Identifier`** carrying the source's own id —
    `identifier[0] = { system: <source system>, value: <original id> }`. Every
@@ -237,7 +241,7 @@ Consequences worth knowing:
   URL it recognized, so this arm guards a misconfiguration, not a normal
   response.
 - **The guard is per kind, and reads the whole `FhirResource` union.** Adoption
-  widens: `adoptResource` is declared `FhirResource → FhirResource`, because
+  widens: `adoptResource` is declared `FhirResource → FhirResourceWithId`, because
   TypeScript cannot correlate the variant matched with the branch taken. A
   combinator returning the kind's type unchanged would therefore be asserting
   something it does not deliver for a kind that declares a narrower element type.
