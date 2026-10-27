@@ -26,9 +26,10 @@ write plan with this package alone.
   key-to-value correlation the record's type states, so a derived version needs
   an `as FormatSettings` and checks nothing, while the literal makes a missing
   format a compile error. Adding a format is one `FormatSettings`
-  entry, one registry entry, one default — and `collectFormats` below. All
-  four are mapped or exhaustive types over `FormatKind`, so missing any of
-  them is a compile error.
+  entry, one registry entry, one default — and `collectFormats` below, which
+  the identity map's lift also assembles its batch through. All four are
+  mapped or exhaustive types over `FormatKind`, so missing any of them is a
+  compile error.
 - `src/read-batch.ts` — the read half as pure functions over a
   **`ReadRegistry`** (`Pick<BoundFormat<K>, 'format' | 'detect' | 'decode'>` per
   format — deliberately not the whole `BoundFormat`, so a test can stand up a
@@ -56,7 +57,19 @@ write plan with this package alone.
   **`collectFormats`** is the one place the registry is enumerated by name,
   and its remarks say why: TypeScript drops the correlation between a computed
   union key and its value, so a record assembled from a `kind` variable is
-  checked against nothing.
+  checked against nothing. Its slots are typed by **`FormatResults`**.
+- `src/identity-map.ts` — the identity map lifted over a batch, service-free
+  Effects on the clock. **`discoverReferents(batch)`** is
+  `Referent.discover` over every claimed format's `decoded`: one
+  referent per identity across formats, format-then-review order, those with
+  a resource first. **`applyIdentityMap(batch, linkChoices)`** places every
+  claimed format's `decoded` on one plan over the batch's referents
+  (`IdentityMap.apply`), so a mention in one format links to a referent
+  another holds, and appends the Linked section once, to the first claimed
+  format, so a stored person several formats mention is written once. Keys
+  and section titles are kept; the batch is reassembled through
+  `collectFormats`, so every other slot comes back as it was and an empty
+  batch comes back as itself. It fails as the stage does.
 - `src/plan-write.ts` — **`planFormatWrite(result, selection)`**, the pure half
   of the confirm: from one format's decode result it produces a `write` of
   exactly the reviewed resources (exclusions applied, inline edits
@@ -67,9 +80,9 @@ write plan with this package alone.
 
 ## Layering
 
-Depends on `importer-fundamentals` (the contract, `PickedFile`, `StagedImport`),
-the three `*-importer-core` bindings (the importers the registry lists),
-`fhir-r4` (the `FhirResource` type), and `effect`. Depended on by
+Depends on `importer-fundamentals` (the contract, `PickedFile`, `StagedImport`,
+the identity map), the three `*-importer-core` bindings (the importers the
+registry lists), `fhir-r4` (the `FhirResource` type), and `effect`. Depended on by
 `importer-react`. Imports no `*-importer-react`, no `web-trace-core`, and
 nothing from `slices/http-extraction`.
 

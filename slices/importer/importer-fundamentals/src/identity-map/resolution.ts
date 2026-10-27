@@ -19,7 +19,7 @@ type Resolved = Either.Either<LinkTarget.Type, LinkChoice.InvalidLinkChoice>
 /** What `CreateResource` places `referent` on: its decoded resource, a provisional one for its logical reference, else nothing. */
 const linkTargetOfCreate = (referent: Referent.Type): LinkTarget.Type =>
   Referent.match(referent, {
-    AsResource: ({ resource }) => LinkTarget.Decoded({ resource }),
+    AsResource: ({ resource }) => LinkTarget.Decoded({ resource, storedCopy: Option.none() }),
     ByMentionOnly: ({ logicalReference }) =>
       Option.match(LinkableResource.tryProvisionalFrom(logicalReference), {
         onNone: () => LinkTarget.Unlinked(),
@@ -62,9 +62,11 @@ const sameType = (referent: Referent.Type, resource: { readonly resourceType: st
  * @remarks
  * A choice fails with `LinkChoice.InvalidLinkChoice` when the referent's kind
  * does not allow it (`DontLink` or `LinkToDecodedReferent` with a resource,
- * `CreateResource` named only by mentions with no provisional form), when it
- * names a stored resource or a referent of another type, or a referent
- * `referents` does not hold; a choice that leads to one fails with it.
+ * `CreateResource` named only by mentions with no provisional form,
+ * `UpdateStoredResource` named only by mentions), when it names a stored
+ * resource or a referent of another type, a stored resource to update under
+ * another id than the referent's own, or a referent `referents` does not
+ * hold; a choice that leads to one fails with it.
  * A `LinkToDecodedReferent` cycle resolves to `CreateResource` for the first
  * of its members, in key order, that it places on a resource, whichever
  * member is resolved, so every referent in it lands on the same one resource.
@@ -86,7 +88,7 @@ const linksOf = (
     link: LinkChoice.LinkToDecodedReferentType
   ): Resolved =>
     Option.match(HashMap.get(referentsByKey, link.referentKey), {
-      onNone: () => invalid(current, link, 'LinkedReferentNotInFile'),
+      onNone: () => invalid(current, link, 'LinkedReferentNotInBatch'),
       onSome: (linked) => {
         if (!sameType(current, { resourceType: linked.logicalReference.type })) {
           return invalid(current, link, 'LinkedReferentOfAnotherType')
@@ -111,6 +113,17 @@ const linksOf = (
         Referent.match(current, {
           AsResource: () => invalid(current, choice, 'NotAllowedForReferent'),
           ByMentionOnly: () => Either.right(LinkTarget.Unlinked()),
+        }),
+      UpdateStoredResource: ({ resource: storedCopy }) =>
+        Referent.match(current, {
+          AsResource: ({ resource: decoded }) =>
+            LinkableResource.literalReferenceOf(decoded) ===
+            LinkableResource.literalReferenceOf(storedCopy)
+              ? Either.right(
+                  LinkTarget.Decoded({ resource: decoded, storedCopy: Option.some(storedCopy) })
+                )
+              : invalid(current, choice, 'StoredResourceUnderAnotherId'),
+          ByMentionOnly: () => invalid(current, choice, 'NotAllowedForReferent'),
         }),
       LinkToStoredResource: ({ resource }) =>
         sameType(current, resource)

@@ -2,8 +2,9 @@
  * The pure core of the importer slice: the closed format registry — every
  * registered {@link FileImporter}, typed per format — and the batch
  * machinery a shell drives: group a pick by format, read it into a
- * {@link BatchDecodeResult}, re-decode one format under new settings, and
- * plan a format's write from its reviewed selection.
+ * {@link BatchDecodeResult}, re-decode one format under new settings, find
+ * the batch's referents and place it on the identity map, and plan a format's
+ * write from its reviewed selection.
  *
  * @remarks
  * Sits between the format bindings (`har-importer-core`,
@@ -27,3 +28,4 @@ export {
   type UnrecognizedFile,
 } from './read-batch.ts'
 export { planFormatWrite, type SkipReason, type WritePlan } from './plan-write.ts'
+export { applyIdentityMap, discoverReferents } from './identity-map.ts'
