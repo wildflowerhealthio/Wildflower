@@ -30,8 +30,9 @@ import { STORED_RESOURCES_QUERY_KEY } from '../queries/keys.ts'
  * worth of people and their providers, not a hospital's, so the whole list is
  * read up front and offered at once. Each resource arrives with the label the
  * review shows it by, read on the clock the read runs on. The read starts as
- * soon as the batch's referents are known (`useDefaultLinkChoicesSearch` prefetches it,
- * through {@link storedResourcesQuery}) rather than when the rows mount.
+ * soon as the batch's referents are known (`useDefaultLinkChoicesSearch`
+ * prefetches it, through {@link storedResourcesQuery}) rather than when the
+ * rows mount.
  *
  * @packageDocumentation
  */

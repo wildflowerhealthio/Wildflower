@@ -126,4 +126,4 @@ const buildAll = (
 }
 
 export { buildAll }
-export type { BuiltReferentLine as Built, ReferentLineInputs as Inputs, ReferentLine as Type }
+export type { BuiltReferentLine as Built, ReferentLine as Type }
