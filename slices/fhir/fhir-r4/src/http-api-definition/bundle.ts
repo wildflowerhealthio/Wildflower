@@ -1,5 +1,5 @@
 import { HttpApiEndpoint, HttpApiError, HttpApiGroup } from '@effect/platform'
-import { Schema } from 'effect'
+import { Data, Schema } from 'effect'
 
 import * as Bundle from '../data-types/resources/bundle.ts'
 
@@ -35,10 +35,54 @@ import * as Bundle from '../data-types/resources/bundle.ts'
  * means the id is not present) and for the write path (a non-2xx means that
  * entry did not write).
  */
+/**
+ * A Bundle the server refused whole: the HTTP `status` it answered, as
+ * `"NNN Text"` like an entry's echoed `response.status`, and the
+ * OperationOutcome it answered with.
+ *
+ * @remarks
+ * FHIR R4 § 3.2.6: a transaction that fails is answered with an error for
+ * the Bundle and an OperationOutcome saying why, not a per-entry response.
+ * HFS does so at the status of the failure (`400` for a refused entry, `412`
+ * for a failed condition, `500` for a rollback, `501` for a backend without
+ * transactions, `504` for a timeout).
+ */
+class BundleRefused extends Data.TaggedError('BundleRefused')<{
+  readonly status: string
+  readonly outcome: Bundle.OperationOutcomeType
+}> {}
+
+/**
+ * The refusal answered at HTTP `code`: the response body, an
+ * OperationOutcome, read as a {@link BundleRefused} carrying `code` and its
+ * `reason` phrase, since the status is the response's, not the body's.
+ */
+const refusedAt = (
+  code: number,
+  reason: string
+): Schema.Schema<BundleRefused, typeof Bundle.OperationOutcomeSchema.Encoded> =>
+  Schema.transform(
+    Bundle.OperationOutcomeSchema,
+    Schema.declare((value: unknown): value is BundleRefused => value instanceof BundleRefused),
+    {
+      strict: true,
+      decode: (outcome) => new BundleRefused({ status: `${code} ${reason}`, outcome }),
+      encode: (refused) => refused.outcome,
+    }
+  )
+
 const httpApiGroup = HttpApiGroup.make('Bundle').add(
   HttpApiEndpoint.post('Submit', `/`)
     .setPayload(Bundle.Schema(Schema.Any))
     .addSuccess(Bundle.Schema(Schema.Any))
+    .addError(refusedAt(400, 'Bad Request'), { status: 400 })
+    .addError(refusedAt(404, 'Not Found'), { status: 404 })
+    .addError(refusedAt(409, 'Conflict'), { status: 409 })
+    .addError(refusedAt(412, 'Precondition Failed'), { status: 412 })
+    .addError(refusedAt(422, 'Unprocessable Entity'), { status: 422 })
+    .addError(refusedAt(500, 'Internal Server Error'), { status: 500 })
+    .addError(refusedAt(501, 'Not Implemented'), { status: 501 })
+    .addError(refusedAt(504, 'Gateway Timeout'), { status: 504 })
     .addError(HttpApiError.ServiceUnavailable)
     .addError(HttpApiError.Forbidden)
 )

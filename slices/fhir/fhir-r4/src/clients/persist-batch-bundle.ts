@@ -28,18 +28,18 @@ import { describeResource, type ResourceWriteTarget } from './persist-resources.
  * of the bundle still applies. A transaction Bundle is § 3.2.6 transaction
  * semantics: the server applies **every entry or none**, answering a
  * `transaction-response` of 2xx entries, or refusing the whole Bundle with an
- * OperationOutcome, which the whole-submission failure below reports against
- * every entry. The Wildflower server (HFS on SQLite) runs a transaction
+ * error status and an OperationOutcome (`BundleRefused`), which is reported
+ * against every entry: the refusal's status, and its issues. The Wildflower server (HFS on SQLite) runs a transaction
  * atomically; `fhir-r4-rust`'s `batch_bundle_at_base` tests pin it.
  *
  * Each resource is encoded through {@link FhirResourceSchema} before it goes
  * in the bundle, since the endpoint's loose entry type encodes nothing.
  *
- * If the whole `POST /` fails (a resource that does not encode, a transport
- * error, a non-2xx on the bundle itself, or a decode error on the response
- * bundle), every entry in the
- * submitted set is reported as failed against that one cause — one bad server
- * response cannot silently drop the batch. The bundle carries one entry per
+ * If the whole `POST /` fails some other way (a resource that does not
+ * encode, a transport error, a status no refusal is declared at, or a decode
+ * error on the response bundle), every entry in the submitted set is reported
+ * as failed against that one cause under {@link NO_RESPONSE_STATUS} — one bad
+ * server response cannot silently drop the batch. The bundle carries one entry per
  * `Type/id`, and a resource with no id is never submitted (a PUT needs an id,
  * mirroring {@link upsertResource}); the outcomes come back one per resource
  * handed in, at its position, whatever was submitted for it.
@@ -76,8 +76,9 @@ interface WriteIssue {
  *
  * @remarks
  * `status` is the server's echoed `"NNN Text"` verbatim when there was a
- * response entry, the sentinel {@link NO_RESPONSE_STATUS} when the whole
- * bundle failed or the response was truncated, and the sentinel
+ * response entry, the refusal's own `"NNN Text"` when the server refused the
+ * whole bundle, the sentinel {@link NO_RESPONSE_STATUS} when the round trip
+ * failed any other way or the response was truncated, and the sentinel
  * {@link NOT_SUBMITTED_STATUS} for a resource with no id — so a caller can
  * always group by `status` without a special case.
  */
@@ -88,12 +89,12 @@ interface BatchEntryOutcome {
   readonly issues: readonly WriteIssue[]
 }
 
-/** The `status` a resource gets when the server returned no entry for it. */
+/** The `status` a resource gets when the server answered nothing for it. */
 const NO_RESPONSE_STATUS = 'No response'
 
-/** The issues an entry's `response.outcome` OperationOutcome carries, as {@link WriteIssue}s. */
-const issuesOf = (response: Bundle.EntryResponseType | null | undefined): readonly WriteIssue[] =>
-  (response?.outcome?.issue ?? []).map((issue) => ({
+/** The issues an OperationOutcome carries, as {@link WriteIssue}s. */
+const issuesOf = (outcome: Bundle.OperationOutcomeType | null | undefined): readonly WriteIssue[] =>
+  (outcome?.issue ?? []).map((issue) => ({
     severity: issue.severity,
     code: issue.code,
     text: issue.details?.text ?? issue.diagnostics ?? '',
@@ -150,7 +151,7 @@ const answeredOutcome = (
         target: describeResource(resource),
         status: response.status,
         ok: statusOk(response.status),
-        issues: issuesOf(response),
+        issues: issuesOf(response.outcome),
       }
 
 /**
@@ -175,10 +176,11 @@ const submittedOnce = (resources: ReadonlyArray<FhirResource>): readonly FhirRes
  * @param resources - The batch to write
  * @returns One {@link BatchEntryOutcome} per resource of `resources`, at its
  *   position: its echoed status, whether that status succeeded, and any server
- *   diagnostics. If the whole round trip failed (a refused transaction among
- *   the ways), every submitted resource is reported with
- *   {@link NO_RESPONSE_STATUS} and the underlying cause as an issue — never
- *   failing, so one bad batch cannot fail the caller's run
+ *   diagnostics. A refused bundle gives every submitted resource the
+ *   refusal's status and its OperationOutcome's issues; any other failed
+ *   round trip gives it {@link NO_RESPONSE_STATUS} and the underlying cause
+ *   as an issue — never failing, so one bad batch cannot fail the caller's
+ *   run
  *
  * @remarks
  * The bundle carries **one entry per `Type/id`**: when `resources` names one
@@ -246,33 +248,40 @@ const persistBundle = (
       Schema.encode(FhirResourceSchema)(resource)
     ).pipe(
       Effect.flatMap((encoded) => client.Bundle.Submit({ payload: payloadOf(encoded) })),
-      // Every entry inherits the whole-bundle failure so a submission-level
-      // failure cannot silently drop the batch. `matchEffect` catches on the
-      // unknown error channel — a resource that does not encode counts, as
-      // does a decode error on the response bundle, a 5xx and a transport
-      // failure.
-      Effect.matchEffect({
-        onSuccess: (response) => Effect.succeed({ _tag: 'ok' as const, response }),
-        onFailure: (cause: unknown) => Effect.succeed({ _tag: 'failed' as const, cause }),
-      })
+      Effect.map((response) => ({ _tag: 'answered' as const, response })),
+      // A refusal is the server's own answer for the bundle: its status and
+      // its OperationOutcome's issues are every entry's.
+      Effect.catchTag('BundleRefused', (refused) =>
+        Effect.succeed({
+          _tag: 'failed' as const,
+          status: refused.status,
+          issues: issuesOf(refused.outcome),
+        })
+      ),
+      // Every entry inherits any other whole-bundle failure, so it cannot
+      // silently drop the batch: a resource that does not encode, a decode
+      // error on the response bundle, a status no refusal is declared at and a
+      // transport failure, each under the no-response sentinel.
+      Effect.catchAll((cause: unknown) =>
+        Effect.succeed({
+          _tag: 'failed' as const,
+          status: NO_RESPONSE_STATUS,
+          issues: [
+            { severity: 'error', code: 'exception', text: unknownErrorToString(cause) },
+          ] satisfies readonly WriteIssue[],
+        })
+      )
     )
 
     if (result._tag === 'failed') {
-      // The whole submission failed: attribute the one cause to every entry as
-      // an error issue, under the no-response sentinel status.
-      const issue: WriteIssue = {
-        severity: 'error',
-        code: 'exception',
-        text: unknownErrorToString(result.cause),
-      }
       return resources.map((resource): BatchEntryOutcome =>
         resource.id === null
           ? notSubmitted(resource)
           : {
               target: describeResource(resource),
-              status: NO_RESPONSE_STATUS,
+              status: result.status,
               ok: false,
-              issues: [issue],
+              issues: result.issues,
             }
       )
     }
@@ -319,9 +328,9 @@ const persistBatchBundle = (
  * written as one unit.
  *
  * @param resources - The batch to write
- * @returns Every resource's outcome, at its position, as {@link persistBundle} gives
- *   it: all 2xx when the transaction landed, every one failed with the
- *   server's refusal when it did not
+ * @returns Every resource's outcome, at its position, as {@link persistBundle}
+ *   gives it: all 2xx when the transaction landed, every one failed under the
+ *   server's refusal, its status and its issues, when it did not
  */
 const persistTransactionBundle = (
   resources: ReadonlyArray<FhirResource>
@@ -330,9 +339,10 @@ const persistTransactionBundle = (
 
 /**
  * Some entries of a batch were not accepted: each one the server answered with
- * a non-2xx status, or with no status at all ({@link NO_RESPONSE_STATUS}, which
- * every entry gets when the whole round trip failed), and each resource with
- * no id ({@link NOT_SUBMITTED_STATUS}).
+ * a non-2xx status (the refusal's, for every entry, when it refused the
+ * bundle), or with no status at all ({@link NO_RESPONSE_STATUS}, which every
+ * entry gets when the round trip failed any other way), and each resource
+ * with no id ({@link NOT_SUBMITTED_STATUS}).
  */
 class BatchEntriesRejected extends Data.TaggedError('BatchEntriesRejected')<{
   /** A one-line summary naming each rejected entry's target and status. */

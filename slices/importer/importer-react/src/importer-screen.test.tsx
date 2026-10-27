@@ -247,16 +247,16 @@ describe('ImporterScreen', () => {
     })
     await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
 
-    // Assert — nothing imported: every entry is reported under the one
-    // refusal, and the server holds none of them (retry backoff runs on the
-    // real clock).
+    // Assert — nothing imported: every entry is reported under the server's
+    // refusal, its status and its reason, and the server holds none of them.
     await waitFor(
       () => {
         expect(screen.getByRole('heading', { name: /Nothing was imported/ })).toBeDefined()
       },
       { timeout: 6000 }
     )
-    expect(screen.getByText(/No response · 4 resources/)).toBeDefined()
+    expect(screen.getByText(/400 Bad Request · 4 resources/)).toBeDefined()
+    expect(screen.getAllByText(/Transaction failed at entry/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/DocumentReference\//).length).toBeGreaterThan(0)
     expect(screen.getByRole('status').textContent).toMatch(/Wrote 0 of 4/)
     expect(writes().filter(isResourceWrite)).toHaveLength(0)
@@ -616,7 +616,7 @@ describe('ImporterScreen', () => {
 // Helpers
 
 const jsonResponse = (body: unknown, status = 200): Response =>
-  new Response(status === 200 ? JSON.stringify(body) : '', {
+  new Response(body === null ? '' : JSON.stringify(body), {
     status,
     headers: { 'content-type': 'application/json' },
   })
@@ -755,8 +755,8 @@ const urlWithParams = (request: HttpClientRequest.HttpClientRequest): string => 
  * every held resource of its type, a read with the held resource, and a PUT
  * stores and echoes its body (or a 503 when `failWrite` says so). A
  * `transaction` bundle one of whose entries `failWrite` rejects is refused
- * as a whole, as HFS refuses one: a 400, nothing stored and no entry
- * recorded as written. Enough to drive the whole flow
+ * as a whole, as HFS refuses one: a 400 with an OperationOutcome, nothing
+ * stored and no entry recorded as written. Enough to drive the whole flow
  * twice over and read the log back.
  */
 const routingServer = (config: {
@@ -797,7 +797,24 @@ const routingServer = (config: {
           )
           if (parsed.type === 'transaction' && refusedEntry !== undefined) {
             recorded.push({ method: request.method, url: request.url, body })
-            return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(null, 400)))
+            return Effect.succeed(
+              HttpClientResponse.fromWeb(
+                request,
+                jsonResponse(
+                  {
+                    resourceType: 'OperationOutcome',
+                    issue: [
+                      {
+                        severity: 'error',
+                        code: 'processing',
+                        diagnostics: `Transaction failed at entry ${entries.indexOf(refusedEntry)}`,
+                      },
+                    ],
+                  },
+                  400
+                )
+              )
+            )
           }
           const responseEntries: unknown[] = []
           for (const entry of entries) {

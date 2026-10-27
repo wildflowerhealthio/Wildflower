@@ -40,12 +40,16 @@ describe('generateFhirR4OpenApiSpec', () => {
 
     // Assert — no operation advertises Effect's HttpApiDecodeError 400, and the
     // schemas that existed only to describe it are pruned. `FhirDateSearch`
-    // survives because the FHIR contract itself names it (the `date` /
-    // `birthdate` search parameter value); pinning the exact set keeps a stray
-    // schema from creeping back.
+    // and `OperationOutcome` survive because the FHIR contract itself names
+    // them (the `date` / `birthdate` search parameter value, and a refused
+    // Bundle's body); pinning the exact set keeps a stray schema from
+    // creeping back.
     const json = JSON.stringify(spec)
     expect(json).not.toContain('HttpApiDecodeError')
-    expect(Object.keys(spec.components?.schemas ?? {})).toEqual(['FhirDateSearch'])
+    expect(Object.keys(spec.components?.schemas ?? {})).toEqual([
+      'FhirDateSearch',
+      'OperationOutcome',
+    ])
   })
 
   it('should match the committed snapshot embedded by fhir-r4-rust (regenerate with UPDATE_OPENAPI=1)', () => {
@@ -73,8 +77,15 @@ describe('generateFhirR4OpenApiSpec', () => {
 
 // Helpers
 
+interface SpecSchema {
+  $ref?: string
+  anyOf?: SpecSchema[]
+}
 interface SpecOperation {
-  responses?: Record<string, { content?: Record<string, { schema?: { $ref?: string } }> }>
+  responses?: Record<
+    string,
+    { description?: string; content?: Record<string, { schema?: SpecSchema }> }
+  >
 }
 interface Spec {
   info: { title: string; version: string; description?: string }
@@ -110,15 +121,25 @@ function generateFhirR4OpenApiSpec(): Spec {
   for (const operations of Object.values(spec.paths)) {
     for (const operation of Object.values(operations)) {
       const badRequest = operation.responses?.['400']
-      const schema = badRequest?.content?.['application/json']?.schema
-      if (schema?.$ref === '#/components/schemas/HttpApiDecodeError') {
+      const content = badRequest?.content?.['application/json']
+      const schema = content?.schema
+      if (schema?.$ref === DECODE_ERROR_REF) {
         delete operation.responses?.['400']
+      } else if (content !== undefined && badRequest !== undefined && schema?.anyOf !== undefined) {
+        // A 400 the operation declares itself (the Bundle refusal), which
+        // Effect merges with its own: keep the declared one alone.
+        const declared = schema.anyOf.filter((member) => member.$ref !== DECODE_ERROR_REF)
+        content.schema = declared.length === 1 ? declared[0] : { anyOf: declared }
+        badRequest.description = 'Error'
       }
     }
   }
   pruneUnreferencedSchemas(spec)
   return spec
 }
+
+/** The `$ref` of the decode error Effect adds to every operation's 400. */
+const DECODE_ERROR_REF = '#/components/schemas/HttpApiDecodeError'
 
 /** Repeatedly drop `components.schemas` entries with no `$ref` pointing at them
  * anywhere in the document (transitive: `HttpApiDecodeError` → `Issue` → `PropertyKey`). */

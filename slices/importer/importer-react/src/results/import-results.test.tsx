@@ -81,18 +81,18 @@ describe('ImportResults', () => {
 
   it('frames a refused transaction as nothing imported, every entry under its one cause', () => {
     const refused = [
-      { severity: 'error', code: 'exception', text: 'transaction refused' },
+      { severity: 'error', code: 'processing', text: 'Transaction failed at entry 1' },
     ] satisfies readonly WriteIssue[]
     const batch = batchOf(
-      [importedFile('a', [failed('Patient/p1', 'No response', refused)])],
-      [{ ...failed('Patient/s1', 'No response', refused), title: 'Linked records' }]
+      [importedFile('a', [failed('Patient/p1', '400 Bad Request', refused)])],
+      [{ ...failed('Patient/s1', '400 Bad Request', refused), title: 'Linked records' }]
     )
 
     render(<ImportResults batch={batch} onStartOver={vi.fn()} />)
 
     expect(screen.getByRole('heading', { name: FAILED_HEADING })).toBeDefined()
     expect(screen.getByRole('status').textContent).toMatch(/Wrote 0 of 2/)
-    expect(screen.getByText(/No response · 2 resources/)).toBeDefined()
+    expect(screen.getByText(/400 Bad Request · 2 resources/)).toBeDefined()
     expect(screen.getByText('Patient/s1')).toBeDefined()
   })
 

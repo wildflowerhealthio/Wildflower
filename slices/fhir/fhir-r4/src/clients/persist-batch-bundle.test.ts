@@ -227,8 +227,9 @@ describe('persistBatchBundle', () => {
 /**
  * Covers the transaction form of the write: the same submission typed
  * `transaction`, so the server lands every entry or none, and a refused
- * submission (the server answers the whole bundle with an error rather than
- * a per-entry response) attributes every entry to that one cause.
+ * submission (the server answers the whole bundle with an error status and an
+ * OperationOutcome rather than a per-entry response) gives every entry that
+ * status and the server's issues.
  */
 describe('persistTransactionBundle', () => {
   it('posts one Bundle{type:transaction} to / with one PUT entry per resource', async () => {
@@ -250,7 +251,44 @@ describe('persistTransactionBundle', () => {
     expect(captured.outcomes.every((outcome) => outcome.ok)).toBe(true)
   })
 
-  it('attributes every entry to the sentinel status when the server refuses the transaction', async () => {
+  it("gives every entry the refusal's status and the server's issues when it refuses the transaction", async () => {
+    // HFS answers a transaction with a refused entry as a 400 and one
+    // OperationOutcome for the bundle (fhir-r4-rust's batch_bundle_at_base).
+    const refusal = new Response(
+      JSON.stringify({
+        resourceType: 'OperationOutcome',
+        issue: [
+          {
+            severity: 'error',
+            code: 'processing',
+            diagnostics: 'Transaction failed at entry 1: resource type mismatch',
+          },
+        ],
+      }),
+      { status: 400, headers: { 'content-type': 'application/fhir+json' } }
+    )
+    const captured = await runWith(
+      [makePatient('a'), makeObservation(null), makeObservation('b')],
+      rawResponse(refusal),
+      persistTransactionBundle
+    )
+
+    expect(captured.outcomes.map((outcome) => [outcome.target.id, outcome.status])).toEqual([
+      ['a', '400 Bad Request'],
+      ['<no-id>', NOT_SUBMITTED_STATUS],
+      ['b', '400 Bad Request'],
+    ])
+    expect(captured.outcomes.every((outcome) => !outcome.ok)).toBe(true)
+    expect(captured.outcomes[2]?.issues).toEqual([
+      {
+        severity: 'error',
+        code: 'processing',
+        text: 'Transaction failed at entry 1: resource type mismatch',
+      },
+    ])
+  })
+
+  it('attributes every entry to the sentinel status when a refusal carries no OperationOutcome', async () => {
     const captured = await runWith(
       [makePatient('a'), makeObservation('b')],
       rawResponse(new Response('', { status: 400 })),
@@ -262,6 +300,7 @@ describe('persistTransactionBundle', () => {
       NO_RESPONSE_STATUS,
       NO_RESPONSE_STATUS,
     ])
+    expect(captured.outcomes[0]?.issues[0]?.code).toBe('exception')
   })
 })
 
