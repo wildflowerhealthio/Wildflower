@@ -11,6 +11,7 @@ import {
 } from '@wildflowerhealthio/importer-core'
 import {
   LinkChoice,
+  LinkableResource,
   LinkPlan,
   type LinkTarget,
   Referent,
@@ -110,7 +111,10 @@ const searchDefaults = (
       Array.filterMap((choice) =>
         LinkChoice.is('LinkToStoredResource')(choice) ? Option.some(choice.resource) : Option.none()
       ),
-      Array.dedupeWith((left, right) => left.id === right.id),
+      Array.dedupeWith(
+        (left, right) =>
+          LinkableResource.literalReferenceOf(left) === LinkableResource.literalReferenceOf(right)
+      ),
       Effect.forEach(labeled)
     )
     return { linkChoices, found }
@@ -124,20 +128,25 @@ interface Placed {
 }
 
 /**
- * `batch` placed on `linkChoices`, less every choice the stage cannot follow
- * (a re-decode may have changed a referent's kind, or removed the referent a
- * choice linked to), so such a referent takes its default.
+ * `batch` placed on the reviewer's `chosen` choices over the searched
+ * `defaults`, less every choice the stage cannot follow (a re-decode may have
+ * changed a referent's kind, or removed the referent a choice linked to).
  *
  * @remarks
- * Each failure names the choice the stage could not follow, and that choice
- * is removed before placing again; a failure naming a referent with no choice
- * is a defect in the stage's defaults, so it dies rather than loop.
+ * Each failure names the choice the stage could not follow. The reviewer's
+ * own choice for that referent goes first, so the referent falls back to its
+ * searched default; a default that cannot be followed either goes next, so
+ * it falls back to its kind's default. A failure naming a referent with no
+ * choice at all is a defect in the stage's defaults, so it dies rather than
+ * loop.
  */
 const placeFollowableChoices = (
   batch: BatchDecodeResult,
-  linkChoices: ReferentLinkChoices.Type
-): Effect.Effect<Placed, Referent.DuplicateReferent> =>
-  Effect.all({
+  defaults: ReferentLinkChoices.Type,
+  chosen: ReferentLinkChoices.Type
+): Effect.Effect<Placed, Referent.DuplicateReferent> => {
+  const linkChoices = HashMap.union(defaults, chosen)
+  return Effect.all({
     batch: applyIdentityMap(batch, linkChoices),
     plan: LinkPlan.make(
       claimedFormats(batch).map((kind) => batch[kind].decoded),
@@ -151,16 +160,21 @@ const placeFollowableChoices = (
       ),
       batch: placedBatch,
     })),
-    Effect.catchTag('InvalidLinkChoice', (failure) =>
-      HashMap.has(linkChoices, failure.referentKey)
-        ? placeFollowableChoices(batch, HashMap.remove(linkChoices, failure.referentKey))
-        : Effect.die(
-            new Error(
-              `a default choice could not be followed: ${failure.reason} for ${failure.referentKey}`
-            )
-          )
-    )
+    Effect.catchTag('InvalidLinkChoice', (failure) => {
+      if (HashMap.has(chosen, failure.referentKey)) {
+        return placeFollowableChoices(batch, defaults, HashMap.remove(chosen, failure.referentKey))
+      }
+      if (HashMap.has(defaults, failure.referentKey)) {
+        return placeFollowableChoices(batch, HashMap.remove(defaults, failure.referentKey), chosen)
+      }
+      return Effect.die(
+        new Error(
+          `a kind's default choice could not be followed: ${failure.reason} for ${failure.referentKey}`
+        )
+      )
+    })
   )
+}
 
 /**
  * The batch's identity map: its referents, their defaults from one search per
@@ -209,20 +223,14 @@ const useIdentityMap = (
   })
 
   const defaults = query.data ?? NO_DEFAULTS
-  const chosen = current?.chosen
-  // The reviewer's choices win over the defaults.
-  const linkChoices = useMemo(
-    (): ReferentLinkChoices.Type =>
-      chosen === undefined ? defaults.linkChoices : HashMap.union(defaults.linkChoices, chosen),
-    [defaults, chosen]
-  )
+  const chosen = current?.chosen ?? ReferentLinkChoices.empty
   const loading = batch === undefined || (searched.length > 0 && query.isPending)
 
   const mapped = useMemo((): Either.Either<Mapped, Referent.DuplicateReferent> | undefined => {
     if (loading || batch === undefined || discovered === undefined) return undefined
     return Either.flatMap(discovered, (discoveredReferents) =>
       Either.map(
-        Effect.runSync(Effect.either(placeFollowableChoices(batch, linkChoices))),
+        Effect.runSync(Effect.either(placeFollowableChoices(batch, defaults.linkChoices, chosen))),
         (placed): Mapped => ({
           referents: discoveredReferents,
           linkChoices: placed.linkChoices,
@@ -232,7 +240,7 @@ const useIdentityMap = (
         })
       )
     )
-  }, [loading, batch, discovered, linkChoices, defaults])
+  }, [loading, batch, discovered, defaults, chosen])
 
   const choose = useCallback((referentKey: string, choice: LinkChoice.Type): void => {
     setPerBatch((previous) =>

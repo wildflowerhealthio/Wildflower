@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Effect, Match, Option } from 'effect'
+import { useMemo } from 'react'
 
 import { useRunAuthed } from '@wildflowerhealthio/fhir-r4-react'
 import { FhirR4ResourcesHttpApiClient, searchAllPages } from '@wildflowerhealthio/fhir-r4/clients'
@@ -85,28 +86,58 @@ const storedResources = (
   )
 
 /**
+ * The stored list as the rows read it: `loading` until the pages are in,
+ * `ready` with every resource labelled, `error` when a page failed, which the
+ * rows say rather than offering a shorter list as if it were the whole one.
+ */
+type StoredResourcesState =
+  | { readonly _tag: 'loading' }
+  | { readonly _tag: 'ready'; readonly resources: readonly StoredResource[] }
+  | { readonly _tag: 'error'; readonly error: Error }
+
+const LOADING: StoredResourcesState = { _tag: 'loading' }
+
+/**
  * The server's stored resources of `resourceType`, each with its label.
  *
  * @param resourceType - Patient or Practitioner
  * @param enabled - Whether to read at all: false when the batch has no
  *   referent of that type
- * @returns The resources read, empty until they arrive
+ * @returns The list's state
+ *
+ * @remarks
+ * Read once for as long as the rows are mounted (`staleTime: Infinity`, so
+ * a window focus does not page through the server again) and dropped when
+ * they unmount (`gcTime: 0`), so the next review reads the records the last
+ * one wrote.
  */
 const useStoredResources = (
   resourceType: LinkableLogicalReference.ResourceType,
   enabled: boolean
-): readonly StoredResource[] => {
+): StoredResourcesState => {
   const runAuthed = useRunAuthed()
   const query = useQuery({
     queryKey: [...IMPORTER_QUERY_KEY, 'stored', resourceType] as const,
     queryFn: (): Promise<readonly StoredResource[]> =>
       runAuthed(Effect.flatMap(storedResources(resourceType), Effect.forEach(labeled))),
     enabled,
+    staleTime: Infinity,
+    gcTime: 0,
     retry: false,
   })
-  return query.data ?? NO_RESOURCES
+  return useMemo((): StoredResourcesState => {
+    if (query.data !== undefined) return { _tag: 'ready', resources: query.data }
+    if (query.isError) {
+      return {
+        _tag: 'error',
+        error:
+          query.error instanceof Error
+            ? query.error
+            : new Error(`Failed to list the server's ${resourceType} resources`),
+      }
+    }
+    return LOADING
+  }, [query.data, query.isError, query.error, resourceType])
 }
 
-const NO_RESOURCES: readonly StoredResource[] = []
-
-export { labeled, type StoredResource, useStoredResources }
+export { labeled, type StoredResource, type StoredResourcesState, useStoredResources }

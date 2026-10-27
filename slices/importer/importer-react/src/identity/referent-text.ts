@@ -26,6 +26,10 @@ const SEARCHING_SERVER_MESSAGE = 'Looking for these people and providers on the 
 const SEARCH_ERROR_MESSAGE =
   'Could not search the server for these people and providers. Each starts as new, or not linked.'
 
+/** The alert under a group whose stored list could not be read: only the search's hits are offered. */
+const STORED_LIST_ERROR_MESSAGE =
+  'Could not list the records on the server. Only the ones the search found are offered.'
+
 /** The alert when the files hold one person or provider twice, under different ids, so the import cannot be placed. */
 const duplicateReferentMessage = ({
   logicalReference,
@@ -104,4 +108,5 @@ export {
   SEARCH_ERROR_MESSAGE,
   SEARCHING_SERVER_MESSAGE,
   sameAsLabel,
+  STORED_LIST_ERROR_MESSAGE,
 }

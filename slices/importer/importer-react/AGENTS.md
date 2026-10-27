@@ -128,7 +128,10 @@ The importer has no HTTP wire union to derive, so there is no separate
   `fhir-r4/clients`' `searchAllPages`, capped at ten pages: a select has no
   room for a load-more action, and a personal server holds a household, not
   a hospital), each labelled on the way in since `LinkableResource.labelOf`
-  reads the clock. The one type-specific rule is a table over the resource
+  reads the clock, read once while the rows are mounted and dropped when they
+  unmount; a list that failed is said under its group, and only the search's
+  hits are offered. The stored options are one memo per group, shared by its
+  lines, and a line is a memoised row. The one type-specific rule is a table over the resource
   types: a Patient linked to a stored one whose family name, given name or
   birth date (`Patient.demographics`, the parts the name-and-birth-date
   identifier is minted from) differs gets a warning line, never a block; a

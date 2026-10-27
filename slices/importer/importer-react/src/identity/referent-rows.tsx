@@ -8,7 +8,7 @@ import {
   type ReferentLinkChoices,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Array, HashMap, Option, pipe } from 'effect'
-import { type JSX, useId, useMemo } from 'react'
+import { type JSX, memo, useId, useMemo } from 'react'
 
 import {
   BIRTH_DATE,
@@ -25,6 +25,7 @@ import {
   referentTallyLine,
   type ReferentTally,
   sameAsLabel,
+  STORED_LIST_ERROR_MESSAGE,
 } from './referent-text.ts'
 import { type StoredResource, useStoredResources } from './use-stored-resources.ts'
 import styles from './referent-rows.module.css'
@@ -121,8 +122,8 @@ const createsRecord = (
 
 /** Everything the options of one referent are read from. */
 type OptionInputs = Pick<ReferentRowsProps, 'referents' | 'linkChoices' | 'linkTargets'> & {
-  /** The stored resources of the referent's type: the search's hits, then the server's own. */
-  readonly stored: readonly StoredResource[]
+  /** The options for the stored resources of the referent's type: the search's hits, then the server's own. */
+  readonly onServer: readonly ChoiceOption[]
 }
 
 /**
@@ -136,18 +137,16 @@ const optionsFor = (
   inputs: OptionInputs
 ): ChoiceOptions => {
   // A stored resource the choice names but the lists do not is offered by its literal reference.
-  const currentStored: readonly StoredResource[] = LinkChoice.is('LinkToStoredResource')(current)
-    ? [
-        {
-          resource: current.resource,
-          label: LinkableResource.literalReferenceOf(current.resource),
-        },
-      ]
-    : []
-  const onServer = Array.dedupeWith(
-    [...inputs.stored, ...currentStored].map(storedOption),
-    sameValue
+  const currentOption = Option.liftPredicate(current, LinkChoice.is('LinkToStoredResource')).pipe(
+    Option.map(({ resource }) =>
+      storedOption({ resource, label: LinkableResource.literalReferenceOf(resource) })
+    ),
+    Option.filter((option) => !inputs.onServer.some((listed) => sameValue(listed, option)))
   )
+  const onServer = Option.match(currentOption, {
+    onNone: () => inputs.onServer,
+    onSome: (option) => [...inputs.onServer, option],
+  })
   return Referent.match(referent, {
     AsResource: () => ({
       leading: [optionOf(LinkChoice.CreateResource(), NEW_LABEL)],
@@ -284,7 +283,7 @@ const SelectOption = ({ option }: { readonly option: ChoiceOption }): JSX.Elemen
 )
 
 /** One referent's line: its label, its select, and the warning when there is one. */
-const ReferentRow = ({
+const ReferentRow = memo(function ReferentRow({
   referent,
   options,
   choice,
@@ -294,7 +293,7 @@ const ReferentRow = ({
   readonly options: ChoiceOptions
   readonly choice: LinkChoice.Type
   readonly onChoose: (referentKey: string, choice: LinkChoice.Type) => void
-}): JSX.Element => {
+}): JSX.Element {
   const selectId = useId()
   const handleChange = (value: string): void =>
     Array.findFirst(allOptions(options), (option) => option.value === value).pipe(
@@ -343,7 +342,7 @@ const ReferentRow = ({
       )}
     </li>
   )
-}
+})
 
 /** One referent with the choice it shows and the options its select offers. */
 interface ReferentLine {
@@ -366,32 +365,42 @@ const ReferentGroup = ({
     [referents, resourceType]
   )
   const stored = useStoredResources(resourceType, ofType.length > 0)
-  // The lines are worked out once per change of what they read, not per
-  // render: each is every stored resource of the type again, as options.
-  const lines = useMemo((): readonly ReferentLine[] => {
-    const storedOfType = pipe(
-      [...found.filter(({ resource }) => resource.resourceType === resourceType), ...stored],
-      Array.dedupeWith((left, right) => left.resource.id === right.resource.id)
-    )
-    return ofType.map((referent) => {
-      const choice = LinkChoice.forReferent(linkChoices, referent)
-      return {
-        referent,
-        choice,
-        options: optionsFor(referent, choice, {
-          referents,
-          linkChoices,
-          linkTargets,
-          stored: storedOfType,
-        }),
-      }
-    })
-  }, [ofType, referents, linkChoices, linkTargets, found, stored, resourceType])
+  // The stored options are built once per list, and shared by every line.
+  const onServer = useMemo(
+    (): readonly ChoiceOption[] =>
+      pipe(
+        [
+          ...found.filter(({ resource }) => resource.resourceType === resourceType),
+          ...(stored._tag === 'ready' ? stored.resources : []),
+        ],
+        Array.map(storedOption),
+        Array.dedupeWith(sameValue)
+      ),
+    [found, stored, resourceType]
+  )
+  // The lines are worked out once per change of the choices, not per render.
+  const lines = useMemo(
+    (): readonly ReferentLine[] =>
+      ofType.map((referent) => {
+        const choice = LinkChoice.forReferent(linkChoices, referent)
+        return {
+          referent,
+          choice,
+          options: optionsFor(referent, choice, { referents, linkChoices, linkTargets, onServer }),
+        }
+      }),
+    [ofType, referents, linkChoices, linkTargets, onServer]
+  )
   if (ofType.length === 0) return null
   const heading = GROUP_HEADINGS[resourceType]
   return (
     <section aria-label={heading} className={styles['referent-rows__group']}>
       <h4 className={styles['referent-rows__group-heading']}>{heading}</h4>
+      {stored._tag === 'error' && (
+        <p role="alert" className={styles['referent-rows__warning']}>
+          {STORED_LIST_ERROR_MESSAGE}
+        </p>
+      )}
       <ul className={styles['referent-rows__list']}>
         {lines.map(({ referent, choice, options }) => (
           <ReferentRow

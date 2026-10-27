@@ -23,6 +23,7 @@ import {
   NEW_LABEL,
   newAsLabel,
   ON_SERVER_GROUP,
+  STORED_LIST_ERROR_MESSAGE,
 } from './referent-text.ts'
 import { useIdentityMap } from './use-identity-map.ts'
 
@@ -148,6 +149,60 @@ describe('ReferentRows', () => {
     })
   })
 
+  it('should say when the server’s list could not be read, and still offer the search’s hits', async () => {
+    await renderRows(BATCH, { found: [patientWire('s-1', SERVER)], listFails: true })
+
+    await screen.findByText(STORED_LIST_ERROR_MESSAGE)
+    const select = screen.getByRole<HTMLSelectElement>('combobox', { name: TYRA })
+    expect(select.value).toBe('stored:Patient/s-1')
+    expect(
+      within(within(select).getByRole('group', { name: ON_SERVER_GROUP }))
+        .getAllByRole('option')
+        .map((option) => option.textContent)
+    ).toEqual([TYRA])
+  })
+
+  it('should label a found provider by its name even when a found person shares its id', async () => {
+    await renderRows(BATCH, {
+      found: [patientWire('42', SERVER), practitionerWire('42', 'Dr. A Smith')],
+    })
+
+    const provider = screen.getByRole<HTMLSelectElement>('combobox', { name: 'Dr. A Smith' })
+    expect(provider.value).toBe('stored:Practitioner/42')
+    expect(provider.selectedOptions[0]?.textContent).toBe('Dr. A Smith')
+  })
+
+  it('should fall back to the searched default, not the kind’s, when a re-decode drops the referent a choice linked to', async () => {
+    // Arrange: the account's search finds a stored person; a second decoded person, Jan, is in the batch.
+    const jan = decodeResource(
+      patientWire('p-2', SOURCE, { family: 'Doe', given: ['Jan'], birthDate: '1980-05-06' })
+    )
+    const withJan = batchOf([
+      decodeResource(patientWire('p-1', SOURCE)),
+      requestFor({ system: CUSTOMER, value: 'c-9' }),
+      jan,
+    ])
+    currentRunAuthed = serverHolding({ accountFound: [patientWire('s-1', SERVER)] })
+    const { rerender } = renderHarness(withJan)
+    const account = await screen.findByRole<HTMLSelectElement>('combobox', { name: 'c-9' })
+    expect(account.value).toBe('stored:Patient/s-1')
+
+    // Act: link the account to Jan's new record, then re-decode without Jan.
+    await userEvent.selectOptions(account, newAsLabel('Jan Doe · 1980-05-06'))
+    await waitFor(() => {
+      expect(subjectOfRequest()).toBe('Patient/p-2')
+    })
+    rerender(harnessOver(BATCH))
+
+    // Assert: the choice that no longer follows is dropped, and the searched default stands again.
+    await waitFor(() => {
+      expect(screen.getByRole<HTMLSelectElement>('combobox', { name: 'c-9' }).value).toBe(
+        'stored:Patient/s-1'
+      )
+    })
+    expect(subjectOfRequest()).toBe('Patient/s-1')
+  })
+
   it('should refuse a batch that holds one person twice under two ids', async () => {
     currentRunAuthed = serverHolding({})
     renderHarness(
@@ -215,6 +270,14 @@ const patientWire = (
   ...(parts.birthDate === null ? {} : { birthDate: parts.birthDate ?? '1990-01-02' }),
 })
 
+/** A Practitioner's wire form, named by `text`. */
+const practitionerWire = (id: string, text: string): object => ({
+  resourceType: 'Practitioner',
+  id,
+  identifier: [{ system: SERVER, value: id }],
+  name: [{ text }],
+})
+
 /** A request for the account `identifier` names, prescribed by a provider known only by name. */
 const requestFor = (identifier: {
   readonly system: string
@@ -263,25 +326,41 @@ const BATCH = batchOf([
   requestFor({ system: CUSTOMER, value: 'c-9' }),
 ])
 
-/** What the stub server holds: `found` is what the search for Tyra (`p-1`) finds, `listed` the paged list. */
+/**
+ * What the stub server holds: `found` is what the searches for Tyra (`p-1`)
+ * and for the prescriber find, `accountFound` what the account's (`c-9`)
+ * finds, `listed` the paged list, which fails outright when `listFails`.
+ */
 interface Holdings {
   readonly found?: readonly object[]
+  readonly accountFound?: readonly object[]
   readonly listed?: readonly object[]
+  readonly listFails?: boolean
 }
 
 /** The `resourceType` a wire resource states. */
 const resourceTypeOf = Schema.decodeUnknownSync(Schema.Struct({ resourceType: Schema.String }))
 
 /**
- * A server whose search for Tyra answers with the resources of `found` of the
- * searched type, whose other identifier searches find nothing, and whose
- * paged lists answer with those of `listed`.
+ * A server whose searches answer with the holdings of the searched type: the
+ * searches for Tyra and the prescriber with `found`, the account's with
+ * `accountFound`, every other identifier search with nothing, and the paged
+ * list with `listed`, or a 503 when `listFails`.
  */
-const serverHolding = ({ found = [], listed = [] }: Holdings): RunAuthed => {
-  /** What a search with `identifier` finds: the list without one, `found` for Tyra's, nothing else. */
+const serverHolding = ({
+  found = [],
+  accountFound = [],
+  listed = [],
+  listFails = false,
+}: Holdings): RunAuthed => {
+  /** What a search with `identifier` finds. */
   const heldFor = (identifier: string | undefined): readonly object[] => {
     if (identifier === undefined) return listed
-    return identifier.includes(`${SOURCE}|p-1`) ? found : []
+    if (identifier.includes(`${CUSTOMER}|c-9`)) return accountFound
+    return identifier.includes(`${SOURCE}|p-1`) ||
+      identifier.includes(`${Practitioner.NAME_IDENTIFIER_SYSTEM}|Dr. A Smith`)
+      ? found
+      : []
   }
   const searchset = (resources: readonly object[]): Response =>
     new Response(
@@ -296,6 +375,11 @@ const serverHolding = ({ found = [], listed = [] }: Holdings): RunAuthed => {
     HttpClient.HttpClient,
     HttpClient.make((request) => {
       const params = Object.fromEntries(request.urlParams)
+      if (listFails && params['identifier'] === undefined) {
+        return Effect.succeed(
+          HttpClientResponse.fromWeb(request, new Response('', { status: 503 }))
+        )
+      }
       const searchedType = request.url.split('/').at(-1)
       const hits = heldFor(params['identifier']).filter(
         (resource) => resourceTypeOf(resource).resourceType === searchedType
@@ -336,13 +420,18 @@ const Harness = ({ batch }: { readonly batch: BatchDecodeResult }): JSX.Element 
   )
 }
 
-const renderHarness = (batch: BatchDecodeResult): void => {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(
-    <QueryClientProvider client={queryClient}>
-      <Harness batch={batch} />
-    </QueryClientProvider>
-  )
+/** The harness over `batch`, under one query client for the test. */
+const harnessOver = (batch: BatchDecodeResult): JSX.Element => (
+  <QueryClientProvider client={queryClient}>
+    <Harness batch={batch} />
+  </QueryClientProvider>
+)
+
+let queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+const renderHarness = (batch: BatchDecodeResult): ReturnType<typeof render> => {
+  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(harnessOver(batch))
 }
 
 /** Render the rows over `batch` against a server with `holdings`, and wait for the line labelled `firstLabel`. */
