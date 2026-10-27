@@ -155,6 +155,27 @@ describe('ReferentRows', () => {
     })
   })
 
+  it('should compare the name the stored person goes by, not a former name listed first', async () => {
+    await renderRows(BATCH, {
+      found: [
+        {
+          resourceType: 'Patient',
+          id: 's-1',
+          identifier: [{ system: SERVER, value: 's-1' }],
+          name: [
+            { use: 'maiden', family: 'Banks', given: ['Tyra'] },
+            { use: 'official', family: 'Doe', given: ['Tyra'] },
+          ],
+          birthDate: '1990-01-02',
+        },
+      ],
+    })
+
+    expect(
+      screen.getByText('The record on the server has a different family name.', { exact: false })
+    ).toBeDefined()
+  })
+
   it('should not warn when the stored Patient states no birth date to compare', async () => {
     await renderRows(BATCH, { found: [patientWire('s-1', SERVER, { birthDate: null })] })
 

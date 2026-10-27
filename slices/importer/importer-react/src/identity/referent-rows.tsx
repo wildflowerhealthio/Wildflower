@@ -7,7 +7,7 @@ import {
   Referent,
   type ReferentLinkChoices,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { Array, HashMap, Option, pipe } from 'effect'
+import { Array, Effect, HashMap, Option, pipe } from 'effect'
 import { type JSX, memo, useId, useMemo } from 'react'
 
 import {
@@ -263,21 +263,23 @@ const bothStateAndDiffer = (
 
 /**
  * The demographics two Patients both state that differ, named as the warning
- * reads them, compared on `Patient.demographics` so the review and the
- * identifier the demographics derive agree on what a name is.
+ * reads them, compared on `Patient.demographics` (each record's current name,
+ * judged at the clock's now) so the review and the identifier the
+ * demographics derive agree on what a name is.
  */
 const differingPatientDemographics = (
   decoded: Patient.Type,
   stored: Patient.Type
-): readonly string[] => {
-  const decodedDemographics = Patient.demographics(decoded)
-  const storedDemographics = Patient.demographics(stored)
-  return Array.filterMap(COMPARED_PATIENT_DEMOGRAPHICS, ({ name, read }) =>
-    bothStateAndDiffer(read(decodedDemographics), read(storedDemographics))
-      ? Option.some(name)
-      : Option.none()
+): Effect.Effect<readonly string[]> =>
+  Effect.map(
+    Effect.all([Patient.demographics(decoded), Patient.demographics(stored)]),
+    ([decodedDemographics, storedDemographics]) =>
+      Array.filterMap(COMPARED_PATIENT_DEMOGRAPHICS, ({ name, read }) =>
+        bothStateAndDiffer(read(decodedDemographics), read(storedDemographics))
+          ? Option.some(name)
+          : Option.none()
+      )
   )
-}
 
 /**
  * The demographics a link from `decoded` to `stored` is checked against that
@@ -287,10 +289,10 @@ const differingPatientDemographics = (
 const differingDemographics = (
   decoded: LinkableResource.WithId,
   stored: LinkableResource.WithId
-): readonly string[] =>
+): Effect.Effect<readonly string[]> =>
   decoded.resourceType === 'Patient' && stored.resourceType === 'Patient'
     ? differingPatientDemographics(decoded, stored)
-    : []
+    : Effect.succeed([])
 
 /**
  * The warning for a referent with a resource linked to a stored resource whose
@@ -299,14 +301,22 @@ const differingDemographics = (
 const differingDemographicsWarningFor = (
   referent: Referent.Type,
   choice: LinkChoice.Type
-): Option.Option<string> =>
+): Effect.Effect<Option.Option<string>> =>
   Option.all({
     decoded: Option.liftPredicate(referent, Referent.is('AsResource')),
     stored: Option.liftPredicate(choice, LinkChoice.is('LinkToStoredResource')),
   }).pipe(
-    Option.map(({ decoded, stored }) => differingDemographics(decoded.resource, stored.resource)),
-    Option.filter(Array.isNonEmptyReadonlyArray),
-    Option.map(differingDemographicsWarning)
+    Effect.transposeMapOption(({ decoded, stored }) =>
+      differingDemographics(decoded.resource, stored.resource)
+    ),
+    Effect.map(
+      Option.flatMap((differing) =>
+        Option.map(
+          Option.liftPredicate(differing, Array.isNonEmptyReadonlyArray),
+          differingDemographicsWarning
+        )
+      )
+    )
   )
 
 /**
@@ -347,11 +357,13 @@ const ReferentRow = memo(function ReferentRow({
   referent,
   options,
   choice,
+  warning,
   onChoose,
 }: {
   readonly referent: Referent.Type
   readonly options: ChoiceOptions
   readonly choice: LinkChoice.Type
+  readonly warning: Option.Option<string>
   readonly onChoose: (referentKey: string, choice: LinkChoice.Type) => void
 }): JSX.Element {
   const selectId = useId()
@@ -392,10 +404,10 @@ const ReferentRow = memo(function ReferentRow({
           <SelectOption key={option.value} option={option} />
         ))}
       </select>
-      {differingDemographicsWarningFor(referent, choice).pipe(
-        Option.map((warning) => (
+      {warning.pipe(
+        Option.map((text) => (
           <p key="warning" className={styles['referent-rows__warning']}>
-            {warning}
+            {text}
           </p>
         )),
         Option.getOrNull
@@ -404,11 +416,12 @@ const ReferentRow = memo(function ReferentRow({
   )
 })
 
-/** One referent with the choice it shows and the options its select offers. */
+/** One referent with the choice it shows, the options its select offers, and the warning under it. */
 interface ReferentLine {
   readonly referent: Referent.Type
   readonly choice: LinkChoice.Type
   readonly options: ChoiceOptions
+  readonly warning: Option.Option<string>
 }
 
 /** One resource type's referents under their heading, or nothing when it has none. */
@@ -444,6 +457,8 @@ const ReferentGroup = ({
     [storedOfType]
   )
   // The lines are worked out once per change of the choices, not per render.
+  // The warning reads the clock (which name is current) and nothing else, so
+  // it runs synchronously here, as the hook runs the placing.
   const lines = useMemo(
     (): readonly ReferentLine[] =>
       ofType.map((referent) => {
@@ -458,6 +473,7 @@ const ReferentGroup = ({
             storedOfType,
             onServer,
           }),
+          warning: Effect.runSync(differingDemographicsWarningFor(referent, choice)),
         }
       }),
     [ofType, referents, linkChoices, linkTargets, storedOfType, onServer]
@@ -473,12 +489,13 @@ const ReferentGroup = ({
         </p>
       )}
       <ul className={styles['referent-rows__list']}>
-        {lines.map(({ referent, choice, options }) => (
+        {lines.map(({ referent, choice, options, warning }) => (
           <ReferentRow
             key={Referent.key(referent)}
             referent={referent}
             options={options}
             choice={choice}
+            warning={warning}
             onChoose={onChoose}
           />
         ))}

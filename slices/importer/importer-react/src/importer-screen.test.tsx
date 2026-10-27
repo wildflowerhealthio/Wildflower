@@ -672,12 +672,14 @@ const DEVICE = 'https://device.example/id'
 
 /** The identifier Tyra's name and birth date derive. */
 const DERIVED = Option.getOrThrow(
-  Patient.nameBirthDateIdentifier(
-    Schema.decodeUnknownSync(Patient.Schema)({
-      resourceType: 'Patient',
-      name: [{ family: 'Banks', given: ['Tyra'] }],
-      birthDate: '1990-01-02',
-    })
+  Effect.runSync(
+    Patient.nameBirthDateIdentifier(
+      Schema.decodeUnknownSync(Patient.Schema)({
+        resourceType: 'Patient',
+        name: [{ family: 'Banks', given: ['Tyra'] }],
+        birthDate: '1990-01-02',
+      })
+    )
   )
 )
 
