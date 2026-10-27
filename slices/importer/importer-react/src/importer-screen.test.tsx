@@ -284,8 +284,9 @@ describe('ImporterScreen', () => {
       expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
     })
 
-    // Assert — one source file per file, six resources, each pointing at one of the
-    // two fresh source files.
+    // Assert — one source file per file. The two files hold the same three
+    // resources under the same ids, so each is written once, pointing at one
+    // of the two fresh source files.
     const sourceFileIds = writes()
       .filter((write) => write.url.includes('/DocumentReference/'))
       .map((write) => idFromUrl(write.url))
@@ -293,7 +294,7 @@ describe('ImporterScreen', () => {
     const sources = writes()
       .filter(isResourceWrite)
       .map((write) => metaSourceOf(write.body))
-    expect(sources).toHaveLength(6)
+    expect(sources).toHaveLength(3)
     for (const source of sources) {
       expect(sourceFileIds.map((id) => `DocumentReference/${id}`)).toContain(source)
     }

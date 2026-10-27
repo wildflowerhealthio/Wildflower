@@ -16,6 +16,7 @@ import {
   entryUrl,
   groupByStatus,
   NO_RESPONSE_STATUS,
+  NOT_SUBMITTED_STATUS,
   persistBatchBundle,
   persistBatchBundleOrFail,
   persistTransactionBundle,
@@ -27,12 +28,13 @@ import {
  *
  * - **Wire shape**: the client posts a `Bundle{ type: 'batch' }` at `/` with
  *   one PUT entry per resource, addressed by `Type/id`.
- * - **Per-entry accounting**: each submitted resource gets a
- *   {@link BatchEntryOutcome} — its echoed status, whether that status
- *   succeeded, and any OperationOutcome diagnostics. A whole-bundle failure
- *   (5xx or transport) attributes every resource to that one cause under the
- *   no-response sentinel; a null-id resource is skipped and never touches the
- *   wire.
+ * - **Per-resource accounting**: each resource handed in gets a
+ *   {@link BatchEntryOutcome} at its position — its echoed status, whether
+ *   that status succeeded, and any OperationOutcome diagnostics. A
+ *   whole-bundle failure (5xx or transport) attributes every resource to that
+ *   one cause under the no-response sentinel; a null-id resource never
+ *   touches the wire and is reported as not submitted; two resources under one
+ *   `Type/id` are one entry, the last, whose outcome both positions get.
  */
 describe('persistBatchBundle', () => {
   it('posts one Bundle{type:batch} to / with one PUT entry per resource', async () => {
@@ -153,10 +155,66 @@ describe('persistBatchBundle', () => {
     expect(captured.outcomes[1]?.issues[0]?.severity).toBe('error')
   })
 
-  it('skips a null-id resource without touching the wire', async () => {
+  it('reports a null-id resource as not submitted without touching the wire', async () => {
     const captured = await runWith([makePatient(null)], allOk)
     expect(captured.requests).toEqual([])
-    expect(captured.outcomes).toEqual([])
+    expect(captured.outcomes).toEqual<BatchEntryOutcome[]>([
+      {
+        target: { label: 'Patient', id: '<no-id>' },
+        status: NOT_SUBMITTED_STATUS,
+        ok: false,
+        issues: [
+          {
+            severity: 'error',
+            code: 'required',
+            text: 'The resource has no id to be written under.',
+          },
+        ],
+      },
+    ])
+  })
+
+  it('keeps the outcomes aligned with the input around a null-id resource', async () => {
+    const captured = await runWith(
+      [makePatient('p-1'), makeObservation(null), makeObservation('o-1')],
+      perEntry((_body, index) => ({ status: index === 0 ? '201 Created' : '200 OK' }))
+    )
+
+    expect(captured.requests[0]?.body.entry?.map((entry) => entry.request?.url)).toEqual([
+      'Patient/p-1',
+      'Observation/o-1',
+    ])
+    expect(captured.outcomes.map((outcome) => [outcome.target.id, outcome.status])).toEqual([
+      ['p-1', '201 Created'],
+      ['<no-id>', NOT_SUBMITTED_STATUS],
+      ['o-1', '200 OK'],
+    ])
+  })
+
+  it('submits one entry per Type/id, the last occurrence, and gives each position its outcome', async () => {
+    // Two overlapping exports of one record: a transaction naming it twice is
+    // refused whole (FHIR R4 § 3.2.6), so it goes out once.
+    const observationWithStatus = (status: string): FhirResource =>
+      Schema.decodeUnknownSync(Observation.Schema)({
+        resourceType: 'Observation',
+        id: 'o-1',
+        status,
+        code: { text: 'Heart rate' },
+      })
+    const captured = await runWith(
+      [observationWithStatus('preliminary'), makePatient('p-1'), observationWithStatus('final')],
+      perEntry((_body, index) => ({ status: index === 0 ? '201 Created' : '200 OK' })),
+      persistTransactionBundle
+    )
+
+    const entries = captured.requests[0]?.body.entry ?? []
+    expect(entries.map((entry) => entry.request?.url)).toEqual(['Observation/o-1', 'Patient/p-1'])
+    expect(entries[0]?.resource).toMatchObject({ status: 'final' })
+    expect(captured.outcomes.map((outcome) => [outcome.target.id, outcome.status])).toEqual([
+      ['o-1', '201 Created'],
+      ['p-1', '200 OK'],
+      ['o-1', '201 Created'],
+    ])
   })
 
   it('never issues a request for an empty batch', async () => {

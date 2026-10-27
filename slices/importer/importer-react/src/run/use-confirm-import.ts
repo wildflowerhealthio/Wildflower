@@ -122,23 +122,17 @@ const skippedFile = ({ result, plan }: PlannedFormat): readonly FileImportResult
     : []
 
 /**
- * How many of `resources` the transaction submitted: those with an id.
- * `persistTransactionBundle` skips a null-id resource and reports no outcome
- * for it, so the outcomes come back one per submitted resource, in order.
- */
-const submittedCount = (resources: readonly FhirResource[]): number =>
-  Array.filter(resources, (resource) => resource.id !== null).length
-
-/**
  * The transaction's `outcomes` handed back to the units that submitted them,
- * one list per unit of `resourcesPerUnit`, in submit order.
+ * one list per unit of `resourcesPerUnit`, in submit order: the outcomes come
+ * back one per resource handed in, at its position, so each unit takes as
+ * many as it has resources.
  */
 const outcomesPerUnit = (
   outcomes: readonly BatchEntryOutcome[],
   resourcesPerUnit: readonly (readonly FhirResource[])[]
 ): readonly (readonly BatchEntryOutcome[])[] =>
   Array.mapAccum(resourcesPerUnit, outcomes, (remaining, resources) => {
-    const [taken, rest] = Array.splitAt(remaining, submittedCount(resources))
+    const [taken, rest] = Array.splitAt(remaining, resources.length)
     return [rest, taken]
   })[1]
 

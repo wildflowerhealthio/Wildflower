@@ -356,8 +356,9 @@ The importer has no HTTP wire union to derive, so there is no separate
   `meta.source` — the link points at a `DocumentReference` this batch chose not
   to upload, which is the reviewer's decision, not a rewrite the shell makes.
   The batch is one Effect run through `runAuthed`, and its outcomes are handed
-  back to the units that submitted them by position (`outcomesPerUnit`), one
-  per resource with an id, as the write submits them. `useConfirmImport`
+  back to the units that submitted them by position (`outcomesPerUnit`): the
+  write reports one outcome per resource handed in, so each unit takes as many
+  as it has resources. `useConfirmImport`
   needs nothing from the registry — persistence is format-blind.
 - **The batch lands whole or not at all, and there is no upload-failed case.**
   The batch is resolved as one: a format's resources point at the linked records
