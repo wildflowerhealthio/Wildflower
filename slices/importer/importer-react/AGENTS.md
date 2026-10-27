@@ -99,23 +99,24 @@ The importer has no HTTP wire union to derive, so there is no separate
 - **`src/registry.ts`** — the React half of the closed format registry (above).
 - **`src/identity/`** — the identity map in the screen.
   The review of a batch is one hook composed of three, each in its own file:
-  - `use-batch-identity-map-review.ts` — `useBatchIdentityMapReview`
+  - `use-link-choice-review.ts` — `useLinkChoiceReview`
     discovers the batch's referents (`discoverReferents`) and memoizes the
-    **placed** batch with each referent's `LinkTarget`
-    (`placeBatchOnFollowableChoices`). Both are Effects on the clock, run
+    **resolved** batch (one whose mentions are resolved) with each
+    referent's `LinkTarget` (`resolveMentionsWithFallback`). Both are Effects on the clock, run
     synchronously in the memo; their failures are states: a
-    `DuplicateReferent` is `refused`, with the batch's last placing that
+    `DuplicateReferent` is `refused`, with the batch's last resolving that
     succeeded when a re-decode is what refused it (the screen keeps that
     review up under the refusal, confirm disabled, so the reviewer can undo
     the setting; on a first decode it says why and offers the picker), and a
-    choice the stage cannot follow after a re-decode (`InvalidLinkChoice`)
-    is dropped so its referent takes its default. The screen blocks its
+    choice that cannot be resolved after a re-decode (`InvalidLinkChoice`)
+    falls back, the reviewer's own to its searched default, a default to its
+    kind's default. The screen blocks its
     first paint on the default search, as it does on the server diff, and
-    hands the placed batch to `useServerDiff`, `PreviewPanel` and the
+    hands the resolved batch to `useServerDiff`, `PreviewPanel` and the
     confirm, so all three see what gets written; a failed search shows an
     alert and leaves every referent on its kind's default.
-  - `identity-map-review-state.ts` — the `IdentityMapReviewState` types: the
-    `Mapped` batch (referents, choices, link targets, search hits, placed
+  - `link-choice-review-state.ts` — the `LinkChoiceReviewState` types: the
+    `Mapped` batch (referents, choices, link targets, search hits, resolved
     batch), the `Type` of states (`loading`, `ready`, `error`, `refused`) and
     the hook's `Review` surface.
   - `use-default-link-choices-search.ts` — `useDefaultLinkChoicesSearch`
@@ -127,8 +128,8 @@ The importer has no HTTP wire union to derive, so there is no separate
     reviewer's choices on top of the defaults by `Referent.key` across a
     settings re-decode in a `ReferentLinkChoices`, and the referents of the
     batch's first decode the search reads; a fresh pick starts over.
-  - `use-last-placed-batch.ts` — `useLastPlacedBatch`, the batch's last
-    placing that succeeded, which a refusal is shown over.
+  - `use-last-resolved-batch.ts` — `useLastResolvedBatch`, the batch's last
+    resolving that succeeded, which a refusal is shown over.
 
   The referent block, "People and providers in this import", is one file
   per job:
@@ -140,7 +141,7 @@ The importer has no HTTP wire union to derive, so there is no separate
     entry that has referents. A list that failed is said under its group,
     and only the search's hits are offered; a list the page limit cut off is
     said too. While the batch is `refused` the selects are disabled, since a
-    choice could neither be placed nor shown.
+    choice could neither be resolved nor shown.
   - `referent-row.tsx` — one referent's line, memoised: its label, a select
     of its options, and its warning.
   - `link-choice-options.ts` — the `LinkChoiceOptions` view model: the
@@ -501,11 +502,11 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   stored Patient (only the stored one written, carrying the source's
   identifier, every subject on it), a re-import that defaults the Patient to
   an update of the copy it stored and is `unchanged` and left out, and one referent for one identity two files name.
-- `identity/referent-rows.test.tsx` drives `useBatchIdentityMapReview` and the rows over a
+- `identity/referent-rows.test.tsx` drives `useLinkChoiceReview` and the rows over a
   hand-built batch and a stub search: a line per referent, people before
   providers, `New` without a hit, a hit pre-selected, an update over the copy
   found under the decoded id, the demographics warning,
-  and a changed select placing the batch.
+  and a changed select resolving the batch.
 - `preview/preview-panel.test.tsx` drives the pure panel by props — no router —
   and pins that a claimed format renders each decoded section under its own
   title with per-resource checkboxes, that an unreadable file renders its own

@@ -12,7 +12,7 @@ import {
   SEARCH_ERROR_MESSAGE,
   SEARCHING_SERVER_MESSAGE,
 } from './identity/referent-text.ts'
-import { useBatchIdentityMapReview } from './identity/use-batch-identity-map-review.ts'
+import { useLinkChoiceReview } from './identity/use-link-choice-review.ts'
 import { PreviewPanel } from './preview/preview-panel.tsx'
 import { initialExclusionsFor, useServerDiff } from './preview/use-server-diff.ts'
 import { formatRegistry } from './registry.ts'
@@ -29,7 +29,7 @@ import styles from './importer-screen.module.css'
  *
  * @remarks
  * The screen is the opt-in seam made visible: the read half
- * (`SourcePicker` → `useImportRun` → `useBatchIdentityMapReview` → `PreviewPanel`)
+ * (`SourcePicker` → `useImportRun` → `useLinkChoiceReview` → `PreviewPanel`)
  * writes nothing — each file decodes to resources grouped by format, its own
  * source file among them, that the reviewer can exclude or edit — and only
  * the explicit confirm reaches the write half (`useConfirmImport` — one batch
@@ -40,7 +40,7 @@ import styles from './importer-screen.module.css'
  * format through `useImportRun.applySettings`. Per-resource selections are
  * keyed by format kind and stable resource key, so they survive a re-decode
  * where the resource does. The identity map sits between the read and the
- * review: the batch is placed on the reviewer's link choices before the
+ * review: the batch is resolved on the reviewer's link choices before the
  * server diff, the preview and the confirm see it, so all three see the
  * resources that get written.
  *
@@ -79,21 +79,21 @@ const ImporterScreen = (): JSX.Element => {
 
   const runState = importRun.state
   const batchId = runState._tag === 'ready' ? runState.batchId : 0
-  const identity = useBatchIdentityMapReview(
+  const identity = useLinkChoiceReview(
     runState._tag === 'ready' ? runState.batch : undefined,
     batchId
   )
   const identityState = identity.state
-  // The identity map the screen shows: the batch as placed, or, when a
-  // re-decode refused it, as it placed before, so the reviewer can undo the change.
+  // The identity map the screen shows: the batch as resolved, or, when a
+  // re-decode refused it, as it resolved before, so the reviewer can undo the change.
   const shown = Match.value(identityState).pipe(
     Match.tag('loading', () => undefined),
     Match.tag('ready', 'error', (mapped) => mapped),
     Match.tag('refused', ({ previous }) => Option.getOrUndefined(previous)),
     Match.exhaustive
   )
-  // The placed batch: what the diff classifies, the preview shows and the confirm writes.
-  const batch = shown?.placed
+  // The resolved batch: what the diff classifies, the preview shows and the confirm writes.
+  const batch = shown?.resolved
   const diff = useServerDiff(batch, batchId)
 
   const initialSelections = useMemo((): ReadonlyMap<FormatKind, StagedImport.Selection> => {
@@ -139,8 +139,8 @@ const ImporterScreen = (): JSX.Element => {
   }
 
   const confirming = confirm.state._tag === 'confirming'
-  // A re-decode or a changed link choice re-classifies the placed batch; until
-  // its verdicts land, the pre-exclusions are the previous placement's. A
+  // A re-decode or a changed link choice re-classifies the resolved batch; until
+  // its verdicts land, the pre-exclusions are the previous resolving's. A
   // refused batch is never written: the review shown is the one before.
   const confirmBlocked =
     confirming ||
@@ -213,7 +213,7 @@ const ImporterScreen = (): JSX.Element => {
           </p>
         )}
         <PreviewPanel
-          batch={shown.placed}
+          batch={shown.resolved}
           settings={importRun.settings}
           settingsRegistry={formatRegistry}
           selectionFor={selectionFor}
@@ -223,7 +223,7 @@ const ImporterScreen = (): JSX.Element => {
           confirming={confirming}
           confirmDisabled={confirmBlocked}
           onCancel={startOver}
-          onConfirm={() => confirm.confirm(shown.placed, selectionFor)}
+          onConfirm={() => confirm.confirm(shown.resolved, selectionFor)}
           referentRows={
             <ReferentRows
               referents={shown.referents}

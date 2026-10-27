@@ -47,7 +47,7 @@ interface ReviewerLinkChoices {
  * @param batchId - The picked batch's id: stable across a settings re-decode,
  *   new for a fresh pick
  * @param referents - The batch's referents, undefined while no batch is in
- *   hand or the batch cannot be placed
+ *   hand or the batch cannot be resolved
  * @returns The searched referents, the reviewer's choices, and `choose`
  */
 const useReviewerLinkChoices = (

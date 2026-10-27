@@ -39,14 +39,14 @@ const STORED_LIST_ERROR_MESSAGE =
 const STORED_LIST_TRUNCATED_MESSAGE =
   'The server holds more records than are offered here. Only the first pages were read.'
 
-/** The alert when the files hold one person or provider twice, under different ids, so the import cannot be placed. */
+/** The alert when the files hold one person or provider twice, under different ids, so the import cannot be resolved. */
 const duplicateReferentMessage = ({
   logicalReference,
   reviewKeys,
 }: Referent.DuplicateReferent): string =>
   `These files hold two ${logicalReference.type} records with the identifier ${logicalReference.identifier.value} under different ids (${reviewKeys.join(', ')}). The import cannot tell which one its references mean, so these files cannot be imported together.`
 
-/** Under the refusal, when the review shown is the batch as it placed before the change that refused it. */
+/** Under the refusal, when the review shown is the batch as it resolved before the change that refused it. */
 const REFUSED_OVER_PREVIOUS_HINT =
   'The review below is from before that change. Undo it, or choose other files.'
 

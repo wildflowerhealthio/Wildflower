@@ -100,7 +100,7 @@ const writesOwnRecord = (
 interface LinkChoiceOptionInputs {
   /** The batch's referents, once per identity. */
   readonly referents: readonly Referent.Type[]
-  /** The choices the batch is placed on, by `Referent.key`. */
+  /** The choices the batch is resolved on, by `Referent.key`. */
   readonly linkChoices: ReferentLinkChoices.Type
   /** Each referent's link target under `linkChoices`, by `Referent.key`. */
   readonly linkTargets: HashMap.HashMap<string, LinkTarget.Type>

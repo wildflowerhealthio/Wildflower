@@ -1,21 +1,21 @@
 /**
  * The identity map in the screen: the batch's referents, the link choice each
- * one takes, and the batch placed on those choices, which is what the server
+ * one takes, and the batch resolved on those choices, which is what the server
  * diff, the preview and the confirm all see.
  *
  * @remarks
  * The defaults come from one search per batch
  * (`useDefaultLinkChoicesSearch`), the reviewer's choices sit on top of them
- * (`useReviewerLinkChoices`), and the batch is placed on both
- * (`placeBatchOnFollowableChoices`). A choice the stage can no longer follow
+ * (`useReviewerLinkChoices`), and the batch is resolved on both
+ * (`resolveMentionsWithFallback`). A choice that can no longer be resolved
  * after a re-decode (its referent changed kind, or the referent it linked to
  * is gone) is dropped, so the referent takes its default.
  *
  * The stage's failures surface as states: a failed search is `error` (every
  * referent takes its kind's default and the screen says so), and a batch two
  * decoded resources of one identity refuse (`Referent.DuplicateReferent`) is
- * `refused`, carrying the last placing of the batch that succeeded
- * (`useLastPlacedBatch`) when a re-decode is what refused it.
+ * `refused`, carrying the last resolving of the batch that succeeded
+ * (`useLastResolvedBatch`) when a re-decode is what refused it.
  *
  * @packageDocumentation
  */
@@ -26,28 +26,28 @@ import { useMemo } from 'react'
 import {
   type BatchDecodeResult,
   discoverReferents,
-  placeBatchOnFollowableChoices,
+  resolveMentionsWithFallback,
 } from '@wildflowerhealthio/importer-core'
 import type { Referent } from '@wildflowerhealthio/importer-fundamentals'
 
-import type * as IdentityMapReviewState from './identity-map-review-state.ts'
+import type * as LinkChoiceReviewState from './link-choice-review-state.ts'
 import { useDefaultLinkChoicesSearch } from './use-default-link-choices-search.ts'
-import { useLastPlacedBatch } from './use-last-placed-batch.ts'
+import { useLastResolvedBatch } from './use-last-resolved-batch.ts'
 import { useReviewerLinkChoices } from './use-reviewer-link-choices.ts'
 
 /**
  * The batch's identity map review: its referents, their defaults from one
- * search per referent, the reviewer's choices, and the placed batch.
+ * search per referent, the reviewer's choices, and the resolved batch.
  *
  * @param batch - The decoded batch (undefined until the read is `ready`)
  * @param batchId - The picked batch's id: stable across a settings re-decode,
  *   new for a fresh pick
  * @returns The state and the `choose` action
  */
-const useBatchIdentityMapReview = (
+const useLinkChoiceReview = (
   batch: BatchDecodeResult | undefined,
   batchId: number
-): IdentityMapReviewState.Review => {
+): LinkChoiceReviewState.Review => {
   // Discovery reads the clock (which of a person's names is current) and
   // nothing else, so it runs synchronously here; its one failure is a state.
   const discovered = useMemo(
@@ -63,35 +63,35 @@ const useBatchIdentityMapReview = (
   const loading = batch === undefined || (searched.length > 0 && search.isPending)
 
   const mapped = useMemo(():
-    | Either.Either<IdentityMapReviewState.Mapped, Referent.DuplicateReferent>
+    | Either.Either<LinkChoiceReviewState.Mapped, Referent.DuplicateReferent>
     | undefined => {
     if (loading || batch === undefined || discovered === undefined) return undefined
     return Either.flatMap(discovered, (discoveredReferents) =>
       Either.map(
         Effect.runSync(
-          Effect.either(placeBatchOnFollowableChoices(batch, defaults.linkChoices, chosen))
+          Effect.either(resolveMentionsWithFallback(batch, defaults.linkChoices, chosen))
         ),
-        (placed): IdentityMapReviewState.Mapped => ({
+        (withFallback): LinkChoiceReviewState.Mapped => ({
           referents: discoveredReferents,
-          linkChoices: placed.linkChoices,
-          linkTargets: placed.linkTargets,
+          linkChoices: withFallback.linkChoices,
+          linkTargets: withFallback.linkTargets,
           found: defaults.found,
-          placed: placed.batch,
+          resolved: withFallback.batch,
         })
       )
     )
   }, [loading, batch, discovered, defaults, chosen])
 
-  const previous = useLastPlacedBatch(batchId, mapped)
+  const previous = useLastResolvedBatch(batchId, mapped)
 
-  const state = useMemo((): IdentityMapReviewState.Type => {
+  const state = useMemo((): LinkChoiceReviewState.Type => {
     if (discovered !== undefined && Either.isLeft(discovered)) {
       return { _tag: 'refused', failure: discovered.left, previous }
     }
     if (mapped === undefined) return { _tag: 'loading' }
     return Either.match(mapped, {
-      onLeft: (failure): IdentityMapReviewState.Type => ({ _tag: 'refused', failure, previous }),
-      onRight: (ready): IdentityMapReviewState.Type =>
+      onLeft: (failure): LinkChoiceReviewState.Type => ({ _tag: 'refused', failure, previous }),
+      onRight: (ready): LinkChoiceReviewState.Type =>
         search.isError
           ? {
               _tag: 'error',
@@ -108,4 +108,4 @@ const useBatchIdentityMapReview = (
   return { state, choose }
 }
 
-export { useBatchIdentityMapReview }
+export { useLinkChoiceReview }

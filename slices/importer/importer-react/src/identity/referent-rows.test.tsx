@@ -27,13 +27,13 @@ import {
   STORED_LIST_TRUNCATED_MESSAGE,
   UPDATE_LABEL,
 } from './referent-text.ts'
-import { useBatchIdentityMapReview } from './use-batch-identity-map-review.ts'
+import { useLinkChoiceReview } from './use-link-choice-review.ts'
 
 /**
  * The referent rows over the identity map hook, on a hand-built batch and a
  * stub server whose `Patient?identifier=` search answers with the stored
  * Patients given and whose paged list answers with the ones listed, so a
- * default, a pick and the placed batch read back.
+ * default, a pick and the resolved batch read back.
  */
 
 vi.mock('@wildflowerhealthio/fhir-r4-react', async (importOriginal) => {
@@ -42,11 +42,11 @@ vi.mock('@wildflowerhealthio/fhir-r4-react', async (importOriginal) => {
 })
 
 let currentRunAuthed: RunAuthed
-let placed: BatchDecodeResult | undefined
+let resolved: BatchDecodeResult | undefined
 
 afterEach(() => {
   cleanup()
-  placed = undefined
+  resolved = undefined
 })
 
 const SOURCE = 'https://source.example/patient-id'
@@ -206,7 +206,7 @@ describe('ReferentRows', () => {
     expect(screen.queryByText(/different/)).toBeNull()
   })
 
-  it('should place the batch on a changed select', async () => {
+  it('should resolve the batch on a changed select', async () => {
     await renderRows(BATCH, {})
 
     // Tyra's own record is the one new record; the account and the prescriber land nowhere.
@@ -277,7 +277,7 @@ describe('ReferentRows', () => {
     })
     rerender(harnessOver(BATCH))
 
-    // Assert: the choice that no longer follows is dropped, and the searched default stands again.
+    // Assert: the choice that can no longer be resolved is dropped, and the searched default stands again.
     await waitFor(() => {
       expect(screen.getByRole<HTMLSelectElement>('combobox', { name: 'c-9' }).value).toBe(
         'stored:Patient/s-1'
@@ -287,7 +287,7 @@ describe('ReferentRows', () => {
   })
 
   it('should keep the last review up when a re-decode refuses the batch', async () => {
-    // Arrange: a batch that places, then a re-decode of it that holds one person twice.
+    // Arrange: a batch that resolves, then a re-decode of it that holds one person twice.
     currentRunAuthed = serverHolding({})
     const { rerender } = renderHarness(BATCH)
     await screen.findByRole('combobox', { name: TYRA })
@@ -303,7 +303,7 @@ describe('ReferentRows', () => {
     )
 
     // Assert: the refusal is said, and the rows of the review before it are
-    // still there, taking no choice until the batch places again.
+    // still there, taking no choice until the batch resolves again.
     expect((await screen.findByRole('alert')).textContent).toBe('DuplicateReferent')
     expect(screen.getByRole<HTMLSelectElement>('combobox', { name: TYRA }).disabled).toBe(true)
   })
@@ -318,7 +318,7 @@ describe('ReferentRows', () => {
     )
 
     expect((await screen.findByRole('alert')).textContent).toBe('DuplicateReferent')
-    expect(placed).toBeUndefined()
+    expect(resolved).toBeUndefined()
   })
 
   it('should render a household of referents over a long server list in one pass', async () => {
@@ -516,16 +516,16 @@ const serverHolding = ({
     )
 }
 
-/** The identity map hook and its rows, reporting the placed batch on every render. */
+/** The identity map hook and its rows, reporting the resolved batch on every render. */
 const Harness = ({ batch }: { readonly batch: BatchDecodeResult }): JSX.Element => {
-  const { state, choose } = useBatchIdentityMapReview(batch, 1)
+  const { state, choose } = useLinkChoiceReview(batch, 1)
   if (state._tag === 'loading') return <p>Loading</p>
-  // Shown as the screen shows them: the placing, or the one before a refusal.
+  // Shown as the screen shows them: the resolving, or the one before a refusal.
   const shown = state._tag === 'refused' ? Option.getOrUndefined(state.previous) : state
   if (shown === undefined) {
     return <p role="alert">{state._tag === 'refused' ? state.failure._tag : 'loading'}</p>
   }
-  placed = shown.placed
+  resolved = shown.resolved
   return (
     <>
       {state._tag === 'refused' && <p role="alert">{state.failure._tag}</p>}
@@ -568,7 +568,7 @@ const renderRows = async (
 }
 
 const subjectOfRequest = (): string | null | undefined => {
-  const request = DecodedFile.resources(placed?.har.decoded ?? { sections: [] }).find(
+  const request = DecodedFile.resources(resolved?.har.decoded ?? { sections: [] }).find(
     (entry) => entry.resource.resourceType === 'MedicationRequest'
   )?.resource
   return request !== undefined && 'subject' in request ? request.subject?.reference : undefined

@@ -91,7 +91,7 @@ const builtFromSame = (
  * changed and every other keeps its options and warning by identity, which
  * `ReferentRow`'s memo compares. `previous` itself when every line is kept.
  * The warning reads the clock (which name is current) and nothing else, so it
- * runs synchronously here, as the identity map hook runs the placing.
+ * runs synchronously here, as the review hook resolves the batch.
  */
 const buildAll = (
   ofType: readonly Referent.Type[],

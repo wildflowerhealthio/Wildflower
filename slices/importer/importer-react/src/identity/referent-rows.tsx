@@ -38,13 +38,13 @@ import styles from './referent-rows.module.css'
 interface ReferentRowsProps {
   /** The batch's referents, once per identity. */
   readonly referents: readonly Referent.Type[]
-  /** The choices the batch is placed on, by `Referent.key`. */
+  /** The choices the batch is resolved on, by `Referent.key`. */
   readonly linkChoices: ReferentLinkChoices.Type
   /** Each referent's link target under `linkChoices`, by `Referent.key`. */
   readonly linkTargets: HashMap.HashMap<string, LinkTarget.Type>
   /** The stored resources the default search found. */
   readonly found: readonly StoredResource[]
-  /** Whether the selects take no choice: while the batch is refused, a choice could not be placed or shown. */
+  /** Whether the selects take no choice: while the batch is refused, a choice could not be resolved or shown. */
   readonly disabled: boolean
   /** Called with the reviewer's new choice for a referent. */
   readonly onChoose: (referentKey: string, choice: LinkChoice.Type) => void

@@ -11,16 +11,16 @@ import {
 import { Effect, HashMap, Schema, TestContext } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import {
-  applyIdentityMap,
-  discoverReferents,
-  placeBatchOnFollowableChoices,
-} from './identity-map.ts'
 import type { BatchDecodeResult } from './read-batch.ts'
 import type { FormatKind } from './registry.ts'
+import {
+  resolveMentions,
+  discoverReferents,
+  resolveMentionsWithFallback,
+} from './resolve-mentions.ts'
 
 /**
- * The identity map lifted over a batch built by hand: each format's decoded
+ * A batch built by hand, its mentions resolved: each format's decoded
  * file one section of the given resources, keyed `<kind>/k-<index>`.
  */
 
@@ -97,11 +97,11 @@ const batchOf = (formats: {
   unrecognizedFiles: [],
 })
 
-/** `batch` placed on `linkChoices`, on the test clock. */
-const applied = (
+/** `batch` with its mentions resolved on `linkChoices`, on the test clock. */
+const resolvedOnTestClock = (
   batch: BatchDecodeResult,
   linkChoices: ReferentLinkChoices.Type
-): BatchDecodeResult => runOnTestClock(applyIdentityMap(batch, linkChoices))
+): BatchDecodeResult => runOnTestClock(resolveMentions(batch, linkChoices))
 
 /** The resource keyed `key` in `kind`'s decoded file. */
 const at = (batch: BatchDecodeResult, kind: FormatKind, key: string): FhirResource | undefined =>
@@ -137,38 +137,38 @@ describe('discoverReferents', () => {
   })
 })
 
-describe('applyIdentityMap', () => {
+describe('resolveMentions', () => {
   it('keeps every format’s sections and keys, and every other slot as it was', () => {
     const batch = batchOf({
       har: [request('rx-1', accountSubject)],
       'lifelabs-pdf': [patient('p-1', SOURCE_PATIENT)],
     })
 
-    const placed = applied(
+    const resolved = resolvedOnTestClock(
       batch,
       HashMap.make([ACCOUNT, LinkChoice.LinkToDecodedReferent({ referentKey: PERSON })])
     )
 
     expect(
       (['har', 'lifelabs-pdf'] as const).map((kind) =>
-        placed[kind].decoded.sections.map((section) => [
+        resolved[kind].decoded.sections.map((section) => [
           section.title,
           section.resources.map((entry) => entry.key),
         ])
       )
     ).toEqual([[['Resources', ['har/k-0']]], [['Resources', ['lifelabs-pdf/k-0']]]])
-    expect(placed.dicom).toBe(batch.dicom)
-    expect(placed.unrecognizedFiles).toBe(batch.unrecognizedFiles)
+    expect(resolved.dicom).toBe(batch.dicom)
+    expect(resolved.unrecognizedFiles).toBe(batch.unrecognizedFiles)
   })
 
   it('gives an empty batch back as itself', () => {
     const batch = batchOf({})
 
-    expect(applied(batch, HashMap.empty())).toBe(batch)
+    expect(resolvedOnTestClock(batch, HashMap.empty())).toBe(batch)
   })
 
   it('links a mention in one format to the person another format holds', () => {
-    const placed = applied(
+    const resolved = resolvedOnTestClock(
       batchOf({
         har: [request('rx-1', accountSubject)],
         'lifelabs-pdf': [patient('p-1', SOURCE_PATIENT)],
@@ -176,14 +176,14 @@ describe('applyIdentityMap', () => {
       HashMap.make([ACCOUNT, LinkChoice.LinkToDecodedReferent({ referentKey: PERSON })])
     )
 
-    expect(subjectOf(at(placed, 'har', 'har/k-0'))).toBe('Patient/p-1')
-    expect(identifiersOf(at(placed, 'lifelabs-pdf', 'lifelabs-pdf/k-0'))).toContain(
+    expect(subjectOf(at(resolved, 'har', 'har/k-0'))).toBe('Patient/p-1')
+    expect(identifiersOf(at(resolved, 'lifelabs-pdf', 'lifelabs-pdf/k-0'))).toContain(
       `${CUSTOMER}|c-9`
     )
   })
 
   it('writes a stored person two formats only mention once, in the first claimed format', () => {
-    const placed = applied(
+    const resolved = resolvedOnTestClock(
       batchOf({
         'lifelabs-pdf': [request('rx-1', accountSubject)],
         dicom: [request('rx-2', accountSubject)],
@@ -193,26 +193,26 @@ describe('applyIdentityMap', () => {
 
     expect(
       (['lifelabs-pdf', 'dicom'] as const).map((kind) =>
-        placed[kind].decoded.sections.map((section) => section.title)
+        resolved[kind].decoded.sections.map((section) => section.title)
       )
     ).toEqual([['Resources', Placement.LINKED_SECTION_TITLE], ['Resources']])
     expect(
       (['lifelabs-pdf', 'dicom'] as const)
-        .flatMap((kind) => DecodedFile.resources(placed[kind].decoded))
+        .flatMap((kind) => DecodedFile.resources(resolved[kind].decoded))
         .filter(({ resource }) => resource.id === 's-1')
     ).toHaveLength(1)
     expect([
-      subjectOf(at(placed, 'lifelabs-pdf', 'lifelabs-pdf/k-0')),
-      subjectOf(at(placed, 'dicom', 'dicom/k-0')),
+      subjectOf(at(resolved, 'lifelabs-pdf', 'lifelabs-pdf/k-0')),
+      subjectOf(at(resolved, 'dicom', 'dicom/k-0')),
     ]).toEqual(['Patient/s-1', 'Patient/s-1'])
   })
 
-  it('fails as the stage does, naming the referent a choice cannot be followed for', () => {
+  it('fails as the stage does, naming the referent a choice cannot be resolved for', () => {
     const batch = batchOf({ har: [patient('p-1', SOURCE_PATIENT)] })
 
     expect(
       runOnTestClock(
-        Effect.either(applyIdentityMap(batch, HashMap.make([PERSON, LinkChoice.DontLink()])))
+        Effect.either(resolveMentions(batch, HashMap.make([PERSON, LinkChoice.DontLink()])))
       )
     ).toMatchObject({
       _tag: 'Left',
@@ -221,37 +221,37 @@ describe('applyIdentityMap', () => {
   })
 })
 
-describe('placeBatchOnFollowableChoices', () => {
+describe('resolveMentionsWithFallback', () => {
   const batch = batchOf({ har: [patient('p-1', SOURCE_PATIENT)] })
   const linkedToStored = LinkChoice.LinkToStoredResource({ resource: STORED_TYRA })
 
-  /** The choices followed and each referent's link target's tag, on the test clock. */
-  const placedOnTestClock = (
+  /** The choices used and each referent's link target's tag, on the test clock. */
+  const withFallbackOnTestClock = (
     defaults: ReferentLinkChoices.Type,
     chosen: ReferentLinkChoices.Type
   ): {
     readonly linkChoices: ReadonlyArray<readonly [string, LinkChoice.Type]>
     readonly targets: readonly string[]
   } => {
-    const placed = runOnTestClock(placeBatchOnFollowableChoices(batch, defaults, chosen))
+    const resolved = runOnTestClock(resolveMentionsWithFallback(batch, defaults, chosen))
     return {
-      linkChoices: Array.from(HashMap.entries(placed.linkChoices)),
-      targets: Array.from(HashMap.values(placed.linkTargets), (target) => target._tag),
+      linkChoices: Array.from(HashMap.entries(resolved.linkChoices)),
+      targets: Array.from(HashMap.values(resolved.linkTargets), (target) => target._tag),
     }
   }
 
-  it('drops a chosen choice the stage cannot follow first, so the referent takes its searched default', () => {
+  it('drops a chosen choice that cannot be resolved first, so the referent takes its searched default', () => {
     expect(
-      placedOnTestClock(
+      withFallbackOnTestClock(
         HashMap.make([PERSON, linkedToStored]),
         HashMap.make([PERSON, LinkChoice.DontLink()])
       )
     ).toEqual({ linkChoices: [[PERSON, linkedToStored]], targets: ['Stored'] })
   })
 
-  it('drops a default the stage cannot follow next, so the referent takes its kind’s default', () => {
+  it('drops a default that cannot be resolved next, so the referent takes its kind’s default', () => {
     expect(
-      placedOnTestClock(
+      withFallbackOnTestClock(
         HashMap.make([PERSON, LinkChoice.DontLink()]),
         HashMap.make([PERSON, LinkChoice.DontLink()])
       )

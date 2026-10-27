@@ -27,7 +27,7 @@ write plan with this package alone.
   an `as FormatSettings` and checks nothing, while the literal makes a missing
   format a compile error. Adding a format is one `FormatSettings`
   entry, one registry entry, one default — and `collectFormats` below, which
-  the identity map's lift also assembles its batch through. All four are
+  `resolveMentions` also assembles its batch through. All four are
   mapped or exhaustive types over `FormatKind`, so missing any of them is a
   compile error.
 - `src/read-batch.ts` — the read half as pure functions over a
@@ -58,11 +58,11 @@ write plan with this package alone.
   and its remarks say why: TypeScript drops the correlation between a computed
   union key and its value, so a record assembled from a `kind` variable is
   checked against nothing. Its slots are typed by **`FormatResults`**.
-- `src/identity-map.ts` — the identity map lifted over a batch, service-free
-  Effects on the clock. **`discoverReferents(batch)`** is
-  `Referent.discover` over every claimed format's `decoded`: one
-  referent per identity across formats, format-then-review order, those with
-  a resource first. **`applyIdentityMap(batch, linkChoices)`** places every
+- `src/resolve-mentions.ts` — a batch's mentions resolved (a resolved batch
+  is one whose mentions are resolved), service-free Effects on the clock. **`discoverReferents(batch)`** is `Referent.discover` over every
+  claimed format's `decoded`: one referent per identity across formats,
+  format-then-review order, those with a resource first.
+  **`resolveMentions(batch, linkChoices)`** resolves every mention in every
   claimed format's `decoded` on one plan over the batch's referents
   (`IdentityMap.apply`), so a mention in one format links to a referent
   another holds, and appends the Linked section once, to the first claimed
@@ -70,14 +70,13 @@ write plan with this package alone.
   and section titles are kept; the batch is reassembled through
   `collectFormats`, so every other slot comes back as it was and an empty
   batch comes back as itself. It fails as the stage does.
-  **`placeBatchOnFollowableChoices(batch, defaults, chosen)`** is what the
-  screen places: `applyIdentityMap` on the reviewer's choices over the
-  searched defaults, with each referent's link target (`LinkPlan.make`), less
-  every choice the stage cannot follow. The reviewer's own choice for a
-  failing referent is dropped first, so it falls back to its searched
-  default, then the default, so it falls back to its kind's default; a
-  failure naming a referent with no choice dies. Its one failure is
-  `Referent.DuplicateReferent`.
+  **`resolveMentionsWithFallback(batch, defaults, chosen)`** is what the
+  screen resolves: `resolveMentions` on the reviewer's choices over the
+  searched defaults, with each referent's link target (`LinkPlan.make`) and
+  the choices used. A choice that cannot be resolved (`InvalidLinkChoice`)
+  falls back: the reviewer's own choice to its searched default, a default
+  to its kind's default; a failure naming a referent with no choice dies.
+  Its one failure is `Referent.DuplicateReferent`.
 - `src/plan-write.ts` — **`planFormatWrite(result, selection)`**, the pure half
   of the confirm: from one format's decode result it produces a `write` of
   exactly the reviewed resources (exclusions applied, inline edits
