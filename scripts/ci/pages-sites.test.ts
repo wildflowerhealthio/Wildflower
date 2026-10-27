@@ -109,6 +109,15 @@ describe('pages-sites / the sites', () => {
     expect(MARKETING_PAGES_SITE.requiredFiles).toContain('health-viewer/index.html')
   })
 
+  it('should require the App Catalog at both its HALO path and its .json name', () => {
+    const site = APP_PAGES_SITES.find(({ section }) => section === 'appCatalog')
+    if (site === undefined) throw new Error('No App Catalog site')
+    expect(site.requiredFiles).toEqual(['index.html', 'apps', 'apps.json'])
+    const dir = join(repoRoot, packageOf(site).relDir)
+    expect(existsSync(join(dir, 'public', 'apps.json'))).toBe(true)
+    expect(existsSync(join(dir, 'scripts', 'write-catalog.ts'))).toBe(true)
+  })
+
   it('should name a Sentry DSN variable only for an app whose build reads it', () => {
     for (const site of PAGES_SITES.filter(({ sentryDsnVariable }) => sentryDsnVariable !== '')) {
       const dir = join(repoRoot, packageOf(site).relDir)

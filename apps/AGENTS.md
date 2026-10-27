@@ -11,7 +11,8 @@ Apps compose slice packages. They handle runtime wiring, routing, user interacti
 ## Product folders
 
 An app that has packages built only for it lives with them in one folder per
-product, `apps/<product>/`: [`authorization`](./authorization/AGENTS.md),
+product, `apps/<product>/`: [`app-catalog`](./app-catalog/AGENTS.md),
+[`authorization`](./authorization/AGENTS.md),
 [`relay`](./relay/AGENTS.md),
 [`fhir-sync-pebble`](./fhir-sync-pebble/AGENTS.md),
 [`watch-lifts`](./watch-lifts/AGENTS.md), [`strength`](./strength/AGENTS.md),

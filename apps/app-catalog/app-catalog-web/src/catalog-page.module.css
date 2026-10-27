@@ -1,0 +1,25 @@
+/*
+ * The page around the catalog: a full-height column so the footer sits at the
+ * bottom of the viewport, as `AppLandingPage`'s does.
+ */
+.catalog-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.catalog-page__main {
+  flex: 1;
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: var(--space-13) var(--page-padding-x);
+}
+
+.catalog-page__title {
+  margin: 0 0 var(--space-6);
+  color: var(--color-neutral-1);
+  font-size: clamp(var(--font-size-6), 3vw, var(--font-size-8));
+  font-weight: var(--font-weight-4);
+  line-height: var(--line-height-2);
+  letter-spacing: var(--letter-spacing-1);
+}

@@ -39,6 +39,7 @@ describe('SiteHeader', () => {
       sectionUrl('fhirSyncPebble'),
       sectionUrl('watchLifts'),
       sectionUrl('strength'),
+      sectionUrl('appCatalog'),
       sectionUrl('serverDocs'),
       sectionUrl('syntheticData'),
     ])

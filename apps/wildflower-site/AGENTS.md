@@ -47,7 +47,9 @@ other deploys' parts of it. The `404.html` every site serves is
 ## Rules
 
 - **An app's slug lives in `APP_SLUGS`.** A new app gets a key there, an
-  `APP_SITES` entry in `scripts/ci/pages-sites.ts`, an `APEX_REDIRECT_PATHS`
+  `APP_SITES` entry in `scripts/ci/pages-sites.ts` (with `requiredFiles` when
+  its build must hold more than `index.html`, as the App Catalog's `apps` and
+  `apps.json`), an `APEX_REDIRECT_PATHS`
   entry (its slug) in `marketing-site-web`, and the one-time setup of its
   `wildflowerhealthio/<slug>-web` repository (Pages from `gh-pages` at `/`,
   its custom domain, the DNS record and the deploy App's access). The tests

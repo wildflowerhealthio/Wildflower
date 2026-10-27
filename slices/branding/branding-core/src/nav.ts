@@ -115,6 +115,7 @@ const HEADER_NAV_GROUPS: readonly NavGroup[] = [
   {
     label: 'Developer',
     links: [
+      { kind: 'section', label: 'Wildflower App Catalog', section: 'appCatalog' },
       { kind: 'section', label: 'Wildflower Server Docs', section: 'serverDocs' },
       { kind: 'section', label: 'Wildflower Synthetic Data Loader', section: 'syntheticData' },
     ],

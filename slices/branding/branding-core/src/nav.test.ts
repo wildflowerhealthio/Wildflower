@@ -88,7 +88,10 @@ describe('HEADER_NAV_GROUPS', () => {
       ['Your health', ['Wildflower Medications', 'Wildflower Plots', 'Wildflower Imaging']],
       ['Your data', ['Wildflower Importer', 'Wildflower Launcher', 'Wildflower Authorization']],
       ['Fitness', ['FHIR Sync for Pebble', 'WatchLifts', 'Wildflower Strength']],
-      ['Developer', ['Wildflower Server Docs', 'Wildflower Synthetic Data Loader']],
+      [
+        'Developer',
+        ['Wildflower App Catalog', 'Wildflower Server Docs', 'Wildflower Synthetic Data Loader'],
+      ],
     ])
   })
 

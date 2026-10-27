@@ -33,6 +33,9 @@ const APP_SLUGS = {
   // the Owner manages what a server has authorized: every Wildflower server's
   // SMART `management_endpoint`, so its origin is a published contract.
   authorization: 'authorization',
+  // The HALO App Catalog (`apps/app-catalog/app-catalog-web`): `/apps` is the
+  // catalog itself, so its origin is a published contract.
+  appCatalog: 'app-catalog',
 } as const
 
 /** Identifies one hosted app: a key of {@link APP_SLUGS}. */

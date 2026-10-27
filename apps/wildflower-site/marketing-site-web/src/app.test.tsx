@@ -72,6 +72,7 @@ describe('App', () => {
       'https://fhir-sync-pebble.wildflowerhealth.io/',
       'https://watch-lifts.wildflowerhealth.io/',
       'https://strength.wildflowerhealth.io/',
+      'https://app-catalog.wildflowerhealth.io/',
       'https://server-docs.wildflowerhealth.io/',
       'https://synthetic-data.wildflowerhealth.io/',
     ])
