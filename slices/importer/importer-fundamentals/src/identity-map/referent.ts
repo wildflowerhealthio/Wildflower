@@ -35,6 +35,8 @@ interface AsResource {
    * then the one its demographics derive, when they allow one.
    */
   readonly identifiers: readonly IdentifierAndReference.IdentifierType[]
+  /** The identifier the resource's demographics derive, when they allow one: the last of `identifiers`. */
+  readonly derivedIdentifier: Option.Option<IdentifierAndReference.IdentifierType>
   readonly resource: LinkableResource.WithId
   /** The `DecodedFile.Resource` key the resource is reviewed under. */
   readonly reviewKey: string
@@ -53,10 +55,10 @@ type Type = AsResource | ByMentionOnly
 const { AsResource, ByMentionOnly, $is: is, $match: match } = Data.taggedEnum<Type>()
 
 /**
- * Two or more decoded resources of a file, under different ids, are keyed by
+ * Two or more decoded resources of a batch, under different ids, are keyed by
  * one logical reference: one identity decoded twice. Nothing decides which of
- * them the identity's mentions mean, so the stage refuses the file rather than
- * write both.
+ * them the identity's mentions mean, so the stage refuses the batch rather
+ * than write both.
  */
 class DuplicateReferent extends Data.TaggedError('DuplicateReferent')<{
   /** The logical reference their `identifier[0]` makes. */
@@ -69,17 +71,53 @@ class DuplicateReferent extends Data.TaggedError('DuplicateReferent')<{
 const key = (referent: Type): string => LinkableLogicalReference.key(referent.logicalReference)
 
 /**
- * Every logical reference `referent` answers to: each identifier it brings
- * (`identifiersOf`) as a logical reference to its type, its key's first.
+ * The logical references `referent`'s own identifiers make, its key's first:
+ * the ones a source gave it, not one demographics derive
+ * (`LinkableResource.isDerivedIdentifier`), which a placed resource carries
+ * too.
  */
-const logicalReferencesOf = (referent: Type): readonly LinkableLogicalReference.Type[] =>
+const ownLogicalReferencesOf = (referent: Type): readonly LinkableLogicalReference.Type[] =>
   match(referent, {
-    AsResource: ({ logicalReference, identifiers }) =>
-      Array.filterMap(identifiers, (identifier) =>
-        LinkableLogicalReference.tryFromIdentifier(logicalReference.type, identifier)
+    AsResource: ({ logicalReference, resource }) =>
+      pipe(
+        resource.identifier,
+        Array.filter((identifier) => !LinkableResource.isDerivedIdentifier(identifier)),
+        Array.filterMap((identifier) =>
+          LinkableLogicalReference.tryFromIdentifier(logicalReference.type, identifier)
+        )
       ),
     ByMentionOnly: ({ logicalReference }) => [logicalReference],
   })
+
+/**
+ * The logical reference `referent`'s demographics derive, when they allow one
+ * (`LinkableResource.maybeDerivedIdentifier`); a referent named only by
+ * mentions derives none.
+ */
+const maybeDerivedLogicalReferenceOf = (
+  referent: Type
+): Option.Option<LinkableLogicalReference.Type> =>
+  match(referent, {
+    AsResource: ({ logicalReference, derivedIdentifier }) =>
+      Option.flatMap(derivedIdentifier, (identifier) =>
+        LinkableLogicalReference.tryFromIdentifier(logicalReference.type, identifier)
+      ),
+    ByMentionOnly: () => Option.none(),
+  })
+
+/**
+ * Every logical reference `referent` answers to: its own
+ * ({@link ownLogicalReferencesOf}), then the derived one
+ * ({@link maybeDerivedLogicalReferenceOf}), once each.
+ */
+const logicalReferencesOf = (referent: Type): readonly LinkableLogicalReference.Type[] =>
+  Array.dedupeWith(
+    [
+      ...ownLogicalReferencesOf(referent),
+      ...Option.toArray(maybeDerivedLogicalReferenceOf(referent)),
+    ],
+    LinkableLogicalReference.equivalence
+  )
 
 /** The identifiers `referent` brings to whatever it links to. */
 const identifiersOf = (referent: Type): readonly IdentifierAndReference.IdentifierType[] =>
@@ -118,6 +156,7 @@ const tryFromDecodedResource = (
               Array.filter(IdentifierAndReference.isQualifiedIdentifier),
               Array.dedupeWith(IdentifierAndReference.identifierEquivalence)
             ),
+            derivedIdentifier,
             resource,
             reviewKey: entry.key,
             label,
@@ -192,22 +231,24 @@ const firstDuplicateAmong = (
   )
 
 /**
- * Every referent a decoded file holds, once per identity: those with a
- * resource in review order, then those named only by mentions, in the order
- * their mentions are first seen.
+ * Every referent a batch's decoded files hold, once per identity: those with
+ * a resource in file-then-review order, then those named only by mentions, in
+ * the order their mentions are first seen.
  *
  * @remarks
  * A mention of a logical reference a resource's referent is keyed by, or the
- * only one to answer to, is that referent, not a second one. A resource
- * decoded twice under one id is one referent, its first copy's. Fails with
- * {@link DuplicateReferent} when two resources under different ids are keyed
- * by one logical reference.
+ * only one to answer to, is that referent, not a second one, whichever file
+ * each is in: a person one file decodes and another only mentions is one
+ * referent, with the resource. A resource decoded twice under one id is one
+ * referent, its first copy's. Fails with {@link DuplicateReferent} when two
+ * resources under different ids, in one file or two, are keyed by one logical
+ * reference.
  */
 const discover = (
-  decodedFile: Pick<DecodedFile.DecodedFile, 'sections'>
+  decodedFiles: readonly Pick<DecodedFile.DecodedFile, 'sections'>[]
 ): Effect.Effect<readonly Type[], DuplicateReferent> =>
   Effect.gen(function* () {
-    const entries = DecodedFile.resources(decodedFile)
+    const entries = decodedFiles.flatMap(DecodedFile.resources)
     const decodedAsResources = Array.getSomes(
       yield* Effect.forEach(entries, tryFromDecodedResource)
     )
@@ -236,5 +277,7 @@ export {
   key,
   logicalReferencesOf,
   match,
+  maybeDerivedLogicalReferenceOf,
+  ownLogicalReferencesOf,
 }
 export type { AsResource, ByMentionOnly, Type }

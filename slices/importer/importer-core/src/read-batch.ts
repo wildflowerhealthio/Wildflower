@@ -276,7 +276,9 @@ const claimedFormats = (batch: BatchDecodeResult): readonly FormatKind[] =>
 export {
   type BatchDecodeResult,
   claimedFormats,
+  collectFormats,
   decodeFormat,
+  type FormatResults,
   groupByFormat,
   type GroupedPicks,
   identifyPick,

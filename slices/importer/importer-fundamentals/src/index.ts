@@ -18,6 +18,7 @@ export * as PlacedResource from './identity-map/placed-resource.ts'
 export * as LinkPlan from './identity-map/link-plan.ts'
 export * as Placement from './identity-map/placement.ts'
 export * as UnlinkedMention from './identity-map/unlinked-mention.ts'
+export * as ReferentSearch from './identity-map/referent-search.ts'
 export * as IdentityMap from './identity-map/identity-map.ts'
 // Namespaced symbols are reached through their namespace above — a flat
 // re-export here would give each one a second spelling. Only modules that are

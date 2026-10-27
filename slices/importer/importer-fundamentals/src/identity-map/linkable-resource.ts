@@ -61,6 +61,21 @@ const maybeBirthDate: (resource: Type) => Option.Option<string> = Match.type<Typ
   Match.exhaustive
 )
 
+const DERIVED_IDENTIFIER_SYSTEM_HREFS: ReadonlySet<string> = new Set(
+  [Patient.NAME_BIRTH_DATE_IDENTIFIER_SYSTEM, Practitioner.NAME_IDENTIFIER_SYSTEM].map(
+    (system) => new URL(system).href
+  )
+)
+
+/**
+ * Whether `identifier` is one demographics derive, under a Wildflower system
+ * ({@link maybeDerivedIdentifier}'s), rather than one a source gave: what a
+ * placed resource carries after assuming its own, and what a search by the
+ * source's identifiers leaves out.
+ */
+const isDerivedIdentifier = (identifier: IdentifierAndReference.IdentifierType): boolean =>
+  identifier.system !== null && DERIVED_IDENTIFIER_SYSTEM_HREFS.has(identifier.system.href)
+
 /**
  * The identifier `resource`'s own demographics derive, under a Wildflower
  * system: name and birth date for a Patient, the displayed name for a
@@ -137,6 +152,7 @@ const assumesIdentifiers = <TResource extends Type>(
 export {
   assumesIdentifiers,
   is,
+  isDerivedIdentifier,
   labelOf,
   literalReferenceOf,
   maybeDerivedIdentifier,

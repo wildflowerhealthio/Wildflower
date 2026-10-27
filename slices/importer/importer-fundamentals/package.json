@@ -2,7 +2,7 @@
   "name": "@wildflowerhealthio/importer-fundamentals",
   "version": "0.0.0",
   "private": true,
-  "description": "Format-agnostic upstream of the importer slice: the FileImporter contract (a batch decode built from one per-file decodeOne, the source-file DocumentReference mint and read-back, and per-file review-key namespacing), the per-resource review/selection model, and the identity map that places a decode's referents, its Patients, Practitioners and the mentions of them, on the device's records. Names no archive format. No DOM, no fs, no React.",
+  "description": "Format-agnostic upstream of the importer slice: the FileImporter contract (a batch decode built from one per-file decodeOne, the source-file DocumentReference mint and read-back, and per-file review-key namespacing), the per-resource review/selection model, and the identity map that searches the device for a batch's referents, its Patients, Practitioners and the mentions of them, and places them on the device's records. Names no archive format. No DOM, no fs, no React.",
   "license": "MIT",
   "repository": {
     "type": "git",

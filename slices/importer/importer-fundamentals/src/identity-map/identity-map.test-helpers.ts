@@ -13,7 +13,16 @@ import {
   Practitioner,
   type FhirResource,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import { Arbitrary, Effect, FastCheck as fc, HashMap, Option, Schema, TestContext } from 'effect'
+import {
+  Arbitrary,
+  Array,
+  Effect,
+  FastCheck as fc,
+  HashMap,
+  Option,
+  Schema,
+  TestContext,
+} from 'effect'
 
 import type * as DecodedFile from '../decoded-file.ts'
 import * as IdentityMap from './identity-map.ts'
@@ -36,15 +45,23 @@ const ABSOLUTE = 'https://elsewhere.example/fhir/Patient/1'
 const runOnTestClock = <A, E>(effect: Effect.Effect<A, E>): A =>
   Effect.runSync(Effect.provide(effect, TestContext.TestContext))
 
-/** `IdentityMap.apply` run on the test clock. */
+/** `IdentityMap.apply` over `files`, run on the test clock. */
+const applyAcrossOnTestClock = (
+  files: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>,
+  linkChoices: ReferentLinkChoices.Type
+): Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile> =>
+  runOnTestClock(IdentityMap.apply(files, linkChoices))
+
+/** `IdentityMap.apply` over a batch of one `file`, run on the test clock. */
 const applyOnTestClock = (
   file: DecodedFile.DecodedFile,
   linkChoices: ReferentLinkChoices.Type
-): DecodedFile.DecodedFile => runOnTestClock(IdentityMap.apply(file, linkChoices))
+): DecodedFile.DecodedFile =>
+  Array.headNonEmpty(applyAcrossOnTestClock(Array.of(file), linkChoices))
 
-/** `Referent.discover` run on the test clock. */
+/** `Referent.discover` over a batch of one `file`, run on the test clock. */
 const discoverOnTestClock = (file: DecodedFile.DecodedFile): readonly Referent.Type[] =>
-  runOnTestClock(Referent.discover(file))
+  runOnTestClock(Referent.discover([file]))
 
 const decodeResource = Schema.decodeUnknownSync(FhirResourceSchema)
 const encodeResource = Schema.encodeSync(FhirResourceSchema)
@@ -288,6 +305,7 @@ const anyChoiceArbitrary: fc.Arbitrary<LinkChoice.Type> = fc.oneof(
   fc.constant(LinkChoice.CreateResource()),
   fc.constant(LinkChoice.DontLink()),
   fc.constantFrom(...STORED).map((resource) => LinkChoice.LinkToStoredResource({ resource })),
+  fc.constantFrom(...STORED).map((resource) => LinkChoice.UpdateStoredResource({ resource })),
   fc
     .constantFrom(...POOL_KEYS)
     .map((referentKey) => LinkChoice.LinkToDecodedReferent({ referentKey }))
@@ -300,6 +318,24 @@ const anyChoicesArbitrary: fc.Arbitrary<ReferentLinkChoices.Type> = fc
   })
   .map(HashMap.fromIterable)
 
+/** The stored copy of `decoded` a re-import finds: the same resource, carrying one identifier more, the device's own. */
+const storedCopyOf = (decoded: LinkableResource.WithId): LinkableResource.WithId => ({
+  ...decoded,
+  identifier: [
+    ...decoded.identifier,
+    {
+      id: null,
+      extension: [],
+      assigner: null,
+      period: null,
+      system: new URL(DEVICE),
+      type: null,
+      use: null,
+      value: decoded.id,
+    },
+  ],
+})
+
 /** A choice `referent` can take, linking only to referents of `referents`. */
 const choiceForArbitrary = (
   referent: Referent.Type,
@@ -310,7 +346,12 @@ const choiceForArbitrary = (
     .constantFrom(...STORED.filter((stored) => stored.resourceType === type))
     .map((resource) => LinkChoice.LinkToStoredResource({ resource }))
   return Referent.match(referent, {
-    AsResource: () => fc.oneof(fc.constant(LinkChoice.CreateResource()), linkToStoredResource),
+    AsResource: ({ resource }) =>
+      fc.oneof(
+        fc.constant(LinkChoice.CreateResource()),
+        fc.constant(LinkChoice.UpdateStoredResource({ resource: storedCopyOf(resource) })),
+        linkToStoredResource
+      ),
     ByMentionOnly: ({ logicalReference }) =>
       fc.oneof(
         fc.constant(LinkChoice.DontLink()),
@@ -449,6 +490,7 @@ export {
   STORED_SMITH,
   STORED_TYRA,
   anyChoicesArbitrary,
+  applyAcrossOnTestClock,
   applyOnTestClock,
   customerSubject,
   discoverOnTestClock,
@@ -464,6 +506,7 @@ export {
   practitioner,
   request,
   runOnTestClock,
+  storedOf,
   unrelatedArbitrary,
   untypedSubject,
   wireFieldsOf,

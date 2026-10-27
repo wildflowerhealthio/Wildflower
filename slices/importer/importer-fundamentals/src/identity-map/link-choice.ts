@@ -3,8 +3,10 @@
  *
  * @remarks
  * A referent with a resource may be `CreateResource` (its own resource is
- * written) or `LinkToStoredResource` (linked to a resource already on the
- * device). One named only by mentions may be `LinkToStoredResource`,
+ * written), `UpdateStoredResource` (its own resource is written over its
+ * stored copy, keeping what the copy assumed) or `LinkToStoredResource`
+ * (linked to a resource already on the device). One named only by mentions
+ * may be `LinkToStoredResource`,
  * `LinkToDecodedReferent` (whatever that referent of the same import
  * becomes), or `DontLink` (its mentions keep their identifier-only form); and
  * `CreateResource` when something provisional can stand in for its logical
@@ -25,6 +27,16 @@ interface CreateResource {
   readonly _tag: 'CreateResource'
 }
 
+/**
+ * Write the referent's own resource over `resource`, its stored copy under
+ * the same literal reference, keeping every identifier the copy assumed: what
+ * a re-import does.
+ */
+interface UpdateStoredResource {
+  readonly _tag: 'UpdateStoredResource'
+  readonly resource: LinkableResource.WithId
+}
+
 /** Link the referent to a resource already stored on the device. */
 interface LinkToStoredResource {
   readonly _tag: 'LinkToStoredResource'
@@ -42,10 +54,16 @@ interface DontLink {
   readonly _tag: 'DontLink'
 }
 
-type Type = CreateResource | LinkToStoredResource | LinkToDecodedReferent | DontLink
+type Type =
+  | CreateResource
+  | UpdateStoredResource
+  | LinkToStoredResource
+  | LinkToDecodedReferent
+  | DontLink
 
 const {
   CreateResource,
+  UpdateStoredResource,
   LinkToStoredResource,
   LinkToDecodedReferent,
   DontLink,
@@ -57,14 +75,17 @@ const {
  * Why a choice cannot be followed for its referent: one its kind does not
  * allow (`DontLink` or `LinkToDecodedReferent` for a referent with a
  * resource, `CreateResource` for one named only by mentions with no
- * provisional form), a stored resource or a linked referent of another type,
- * or a linked referent the file does not hold.
+ * provisional form, `UpdateStoredResource` for one named only by mentions), a
+ * stored resource or a linked referent of another type, a stored resource to
+ * update that is not under the referent's own id, or a linked referent the
+ * batch does not hold.
  */
 type InvalidLinkChoiceReason =
   | 'NotAllowedForReferent'
   | 'StoredResourceOfAnotherType'
+  | 'StoredResourceUnderAnotherId'
   | 'LinkedReferentOfAnotherType'
-  | 'LinkedReferentNotInFile'
+  | 'LinkedReferentNotInBatch'
 
 /** A choice the stage cannot follow for the referent it is made for. */
 class InvalidLinkChoice extends Data.TaggedError('InvalidLinkChoice')<{
@@ -97,6 +118,7 @@ export {
   LinkToDecodedReferent,
   LinkToStoredResource,
   match,
+  UpdateStoredResource,
 }
 export type {
   CreateResource as CreateResourceType,
@@ -105,4 +127,5 @@ export type {
   LinkToDecodedReferent as LinkToDecodedReferentType,
   LinkToStoredResource as LinkToStoredResourceType,
   Type,
+  UpdateStoredResource as UpdateStoredResourceType,
 }

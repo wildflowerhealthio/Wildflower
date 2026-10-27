@@ -1,6 +1,6 @@
 /**
- * The link plan: everything placing a decoded file on the referent link
- * choices needs, worked out once from the file and the choices, and the
+ * The link plan: everything placing a batch's decoded files on the referent
+ * link choices needs, worked out once from the files and the choices, and the
  * lookups that answer the placement's and the redirection's questions.
  *
  * @remarks
@@ -8,8 +8,10 @@
  * each referent's link target is, what the resource under each placed literal
  * reference becomes once it has assumed the identifiers of the referents
  * linked to it, and which decoded literal references move to a stored
- * resource. Built by {@link make}, read through {@link maybeRedirectOf} and
- * {@link maybePlacedResourceFor}, and what the batch lift hands across files.
+ * resource. Built once per batch by {@link make}, so a referent one file holds
+ * is the link target of a mention in another, and read through
+ * {@link maybeRedirectOf} and {@link maybePlacedResourceFor} by the placement
+ * of every file.
  *
  * @packageDocumentation
  */
@@ -28,9 +30,9 @@ import type * as ReferentLinkChoices from './referent-link-choices.ts'
 import * as Referent from './referent.ts'
 import * as Resolution from './resolution.ts'
 
-/** The link plan for one decoded file, built once by {@link make}. */
+/** The link plan for a batch's decoded files, built once by {@link make}. */
 interface Type {
-  /** Every referent of the file with its link target, in discovery order. */
+  /** Every referent of the batch with its link target, in discovery order. */
   readonly links: readonly Link.Type[]
   /**
    * Each referent's link target under every logical reference that names it
@@ -52,12 +54,12 @@ interface Type {
   readonly decodedLiteralReferencesToStored: HashMap.HashMap<string, string>
 }
 
-/** The literal references the decoded resources of `decodedFile` the identity map links carry, those with an `id`. */
-const literalReferencesFromDecodedFile = (
-  decodedFile: DecodedFile.DecodedFile
+/** The literal references the decoded resources of `decodedFiles` the identity map links carry, those with an `id`. */
+const literalReferencesFromDecodedFiles = (
+  decodedFiles: readonly DecodedFile.DecodedFile[]
 ): HashSet.HashSet<string> =>
   pipe(
-    DecodedFile.resources(decodedFile),
+    decodedFiles.flatMap(DecodedFile.resources),
     Array.filterMap(({ resource }) =>
       Option.liftPredicate(resource, LinkableResource.is).pipe(
         Option.flatMap(LinkableResource.tryIntoWithId),
@@ -65,6 +67,27 @@ const literalReferencesFromDecodedFile = (
       )
     ),
     HashSet.fromIterable
+  )
+
+/**
+ * The literal references of `decodedLiteralReferences` the batch writes where
+ * they were decoded: those `decodedLiteralReferencesToStored` does not move
+ * to another stored resource. A decoded resource a stored one under another
+ * id replaces is not written under its own literal reference, so a stored
+ * copy under that reference, which a mention may link to, is not written by
+ * any placed file.
+ */
+const writtenAsDecoded = (
+  decodedLiteralReferences: HashSet.HashSet<string>,
+  decodedLiteralReferencesToStored: HashMap.HashMap<string, string>
+): HashSet.HashSet<string> =>
+  HashSet.filter(decodedLiteralReferences, (decodedLiteralReference) =>
+    HashMap.get(decodedLiteralReferencesToStored, decodedLiteralReference).pipe(
+      Option.match({
+        onNone: () => true,
+        onSome: (storedLiteralReference) => storedLiteralReference === decodedLiteralReference,
+      })
+    )
   )
 
 /**
@@ -106,30 +129,37 @@ const linkTargetsByLogicalReferenceKeyOf = (
 }
 
 /**
- * The plan for `decodedFile` under `linkChoices`: each referent's choice
- * resolved once into its link, and every field read off those links.
+ * The plan for a batch's `decodedFiles` under `linkChoices`: each referent's
+ * choice resolved once into its link, and every field read off those links.
  *
  * @remarks
- * Fails with `Referent.DuplicateReferent` when two decoded resources answer
- * to one logical reference, and with `LinkChoice.InvalidLinkChoice` when a
- * choice cannot be followed for its referent.
+ * The referents are the whole batch's (`Referent.discover`), so a
+ * `LinkToDecodedReferent` naming a referent one file holds resolves from a
+ * mention in another, and every file is placed on the same plan. Fails with
+ * `Referent.DuplicateReferent` when two decoded resources answer to one
+ * logical reference, and with `LinkChoice.InvalidLinkChoice` when a choice
+ * cannot be followed for its referent.
  */
 const make = (
-  decodedFile: DecodedFile.DecodedFile,
+  decodedFiles: readonly DecodedFile.DecodedFile[],
   linkChoices: ReferentLinkChoices.Type
 ): Effect.Effect<Type, Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice> =>
   Effect.gen(function* () {
-    const referents = yield* Referent.discover(decodedFile)
+    const referents = yield* Referent.discover(decodedFiles)
     const links = yield* Resolution.linksOf(linkChoices, referents)
+    const decodedLiteralReferencesToStored = decodedLiteralReferencesToStoredOf(links)
     const placedResourcesByPlacedLiteralReference = yield* PlacedResource.byPlacedLiteralReference(
       links,
-      literalReferencesFromDecodedFile(decodedFile)
+      writtenAsDecoded(
+        literalReferencesFromDecodedFiles(decodedFiles),
+        decodedLiteralReferencesToStored
+      )
     )
     return {
       links,
       linkTargetsByLogicalReferenceKey: linkTargetsByLogicalReferenceKeyOf(links),
       placedResourcesByPlacedLiteralReference,
-      decodedLiteralReferencesToStored: decodedLiteralReferencesToStoredOf(links),
+      decodedLiteralReferencesToStored,
     }
   })
 
@@ -173,5 +203,5 @@ const maybePlacedResourceFor = (
   )
 }
 
-export { literalReferencesFromDecodedFile, make, maybePlacedResourceFor, maybeRedirectOf }
+export { make, maybePlacedResourceFor, maybeRedirectOf }
 export type { Type }
