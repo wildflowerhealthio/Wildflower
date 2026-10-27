@@ -16,6 +16,7 @@ import { formatRegistry } from './registry.ts'
 import { SKIPPED_HEADING } from './results/import-results.tsx'
 import {
   dicomFile,
+  ID_LESS_OBSERVATIONS_HAR,
   NAMED_PATIENT_HAR,
   RECOGNIZED_HAR,
   storedSourceFile,
@@ -592,6 +593,40 @@ describe('ImporterScreen', () => {
     for (const box of screen.getAllByRole<HTMLInputElement>('checkbox', { name: /^Include / })) {
       expect(box.checked).toBe(false)
     }
+    expect(writes()).toHaveLength(written)
+  })
+
+  it('writes Observations a server sent with no id under ids of their content, and finds them unchanged on a re-import', async () => {
+    // Arrange
+    currentRunAuthed = routingServer({})
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+    const idLessHar = (): File =>
+      new File([ID_LESS_OBSERVATIONS_HAR], 'a.har', { type: 'application/json' })
+
+    // Act — import the capture once
+    await userEvent.upload(screen.getByLabelText('Import file'), idLessHar())
+    await userEvent.click(await screen.findByRole('button', { name: /Import 4 resources/ }))
+    await screen.findByRole('heading', { name: /Import complete/ })
+
+    // Assert — each Observation was written under an id adoption minted, one apiece
+    const observationIds = writes()
+      .filter((write) => write.url.includes('/Observation/'))
+      .map((write) => idFromUrl(write.url))
+    expect(observationIds).toHaveLength(2)
+    expect(new Set(observationIds).size).toBe(2)
+    for (const id of observationIds) expect(id).toMatch(/^wf-[0-9a-f]{32}$/)
+    const written = writes().length
+
+    // Act — pick the same capture again
+    await userEvent.click(screen.getByRole('button', { name: 'Import another archive' }))
+    await userEvent.upload(screen.getByLabelText('Import file'), idLessHar())
+
+    // Assert — the same content mints the same ids, so the diff finds every
+    // row on the server unchanged and nothing is written again
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Nothing to import/ })).toBeDefined()
+    })
+    expect(screen.getAllByText('Already on server')).toHaveLength(4)
     expect(writes()).toHaveLength(written)
   })
 
