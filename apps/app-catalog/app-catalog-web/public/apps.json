@@ -2,9 +2,10 @@
   {
     "id": "51a557fd-12cb-427b-8136-5150f6ae5628",
     "name": "Wildflower Medications",
-    "lang": "en-CA",
     "description": "I want to get more out of my medication data than my pharmacy gives me. The viewer lays every refill and other key date onto a calendar, flags possible interactions between the prescriptions on the list, and points at manufacturer benefit programs that can bring the cost down.",
     "descriptionShort": "Every prescription on a patient's FHIR record, arranged around refill day, from any server that speaks SMART on FHIR.",
+    "type": "smart-app",
+    "contentLanguage": "en-CA",
     "tags": ["medications"],
     "helpUrl": "https://medications.wildflowerhealth.io/",
     "iconUrl": "https://wildflowerhealth.io/app-icon.png",
@@ -31,6 +32,13 @@
       "url": "https://wildflowerhealth.io"
     },
     "isEnrolling": true,
+    "registrationModes": ["preassigned"],
+    "preassignedCredentials": {
+      "clientId": "9769f8b274370708d0d3ebb2e3e59b7c",
+      "redirectUris": ["https://medications.wildflowerhealth.io/"],
+      "grantTypes": ["authorization_code", "refresh_token"],
+      "tokenEndpointAuthMethod": "none"
+    },
     "scopes": [
       "launch",
       "openid",
@@ -38,21 +46,15 @@
       "system/MedicationRequest.rs",
       "system/Medication.rs",
       "system/Patient.rs"
-    ],
-    "registrationModes": ["preassigned"],
-    "preassignedCredentials": {
-      "clientId": "9769f8b274370708d0d3ebb2e3e59b7c",
-      "redirectUris": ["https://medications.wildflowerhealth.io/"],
-      "grantTypes": ["authorization_code", "refresh_token"],
-      "tokenEndpointAuthMethod": "none"
-    }
+    ]
   },
   {
     "id": "a5ad037f-9814-4ffc-b8d3-9ef3ca0d0e0a",
     "name": "Wildflower Plots",
-    "lang": "en-CA",
     "description": "I want to see health data from several places on one chart. I have a dose of a medication that keeps changing from my pharmacy, and labs tracking both the medication level and possible side effects. It is hard to tell what all the changes are doing to each other. This tool plots data from several sources on the same chart so I can see how everything relates.",
     "descriptionShort": "Plots labs, vitals and prescribed doses from a patient's FHIR record on one chart, so a dose change can be read against the numbers it is meant to move.",
+    "type": "smart-app",
+    "contentLanguage": "en-CA",
     "tags": ["charts", "lab-results", "vitals", "medications"],
     "helpUrl": "https://plots.wildflowerhealth.io/",
     "iconUrl": "https://wildflowerhealth.io/app-icon.png",
@@ -76,6 +78,13 @@
       "url": "https://wildflowerhealth.io"
     },
     "isEnrolling": true,
+    "registrationModes": ["preassigned"],
+    "preassignedCredentials": {
+      "clientId": "474e103de61f9141c4b640d59bfa130e",
+      "redirectUris": ["https://plots.wildflowerhealth.io/"],
+      "grantTypes": ["authorization_code", "refresh_token"],
+      "tokenEndpointAuthMethod": "none"
+    },
     "scopes": [
       "launch",
       "openid",
@@ -83,21 +92,15 @@
       "system/Observation.rs",
       "system/MedicationRequest.rs",
       "system/Patient.rs"
-    ],
-    "registrationModes": ["preassigned"],
-    "preassignedCredentials": {
-      "clientId": "474e103de61f9141c4b640d59bfa130e",
-      "redirectUris": ["https://plots.wildflowerhealth.io/"],
-      "grantTypes": ["authorization_code", "refresh_token"],
-      "tokenEndpointAuthMethod": "none"
-    }
+    ]
   },
   {
     "id": "c2fad43c-0455-4041-9be6-48d6ad5cbe7c",
     "name": "FHIR Sync for Pebble",
-    "lang": "en-CA",
     "description": "My Pebble already tracks my steps, sleep and heart rate, but that data never leaves the watch and my phone. This watchapp sends it to a FHIR server I choose, as observations on my own record, so it sits beside my labs and medications. It works with a Wildflower server, and with any SMART on FHIR server that lets a signed-in user grant system-level access.",
     "descriptionShort": "Syncs the steps, sleep and heart rate your Pebble already records to your FHIR server.",
+    "type": "smart-app",
+    "contentLanguage": "en-CA",
     "tags": ["fitness", "vitals"],
     "helpUrl": "https://fhir-sync-pebble.wildflowerhealth.io/",
     "iconUrl": "https://wildflowerhealth.io/app-icon.png",
@@ -121,21 +124,22 @@
       "url": "https://wildflowerhealth.io"
     },
     "isEnrolling": true,
-    "scopes": ["openid", "fhirUser", "system/Patient.rs", "system/Observation.cu"],
     "registrationModes": ["preassigned"],
     "preassignedCredentials": {
       "clientId": "6847df97d54c31936d54ca1b36b3bb09",
       "redirectUris": ["https://fhir-sync-pebble.wildflowerhealth.io/"],
       "grantTypes": ["authorization_code", "refresh_token"],
       "tokenEndpointAuthMethod": "none"
-    }
+    },
+    "scopes": ["openid", "fhirUser", "system/Patient.rs", "system/Observation.cu"]
   },
   {
     "id": "254723ee-76a1-4387-99db-39e444601ad9",
     "name": "Wildflower Strength",
-    "lang": "en-CA",
     "description": "I want my training log to live with the rest of my health record, not in one more app that keeps it to itself. A program is a cycle of workout days, each a list of exercises with their sets, reps and how the load moves. You tap off each set as you lift it, and after the workout the app raises, holds or deloads each lift from how it went. StrongLifts 5×5 is built in as a template. The program, the load you are at on each lift, each workout and each set are stored on your FHIR server as PlanDefinition, ServiceRequest, Procedure and Observation resources, so any other app you connect can read your training too.",
     "descriptionShort": "A strength-training program, the workout due today and every set you lift, kept on your own FHIR record.",
+    "type": "smart-app",
+    "contentLanguage": "en-CA",
     "tags": ["fitness"],
     "helpUrl": "https://strength.wildflowerhealth.io/",
     "iconUrl": "https://wildflowerhealth.io/app-icon.png",
@@ -159,6 +163,13 @@
       "url": "https://wildflowerhealth.io"
     },
     "isEnrolling": true,
+    "registrationModes": ["preassigned"],
+    "preassignedCredentials": {
+      "clientId": "bdf9fc5cb5a28c6683b49896b0ef8a75",
+      "redirectUris": ["https://strength.wildflowerhealth.io/"],
+      "grantTypes": ["authorization_code", "refresh_token"],
+      "tokenEndpointAuthMethod": "none"
+    },
     "scopes": [
       "launch",
       "openid",
@@ -168,21 +179,15 @@
       "system/ServiceRequest.crus",
       "system/Procedure.crus",
       "system/Observation.crus"
-    ],
-    "registrationModes": ["preassigned"],
-    "preassignedCredentials": {
-      "clientId": "bdf9fc5cb5a28c6683b49896b0ef8a75",
-      "redirectUris": ["https://strength.wildflowerhealth.io/"],
-      "grantTypes": ["authorization_code", "refresh_token"],
-      "tokenEndpointAuthMethod": "none"
-    }
+    ]
   },
   {
     "id": "9373df55-dea4-4c37-9752-162cbf9d6954",
     "name": "Wildflower Importer",
-    "lang": "en-CA",
     "description": "You can use your own browser, click around in your pharmacy / lab result / patient record's website and save everything their server sent. The Importer can then process those results to produce FHIR compatible records, and save them on your server.",
     "descriptionShort": "Turns what your browser saw on a pharmacy, lab, or patient-portal website into FHIR records on a server you control.",
+    "type": "smart-app",
+    "contentLanguage": "en-CA",
     "tags": ["data-import", "medications", "lab-results"],
     "helpUrl": "https://importer.wildflowerhealth.io/",
     "iconUrl": "https://wildflowerhealth.io/app-icon.png",
@@ -206,6 +211,13 @@
       "url": "https://wildflowerhealth.io"
     },
     "isEnrolling": true,
+    "registrationModes": ["preassigned"],
+    "preassignedCredentials": {
+      "clientId": "165cd26573e5ac72378e6ad2d2198330",
+      "redirectUris": ["https://importer.wildflowerhealth.io/"],
+      "grantTypes": ["authorization_code", "refresh_token"],
+      "tokenEndpointAuthMethod": "none"
+    },
     "scopes": [
       "launch",
       "openid",
@@ -220,21 +232,15 @@
       "system/MedicationDispense.cruds",
       "system/ServiceRequest.cruds",
       "system/ImagingStudy.cruds"
-    ],
-    "registrationModes": ["preassigned"],
-    "preassignedCredentials": {
-      "clientId": "165cd26573e5ac72378e6ad2d2198330",
-      "redirectUris": ["https://importer.wildflowerhealth.io/"],
-      "grantTypes": ["authorization_code", "refresh_token"],
-      "tokenEndpointAuthMethod": "none"
-    }
+    ]
   },
   {
     "id": "c99399a5-48ea-4bb4-8dbb-09695af3195b",
     "name": "Wildflower Synthetic Data Loader",
-    "lang": "en-CA",
     "description": "I want to show what Wildflower does without anyone's real health records. The synthetic data snapshot tells the stories of a few fictional people through the files a pharmacy, a lab and an imaging clinic would produce, read through the Importer. This app loads those records into a server you choose, so the viewers have something realistic to show.",
     "descriptionShort": "Loads a published snapshot of synthetic health records into a FHIR server, so the other apps have a realistic record to show.",
+    "type": "smart-app",
+    "contentLanguage": "en-CA",
     "tags": ["test-data", "developer"],
     "helpUrl": "https://synthetic-data.wildflowerhealth.io/",
     "iconUrl": "https://wildflowerhealth.io/app-icon.png",
@@ -258,6 +264,13 @@
       "url": "https://wildflowerhealth.io"
     },
     "isEnrolling": true,
+    "registrationModes": ["preassigned"],
+    "preassignedCredentials": {
+      "clientId": "225ba6af034a3acec6be7ff8010df67f",
+      "redirectUris": ["https://synthetic-data.wildflowerhealth.io/"],
+      "grantTypes": ["authorization_code", "refresh_token"],
+      "tokenEndpointAuthMethod": "none"
+    },
     "scopes": [
       "launch",
       "openid",
@@ -272,21 +285,15 @@
       "system/MedicationDispense.cu",
       "system/ServiceRequest.cu",
       "system/ImagingStudy.cu"
-    ],
-    "registrationModes": ["preassigned"],
-    "preassignedCredentials": {
-      "clientId": "225ba6af034a3acec6be7ff8010df67f",
-      "redirectUris": ["https://synthetic-data.wildflowerhealth.io/"],
-      "grantTypes": ["authorization_code", "refresh_token"],
-      "tokenEndpointAuthMethod": "none"
-    }
+    ]
   },
   {
     "id": "ea2b5613-139a-4390-b901-169a441af833",
     "name": "Wildflower Imaging (OHIF)",
-    "lang": "en-CA",
     "description": "Views a patient's imaging studies and scanned documents in the OHIF viewer.",
     "descriptionShort": "Views a patient's imaging studies and scanned documents in the OHIF viewer.",
+    "type": "smart-app",
+    "contentLanguage": "en-CA",
     "tags": ["imaging"],
     "helpUrl": "https://ohif-viewer.wildflowerhealth.io/",
     "iconUrl": "https://wildflowerhealth.io/app-icon.png",
@@ -310,6 +317,13 @@
       "url": "https://wildflowerhealth.io"
     },
     "isEnrolling": true,
+    "registrationModes": ["preassigned"],
+    "preassignedCredentials": {
+      "clientId": "941de68e6b59eb9dcc32df8ede89e636",
+      "redirectUris": ["https://ohif-viewer.wildflowerhealth.io/fhir-viewer"],
+      "grantTypes": ["authorization_code", "refresh_token"],
+      "tokenEndpointAuthMethod": "none"
+    },
     "scopes": [
       "launch",
       "openid",
@@ -317,21 +331,15 @@
       "system/Patient.rs",
       "system/ImagingStudy.rs",
       "system/DocumentReference.rs"
-    ],
-    "registrationModes": ["preassigned"],
-    "preassignedCredentials": {
-      "clientId": "941de68e6b59eb9dcc32df8ede89e636",
-      "redirectUris": ["https://ohif-viewer.wildflowerhealth.io/fhir-viewer"],
-      "grantTypes": ["authorization_code", "refresh_token"],
-      "tokenEndpointAuthMethod": "none"
-    }
+    ]
   },
   {
     "id": "fc1b98c1-167f-4770-9ac2-58971316984f",
     "name": "SMART - PreciseHBR calculator",
-    "lang": "en-CA",
     "description": "Estimates the risk of major bleeding after a percutaneous coronary intervention.",
     "descriptionShort": "Estimates the risk of major bleeding after a percutaneous coronary intervention.",
+    "type": "smart-app",
+    "contentLanguage": "en-CA",
     "tags": ["cardiology", "risk-calculator"],
     "helpUrl": "https://hbr.alumicoin.cloud/docs",
     "iconUrl": "https://hbr.alumicoin.cloud/static/favicon.ico",

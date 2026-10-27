@@ -809,8 +809,8 @@ mod tests {
     /// registration as its HALO `preassignedCredentials`, for a server that
     /// registers the app itself. Every entry carrying the object must match
     /// its seeded row: a public client with no secret, the same scopes and
-    /// grant types, every redirect it lists registered, and its `launchUrl`
-    /// among them, since the app's launch page is where it returns to. The row
+    /// grant types, every redirect it lists registered, and a smart-app's
+    /// `launchUrl` among them, since its launch page is where it returns to. The row
     /// is the source of truth, so a migration that changes one fails here
     /// until the catalog follows.
     #[test]
@@ -857,12 +857,14 @@ mod tests {
                     "{name}: {redirect} is not registered for {client_id}",
                 );
             }
-            let launch_url = url::Url::parse(app["launchUrl"].as_str().expect("a launchUrl"))
-                .expect("an absolute launch URL");
-            assert!(
-                client.redirect_uris.contains(&launch_url),
-                "{name}: its launchUrl {launch_url} is not registered for {client_id}",
-            );
+            if let Some(launch_url) = app.get("launchUrl") {
+                let launch_url = url::Url::parse(launch_url.as_str().expect("a string"))
+                    .expect("an absolute launch URL");
+                assert!(
+                    client.redirect_uris.contains(&launch_url),
+                    "{name}: its launchUrl {launch_url} is not registered for {client_id}",
+                );
+            }
             checked += 1;
         }
         assert!(checked > 0, "apps.json preassigns no first-party client");

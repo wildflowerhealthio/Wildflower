@@ -22,9 +22,20 @@ const navLabelOf = (section: string): string | undefined =>
 const decodeCatalog = (): AppCatalog.Catalog =>
   Schema.decodeUnknownSync(AppCatalog.Catalog)(catalogJson)
 
+/** The catalog's smart-apps, which carry a `launchUrl`. */
+const smartAppsOf = (catalog: AppCatalog.Catalog): readonly AppCatalog.SmartApp[] =>
+  catalog.filter((entry): entry is AppCatalog.SmartApp => entry.type === 'smart-app')
+
+/** The smart-app launched from `launchUrl`. */
+const smartAppAt = (
+  catalog: AppCatalog.Catalog,
+  launchUrl: string
+): AppCatalog.SmartApp | undefined =>
+  smartAppsOf(catalog).find((entry) => entry.launchUrl === launchUrl)
+
 /** The publisher of every app this repository builds. */
 const wildflowerPublisherOf = (catalog: AppCatalog.Catalog): AppCatalog.Publisher | undefined =>
-  catalog.find(({ launchUrl }) => launchUrl === sectionUrl('medications'))?.publisher
+  smartAppAt(catalog, sectionUrl('medications'))?.publisher
 
 describe('public/apps.json', () => {
   it('should decode as a Catalog', () => {
@@ -35,9 +46,10 @@ describe('public/apps.json', () => {
     'should list %s at its root as a Wildflower app with its menu name, description and policies',
     (app) => {
       const catalog = decodeCatalog()
-      const entry = catalog.find(({ launchUrl }) => launchUrl === sectionUrl(app))
+      const entry = smartAppAt(catalog, sectionUrl(app))
       expect(entry).toMatchObject({
         name: navLabelOf(app),
+        type: 'smart-app',
         descriptionShort: APP_DESCRIPTIONS[app].tagline,
         description: APP_DESCRIPTIONS[app].paragraphs.join(' '),
         helpUrl: sectionUrl(app),
@@ -52,16 +64,19 @@ describe('public/apps.json', () => {
   )
 
   it('should list every app a URL launches at that URL', () => {
-    const launchUrls = decodeCatalog().map(({ launchUrl }) => launchUrl)
+    const launchUrls = smartAppsOf(decodeCatalog()).map(({ launchUrl }) => launchUrl)
     for (const { launchPageUrl } of SMART_APP_LAUNCH_PAGES) {
       expect(launchUrls).toContain(launchPageUrl)
     }
   })
 
-  it('should mark every app enrolling and written in Canadian English', () => {
-    for (const entry of decodeCatalog()) {
-      expect(entry).toMatchObject({ isEnrolling: true, lang: 'en-CA' })
-      expect(entry.langSupported).toBeUndefined()
+  it('should list only smart-apps, every one enrolling and described in Canadian English', () => {
+    const catalog = decodeCatalog()
+    expect(smartAppsOf(catalog)).toEqual(catalog)
+    for (const entry of catalog) {
+      expect(entry).toMatchObject({ isEnrolling: true, contentLanguage: 'en-CA' })
+      expect(entry.languagesSupported).toBeUndefined()
+      expect(entry.intents).toBeUndefined()
     }
   })
 

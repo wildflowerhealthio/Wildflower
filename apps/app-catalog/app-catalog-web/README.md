@@ -3,28 +3,31 @@
 Wildflower's App Catalog, published at
 `https://app-catalog.wildflowerhealth.io/`: the SMART on FHIR apps worth
 trying with a Wildflower server, as a
-[HALO 1.2 App Catalog](https://simplifier.net/guide/halo/Home/HALO-Components/App-Catalog?version=1.2.0-dft-preballot).
+[HALO 2.0.0-DFT-preBallot App Catalog](https://simplifier.net/guide/halo/Home/HALO-Components/App-Catalog).
 `GET /apps` answers the whole catalog, a JSON array of HALO application
-objects whose schema is `app-catalog-core-js`'s `AppCatalog.Catalog`.
+objects whose schema is `app-catalog-core-js`'s `AppCatalog.Catalog`. Every
+entry is a `smart-app`.
 
 ## The catalog file
 
-`public/apps.json` is the catalog, hand-edited. The build serves it at two
-paths with the same bytes:
+`public/apps.json` is the catalog, hand-edited, each entry's fields in the
+order the spec lists them. Vite copies it into `dist/`, and
+`scripts/write-catalog.ts`, the build's last step, copies it to `dist/apps`.
 
-- **`/apps`**, the path HALO names. GitHub Pages picks a file's content type
-  from its extension, so it serves this one as `application/octet-stream`,
-  with `access-control-allow-origin: *`.
-- **`/apps.json`**, which Pages serves as `application/json`, for a client
-  that checks the type.
+## Where a static catalog falls short of HALO
 
-Vite copies `public/apps.json` into `dist/`, and `scripts/write-catalog.ts`,
-the build's last step, copies it to `dist/apps`.
+The catalog is a file on GitHub Pages, not a server, so two of HALO's
+expectations go unmet:
 
-The catalog is in one language. A static site cannot negotiate
-`Accept-Language` or send `Content-Language`, so every entry is
-`lang: "en-CA"` and none carries `langSupported`, which HALO asks for only
-from a catalog with a second language.
+- **One language.** HALO expects a catalog in English and French, chosen by
+  the client's `Accept-Language` and labelled with a `Content-Language`
+  header. A static file cannot negotiate and sends no `Content-Language`, so
+  every entry is in one language, `contentLanguage: "en-CA"`.
+- **`/apps` is served as `application/octet-stream`.** Pages picks a file's
+  content type from its extension, so the extensionless path HALO names goes
+  out as octet-stream (with `access-control-allow-origin: *`). `/apps.json`
+  carries the same bytes as `application/json`, for a client that checks the
+  type.
 
 ## Adding an app
 
@@ -34,7 +37,8 @@ from a catalog with a second language.
    `branding-core`'s `HEADER_NAV_GROUPS` as `name`, its `APP_DESCRIPTIONS`
    tagline as `descriptionShort` and paragraphs (joined by a space) as
    `description`, its landing page as `helpUrl`, and the site's privacy
-   policy and terms. Its OAuth client goes in `preassignedCredentials`,
+   policy and terms, with `type: "smart-app"` and `contentLanguage: "en-CA"`.
+   Its OAuth client goes in `preassignedCredentials`,
    copied field for field from the row the authorization server's migrations
    seed, with `registrationModes: ["preassigned"]`. `eligibilityCriteria`
    says who the app is for, naming the resources it reads in parentheses
