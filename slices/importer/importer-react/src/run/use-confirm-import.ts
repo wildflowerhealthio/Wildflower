@@ -8,7 +8,7 @@ import {
   persistBatchBundle,
 } from '@wildflowerhealthio/fhir-r4/clients'
 import {
-  type BatchDecodeResult,
+  type DecodedBatch,
   claimedFormats,
   type FormatKind,
   planFormatWrite,
@@ -85,7 +85,7 @@ interface ConfirmImport {
    * format's labeled resources come off its own decoded sections — the same
    * objects the preview rendered, its source file among them.
    */
-  readonly confirm: (batch: BatchDecodeResult, selectionFor: SelectionFor) => void
+  readonly confirm: (batch: DecodedBatch, selectionFor: SelectionFor) => void
   /** Discard the outcome and return to `idle` (a "start over" from results). */
   readonly reset: () => void
 }
@@ -131,7 +131,7 @@ const useConfirmImport = (): ConfirmImport => {
   const latest = useRef(0)
 
   const confirm = useCallback(
-    (batchResult: BatchDecodeResult, selectionFor: SelectionFor): void => {
+    (batchResult: DecodedBatch, selectionFor: SelectionFor): void => {
       latest.current += 1
       const ticket = latest.current
       setState({ _tag: 'confirming' })

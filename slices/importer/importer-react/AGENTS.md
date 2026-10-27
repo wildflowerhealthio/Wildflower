@@ -34,7 +34,7 @@ walkthrough itself is the host's.
 [slices/AGENTS.md](../../../slices/AGENTS.md): it depends on its sources, never the reverse.
 It depends on `importer-core` (the importer registry, `readBatch` /
 `redecodeFormat` / `claimedFormats` / `planFormatWrite`, and the
-`BatchDecodeResult` model), `importer-fundamentals` (the `PickedFile`
+`DecodedBatch` model), `importer-fundamentals` (the `PickedFile`
 vocabulary, the `FormatDecode.Result` and `DecodedFile` shapes, and the pure
 `StagedImport` model), each format's
 React package for its settings picker only (`har-importer-react`,
@@ -184,7 +184,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   belong under `preview/`.
   `use-import-run.ts` is React state around `importer-core`: `run` calls
   `readBatch` (through `useRunAuthed`) over the whole pick and holds the
-  resulting `BatchDecodeResult`, `applySettings` calls `redecodeFormat` for the
+  resulting `DecodedBatch`, `applySettings` calls `redecodeFormat` for the
   one format whose settings changed — from that format's retained
   `PickedFile`s, keeping every id and review key, so keyed selections keep
   applying — and it owns the `FormatSettings` record, the `batchId` that tells

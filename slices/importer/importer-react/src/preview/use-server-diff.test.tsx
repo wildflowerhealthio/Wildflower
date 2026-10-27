@@ -5,7 +5,7 @@ import { FhirR4ResourcesRouterContext, type RunAuthed } from '@wildflowerhealthi
 import type * as FhirR4React from '@wildflowerhealthio/fhir-r4-react'
 import type { FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/clients'
 import { type FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
-import type { BatchDecodeResult } from '@wildflowerhealthio/importer-core'
+import type { DecodedBatch } from '@wildflowerhealthio/importer-core'
 import { FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, Layer, Schema } from 'effect'
 import type { JSX, ReactNode } from 'react'
@@ -38,7 +38,7 @@ const patient = (id: string): FhirResource =>
   Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
 
 /** A HAR result holding `resources`, the other formats claiming nothing. */
-const batchOf = (resources: readonly FhirResource[]): BatchDecodeResult => ({
+const batchOf = (resources: readonly FhirResource[]): DecodedBatch => ({
   har: {
     ...FormatDecode.emptyResult('har'),
     title: 'a.har',
@@ -113,15 +113,15 @@ const runAuthedWith = (fates: readonly ('answer' | 'reject')[]): RunAuthed => {
 
 /** The hook over `batch` under `batchId`, under one query client, re-renderable with another pair. */
 const renderDiff = (
-  batch: BatchDecodeResult,
+  batch: DecodedBatch,
   batchId: number
-): RenderHookResult<ServerDiffState, { batch: BatchDecodeResult; batchId: number }> => {
+): RenderHookResult<ServerDiffState, { batch: DecodedBatch; batchId: number }> => {
   const queryClient = new QueryClient()
   const withQueryClient = ({ children }: { readonly children: ReactNode }): JSX.Element => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   )
   return renderHook(
-    ({ batch: current, batchId: id }: { batch: BatchDecodeResult; batchId: number }) =>
+    ({ batch: current, batchId: id }: { batch: DecodedBatch; batchId: number }) =>
       useServerDiff(current, id),
     { initialProps: { batch, batchId }, wrapper: withQueryClient }
   )

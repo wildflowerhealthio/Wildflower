@@ -7,7 +7,7 @@
  * @packageDocumentation
  */
 
-import type { BatchDecodeResult } from '@wildflowerhealthio/importer-core'
+import type { DecodedBatch } from '@wildflowerhealthio/importer-core'
 import type {
   LinkChoice,
   LinkTarget,
@@ -29,7 +29,7 @@ interface MappedIdentityMap {
   /** The stored resources the default search found, linked to or updated, labelled, for the reviewer to pick again. */
   readonly found: readonly StoredResource[]
   /** The batch resolved on {@link MappedIdentityMap.linkChoices}: what the diff, the preview and the confirm see. */
-  readonly resolved: BatchDecodeResult
+  readonly resolved: DecodedBatch
 }
 
 /**

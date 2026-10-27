@@ -3,7 +3,7 @@ import { userEvent } from '@testing-library/user-event'
 import type { DiffSlot, FieldDiff, ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import { type FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  type BatchDecodeResult,
+  type DecodedBatch,
   type FormatKind,
   type FormatSettings,
   type UnrecognizedFile,
@@ -95,7 +95,7 @@ describe('PreviewPanel', () => {
   })
 
   it('sums a mixed batch with unreadable and unrecognized files', () => {
-    const batch: BatchDecodeResult = {
+    const batch: DecodedBatch = {
       har: {
         id: 'har/a.har,broken.har,c.har',
         title: 'a.har, broken.har, c.har',
@@ -450,11 +450,11 @@ const formatResult = <K extends FormatKind>(
   unreadableFiles: [],
 })
 
-/** Build a BatchDecodeResult from partial format results. */
+/** Build a DecodedBatch from partial format results. */
 const makeBatch = (
   results: Partial<{ [K in FormatKind]: FormatDecode.Result<K> }>,
   unrecognizedFiles: readonly UnrecognizedFile[] = []
-): BatchDecodeResult => ({
+): DecodedBatch => ({
   har: FormatDecode.emptyResult('har'),
   'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
   dicom: FormatDecode.emptyResult('dicom'),
@@ -518,7 +518,7 @@ const settingsRegistry: SettingsRegistry = {
 
 /** Shared panel props wired to synthetic lookups. */
 const panelProps = (
-  batch: BatchDecodeResult,
+  batch: DecodedBatch,
   overrides: {
     readonly onConfirm?: () => void
     readonly onSelectionChange?: PreviewPanelProps['onSelectionChange']

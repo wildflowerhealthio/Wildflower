@@ -10,7 +10,7 @@ import {
   Practitioner,
   type FhirResource,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import type { BatchDecodeResult } from '@wildflowerhealthio/importer-core'
+import type { DecodedBatch } from '@wildflowerhealthio/importer-core'
 import { DecodedFile, FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, Layer, Option, Schema } from 'effect'
 import type { JSX } from 'react'
@@ -42,7 +42,7 @@ vi.mock('@wildflowerhealthio/fhir-r4-react', async (importOriginal) => {
 })
 
 let currentRunAuthed: RunAuthed
-let resolved: BatchDecodeResult | undefined
+let resolved: DecodedBatch | undefined
 
 afterEach(() => {
   cleanup()
@@ -402,7 +402,7 @@ const requestFor = (identifier: {
   })
 
 /** A HAR result holding `resources`, the other formats claiming nothing. */
-const batchOf = (resources: readonly FhirResource[]): BatchDecodeResult => ({
+const batchOf = (resources: readonly FhirResource[]): DecodedBatch => ({
   har: {
     ...FormatDecode.emptyResult('har'),
     title: 'a.har',
@@ -517,7 +517,7 @@ const serverHolding = ({
 }
 
 /** The identity map hook and its rows, reporting the resolved batch on every render. */
-const Harness = ({ batch }: { readonly batch: BatchDecodeResult }): JSX.Element => {
+const Harness = ({ batch }: { readonly batch: DecodedBatch }): JSX.Element => {
   const { state, choose } = useLinkChoiceReview(batch, 1)
   if (state._tag === 'loading') return <p>Loading</p>
   // Shown as the screen shows them: the resolving, or the one before a refusal.
@@ -543,7 +543,7 @@ const Harness = ({ batch }: { readonly batch: BatchDecodeResult }): JSX.Element 
 }
 
 /** The harness over `batch`, under one query client for the test. */
-const harnessOver = (batch: BatchDecodeResult): JSX.Element => (
+const harnessOver = (batch: DecodedBatch): JSX.Element => (
   <QueryClientProvider client={queryClient}>
     <Harness batch={batch} />
   </QueryClientProvider>
@@ -551,14 +551,14 @@ const harnessOver = (batch: BatchDecodeResult): JSX.Element => (
 
 let queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
-const renderHarness = (batch: BatchDecodeResult): ReturnType<typeof render> => {
+const renderHarness = (batch: DecodedBatch): ReturnType<typeof render> => {
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(harnessOver(batch))
 }
 
 /** Render the rows over `batch` against a server with `holdings`, and wait for the line labelled `firstLabel`. */
 const renderRows = async (
-  batch: BatchDecodeResult,
+  batch: DecodedBatch,
   holdings: Holdings,
   firstLabel: string = TYRA
 ): Promise<void> => {

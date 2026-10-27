@@ -24,7 +24,7 @@ import { Effect, Either } from 'effect'
 import { useMemo } from 'react'
 
 import {
-  type BatchDecodeResult,
+  type DecodedBatch,
   discoverReferents,
   resolveMentionsWithFallback,
 } from '@wildflowerhealthio/importer-core'
@@ -45,7 +45,7 @@ import { useReviewerLinkChoices } from './use-reviewer-link-choices.ts'
  * @returns The state and the `choose` action
  */
 const useLinkChoiceReview = (
-  batch: BatchDecodeResult | undefined,
+  batch: DecodedBatch | undefined,
   batchId: number
 ): LinkChoiceReviewState.Review => {
   // Discovery reads the clock (which of a person's names is current) and

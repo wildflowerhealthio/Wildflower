@@ -11,7 +11,7 @@ import {
 import { Effect, HashMap, Schema, TestContext } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import type { BatchDecodeResult } from './read-batch.ts'
+import type { DecodedBatch } from './read-batch.ts'
 import type { FormatKind } from './registry.ts'
 import {
   resolveMentions,
@@ -90,7 +90,7 @@ const resultOf = <K extends FormatKind>(
 
 const batchOf = (formats: {
   readonly [K in FormatKind]?: readonly FhirResource[]
-}): BatchDecodeResult => ({
+}): DecodedBatch => ({
   har: resultOf('har', formats.har),
   'lifelabs-pdf': resultOf('lifelabs-pdf', formats['lifelabs-pdf']),
   dicom: resultOf('dicom', formats.dicom),
@@ -99,12 +99,12 @@ const batchOf = (formats: {
 
 /** `batch` with its mentions resolved on `linkChoices`, on the test clock. */
 const resolvedOnTestClock = (
-  batch: BatchDecodeResult,
+  batch: DecodedBatch,
   linkChoices: ReferentLinkChoices.Type
-): BatchDecodeResult => runOnTestClock(resolveMentions(batch, linkChoices))
+): DecodedBatch => runOnTestClock(resolveMentions(batch, linkChoices))
 
 /** The resource keyed `key` in `kind`'s decoded file. */
-const at = (batch: BatchDecodeResult, kind: FormatKind, key: string): FhirResource | undefined =>
+const at = (batch: DecodedBatch, kind: FormatKind, key: string): FhirResource | undefined =>
   DecodedFile.resources(batch[kind].decoded).find((entry) => entry.key === key)?.resource
 
 const subjectOf = (resource: FhirResource | undefined): string | null | undefined =>

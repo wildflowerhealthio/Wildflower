@@ -1,6 +1,6 @@
 import type { ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import { type FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
-import type { BatchDecodeResult, FormatKind } from '@wildflowerhealthio/importer-core'
+import type { DecodedBatch, FormatKind } from '@wildflowerhealthio/importer-core'
 import { FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Schema } from 'effect'
@@ -45,7 +45,7 @@ const formatResult = <K extends FormatKind>(
 
 const makeBatch = (
   results: Partial<{ [K in FormatKind]: FormatDecode.Result<K> }>
-): BatchDecodeResult => ({
+): DecodedBatch => ({
   har: FormatDecode.emptyResult('har'),
   'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
   dicom: FormatDecode.emptyResult('dicom'),

@@ -74,10 +74,10 @@ type FormatResults = {
 }
 
 /**
- * The complete result of reading a picked batch: every format's
- * {@link FormatResults} slot plus the files no format recognized.
+ * A picked batch as decoded: every format's {@link FormatResults} slot plus
+ * the files no format recognised.
  */
-type BatchDecodeResult = FormatResults & {
+type DecodedBatch = FormatResults & {
   readonly unrecognizedFiles: readonly UnrecognizedFile[]
 }
 
@@ -173,7 +173,7 @@ const decodeFormat = <K extends FormatKind>(
 const collectFormats = (
   slot: <K extends FormatKind>(kind: K) => Effect.Effect<FormatDecode.Result<K>>,
   unrecognizedFiles: readonly UnrecognizedFile[]
-): Effect.Effect<BatchDecodeResult> =>
+): Effect.Effect<DecodedBatch> =>
   Effect.all(
     {
       har: slot('har'),
@@ -186,7 +186,7 @@ const collectFormats = (
 
 /**
  * Read a freshly picked batch: group it by format, decode every group
- * under its format's current settings, and yield a {@link BatchDecodeResult}
+ * under its format's current settings, and yield a {@link DecodedBatch}
  * with one `FormatDecode.Result` per format kind plus any unrecognized
  * files.
  *
@@ -204,7 +204,7 @@ const readBatch = (
   registry: ReadRegistry,
   settings: FormatSettings,
   picks: readonly PickedFile.NamedBytes[]
-): Effect.Effect<BatchDecodeResult> => {
+): Effect.Effect<DecodedBatch> => {
   const { groups, unrecognized } = groupByFormat(registry, picks)
   return collectFormats(
     (kind) =>
@@ -243,9 +243,9 @@ const redecodeFormat = (
   registry: ReadRegistry,
   settings: FormatSettings,
   kind: FormatKind,
-  batch: BatchDecodeResult
-): Effect.Effect<BatchDecodeResult> => {
-  // Read slots through FormatResults, not BatchDecodeResult: an indexed access
+  batch: DecodedBatch
+): Effect.Effect<DecodedBatch> => {
+  // Read slots through FormatResults, not DecodedBatch: an indexed access
   // on an intersection distributes to every format's result, while the mapped
   // type alone resolves to this slot's own `Result<K>`.
   const results: FormatResults = batch
@@ -267,14 +267,14 @@ const redecodeFormat = (
  * nothing has an `emptyResult` — no files, no sections, a blank `title` — so
  * treating it as a participant reports a titleless `skipped` row.
  *
- * @param batch - The batch's decode result
+ * @param batch - The decoded batch
  * @returns Every format with at least one claimed file, in {@link formatKinds} order
  */
-const claimedFormats = (batch: BatchDecodeResult): readonly FormatKind[] =>
+const claimedFormats = (batch: DecodedBatch): readonly FormatKind[] =>
   formatKinds.filter((kind) => batch[kind].files.length > 0)
 
 export {
-  type BatchDecodeResult,
+  type DecodedBatch,
   claimedFormats,
   collectFormats,
   decodeFormat,

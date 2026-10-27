@@ -2,7 +2,7 @@
  * The pure core of the importer slice: the closed format registry — every
  * registered {@link FileImporter}, typed per format — and the batch
  * machinery a shell drives: group a pick by format, read it into a
- * {@link BatchDecodeResult}, re-decode one format under new settings, find
+ * {@link DecodedBatch}, re-decode one format under new settings, find
  * the batch's referents and resolve its mentions, and plan a format's
  * write from its reviewed selection.
  *
@@ -21,7 +21,7 @@ export type { BoundFormat, FormatKind, FormatSettings } from './registry.ts'
 // not a surface: the shell drives the whole read, never a leg of it. They stay
 // module-level exports for `read-batch.test.ts` and are not re-exported here.
 export {
-  type BatchDecodeResult,
+  type DecodedBatch,
   claimedFormats,
   readBatch,
   redecodeFormat,

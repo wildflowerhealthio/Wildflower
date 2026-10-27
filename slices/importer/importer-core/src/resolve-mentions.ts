@@ -11,7 +11,7 @@ import {
 import { Array, Effect, HashMap, Option } from 'effect'
 
 import {
-  type BatchDecodeResult,
+  type DecodedBatch,
   claimedFormats,
   collectFormats,
   type FormatResults,
@@ -33,11 +33,11 @@ import type { FormatKind } from './registry.ts'
  * format-then-review order, those with a resource first
  * (`Referent.discover`).
  *
- * @param batch - The batch's decode result
+ * @param batch - The decoded batch
  * @returns The referents the reviewer makes a link choice for
  */
 const discoverReferents = (
-  batch: BatchDecodeResult
+  batch: DecodedBatch
 ): Effect.Effect<readonly Referent.Type[], Referent.DuplicateReferent> =>
   Referent.discover(claimedFormats(batch).map((kind) => batch[kind].decoded))
 
@@ -46,7 +46,7 @@ const discoverReferents = (
  * in `linkChoices` gives, and the records only mentioned gathered to be
  * written: the batch to review, diff and write.
  *
- * @param batch - The batch's decode result
+ * @param batch - The decoded batch
  * @param linkChoices - The reviewer's link choices, by `Referent.key`
  * @returns The batch with each claimed format's decoded file resolved, every
  *   other field as it was
@@ -60,9 +60,9 @@ const discoverReferents = (
  * as `IdentityMap.apply` does.
  */
 const resolveMentions = (
-  batch: BatchDecodeResult,
+  batch: DecodedBatch,
   linkChoices: ReferentLinkChoices.Type
-): Effect.Effect<BatchDecodeResult, Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice> =>
+): Effect.Effect<DecodedBatch, Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice> =>
   Array.match(claimedFormats(batch), {
     onEmpty: () => Effect.succeed(batch),
     onNonEmpty: (claimed) =>
@@ -97,7 +97,7 @@ const resolveMentions = (
  * default, a default to its kind's default. A re-decode may have changed a
  * referent's kind, or removed the referent a choice linked to.
  *
- * @param batch - The batch's decode result
+ * @param batch - The decoded batch
  * @param defaults - The searched default choices, by `Referent.key`
  * @param chosen - The reviewer's own choices, by `Referent.key`, over the defaults
  * @returns The choices used, each referent's link target under them, and the
@@ -110,14 +110,14 @@ const resolveMentions = (
  * dies rather than loop.
  */
 const resolveMentionsWithFallback = (
-  batch: BatchDecodeResult,
+  batch: DecodedBatch,
   defaults: ReferentLinkChoices.Type,
   chosen: ReferentLinkChoices.Type
 ): Effect.Effect<
   {
     readonly linkChoices: ReferentLinkChoices.Type
     readonly linkTargets: HashMap.HashMap<string, LinkTarget.Type>
-    readonly batch: BatchDecodeResult
+    readonly batch: DecodedBatch
   },
   Referent.DuplicateReferent
 > => {

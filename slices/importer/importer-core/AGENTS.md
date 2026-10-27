@@ -35,7 +35,7 @@ write plan with this package alone.
   format — deliberately not the whole `BoundFormat`, so a test can stand up a
   fake registry with just those fields). **`readBatch`** takes the picker's
   `PickedFile.NamedBytes`, groups them by format
-  and decodes every group concurrently into a **`BatchDecodeResult`** — one
+  and decodes every group concurrently into a **`DecodedBatch`** — one
   `FormatDecode.Result<K>` per registered format (an `emptyResult` for a format
   that claimed nothing) plus the **`UnrecognizedFile`**s, plain data for the
   picks no `detect` claimed; **`claimedFormats`** names the formats that
