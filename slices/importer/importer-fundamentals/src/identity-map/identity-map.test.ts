@@ -18,6 +18,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vite-plus/test'
 
 import {
   DecodedFile,
+  Link,
   LinkChoice,
   LinkTarget,
   Referent,
@@ -57,7 +58,6 @@ import {
   wireFieldsOf,
   wireOf,
 } from './identity-map.test-helpers.ts'
-import * as Resolution from './resolution.ts'
 
 // Schema-generated resources at fast-check's default size run to hundreds of
 // kilobytes each; the properties are about structure, which the smallest size
@@ -129,15 +129,15 @@ const describeLinkTarget = (destination: LinkTarget.Type): string =>
   })
 
 /**
- * The link target `choices` resolve the referent keyed `referentKey` of
- * `referents` to, described; or why resolving fails.
+ * The link target `choices` give the referent keyed `referentKey` of
+ * `referents`, described; or why making the links fails.
  */
-const resolvedFor = (
+const linkTargetFor = (
   choices: ReferentLinkChoices.Type,
   referents: readonly Referent.Type[],
   referentKey: string
 ): string =>
-  Either.match(Resolution.linksOf(choices, referents), {
+  Either.match(Link.fromChoices(referents, choices), {
     onLeft: ({ referentKey: invalidKey, reason }) => `Invalid ${invalidKey} ${reason}`,
     onRight: (links) => {
       const link = links.find(({ referent }) => Referent.key(referent) === referentKey)
@@ -421,8 +421,8 @@ describe('the identity map on a re-import', () => {
       `${CUSTOMER}|c-9`,
       `${CUSTOMER}|c-8`,
     ])
-    expect(resolvedFor(defaultChoices, referents, PERSON)).toBe('Decoded')
-    expect(resolvedFor(defaultChoices, referents, ACCOUNT)).toBe('Stored p-1')
+    expect(linkTargetFor(defaultChoices, referents, PERSON)).toBe('Decoded')
+    expect(linkTargetFor(defaultChoices, referents, ACCOUNT)).toBe('Stored p-1')
   })
 
   it('writes the new decode, not the stored copy, having assumed every identifier the stored copy carries', () => {
@@ -486,7 +486,7 @@ describe('the identity map on a re-import', () => {
   it('refuses to update a stored resource under another id, or for a referent named only by mentions', () => {
     const referents = discoverOnTestClock(reimport)
     const invalid = (referentKey: string, choice: LinkChoice.Type): string =>
-      resolvedFor(HashMap.make([referentKey, choice]), referents, referentKey)
+      linkTargetFor(HashMap.make([referentKey, choice]), referents, referentKey)
 
     expect(invalid(PERSON, LinkChoice.UpdateStoredResource({ resource: STORED_TYRA }))).toBe(
       `Invalid ${PERSON} StoredResourceUnderAnotherId`
@@ -561,16 +561,16 @@ describe('the identity map on a printed name set to New', () => {
         .filter((referent) => Referent.key(referent) === PRESCRIBER)
         .map((referent) => LinkChoice.forReferent(HashMap.empty(), referent)._tag)
     ).toEqual(['DontLink'])
-    expect(resolvedFor(map, referents, PRESCRIBER)).toBe(`Provisional ${PROVISIONAL_ID}`)
+    expect(linkTargetFor(map, referents, PRESCRIBER)).toBe(`Provisional ${PROVISIONAL_ID}`)
     expect(
-      resolvedFor(HashMap.make([ACCOUNT, LinkChoice.CreateResource()]), referents, ACCOUNT)
+      linkTargetFor(HashMap.make([ACCOUNT, LinkChoice.CreateResource()]), referents, ACCOUNT)
     ).toBe(`Invalid ${ACCOUNT} NotAllowedForReferent`)
-    expect(resolvedFor(cycle, referents, PRESCRIBER)).toBe(`Provisional ${PROVISIONAL_ID}`)
-    expect(resolvedFor(cycle, referents, jones)).toBe(`Provisional ${PROVISIONAL_ID}`)
+    expect(linkTargetFor(cycle, referents, PRESCRIBER)).toBe(`Provisional ${PROVISIONAL_ID}`)
+    expect(linkTargetFor(cycle, referents, jones)).toBe(`Provisional ${PROVISIONAL_ID}`)
   })
 })
 
-describe('Resolution.linksOf', () => {
+describe('Link.fromChoices', () => {
   const file = fileOf(
     patient({ id: 'p-1' }),
     request('rx-1', customerSubject('c-1')),
@@ -587,9 +587,9 @@ describe('Resolution.linksOf', () => {
       [account(3), LinkChoice.LinkToDecodedReferent({ referentKey: PERSON })]
     )
 
-    expect(resolvedFor(choices, referents, account(1))).toBe('Decoded')
+    expect(linkTargetFor(choices, referents, account(1))).toBe('Decoded')
     expect(
-      resolvedFor(
+      linkTargetFor(
         HashMap.set(choices, PERSON, LinkChoice.LinkToStoredResource({ resource: STORED_TYRA })),
         referents,
         account(1)
@@ -604,13 +604,13 @@ describe('Resolution.linksOf', () => {
       [account(3), LinkChoice.LinkToDecodedReferent({ referentKey: account(1) })]
     )
 
-    expect(resolvedFor(cycle, referents, account(1))).toBe('Unlinked')
-    expect(resolvedFor(cycle, referents, account(3))).toBe('Unlinked')
+    expect(linkTargetFor(cycle, referents, account(1))).toBe('Unlinked')
+    expect(linkTargetFor(cycle, referents, account(3))).toBe('Unlinked')
   })
 
   it('fails on a choice it cannot follow, naming the referent and why', () => {
     const invalid = (referentKey: string, choice: LinkChoice.Type): string =>
-      resolvedFor(HashMap.make([referentKey, choice]), referents, referentKey)
+      linkTargetFor(HashMap.make([referentKey, choice]), referents, referentKey)
 
     expect(invalid(account(1), LinkChoice.CreateResource())).toBe(
       `Invalid ${account(1)} NotAllowedForReferent`
@@ -642,7 +642,7 @@ describe('Resolution.linksOf', () => {
       [PRESCRIBER, LinkChoice.LinkToStoredResource({ resource: STORED_SMITH })]
     )
 
-    expect(resolvedFor(choices, discoverOnTestClock(withPrescriber), ACCOUNT)).toBe(
+    expect(linkTargetFor(choices, discoverOnTestClock(withPrescriber), ACCOUNT)).toBe(
       `Invalid ${ACCOUNT} LinkedReferentOfAnotherType`
     )
     expect(failureOf(withPrescriber, choices)).toMatchObject({
@@ -657,7 +657,7 @@ describe('Resolution.linksOf', () => {
       [PERSON, LinkChoice.DontLink()]
     )
 
-    expect(resolvedFor(choices, referents, account(1))).toBe(
+    expect(linkTargetFor(choices, referents, account(1))).toBe(
       `Invalid ${PERSON} NotAllowedForReferent`
     )
   })
@@ -674,7 +674,7 @@ describe('Resolution.linksOf', () => {
       [account(2), 'DontLink'],
       [account(3), 'DontLink'],
     ])
-    expect(resolvedFor(HashMap.empty(), referents, PERSON)).toBe('Decoded')
+    expect(linkTargetFor(HashMap.empty(), referents, PERSON)).toBe('Decoded')
   })
 })
 

@@ -187,12 +187,13 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     with an `id`, so a resource-backed referent requires one
     (`Referent.tryFromDecodedResource`).
   - **`Link`** — a referent with its link target, what the plan is built
-    from; `tryIntoLinkedResource` is the link as a **`LinkedResource`** (the
-    referent and the resource its target holds) when the target holds one.
-  - `resolution.ts` (**`Resolution`**, not exported) — `linksOf`: every
-    referent's choice followed to its link target, each referent resolved
-    once, every rule an arm of `LinkChoice.match` or `Referent.match`; the
-    first choice it cannot follow is its failure.
+    from; **`fromChoices(referents, linkChoices)`** makes every referent's
+    link from its choice, following `LinkToDecodedReferent` to the end, each
+    referent's target worked out once, every rule an arm of
+    `LinkChoice.match` or `Referent.match`; the first choice it cannot follow
+    is its failure. `tryIntoLinkedResource` is the link as a
+    **`LinkedResource`** (the referent and the resource its target holds)
+    when the target holds one.
   - **`ResolvedResource`** — the resource under one resolved literal reference as
     it will be written, whatever its origin: the copy written (the decoded
     one when a link lands on it, so a re-import's newer decode wins over the

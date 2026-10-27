@@ -22,12 +22,11 @@ import { Array, Effect, HashMap, HashSet, Option, pipe } from 'effect'
 import * as DecodedFile from '../decoded-file.ts'
 import type * as LinkChoice from './link-choice.ts'
 import * as LinkTarget from './link-target.ts'
-import type * as Link from './link.ts'
+import * as Link from './link.ts'
 import * as LinkableLogicalReference from './linkable-logical-reference.ts'
 import * as LinkableResource from './linkable-resource.ts'
 import type * as ReferentLinkChoices from './referent-link-choices.ts'
 import * as Referent from './referent.ts'
-import * as Resolution from './resolution.ts'
 import * as ResolvedResource from './resolved-resource.ts'
 
 /** The link plan for a batch's decoded files, built once by {@link make}. */
@@ -133,12 +132,13 @@ const linkTargetsByLogicalReferenceKeyOf = (
 
 /**
  * The plan for a batch's `decodedFiles` under `linkChoices`: each referent's
- * choice resolved once into its link, and every field read off those links.
+ * choice made once into its link (`Link.fromChoices`), and every field read
+ * off those links.
  *
  * @remarks
  * The referents are the whole batch's (`Referent.discover`), so a
- * `LinkToDecodedReferent` naming a referent one file holds resolves from a
- * mention in another, and every file is resolved on the same plan. Fails with
+ * `LinkToDecodedReferent` naming a referent one file holds is the link
+ * target of a mention in another, and every file is resolved on the same plan. Fails with
  * `Referent.DuplicateReferent` when two decoded resources answer to one
  * logical reference, and with `LinkChoice.InvalidLinkChoice` when a choice
  * cannot be followed for its referent.
@@ -149,7 +149,7 @@ const make = (
 ): Effect.Effect<Type, Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice> =>
   Effect.gen(function* () {
     const referents = yield* Referent.discover(decodedFiles)
-    const links = yield* Resolution.linksOf(linkChoices, referents)
+    const links = yield* Link.fromChoices(referents, linkChoices)
     const decodedLiteralReferencesToStored = decodedLiteralReferencesToStoredOf(links)
     const resolvedResourcesByResolvedLiteralReference =
       yield* ResolvedResource.byResolvedLiteralReference(
