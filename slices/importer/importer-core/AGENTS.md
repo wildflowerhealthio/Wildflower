@@ -94,6 +94,15 @@ write plan with this package alone.
   its **`SkipReason`** (`nothing` / `unreadable`). It adds no
   provenance and rewrites nothing: the format's `decode` already minted the
   source file and stamped `meta.source`.
+  **`planBatchWrite(batch, selectionFor, unchangedLinked)`** is the whole
+  resolved batch's plan, a **`BatchWritePlan`**: every claimed format's
+  **`PlannedFormat`** (its result and `planFormatWrite`'s plan) and the
+  `linked` records written beside them. It is the one place the rule for the
+  linked records lives, since the review shows them read-only: one is written
+  when its key is not in `unchangedLinked` (the server diff's `unchanged`) and
+  some resource a format writes references it by its literal `Type/<id>`, in
+  any reference field (`Mention.of`). A written linked record so always comes
+  with a written format. The preview's count and the confirm both read it.
 
 ## Layering
 

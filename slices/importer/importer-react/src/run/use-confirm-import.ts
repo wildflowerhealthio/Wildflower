@@ -10,13 +10,12 @@ import {
 } from '@wildflowerhealthio/fhir-r4/clients'
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  claimedFormats,
-  type FormatKind,
-  planFormatWrite,
+  type PlannedFormat,
+  planBatchWrite,
   type ResolvedBatch,
+  type SelectionFor,
   type WritePlan,
 } from '@wildflowerhealthio/importer-core'
-import type { FormatDecode, StagedImport } from '@wildflowerhealthio/importer-fundamentals'
 
 import { LINKED_RECORDS_HEADING } from '../preview/preview-text.ts'
 import { SOURCE_FILES_QUERY_KEY, STORED_RESOURCES_QUERY_KEY } from '../queries/keys.ts'
@@ -29,8 +28,8 @@ import {
 
 /**
  * The opt-in write half of the flow, as one imperative action over a batch:
- * the batch's linked records, then every format's resources the review kept
- * included, submitted together as one `persistTransactionBundle`.
+ * the linked records it writes, then every format's resources the review
+ * kept included, submitted together as one `persistTransactionBundle`.
  *
  * @remarks
  * Only the formats that claimed a file take part — the same
@@ -39,9 +38,10 @@ import {
  *
  * The seam the preview-then-confirm promise rests on — nothing here runs
  * until the user confirms a reviewed batch, and what runs is
- * `importer-core`'s `planFormatWrite` (the reviewed objects, exclusions
- * applied and edits substituted, no re-parse) handed, with the linked
- * records, to one `POST /` transaction bundle. The source file is one of
+ * `importer-core`'s `planBatchWrite` (the reviewed objects, exclusions
+ * applied and edits substituted, no re-parse, and the linked records some
+ * written resource names and the server does not hold unchanged) handed to
+ * one `POST /` transaction bundle. The source file is one of
  * those reviewed resources — its format's `decode` minted it, listed it in
  * its own "Source file" section, and stamped every extracted resource's
  * `meta.source` with it — so a confirm writes it in the *same* bundle as
@@ -82,32 +82,28 @@ type ConfirmState =
   | { readonly _tag: 'confirming' }
   | { readonly _tag: 'done'; readonly batch: BatchOutcome }
 
-/** How the confirm reads each format's reviewed selection. */
-type SelectionFor = (format: FormatKind) => StagedImport.Selection
-
 /** Imperative surface the screen drives the confirm through. */
 interface ConfirmImport {
   readonly state: ConfirmState
   /**
-   * Write the batch as one transaction: its linked records, then each
-   * format's reviewed resources. Each format's labeled resources come off
-   * its own decoded sections — the same objects the preview rendered, its
-   * source file among them.
+   * Write the batch as one transaction: the linked records it writes, then
+   * each format's reviewed resources. Each format's labeled resources come
+   * off its own decoded sections — the same objects the preview rendered,
+   * its source file among them. `unchangedLinked` is the keys of the linked
+   * records the server diff found unchanged, which are not written.
    */
-  readonly confirm: (batch: ResolvedBatch, selectionFor: SelectionFor) => void
+  readonly confirm: (
+    batch: ResolvedBatch,
+    selectionFor: SelectionFor,
+    unchangedLinked: ReadonlySet<string>
+  ) => void
   /** Discard the outcome and return to `idle` (a "start over" from results). */
   readonly reset: () => void
 }
 
-/** One format's decode result with the write the review planned for it. */
-interface PlannedFormat {
-  readonly result: FormatDecode.Result<string>
-  readonly plan: WritePlan
-}
-
 /** A planned format whose plan is a write. */
 interface FormatWrite {
-  readonly result: FormatDecode.Result<string>
+  readonly result: PlannedFormat['result']
   readonly plan: Extract<WritePlan, { readonly _tag: 'write' }>
 }
 
@@ -137,19 +133,21 @@ const outcomesPerUnit = (
   })[1]
 
 /**
- * Write `batch` as one transaction — the linked records first, then each
- * format's planned write — and fold the outcomes back onto the units they
- * came from: a {@link FileImportResult} per claimed format and unrecognized
- * file, and a {@link ResourceResult} per linked record.
+ * Write `batch` as one transaction — the linked records it writes first, then
+ * each format's planned write — and fold the outcomes back onto the units
+ * they came from: a {@link FileImportResult} per claimed format and
+ * unrecognized file, and a {@link ResourceResult} per linked record written.
  */
 const importBatch = (
   batch: ResolvedBatch,
-  selectionFor: SelectionFor
+  selectionFor: SelectionFor,
+  unchangedLinked: ReadonlySet<string>
 ): Effect.Effect<BatchOutcome, never, FhirR4ResourcesHttpApiClient> => {
-  const planned = claimedFormats(batch).map((kind): PlannedFormat => ({
-    result: batch[kind],
-    plan: planFormatWrite(batch[kind], selectionFor(kind)),
-  }))
+  const { formats: planned, linked: linkedWrites } = planBatchWrite(
+    batch,
+    selectionFor,
+    unchangedLinked
+  )
   const writes = planned.flatMap(formatWrite)
   const skipped: readonly FileImportResult[] = [
     ...planned.flatMap(skippedFile),
@@ -160,7 +158,7 @@ const importBatch = (
       reason: 'unrecognized',
     })),
   ]
-  const linked = batch.linked.map((entry) => entry.resource)
+  const linked = linkedWrites.map((entry) => entry.resource)
   const resourcesPerUnit = [linked, ...writes.map(({ plan }) => plan.resources)]
   return persistTransactionBundle(resourcesPerUnit.flat()).pipe(
     Effect.map((outcomes): BatchOutcome => {
@@ -211,11 +209,15 @@ const useConfirmImport = (): ConfirmImport => {
   const latest = useRef(0)
 
   const confirm = useCallback(
-    (batch: ResolvedBatch, selectionFor: SelectionFor): void => {
+    (
+      batch: ResolvedBatch,
+      selectionFor: SelectionFor,
+      unchangedLinked: ReadonlySet<string>
+    ): void => {
       latest.current += 1
       const ticket = latest.current
       setState({ _tag: 'confirming' })
-      void runAuthed(importBatch(batch, selectionFor)).then((outcome) => {
+      void runAuthed(importBatch(batch, selectionFor, unchangedLinked)).then((outcome) => {
         if (latest.current !== ticket) return
         setState({ _tag: 'done', batch: outcome })
         void queryClient.invalidateQueries({ queryKey: SOURCE_FILES_QUERY_KEY })
@@ -233,4 +235,4 @@ const useConfirmImport = (): ConfirmImport => {
   return { state, confirm, reset }
 }
 
-export { type ConfirmImport, type ConfirmState, type SelectionFor, useConfirmImport }
+export { type ConfirmImport, type ConfirmState, useConfirmImport }

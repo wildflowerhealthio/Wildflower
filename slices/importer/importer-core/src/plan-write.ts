@@ -3,13 +3,19 @@ import {
   StagedImport,
   DecodedFile,
   type FormatDecode,
+  Mention,
 } from '@wildflowerhealthio/importer-fundamentals'
+
+import { claimedFormats } from './read-batch.ts'
+import type { FormatKind } from './registry.ts'
+import type { ResolvedBatch } from './resolve-mentions.ts'
 
 /**
  * The pure half of the confirm: from one format's decode result and the
  * selection it was reviewed under, exactly the resources to write — or the
- * reason nothing is. The shell submits the `write` plan as one batch
- * bundle; nothing here touches a client.
+ * reason nothing is — and, over a whole resolved batch, which of its linked
+ * records are written beside them. The shell submits the batch's plan as one
+ * transaction bundle; nothing here touches a client.
  *
  * @remarks
  * The write set is the reviewed objects themselves — the exclusions applied
@@ -64,4 +70,81 @@ const planFormatWrite = (
   return { _tag: 'write', resources, excluded: StagedImport.excludedCount(labeled, selection) }
 }
 
-export { planFormatWrite, type SkipReason, type WritePlan }
+/** One claimed format's decode result with the write its review planned. */
+interface PlannedFormat {
+  readonly result: FormatDecode.Result<FormatKind>
+  readonly plan: WritePlan
+}
+
+/** What a confirm of a whole resolved batch writes. */
+interface BatchWritePlan {
+  /** Every claimed format's plan, in registry order. */
+  readonly formats: readonly PlannedFormat[]
+  /** The linked records written beside the formats' resources, in discovery order. */
+  readonly linked: readonly DecodedFile.Resource[]
+}
+
+/** How the confirm reads each format's reviewed selection. */
+type SelectionFor = (format: FormatKind) => StagedImport.Selection
+
+/** Every literal reference `resources` carry, in any reference field. */
+const literalReferencesIn = (resources: readonly FhirResource[]): ReadonlySet<string> =>
+  new Set(
+    resources.flatMap((resource) =>
+      Mention.of(resource).flatMap(({ reference }) =>
+        reference.reference === null ? [] : [reference.reference]
+      )
+    )
+  )
+
+/**
+ * Plan the write of a whole resolved batch: each claimed format's write from
+ * its reviewed selection, and the linked records written beside them.
+ *
+ * @param batch - The resolved batch the reviewer confirmed
+ * @param selectionFor - Each format's reviewed selection
+ * @param unchangedLinked - The keys of the linked records the server diff
+ *   found unchanged
+ * @returns Every claimed format's plan and the linked records to write
+ *
+ * @remarks
+ * The linked records are read-only in the review (a link choice is how to
+ * change one), so which of them is written is decided here, and only here:
+ * a linked record is written when the server does not already hold it as it
+ * is (its key is not in `unchangedLinked`) and some resource a format writes
+ * references it, by its literal `Type/<id>` in any reference field. A record
+ * nothing written names would be an orphan, and one the server holds
+ * unchanged a rewrite of itself. So a written linked record always comes with
+ * a written format, and the preview's count and the confirm read the same
+ * plan.
+ */
+const planBatchWrite = (
+  batch: ResolvedBatch,
+  selectionFor: SelectionFor,
+  unchangedLinked: ReadonlySet<string>
+): BatchWritePlan => {
+  const formats = claimedFormats(batch).map((kind): PlannedFormat => ({
+    result: batch[kind],
+    plan: planFormatWrite(batch[kind], selectionFor(kind)),
+  }))
+  const referenced = literalReferencesIn(
+    formats.flatMap(({ plan }) => (plan._tag === 'write' ? plan.resources : []))
+  )
+  const linked = batch.linked.filter(
+    ({ key, resource }) =>
+      !unchangedLinked.has(key) &&
+      resource.id !== null &&
+      referenced.has(`${resource.resourceType}/${resource.id}`)
+  )
+  return { formats, linked }
+}
+
+export {
+  type BatchWritePlan,
+  planBatchWrite,
+  type PlannedFormat,
+  planFormatWrite,
+  type SelectionFor,
+  type SkipReason,
+  type WritePlan,
+}

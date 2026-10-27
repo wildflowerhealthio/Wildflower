@@ -14,7 +14,7 @@ import {
 } from './identity/referent-text.ts'
 import { useLinkChoiceReview } from './identity/use-link-choice-review.ts'
 import { PreviewPanel } from './preview/preview-panel.tsx'
-import { initialExclusionsFor, useServerDiff } from './preview/use-server-diff.ts'
+import { initialExclusionsFor, LINKED_GROUP, useServerDiff } from './preview/use-server-diff.ts'
 import { formatRegistry } from './registry.ts'
 import { ImportResults } from './results/import-results.tsx'
 import { useConfirmImport } from './run/use-confirm-import.ts'
@@ -111,6 +111,16 @@ const ImporterScreen = (): JSX.Element => {
     }
     return new Map(entries)
   }, [diff, batch])
+
+  // The linked records the server already holds as they are, which the
+  // confirm does not write: the same verdict pre-excludes a format's row.
+  const unchangedLinked = useMemo(
+    (): ReadonlySet<string> =>
+      diff._tag === 'loading' || batch === undefined
+        ? new Set()
+        : initialExclusionsFor(batch.linked, diff.comparisons.get(LINKED_GROUP)),
+    [diff, batch]
+  )
 
   const selectionFor = useCallback(
     (format: FormatKind): StagedImport.Selection =>
@@ -218,13 +228,14 @@ const ImporterScreen = (): JSX.Element => {
           settings={importRun.settings}
           settingsRegistry={formatRegistry}
           selectionFor={selectionFor}
+          unchangedLinked={unchangedLinked}
           comparisons={diff.comparisons}
           onSelectionChange={onSelectionChange}
           onSettingsChange={importRun.applySettings}
           confirming={confirming}
           confirmDisabled={confirmBlocked}
           onCancel={startOver}
-          onConfirm={() => confirm.confirm(shown.resolved, selectionFor)}
+          onConfirm={() => confirm.confirm(shown.resolved, selectionFor, unchangedLinked)}
           referentRows={
             <ReferentRows
               referents={shown.referents}

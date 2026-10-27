@@ -1,11 +1,21 @@
-import { type FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
-import { FormatDecode, StagedImport } from '@wildflowerhealthio/importer-fundamentals'
+import {
+  type FhirResource,
+  Observation,
+  Patient,
+  Practitioner,
+} from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  type DecodedFile,
+  FormatDecode,
+  StagedImport,
+} from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { planFormatWrite } from './plan-write.ts'
+import { planBatchWrite, planFormatWrite } from './plan-write.ts'
+import type { ResolvedBatch } from './resolve-mentions.ts'
 
 const resource = (id: string): FhirResource =>
   Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
@@ -110,4 +120,132 @@ describe('planFormatWrite', () => {
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })
+})
+
+describe('planBatchWrite', () => {
+  it('writes a linked record a written resource names, in any reference field', () => {
+    const batch = batchWith([observationOf('obs-1', { performer: [{ reference: PRACTITIONER }] })])
+
+    const plan = planBatchWrite(batch, () => StagedImport.initial(), new Set())
+
+    expect(plan.linked.map(({ key }) => key)).toEqual([LINKED_KEY])
+    expect(plan.formats.map(({ plan: formatPlan }) => formatPlan._tag)).toEqual(['write'])
+  })
+
+  it('drops the provisional Practitioner once the only resource naming it is excluded', () => {
+    const batch = batchWith([
+      observationOf('obs-1', { performer: [{ reference: PRACTITIONER }] }),
+      observationOf('obs-2', {}),
+    ])
+
+    const plan = planBatchWrite(
+      batch,
+      () => StagedImport.toggleResource(StagedImport.initial(), 'obs-1'),
+      new Set()
+    )
+
+    expect(plan.linked).toEqual([])
+  })
+
+  it('writes nothing on a re-import whose rows and linked record the server holds unchanged', () => {
+    const batch = batchWith([observationOf('obs-1', { performer: [{ reference: PRACTITIONER }] })])
+
+    const plan = planBatchWrite(
+      batch,
+      () => StagedImport.toggleResource(StagedImport.initial(), 'obs-1'),
+      new Set([LINKED_KEY])
+    )
+
+    expect(plan.linked).toEqual([])
+    expect(plan.formats.map(({ plan: formatPlan }) => formatPlan._tag)).toEqual(['skip'])
+  })
+
+  it('leaves out an unchanged linked record while a resource naming it is written', () => {
+    const batch = batchWith([observationOf('obs-1', { performer: [{ reference: PRACTITIONER }] })])
+
+    const plan = planBatchWrite(batch, () => StagedImport.initial(), new Set([LINKED_KEY]))
+
+    expect(plan.linked).toEqual([])
+  })
+
+  it('property: a written linked record always comes with a written format', () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.boolean(), { minLength: 1, maxLength: 4 }),
+        fc.func(fc.boolean()),
+        fc.boolean(),
+        (namesPractitioner, excludes, unchanged) => {
+          const observations = namesPractitioner.map((names, index) =>
+            observationOf(`obs-${index}`, names ? { performer: [{ reference: PRACTITIONER }] } : {})
+          )
+          let selection = StagedImport.initial()
+          for (const { key } of observations) {
+            if (excludes(key)) selection = StagedImport.toggleResource(selection, key)
+          }
+
+          const plan = planBatchWrite(
+            batchWith(observations),
+            () => selection,
+            new Set(unchanged ? [LINKED_KEY] : [])
+          )
+
+          const namedAndWritten = observations.some(
+            ({ key }, index) => namesPractitioner[index] && !excludes(key)
+          )
+          expect(plan.linked.length).toBe(namedAndWritten && !unchanged ? 1 : 0)
+          if (plan.linked.length > 0) {
+            expect(plan.formats.some(({ plan: formatPlan }) => formatPlan._tag === 'write')).toBe(
+              true
+            )
+          }
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+})
+
+/** The literal reference of the batch's one linked record. */
+const PRACTITIONER = 'Practitioner/provisional-1'
+
+/** The key the batch's one linked record is reviewed under. */
+const LINKED_KEY = `linked:${PRACTITIONER}`
+
+/** An Observation keyed `key` carrying the given reference fields. */
+const observationOf = (key: string, references: object): DecodedFile.Resource => ({
+  key,
+  title: `Observation/${key}`,
+  resource: Schema.decodeUnknownSync(Observation.Schema)({
+    resourceType: 'Observation',
+    id: key,
+    status: 'final',
+    code: { text: 'Heart rate' },
+    ...references,
+  }),
+})
+
+/** A resolved batch of one HAR format holding `resources`, with one linked Practitioner. */
+const batchWith = (resources: readonly DecodedFile.Resource[]): ResolvedBatch => ({
+  har: {
+    id: 'har/a.har',
+    title: 'a.har',
+    files: [{ id: '0:a.har', fileName: 'a.har', bytes: new Uint8Array([1]) }],
+    format: 'har',
+    decoded: { sections: [{ title: 's', resources }], notes: [] },
+    unreadableFiles: [],
+  },
+  'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
+  dicom: FormatDecode.emptyResult('dicom'),
+  unrecognizedFiles: [],
+  linked: [
+    {
+      key: LINKED_KEY,
+      title: 'Dr. Provisional',
+      resource: Schema.decodeUnknownSync(Practitioner.Schema)({
+        resourceType: 'Practitioner',
+        id: 'provisional-1',
+      }),
+    },
+  ],
+  links: [],
 })

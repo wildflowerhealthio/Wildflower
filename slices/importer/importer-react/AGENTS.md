@@ -214,8 +214,11 @@ The importer has no HTTP wire union to derive, so there is no separate
   per-resource review — then the batch's **linked records** (`batch.linked`,
   the records it names but holds no copy of, as the referent rows link them)
   read-only with their diff badge and no toggle or edit, under one shared
-  confirm, gated on the batch having at least one **included** or linked
-  resource. The diff keys its verdicts by `ReviewGroup`, a format or
+  confirm, gated on the batch writing at least one resource. Which linked
+  records are written is `importer-core`'s `planBatchWrite`, not a toggle:
+  those a written resource names and the server does not hold unchanged (the
+  screen hands the panel and the confirm the same `unchangedLinked`, the
+  linked group's `initialExclusionsFor`). The diff keys its verdicts by `ReviewGroup`, a format or
   `LINKED_GROUP`, so the linked records' badges are their own. It is the
   panel, the actions and the editor dialog only; the review body it renders
   per format is
@@ -232,9 +235,10 @@ The importer has no HTTP wire union to derive, so there is no separate
   `preview-text.ts` — imported from there by everything that shows one,
   including this package's `index.ts`, rather than re-exported through the
   panel.
-  `use-confirm-import.ts` is the opt-in write action: `planFormatWrite` (in
-  `importer-core`) per **claimed** format, then one `persistTransactionBundle`
-  of the linked records and exactly those resources. It adds nothing to any
+  `use-confirm-import.ts` is the opt-in write action: `planBatchWrite` (in
+  `importer-core`), `planFormatWrite` per **claimed** format and the linked
+  records it writes, then one `persistTransactionBundle` of those linked
+  records and exactly those resources. It adds nothing to any
   resource — no id locking, no provenance stamping — because the format's
   `decode` already minted the source file and stamped every extracted
   resource's `meta.source`. The transaction lands whole or not at all, so a
@@ -347,8 +351,8 @@ The importer has no HTTP wire union to derive, so there is no separate
   sections plus the reviewer's selection into the exact resource list — a set
   leads with its source files in the same bundle as its
   extracted resources, no upload-then-persist sequence and no ordering to
-  protect. `importBatch` hands the linked records and those lists, in that
-  order, to one `persistTransactionBundle`: it does not look for the
+  protect. `importBatch` hands the linked records `planBatchWrite` writes and
+  those lists, in that order, to one `persistTransactionBundle`: it does not look for the
   source file, lock an id, or write `meta.source`, because the format's
   `decode` already minted the source file at a deterministic id and stamped
   every extracted resource with its reference. A source file row the reviewer
@@ -378,14 +382,14 @@ The importer has no HTTP wire union to derive, so there is no separate
   batch is its rows in the results, their cause the server's own response.
 - **The confirm affordance is gated on the batch having a resource to
   write.** `PreviewPanel` shows the single confirm button only when
-  `StagedImport.includedCount` summed across the **claimed** formats, plus the
-  linked records, is positive; unreadable files and formats whose decode
-  yielded nothing render their own section but add nothing to write. Both
-  that sum and the group list come off `claimedFormats`, the one predicate for
-  "did this format take part", which the confirm reads too — a format that
-  claimed nothing is not planned, tallied, or reported. `useConfirmImport`
-  re-checks each claimed format (skipping the ones with nothing included) —
-  the gate is the affordance, the per-format check is the safety.
+  `planBatchWrite`'s plan — the **claimed** formats' included resources and
+  the linked records it writes beside them — writes something; unreadable
+  files and formats whose decode yielded nothing render their own section but
+  add nothing to write, and a linked record no written resource names, or one
+  the server holds unchanged, adds nothing either. The confirm reads the same
+  plan, so the count and the write cannot disagree, and both come off
+  `claimedFormats`, the one predicate for "did this format take part" — a
+  format that claimed nothing is not planned, tallied, or reported.
 - **The source file list is format-blind and disjoint from web traces on the
   same axis.** The list searches `category` for `SOURCE_FILES_CATEGORY_TOKEN` —
   the comma-joined `system|code` tokens of every registered format's

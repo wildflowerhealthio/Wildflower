@@ -1,7 +1,7 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import type { DiffSlot, FieldDiff, ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
-import { type FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
+import { type FhirResource, Observation, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   type FormatKind,
   type FormatSettings,
@@ -42,12 +42,16 @@ import { LINKED_GROUP } from './use-server-diff.ts'
 afterEach(cleanup)
 
 describe('PreviewPanel', () => {
-  it('lists the linked records read-only with their diff, and counts them into the confirm', () => {
-    const batch: ResolvedBatch = {
-      ...makeBatch({ har: formatResult('empty.har', decoded([]), 'har') }),
-      linked: [labeledResource('linked:Patient/s-1', 'Patient/s-1')],
-      links: [],
-    }
+  it('lists the linked records read-only with their diff, and counts one a written resource names into the confirm', () => {
+    const batch = withLinkedPatient(
+      makeBatch({
+        har: formatResult(
+          'session.har',
+          decoded([section('s', [observationOf('obs-1', 'Patient/s-1')])]),
+          'har'
+        ),
+      })
+    )
     const comparisons: PreviewPanelProps['comparisons'] = new Map([
       [
         LINKED_GROUP,
@@ -62,6 +66,69 @@ describe('PreviewPanel', () => {
     expect(group.queryByRole('button', { name: /Edit/ })).toBeNull()
     expect(group.getByRole('button', { name: /Differs from server/ })).toBeDefined()
     expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Import 2 resources' })).toBeDefined()
+  })
+
+  it('writes no linked record once the only resource naming it is excluded', () => {
+    const batch = withLinkedPatient(
+      makeBatch({
+        har: formatResult(
+          'session.har',
+          decoded([section('s', [observationOf('obs-1', 'Patient/s-1')])]),
+          'har'
+        ),
+      })
+    )
+    const selectionFor = (): StagedImport.Selection =>
+      StagedImport.toggleResource(StagedImport.initial(), 'obs-1')
+    render(<PreviewPanel {...panelProps(batch, { selectionFor })} />)
+
+    expect(screen.getByRole('region', { name: LINKED_RECORDS_HEADING })).toBeDefined()
+    expect(screen.getByRole('heading', { name: NOTHING_TO_IMPORT_HEADING })).toBeDefined()
+    expect(screen.queryByRole('button', { name: /^Import/ })).toBeNull()
+  })
+
+  it('shows nothing to import on a re-import whose rows and linked record the server holds unchanged', () => {
+    const batch = withLinkedPatient(
+      makeBatch({
+        har: formatResult(
+          'session.har',
+          decoded([section('s', [observationOf('obs-1', 'Patient/s-1')])]),
+          'har'
+        ),
+      })
+    )
+    // The screen pre-excludes the unchanged row and passes the unchanged
+    // linked record's key.
+    const selectionFor = (): StagedImport.Selection =>
+      StagedImport.toggleResource(StagedImport.initial(), 'obs-1')
+    render(
+      <PreviewPanel
+        {...panelProps(batch, {
+          selectionFor,
+          unchangedLinked: new Set(['linked:Patient/s-1']),
+        })}
+      />
+    )
+
+    expect(screen.getByRole('heading', { name: NOTHING_TO_IMPORT_HEADING })).toBeDefined()
+    expect(screen.queryByRole('button', { name: /^Import/ })).toBeNull()
+  })
+
+  it('leaves an unchanged linked record out of the count while a resource naming it is written', () => {
+    const batch = withLinkedPatient(
+      makeBatch({
+        har: formatResult(
+          'session.har',
+          decoded([section('s', [observationOf('obs-1', 'Patient/s-1')])]),
+          'har'
+        ),
+      })
+    )
+    render(
+      <PreviewPanel {...panelProps(batch, { unchangedLinked: new Set(['linked:Patient/s-1']) })} />
+    )
+
     expect(screen.getByRole('button', { name: 'Import 1 resource' })).toBeDefined()
   })
 
@@ -524,6 +591,25 @@ const labeledResource = (key: string, title: string): DecodedFile.Resource => {
   return { key, title, resource }
 }
 
+/** An Observation of `subject`, labeled under `key`, for a linked record to be named by. */
+const observationOf = (key: string, subject: string): DecodedFile.Resource => ({
+  key,
+  title: `Observation/${key}`,
+  resource: Schema.decodeUnknownSync(Observation.Schema)({
+    resourceType: 'Observation',
+    id: key,
+    status: 'final',
+    code: { text: 'Heart rate' },
+    subject: { reference: subject },
+  }),
+})
+
+/** `batch` with the stored `Patient/s-1` as its one linked record. */
+const withLinkedPatient = (batch: ResolvedBatch): ResolvedBatch => ({
+  ...batch,
+  linked: [labeledResource('linked:Patient/s-1', 'Patient/s-1')],
+})
+
 /** A settings registry whose pickers are one-button stubs reporting the default settings back. */
 const settingsRegistry: SettingsRegistry = {
   har: {
@@ -560,6 +646,7 @@ const panelProps = (
     readonly onSelectionChange?: PreviewPanelProps['onSelectionChange']
     readonly onSettingsChange?: PreviewPanelProps['onSettingsChange']
     readonly selectionFor?: PreviewPanelProps['selectionFor']
+    readonly unchangedLinked?: PreviewPanelProps['unchangedLinked']
     readonly comparisons?: PreviewPanelProps['comparisons']
     readonly confirming?: boolean
   } = {}
@@ -570,6 +657,7 @@ const panelProps = (
     settings,
     settingsRegistry,
     selectionFor: overrides.selectionFor ?? (() => StagedImport.initial()),
+    unchangedLinked: overrides.unchangedLinked ?? new Set(),
     comparisons: overrides.comparisons ?? new Map(),
     onSelectionChange: overrides.onSelectionChange ?? (() => undefined),
     onSettingsChange: overrides.onSettingsChange ?? (() => undefined),

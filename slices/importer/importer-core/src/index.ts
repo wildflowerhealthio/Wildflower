@@ -3,8 +3,8 @@
  * registered {@link FileImporter}, typed per format — and the batch
  * machinery a shell drives: group a pick by format, read it into a
  * {@link DecodedBatch}, re-decode one format under new settings, find
- * the batch's referents and resolve its mentions, and plan a format's
- * write from its reviewed selection.
+ * the batch's referents and resolve its mentions, and plan the batch's
+ * write from its reviewed selections.
  *
  * @remarks
  * Sits between the format bindings (`har-importer-core`,
@@ -27,7 +27,15 @@ export {
   redecodeFormat,
   type UnrecognizedFile,
 } from './read-batch.ts'
-export { planFormatWrite, type SkipReason, type WritePlan } from './plan-write.ts'
+export {
+  type BatchWritePlan,
+  planBatchWrite,
+  type PlannedFormat,
+  planFormatWrite,
+  type SelectionFor,
+  type SkipReason,
+  type WritePlan,
+} from './plan-write.ts'
 export {
   discoverReferents,
   resolveMentions,

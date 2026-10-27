@@ -40,6 +40,22 @@ describe('ImportResults', () => {
     expect(screen.getByText('Patient/p1')).toBeDefined()
   })
 
+  it('counts a written linked record among the resources of the file it was written with', () => {
+    // A linked record is written only beside a file whose resource names it,
+    // so the summary never reads as resources written across no file.
+    const batch = batchOf(
+      [importedFile('a', [ok('Observation/o1', '201 Created')])],
+      [{ ...ok('Practitioner/pr1', '201 Created'), title: 'Linked records' }]
+    )
+
+    render(<ImportResults batch={batch} onStartOver={vi.fn()} />)
+
+    expect(screen.getByRole('heading', { name: COMPLETE_HEADING })).toBeDefined()
+    expect(screen.getByRole('status').textContent).toBe(
+      'Wrote 2 of 2 resources across 1 of 1 file.'
+    )
+  })
+
   it('opens failure groups to the server diagnostics and sorts them before successes', () => {
     const batch = batchOf([
       importedFile('a', [

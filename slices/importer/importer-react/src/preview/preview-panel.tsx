@@ -5,7 +5,7 @@ import { Data } from 'effect'
 import { type JSX, type ReactNode, useMemo, useState } from 'react'
 
 import type { FormatKind, FormatSettings, ResolvedBatch } from '@wildflowerhealthio/importer-core'
-import { claimedFormats, formatKinds } from '@wildflowerhealthio/importer-core'
+import { claimedFormats, formatKinds, planBatchWrite } from '@wildflowerhealthio/importer-core'
 
 import type { FormatWithComponents } from '../registry.ts'
 import { describeResource } from './describe-resource.ts'
@@ -38,11 +38,13 @@ import panelStyles from './preview-panel.module.css'
  * and its diagnostic notes, with unreadable files reported rather than
  * sinking the batch. Below the formats, the batch's linked records — the
  * records it names but holds no copy of, as the referent rows link them —
- * are shown with their server diff and no toggle: they are written as
- * linked, every one. A settings change calls `onSettingsChange`; the shell
- * re-decodes that format. The confirm appears only when at least one
- * resource is included or linked, and it does not write — it calls
- * `onConfirm`; the confirm step writes exactly the reviewed objects.
+ * are shown with their server diff and no toggle: a linked record is written
+ * when a resource the batch writes names it and the server does not hold it
+ * unchanged (`importer-core`'s `planBatchWrite`, which the confirm reads
+ * too). A settings change calls `onSettingsChange`; the shell re-decodes
+ * that format. The confirm appears only when that plan writes at least one
+ * resource, and it does not write — it calls `onConfirm`; the confirm step
+ * writes exactly the reviewed objects.
  *
  * @packageDocumentation
  */
@@ -67,6 +69,8 @@ interface PreviewPanelProps {
   readonly settingsRegistry: SettingsRegistry
   /** The reviewed selection for a format (defaults to `StagedImport.initial()` before any edit). */
   readonly selectionFor: (format: FormatKind) => StagedImport.Selection
+  /** The keys of the linked records the server diff found unchanged, which are not written. */
+  readonly unchangedLinked: ReadonlySet<string>
   /**
    * Each labeled resource's server comparison (`new` / `unchanged` /
    * `changed`, and for `changed` the leaf-level field diffs), keyed by the
@@ -83,8 +87,8 @@ interface PreviewPanelProps {
   /** Called when the user changes one format's settings; the caller re-decodes. */
   readonly onSettingsChange: <K extends FormatKind>(format: K, settings: FormatSettings[K]) => void
   /**
-   * Called when the user confirms the batch. Fires only when at least one
-   * resource is included; the panel gates the affordance, so a caller can
+   * Called when the user confirms the batch. Fires only when the batch writes
+   * at least one resource; the panel gates the affordance, so a caller can
    * treat this as "the user opted in to writing the batch".
    */
   readonly onConfirm: () => void
@@ -156,8 +160,8 @@ const PreviewActions = ({
 /**
  * The batch's linked records, read-only: each with its type, its one-line
  * summary and its server diff. Nothing here toggles or edits: a linked record
- * is written as the referent rows link it, and changing it means choosing
- * differently there.
+ * is written as the referent rows link it, when a written resource names it,
+ * and changing it means choosing differently there.
  */
 const LinkedRecords = ({
   linked,
@@ -199,14 +203,15 @@ const { Closed: makeClosedEditor, Open: makeOpenEditor } = editorState
 /**
  * The preview surface. Renders the batch grouped by format — each format's
  * settings form over its decoded sections and per-resource reviews — then
- * its linked records, and, when at least one resource is included or linked,
- * the single confirm action that opts into writing the whole batch.
+ * its linked records, and, when the batch writes at least one resource, the
+ * single confirm action that opts into writing the whole batch.
  */
 const PreviewPanel = ({
   batch,
   settings,
   settingsRegistry,
   selectionFor,
+  unchangedLinked,
   comparisons,
   onSelectionChange,
   onSettingsChange,
@@ -225,19 +230,24 @@ const PreviewPanel = ({
     [batch]
   )
 
-  // Every linked record is written, so each counts as writable beside the
-  // formats' included resources.
+  // What the confirm would write: the formats' included resources and the
+  // linked records the same plan writes beside them.
   const { writableCount, excludedCount } = useMemo(() => {
-    let included = batch.linked.length
-    let excluded = 0
-    for (const kind of claimedFormats(batch)) {
-      const labeled = DecodedFile.resources(batch[kind].decoded)
-      const selection = selectionFor(kind)
-      included += StagedImport.includedCount(labeled, selection)
-      excluded += StagedImport.excludedCount(labeled, selection)
-    }
-    return { writableCount: included, excludedCount: excluded }
-  }, [batch, selectionFor])
+    const plan = planBatchWrite(batch, selectionFor, unchangedLinked)
+    return plan.formats.reduce(
+      (counts, { result, plan: formatPlan }) => ({
+        writableCount:
+          counts.writableCount + (formatPlan._tag === 'write' ? formatPlan.resources.length : 0),
+        excludedCount:
+          counts.excludedCount +
+          StagedImport.excludedCount(
+            DecodedFile.resources(result.decoded),
+            selectionFor(result.format)
+          ),
+      }),
+      { writableCount: plan.linked.length, excludedCount: 0 }
+    )
+  }, [batch, selectionFor, unchangedLinked])
 
   const openEditor = (format: FormatKind, key: string, resource: unknown): void => {
     setEditing(makeOpenEditor({ format, key, resource }))
