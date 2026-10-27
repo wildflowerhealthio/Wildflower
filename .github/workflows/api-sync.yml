@@ -33,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1.21.2
+        uses: voidzero-dev/setup-vp@v1.22.0
         with:
           cache: true
       - name: Install dependencies

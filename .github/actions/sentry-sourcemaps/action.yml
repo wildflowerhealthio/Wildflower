@@ -56,7 +56,7 @@ runs:
     # origin and its previews alike.
     - name: Create Sentry release and upload source maps
       if: inputs.auth-token != '' && steps.project.outputs.id != ''
-      uses: getsentry/action-release@v3.7.1
+      uses: getsentry/action-release@v3.7.2
       env:
         SENTRY_AUTH_TOKEN: ${{ inputs.auth-token }}
         SENTRY_ORG: ${{ inputs.org }}
