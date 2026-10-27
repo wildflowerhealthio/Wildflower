@@ -106,12 +106,21 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
 - `src/identity-map/` — the **identity map**: for every referent an import
   discovers, what it links to on the device, the one search that defaults it,
   and the phases that resolve a batch's decoded files on those choices, each
-  pure or an Effect whose only input besides its arguments is the clock (which of a
-  person's names is current). One
-  namespace per file, one phase each. Three tenses run through the names:
-  **decoded** (as the file arrived), **resolved** (after the map, as it will
-  be written) and **stored** (already on the device). A conversion between
-  the model's types says its direction:
+  pure or an Effect whose only input besides its arguments is the clock
+  (which of a person's names is current). One namespace per file, one phase
+  each; `importer-core`'s `resolveMentions` runs them over a batch. Three
+  states run through the names, one adjective each:
+  - **decoded** — as the file arrived: a `DecodedFile`, its referents and
+    mentions as the source wrote them.
+  - **resolved** — every link followed, as it will be written: a file
+    resolved on its batch's link plan (`FileResolution.resolveFile`), the
+    resource under a resolved literal reference (`ResolvedResource`).
+  - **stored** — already on the device: what a referent search finds and a
+    link choice links to or updates.
+
+  Making links (`Link.fromChoices`, the reviewer's choices into link targets)
+  is not resolving: resolving follows the links once they are made. A
+  conversion between the model's types says its direction:
   `tryFrom<Source>` builds the namespace's type, `tryInto<Target>` leaves it;
   `maybe` is only for an attribute that may be absent.
   - **`LinkableLogicalReference`** — FHIR's logical reference (a `Reference`
@@ -263,6 +272,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     referents land on (`onServer`, `fromImport`, each record counted once, a
     stored record the import writes over counted from the import) and how
     many referents are `unlinked`: the review's summary line.
+
 - `src/picked-file.ts` — the **`PickedFile`** namespace: the picked file
   vocabulary _and_ the codec that source files one. **`Type`**
   (`{ id, fileName, bytes }`) is the one value every `decode` receives, and
@@ -380,9 +390,9 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
   the clock, and keeps every file's sections and keys. A batch of decoded
   files is resolved on one plan over the batch's referents:
   the choices are made for the decoded files' referents, and a referent one
-  file holds is the link target of a mention in another. Applied again to
-  the resolved files it changes nothing when they have the same referents, of
-  the same kinds: no `LinkToDecodedReferent` cycle (whose provisional
+  file holds is the link target of a mention in another. Resolving the
+  resolved files again on the same choices changes nothing when they have the
+  same referents, of the same kinds: no `LinkToDecodedReferent` cycle (whose provisional
   resource is a resource there), no mention several decoded resources answer
   to, and no mention a linked stored resource answers to, since once resolved
   one resource answers to each of those mentions. A referent's mentions are

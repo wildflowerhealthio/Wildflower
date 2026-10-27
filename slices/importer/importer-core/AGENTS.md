@@ -61,7 +61,11 @@ write plan with this package alone.
   union key and its value, so a record assembled from a `kind` variable is
   checked against nothing. Its slots are typed by **`FormatResults`**.
 - `src/resolve-mentions.ts` — a batch's mentions resolved (a resolved batch
-  is one whose mentions are resolved), service-free Effects on the clock.
+  is one whose mentions are resolved), service-free Effects on the clock. The
+  batch goes from **decoded** (`DecodedBatch`, as `readBatch` read it) to
+  **resolved** (`ResolvedBatch`, every link followed, as it will be written)
+  against what is **stored** on the device, the identity map's three states
+  (`importer-fundamentals`' AGENTS).
   **`ResolvedBatch`** is a decoded batch's slots plus the two a decoded batch
   cannot hold: its **`linked`** records (the resources it only mentions,
   the batch's own slot, no format's) and every referent's **`links`**. Only
