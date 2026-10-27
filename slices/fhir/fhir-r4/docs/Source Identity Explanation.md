@@ -92,7 +92,9 @@ loudly.
    of its content instead: FNV-1a 64 over its FHIR JSON as `FhirResourceSchema`
    encodes it, fields in schema order, as sixteen hex digits. So every adopted
    resource has an id (`adoptResource` returns `FhirResourceWithId`), and a
-   re-import of the same capture lands on the same one.
+   re-import of the same capture lands on the same one. Such a resource skips
+   step 3: the source gave it no id, so no identifier claims one, and it keeps
+   only the identifiers it arrived with (`originalIdOf` reads `null` off it).
 2. **Derives the id** from `(system, resourceType, originalId)`.
 3. **Prepends one `Identifier`** carrying the source's own id —
    `identifier[0] = { system: <source system>, value: <original id> }`. Every

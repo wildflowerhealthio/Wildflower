@@ -111,6 +111,27 @@ const sourceIdentifier = (prepared: PreparedSource, value: string): IdentifierTy
 })
 
 /**
+ * What a resource is adopted under: the id its source gave it, or, when it
+ * gave none, a digest of its content ({@link contentIdOf}). Either is the hash
+ * input to {@link localResourceId}; only the source's own id is recorded as a
+ * source identifier, since the source knows the resource by no content digest.
+ */
+type AdoptionId =
+  | { readonly _tag: 'SourceId'; readonly value: string }
+  | { readonly _tag: 'ContentId'; readonly value: string }
+
+/**
+ * `own` with the source identifier `adoptionId` records prepended: the
+ * source's id for a `SourceId`, nothing for a `ContentId`.
+ */
+const identifiersAdopting = (
+  prepared: PreparedSource,
+  adoptionId: AdoptionId,
+  own: readonly IdentifierType[]
+): readonly IdentifierType[] =>
+  adoptionId._tag === 'SourceId' ? [sourceIdentifier(prepared, adoptionId.value), ...own] : own
+
+/**
  * Rewrite one `Reference` so it names the local id of the resource it points at.
  *
  * @remarks
@@ -183,27 +204,27 @@ const rewriteAnnotationAuthors = <TAnnotation extends AnnotationAuthor>(
 
 const adoptBinary = (
   prepared: PreparedSource,
-  originalId: string,
+  adoptionId: AdoptionId,
   binary: typeof Binary.Schema.Type
 ): WithMandatoryId<typeof Binary.Schema.Type> => {
   const rewrite = rewriteReference(prepared)
   return {
     ...binary,
-    id: localResourceId(prepared.source.system, 'Binary', originalId),
+    id: localResourceId(prepared.source.system, 'Binary', adoptionId.value),
     securityContext: rewriteNullable(rewrite, binary.securityContext),
   }
 }
 
 const adoptPatient = (
   prepared: PreparedSource,
-  originalId: string,
+  adoptionId: AdoptionId,
   patient: typeof Patient.Schema.Type
 ): WithMandatoryId<typeof Patient.Schema.Type> => {
   const rewrite = rewriteReference(prepared)
   return {
     ...patient,
-    id: localResourceId(prepared.source.system, 'Patient', originalId),
-    identifier: [sourceIdentifier(prepared, originalId), ...patient.identifier],
+    id: localResourceId(prepared.source.system, 'Patient', adoptionId.value),
+    identifier: identifiersAdopting(prepared, adoptionId, patient.identifier),
     generalPractitioner: patient.generalPractitioner.map(rewrite),
     managingOrganization: rewriteNullable(rewrite, patient.managingOrganization),
     link: patient.link.map((link) => ({ ...link, other: rewrite(link.other) })),
@@ -216,14 +237,14 @@ const adoptPatient = (
 
 const adoptObservation = (
   prepared: PreparedSource,
-  originalId: string,
+  adoptionId: AdoptionId,
   observation: typeof Observation.Schema.Type
 ): WithMandatoryId<typeof Observation.Schema.Type> => {
   const rewrite = rewriteReference(prepared)
   return {
     ...observation,
-    id: localResourceId(prepared.source.system, 'Observation', originalId),
-    identifier: [sourceIdentifier(prepared, originalId), ...observation.identifier],
+    id: localResourceId(prepared.source.system, 'Observation', adoptionId.value),
+    identifier: identifiersAdopting(prepared, adoptionId, observation.identifier),
     note: rewriteAnnotationAuthors(rewrite, observation.note),
     subject: rewriteNullable(rewrite, observation.subject),
     encounter: rewriteNullable(rewrite, observation.encounter),
@@ -240,14 +261,14 @@ const adoptObservation = (
 
 const adoptMedicationRequest = (
   prepared: PreparedSource,
-  originalId: string,
+  adoptionId: AdoptionId,
   request: typeof MedicationRequest.Schema.Type
 ): WithMandatoryId<typeof MedicationRequest.Schema.Type> => {
   const rewrite = rewriteReference(prepared)
   return {
     ...request,
-    id: localResourceId(prepared.source.system, 'MedicationRequest', originalId),
-    identifier: [sourceIdentifier(prepared, originalId), ...request.identifier],
+    id: localResourceId(prepared.source.system, 'MedicationRequest', adoptionId.value),
+    identifier: identifiersAdopting(prepared, adoptionId, request.identifier),
     note: rewriteAnnotationAuthors(rewrite, request.note),
     subject: rewrite(request.subject),
     encounter: rewriteNullable(rewrite, request.encounter),
@@ -275,14 +296,14 @@ const adoptMedicationRequest = (
 
 const adoptMedicationDispense = (
   prepared: PreparedSource,
-  originalId: string,
+  adoptionId: AdoptionId,
   dispense: typeof MedicationDispense.Schema.Type
 ): WithMandatoryId<typeof MedicationDispense.Schema.Type> => {
   const rewrite = rewriteReference(prepared)
   return {
     ...dispense,
-    id: localResourceId(prepared.source.system, 'MedicationDispense', originalId),
-    identifier: [sourceIdentifier(prepared, originalId), ...dispense.identifier],
+    id: localResourceId(prepared.source.system, 'MedicationDispense', adoptionId.value),
+    identifier: identifiersAdopting(prepared, adoptionId, dispense.identifier),
     note: rewriteAnnotationAuthors(rewrite, dispense.note),
     subject: rewriteNullable(rewrite, dispense.subject),
     context: rewriteNullable(rewrite, dispense.context),
@@ -312,14 +333,14 @@ const adoptMedicationDispense = (
 
 const adoptDocumentReference = (
   prepared: PreparedSource,
-  originalId: string,
+  adoptionId: AdoptionId,
   document: typeof DocumentReference.Schema.Type
 ): WithMandatoryId<typeof DocumentReference.Schema.Type> => {
   const rewrite = rewriteReference(prepared)
   return {
     ...document,
-    id: localResourceId(prepared.source.system, 'DocumentReference', originalId),
-    identifier: [sourceIdentifier(prepared, originalId), ...document.identifier],
+    id: localResourceId(prepared.source.system, 'DocumentReference', adoptionId.value),
+    identifier: identifiersAdopting(prepared, adoptionId, document.identifier),
     subject: rewriteNullable(rewrite, document.subject),
     authenticator: rewriteNullable(rewrite, document.authenticator),
     custodian: rewriteNullable(rewrite, document.custodian),
@@ -342,14 +363,14 @@ const adoptDocumentReference = (
 
 const adoptDiagnosticReport = (
   prepared: PreparedSource,
-  originalId: string,
+  adoptionId: AdoptionId,
   report: typeof DiagnosticReport.Schema.Type
 ): WithMandatoryId<typeof DiagnosticReport.Schema.Type> => {
   const rewrite = rewriteReference(prepared)
   return {
     ...report,
-    id: localResourceId(prepared.source.system, 'DiagnosticReport', originalId),
-    identifier: [sourceIdentifier(prepared, originalId), ...report.identifier],
+    id: localResourceId(prepared.source.system, 'DiagnosticReport', adoptionId.value),
+    identifier: identifiersAdopting(prepared, adoptionId, report.identifier),
     subject: rewriteNullable(rewrite, report.subject),
     encounter: rewriteNullable(rewrite, report.encounter),
     basedOn: report.basedOn.map(rewrite),
@@ -364,14 +385,14 @@ const adoptDiagnosticReport = (
 
 const adoptPractitioner = (
   prepared: PreparedSource,
-  originalId: string,
+  adoptionId: AdoptionId,
   practitioner: typeof Practitioner.Schema.Type
 ): WithMandatoryId<typeof Practitioner.Schema.Type> => {
   const rewrite = rewriteReference(prepared)
   return {
     ...practitioner,
-    id: localResourceId(prepared.source.system, 'Practitioner', originalId),
-    identifier: [sourceIdentifier(prepared, originalId), ...practitioner.identifier],
+    id: localResourceId(prepared.source.system, 'Practitioner', adoptionId.value),
+    identifier: identifiersAdopting(prepared, adoptionId, practitioner.identifier),
     qualification: practitioner.qualification.map((qualification) => ({
       ...qualification,
       issuer: rewriteNullable(rewrite, qualification.issuer),
@@ -381,14 +402,14 @@ const adoptPractitioner = (
 
 const adoptServiceRequest = (
   prepared: PreparedSource,
-  originalId: string,
+  adoptionId: AdoptionId,
   request: typeof ServiceRequest.Schema.Type
 ): WithMandatoryId<typeof ServiceRequest.Schema.Type> => {
   const rewrite = rewriteReference(prepared)
   return {
     ...request,
-    id: localResourceId(prepared.source.system, 'ServiceRequest', originalId),
-    identifier: [sourceIdentifier(prepared, originalId), ...request.identifier],
+    id: localResourceId(prepared.source.system, 'ServiceRequest', adoptionId.value),
+    identifier: identifiersAdopting(prepared, adoptionId, request.identifier),
     subject: rewrite(request.subject),
     encounter: rewriteNullable(rewrite, request.encounter),
     requester: rewriteNullable(rewrite, request.requester),
@@ -405,14 +426,14 @@ const adoptServiceRequest = (
 
 const adoptImagingStudy = (
   prepared: PreparedSource,
-  originalId: string,
+  adoptionId: AdoptionId,
   study: typeof ImagingStudy.Schema.Type
 ): WithMandatoryId<typeof ImagingStudy.Schema.Type> => {
   const rewrite = rewriteReference(prepared)
   return {
     ...study,
-    id: localResourceId(prepared.source.system, 'ImagingStudy', originalId),
-    identifier: [sourceIdentifier(prepared, originalId), ...study.identifier],
+    id: localResourceId(prepared.source.system, 'ImagingStudy', adoptionId.value),
+    identifier: identifiersAdopting(prepared, adoptionId, study.identifier),
     subject: rewrite(study.subject),
     encounter: rewriteNullable(rewrite, study.encounter),
     referrer: rewriteNullable(rewrite, study.referrer),
@@ -433,14 +454,14 @@ const adoptImagingStudy = (
 
 const adoptCarePlan = (
   prepared: PreparedSource,
-  originalId: string,
+  adoptionId: AdoptionId,
   plan: typeof CarePlan.Schema.Type
 ): WithMandatoryId<typeof CarePlan.Schema.Type> => {
   const rewrite = rewriteReference(prepared)
   return {
     ...plan,
-    id: localResourceId(prepared.source.system, 'CarePlan', originalId),
-    identifier: [sourceIdentifier(prepared, originalId), ...plan.identifier],
+    id: localResourceId(prepared.source.system, 'CarePlan', adoptionId.value),
+    identifier: identifiersAdopting(prepared, adoptionId, plan.identifier),
     note: rewriteAnnotationAuthors(rewrite, plan.note),
     subject: rewrite(plan.subject),
     encounter: rewriteNullable(rewrite, plan.encounter),
@@ -475,14 +496,14 @@ const adoptCarePlan = (
 
 const adoptGoal = (
   prepared: PreparedSource,
-  originalId: string,
+  adoptionId: AdoptionId,
   goal: typeof Goal.Schema.Type
 ): WithMandatoryId<typeof Goal.Schema.Type> => {
   const rewrite = rewriteReference(prepared)
   return {
     ...goal,
-    id: localResourceId(prepared.source.system, 'Goal', originalId),
-    identifier: [sourceIdentifier(prepared, originalId), ...goal.identifier],
+    id: localResourceId(prepared.source.system, 'Goal', adoptionId.value),
+    identifier: identifiersAdopting(prepared, adoptionId, goal.identifier),
     note: rewriteAnnotationAuthors(rewrite, goal.note),
     subject: rewrite(goal.subject),
     expressedBy: rewriteNullable(rewrite, goal.expressedBy),
@@ -504,14 +525,14 @@ const rewriteActionSubjects = (
 
 const adoptPlanDefinition = (
   prepared: PreparedSource,
-  originalId: string,
+  adoptionId: AdoptionId,
   plan: typeof PlanDefinition.Schema.Type
 ): WithMandatoryId<typeof PlanDefinition.Schema.Type> => {
   const rewrite = rewriteReference(prepared)
   return {
     ...plan,
-    id: localResourceId(prepared.source.system, 'PlanDefinition', originalId),
-    identifier: [sourceIdentifier(prepared, originalId), ...plan.identifier],
+    id: localResourceId(prepared.source.system, 'PlanDefinition', adoptionId.value),
+    identifier: identifiersAdopting(prepared, adoptionId, plan.identifier),
     subjectReference: rewriteNullable(rewrite, plan.subjectReference),
     action: rewriteActionSubjects(rewrite, plan.action),
   }
@@ -519,14 +540,14 @@ const adoptPlanDefinition = (
 
 const adoptProcedure = (
   prepared: PreparedSource,
-  originalId: string,
+  adoptionId: AdoptionId,
   procedure: typeof Procedure.Schema.Type
 ): WithMandatoryId<typeof Procedure.Schema.Type> => {
   const rewrite = rewriteReference(prepared)
   return {
     ...procedure,
-    id: localResourceId(prepared.source.system, 'Procedure', originalId),
-    identifier: [sourceIdentifier(prepared, originalId), ...procedure.identifier],
+    id: localResourceId(prepared.source.system, 'Procedure', adoptionId.value),
+    identifier: identifiersAdopting(prepared, adoptionId, procedure.identifier),
     note: rewriteAnnotationAuthors(rewrite, procedure.note),
     subject: rewrite(procedure.subject),
     encounter: rewriteNullable(rewrite, procedure.encounter),
@@ -564,9 +585,9 @@ const encodeResource = Schema.encodeEither(FhirResourceSchema)
  * (a kind's decode let through what the schema's encode refuses) digests as
  * its decoded value, its fields in the same order, rather than failing the
  * adoption. The digest stands where the
- * source's own id would — the hash input to {@link localResourceId} and the
- * value of the source identifier adoption prepends — so the resource is
- * adopted like any other.
+ * source's own id would as the hash input to {@link localResourceId}, and the
+ * references are rewritten as for any other resource, but no source
+ * identifier is prepended: the source knows the resource by no id at all.
  */
 const contentIdOf = (resource: FhirResource): string =>
   fnv1a64(JSON.stringify(Either.getOrElse(encodeResource(resource), (): unknown => resource)))
@@ -585,7 +606,9 @@ const contentIdOf = (resource: FhirResource): string =>
  * A resource whose `id` is `null` (third-party FHIR JSON, where `id` is
  * optional) is adopted under an id of its content ({@link contentIdOf}) in
  * place of the source's, so every adopted resource has one, and a re-import of
- * the same capture lands on the same id rather than beside it.
+ * the same capture lands on the same id rather than beside it. It keeps only
+ * the identifiers it arrived with: no source identifier claims an id the
+ * source never gave it.
  *
  * `Binary` is adopted but gets **no** identifier — FHIR R4 gives `Binary` no
  * `identifier` element — so its original id survives only in the provenance
@@ -604,50 +627,53 @@ const contentIdOf = (resource: FhirResource): string =>
 const adoptResource = (source: SourceIdentity) => {
   const prepared = prepare(source)
   return (resource: FhirResource): FhirResourceWithId => {
-    const originalId = resource.id ?? contentIdOf(resource)
+    const adoptionId: AdoptionId =
+      resource.id === null
+        ? { _tag: 'ContentId', value: contentIdOf(resource) }
+        : { _tag: 'SourceId', value: resource.id }
     // `Match.exhaustive` over the closed union rather than a `switch`: a
     // resource type added to `FhirResource` without an adopt function here is a
     // compile error, not a resource that silently keeps its source's id.
     return Match.value(resource).pipe(
       Match.discriminator('resourceType')('Binary', (binary) =>
-        adoptBinary(prepared, originalId, binary)
+        adoptBinary(prepared, adoptionId, binary)
       ),
       Match.discriminator('resourceType')('Patient', (patient) =>
-        adoptPatient(prepared, originalId, patient)
+        adoptPatient(prepared, adoptionId, patient)
       ),
       Match.discriminator('resourceType')('Observation', (observation) =>
-        adoptObservation(prepared, originalId, observation)
+        adoptObservation(prepared, adoptionId, observation)
       ),
       Match.discriminator('resourceType')('MedicationRequest', (request) =>
-        adoptMedicationRequest(prepared, originalId, request)
+        adoptMedicationRequest(prepared, adoptionId, request)
       ),
       Match.discriminator('resourceType')('MedicationDispense', (dispense) =>
-        adoptMedicationDispense(prepared, originalId, dispense)
+        adoptMedicationDispense(prepared, adoptionId, dispense)
       ),
       Match.discriminator('resourceType')('DocumentReference', (document) =>
-        adoptDocumentReference(prepared, originalId, document)
+        adoptDocumentReference(prepared, adoptionId, document)
       ),
       Match.discriminator('resourceType')('DiagnosticReport', (report) =>
-        adoptDiagnosticReport(prepared, originalId, report)
+        adoptDiagnosticReport(prepared, adoptionId, report)
       ),
       Match.discriminator('resourceType')('Practitioner', (practitioner) =>
-        adoptPractitioner(prepared, originalId, practitioner)
+        adoptPractitioner(prepared, adoptionId, practitioner)
       ),
       Match.discriminator('resourceType')('ServiceRequest', (request) =>
-        adoptServiceRequest(prepared, originalId, request)
+        adoptServiceRequest(prepared, adoptionId, request)
       ),
       Match.discriminator('resourceType')('ImagingStudy', (study) =>
-        adoptImagingStudy(prepared, originalId, study)
+        adoptImagingStudy(prepared, adoptionId, study)
       ),
       Match.discriminator('resourceType')('CarePlan', (plan) =>
-        adoptCarePlan(prepared, originalId, plan)
+        adoptCarePlan(prepared, adoptionId, plan)
       ),
-      Match.discriminator('resourceType')('Goal', (goal) => adoptGoal(prepared, originalId, goal)),
+      Match.discriminator('resourceType')('Goal', (goal) => adoptGoal(prepared, adoptionId, goal)),
       Match.discriminator('resourceType')('PlanDefinition', (plan) =>
-        adoptPlanDefinition(prepared, originalId, plan)
+        adoptPlanDefinition(prepared, adoptionId, plan)
       ),
       Match.discriminator('resourceType')('Procedure', (procedure) =>
-        adoptProcedure(prepared, originalId, procedure)
+        adoptProcedure(prepared, adoptionId, procedure)
       ),
       Match.exhaustive
     )

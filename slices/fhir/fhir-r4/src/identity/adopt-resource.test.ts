@@ -634,6 +634,17 @@ describe('adoptResource', () => {
       expect(adopt(Schema.decodeUnknownSync(FhirResourceSchema)(reordered)).id).toBe(adopted.id)
       expect(adopted.id).not.toBe(adopt({ ...resource, id: 'src-1' }).id)
     })
+
+    test(`${resourceType}: adds no source identifier to a null-id resource`, () => {
+      const idLess = { ...resource, id: null }
+      const adopted = adopt(idLess)
+      // The source gave it no id, so nothing claims one: it keeps exactly the
+      // identifiers it arrived with, and no source id reads back off it.
+      if ('identifier' in adopted && 'identifier' in idLess) {
+        expect(adopted.identifier).toEqual(idLess.identifier)
+      }
+      expect(originalIdOf(SOURCE, adopted)).toBeNull()
+    })
   }
 
   test('adopts two null-id resources of different content under different ids', () => {
