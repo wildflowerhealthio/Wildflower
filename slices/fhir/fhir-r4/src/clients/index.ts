@@ -41,6 +41,7 @@ export {
   NO_RESPONSE_STATUS,
   persistBatchBundle,
   persistBatchBundleOrFail,
+  persistTransactionBundle,
   statusOk,
   type StatusGroup,
   type WriteIssue,

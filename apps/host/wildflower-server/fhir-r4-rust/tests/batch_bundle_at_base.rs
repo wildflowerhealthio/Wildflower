@@ -1,9 +1,14 @@
 //! The FHIR batch/transaction endpoint lives at the server *base* — a client
 //! submits one `POST /` Bundle of PUT entries (this is what `fhir-r4`'s
-//! `persistBatchBundle` and `classifyAgainstServer` clients do). Wildflower
-//! serves FHIR at the root, so that base is the bare `/`, a path the
-//! per-resource PUT/GET tests never touch: it must reach HFS through
-//! `setup_fhir_r4`'s overrides rather than match none of them.
+//! `persistBatchBundle`, `persistTransactionBundle` and `classifyAgainstServer`
+//! clients do). Wildflower serves FHIR at the root, so that base is the bare
+//! `/`, a path the per-resource PUT/GET tests never touch: it must reach HFS
+//! through `setup_fhir_r4`'s overrides rather than match none of them.
+//!
+//! A `transaction` Bundle is atomic on HFS's SQLite backend: every entry lands
+//! or none does. The importer's confirm writes a batch, its linked records
+//! among them, as one transaction on that promise, so a reference from one
+//! format's resource to another's never dangles; the tests here pin it.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -150,4 +155,99 @@ fn ui_sessions(config: &FhirR4Config) -> std::sync::Arc<helios_auth::SessionStor
         &config.public_origin,
         "fhir-ui-client",
     )))
+}
+
+/// A `transaction` Bundle of PUT entries: the shape the importer's confirm
+/// submits once a batch's resources reference each other across formats.
+fn transaction_of(entries: Vec<Value>) -> Value {
+    json!({
+        "resourceType": "Bundle",
+        "type": "transaction",
+        "entry": entries,
+    })
+}
+
+/// One PUT entry writing `resource` at `url`.
+fn put_entry(url: &str, resource: Value) -> Value {
+    json!({
+        "request": { "method": "PUT", "url": url },
+        "resource": resource,
+    })
+}
+
+/// A transaction Bundle POSTed to the base reaches HFS, comes back as a
+/// `transaction-response` Bundle, and every entry lands.
+#[tokio::test]
+async fn transaction_bundle_lands_every_entry() {
+    let (router, _db) = build_router();
+    let bundle = transaction_of(vec![
+        put_entry(
+            "Patient/t1",
+            json!({ "resourceType": "Patient", "id": "t1", "name": [{ "family": "Transaction" }] }),
+        ),
+        put_entry(
+            "Observation/t1-weight",
+            json!({
+                "resourceType": "Observation",
+                "id": "t1-weight",
+                "status": "final",
+                "code": { "text": "Weight" },
+                "subject": { "reference": "Patient/t1" },
+            }),
+        ),
+    ]);
+
+    let (status, body) = send(&router, "POST", "/", Some(bundle)).await;
+
+    assert_eq!(status, StatusCode::OK, "body: {body}");
+    assert_eq!(body["type"], "transaction-response");
+    let entry_statuses: Vec<&str> = body["entry"]
+        .as_array()
+        .unwrap_or_else(|| panic!("transaction-response without entries: {body}"))
+        .iter()
+        .map(|entry| entry["response"]["status"].as_str().unwrap_or(""))
+        .collect();
+    assert_eq!(entry_statuses.len(), 2, "body: {body}");
+    for entry_status in &entry_statuses {
+        assert!(
+            entry_status.starts_with("200") || entry_status.starts_with("201"),
+            "transaction entry failed: {entry_status} in {body}"
+        );
+    }
+    let (patient_status, _) = send(&router, "GET", "/Patient/t1", None).await;
+    let (observation_status, _) = send(&router, "GET", "/Observation/t1-weight", None).await;
+    assert_eq!(patient_status, StatusCode::OK);
+    assert_eq!(observation_status, StatusCode::OK);
+}
+
+/// A transaction with one entry HFS refuses lands nothing: the whole Bundle
+/// is rolled back, so a client can write a batch whose resources reference
+/// each other and never leave a dangling reference behind.
+#[tokio::test]
+async fn transaction_with_one_refused_entry_lands_nothing() {
+    let (router, _db) = build_router();
+    let bundle = transaction_of(vec![
+        put_entry(
+            "Patient/t2",
+            json!({ "resourceType": "Patient", "id": "t2", "name": [{ "family": "Rolled" }] }),
+        ),
+        // The resource is not of the type the entry's url names: HFS refuses the entry.
+        put_entry(
+            "Patient/t3",
+            json!({ "resourceType": "Observation", "id": "t3", "status": "final", "code": { "text": "Back" } }),
+        ),
+    ]);
+
+    let (status, body) = send(&router, "POST", "/", Some(bundle)).await;
+
+    assert!(
+        status.is_client_error(),
+        "a transaction with a refused entry must fail as a whole: {status} {body}"
+    );
+    let (patient_status, patient) = send(&router, "GET", "/Patient/t2", None).await;
+    assert_eq!(
+        patient_status,
+        StatusCode::NOT_FOUND,
+        "the good entry landed despite the refused one: {patient}"
+    );
 }

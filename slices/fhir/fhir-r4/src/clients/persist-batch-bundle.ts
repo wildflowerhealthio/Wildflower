@@ -8,9 +8,12 @@ import { FhirR4ResourcesHttpApiClient } from './fhir-r4-resources-http-api-clien
 import { describeResource, type ResourceWriteTarget } from './persist-resources.ts'
 
 /**
- * Writing a whole decoded batch back to the FHIR store as one `POST /` batch
+ * Writing a whole decoded batch back to the FHIR store as one `POST /`
  * Bundle — one HTTP round trip carrying N PUT entries — with per-entry
- * failures returned as data.
+ * failures returned as data: as a `batch` ({@link persistBatchBundle}), whose
+ * entries land independently, or as a `transaction`
+ * ({@link persistTransactionBundle}), whose entries land together or not at
+ * all.
  *
  * @remarks
  * The bundle counterpart of {@link persistResources}, which fans one PUT out
@@ -20,11 +23,14 @@ import { describeResource, type ResourceWriteTarget } from './persist-resources.
  * `{@link ResourceWriteFailure}[]` on a `never` error channel — one bad entry
  * cannot fail the whole caller's run.
  *
- * The batch bundle is FHIR R4 § 3.2.5 batch semantics: **entries are
+ * A batch Bundle is FHIR R4 § 3.2.5 batch semantics: **entries are
  * independent**, so a per-entry non-2xx is that entry's failure only; the rest
- * of the bundle still applies. (Transaction semantics — atomic
- * all-or-nothing — is a different bundle `type` and a different failure
- * model, and is *not* implemented here.)
+ * of the bundle still applies. A transaction Bundle is § 3.2.6 transaction
+ * semantics: the server applies **every entry or none**, answering a
+ * `transaction-response` of 2xx entries, or refusing the whole Bundle with an
+ * OperationOutcome, which the whole-submission failure below reports against
+ * every entry. The Wildflower server (HFS on SQLite) runs a transaction
+ * atomically; `fhir-r4-rust`'s `batch_bundle_at_base` tests pin it.
  *
  * Each resource is encoded through {@link FhirResourceSchema} before it goes
  * in the bundle, since the endpoint's loose entry type encodes nothing.
@@ -107,18 +113,26 @@ const statusOk = (status: string): boolean => {
   return Number.isFinite(code) && code >= 200 && code < 300
 }
 
+/** The two `Bundle.type`s a submission of PUT entries is sent as. */
+type BundleWriteType = 'batch' | 'transaction'
+
 /**
- * Submit a decoded batch as one FHIR `POST /` bundle, reporting every
- * submitted resource's outcome — success or failure — as data.
+ * Submit a decoded batch as one FHIR `POST /` Bundle of `bundleType`,
+ * reporting every submitted resource's outcome — success or failure — as
+ * data: what {@link persistBatchBundle} and {@link persistTransactionBundle}
+ * are.
  *
+ * @param bundleType - `batch` or `transaction`
  * @param resources - The batch to write; null-id resources are skipped
  * @returns One {@link BatchEntryOutcome} per submitted resource, in submit
  *   order: its echoed status, whether that status succeeded, and any server
- *   diagnostics. If the whole round trip failed, every resource is reported
- *   with {@link NO_RESPONSE_STATUS} and the underlying cause as an issue —
- *   never failing, so one bad batch cannot fail the caller's run
+ *   diagnostics. If the whole round trip failed (a refused transaction among
+ *   the ways), every resource is reported with {@link NO_RESPONSE_STATUS} and
+ *   the underlying cause as an issue — never failing, so one bad batch cannot
+ *   fail the caller's run
  */
-const persistBatchBundle = (
+const persistBundle = (
+  bundleType: BundleWriteType,
   resources: ReadonlyArray<FhirResource>
 ): Effect.Effect<ReadonlyArray<BatchEntryOutcome>, never, FhirR4ResourcesHttpApiClient> =>
   Effect.gen(function* () {
@@ -135,7 +149,7 @@ const persistBatchBundle = (
     // indexing no `date` for it.
     const payloadOf = (encoded: ReadonlyArray<unknown>): Bundle.BundleValue<unknown> => ({
       resourceType: 'Bundle' as const,
-      type: 'batch' as const,
+      type: bundleType,
       id: null,
       implicitRules: null,
       language: null,
@@ -236,9 +250,37 @@ const persistBatchBundle = (
     Effect.withSpan(Telemetry.Persist.Bundle.Span.Name, {
       attributes: {
         [Telemetry.Persist.Attributes.ResourceCount]: resources.length,
+        [Telemetry.Persist.Attributes.BundleType]: bundleType,
       },
     })
   )
+
+/**
+ * Submit a decoded batch as one FHIR `POST /` `batch` Bundle: every entry
+ * lands on its own, and each reports its own outcome.
+ *
+ * @param resources - The batch to write; null-id resources are skipped
+ * @returns Every submitted resource's outcome, as {@link persistBundle} gives it
+ */
+const persistBatchBundle = (
+  resources: ReadonlyArray<FhirResource>
+): Effect.Effect<ReadonlyArray<BatchEntryOutcome>, never, FhirR4ResourcesHttpApiClient> =>
+  persistBundle('batch', resources)
+
+/**
+ * Submit a decoded batch as one FHIR `POST /` `transaction` Bundle: every
+ * entry lands or none does, so resources that reference each other are
+ * written as one unit.
+ *
+ * @param resources - The batch to write; null-id resources are skipped
+ * @returns Every submitted resource's outcome, as {@link persistBundle} gives
+ *   it: all 2xx when the transaction landed, every one failed with the
+ *   server's refusal when it did not
+ */
+const persistTransactionBundle = (
+  resources: ReadonlyArray<FhirResource>
+): Effect.Effect<ReadonlyArray<BatchEntryOutcome>, never, FhirR4ResourcesHttpApiClient> =>
+  persistBundle('transaction', resources)
 
 /**
  * Some entries of a batch were not accepted: each one the server answered with
@@ -358,6 +400,7 @@ export {
   NO_RESPONSE_STATUS,
   persistBatchBundle,
   persistBatchBundleOrFail,
+  persistTransactionBundle,
   statusOk,
   type StatusGroup,
   type WriteIssue,
