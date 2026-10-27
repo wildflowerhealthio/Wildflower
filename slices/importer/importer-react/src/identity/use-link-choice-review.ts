@@ -71,7 +71,7 @@ const useLinkChoiceReview = (
         Effect.runSync(
           Effect.either(resolveMentionsWithFallback(batch, defaults.linkChoices, chosen))
         ),
-        ({ linkChoices, ...resolved }): LinkChoiceReviewState.Mapped => ({
+        ({ batch: resolved, linkChoices }): LinkChoiceReviewState.Mapped => ({
           referents: discoveredReferents,
           linkChoices,
           linkTargets: HashMap.fromIterable(

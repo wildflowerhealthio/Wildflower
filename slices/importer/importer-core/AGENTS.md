@@ -82,7 +82,8 @@ write plan with this package alone.
   is with no linked records and no links. It fails as the stage does.
   **`resolveMentionsWithFallback(batch, defaults, chosen)`** is what the
   screen resolves: `resolveMentions` on the reviewer's choices over the
-  searched defaults, its `ResolvedBatch` with the choices used. A choice that
+  searched defaults, as `{ batch, linkChoices }`: the `ResolvedBatch` and the
+  choices it was resolved on. A choice that
   cannot be resolved (`InvalidLinkChoice`) falls back: the reviewer's own
   choice to its searched default, a default to its kind's default; a failure
   naming a referent with no choice dies. Its one failure is

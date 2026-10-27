@@ -246,7 +246,7 @@ describe('resolveMentionsWithFallback', () => {
     const resolved = runOnTestClock(resolveMentionsWithFallback(batch, defaults, chosen))
     return {
       linkChoices: Array.from(HashMap.entries(resolved.linkChoices)),
-      targets: resolved.links.map(({ target }) => target._tag),
+      targets: resolved.batch.links.map(({ target }) => target._tag),
     }
   }
 

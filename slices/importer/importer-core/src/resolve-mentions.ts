@@ -119,7 +119,7 @@ const resolveMentions = (
  * @param batch - The decoded batch
  * @param defaults - The searched default choices, by `Referent.key`
  * @param chosen - The reviewer's own choices, by `Referent.key`, over the defaults
- * @returns The resolved batch and the choices used
+ * @returns The resolved `batch` and the `linkChoices` it was resolved on
  *
  * @remarks
  * Each failure names the choice that could not be resolved, and the fallback
@@ -132,12 +132,12 @@ const resolveMentionsWithFallback = (
   defaults: ReferentLinkChoices.Type,
   chosen: ReferentLinkChoices.Type
 ): Effect.Effect<
-  ResolvedBatch & { readonly linkChoices: ReferentLinkChoices.Type },
+  { readonly batch: ResolvedBatch; readonly linkChoices: ReferentLinkChoices.Type },
   Referent.DuplicateReferent
 > => {
   const linkChoices = HashMap.union(defaults, chosen)
   return resolveMentions(batch, linkChoices).pipe(
-    Effect.map((resolved) => ({ ...resolved, linkChoices })),
+    Effect.map((resolved) => ({ batch: resolved, linkChoices })),
     Effect.catchTag('InvalidLinkChoice', (failure) => {
       if (HashMap.has(chosen, failure.referentKey)) {
         return resolveMentionsWithFallback(
