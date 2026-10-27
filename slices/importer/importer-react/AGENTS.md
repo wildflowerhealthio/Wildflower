@@ -462,8 +462,8 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   and what is written to it, and answers identifier searches and paged lists from that, so it also
   pins the identity map: the reads to reach a review, a confirm linked to a
   stored Patient (only the stored one written, carrying the source's
-  identifier, every subject on it), a re-import that is `unchanged` and left
-  out, and one referent for one identity two files name.
+  identifier, every subject on it), a re-import that defaults the Patient to
+  `New` over the copy it stored and is `unchanged` and left out, and one referent for one identity two files name.
 - `identity/referent-rows.test.tsx` drives `useIdentityMap` and the rows over a
   hand-built batch and a stub search: a line per referent, people before
   providers, `New` without a hit, a hit pre-selected, the demographics warning,

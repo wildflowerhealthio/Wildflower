@@ -590,7 +590,7 @@ describe('ImporterScreen', () => {
     expect(subjects).toEqual(['Patient/s-1', 'Patient/s-1'])
   })
 
-  it('shows a re-import as unchanged and pre-excluded, linked to the Patient it wrote', async () => {
+  it('shows a re-import as unchanged and pre-excluded, the Patient written over the copy it stored', async () => {
     // Arrange — import the file once
     currentRunAuthed = routingServer({})
     render(<ImporterScreen />, { wrapper: withQueryClient })
@@ -602,13 +602,14 @@ describe('ImporterScreen', () => {
     // Act — pick the same file again
     await userEvent.upload(screen.getByLabelText('Import file'), namedPatientHar('a.har'))
 
-    // Assert — the search finds the Patient the first import wrote, every row
-    // is unchanged and left out, and nothing is written
+    // Assert — the search finds the Patient the first import wrote under the
+    // decoded id, so the decode is written over it; every row is unchanged and
+    // left out, and nothing is written
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Nothing to import/ })).toBeDefined()
     })
     const person = screen.getByRole<HTMLSelectElement>('combobox', { name: TYRA })
-    expect(person.value).toMatch(/^stored:Patient\//)
+    expect(person.value).toBe('create')
     expect(screen.getAllByText('Already on server')).toHaveLength(4)
     for (const box of screen.getAllByRole<HTMLInputElement>('checkbox', { name: /^Include / })) {
       expect(box.checked).toBe(false)
