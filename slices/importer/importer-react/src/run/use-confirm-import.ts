@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { Array, Effect } from 'effect'
+import { Array, Effect, Either } from 'effect'
 import { useCallback, useRef, useState } from 'react'
 
 import { useRunAuthed } from '@wildflowerhealthio/fhir-r4-react'
@@ -10,11 +10,9 @@ import {
 } from '@wildflowerhealthio/fhir-r4/clients'
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  type PlannedFormat,
   planBatchWrite,
   type ResolvedBatch,
   type SelectionFor,
-  type WritePlan,
 } from '@wildflowerhealthio/importer-core'
 
 import { LINKED_RECORDS_HEADING } from '../preview/preview-text.ts'
@@ -101,22 +99,6 @@ interface ConfirmImport {
   readonly reset: () => void
 }
 
-/** A planned format whose plan is a write. */
-interface FormatWrite {
-  readonly result: PlannedFormat['result']
-  readonly plan: Extract<WritePlan, { readonly _tag: 'write' }>
-}
-
-/** The write among the planned formats, when there is one. */
-const formatWrite = ({ result, plan }: PlannedFormat): readonly FormatWrite[] =>
-  plan._tag === 'write' ? [{ result, plan }] : []
-
-/** `planned` as a skipped file, when it is one. */
-const skippedFile = ({ result, plan }: PlannedFormat): readonly FileImportResult[] =>
-  plan._tag === 'skip'
-    ? [{ _tag: 'skipped', id: result.id, title: result.title, reason: plan.reason }]
-    : []
-
 /**
  * The transaction's `outcomes` handed back to the units that submitted them,
  * one list per unit of `resourcesPerUnit`, in submit order: the outcomes come
@@ -148,9 +130,18 @@ const importBatch = (
     selectionFor,
     unchangedLinked
   )
-  const writes = planned.flatMap(formatWrite)
+  const [skippedFormats, writes] = Array.partitionMap(planned, ({ result, plan }) =>
+    plan._tag === 'write'
+      ? Either.right({ result, plan })
+      : Either.left<FileImportResult>({
+          _tag: 'skipped',
+          id: result.id,
+          title: result.title,
+          reason: plan.reason,
+        })
+  )
   const skipped: readonly FileImportResult[] = [
-    ...planned.flatMap(skippedFile),
+    ...skippedFormats,
     ...batch.unrecognizedFiles.map((file): FileImportResult => ({
       _tag: 'skipped',
       id: file.id,
