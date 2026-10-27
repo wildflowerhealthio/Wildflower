@@ -40,7 +40,7 @@ wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-struc
 # slice; the authorization server's `/authorization` surface is the pattern's original adopter and
 # its bearer gate inserts the `ScopeClaims` downstream slices gate on.
 wildflowerhealthio-scope-capabilities = { path = "../../../../slices/scopes/scope-capabilities-rust", features = ["openapi"] }
-parking_lot = "0.12"
+parking_lot = "0.13"
 # jsonwebtoken 10 split the crypto backend out of the default features: `default`
 # only enables PEM parsing, so a signer backend must be selected explicitly.
 # `rust_crypto` is the pure-Rust RustCrypto backend (rsa/sha2/ed25519/p256) — it
