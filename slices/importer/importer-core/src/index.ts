@@ -28,4 +28,8 @@ export {
   type UnrecognizedFile,
 } from './read-batch.ts'
 export { planFormatWrite, type SkipReason, type WritePlan } from './plan-write.ts'
-export { applyIdentityMap, discoverReferents } from './identity-map.ts'
+export {
+  applyIdentityMap,
+  discoverReferents,
+  placeBatchOnFollowableChoices,
+} from './identity-map.ts'

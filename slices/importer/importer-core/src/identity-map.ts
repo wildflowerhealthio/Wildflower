@@ -3,6 +3,8 @@ import {
   type FormatDecode,
   IdentityMap,
   type LinkChoice,
+  LinkPlan,
+  type LinkTarget,
   Referent,
   type ReferentLinkChoices,
 } from '@wildflowerhealthio/importer-fundamentals'
@@ -86,4 +88,74 @@ const applyIdentityMap = (
       ),
   })
 
-export { applyIdentityMap, discoverReferents }
+/** A batch placed on choices the stage can follow, with those choices and where each referent lands. */
+interface PlacedOnFollowableChoices {
+  readonly linkChoices: ReferentLinkChoices.Type
+  readonly linkTargets: HashMap.HashMap<string, LinkTarget.Type>
+  readonly batch: BatchDecodeResult
+}
+
+/**
+ * `batch` placed on the reviewer's `chosen` choices over the searched
+ * `defaults`, less every choice the stage cannot follow (a re-decode may have
+ * changed a referent's kind, or removed the referent a choice linked to).
+ *
+ * @param batch - The batch's decode result
+ * @param defaults - The searched default choices, by `Referent.key`
+ * @param chosen - The reviewer's own choices, by `Referent.key`, over the defaults
+ * @returns The choices followed, each referent's link target under them, and
+ *   the placed batch
+ *
+ * @remarks
+ * Each failure names the choice the stage could not follow. The reviewer's
+ * own choice for that referent goes first, so the referent falls back to its
+ * searched default; a default that cannot be followed either goes next, so
+ * it falls back to its kind's default. A failure naming a referent with no
+ * choice at all is a defect in the stage's defaults, so it dies rather than
+ * loop.
+ */
+const placeBatchOnFollowableChoices = (
+  batch: BatchDecodeResult,
+  defaults: ReferentLinkChoices.Type,
+  chosen: ReferentLinkChoices.Type
+): Effect.Effect<PlacedOnFollowableChoices, Referent.DuplicateReferent> => {
+  const linkChoices = HashMap.union(defaults, chosen)
+  return Effect.all({
+    batch: applyIdentityMap(batch, linkChoices),
+    plan: LinkPlan.make(
+      claimedFormats(batch).map((kind) => batch[kind].decoded),
+      linkChoices
+    ),
+  }).pipe(
+    Effect.map(({ batch: placedBatch, plan }) => ({
+      linkChoices,
+      linkTargets: HashMap.fromIterable(
+        plan.links.map(({ referent, target }) => [Referent.key(referent), target] as const)
+      ),
+      batch: placedBatch,
+    })),
+    Effect.catchTag('InvalidLinkChoice', (failure) => {
+      if (HashMap.has(chosen, failure.referentKey)) {
+        return placeBatchOnFollowableChoices(
+          batch,
+          defaults,
+          HashMap.remove(chosen, failure.referentKey)
+        )
+      }
+      if (HashMap.has(defaults, failure.referentKey)) {
+        return placeBatchOnFollowableChoices(
+          batch,
+          HashMap.remove(defaults, failure.referentKey),
+          chosen
+        )
+      }
+      return Effect.die(
+        new Error(
+          `a kind's default choice could not be followed: ${failure.reason} for ${failure.referentKey}`
+        )
+      )
+    })
+  )
+}
+
+export { applyIdentityMap, discoverReferents, placeBatchOnFollowableChoices }

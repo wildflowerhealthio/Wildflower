@@ -70,6 +70,14 @@ write plan with this package alone.
   and section titles are kept; the batch is reassembled through
   `collectFormats`, so every other slot comes back as it was and an empty
   batch comes back as itself. It fails as the stage does.
+  **`placeBatchOnFollowableChoices(batch, defaults, chosen)`** is what the
+  screen places: `applyIdentityMap` on the reviewer's choices over the
+  searched defaults, with each referent's link target (`LinkPlan.make`), less
+  every choice the stage cannot follow. The reviewer's own choice for a
+  failing referent is dropped first, so it falls back to its searched
+  default, then the default, so it falls back to its kind's default; a
+  failure naming a referent with no choice dies. Its one failure is
+  `Referent.DuplicateReferent`.
 - `src/plan-write.ts` — **`planFormatWrite(result, selection)`**, the pure half
   of the confirm: from one format's decode result it produces a `write` of
   exactly the reviewed resources (exclusions applied, inline edits

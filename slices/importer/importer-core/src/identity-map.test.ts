@@ -11,7 +11,11 @@ import {
 import { Effect, HashMap, Schema, TestContext } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { applyIdentityMap, discoverReferents } from './identity-map.ts'
+import {
+  applyIdentityMap,
+  discoverReferents,
+  placeBatchOnFollowableChoices,
+} from './identity-map.ts'
 import type { BatchDecodeResult } from './read-batch.ts'
 import type { FormatKind } from './registry.ts'
 
@@ -214,5 +218,43 @@ describe('applyIdentityMap', () => {
       _tag: 'Left',
       left: { _tag: 'InvalidLinkChoice', referentKey: PERSON, reason: 'NotAllowedForReferent' },
     })
+  })
+})
+
+describe('placeBatchOnFollowableChoices', () => {
+  const batch = batchOf({ har: [patient('p-1', SOURCE_PATIENT)] })
+  const linkedToStored = LinkChoice.LinkToStoredResource({ resource: STORED_TYRA })
+
+  /** The choices followed and each referent's link target's tag, on the test clock. */
+  const placedOnTestClock = (
+    defaults: ReferentLinkChoices.Type,
+    chosen: ReferentLinkChoices.Type
+  ): {
+    readonly linkChoices: ReadonlyArray<readonly [string, LinkChoice.Type]>
+    readonly targets: readonly string[]
+  } => {
+    const placed = runOnTestClock(placeBatchOnFollowableChoices(batch, defaults, chosen))
+    return {
+      linkChoices: Array.from(HashMap.entries(placed.linkChoices)),
+      targets: Array.from(HashMap.values(placed.linkTargets), (target) => target._tag),
+    }
+  }
+
+  it('drops a chosen choice the stage cannot follow first, so the referent takes its searched default', () => {
+    expect(
+      placedOnTestClock(
+        HashMap.make([PERSON, linkedToStored]),
+        HashMap.make([PERSON, LinkChoice.DontLink()])
+      )
+    ).toEqual({ linkChoices: [[PERSON, linkedToStored]], targets: ['Stored'] })
+  })
+
+  it('drops a default the stage cannot follow next, so the referent takes its kind’s default', () => {
+    expect(
+      placedOnTestClock(
+        HashMap.make([PERSON, LinkChoice.DontLink()]),
+        HashMap.make([PERSON, LinkChoice.DontLink()])
+      )
+    ).toEqual({ linkChoices: [], targets: ['Decoded'] })
   })
 })
