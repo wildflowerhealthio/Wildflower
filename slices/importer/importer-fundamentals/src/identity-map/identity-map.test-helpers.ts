@@ -25,10 +25,11 @@ import {
 } from 'effect'
 
 import type * as DecodedFile from '../decoded-file.ts'
-import * as IdentityMap from './identity-map.ts'
 import * as LinkChoice from './link-choice.ts'
+import * as LinkPlan from './link-plan.ts'
 import * as LinkableLogicalReference from './linkable-logical-reference.ts'
 import * as LinkableResource from './linkable-resource.ts'
+import * as Placement from './placement.ts'
 import type * as ReferentLinkChoices from './referent-link-choices.ts'
 import * as Referent from './referent.ts'
 
@@ -45,24 +46,46 @@ const ABSOLUTE = 'https://elsewhere.example/fhir/Patient/1'
 const runOnTestClock = <A, E>(effect: Effect.Effect<A, E>): A =>
   Effect.runSync(Effect.provide(effect, TestContext.TestContext))
 
-/** `IdentityMap.apply` over `files`, run on the test clock. */
-const applyAcrossOnTestClock = (
+/**
+ * A batch's `files` placed on `linkChoices` as `importer-core`'s
+ * `resolveMentions` places a batch's formats: one link plan over the whole
+ * batch, every file placed on it in the order given, and the batch's linked
+ * records off the plan.
+ */
+const placeAcross = (
   files: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>,
   linkChoices: ReferentLinkChoices.Type
-): IdentityMap.PlacedBatch => runOnTestClock(IdentityMap.apply(files, linkChoices))
+): Effect.Effect<
+  {
+    readonly placedFiles: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>
+    readonly linked: readonly DecodedFile.Resource[]
+  },
+  Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice
+> =>
+  Effect.map(LinkPlan.make(files, linkChoices), (plan) => ({
+    placedFiles: Array.map(files, (file) => Placement.place(file, plan)),
+    linked: Placement.linkedResources(plan),
+  }))
 
-/** The one placed file of `IdentityMap.apply` over a batch of one `file`, run on the test clock. */
-const applyOnTestClock = (
+/** {@link placeAcross} over `files`, run on the test clock. */
+const placeAcrossOnTestClock = (
+  files: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>,
+  linkChoices: ReferentLinkChoices.Type
+): Effect.Effect.Success<ReturnType<typeof placeAcross>> =>
+  runOnTestClock(placeAcross(files, linkChoices))
+
+/** The one placed file of a batch of one `file`, run on the test clock. */
+const placeOnTestClock = (
   file: DecodedFile.DecodedFile,
   linkChoices: ReferentLinkChoices.Type
 ): DecodedFile.DecodedFile =>
-  Array.headNonEmpty(applyAcrossOnTestClock(Array.of(file), linkChoices).placedFiles)
+  Array.headNonEmpty(placeAcrossOnTestClock(Array.of(file), linkChoices).placedFiles)
 
-/** The linked records of `IdentityMap.apply` over a batch of one `file`, run on the test clock. */
+/** The linked records of a batch of one `file`, run on the test clock. */
 const linkedOnTestClock = (
   file: DecodedFile.DecodedFile,
   linkChoices: ReferentLinkChoices.Type
-): readonly DecodedFile.Resource[] => applyAcrossOnTestClock(Array.of(file), linkChoices).linked
+): readonly DecodedFile.Resource[] => placeAcrossOnTestClock(Array.of(file), linkChoices).linked
 
 /** `Referent.discover` over a batch of one `file`, run on the test clock. */
 const discoverOnTestClock = (file: DecodedFile.DecodedFile): readonly Referent.Type[] =>
@@ -495,8 +518,8 @@ export {
   STORED_SMITH,
   STORED_TYRA,
   anyChoicesArbitrary,
-  applyAcrossOnTestClock,
-  applyOnTestClock,
+  placeAcrossOnTestClock,
+  placeOnTestClock,
   customerSubject,
   discoverOnTestClock,
   fileArbitrary,
@@ -506,6 +529,7 @@ export {
   fileWithReapplicableChoicesArbitrary,
   linkedOnTestClock,
   literalSubject,
+  placeAcross,
   namedRequester,
   observation,
   patient,

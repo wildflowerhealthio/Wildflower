@@ -236,13 +236,6 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     `subject` for every type the importer handles) and every **`Dangling`**
     mention (a logical reference, in any field, the map could link and left
     unlinked), matched with `UnlinkedMention.match`.
-  - **`IdentityMap`** — the stage: **`apply`** (one plan over the batch,
-    place every file on it) over a batch's files and their
-    `ReferentLinkChoices`, giving a **`PlacedBatch`**: the `placedFiles`, the
-    batch's `linked` records and the plan's `links`; failing with
-    `Referent.DuplicateReferent` or `LinkChoice.InvalidLinkChoice`; one file
-    is a batch of one. What still lands nowhere is `UnlinkedMention.collect`
-    of each placed file, which the caller composes.
   - **`ReferentSearch`** — the identity map's one server read, over
     `fhir-r4/clients`' `FhirR4ResourcesHttpApiClient`: **`defaultChoice`** is
     a `GET <Type>?identifier=&_count=2` with the referent's own logical
@@ -377,11 +370,14 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
   the batch.
 - **Identity is the map's, never the selection's.** `StagedImport` keeps
   exclusions and edits; what a mention lands on lives in the
-  `ReferentLinkChoices`, held beside the selections, and `IdentityMap.apply`
-  runs over the batch before the server diff, the preview and the confirm,
-  so all three see the resources that get written. `apply` is a function of
-  its arguments and the clock, and keeps every file's sections and keys. It
-  places a batch of decoded files on one plan over the batch's referents:
+  `ReferentLinkChoices`, held beside the selections, and `importer-core`'s
+  `resolveMentions` runs over the batch before the server diff, the preview
+  and the confirm, so all three see the resources that get written: one
+  `LinkPlan.make` over the batch's decoded files, every file placed on it
+  (`Placement.place`), the batch's linked records off it
+  (`Placement.linkedResources`). Placing is a function of its arguments and
+  the clock, and keeps every file's sections and keys. A batch of decoded
+  files is placed on one plan over the batch's referents:
   the choices are made for the decoded files' referents, and a referent one
   file holds is the link target of a mention in another. Applied again to
   the placed files it changes nothing when they have the same referents, of

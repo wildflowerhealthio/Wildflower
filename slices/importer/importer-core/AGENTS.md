@@ -72,14 +72,18 @@ write plan with this package alone.
   format-then-review order, those with a resource first.
   **`resolveMentions(batch, linkChoices)`** resolves every mention in every
   claimed format's `decoded` on one plan over the batch's referents
-  (`IdentityMap.apply`), so a mention in one format links to a referent
-  another holds, fills the `linked` slot with the resources it only
-  mentions, so a stored person several formats mention is written once, and
-  the `links` with the plan's, so the screen's hook reads each referent's
-  link target without planning again. Keys and section titles are kept; the
-  format slots are reassembled through `collectFormats`, so every other slot
-  comes back as it was, and a batch with no claimed format comes back as it
-  is with no linked records and no links. It fails as the stage does.
+  (`LinkPlan.make` once, over every claimed format's decoded file), placing
+  each format in its own slot (`Placement.place`), so a mention in one format
+  links to a referent another holds; it fills the `linked` slot with the
+  resources the batch only mentions (`Placement.linkedResources`), so a
+  stored person several formats mention is written once, and the `links`
+  with the plan's, so the screen's hook reads each referent's link target
+  without planning again. Keys and section titles are kept; the format slots
+  are reassembled through `collectFormats`, a slot nothing moved in coming
+  back as it was, and a batch with no claimed format comes back with no
+  linked records and no links. It fails with
+  `Referent.DuplicateReferent` or `LinkChoice.InvalidLinkChoice`, as the plan
+  does.
   **`resolveMentionsWithFallback(batch, defaults, chosen)`** is what the
   screen resolves: `resolveMentions` on the reviewer's choices over the
   searched defaults, as `{ batch, linkChoices }`: the `ResolvedBatch` and the

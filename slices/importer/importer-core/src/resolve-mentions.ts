@@ -1,13 +1,14 @@
 import {
   type DecodedFile,
   type FormatDecode,
-  IdentityMap,
   type Link,
   type LinkChoice,
+  LinkPlan,
+  Placement,
   Referent,
   type ReferentLinkChoices,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { Array, Effect, HashMap, Option } from 'effect'
+import { Effect, HashMap } from 'effect'
 
 import {
   type DecodedBatch,
@@ -47,12 +48,12 @@ const discoverReferents = (
  */
 type ResolvedBatch = DecodedBatch & {
   /**
-   * The batch's linked records: the resources it only mentions, as the
-   * identity map writes them (`IdentityMap.PlacedBatch`'s `linked`), keyed
-   * by `Placement.linkedKey`. The batch's own slot, no format's.
+   * The batch's linked records: the resources it only mentions, as they will
+   * be written (`Placement.linkedResources`), keyed by `Placement.linkedKey`.
+   * The batch's own slot, no format's.
    */
   readonly linked: readonly DecodedFile.Resource[]
-  /** Every referent of the batch with its link target, in discovery order (`IdentityMap.PlacedBatch`'s `links`). */
+  /** Every referent of the batch with its link target, in discovery order (the plan's `links`). */
   readonly links: readonly Link.Type[]
 }
 
@@ -68,46 +69,48 @@ type ResolvedBatch = DecodedBatch & {
  *
  * @remarks
  * Every claimed format is resolved on one plan over the batch's referents
- * (`IdentityMap.apply`), so a mention in one format links to a referent
- * another holds, and the resources the batch only mentions are its `linked`
- * slot, no format's, so a stored person several formats only mention is
- * written once. Section titles and review keys are kept, so the selections
- * survive. A batch with no claimed format is resolved as it is, with no
- * linked records and no links. Fails as `IdentityMap.apply` does.
+ * (`LinkPlan.make` over every claimed format's decoded file), each format in
+ * its own slot (`Placement.place`): the choices are made for the decoded
+ * files' referents, so a mention in one format links to a referent another
+ * holds. The resources the batch only mentions are its `linked` slot, no
+ * format's, so a stored person several formats only mention is written
+ * once, and the plan's `links` are its `links`. Section titles and review
+ * keys are kept, so the selections survive, and a slot nothing moved in
+ * comes back as it was. A batch with no claimed format comes back with no
+ * linked records and no links. Which of a person's names
+ * is current is judged at the clock's now, so the clock is the one input
+ * besides the arguments. Fails with `Referent.DuplicateReferent` when two
+ * decoded resources under different ids are keyed by one logical reference,
+ * and with `LinkChoice.InvalidLinkChoice` when a choice cannot be followed
+ * for its referent.
  */
 const resolveMentions = (
   batch: DecodedBatch,
   linkChoices: ReferentLinkChoices.Type
 ): Effect.Effect<ResolvedBatch, Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice> =>
-  Array.match(claimedFormats(batch), {
-    onEmpty: () => Effect.succeed({ ...batch, linked: [], links: [] }),
-    onNonEmpty: (claimed) =>
-      Effect.flatMap(
-        IdentityMap.apply(
-          Array.map(claimed, (kind) => batch[kind].decoded),
-          linkChoices
-        ),
-        ({ placedFiles, linked, links }) => {
-          const resolvedByKind: HashMap.HashMap<FormatKind, DecodedFile.DecodedFile> =
-            HashMap.fromIterable(Array.zip(claimed, placedFiles))
-          // Read slots through FormatResults, as `redecodeFormat` does, so each is its own `Result<K>`.
-          const results: FormatResults = batch
-          return Effect.map(
-            collectFormats(
-              <K extends FormatKind>(kind: K): Effect.Effect<FormatDecode.Result<K>> =>
-                Effect.succeed(
-                  Option.match(HashMap.get(resolvedByKind, kind), {
-                    onNone: () => results[kind],
-                    onSome: (decoded) => ({ ...results[kind], decoded }),
-                  })
-                ),
-              batch.unrecognizedFiles
-            ),
-            (resolvedFormats): ResolvedBatch => ({ ...resolvedFormats, linked, links })
-          )
-        }
-      ),
-  })
+  Effect.flatMap(
+    LinkPlan.make(
+      claimedFormats(batch).map((kind) => batch[kind].decoded),
+      linkChoices
+    ),
+    (plan) => {
+      // Read slots through FormatResults, as `redecodeFormat` does, so each is its own `Result<K>`.
+      const results: FormatResults = batch
+      return Effect.map(
+        collectFormats(<K extends FormatKind>(kind: K): Effect.Effect<FormatDecode.Result<K>> => {
+          const result = results[kind]
+          const decoded = Placement.place(result.decoded, plan)
+          // A slot nothing moved in comes back as itself, an unclaimed one among them.
+          return Effect.succeed(decoded === result.decoded ? result : { ...result, decoded })
+        }, batch.unrecognizedFiles),
+        (resolvedFormats): ResolvedBatch => ({
+          ...resolvedFormats,
+          linked: Placement.linkedResources(plan),
+          links: plan.links,
+        })
+      )
+    }
+  )
 
 /**
  * `batch` with its mentions resolved on the reviewer's `chosen` choices over

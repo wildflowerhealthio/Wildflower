@@ -60,7 +60,7 @@ const isDangling = (referenceAsWritten: IdentifierAndReference.ReferenceType): b
  * Every resource of `placedFile` outside every patient's compartment, and
  * every dangling mention of it, in review order.
  *
- * @param placedFile - A decoded file after placement (`IdentityMap.apply`)
+ * @param placedFile - A decoded file placed on its batch's link plan (`Placement.place`)
  */
 const collect = (placedFile: DecodedFile.DecodedFile): readonly Type[] =>
   DecodedFile.resources(placedFile).flatMap(({ key, resource }): readonly Type[] => {

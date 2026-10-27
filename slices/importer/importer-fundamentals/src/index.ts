@@ -19,7 +19,6 @@ export * as LinkPlan from './identity-map/link-plan.ts'
 export * as Placement from './identity-map/placement.ts'
 export * as UnlinkedMention from './identity-map/unlinked-mention.ts'
 export * as ReferentSearch from './identity-map/referent-search.ts'
-export * as IdentityMap from './identity-map/identity-map.ts'
 export * as DifferingDemographics from './identity-map/differing-demographics.ts'
 export * as ReferentTally from './identity-map/referent-tally.ts'
 // Namespaced symbols are reached through their namespace above — a flat
