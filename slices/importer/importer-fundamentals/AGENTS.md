@@ -105,11 +105,11 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   nothing dangling.
 - `src/identity-map/` — the **identity map**: for every referent an import
   discovers, what it links to on the device, the one search that defaults it,
-  and the stage that places a batch's decoded files on those choices, an
-  Effect whose only input besides its arguments is the clock (which of a
+  and the phases that resolve a batch's decoded files on those choices, each
+  pure or an Effect whose only input besides its arguments is the clock (which of a
   person's names is current). One
   namespace per file, one phase each. Three tenses run through the names:
-  **decoded** (as the file arrived), **placed** (after the map, as it will
+  **decoded** (as the file arrived), **resolved** (after the map, as it will
   be written) and **stored** (already on the device). A conversion between
   the model's types says its direction:
   `tryFrom<Source>` builds the namespace's type, `tryInto<Target>` leaves it;
@@ -151,7 +151,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     search tries, its own and the derived one), **`ByMentionOnly`** when only
     mentions name it; built only through its constructors, matched with
     `Referent.match`. `ownLogicalReferencesOf` is the logical references a
-    referent's source-given identifiers make (a derived identifier a placed
+    referent's source-given identifiers make (a derived identifier a resolved
     resource carries is not among them), `maybeDerivedLogicalReferenceOf`
     the one its demographics derive, `logicalReferencesOf` both: every
     logical reference a referent answers to; and **`byLogicalReferenceKey`**
@@ -166,7 +166,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     file or two, share a key; `byKey` indexes into a `HashMap`.
   - **`ReferentLinkChoices`** — the map itself (**`Type`**, a `HashMap` of
     every referent's `LinkChoice` by `Referent.key`; `empty`): what the screen
-    holds and the stage places a file on.
+    holds and a file is resolved on.
   - **`LinkChoice`** — what the reviewer chooses for a referent, a family of
     imperatives: **`CreateResource`**, **`UpdateStoredResource`** (the
     referent's own resource written over its stored copy under the same
@@ -193,7 +193,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     referent's choice followed to its link target, each referent resolved
     once, every rule an arm of `LinkChoice.match` or `Referent.match`; the
     first choice it cannot follow is its failure.
-  - **`PlacedResource`** — the resource under one placed literal reference as
+  - **`ResolvedResource`** — the resource under one resolved literal reference as
     it will be written, whatever its origin: the copy written (the decoded
     one when a link lands on it, so a re-import's newer decode wins over the
     stored copy a mention links to; else the last link's) having assumed its
@@ -201,28 +201,28 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     copy of it the links carry, a stored copy a mention links to or the one a
     `Decoded` target updates, then those of every referent linked to it: the
     one place a copy's identifiers are carried forward), whether the
-    `resourceExistsInBatch` (a placed file writes it where a decoded resource
+    `resourceExistsInBatch` (a resolved file writes it where a decoded resource
     was: one decoded there and not moved to another stored resource, or one
     a decoded resource is replaced by), and its `label`, the title of an
     entry it replaces or is appended as. **`make`** builds one from the
-    linked resources under a literal reference; `byPlacedLiteralReference`
+    linked resources under a literal reference; `byResolvedLiteralReference`
     groups a plan's links and makes each.
-  - **`LinkPlan`** — `make(decodedFiles, linkChoices)`: everything the
-    placement needs, worked out once per batch over its referents
+  - **`LinkPlan`** — `make(decodedFiles, linkChoices)`: everything
+    resolving a file needs, worked out once per batch over its referents
     (`Referent.discover`), so a `LinkToDecodedReferent` naming a
     referent one file holds resolves from a mention in another: the
     **`links`**, the **`linkTargetsByLogicalReferenceKey`**, the
-    **`placedResourcesByPlacedLiteralReference`**, and the
+    **`resolvedResourcesByResolvedLiteralReference`**, and the
     **`decodedLiteralReferencesToStored`** (`Type/<decoded id>` →
     `Type/<stored id>` for every decoded resource a stored one stands in for),
     all `HashMap`s. Read through its two lookups, named for the questions the
     later phases ask: **`maybeRedirectOf`** (where a decoded reference is
     redirected, a literal one through the redirects and a logical one through
-    its referent's link target) and **`maybePlacedResourceFor`** (the resource
-    a decoded resource is written as: the placed resource under the literal
+    its referent's link target) and **`maybeResolvedResourceFor`** (the resource
+    a decoded resource is written as: the resolved resource under the literal
     reference its own is redirected to).
-  - **`Placement`** — `place`, pure: each decoded resource of one file
-    written as the resource `LinkPlan.maybePlacedResourceFor` has for it,
+  - **`FileResolution`** — `resolveFile`, pure: each decoded resource of one file
+    written as the resource `LinkPlan.maybeResolvedResourceFor` has for it,
     else kept (`DecodedFile.mapResources`), titled by the stored resource's
     label when one replaces it, its mentions redirected to their referents'
     link targets either way (`ResourceReferences.map`, keeping `display` and
@@ -230,7 +230,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     resources it only mentions as they will be written, keyed by
     **`linkedKey`** and titled by their label, in discovery order, no file's
     and so no format's.
-  - **`UnlinkedMention`** — `collect`: on a placed file, every resource
+  - **`UnlinkedMention`** — `collect`: on a resolved file, every resource
     **`OutsidePatientCompartment`** (a `subject` slot in which nothing lands
     on a patient of the device; FHIR's Patient CompartmentDefinition names
     `subject` for every type the importer handles) and every **`Dangling`**
@@ -373,17 +373,17 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
   `ReferentLinkChoices`, held beside the selections, and `importer-core`'s
   `resolveMentions` runs over the batch before the server diff, the preview
   and the confirm, so all three see the resources that get written: one
-  `LinkPlan.make` over the batch's decoded files, every file placed on it
-  (`Placement.place`), the batch's linked records off it
-  (`Placement.linkedResources`). Placing is a function of its arguments and
+  `LinkPlan.make` over the batch's decoded files, every file resolved on it
+  (`FileResolution.resolveFile`), the batch's linked records off it
+  (`FileResolution.linkedResources`). Resolving is a function of its arguments and
   the clock, and keeps every file's sections and keys. A batch of decoded
-  files is placed on one plan over the batch's referents:
+  files is resolved on one plan over the batch's referents:
   the choices are made for the decoded files' referents, and a referent one
   file holds is the link target of a mention in another. Applied again to
-  the placed files it changes nothing when they have the same referents, of
+  the resolved files it changes nothing when they have the same referents, of
   the same kinds: no `LinkToDecodedReferent` cycle (whose provisional
   resource is a resource there), no mention several decoded resources answer
-  to, and no mention a linked stored resource answers to, since once placed
+  to, and no mention a linked stored resource answers to, since once resolved
   one resource answers to each of those mentions. A referent's mentions are
   redirected to its link target: a decoded resource linked to a stored
   resource is replaced by it **under the same review key**, titled by its
@@ -398,7 +398,7 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
   written as decoded plus its derived identifier and those of the referents
   linked to it. On a re-import the referent's own search finds the stored
   copy under the decoded id and defaults to `UpdateStoredResource`, which
-  places the decoded resource having assumed every identifier the stored
+  resolves the decoded resource having assumed every identifier the stored
   copy carries, whether or not a mention links to that copy, so what it
   assumed in earlier imports is written again; `CreateResource` on such a
   referent writes the decode without them. A referent named only by mentions may be
@@ -413,9 +413,9 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
   keyed by one identity, in one file or two (`DuplicateReferent`): errors
   bubble to the screen
   rather than read as a default. A cycle reads as `CreateResource` for the
-  first of its members, in key order, that it places on a resource, so all of
+  first of its members, in key order, that it links to a resource, so all of
   it lands on one resource.
-  `UnlinkedMention.collect` lists, on the placed file, every resource outside
+  `UnlinkedMention.collect` lists, on the resolved file, every resource outside
   every patient's compartment (a `subject` slot in which nothing lands on a
   patient of the device) and every dangling mention: a logical reference, in
   any field, the map could link and left unlinked. A `display`-only provider,

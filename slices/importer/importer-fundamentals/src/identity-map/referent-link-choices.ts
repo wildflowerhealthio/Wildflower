@@ -1,7 +1,7 @@
 /**
  * The referent link choices: the reviewer's `LinkChoice` for every referent
  * an import discovers, by `Referent.key`. What the identity map screen holds
- * and the stage places a decoded file on.
+ * and a decoded file is resolved on.
  *
  * @remarks
  * Held beside the per-format selections, never inside them: `StagedImport`

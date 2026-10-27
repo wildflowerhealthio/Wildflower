@@ -1,5 +1,5 @@
 /**
- * The mentions a placed file still has that the map could link and did not,
+ * The mentions a resolved file still has that the map could link and did not,
  * and the resources it leaves in no patient's compartment: what a review
  * lists as needing a patient or a provider.
  *
@@ -35,7 +35,7 @@ interface OutsidePatientCompartment {
 
 /**
  * A mention the map could link and did not: a logical reference, in any
- * field, still identifier-only after placement because its referent is
+ * field, still identifier-only once resolved because its referent is
  * `Unlinked`.
  */
 interface Dangling {
@@ -52,18 +52,18 @@ type Type = OutsidePatientCompartment | Dangling
 
 const { OutsidePatientCompartment, Dangling, $is: is, $match: match } = Data.taggedEnum<Type>()
 
-/** Whether a placed reference is a logical reference the map left unlinked. */
+/** Whether a resolved reference is a logical reference the map left unlinked. */
 const isDangling = (referenceAsWritten: IdentifierAndReference.ReferenceType): boolean =>
   Option.isSome(LinkableLogicalReference.tryFromReference(referenceAsWritten))
 
 /**
- * Every resource of `placedFile` outside every patient's compartment, and
+ * Every resource of `resolvedFile` outside every patient's compartment, and
  * every dangling mention of it, in review order.
  *
- * @param placedFile - A decoded file placed on its batch's link plan (`Placement.place`)
+ * @param resolvedFile - A decoded file resolved on its batch's link plan (`FileResolution.resolveFile`)
  */
-const collect = (placedFile: DecodedFile.DecodedFile): readonly Type[] =>
-  DecodedFile.resources(placedFile).flatMap(({ key, resource }): readonly Type[] => {
+const collect = (resolvedFile: DecodedFile.DecodedFile): readonly Type[] =>
+  DecodedFile.resources(resolvedFile).flatMap(({ key, resource }): readonly Type[] => {
     const outsideCompartment: readonly Type[] =
       'subject' in resource &&
       (resource.subject === null ||

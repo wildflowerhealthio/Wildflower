@@ -4,7 +4,7 @@ import {
   type Link,
   type LinkChoice,
   LinkPlan,
-  Placement,
+  FileResolution,
   Referent,
   type ReferentLinkChoices,
 } from '@wildflowerhealthio/importer-fundamentals'
@@ -49,7 +49,7 @@ const discoverReferents = (
 type ResolvedBatch = DecodedBatch & {
   /**
    * The batch's linked records: the resources it only mentions, as they will
-   * be written (`Placement.linkedResources`), keyed by `Placement.linkedKey`.
+   * be written (`FileResolution.linkedResources`), keyed by `FileResolution.linkedKey`.
    * The batch's own slot, no format's.
    */
   readonly linked: readonly DecodedFile.Resource[]
@@ -70,7 +70,7 @@ type ResolvedBatch = DecodedBatch & {
  * @remarks
  * Every claimed format is resolved on one plan over the batch's referents
  * (`LinkPlan.make` over every claimed format's decoded file), each format in
- * its own slot (`Placement.place`): the choices are made for the decoded
+ * its own slot (`FileResolution.resolveFile`): the choices are made for the decoded
  * files' referents, so a mention in one format links to a referent another
  * holds. The resources the batch only mentions are its `linked` slot, no
  * format's, so a stored person several formats only mention is written
@@ -99,13 +99,13 @@ const resolveMentions = (
       return Effect.map(
         collectFormats(<K extends FormatKind>(kind: K): Effect.Effect<FormatDecode.Result<K>> => {
           const result = results[kind]
-          const decoded = Placement.place(result.decoded, plan)
+          const decoded = FileResolution.resolveFile(result.decoded, plan)
           // A slot nothing moved in comes back as itself, an unclaimed one among them.
           return Effect.succeed(decoded === result.decoded ? result : { ...result, decoded })
         }, batch.unrecognizedFiles),
         (resolvedFormats): ResolvedBatch => ({
           ...resolvedFormats,
-          linked: Placement.linkedResources(plan),
+          linked: FileResolution.linkedResources(plan),
           links: plan.links,
         })
       )

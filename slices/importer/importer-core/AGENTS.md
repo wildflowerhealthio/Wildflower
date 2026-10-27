@@ -72,10 +72,10 @@ write plan with this package alone.
   format-then-review order, those with a resource first.
   **`resolveMentions(batch, linkChoices)`** resolves every mention in every
   claimed format's `decoded` on one plan over the batch's referents
-  (`LinkPlan.make` once, over every claimed format's decoded file), placing
-  each format in its own slot (`Placement.place`), so a mention in one format
+  (`LinkPlan.make` once, over every claimed format's decoded file), resolving
+  each format in its own slot (`FileResolution.resolveFile`), so a mention in one format
   links to a referent another holds; it fills the `linked` slot with the
-  resources the batch only mentions (`Placement.linkedResources`), so a
+  resources the batch only mentions (`FileResolution.linkedResources`), so a
   stored person several formats mention is written once, and the `links`
   with the plan's, so the screen's hook reads each referent's link target
   without planning again. Keys and section titles are kept; the format slots

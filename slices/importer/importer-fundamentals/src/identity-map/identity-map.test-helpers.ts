@@ -25,11 +25,11 @@ import {
 } from 'effect'
 
 import type * as DecodedFile from '../decoded-file.ts'
+import * as FileResolution from './file-resolution.ts'
 import * as LinkChoice from './link-choice.ts'
 import * as LinkPlan from './link-plan.ts'
 import * as LinkableLogicalReference from './linkable-logical-reference.ts'
 import * as LinkableResource from './linkable-resource.ts'
-import * as Placement from './placement.ts'
 import type * as ReferentLinkChoices from './referent-link-choices.ts'
 import * as Referent from './referent.ts'
 
@@ -47,45 +47,45 @@ const runOnTestClock = <A, E>(effect: Effect.Effect<A, E>): A =>
   Effect.runSync(Effect.provide(effect, TestContext.TestContext))
 
 /**
- * A batch's `files` placed on `linkChoices` as `importer-core`'s
- * `resolveMentions` places a batch's formats: one link plan over the whole
- * batch, every file placed on it in the order given, and the batch's linked
+ * A batch's `files` resolved on `linkChoices` as `importer-core`'s
+ * `resolveMentions` resolves a batch's formats: one link plan over the whole
+ * batch, every file resolved on it in the order given, and the batch's linked
  * records off the plan.
  */
-const placeAcross = (
+const resolveAcross = (
   files: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>,
   linkChoices: ReferentLinkChoices.Type
 ): Effect.Effect<
   {
-    readonly placedFiles: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>
+    readonly resolvedFiles: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>
     readonly linked: readonly DecodedFile.Resource[]
   },
   Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice
 > =>
   Effect.map(LinkPlan.make(files, linkChoices), (plan) => ({
-    placedFiles: Array.map(files, (file) => Placement.place(file, plan)),
-    linked: Placement.linkedResources(plan),
+    resolvedFiles: Array.map(files, (file) => FileResolution.resolveFile(file, plan)),
+    linked: FileResolution.linkedResources(plan),
   }))
 
-/** {@link placeAcross} over `files`, run on the test clock. */
-const placeAcrossOnTestClock = (
+/** {@link resolveAcross} over `files`, run on the test clock. */
+const resolveAcrossOnTestClock = (
   files: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>,
   linkChoices: ReferentLinkChoices.Type
-): Effect.Effect.Success<ReturnType<typeof placeAcross>> =>
-  runOnTestClock(placeAcross(files, linkChoices))
+): Effect.Effect.Success<ReturnType<typeof resolveAcross>> =>
+  runOnTestClock(resolveAcross(files, linkChoices))
 
-/** The one placed file of a batch of one `file`, run on the test clock. */
-const placeOnTestClock = (
+/** The one resolved file of a batch of one `file`, run on the test clock. */
+const resolveOnTestClock = (
   file: DecodedFile.DecodedFile,
   linkChoices: ReferentLinkChoices.Type
 ): DecodedFile.DecodedFile =>
-  Array.headNonEmpty(placeAcrossOnTestClock(Array.of(file), linkChoices).placedFiles)
+  Array.headNonEmpty(resolveAcrossOnTestClock(Array.of(file), linkChoices).resolvedFiles)
 
 /** The linked records of a batch of one `file`, run on the test clock. */
 const linkedOnTestClock = (
   file: DecodedFile.DecodedFile,
   linkChoices: ReferentLinkChoices.Type
-): readonly DecodedFile.Resource[] => placeAcrossOnTestClock(Array.of(file), linkChoices).linked
+): readonly DecodedFile.Resource[] => resolveAcrossOnTestClock(Array.of(file), linkChoices).linked
 
 /** `Referent.discover` over a batch of one `file`, run on the test clock. */
 const discoverOnTestClock = (file: DecodedFile.DecodedFile): readonly Referent.Type[] =>
@@ -427,8 +427,8 @@ const fileWithChoicesArbitrary: fc.Arbitrary<{
 /**
  * Whether a mention of `file` is one several of its decoded resources answer
  * to and none is keyed by. On the decoded file it is a referent of its own;
- * once those resources are placed on one stored resource, that resource alone
- * answers to it, so the placed file has a referent fewer.
+ * once those resources resolve to one stored resource, that resource alone
+ * answers to it, so the resolved file has a referent fewer.
  */
 const hasMentionSeveralResourcesAnswerTo = (file: DecodedFile.DecodedFile): boolean => {
   const referents = discoverOnTestClock(file)
@@ -445,8 +445,8 @@ const hasMentionSeveralResourcesAnswerTo = (file: DecodedFile.DecodedFile): bool
 
 /**
  * Whether following the `LinkToDecodedReferent` choices of `choices` from
- * some referent comes back to it. A cycle places its members on a provisional
- * resource, which the placed file then holds as a resource keyed by one of
+ * some referent comes back to it. A cycle links its members to a provisional
+ * resource, which the resolved file then holds as a resource keyed by one of
  * them, whose `LinkToDecodedReferent` no longer fits it.
  */
 const hasLinkCycle = (choices: ReferentLinkChoices.Type): boolean =>
@@ -468,7 +468,7 @@ const hasLinkCycle = (choices: ReferentLinkChoices.Type): boolean =>
  * Whether a mention of `file` names something a stored resource `choices`
  * link to answers to, by an identifier it carries or derives (a provider's
  * printed name). On the decoded file the mention is a referent of its own;
- * once the stored resource is placed in the file, it answers to it.
+ * once the stored resource stands in the resolved file, it answers to it.
  */
 const hasMentionALinkedStoredResourceAnswersTo = (
   file: DecodedFile.DecodedFile,
@@ -493,7 +493,7 @@ const hasMentionALinkedStoredResourceAnswersTo = (
 }
 
 /**
- * A generated decoded file and choices whose placed file has the decoded
+ * A generated decoded file and choices whose resolved file has the decoded
  * file's referents, of the same kinds, so the choices apply to it as they did
  * to the decoded one. That rules out a link cycle ({@link hasLinkCycle}), a
  * mention several decoded resources answer to
@@ -518,8 +518,8 @@ export {
   STORED_SMITH,
   STORED_TYRA,
   anyChoicesArbitrary,
-  placeAcrossOnTestClock,
-  placeOnTestClock,
+  resolveAcrossOnTestClock,
+  resolveOnTestClock,
   customerSubject,
   discoverOnTestClock,
   fileArbitrary,
@@ -529,7 +529,7 @@ export {
   fileWithReapplicableChoicesArbitrary,
   linkedOnTestClock,
   literalSubject,
-  placeAcross,
+  resolveAcross,
   namedRequester,
   observation,
   patient,

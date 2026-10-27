@@ -201,7 +201,7 @@ describe('ReferentSearch.defaultChoice', () => {
   })
 
   it('should search a derived identifier the decode already carries only as the derived one', async () => {
-    const placedBefore = onlyReferent(
+    const resolvedBefore = onlyReferent(
       Schema.decodeUnknownSync(Patient.Schema)({
         resourceType: 'Patient',
         id: 'p-1',
@@ -214,7 +214,7 @@ describe('ReferentSearch.defaultChoice', () => {
       })
     )
 
-    const { urls } = await search(placedBefore)
+    const { urls } = await search(resolvedBefore)
 
     expect(searchesOf(urls)).toEqual([`/Patient ${TYRA_OWN}`, `/Patient ${TYRA_DERIVED}`])
   })

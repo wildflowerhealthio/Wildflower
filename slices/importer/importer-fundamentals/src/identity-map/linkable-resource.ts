@@ -70,7 +70,7 @@ const DERIVED_IDENTIFIER_SYSTEM_HREFS: ReadonlySet<string> = new Set(
 /**
  * Whether `identifier` is one demographics derive, under a Wildflower system
  * ({@link maybeDerivedIdentifier}'s), rather than one a source gave: what a
- * placed resource carries after assuming its own, and what a search by the
+ * resolved resource carries after assuming its own, and what a search by the
  * source's identifiers leaves out.
  */
 const isDerivedIdentifier = (identifier: IdentifierAndReference.IdentifierType): boolean =>

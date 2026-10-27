@@ -1,16 +1,16 @@
 /**
- * The link plan: everything placing a batch's decoded files on the referent
+ * The link plan: everything resolving a batch's decoded files on the referent
  * link choices needs, worked out once from the files and the choices, and the
- * lookups that answer the placement's and the redirection's questions.
+ * lookups that answer the resolution's and the redirection's questions.
  *
  * @remarks
  * A referent's mentions are redirected to its link target. The plan says what
- * each referent's link target is, what the resource under each placed literal
+ * each referent's link target is, what the resource under each resolved literal
  * reference becomes once it has assumed the identifiers of the referents
  * linked to it, and which decoded literal references move to a stored
  * resource. Built once per batch by {@link make}, so a referent one file holds
  * is the link target of a mention in another, and read through
- * {@link maybeRedirectOf} and {@link maybePlacedResourceFor} by the placement
+ * {@link maybeRedirectOf} and {@link maybeResolvedResourceFor} by the resolution
  * of every file.
  *
  * @packageDocumentation
@@ -25,10 +25,10 @@ import * as LinkTarget from './link-target.ts'
 import type * as Link from './link.ts'
 import * as LinkableLogicalReference from './linkable-logical-reference.ts'
 import * as LinkableResource from './linkable-resource.ts'
-import * as PlacedResource from './placed-resource.ts'
 import type * as ReferentLinkChoices from './referent-link-choices.ts'
 import * as Referent from './referent.ts'
 import * as Resolution from './resolution.ts'
+import * as ResolvedResource from './resolved-resource.ts'
 
 /** The link plan for a batch's decoded files, built once by {@link make}. */
 interface Type {
@@ -41,11 +41,14 @@ interface Type {
    */
   readonly linkTargetsByLogicalReferenceKey: HashMap.HashMap<string, LinkTarget.Type>
   /**
-   * The resource under each placed literal reference the links land on, as
+   * The resource under each resolved literal reference the links land on, as
    * it will be written: what replaces a decoded resource, what a decoded
    * resource assumes, and what the batch's linked records are.
    */
-  readonly placedResourcesByPlacedLiteralReference: HashMap.HashMap<string, PlacedResource.Type>
+  readonly resolvedResourcesByResolvedLiteralReference: HashMap.HashMap<
+    string,
+    ResolvedResource.Type
+  >
   /**
    * `Type/<decoded id>` → `Type/<stored id>` for every decoded resource a
    * stored resource stands in for: where a decoded literal reference is
@@ -75,7 +78,7 @@ const literalReferencesFromDecodedFiles = (
  * to another stored resource. A decoded resource a stored one under another
  * id replaces is not written under its own literal reference, so a stored
  * copy under that reference, which a mention may link to, is not written by
- * any placed file.
+ * any resolved file.
  */
 const writtenAsDecoded = (
   decodedLiteralReferences: HashSet.HashSet<string>,
@@ -135,7 +138,7 @@ const linkTargetsByLogicalReferenceKeyOf = (
  * @remarks
  * The referents are the whole batch's (`Referent.discover`), so a
  * `LinkToDecodedReferent` naming a referent one file holds resolves from a
- * mention in another, and every file is placed on the same plan. Fails with
+ * mention in another, and every file is resolved on the same plan. Fails with
  * `Referent.DuplicateReferent` when two decoded resources answer to one
  * logical reference, and with `LinkChoice.InvalidLinkChoice` when a choice
  * cannot be followed for its referent.
@@ -148,17 +151,18 @@ const make = (
     const referents = yield* Referent.discover(decodedFiles)
     const links = yield* Resolution.linksOf(linkChoices, referents)
     const decodedLiteralReferencesToStored = decodedLiteralReferencesToStoredOf(links)
-    const placedResourcesByPlacedLiteralReference = yield* PlacedResource.byPlacedLiteralReference(
-      links,
-      writtenAsDecoded(
-        literalReferencesFromDecodedFiles(decodedFiles),
-        decodedLiteralReferencesToStored
+    const resolvedResourcesByResolvedLiteralReference =
+      yield* ResolvedResource.byResolvedLiteralReference(
+        links,
+        writtenAsDecoded(
+          literalReferencesFromDecodedFiles(decodedFiles),
+          decodedLiteralReferencesToStored
+        )
       )
-    )
     return {
       links,
       linkTargetsByLogicalReferenceKey: linkTargetsByLogicalReferenceKeyOf(links),
-      placedResourcesByPlacedLiteralReference,
+      resolvedResourcesByResolvedLiteralReference,
       decodedLiteralReferencesToStored,
     }
   })
@@ -185,23 +189,23 @@ const maybeRedirectOf = (
     : HashMap.get(plan.decodedLiteralReferencesToStored, referenceAsDecoded.reference)
 
 /**
- * The resource `decodedResource` is written as under `plan`: the placed
+ * The resource `decodedResource` is written as under `plan`: the resolved
  * resource under the literal reference its own is redirected to, which is a
  * stored resource's when one stands in for it and its own otherwise. `None`
  * when the plan has no resource there, so it is written as decoded.
  */
-const maybePlacedResourceFor = (
+const maybeResolvedResourceFor = (
   plan: Type,
   decodedResource: LinkableResource.WithId
-): Option.Option<PlacedResource.Type> => {
+): Option.Option<ResolvedResource.Type> => {
   const decodedLiteralReference = LinkableResource.literalReferenceOf(decodedResource)
   return pipe(
     HashMap.get(plan.decodedLiteralReferencesToStored, decodedLiteralReference),
     Option.getOrElse(() => decodedLiteralReference),
-    (placedLiteralReference) =>
-      HashMap.get(plan.placedResourcesByPlacedLiteralReference, placedLiteralReference)
+    (resolvedLiteralReference) =>
+      HashMap.get(plan.resolvedResourcesByResolvedLiteralReference, resolvedLiteralReference)
   )
 }
 
-export { make, maybePlacedResourceFor, maybeRedirectOf }
+export { make, maybeResolvedResourceFor, maybeRedirectOf }
 export type { Type }

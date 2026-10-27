@@ -1,5 +1,5 @@
 /**
- * Placing a decoded file on its batch's link plan: each decoded resource
+ * Resolving a decoded file on its batch's link plan: each decoded resource
  * written as the resource the plan has for it, with its mentions redirected to
  * their referents' link targets; and the resources the batch only mentions,
  * as the batch's own linked records.
@@ -21,7 +21,7 @@ const linkedKey = (onlyMentioned: LinkableResource.WithId): string =>
 
 /**
  * `mentioningResource` with every reference it carries that `plan` redirects
- * placed at its referent's link target, keeping its `display` and its own
+ * pointed at its referent's link target, keeping its `display` and its own
  * `identifier`. Walks every reference, not only the mention fields, so a
  * provider named elsewhere moves too. The same object when nothing moves.
  */
@@ -29,41 +29,44 @@ const redirectMentions = (plan: LinkPlan.Type, mentioningResource: FhirResource)
   ResourceReferences.map(mentioningResource, (referenceAsDecoded) =>
     Option.match(LinkPlan.maybeRedirectOf(plan, referenceAsDecoded), {
       onNone: () => referenceAsDecoded,
-      onSome: (placedLiteralReference) => ({
+      onSome: (resolvedLiteralReference) => ({
         ...referenceAsDecoded,
-        reference: placedLiteralReference,
+        reference: resolvedLiteralReference,
       }),
     })
   )
 
 /**
- * `decodedEntry` as it is placed under `plan`: its resource written as the
+ * `decodedEntry` as it is resolved under `plan`: its resource written as the
  * resource the plan has for it, when it has one (a stored resource standing in
  * for it, or itself having assumed what the referents linked to it bring),
  * else as itself, with its mentions redirected either way. An entry whose
  * resource a stored one replaces takes the stored one's label as its title;
  * any other keeps its own. The same object when nothing changes.
  */
-const placed = (plan: LinkPlan.Type, decodedEntry: DecodedFile.Resource): DecodedFile.Resource => {
+const resolvedEntry = (
+  plan: LinkPlan.Type,
+  decodedEntry: DecodedFile.Resource
+): DecodedFile.Resource => {
   const decodedResource = decodedEntry.resource
-  const maybePlacedResource = pipe(
+  const maybeResolvedResource = pipe(
     Option.liftPredicate(decodedResource, LinkableResource.is),
     Option.flatMap(LinkableResource.tryIntoWithId),
-    Option.flatMap((withId) => LinkPlan.maybePlacedResourceFor(plan, withId))
+    Option.flatMap((withId) => LinkPlan.maybeResolvedResourceFor(plan, withId))
   )
   const resource = redirectMentions(
     plan,
-    Option.match(maybePlacedResource, {
+    Option.match(maybeResolvedResource, {
       onNone: () => decodedResource,
-      onSome: (placedResource): FhirResource => placedResource.resource,
+      onSome: (resolvedResource): FhirResource => resolvedResource.resource,
     })
   )
   const title = pipe(
-    maybePlacedResource,
-    Option.filter((placedResource) => placedResource.resource.id !== decodedResource.id),
+    maybeResolvedResource,
+    Option.filter((resolvedResource) => resolvedResource.resource.id !== decodedResource.id),
     Option.match({
       onNone: () => decodedEntry.title,
-      onSome: (placedResource) => placedResource.label,
+      onSome: (resolvedResource) => resolvedResource.label,
     })
   )
   return resource === decodedResource && title === decodedEntry.title
@@ -74,7 +77,7 @@ const placed = (plan: LinkPlan.Type, decodedEntry: DecodedFile.Resource): Decode
 /**
  * The batch's linked records under `plan`: the resources it only mentions, as
  * they will be written, keyed by {@link linkedKey} and titled by their label,
- * in the order their referents were discovered. No placed file holds them;
+ * in the order their referents were discovered. No resolved file holds them;
  * they are the batch's own, reviewed and written beside the files.
  */
 const linkedResources = (plan: LinkPlan.Type): readonly DecodedFile.Resource[] =>
@@ -83,24 +86,24 @@ const linkedResources = (plan: LinkPlan.Type): readonly DecodedFile.Resource[] =
     Array.filterMap(({ target }) => LinkTarget.tryIntoResource(target)),
     Array.map(LinkableResource.literalReferenceOf),
     Array.dedupe,
-    Array.filterMap((placedLiteralReference) =>
-      HashMap.get(plan.placedResourcesByPlacedLiteralReference, placedLiteralReference).pipe(
-        Option.filter((placedResource) => !placedResource.resourceExistsInBatch),
+    Array.filterMap((resolvedLiteralReference) =>
+      HashMap.get(plan.resolvedResourcesByResolvedLiteralReference, resolvedLiteralReference).pipe(
+        Option.filter((resolvedResource) => !resolvedResource.resourceExistsInBatch),
         Option.map(({ resource, label }) => ({ key: linkedKey(resource), title: label, resource }))
       )
     )
   )
 
 /**
- * `decodedFile` placed on `plan`: the file to review, diff and write. Every
+ * `decodedFile` resolved on `plan`: the file to review, diff and write. Every
  * section keeps its keys, and an entry nothing changed in comes back as the
  * same object. The resources the batch only mentions are no file's: they are
  * {@link linkedResources}.
  */
-const place = (
+const resolveFile = (
   decodedFile: DecodedFile.DecodedFile,
   plan: LinkPlan.Type
 ): DecodedFile.DecodedFile =>
-  DecodedFile.mapResources(decodedFile, (decodedEntry) => placed(plan, decodedEntry))
+  DecodedFile.mapResources(decodedFile, (decodedEntry) => resolvedEntry(plan, decodedEntry))
 
-export { linkedKey, linkedResources, place }
+export { linkedKey, linkedResources, resolveFile }

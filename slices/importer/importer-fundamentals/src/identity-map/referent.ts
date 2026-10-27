@@ -73,7 +73,7 @@ const key = (referent: Type): string => LinkableLogicalReference.key(referent.lo
 /**
  * The logical references `referent`'s own identifiers make, its key's first:
  * the ones a source gave it, not one demographics derive
- * (`LinkableResource.isDerivedIdentifier`), which a placed resource carries
+ * (`LinkableResource.isDerivedIdentifier`), which a resolved resource carries
  * too.
  */
 const ownLogicalReferencesOf = (referent: Type): readonly LinkableLogicalReference.Type[] =>
