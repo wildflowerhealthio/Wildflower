@@ -32,8 +32,9 @@ import styles from './importer-screen.module.css'
  * (`SourcePicker` → `useImportRun` → `useLinkChoiceReview` → `PreviewPanel`)
  * writes nothing — each file decodes to resources grouped by format, its own
  * source file among them, that the reviewer can exclude or edit — and only
- * the explicit confirm reaches the write half (`useConfirmImport` — one batch
- * bundle per format, verbatim from the preview, best-effort). A batch may span
+ * the explicit confirm reaches the write half (`useConfirmImport` — one
+ * transaction for the whole batch, verbatim from the preview, landing whole
+ * or not at all). A batch may span
  * formats: the picker identifies each file against the registered detectors,
  * `importer-core` groups and decodes by format, and the preview mounts one
  * settings form per format present — a settings change re-decodes that

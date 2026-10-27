@@ -1,8 +1,8 @@
 /**
  * Placing a decoded file on its batch's link plan: each decoded resource
  * written as the resource the plan has for it, with its mentions redirected to
- * their referents' link targets; and, once per batch, the resources the batch
- * only mentions appended.
+ * their referents' link targets; and the resources the batch only mentions,
+ * as the batch's own linked records.
  *
  * @packageDocumentation
  */
@@ -15,10 +15,7 @@ import * as LinkPlan from './link-plan.ts'
 import * as LinkTarget from './link-target.ts'
 import * as LinkableResource from './linkable-resource.ts'
 
-/** The title of the section resources the batch only mentions are appended under. */
-const LINKED_SECTION_TITLE = 'Linked'
-
-/** The review key a resource the batch only mentions is appended under. */
+/** The review key a resource the batch only mentions is reviewed under, among the batch's linked records. */
 const linkedKey = (onlyMentioned: LinkableResource.WithId): string =>
   `linked:${LinkableResource.literalReferenceOf(onlyMentioned)}`
 
@@ -75,10 +72,12 @@ const placed = (plan: LinkPlan.Type, decodedEntry: DecodedFile.Resource): Decode
 }
 
 /**
- * The resources `plan` appends under {@link LINKED_SECTION_TITLE}: those the
- * batch only mentions, in the order their referents were discovered.
+ * The batch's linked records under `plan`: the resources it only mentions, as
+ * they will be written, keyed by {@link linkedKey} and titled by their label,
+ * in the order their referents were discovered. No placed file holds them;
+ * they are the batch's own, reviewed and written beside the files.
  */
-const linkedSectionResources = (plan: LinkPlan.Type): readonly DecodedFile.Resource[] =>
+const linkedResources = (plan: LinkPlan.Type): readonly DecodedFile.Resource[] =>
   pipe(
     plan.links,
     Array.filterMap(({ target }) => LinkTarget.tryIntoResource(target)),
@@ -95,8 +94,8 @@ const linkedSectionResources = (plan: LinkPlan.Type): readonly DecodedFile.Resou
 /**
  * `decodedFile` placed on `plan`: the file to review, diff and write. Every
  * section keeps its keys, and an entry nothing changed in comes back as the
- * same object. The resources the batch only mentions are not appended here
- * but once per batch, by {@link appendLinkedSection}.
+ * same object. The resources the batch only mentions are no file's: they are
+ * {@link linkedResources}.
  */
 const place = (
   decodedFile: DecodedFile.DecodedFile,
@@ -104,26 +103,4 @@ const place = (
 ): DecodedFile.DecodedFile =>
   DecodedFile.mapResources(decodedFile, (decodedEntry) => placed(plan, decodedEntry))
 
-/**
- * `placedFile` with the resources the batch `plan` was made for only mentions
- * appended last, under {@link LINKED_SECTION_TITLE}; `placedFile` itself when
- * there are none.
- *
- * @remarks
- * Appended to one file of the batch, the first, so a stored person the batch
- * only mentions is written once however many files mention it.
- */
-const appendLinkedSection = (
-  placedFile: DecodedFile.DecodedFile,
-  plan: LinkPlan.Type
-): DecodedFile.DecodedFile => {
-  const linked = linkedSectionResources(plan)
-  return linked.length === 0
-    ? placedFile
-    : {
-        ...placedFile,
-        sections: [...placedFile.sections, { title: LINKED_SECTION_TITLE, resources: linked }],
-      }
-}
-
-export { appendLinkedSection, LINKED_SECTION_TITLE, linkedKey, place }
+export { linkedKey, linkedResources, place }

@@ -43,7 +43,7 @@ interface Type {
   /**
    * The resource under each placed literal reference the links land on, as
    * it will be written: what replaces a decoded resource, what a decoded
-   * resource assumes, and what the Linked section appends.
+   * resource assumes, and what the batch's linked records are.
    */
   readonly placedResourcesByPlacedLiteralReference: HashMap.HashMap<string, PlacedResource.Type>
   /**

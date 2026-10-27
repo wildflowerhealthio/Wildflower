@@ -19,14 +19,16 @@ import styles from './import-results.module.css'
  * in foldable sections that open to the full diagnostics.
  *
  * @remarks
- * The write half (`persistBatchBundle`) reports each entry's echoed status and
- * any OperationOutcome diagnostics, so this view groups every file's resources
- * across the whole batch by status (failures first, then ascending code):
- * successes fold away, failures open to the server's own messages. Files that
- * had nothing to write are reported in their own section. A partial import is a
- * first-class outcome, not a failure banner: any rejected resource (the
- * source file included, since it writes in the same batch) frames the
- * batch as partial, while everything that wrote is already on the device.
+ * The write half (`persistTransactionBundle`) reports each entry's echoed
+ * status and any OperationOutcome diagnostics, so this view groups every
+ * file's resources and the linked records across the whole batch by status
+ * (failures first, then ascending code): successes fold away, failures open
+ * to the server's own messages. Files that had nothing to write are reported
+ * in their own section. The batch is one transaction, so a refusal lands
+ * nothing and is framed as a failed import, every entry under the one cause;
+ * a batch some of whose entries failed is a partial import, a first-class
+ * outcome, not a failure banner, with everything that wrote already on the
+ * device.
  *
  * @packageDocumentation
  */
@@ -45,8 +47,17 @@ const COMPLETE_HEADING = 'Import complete'
 /** Heading when at least one resource write failed. */
 const PARTIAL_HEADING = 'Imported with some failures'
 
+/** Heading when every attempted write failed: the transaction was refused as a whole. */
+const FAILED_HEADING = 'Nothing was imported'
+
 /** Heading for the section listing files that had nothing to write. */
 const SKIPPED_HEADING = 'Files with nothing to import'
+
+/** The heading that frames the batch: failed when nothing of what was attempted wrote, else partial or complete. */
+const headingOf = (written: number, attempted: number, partial: boolean): string => {
+  if (written === 0 && attempted > 0) return FAILED_HEADING
+  return partial ? PARTIAL_HEADING : COMPLETE_HEADING
+}
 
 /** `noun` singular when `count === 1`, else its `-s` plural. */
 const plural = (count: number, noun: string): string => (count === 1 ? noun : `${noun}s`)
@@ -123,9 +134,10 @@ const ImportResults = ({ batch, onStartOver }: ImportResultsProps): JSX.Element 
   const summary = summarizeBatch(batch)
   const groups = groupResultsByStatus(batch)
   const skipped = skips(batch)
+  const heading = headingOf(summary.written, summary.attempted, partial)
   return (
     <section aria-label="Import results" className={styles.results}>
-      <h2 className={styles.heading}>{partial ? PARTIAL_HEADING : COMPLETE_HEADING}</h2>
+      <h2 className={styles.heading}>{heading}</h2>
       <p role="status" className={styles.summary}>
         Wrote {summary.written} of {summary.attempted} {plural(summary.attempted, 'resource')}
         {summary.excluded > 0 ? ` (${summary.excluded} excluded)` : ''} across{' '}
@@ -165,6 +177,7 @@ const ImportResults = ({ batch, onStartOver }: ImportResultsProps): JSX.Element 
 
 export {
   COMPLETE_HEADING,
+  FAILED_HEADING,
   ImportResults,
   type ImportResultsProps,
   PARTIAL_HEADING,

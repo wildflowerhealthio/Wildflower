@@ -54,7 +54,8 @@ const liveFields = (
 /**
  * The interactive detail for a `changed` badge: one `path "server" -> "import"`
  * line per differing leaf, each with a "keep server value" button that resets
- * that one leaf on the incoming resource back to the server's.
+ * that one leaf on the incoming resource back to the server's, when the row
+ * takes an edit at all (`onKeepServerValue` given).
  */
 const DiffFieldList = ({
   fields,
@@ -63,7 +64,7 @@ const DiffFieldList = ({
 }: {
   readonly fields: readonly FieldDiff[]
   readonly current: unknown
-  readonly onKeepServerValue: (resource: FhirResource) => void
+  readonly onKeepServerValue: ((resource: FhirResource) => void) | undefined
 }): JSX.Element => (
   <ul className={styles['diff-badge__field-list']} role="group" aria-label="Field differences">
     {fields.map((field) => {
@@ -76,19 +77,21 @@ const DiffFieldList = ({
             →
           </span>
           <span className={styles['diff-badge__incoming']}>{formatSlot(field.incoming)}</span>
-          <button
-            type="button"
-            className={styles['diff-badge__keep-server']}
-            aria-label={`Keep the server value for ${path}`}
-            onClick={() =>
-              Option.match(resetFieldToServer(current, field), {
-                onNone: () => undefined,
-                onSome: onKeepServerValue,
-              })
-            }
-          >
-            Keep server value
-          </button>
+          {onKeepServerValue !== undefined && (
+            <button
+              type="button"
+              className={styles['diff-badge__keep-server']}
+              aria-label={`Keep the server value for ${path}`}
+              onClick={() =>
+                Option.match(resetFieldToServer(current, field), {
+                  onNone: () => undefined,
+                  onSome: onKeepServerValue,
+                })
+              }
+            >
+              Keep server value
+            </button>
+          )}
         </li>
       )
     })}
@@ -109,7 +112,8 @@ const DiffFieldList = ({
  *   the reviewer edits.
  *
  * Absent when the status is unknown (the pre-fetch is still in flight, or the
- * row's key is not in the map).
+ * row's key is not in the map). A row that takes no edit (a linked record)
+ * passes no `onKeepServerValue`, and its differences show with no reset.
  */
 const DiffBadge = ({
   comparison,
@@ -118,7 +122,7 @@ const DiffBadge = ({
 }: {
   readonly comparison: ServerComparison | undefined
   readonly current: unknown
-  readonly onKeepServerValue: (resource: FhirResource) => void
+  readonly onKeepServerValue?: (resource: FhirResource) => void
 }): JSX.Element | null => {
   const [pinned, setPinned] = useState(false)
   const [hovered, setHovered] = useState(false)

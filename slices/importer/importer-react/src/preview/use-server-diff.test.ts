@@ -7,13 +7,13 @@ import { Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { resolvedAsIs } from './resolved-batch.test-helpers.ts'
-import { byFormatAndKey, diffRowsOf, initialExclusionsFor } from './use-server-diff.ts'
+import { byGroupAndKey, diffRowsOf, initialExclusionsFor, LINKED_GROUP } from './use-server-diff.ts'
 
 /**
  * The pure folds behind the server diff: every previewed resource is probed
- * once with its format, and the verdicts come back scoped by format — so two
- * formats carrying the same resource key keep verdicts of their own.
+ * once with its group, and the verdicts come back scoped by group — so two
+ * formats carrying the same resource key keep verdicts of their own, and the
+ * batch's linked records, no format's, keep theirs.
  */
 
 const patient = (id: string): FhirResource =>
@@ -46,25 +46,48 @@ const formatResult = <K extends FormatKind>(
 
 const makeBatch = (
   results: Partial<{ [K in FormatKind]: FormatDecode.Result<K> }>
-): ResolvedBatch =>
-  resolvedAsIs({
-    har: FormatDecode.emptyResult('har'),
-    'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
-    dicom: FormatDecode.emptyResult('dicom'),
-    ...results,
-    unrecognizedFiles: [],
-  })
+): ResolvedBatch => ({
+  har: FormatDecode.emptyResult('har'),
+  'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
+  dicom: FormatDecode.emptyResult('dicom'),
+  ...results,
+  unrecognizedFiles: [],
+  linked: [],
+  links: [],
+})
 
 const UNCHANGED: ServerComparison = { status: 'unchanged', fields: [] }
 const CHANGED: ServerComparison = { status: 'changed', fields: [] }
 
-describe('diffRowsOf / byFormatAndKey', () => {
+describe('diffRowsOf / byGroupAndKey', () => {
+  it('should probe the linked records under their own group, after the formats', () => {
+    const batch = {
+      ...makeBatch({ har: formatResult('har', [['patient', 'p-har']]) }),
+      linked: [
+        {
+          key: 'linked:Patient/p-stored',
+          title: 'Patient/p-stored',
+          resource: patient('p-stored'),
+        },
+      ],
+    }
+    const rows = diffRowsOf(batch)
+    const verdicts = byGroupAndKey(rows, new Map([['Patient/p-stored', CHANGED]]))
+
+    expect(rows.map((row) => [row.group, row.key])).toEqual([
+      ['har', 'patient'],
+      [LINKED_GROUP, 'linked:Patient/p-stored'],
+    ])
+    expect(verdicts.get(LINKED_GROUP)?.get('linked:Patient/p-stored')).toBe(CHANGED)
+    expect(verdicts.get('har')?.get('patient')?.status).toBe('new')
+  })
+
   it('should keep verdicts apart for two formats that share a resource key', () => {
     const batch = makeBatch({
       har: formatResult('har', [['patient', 'p-new']]),
       dicom: formatResult('dicom', [['patient', 'p-old']]),
     })
-    const verdicts = byFormatAndKey(diffRowsOf(batch), new Map([['Patient/p-old', UNCHANGED]]))
+    const verdicts = byGroupAndKey(diffRowsOf(batch), new Map([['Patient/p-old', UNCHANGED]]))
 
     expect(verdicts.get('har')?.get('patient')?.status).toBe('new')
     expect(verdicts.get('dicom')?.get('patient')?.status).toBe('unchanged')
@@ -93,9 +116,9 @@ describe('diffRowsOf / byFormatAndKey', () => {
             const verdict = verdictFor(row.resource.id)
             if (verdict !== undefined) classified.set(`Patient/${row.resource.id}`, verdict)
           }
-          const verdicts = byFormatAndKey(rows, classified)
+          const verdicts = byGroupAndKey(rows, classified)
           for (const row of rows) {
-            expect(verdicts.get(row.format)?.get(row.key)).toEqual(
+            expect(verdicts.get(row.group)?.get(row.key)).toEqual(
               verdictFor(row.resource.id) ?? { status: 'new', fields: [] }
             )
           }

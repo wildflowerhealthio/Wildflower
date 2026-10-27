@@ -75,7 +75,8 @@ type FormatResults = {
 
 /**
  * A picked batch as decoded: every format's {@link FormatResults} slot plus
- * the files no format recognised.
+ * the files no format recognised. A decoded batch holds no linked records
+ * and no links: those are a resolved batch's (`resolveMentions`).
  */
 type DecodedBatch = FormatResults & {
   readonly unrecognizedFiles: readonly UnrecognizedFile[]
@@ -267,10 +268,10 @@ const redecodeFormat = (
  * nothing has an `emptyResult` — no files, no sections, a blank `title` — so
  * treating it as a participant reports a titleless `skipped` row.
  *
- * @param batch - The decoded batch
+ * @param batch - A decoded or resolved batch: only its format slots are read
  * @returns Every format with at least one claimed file, in {@link formatKinds} order
  */
-const claimedFormats = (batch: DecodedBatch): readonly FormatKind[] =>
+const claimedFormats = (batch: FormatResults): readonly FormatKind[] =>
   formatKinds.filter((kind) => batch[kind].files.length > 0)
 
 export {

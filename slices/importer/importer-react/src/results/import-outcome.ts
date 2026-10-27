@@ -10,12 +10,13 @@ import type { SkipReason } from '@wildflowerhealthio/importer-core'
  * view reads and the `partial` decision folds over.
  *
  * @remarks
- * The write half (`persistBatchBundle`) now reports the **whole** per-entry
+ * The write half (`persistTransactionBundle`) reports the **whole** per-entry
  * outcome — every submitted resource's echoed HTTP status and any server
  * diagnostics, success or failure — not just failures. The results view groups
  * those across the batch by status code, so `written` is the count of entries
  * whose status succeeded, derived from the results rather than re-counted off
- * the wire.
+ * the wire. The batch is one transaction, so its entries land together or not
+ * at all: a refusal reaches here as every entry failed under the one cause.
  *
  * @packageDocumentation
  */
@@ -27,7 +28,7 @@ import type { SkipReason } from '@wildflowerhealthio/importer-core'
  * row's unit.
  */
 interface ResourceResult extends BatchEntryOutcome {
-  /** The title of the unit this resource was decoded from (its file name, for a single-file format). */
+  /** The title of the unit this resource was written from: its file name for a single-file format, the linked records' heading for one of them. */
   readonly title: string
 }
 
@@ -82,10 +83,9 @@ const isPartialOutcome = (outcome: ImportOutcome): boolean =>
  * What a single unit in a confirmed batch resolved to.
  *
  * @remarks
- * Best-effort per the batch semantics: one unit's failure never stops the
- * rest, so every unit lands on exactly one of these. `imported` carries the
- * unit's own {@link ImportOutcome} (which may itself be partial — some of its
- * resources, the source file among them, failed to write); `skipped` is a
+ * Every unit lands on exactly one of these. `imported` carries the unit's own
+ * {@link ImportOutcome} (whose resources failed together with the rest of
+ * the transaction, or landed together with them); `skipped` is a
  * unit that had nothing to write, with `importer-core`'s {@link SkipReason}.
  * The source file writes in the same bundle as the resources it names, so
  * its write is just one of the `imported` unit's per-entry results. `title`
@@ -107,18 +107,27 @@ type FileImportResult =
       readonly reason: SkipReason | 'unrecognized'
     }
 
-/** A confirmed batch: one {@link FileImportResult} per unit the user confirmed. */
-type BatchOutcome = readonly FileImportResult[]
+/**
+ * A confirmed batch: one {@link FileImportResult} per unit the user
+ * confirmed, and the outcome of each linked record, which is no file's.
+ */
+interface BatchOutcome {
+  readonly files: readonly FileImportResult[]
+  /** One result per linked record the batch wrote, in submit order. */
+  readonly linked: readonly ResourceResult[]
+}
 
-/** Every written-or-attempted resource across the batch, flattened out of the imported files. */
-const allResults = (batch: BatchOutcome): readonly ResourceResult[] =>
-  batch.flatMap((result) => (result._tag === 'imported' ? result.outcome.results : []))
+/** Every written-or-attempted resource across the batch: the linked records, then the imported files'. */
+const allResults = (batch: BatchOutcome): readonly ResourceResult[] => [
+  ...batch.linked,
+  ...batch.files.flatMap((result) => (result._tag === 'imported' ? result.outcome.results : [])),
+]
 
 /** Every file the reviewer confirmed that had nothing to write. */
 const skips = (
   batch: BatchOutcome
 ): readonly Extract<FileImportResult, { readonly _tag: 'skipped' }>[] =>
-  batch.filter((result) => result._tag === 'skipped')
+  batch.files.filter((result) => result._tag === 'skipped')
 
 /** One response status across the batch, with the resources that resolved to it. */
 interface StatusGroup {
@@ -148,9 +157,9 @@ const groupResultsByStatus = (batch: BatchOutcome): readonly StatusGroup[] =>
 
 /** The aggregate tally a results view reads across a whole {@link BatchOutcome}. */
 interface BatchSummary {
-  /** Resources written (2xx) across every file. */
+  /** Resources written (2xx) across every file and the linked records. */
   readonly written: number
-  /** Resources attempted across every `imported` file. */
+  /** Resources attempted across every `imported` file and the linked records. */
   readonly attempted: number
   /** Previewed resources the reviewer opted out before confirm, across every file. */
   readonly excluded: number
@@ -165,10 +174,10 @@ interface BatchSummary {
  *
  * @param batch - Every file's result
  * @returns The written/attempted/excluded totals and the file counts the
- *   summary row shows
+ *   summary row shows; a linked record counts as a resource, not a file
  */
 const summarizeBatch = (batch: BatchOutcome): BatchSummary =>
-  batch.reduce<BatchSummary>(
+  batch.files.reduce<BatchSummary>(
     (summary, result) =>
       result._tag === 'imported'
         ? {
@@ -179,7 +188,13 @@ const summarizeBatch = (batch: BatchOutcome): BatchSummary =>
             totalFiles: summary.totalFiles + 1,
           }
         : { ...summary, totalFiles: summary.totalFiles + 1 },
-    { written: 0, attempted: 0, excluded: 0, importedFiles: 0, totalFiles: 0 }
+    {
+      written: batch.linked.filter((result) => result.ok).length,
+      attempted: batch.linked.length,
+      excluded: 0,
+      importedFiles: 0,
+      totalFiles: 0,
+    }
   )
 
 /**
@@ -190,13 +205,14 @@ const summarizeBatch = (batch: BatchOutcome): BatchSummary =>
  *
  * @remarks
  * The `collectImportSummary` semantics, lifted to the batch: **any** rejected
- * resource — the source file included, since it writes in the same batch —
- * makes the whole batch partial. A `skipped` file is not a failure
- * (an empty preview is ordinary data), so it does not make a batch partial on
- * its own.
+ * resource — the source file and the linked records included, since they
+ * write in the same transaction — makes the whole batch partial. A `skipped`
+ * file is not a failure (an empty preview is ordinary data), so it does not
+ * make a batch partial on its own.
  */
 const isPartialBatch = (batch: BatchOutcome): boolean =>
-  batch.some((result) => result._tag === 'imported' && isPartialOutcome(result.outcome))
+  batch.linked.some((result) => !result.ok) ||
+  batch.files.some((result) => result._tag === 'imported' && isPartialOutcome(result.outcome))
 
 export {
   allResults,

@@ -4,7 +4,6 @@ import {
   FormatDecode,
   LinkChoice,
   type LinkableResource,
-  Placement,
   Referent,
   type ReferentLinkChoices,
 } from '@wildflowerhealthio/importer-fundamentals'
@@ -160,12 +159,13 @@ describe('resolveMentions', () => {
     ).toEqual([[['Resources', ['har/k-0']]], [['Resources', ['lifelabs-pdf/k-0']]]])
     expect(resolved.dicom).toBe(batch.dicom)
     expect(resolved.unrecognizedFiles).toBe(batch.unrecognizedFiles)
+    expect(resolved.linked).toEqual([])
   })
 
-  it('gives an empty batch back as itself', () => {
+  it('gives an empty batch back as it is, with no linked records and no links', () => {
     const batch = batchOf({})
 
-    expect(resolvedOnTestClock(batch, HashMap.empty())).toBe(batch)
+    expect(resolvedOnTestClock(batch, HashMap.empty())).toEqual({ ...batch, linked: [], links: [] })
   })
 
   it('links a mention in one format to the person another format holds', () => {
@@ -183,25 +183,34 @@ describe('resolveMentions', () => {
     )
   })
 
-  it('writes a stored person two formats only mention once, in the first claimed format', () => {
-    const resolved = resolvedOnTestClock(
-      batchOf({
-        'lifelabs-pdf': [request('rx-1', accountSubject)],
-        dicom: [request('rx-2', accountSubject)],
-      }),
-      HashMap.make([ACCOUNT, LinkChoice.LinkToStoredResource({ resource: STORED_TYRA })])
-    )
+  it('writes a stored person two formats only mention once, as the batch’s linked record', () => {
+    const batch = batchOf({
+      'lifelabs-pdf': [request('rx-1', accountSubject)],
+      dicom: [request('rx-2', accountSubject)],
+    })
+    const choices = HashMap.make([
+      ACCOUNT,
+      LinkChoice.LinkToStoredResource({ resource: STORED_TYRA }),
+    ])
+
+    const resolved = runOnTestClock(resolveMentions(batch, choices))
 
     expect(
       (['lifelabs-pdf', 'dicom'] as const).map((kind) =>
         resolved[kind].decoded.sections.map((section) => section.title)
       )
-    ).toEqual([['Resources', Placement.LINKED_SECTION_TITLE], ['Resources']])
+    ).toEqual([['Resources'], ['Resources']])
+    expect(resolved.linked.map((entry) => [entry.key, entry.resource.id])).toEqual([
+      ['linked:Patient/s-1', 's-1'],
+    ])
     expect(
       (['lifelabs-pdf', 'dicom'] as const)
         .flatMap((kind) => DecodedFile.resources(resolved[kind].decoded))
         .filter(({ resource }) => resource.id === 's-1')
-    ).toHaveLength(1)
+    ).toHaveLength(0)
+    expect(
+      resolved.links.map(({ referent, target }) => [Referent.key(referent), target._tag])
+    ).toEqual([[ACCOUNT, 'Stored']])
     expect([
       subjectOf(at(resolved, 'lifelabs-pdf', 'lifelabs-pdf/k-0')),
       subjectOf(at(resolved, 'dicom', 'dicom/k-0')),
@@ -237,7 +246,7 @@ describe('resolveMentionsWithFallback', () => {
     const resolved = runOnTestClock(resolveMentionsWithFallback(batch, defaults, chosen))
     return {
       linkChoices: Array.from(HashMap.entries(resolved.linkChoices)),
-      targets: Array.from(HashMap.values(resolved.linkTargets), (target) => target._tag),
+      targets: resolved.links.map(({ target }) => target._tag),
     }
   }
 

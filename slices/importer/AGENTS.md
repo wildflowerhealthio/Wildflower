@@ -45,7 +45,7 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   pick as a source file and reads it back, the `FormatDetector` seam
   the picker sniffs with, and the pure per-resource `StagedImport` model.
   There is no `persist` sink: the write is the shell's one
-  `persistBatchBundle`.
+  `persistTransactionBundle`.
 - **[`har-importer-core`](./har-importer-core/AGENTS.md)** (the HAR binding) —
   `harImporter` for format `'har'`: HAR decode through the
   pre-adopted FHIR response-kind pool into per-URL sections (with a note per
@@ -135,7 +135,7 @@ sits above `http-extraction` and below every binding.
   particular not `FhirR4ResourcesHttpApiClient` — so reaching a review is a
   pure function of the file bytes and its format's settings, and the write
   client is unreachable from it by construction. Writing is the shell's one
-  `persistBatchBundle`, gated on the user confirming a review. Parse runs at
+  `persistTransactionBundle`, gated on the user confirming a review. Parse runs at
   **preview** — `decode` yields the actual resources, sectioned, so the
   reviewer sees them and can opt any of them out or edit them inline;
   **writes** still only run at confirm, and confirm writes exactly those
@@ -162,7 +162,9 @@ sits above `http-extraction` and below every binding.
   hands every claimed file to one `decode` either way, and the server
   source-file list hands on every row the reviewer selected without deciding
   what they make up. The write itself is format-blind — one shared
-  `persistBatchBundle` at the shell.
+  `persistTransactionBundle` at the shell, of every format's reviewed
+  resources and the batch's linked records together, landing whole or not at
+  all.
 - **The registry is closed and compile-time.** The importer registry is
   `importer-core`'s literal `{ har, 'lifelabs-pdf', dicom }`, and
   `importer-react`'s registry spreads each entry with that format's

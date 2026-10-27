@@ -20,7 +20,7 @@
  * @packageDocumentation
  */
 
-import { Effect, Either } from 'effect'
+import { Effect, Either, HashMap } from 'effect'
 import { useMemo } from 'react'
 
 import {
@@ -28,7 +28,7 @@ import {
   discoverReferents,
   resolveMentionsWithFallback,
 } from '@wildflowerhealthio/importer-core'
-import type { Referent } from '@wildflowerhealthio/importer-fundamentals'
+import { Referent } from '@wildflowerhealthio/importer-fundamentals'
 
 import type * as LinkChoiceReviewState from './link-choice-review-state.ts'
 import { useDefaultLinkChoicesSearch } from './use-default-link-choices-search.ts'
@@ -71,12 +71,14 @@ const useLinkChoiceReview = (
         Effect.runSync(
           Effect.either(resolveMentionsWithFallback(batch, defaults.linkChoices, chosen))
         ),
-        (withFallback): LinkChoiceReviewState.Mapped => ({
+        ({ linkChoices, ...resolved }): LinkChoiceReviewState.Mapped => ({
           referents: discoveredReferents,
-          linkChoices: withFallback.linkChoices,
-          linkTargets: withFallback.linkTargets,
+          linkChoices,
+          linkTargets: HashMap.fromIterable(
+            resolved.links.map(({ referent, target }) => [Referent.key(referent), target] as const)
+          ),
           found: defaults.found,
-          resolved: withFallback.batch,
+          resolved,
         })
       )
     )

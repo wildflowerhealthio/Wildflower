@@ -4,7 +4,7 @@ The **HAR binding** of the importer slice: the concrete `FileImporter` for
 format `'har'`, assembled from three seams that each already have a home. It is where the resource-agnostic `importer-fundamentals`
 contract is bound to a concrete format (HAR) and resource type (FHIR). No DOM, no
 `fs`, no React: HAR text in, FHIR resources out, an opt-in write through the
-shell's shared `persistBatchBundle`.
+shell's shared `persistTransactionBundle`.
 
 ## Shape
 

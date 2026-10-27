@@ -226,9 +226,10 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     else kept (`DecodedFile.mapResources`), titled by the stored resource's
     label when one replaces it, its mentions redirected to their referents'
     link targets either way (`ResourceReferences.map`, keeping `display` and
-    `identifier`); **`appendLinkedSection`**: the resources the batch only
-    mentions appended to one placed file, under **`LINKED_SECTION_TITLE`** at
-    **`linkedKey`**, in discovery order.
+    `identifier`); **`linkedResources`**: the batch's linked records, the
+    resources it only mentions as they will be written, keyed by
+    **`linkedKey`** and titled by their label, in discovery order, no file's
+    and so no format's.
   - **`UnlinkedMention`** — `collect`: on a placed file, every resource
     **`OutsidePatientCompartment`** (a `subject` slot in which nothing lands
     on a patient of the device; FHIR's Patient CompartmentDefinition names
@@ -236,8 +237,9 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     mention (a logical reference, in any field, the map could link and left
     unlinked), matched with `UnlinkedMention.match`.
   - **`IdentityMap`** — the stage: **`apply`** (one plan over the batch,
-    place every file on it, append the Linked section to the first) over a
-    batch's files and their `ReferentLinkChoices`, failing with
+    place every file on it) over a batch's files and their
+    `ReferentLinkChoices`, giving a **`PlacedBatch`**: the `placedFiles`, the
+    batch's `linked` records and the plan's `links`; failing with
     `Referent.DuplicateReferent` or `LinkChoice.InvalidLinkChoice`; one file
     is a batch of one. What still lands nowhere is `UnlinkedMention.collect`
     of each placed file, which the caller composes.
@@ -393,10 +395,10 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
   derived one and keeping its demographics byte for byte; every mention of
   the referent, a literal `Type/<decoded id>` or a logical reference, is
   redirected through `ResourceReferences.map`, keeping its `display` and
-  `identifier`; a resource the batch only mentions is appended once, under a
-  final **"Linked"** section of the first file, so the review shows the
-  identifier it assumed and a stored person several files mention is
-  written once; a decoded resource that is its referent's link target is
+  `identifier`; a resource the batch only mentions is one of the batch's
+  **linked records**, held once for the batch and in no file, so the review
+  shows the identifier it assumed as the batch's own and a stored person
+  several files mention is written once; a decoded resource that is its referent's link target is
   written as decoded plus its derived identifier and those of the referents
   linked to it. On a re-import the referent's own search finds the stored
   copy under the decoded id and defaults to `UpdateStoredResource`, which

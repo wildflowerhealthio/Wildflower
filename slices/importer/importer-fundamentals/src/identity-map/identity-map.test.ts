@@ -21,7 +21,6 @@ import {
   IdentityMap,
   LinkChoice,
   LinkTarget,
-  Placement,
   Referent,
   type ReferentLinkChoices,
   UnlinkedMention,
@@ -45,6 +44,7 @@ import {
   fileWireOf,
   fileWithChoicesArbitrary,
   fileWithReapplicableChoicesArbitrary,
+  linkedOnTestClock,
   literalSubject,
   namedRequester,
   observation,
@@ -84,6 +84,13 @@ const resourceAt = (file: DecodedFile.DecodedFile, key: string): FhirResource =>
   const resource = at(file, key)
   if (resource === undefined) throw new Error(`no resource keyed ${key}`)
   return resource
+}
+
+/** The linked record keyed `key`; throws when there is none. */
+const linkedAt = (linked: readonly DecodedFile.Resource[], key: string): FhirResource => {
+  const entry = linked.find((candidate) => candidate.key === key)
+  if (entry === undefined) throw new Error(`no linked record keyed ${key}`)
+  return entry.resource
 }
 
 /** A decoded Patient keyed `p-<id>` that also carries the account id `c-9`. */
@@ -143,7 +150,7 @@ const failureAcrossOf = (
   files: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>,
   choices: ReferentLinkChoices.Type
 ): Either.Either<
-  readonly DecodedFile.DecodedFile[],
+  IdentityMap.PlacedBatch,
   Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice
 > => runOnTestClock(Effect.either(IdentityMap.apply(files, choices)))
 
@@ -152,7 +159,7 @@ const failureOf = (
   file: DecodedFile.DecodedFile,
   choices: ReferentLinkChoices.Type
 ): Either.Either<
-  readonly DecodedFile.DecodedFile[],
+  IdentityMap.PlacedBatch,
   Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice
 > => failureAcrossOf(Array.of(file), choices)
 
@@ -197,27 +204,26 @@ describe('IdentityMap.apply on one file', () => {
     expect(subjectAndRequesterOf(at(applied, 'k-3')).subject?.reference).toBe(null)
   })
 
-  it('links an account id to a stored person and writes the person, with the id, in a Linked section', () => {
+  it('links an account id to a stored person and writes the person, with the id, among the linked records', () => {
     const file = fileOf(
       request('rx-1', customerSubject('c-9')),
       request('rx-2', customerSubject('c-9'))
     )
+    const choices = HashMap.make([
+      ACCOUNT,
+      LinkChoice.LinkToStoredResource({ resource: STORED_JAN }),
+    ])
 
-    const applied = applyOnTestClock(
-      file,
-      HashMap.make([ACCOUNT, LinkChoice.LinkToStoredResource({ resource: STORED_JAN })])
-    )
+    const applied = applyOnTestClock(file, choices)
+    const linked = linkedOnTestClock(file, choices)
 
     expect(subjectAndRequesterOf(at(applied, 'k-0')).subject?.reference).toBe('Patient/s-2')
     expect(subjectAndRequesterOf(at(applied, 'k-1')).subject?.identifier?.value).toBe('c-9')
-    expect(applied.sections.map((section) => section.title)).toEqual([
-      'Resources',
-      Placement.LINKED_SECTION_TITLE,
-    ])
-    expect(applied.sections[1]?.resources.map((entry) => [entry.key, entry.title])).toEqual([
+    expect(applied.sections.map((section) => section.title)).toEqual(['Resources'])
+    expect(linked.map((entry) => [entry.key, entry.title])).toEqual([
       ['linked:Patient/s-2', 'Jan Doe'],
     ])
-    expect(identifiersOf(at(applied, 'linked:Patient/s-2'))).toEqual([
+    expect(identifiersOf(linkedAt(linked, 'linked:Patient/s-2'))).toEqual([
       `${DEVICE}|s-2`,
       `${CUSTOMER}|c-9`,
     ])
@@ -461,21 +467,19 @@ describe('IdentityMap.apply on a re-import', () => {
     expect(wireOf(resourceAt(placed, 'k-0'))).toBe(wireOf(storedCopy))
   })
 
-  it('appends the stored copy a mention links to when the decode moves to another stored record', () => {
-    const placed = applyOnTestClock(
-      reimport,
-      HashMap.make(
-        [PERSON, LinkChoice.LinkToStoredResource({ resource: STORED_TYRA })],
-        [ACCOUNT, LinkChoice.LinkToStoredResource({ resource: storedCopy })]
-      )
+  it('links the stored copy a mention links to as a linked record when the decode moves to another stored record', () => {
+    const choices = HashMap.make(
+      [PERSON, LinkChoice.LinkToStoredResource({ resource: STORED_TYRA })],
+      [ACCOUNT, LinkChoice.LinkToStoredResource({ resource: storedCopy })]
     )
 
+    const placed = applyOnTestClock(reimport, choices)
+    const linked = linkedOnTestClock(reimport, choices)
+
     expect(resourceAt(placed, 'k-0').id).toBe('s-1')
-    expect(placed.sections.map((section) => section.title)).toEqual([
-      'Resources',
-      Placement.LINKED_SECTION_TITLE,
-    ])
-    expect(wireOf(resourceAt(placed, 'linked:Patient/p-1'))).toBe(wireOf(storedCopy))
+    expect(placed.sections.map((section) => section.title)).toEqual(['Resources'])
+    expect(linked.map((entry) => entry.key)).toEqual(['linked:Patient/p-1'])
+    expect(wireOf(linkedAt(linked, 'linked:Patient/p-1'))).toBe(wireOf(storedCopy))
     expect(subjectAndRequesterOf(at(placed, 'k-1')).subject?.reference).toBe('Patient/p-1')
   })
 
@@ -511,19 +515,15 @@ describe('IdentityMap.apply on a printed name set to New', () => {
     expect(fileWireOf(applyOnTestClock(once, map))).toBe(fileWireOf(once))
   })
 
-  it('creates one provisional Practitioner for the name in the Linked section and points every requester at it', () => {
+  it('creates one provisional Practitioner for the name among the linked records and points every requester at it', () => {
     const applied = applyOnTestClock(file, map)
+    const linked = linkedOnTestClock(file, map)
 
-    expect(applied.sections.map((section) => section.title)).toEqual([
-      'Resources',
-      Placement.LINKED_SECTION_TITLE,
-    ])
-    expect(applied.sections[1]?.resources.map((entry) => entry.key)).toEqual([
-      `linked:Practitioner/${PROVISIONAL_ID}`,
-    ])
-    const provisional = at(applied, `linked:Practitioner/${PROVISIONAL_ID}`)
-    expect(provisional?.resourceType).toBe('Practitioner')
-    expect(provisional?.id).toBe(PROVISIONAL_ID)
+    expect(applied.sections.map((section) => section.title)).toEqual(['Resources'])
+    expect(linked.map((entry) => entry.key)).toEqual([`linked:Practitioner/${PROVISIONAL_ID}`])
+    const provisional = linkedAt(linked, `linked:Practitioner/${PROVISIONAL_ID}`)
+    expect(provisional.resourceType).toBe('Practitioner')
+    expect(provisional.id).toBe(PROVISIONAL_ID)
     expect(identifiersOf(provisional)).toEqual([
       `${Practitioner.NAME_IDENTIFIER_SYSTEM}|Dr. A Smith`,
     ])
@@ -748,13 +748,15 @@ describe('IdentityMap.apply across files', () => {
     )
 
   it('links a mention in one file to the person another file holds, which assumes its id', () => {
-    const placed = applyAcrossOnTestClock(
+    const { placedFiles } = applyAcrossOnTestClock(
       Array.make(fileOf(patient({ id: 'p-1' })), fileOf(request('rx-1', customerSubject('c-9')))),
       HashMap.make([ACCOUNT, LinkChoice.LinkToDecodedReferent({ referentKey: PERSON })])
     )
 
-    expect(subjectAndRequesterOf(atFile(placed, 1, 'k-0')).subject?.reference).toBe('Patient/p-1')
-    expect(identifiersOf(atFile(placed, 0, 'k-0'))).toEqual([
+    expect(subjectAndRequesterOf(atFile(placedFiles, 1, 'k-0')).subject?.reference).toBe(
+      'Patient/p-1'
+    )
+    expect(identifiersOf(atFile(placedFiles, 0, 'k-0'))).toEqual([
       `${SOURCE_PATIENT}|p-1`,
       `${NAME_BIRTH_DATE}|banks;tyra;1990-01-02`,
       `${CUSTOMER}|c-9`,
@@ -781,7 +783,7 @@ describe('IdentityMap.apply across files', () => {
     ])
   })
 
-  it('writes a stored person two files only mention once, in the first file’s Linked section', () => {
+  it('writes a stored person two files only mention once, as the batch’s linked record', () => {
     const otherAccount = `Patient|${CUSTOMER}|c-8`
 
     const placed = applyAcrossOnTestClock(
@@ -795,30 +797,33 @@ describe('IdentityMap.apply across files', () => {
       )
     )
 
-    expect(placed.map((file) => file.sections.map((section) => section.title))).toEqual([
-      ['Resources', Placement.LINKED_SECTION_TITLE],
-      ['Resources'],
-    ])
-    expect(countWrittenAt(placed, 'Patient/s-2')).toBe(1)
-    expect(identifiersOf(atFile(placed, 0, 'linked:Patient/s-2'))).toEqual([
+    expect(placed.placedFiles.map((file) => file.sections.map((section) => section.title))).toEqual(
+      [['Resources'], ['Resources']]
+    )
+    expect(countWrittenAt(placed.placedFiles, 'Patient/s-2')).toBe(0)
+    expect(placed.linked.map((entry) => entry.key)).toEqual(['linked:Patient/s-2'])
+    expect(identifiersOf(linkedAt(placed.linked, 'linked:Patient/s-2'))).toEqual([
       `${DEVICE}|s-2`,
       `${CUSTOMER}|c-9`,
       `${CUSTOMER}|c-8`,
     ])
-    expect(placed.map((file) => subjectAndRequesterOf(at(file, 'k-0')).subject?.reference)).toEqual(
-      ['Patient/s-2', 'Patient/s-2']
-    )
+    expect(
+      placed.placedFiles.map((file) => subjectAndRequesterOf(at(file, 'k-0')).subject?.reference)
+    ).toEqual(['Patient/s-2', 'Patient/s-2'])
   })
 
-  it('appends no Linked copy of a stored person another file holds, whose copy assumes the ids', () => {
-    const placed = applyAcrossOnTestClock(
+  it('links no record for a stored person another file holds, whose copy assumes the ids', () => {
+    const { placedFiles, linked } = applyAcrossOnTestClock(
       Array.make(fileOf(request('rx-1', customerSubject('c-9'))), fileOf(STORED_JAN)),
       HashMap.make([ACCOUNT, LinkChoice.LinkToStoredResource({ resource: STORED_JAN })])
     )
 
-    expect(placed.map((file) => file.sections.length)).toEqual([1, 1])
-    expect(countWrittenAt(placed, 'Patient/s-2')).toBe(1)
-    expect(identifiersOf(atFile(placed, 1, 'k-0'))).toEqual([`${DEVICE}|s-2`, `${CUSTOMER}|c-9`])
+    expect(linked).toEqual([])
+    expect(countWrittenAt(placedFiles, 'Patient/s-2')).toBe(1)
+    expect(identifiersOf(atFile(placedFiles, 1, 'k-0'))).toEqual([
+      `${DEVICE}|s-2`,
+      `${CUSTOMER}|c-9`,
+    ])
   })
 
   it('refuses a batch with one person decoded under two ids in two files', () => {
@@ -846,25 +851,21 @@ describe('IdentityMap.apply across files', () => {
         Array.map(sections, (section) => ({ ...file, sections: [section] })),
     })
 
-  it('property: placing a file’s sections as separate files is placing the file, the Linked section moved to the first', () => {
+  it('property: placing a file’s sections as separate files is placing the file, with the same linked records', () => {
     fc.assert(
       fc.property(fileWithChoicesArbitrary, ({ file, choices }) => {
-        const placedTogether = applyOnTestClock(file, choices)
-        const placedApart = applyAcrossOnTestClock(splitIntoFiles(file), choices)
-        const isLinked = (section: DecodedFile.Section): boolean =>
-          section.title === Placement.LINKED_SECTION_TITLE
+        const together = applyAcrossOnTestClock(Array.of(file), choices)
+        const apart = applyAcrossOnTestClock(splitIntoFiles(file), choices)
+        const linkedWireOf = (linked: readonly DecodedFile.Resource[]): readonly string[] =>
+          linked.map((entry) => `${entry.key} ${wireOf(entry.resource)}`)
 
-        const [firstApart, ...restApart] = placedApart
         expect(
           fileWireOf({
             ...file,
-            sections: [
-              ...firstApart.sections.filter((section) => !isLinked(section)),
-              ...restApart.flatMap((placedFile) => placedFile.sections),
-              ...firstApart.sections.filter(isLinked),
-            ],
+            sections: apart.placedFiles.flatMap((placedFile) => placedFile.sections),
           })
-        ).toBe(fileWireOf(placedTogether))
+        ).toBe(fileWireOf(Array.headNonEmpty(together.placedFiles)))
+        expect(linkedWireOf(apart.linked)).toEqual(linkedWireOf(together.linked))
       }),
       { numRuns: RUNS }
     )
@@ -874,7 +875,8 @@ describe('IdentityMap.apply across files', () => {
     fc.assert(
       fc.property(fileWithReapplicableChoicesArbitrary, ({ file, choices }) => {
         const once = applyAcrossOnTestClock(splitIntoFiles(file), choices)
-        expect(applyAcrossOnTestClock(once, choices).map(fileWireOf)).toEqual(once.map(fileWireOf))
+        const again = applyAcrossOnTestClock(once.placedFiles, choices)
+        expect(again.placedFiles.map(fileWireOf)).toEqual(once.placedFiles.map(fileWireOf))
       }),
       { numRuns: RUNS }
     )
@@ -903,19 +905,14 @@ describe('IdentityMap properties', () => {
     )
   })
 
-  it('property: keeps the file’s sections and keys, adding at most a Linked section', () => {
+  it('property: keeps the file’s sections and keys', () => {
     fc.assert(
       fc.property(fileWithChoicesArbitrary, ({ file, choices }) => {
         const applied = applyOnTestClock(file, choices)
         const shape = (sections: readonly DecodedFile.Section[]): readonly unknown[] =>
           sections.map((section) => [section.title, section.resources.map((entry) => entry.key)])
 
-        expect(shape(applied.sections.slice(0, file.sections.length))).toEqual(shape(file.sections))
-        expect(
-          applied.sections.slice(file.sections.length).map((section) => section.title)
-        ).toEqual(
-          applied.sections.length > file.sections.length ? [Placement.LINKED_SECTION_TITLE] : []
-        )
+        expect(shape(applied.sections)).toEqual(shape(file.sections))
       }),
       { numRuns: RUNS }
     )
@@ -1018,9 +1015,8 @@ describe('IdentityMap.apply and the clock', () => {
     Effect.runPromise(
       Effect.gen(function* () {
         yield* TestClock.setTime(DateTime.unsafeMake(instant).epochMillis)
-        return Array.headNonEmpty(
-          yield* IdentityMap.apply(Array.of(fileOf(renamed)), HashMap.empty())
-        )
+        const { placedFiles } = yield* IdentityMap.apply(Array.of(fileOf(renamed)), HashMap.empty())
+        return Array.headNonEmpty(placedFiles)
       }).pipe(Effect.provide(TestContext.TestContext))
     )
 

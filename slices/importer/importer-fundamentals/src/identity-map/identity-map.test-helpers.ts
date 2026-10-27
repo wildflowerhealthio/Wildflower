@@ -49,15 +49,20 @@ const runOnTestClock = <A, E>(effect: Effect.Effect<A, E>): A =>
 const applyAcrossOnTestClock = (
   files: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>,
   linkChoices: ReferentLinkChoices.Type
-): Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile> =>
-  runOnTestClock(IdentityMap.apply(files, linkChoices))
+): IdentityMap.PlacedBatch => runOnTestClock(IdentityMap.apply(files, linkChoices))
 
-/** `IdentityMap.apply` over a batch of one `file`, run on the test clock. */
+/** The one placed file of `IdentityMap.apply` over a batch of one `file`, run on the test clock. */
 const applyOnTestClock = (
   file: DecodedFile.DecodedFile,
   linkChoices: ReferentLinkChoices.Type
 ): DecodedFile.DecodedFile =>
-  Array.headNonEmpty(applyAcrossOnTestClock(Array.of(file), linkChoices))
+  Array.headNonEmpty(applyAcrossOnTestClock(Array.of(file), linkChoices).placedFiles)
+
+/** The linked records of `IdentityMap.apply` over a batch of one `file`, run on the test clock. */
+const linkedOnTestClock = (
+  file: DecodedFile.DecodedFile,
+  linkChoices: ReferentLinkChoices.Type
+): readonly DecodedFile.Resource[] => applyAcrossOnTestClock(Array.of(file), linkChoices).linked
 
 /** `Referent.discover` over a batch of one `file`, run on the test clock. */
 const discoverOnTestClock = (file: DecodedFile.DecodedFile): readonly Referent.Type[] =>
@@ -499,6 +504,7 @@ export {
   fileWireOf,
   fileWithChoicesArbitrary,
   fileWithReapplicableChoicesArbitrary,
+  linkedOnTestClock,
   literalSubject,
   namedRequester,
   observation,

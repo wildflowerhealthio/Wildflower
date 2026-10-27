@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import type { DiffSlot, FieldDiff, ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import { type FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
@@ -21,13 +21,14 @@ import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 import { defaultFormatSettings } from '@wildflowerhealthio/importer-core'
 import { PreviewPanel, type PreviewPanelProps, type SettingsRegistry } from './preview-panel.tsx'
 import {
+  LINKED_RECORDS_HEADING,
   NO_RESOURCES_MESSAGE,
   NOTHING_TO_IMPORT_HEADING,
   PREVIEW_HEADING,
   UNREADABLE_FILE_MESSAGE,
   UNRECOGNIZED_FILE_MESSAGE,
 } from './preview-text.ts'
-import { resolvedAsIs } from './resolved-batch.test-helpers.ts'
+import { LINKED_GROUP } from './use-server-diff.ts'
 
 /**
  * The preview panel renders every format's review under one confirm.
@@ -41,6 +42,29 @@ import { resolvedAsIs } from './resolved-batch.test-helpers.ts'
 afterEach(cleanup)
 
 describe('PreviewPanel', () => {
+  it('lists the linked records read-only with their diff, and counts them into the confirm', () => {
+    const batch: ResolvedBatch = {
+      ...makeBatch({ har: formatResult('empty.har', decoded([]), 'har') }),
+      linked: [labeledResource('linked:Patient/s-1', 'Patient/s-1')],
+      links: [],
+    }
+    const comparisons: PreviewPanelProps['comparisons'] = new Map([
+      [
+        LINKED_GROUP,
+        new Map([['linked:Patient/s-1', { status: 'changed', fields: [GENDER_DIFF], server: {} }]]),
+      ],
+    ])
+    render(<PreviewPanel {...panelProps(batch, { comparisons })} />)
+
+    const group = within(screen.getByRole('region', { name: LINKED_RECORDS_HEADING }))
+    expect(group.getByText('Patient')).toBeDefined()
+    expect(group.queryByRole('checkbox')).toBeNull()
+    expect(group.queryByRole('button', { name: /Edit/ })).toBeNull()
+    expect(group.getByRole('button', { name: /Differs from server/ })).toBeDefined()
+    expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Import 1 resource' })).toBeDefined()
+  })
+
   it('renders nothing-to-import when no format decoded any resource', () => {
     const batch = makeBatch({ har: formatResult('empty.har', decoded([]), 'har') })
     render(<PreviewPanel {...panelProps(batch)} />)
@@ -96,7 +120,7 @@ describe('PreviewPanel', () => {
   })
 
   it('sums a mixed batch with unreadable and unrecognized files', () => {
-    const batch = resolvedAsIs({
+    const batch: ResolvedBatch = {
       har: {
         id: 'har/a.har,broken.har,c.har',
         title: 'a.har, broken.har, c.har',
@@ -124,7 +148,9 @@ describe('PreviewPanel', () => {
           files: [pickedFile('notes.txt')],
         },
       ],
-    })
+      linked: [],
+      links: [],
+    }
     render(<PreviewPanel {...panelProps(batch)} />)
 
     expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
@@ -420,6 +446,13 @@ describe('PreviewPanel', () => {
 /** A present diff slot around `value`. */
 const valueSlot = (value: unknown): DiffSlot => ({ _tag: 'value', value })
 
+/** A gender the server has as male and the import as female. */
+const GENDER_DIFF: FieldDiff = {
+  path: ['gender'],
+  server: valueSlot('male'),
+  incoming: valueSlot('female'),
+}
+
 const patientWire = (wire: Record<string, unknown>): unknown =>
   Schema.encodeSync(Patient.Schema)(
     Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', ...wire })
@@ -451,18 +484,19 @@ const formatResult = <K extends FormatKind>(
   unreadableFiles: [],
 })
 
-/** Build a resolved batch from partial format results. */
+/** Build a ResolvedBatch from partial format results. */
 const makeBatch = (
   results: Partial<{ [K in FormatKind]: FormatDecode.Result<K> }>,
   unrecognizedFiles: readonly UnrecognizedFile[] = []
-): ResolvedBatch =>
-  resolvedAsIs({
-    har: FormatDecode.emptyResult('har'),
-    'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
-    dicom: FormatDecode.emptyResult('dicom'),
-    ...results,
-    unrecognizedFiles,
-  })
+): ResolvedBatch => ({
+  har: FormatDecode.emptyResult('har'),
+  'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
+  dicom: FormatDecode.emptyResult('dicom'),
+  ...results,
+  unrecognizedFiles,
+  linked: [],
+  links: [],
+})
 
 /** Verdicts for a format, keyed by format kind. */
 const comparisonsFor = (

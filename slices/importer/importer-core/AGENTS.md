@@ -37,8 +37,10 @@ write plan with this package alone.
   `PickedFile.NamedBytes`, groups them by format
   and decodes every group concurrently into a **`DecodedBatch`** — one
   `FormatDecode.Result<K>` per registered format (an `emptyResult` for a format
-  that claimed nothing) plus the **`UnrecognizedFile`**s, plain data for the
-  picks no `detect` claimed; **`claimedFormats`** names the formats that
+  that claimed nothing) and the **`UnrecognizedFile`**s, plain data for the
+  picks no `detect` claimed. A decoded batch holds no linked records and no
+  links; **`claimedFormats`** reads only the format slots (`FormatResults`),
+  so it takes a decoded or a resolved batch, and names the formats that
   actually took part, the one predicate the preview and the confirm both read;
   **`redecodeFormat`** re-runs one format's files from their retained picks
   under new settings (ids are deterministic, so no id-preservation logic is
@@ -60,27 +62,31 @@ write plan with this package alone.
   checked against nothing. Its slots are typed by **`FormatResults`**.
 - `src/resolve-mentions.ts` — a batch's mentions resolved (a resolved batch
   is one whose mentions are resolved), service-free Effects on the clock.
-  **`ResolvedBatch`** is a `DecodedBatch` branded (Effect's `Brand`) as one
-  every mention of which resolves: what the diff, the preview and the
-  confirm take, and only `resolveMentions` makes one.
-  **`discoverReferents(batch)`** is `Referent.discover` over every
-  claimed format's `decoded`: one referent per identity across formats,
+  **`ResolvedBatch`** is a decoded batch's slots plus the two a decoded batch
+  cannot hold: its **`linked`** records (the resources it only mentions,
+  the batch's own slot, no format's) and every referent's **`links`**. Only
+  `resolveMentions` makes one, and the diff, the preview and the confirm
+  take nothing else.
+  **`discoverReferents(batch)`** is `Referent.discover` over every claimed
+  format's `decoded`: one referent per identity across formats,
   format-then-review order, those with a resource first.
   **`resolveMentions(batch, linkChoices)`** resolves every mention in every
   claimed format's `decoded` on one plan over the batch's referents
   (`IdentityMap.apply`), so a mention in one format links to a referent
-  another holds, and appends the Linked section once, to the first claimed
-  format, so a stored person several formats mention is written once. Keys
-  and section titles are kept; the batch is reassembled through
-  `collectFormats`, so every other slot comes back as it was and an empty
-  batch comes back as itself. It fails as the stage does.
+  another holds, fills the `linked` slot with the resources it only
+  mentions, so a stored person several formats mention is written once, and
+  the `links` with the plan's, so the screen's hook reads each referent's
+  link target without planning again. Keys and section titles are kept; the
+  format slots are reassembled through `collectFormats`, so every other slot
+  comes back as it was, and a batch with no claimed format comes back as it
+  is with no linked records and no links. It fails as the stage does.
   **`resolveMentionsWithFallback(batch, defaults, chosen)`** is what the
   screen resolves: `resolveMentions` on the reviewer's choices over the
-  searched defaults, with each referent's link target (`LinkPlan.make`) and
-  the choices used. A choice that cannot be resolved (`InvalidLinkChoice`)
-  falls back: the reviewer's own choice to its searched default, a default
-  to its kind's default; a failure naming a referent with no choice dies.
-  Its one failure is `Referent.DuplicateReferent`.
+  searched defaults, its `ResolvedBatch` with the choices used. A choice that
+  cannot be resolved (`InvalidLinkChoice`) falls back: the reviewer's own
+  choice to its searched default, a default to its kind's default; a failure
+  naming a referent with no choice dies. Its one failure is
+  `Referent.DuplicateReferent`.
 - `src/plan-write.ts` — **`planFormatWrite(result, selection)`**, the pure half
   of the confirm: from one format's decode result it produces a `write` of
   exactly the reviewed resources (exclusions applied, inline edits
