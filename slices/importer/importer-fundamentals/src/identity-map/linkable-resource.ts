@@ -6,7 +6,11 @@
  */
 
 import { HumanName, IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import { Patient, Practitioner } from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  type FhirResourceWithId,
+  Patient,
+  Practitioner,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import { Array, DateTime, Effect, Match, Option, pipe } from 'effect'
 
 import * as LinkableLogicalReference from './linkable-logical-reference.ts'
@@ -22,14 +26,8 @@ type WithId =
 const matchResourceType = Match.discriminator('resourceType')
 
 /** Whether `resource` is one the identity map links. */
-const is = (resource: { readonly resourceType: string }): resource is Type =>
+const is = (resource: FhirResourceWithId): resource is WithId =>
   LinkableLogicalReference.isResourceType(resource.resourceType)
-
-const hasId = (resource: Type): resource is WithId => resource.id !== null
-
-/** `resource` itself, its `id` known to be set; `None` when it has none, so nothing can point at it. */
-const tryIntoWithId = (resource: Type): Option.Option<WithId> =>
-  Option.liftPredicate(resource, hasId)
 
 /** `resource`'s relative literal reference, `Type/<id>`: what a mention of it carries. */
 const literalReferenceOf = (resource: WithId): string => `${resource.resourceType}/${resource.id}`
@@ -156,7 +154,6 @@ export {
   maybeDerivedIdentifier,
   maybeDisplayName,
   tryIntoLogicalReference,
-  tryIntoWithId,
   tryProvisionalFrom,
 }
 export type { Type, WithId }

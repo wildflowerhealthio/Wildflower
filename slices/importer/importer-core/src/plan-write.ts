@@ -154,7 +154,7 @@ const planBatchWrite = (
     formats.flatMap(({ plan }) => (plan._tag === 'write' ? plan.resources : []))
   )
   const linked = batch.linked.filter(({ key, resource }) => {
-    if (unchangedLinked.has(key) || resource.id === null) return false
+    if (unchangedLinked.has(key)) return false
     const literalReference = `${resource.resourceType}/${resource.id}`
     return stored.has(literalReference) || referenced.has(literalReference)
   })

@@ -45,7 +45,7 @@ const sectionsByUrl = (previews: readonly FhirPreview[]): readonly DecodedFile.S
     const url = entry.ref.url
     const labeled = entry.outcome.resources.map((resource): DecodedFile.Resource => ({
       key: resource.key,
-      title: `${resource.resource.resourceType}/${resource.resource.id ?? '?'}`,
+      title: `${resource.resource.resourceType}/${resource.resource.id}`,
       resource: resource.resource,
     }))
     const existing = byUrl.get(url)

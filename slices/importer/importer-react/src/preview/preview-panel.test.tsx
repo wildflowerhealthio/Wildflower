@@ -669,15 +669,11 @@ const withLinked = (
 const withLinkedPatient = (batch: ResolvedBatch): ResolvedBatch =>
   withLinked(
     batch,
-    Option.getOrThrow(
-      LinkableResource.tryIntoWithId(
-        Schema.decodeUnknownSync(Patient.Schema)({
-          resourceType: 'Patient',
-          id: 's-1',
-          identifier: [{ system: 'https://source.example/patient-id', value: 'mrn-1' }],
-        })
-      )
-    ),
+    Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
+      resourceType: 'Patient',
+      id: 's-1',
+      identifier: [{ system: 'https://source.example/patient-id', value: 'mrn-1' }],
+    }),
     (resource) => LinkTarget.Stored({ resource })
   )
 
@@ -685,15 +681,11 @@ const withLinkedPatient = (batch: ResolvedBatch): ResolvedBatch =>
 const withLinkedPractitioner = (batch: ResolvedBatch): ResolvedBatch =>
   withLinked(
     batch,
-    Option.getOrThrow(
-      LinkableResource.tryIntoWithId(
-        Schema.decodeUnknownSync(Practitioner.Schema)({
-          resourceType: 'Practitioner',
-          id: 'pr-1',
-          identifier: [{ system: 'https://source.example/practitioner-name', value: 'Dr. One' }],
-        })
-      )
-    ),
+    Schema.decodeUnknownSync(withMandatoryId(Practitioner.Schema))({
+      resourceType: 'Practitioner',
+      id: 'pr-1',
+      identifier: [{ system: 'https://source.example/practitioner-name', value: 'Dr. One' }],
+    }),
     (resource) => LinkTarget.Provisional({ resource })
   )
 

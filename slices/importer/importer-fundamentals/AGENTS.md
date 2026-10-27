@@ -132,8 +132,8 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     `type|system|value`, `equivalence`, `tryFromIdentifier`,
     `tryFromReference`. Nothing about linking.
   - **`LinkableResource`** — a `Patient` or `Practitioner`, the types a
-    referent can have a resource for: `tryIntoWithId`,
-    `tryIntoLogicalReference` (its `identifier[0]`), `maybeDisplayName`
+    referent can have a resource for: `is` (a decoded resource as one, its
+    `id` already set), `tryIntoLogicalReference` (its `identifier[0]`), `maybeDisplayName`
     (`HumanName.displayName`'s pick among its names, judged at the clock's
     `DateTime.now`, so an Effect), `maybeDerivedIdentifier` (an exhaustive
     match: `Patient.nameBirthDateIdentifier`, `Practitioner.nameIdentifier` of

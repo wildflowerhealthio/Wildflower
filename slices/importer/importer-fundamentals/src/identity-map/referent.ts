@@ -128,9 +128,8 @@ const identifiersOf = (referent: Type): readonly IdentifierAndReference.Identifi
 
 /**
  * The referent a decoded resource is: `None` for a resource of another type,
- * and for a Patient or Practitioner with no `id` or an unqualified
- * `identifier[0]`, which nothing can point at or be linked to, so the stage
- * writes it as it is.
+ * and for a Patient or Practitioner with an unqualified `identifier[0]`, which
+ * nothing can be linked to, so the stage writes it as it is.
  */
 const tryFromDecodedResource = (
   entry: DecodedFile.Resource
@@ -138,10 +137,10 @@ const tryFromDecodedResource = (
   pipe(
     Option.liftPredicate(entry.resource, LinkableResource.is),
     Option.flatMap((resource) =>
-      Option.all({
-        resource: LinkableResource.tryIntoWithId(resource),
-        logicalReference: LinkableResource.tryIntoLogicalReference(resource),
-      })
+      Option.map(LinkableResource.tryIntoLogicalReference(resource), (logicalReference) => ({
+        resource,
+        logicalReference,
+      }))
     ),
     Effect.transposeMapOption(({ resource, logicalReference }) =>
       Effect.all({

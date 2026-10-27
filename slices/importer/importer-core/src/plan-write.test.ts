@@ -268,10 +268,6 @@ interface LinkedRecord {
   readonly link: Link.Type
 }
 
-/** `linkable`, its `id` known to be set; throws when it has none. */
-const withId = (linkable: LinkableResource.Type): LinkableResource.WithId =>
-  Option.getOrThrow(LinkableResource.tryIntoWithId(linkable))
-
 /** `linkedResource` as a linked record titled `title`, the link landing on it made by `target`. */
 const linkedRecordOf = (
   linkedResource: LinkableResource.WithId,
@@ -299,28 +295,22 @@ const linkedRecordOf = (
 
 /** A new linked record: the Practitioner made from a printed name, provisional. */
 const PROVISIONAL = linkedRecordOf(
-  withId(
-    Schema.decodeUnknownSync(Practitioner.Schema)({
-      resourceType: 'Practitioner',
-      id: 'provisional-1',
-      identifier: [
-        { system: 'https://source.example/practitioner-name', value: 'Dr. Provisional' },
-      ],
-    })
-  ),
+  Schema.decodeUnknownSync(withMandatoryId(Practitioner.Schema))({
+    resourceType: 'Practitioner',
+    id: 'provisional-1',
+    identifier: [{ system: 'https://source.example/practitioner-name', value: 'Dr. Provisional' }],
+  }),
   'Dr. Provisional',
   (provisional) => LinkTarget.Provisional({ resource: provisional })
 )
 
 /** A stored copy: the stored Patient a mention is linked to, the batch's identifiers assumed. */
 const STORED = linkedRecordOf(
-  withId(
-    Schema.decodeUnknownSync(Patient.Schema)({
-      resourceType: 'Patient',
-      id: 's-1',
-      identifier: [{ system: 'https://source.example/patient-id', value: 'mrn-1' }],
-    })
-  ),
+  Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
+    resourceType: 'Patient',
+    id: 's-1',
+    identifier: [{ system: 'https://source.example/patient-id', value: 'mrn-1' }],
+  }),
   'Stored Patient',
   (stored) => LinkTarget.Stored({ resource: stored })
 )

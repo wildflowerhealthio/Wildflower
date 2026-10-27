@@ -18,10 +18,8 @@ import type { PreviewedResource, PreviewedResponse } from './review.ts'
  * The source is part of it so one source's merge never sees another's
  * resource.
  */
-const identityOf = (sourceName: string, resource: FhirResourceWithId): Option.Option<string> =>
-  resource.id === null
-    ? Option.none()
-    : Option.some(`${sourceName} ${resource.resourceType}/${resource.id}`)
+const identityOf = (sourceName: string, resource: FhirResourceWithId): string =>
+  `${sourceName} ${resource.resourceType}/${resource.id}`
 
 /** A source that gives a `mergeResources`. */
 type MergingSource = SourceDescriptor.SourceDescriptor<FhirResourceWithId> &
@@ -72,10 +70,9 @@ const mergeSharedResources = <K>(
     const { name, mergeResources } = source.value
     for (const { key, resource } of preview.outcome.resources) {
       const identity = identityOf(name, resource)
-      if (Option.isNone(identity)) continue
-      const earlier = mergedByIdentity.get(identity.value)
+      const earlier = mergedByIdentity.get(identity)
       mergedByIdentity.set(
-        identity.value,
+        identity,
         earlier === undefined
           ? { firstKey: key, resource }
           : { firstKey: earlier.firstKey, resource: mergeResources(earlier.resource, resource) }
@@ -88,17 +85,11 @@ const mergeSharedResources = <K>(
     (sourceName: string) =>
     (
       previewed: PreviewedResource<FhirResourceWithId>
-    ): readonly PreviewedResource<FhirResourceWithId>[] =>
-      Option.match(identityOf(sourceName, previewed.resource), {
-        onNone: () => [previewed],
-        onSome: (identity) => {
-          const merged = mergedByIdentity.get(identity)
-          if (merged === undefined) return [previewed]
-          return merged.firstKey === previewed.key
-            ? [{ ...previewed, resource: merged.resource }]
-            : []
-        },
-      })
+    ): readonly PreviewedResource<FhirResourceWithId>[] => {
+      const merged = mergedByIdentity.get(identityOf(sourceName, previewed.resource))
+      if (merged === undefined) return [previewed]
+      return merged.firstKey === previewed.key ? [{ ...previewed, resource: merged.resource }] : []
+    }
 
   return previews.map((preview) => {
     if (preview.outcome._tag !== 'resources') return preview

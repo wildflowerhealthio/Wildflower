@@ -54,8 +54,7 @@ const resolvedEntry = (
   const decodedResource = decodedEntry.resource
   const maybeResolvedResource = pipe(
     Option.liftPredicate(decodedResource, LinkableResource.is),
-    Option.flatMap(LinkableResource.tryIntoWithId),
-    Option.flatMap((withId) => LinkPlan.maybeResolvedResourceFor(plan, withId))
+    Option.flatMap((linkable) => LinkPlan.maybeResolvedResourceFor(plan, linkable))
   )
   const resource = redirectMentions(
     plan,

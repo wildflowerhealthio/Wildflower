@@ -133,10 +133,7 @@ const referenceTo = (
   Arr.findFirst(
     DecodedFile.resources(decoded),
     (entry) => entry.resource.resourceType === resourceType
-  ).pipe(
-    Option.flatMap((entry) => Option.fromNullable(entry.resource.id)),
-    Option.map((id) => `${resourceType}/${id}`)
-  )
+  ).pipe(Option.map((entry) => `${resourceType}/${entry.resource.id}`))
 
 /** A `Reference` naming one resource, built through the resource schema's own value. */
 const referenceValue = (reference: string): typeof IdentifierAndReference.ReferenceSchema.Type => ({
@@ -228,7 +225,7 @@ const decodeStudy = (
       Effect.map(headerOf(member), (header) => ({
         fileName: member.fileName,
         header,
-        sourceFileId: member.sourceFile.id ?? undefined,
+        sourceFileId: member.sourceFile.id,
       }))
     )
     const ordered = orderedInstances(files)

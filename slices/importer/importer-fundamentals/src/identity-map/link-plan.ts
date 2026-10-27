@@ -56,7 +56,7 @@ interface Type {
   readonly decodedLiteralReferencesToStored: HashMap.HashMap<string, string>
 }
 
-/** The literal references the decoded resources of `decodedFiles` the identity map links carry, those with an `id`. */
+/** The literal references the decoded resources of `decodedFiles` the identity map links carry. */
 const literalReferencesFromDecodedFiles = (
   decodedFiles: readonly DecodedFile.DecodedFile[]
 ): HashSet.HashSet<string> =>
@@ -64,7 +64,6 @@ const literalReferencesFromDecodedFiles = (
     decodedFiles.flatMap(DecodedFile.resources),
     Array.filterMap(({ resource }) =>
       Option.liftPredicate(resource, LinkableResource.is).pipe(
-        Option.flatMap(LinkableResource.tryIntoWithId),
         Option.map(LinkableResource.literalReferenceOf)
       )
     ),
