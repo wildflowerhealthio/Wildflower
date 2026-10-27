@@ -41,10 +41,10 @@ import panelStyles from './preview-panel.module.css'
  * are shown with their server diff and no toggle: which are written is
  * `importer-core`'s `planBatchWrite`, which the confirm reads too — a stored
  * copy whenever the server does not hold it unchanged, a new record only
- * when a resource the batch writes names it. A settings change calls `onSettingsChange`; the shell re-decodes
- * that format. The confirm appears only when that plan writes at least one
- * resource, and it does not write — it calls `onConfirm`; the confirm step
- * writes exactly the reviewed objects.
+ * when a resource the batch writes names it. A settings change calls
+ * `onSettingsChange`; the shell re-decodes that format. The confirm appears
+ * only when that plan writes at least one resource, and it does not write —
+ * it calls `onConfirm`; the confirm step writes exactly the reviewed objects.
  *
  * @packageDocumentation
  */

@@ -1,5 +1,5 @@
 import { fnv1a64 } from '@wildflowerhealthio/kitchen-sink'
-import { Match, Schema } from 'effect'
+import { Either, Match, Schema } from 'effect'
 
 import {
   emptyReference,
@@ -551,6 +551,8 @@ const adoptProcedure = (
   }
 }
 
+const encodeResource = Schema.encodeEither(FhirResourceSchema)
+
 /**
  * The id a resource that arrived with none stands under for adoption: a digest
  * of its content, sixteen hex digits of FNV-1a 64 over its FHIR JSON.
@@ -558,13 +560,16 @@ const adoptProcedure = (
  * @remarks
  * The JSON is the resource encoded through {@link FhirResourceSchema}, which
  * writes its fields in schema order whatever order the source sent them in, so
- * the same content always digests the same. The digest stands where the
+ * the same content always digests the same; a resource that does not encode
+ * (a kind's decode let through what the schema's encode refuses) digests as
+ * its decoded value, its fields in the same order, rather than failing the
+ * adoption. The digest stands where the
  * source's own id would — the hash input to {@link localResourceId} and the
  * value of the source identifier adoption prepends — so the resource is
  * adopted like any other.
  */
 const contentIdOf = (resource: FhirResource): string =>
-  fnv1a64(JSON.stringify(Schema.encodeSync(FhirResourceSchema)(resource)))
+  fnv1a64(JSON.stringify(Either.getOrElse(encodeResource(resource), (): unknown => resource)))
     .toString(16)
     .padStart(16, '0')
 
