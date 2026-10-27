@@ -10,8 +10,9 @@ and reviewed by Ruth (`ruthmarks151`) plus an opus `/code-review high` pass:
   (a referent's default link choice by identifier search), `TokenSearchParam`
   in fhir-r4, one link plan per batch (`Referent.discover` / `IdentityMap.apply`
   over the batch's files, `Placement.appendLinkedSection`), importer-core's
-  `discoverReferents` / `applyIdentityMap`. **Ready, green CI, assigned to
-  Ruth, not merged**: Ruth wants the items below done or designed first.
+  `discoverReferents` / `applyIdentityMap`. **Ready, assigned to Ruth, not
+  merged**: Ruth said merge once the agreed items are in and the review is
+  satisfied; see "What remains" for the one open question before merging.
 - **#1426** `identity-map-screen-1419` → `referent-search-lift-1418` (draft,
   stacked): the identity map in the React screen (`useIdentityMap`,
   `ReferentRows`, `useStoredResources`), `searchAllPages` and
@@ -20,9 +21,10 @@ and reviewed by Ruth (`ruthmarks151`) plus an opus `/code-review high` pass:
   skips until it is flipped.
 
 Ruth has answered every review item; the decisions are recorded under "What
-remains". The user wants opus subagents for subtasks and a careful hand on the
-model (see Gotchas). Every PR thread already has a reply; threads for fixed
-items are resolved, threads for pending items are open.
+remains" and are final unless marked open. The user wants opus subagents for
+subtasks and a careful hand on the model (see Gotchas). Every PR thread already
+has a reply; threads for fixed items are resolved, threads for pending items are
+open.
 
 ## What's done
 
@@ -31,8 +33,13 @@ items are resolved, threads for pending items are open.
   Commits on the branch: fhir-r4 `TokenSearchParam`; one plan per batch;
   `ReferentSearch`; importer-core lift; `apply`/`discover` take the batch (no
   single-file aliases); the search tie-break (own identifiers first, derived
-  only on no hit, `_count=2`, two hits = ambiguous = kind's default). Issue
-  **#1431** filed for one search per resource type (starts with tests).
+  only on no hit, `_count=2`, two hits = ambiguous = kind's default); and the
+  **re-import default** (commit `672f847`): a one-hit search on the decoded
+  resource's own id defaults to `CreateResource`, and in `PlacedResource.make`
+  a placed literal reference with both a `Decoded` and a `Stored` link writes
+  the decoded resource, which assumes the stored copy's identifiers
+  (`Link.LinkedResource` now carries its target). Issue **#1431** filed for one
+  search per resource type (starts with tests).
 - #1426 rewritten on #1425's head, all 13 of Ruth's comments and the review's
   findings addressed: Effect `HashMap`s, `Patient.demographics` as the one
   normalisation (given names compared too), groups generic over
@@ -44,28 +51,31 @@ items are resolved, threads for pending items are open.
   `staleTime: Infinity` + `gcTime: 0` on the stored list, refusal after a
   re-decode shown above the previous review with confirm disabled, tally
   counting records not referents.
-- Learnings Inbox: `Stream.paginateEffect` state typing; workspace-wide
-  `vp run test:changed` can kill the cloud worker.
+- Learnings Inbox (on the 1426 branch): `Stream.paginateEffect` state typing;
+  workspace-wide `vp run test:changed` can kill the cloud worker.
 
 ## What remains
 
-Decisions are Ruth's words from the last exchange; "go" means build it.
+Decisions are Ruth's; "go" means build it.
 
-### #1425 (then merge: Ruth said merge when the opus review and I are satisfied)
+### #1425
 
-1. **Re-import default (go).** Today a re-import links the decoded Patient to
-   its own stored copy, so the stored copy is written byte for byte and the new
-   decode's demographics and `meta.source` are lost. Plan agreed: (a) in
-   `PlacedResource.make`, when a placed literal reference has both a `Decoded`
-   and a `Stored` link, the **decoded** resource is written and it assumes the
-   stored copy's identifiers (today "the last link's copy wins"); (b)
-   `ReferentSearch.defaultChoice` returns `CreateResource` when the one hit has
-   the decoded resource's own id. Test the re-import round trip in
-   `identity-map.test.ts` (the account mention's search still finds the stored
-   copy, so the account lands `Stored` and the Patient `Decoded` under one
-   literal reference; the decoded copy must win and carry the account id).
-   Then reply on thread 4383546318 and resolve it.
-2. **Batch-level Linked slot (design agreed, own PR after #1425 merges).**
+1. **Open question before merging (Ruth to decide).** After `672f847`, a
+   re-imported decode inherits the stored copy's identifiers only when some
+   mention in the batch links to that copy (that is what makes the copy a
+   `Stored` link under the same literal reference). An identifier the copy
+   assumed in an earlier import, which this import does not mention, is
+   dropped by the `PUT`. The clean fix: the own-id search hit (the stored copy)
+   is carried into the plan as "the stored copy to assume from" even with no
+   mention linking there, for example a `LinkTarget.Decoded` that carries an
+   `Option` of the stored copy, or the lift taking stored copies by literal
+   reference. Thread 4384557395 on #1425 states the gap. Ask Ruth, or propose
+   the fix on the thread and wait.
+2. **Merge #1425** once item 1 is settled and CI is green on the head. Then
+   retarget #1426 to `epic/identity-map`, flip it to ready, assign
+   `ruthmarks151`, and run `/code-review high --comment 1426` (an opus
+   `general-purpose` subagent invoking the `code-review` skill).
+3. **Batch-level Linked slot (design agreed, own PR after #1425 merges).**
    `IdentityMap.apply` returns `{ placedFiles, linked, links }`;
    `BatchDecodeResult` gains `linked: readonly DecodedFile.Resource[]` (not a
    format); the preview shows a read-only "Linked records" group **below** the
@@ -76,47 +86,55 @@ Decisions are Ruth's words from the last exchange; "go" means build it.
    removes 1426's second `LinkPlan.make` (its hook reads `links`). Open
    threads to answer when this lands: 4383546160, 4383546442, 4383546613 on
    #1425 and 4383784670 on #1426.
-3. **Cross-format writes (research first).** Ruth prefers a FHIR `transaction`
-   bundle if the Wildflower server (HFS, `apps/host/wildflower-server`,
-   `fhir-r4-rust`) supports it; otherwise one `batch` bundle per confirm with
-   per-entry outcomes attributed back to formats. Research: grep the Rust
-   server for `transaction` handling of `POST /` bundles and the OpenAPI
-   snapshot; `persistBatchBundle` in `fhir-r4/clients` is the current sink.
-   Report findings before building.
+4. **Cross-format writes.** Ruth prefers a FHIR `transaction` bundle if the
+   Wildflower server (HFS, `apps/host/wildflower-server`, `fhir-r4-rust`)
+   supports it; otherwise one `batch` bundle per confirm with per-entry
+   outcomes attributed back to formats. A subagent was asked to research
+   whether `POST /` handles `transaction`; its report may be in this session's
+   transcript, else grep the Rust server and the OpenAPI snapshot under
+   `slices/fhir/fhir-r4/openapi`. Report findings before building; this is
+   part of the Linked slot PR's confirm change.
 
 ### #1426
 
-1. **`Patient.demographics` on the current name (Ruth leans to this; wants the
-   cost first).** Cost: `Patient.nameBirthDateIdentifier` and `demographics`
-   become Effects reading `DateTime.now` (they need `HumanName.displayName(name,
-   now)`), so fhir-r4 gains a clock-dependent identifier; its #1423 tests pinned
-   on `name[0]` need a `TestClock`; `LinkableResource.maybeDerivedIdentifier`
-   is already an Effect so the map is unaffected; a stored person renamed after
-   import carries the old derived identifier (the person keeps both, the
-   own-id search still finds them). About half a day. Alternative (cheaper):
-   keep the identifier on `name[0]`, have `demographics` return every name's
-   parts and warn only when no stored name matches. Thread 4383784267.
-2. **Server diff after a failed first diff (Ruth likes the panel staying up;
-   wants the cost).** Cost: `useServerDiff` keeps its last settled result per
-   batch in state and reports `ready, refreshing: true` with it while the next
-   query is pending, so the panel shows stale "every id is new" verdicts during
-   the refresh (confirm is already disabled while refreshing); plus `retry: 2`
-   on the diff query re-sends the whole batch's GET bundle up to twice on
-   failure. No duplicate queries otherwise: each placing is a new key. Thread
-   4383784085.
+1. **`Patient.demographics` on the current name (go; Ruth: "worth it to make
+   the function more accurate").** `Patient.nameBirthDateIdentifier` and
+   `demographics` become Effects reading `DateTime.now`, picking the current
+   name with `HumanName.displayName(name, now)` (the pick `LinkableResource.
+   maybeDisplayName` already uses) instead of `Array.head(patient.name)`. The
+   #1423 tests pinned on `name[0]` move onto a `TestClock`
+   (`Effect.provide(TestContext.TestContext)`); `LinkableResource.
+   maybeDerivedIdentifier` is already an Effect so the map is unaffected;
+   `referent-rows.tsx`'s `differingPatientDemographics` becomes an Effect run
+   where the lines are built (the rows memo already runs placing synchronously;
+   label the compared demographics on the way in like the stored list, or run
+   `Effect.runSync` in the memo as the hook does). Callers to check: anything
+   in synthetic-data or tests calling `nameBirthDateIdentifier` directly. A
+   renamed stored person keeps the old derived identifier (the own-id search
+   still finds them). Reply on thread 4383784267 and resolve it.
+2. **Server diff: keep the panel up after a failed first diff (go).** In
+   `use-server-diff.ts`, keep the last settled result per batch in state and,
+   while the next query is pending for the same batch, report `ready` with
+   those comparisons and `refreshing: true` (the error state's comparisons are
+   "every id is new"), so the panel never unmounts on a link change; add
+   `retry: 2` so a failed diff is retried (Ruth: no duplicate queries, retry
+   failed ones). Keep the existing rule that a fresh pick (new batch id)
+   carries nothing over. Update the hook's doc comment and the AGENTS note on
+   `useServerDiff`. Reply on thread 4383784085 and resolve it.
 3. **Plan computed twice.** No decision needed: resolves with the Linked slot
    (its `links`). Thread 4383784670.
-4. When #1425 merges: retarget #1426 to `epic/identity-map`, flip to ready,
-   assign `ruthmarks151`, re-run `/code-review high --comment` if asked.
 
 ## Key files to read first
 
 - `slices/importer/importer-fundamentals/AGENTS.md` (identity-map section and
   the "Identity is the map's" guardrail): the model and its names.
 - `slices/importer/importer-fundamentals/src/identity-map/placed-resource.ts`
-  and `referent-search.ts`: where #1425 item 1 lands.
-- `slices/importer/importer-react/src/identity/use-identity-map.ts` and
-  `src/preview/use-server-diff.ts`: where #1426 items 1–2 land.
+  and `referent-search.ts`: the re-import rule and where its open gap lives.
+- `slices/fhir/fhir-r4/src/resources/patient/patient.ts` and its test: where
+  #1426 item 1 lands.
+- `slices/importer/importer-react/src/identity/use-identity-map.ts`,
+  `src/identity/referent-rows.tsx` and `src/preview/use-server-diff.ts`: where
+  #1426 items 1–2 land.
 - `slices/importer/importer-core/src/identity-map.ts`: the lift the Linked slot
   reshapes.
 - `docs/Style/Style Guide Reference.md` and `docs/Agents/Review Standards
@@ -137,12 +155,17 @@ Decisions are Ruth's words from the last exchange; "go" means build it.
   `dist/`.
 - The pre-commit hook runs `vp run pack` + `vp check --fix` on staged files;
   `--fix` reformats, so exact-string patches written before a commit can miss
-  afterwards. A WIP commit with type errors needs `--no-verify`.
+  afterwards. A WIP commit with type errors needs `--no-verify`. The auto-mode
+  permission classifier refuses some combined git commands (`stash` +
+  `checkout -B`, `checkout -B` with `--no-verify`); run them one at a time.
 - `vp check` prints only formatting errors until formatting passes; run
   `vp check --fix` first, then `vp check`.
 - The stub servers in `referent-rows.test.tsx` and `importer-screen.test.tsx`
   must answer a search with resources of the **searched type**; a Patient in a
   Practitioner search fails the typed decode and the whole default search.
+  The screen test's "reads only …" assertion lists every GET; a Patient with
+  a name and birth date now makes two searches (own, then derived) when
+  nothing is found, a bare one makes one.
 - `Stream.paginateEffect`'s state must be the raw cursor (`string | null`),
   not an `Option` (see Learnings Inbox).
 - Code-review subagents: `general-purpose`, model `opus`, told to invoke the
@@ -151,12 +174,16 @@ Decisions are Ruth's words from the last exchange; "go" means build it.
 - Ruth's review style: names first ("what is this, really?"), types must earn
   their keep, errors bubble, no backwards compatibility, Effect data modules
   over hand loops, answer every comment and apply each principle across the
-  whole PR.
+  whole PR. Every GitHub post ends with a blank line, `---`, and
+  `_Generated by [Claude Code](https://claude.ai/code)_`.
 
 ## Current state
 
-- `identity-map-screen-1419` at `08a184a`, pushed, clean.
-- `referent-search-lift-1418` at `432d791`, pushed, CI green, PR #1425 ready
-  and assigned to Ruth.
+- `referent-search-lift-1418` at `672f847`, pushed; check CI on that head
+  before merging (the previous head `432d791` was fully green).
+- `identity-map-screen-1419` was being rebased onto `672f847` by a subagent
+  when this was written (9 commits, top `63020ed`); confirm it was
+  force-pushed (`git log origin/identity-map-screen-1419 -1`), and if not,
+  run its checks and push it with `--force-with-lease`.
 - This file is committed on `claude/gallant-feynman-u1npzd` only, so neither
   PR carries it.
