@@ -70,6 +70,27 @@ const literalReferencesFromDecodedFiles = (
   )
 
 /**
+ * The literal references of `decodedLiteralReferences` the batch writes where
+ * they were decoded: those `decodedLiteralReferencesToStored` does not move
+ * to another stored resource. A decoded resource a stored one under another
+ * id replaces is not written under its own literal reference, so a stored
+ * copy under that reference, which a mention may link to, is not written by
+ * any placed file.
+ */
+const writtenAsDecoded = (
+  decodedLiteralReferences: HashSet.HashSet<string>,
+  decodedLiteralReferencesToStored: HashMap.HashMap<string, string>
+): HashSet.HashSet<string> =>
+  HashSet.filter(decodedLiteralReferences, (decodedLiteralReference) =>
+    HashMap.get(decodedLiteralReferencesToStored, decodedLiteralReference).pipe(
+      Option.match({
+        onNone: () => true,
+        onSome: (storedLiteralReference) => storedLiteralReference === decodedLiteralReference,
+      })
+    )
+  )
+
+/**
  * `Type/<decoded id>` → `Type/<stored id>` for every referent of `links` whose
  * decoded resource a stored resource stands in for.
  */
@@ -126,15 +147,19 @@ const make = (
   Effect.gen(function* () {
     const referents = yield* Referent.discover(decodedFiles)
     const links = yield* Resolution.linksOf(linkChoices, referents)
+    const decodedLiteralReferencesToStored = decodedLiteralReferencesToStoredOf(links)
     const placedResourcesByPlacedLiteralReference = yield* PlacedResource.byPlacedLiteralReference(
       links,
-      literalReferencesFromDecodedFiles(decodedFiles)
+      writtenAsDecoded(
+        literalReferencesFromDecodedFiles(decodedFiles),
+        decodedLiteralReferencesToStored
+      )
     )
     return {
       links,
       linkTargetsByLogicalReferenceKey: linkTargetsByLogicalReferenceKeyOf(links),
       placedResourcesByPlacedLiteralReference,
-      decodedLiteralReferencesToStored: decodedLiteralReferencesToStoredOf(links),
+      decodedLiteralReferencesToStored,
     }
   })
 

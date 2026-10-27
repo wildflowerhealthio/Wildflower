@@ -16,10 +16,16 @@ interface Stored {
   readonly resource: LinkableResource.WithId
 }
 
-/** A resource the file brought: a referent's decoded resource, written where it was decoded. */
+/**
+ * A resource the file brought: a referent's decoded resource, written where it
+ * was decoded; over its `storedCopy`, the stored resource under the same
+ * literal reference, when the choice named one (a re-import's
+ * `LinkChoice.UpdateStoredResource`).
+ */
 interface Decoded {
   readonly _tag: 'Decoded'
   readonly resource: LinkableResource.WithId
+  readonly storedCopy: Option.Option<LinkableResource.WithId>
 }
 
 /**

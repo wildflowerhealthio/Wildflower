@@ -1,7 +1,7 @@
 import { HttpClient, HttpClientRequest, HttpClientResponse, UrlParams } from '@effect/platform'
 import { FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/clients'
-import { Practitioner, type FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
-import { Effect, Exit, HashMap, Layer, Option, TestContext } from 'effect'
+import { Patient, Practitioner, type FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import { Effect, Exit, HashMap, Layer, Option, Schema, TestContext } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
@@ -34,16 +34,16 @@ const TYRA_DERIVED = `${NAME_BIRTH_DATE}|banks;tyra;1990-01-02`
 const STORED_1 = { resourceType: 'Patient', id: 's-1' }
 const STORED_2 = { resourceType: 'Patient', id: 's-2' }
 
-/** A searchset Bundle carrying `resources`, as the server answers a search. */
+/** A searchset Bundle of `entries`, as the server answers a search. */
+const searchsetOf = (entries: readonly object[]): Response =>
+  new Response(JSON.stringify({ resourceType: 'Bundle', type: 'searchset', entry: entries }), {
+    status: 200,
+    headers: { 'content-type': 'application/fhir+json' },
+  })
+
+/** A searchset Bundle carrying `resources`, one match each. */
 const searchset = (resources: readonly object[]): Response =>
-  new Response(
-    JSON.stringify({
-      resourceType: 'Bundle',
-      type: 'searchset',
-      entry: resources.map((resource) => ({ resource })),
-    }),
-    { status: 200, headers: { 'content-type': 'application/fhir+json' } }
-  )
+  searchsetOf(resources.map((resource) => ({ resource })))
 
 /** A stub server: the client layer over it, and the URLs it has been asked for. */
 interface StubServer {
@@ -188,6 +188,57 @@ describe('ReferentSearch.defaultChoice', () => {
     expect(
       describeChoice((await search(TYRA, serverFinding({ [TYRA_DERIVED]: [storedCopy] }))).choice)
     ).toBe('UpdateStoredResource Patient/p-1')
+  })
+
+  it('should update the stored copy even when another record answers the same search', async () => {
+    const storedCopy = { resourceType: 'Patient', id: 'p-1' }
+
+    expect(
+      describeChoice(
+        (await search(TYRA, serverFinding({ [TYRA_OWN]: [STORED_1, storedCopy] }))).choice
+      )
+    ).toBe('UpdateStoredResource Patient/p-1')
+  })
+
+  it('should search a derived identifier the decode already carries only as the derived one', async () => {
+    const placedBefore = onlyReferent(
+      Schema.decodeUnknownSync(Patient.Schema)({
+        resourceType: 'Patient',
+        id: 'p-1',
+        identifier: [
+          { system: SOURCE_PATIENT, value: 'p-1' },
+          { system: NAME_BIRTH_DATE, value: 'banks;tyra;1990-01-02' },
+        ],
+        name: [{ family: 'Banks', given: ['Tyra'] }],
+        birthDate: '1990-01-02',
+      })
+    )
+
+    const { urls } = await search(placedBefore)
+
+    expect(searchesOf(urls)).toEqual([`/Patient ${TYRA_OWN}`, `/Patient ${TYRA_DERIVED}`])
+  })
+
+  it('should count a match that carries no resource as a failure, and an outcome entry as nothing', async () => {
+    const outcomeOnly = stubServer(() =>
+      searchsetOf([{ resource: STORED_1 }, { search: { mode: 'outcome' } }])
+    )
+    const matchWithoutResource = stubServer(() =>
+      searchsetOf([{ resource: STORED_1 }, { search: { mode: 'match' } }])
+    )
+
+    expect(describeChoice((await search(TYRA, outcomeOnly)).choice)).toBe(
+      'LinkToStoredResource Patient/s-1'
+    )
+    const exit = await Effect.runPromiseExit(
+      ReferentSearch.defaultChoice(TYRA).pipe(
+        Effect.provide(Layer.merge(matchWithoutResource.layer, TestContext.TestContext))
+      )
+    )
+    expect(exit).toMatchObject({
+      _tag: 'Failure',
+      cause: { _tag: 'Fail', error: { _tag: 'MatchWithoutResource', resourceType: 'Patient' } },
+    })
   })
 
   it('should link a practitioner to a stored practitioner', async () => {

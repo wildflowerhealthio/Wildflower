@@ -32,9 +32,9 @@ interface Type {
   readonly identifiersToAssume: readonly IdentifierAndReference.IdentifierType[]
   /**
    * Whether a placed file of the batch holds the resource where a decoded
-   * resource was: one decoded under its literal reference, or one a decoded
-   * resource is replaced by. When none does, the resource is appended to the
-   * batch once so the review and the diff show what it gained.
+   * resource was: one decoded under its literal reference and written there,
+   * or one a decoded resource is replaced by. When none does, the resource is
+   * appended to the batch once so the review and the diff show what it gained.
    */
   readonly resourceExistsInBatch: boolean
   /**
@@ -66,24 +66,32 @@ const writtenCopyOf = (
     ({ target }) => target.resource
   )
 
+/** The stored copies the links of `linkedResources` update: each `Decoded` target's, when it has one. */
+const storedCopiesUpdatedBy = (
+  linkedResources: readonly Link.LinkedResource[]
+): readonly LinkableResource.WithId[] =>
+  Array.filterMap(linkedResources, ({ target }) =>
+    LinkTarget.is('Decoded')(target) ? target.storedCopy : Option.none()
+  )
+
 /**
  * The placed resource under `placedLiteralReference`, from the links that
- * landed on it, given the literal references the batch's decoded resources
- * carry.
+ * landed on it, given the literal references of the decoded resources the
+ * batch writes where they were decoded.
  *
  * @remarks
  * The copy written ({@link writtenCopyOf}) assumes, once, its own derived
  * identifier (so a name-and-birth-date match finds it next time), then the
- * identifiers of every other copy linked under the literal reference (a
- * stored copy a mention links to, so what it assumed before is kept), then
- * those of every referent linked to it. A re-import's decode already carries
- * its stored copy's identifiers: `UpdateStoredResource` resolves to it having
- * assumed them.
+ * identifiers of every other copy of the resource the links carry: a stored
+ * copy a mention links to, and the stored copy a re-import's decode updates
+ * (`LinkTarget.Decoded`'s `storedCopy`), so what the copy assumed before is
+ * kept; then those of every referent linked to it. This is the one place a
+ * copy's identifiers are carried forward.
  */
 const make = (
   placedLiteralReference: string,
   linkedResources: Array.NonEmptyReadonlyArray<Link.LinkedResource>,
-  decodedLiteralReferences: HashSet.HashSet<string>
+  literalReferencesWrittenAsDecoded: HashSet.HashSet<string>
 ): Effect.Effect<Type> => {
   const resource = writtenCopyOf(linkedResources)
   return Effect.all({
@@ -91,16 +99,22 @@ const make = (
     label: LinkableResource.labelOf(resource, placedLiteralReference),
   }).pipe(
     Effect.map(({ derivedIdentifier, label }) => {
+      const otherCopies = [
+        ...linkedResources.flatMap(({ target }) =>
+          target.resource === resource ? [] : [target.resource]
+        ),
+        ...storedCopiesUpdatedBy(linkedResources),
+      ]
       const identifiersToAssume = [
         ...Option.toArray(derivedIdentifier),
-        ...linkedResources.flatMap(({ target }) => target.resource.identifier),
+        ...otherCopies.flatMap((copy) => copy.identifier),
         ...linkedResources.flatMap(({ referent }) => Referent.identifiersOf(referent)),
       ]
       return {
         resource: LinkableResource.assumesIdentifiers(resource, identifiersToAssume),
         identifiersToAssume,
         resourceExistsInBatch:
-          HashSet.has(decodedLiteralReferences, placedLiteralReference) ||
+          HashSet.has(literalReferencesWrittenAsDecoded, placedLiteralReference) ||
           linkedResources.some(({ referent }) => Referent.is('AsResource')(referent)),
         label,
       }
@@ -110,11 +124,12 @@ const make = (
 
 /**
  * The placed resource under each literal reference the links land on, given
- * the literal references the batch's decoded resources carry.
+ * the literal references of the decoded resources the batch writes where they
+ * were decoded.
  */
 const byPlacedLiteralReference = (
   links: readonly Link.Type[],
-  decodedLiteralReferences: HashSet.HashSet<string>
+  literalReferencesWrittenAsDecoded: HashSet.HashSet<string>
 ): Effect.Effect<HashMap.HashMap<string, Type>> =>
   pipe(
     links,
@@ -123,7 +138,7 @@ const byPlacedLiteralReference = (
     Record.toEntries,
     Effect.forEach(([placedLiteralReference, linkedResources]) =>
       Effect.map(
-        make(placedLiteralReference, linkedResources, decodedLiteralReferences),
+        make(placedLiteralReference, linkedResources, literalReferencesWrittenAsDecoded),
         (placedResource) => [placedLiteralReference, placedResource] as const
       )
     ),

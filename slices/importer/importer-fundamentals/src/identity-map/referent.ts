@@ -72,13 +72,19 @@ const key = (referent: Type): string => LinkableLogicalReference.key(referent.lo
 
 /**
  * The logical references `referent`'s own identifiers make, its key's first:
- * the ones a source gave it, not the one its demographics derive.
+ * the ones a source gave it, not one demographics derive
+ * (`LinkableResource.isDerivedIdentifier`), which a placed resource carries
+ * too.
  */
 const ownLogicalReferencesOf = (referent: Type): readonly LinkableLogicalReference.Type[] =>
   match(referent, {
     AsResource: ({ logicalReference, resource }) =>
-      Array.filterMap(resource.identifier, (identifier) =>
-        LinkableLogicalReference.tryFromIdentifier(logicalReference.type, identifier)
+      pipe(
+        resource.identifier,
+        Array.filter((identifier) => !LinkableResource.isDerivedIdentifier(identifier)),
+        Array.filterMap((identifier) =>
+          LinkableLogicalReference.tryFromIdentifier(logicalReference.type, identifier)
+        )
       ),
     ByMentionOnly: ({ logicalReference }) => [logicalReference],
   })

@@ -461,6 +461,24 @@ describe('IdentityMap.apply on a re-import', () => {
     expect(wireOf(resourceAt(placed, 'k-0'))).toBe(wireOf(storedCopy))
   })
 
+  it('appends the stored copy a mention links to when the decode moves to another stored record', () => {
+    const placed = applyOnTestClock(
+      reimport,
+      HashMap.make(
+        [PERSON, LinkChoice.LinkToStoredResource({ resource: STORED_TYRA })],
+        [ACCOUNT, LinkChoice.LinkToStoredResource({ resource: storedCopy })]
+      )
+    )
+
+    expect(resourceAt(placed, 'k-0').id).toBe('s-1')
+    expect(placed.sections.map((section) => section.title)).toEqual([
+      'Resources',
+      Placement.LINKED_SECTION_TITLE,
+    ])
+    expect(wireOf(resourceAt(placed, 'linked:Patient/p-1'))).toBe(wireOf(storedCopy))
+    expect(subjectAndRequesterOf(at(placed, 'k-1')).subject?.reference).toBe('Patient/p-1')
+  })
+
   it('refuses to update a stored resource under another id, or for a referent named only by mentions', () => {
     const referents = discoverOnTestClock(reimport)
     const invalid = (referentKey: string, choice: LinkChoice.Type): string =>

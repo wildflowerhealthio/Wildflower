@@ -129,7 +129,9 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     `DateTime.now`, so an Effect), `maybeDerivedIdentifier` (an exhaustive
     match: `Patient.nameBirthDateIdentifier`, `Practitioner.nameIdentifier` of
     the displayed name) and `labelOf`, both Effects for the same reason,
-    `literalReferenceOf`, **`tryProvisionalFrom`** (the resource a logical
+    `isDerivedIdentifier` (whether an identifier is under one of those
+    Wildflower systems rather than a source's), `literalReferenceOf`,
+    **`tryProvisionalFrom`** (the resource a logical
     reference alone can stand for, provisional until a fuller one arrives: a
     provider's printed name stands for a `Practitioner` through
     `Practitioner.tryFromNameIdentifier`; nothing stands for a `Patient`), and
@@ -149,7 +151,8 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     search tries, its own and the derived one), **`ByMentionOnly`** when only
     mentions name it; built only through its constructors, matched with
     `Referent.match`. `ownLogicalReferencesOf` is the logical references a
-    referent's source-given identifiers make, `maybeDerivedLogicalReferenceOf`
+    referent's source-given identifiers make (a derived identifier a placed
+    resource carries is not among them), `maybeDerivedLogicalReferenceOf`
     the one its demographics derive, `logicalReferencesOf` both: every
     logical reference a referent answers to; and **`byLogicalReferenceKey`**
     is the referent each
@@ -177,10 +180,11 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     cannot follow for its referent, with its `reason`.
   - **`LinkTarget`** — the resource a referent is linked to once
     `LinkToDecodedReferent` is followed, named for where it comes from:
-    **`Stored`**, **`Decoded`**, **`Provisional`**, **`Unlinked`**, matched
-    with `LinkTarget.match`; `tryIntoResource` is the resource its mentions
-    are redirected to. Every resource-bearing variant carries one with an
-    `id`, so a resource-backed referent requires one
+    **`Stored`**, **`Decoded`** (carrying the `storedCopy` it is written
+    over when the choice named one), **`Provisional`**, **`Unlinked`**,
+    matched with `LinkTarget.match`; `tryIntoResource` is the resource its
+    mentions are redirected to. Every resource-bearing variant carries one
+    with an `id`, so a resource-backed referent requires one
     (`Referent.tryFromDecodedResource`).
   - **`Link`** — a referent with its link target, what the plan is built
     from; `tryIntoLinkedResource` is the link as a **`LinkedResource`** (the
@@ -194,8 +198,12 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     one when a link lands on it, so a re-import's newer decode wins over the
     stored copy a mention links to; else the last link's) having assumed its
     `identifiersToAssume` (its own derived identifier, then those every other
-    copy linked there carries, then those of every referent linked to it),
-    whether the `resourceExistsInBatch`, and its `label`, the title of an
+    copy of it the links carry, a stored copy a mention links to or the one a
+    `Decoded` target updates, then those of every referent linked to it: the
+    one place a copy's identifiers are carried forward), whether the
+    `resourceExistsInBatch` (a placed file writes it where a decoded resource
+    was: one decoded there and not moved to another stored resource, or one
+    a decoded resource is replaced by), and its `label`, the title of an
     entry it replaces or is appended as. **`make`** builds one from the
     linked resources under a literal reference; `byPlacedLiteralReference`
     groups a plan's links and makes each.
@@ -239,11 +247,14 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     references (`Referent.ownLogicalReferencesOf`) as `TokenSearchParam`
     tokens and, only when that names nothing, a second with the derived one
     (`maybeDerivedLogicalReferenceOf`), so a record this source wrote is
-    found ahead of a namesake; the one hit is `LinkToStoredResource`, unless
-    it is the stored copy of the referent's own decoded resource (same
-    literal reference: a re-import), which is `UpdateStoredResource`; two hits are
-    ambiguous and no hit is `LinkChoice.defaultFor`, so the reviewer
-    chooses; a failed search fails the read. **`defaultChoices`** runs it per
+    found ahead of a namesake; a hit that is the stored copy of the
+    referent's own decoded resource (same literal reference: a re-import) is
+    `UpdateStoredResource`, whatever else was found; otherwise the one hit is
+    `LinkToStoredResource`, two hits are ambiguous and no hit is
+    `LinkChoice.defaultFor`, so the reviewer chooses; the hits are the
+    searchset's matches (an `outcome` entry is not one), a match without its
+    resource fails the read as **`MatchWithoutResource`**, and a failed
+    search fails the read. **`defaultChoices`** runs it per
     referent, a few at a time, into the `ReferentLinkChoices` a review
     starts from (#1431 is one search per type).
 - `src/picked-file.ts` — the **`PickedFile`** namespace: the picked file

@@ -19,7 +19,7 @@ type Resolved = Either.Either<LinkTarget.Type, LinkChoice.InvalidLinkChoice>
 /** What `CreateResource` places `referent` on: its decoded resource, a provisional one for its logical reference, else nothing. */
 const linkTargetOfCreate = (referent: Referent.Type): LinkTarget.Type =>
   Referent.match(referent, {
-    AsResource: ({ resource }) => LinkTarget.Decoded({ resource }),
+    AsResource: ({ resource }) => LinkTarget.Decoded({ resource, storedCopy: Option.none() }),
     ByMentionOnly: ({ logicalReference }) =>
       Option.match(LinkableResource.tryProvisionalFrom(logicalReference), {
         onNone: () => LinkTarget.Unlinked(),
@@ -53,19 +53,6 @@ const invalid = (
 
 const sameType = (referent: Referent.Type, resource: { readonly resourceType: string }): boolean =>
   resource.resourceType === referent.logicalReference.type
-
-/**
- * What `UpdateStoredResource` places `decoded`'s referent on: `decoded`
- * itself, having assumed every identifier `storedCopy` carries, so what the
- * copy assumed in earlier imports is written again.
- */
-const linkTargetOfUpdate = (
-  decoded: LinkableResource.WithId,
-  storedCopy: LinkableResource.WithId
-): LinkTarget.Type =>
-  LinkTarget.Decoded({
-    resource: LinkableResource.assumesIdentifiers(decoded, storedCopy.identifier),
-  })
 
 /**
  * Every referent of `referents` with the link target its choice under
@@ -132,7 +119,9 @@ const linksOf = (
           AsResource: ({ resource: decoded }) =>
             LinkableResource.literalReferenceOf(decoded) ===
             LinkableResource.literalReferenceOf(storedCopy)
-              ? Either.right(linkTargetOfUpdate(decoded, storedCopy))
+              ? Either.right(
+                  LinkTarget.Decoded({ resource: decoded, storedCopy: Option.some(storedCopy) })
+                )
               : invalid(current, choice, 'StoredResourceUnderAnotherId'),
           ByMentionOnly: () => invalid(current, choice, 'NotAllowedForReferent'),
         }),
