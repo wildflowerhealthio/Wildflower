@@ -20,7 +20,7 @@ import { Array, Effect, HashMap, Match, Option } from 'effect'
 
 import * as LinkChoice from './link-choice.ts'
 import type * as LinkableLogicalReference from './linkable-logical-reference.ts'
-import type * as LinkableResource from './linkable-resource.ts'
+import * as LinkableResource from './linkable-resource.ts'
 import type * as ReferentLinkChoices from './referent-link-choices.ts'
 import * as Referent from './referent.ts'
 
@@ -86,10 +86,23 @@ const theOneOf = (
 ): Option.Option<LinkableResource.WithId> => (hits.length === 1 ? Array.head(hits) : Option.none())
 
 /**
+ * Whether `stored` is the stored copy of `referent`'s own decoded resource,
+ * under the same literal reference: what a re-import's search finds.
+ */
+const isStoredCopyOf = (referent: Referent.Type, stored: LinkableResource.WithId): boolean =>
+  Referent.match(referent, {
+    AsResource: ({ resource }) =>
+      LinkableResource.literalReferenceOf(resource) === LinkableResource.literalReferenceOf(stored),
+    ByMentionOnly: () => false,
+  })
+
+/**
  * The link choice `referent` takes before the reviewer makes one: the one
  * stored resource of its type that its own identifiers name; when they name
  * none, the one its derived identifier names; else its kind's default
- * (`LinkChoice.defaultFor`).
+ * (`LinkChoice.defaultFor`). A hit that is the stored copy of the referent's
+ * own decoded resource ({@link isStoredCopyOf}) is `CreateResource`, so a
+ * re-import writes the newer decode over it.
  *
  * @remarks
  * The identifiers a source gave a referent are searched before the one its
@@ -116,7 +129,10 @@ const defaultChoice = (
       Option.orElse(theOneOf(namedByOwn), () => theOneOf(namedByDerived)),
       {
         onNone: () => LinkChoice.defaultFor(referent),
-        onSome: (resource) => LinkChoice.LinkToStoredResource({ resource }),
+        onSome: (resource) =>
+          isStoredCopyOf(referent, resource)
+            ? LinkChoice.CreateResource()
+            : LinkChoice.LinkToStoredResource({ resource }),
       }
     )
   })

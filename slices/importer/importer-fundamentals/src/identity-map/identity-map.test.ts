@@ -51,6 +51,7 @@ import {
   patient,
   request,
   runOnTestClock,
+  storedOf,
   unrelatedArbitrary,
   untypedSubject,
   wireFieldsOf,
@@ -77,6 +78,13 @@ const NAME_BIRTH_DATE = 'https://wildflowerhealth.io/fhir/identifier/patient-nam
 
 const at = (file: DecodedFile.DecodedFile, key: string): FhirResource | undefined =>
   DecodedFile.resources(file).find((entry) => entry.key === key)?.resource
+
+/** The resource keyed `key` in `file`; throws when there is none. */
+const resourceAt = (file: DecodedFile.DecodedFile, key: string): FhirResource => {
+  const resource = at(file, key)
+  if (resource === undefined) throw new Error(`no resource keyed ${key}`)
+  return resource
+}
 
 /** A decoded Patient keyed `p-<id>` that also carries the account id `c-9`. */
 const patientWithAccount = (id: string): FhirResource =>
@@ -364,6 +372,70 @@ describe('IdentityMap.apply on one file', () => {
 
     const { requester } = subjectAndRequesterOf(at(applied, 'k-0'))
     expect([requester?.reference, requester?.display]).toEqual(['Practitioner/sp-1', 'Dr. A Smith'])
+  })
+})
+
+describe('IdentityMap.apply on a re-import', () => {
+  // The first import writes the person, who assumes the two account ids mentions link to them.
+  const firstImport = applyOnTestClock(
+    fileOf(
+      patient({ id: 'p-1' }),
+      request('rx-1', customerSubject('c-9')),
+      request('rx-0', customerSubject('c-8'))
+    ),
+    HashMap.make(
+      [ACCOUNT, LinkChoice.LinkToDecodedReferent({ referentKey: PERSON })],
+      [`Patient|${CUSTOMER}|c-8`, LinkChoice.LinkToDecodedReferent({ referentKey: PERSON })]
+    )
+  )
+  const storedCopy = storedOf(resourceAt(firstImport, 'k-0'))
+  // The same person decoded again, with what the source says of them now, and only one account mentioned.
+  const decodedAgain = Schema.decodeUnknownSync(Patient.Schema)({
+    resourceType: 'Patient',
+    id: 'p-1',
+    meta: { source: 'https://source.example/visit-2' },
+    identifier: [{ system: SOURCE_PATIENT, value: 'p-1' }],
+    name: [{ family: 'Banks', given: ['Tyra'] }],
+    telecom: [{ system: 'phone', value: '555-0100' }],
+    birthDate: '1990-01-02',
+  })
+  const reimport = fileOf(decodedAgain, request('rx-2', customerSubject('c-9')))
+  // What `ReferentSearch.defaultChoices` gives: both searches find the stored copy.
+  const defaultChoices: ReferentLinkChoices.Type = HashMap.make(
+    [PERSON, LinkChoice.CreateResource()],
+    [ACCOUNT, LinkChoice.LinkToStoredResource({ resource: storedCopy })]
+  )
+
+  it('lands the person decoded and the account on the stored copy, under one literal reference', () => {
+    const referents = discoverOnTestClock(reimport)
+
+    expect(identifiersOf(storedCopy)).toEqual([
+      `${SOURCE_PATIENT}|p-1`,
+      `${NAME_BIRTH_DATE}|banks;tyra;1990-01-02`,
+      `${CUSTOMER}|c-9`,
+      `${CUSTOMER}|c-8`,
+    ])
+    expect(resolvedFor(defaultChoices, referents, PERSON)).toBe('Decoded')
+    expect(resolvedFor(defaultChoices, referents, ACCOUNT)).toBe('Stored p-1')
+  })
+
+  it('writes the new decode, not the stored copy, having assumed every identifier the stored copy carries', () => {
+    const placed = applyOnTestClock(reimport, defaultChoices)
+
+    expect(wireOf(resourceAt(placed, 'k-0'))).toBe(
+      wireOf({ ...decodedAgain, identifier: storedCopy.identifier })
+    )
+    expect(subjectAndRequesterOf(at(placed, 'k-1')).subject?.reference).toBe('Patient/p-1')
+    expect(placed.sections.map((section) => section.title)).toEqual(['Resources'])
+  })
+
+  it('writes the stored copy when the reviewer links the person to it too', () => {
+    const placed = applyOnTestClock(
+      reimport,
+      HashMap.set(defaultChoices, PERSON, LinkChoice.LinkToStoredResource({ resource: storedCopy }))
+    )
+
+    expect(wireOf(resourceAt(placed, 'k-0'))).toBe(wireOf(storedCopy))
   })
 })
 

@@ -187,13 +187,15 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     once, every rule an arm of `LinkChoice.match` or `Referent.match`; the
     first choice it cannot follow is its failure.
   - **`PlacedResource`** — the resource under one placed literal reference as
-    it will be written, whatever its origin: the resource having assumed its
-    `identifiersToAssume` (its own derived identifier, then those of every
-    referent linked to it), whether the `resourceExistsInBatch`, and its
-    `label`, the title of an entry it replaces or is appended as.
-    **`make`** builds one from the linked resources under a literal
-    reference; `byPlacedLiteralReference` groups a plan's links and makes
-    each.
+    it will be written, whatever its origin: the copy written (the decoded
+    one when a link lands on it, so a re-import's newer decode wins over the
+    stored copy a mention links to; else the last link's) having assumed its
+    `identifiersToAssume` (its own derived identifier, then those every other
+    copy linked there carries, then those of every referent linked to it),
+    whether the `resourceExistsInBatch`, and its `label`, the title of an
+    entry it replaces or is appended as. **`make`** builds one from the
+    linked resources under a literal reference; `byPlacedLiteralReference`
+    groups a plan's links and makes each.
   - **`LinkPlan`** — `make(decodedFiles, linkChoices)`: everything the
     placement needs, worked out once per batch over its referents
     (`Referent.discover`), so a `LinkToDecodedReferent` naming a
@@ -234,8 +236,10 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     references (`Referent.ownLogicalReferencesOf`) as `TokenSearchParam`
     tokens and, only when that names nothing, a second with the derived one
     (`maybeDerivedLogicalReferenceOf`), so a record this source wrote is
-    found ahead of a namesake; the one hit is `LinkToStoredResource`, two
-    hits are ambiguous and no hit is `LinkChoice.defaultFor`, so the reviewer
+    found ahead of a namesake; the one hit is `LinkToStoredResource`, unless
+    it is the stored copy of the referent's own decoded resource (same
+    literal reference: a re-import), which is `CreateResource`; two hits are
+    ambiguous and no hit is `LinkChoice.defaultFor`, so the reviewer
     chooses; a failed search fails the read. **`defaultChoices`** runs it per
     referent, a few at a time, into the `ReferentLinkChoices` a review
     starts from (#1431 is one search per type).
@@ -370,7 +374,10 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
   identifier it assumed and a stored person several files mention is
   written once; a decoded resource that is its referent's link target is
   written as decoded plus its derived identifier and those of the referents
-  linked to it. A referent named only by mentions may be
+  linked to it. On a re-import the referent's own search finds the stored
+  copy under the decoded id and defaults to `CreateResource`, while a
+  mention the copy answers to links to it as stored: the decoded resource
+  is written, assuming every identifier the stored copy carries. A referent named only by mentions may be
   `CreateResource` only when its logical reference stands for something
   provisional (`LinkableResource.tryProvisionalFrom`: a provider's printed
   name, as a `Practitioner` at `localResourceId(system, 'Practitioner', name)`,

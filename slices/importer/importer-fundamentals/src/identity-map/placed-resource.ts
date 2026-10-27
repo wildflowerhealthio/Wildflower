@@ -5,9 +5,10 @@
  *
  * @remarks
  * One per placed literal reference, so a stored resource two referents link
- * to, a provisional one, and a decoded resource other referents link to are
- * all the same thing to the placement: the resource under that literal
- * reference, as written.
+ * to, a provisional one, a decoded resource other referents link to, and a
+ * decoded resource a mention links to by its stored copy are all the same
+ * thing to the placement: the resource under that literal reference, as
+ * written.
  *
  * @packageDocumentation
  */
@@ -15,13 +16,17 @@
 import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { Array, Effect, HashMap, HashSet, Option, pipe, Record } from 'effect'
 
+import * as LinkTarget from './link-target.ts'
 import * as Link from './link.ts'
 import * as LinkableResource from './linkable-resource.ts'
 import * as Referent from './referent.ts'
 
 /** The resource under one placed literal reference, as it will be written. */
 interface Type {
-  /** The resource, having assumed every identifier the referents linked to it bring. */
+  /**
+   * The copy written, having assumed every identifier its other copies carry
+   * and the referents linked to it bring.
+   */
   readonly resource: LinkableResource.WithId
   /** The identifiers it assumes: what a decoded copy of it in the file assumes too. */
   readonly identifiersToAssume: readonly IdentifierAndReference.IdentifierType[]
@@ -40,22 +45,45 @@ interface Type {
 }
 
 /**
+ * The copy of the resource under one placed literal reference that is
+ * written: the decoded one when a referent's link lands on it, else the last
+ * link's.
+ *
+ * @remarks
+ * On a re-import a decoded resource and its stored copy share a literal
+ * reference: the referent's own search finds the copy under the decoded id
+ * (`ReferentSearch.defaultChoice` then creates the resource), while a mention
+ * the copy answers to links to it as stored. The decode is the newer, so it
+ * is the one written. Should two referents carry different stored copies of
+ * one resource, the last one's is written.
+ */
+const writtenCopyOf = (
+  linkedResources: Array.NonEmptyReadonlyArray<Link.LinkedResource>
+): LinkableResource.WithId =>
+  pipe(
+    Array.findLast(linkedResources, ({ target }) => LinkTarget.is('Decoded')(target)),
+    Option.getOrElse(() => Array.lastNonEmpty(linkedResources)),
+    ({ target }) => target.resource
+  )
+
+/**
  * The placed resource under `placedLiteralReference`, from the links that
  * landed on it, given the literal references the batch's decoded resources
  * carry.
  *
  * @remarks
- * A resource assumes, once, its own derived identifier (so a name-and-birth-date
- * match finds it next time) and then
- * the identifiers of every referent linked to it. Should two referents carry
- * different copies of one stored resource, the last one's is written.
+ * The copy written ({@link writtenCopyOf}) assumes, once, its own derived
+ * identifier (so a name-and-birth-date match finds it next time), then the
+ * identifiers of every other copy linked under the literal reference (a
+ * stored copy's, on a re-import, so what it assumed before is kept), then
+ * those of every referent linked to it.
  */
 const make = (
   placedLiteralReference: string,
   linkedResources: Array.NonEmptyReadonlyArray<Link.LinkedResource>,
   decodedLiteralReferences: HashSet.HashSet<string>
 ): Effect.Effect<Type> => {
-  const { resource } = Array.lastNonEmpty(linkedResources)
+  const resource = writtenCopyOf(linkedResources)
   return Effect.all({
     derivedIdentifier: LinkableResource.maybeDerivedIdentifier(resource),
     label: LinkableResource.labelOf(resource, placedLiteralReference),
@@ -63,6 +91,7 @@ const make = (
     Effect.map(({ derivedIdentifier, label }) => {
       const identifiersToAssume = [
         ...Option.toArray(derivedIdentifier),
+        ...linkedResources.flatMap(({ target }) => target.resource.identifier),
         ...linkedResources.flatMap(({ referent }) => Referent.identifiersOf(referent)),
       ]
       return {
@@ -88,7 +117,7 @@ const byPlacedLiteralReference = (
   pipe(
     links,
     Array.filterMap(Link.tryIntoLinkedResource),
-    Array.groupBy(({ resource }) => LinkableResource.literalReferenceOf(resource)),
+    Array.groupBy(({ target }) => LinkableResource.literalReferenceOf(target.resource)),
     Record.toEntries,
     Effect.forEach(([placedLiteralReference, linkedResources]) =>
       Effect.map(

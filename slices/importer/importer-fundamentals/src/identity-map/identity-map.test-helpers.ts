@@ -482,6 +482,7 @@ export {
   practitioner,
   request,
   runOnTestClock,
+  storedOf,
   unrelatedArbitrary,
   untypedSubject,
   wireFieldsOf,

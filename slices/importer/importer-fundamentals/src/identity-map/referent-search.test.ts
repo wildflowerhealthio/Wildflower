@@ -177,6 +177,17 @@ describe('ReferentSearch.defaultChoice', () => {
     expect(searchesOf(urls)).toEqual([`/Patient ${TYRA_OWN}`])
   })
 
+  it('should create the resource when the one hit is its own stored copy, under the decoded id', async () => {
+    const storedCopy = { resourceType: 'Patient', id: 'p-1' }
+
+    expect(
+      describeChoice((await search(TYRA, serverFinding({ [TYRA_OWN]: [storedCopy] }))).choice)
+    ).toBe('CreateResource')
+    expect(
+      describeChoice((await search(TYRA, serverFinding({ [TYRA_DERIVED]: [storedCopy] }))).choice)
+    ).toBe('CreateResource')
+  })
+
   it('should link a practitioner to a stored practitioner', async () => {
     const own = `${SOURCE_PRACTITIONER}|pr-1`
     const { choice, urls } = await search(
@@ -235,5 +246,29 @@ describe('ReferentSearch.defaultChoices', () => {
     ])
     expect(HashMap.size(choices)).toBe(2)
     expect(server.urls).toHaveLength(2)
+  })
+
+  it('should create a re-imported person and link the account it assumed to the stored copy', async () => {
+    const referents = discoverOnTestClock(
+      fileOf(patient({ id: 'p-1' }), request('rx-1', customerSubject('c-9')))
+    )
+    const storedCopy = { resourceType: 'Patient', id: 'p-1' }
+    const server = serverFinding({ [TYRA_OWN]: [storedCopy], [`${CUSTOMER}|c-9`]: [storedCopy] })
+
+    const choices = await Effect.runPromise(
+      ReferentSearch.defaultChoices(referents).pipe(
+        Effect.provide(Layer.merge(server.layer, TestContext.TestContext))
+      )
+    )
+
+    expect(
+      referents.map((referent) => [
+        Referent.key(referent),
+        Option.map(HashMap.get(choices, Referent.key(referent)), describeChoice),
+      ])
+    ).toEqual([
+      [`Patient|${SOURCE_PATIENT}|p-1`, Option.some('CreateResource')],
+      [`Patient|${CUSTOMER}|c-9`, Option.some('LinkToStoredResource Patient/p-1')],
+    ])
   })
 })
