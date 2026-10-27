@@ -24,6 +24,7 @@ import {
   newAsLabel,
   ON_SERVER_GROUP,
   STORED_LIST_ERROR_MESSAGE,
+  STORED_LIST_TRUNCATED_MESSAGE,
   UPDATE_LABEL,
 } from './referent-text.ts'
 import { useIdentityMap } from './use-identity-map.ts'
@@ -153,6 +154,29 @@ describe('ReferentRows', () => {
     await waitFor(() => {
       expect(select.value).toBe('update:Patient/p-1')
     })
+
+    // The account linked to the stored copy lands on the record this import
+    // writes over it: one record, counted with the import's.
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: 'c-9' }),
+      'Tyra Lynne Banks · 1990-01-02'
+    )
+    await waitFor(() => {
+      expect(screen.getByRole('status').textContent).toBe(
+        '0 records on the server, 1 record from this import, 1 not linked'
+      )
+    })
+  })
+
+  it('should say when the page limit cut the server’s list off', async () => {
+    await renderRows(BATCH, { listed: [patientWire('s-2', SERVER)], listContinues: true })
+
+    // Both groups' lists continue, so both say so.
+    const notes = await screen.findAllByRole('note')
+    expect(notes.map((note) => note.textContent)).toEqual([
+      STORED_LIST_TRUNCATED_MESSAGE,
+      STORED_LIST_TRUNCATED_MESSAGE,
+    ])
   })
 
   it('should compare the name the stored person goes by, not a former name listed first', async () => {
@@ -278,9 +302,10 @@ describe('ReferentRows', () => {
       )
     )
 
-    // Assert: the refusal is said, and the rows of the review before it are still there.
+    // Assert: the refusal is said, and the rows of the review before it are
+    // still there, taking no choice until the batch places again.
     expect((await screen.findByRole('alert')).textContent).toBe('DuplicateReferent')
-    expect(screen.getByRole('combobox', { name: TYRA })).toBeDefined()
+    expect(screen.getByRole<HTMLSelectElement>('combobox', { name: TYRA }).disabled).toBe(true)
   })
 
   it('should refuse a batch that holds one person twice under two ids', async () => {
@@ -416,6 +441,8 @@ interface Holdings {
   readonly accountFound?: readonly object[]
   readonly listed?: readonly object[]
   readonly listFails?: boolean
+  /** Whether every page of the list continues to another, so the page limit cuts it off. */
+  readonly listContinues?: boolean
 }
 
 /** The `resourceType` a wire resource states. */
@@ -432,6 +459,7 @@ const serverHolding = ({
   accountFound = [],
   listed = [],
   listFails = false,
+  listContinues = false,
 }: Holdings): RunAuthed => {
   /** What a search with `identifier` finds. */
   const heldFor = (identifier: string | undefined): readonly object[] => {
@@ -442,12 +470,18 @@ const serverHolding = ({
       ? found
       : []
   }
-  const searchset = (resources: readonly object[]): Response =>
+  // Each page of a list that continues names a fresh next page, so the page limit is what ends it.
+  let pagesServed = 0
+  const searchset = (resources: readonly object[], identifier: string | undefined): Response =>
     new Response(
       JSON.stringify({
         resourceType: 'Bundle',
         type: 'searchset',
         entry: resources.map((resource) => ({ resource })),
+        link:
+          listContinues && identifier === undefined
+            ? [{ relation: 'next', url: `/Patient?_count=50&_pageToken=page-${++pagesServed}` }]
+            : [],
       }),
       { headers: { 'content-type': 'application/json' } }
     )
@@ -464,7 +498,9 @@ const serverHolding = ({
       const hits = heldFor(params['identifier']).filter(
         (resource) => resourceTypeOf(resource).resourceType === searchedType
       )
-      return Effect.succeed(HttpClientResponse.fromWeb(request, searchset(hits)))
+      return Effect.succeed(
+        HttpClientResponse.fromWeb(request, searchset(hits, params['identifier']))
+      )
     })
   )
   return <A, E>(
@@ -499,6 +535,7 @@ const Harness = ({ batch }: { readonly batch: BatchDecodeResult }): JSX.Element 
         linkChoices={shown.linkChoices}
         linkTargets={shown.linkTargets}
         found={shown.found}
+        disabled={state._tag === 'refused'}
         onChoose={choose}
       />
     </>

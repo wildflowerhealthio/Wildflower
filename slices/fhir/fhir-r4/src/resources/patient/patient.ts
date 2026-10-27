@@ -234,9 +234,10 @@ const normalizeNamePart = (namePart: string): string =>
 
 /**
  * A patient's demographics as one person is told from another: the family
- * and given names of the name they go by (`HumanName.currentName`), each
- * normalised as {@link normalizeNamePart} does, and the birth date; each
- * `None` when the patient does not state it.
+ * and given names of the name they go by (`HumanName.currentName`, among the
+ * names that state a family or a given name: a `text`-only name shows but
+ * tells no one apart), each normalised as {@link normalizeNamePart} does, and
+ * the birth date; each `None` when the patient does not state it.
  */
 interface Demographics {
   readonly family: Option.Option<string>
@@ -251,9 +252,13 @@ interface Demographics {
  * so both read the same normalised parts. Which name is current is judged at
  * the clock's now, so an Effect.
  */
+/** Whether `name` states a family or a given name, the parts demographics are read from. */
+const hasNameParts = (name: typeof HumanName.Schema.Type): boolean =>
+  name.family !== null || name.given.length > 0
+
 const demographics = (patient: Type): Effect.Effect<Demographics> =>
   Effect.map(DateTime.now, (now) => {
-    const currentName = HumanName.currentName(patient.name, now)
+    const currentName = HumanName.currentName(patient.name.filter(hasNameParts), now)
     return {
       family: currentName.pipe(
         Option.flatMapNullable((name) => name.family),

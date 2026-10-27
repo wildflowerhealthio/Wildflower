@@ -30,6 +30,10 @@ const SEARCH_ERROR_MESSAGE =
 const STORED_LIST_ERROR_MESSAGE =
   'Could not list the records on the server. Only the ones the search found are offered.'
 
+/** The note under a group whose stored list the page limit cut off. */
+const STORED_LIST_TRUNCATED_MESSAGE =
+  'The server holds more records than are offered here. Only the first pages were read.'
+
 /** The alert when the files hold one person or provider twice, under different ids, so the import cannot be placed. */
 const duplicateReferentMessage = ({
   logicalReference,
@@ -120,5 +124,6 @@ export {
   SEARCHING_SERVER_MESSAGE,
   sameAsLabel,
   STORED_LIST_ERROR_MESSAGE,
+  STORED_LIST_TRUNCATED_MESSAGE,
   UPDATE_LABEL,
 }

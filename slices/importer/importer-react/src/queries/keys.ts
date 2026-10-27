@@ -21,4 +21,11 @@ const IMPORTER_QUERY_KEY = ['importer'] as const
  */
 const SOURCE_FILES_QUERY_KEY = [...IMPORTER_QUERY_KEY, 'source-files'] as const
 
-export { IMPORTER_QUERY_KEY, SOURCE_FILES_QUERY_KEY }
+/**
+ * Key root for the stored Patients and Practitioners the referent rows offer,
+ * one key per resource type under it. Read once per review and invalidated by
+ * a confirm, the one thing that changes them.
+ */
+const STORED_RESOURCES_QUERY_KEY = [...IMPORTER_QUERY_KEY, 'stored'] as const
+
+export { IMPORTER_QUERY_KEY, SOURCE_FILES_QUERY_KEY, STORED_RESOURCES_QUERY_KEY }

@@ -7,8 +7,8 @@ import {
   Referent,
   type ReferentLinkChoices,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { Array, Effect, HashMap, Option, pipe } from 'effect'
-import { type JSX, memo, useId, useMemo } from 'react'
+import { Array, Effect, HashMap, HashSet, Option, pipe } from 'effect'
+import { type JSX, memo, useId, useMemo, useState } from 'react'
 
 import {
   BIRTH_DATE,
@@ -26,6 +26,7 @@ import {
   type ReferentTally,
   sameAsLabel,
   STORED_LIST_ERROR_MESSAGE,
+  STORED_LIST_TRUNCATED_MESSAGE,
   UPDATE_LABEL,
 } from './referent-text.ts'
 import { type StoredResource, useStoredResources } from './use-stored-resources.ts'
@@ -64,6 +65,8 @@ interface ReferentRowsProps {
   readonly linkTargets: HashMap.HashMap<string, LinkTarget.Type>
   /** The stored resources the default search found. */
   readonly found: readonly StoredResource[]
+  /** Whether the selects take no choice: while the batch is refused, a choice could not be placed or shown. */
+  readonly disabled: boolean
   /** Called with the reviewer's new choice for a referent. */
   readonly onChoose: (referentKey: string, choice: LinkChoice.Type) => void
 }
@@ -322,27 +325,26 @@ const differingDemographicsWarningFor = (
 /**
  * How many records the referents land on: stored ones as they are, and the
  * ones this import writes (decoded, over a stored copy or not, and
- * provisional), each counted once however many referents share it; and how
- * many referents land nowhere.
+ * provisional), each counted once however many referents share it, and once
+ * in all when a stored link lands on a record this import writes over; and
+ * how many referents land nowhere.
  */
 const tallyOf = (linkTargets: Iterable<LinkTarget.Type>): ReferentTally => {
   const targets = Array.fromIterable(linkTargets)
-  const recordsAmong = (isCounted: (target: LinkTarget.Type) => boolean): number =>
+  const recordsAmong = (isCounted: (target: LinkTarget.Type) => boolean): HashSet.HashSet<string> =>
     pipe(
       targets,
       Array.filter(isCounted),
       Array.filterMap(LinkTarget.tryIntoResource),
-      Array.dedupeWith(
-        (left, right) =>
-          LinkableResource.literalReferenceOf(left) === LinkableResource.literalReferenceOf(right)
-      ),
-      Array.length
+      Array.map(LinkableResource.literalReferenceOf),
+      HashSet.fromIterable
     )
+  const fromImport = recordsAmong(
+    (target) => LinkTarget.is('Decoded')(target) || LinkTarget.is('Provisional')(target)
+  )
   return {
-    onServer: recordsAmong(LinkTarget.is('Stored')),
-    fromImport: recordsAmong(
-      (target) => LinkTarget.is('Decoded')(target) || LinkTarget.is('Provisional')(target)
-    ),
+    onServer: HashSet.size(HashSet.difference(recordsAmong(LinkTarget.is('Stored')), fromImport)),
+    fromImport: HashSet.size(fromImport),
     unlinked: Array.countBy(targets, LinkTarget.is('Unlinked')),
   }
 }
@@ -358,12 +360,14 @@ const ReferentRow = memo(function ReferentRow({
   options,
   choice,
   warning,
+  disabled,
   onChoose,
 }: {
   readonly referent: Referent.Type
   readonly options: ChoiceOptions
   readonly choice: LinkChoice.Type
   readonly warning: Option.Option<string>
+  readonly disabled: boolean
   readonly onChoose: (referentKey: string, choice: LinkChoice.Type) => void
 }): JSX.Element {
   const selectId = useId()
@@ -381,6 +385,7 @@ const ReferentRow = memo(function ReferentRow({
         id={selectId}
         className={styles['referent-rows__select']}
         value={valueOf(choice)}
+        disabled={disabled}
         onChange={(event) => handleChange(event.target.value)}
       >
         {options.leading.map((option) => (
@@ -424,6 +429,73 @@ interface ReferentLine {
   readonly warning: Option.Option<string>
 }
 
+/** Everything a group's lines are built from. */
+type LineInputs = OptionInputs & {
+  /** The referents that write a record of their own, which every other line's "New:" options list. */
+  readonly ownRecordWritersKey: string
+}
+
+/** A line with what it was built from, so the next build can keep it when that has not changed. */
+interface BuiltLine {
+  readonly line: ReferentLine
+  readonly choiceValue: string
+  readonly inputs: LineInputs
+}
+
+/**
+ * Whether `before` was built from the same inputs a line with `choiceValue`
+ * under `inputs` would be: its own choice, the stored list and its options,
+ * the batch's referents and which of them write their own record. The
+ * choices and link targets themselves change on every select, and a line
+ * reads them only through those.
+ */
+const builtFromSame = (before: BuiltLine, choiceValue: string, inputs: LineInputs): boolean =>
+  before.choiceValue === choiceValue &&
+  before.inputs.ownRecordWritersKey === inputs.ownRecordWritersKey &&
+  before.inputs.storedOfType === inputs.storedOfType &&
+  before.inputs.onServer === inputs.onServer &&
+  before.inputs.referents === inputs.referents
+
+/**
+ * The lines of `ofType` under `inputs`, each kept from `previous` when it was
+ * built from the same inputs, so a select change rebuilds only the lines it
+ * changed and every other keeps its options and warning by identity, which
+ * `ReferentRow`'s memo compares. `previous` itself when every line is kept.
+ * The warning reads the clock (which name is current) and nothing else, so it
+ * runs synchronously here, as the hook runs the placing.
+ */
+const buildLines = (
+  ofType: readonly Referent.Type[],
+  inputs: LineInputs,
+  previous: HashMap.HashMap<string, BuiltLine>
+): HashMap.HashMap<string, BuiltLine> => {
+  const entries = ofType.map((referent) => {
+    const referentKey = Referent.key(referent)
+    const choice = LinkChoice.forReferent(inputs.linkChoices, referent)
+    const choiceValue = valueOf(choice)
+    const built = HashMap.get(previous, referentKey).pipe(
+      Option.filter((before) => builtFromSame(before, choiceValue, inputs)),
+      Option.getOrElse((): BuiltLine => ({
+        choiceValue,
+        inputs,
+        line: {
+          referent,
+          choice,
+          options: optionsFor(referent, choice, inputs),
+          warning: Effect.runSync(differingDemographicsWarningFor(referent, choice)),
+        },
+      }))
+    )
+    return [referentKey, built] as const
+  })
+  const everyLineKept =
+    HashMap.size(previous) === entries.length &&
+    entries.every(([referentKey, built]) =>
+      Option.exists(HashMap.get(previous, referentKey), (before) => before === built)
+    )
+  return everyLineKept ? previous : HashMap.fromIterable(entries)
+}
+
 /** One resource type's referents under their heading, or nothing when it has none. */
 const ReferentGroup = ({
   resourceType,
@@ -432,7 +504,7 @@ const ReferentGroup = ({
   readonly resourceType: LinkableLogicalReference.ResourceType
   readonly props: ReferentRowsProps
 }): JSX.Element | null => {
-  const { referents, linkChoices, linkTargets, found, onChoose } = props
+  const { referents, linkChoices, linkTargets, found, disabled, onChoose } = props
   const ofType = useMemo(
     () => referents.filter((referent) => referent.logicalReference.type === resourceType),
     [referents, resourceType]
@@ -456,27 +528,39 @@ const ReferentGroup = ({
     (): readonly ChoiceOption[] => storedOfType.map(storedOption),
     [storedOfType]
   )
-  // The lines are worked out once per change of the choices, not per render.
-  // The warning reads the clock (which name is current) and nothing else, so
-  // it runs synchronously here, as the hook runs the placing.
-  const lines = useMemo(
-    (): readonly ReferentLine[] =>
-      ofType.map((referent) => {
-        const choice = LinkChoice.forReferent(linkChoices, referent)
-        return {
-          referent,
-          choice,
-          options: optionsFor(referent, choice, {
-            referents,
-            linkChoices,
-            linkTargets,
-            storedOfType,
-            onServer,
-          }),
-          warning: Effect.runSync(differingDemographicsWarningFor(referent, choice)),
-        }
-      }),
-    [ofType, referents, linkChoices, linkTargets, storedOfType, onServer]
+  const ownRecordWritersKey = useMemo(
+    () =>
+      referents
+        .filter((referent) => writesOwnRecord(referent, linkChoices, linkTargets))
+        .map(Referent.key)
+        .join('\n'),
+    [referents, linkChoices, linkTargets]
+  )
+  // The built lines are kept in state and adjusted during render (the
+  // "derive from a changed prop" pattern), so a line survives the changes it
+  // does not depend on.
+  const [builtLines, setBuiltLines] = useState<HashMap.HashMap<string, BuiltLine>>(HashMap.empty())
+  const nextBuiltLines = useMemo(
+    () =>
+      buildLines(
+        ofType,
+        { referents, linkChoices, linkTargets, storedOfType, onServer, ownRecordWritersKey },
+        builtLines
+      ),
+    [
+      ofType,
+      referents,
+      linkChoices,
+      linkTargets,
+      storedOfType,
+      onServer,
+      ownRecordWritersKey,
+      builtLines,
+    ]
+  )
+  if (nextBuiltLines !== builtLines) setBuiltLines(nextBuiltLines)
+  const lines = Array.filterMap(ofType, (referent) =>
+    Option.map(HashMap.get(nextBuiltLines, Referent.key(referent)), ({ line }) => line)
   )
   if (ofType.length === 0) return null
   const heading = GROUP_HEADINGS[resourceType]
@@ -488,6 +572,11 @@ const ReferentGroup = ({
           {STORED_LIST_ERROR_MESSAGE}
         </p>
       )}
+      {stored._tag === 'ready' && stored.truncated && (
+        <p role="note" className={styles['referent-rows__warning']}>
+          {STORED_LIST_TRUNCATED_MESSAGE}
+        </p>
+      )}
       <ul className={styles['referent-rows__list']}>
         {lines.map(({ referent, choice, options, warning }) => (
           <ReferentRow
@@ -496,6 +585,7 @@ const ReferentGroup = ({
             options={options}
             choice={choice}
             warning={warning}
+            disabled={disabled}
             onChoose={onChoose}
           />
         ))}

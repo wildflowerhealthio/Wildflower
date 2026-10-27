@@ -227,6 +227,7 @@ const ImporterScreen = (): JSX.Element => {
               linkChoices={shown.linkChoices}
               linkTargets={shown.linkTargets}
               found={shown.found}
+              disabled={identityState._tag === 'refused'}
               onChoose={identity.choose}
             />
           }

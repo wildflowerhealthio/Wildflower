@@ -127,17 +127,24 @@ The importer has no HTTP wire union to derive, so there is no separate
   resource, `New: <label>` (`LinkToDecodedReferent`) for each other referent
   of its type that creates a record, `New` when
   `LinkableResource.tryProvisionalFrom` stands for its logical reference, and
-  "Don't link" for a `ByMentionOnly` one. The lines are a memo per group, so
-  a render re-reads nothing. The stored resources offered are the default
-  search's hits plus the server's own, every page read up front when the
-  rows mount (`use-stored-resources.ts`, `GET <Type>?_count=` through
-  `fhir-r4/clients`' `searchAllPages`, capped at ten pages: a select has no
-  room for a load-more action, and a personal server holds a household, not
-  a hospital), each labelled on the way in since `LinkableResource.labelOf`
-  reads the clock, read once while the rows are mounted and dropped when they
-  unmount; a list that failed is said under its group, and only the search's
-  hits are offered. The stored options are one memo per group, shared by its
-  lines, and a line is a memoised row. The one type-specific rule is a table over the resource
+  "Don't link" for a `ByMentionOnly` one; while the batch is `refused` the
+  selects are disabled, since a choice could neither be placed nor shown.
+  Each group's lines are built once per change of what each is built from
+  (its own choice, the stored list, the batch's referents and which of them
+  write their own record) and kept across every other change, so a select
+  change rebuilds the lines it changed and the memoised rows of the others
+  skip their render. The stored resources offered are the default search's
+  hits plus the server's own, every page read up front
+  (`use-stored-resources.ts`, `GET <Type>?_count=` through `fhir-r4/clients`'
+  `searchAllPages`, capped at ten pages: a select has no room for a load-more
+  action, and a personal server holds a household, not a hospital), each
+  labelled on the way in since `LinkableResource.labelOf` reads the clock.
+  The read starts beside the default search (`useIdentityMap` starts the
+  same query, `storedResourcesQuery`, as soon as the batch's referents are
+  known) and is never stale on its own: a confirm invalidates it, the one
+  thing that changes it. A list that failed is said under its group, and only
+  the search's hits are offered; a list the page limit cut off is said too.
+  The stored options are one memo per group, shared by its lines. The one type-specific rule is a table over the resource
   types: a Patient linked to a stored one whose family name, given name or
   birth date (`Patient.demographics`, the parts the name-and-birth-date
   identifier is minted from) differs gets a warning line, never a block; a

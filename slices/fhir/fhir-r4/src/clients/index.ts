@@ -17,11 +17,16 @@ export {
 } from './field-diff.ts'
 export { trimTrailingSlashes } from './fhir-base-url.ts'
 export {
+  matchesIn,
+  MatchWithoutResource,
   NEXT_RELATION,
   nextPageToken,
   PAGE_TOKEN_PARAM,
   type PageLink,
+  PageTokenRepeated,
   searchAllPages,
+  type SearchPages,
+  type SearchsetEntry,
   type SearchsetPage,
 } from './search-pages.ts'
 export {

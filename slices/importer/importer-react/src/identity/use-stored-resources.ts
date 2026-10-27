@@ -1,16 +1,21 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, type UseQueryOptions } from '@tanstack/react-query'
 import { Effect, Match, Option } from 'effect'
 import { useMemo } from 'react'
 
-import { useRunAuthed } from '@wildflowerhealthio/fhir-r4-react'
-import { FhirR4ResourcesHttpApiClient, searchAllPages } from '@wildflowerhealthio/fhir-r4/clients'
+import { type RunAuthed, useRunAuthed } from '@wildflowerhealthio/fhir-r4-react'
+import {
+  FhirR4ResourcesHttpApiClient,
+  type PageTokenRepeated,
+  type SearchPages,
+  searchAllPages,
+} from '@wildflowerhealthio/fhir-r4/clients'
 import {
   type LinkableLogicalReference,
   LinkableResource,
   type ReferentSearch,
 } from '@wildflowerhealthio/importer-fundamentals'
 
-import { IMPORTER_QUERY_KEY } from '../queries/keys.ts'
+import { STORED_RESOURCES_QUERY_KEY } from '../queries/keys.ts'
 
 /**
  * The server's stored Patients or Practitioners: what a referent's select
@@ -19,12 +24,14 @@ import { IMPORTER_QUERY_KEY } from '../queries/keys.ts'
  *
  * @remarks
  * Every page of `GET <Type>?_count=` through the typed client
- * (`fhir-r4/clients`' `searchAllPages`), read once when the referent rows
- * mount and capped at {@link STORED_PAGE_LIMIT} pages. A select has no room
- * for a "load more" action, and a personal server holds a household's worth
- * of people and their providers, not a hospital's, so the whole list is read
- * up front and offered at once. Each resource arrives with the label the
- * review shows it by, read on the clock the read runs on.
+ * (`fhir-r4/clients`' `searchAllPages`), capped at {@link STORED_PAGE_LIMIT}
+ * pages, and said to be cut off when the cap left pages unread. A select has
+ * no room for a "load more" action, and a personal server holds a household's
+ * worth of people and their providers, not a hospital's, so the whole list is
+ * read up front and offered at once. Each resource arrives with the label the
+ * review shows it by, read on the clock the read runs on. The read starts as
+ * soon as the batch's referents are known (`useIdentityMap` prefetches it,
+ * through {@link storedResourcesQuery}) rather than when the rows mount.
  *
  * @packageDocumentation
  */
@@ -39,6 +46,12 @@ const STORED_PAGE_LIMIT = 10
 interface StoredResource {
   readonly resource: LinkableResource.WithId
   readonly label: string
+}
+
+/** The stored list as read: every resource labelled, and whether the page limit left some unread. */
+interface StoredResources {
+  readonly resources: readonly StoredResource[]
+  readonly truncated: boolean
 }
 
 /** `resource` with its label: its displayed name and birth date, else its literal reference. */
@@ -65,34 +78,71 @@ const pageRequest = (
 const storedResources = (
   resourceType: LinkableLogicalReference.ResourceType
 ): Effect.Effect<
-  readonly LinkableResource.WithId[],
-  ReferentSearch.SearchFailure,
+  SearchPages<LinkableResource.WithId>,
+  ReferentSearch.SearchFailure | PageTokenRepeated,
   FhirR4ResourcesHttpApiClient
 > =>
   Effect.flatMap(FhirR4ResourcesHttpApiClient, (client) =>
     Match.value(resourceType).pipe(
-      Match.when('Patient', () =>
-        searchAllPages((pageToken) => client.Patient.SearchByGet(pageRequest(pageToken)), {
+      Match.when('Patient', (type) =>
+        searchAllPages(type, (pageToken) => client.Patient.SearchByGet(pageRequest(pageToken)), {
           pageLimit: STORED_PAGE_LIMIT,
         })
       ),
-      Match.when('Practitioner', () =>
-        searchAllPages((pageToken) => client.Practitioner.SearchByGet(pageRequest(pageToken)), {
-          pageLimit: STORED_PAGE_LIMIT,
-        })
+      Match.when('Practitioner', (type) =>
+        searchAllPages(
+          type,
+          (pageToken) => client.Practitioner.SearchByGet(pageRequest(pageToken)),
+          { pageLimit: STORED_PAGE_LIMIT }
+        )
       ),
       Match.exhaustive
     )
   )
 
+/** The key one stored list is cached under: the root and its resource type. */
+type StoredResourcesQueryKey = readonly [
+  ...typeof STORED_RESOURCES_QUERY_KEY,
+  LinkableLogicalReference.ResourceType,
+]
+
+/** The pages read, each resource labelled. */
+const labeledAll = (read: SearchPages<LinkableResource.WithId>): Effect.Effect<StoredResources> =>
+  Effect.map(Effect.forEach(read.matches, labeled), (resources) => ({
+    resources,
+    truncated: read.truncated,
+  }))
+
+/**
+ * The query for the stored list of `resourceType`, the same for the rows that
+ * read it ({@link useStoredResources}) and the prefetch that starts it.
+ *
+ * @remarks
+ * Never stale on its own: the list changes only when a confirm writes, and
+ * the confirm invalidates `STORED_RESOURCES_QUERY_KEY` then, so a window
+ * focus does not page through the server again and the next review reads
+ * the records the last one wrote.
+ */
+const storedResourcesQuery = (
+  resourceType: LinkableLogicalReference.ResourceType,
+  runAuthed: RunAuthed
+): UseQueryOptions<StoredResources, Error, StoredResources, StoredResourcesQueryKey> => ({
+  queryKey: [...STORED_RESOURCES_QUERY_KEY, resourceType] as const,
+  queryFn: (): Promise<StoredResources> =>
+    runAuthed(Effect.flatMap(storedResources(resourceType), labeledAll)),
+  staleTime: Infinity,
+  retry: false,
+})
+
 /**
  * The stored list as the rows read it: `loading` until the pages are in,
- * `ready` with every resource labelled, `error` when a page failed, which the
- * rows say rather than offering a shorter list as if it were the whole one.
+ * `ready` with every resource labelled and whether the page limit cut the
+ * list off, `error` when a page failed; the rows say either of the last two
+ * rather than offering a shorter list as if it were the whole one.
  */
 type StoredResourcesState =
   | { readonly _tag: 'loading' }
-  | { readonly _tag: 'ready'; readonly resources: readonly StoredResource[] }
+  | ({ readonly _tag: 'ready' } & StoredResources)
   | { readonly _tag: 'error'; readonly error: Error }
 
 const LOADING: StoredResourcesState = { _tag: 'loading' }
@@ -104,29 +154,15 @@ const LOADING: StoredResourcesState = { _tag: 'loading' }
  * @param enabled - Whether to read at all: false when the batch has no
  *   referent of that type
  * @returns The list's state
- *
- * @remarks
- * Read once for as long as the rows are mounted (`staleTime: Infinity`, so
- * a window focus does not page through the server again) and dropped when
- * they unmount (`gcTime: 0`), so the next review reads the records the last
- * one wrote.
  */
 const useStoredResources = (
   resourceType: LinkableLogicalReference.ResourceType,
   enabled: boolean
 ): StoredResourcesState => {
   const runAuthed = useRunAuthed()
-  const query = useQuery({
-    queryKey: [...IMPORTER_QUERY_KEY, 'stored', resourceType] as const,
-    queryFn: (): Promise<readonly StoredResource[]> =>
-      runAuthed(Effect.flatMap(storedResources(resourceType), Effect.forEach(labeled))),
-    enabled,
-    staleTime: Infinity,
-    gcTime: 0,
-    retry: false,
-  })
+  const query = useQuery({ ...storedResourcesQuery(resourceType, runAuthed), enabled })
   return useMemo((): StoredResourcesState => {
-    if (query.data !== undefined) return { _tag: 'ready', resources: query.data }
+    if (query.data !== undefined) return { _tag: 'ready', ...query.data }
     if (query.isError) {
       return {
         _tag: 'error',
@@ -140,4 +176,11 @@ const useStoredResources = (
   }, [query.data, query.isError, query.error, resourceType])
 }
 
-export { labeled, type StoredResource, type StoredResourcesState, useStoredResources }
+export {
+  labeled,
+  type StoredResource,
+  type StoredResources,
+  storedResourcesQuery,
+  type StoredResourcesState,
+  useStoredResources,
+}

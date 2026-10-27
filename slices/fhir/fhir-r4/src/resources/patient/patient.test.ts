@@ -533,7 +533,21 @@ describe('Patient.demographics', () => {
       birthDate: '1990-01-02',
     })
 
+    const textOnlyOfficial = patientOf({
+      name: [
+        { use: 'usual', family: 'Smith', given: ['Jo'] },
+        { use: 'official', text: 'Joanna Smith' },
+      ],
+      birthDate: '1990-01-02',
+    })
+
     expect(demographicsOnTestClock(renamed).family).toEqual(Option.some('doe'))
+    // A text-only name shows, but the parts are read from the name that states them.
+    expect(demographicsOnTestClock(textOnlyOfficial)).toEqual({
+      family: Option.some('smith'),
+      given: Option.some('jo'),
+      birthDate: Option.some('1990-01-02'),
+    })
     expect(Option.map(mintOnTestClock(renamed), ({ value }) => value)).toEqual(
       Option.some('doe;tyra;1990-01-02')
     )

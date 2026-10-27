@@ -1,6 +1,6 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Array, Effect, Either, HashMap, Option, pipe } from 'effect'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useRunAuthed } from '@wildflowerhealthio/fhir-r4-react'
 import {
@@ -10,6 +10,7 @@ import {
   discoverReferents,
 } from '@wildflowerhealthio/importer-core'
 import {
+  LinkableLogicalReference,
   LinkChoice,
   LinkableResource,
   LinkPlan,
@@ -20,7 +21,7 @@ import {
 } from '@wildflowerhealthio/importer-fundamentals'
 
 import { IMPORTER_QUERY_KEY } from '../queries/keys.ts'
-import { labeled, type StoredResource } from './use-stored-resources.ts'
+import { labeled, type StoredResource, storedResourcesQuery } from './use-stored-resources.ts'
 
 /**
  * The identity map in the screen: the batch's referents, the link choice each
@@ -32,6 +33,8 @@ import { labeled, type StoredResource } from './use-stored-resources.ts'
  * keyed by the batch id and read once per batch, over the referents of the
  * batch's first decode. The screen blocks the first paint on it, as it does on
  * the server diff, so every line paints with its search hit already chosen.
+ * The stored lists the rows offer are read in the same breath (prefetched
+ * under `storedResourcesQuery`), since they depend on neither.
  * The reviewer's choices sit on top of the defaults, keyed by `Referent.key`,
  * and survive a settings re-decode: a re-decode re-discovers the referents,
  * and a referent it brings back keeps its choice. A choice the stage can no
@@ -102,6 +105,9 @@ interface SearchedDefaults {
 }
 
 const NO_DEFAULTS: SearchedDefaults = { linkChoices: ReferentLinkChoices.empty, found: [] }
+
+/** No referents to search for, held once so the effects keyed on it do not re-run. */
+const NO_REFERENTS: readonly Referent.Type[] = []
 
 /** The default choice of every referent of `referents`, and each stored resource those defaults link to or update, once. */
 const searchDefaults = (
@@ -200,6 +206,7 @@ const useIdentityMap = (
   batchId: number
 ): IdentityMapReview => {
   const runAuthed = useRunAuthed()
+  const queryClient = useQueryClient()
   // Discovery reads the clock (which of a person's names is current) and
   // nothing else, so it runs synchronously here; its one failure is a state.
   const discovered = useMemo(
@@ -220,7 +227,19 @@ const useIdentityMap = (
   }
   // Only while a batch is in hand: after a start-over or during the next
   // pick's read, the previous batch's referents must not be searched again.
-  const searched = referents === undefined ? [] : (current?.searched ?? [])
+  const searched = referents === undefined ? NO_REFERENTS : (current?.searched ?? NO_REFERENTS)
+
+  // The stored lists the rows will offer start loading now, beside the
+  // default search, rather than when the rows mount after it. A list that
+  // fails is reported by the rows' own read of the same query, so this start
+  // of it reports nothing.
+  useEffect(() => {
+    for (const resourceType of LinkableLogicalReference.RESOURCE_TYPES) {
+      if (searched.some((referent) => referent.logicalReference.type === resourceType)) {
+        queryClient.query(storedResourcesQuery(resourceType, runAuthed)).catch(() => undefined)
+      }
+    }
+  }, [queryClient, runAuthed, searched])
 
   const query = useQuery({
     queryKey: [...IMPORTER_QUERY_KEY, 'referent-defaults', batchId] as const,
@@ -261,8 +280,11 @@ const useIdentityMap = (
   if (readyNow !== undefined && lastReady?.mapped !== readyNow) {
     setLastReady({ batchId, mapped: readyNow })
   }
-  const previous: Option.Option<Mapped> =
-    lastReady?.batchId === batchId ? Option.some(lastReady.mapped) : Option.none()
+  const previous = useMemo(
+    (): Option.Option<Mapped> =>
+      lastReady?.batchId === batchId ? Option.some(lastReady.mapped) : Option.none(),
+    [lastReady, batchId]
+  )
 
   const choose = useCallback((referentKey: string, choice: LinkChoice.Type): void => {
     setPerBatch((perBatchBefore) =>
