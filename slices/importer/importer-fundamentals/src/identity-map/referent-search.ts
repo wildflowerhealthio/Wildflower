@@ -5,9 +5,8 @@
  *
  * @remarks
  * The search is by identifier only. Demographics are identifiers too
- * (`LinkableResource.maybeDerivedIdentifier`, among a referent's
- * `identifiers`), so a name-and-birth-date match is one more token in the
- * same request.
+ * (`LinkableResource.maybeDerivedIdentifier`, a referent's
+ * `derivedIdentifier`), searched after the identifiers a source gave it.
  *
  * @packageDocumentation
  */
@@ -17,7 +16,7 @@ import {
   type FhirR4ResourcesHttpApiClientShape,
 } from '@wildflowerhealthio/fhir-r4/clients'
 import { TokenSearchParam } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array, Effect, HashMap, Match, Option, pipe } from 'effect'
+import { Array, Effect, HashMap, Match, Option } from 'effect'
 
 import * as LinkChoice from './link-choice.ts'
 import type * as LinkableLogicalReference from './linkable-logical-reference.ts'
@@ -37,72 +36,89 @@ type SearchFailure = Effect.Effect.Error<
 const SEARCH_CONCURRENCY = 4
 
 /**
- * The `identifier` search value for `referent`: every logical reference it
- * answers to (`Referent.logicalReferencesOf`) as a `system|value` token, any
- * of which the server may match. `None` when it answers to none.
+ * How many entries a search asks for: one more than it links to, so a second
+ * hit reads as an ambiguous match rather than going unseen.
  */
-const identifierSearchOf = (referent: Referent.Type): Option.Option<string> =>
-  pipe(
-    Referent.logicalReferencesOf(referent),
-    Array.map(({ identifier }) => TokenSearchParam.fromQualifiedIdentifier(identifier)),
-    Option.liftPredicate(Array.isNonEmptyReadonlyArray<string>),
-    Option.map(TokenSearchParam.anyOf)
-  )
+const SEARCH_COUNT = 2
 
-/** The first resource a search answered with, if any. */
-const firstFound = <TResource>(bundle: {
+/** The stored resources a search answered with. */
+const foundIn = <TResource>(bundle: {
   readonly entry: readonly { readonly resource: TResource | null }[]
-}): Option.Option<TResource> =>
-  Array.findFirst(bundle.entry, ({ resource }) => resource !== null).pipe(
-    Option.flatMapNullable(({ resource }) => resource)
-  )
-
-/** The first resource of `resourceType` on the device that `identifierSearch` names. */
-const searchStored = (
-  resourceType: LinkableLogicalReference.ResourceType,
-  identifierSearch: string
-): Effect.Effect<
-  Option.Option<LinkableResource.WithId>,
-  SearchFailure,
-  FhirR4ResourcesHttpApiClient
-> =>
-  Effect.flatMap(FhirR4ResourcesHttpApiClient, (client) => {
-    // Only the first entry is read, so ask for no more than that.
-    const request = { urlParams: { identifier: identifierSearch, _count: 1 } }
-    return Match.value(resourceType).pipe(
-      Match.when('Patient', () =>
-        Effect.map(client.Patient.SearchByGet(request), (bundle) => firstFound(bundle))
-      ),
-      Match.when('Practitioner', () =>
-        Effect.map(client.Practitioner.SearchByGet(request), (bundle) => firstFound(bundle))
-      ),
-      Match.exhaustive
-    )
-  })
+}): readonly TResource[] =>
+  Array.filterMap(bundle.entry, ({ resource }) => Option.fromNullable(resource))
 
 /**
- * The link choice `referent` takes before the reviewer makes one: the first
- * resource of its type on the device that any of its identifiers names, else
- * its kind's default (`LinkChoice.defaultFor`).
+ * The stored resources of `resourceType` that any of `logicalReferences`
+ * names, up to {@link SEARCH_COUNT}: one `GET <Type>?identifier=<tokens>`,
+ * or none, and nothing, when there is no reference to search by.
+ */
+const storedNamedBy = (
+  resourceType: LinkableLogicalReference.ResourceType,
+  logicalReferences: readonly LinkableLogicalReference.Type[]
+): Effect.Effect<readonly LinkableResource.WithId[], SearchFailure, FhirR4ResourcesHttpApiClient> =>
+  Array.match(logicalReferences, {
+    onEmpty: () => Effect.succeed([]),
+    onNonEmpty: (named) =>
+      Effect.flatMap(FhirR4ResourcesHttpApiClient, (client) => {
+        const request = {
+          urlParams: {
+            identifier: TokenSearchParam.anyOf(
+              Array.map(named, ({ identifier }) =>
+                TokenSearchParam.fromQualifiedIdentifier(identifier)
+              )
+            ),
+            _count: SEARCH_COUNT,
+          },
+        }
+        return Match.value(resourceType).pipe(
+          Match.when('Patient', () => Effect.map(client.Patient.SearchByGet(request), foundIn)),
+          Match.when('Practitioner', () =>
+            Effect.map(client.Practitioner.SearchByGet(request), foundIn)
+          ),
+          Match.exhaustive
+        )
+      }),
+  })
+
+/** The one resource `hits` holds; `None` for no hit, and for two, which is an ambiguous match. */
+const theOneOf = (
+  hits: readonly LinkableResource.WithId[]
+): Option.Option<LinkableResource.WithId> => (hits.length === 1 ? Array.head(hits) : Option.none())
+
+/**
+ * The link choice `referent` takes before the reviewer makes one: the one
+ * stored resource of its type that its own identifiers name; when they name
+ * none, the one its derived identifier names; else its kind's default
+ * (`LinkChoice.defaultFor`).
  *
  * @remarks
- * One `GET <Type>?identifier=<tokens>&_count=1` per referent, its derived
- * identifier among the tokens, the first entry of the answer winning. A
- * referent with no searchable identifier takes its default without a request.
- * A failed search fails the read: it is not "no match".
+ * The identifiers a source gave a referent are searched before the one its
+ * demographics derive, so a record this source wrote last time is found ahead
+ * of another person who shares the name and birth date. Each search asks for
+ * two entries, and two hits are an ambiguous match that picks no default: the
+ * reviewer chooses from the stored list. A referent with no searchable
+ * identifier takes its default without a request. A failed search fails the
+ * read: it is not "no match".
  */
 const defaultChoice = (
   referent: Referent.Type
 ): Effect.Effect<LinkChoice.Type, SearchFailure, FhirR4ResourcesHttpApiClient> =>
-  Option.match(identifierSearchOf(referent), {
-    onNone: () => Effect.succeed(LinkChoice.defaultFor(referent)),
-    onSome: (identifierSearch) =>
-      Effect.map(searchStored(referent.logicalReference.type, identifierSearch), (found) =>
-        Option.match(found, {
-          onNone: () => LinkChoice.defaultFor(referent),
-          onSome: (resource) => LinkChoice.LinkToStoredResource({ resource }),
-        })
-      ),
+  Effect.gen(function* () {
+    const { type } = referent.logicalReference
+    const namedByOwn = yield* storedNamedBy(type, Referent.ownLogicalReferencesOf(referent))
+    const namedByDerived = Array.isEmptyReadonlyArray(namedByOwn)
+      ? yield* storedNamedBy(
+          type,
+          Option.toArray(Referent.maybeDerivedLogicalReferenceOf(referent))
+        )
+      : []
+    return Option.match(
+      Option.orElse(theOneOf(namedByOwn), () => theOneOf(namedByDerived)),
+      {
+        onNone: () => LinkChoice.defaultFor(referent),
+        onSome: (resource) => LinkChoice.LinkToStoredResource({ resource }),
+      }
+    )
   })
 
 /**

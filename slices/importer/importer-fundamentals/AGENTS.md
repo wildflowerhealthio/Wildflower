@@ -148,8 +148,11 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     its resource (keyed by its `identifier[0]`, carrying every identifier a
     search tries, its own and the derived one), **`ByMentionOnly`** when only
     mentions name it; built only through its constructors, matched with
-    `Referent.match`. `logicalReferencesOf` is every logical reference a
-    referent answers to, and **`byLogicalReferenceKey`** the referent each
+    `Referent.match`. `ownLogicalReferencesOf` is the logical references a
+    referent's source-given identifiers make, `maybeDerivedLogicalReferenceOf`
+    the one its demographics derive, `logicalReferencesOf` both: every
+    logical reference a referent answers to; and **`byLogicalReferenceKey`**
+    is the referent each
     logical reference names: the one it is the key of, else the one referent
     that answers to it, so a Shoppers account id a decoded Patient also
     carries is that Patient. `tryFromDecodedResource` and `mentionedIn` read
@@ -227,12 +230,15 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     of each placed file, which the caller composes.
   - **`ReferentSearch`** — the identity map's one server read, over
     `fhir-r4/clients`' `FhirR4ResourcesHttpApiClient`: **`defaultChoice`** is
-    one `GET <Type>?identifier=&_count=1` with every logical reference the
-    referent answers to (`Referent.logicalReferencesOf`) as a
-    `TokenSearchParam` token, the first hit `LinkToStoredResource`, else
-    `LinkChoice.defaultFor`; a failed search fails the read.
-    **`defaultChoices`** runs it per referent, a few at a time, into the
-    `ReferentLinkChoices` a review starts from.
+    a `GET <Type>?identifier=&_count=2` with the referent's own logical
+    references (`Referent.ownLogicalReferencesOf`) as `TokenSearchParam`
+    tokens and, only when that names nothing, a second with the derived one
+    (`maybeDerivedLogicalReferenceOf`), so a record this source wrote is
+    found ahead of a namesake; the one hit is `LinkToStoredResource`, two
+    hits are ambiguous and no hit is `LinkChoice.defaultFor`, so the reviewer
+    chooses; a failed search fails the read. **`defaultChoices`** runs it per
+    referent, a few at a time, into the `ReferentLinkChoices` a review
+    starts from (#1431 is one search per type).
 - `src/picked-file.ts` — the **`PickedFile`** namespace: the picked file
   vocabulary _and_ the codec that source files one. **`Type`**
   (`{ id, fileName, bytes }`) is the one value every `decode` receives, and

@@ -35,6 +35,8 @@ interface AsResource {
    * then the one its demographics derive, when they allow one.
    */
   readonly identifiers: readonly IdentifierAndReference.IdentifierType[]
+  /** The identifier the resource's demographics derive, when they allow one: the last of `identifiers`. */
+  readonly derivedIdentifier: Option.Option<IdentifierAndReference.IdentifierType>
   readonly resource: LinkableResource.WithId
   /** The `DecodedFile.Resource` key the resource is reviewed under. */
   readonly reviewKey: string
@@ -69,17 +71,47 @@ class DuplicateReferent extends Data.TaggedError('DuplicateReferent')<{
 const key = (referent: Type): string => LinkableLogicalReference.key(referent.logicalReference)
 
 /**
- * Every logical reference `referent` answers to: each identifier it brings
- * (`identifiersOf`) as a logical reference to its type, its key's first.
+ * The logical references `referent`'s own identifiers make, its key's first:
+ * the ones a source gave it, not the one its demographics derive.
  */
-const logicalReferencesOf = (referent: Type): readonly LinkableLogicalReference.Type[] =>
+const ownLogicalReferencesOf = (referent: Type): readonly LinkableLogicalReference.Type[] =>
   match(referent, {
-    AsResource: ({ logicalReference, identifiers }) =>
-      Array.filterMap(identifiers, (identifier) =>
+    AsResource: ({ logicalReference, resource }) =>
+      Array.filterMap(resource.identifier, (identifier) =>
         LinkableLogicalReference.tryFromIdentifier(logicalReference.type, identifier)
       ),
     ByMentionOnly: ({ logicalReference }) => [logicalReference],
   })
+
+/**
+ * The logical reference `referent`'s demographics derive, when they allow one
+ * (`LinkableResource.maybeDerivedIdentifier`); a referent named only by
+ * mentions derives none.
+ */
+const maybeDerivedLogicalReferenceOf = (
+  referent: Type
+): Option.Option<LinkableLogicalReference.Type> =>
+  match(referent, {
+    AsResource: ({ logicalReference, derivedIdentifier }) =>
+      Option.flatMap(derivedIdentifier, (identifier) =>
+        LinkableLogicalReference.tryFromIdentifier(logicalReference.type, identifier)
+      ),
+    ByMentionOnly: () => Option.none(),
+  })
+
+/**
+ * Every logical reference `referent` answers to: its own
+ * ({@link ownLogicalReferencesOf}), then the derived one
+ * ({@link maybeDerivedLogicalReferenceOf}), once each.
+ */
+const logicalReferencesOf = (referent: Type): readonly LinkableLogicalReference.Type[] =>
+  Array.dedupeWith(
+    [
+      ...ownLogicalReferencesOf(referent),
+      ...Option.toArray(maybeDerivedLogicalReferenceOf(referent)),
+    ],
+    LinkableLogicalReference.equivalence
+  )
 
 /** The identifiers `referent` brings to whatever it links to. */
 const identifiersOf = (referent: Type): readonly IdentifierAndReference.IdentifierType[] =>
@@ -118,6 +150,7 @@ const tryFromDecodedResource = (
               Array.filter(IdentifierAndReference.isQualifiedIdentifier),
               Array.dedupeWith(IdentifierAndReference.identifierEquivalence)
             ),
+            derivedIdentifier,
             resource,
             reviewKey: entry.key,
             label,
@@ -238,5 +271,7 @@ export {
   key,
   logicalReferencesOf,
   match,
+  maybeDerivedLogicalReferenceOf,
+  ownLogicalReferencesOf,
 }
 export type { AsResource, ByMentionOnly, Type }

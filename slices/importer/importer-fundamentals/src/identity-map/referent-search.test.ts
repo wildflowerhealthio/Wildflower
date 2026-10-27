@@ -22,11 +22,17 @@ import * as Referent from './referent.ts'
 
 /**
  * Drives `ReferentSearch` over the typed FHIR client and a stub `HttpClient`
- * that answers every search with `answer`, recording each URL it was asked for.
+ * that answers each search by the `identifier` it asks for, recording each URL
+ * it was asked for.
  */
 
 const TEST_ORIGIN = 'http://fhir.test'
 const NAME_BIRTH_DATE = 'https://wildflowerhealth.io/fhir/identifier/patient-name-birth-date'
+const TYRA_OWN = `${SOURCE_PATIENT}|p-1`
+const TYRA_DERIVED = `${NAME_BIRTH_DATE}|banks;tyra;1990-01-02`
+
+const STORED_1 = { resourceType: 'Patient', id: 's-1' }
+const STORED_2 = { resourceType: 'Patient', id: 's-2' }
 
 /** A searchset Bundle carrying `resources`, as the server answers a search. */
 const searchset = (resources: readonly object[]): Response =>
@@ -45,15 +51,18 @@ interface StubServer {
   readonly urls: readonly URL[]
 }
 
-/** A server that answers every search with `answer`, and the URLs it was asked for. */
-const stubServer = (answer: () => Response): StubServer => {
+/** A server that answers each search with `answer` of its `identifier` value, and the URLs it was asked for. */
+const stubServer = (answer: (identifierSearch: string | null) => Response): StubServer => {
   const urls: URL[] = []
   const httpClient = Layer.succeed(
     HttpClient.HttpClient,
     HttpClient.mapRequest(
       HttpClient.make((httpRequest) => {
-        urls.push(new URL(`${httpRequest.url}?${UrlParams.toString(httpRequest.urlParams)}`))
-        return Effect.succeed(HttpClientResponse.fromWeb(httpRequest, answer()))
+        const url = new URL(`${httpRequest.url}?${UrlParams.toString(httpRequest.urlParams)}`)
+        urls.push(url)
+        return Effect.succeed(
+          HttpClientResponse.fromWeb(httpRequest, answer(url.searchParams.get('identifier')))
+        )
       }),
       HttpClientRequest.prependUrl(TEST_ORIGIN)
     )
@@ -61,12 +70,17 @@ const stubServer = (answer: () => Response): StubServer => {
   return { layer: FhirR4ResourcesHttpApiClient.layer.pipe(Layer.provide(httpClient)), urls }
 }
 
-/** Search for `referent` against a server answering every search with `stored`. */
+/** A server whose searches find `hitsFor` of the identifier value asked for, nothing otherwise. */
+const serverFinding = (hitsFor: Readonly<Record<string, readonly object[]>>): StubServer =>
+  stubServer((identifierSearch) =>
+    searchset(identifierSearch === null ? [] : (hitsFor[identifierSearch] ?? []))
+  )
+
+/** Search for `referent` against `server`. */
 const search = async (
   referent: Referent.Type,
-  stored: readonly object[] = []
+  server: StubServer = serverFinding({})
 ): Promise<{ readonly choice: LinkChoice.Type; readonly urls: readonly URL[] }> => {
-  const server = stubServer(() => searchset(stored))
   const choice = await Effect.runPromise(
     ReferentSearch.defaultChoice(referent).pipe(
       Effect.provide(Layer.merge(server.layer, TestContext.TestContext))
@@ -92,24 +106,26 @@ const describeChoice = (choice: LinkChoice.Type): string =>
     DontLink: () => 'DontLink',
   })
 
+/** The searches `urls` record, as `<path> <identifier value>`. */
+const searchesOf = (urls: readonly URL[]): readonly string[] =>
+  urls.map((url) => `${url.pathname} ${url.searchParams.get('identifier')}`)
+
 const TYRA = onlyReferent(patient({ id: 'p-1' }))
 
 describe('ReferentSearch.defaultChoice', () => {
-  it('searches the referent’s type once, with every identifier it answers to comma-joined', async () => {
+  it('should search the referent’s own identifiers first, and the derived one only when they name nothing', async () => {
     const { urls } = await search(TYRA)
 
-    expect(urls.map((url) => [url.pathname, url.searchParams.get('identifier')])).toEqual([
-      ['/Patient', `${SOURCE_PATIENT}|p-1,${NAME_BIRTH_DATE}|banks;tyra;1990-01-02`],
-    ])
+    expect(searchesOf(urls)).toEqual([`/Patient ${TYRA_OWN}`, `/Patient ${TYRA_DERIVED}`])
   })
 
-  it('asks for the one entry it reads', async () => {
+  it('should ask for two entries, so a second hit is seen', async () => {
     const { urls } = await search(TYRA)
 
-    expect(urls.map((url) => url.searchParams.get('_count'))).toEqual(['1'])
+    expect(urls.map((url) => url.searchParams.get('_count'))).toEqual(['2', '2'])
   })
 
-  it('searches a provider named only by a mention under Practitioner, by its one identity', async () => {
+  it('should search a provider named only by a mention once, under Practitioner, by its one identity', async () => {
     const prescriber = discoverOnTestClock(
       fileOf(request('rx-1', customerSubject('c-9'), namedRequester('Dr. A Smith')))
     ).find(({ logicalReference }) => logicalReference.type === 'Practitioner')
@@ -117,39 +133,62 @@ describe('ReferentSearch.defaultChoice', () => {
 
     const { urls } = await search(prescriber)
 
-    expect(urls.map((url) => [url.pathname, url.searchParams.get('identifier')])).toEqual([
-      ['/Practitioner', `${Practitioner.NAME_IDENTIFIER_SYSTEM}|Dr. A Smith`],
+    expect(searchesOf(urls)).toEqual([
+      `/Practitioner ${Practitioner.NAME_IDENTIFIER_SYSTEM}|Dr. A Smith`,
     ])
   })
 
-  it('gives the referent kind’s default when nothing is found', async () => {
+  it('should give the referent kind’s default when nothing is found', async () => {
     const account = onlyReferent(request('rx-1', customerSubject('c-9')))
 
     expect(describeChoice((await search(TYRA)).choice)).toBe('CreateResource')
     expect(describeChoice((await search(account)).choice)).toBe('DontLink')
   })
 
-  it('links to the first resource the search finds', async () => {
-    const { choice } = await search(TYRA, [
-      { resourceType: 'Patient', id: 's-1' },
-      { resourceType: 'Patient', id: 's-2' },
-    ])
+  it('should link to the one resource the own identifiers name, without searching the derived one', async () => {
+    const { choice, urls } = await search(TYRA, serverFinding({ [TYRA_OWN]: [STORED_1] }))
+
+    expect(describeChoice(choice)).toBe('LinkToStoredResource Patient/s-1')
+    expect(searchesOf(urls)).toEqual([`/Patient ${TYRA_OWN}`])
+  })
+
+  it('should link to the one resource the derived identifier names when the own name none', async () => {
+    const { choice } = await search(TYRA, serverFinding({ [TYRA_DERIVED]: [STORED_2] }))
+
+    expect(describeChoice(choice)).toBe('LinkToStoredResource Patient/s-2')
+  })
+
+  it('should prefer the record the own identifiers name over a namesake the derived one names', async () => {
+    const { choice } = await search(
+      TYRA,
+      serverFinding({ [TYRA_OWN]: [STORED_1], [TYRA_DERIVED]: [STORED_2] })
+    )
 
     expect(describeChoice(choice)).toBe('LinkToStoredResource Patient/s-1')
   })
 
-  it('links a practitioner to a stored practitioner', async () => {
-    const { choice, urls } = await search(onlyReferent(practitioner('pr-1', 'Dr. A Smith')), [
-      { resourceType: 'Practitioner', id: 'sp-1' },
-    ])
-
-    expect(urls[0]?.searchParams.get('identifier')).toBe(
-      `${SOURCE_PRACTITIONER}|pr-1,${Practitioner.NAME_IDENTIFIER_SYSTEM}|Dr. A Smith`
+  it('should pick no default when two stored resources answer one search, and search no further', async () => {
+    const { choice, urls } = await search(
+      TYRA,
+      serverFinding({ [TYRA_OWN]: [STORED_1, STORED_2], [TYRA_DERIVED]: [STORED_2] })
     )
+
+    expect(describeChoice(choice)).toBe('CreateResource')
+    expect(searchesOf(urls)).toEqual([`/Patient ${TYRA_OWN}`])
+  })
+
+  it('should link a practitioner to a stored practitioner', async () => {
+    const own = `${SOURCE_PRACTITIONER}|pr-1`
+    const { choice, urls } = await search(
+      onlyReferent(practitioner('pr-1', 'Dr. A Smith')),
+      serverFinding({ [own]: [{ resourceType: 'Practitioner', id: 'sp-1' }] })
+    )
+
+    expect(searchesOf(urls)).toEqual([`/Practitioner ${own}`])
     expect(describeChoice(choice)).toBe('LinkToStoredResource Practitioner/sp-1')
   })
 
-  it("escapes FHIR search's reserved characters in both halves of a token", async () => {
+  it("should escape FHIR search's reserved characters in both halves of a token", async () => {
     const { urls } = await search(
       onlyReferent(
         patient({ id: 'p', system: 'https://a.example/id,$', value: 'a,b|c$d\\e', family: null })
@@ -161,7 +200,7 @@ describe('ReferentSearch.defaultChoice', () => {
     )
   })
 
-  it('fails the read when the search fails, rather than reading it as no match', async () => {
+  it('should fail the read when the search fails, rather than reading it as no match', async () => {
     const server = stubServer(() => new Response('', { status: 503 }))
 
     const exit = await Effect.runPromiseExit(
@@ -173,11 +212,11 @@ describe('ReferentSearch.defaultChoice', () => {
 })
 
 describe('ReferentSearch.defaultChoices', () => {
-  it('gives every referent its default choice, keyed by referent', async () => {
+  it('should give every referent its default choice, keyed by referent', async () => {
     const referents = discoverOnTestClock(
       fileOf(patient({ id: 'p-1' }), request('rx-1', customerSubject('c-9')))
     )
-    const server = stubServer(() => searchset([{ resourceType: 'Patient', id: 's-1' }]))
+    const server = serverFinding({ [TYRA_OWN]: [STORED_1], [`${CUSTOMER}|c-9`]: [STORED_1] })
 
     const choices = await Effect.runPromise(
       ReferentSearch.defaultChoices(referents).pipe(
