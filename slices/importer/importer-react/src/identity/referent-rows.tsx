@@ -26,6 +26,7 @@ import {
   type ReferentTally,
   sameAsLabel,
   STORED_LIST_ERROR_MESSAGE,
+  UPDATE_LABEL,
 } from './referent-text.ts'
 import { type StoredResource, useStoredResources } from './use-stored-resources.ts'
 import styles from './referent-rows.module.css'
@@ -37,7 +38,9 @@ import styles from './referent-rows.module.css'
  *
  * @remarks
  * A referent with a resource offers `New` (its own resource becomes the
- * record) or a stored resource. One named only by mentions offers a stored
+ * record), or, when a stored resource under its own id is known (a
+ * re-import), an update of that copy in its place, and a stored resource. One
+ * named only by mentions offers a stored
  * resource, the new record each other referent of its type creates (a
  * `LinkToDecodedReferent`), `New` when its logical reference stands for a
  * provisional record, and `Don't link`. The stored resources offered are the
@@ -93,6 +96,8 @@ const valueOf = (choice: LinkChoice.Type): string =>
   LinkChoice.match(choice, {
     CreateResource: () => 'create',
     DontLink: () => 'dont-link',
+    UpdateStoredResource: ({ resource }) =>
+      `update:${LinkableResource.literalReferenceOf(resource)}`,
     LinkToStoredResource: ({ resource }) =>
       `stored:${LinkableResource.literalReferenceOf(resource)}`,
     LinkToDecodedReferent: ({ referentKey }) => `decoded:${referentKey}`,
@@ -109,22 +114,52 @@ const storedOption = ({ resource, label }: StoredResource): ChoiceOption =>
 
 const sameValue = (left: ChoiceOption, right: ChoiceOption): boolean => left.value === right.value
 
-/** Whether `referent` creates a record of its own: its choice is `CreateResource`, and that lands on a resource. */
-const createsRecord = (
+/** Whether `referent` writes a record of its own, new or over its stored copy, and that lands on a resource. */
+const writesOwnRecord = (
   referent: Referent.Type,
   linkChoices: ReferentLinkChoices.Type,
   linkTargets: HashMap.HashMap<string, LinkTarget.Type>
-): boolean =>
-  LinkChoice.is('CreateResource')(LinkChoice.forReferent(linkChoices, referent)) &&
-  HashMap.get(linkTargets, Referent.key(referent)).pipe(
-    Option.exists((linkTarget) => !LinkTarget.is('Unlinked')(linkTarget))
+): boolean => {
+  const choice = LinkChoice.forReferent(linkChoices, referent)
+  return (
+    (LinkChoice.is('CreateResource')(choice) || LinkChoice.is('UpdateStoredResource')(choice)) &&
+    HashMap.get(linkTargets, Referent.key(referent)).pipe(
+      Option.exists((linkTarget) => !LinkTarget.is('Unlinked')(linkTarget))
+    )
   )
+}
 
 /** Everything the options of one referent are read from. */
 type OptionInputs = Pick<ReferentRowsProps, 'referents' | 'linkChoices' | 'linkTargets'> & {
-  /** The options for the stored resources of the referent's type: the search's hits, then the server's own. */
+  /** The stored resources of the referent's type: the search's hits, then the server's own. */
+  readonly storedOfType: readonly StoredResource[]
+  /** {@link OptionInputs.storedOfType} as options, built once per group. */
   readonly onServer: readonly ChoiceOption[]
 }
+
+/**
+ * The stored copy of `decoded` under its own literal reference, when one is
+ * known: among the stored resources of its type, else the one its `current`
+ * choice updates.
+ */
+const storedCopyOf = (
+  decoded: LinkableResource.WithId,
+  current: LinkChoice.Type,
+  storedOfType: readonly StoredResource[]
+): Option.Option<LinkableResource.WithId> =>
+  Array.findFirst(
+    storedOfType,
+    ({ resource: stored }) =>
+      LinkableResource.literalReferenceOf(stored) === LinkableResource.literalReferenceOf(decoded)
+  ).pipe(
+    Option.map(({ resource }) => resource),
+    Option.orElse(() =>
+      Option.map(
+        Option.liftPredicate(current, LinkChoice.is('UpdateStoredResource')),
+        ({ resource }) => resource
+      )
+    )
+  )
 
 /**
  * The options `referent`'s select offers under `current`, its choice: those
@@ -148,8 +183,18 @@ const optionsFor = (
     onSome: (option) => [...inputs.onServer, option],
   })
   return Referent.match(referent, {
-    AsResource: () => ({
-      leading: [optionOf(LinkChoice.CreateResource(), NEW_LABEL)],
+    // With a stored copy under its own id, the update takes New's place; New
+    // stays offered only while it is the choice, so the select shows it.
+    AsResource: ({ resource }) => ({
+      leading: Option.match(storedCopyOf(resource, current, inputs.storedOfType), {
+        onNone: () => [optionOf(LinkChoice.CreateResource(), NEW_LABEL)],
+        onSome: (storedCopy) => [
+          optionOf(LinkChoice.UpdateStoredResource({ resource: storedCopy }), UPDATE_LABEL),
+          ...(LinkChoice.is('CreateResource')(current)
+            ? [optionOf(LinkChoice.CreateResource(), NEW_LABEL)]
+            : []),
+        ],
+      }),
       onServer,
       inImport: [],
       trailing: [],
@@ -166,7 +211,7 @@ const optionsFor = (
       const inImport = Array.dedupeWith(
         [
           ...others
-            .filter((other) => createsRecord(other, inputs.linkChoices, inputs.linkTargets))
+            .filter((other) => writesOwnRecord(other, inputs.linkChoices, inputs.linkTargets))
             .map((other) =>
               optionOf(
                 LinkChoice.LinkToDecodedReferent({ referentKey: Referent.key(other) }),
@@ -265,9 +310,10 @@ const differingDemographicsWarningFor = (
   )
 
 /**
- * How many records the referents land on: stored ones, and new or provisional
- * ones, each counted once however many referents share it; and how many
- * referents land nowhere.
+ * How many records the referents land on: stored ones as they are, and the
+ * ones this import writes (decoded, over a stored copy or not, and
+ * provisional), each counted once however many referents share it; and how
+ * many referents land nowhere.
  */
 const tallyOf = (linkTargets: Iterable<LinkTarget.Type>): ReferentTally => {
   const targets = Array.fromIterable(linkTargets)
@@ -284,7 +330,7 @@ const tallyOf = (linkTargets: Iterable<LinkTarget.Type>): ReferentTally => {
     )
   return {
     onServer: recordsAmong(LinkTarget.is('Stored')),
-    created: recordsAmong(
+    fromImport: recordsAmong(
       (target) => LinkTarget.is('Decoded')(target) || LinkTarget.is('Provisional')(target)
     ),
     unlinked: Array.countBy(targets, LinkTarget.is('Unlinked')),
@@ -379,18 +425,23 @@ const ReferentGroup = ({
     [referents, resourceType]
   )
   const stored = useStoredResources(resourceType, ofType.length > 0)
-  // The stored options are built once per list, and shared by every line.
-  const onServer = useMemo(
-    (): readonly ChoiceOption[] =>
-      pipe(
+  // The stored resources, and their options, are worked out once per list and shared by every line.
+  const storedOfType = useMemo(
+    (): readonly StoredResource[] =>
+      Array.dedupeWith(
         [
           ...found.filter(({ resource }) => resource.resourceType === resourceType),
           ...(stored._tag === 'ready' ? stored.resources : []),
         ],
-        Array.map(storedOption),
-        Array.dedupeWith(sameValue)
+        (left, right) =>
+          LinkableResource.literalReferenceOf(left.resource) ===
+          LinkableResource.literalReferenceOf(right.resource)
       ),
     [found, stored, resourceType]
+  )
+  const onServer = useMemo(
+    (): readonly ChoiceOption[] => storedOfType.map(storedOption),
+    [storedOfType]
   )
   // The lines are worked out once per change of the choices, not per render.
   const lines = useMemo(
@@ -400,10 +451,16 @@ const ReferentGroup = ({
         return {
           referent,
           choice,
-          options: optionsFor(referent, choice, { referents, linkChoices, linkTargets, onServer }),
+          options: optionsFor(referent, choice, {
+            referents,
+            linkChoices,
+            linkTargets,
+            storedOfType,
+            onServer,
+          }),
         }
       }),
-    [ofType, referents, linkChoices, linkTargets, onServer]
+    [ofType, referents, linkChoices, linkTargets, storedOfType, onServer]
   )
   if (ofType.length === 0) return null
   const heading = GROUP_HEADINGS[resourceType]

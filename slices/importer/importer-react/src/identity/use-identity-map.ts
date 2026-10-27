@@ -56,7 +56,7 @@ interface Mapped {
   readonly linkChoices: ReferentLinkChoices.Type
   /** Each referent's link target under {@link linkChoices}, by `Referent.key`. */
   readonly linkTargets: HashMap.HashMap<string, LinkTarget.Type>
-  /** The stored resources the default search found, labelled, for the reviewer to pick again. */
+  /** The stored resources the default search found, linked to or updated, labelled, for the reviewer to pick again. */
   readonly found: readonly StoredResource[]
   /** The batch placed on {@link linkChoices}: what the diff, the preview and the confirm see. */
   readonly placed: BatchDecodeResult
@@ -103,7 +103,7 @@ interface SearchedDefaults {
 
 const NO_DEFAULTS: SearchedDefaults = { linkChoices: ReferentLinkChoices.empty, found: [] }
 
-/** The default choice of every referent of `referents`, and each stored resource those defaults link to, once. */
+/** The default choice of every referent of `referents`, and each stored resource those defaults link to or update, once. */
 const searchDefaults = (
   referents: readonly Referent.Type[]
 ): Effect.Effect<
@@ -116,7 +116,10 @@ const searchDefaults = (
     const found = yield* pipe(
       Array.fromIterable(HashMap.values(linkChoices)),
       Array.filterMap((choice) =>
-        LinkChoice.is('LinkToStoredResource')(choice) ? Option.some(choice.resource) : Option.none()
+        LinkChoice.is('LinkToStoredResource')(choice) ||
+        LinkChoice.is('UpdateStoredResource')(choice)
+          ? Option.some(choice.resource)
+          : Option.none()
       ),
       Array.dedupeWith(
         (left, right) =>

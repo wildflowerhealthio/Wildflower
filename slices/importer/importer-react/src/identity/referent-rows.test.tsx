@@ -24,6 +24,7 @@ import {
   newAsLabel,
   ON_SERVER_GROUP,
   STORED_LIST_ERROR_MESSAGE,
+  UPDATE_LABEL,
 } from './referent-text.ts'
 import { useIdentityMap } from './use-identity-map.ts'
 
@@ -126,6 +127,34 @@ describe('ReferentRows', () => {
     }
   )
 
+  it('should offer an update over the copy the search finds under the decoded id, in place of New', async () => {
+    await renderRows(BATCH, { found: [patientWire('p-1', SOURCE, { given: ['Tyra', 'Lynne'] })] })
+
+    const select = screen.getByRole<HTMLSelectElement>('combobox', { name: TYRA })
+    expect(select.value).toBe('update:Patient/p-1')
+    expect(select.selectedOptions[0]?.textContent).toBe(UPDATE_LABEL)
+    expect(within(select).queryByRole('option', { name: NEW_LABEL })).toBeNull()
+    expect(
+      within(within(select).getByRole('group', { name: ON_SERVER_GROUP }))
+        .getAllByRole('option')
+        .map((option) => option.textContent)
+    ).toEqual(['Tyra Lynne Banks · 1990-01-02'])
+    expect(screen.queryByText(/different/)).toBeNull()
+
+    // Keeping the server's copy instead: the decoded Patient is replaced by it.
+    await userEvent.selectOptions(select, 'Tyra Lynne Banks · 1990-01-02')
+    await waitFor(() => {
+      expect(select.value).toBe('stored:Patient/p-1')
+    })
+    expect(
+      screen.getByText('The record on the server has a different given name.', { exact: false })
+    ).toBeDefined()
+    await userEvent.selectOptions(select, UPDATE_LABEL)
+    await waitFor(() => {
+      expect(select.value).toBe('update:Patient/p-1')
+    })
+  })
+
   it('should not warn when the stored Patient states no birth date to compare', async () => {
     await renderRows(BATCH, { found: [patientWire('s-1', SERVER, { birthDate: null })] })
 
@@ -137,7 +166,7 @@ describe('ReferentRows', () => {
 
     // Tyra's own record is the one new record; the account and the prescriber land nowhere.
     expect(screen.getByRole('status').textContent).toBe(
-      '0 records on the server, 1 new record, 2 not linked'
+      '0 records on the server, 1 record from this import, 2 not linked'
     )
 
     // The account is the person the Patient line creates: its mentions follow.
@@ -148,7 +177,7 @@ describe('ReferentRows', () => {
     })
     // Two referents on one new record count once.
     expect(screen.getByRole('status').textContent).toBe(
-      '0 records on the server, 1 new record, 1 not linked'
+      '0 records on the server, 1 record from this import, 1 not linked'
     )
 
     // Unlinked again: the mention keeps its identifier-only form.

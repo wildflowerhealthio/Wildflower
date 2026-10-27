@@ -47,6 +47,9 @@ const CHOOSE_OTHER_FILES_LABEL = 'Choose other files'
 /** The choice that writes the referent's own resource, or a provisional one, as a new record. */
 const NEW_LABEL = 'New'
 
+/** The choice that writes the referent's own resource over the stored copy the search found under its id. */
+const UPDATE_LABEL = 'Update the record on the server'
+
 /** The choice that leaves a referent's mentions as they are. */
 const DONT_LINK_LABEL = "Don't link"
 
@@ -80,19 +83,19 @@ const BIRTH_DATE = 'birth date'
 
 /** How many records the referents land on, and how many referents land nowhere. */
 interface ReferentTally {
-  /** Stored records linked to. */
+  /** Stored records linked to, as they are. */
   readonly onServer: number
-  /** New or provisional records the import creates. */
-  readonly created: number
+  /** Records this import writes: decoded ones, over a stored copy or not, and provisional ones. */
+  readonly fromImport: number
   /** Referents not linked. */
   readonly unlinked: number
 }
 
-/** The tally line: how many stored records are linked to, how many new records are created, how many referents are neither. */
-const referentTallyLine = ({ onServer, created, unlinked }: ReferentTally): string =>
+/** The tally line: how many stored records are linked to, how many records this import writes, how many referents are neither. */
+const referentTallyLine = ({ onServer, fromImport, unlinked }: ReferentTally): string =>
   [
     `${onServer} ${plural(onServer, 'record')} on the server`,
-    `${created} new ${plural(created, 'record')}`,
+    `${fromImport} ${plural(fromImport, 'record')} from this import`,
     ...(unlinked > 0 ? [`${unlinked} not linked`] : []),
   ].join(', ')
 
@@ -117,4 +120,5 @@ export {
   SEARCHING_SERVER_MESSAGE,
   sameAsLabel,
   STORED_LIST_ERROR_MESSAGE,
+  UPDATE_LABEL,
 }

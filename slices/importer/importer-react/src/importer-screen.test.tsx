@@ -566,7 +566,7 @@ describe('ImporterScreen', () => {
     await userEvent.upload(screen.getByLabelText('Import file'), namedPatientHar('a.har'))
     const person = await screen.findByRole<HTMLSelectElement>('combobox', { name: TYRA })
     expect(person.value).toBe('stored:Patient/s-1')
-    expect(screen.getByText(/1 record on the server, 0 new records/)).toBeDefined()
+    expect(screen.getByText(/1 record on the server, 0 records from this import/)).toBeDefined()
     await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
@@ -609,7 +609,7 @@ describe('ImporterScreen', () => {
       expect(screen.getByRole('heading', { name: /Nothing to import/ })).toBeDefined()
     })
     const person = screen.getByRole<HTMLSelectElement>('combobox', { name: TYRA })
-    expect(person.value).toBe('create')
+    expect(person.value).toMatch(/^update:Patient\//)
     expect(screen.getAllByText('Already on server')).toHaveLength(4)
     for (const box of screen.getAllByRole<HTMLInputElement>('checkbox', { name: /^Include / })) {
       expect(box.checked).toBe(false)

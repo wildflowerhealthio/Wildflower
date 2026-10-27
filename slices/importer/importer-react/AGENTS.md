@@ -116,12 +116,14 @@ The importer has no HTTP wire union to derive, so there is no separate
   written; a failed search shows an alert and leaves every referent on its
   kind's default. `referent-rows.tsx` is the block the panel renders above the
   format groups (its `referentRows` slot), "People and providers in this
-  import": a tally of the records the referents land on (a stored record or
-  a new one is counted once however many referents share it) and the
-  referents that land nowhere, then one group per
+  import": a tally of the records the referents land on (a stored record, or
+  one this import writes, is counted once however many referents share it)
+  and the referents that land nowhere, then one group per
   `LinkableLogicalReference.RESOURCE_TYPES` entry that has referents, one
   line per referent, its label and a select of the `LinkChoice`s its kind
-  allows — `New` or a stored resource for an `AsResource` referent; a stored
+  allows — `New`, or an update of the stored copy under its own id when one
+  is known (`UpdateStoredResource`, a re-import's default), or a stored
+  resource for an `AsResource` referent; a stored
   resource, `New: <label>` (`LinkToDecodedReferent`) for each other referent
   of its type that creates a record, `New` when
   `LinkableResource.tryProvisionalFrom` stands for its logical reference, and
@@ -463,10 +465,11 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   pins the identity map: the reads to reach a review, a confirm linked to a
   stored Patient (only the stored one written, carrying the source's
   identifier, every subject on it), a re-import that defaults the Patient to
-  `New` over the copy it stored and is `unchanged` and left out, and one referent for one identity two files name.
+  an update of the copy it stored and is `unchanged` and left out, and one referent for one identity two files name.
 - `identity/referent-rows.test.tsx` drives `useIdentityMap` and the rows over a
   hand-built batch and a stub search: a line per referent, people before
-  providers, `New` without a hit, a hit pre-selected, the demographics warning,
+  providers, `New` without a hit, a hit pre-selected, an update over the copy
+  found under the decoded id, the demographics warning,
   and a changed select placing the batch.
 - `preview/preview-panel.test.tsx` drives the pure panel by props — no router —
   and pins that a claimed format renders each decoded section under its own
