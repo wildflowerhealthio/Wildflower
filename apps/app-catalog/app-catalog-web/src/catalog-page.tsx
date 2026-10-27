@@ -7,8 +7,10 @@ import styles from './catalog-page.module.css'
 /**
  * The catalog's page: the shared site header and footer around a pointer to
  * the catalog file.
+ *
+ * @param catalogJsonPath - The catalog's `.json` copy, site-absolute.
  */
-function CatalogPage(): JSX.Element {
+function CatalogPage({ catalogJsonPath }: { readonly catalogJsonPath: string }): JSX.Element {
   return (
     <div className={styles['catalog-page']}>
       <SiteHeader nav={fromApp} />
@@ -16,7 +18,7 @@ function CatalogPage(): JSX.Element {
         <h1 className={styles['catalog-page__title']}>Wildflower App Catalog</h1>
         <p>
           The SMART on FHIR apps worth trying with a Wildflower server, published as a HALO App
-          Catalog: <a href={`./${AppCatalog.CATALOG_JSON_PATH}`}>{AppCatalog.CATALOG_JSON_PATH}</a>.
+          Catalog: <a href={catalogJsonPath}>{AppCatalog.CATALOG_JSON_PATH}</a>.
         </p>
       </main>
       <SiteFooter />

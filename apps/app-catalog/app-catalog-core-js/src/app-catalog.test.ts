@@ -229,6 +229,11 @@ describe('Catalog', () => {
     )
   })
 
+  it('rejects eligibilityCriteria longer than 2048 characters', () => {
+    expect(rejects({ ...app, eligibilityCriteria: 'a'.repeat(2049) })).toBe(true)
+    expect(rejects({ ...app, eligibilityCriteria: 'a'.repeat(2048) })).toBe(false)
+  })
+
   it('rejects a launch URL carrying iss', () => {
     expect(rejects({ ...app, launchUrl: `${app.launchUrl}?iss=https://ehr.example` })).toBe(true)
   })

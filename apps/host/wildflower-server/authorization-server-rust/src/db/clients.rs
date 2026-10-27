@@ -807,8 +807,8 @@ mod tests {
 
     /// The App Catalog publishes each first-party app's OAuth client
     /// registration as its HALO `preassignedCredentials`, for a server that
-    /// registers the app itself. Every entry carrying the object must match
-    /// its seeded row: a public client with no secret, the same scopes and
+    /// registers the app itself. Every Wildflower Health entry carrying the
+    /// object must match its seeded row: a public client with no secret, the same scopes and
     /// grant types, every redirect it lists registered, and a smart-app's
     /// `launchUrl` among them, since its launch page is where it returns to. The row
     /// is the source of truth, so a migration that changes one fails here
@@ -821,9 +821,16 @@ mod tests {
         ));
         let catalog: serde_json::Value =
             serde_json::from_str(APP_CATALOG_JSON).expect("apps.json is JSON");
+        // The catalog's id for Wildflower Health, the publisher of every app
+        // whose client the migrations seed. Another publisher's credentials are
+        // that publisher's to keep, so they are not checked here.
+        const WILDFLOWER_HEALTH_PUBLISHER_ID: &str = "5a3385ad-9a2b-4dc6-85a0-5b874da0b019";
         let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let mut checked = 0;
         for app in catalog.as_array().expect("an array of apps") {
+            if app["publisher"]["id"] != WILDFLOWER_HEALTH_PUBLISHER_ID {
+                continue;
+            }
             let Some(credentials) = app.get("preassignedCredentials") else {
                 continue;
             };

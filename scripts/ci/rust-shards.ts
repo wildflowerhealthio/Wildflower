@@ -125,6 +125,9 @@ const OUTSIDE_INPUTS: ReadonlyMap<string, string> = new Map([
   // The Recorder's wire golden file, which wildflowerhealthio-browser-sniffer-tauri
   // reads from beside the recorder crates.
   ['apps/host/recorder/recorder-wire-golden.json', 'wildflowerhealthio-browser-sniffer-tauri'],
+  // The App Catalog, whose preassigned clients wildflowerhealthio-authorization-server
+  // holds to the rows its migrations seed.
+  ['apps/app-catalog/app-catalog-web/public/apps.json', 'wildflowerhealthio-authorization-server'],
 ])
 
 /** Which shards a branch's test run covers. */

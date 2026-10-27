@@ -17,6 +17,9 @@ import { Schema } from 'effect'
 /** The longest URL HALO allows in any URL field. */
 const MAX_URL_LENGTH = 2048
 
+/** The longest `eligibilityCriteria` HALO allows. */
+const MAX_ELIGIBILITY_CRITERIA_LENGTH = 2048
+
 /**
  * A URL a published catalog links to: an absolute `https:` URL of at most
  * {@link MAX_URL_LENGTH} characters, carrying no credentials.
@@ -288,7 +291,7 @@ const applicationFields = {
   launchUrl: Schema.optional(LaunchUrl),
   /** Who the app is for, in the publisher's words. */
   eligibilityCriteria: Schema.optional(
-    Schema.NonEmptyTrimmedString.pipe(Schema.maxLength(MAX_URL_LENGTH))
+    Schema.NonEmptyTrimmedString.pipe(Schema.maxLength(MAX_ELIGIBILITY_CRITERIA_LENGTH))
   ),
   contacts: Contacts,
   publisher: Publisher,
