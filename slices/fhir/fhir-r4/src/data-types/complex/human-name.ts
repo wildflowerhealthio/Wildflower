@@ -47,6 +47,6 @@ const HumanNameSchema: Schema.Schema<typeof HumanNameStruct.Type, FhirR4.HumanNa
 
 registerDatatypeSchema('HumanName', HumanNameSchema)
 
-export { displayName } from './human-name-display.ts'
+export { currentName, displayName } from './human-name-display.ts'
 export type { Displayable } from './human-name-display.ts'
 export { HumanNameSchema as Schema }

@@ -30,7 +30,9 @@ import type { SmartAppTelemetry } from '@wildflowerhealthio/smart-app-react'
  *
  * - The app **searches** the server for existing HAR archives
  *   (`DocumentReference.SearchByGet`) and reads one back by id when the user
- *   picks a server-held archive.
+ *   picks a server-held archive, and searches and lists the server's
+ *   `Patient`s and `Practitioner`s (`SearchByGet`, by `identifier` and paged)
+ *   for the review's identity map.
  * - Every write is a `PUT /{type}/{client-minted-uuid}` (the `.Update` endpoint /
  *   `fhir-r4`'s `upsertResource`), i.e. update-as-create. The full `.cruds`
  *   grant deliberately includes `create` and `delete` even though the flow

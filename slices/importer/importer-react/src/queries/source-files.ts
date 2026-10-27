@@ -11,7 +11,7 @@ import {
   fetchDocumentReferencePage,
   useSmartHandshake,
 } from '@wildflowerhealthio/fhir-r4-react/smart'
-import { FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/clients'
+import { FhirR4ResourcesHttpApiClient, nextPageToken } from '@wildflowerhealthio/fhir-r4/clients'
 import type { DocumentReference } from '@wildflowerhealthio/fhir-r4/resources'
 import { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
 import type { DateTime } from 'effect'
@@ -23,7 +23,6 @@ import { formatKinds, type FormatKind } from '@wildflowerhealthio/importer-core'
 
 import { formatRegistry } from '../registry.ts'
 import { SOURCE_FILES_QUERY_KEY } from './keys.ts'
-import { nextPageToken } from './page-token.ts'
 
 /**
  * The paged read behind the server source: uploaded source-file

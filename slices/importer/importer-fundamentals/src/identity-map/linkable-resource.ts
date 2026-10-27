@@ -84,9 +84,7 @@ const isDerivedIdentifier = (identifier: IdentifierAndReference.IdentifierType):
 const maybeDerivedIdentifier: (
   resource: Type
 ) => Effect.Effect<Option.Option<IdentifierAndReference.IdentifierType>> = Match.type<Type>().pipe(
-  matchResourceType('Patient', (patient) =>
-    Effect.succeed(Patient.nameBirthDateIdentifier(patient))
-  ),
+  matchResourceType('Patient', (patient) => Patient.nameBirthDateIdentifier(patient)),
   matchResourceType('Practitioner', (practitioner) =>
     Effect.map(maybeDisplayName(practitioner), Option.flatMap(Practitioner.nameIdentifier))
   ),

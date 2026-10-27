@@ -257,6 +257,16 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     search fails the read. **`defaultChoices`** runs it per
     referent, a few at a time, into the `ReferentLinkChoices` a review
     starts from (#1431 is one search per type).
+  - **`DifferingDemographics`** — **`between(decoded, stored)`**: the
+    demographics (a **`Demographic`**, `FamilyName | GivenName | BirthDate`)
+    a decoded resource and the stored resource it is linked to both state and
+    differ, compared on `Patient.demographics` at the clock's now, in the
+    order a warning lists them; a Practitioner compares none. What the review
+    warns about; the link stands.
+  - **`ReferentTally`** — **`of(linkTargets)`**: how many records the
+    referents land on (`onServer`, `fromImport`, each record counted once, a
+    stored record the import writes over counted from the import) and how
+    many referents are `unlinked`: the review's summary line.
 - `src/picked-file.ts` — the **`PickedFile`** namespace: the picked file
   vocabulary _and_ the codec that source files one. **`Type`**
   (`{ id, fileName, bytes }`) is the one value every `decode` receives, and

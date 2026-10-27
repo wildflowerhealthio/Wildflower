@@ -545,3 +545,15 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 **Discovered during**: claude/beautiful-tesla-gcvjkk (Android bundle with no native symbol table)
 **Learning**: The Tauri template's `app/build.gradle.kts` put `packaging { jniLibs.keepDebugSymbols.add(...) }` inside `buildTypes { getByName("debug") { … } }`. A build type has no `packaging`, so the Kotlin DSL resolves it on the enclosing `android {}` block, and the release build kept the Rust library's symbols too. The release strip task then copied the `.so` files unchanged, and `extract<Variant>NativeSymbolTables` skipped them with "the native debug metadata has already been stripped": it takes a library that stripping didn't change for one that was stripped before. That message, and most of what AGP says about stripping, appears only at `--info`, which `tauri android build -v` turns on (by default the Tauri CLI runs Gradle at `--warn`). A per-variant setting belongs in `androidComponents { onVariants(selector().withBuildType(...)) { … } }`.
 **Suggested destination**: docs/Rust/Android Release Signing Explanation.md (already summarised there), or an Android How-To
+
+## `Stream.paginateEffect`'s state is the raw cursor, not an `Option` of it
+
+**Discovered during**: identity-map-screen-1419 (`fhir-r4/clients`' `searchAllPages`)
+**Learning**: `Stream.paginateEffect(initial, (state) => Effect<[page, Option<state>]>)` already uses the `Option` as the stop signal, so a pager whose state is itself an `Option<string>` (the `_pageToken`, `None` for the first page) has to return `Option<Option<string>>`. Returning a bare `Option<string>` typechecks the callback, breaks inference of the whole pipeline (the result reads as `Effect<unknown[], unknown, unknown>`) and at runtime stops after the first page, because `Some(token)` is read as the next _state_ `token` where an `Option` was expected. Keep the state as `string | null` and convert at the edges (`Option.fromNullable` in, `Option.fromNullable(nextPageToken(...))` out).
+**Suggested destination**: docs/Effect/Patterns Reference.md
+
+## A workspace-wide `vp run test:changed` can kill a cloud session's worker
+
+**Discovered during**: identity-map-screen-1419
+**Learning**: Running `vp run test:changed` over the whole workspace in a claude.ai cloud container ended with exit 137 and a restarted session worker (memory), after the same command had completed once earlier in the session. Running the affected packages' suites one at a time from their own directories (`node_modules/.bin/vp test` in each) covers the push hook's ask without the spike; the one failure the full pass had shown, `scripts/release/apple-signing-sync.test.ts`, is the container lacking `column`, not a code failure.
+**Suggested destination**: docs/Testing/Testing Reference.md (the cloud-session notes), or Strategies

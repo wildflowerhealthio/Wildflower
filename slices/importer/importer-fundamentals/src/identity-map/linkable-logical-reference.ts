@@ -26,14 +26,12 @@ interface Type extends Pick<IdentifierAndReference.ReferenceType, 'type' | 'iden
   readonly identifier: IdentifierAndReference.QualifiedIdentifierType
 }
 
-const RESOURCE_TYPES: readonly string[] = [
-  'Patient',
-  'Practitioner',
-] satisfies readonly ResourceType[]
+/** Every resource type a linkable logical reference can name, in the order a review lists them. */
+const RESOURCE_TYPES: readonly ResourceType[] = ['Patient', 'Practitioner']
 
 /** Whether `resourceType` is one a linkable logical reference can name. */
 const isResourceType = (resourceType: string | null): resourceType is ResourceType =>
-  resourceType !== null && RESOURCE_TYPES.includes(resourceType)
+  resourceType !== null && (RESOURCE_TYPES as readonly string[]).includes(resourceType)
 
 /** The identity map's key for `logicalReference`: `type|system|value`. */
 const key = ({ type, identifier }: Type): string =>
@@ -65,5 +63,5 @@ const tryFromReference = (reference: IdentifierAndReference.ReferenceType): Opti
     ? tryFromIdentifier(reference.type, reference.identifier)
     : Option.none()
 
-export { equivalence, isResourceType, key, tryFromIdentifier, tryFromReference }
+export { equivalence, isResourceType, key, RESOURCE_TYPES, tryFromIdentifier, tryFromReference }
 export type { ResourceType, Type }

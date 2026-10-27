@@ -8,14 +8,14 @@ import {
   persistBatchBundle,
 } from '@wildflowerhealthio/fhir-r4/clients'
 import {
-  type BatchDecodeResult,
   claimedFormats,
   type FormatKind,
   planFormatWrite,
+  type ResolvedBatch,
 } from '@wildflowerhealthio/importer-core'
 import type { FormatDecode, StagedImport } from '@wildflowerhealthio/importer-fundamentals'
 
-import { SOURCE_FILES_QUERY_KEY } from '../queries/keys.ts'
+import { SOURCE_FILES_QUERY_KEY, STORED_RESOURCES_QUERY_KEY } from '../queries/keys.ts'
 import {
   type BatchOutcome,
   type FileImportResult,
@@ -49,10 +49,12 @@ import {
  * result in the batch — one format never stops the rest, and a format with
  * nothing included is `skipped` and never touches the server.
  *
- * After the batch resolves, the source-file list query is invalidated
- * once — so a freshly written source file appears in the server list on the
- * next pick — even when the batch wrote none; the invalidation is cheap and
- * the alternative (tracking which formats wrote a source file) buys nothing.
+ * After the batch resolves, the source-file list query and the stored
+ * people and providers the referent rows offer are invalidated once — so a
+ * freshly written source file appears in the server list on the next pick,
+ * and a person this import wrote is offered to the next — even when the
+ * batch wrote none; the invalidation is cheap and the alternative (tracking
+ * what each format wrote) buys nothing.
  *
  * @packageDocumentation
  */
@@ -83,7 +85,7 @@ interface ConfirmImport {
    * format's labeled resources come off its own decoded sections — the same
    * objects the preview rendered, its source file among them.
    */
-  readonly confirm: (batch: BatchDecodeResult, selectionFor: SelectionFor) => void
+  readonly confirm: (batch: ResolvedBatch, selectionFor: SelectionFor) => void
   /** Discard the outcome and return to `idle` (a "start over" from results). */
   readonly reset: () => void
 }
@@ -129,7 +131,7 @@ const useConfirmImport = (): ConfirmImport => {
   const latest = useRef(0)
 
   const confirm = useCallback(
-    (batchResult: BatchDecodeResult, selectionFor: SelectionFor): void => {
+    (batchResult: ResolvedBatch, selectionFor: SelectionFor): void => {
       latest.current += 1
       const ticket = latest.current
       setState({ _tag: 'confirming' })
@@ -156,6 +158,7 @@ const useConfirmImport = (): ConfirmImport => {
         if (latest.current !== ticket) return
         setState({ _tag: 'done', batch: results })
         void queryClient.invalidateQueries({ queryKey: SOURCE_FILES_QUERY_KEY })
+        void queryClient.invalidateQueries({ queryKey: STORED_RESOURCES_QUERY_KEY })
       })
     },
     [runAuthed, queryClient]
