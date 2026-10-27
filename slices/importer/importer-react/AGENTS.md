@@ -216,9 +216,11 @@ The importer has no HTTP wire union to derive, so there is no separate
   read-only with their diff badge and no toggle or edit, under one shared
   confirm, gated on the batch writing at least one resource. Which linked
   records are written is `importer-core`'s `planBatchWrite`, not a toggle:
-  those a written resource names and the server does not hold unchanged (the
-  screen hands the panel and the confirm the same `unchangedLinked`, the
-  linked group's `initialExclusionsFor`). The diff keys its verdicts by `ReviewGroup`, a format or
+  none the server holds unchanged (the screen hands the panel and the
+  confirm the same `unchangedLinked`, the linked group's
+  `initialExclusionsFor`); otherwise every stored copy, whatever the reviewer
+  excluded, since the link choice is the consent to it, and a new record
+  only when a written resource names it. The diff keys its verdicts by `ReviewGroup`, a format or
   `LINKED_GROUP`, so the linked records' badges are their own. It is the
   panel, the actions and the editor dialog only; the review body it renders
   per format is
@@ -260,7 +262,9 @@ The importer has no HTTP wire union to derive, so there is no separate
   written of what was attempted ⇒ failed);
   `import-results.tsx` renders the batch grouped by response code — every
   submitted resource (the source file included) with its status, plus the
-  formats that had nothing to import — under one aggregate tally. Only claimed
+  formats that had nothing to import — under one aggregate tally, which a
+  batch that wrote linked records alone words as such rather than as
+  resources across no file. Only claimed
   formats appear: a format that took no files is not a "nothing to import"
   row. There is no
   upload-failed section: a rejected source file is an ordinary failure row.
@@ -385,8 +389,11 @@ The importer has no HTTP wire union to derive, so there is no separate
   `planBatchWrite`'s plan — the **claimed** formats' included resources and
   the linked records it writes beside them — writes something; unreadable
   files and formats whose decode yielded nothing render their own section but
-  add nothing to write, and a linked record no written resource names, or one
-  the server holds unchanged, adds nothing either. The confirm reads the same
+  add nothing to write, and a linked record the server holds unchanged, or a
+  new one no written resource names, adds nothing either. A changed stored
+  copy alone is something to write, so the confirm can be offered with every
+  format's resources excluded; the results then say no file's resources
+  were imported. The confirm reads the same
   plan, so the count and the write cannot disagree, and both come off
   `claimedFormats`, the one predicate for "did this format take part" — a
   format that claimed nothing is not planned, tallied, or reported.

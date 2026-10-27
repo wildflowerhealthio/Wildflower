@@ -37,8 +37,9 @@ import {
  * The seam the preview-then-confirm promise rests on — nothing here runs
  * until the user confirms a reviewed batch, and what runs is
  * `importer-core`'s `planBatchWrite` (the reviewed objects, exclusions
- * applied and edits substituted, no re-parse, and the linked records some
- * written resource names and the server does not hold unchanged) handed to
+ * applied and edits substituted, no re-parse, and the linked records it
+ * writes: the stored copies the server does not hold unchanged, and the new
+ * records a written resource names) handed to
  * one `POST /` transaction bundle. The source file is one of
  * those reviewed resources — its format's `decode` minted it, listed it in
  * its own "Source file" section, and stamped every extracted resource's

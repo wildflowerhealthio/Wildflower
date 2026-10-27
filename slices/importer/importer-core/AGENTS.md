@@ -107,11 +107,16 @@ write plan with this package alone.
   resolved batch's plan, a **`BatchWritePlan`**: every claimed format's
   **`PlannedFormat`** (its result and `planFormatWrite`'s plan) and the
   `linked` records written beside them. It is the one place the rule for the
-  linked records lives, since the review shows them read-only: one is written
-  when its key is not in `unchangedLinked` (the server diff's `unchanged`) and
-  some resource a format writes references it by its literal `Type/<id>`, in
-  any reference field (`Mention.of`). A written linked record so always comes
-  with a written format. The preview's count and the confirm both read it.
+  linked records lives, since the review shows them read-only. None whose key
+  is in `unchangedLinked` (the server diff's `unchanged`) is written.
+  Otherwise a **stored copy** — a stored resource a link lands on
+  (`LinkTarget.Stored`), the batch's identifiers assumed — is written whatever
+  the reviewer excluded, the link choice being the consent to it; a **new**
+  record — a provisional one — only when some resource a format writes
+  references it by its literal `Type/<id>`, in any reference field
+  (`Mention.of`), so it is never an orphan. A batch can so write stored
+  copies and no format's resources. The preview's count and the confirm both
+  read it.
 
 ## Layering
 

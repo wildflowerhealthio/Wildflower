@@ -2,6 +2,7 @@ import type { JSX } from 'react'
 
 import {
   type BatchOutcome,
+  type BatchSummary,
   groupResultsByStatus,
   isPartialBatch,
   type ResourceResult,
@@ -61,6 +62,20 @@ const headingOf = (written: number, attempted: number, partial: boolean): string
 
 /** `noun` singular when `count === 1`, else its `-s` plural. */
 const plural = (count: number, noun: string): string => (count === 1 ? noun : `${noun}s`)
+
+/**
+ * The summary row: what wrote of what was attempted, across how many of the
+ * files. A batch no file of which was imported can still have written linked
+ * records (a stored copy the reviewer linked, every resource naming it
+ * excluded), and says so rather than reading as resources across no file.
+ */
+const summaryText = (summary: BatchSummary): string => {
+  if (summary.importedFiles === 0 && summary.attempted > 0) {
+    return `Wrote ${summary.written} of ${summary.attempted} linked ${plural(summary.attempted, 'record')}; no file's resources were imported.`
+  }
+  const excluded = summary.excluded > 0 ? ` (${summary.excluded} excluded)` : ''
+  return `Wrote ${summary.written} of ${summary.attempted} ${plural(summary.attempted, 'resource')}${excluded} across ${summary.importedFiles} of ${summary.totalFiles} ${plural(summary.totalFiles, 'file')}.`
+}
 
 /** Why a skipped file wrote nothing, in words a reader can act on. */
 const skipReasonText = (reason: SkipReason | 'unrecognized'): string => {
@@ -139,9 +154,7 @@ const ImportResults = ({ batch, onStartOver }: ImportResultsProps): JSX.Element 
     <section aria-label="Import results" className={styles.results}>
       <h2 className={styles.heading}>{heading}</h2>
       <p role="status" className={styles.summary}>
-        Wrote {summary.written} of {summary.attempted} {plural(summary.attempted, 'resource')}
-        {summary.excluded > 0 ? ` (${summary.excluded} excluded)` : ''} across{' '}
-        {summary.importedFiles} of {summary.totalFiles} {plural(summary.totalFiles, 'file')}.
+        {summaryText(summary)}
       </p>
 
       {groups.length > 0 && (

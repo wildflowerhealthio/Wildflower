@@ -38,10 +38,10 @@ import panelStyles from './preview-panel.module.css'
  * and its diagnostic notes, with unreadable files reported rather than
  * sinking the batch. Below the formats, the batch's linked records — the
  * records it names but holds no copy of, as the referent rows link them —
- * are shown with their server diff and no toggle: a linked record is written
- * when a resource the batch writes names it and the server does not hold it
- * unchanged (`importer-core`'s `planBatchWrite`, which the confirm reads
- * too). A settings change calls `onSettingsChange`; the shell re-decodes
+ * are shown with their server diff and no toggle: which are written is
+ * `importer-core`'s `planBatchWrite`, which the confirm reads too — a stored
+ * copy whenever the server does not hold it unchanged, a new record only
+ * when a resource the batch writes names it. A settings change calls `onSettingsChange`; the shell re-decodes
  * that format. The confirm appears only when that plan writes at least one
  * resource, and it does not write — it calls `onConfirm`; the confirm step
  * writes exactly the reviewed objects.
@@ -160,8 +160,8 @@ const PreviewActions = ({
 /**
  * The batch's linked records, read-only: each with its type, its one-line
  * summary and its server diff. Nothing here toggles or edits: a linked record
- * is written as the referent rows link it, when a written resource names it,
- * and changing it means choosing differently there.
+ * is written as the referent rows link it (`planBatchWrite` decides which
+ * are), and changing it means choosing differently there.
  */
 const LinkedRecords = ({
   linked,
