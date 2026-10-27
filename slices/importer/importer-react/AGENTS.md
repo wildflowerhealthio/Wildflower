@@ -168,9 +168,11 @@ The importer has no HTTP wire union to derive, so there is no separate
   claimed file's keys by its slot in the batch. The screen blocks the
   first paint on it but **not** on the re-classification a settings change or
   a link choice triggers, since unmounting the panel mid-review would drop the
-  focus of whatever control the reviewer is using; the previous verdicts stay
-  on screen (`refreshing`) and the confirm waits for the new ones, since the
-  pre-exclusions are read off them.
+  focus of whatever control the reviewer is using; the verdicts the batch last
+  settled on stay on screen (`refreshing`), a failed classification having
+  settled on "every id is new", and the confirm waits for the new ones, since
+  the pre-exclusions are read off them. A failed classification is retried
+  twice before it is reported; a fresh pick carries nothing over.
   `preview-panel.tsx` renders the batch grouped by format — one group per
   `claimedFormats` entry, its settings form (the registry's own
   `SettingsPicker`, indexed by the format tag) over that format's sectioned,

@@ -29,21 +29,24 @@ import { IMPORTER_QUERY_KEY } from '../queries/keys.ts'
  * round trip.
  *
  * `loading` means "nothing worth showing yet", which is narrower than "a
- * request is in flight". A settings change re-decodes, which starts a *second*
- * classification for the same batch, and reporting `loading` for that one
- * would unmount the whole preview — taking the focus of whatever settings
- * control the reviewer is using with it. So a re-classification keeps the
- * previous one on screen (`placeholderData`, scoped to the batch it came
- * from) and swaps in the new verdicts when they land. A *fresh pick* is a new
- * batch and gets no such carry-over: its badges would be about the last
- * batch's files.
+ * request is in flight". A settings change or a link choice changes the
+ * batch, which starts a *second* classification for the same batch, and
+ * reporting `loading` for that one would unmount the whole preview — taking
+ * the focus of whatever control the reviewer is using with it. So the hook
+ * keeps the verdicts the batch last settled on, and while the changed batch's
+ * own load it reports those as `ready` with `refreshing`, swapping in the new
+ * verdicts when they land. A classification that failed settled on "every id
+ * is new", so a batch whose first diff failed keeps its panel up too. A
+ * *fresh pick* is a new batch and gets no such carry-over: its badges would
+ * be about the last batch's files.
  *
  * The hook never blocks *confirming*: the classifier's own error channel is
  * `never` (a whole-bundle transport error attributes every id to `new` inside
  * `classifyAgainstServer`), and if `runAuthed` itself rejects on an auth
- * defect the query error surfaces as an `error` state whose `comparisons`
- * fall back to "every id is new" so the shell still resolves to a writable
- * batch rather than stalling — but the error is visible in the UI.
+ * defect the query is retried twice and then surfaces as an `error` state
+ * whose `comparisons` fall back to "every id is new" so the shell still
+ * resolves to a writable batch rather than stalling — but the error is
+ * visible in the UI.
  *
  * @packageDocumentation
  */
@@ -72,10 +75,10 @@ type FormatComparisons = ReadonlyMap<FormatKind, ReadonlyMap<string, ServerCompa
 /**
  * The state of the pre-fetch: `loading` while there is nothing worth showing
  * for this batch (the shell paints a loader instead of the preview), `ready`
- * once there is — the verdicts for this batch, or the ones carried over from
- * the same batch's previous classification while a re-decode's is in flight,
- * `error` when the auth-path or network request failed — the shell shows an
- * error and falls back to "every id is new" so the user can still confirm.
+ * once there is — the verdicts for this batch, or the ones it last settled on
+ * while the changed batch's own are in flight, `error` when the auth-path or
+ * network request failed after its retries — the shell shows an error and
+ * falls back to "every id is new" so the user can still confirm.
  */
 type ServerDiffState =
   | { readonly _tag: 'loading' }
@@ -83,7 +86,7 @@ type ServerDiffState =
       readonly _tag: 'ready'
       readonly comparisons: FormatComparisons
       /**
-       * Whether these are the previous classification's verdicts, carried
+       * Whether these are the verdicts the batch last settled on, carried
        * over while the changed batch's own load: the confirm waits on it.
        */
       readonly refreshing: boolean
@@ -96,6 +99,9 @@ type ServerDiffState =
 
 /** No comparisons, held once so an empty batch keeps a stable identity. */
 const NO_COMPARISONS: FormatComparisons = new Map()
+
+/** No verdicts by `Type/id`: what a failed classification settles on, so every id reads as `new`. */
+const NO_VERDICTS: ReadonlyMap<string, ServerComparison> = new Map()
 
 /** The comparison a resource with no classifier entry falls back to. */
 const AS_NEW: ServerComparison = { status: 'new', fields: [] }
@@ -136,16 +142,6 @@ const diffRowsOf = (batch: BatchDecodeResult): readonly DiffRow[] =>
   )
 
 /**
- * The batch id carried second-from-last in this hook's query keys — read back
- * off a *previous* query to decide whether its verdicts may carry over.
- * Positional from the end so the key's prefix can grow without breaking it.
- */
-const batchOf = (queryKey: readonly unknown[]): number | undefined => {
-  const value = queryKey.at(-2)
-  return typeof value === 'number' ? value : undefined
-}
-
-/**
  * Run the pre-fetch over every labeled resource across the batch's formats
  * and expose the classification as a
  * `FormatKind → resource key → ServerComparison` lookup.
@@ -154,9 +150,9 @@ const batchOf = (queryKey: readonly unknown[]): number | undefined => {
  *   import-run is still `idle` or `reading`); only read formats contribute
  *   resources
  * @param batchId - Identifies the picked batch: stable across a settings
- *   re-decode of the same files, different for a fresh pick. It is what
- *   decides whether a previous classification may stay on screen while the
- *   next one loads.
+ *   re-decode or a link choice over the same files, different for a fresh
+ *   pick. It is what decides whether the verdicts the batch last settled on
+ *   may stay on screen while the next ones load.
  * @returns `loading` until this batch has verdicts worth showing, then `ready`
  */
 const useServerDiff = (batch: BatchDecodeResult | undefined, batchId: number): ServerDiffState => {
@@ -191,41 +187,52 @@ const useServerDiff = (batch: BatchDecodeResult | undefined, batchId: number): S
     queryFn: (): Promise<ReadonlyMap<string, ServerComparison>> =>
       runAuthed(classifyAgainstServer((rows ?? []).map((row) => row.resource))),
     enabled,
-    // Keep the previous classification on screen while the next one loads, but
-    // only within one batch — another batch's verdicts are about other files.
-    placeholderData: (previous, previousQuery) =>
-      previousQuery !== undefined && batchOf(previousQuery.queryKey) === batchId
-        ? previous
-        : undefined,
     // A batch's server comparison does not drift under the reviewer, and the
     // batch identity is ephemeral, so never restale and do not retain it.
     staleTime: Infinity,
     gcTime: 0,
-    retry: false,
+    // A failed classification is asked again before it is reported; nothing is
+    // asked twice while an answer is in flight.
+    retry: 2,
   })
+
+  // The verdicts this batch last settled on — a failed classification settles
+  // on none — kept in state and adjusted during render like `tracked`, so a
+  // changed batch's panel stays up, on them, while its own are in flight.
+  const [lastSettled, setLastSettled] = useState<
+    | { readonly batchId: number; readonly verdicts: ReadonlyMap<string, ServerComparison> }
+    | undefined
+  >(undefined)
+  const settledNow = query.data ?? (query.isError ? NO_VERDICTS : undefined)
+  if (
+    settledNow !== undefined &&
+    (lastSettled?.batchId !== batchId || lastSettled.verdicts !== settledNow)
+  ) {
+    setLastSettled({ batchId, verdicts: settledNow })
+  }
+  const carriedOver = lastSettled?.batchId === batchId ? lastSettled.verdicts : undefined
 
   return useMemo((): ServerDiffState => {
     if (!enabled || rows === undefined) {
       return { _tag: 'ready', comparisons: NO_COMPARISONS, refreshing: false }
     }
     if (query.data !== undefined) {
-      return {
-        _tag: 'ready',
-        comparisons: byFormatAndKey(rows, query.data),
-        refreshing: query.isPlaceholderData,
-      }
+      return { _tag: 'ready', comparisons: byFormatAndKey(rows, query.data), refreshing: false }
     }
     if (query.isError)
       return {
         _tag: 'error',
-        comparisons: byFormatAndKey(rows, new Map()),
+        comparisons: byFormatAndKey(rows, NO_VERDICTS),
         error:
           query.error instanceof Error
             ? query.error
             : new Error('Failed to check the server for existing copies'),
       }
+    if (carriedOver !== undefined) {
+      return { _tag: 'ready', comparisons: byFormatAndKey(rows, carriedOver), refreshing: true }
+    }
     return { _tag: 'loading' }
-  }, [enabled, rows, query.data, query.isPlaceholderData, query.isError, query.error])
+  }, [enabled, rows, query.data, query.isError, query.error, carriedOver])
 }
 
 /**
