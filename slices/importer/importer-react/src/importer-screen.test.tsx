@@ -5,15 +5,18 @@ import { userEvent } from '@testing-library/user-event'
 import { FhirR4ResourcesRouterContext, type RunAuthed } from '@wildflowerhealthio/fhir-r4-react'
 import type * as FhirR4React from '@wildflowerhealthio/fhir-r4-react'
 import type { FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/clients'
-import { Effect, Layer, Schema } from 'effect'
+import { Patient } from '@wildflowerhealthio/fhir-r4/resources'
+import { Effect, Layer, Option, Schema } from 'effect'
 import type { JSX, ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
+import { REFERENTS_HEADING } from './identity/referent-text.ts'
 import { CHECKING_SERVER_MESSAGE, ImporterScreen } from './importer-screen.tsx'
 import { formatRegistry } from './registry.ts'
 import { SKIPPED_HEADING } from './results/import-results.tsx'
 import {
   dicomFile,
+  NAMED_PATIENT_HAR,
   RECOGNIZED_HAR,
   storedSourceFile,
   type StoredSourceFile,
@@ -521,6 +524,115 @@ describe('ImporterScreen', () => {
     })
     expect(document.activeElement).toBe(kindToggle)
   })
+
+  it('reads only the source list, one search per referent and the diff bundle to reach a review', async () => {
+    // Arrange
+    currentRunAuthed = routingServer({})
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+
+    // Act
+    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
+    })
+
+    // Assert — no writes; the reads are the picker's source list, the one
+    // Patient's identifier search, the diff bundle's reads, and, once the review
+    // has painted, the first page of stored Patients its select offers.
+    expect(writes()).toHaveLength(0)
+    await waitFor(() => {
+      expect(reads()).toContain('search Patient?_count')
+    })
+    expect(reads().toSorted()).toEqual(
+      [
+        'search DocumentReference?_count&category',
+        'search Patient?_count&identifier',
+        'read DocumentReference',
+        'read Patient',
+        'read Observation',
+        'read Observation',
+        'search Patient?_count',
+      ].toSorted()
+    )
+  })
+
+  it('links the Patient to the stored one its demographics name: the stored one is written, with every subject pointing at it', async () => {
+    // Arrange — the device already holds Tyra, under its own id and the
+    // identifier her name and birth date derive
+    currentRunAuthed = routingServer({ stored: [STORED_TYRA] })
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+
+    // Act — the search pre-selects her; confirm
+    await userEvent.upload(screen.getByLabelText('Import file'), namedPatientHar('a.har'))
+    const person = await screen.findByRole<HTMLSelectElement>('combobox', { name: TYRA })
+    expect(person.value).toBe('stored:Patient/s-1')
+    expect(screen.getByText(/1 record on the server, 0 records from this import/)).toBeDefined()
+    await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
+    })
+
+    // Assert — one Patient write, the stored one, carrying the source's
+    // identifier beside its own; no source Patient; every subject on it
+    const patientWrites = writes().filter((write) => write.url.includes('/Patient/'))
+    expect(patientWrites.map((write) => write.url)).toEqual(['/Patient/s-1'])
+    const identifiers = heldWireOf(JSON.parse(patientWrites[0]?.body ?? '')).identifier.map(
+      ({ system, value }) => `${system}|${value}`
+    )
+    expect(identifiers).toEqual([
+      `${DEVICE}|s-1`,
+      `${Patient.NAME_BIRTH_DATE_IDENTIFIER_SYSTEM}|${DERIVED.value}`,
+      'https://r4.example.org/baseR4|pat-7',
+    ])
+    const subjects = writes()
+      .filter((write) => write.url.includes('/Observation/'))
+      .map((write) => subjectOf(write.body))
+    expect(subjects).toEqual(['Patient/s-1', 'Patient/s-1'])
+  })
+
+  it('shows a re-import as unchanged and pre-excluded, the Patient written over the copy it stored', async () => {
+    // Arrange — import the file once
+    currentRunAuthed = routingServer({})
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+    await userEvent.upload(screen.getByLabelText('Import file'), namedPatientHar('a.har'))
+    await userEvent.click(await screen.findByRole('button', { name: /Import 4 resources/ }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Import another archive' }))
+    const written = writes().length
+
+    // Act — pick the same file again
+    await userEvent.upload(screen.getByLabelText('Import file'), namedPatientHar('a.har'))
+
+    // Assert — the search finds the Patient the first import wrote under the
+    // decoded id, so the decode is written over it; every row is unchanged and
+    // left out, and nothing is written
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Nothing to import/ })).toBeDefined()
+    })
+    const person = screen.getByRole<HTMLSelectElement>('combobox', { name: TYRA })
+    expect(person.value).toMatch(/^update:Patient\//)
+    expect(screen.getAllByText('Already on server')).toHaveLength(4)
+    for (const box of screen.getAllByRole<HTMLInputElement>('checkbox', { name: /^Include / })) {
+      expect(box.checked).toBe(false)
+    }
+    expect(writes()).toHaveLength(written)
+  })
+
+  it('shows one referent for one identity two files name', async () => {
+    // Arrange
+    currentRunAuthed = routingServer({})
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+
+    // Act
+    await userEvent.upload(screen.getByLabelText('Import file'), [
+      namedPatientHar('a.har'),
+      namedPatientHar('b.har'),
+    ])
+
+    // Assert
+    const referents = await screen.findByRole('region', { name: REFERENTS_HEADING })
+    expect(within(referents).getAllByRole('combobox')).toHaveLength(1)
+    expect(within(referents).getByRole('combobox', { name: TYRA })).toBeDefined()
+  })
 })
 
 // Helpers
@@ -551,6 +663,61 @@ const ImagingStudyWire = Schema.Struct({
     })
   ),
 })
+
+/** The Patient {@link NAMED_PATIENT_HAR} reads, as its referent line is labelled. */
+const TYRA = 'Tyra Banks · 1990-01-02'
+
+/** The system the stored Patient's own identifier is under. */
+const DEVICE = 'https://device.example/id'
+
+/** The identifier Tyra's name and birth date derive. */
+const DERIVED = Option.getOrThrow(
+  Effect.runSync(
+    Patient.nameBirthDateIdentifier(
+      Schema.decodeUnknownSync(Patient.Schema)({
+        resourceType: 'Patient',
+        name: [{ family: 'Banks', given: ['Tyra'] }],
+        birthDate: '1990-01-02',
+      })
+    )
+  )
+)
+
+/** Tyra as the device already holds her: her own id, and the identifier her demographics derive. */
+const STORED_TYRA = {
+  resourceType: 'Patient',
+  id: 's-1',
+  identifier: [
+    { system: DEVICE, value: 's-1' },
+    { system: Patient.NAME_BIRTH_DATE_IDENTIFIER_SYSTEM, value: DERIVED.value },
+  ],
+  name: [{ family: 'Banks', given: ['Tyra'] }],
+  birthDate: '1990-01-02',
+}
+
+/** A {@link NAMED_PATIENT_HAR} `File`, for the OS-picker path. */
+const namedPatientHar = (name: string): File =>
+  new File([NAMED_PATIENT_HAR], name, { type: 'application/json' })
+
+/**
+ * The read requests recorded so far, each as `read <Type>` or
+ * `search <Type>?<sorted parameter names>`.
+ */
+const reads = (): readonly string[] =>
+  recorded
+    .filter((request) => request.method === 'GET')
+    .map((request) => {
+      const [path = '', query] = request.url.split('?')
+      const segments = path.split('/').filter((segment) => segment !== '')
+      if (query === undefined) return `read ${segments.at(-2) ?? ''}`
+      const names = [...new URLSearchParams(query).keys()].toSorted().join('&')
+      return `search ${segments.at(-1) ?? ''}?${names}`
+    })
+
+/** The `subject.reference` a written resource carries. */
+const SubjectWire = Schema.Struct({ subject: Schema.Struct({ reference: Schema.String }) })
+const subjectOf = (body: string): string =>
+  Schema.decodeUnknownSync(SubjectWire)(JSON.parse(body)).subject.reference
 
 /** A recognized-HAR `File`, for the OS-picker (`upload`) path. */
 const harFile = (name: string): File =>
@@ -583,18 +750,49 @@ const idFromUrl = (url: string): string => {
   return segments[segments.length - 1] ?? ''
 }
 
+/** Just enough of a held resource to key it and search it by identifier. */
+const HeldWire = Schema.Struct({
+  resourceType: Schema.String,
+  id: Schema.String,
+  identifier: Schema.optionalWith(
+    Schema.Array(Schema.Struct({ system: Schema.String, value: Schema.String })),
+    { default: () => [] }
+  ),
+})
+const heldWireOf = Schema.decodeUnknownSync(HeldWire)
+
+/** A request URL with its search parameters, as the log records it. */
+const urlWithParams = (request: HttpClientRequest.HttpClientRequest): string => {
+  const params = new URLSearchParams(
+    request.urlParams.map(([key, value]) => [key, value])
+  ).toString()
+  return params === '' ? request.url : `${request.url}?${params}`
+}
+
 /**
- * A stub transport that records every request and routes it: a `category` search
- * answers with the configured source files, a `DocumentReference/<id>` GET answers
- * with that source file, and every PUT echoes the written body back (or a 503 when
- * `failWrite` says so). One stateless rule per shape — enough to drive the whole
- * flow and read the write log back.
+ * A stub server that records every request and holds what it is given and
+ * what is written to it: a `category` search answers with the configured
+ * source files, an `identifier` search with the held resources of its type
+ * carrying any of its `system|value` tokens, a `_count`-only search with
+ * every held resource of its type, a read with the held resource, and a PUT
+ * stores and echoes its body (or a 503 when `failWrite` says so). Enough to
+ * drive the whole flow twice over and read the log back.
  */
 const routingServer = (config: {
   readonly sourceFiles?: readonly StoredSourceFile[]
+  readonly stored?: readonly unknown[]
   readonly failWrite?: (request: { readonly method: string; readonly url: string }) => boolean
 }): RunAuthed => {
   const sourceFiles = config.sourceFiles ?? []
+  const held = new Map<string, unknown>([
+    ...sourceFiles.map((one): [string, unknown] => [`DocumentReference/${one.id}`, one.wire]),
+    ...(config.stored ?? []).map((wire): [string, unknown] => {
+      const { resourceType, id } = heldWireOf(wire)
+      return [`${resourceType}/${id}`, wire]
+    }),
+  ])
+  const heldOfType = (resourceType: string): readonly unknown[] =>
+    [...held.values()].filter((wire) => heldWireOf(wire).resourceType === resourceType)
   const httpLayer = Layer.succeed(
     HttpClient.HttpClient,
     HttpClient.make((request) => {
@@ -629,16 +827,15 @@ const routingServer = (config: {
               continue
             }
             if (entryReq.method === 'GET') {
-              // The only resources this suite's server already holds are the
-              // configured source files; every other classify probe is a miss.
-              const stored = sourceFiles.find((one) => entryUrl.endsWith(`/${one.id}`))
+              const stored = held.get(entryReq.url)
               responseEntries.push(
                 stored === undefined
                   ? { response: { status: '404 Not Found' } }
-                  : { response: { status: '200 OK' }, resource: stored.wire }
+                  : { response: { status: '200 OK' }, resource: stored }
               )
               continue
             }
+            if (entry.resource !== undefined) held.set(entryReq.url, entry.resource)
             responseEntries.push({
               response: { status: '200 OK' },
               ...(entry.resource !== undefined ? { resource: entry.resource } : {}),
@@ -657,17 +854,28 @@ const routingServer = (config: {
         }
       }
 
-      recorded.push({ method: request.method, url: request.url, body })
+      recorded.push({ method: request.method, url: urlWithParams(request), body })
+      const segments = request.url.split('/').filter((segment) => segment !== '')
       if (request.method === 'GET' && params['category'] !== undefined) {
         const wires = sourceFiles.map((one) => one.wire)
         return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(searchset(wires))))
       }
+      if (request.method === 'GET' && params['_count'] !== undefined) {
+        const tokens = params['identifier']?.split(',')
+        const hits = heldOfType(segments.at(-1) ?? '').filter(
+          (wire) =>
+            tokens === undefined ||
+            heldWireOf(wire).identifier.some(({ system, value }) =>
+              tokens.includes(`${system}|${value}`)
+            )
+        )
+        return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(searchset(hits))))
+      }
       if (request.method === 'GET') {
-        const sourceFile = sourceFiles.find((one) => one.id === idFromUrl(request.url))
-        if (sourceFile === undefined) {
-          return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(null, 404)))
-        }
-        return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(sourceFile.wire)))
+        const stored = held.get(segments.slice(-2).join('/'))
+        return Effect.succeed(
+          HttpClientResponse.fromWeb(request, jsonResponse(stored ?? null, stored ? 200 : 404))
+        )
       }
       if (config.failWrite?.({ method: request.method, url: request.url }) === true) {
         return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(null, 503)))

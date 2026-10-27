@@ -1,4 +1,4 @@
-import { Array, Option, Schema } from 'effect'
+import { DateTime, Effect, Option, Schema } from 'effect'
 
 import {
   OrNullAsOptional,
@@ -233,46 +233,84 @@ const normalizeNamePart = (namePart: string): string =>
   namePart.normalize('NFC').trim().replaceAll(/\s+/g, ' ').toLowerCase()
 
 /**
- * The identifier a patient's first name and birth date mint under
+ * A patient's demographics as one person is told from another: the family
+ * and given names of the name they go by (`HumanName.currentName`, among the
+ * names that state a family or a given name: a `text`-only name shows but
+ * tells no one apart), each normalised as {@link normalizeNamePart} does, and
+ * the birth date; each `None` when the patient does not state it.
+ */
+interface Demographics {
+  readonly family: Option.Option<string>
+  /** The given names joined by a space. */
+  readonly given: Option.Option<string>
+  readonly birthDate: Option.Option<typeof TimelessDateFromString.Type>
+}
+
+/**
+ * The {@link Demographics} of `patient`: what {@link nameBirthDateIdentifier}
+ * is minted from, and what a review compares two records of one person by,
+ * so both read the same normalised parts. Which name is current is judged at
+ * the clock's now, so an Effect.
+ */
+/** Whether `name` states a family or a given name, the parts demographics are read from. */
+const hasNameParts = (name: typeof HumanName.Schema.Type): boolean =>
+  name.family !== null || name.given.length > 0
+
+const demographics = (patient: Type): Effect.Effect<Demographics> =>
+  Effect.map(DateTime.now, (now) => {
+    const currentName = HumanName.currentName(patient.name.filter(hasNameParts), now)
+    return {
+      family: currentName.pipe(
+        Option.flatMapNullable((name) => name.family),
+        Option.map(normalizeNamePart),
+        Option.filter((namePart) => namePart.length > 0)
+      ),
+      given: currentName.pipe(
+        Option.map((name) => normalizeNamePart(name.given.join(' '))),
+        Option.filter((namePart) => namePart.length > 0)
+      ),
+      birthDate: Option.fromNullable(patient.birthDate),
+    }
+  })
+
+/**
+ * The identifier a patient's current name and birth date mint under
  * {@link NAME_BIRTH_DATE_IDENTIFIER_SYSTEM}: `family;given…;YYYY-MM-DD`, the
- * given names joined by a space, in NFC, lower-cased with whitespace collapsed.
+ * given names joined by a space, in NFC, lower-cased with whitespace collapsed;
+ * an Effect, since which name is current is judged at the clock's now.
  *
  * @remarks
  * A person is identified by name and birth date so the same person from two
  * sources is one identity for the importer's identity map. A name change
  * mints a different identifier, and the person keeps both. `None` unless the
- * first name's family, at least one given name, and `birthDate` are all
- * present, so a partial match never links two people. The parts are joined
- * by `;` rather than `|`, which a FHIR token search reads as the system
- * separator, so the value is searched as `system|family;given;date` with
- * nothing to escape.
+ * current name's family, at least one given name, and `birthDate` are all
+ * present ({@link demographics}), so a partial match never links two people.
+ * The parts are joined by `;` rather than `|`, which a FHIR token search reads
+ * as the system separator, so the value is searched as
+ * `system|family;given;date` with nothing to escape.
  */
 const nameBirthDateIdentifier = (
   patient: Type
-): Option.Option<IdentifierAndReference.IdentifierType> => {
-  const firstName = Array.head(patient.name)
-  const family = firstName.pipe(
-    Option.flatMapNullable((name) => name.family),
-    Option.map(normalizeNamePart),
-    Option.filter((namePart) => namePart.length > 0)
+): Effect.Effect<Option.Option<IdentifierAndReference.IdentifierType>> =>
+  Effect.map(demographics(patient), ({ family, given, birthDate }) =>
+    Option.all([family, given, birthDate]).pipe(
+      Option.map((valueParts): IdentifierAndReference.IdentifierType => ({
+        id: null,
+        extension: [],
+        assigner: null,
+        period: null,
+        system: new URL(NAME_BIRTH_DATE_IDENTIFIER_SYSTEM),
+        type: null,
+        use: null,
+        value: valueParts.join(';'),
+      }))
+    )
   )
-  const given = firstName.pipe(
-    Option.map((name) => normalizeNamePart(name.given.join(' '))),
-    Option.filter((namePart) => namePart.length > 0)
-  )
-  return Option.all([family, given, Option.fromNullable(patient.birthDate)]).pipe(
-    Option.map((valueParts): IdentifierAndReference.IdentifierType => ({
-      id: null,
-      extension: [],
-      assigner: null,
-      period: null,
-      system: new URL(NAME_BIRTH_DATE_IDENTIFIER_SYSTEM),
-      type: null,
-      use: null,
-      value: valueParts.join(';'),
-    }))
-  )
-}
 
-export { PatientSchema as Schema, NAME_BIRTH_DATE_IDENTIFIER_SYSTEM, nameBirthDateIdentifier }
-export type { Type }
+export {
+  demographics,
+  NAME_BIRTH_DATE_IDENTIFIER_SYSTEM,
+  nameBirthDateIdentifier,
+  PatientSchema as Schema,
+}
+export type { Demographics, Type }

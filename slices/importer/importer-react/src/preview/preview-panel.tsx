@@ -1,13 +1,9 @@
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { DecodedFile, StagedImport } from '@wildflowerhealthio/importer-fundamentals'
 import { Data } from 'effect'
-import { type JSX, useMemo, useState } from 'react'
+import { type JSX, type ReactNode, useMemo, useState } from 'react'
 
-import type {
-  BatchDecodeResult,
-  FormatKind,
-  FormatSettings,
-} from '@wildflowerhealthio/importer-core'
+import type { FormatKind, FormatSettings, ResolvedBatch } from '@wildflowerhealthio/importer-core'
 import { claimedFormats, formatKinds } from '@wildflowerhealthio/importer-core'
 
 import type { FormatWithComponents } from '../registry.ts'
@@ -55,8 +51,8 @@ type SettingsChangeHandler<K extends FormatKind> = (format: K, settings: FormatS
 
 /** Props for {@link PreviewPanel}. */
 interface PreviewPanelProps {
-  /** The batch decode result, one entry per format plus unrecognized files. */
-  readonly batch: BatchDecodeResult
+  /** The decoded batch, one entry per format plus unrecognized files. */
+  readonly batch: ResolvedBatch
   /** The current per-format settings the decodes ran under. */
   readonly settings: FormatSettings
   /** The registered formats' display + settings pickers, indexed by kind. */
@@ -89,6 +85,8 @@ interface PreviewPanelProps {
   readonly confirming: boolean
   /** Whether the confirm button should be disabled (confirming or re-decoding). */
   readonly confirmDisabled?: boolean
+  /** The identity map's referent rows, rendered above the format groups. */
+  readonly referentRows?: ReactNode
 }
 
 /** One format's settings form, picked out of the registry by kind. */
@@ -173,6 +171,7 @@ const PreviewPanel = ({
   onCancel,
   confirming,
   confirmDisabled = confirming,
+  referentRows,
 }: PreviewPanelProps): JSX.Element => {
   const [editing, setEditing] = useState<EditorState>(makeClosedEditor())
 
@@ -220,6 +219,7 @@ const PreviewPanel = ({
           {`${writableCount} ${plural(writableCount, 'resource')} across ${totalFiles} files`}
         </p>
       )}
+      {referentRows}
       <div className={panelStyles['preview-panel__format-groups']}>
         {activeFormats.map((kind) => {
           const result = batch[kind]

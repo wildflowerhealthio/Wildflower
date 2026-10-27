@@ -3,7 +3,7 @@ import {
   TimelessDateFromString,
 } from '@wildflowerhealthio/kitchen-sink/schema'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Arbitrary, Option, Schema } from 'effect'
+import { Arbitrary, DateTime, Effect, Option, Schema, TestClock, TestContext } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, test } from 'vite-plus/test'
 
@@ -23,6 +23,18 @@ import * as PatientCommunication from './patient-communication.ts'
 import * as PatientContact from './patient-contact.ts'
 import * as PatientLink from './patient-link.ts'
 import * as Patient from './patient.ts'
+
+/** `effect` run on the test clock, which `Patient.demographics` reads to tell a current name. */
+const runOnTestClock = <A>(effect: Effect.Effect<A>): A =>
+  Effect.runSync(Effect.provide(effect, TestContext.TestContext))
+
+const mintOnTestClock = (
+  patient: typeof Patient.Schema.Type
+): Option.Option<IdentifierAndReference.IdentifierType> =>
+  runOnTestClock(Patient.nameBirthDateIdentifier(patient))
+
+const demographicsOnTestClock = (patient: typeof Patient.Schema.Type): Patient.Demographics =>
+  runOnTestClock(Patient.demographics(patient))
 
 // ---------------------------------------------------------------------------
 // Decomposed wire-format proof.
@@ -359,7 +371,7 @@ describe('Patient.nameBirthDateIdentifier', () => {
     })
 
     // Act
-    const identifier = Patient.nameBirthDateIdentifier(patient)
+    const identifier = mintOnTestClock(patient)
 
     // Assert
     expect(Option.getOrNull(identifier)).toSchemaEqual(IdentifierAndReference.IdentifierSchema, {
@@ -386,8 +398,8 @@ describe('Patient.nameBirthDateIdentifier', () => {
       })
 
     // Act
-    const composed = Patient.nameBirthDateIdentifier(patientWithFamily('Jos\u00e9'))
-    const decomposed = Patient.nameBirthDateIdentifier(patientWithFamily('Jose\u0301'))
+    const composed = mintOnTestClock(patientWithFamily('Jos\u00e9'))
+    const decomposed = mintOnTestClock(patientWithFamily('Jose\u0301'))
 
     // Assert
     expect(decomposed).toEqual(composed)
@@ -424,9 +436,7 @@ describe('Patient.nameBirthDateIdentifier', () => {
       birthDate: null,
     },
   ])('mints nothing for a patient with $reason', ({ names, birthDate }) => {
-    expect(Patient.nameBirthDateIdentifier(patientNamed({ names, birthDate }))).toEqual(
-      Option.none()
-    )
+    expect(mintOnTestClock(patientNamed({ names, birthDate }))).toEqual(Option.none())
   })
 
   test('property: mints the same identifier whatever the case and whitespace of the name', () => {
@@ -451,14 +461,10 @@ describe('Patient.nameBirthDateIdentifier', () => {
         })
 
         // Act / Assert
-        expect(
-          Option.map(Patient.nameBirthDateIdentifier(respelled), ({ value }) => value)
-        ).toEqual(
+        expect(Option.map(mintOnTestClock(respelled), ({ value }) => value)).toEqual(
           Option.some(`${fullName.family};${fullName.given.join(' ')};${birthDate}`.toLowerCase())
         )
-        expect(Patient.nameBirthDateIdentifier(respelled)).toEqual(
-          Patient.nameBirthDateIdentifier(plain)
-        )
+        expect(mintOnTestClock(respelled)).toEqual(mintOnTestClock(plain))
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
@@ -468,7 +474,7 @@ describe('Patient.nameBirthDateIdentifier', () => {
     fc.assert(
       fc.property(fullNameArb, (fullName) => {
         // Arrange
-        const minted = Patient.nameBirthDateIdentifier(
+        const minted = mintOnTestClock(
           patientNamed({
             names: [humanName({ family: fullName.family, given: fullName.given })],
             birthDate: Schema.encodeSync(TimelessDateFromString)(fullName.birthDate),
@@ -477,13 +483,122 @@ describe('Patient.nameBirthDateIdentifier', () => {
         const [family = '', given = '', birthDate = ''] = (minted.value ?? '').split(';')
 
         // Act
-        const remintedFromOwnParts = Patient.nameBirthDateIdentifier(
+        const remintedFromOwnParts = mintOnTestClock(
           patientNamed({ names: [humanName({ family, given: [given] })], birthDate })
         )
 
         // Assert
         expect(remintedFromOwnParts).toEqual(Option.some(minted))
       }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+})
+
+describe('Patient.demographics', () => {
+  const patientOf = (wire: object): typeof Patient.Schema.Type =>
+    Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', ...wire })
+
+  test('should read the first name’s family and given names, normalised, and the birth date', () => {
+    const demographics = demographicsOnTestClock(
+      patientOf({
+        name: [
+          { family: '  Van  Der Berg ', given: ['Tyra', 'Lynne'] },
+          { family: 'Other', given: ['X'] },
+        ],
+        birthDate: '1990-01-02',
+      })
+    )
+
+    expect(demographics).toEqual({
+      family: Option.some('van der berg'),
+      given: Option.some('tyra lynne'),
+      birthDate: Option.some('1990-01-02'),
+    })
+  })
+
+  test('should read the name the patient goes by now, not the first in record order', async () => {
+    const renamed = patientOf({
+      name: [
+        { use: 'maiden', family: 'Banks', given: ['Tyra'] },
+        { use: 'official', family: 'Doe', given: ['Tyra'] },
+      ],
+      birthDate: '1990-01-02',
+    })
+    const endedName = patientOf({
+      name: [
+        { family: 'Banks', given: ['Tyra'], period: { end: '2020-06-01' } },
+        { family: 'Doe', given: ['Tyra'] },
+      ],
+      birthDate: '1990-01-02',
+    })
+
+    const textOnlyOfficial = patientOf({
+      name: [
+        { use: 'usual', family: 'Smith', given: ['Jo'] },
+        { use: 'official', text: 'Joanna Smith' },
+      ],
+      birthDate: '1990-01-02',
+    })
+
+    expect(demographicsOnTestClock(renamed).family).toEqual(Option.some('doe'))
+    // A text-only name shows, but the parts are read from the name that states them.
+    expect(demographicsOnTestClock(textOnlyOfficial)).toEqual({
+      family: Option.some('smith'),
+      given: Option.some('jo'),
+      birthDate: Option.some('1990-01-02'),
+    })
+    expect(Option.map(mintOnTestClock(renamed), ({ value }) => value)).toEqual(
+      Option.some('doe;tyra;1990-01-02')
+    )
+    // At the test clock's start the first name's period has not ended.
+    expect(demographicsOnTestClock(endedName).family).toEqual(Option.some('banks'))
+    const familyAfterTheEnd = await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* TestClock.setTime(DateTime.toEpochMillis(DateTime.unsafeMake('2021-01-01')))
+        return (yield* Patient.demographics(endedName)).family
+      }).pipe(Effect.provide(TestContext.TestContext))
+    )
+    expect(familyAfterTheEnd).toEqual(Option.some('doe'))
+  })
+
+  test('should read None for each part the patient does not state', () => {
+    expect(demographicsOnTestClock(patientOf({ name: [{ family: 'Banks' }] }))).toEqual({
+      family: Option.some('banks'),
+      given: Option.none(),
+      birthDate: Option.none(),
+    })
+    expect(demographicsOnTestClock(patientOf({ birthDate: '1990-01-02' }))).toEqual({
+      family: Option.none(),
+      given: Option.none(),
+      birthDate: Option.some('1990-01-02'),
+    })
+  })
+
+  test('should always be what the name-and-birth-date identifier is minted from, joined by ;', () => {
+    const nameWordArb = fc.stringMatching(/^[A-Za-zéÉ]{1,8}$/)
+    fc.assert(
+      fc.property(
+        nameWordArb,
+        fc.array(nameWordArb, { minLength: 1 }),
+        Arbitrary.make(TimelessDateFromString),
+        (family, given, birthDate) => {
+          // Arrange
+          const patient = patientOf({ name: [{ family, given }], birthDate })
+
+          // Act
+          const demographics = demographicsOnTestClock(patient)
+          const identifier = mintOnTestClock(patient)
+
+          // Assert
+          expect(Option.map(identifier, ({ value }) => value)).toEqual(
+            Option.map(
+              Option.all([demographics.family, demographics.given, demographics.birthDate]),
+              (parts) => parts.join(';')
+            )
+          )
+        }
+      ),
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })

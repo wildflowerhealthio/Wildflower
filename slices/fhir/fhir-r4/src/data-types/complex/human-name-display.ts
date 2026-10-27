@@ -88,15 +88,38 @@ const isCurrentAt =
     !FORMER_USES.has(name.use ?? '') && !hasEndedAt(name, now)
 
 /** One name alongside what it renders to. */
-interface RenderedName {
-  readonly name: Displayable
+interface RenderedName<TName extends Displayable> {
+  readonly name: TName
   readonly text: string
 }
 
-const byUseRank: Order.Order<RenderedName> = Order.mapInput(
+const byUseRank: Order.Order<RenderedName<Displayable>> = Order.mapInput(
   Order.number,
-  (rendered: RenderedName) => useRank(rendered.name.use)
+  (rendered: RenderedName<Displayable>) => useRank(rendered.name.use)
 )
+
+/**
+ * The name of `names` a person goes by at `now`: the one {@link displayName}
+ * shows, by the rule it states, as the name itself; `None` when no name
+ * renders to anything.
+ *
+ * @param names - The person's names in record order, e.g. `Patient.name`
+ * @param now - The instant "current" is judged at
+ */
+const currentName = <TName extends Displayable>(
+  names: readonly TName[],
+  now: DateTime.DateTime
+): Option.Option<TName> => {
+  const rendered = names
+    .map((name): RenderedName<TName> => ({ name, text: renderName(name) }))
+    .filter((candidate) => Str.isNonEmpty(candidate.text))
+  const isCurrent = isCurrentAt(now)
+  const current = Arr.sort(
+    rendered.filter((candidate) => isCurrent(candidate.name)),
+    byUseRank
+  )
+  return Option.fromNullable((current[0] ?? rendered[0])?.name)
+}
 
 /**
  * The text to show for a person with `names` — the name they go by now,
@@ -130,17 +153,7 @@ const byUseRank: Order.Order<RenderedName> = Order.mapInput(
 const displayName = (
   names: readonly Displayable[],
   now: DateTime.DateTime = DateTime.unsafeNow()
-): string | null => {
-  const rendered = names
-    .map((name): RenderedName => ({ name, text: renderName(name) }))
-    .filter((candidate) => Str.isNonEmpty(candidate.text))
-  const isCurrent = isCurrentAt(now)
-  const current = Arr.sort(
-    rendered.filter((candidate) => isCurrent(candidate.name)),
-    byUseRank
-  )
-  return (current[0] ?? rendered[0])?.text ?? null
-}
+): string | null => Option.getOrNull(Option.map(currentName(names, now), renderName))
 
-export { displayName }
+export { currentName, displayName }
 export type { Displayable }

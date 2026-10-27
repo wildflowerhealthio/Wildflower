@@ -122,7 +122,9 @@ system/ImagingStudy.cruds
 
 SMART v2 letter granularity: `.cruds` (create + read + update + delete + search)
 on every handled type. The app searches for existing archives and reads one back
-by id (`DocumentReference`), and every write is a `PUT /{type}/{uuid}`
+by id (`DocumentReference`), searches and lists the server's `Patient`s and
+`Practitioner`s for the review's identity map (by `identifier`, and paged), and
+every write is a `PUT /{type}/{uuid}`
 update-as-create; `create` and `delete` are granted too even though the flow
 issues neither today, so a server that gates update-as-create on `create`
 accepts the writes and the set has room to grow.

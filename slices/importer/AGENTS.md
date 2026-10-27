@@ -83,7 +83,7 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   `formatRegistry`, `defaultFormatSettings`, and `formatKinds` derived from the
   registry) and the batch machinery over it: `groupByFormat` splits a pick by
   the first claiming `detect`, `decodeFormat` runs one format's `decode` under
-  its own settings, `readBatch` yields a `BatchDecodeResult` — one
+  its own settings, `readBatch` yields a `DecodedBatch` — one
   `FormatDecode.Result` per registered format plus the `UnrecognizedFile`s —
   `claimedFormats` names the formats that actually took part, `redecodeFormat`
   re-runs one format's files from their retained picks under new settings, and

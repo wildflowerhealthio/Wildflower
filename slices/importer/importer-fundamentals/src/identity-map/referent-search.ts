@@ -14,9 +14,11 @@
 import {
   FhirR4ResourcesHttpApiClient,
   type FhirR4ResourcesHttpApiClientShape,
+  matchesIn,
+  type MatchWithoutResource,
 } from '@wildflowerhealthio/fhir-r4/clients'
 import { TokenSearchParam } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array, Data, Effect, HashMap, Match, Option } from 'effect'
+import { Array, Effect, HashMap, Match, Option } from 'effect'
 
 import * as LinkChoice from './link-choice.ts'
 import type * as LinkableLogicalReference from './linkable-logical-reference.ts'
@@ -25,17 +27,9 @@ import type * as ReferentLinkChoices from './referent-link-choices.ts'
 import * as Referent from './referent.ts'
 
 /**
- * A searchset entry that matched the search without carrying the resource it
- * matched: an answer that names a record without giving it, which can neither
- * be linked to nor counted out.
- */
-class MatchWithoutResource extends Data.TaggedError('MatchWithoutResource')<{
-  readonly resourceType: LinkableLogicalReference.ResourceType
-}> {}
-
-/**
  * What a search can fail with: the typed client's own failures, the same for
- * every resource type's search, and a match that carries no resource.
+ * every resource type's search, and a match that carries no resource
+ * (`fhir-r4/clients`' `matchesIn`).
  */
 type SearchFailure =
   | Effect.Effect.Error<ReturnType<FhirR4ResourcesHttpApiClientShape['Patient']['SearchByGet']>>
@@ -50,34 +44,13 @@ const SEARCH_CONCURRENCY = 4
  */
 const SEARCH_COUNT = 2
 
-/** A searchset entry as the search reads it: what it matched, and how it came to be in the answer. */
-interface SearchsetEntry<TResource> {
-  readonly resource: TResource | null
-  readonly search: { readonly mode: string | null } | null
-}
-
-/**
- * The stored resources `bundle`'s matches carry: every entry but an outcome
- * (a server's note about the search), each with its resource. A match without
- * one fails the search ({@link MatchWithoutResource}) rather than going
- * uncounted, since the count is what tells one hit from an ambiguous match.
- */
-const matchesIn = <TResource>(
-  resourceType: LinkableLogicalReference.ResourceType,
-  bundle: { readonly entry: readonly SearchsetEntry<TResource>[] }
-): Effect.Effect<readonly TResource[], MatchWithoutResource> =>
-  Effect.forEach(
-    bundle.entry.filter((entry) => entry.search?.mode !== 'outcome'),
-    ({ resource }) =>
-      resource === null
-        ? Effect.fail(new MatchWithoutResource({ resourceType }))
-        : Effect.succeed(resource)
-  )
-
 /**
  * The stored resources of `resourceType` that any of `logicalReferences`
  * names, up to {@link SEARCH_COUNT}: one `GET <Type>?identifier=<tokens>`,
- * or none, and nothing, when there is no reference to search by.
+ * or none, and nothing, when there is no reference to search by. The hits
+ * are the searchset's matches (`matchesIn`): a match without its resource
+ * fails the search rather than going uncounted, since the count is what
+ * tells one hit from an ambiguous match.
  */
 const storedNamedBy = (
   resourceType: LinkableLogicalReference.ResourceType,
@@ -195,5 +168,5 @@ const defaultChoices = (
     { concurrency: SEARCH_CONCURRENCY }
   ).pipe(Effect.map(HashMap.fromIterable))
 
-export { defaultChoice, defaultChoices, MatchWithoutResource }
+export { defaultChoice, defaultChoices }
 export type { SearchFailure }

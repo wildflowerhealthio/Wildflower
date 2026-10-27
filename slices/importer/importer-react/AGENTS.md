@@ -34,7 +34,7 @@ walkthrough itself is the host's.
 [slices/AGENTS.md](../../../slices/AGENTS.md): it depends on its sources, never the reverse.
 It depends on `importer-core` (the importer registry, `readBatch` /
 `redecodeFormat` / `claimedFormats` / `planFormatWrite`, and the
-`BatchDecodeResult` model), `importer-fundamentals` (the `PickedFile`
+`DecodedBatch` model), `importer-fundamentals` (the `PickedFile`
 vocabulary, the `FormatDecode.Result` and `DecodedFile` shapes, and the pure
 `StagedImport` model), each format's
 React package for its settings picker only (`har-importer-react`,
@@ -97,13 +97,94 @@ The importer has no HTTP wire union to derive, so there is no separate
   another" discards the read, every review edit, and any confirm outcome, and
   returns to the picker; the per-format settings persist across it.
 - **`src/registry.ts`** — the React half of the closed format registry (above).
+- **`src/identity/`** — the identity map in the screen.
+  The review of a batch is one hook composed of three, each in its own file:
+  - `use-link-choice-review.ts` — `useLinkChoiceReview`
+    discovers the batch's referents (`discoverReferents`) and memoizes the
+    **resolved** batch (one whose mentions are resolved) with each
+    referent's `LinkTarget` (`resolveMentionsWithFallback`). Both are Effects on the clock, run
+    synchronously in the memo; their failures are states: a
+    `DuplicateReferent` is `refused`, with the batch's last resolving that
+    succeeded when a re-decode is what refused it (the screen keeps that
+    review up under the refusal, confirm disabled, so the reviewer can undo
+    the setting; on a first decode it says why and offers the picker), and a
+    choice that cannot be resolved after a re-decode (`InvalidLinkChoice`)
+    falls back, the reviewer's own to its searched default, a default to its
+    kind's default. The screen blocks its
+    first paint on the default search, as it does on the server diff, and
+    hands the resolved batch to `useServerDiff`, `PreviewPanel` and the
+    confirm, which take a `ResolvedBatch` and so see what gets written; a failed search shows an
+    alert and leaves every referent on its kind's default.
+  - `link-choice-review-state.ts` — the `LinkChoiceReviewState` types: the
+    `Mapped` batch (referents, choices, link targets, search hits, resolved
+    batch), the `Type` of states (`loading`, `ready`, `error`, `refused`) and
+    the hook's `Review` surface.
+  - `use-default-link-choices-search.ts` — `useDefaultLinkChoicesSearch`
+    reads each referent's default once per batch
+    (`ReferentSearch.defaultChoices`, a TanStack query keyed by the batch id,
+    which also labels the stored resources the defaults link to), and starts
+    the stored lists the rows offer beside it.
+  - `use-reviewer-link-choices.ts` — `useReviewerLinkChoices` keeps the
+    reviewer's choices on top of the defaults by `Referent.key` across a
+    settings re-decode in a `ReferentLinkChoices`, and the referents of the
+    batch's first decode the search reads; a fresh pick starts over.
+  - `use-last-resolved-batch.ts` — `useLastResolvedBatch`, the batch's last
+    resolving that succeeded, which a refusal is shown over.
+
+  The referent block, "People and providers in this import", is one file
+  per job:
+  - `referent-rows.tsx` — the block the panel renders above the format
+    groups (its `referentRows` slot): a tally of the records the referents
+    land on (`ReferentTally`: a stored record, or one this import writes, is
+    counted once however many referents share it) and the referents that
+    land nowhere, then one group per `LinkableLogicalReference.RESOURCE_TYPES`
+    entry that has referents. A list that failed is said under its group,
+    and only the search's hits are offered; a list the page limit cut off is
+    said too. While the batch is `refused` the selects are disabled, since a
+    choice could neither be resolved nor shown.
+  - `referent-row.tsx` — one referent's line, memoised: its label, a select
+    of its options, and its warning.
+  - `link-choice-options.ts` — the `LinkChoiceOptions` view model: the
+    options a referent's select offers, in four groups. `New`, or an update
+    of the stored copy under its own id when one is known
+    (`UpdateStoredResource`, a re-import's default), or a stored resource for
+    an `AsResource` referent; a stored resource, `New: <label>`
+    (`LinkToDecodedReferent`) for each other referent of its type that
+    creates a record, `New` when `LinkableResource.tryProvisionalFrom` stands
+    for its logical reference, and "Don't link" for a `ByMentionOnly` one.
+  - `referent-line.ts` — the `ReferentLine` namespace: a group's lines (a
+    referent, its choice, its options, its warning), each built once per
+    change of what it is built from (its own choice, the stored list, the
+    batch's referents and which of them write their own record) and kept
+    across every other change, so a select change rebuilds the lines it
+    changed and the memoised rows of the others skip their render. The
+    warning is `DifferingDemographics`: a Patient linked to a stored one
+    whose family name, given name or birth date (`Patient.demographics`, the
+    parts the name-and-birth-date identifier is minted from) differs gets a
+    warning line, never a block; a Practitioner has nothing compared.
+  - `use-referent-group-lines.ts` — `useReferentGroupLines`, the group's
+    React side: the stored options as one memo per group, shared by its
+    lines, and the built lines kept in state across renders.
+  - `use-stored-resources-of-type.ts` — `useStoredResourcesOfType`: the
+    server's own stored resources, every page read up front
+    (`GET <Type>?_count=` through `fhir-r4/clients`' `searchAllPages`, capped at
+    ten pages: a select has no room for a load-more action, and a personal
+    server holds a household, not a hospital), each labelled on the way in
+    since `LinkableResource.labelOf` reads the clock. The read starts beside
+    the default search (`useDefaultLinkChoicesSearch` starts the same query,
+    `storedResourcesQuery`, as soon as the batch's referents are known) and
+    is never stale on its own: a confirm invalidates it, the one thing that
+    changes it.
+  - `referent-text.ts` — the block's strings, which say "server", never
+    "device": the importer can be pointed at any FHIR server.
+
 - **`src/run/`** — the two hooks that drive the flow's halves, held apart from
   the view they feed: the read (`use-import-run.ts`) and the opt-in write
   (`use-confirm-import.ts`). The confirm hook is the write half and does not
   belong under `preview/`.
   `use-import-run.ts` is React state around `importer-core`: `run` calls
   `readBatch` (through `useRunAuthed`) over the whole pick and holds the
-  resulting `BatchDecodeResult`, `applySettings` calls `redecodeFormat` for the
+  resulting `DecodedBatch`, `applySettings` calls `redecodeFormat` for the
   one format whose settings changed — from that format's retained
   `PickedFile`s, keeping every id and review key, so keyed selections keep
   applying — and it owns the `FormatSettings` record, the `batchId` that tells
@@ -119,9 +200,13 @@ The importer has no HTTP wire union to derive, so there is no separate
   a flat map would let one format's verdict overwrite another's. Within one
   format the keys are already distinct, because `DecodeFunction.make` namespaces each
   claimed file's keys by its slot in the batch. The screen blocks the
-  first paint on it but **not** on the re-classification a settings change
-  triggers, since unmounting the panel mid-review would drop the focus of
-  whatever settings control the reviewer is using.
+  first paint on it but **not** on the re-classification a settings change or
+  a link choice triggers, since unmounting the panel mid-review would drop the
+  focus of whatever control the reviewer is using; the verdicts the batch last
+  settled on stay on screen (`refreshing`), a failed classification having
+  settled on "every id is new", and the confirm waits for the new ones, since
+  the pre-exclusions are read off them. A failed classification is retried
+  twice before it is reported; a fresh pick carries nothing over.
   `preview-panel.tsx` renders the batch grouped by format — one group per
   `claimedFormats` entry, its settings form (the registry's own
   `SettingsPicker`, indexed by the format tag) over that format's sectioned,
@@ -204,9 +289,9 @@ The importer has no HTTP wire union to derive, so there is no separate
   fetch-and-decode through `PickedFile.FromDocumentReference` under that
   format's constants, which both a row selection and the preview modal read
   through.
-  `page-token.ts` pulls the continuation cursor out of a bundle's `next`
-  link (see the trap); `keys.ts` holds
-  the query-key roots.
+  The continuation cursor comes out of a bundle's `next` link through
+  `fhir-r4/clients`' `nextPageToken` (see the trap); `keys.ts` holds the
+  query-key roots.
 - **The source file is a reviewed resource the format minted.** Every pick's
   source file `DocumentReference` is minted inside that format's
   `decode` (by the batch decode `DecodeFunction.make` built) and arrives as its own
@@ -228,7 +313,9 @@ The importer has no HTTP wire union to derive, so there is no separate
   a review issues no writes — `decode` requires no services and is run for its
   data only, and the confirm writes exactly the reviewed objects
   (`planFormatWrite` over the format's decoded sections) with no
-  re-parse. A test pins this on the wire (zero writes to reach a review); do
+  re-parse. A test pins this on the wire (zero writes to reach a review, and
+  the reads are the source list, one identifier search per referent, the diff
+  bundle and the stored resources per referent type); do
   not add a write to the read path (e.g. an "auto-upload on pick") that would
   collapse the opt-in seam. A settings change re-runs `decode` — still the
   read half, still no writes.
@@ -311,9 +398,9 @@ The importer has no HTTP wire union to derive, so there is no separate
   still runs in that format's `decode` one step downstream, so a file the
   picker accepted whose bytes are malformed lands in the preview as its own
   unreadable row rather than a batch-wide error.
-- **`page-token.ts` reads a present-but-empty `_pageToken=` as token-less.**
-  `''` is not `null`, so TanStack Query would take it for a real cursor and
-  re-request page one forever.
+- **`fhir-r4/clients`' `nextPageToken` reads a present-but-empty
+  `_pageToken=` as token-less.** `''` is not `null`, so TanStack Query would
+  take it for a real cursor and re-request page one forever.
 - **The list carries rows, not source files.** A source file's bytes are the whole
   file, potentially megabytes (a multi-MB HAR, a PDF); `SourceFileRow` holds
   only the id, its classified format, the title, what it is a source of, and
@@ -409,7 +496,20 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   that a single-format import reports no blank "nothing to import" rows, and
   cancel. It re-wraps `TextEncoder` output through the ambient `Uint8Array` (a
   jsdom single-realm workaround; the production encode stays `new
-  TextEncoder().encode(text)`).
+  TextEncoder().encode(text)`). Its stub server holds what it is seeded with
+  and what is written to it, and answers identifier searches and paged lists from that, so it also
+  pins the identity map: the reads to reach a review, a confirm linked to a
+  stored Patient (only the stored one written, carrying the source's
+  identifier, every subject on it), a re-import that defaults the Patient to
+  an update of the copy it stored and is `unchanged` and left out, and one referent for one identity two files name.
+- `identity/referent-rows.test.tsx` drives `useLinkChoiceReview` and the rows over a
+  hand-built batch and a stub search: a line per referent, people before
+  providers, `New` without a hit, a hit pre-selected, an update over the copy
+  found under the decoded id, the demographics warning,
+  and a changed select resolving the batch.
+- `preview/resolved-batch.test-helpers.ts` — `resolvedAsIs` brands a
+  hand-built batch as a `ResolvedBatch` for the tests of what reads one (the
+  server diff, the panel), which do not run `resolveMentions`.
 - `preview/preview-panel.test.tsx` drives the pure panel by props — no router —
   and pins that a claimed format renders each decoded section under its own
   title with per-resource checkboxes, that an unreadable file renders its own
