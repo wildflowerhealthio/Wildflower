@@ -27,7 +27,7 @@ import {
   STORED_LIST_TRUNCATED_MESSAGE,
   UPDATE_LABEL,
 } from './referent-text.ts'
-import { useIdentityMap } from './use-identity-map.ts'
+import { useBatchIdentityMapReview } from './use-batch-identity-map-review.ts'
 
 /**
  * The referent rows over the identity map hook, on a hand-built batch and a
@@ -518,7 +518,7 @@ const serverHolding = ({
 
 /** The identity map hook and its rows, reporting the placed batch on every render. */
 const Harness = ({ batch }: { readonly batch: BatchDecodeResult }): JSX.Element => {
-  const { state, choose } = useIdentityMap(batch, 1)
+  const { state, choose } = useBatchIdentityMapReview(batch, 1)
   if (state._tag === 'loading') return <p>Loading</p>
   // Shown as the screen shows them: the placing, or the one before a refusal.
   const shown = state._tag === 'refused' ? Option.getOrUndefined(state.previous) : state

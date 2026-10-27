@@ -12,7 +12,7 @@ import {
   SEARCH_ERROR_MESSAGE,
   SEARCHING_SERVER_MESSAGE,
 } from './identity/referent-text.ts'
-import { useIdentityMap } from './identity/use-identity-map.ts'
+import { useBatchIdentityMapReview } from './identity/use-batch-identity-map-review.ts'
 import { PreviewPanel } from './preview/preview-panel.tsx'
 import { initialExclusionsFor, useServerDiff } from './preview/use-server-diff.ts'
 import { formatRegistry } from './registry.ts'
@@ -29,7 +29,7 @@ import styles from './importer-screen.module.css'
  *
  * @remarks
  * The screen is the opt-in seam made visible: the read half
- * (`SourcePicker` → `useImportRun` → `useIdentityMap` → `PreviewPanel`)
+ * (`SourcePicker` → `useImportRun` → `useBatchIdentityMapReview` → `PreviewPanel`)
  * writes nothing — each file decodes to resources grouped by format, its own
  * source file among them, that the reviewer can exclude or edit — and only
  * the explicit confirm reaches the write half (`useConfirmImport` — one batch
@@ -79,7 +79,10 @@ const ImporterScreen = (): JSX.Element => {
 
   const runState = importRun.state
   const batchId = runState._tag === 'ready' ? runState.batchId : 0
-  const identity = useIdentityMap(runState._tag === 'ready' ? runState.batch : undefined, batchId)
+  const identity = useBatchIdentityMapReview(
+    runState._tag === 'ready' ? runState.batch : undefined,
+    batchId
+  )
   const identityState = identity.state
   // The identity map the screen shows: the batch as placed, or, when a
   // re-decode refused it, as it placed before, so the reviewer can undo the change.
