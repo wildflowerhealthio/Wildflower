@@ -5,12 +5,13 @@ import { FhirR4ResourcesRouterContext, type RunAuthed } from '@wildflowerhealthi
 import type * as FhirR4React from '@wildflowerhealthio/fhir-r4-react'
 import type { FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/clients'
 import { type FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
-import type { DecodedBatch } from '@wildflowerhealthio/importer-core'
+import type { ResolvedBatch } from '@wildflowerhealthio/importer-core'
 import { FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, Layer, Schema } from 'effect'
 import type { JSX, ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
+import { resolvedAsIs } from './resolved-batch.test-helpers.ts'
 import { type ServerDiffState, useServerDiff } from './use-server-diff.ts'
 
 /**
@@ -38,29 +39,30 @@ const patient = (id: string): FhirResource =>
   Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
 
 /** A HAR result holding `resources`, the other formats claiming nothing. */
-const batchOf = (resources: readonly FhirResource[]): DecodedBatch => ({
-  har: {
-    ...FormatDecode.emptyResult('har'),
-    title: 'a.har',
-    files: [{ id: '0:a.har', fileName: 'a.har', bytes: new Uint8Array([1]) }],
-    decoded: {
-      sections: [
-        {
-          title: 'Resources',
-          resources: resources.map((resource, index) => ({
-            key: `k-${index}`,
-            title: resource.resourceType,
-            resource,
-          })),
-        },
-      ],
-      notes: [],
+const batchOf = (resources: readonly FhirResource[]): ResolvedBatch =>
+  resolvedAsIs({
+    har: {
+      ...FormatDecode.emptyResult('har'),
+      title: 'a.har',
+      files: [{ id: '0:a.har', fileName: 'a.har', bytes: new Uint8Array([1]) }],
+      decoded: {
+        sections: [
+          {
+            title: 'Resources',
+            resources: resources.map((resource, index) => ({
+              key: `k-${index}`,
+              title: resource.resourceType,
+              resource,
+            })),
+          },
+        ],
+        notes: [],
+      },
     },
-  },
-  'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
-  dicom: FormatDecode.emptyResult('dicom'),
-  unrecognizedFiles: [],
-})
+    'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
+    dicom: FormatDecode.emptyResult('dicom'),
+    unrecognizedFiles: [],
+  })
 
 /** A server that holds nothing: every GET entry of the diff bundle is a 404, so every id is new. */
 const emptyServerLayer = Layer.succeed(
@@ -113,15 +115,15 @@ const runAuthedWith = (fates: readonly ('answer' | 'reject')[]): RunAuthed => {
 
 /** The hook over `batch` under `batchId`, under one query client, re-renderable with another pair. */
 const renderDiff = (
-  batch: DecodedBatch,
+  batch: ResolvedBatch,
   batchId: number
-): RenderHookResult<ServerDiffState, { batch: DecodedBatch; batchId: number }> => {
+): RenderHookResult<ServerDiffState, { batch: ResolvedBatch; batchId: number }> => {
   const queryClient = new QueryClient()
   const withQueryClient = ({ children }: { readonly children: ReactNode }): JSX.Element => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   )
   return renderHook(
-    ({ batch: current, batchId: id }: { batch: DecodedBatch; batchId: number }) =>
+    ({ batch: current, batchId: id }: { batch: ResolvedBatch; batchId: number }) =>
       useServerDiff(current, id),
     { initialProps: { batch, batchId }, wrapper: withQueryClient }
   )

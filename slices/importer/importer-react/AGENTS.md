@@ -113,7 +113,7 @@ The importer has no HTTP wire union to derive, so there is no separate
     kind's default. The screen blocks its
     first paint on the default search, as it does on the server diff, and
     hands the resolved batch to `useServerDiff`, `PreviewPanel` and the
-    confirm, so all three see what gets written; a failed search shows an
+    confirm, which take a `ResolvedBatch` and so see what gets written; a failed search shows an
     alert and leaves every referent on its kind's default.
   - `link-choice-review-state.ts` — the `LinkChoiceReviewState` types: the
     `Mapped` batch (referents, choices, link targets, search hits, resolved
@@ -507,6 +507,9 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   providers, `New` without a hit, a hit pre-selected, an update over the copy
   found under the decoded id, the demographics warning,
   and a changed select resolving the batch.
+- `preview/resolved-batch.test-helpers.ts` — `resolvedAsIs` brands a
+  hand-built batch as a `ResolvedBatch` for the tests of what reads one (the
+  server diff, the panel), which do not run `resolveMentions`.
 - `preview/preview-panel.test.tsx` drives the pure panel by props — no router —
   and pins that a claimed format renders each decoded section under its own
   title with per-resource checkboxes, that an unreadable file renders its own

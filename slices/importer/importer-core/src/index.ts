@@ -32,4 +32,5 @@ export {
   discoverReferents,
   resolveMentions,
   resolveMentionsWithFallback,
+  type ResolvedBatch,
 } from './resolve-mentions.ts'

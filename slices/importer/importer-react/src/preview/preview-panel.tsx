@@ -3,7 +3,7 @@ import { DecodedFile, StagedImport } from '@wildflowerhealthio/importer-fundamen
 import { Data } from 'effect'
 import { type JSX, type ReactNode, useMemo, useState } from 'react'
 
-import type { DecodedBatch, FormatKind, FormatSettings } from '@wildflowerhealthio/importer-core'
+import type { FormatKind, FormatSettings, ResolvedBatch } from '@wildflowerhealthio/importer-core'
 import { claimedFormats, formatKinds } from '@wildflowerhealthio/importer-core'
 
 import type { FormatWithComponents } from '../registry.ts'
@@ -52,7 +52,7 @@ type SettingsChangeHandler<K extends FormatKind> = (format: K, settings: FormatS
 /** Props for {@link PreviewPanel}. */
 interface PreviewPanelProps {
   /** The decoded batch, one entry per format plus unrecognized files. */
-  readonly batch: DecodedBatch
+  readonly batch: ResolvedBatch
   /** The current per-format settings the decodes ran under. */
   readonly settings: FormatSettings
   /** The registered formats' display + settings pickers, indexed by kind. */

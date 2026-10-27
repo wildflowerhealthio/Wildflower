@@ -3,9 +3,9 @@ import { userEvent } from '@testing-library/user-event'
 import type { DiffSlot, FieldDiff, ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import { type FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  type DecodedBatch,
   type FormatKind,
   type FormatSettings,
+  type ResolvedBatch,
   type UnrecognizedFile,
 } from '@wildflowerhealthio/importer-core'
 import {
@@ -27,6 +27,7 @@ import {
   UNREADABLE_FILE_MESSAGE,
   UNRECOGNIZED_FILE_MESSAGE,
 } from './preview-text.ts'
+import { resolvedAsIs } from './resolved-batch.test-helpers.ts'
 
 /**
  * The preview panel renders every format's review under one confirm.
@@ -95,7 +96,7 @@ describe('PreviewPanel', () => {
   })
 
   it('sums a mixed batch with unreadable and unrecognized files', () => {
-    const batch: DecodedBatch = {
+    const batch = resolvedAsIs({
       har: {
         id: 'har/a.har,broken.har,c.har',
         title: 'a.har, broken.har, c.har',
@@ -123,7 +124,7 @@ describe('PreviewPanel', () => {
           files: [pickedFile('notes.txt')],
         },
       ],
-    }
+    })
     render(<PreviewPanel {...panelProps(batch)} />)
 
     expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
@@ -450,17 +451,18 @@ const formatResult = <K extends FormatKind>(
   unreadableFiles: [],
 })
 
-/** Build a DecodedBatch from partial format results. */
+/** Build a resolved batch from partial format results. */
 const makeBatch = (
   results: Partial<{ [K in FormatKind]: FormatDecode.Result<K> }>,
   unrecognizedFiles: readonly UnrecognizedFile[] = []
-): DecodedBatch => ({
-  har: FormatDecode.emptyResult('har'),
-  'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
-  dicom: FormatDecode.emptyResult('dicom'),
-  ...results,
-  unrecognizedFiles,
-})
+): ResolvedBatch =>
+  resolvedAsIs({
+    har: FormatDecode.emptyResult('har'),
+    'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
+    dicom: FormatDecode.emptyResult('dicom'),
+    ...results,
+    unrecognizedFiles,
+  })
 
 /** Verdicts for a format, keyed by format kind. */
 const comparisonsFor = (
@@ -518,7 +520,7 @@ const settingsRegistry: SettingsRegistry = {
 
 /** Shared panel props wired to synthetic lookups. */
 const panelProps = (
-  batch: DecodedBatch,
+  batch: ResolvedBatch,
   overrides: {
     readonly onConfirm?: () => void
     readonly onSelectionChange?: PreviewPanelProps['onSelectionChange']

@@ -10,7 +10,7 @@ import {
   Practitioner,
   type FhirResource,
 } from '@wildflowerhealthio/fhir-r4/resources'
-import type { DecodedBatch } from '@wildflowerhealthio/importer-core'
+import type { DecodedBatch, ResolvedBatch } from '@wildflowerhealthio/importer-core'
 import { DecodedFile, FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, Layer, Option, Schema } from 'effect'
 import type { JSX } from 'react'
@@ -42,7 +42,7 @@ vi.mock('@wildflowerhealthio/fhir-r4-react', async (importOriginal) => {
 })
 
 let currentRunAuthed: RunAuthed
-let resolved: DecodedBatch | undefined
+let resolved: ResolvedBatch | undefined
 
 afterEach(() => {
   cleanup()

@@ -10,7 +10,7 @@ import {
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { DecodedFile } from '@wildflowerhealthio/importer-fundamentals'
 
-import type { DecodedBatch, FormatKind } from '@wildflowerhealthio/importer-core'
+import type { FormatKind, ResolvedBatch } from '@wildflowerhealthio/importer-core'
 import { formatKinds } from '@wildflowerhealthio/importer-core'
 import { IMPORTER_QUERY_KEY } from '../queries/keys.ts'
 
@@ -132,7 +132,7 @@ const byFormatAndKey = (
  * Every previewed resource across a batch's formats, paired with its format
  * and labeled key — the flat list one classifier round trip probes.
  */
-const diffRowsOf = (batch: DecodedBatch): readonly DiffRow[] =>
+const diffRowsOf = (batch: ResolvedBatch): readonly DiffRow[] =>
   formatKinds.flatMap((kind) =>
     DecodedFile.resources(batch[kind].decoded).map((entry): DiffRow => ({
       format: kind,
@@ -155,7 +155,7 @@ const diffRowsOf = (batch: DecodedBatch): readonly DiffRow[] =>
  *   may stay on screen while the next ones load.
  * @returns `loading` until this batch has verdicts worth showing, then `ready`
  */
-const useServerDiff = (batch: DecodedBatch | undefined, batchId: number): ServerDiffState => {
+const useServerDiff = (batch: ResolvedBatch | undefined, batchId: number): ServerDiffState => {
   const runAuthed = useRunAuthed()
 
   // Every resource across every format, paired with its format and labeled

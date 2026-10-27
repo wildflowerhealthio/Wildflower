@@ -8,7 +8,7 @@ import {
   Referent,
   type ReferentLinkChoices,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { Array, Effect, HashMap, Option } from 'effect'
+import { Array, Brand, Effect, HashMap, Option } from 'effect'
 
 import {
   type DecodedBatch,
@@ -27,6 +27,15 @@ import type { FormatKind } from './registry.ts'
  *
  * @packageDocumentation
  */
+
+/**
+ * A batch every mention of which resolves: the batch the diff, the preview and
+ * the confirm see. Only `resolveMentions` makes one.
+ */
+type ResolvedBatch = DecodedBatch & Brand.Brand<'ResolvedBatch'>
+
+/** Brands a decoded batch whose mentions `resolveMentions` has just resolved. */
+const asResolvedBatch = Brand.nominal<ResolvedBatch>()
 
 /**
  * Every referent the batch holds, once per identity across formats, in
@@ -62,9 +71,9 @@ const discoverReferents = (
 const resolveMentions = (
   batch: DecodedBatch,
   linkChoices: ReferentLinkChoices.Type
-): Effect.Effect<DecodedBatch, Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice> =>
+): Effect.Effect<ResolvedBatch, Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice> =>
   Array.match(claimedFormats(batch), {
-    onEmpty: () => Effect.succeed(batch),
+    onEmpty: () => Effect.succeed(asResolvedBatch(batch)),
     onNonEmpty: (claimed) =>
       Effect.flatMap(
         IdentityMap.apply(
@@ -76,15 +85,18 @@ const resolveMentions = (
             HashMap.fromIterable(Array.zip(claimed, resolvedFiles))
           // Read slots through FormatResults, as `redecodeFormat` does, so each is its own `Result<K>`.
           const results: FormatResults = batch
-          return collectFormats(
-            <K extends FormatKind>(kind: K): Effect.Effect<FormatDecode.Result<K>> =>
-              Effect.succeed(
-                Option.match(HashMap.get(resolvedByKind, kind), {
-                  onNone: () => results[kind],
-                  onSome: (decoded) => ({ ...results[kind], decoded }),
-                })
-              ),
-            batch.unrecognizedFiles
+          return Effect.map(
+            collectFormats(
+              <K extends FormatKind>(kind: K): Effect.Effect<FormatDecode.Result<K>> =>
+                Effect.succeed(
+                  Option.match(HashMap.get(resolvedByKind, kind), {
+                    onNone: () => results[kind],
+                    onSome: (decoded) => ({ ...results[kind], decoded }),
+                  })
+                ),
+              batch.unrecognizedFiles
+            ),
+            asResolvedBatch
           )
         }
       ),
@@ -117,7 +129,7 @@ const resolveMentionsWithFallback = (
   {
     readonly linkChoices: ReferentLinkChoices.Type
     readonly linkTargets: HashMap.HashMap<string, LinkTarget.Type>
-    readonly batch: DecodedBatch
+    readonly batch: ResolvedBatch
   },
   Referent.DuplicateReferent
 > => {
@@ -161,3 +173,4 @@ const resolveMentionsWithFallback = (
 }
 
 export { discoverReferents, resolveMentions, resolveMentionsWithFallback }
+export type { ResolvedBatch }

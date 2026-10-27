@@ -59,7 +59,11 @@ write plan with this package alone.
   union key and its value, so a record assembled from a `kind` variable is
   checked against nothing. Its slots are typed by **`FormatResults`**.
 - `src/resolve-mentions.ts` — a batch's mentions resolved (a resolved batch
-  is one whose mentions are resolved), service-free Effects on the clock. **`discoverReferents(batch)`** is `Referent.discover` over every
+  is one whose mentions are resolved), service-free Effects on the clock.
+  **`ResolvedBatch`** is a `DecodedBatch` branded (Effect's `Brand`) as one
+  every mention of which resolves: what the diff, the preview and the
+  confirm take, and only `resolveMentions` makes one.
+  **`discoverReferents(batch)`** is `Referent.discover` over every
   claimed format's `decoded`: one referent per identity across formats,
   format-then-review order, those with a resource first.
   **`resolveMentions(batch, linkChoices)`** resolves every mention in every

@@ -1,12 +1,13 @@
 import type { ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import { type FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
-import type { DecodedBatch, FormatKind } from '@wildflowerhealthio/importer-core'
+import type { FormatKind, ResolvedBatch } from '@wildflowerhealthio/importer-core'
 import { FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
+import { resolvedAsIs } from './resolved-batch.test-helpers.ts'
 import { byFormatAndKey, diffRowsOf, initialExclusionsFor } from './use-server-diff.ts'
 
 /**
@@ -45,13 +46,14 @@ const formatResult = <K extends FormatKind>(
 
 const makeBatch = (
   results: Partial<{ [K in FormatKind]: FormatDecode.Result<K> }>
-): DecodedBatch => ({
-  har: FormatDecode.emptyResult('har'),
-  'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
-  dicom: FormatDecode.emptyResult('dicom'),
-  ...results,
-  unrecognizedFiles: [],
-})
+): ResolvedBatch =>
+  resolvedAsIs({
+    har: FormatDecode.emptyResult('har'),
+    'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
+    dicom: FormatDecode.emptyResult('dicom'),
+    ...results,
+    unrecognizedFiles: [],
+  })
 
 const UNCHANGED: ServerComparison = { status: 'unchanged', fields: [] }
 const CHANGED: ServerComparison = { status: 'changed', fields: [] }

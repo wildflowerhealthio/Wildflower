@@ -17,6 +17,7 @@ import {
   resolveMentions,
   discoverReferents,
   resolveMentionsWithFallback,
+  type ResolvedBatch,
 } from './resolve-mentions.ts'
 
 /**
@@ -101,7 +102,7 @@ const batchOf = (formats: {
 const resolvedOnTestClock = (
   batch: DecodedBatch,
   linkChoices: ReferentLinkChoices.Type
-): DecodedBatch => runOnTestClock(resolveMentions(batch, linkChoices))
+): ResolvedBatch => runOnTestClock(resolveMentions(batch, linkChoices))
 
 /** The resource keyed `key` in `kind`'s decoded file. */
 const at = (batch: DecodedBatch, kind: FormatKind, key: string): FhirResource | undefined =>
