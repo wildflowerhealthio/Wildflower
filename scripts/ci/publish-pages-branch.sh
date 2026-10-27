@@ -157,6 +157,11 @@ publish_once() {
   local site=$work/site tip='' status=0 tree commit output
   rm -rf "$site"
   git -c init.defaultBranch=pages init -q "$site"
+  # The fetch below may hand its housekeeping to a detached `git gc --auto`,
+  # which keeps writing under $site/.git after this function returns and
+  # fails the EXIT trap's `rm -rf` with "Directory not empty". A checkout this
+  # short-lived needs no housekeeping.
+  git -C "$site" config gc.auto 0
   git ls-remote --exit-code --heads "$PAGES_REMOTE" "$PAGES_BRANCH" > /dev/null || status=$?
   case "$status" in
     0)
