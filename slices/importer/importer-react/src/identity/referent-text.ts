@@ -6,7 +6,12 @@
  * @packageDocumentation
  */
 
-import type { LinkableLogicalReference, Referent } from '@wildflowerhealthio/importer-fundamentals'
+import type {
+  DifferingDemographics,
+  LinkableLogicalReference,
+  Referent,
+  ReferentTally,
+} from '@wildflowerhealthio/importer-fundamentals'
 
 import { plural } from '../preview/preview-text.ts'
 
@@ -69,34 +74,24 @@ const newAsLabel = (label: string): string => `New: ${label}`
 /** A choice of another referent that no longer creates a record of its own. */
 const sameAsLabel = (label: string): string => `Same as: ${label}`
 
+/** Each compared demographic as {@link differingDemographicsWarning} names it. */
+const DEMOGRAPHIC_NAMES: Readonly<Record<DifferingDemographics.Demographic, string>> = {
+  FamilyName: 'family name',
+  GivenName: 'given name',
+  BirthDate: 'birth date',
+}
+
 /**
  * The warning under a referent linked to a stored resource whose demographics
  * differ: which of them differ, never a block.
  */
-const differingDemographicsWarning = (differing: readonly string[]): string =>
-  `The record on the server has a different ${differing.join(' and ')}. Check it is the same person.`
-
-/** The family name, as {@link differingDemographicsWarning} names it. */
-const FAMILY_NAME = 'family name'
-
-/** The given names, as {@link differingDemographicsWarning} names them. */
-const GIVEN_NAME = 'given name'
-
-/** The birth date, as {@link differingDemographicsWarning} names it. */
-const BIRTH_DATE = 'birth date'
-
-/** How many records the referents land on, and how many referents land nowhere. */
-interface ReferentTally {
-  /** Stored records linked to, as they are. */
-  readonly onServer: number
-  /** Records this import writes: decoded ones, over a stored copy or not, and provisional ones. */
-  readonly fromImport: number
-  /** Referents not linked. */
-  readonly unlinked: number
-}
+const differingDemographicsWarning = (
+  differing: readonly DifferingDemographics.Demographic[]
+): string =>
+  `The record on the server has a different ${differing.map((demographic) => DEMOGRAPHIC_NAMES[demographic]).join(' and ')}. Check it is the same person.`
 
 /** The tally line: how many stored records are linked to, how many records this import writes, how many referents are neither. */
-const referentTallyLine = ({ onServer, fromImport, unlinked }: ReferentTally): string =>
+const referentTallyLine = ({ onServer, fromImport, unlinked }: ReferentTally.Type): string =>
   [
     `${onServer} ${plural(onServer, 'record')} on the server`,
     `${fromImport} ${plural(fromImport, 'record')} from this import`,
@@ -104,13 +99,10 @@ const referentTallyLine = ({ onServer, fromImport, unlinked }: ReferentTally): s
   ].join(', ')
 
 export {
-  BIRTH_DATE,
   CHOOSE_OTHER_FILES_LABEL,
   differingDemographicsWarning,
   DONT_LINK_LABEL,
   duplicateReferentMessage,
-  FAMILY_NAME,
-  GIVEN_NAME,
   GROUP_HEADINGS,
   IN_IMPORT_GROUP,
   NEW_LABEL,
@@ -119,7 +111,6 @@ export {
   REFERENTS_HEADING,
   referentTallyLine,
   REFUSED_OVER_PREVIOUS_HINT,
-  type ReferentTally,
   SEARCH_ERROR_MESSAGE,
   SEARCHING_SERVER_MESSAGE,
   sameAsLabel,

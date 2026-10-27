@@ -21,7 +21,11 @@ import {
 } from '@wildflowerhealthio/importer-fundamentals'
 
 import { IMPORTER_QUERY_KEY } from '../queries/keys.ts'
-import { labeled, type StoredResource, storedResourcesQuery } from './use-stored-resources.ts'
+import {
+  labeled,
+  type StoredResource,
+  storedResourcesQuery,
+} from './use-stored-resources-of-type.ts'
 
 /**
  * The identity map in the screen: the batch's referents, the link choice each

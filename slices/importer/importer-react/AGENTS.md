@@ -114,43 +114,53 @@ The importer has no HTTP wire union to derive, so there is no separate
   as it does on the server diff, and hands the placed batch to
   `useServerDiff`, `PreviewPanel` and the confirm, so all three see what gets
   written; a failed search shows an alert and leaves every referent on its
-  kind's default. `referent-rows.tsx` is the block the panel renders above the
-  format groups (its `referentRows` slot), "People and providers in this
-  import": a tally of the records the referents land on (a stored record, or
-  one this import writes, is counted once however many referents share it)
-  and the referents that land nowhere, then one group per
-  `LinkableLogicalReference.RESOURCE_TYPES` entry that has referents, one
-  line per referent, its label and a select of the `LinkChoice`s its kind
-  allows — `New`, or an update of the stored copy under its own id when one
-  is known (`UpdateStoredResource`, a re-import's default), or a stored
-  resource for an `AsResource` referent; a stored
-  resource, `New: <label>` (`LinkToDecodedReferent`) for each other referent
-  of its type that creates a record, `New` when
-  `LinkableResource.tryProvisionalFrom` stands for its logical reference, and
-  "Don't link" for a `ByMentionOnly` one; while the batch is `refused` the
-  selects are disabled, since a choice could neither be placed nor shown.
-  Each group's lines are built once per change of what each is built from
-  (its own choice, the stored list, the batch's referents and which of them
-  write their own record) and kept across every other change, so a select
-  change rebuilds the lines it changed and the memoised rows of the others
-  skip their render. The stored resources offered are the default search's
-  hits plus the server's own, every page read up front
-  (`use-stored-resources.ts`, `GET <Type>?_count=` through `fhir-r4/clients`'
-  `searchAllPages`, capped at ten pages: a select has no room for a load-more
-  action, and a personal server holds a household, not a hospital), each
-  labelled on the way in since `LinkableResource.labelOf` reads the clock.
-  The read starts beside the default search (`useIdentityMap` starts the
-  same query, `storedResourcesQuery`, as soon as the batch's referents are
-  known) and is never stale on its own: a confirm invalidates it, the one
-  thing that changes it. A list that failed is said under its group, and only
-  the search's hits are offered; a list the page limit cut off is said too.
-  The stored options are one memo per group, shared by its lines. The one type-specific rule is a table over the resource
-  types: a Patient linked to a stored one whose family name, given name or
-  birth date (`Patient.demographics`, the parts the name-and-birth-date
-  identifier is minted from) differs gets a warning line, never a block; a
-  Practitioner has nothing compared. Its strings are `referent-text.ts`, which
-  says "server", never "device": the importer can be pointed at any FHIR
-  server.
+  kind's default.
+  The referent block, "People and providers in this import", is one file
+  per job:
+  - `referent-rows.tsx` — the block the panel renders above the format
+    groups (its `referentRows` slot): a tally of the records the referents
+    land on (`ReferentTally`: a stored record, or one this import writes, is
+    counted once however many referents share it) and the referents that
+    land nowhere, then one group per `LinkableLogicalReference.RESOURCE_TYPES`
+    entry that has referents. A list that failed is said under its group,
+    and only the search's hits are offered; a list the page limit cut off is
+    said too. While the batch is `refused` the selects are disabled, since a
+    choice could neither be placed nor shown.
+  - `referent-row.tsx` — one referent's line, memoised: its label, a select
+    of its options, and its warning.
+  - `link-choice-options.ts` — the `LinkChoiceOptions` view model: the
+    options a referent's select offers, in four groups. `New`, or an update
+    of the stored copy under its own id when one is known
+    (`UpdateStoredResource`, a re-import's default), or a stored resource for
+    an `AsResource` referent; a stored resource, `New: <label>`
+    (`LinkToDecodedReferent`) for each other referent of its type that
+    creates a record, `New` when `LinkableResource.tryProvisionalFrom` stands
+    for its logical reference, and "Don't link" for a `ByMentionOnly` one.
+  - `referent-line.ts` — the `ReferentLine` namespace: a group's lines (a
+    referent, its choice, its options, its warning), each built once per
+    change of what it is built from (its own choice, the stored list, the
+    batch's referents and which of them write their own record) and kept
+    across every other change, so a select change rebuilds the lines it
+    changed and the memoised rows of the others skip their render. The
+    warning is `DifferingDemographics`: a Patient linked to a stored one
+    whose family name, given name or birth date (`Patient.demographics`, the
+    parts the name-and-birth-date identifier is minted from) differs gets a
+    warning line, never a block; a Practitioner has nothing compared.
+  - `use-referent-group-lines.ts` — `useReferentGroupLines`, the group's
+    React side: the stored options as one memo per group, shared by its
+    lines, and the built lines kept in state across renders.
+  - `use-stored-resources-of-type.ts` — `useStoredResourcesOfType`: the
+    server's own stored resources, every page read up front
+    (`GET <Type>?_count=` through `fhir-r4/clients`' `searchAllPages`, capped at
+    ten pages: a select has no room for a load-more action, and a personal
+    server holds a household, not a hospital), each labelled on the way in
+    since `LinkableResource.labelOf` reads the clock. The read starts beside
+    the default search (`useIdentityMap` starts the same query,
+    `storedResourcesQuery`, as soon as the batch's referents are known) and
+    is never stale on its own: a confirm invalidates it, the one thing that
+    changes it.
+  - `referent-text.ts` — the block's strings, which say "server", never
+    "device": the importer can be pointed at any FHIR server.
 - **`src/run/`** — the two hooks that drive the flow's halves, held apart from
   the view they feed: the read (`use-import-run.ts`) and the opt-in write
   (`use-confirm-import.ts`). The confirm hook is the write half and does not

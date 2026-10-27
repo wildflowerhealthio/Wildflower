@@ -115,7 +115,7 @@ const labeledAll = (read: SearchPages<LinkableResource.WithId>): Effect.Effect<S
 
 /**
  * The query for the stored list of `resourceType`, the same for the rows that
- * read it ({@link useStoredResources}) and the prefetch that starts it.
+ * read it ({@link useStoredResourcesOfType}) and the prefetch that starts it.
  *
  * @remarks
  * Never stale on its own: the list changes only when a confirm writes, and
@@ -155,7 +155,7 @@ const LOADING: StoredResourcesState = { _tag: 'loading' }
  *   referent of that type
  * @returns The list's state
  */
-const useStoredResources = (
+const useStoredResourcesOfType = (
   resourceType: LinkableLogicalReference.ResourceType,
   enabled: boolean
 ): StoredResourcesState => {
@@ -182,5 +182,5 @@ export {
   type StoredResources,
   storedResourcesQuery,
   type StoredResourcesState,
-  useStoredResources,
+  useStoredResourcesOfType,
 }

@@ -1,35 +1,24 @@
-import { Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   LinkableLogicalReference,
-  LinkableResource,
-  LinkChoice,
-  LinkTarget,
+  type LinkChoice,
+  type LinkTarget,
   Referent,
   type ReferentLinkChoices,
+  ReferentTally,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { Array, Effect, HashMap, HashSet, Option, pipe } from 'effect'
-import { type JSX, memo, useId, useMemo, useState } from 'react'
+import { HashMap } from 'effect'
+import type { JSX } from 'react'
 
+import { ReferentRow } from './referent-row.tsx'
 import {
-  BIRTH_DATE,
-  differingDemographicsWarning,
-  DONT_LINK_LABEL,
-  FAMILY_NAME,
-  GIVEN_NAME,
   GROUP_HEADINGS,
-  IN_IMPORT_GROUP,
-  NEW_LABEL,
-  newAsLabel,
-  ON_SERVER_GROUP,
   REFERENTS_HEADING,
   referentTallyLine,
-  type ReferentTally,
-  sameAsLabel,
   STORED_LIST_ERROR_MESSAGE,
   STORED_LIST_TRUNCATED_MESSAGE,
-  UPDATE_LABEL,
 } from './referent-text.ts'
-import { type StoredResource, useStoredResources } from './use-stored-resources.ts'
+import { useReferentGroupLines } from './use-referent-group-lines.ts'
+import type { StoredResource } from './use-stored-resources-of-type.ts'
 import styles from './referent-rows.module.css'
 
 /**
@@ -38,19 +27,9 @@ import styles from './referent-rows.module.css'
  * resource type its logical reference names, and a tally of where they land.
  *
  * @remarks
- * A referent with a resource offers `New` (its own resource becomes the
- * record), or, when a stored resource under its own id is known (a
- * re-import), an update of that copy in its place, and a stored resource. One
- * named only by mentions offers a stored
- * resource, the new record each other referent of its type creates (a
- * `LinkToDecodedReferent`), `New` when its logical reference stands for a
- * provisional record, and `Don't link`. The stored resources offered are the
- * default search's hits and the server's own, read up front. The groups are
- * the resource types the identity map links, in
- * `LinkableLogicalReference.RESOURCE_TYPES` order, and the one type-specific
- * rule, which demographics a link is checked against, is an exhaustive table
- * over them: a referent linked to a stored resource whose demographics differ
- * gets a warning line, and the link stands.
+ * The groups are the resource types the identity map links, in
+ * `LinkableLogicalReference.RESOURCE_TYPES` order. A group says when its
+ * stored list could not be read, or was cut off, above its lines.
  *
  * @packageDocumentation
  */
@@ -71,431 +50,6 @@ interface ReferentRowsProps {
   readonly onChoose: (referentKey: string, choice: LinkChoice.Type) => void
 }
 
-/** One option of a referent's select: the choice it stands for and its label. */
-interface ChoiceOption {
-  readonly value: string
-  readonly label: string
-  readonly choice: LinkChoice.Type
-}
-
-/** A referent's options: those before the groups, the two groups, and those after. */
-interface ChoiceOptions {
-  readonly leading: readonly ChoiceOption[]
-  readonly onServer: readonly ChoiceOption[]
-  readonly inImport: readonly ChoiceOption[]
-  readonly trailing: readonly ChoiceOption[]
-}
-
-/** Every option of `options`, in the order the select lists them. */
-const allOptions = (options: ChoiceOptions): readonly ChoiceOption[] => [
-  ...options.leading,
-  ...options.onServer,
-  ...options.inImport,
-  ...options.trailing,
-]
-
-/** A choice as an option value, unique among one select's options. */
-const valueOf = (choice: LinkChoice.Type): string =>
-  LinkChoice.match(choice, {
-    CreateResource: () => 'create',
-    DontLink: () => 'dont-link',
-    UpdateStoredResource: ({ resource }) =>
-      `update:${LinkableResource.literalReferenceOf(resource)}`,
-    LinkToStoredResource: ({ resource }) =>
-      `stored:${LinkableResource.literalReferenceOf(resource)}`,
-    LinkToDecodedReferent: ({ referentKey }) => `decoded:${referentKey}`,
-  })
-
-const optionOf = (choice: LinkChoice.Type, label: string): ChoiceOption => ({
-  value: valueOf(choice),
-  label,
-  choice,
-})
-
-const storedOption = ({ resource, label }: StoredResource): ChoiceOption =>
-  optionOf(LinkChoice.LinkToStoredResource({ resource }), label)
-
-const sameValue = (left: ChoiceOption, right: ChoiceOption): boolean => left.value === right.value
-
-/** Whether `referent` writes a record of its own, new or over its stored copy, and that lands on a resource. */
-const writesOwnRecord = (
-  referent: Referent.Type,
-  linkChoices: ReferentLinkChoices.Type,
-  linkTargets: HashMap.HashMap<string, LinkTarget.Type>
-): boolean => {
-  const choice = LinkChoice.forReferent(linkChoices, referent)
-  return (
-    (LinkChoice.is('CreateResource')(choice) || LinkChoice.is('UpdateStoredResource')(choice)) &&
-    HashMap.get(linkTargets, Referent.key(referent)).pipe(
-      Option.exists((linkTarget) => !LinkTarget.is('Unlinked')(linkTarget))
-    )
-  )
-}
-
-/** Everything the options of one referent are read from. */
-type OptionInputs = Pick<ReferentRowsProps, 'referents' | 'linkChoices' | 'linkTargets'> & {
-  /** The stored resources of the referent's type: the search's hits, then the server's own. */
-  readonly storedOfType: readonly StoredResource[]
-  /** {@link OptionInputs.storedOfType} as options, built once per group. */
-  readonly onServer: readonly ChoiceOption[]
-}
-
-/**
- * The stored copy of `decoded` under its own literal reference, when one is
- * known: among the stored resources of its type, else the one its `current`
- * choice updates.
- */
-const storedCopyOf = (
-  decoded: LinkableResource.WithId,
-  current: LinkChoice.Type,
-  storedOfType: readonly StoredResource[]
-): Option.Option<LinkableResource.WithId> =>
-  Array.findFirst(
-    storedOfType,
-    ({ resource: stored }) =>
-      LinkableResource.literalReferenceOf(stored) === LinkableResource.literalReferenceOf(decoded)
-  ).pipe(
-    Option.map(({ resource }) => resource),
-    Option.orElse(() =>
-      Option.map(
-        Option.liftPredicate(current, LinkChoice.is('UpdateStoredResource')),
-        ({ resource }) => resource
-      )
-    )
-  )
-
-/**
- * The options `referent`'s select offers under `current`, its choice: those
- * its kind allows, with the stored resource or the referent `current` names
- * among them.
- */
-const optionsFor = (
-  referent: Referent.Type,
-  current: LinkChoice.Type,
-  inputs: OptionInputs
-): ChoiceOptions => {
-  // A stored resource the choice names but the lists do not is offered by its literal reference.
-  const currentOption = Option.liftPredicate(current, LinkChoice.is('LinkToStoredResource')).pipe(
-    Option.map(({ resource }) =>
-      storedOption({ resource, label: LinkableResource.literalReferenceOf(resource) })
-    ),
-    Option.filter((option) => !inputs.onServer.some((listed) => sameValue(listed, option)))
-  )
-  const onServer = Option.match(currentOption, {
-    onNone: () => inputs.onServer,
-    onSome: (option) => [...inputs.onServer, option],
-  })
-  return Referent.match(referent, {
-    // With a stored copy under its own id, the update takes New's place; New
-    // stays offered only while it is the choice, so the select shows it.
-    AsResource: ({ resource }) => ({
-      leading: Option.match(storedCopyOf(resource, current, inputs.storedOfType), {
-        onNone: () => [optionOf(LinkChoice.CreateResource(), NEW_LABEL)],
-        onSome: (storedCopy) => [
-          optionOf(LinkChoice.UpdateStoredResource({ resource: storedCopy }), UPDATE_LABEL),
-          ...(LinkChoice.is('CreateResource')(current)
-            ? [optionOf(LinkChoice.CreateResource(), NEW_LABEL)]
-            : []),
-        ],
-      }),
-      onServer,
-      inImport: [],
-      trailing: [],
-    }),
-    ByMentionOnly: ({ logicalReference }) => {
-      const others = inputs.referents.filter(
-        (other) =>
-          other.logicalReference.type === logicalReference.type &&
-          Referent.key(other) !== Referent.key(referent)
-      )
-      const linkedCurrently = LinkChoice.is('LinkToDecodedReferent')(current)
-        ? others.filter((other) => Referent.key(other) === current.referentKey)
-        : []
-      const inImport = Array.dedupeWith(
-        [
-          ...others
-            .filter((other) => writesOwnRecord(other, inputs.linkChoices, inputs.linkTargets))
-            .map((other) =>
-              optionOf(
-                LinkChoice.LinkToDecodedReferent({ referentKey: Referent.key(other) }),
-                newAsLabel(other.label)
-              )
-            ),
-          ...linkedCurrently.map((other) =>
-            optionOf(
-              LinkChoice.LinkToDecodedReferent({ referentKey: Referent.key(other) }),
-              sameAsLabel(other.label)
-            )
-          ),
-        ],
-        sameValue
-      )
-      const provisional = Option.isSome(LinkableResource.tryProvisionalFrom(logicalReference))
-        ? [optionOf(LinkChoice.CreateResource(), NEW_LABEL)]
-        : []
-      return {
-        leading: [],
-        onServer,
-        inImport,
-        trailing: [...provisional, optionOf(LinkChoice.DontLink(), DONT_LINK_LABEL)],
-      }
-    },
-  })
-}
-
-/** One demographic a review compares two records of a person by, and how the warning names it. */
-interface ComparedDemographic {
-  readonly name: string
-  readonly read: (demographics: Patient.Demographics) => Option.Option<string>
-}
-
-const COMPARED_PATIENT_DEMOGRAPHICS: readonly ComparedDemographic[] = [
-  { name: FAMILY_NAME, read: ({ family }) => family },
-  { name: GIVEN_NAME, read: ({ given }) => given },
-  { name: BIRTH_DATE, read: ({ birthDate }) => birthDate },
-]
-
-/** Whether both `decoded` and `stored` state a value and the two differ. */
-const bothStateAndDiffer = (
-  decoded: Option.Option<string>,
-  stored: Option.Option<string>
-): boolean =>
-  Option.all([decoded, stored]).pipe(
-    Option.exists(([decodedValue, storedValue]) => decodedValue !== storedValue)
-  )
-
-/**
- * The demographics two Patients both state that differ, named as the warning
- * reads them, compared on `Patient.demographics` (each record's current name,
- * judged at the clock's now) so the review and the identifier the
- * demographics derive agree on what a name is.
- */
-const differingPatientDemographics = (
-  decoded: Patient.Type,
-  stored: Patient.Type
-): Effect.Effect<readonly string[]> =>
-  Effect.map(
-    Effect.all([Patient.demographics(decoded), Patient.demographics(stored)]),
-    ([decodedDemographics, storedDemographics]) =>
-      Array.filterMap(COMPARED_PATIENT_DEMOGRAPHICS, ({ name, read }) =>
-        bothStateAndDiffer(read(decodedDemographics), read(storedDemographics))
-          ? Option.some(name)
-          : Option.none()
-      )
-  )
-
-/**
- * The demographics a link from `decoded` to `stored` is checked against that
- * differ: name and birth date for a Patient; a Practitioner has none the
- * review compares, since its name is the identity.
- */
-const differingDemographics = (
-  decoded: LinkableResource.WithId,
-  stored: LinkableResource.WithId
-): Effect.Effect<readonly string[]> =>
-  decoded.resourceType === 'Patient' && stored.resourceType === 'Patient'
-    ? differingPatientDemographics(decoded, stored)
-    : Effect.succeed([])
-
-/**
- * The warning for a referent with a resource linked to a stored resource whose
- * demographics differ, or `None`.
- */
-const differingDemographicsWarningFor = (
-  referent: Referent.Type,
-  choice: LinkChoice.Type
-): Effect.Effect<Option.Option<string>> =>
-  Option.all({
-    decoded: Option.liftPredicate(referent, Referent.is('AsResource')),
-    stored: Option.liftPredicate(choice, LinkChoice.is('LinkToStoredResource')),
-  }).pipe(
-    Effect.transposeMapOption(({ decoded, stored }) =>
-      differingDemographics(decoded.resource, stored.resource)
-    ),
-    Effect.map(
-      Option.flatMap((differing) =>
-        Option.map(
-          Option.liftPredicate(differing, Array.isNonEmptyReadonlyArray),
-          differingDemographicsWarning
-        )
-      )
-    )
-  )
-
-/**
- * How many records the referents land on: stored ones as they are, and the
- * ones this import writes (decoded, over a stored copy or not, and
- * provisional), each counted once however many referents share it, and once
- * in all when a stored link lands on a record this import writes over; and
- * how many referents land nowhere.
- */
-const tallyOf = (linkTargets: Iterable<LinkTarget.Type>): ReferentTally => {
-  const targets = Array.fromIterable(linkTargets)
-  const recordsAmong = (isCounted: (target: LinkTarget.Type) => boolean): HashSet.HashSet<string> =>
-    pipe(
-      targets,
-      Array.filter(isCounted),
-      Array.filterMap(LinkTarget.tryIntoResource),
-      Array.map(LinkableResource.literalReferenceOf),
-      HashSet.fromIterable
-    )
-  const fromImport = recordsAmong(
-    (target) => LinkTarget.is('Decoded')(target) || LinkTarget.is('Provisional')(target)
-  )
-  return {
-    onServer: HashSet.size(HashSet.difference(recordsAmong(LinkTarget.is('Stored')), fromImport)),
-    fromImport: HashSet.size(fromImport),
-    unlinked: Array.countBy(targets, LinkTarget.is('Unlinked')),
-  }
-}
-
-/** One option of a referent's select. */
-const SelectOption = ({ option }: { readonly option: ChoiceOption }): JSX.Element => (
-  <option value={option.value}>{option.label}</option>
-)
-
-/** One referent's line: its label, its select, and the warning when there is one. */
-const ReferentRow = memo(function ReferentRow({
-  referent,
-  options,
-  choice,
-  warning,
-  disabled,
-  onChoose,
-}: {
-  readonly referent: Referent.Type
-  readonly options: ChoiceOptions
-  readonly choice: LinkChoice.Type
-  readonly warning: Option.Option<string>
-  readonly disabled: boolean
-  readonly onChoose: (referentKey: string, choice: LinkChoice.Type) => void
-}): JSX.Element {
-  const selectId = useId()
-  const handleChange = (value: string): void =>
-    Array.findFirst(allOptions(options), (option) => option.value === value).pipe(
-      Option.map((option) => onChoose(Referent.key(referent), option.choice)),
-      Option.getOrUndefined
-    )
-  return (
-    <li className={styles['referent-rows__row']}>
-      <label htmlFor={selectId} className={styles['referent-rows__label']}>
-        {referent.label}
-      </label>
-      <select
-        id={selectId}
-        className={styles['referent-rows__select']}
-        value={valueOf(choice)}
-        disabled={disabled}
-        onChange={(event) => handleChange(event.target.value)}
-      >
-        {options.leading.map((option) => (
-          <SelectOption key={option.value} option={option} />
-        ))}
-        {options.onServer.length > 0 && (
-          <optgroup label={ON_SERVER_GROUP}>
-            {options.onServer.map((option) => (
-              <SelectOption key={option.value} option={option} />
-            ))}
-          </optgroup>
-        )}
-        {options.inImport.length > 0 && (
-          <optgroup label={IN_IMPORT_GROUP}>
-            {options.inImport.map((option) => (
-              <SelectOption key={option.value} option={option} />
-            ))}
-          </optgroup>
-        )}
-        {options.trailing.map((option) => (
-          <SelectOption key={option.value} option={option} />
-        ))}
-      </select>
-      {warning.pipe(
-        Option.map((text) => (
-          <p key="warning" className={styles['referent-rows__warning']}>
-            {text}
-          </p>
-        )),
-        Option.getOrNull
-      )}
-    </li>
-  )
-})
-
-/** One referent with the choice it shows, the options its select offers, and the warning under it. */
-interface ReferentLine {
-  readonly referent: Referent.Type
-  readonly choice: LinkChoice.Type
-  readonly options: ChoiceOptions
-  readonly warning: Option.Option<string>
-}
-
-/** Everything a group's lines are built from. */
-type LineInputs = OptionInputs & {
-  /** The referents that write a record of their own, which every other line's "New:" options list. */
-  readonly ownRecordWritersKey: string
-}
-
-/** A line with what it was built from, so the next build can keep it when that has not changed. */
-interface BuiltLine {
-  readonly line: ReferentLine
-  readonly choiceValue: string
-  readonly inputs: LineInputs
-}
-
-/**
- * Whether `before` was built from the same inputs a line with `choiceValue`
- * under `inputs` would be: its own choice, the stored list and its options,
- * the batch's referents and which of them write their own record. The
- * choices and link targets themselves change on every select, and a line
- * reads them only through those.
- */
-const builtFromSame = (before: BuiltLine, choiceValue: string, inputs: LineInputs): boolean =>
-  before.choiceValue === choiceValue &&
-  before.inputs.ownRecordWritersKey === inputs.ownRecordWritersKey &&
-  before.inputs.storedOfType === inputs.storedOfType &&
-  before.inputs.onServer === inputs.onServer &&
-  before.inputs.referents === inputs.referents
-
-/**
- * The lines of `ofType` under `inputs`, each kept from `previous` when it was
- * built from the same inputs, so a select change rebuilds only the lines it
- * changed and every other keeps its options and warning by identity, which
- * `ReferentRow`'s memo compares. `previous` itself when every line is kept.
- * The warning reads the clock (which name is current) and nothing else, so it
- * runs synchronously here, as the hook runs the placing.
- */
-const buildLines = (
-  ofType: readonly Referent.Type[],
-  inputs: LineInputs,
-  previous: HashMap.HashMap<string, BuiltLine>
-): HashMap.HashMap<string, BuiltLine> => {
-  const entries = ofType.map((referent) => {
-    const referentKey = Referent.key(referent)
-    const choice = LinkChoice.forReferent(inputs.linkChoices, referent)
-    const choiceValue = valueOf(choice)
-    const built = HashMap.get(previous, referentKey).pipe(
-      Option.filter((before) => builtFromSame(before, choiceValue, inputs)),
-      Option.getOrElse((): BuiltLine => ({
-        choiceValue,
-        inputs,
-        line: {
-          referent,
-          choice,
-          options: optionsFor(referent, choice, inputs),
-          warning: Effect.runSync(differingDemographicsWarningFor(referent, choice)),
-        },
-      }))
-    )
-    return [referentKey, built] as const
-  })
-  const everyLineKept =
-    HashMap.size(previous) === entries.length &&
-    entries.every(([referentKey, built]) =>
-      Option.exists(HashMap.get(previous, referentKey), (before) => before === built)
-    )
-  return everyLineKept ? previous : HashMap.fromIterable(entries)
-}
-
 /** One resource type's referents under their heading, or nothing when it has none. */
 const ReferentGroup = ({
   resourceType,
@@ -504,65 +58,8 @@ const ReferentGroup = ({
   readonly resourceType: LinkableLogicalReference.ResourceType
   readonly props: ReferentRowsProps
 }): JSX.Element | null => {
-  const { referents, linkChoices, linkTargets, found, disabled, onChoose } = props
-  const ofType = useMemo(
-    () => referents.filter((referent) => referent.logicalReference.type === resourceType),
-    [referents, resourceType]
-  )
-  const stored = useStoredResources(resourceType, ofType.length > 0)
-  // The stored resources, and their options, are worked out once per list and shared by every line.
-  const storedOfType = useMemo(
-    (): readonly StoredResource[] =>
-      Array.dedupeWith(
-        [
-          ...found.filter(({ resource }) => resource.resourceType === resourceType),
-          ...(stored._tag === 'ready' ? stored.resources : []),
-        ],
-        (left, right) =>
-          LinkableResource.literalReferenceOf(left.resource) ===
-          LinkableResource.literalReferenceOf(right.resource)
-      ),
-    [found, stored, resourceType]
-  )
-  const onServer = useMemo(
-    (): readonly ChoiceOption[] => storedOfType.map(storedOption),
-    [storedOfType]
-  )
-  const ownRecordWritersKey = useMemo(
-    () =>
-      referents
-        .filter((referent) => writesOwnRecord(referent, linkChoices, linkTargets))
-        .map(Referent.key)
-        .join('\n'),
-    [referents, linkChoices, linkTargets]
-  )
-  // The built lines are kept in state and adjusted during render (the
-  // "derive from a changed prop" pattern), so a line survives the changes it
-  // does not depend on.
-  const [builtLines, setBuiltLines] = useState<HashMap.HashMap<string, BuiltLine>>(HashMap.empty())
-  const nextBuiltLines = useMemo(
-    () =>
-      buildLines(
-        ofType,
-        { referents, linkChoices, linkTargets, storedOfType, onServer, ownRecordWritersKey },
-        builtLines
-      ),
-    [
-      ofType,
-      referents,
-      linkChoices,
-      linkTargets,
-      storedOfType,
-      onServer,
-      ownRecordWritersKey,
-      builtLines,
-    ]
-  )
-  if (nextBuiltLines !== builtLines) setBuiltLines(nextBuiltLines)
-  const lines = Array.filterMap(ofType, (referent) =>
-    Option.map(HashMap.get(nextBuiltLines, Referent.key(referent)), ({ line }) => line)
-  )
-  if (ofType.length === 0) return null
+  const { lines, stored } = useReferentGroupLines(resourceType, props)
+  if (lines.length === 0) return null
   const heading = GROUP_HEADINGS[resourceType]
   return (
     <section aria-label={heading} className={styles['referent-rows__group']}>
@@ -585,8 +82,8 @@ const ReferentGroup = ({
             options={options}
             choice={choice}
             warning={warning}
-            disabled={disabled}
-            onChoose={onChoose}
+            disabled={props.disabled}
+            onChoose={props.onChoose}
           />
         ))}
       </ul>
@@ -601,7 +98,7 @@ const ReferentRows = (props: ReferentRowsProps): JSX.Element | null => {
     <section aria-label={REFERENTS_HEADING} className={styles['referent-rows']}>
       <h3 className={styles['referent-rows__heading']}>{REFERENTS_HEADING}</h3>
       <p role="status" className={styles['referent-rows__tally']}>
-        {referentTallyLine(tallyOf(HashMap.values(props.linkTargets)))}
+        {referentTallyLine(ReferentTally.of(HashMap.values(props.linkTargets)))}
       </p>
       {LinkableLogicalReference.RESOURCE_TYPES.map((resourceType) => (
         <ReferentGroup key={resourceType} resourceType={resourceType} props={props} />
