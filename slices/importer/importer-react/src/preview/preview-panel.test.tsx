@@ -9,8 +9,10 @@ import {
   Practitioner,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import {
+  defaultFormatSettings,
   type FormatKind,
   type FormatSettings,
+  LINKED_GROUP,
   type ResolvedBatch,
   type UnrecognizedFile,
 } from '@wildflowerhealthio/importer-core'
@@ -21,13 +23,12 @@ import {
   LinkableResource,
   LinkTarget,
   type PickedFile,
-  type Referent,
+  Referent,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { Option, Schema, type ParseResult } from 'effect'
+import { HashMap, Option, Schema, type ParseResult } from 'effect'
 import type { JSX } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { defaultFormatSettings } from '@wildflowerhealthio/importer-core'
 import { PreviewPanel, type PreviewPanelProps, type SettingsRegistry } from './preview-panel.tsx'
 import {
   LINKED_RECORDS_HEADING,
@@ -37,7 +38,6 @@ import {
   UNREADABLE_FILE_MESSAGE,
   UNRECOGNIZED_FILE_MESSAGE,
 } from './preview-text.ts'
-import { LINKED_GROUP } from './use-server-diff.ts'
 
 /**
  * The preview panel renders every format's review under one confirm.
@@ -226,37 +226,35 @@ describe('PreviewPanel', () => {
   })
 
   it('sums a mixed batch with unreadable and unrecognized files', () => {
-    const batch: ResolvedBatch = {
-      har: {
-        id: 'har/a.har,broken.har,c.har',
-        title: 'a.har, broken.har, c.har',
-        files: [pickedFile('a.har'), pickedFile('broken.har'), pickedFile('c.har')],
-        format: 'har',
-        decoded: decoded([
-          section('https://a', [labeledResource('pat-1', 'Patient/pat-1')]),
-          section('https://c', [labeledResource('obs-1', 'Observation/obs-1')]),
-        ]),
-        unreadableFiles: [
-          {
-            id: 'har/broken.har',
-            title: 'broken.har',
-            pickedFile: pickedFile('broken.har'),
-            error: anyParseError(),
-          },
-        ],
+    const batch = makeBatch(
+      {
+        har: {
+          id: 'har/a.har,broken.har,c.har',
+          title: 'a.har, broken.har, c.har',
+          files: [pickedFile('a.har'), pickedFile('broken.har'), pickedFile('c.har')],
+          format: 'har',
+          decoded: decoded([
+            section('https://a', [labeledResource('pat-1', 'Patient/pat-1')]),
+            section('https://c', [labeledResource('obs-1', 'Observation/obs-1')]),
+          ]),
+          unreadableFiles: [
+            {
+              id: 'har/broken.har',
+              title: 'broken.har',
+              pickedFile: pickedFile('broken.har'),
+              error: anyParseError(),
+            },
+          ],
+        },
       },
-      'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
-      dicom: FormatDecode.emptyResult('dicom'),
-      unrecognizedFiles: [
+      [
         {
           id: 'x',
           title: 'notes.txt',
           files: [pickedFile('notes.txt')],
         },
-      ],
-      linked: [],
-      links: [],
-    }
+      ]
+    )
     render(<PreviewPanel {...panelProps(batch)} />)
 
     expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
@@ -598,13 +596,15 @@ const makeBatch = (
   results: Partial<{ [K in FormatKind]: FormatDecode.Result<K> }>,
   unrecognizedFiles: readonly UnrecognizedFile[] = []
 ): ResolvedBatch => ({
-  har: FormatDecode.emptyResult('har'),
-  'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
-  dicom: FormatDecode.emptyResult('dicom'),
-  ...results,
+  formats: {
+    har: FormatDecode.emptyResult('har'),
+    'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
+    dicom: FormatDecode.emptyResult('dicom'),
+    ...results,
+  },
   unrecognizedFiles,
-  linked: [],
-  links: [],
+  linkedRecords: [],
+  linkTargetsByReferentKey: HashMap.empty(),
 })
 
 /** Verdicts for a format, keyed by format kind. */
@@ -661,7 +661,7 @@ const withLinked = (
   const linkTarget = target(resource)
   return {
     ...batch,
-    linked: [
+    linkedRecords: [
       {
         key: `linked:${literalReference}`,
         title: literalReference,
@@ -669,7 +669,7 @@ const withLinked = (
         origin: linkTarget._tag,
       },
     ],
-    links: [{ referent, target: linkTarget }],
+    linkTargetsByReferentKey: HashMap.make([Referent.key(referent), linkTarget]),
   }
 }
 

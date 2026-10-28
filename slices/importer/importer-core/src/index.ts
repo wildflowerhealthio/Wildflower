@@ -36,6 +36,7 @@ export {
   type SkipReason,
   type WritePlan,
 } from './plan-write.ts'
+export { LINKED_GROUP, type ReviewGroup } from './review-group.ts'
 export {
   discoverReferents,
   resolveMentions,

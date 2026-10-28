@@ -1,14 +1,18 @@
 import type { ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import { type FhirResourceWithId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
-import type { FormatKind, ResolvedBatch } from '@wildflowerhealthio/importer-core'
+import {
+  type FormatKind,
+  LINKED_GROUP,
+  type ResolvedBatch,
+} from '@wildflowerhealthio/importer-core'
 import { FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Schema } from 'effect'
+import { HashMap, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { byGroupAndKey, diffRowsOf, initialExclusionsFor, LINKED_GROUP } from './use-server-diff.ts'
+import { byGroupAndKey, diffRowsOf, initialExclusionsFor } from './use-server-diff.ts'
 
 /**
  * The pure folds behind the server diff: every previewed resource is probed
@@ -48,13 +52,15 @@ const formatResult = <K extends FormatKind>(
 const makeBatch = (
   results: Partial<{ [K in FormatKind]: FormatDecode.Result<K> }>
 ): ResolvedBatch => ({
-  har: FormatDecode.emptyResult('har'),
-  'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
-  dicom: FormatDecode.emptyResult('dicom'),
-  ...results,
+  formats: {
+    har: FormatDecode.emptyResult('har'),
+    'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
+    dicom: FormatDecode.emptyResult('dicom'),
+    ...results,
+  },
   unrecognizedFiles: [],
-  linked: [],
-  links: [],
+  linkedRecords: [],
+  linkTargetsByReferentKey: HashMap.empty(),
 })
 
 const UNCHANGED: ServerComparison = { status: 'unchanged', fields: [] }
@@ -64,7 +70,7 @@ describe('diffRowsOf / byGroupAndKey', () => {
   it('should probe the linked records under their own group, after the formats', () => {
     const batch: ResolvedBatch = {
       ...makeBatch({ har: formatResult('har', [['patient', 'p-har']]) }),
-      linked: [
+      linkedRecords: [
         {
           key: 'linked:Patient/p-stored',
           title: 'Patient/p-stored',

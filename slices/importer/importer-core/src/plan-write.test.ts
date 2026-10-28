@@ -12,11 +12,11 @@ import {
   type Link,
   LinkableResource,
   LinkTarget,
-  type Referent,
+  Referent,
   StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Option, ParseResult, Schema } from 'effect'
+import { HashMap, Option, ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -335,17 +335,22 @@ const batchWith = (
   resources: readonly DecodedFile.Resource[],
   linkedRecord: LinkedRecord
 ): ResolvedBatch => ({
-  har: {
-    id: 'har/a.har',
-    title: 'a.har',
-    files: [{ id: '0:a.har', fileName: 'a.har', bytes: new Uint8Array([1]) }],
-    format: 'har',
-    decoded: { sections: [{ title: 's', resources }], notes: [] },
-    unreadableFiles: [],
+  formats: {
+    har: {
+      id: 'har/a.har',
+      title: 'a.har',
+      files: [{ id: '0:a.har', fileName: 'a.har', bytes: new Uint8Array([1]) }],
+      format: 'har',
+      decoded: { sections: [{ title: 's', resources }], notes: [] },
+      unreadableFiles: [],
+    },
+    'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
+    dicom: FormatDecode.emptyResult('dicom'),
   },
-  'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
-  dicom: FormatDecode.emptyResult('dicom'),
   unrecognizedFiles: [],
-  linked: [linkedRecord.entry],
-  links: [linkedRecord.link],
+  linkedRecords: [linkedRecord.entry],
+  linkTargetsByReferentKey: HashMap.make([
+    Referent.key(linkedRecord.link.referent),
+    linkedRecord.link.target,
+  ]),
 })

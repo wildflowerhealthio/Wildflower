@@ -102,8 +102,8 @@ The importer has no HTTP wire union to derive, so there is no separate
   - `use-link-choice-review.ts` — `useLinkChoiceReview`
     discovers the batch's referents (`discoverReferents`) and memoizes the
     **resolved** batch (one whose mentions are resolved) with each
-    referent's `LinkTarget`, read off the links `resolveMentionsWithFallback`
-    returns. Both are Effects on the clock, run synchronously in the memo;
+    referent's `LinkTarget`, the resolved batch's `linkTargetsByReferentKey`.
+    Both are Effects on the clock, run synchronously in the memo;
     their failures are states: a `DuplicateReferent` is `refused`, with the
     batch's last resolving that succeeded when a re-decode is what refused
     it (the screen keeps that review up under the refusal, confirm
@@ -196,8 +196,9 @@ The importer has no HTTP wire union to derive, so there is no separate
 - **`src/preview/`** — the review view and the state it needs.
   `use-server-diff.ts` pre-classifies every previewed resource against the
   server (`new` / `unchanged` / `changed`) for the row badges and the "already
-  there, so pre-excluded" seed, keyed **by format kind and then by resource
-  key** (`GroupComparisons`) — two formats can carry the same resource key, so
+  there, so pre-excluded" seed, keyed **by review group and then by resource
+  key** (`GroupComparisons`, over `importer-core`'s `ReviewGroup`) — two
+  formats can carry the same resource key, so
   a flat map would let one format's verdict overwrite another's. Within one
   format the keys are already distinct, because `DecodeFunction.make` namespaces each
   claimed file's keys by its slot in the batch. The screen blocks the
@@ -211,7 +212,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   `preview-panel.tsx` renders the batch grouped by format — one group per
   `claimedFormats` entry, its settings form (the registry's own
   `SettingsPicker`, indexed by the format tag) over that format's sectioned,
-  per-resource review — then the batch's **linked records** (`batch.linked`,
+  per-resource review — then the batch's **linked records** (`batch.linkedRecords`,
   the records it names but holds no copy of, as the referent rows link them)
   read-only with their diff badge and no toggle or edit, under one shared
   confirm, gated on the batch writing at least one resource. Which linked
@@ -220,8 +221,9 @@ The importer has no HTTP wire union to derive, so there is no separate
   confirm the same `unchangedLinked`, the linked group's
   `initialExclusionsFor`); otherwise every stored copy, whatever the reviewer
   excluded, since the link choice is the consent to it, and a new record
-  only when a written resource names it. The diff keys its verdicts by `ReviewGroup`, a format or
-  `LINKED_GROUP`, so the linked records' badges are their own. It is the
+  only when a written resource names it. The diff keys its verdicts by
+  `importer-core`'s `ReviewGroup`, a format or `LINKED_GROUP`, so the linked
+  records' badges are their own. It is the
   panel, the actions and the editor dialog only; the review body it renders
   per format is
   `format-review-body.tsx` — named for what it covers, one _format's_ review

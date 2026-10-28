@@ -3,9 +3,6 @@ import {
   StagedImport,
   DecodedFile,
   type FormatDecode,
-  type Link,
-  LinkableResource,
-  LinkTarget,
   Mention,
 } from '@wildflowerhealthio/importer-fundamentals'
 
@@ -101,18 +98,6 @@ const literalReferencesIn = (resources: readonly FhirResourceWithId[]): Readonly
   )
 
 /**
- * The literal references of the stored resources `links` land on: the linked
- * records that are stored copies, the batch's identifiers assumed, rather
- * than resources new to the server.
- */
-const storedLiteralReferencesIn = (links: readonly Link.Type[]): ReadonlySet<string> =>
-  new Set(
-    links.flatMap(({ target }) =>
-      LinkTarget.is('Stored')(target) ? [LinkableResource.literalReferenceOf(target.resource)] : []
-    )
-  )
-
-/**
  * Plan the write of a whole resolved batch: each claimed format's write from
  * its reviewed selection, and the linked records written beside them.
  *
@@ -128,12 +113,12 @@ const storedLiteralReferencesIn = (links: readonly Link.Type[]): ReadonlySet<str
  * None the server already holds as it is (its key in `unchangedLinked`) is
  * written: that would be a rewrite of itself. Otherwise:
  *
- * - A **stored copy** — a stored resource a link lands on (`LinkTarget.Stored`),
- *   having assumed the batch's identifiers — is written whatever the
+ * - A **stored copy** — a linked record of `Stored` origin, a stored resource
+ *   a link lands on having assumed the batch's identifiers — is written whatever the
  *   reviewer excluded. The link choice is the consent to it; excluding a
  *   resource says nothing about who its subject is. So a batch can write
  *   stored copies and no format's resources.
- * - A **new** record — a provisional one, made from a mention alone — is
+ * - A **new** record — one of `Provisional` origin, made from a mention alone — is
  *   written only when some resource a format writes references it, by its
  *   literal `Type/<id>` in any reference field: one nothing written names
  *   would be an orphan.
@@ -145,18 +130,16 @@ const planBatchWrite = (
   selectionFor: SelectionFor,
   unchangedLinked: ReadonlySet<string>
 ): BatchWritePlan => {
-  const formats = claimedFormats(batch).map((kind): PlannedFormat => ({
-    result: batch[kind],
-    plan: planFormatWrite(batch[kind], selectionFor(kind)),
+  const formats = claimedFormats(batch.formats).map((kind): PlannedFormat => ({
+    result: batch.formats[kind],
+    plan: planFormatWrite(batch.formats[kind], selectionFor(kind)),
   }))
-  const stored = storedLiteralReferencesIn(batch.links)
   const referenced = literalReferencesIn(
     formats.flatMap(({ plan }) => (plan._tag === 'write' ? plan.resources : []))
   )
-  const linked = batch.linked.filter(({ key, resource }) => {
+  const linked = batch.linkedRecords.filter(({ key, resource, origin }) => {
     if (unchangedLinked.has(key)) return false
-    const literalReference = `${resource.resourceType}/${resource.id}`
-    return stored.has(literalReference) || referenced.has(literalReference)
+    return origin === 'Stored' || referenced.has(`${resource.resourceType}/${resource.id}`)
   })
   return { formats, linked }
 }

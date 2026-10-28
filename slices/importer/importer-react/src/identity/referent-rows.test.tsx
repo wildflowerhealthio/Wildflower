@@ -409,26 +409,28 @@ const requestFor = (identifier: {
 
 /** A HAR result holding `resources`, the other formats claiming nothing. */
 const batchOf = (resources: readonly FhirResourceWithId[]): DecodedBatch => ({
-  har: {
-    ...FormatDecode.emptyResult('har'),
-    title: 'a.har',
-    files: [{ id: '0:a.har', fileName: 'a.har', bytes: new Uint8Array([1]) }],
-    decoded: {
-      sections: [
-        {
-          title: 'Resources',
-          resources: resources.map((resource, index) => ({
-            key: `k-${index}`,
-            title: resource.resourceType,
-            resource,
-          })),
-        },
-      ],
-      notes: [],
+  formats: {
+    har: {
+      ...FormatDecode.emptyResult('har'),
+      title: 'a.har',
+      files: [{ id: '0:a.har', fileName: 'a.har', bytes: new Uint8Array([1]) }],
+      decoded: {
+        sections: [
+          {
+            title: 'Resources',
+            resources: resources.map((resource, index) => ({
+              key: `k-${index}`,
+              title: resource.resourceType,
+              resource,
+            })),
+          },
+        ],
+        notes: [],
+      },
     },
+    'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
+    dicom: FormatDecode.emptyResult('dicom'),
   },
-  'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
-  dicom: FormatDecode.emptyResult('dicom'),
   unrecognizedFiles: [],
 })
 
@@ -574,7 +576,7 @@ const renderRows = async (
 }
 
 const subjectOfRequest = (): string | null | undefined => {
-  const request = DecodedFile.resources(resolved?.har.decoded ?? { sections: [] }).find(
+  const request = DecodedFile.resources(resolved?.formats.har.decoded ?? { sections: [] }).find(
     (entry) => entry.resource.resourceType === 'MedicationRequest'
   )?.resource
   return request !== undefined && 'subject' in request ? request.subject?.reference : undefined

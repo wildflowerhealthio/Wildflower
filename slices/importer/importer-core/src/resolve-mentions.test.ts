@@ -95,9 +95,11 @@ const resultOf = <K extends FormatKind>(
 const batchOf = (formats: {
   readonly [K in FormatKind]?: readonly FhirResourceWithId[]
 }): DecodedBatch => ({
-  har: resultOf('har', formats.har),
-  'lifelabs-pdf': resultOf('lifelabs-pdf', formats['lifelabs-pdf']),
-  dicom: resultOf('dicom', formats.dicom),
+  formats: {
+    har: resultOf('har', formats.har),
+    'lifelabs-pdf': resultOf('lifelabs-pdf', formats['lifelabs-pdf']),
+    dicom: resultOf('dicom', formats.dicom),
+  },
   unrecognizedFiles: [],
 })
 
@@ -109,7 +111,7 @@ const resolvedOnTestClock = (
 
 /** The resource keyed `key` in `kind`'s decoded file. */
 const at = (batch: DecodedBatch, kind: FormatKind, key: string): FhirResource | undefined =>
-  DecodedFile.resources(batch[kind].decoded).find((entry) => entry.key === key)?.resource
+  DecodedFile.resources(batch.formats[kind].decoded).find((entry) => entry.key === key)?.resource
 
 const subjectOf = (resource: FhirResource | undefined): string | null | undefined =>
   resource !== undefined && 'subject' in resource ? resource.subject?.reference : undefined
@@ -155,21 +157,24 @@ describe('resolveMentions', () => {
 
     expect(
       (['har', 'lifelabs-pdf'] as const).map((kind) =>
-        resolved[kind].decoded.sections.map((section) => [
+        resolved.formats[kind].decoded.sections.map((section) => [
           section.title,
           section.resources.map((entry) => entry.key),
         ])
       )
     ).toEqual([[['Resources', ['har/k-0']]], [['Resources', ['lifelabs-pdf/k-0']]]])
-    expect(resolved.dicom).toBe(batch.dicom)
+    expect(resolved.formats.dicom).toBe(batch.formats.dicom)
     expect(resolved.unrecognizedFiles).toBe(batch.unrecognizedFiles)
-    expect(resolved.linked).toEqual([])
+    expect(resolved.linkedRecords).toEqual([])
   })
 
-  it('gives an empty batch back as it is, with no linked records and no links', () => {
+  it('gives an empty batch back as it is, with no linked records and no link targets', () => {
     const batch = batchOf({})
 
-    expect(resolvedOnTestClock(batch, HashMap.empty())).toEqual({ ...batch, linked: [], links: [] })
+    const { linkTargetsByReferentKey, ...resolved } = resolvedOnTestClock(batch, HashMap.empty())
+
+    expect(resolved).toEqual({ ...batch, linkedRecords: [] })
+    expect(HashMap.isEmpty(linkTargetsByReferentKey)).toBe(true)
   })
 
   it('links a mention in one format to the person another format holds', () => {
@@ -201,19 +206,19 @@ describe('resolveMentions', () => {
 
     expect(
       (['lifelabs-pdf', 'dicom'] as const).map((kind) =>
-        resolved[kind].decoded.sections.map((section) => section.title)
+        resolved.formats[kind].decoded.sections.map((section) => section.title)
       )
     ).toEqual([['Resources'], ['Resources']])
-    expect(resolved.linked.map((entry) => [entry.key, entry.resource.id])).toEqual([
+    expect(resolved.linkedRecords.map((entry) => [entry.key, entry.resource.id])).toEqual([
       ['linked:Patient/s-1', 's-1'],
     ])
     expect(
       (['lifelabs-pdf', 'dicom'] as const)
-        .flatMap((kind) => DecodedFile.resources(resolved[kind].decoded))
+        .flatMap((kind) => DecodedFile.resources(resolved.formats[kind].decoded))
         .filter(({ resource }) => resource.id === 's-1')
     ).toHaveLength(0)
     expect(
-      resolved.links.map(({ referent, target }) => [Referent.key(referent), target._tag])
+      Array.from(HashMap.map(resolved.linkTargetsByReferentKey, (target) => target._tag))
     ).toEqual([[ACCOUNT, 'Stored']])
     expect([
       subjectOf(at(resolved, 'lifelabs-pdf', 'lifelabs-pdf/k-0')),
@@ -250,7 +255,10 @@ describe('resolveMentionsWithFallback', () => {
     const resolved = runOnTestClock(resolveMentionsWithFallback(batch, defaults, chosen))
     return {
       linkChoices: Array.from(HashMap.entries(resolved.linkChoices)),
-      targets: resolved.batch.links.map(({ target }) => target._tag),
+      targets: Array.from(
+        HashMap.values(resolved.batch.linkTargetsByReferentKey),
+        (target) => target._tag
+      ),
     }
   }
 

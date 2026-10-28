@@ -52,7 +52,7 @@ import {
   fileWireOf,
   fileWithChoicesArbitrary,
   fileWithReapplicableChoicesArbitrary,
-  linkedOnTestClock,
+  linkedRecordsOnTestClock,
   literalSubject,
   resolveAcross,
   namedRequester,
@@ -223,7 +223,7 @@ describe('the identity map on one file', () => {
     ])
 
     const resolved = resolveOnTestClock(file, choices)
-    const linked = linkedOnTestClock(file, choices)
+    const linked = linkedRecordsOnTestClock(file, choices)
 
     expect(subjectAndRequesterOf(at(resolved, 'k-0')).subject?.reference).toBe('Patient/s-2')
     expect(subjectAndRequesterOf(at(resolved, 'k-1')).subject?.identifier?.value).toBe('c-9')
@@ -482,7 +482,7 @@ describe('the identity map on a re-import', () => {
     )
 
     const resolved = resolveOnTestClock(reimport, choices)
-    const linked = linkedOnTestClock(reimport, choices)
+    const linked = linkedRecordsOnTestClock(reimport, choices)
 
     expect(resourceAt(resolved, 'k-0').id).toBe('s-1')
     expect(resolved.sections.map((section) => section.title)).toEqual(['Resources'])
@@ -525,7 +525,7 @@ describe('the identity map on a printed name set to New', () => {
 
   it('creates one provisional Practitioner for the name among the linked records and points every requester at it', () => {
     const resolved = resolveOnTestClock(file, map)
-    const linked = linkedOnTestClock(file, map)
+    const linked = linkedRecordsOnTestClock(file, map)
 
     expect(resolved.sections.map((section) => section.title)).toEqual(['Resources'])
     expect(linked.map((entry) => [entry.key, entry.origin])).toEqual([
@@ -811,8 +811,8 @@ describe('the identity map across files', () => {
       resolved.resolvedFiles.map((file) => file.sections.map((section) => section.title))
     ).toEqual([['Resources'], ['Resources']])
     expect(countWrittenAt(resolved.resolvedFiles, 'Patient/s-2')).toBe(0)
-    expect(resolved.linked.map((entry) => entry.key)).toEqual(['linked:Patient/s-2'])
-    expect(identifiersOf(linkedAt(resolved.linked, 'linked:Patient/s-2'))).toEqual([
+    expect(resolved.linkedRecords.map((entry) => entry.key)).toEqual(['linked:Patient/s-2'])
+    expect(identifiersOf(linkedAt(resolved.linkedRecords, 'linked:Patient/s-2'))).toEqual([
       `${DEVICE}|s-2`,
       `${CUSTOMER}|c-9`,
       `${CUSTOMER}|c-8`,
@@ -825,12 +825,12 @@ describe('the identity map across files', () => {
   })
 
   it('links no record for a stored person another file holds, whose copy assumes the ids', () => {
-    const { resolvedFiles, linked } = resolveAcrossOnTestClock(
+    const { resolvedFiles, linkedRecords } = resolveAcrossOnTestClock(
       Array.make(fileOf(request('rx-1', customerSubject('c-9'))), fileOf(STORED_JAN)),
       HashMap.make([ACCOUNT, LinkChoice.LinkToStoredResource({ resource: STORED_JAN })])
     )
 
-    expect(linked).toEqual([])
+    expect(linkedRecords).toEqual([])
     expect(countWrittenAt(resolvedFiles, 'Patient/s-2')).toBe(1)
     expect(identifiersOf(atFile(resolvedFiles, 1, 'k-0'))).toEqual([
       `${DEVICE}|s-2`,
@@ -877,7 +877,7 @@ describe('the identity map across files', () => {
             sections: apart.resolvedFiles.flatMap((resolvedFile) => resolvedFile.sections),
           })
         ).toBe(fileWireOf(Array.headNonEmpty(together.resolvedFiles)))
-        expect(linkedWireOf(apart.linked)).toEqual(linkedWireOf(together.linked))
+        expect(linkedWireOf(apart.linkedRecords)).toEqual(linkedWireOf(together.linkedRecords))
       }),
       { numRuns: RUNS }
     )

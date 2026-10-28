@@ -61,13 +61,13 @@ const resolveAcross = (
 ): Effect.Effect<
   {
     readonly resolvedFiles: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>
-    readonly linked: readonly FileResolution.LinkedRecord[]
+    readonly linkedRecords: readonly FileResolution.LinkedRecord[]
   },
   Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice
 > =>
   Effect.map(LinkPlan.make(files, linkChoices), (plan) => ({
     resolvedFiles: Array.map(files, FileResolution.resolveFile(plan)),
-    linked: FileResolution.linkedRecords(plan),
+    linkedRecords: FileResolution.linkedRecords(plan),
   }))
 
 /** {@link resolveAcross} over `files`, run on the test clock. */
@@ -85,11 +85,11 @@ const resolveOnTestClock = (
   Array.headNonEmpty(resolveAcrossOnTestClock(Array.of(file), linkChoices).resolvedFiles)
 
 /** The linked records of a batch of one `file`, run on the test clock. */
-const linkedOnTestClock = (
+const linkedRecordsOnTestClock = (
   file: DecodedFile.DecodedFile,
   linkChoices: ReferentLinkChoices.Type
 ): readonly FileResolution.LinkedRecord[] =>
-  resolveAcrossOnTestClock(Array.of(file), linkChoices).linked
+  resolveAcrossOnTestClock(Array.of(file), linkChoices).linkedRecords
 
 /** `Referent.discover` over a batch of one `file`, run on the test clock. */
 const discoverOnTestClock = (file: DecodedFile.DecodedFile): readonly Referent.Type[] =>
@@ -531,7 +531,7 @@ export {
   fileWireOf,
   fileWithChoicesArbitrary,
   fileWithReapplicableChoicesArbitrary,
-  linkedOnTestClock,
+  linkedRecordsOnTestClock,
   literalSubject,
   resolveAcross,
   namedRequester,

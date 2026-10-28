@@ -8,7 +8,7 @@ import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import { type FhirResourceWithId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import type { ResolvedBatch } from '@wildflowerhealthio/importer-core'
 import { FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
-import { Effect, Layer, Schema } from 'effect'
+import { Effect, HashMap, Layer, Schema } from 'effect'
 import type { JSX, ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
@@ -40,29 +40,31 @@ const patient = (id: string): FhirResourceWithId =>
 
 /** A HAR result holding `resources`, the other formats claiming nothing. */
 const batchOf = (resources: readonly FhirResourceWithId[]): ResolvedBatch => ({
-  har: {
-    ...FormatDecode.emptyResult('har'),
-    title: 'a.har',
-    files: [{ id: '0:a.har', fileName: 'a.har', bytes: new Uint8Array([1]) }],
-    decoded: {
-      sections: [
-        {
-          title: 'Resources',
-          resources: resources.map((resource, index) => ({
-            key: `k-${index}`,
-            title: resource.resourceType,
-            resource,
-          })),
-        },
-      ],
-      notes: [],
+  formats: {
+    har: {
+      ...FormatDecode.emptyResult('har'),
+      title: 'a.har',
+      files: [{ id: '0:a.har', fileName: 'a.har', bytes: new Uint8Array([1]) }],
+      decoded: {
+        sections: [
+          {
+            title: 'Resources',
+            resources: resources.map((resource, index) => ({
+              key: `k-${index}`,
+              title: resource.resourceType,
+              resource,
+            })),
+          },
+        ],
+        notes: [],
+      },
     },
+    'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
+    dicom: FormatDecode.emptyResult('dicom'),
   },
-  'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
-  dicom: FormatDecode.emptyResult('dicom'),
   unrecognizedFiles: [],
-  linked: [],
-  links: [],
+  linkedRecords: [],
+  linkTargetsByReferentKey: HashMap.empty(),
 })
 
 /** A server that holds nothing: every GET entry of the diff bundle is a 404, so every id is new. */

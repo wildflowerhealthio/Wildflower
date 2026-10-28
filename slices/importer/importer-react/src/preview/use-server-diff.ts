@@ -10,8 +10,8 @@ import {
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { DecodedFile } from '@wildflowerhealthio/importer-fundamentals'
 
-import type { FormatKind, ResolvedBatch } from '@wildflowerhealthio/importer-core'
-import { formatKinds } from '@wildflowerhealthio/importer-core'
+import type { ResolvedBatch, ReviewGroup } from '@wildflowerhealthio/importer-core'
+import { formatKinds, LINKED_GROUP } from '@wildflowerhealthio/importer-core'
 import { IMPORTER_QUERY_KEY } from '../queries/keys.ts'
 
 /**
@@ -50,12 +50,6 @@ import { IMPORTER_QUERY_KEY } from '../queries/keys.ts'
  *
  * @packageDocumentation
  */
-
-/** The group of the preview the batch's linked records are reviewed in, beside the formats'. */
-const LINKED_GROUP = 'linked'
-
-/** A group of the preview: a format's, or the batch's linked records. */
-type ReviewGroup = FormatKind | typeof LINKED_GROUP
 
 /** One labeled resource, the group it is reviewed in, and the value the classifier probes for it. */
 interface DiffRow {
@@ -142,13 +136,13 @@ const byGroupAndKey = (
  */
 const diffRowsOf = (batch: ResolvedBatch): readonly DiffRow[] => [
   ...formatKinds.flatMap((kind) =>
-    DecodedFile.resources(batch[kind].decoded).map((entry): DiffRow => ({
+    DecodedFile.resources(batch.formats[kind].decoded).map((entry): DiffRow => ({
       group: kind,
       key: entry.key,
       resource: entry.resource,
     }))
   ),
-  ...batch.linked.map((entry): DiffRow => ({
+  ...batch.linkedRecords.map((entry): DiffRow => ({
     group: LINKED_GROUP,
     key: entry.key,
     resource: entry.resource,
@@ -277,8 +271,6 @@ export {
   diffRowsOf,
   type GroupComparisons,
   initialExclusionsFor,
-  LINKED_GROUP,
-  type ReviewGroup,
   type ServerDiffState,
   useServerDiff,
 }

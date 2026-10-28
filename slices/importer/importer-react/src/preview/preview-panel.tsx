@@ -5,7 +5,12 @@ import { Data } from 'effect'
 import { type JSX, type ReactNode, useMemo, useState } from 'react'
 
 import type { FormatKind, FormatSettings, ResolvedBatch } from '@wildflowerhealthio/importer-core'
-import { claimedFormats, formatKinds, planBatchWrite } from '@wildflowerhealthio/importer-core'
+import {
+  claimedFormats,
+  formatKinds,
+  LINKED_GROUP,
+  planBatchWrite,
+} from '@wildflowerhealthio/importer-core'
 
 import type { FormatWithComponents } from '../registry.ts'
 import { describeResource } from './describe-resource.ts'
@@ -21,7 +26,7 @@ import {
   UNRECOGNIZED_FILE_MESSAGE,
 } from './preview-text.ts'
 import { ResourceEditor } from './resource-editor.tsx'
-import { type GroupComparisons, LINKED_GROUP } from './use-server-diff.ts'
+import type { GroupComparisons } from './use-server-diff.ts'
 import panelStyles from './preview-panel.module.css'
 
 /**
@@ -164,10 +169,10 @@ const PreviewActions = ({
  * are), and changing it means choosing differently there.
  */
 const LinkedRecords = ({
-  linked,
+  linkedRecords,
   comparisons,
 }: {
-  readonly linked: readonly DecodedFile.Resource[]
+  readonly linkedRecords: readonly DecodedFile.Resource[]
   readonly comparisons: ReadonlyMap<string, ServerComparison> | undefined
 }): JSX.Element => (
   <section
@@ -177,7 +182,7 @@ const LinkedRecords = ({
     <h3 className={panelStyles['preview-panel__format-heading']}>{LINKED_RECORDS_HEADING}</h3>
     <p className={panelStyles['preview-panel__linked-note']}>{LINKED_RECORDS_NOTE}</p>
     <ul className={panelStyles['preview-panel__linked-list']}>
-      {linked.map((entry) => {
+      {linkedRecords.map((entry) => {
         const description = describeResource(entry.resource)
         return (
           <li key={entry.key} className={panelStyles['preview-panel__linked-row']}>
@@ -225,7 +230,7 @@ const PreviewPanel = ({
 
   const totalFiles = useMemo(
     () =>
-      formatKinds.reduce((sum, kind) => sum + batch[kind].files.length, 0) +
+      formatKinds.reduce((sum, kind) => sum + batch.formats[kind].files.length, 0) +
       batch.unrecognizedFiles.length,
     [batch]
   )
@@ -262,7 +267,7 @@ const PreviewPanel = ({
     setEditing(makeClosedEditor())
   }
 
-  const activeFormats = useMemo(() => claimedFormats(batch), [batch])
+  const activeFormats = useMemo(() => claimedFormats(batch.formats), [batch])
 
   return (
     <section aria-label="Import preview" className={panelStyles['preview-panel']}>
@@ -277,7 +282,7 @@ const PreviewPanel = ({
       {referentRows}
       <div className={panelStyles['preview-panel__format-groups']}>
         {activeFormats.map((kind) => {
-          const result = batch[kind]
+          const result = batch.formats[kind]
           return (
             <section
               key={kind}
@@ -307,8 +312,11 @@ const PreviewPanel = ({
             </section>
           )
         })}
-        {batch.linked.length > 0 && (
-          <LinkedRecords linked={batch.linked} comparisons={comparisons.get(LINKED_GROUP)} />
+        {batch.linkedRecords.length > 0 && (
+          <LinkedRecords
+            linkedRecords={batch.linkedRecords}
+            comparisons={comparisons.get(LINKED_GROUP)}
+          />
         )}
         {batch.unrecognizedFiles.map((file) => (
           <section

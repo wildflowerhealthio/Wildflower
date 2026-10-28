@@ -35,13 +35,16 @@ write plan with this package alone.
   format — deliberately not the whole `BoundFormat`, so a test can stand up a
   fake registry with just those fields). **`readBatch`** takes the picker's
   `PickedFile.NamedBytes`, groups them by format
-  and decodes every group concurrently into a **`DecodedBatch`** — one
-  `FormatDecode.Result<K>` per registered format (an `emptyResult` for a format
-  that claimed nothing) and the **`UnrecognizedFile`**s, plain data for the
-  picks no `detect` claimed. A decoded batch holds no linked records and no
-  links; **`claimedFormats`** reads only the format slots (`FormatResults`),
-  so it takes a decoded or a resolved batch, and names the formats that
-  actually took part, the one predicate the preview and the confirm both read;
+  and decodes every group concurrently into a **`DecodedBatch`**: its
+  `formats`, a **`FormatResults`** record of one `FormatDecode.Result<K>` per
+  registered format (an `emptyResult` for a format that claimed nothing),
+  and its `unrecognizedFiles`, the **`UnrecognizedFile`**s, plain data for the
+  picks no `detect` claimed. The format slots are a field of their own rather
+  than spread beside `unrecognizedFiles`, so `batch.formats[kind]` under a
+  generic `K` is that format's own `Result<K>`. A decoded batch holds no
+  linked records and no link targets; **`claimedFormats`** takes the
+  `FormatResults` (`batch.formats`) and names the formats that actually took
+  part, the one predicate the preview and the confirm both read;
   **`redecodeFormat`** re-runs one format's files from their retained picks
   under new settings (ids are deterministic, so no id-preservation logic is
   needed).
@@ -59,18 +62,21 @@ write plan with this package alone.
   **`collectFormats`** is the one place the registry is enumerated by name,
   and its remarks say why: TypeScript drops the correlation between a computed
   union key and its value, so a record assembled from a `kind` variable is
-  checked against nothing. Its slots are typed by **`FormatResults`**.
+  checked against nothing. It yields a **`FormatResults`**, which each caller
+  places in its batch.
 - `src/resolve-mentions.ts` — a batch's mentions resolved (a resolved batch
   is one whose mentions are resolved), service-free Effects on the clock. The
   batch goes from **decoded** (`DecodedBatch`, as `readBatch` read it) to
   **resolved** (`ResolvedBatch`, every link followed, as it will be written)
   against what is **stored** on the device, the identity map's three states
   (`importer-fundamentals`' AGENTS).
-  **`ResolvedBatch`** is a decoded batch's slots plus the two a decoded batch
-  cannot hold: its **`linked`** records (the resources it only mentions,
-  the batch's own slot, no format's) and every referent's **`links`**. Only
-  `resolveMentions` makes one, and the diff, the preview and the confirm
-  take nothing else.
+  **`ResolvedBatch`** is a decoded batch, each format slot's `decoded`
+  holding the resolved file, plus the two fields a decoded batch cannot hold:
+  its **`linkedRecords`** (the resources it only mentions, written beside the
+  files, no format's) and **`linkTargetsByReferentKey`** (each referent's
+  link target by `Referent.key`, what the referent rows show a choice
+  resolved to). Only `resolveMentions` makes one, and the diff, the preview
+  and the confirm take nothing else.
   **`discoverReferents(batch)`** is `Referent.discover` over every claimed
   format's `decoded`: one referent per identity across formats,
   format-then-review order, those with a resource first.
@@ -78,15 +84,15 @@ write plan with this package alone.
   claimed format's `decoded` on one plan over the batch's referents
   (`LinkPlan.make` once, over every claimed format's decoded file), resolving
   each format in its own slot (`FileResolution.resolveFile(plan)`), so a mention in one format
-  links to a referent another holds; it fills the `linked` slot with the
+  links to a referent another holds; it fills `linkedRecords` with the
   records the batch only mentions, each with its `origin`, `Stored` or
   `Provisional` (`FileResolution.linkedRecords`), so a
-  stored person several formats mention is written once, and the `links`
-  with the plan's, so the screen's hook reads each referent's link target
-  without planning again. Keys and section titles are kept; the format slots
-  are reassembled through `collectFormats`, a slot nothing moved in coming
-  back as it was, and a batch with no claimed format comes back with no
-  linked records and no links. It fails with
+  stored person several formats mention is written once, and
+  `linkTargetsByReferentKey` from the plan's links, so the screen's hook
+  reads each referent's link target without planning again. Keys and section
+  titles are kept; the format slots are reassembled through `collectFormats`,
+  a slot nothing moved in coming back as it was, and a batch with no claimed
+  format comes back with no linked records and no link targets. It fails with
   `Referent.DuplicateReferent` or `LinkChoice.InvalidLinkChoice`, as the plan
   does.
   **`resolveMentionsWithFallback(batch, defaults, chosen)`** is what the
@@ -98,6 +104,11 @@ write plan with this package alone.
   (`ReferentLinkChoices.remove`); a failure
   naming a referent with no choice dies. Its one failure is
   `Referent.DuplicateReferent`.
+- `src/review-group.ts` — **`ReviewGroup`**, the group a reviewed resource
+  falls in: a `FormatKind`, or **`LINKED_GROUP`** for the batch's linked
+  records, which no format holds. A resource key is unique within a group,
+  not across groups, so the server diff, the preview and the write plan each
+  scope a resource by its group.
 - `src/plan-write.ts` — **`planFormatWrite(result, selection)`**, the pure half
   of the confirm: from one format's decode result it produces a `write` of
   exactly the reviewed resources (exclusions applied, inline edits
@@ -111,10 +122,10 @@ write plan with this package alone.
   `linked` records written beside them. It is the one place the rule for the
   linked records lives, since the review shows them read-only. None whose key
   is in `unchangedLinked` (the server diff's `unchanged`) is written.
-  Otherwise a **stored copy** — a stored resource a link lands on
-  (`LinkTarget.Stored`), the batch's identifiers assumed — is written whatever
-  the reviewer excluded, the link choice being the consent to it; a **new**
-  record — a provisional one — only when some resource a format writes
+  Otherwise a **stored copy** — a linked record of `Stored` origin, a stored
+  resource a link lands on, the batch's identifiers assumed — is written
+  whatever the reviewer excluded, the link choice being the consent to it; a
+  **new** record — one of `Provisional` origin — only when some resource a format writes
   references it by its literal `Type/<id>`, in any reference field
   (`Mention.madeIn`), so it is never an orphan. A batch can so write stored
   copies and no format's resources. The preview's count and the confirm both
