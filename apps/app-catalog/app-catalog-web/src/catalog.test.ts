@@ -19,8 +19,16 @@ const navLabelOf = (section: string): string | undefined =>
     (link) => link.kind === 'section' && link.section === section
   )?.label
 
-const decodeCatalog = (): AppCatalog.Catalog =>
-  Schema.decodeUnknownSync(AppCatalog.Catalog)(catalogJson)
+/**
+ * Decodes a catalog with excess keys refused, so a misspelt optional field
+ * (`helpURL`, a `preassignedCredentials.redirectURIs`) fails instead of being
+ * dropped.
+ */
+const decodeStrictly = Schema.decodeUnknownSync(AppCatalog.Catalog, {
+  onExcessProperty: 'error',
+})
+
+const decodeCatalog = (): AppCatalog.Catalog => decodeStrictly(catalogJson)
 
 /** The catalog's smart-apps, which carry a `launchUrl`. */
 const smartAppsOf = (catalog: AppCatalog.Catalog): readonly AppCatalog.SmartApp[] =>
@@ -40,6 +48,23 @@ const wildflowerPublisherOf = (catalog: AppCatalog.Catalog): AppCatalog.Publishe
 describe('public/apps.json', () => {
   it('should decode as a Catalog', () => {
     expect(decodeCatalog).not.toThrow()
+  })
+
+  it('should refuse a misspelt key in an entry, its publisher or its preassignedCredentials', () => {
+    const [entry, ...rest] = catalogJson
+    if (entry === undefined) throw new Error('apps.json lists no app')
+    for (const [key, misspelt] of [
+      ['helpURL', { ...entry, helpURL: 'https://example.com/help' }],
+      ['URL', { ...entry, publisher: { ...entry.publisher, URL: 'https://example.com/' } }],
+      [
+        'redirectURIs',
+        { ...entry, preassignedCredentials: { ...entry.preassignedCredentials, redirectURIs: [] } },
+      ],
+    ] as const) {
+      expect(() => decodeStrictly([misspelt, ...rest])).toThrow(
+        new RegExp(`\\["${key}"\\][\\s│└─]*is unexpected`)
+      )
+    }
   })
 
   it.each(APP_SECTION_IDS)(
