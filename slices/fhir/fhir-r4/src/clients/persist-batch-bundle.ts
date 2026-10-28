@@ -3,7 +3,11 @@ import { unknownErrorToString } from '@wildflowerhealthio/kitchen-sink'
 import { Array as Arr, Data, Effect, Option, Schema } from 'effect'
 
 import * as Bundle from '../data-types/resources/bundle.ts'
-import { FhirResourceSchema, type FhirResourceWithId } from '../resources/index.ts'
+import {
+  FhirResourceSchema,
+  type FhirResourceWithId,
+  literalReferenceOf,
+} from '../resources/index.ts'
 import * as Telemetry from '../telemetry/index.ts'
 import { FhirR4ResourcesHttpApiClient } from './fhir-r4-resources-http-api-client.ts'
 import { describeResource, type ResourceWriteTarget } from './persist-resources.ts'
@@ -146,13 +150,6 @@ const issuesOf = (outcome: Bundle.OperationOutcomeType | null | undefined): read
   }))
 
 /**
- * Build the `entry.request.url` for a resource — `Type/id`, matching the
- * per-resource `Update` endpoint. Kept alongside the sink because that is
- * where the client-side "which type goes to which url" already lives.
- */
-const entryUrl = (resource: FhirResourceWithId): string => `${resource.resourceType}/${resource.id}`
-
-/**
  * Whether an `entry.response.status` string reports success — FHIR echoes the
  * HTTP status verbatim (`"200 OK"`, `"201 Created"`, `"404 Not Found"`), so we
  * read the leading three digits.
@@ -245,7 +242,9 @@ const answeredOutcome = (
 const submittedOnce = (
   resources: ReadonlyArray<FhirResourceWithId>
 ): readonly FhirResourceWithId[] => [
-  ...new Map(resources.map((resource) => [entryUrl(resource), resource] as const)).values(),
+  ...new Map(
+    resources.map((resource) => [literalReferenceOf(resource), resource] as const)
+  ).values(),
 ]
 
 /**
@@ -311,7 +310,7 @@ const persistBundle = (
           extension: [],
           modifierExtension: [],
           method: 'PUT' as const,
-          url: entryUrl(resource),
+          url: literalReferenceOf(resource),
           ifNoneMatch: null,
           ifModifiedSince: null,
           ifMatch: null,
@@ -360,11 +359,11 @@ const persistBundle = (
     // for its `Type/id`.
     const responseByUrl = new Map(
       Arr.zip(submitted, result.response.entry ?? []).map(
-        ([resource, entry]) => [entryUrl(resource), entry.response] as const
+        ([resource, entry]) => [literalReferenceOf(resource), entry.response] as const
       )
     )
     return resources.map((resource) =>
-      answeredOutcome(resource, responseByUrl.get(entryUrl(resource)))
+      answeredOutcome(resource, responseByUrl.get(literalReferenceOf(resource)))
     )
   }).pipe(
     Effect.withSpan(Telemetry.Persist.Bundle.Span.Name, {
@@ -517,7 +516,6 @@ const groupByStatus = <TOutcome extends BatchEntryOutcome>(
 export {
   BatchEntriesRejected,
   type BatchEntryOutcome,
-  entryUrl,
   groupByStatus,
   NO_RESPONSE_STATUS,
   persistBatchBundle,

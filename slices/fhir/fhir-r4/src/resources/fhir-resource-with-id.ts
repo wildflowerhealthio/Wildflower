@@ -19,5 +19,9 @@ type FhirResourceWithId = WithMandatoryId<FhirResource>
 const hasId = <T extends FhirResource>(resource: T): resource is WithMandatoryId<T> =>
   resource.id !== null
 
-export { hasId }
+/** `resource`'s relative literal reference, `Type/<id>`: what a store addresses it by and a mention of it carries. */
+const literalReferenceOf = (resource: FhirResourceWithId): string =>
+  `${resource.resourceType}/${resource.id}`
+
+export { hasId, literalReferenceOf }
 export type { FhirResourceWithId }

@@ -2,10 +2,14 @@ import { HttpClient, HttpClientRequest, HttpClientResponse } from '@effect/platf
 import { Arbitrary, Effect, FastCheck as fc, Layer, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { Patient, type FhirResource, type FhirResourceWithId } from '../resources/index.ts'
+import {
+  type FhirResource,
+  type FhirResourceWithId,
+  literalReferenceOf,
+  Patient,
+} from '../resources/index.ts'
 import {
   classifyAgainstServer,
-  diffKey,
   resetFieldToServer,
   SERVER_MANAGED_META_FIELDS,
   type DiffStatus,
@@ -31,7 +35,7 @@ describe('classifyAgainstServer', () => {
       [patient],
       perEntry(() => ({ status: '404 Not Found' }))
     )
-    expect(result.classifications.get(diffKey(patient))?.status).toBe<DiffStatus>('new')
+    expect(result.classifications.get(literalReferenceOf(patient))?.status).toBe<DiffStatus>('new')
   })
 
   it('classifies an id as unchanged when the server returns a byte-equal resource (minus server-managed meta)', async () => {
@@ -45,7 +49,7 @@ describe('classifyAgainstServer', () => {
       [patient],
       perEntry(() => ({ status: '200 OK', resource: echoed }))
     )
-    const comparison = result.classifications.get(diffKey(patient))
+    const comparison = result.classifications.get(literalReferenceOf(patient))
     expect(comparison?.status).toBe<DiffStatus>('unchanged')
     // The server copy is carried even when nothing differs, so a later edit
     // to this resource can be diffed against it.
@@ -59,7 +63,9 @@ describe('classifyAgainstServer', () => {
       [patient],
       perEntry(() => ({ status: '200 OK', resource: encodePatient(drifted) }))
     )
-    expect(result.classifications.get(diffKey(patient))?.status).toBe<DiffStatus>('changed')
+    expect(result.classifications.get(literalReferenceOf(patient))?.status).toBe<DiffStatus>(
+      'changed'
+    )
   })
 
   it('carries the leaf-level field diffs (server value) for a changed resource', async () => {
@@ -75,7 +81,7 @@ describe('classifyAgainstServer', () => {
     )
 
     // Assert: the changed status names the gender leaf, showing the server's value.
-    const comparison = result.classifications.get(diffKey(patient))
+    const comparison = result.classifications.get(literalReferenceOf(patient))
     expect(comparison?.status).toBe<DiffStatus>('changed')
     const genderDiff = comparison?.fields.find((field) => formatPath(field.path) === 'gender')
     expect(genderDiff?.server).toEqual(present(serverGender))
@@ -84,7 +90,7 @@ describe('classifyAgainstServer', () => {
   it('classifies as new when the whole submission fails, so writes still attempt', async () => {
     const patient = makePatient('svc-out')
     const result = await runWith([patient], rawResponse(new Response('', { status: 503 })))
-    expect(result.classifications.get(diffKey(patient))?.status).toBe<DiffStatus>('new')
+    expect(result.classifications.get(literalReferenceOf(patient))?.status).toBe<DiffStatus>('new')
   })
 
   it('classifies as changed when the server returns 2xx with no body', async () => {
@@ -93,7 +99,9 @@ describe('classifyAgainstServer', () => {
       [patient],
       perEntry(() => ({ status: '200 OK' }))
     )
-    expect(result.classifications.get(diffKey(patient))?.status).toBe<DiffStatus>('changed')
+    expect(result.classifications.get(literalReferenceOf(patient))?.status).toBe<DiffStatus>(
+      'changed'
+    )
   })
 
   it('classifies as changed when the returned resource is not decodable through the FHIR union', async () => {
@@ -106,7 +114,9 @@ describe('classifyAgainstServer', () => {
         resource: { resourceType: 'Organization', id: 'nope' },
       }))
     )
-    expect(result.classifications.get(diffKey(patient))?.status).toBe<DiffStatus>('changed')
+    expect(result.classifications.get(literalReferenceOf(patient))?.status).toBe<DiffStatus>(
+      'changed'
+    )
   })
 
   it('never issues a request for an empty batch', async () => {
@@ -136,12 +146,6 @@ describe('classifyAgainstServer', () => {
 describe('SERVER_MANAGED_META_FIELDS', () => {
   it('lists the three fields the classifier drops before comparing', () => {
     expect(SERVER_MANAGED_META_FIELDS).toEqual(['versionId', 'lastUpdated', 'source'])
-  })
-})
-
-describe('diffKey', () => {
-  it('joins resourceType and logical id with a slash', () => {
-    expect(diffKey(makePatient('p-1'))).toBe('Patient/p-1')
   })
 })
 

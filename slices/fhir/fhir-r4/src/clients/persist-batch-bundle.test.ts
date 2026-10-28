@@ -15,12 +15,12 @@ import {
   Observation,
   type FhirResource,
   type FhirResourceWithId,
+  literalReferenceOf,
 } from '../resources/index.ts'
 import { FhirR4ResourcesHttpApiClient } from './fhir-r4-resources-http-api-client.ts'
 import {
   BatchEntriesRejected,
   type BatchEntryOutcome,
-  entryUrl,
   groupByStatus,
   NO_RESPONSE_STATUS,
   persistBatchBundle,
@@ -529,10 +529,10 @@ describe('groupByStatus', () => {
 const asMultiset = (outcomes: readonly BatchEntryOutcome[]): readonly string[] =>
   outcomes.map((outcome) => JSON.stringify(outcome)).toSorted()
 
-describe('entryUrl', () => {
+describe('literalReferenceOf', () => {
   it('is the resource type and logical id, joined by a slash', () => {
-    expect(entryUrl(makePatient('p-1'))).toBe('Patient/p-1')
-    expect(entryUrl(makeObservation('o-2'))).toBe('Observation/o-2')
+    expect(literalReferenceOf(makePatient('p-1'))).toBe('Patient/p-1')
+    expect(literalReferenceOf(makeObservation('o-2'))).toBe('Observation/o-2')
   })
 })
 

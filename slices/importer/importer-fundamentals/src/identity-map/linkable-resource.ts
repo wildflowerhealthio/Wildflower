@@ -8,6 +8,7 @@
 import { HumanName, IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
   type FhirResourceWithId,
+  literalReferenceOf,
   Patient,
   Practitioner,
 } from '@wildflowerhealthio/fhir-r4/resources'
@@ -28,9 +29,6 @@ const matchResourceType = Match.discriminator('resourceType')
 /** Whether `resource` is one the identity map links. */
 const is = (resource: FhirResourceWithId): resource is WithId =>
   LinkableLogicalReference.isResourceType(resource.resourceType)
-
-/** `resource`'s relative literal reference, `Type/<id>`: what a mention of it carries. */
-const literalReferenceOf = (resource: WithId): string => `${resource.resourceType}/${resource.id}`
 
 /** Whether `a` and `b` are copies of one record: they share `Type/<id>`. */
 const sameRecord = (a: WithId, b: WithId): boolean =>

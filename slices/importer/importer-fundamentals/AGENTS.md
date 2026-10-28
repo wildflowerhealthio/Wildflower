@@ -96,11 +96,10 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   confirm). `initial` / `toggleResource` / `setResourcesIncluded` (the batch
   form of `toggleResource`, so the shell can opt a whole section in or out at
   once) / `edit` / `revert` are the transitions;
-  `isResourceIncluded` / `isResourceEdited` / `editedResource` the reads;
-  `chosenResources` folds a flat labeled list through the exclusions and
-  edit overrides into the confirm's write set — no re-parse at confirm, the
-  reviewed (or edited) objects are what gets written; `includedCount` /
-  `excludedCount` drive the shell's tallies. Orphaned selection entries
+  `isResourceIncluded` / `isResourceEdited` / `editedResource` the reads,
+  which `importer-core`'s `planWrite` folds, row by row, into the confirm's
+  write set — no re-parse at confirm, the reviewed (or edited) objects are
+  what gets written. Orphaned selection entries
   (keys a re-decode no longer produces) are inert — sets and maps of keys,
   nothing dangling.
 - `src/identity-map/` — the **identity map**: for every referent an import
@@ -352,9 +351,10 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
 ## Guardrails
 
 - **Decode-at-preview, write-what-you-reviewed.** `decode` yields the actual
-  resources the reviewer sees; the confirm writes `StagedImport.chosenResources` —
-  the same objects, filtered by the exclusions, with edits substituted — with
-  no re-parse. This split is the whole point; do not collapse it.
+  resources the reviewer sees; the confirm writes the `Included` decisions of
+  `importer-core`'s `planWrite` — the same objects, the exclusions applied and
+  the edits substituted — with no re-parse. This split is the whole point; do
+  not collapse it.
 - **Sections and notes are the whole review surface.** A format with routing
   decisions (HAR's kind toggles) expresses them as _settings_, and its decode
   folds everything that yielded no resources into notes — there is no

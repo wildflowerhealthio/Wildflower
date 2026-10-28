@@ -6,6 +6,7 @@ import {
   type FhirResource,
   type FhirResourceWithId,
   hasId,
+  literalReferenceOf,
 } from '../resources/index.ts'
 import * as Telemetry from '../telemetry/index.ts'
 import { FhirR4ResourcesHttpApiClient } from './fhir-r4-resources-http-api-client.ts'
@@ -77,13 +78,6 @@ interface ServerComparison {
  * that changes tags is a real diff.
  */
 const SERVER_MANAGED_META_FIELDS = ['versionId', 'lastUpdated', 'source'] as const
-
-/**
- * Stable per-resource key for the returned diff map — `resourceType/id`, the
- * same shape the batch bundle addresses entries by, so a caller can look a
- * status up by the same key it already holds.
- */
-const diffKey = (resource: FhirResourceWithId): string => `${resource.resourceType}/${resource.id}`
 
 /**
  * The wire projection compared for equality — the resource encoded through its
@@ -202,7 +196,7 @@ const classifyAgainstServer = (
           extension: [],
           modifierExtension: [],
           method: 'GET' as const,
-          url: diffKey(resource),
+          url: literalReferenceOf(resource),
           ifNoneMatch: null,
           ifModifiedSince: null,
           ifMatch: null,
@@ -229,12 +223,12 @@ const classifyAgainstServer = (
     const opaqueChange: ServerComparison = { status: 'changed', fields: [] }
 
     if (submission._tag === 'failed') {
-      for (const resource of resources) classifications.set(diffKey(resource), asNew)
+      for (const resource of resources) classifications.set(literalReferenceOf(resource), asNew)
       return classifications
     }
 
     for (const [resource, entry] of Arr.zip(resources, submission.response.entry ?? [])) {
-      const key = diffKey(resource)
+      const key = literalReferenceOf(resource)
       const status = entry.response?.status
       if (status === undefined) {
         classifications.set(key, asNew)
@@ -284,7 +278,7 @@ const classifyAgainstServer = (
     // default to `new` — a caller's write will attempt and either land or
     // report itself as a persist failure.
     for (const resource of resources) {
-      const key = diffKey(resource)
+      const key = literalReferenceOf(resource)
       if (!classifications.has(key)) classifications.set(key, asNew)
     }
 
@@ -299,7 +293,6 @@ const classifyAgainstServer = (
 
 export {
   classifyAgainstServer,
-  diffKey,
   normalizedEncode,
   resetFieldToServer,
   SERVER_MANAGED_META_FIELDS,

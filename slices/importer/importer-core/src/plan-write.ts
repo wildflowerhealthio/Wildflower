@@ -1,4 +1,4 @@
-import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
+import { type FhirResourceWithId, literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   DecodedFile,
   type FileResolution,
@@ -74,10 +74,6 @@ interface ReviewedRow {
   readonly entry: DecodedFile.Resource
   readonly verdict: Verdict
 }
-
-/** The `Type/id` a resource is written under, which a bundle entry is one per. */
-const literalReferenceOf = (resource: FhirResourceWithId): string =>
-  `${resource.resourceType}/${resource.id}`
 
 /** Every literal reference `resources` carry, in any reference field. */
 const literalReferencesIn = (resources: readonly FhirResourceWithId[]): ReadonlySet<string> =>

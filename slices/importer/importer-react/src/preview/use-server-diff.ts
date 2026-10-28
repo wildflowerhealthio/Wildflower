@@ -2,12 +2,8 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 
 import { useRunAuthed } from '@wildflowerhealthio/fhir-r4-react'
-import {
-  classifyAgainstServer,
-  diffKey,
-  type ServerComparison,
-} from '@wildflowerhealthio/fhir-r4/clients'
-import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
+import { classifyAgainstServer, type ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
+import { type FhirResourceWithId, literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
 import { DecodedFile } from '@wildflowerhealthio/importer-fundamentals'
 
 import type { ResolvedBatch, ReviewGroup } from '@wildflowerhealthio/importer-core'
@@ -123,7 +119,7 @@ const byGroupAndKey = (
   const comparisons = new Map<ReviewGroup, Map<string, ServerComparison>>()
   for (const row of rows) {
     const group = comparisons.get(row.group) ?? new Map<string, ServerComparison>()
-    group.set(row.key, byDiffKey.get(diffKey(row.resource)) ?? AS_NEW)
+    group.set(row.key, byDiffKey.get(literalReferenceOf(row.resource)) ?? AS_NEW)
     comparisons.set(row.group, group)
   }
   return comparisons
