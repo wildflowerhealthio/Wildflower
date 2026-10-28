@@ -6,8 +6,8 @@
  * @packageDocumentation
  */
 import { DicomHeader } from '@wildflowerhealthio/dicom'
+import { adoptResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import { adoptResource } from '@wildflowerhealthio/fhir-r4/identity'
 import { DocumentReferenceContext, type FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   type DecodeFunction,

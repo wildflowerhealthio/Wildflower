@@ -1,13 +1,9 @@
-import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Arbitrary, FastCheck as fc, Schema, SchemaAST } from 'effect'
-import { describe, expect, test } from 'vite-plus/test'
-
 import {
-  IdentifierSchema,
-  ReferenceSchema,
+  IdentifierAndReference,
   type IdentifierType,
   type ReferenceType,
-} from '../data-types/complex/identifier-and-reference.ts'
+} from '@wildflowerhealthio/fhir-r4/data-types'
+import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
 import {
   Binary,
   CarePlan,
@@ -15,7 +11,6 @@ import {
   DiagnosticReport,
   DocumentReference,
   type FhirResource,
-  FhirResourceSchema,
   Goal,
   ImagingStudy,
   MedicationDispense,
@@ -27,14 +22,17 @@ import {
   Practitioner,
   Procedure,
   ServiceRequest,
-} from '../resources/index.ts'
+} from '@wildflowerhealthio/fhir-r4/resources'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import { Arbitrary, FastCheck as fc, Schema, SchemaAST } from 'effect'
+import { describe, expect, test } from 'vite-plus/test'
+
 import {
   adoptResource,
   adoptedReferenceOf,
   originalIdOf,
   type SourceIdentity,
 } from './adopt-resource.ts'
-import { localResourceId } from './local-resource-id.ts'
 
 /**
  * Covers adoption of a single resource: the derived id, the injected source
@@ -289,10 +287,10 @@ const declaredShapeOf = (node: SchemaAST.AST, depth = 0): string => {
 }
 
 // Matched structurally rather than by AST identity: Effect rebuilds nodes when
-// it forces a `Suspend`, so `node === ReferenceSchema.ast` is false for the very
+// it forces a `Suspend`, so `node === IdentifierAndReference.ReferenceSchema.ast` is false for the very
 // occurrences this needs to find.
-const REFERENCE_SHAPE = declaredShapeOf(ReferenceSchema.ast)
-const IDENTIFIER_SHAPE = declaredShapeOf(IdentifierSchema.ast)
+const REFERENCE_SHAPE = declaredShapeOf(IdentifierAndReference.ReferenceSchema.ast)
+const IDENTIFIER_SHAPE = declaredShapeOf(IdentifierAndReference.IdentifierSchema.ast)
 
 /**
  * Every dotted path at which a resource schema declares a `Reference`.
@@ -622,37 +620,7 @@ describe('adoptResource', () => {
         expect(adopted.contained).toBe(resource.contained)
       }
     })
-
-    test(`${resourceType}: adopts a null-id resource under an id of its content`, () => {
-      const idLess = { ...resource, id: null }
-      const adopted = adopt(idLess)
-      expect(adopted.id).toMatch(/^wf-[0-9a-f]{32}$/)
-      // The same content, decoded afresh off its wire form sent in another
-      // key order, mints the same id.
-      const wire = Schema.encodeSync(FhirResourceSchema)(idLess)
-      const reordered = Object.fromEntries(Object.entries(wire).toReversed())
-      expect(adopt(Schema.decodeUnknownSync(FhirResourceSchema)(reordered)).id).toBe(adopted.id)
-      expect(adopted.id).not.toBe(adopt({ ...resource, id: 'src-1' }).id)
-    })
-
-    test(`${resourceType}: adds no source identifier to a null-id resource`, () => {
-      const idLess = { ...resource, id: null }
-      const adopted = adopt(idLess)
-      // The source gave it no id, so nothing claims one: it keeps exactly the
-      // identifiers it arrived with, and no source id reads back off it.
-      if ('identifier' in adopted && 'identifier' in idLess) {
-        expect(adopted.identifier).toEqual(idLess.identifier)
-      }
-      expect(originalIdOf(SOURCE, adopted)).toBeNull()
-    })
   }
-
-  test('adopts two null-id resources of different content under different ids', () => {
-    const observation = { ...sample(Observation.Schema, 13), id: null }
-    const another = { ...sample(Observation.Schema, 14), id: null }
-    expect(another).not.toEqual(observation)
-    expect(adopt(another).id).not.toBe(adopt(observation).id)
-  })
 
   test('keeps every identifier the source already carried, and prepends its own', () => {
     const existing = [

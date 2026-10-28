@@ -1,4 +1,4 @@
-import { adoptResource } from '@wildflowerhealthio/fhir-r4/identity'
+import { adoptResource } from '@wildflowerhealthio/fhir-r4-adoption'
 /**
  * The FHIR synthesis on its own: the parsed `Report` model's types,
  * `toFhirResources`, and {@link adoptedResourcesOf} — synthesis then adoption

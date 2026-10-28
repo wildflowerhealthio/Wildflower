@@ -127,9 +127,9 @@ codec still shares — transitional until #578 dissolves that slice), `fhir-r4`
   shared `persistBatchBundle`, gated on a confirmed review; no importer field
   takes a write client.
 - **The pool is consumed pre-adopted, never re-adopted.** `fhirR4Source`'s
-  `responseKinds` are already wrapped with `adoptUnderRecognizedRoot` in
-  `fhir-r4-source`; adopting again would hash a hash. Live and source file share
-  that single definition by reference.
+  `responseKinds` are already wrapped with `fhir-r4-adoption`'s
+  `adoptUnderRecognizedRoot` in `fhir-r4-source`; adopting again would hash a
+  hash. Live and source file share that single definition by reference.
 - **Per-URL, not per-archive.** Recognition against `fhirPool` is per response
   (highest specificity wins), so a mixed source file extracts every recognized URL.
 

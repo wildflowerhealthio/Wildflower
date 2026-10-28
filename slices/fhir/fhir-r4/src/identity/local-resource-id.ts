@@ -31,8 +31,9 @@ const hex16 = (hash: bigint): string => hash.toString(16).padStart(16, '0')
  * @remarks
  * **This is the encoding {@link localResourceId} hashes, so it is persisted wire
  * format too.** Why length-prefixing rather than a delimiter is argued in
- * `slices/fhir/fhir-r4/docs/Source Identity Explanation.md`; the short version is
- * that a delimiter is unambiguous only as a precondition on the caller.
+ * `slices/http-extraction/fhir-r4-adoption/docs/Source Identity Explanation.md`;
+ * the short version is that a delimiter is unambiguous only as a precondition
+ * on the caller.
  *
  * Exported so a caller folding more than one value into a single `originalId`
  * folds it the same way instead of inventing a separator. Nesting is safe — a
@@ -65,7 +66,7 @@ const joinIdComponents = (components: readonly string[]): string =>
  * `originalId` can collide two FNV lanes. The threat this addresses is
  * accidental collision between sources, not a hostile one. That, and why this
  * rather than a digest, is argued in
- * `slices/fhir/fhir-r4/docs/Source Identity Explanation.md`.
+ * `slices/http-extraction/fhir-r4-adoption/docs/Source Identity Explanation.md`.
  */
 const localResourceId = (system: string, resourceType: string, originalId: string): string => {
   const bytes = utf8Bytes(joinIdComponents([system, resourceType, originalId]))

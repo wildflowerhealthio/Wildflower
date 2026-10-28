@@ -84,8 +84,8 @@ rather than a copy, and what it writes is what the response kinds read.
 
 Pure like a `-core`: no DOM, no `fs`, no React. Depends on
 `http-extraction-fundamentals` (`HttpResponseKind`, `UrlMatch`, `Specificity`,
-`RecognizedUrlData`), `fhir-r4` (resources + `identity`'s
-`adoptUnderRecognizedRoot`), `effect`, and `kitchen-sink` — nothing else. In
+`RecognizedUrlData`), `fhir-r4` (resources), `fhir-r4-adoption`
+(`adoptUnderRecognizedRoot`), `effect`, and `kitchen-sink` — nothing else. In
 particular it must **never** import anything from `slices/importer` (whose
 `har-importer-core` consumes this package's
 `shoppersDrugMartSource.responseKinds`).
@@ -165,5 +165,5 @@ and `rexall-be-well-source` alike:
   — the vocabulary this package is written against.
 - [har-importer-core AGENTS.md](../../importer/har-importer-core/AGENTS.md)
   — the archive importer that runs these kinds.
-- [Source Identity Explanation](../../fhir/fhir-r4/docs/Source%20Identity%20Explanation.md)
+- [Source Identity Explanation](../fhir-r4-adoption/docs/Source%20Identity%20Explanation.md)
   — why a resource is re-keyed under a derived local id.

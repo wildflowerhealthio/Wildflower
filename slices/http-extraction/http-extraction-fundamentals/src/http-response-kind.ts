@@ -14,8 +14,8 @@ interface RecognizedUrlData {
   /**
    * The namespace this response's resources key under; absent = recognized but
    * mints no identity (a recorder records, it doesn't import). Structurally
-   * `fhir-r4/identity`'s `SourceIdentity`, on purpose — the layering seam stays
-   * clean without this package naming FHIR.
+   * `fhir-r4-adoption`'s `SourceIdentity`, on purpose — this package stays
+   * FHIR-free, and adoption, above it, reads the shape as its own.
    */
   readonly source?: { readonly system: string; readonly baseUrl?: string }
 }

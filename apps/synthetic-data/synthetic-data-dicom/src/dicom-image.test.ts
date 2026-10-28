@@ -7,7 +7,7 @@ import {
   withElementsSpliced,
   writeDicom,
 } from '@wildflowerhealthio/dicom/test-helpers'
-import { adoptedReferenceOf } from '@wildflowerhealthio/fhir-r4/identity'
+import { adoptedReferenceOf } from '@wildflowerhealthio/fhir-r4-adoption'
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import type { Person } from '@wildflowerhealthio/synthetic-data-fundamentals/story'

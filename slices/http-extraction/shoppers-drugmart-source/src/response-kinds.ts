@@ -1,4 +1,4 @@
-import { adoptUnderRecognizedRoot } from '@wildflowerhealthio/fhir-r4/identity'
+import { adoptUnderRecognizedRoot } from '@wildflowerhealthio/fhir-r4-adoption'
 import type { FhirResource, FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import type { HttpResponseKind } from '@wildflowerhealthio/http-extraction-fundamentals'
 
