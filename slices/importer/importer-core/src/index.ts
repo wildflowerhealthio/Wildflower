@@ -28,13 +28,12 @@ export {
   type UnrecognizedFile,
 } from './read-batch.ts'
 export {
-  type BatchWritePlan,
-  planBatchWrite,
-  type PlannedFormat,
-  planFormatWrite,
+  type Disposition,
+  planWrite,
   type SelectionFor,
   type SkipReason,
-  type WritePlan,
+  skipReasonFor,
+  type WriteDecision,
 } from './plan-write.ts'
 export { LINKED_GROUP, type ReviewGroup } from './review-group.ts'
 export {

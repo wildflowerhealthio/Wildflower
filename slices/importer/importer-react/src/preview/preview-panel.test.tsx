@@ -202,6 +202,29 @@ describe('PreviewPanel', () => {
     expect(onConfirm).toHaveBeenCalledOnce()
   })
 
+  it('counts two rows under one Type/id once, as the transaction writes them', () => {
+    const batch = makeBatch({
+      har: formatResult(
+        'a.har',
+        decoded([section('s', [labeledResource('a/pat-1', 'Patient/pat-1')])]),
+        'har'
+      ),
+      'lifelabs-pdf': formatResult(
+        'b.pdf',
+        decoded([
+          section('s', [
+            labeledResource('b/pat-1', 'Patient/pat-1'),
+            labeledResource('b/obs-1', 'Observation/obs-1'),
+          ]),
+        ]),
+        'lifelabs-pdf'
+      ),
+    })
+    render(<PreviewPanel {...panelProps(batch)} />)
+
+    expect(screen.getByRole('button', { name: 'Import 2 resources' })).toBeDefined()
+  })
+
   it('renders each decoded section under its own title with per-resource include checkboxes', () => {
     const batch = makeBatch({
       'lifelabs-pdf': formatResult(

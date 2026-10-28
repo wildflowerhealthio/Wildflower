@@ -274,13 +274,14 @@ describe('ImporterScreen', () => {
       harFile('session-b.har'),
     ])
     await waitFor(() => {
-      // Two files × (three resources + one source-file source file) under one confirm.
-      expect(screen.getByRole('button', { name: /Import 8 resources/ })).toBeDefined()
+      // Two source files and the three resources both files hold under the
+      // same ids, each counted once, under one confirm.
+      expect(screen.getByRole('button', { name: /Import 5 resources/ })).toBeDefined()
     })
     expect(writes()).toHaveLength(0)
 
     // Confirm the whole batch
-    await userEvent.click(screen.getByRole('button', { name: /Import 8 resources/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Import 5 resources/ }))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
     })

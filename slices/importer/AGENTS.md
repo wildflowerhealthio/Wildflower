@@ -87,8 +87,9 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   `FormatDecode.Result` per registered format plus the `UnrecognizedFile`s —
   `claimedFormats` names the formats that actually took part, `redecodeFormat`
   re-runs one format's files from their retained picks under new settings, and
-  `planFormatWrite` turns a format's reviewed selection into the exact resource
-  list to write. No DOM, no React, no client.
+  `planWrite` turns the batch's reviewed selections into a `WriteDecision` per
+  reviewed resource, the `Included` ones exactly the resources to write. No
+  DOM, no React, no client.
 - **[`importer-react`](./importer-react/AGENTS.md)** (the shell) —
   `ImporterScreen`, the whole pick-review-confirm flow a host app mounts, plus
   the React half of the registry (each `importer-core` importer spread with
@@ -139,7 +140,7 @@ sits above `http-extraction` and below every binding.
   **preview** — `decode` yields the actual resources, sectioned, so the
   reviewer sees them and can opt any of them out or edit them inline;
   **writes** still only run at confirm, and confirm writes exactly those
-  reviewed objects (`importer-core`'s `planFormatWrite`) with no re-parse — the same
+  reviewed objects (`importer-core`'s `planWrite`) with no re-parse — the same
   "is the same object" argument the anonymizer's preview makes. This split
   is the whole point; do not collapse it. A settings change (a HAR kind
   toggle, the LifeLabs time zone) re-runs `decode` from the retained bytes —

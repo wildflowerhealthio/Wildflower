@@ -33,7 +33,7 @@ walkthrough itself is the host's.
 `importer-react` is an adapter and follows the rule in
 [slices/AGENTS.md](../../../slices/AGENTS.md): it depends on its sources, never the reverse.
 It depends on `importer-core` (the importer registry, `readBatch` /
-`redecodeFormat` / `claimedFormats` / `planFormatWrite`, and the
+`redecodeFormat` / `claimedFormats` / `planWrite`, and the
 `DecodedBatch` model), `importer-fundamentals` (the `PickedFile`
 vocabulary, the `FormatDecode.Result` and `DecodedFile` shapes, and the pure
 `StagedImport` model), each format's
@@ -49,8 +49,9 @@ The seam between this package and a format is its **`FileImporter`** (reached
 through `importer-core`'s registry) and the `StagedImport` model: the read half
 runs `readBatch` (no writes) into one result per format — sections + notes —
 the review drives `StagedImport`'s pure per-resource transitions over the
-flattened sections, and the write half runs `planFormatWrite`'s resources,
-with the batch's linked records, through one `persistTransactionBundle`. If a component needs more than those expose, widen them
+flattened sections, and the write half runs the resources `planWrite`
+includes, the batch's linked records among them, through one
+`persistTransactionBundle`. If a component needs more than those expose, widen them
 rather than reaching around them.
 
 **Presentation and interaction only.** Nothing here parses a file, mints or
@@ -215,13 +216,16 @@ The importer has no HTTP wire union to derive, so there is no separate
   per-resource review — then the batch's **linked records** (`batch.linkedRecords`,
   the records it names but holds no copy of, as the referent rows link them)
   read-only with their diff badge and no toggle or edit, under one shared
-  confirm, gated on the batch writing at least one resource. Which linked
-  records are written is `importer-core`'s `planBatchWrite`, not a toggle:
-  none the server holds unchanged (the screen hands the panel and the
-  confirm the same `unchangedLinked`, the linked group's
-  `initialExclusionsFor`); otherwise every stored copy, whatever the reviewer
-  excluded, since the link choice is the consent to it, and a new record
-  only when a written resource names it. The diff keys its verdicts by
+  confirm, gated on the batch writing at least one resource. The panel's
+  counts come off `importer-core`'s `planWrite`, the plan the confirm
+  submits: the confirm names the `Included` decisions, one per `Type/id`,
+  and the `Excluded` ones. Which linked records are written is that plan's
+  too, not a toggle: none the server holds unchanged (`Unchanged`; the
+  screen hands the panel and the confirm the same `unchangedLinked`, the
+  linked group's `initialExclusionsFor`); otherwise every stored copy,
+  whatever the reviewer excluded, since the link choice is the consent to
+  it, and a new record only when an included resource names it, else
+  `Unreferenced`. The diff keys its verdicts by
   `importer-core`'s `ReviewGroup`, a format or `LINKED_GROUP`, so the linked
   records' badges are their own. It is the
   panel, the actions and the editor dialog only; the review body it renders
@@ -239,10 +243,10 @@ The importer has no HTTP wire union to derive, so there is no separate
   `preview-text.ts` — imported from there by everything that shows one,
   including this package's `index.ts`, rather than re-exported through the
   panel.
-  `use-confirm-import.ts` is the opt-in write action: `planBatchWrite` (in
-  `importer-core`), `planFormatWrite` per **claimed** format and the linked
-  records it writes, then one `persistTransactionBundle` of those linked
-  records and exactly those resources. It adds nothing to any
+  `use-confirm-import.ts` is the opt-in write action: `planWrite` (in
+  `importer-core`), then one `persistTransactionBundle` of exactly the
+  resources of its `Included` decisions, in the plan's order, the linked
+  records first. It adds nothing to any
   resource — no id locking, no provenance stamping — because the format's
   `decode` already minted the source file and stamped every extracted
   resource's `meta.source`. The transaction lands whole or not at all, so a
@@ -331,8 +335,8 @@ The importer has no HTTP wire union to derive, so there is no separate
 - **The read half writes nothing, and the split is the whole product.** Reaching
   a review issues no writes — `decode` requires no services and is run for its
   data only, and the confirm writes exactly the reviewed objects
-  (`planFormatWrite` over the format's decoded sections) with no
-  re-parse. A test pins this on the wire (zero writes to reach a review, and
+  (`planWrite`'s `Included` decisions over the formats' decoded sections)
+  with no re-parse. A test pins this on the wire (zero writes to reach a review, and
   the reads are the source list, one identifier search per referent, the diff
   bundle and the stored resources per referent type); do
   not add a write to the read path (e.g. an "auto-upload on pick") that would
@@ -347,18 +351,20 @@ The importer has no HTTP wire union to derive, so there is no separate
   controlled — the screen passes `selectionFor` in and receives every change
   via `onSelectionChange`, holding the canonical
   `Map<FormatKind, Selection>` so it can hand the confirm the exact selection
-  each format was reviewed with (`planFormatWrite` over that format's own
-  decoded sections). Same for
+  each format was reviewed with (`planWrite` reads each format's own
+  decoded sections under it). Same for
   settings: the panel renders `settings` and reports `onSettingsChange`;
   `useImportRun` owns the record and the re-decode. Don't move either down
   into the panel, or the shell and the view can disagree.
 - **The confirm is one `persistTransactionBundle`, and nothing is stamped at
-  confirm.** `planFormatWrite` (in `importer-core`) turns each format's decoded
-  sections plus the reviewer's selection into the exact resource list — a set
-  leads with its source files in the same bundle as its
+  confirm.** `planWrite` (in `importer-core`) turns the formats' decoded
+  sections plus the reviewer's selections, and the batch's linked records,
+  into a **`WriteDecision`** per reviewed resource — `Included`, `Excluded`,
+  `Unchanged`, `Unreferenced` or `Superseded` — a set leading with its
+  source files in the same bundle as its
   extracted resources, no upload-then-persist sequence and no ordering to
-  protect. `importBatch` hands the linked records `planBatchWrite` writes and
-  those lists, in that order, to one `persistTransactionBundle`: it does not look for the
+  protect. `importBatch` hands the `Included` decisions' resources, in the
+  plan's order, to one `persistTransactionBundle`: it does not look for the
   source file, lock an id, or write `meta.source`, because the format's
   `decode` already minted the source file at a deterministic id and stamped
   every extracted resource with its reference. A source file row the reviewer
@@ -366,9 +372,11 @@ The importer has no HTTP wire union to derive, so there is no separate
   `meta.source` — the link points at a `DocumentReference` this batch chose not
   to upload, which is the reviewer's decision, not a rewrite the shell makes.
   The batch is one Effect run through `runAuthed`, and its outcomes are handed
-  back to the units that submitted them by position (`outcomesPerUnit`): the
-  write reports one outcome per resource handed in, so each unit takes as many
-  as it has resources. `useConfirmImport`
+  back by position: the write reports one outcome per resource handed in, so
+  each `Included` decision is zipped with its own outcome and the pairs
+  grouped by the decision's `ReviewGroup`, a claimed format's becoming its
+  `imported` result (attempted its `Included` count, excluded its `Excluded`
+  count) and the linked group's the linked records' results. `useConfirmImport`
   needs nothing from the registry — persistence is format-blind.
 - **The batch lands whole or not at all, and there is no upload-failed case.**
   The batch is resolved as one: a format's resources point at the linked records
@@ -378,9 +386,9 @@ The importer has no HTTP wire union to derive, so there is no separate
   `batch_bundle_at_base.rs` pins HFS doing so), rather than one `batch` per
   format. `persistTransactionBundle`'s error channel is `never`, so a refusal
   is every entry's outcome under the one cause, not a raised error. A claimed
-  format whose review chose nothing (no kind recognized it, or every matching
-  kind toggled off) or whose every file was unreadable is `skipped`, never a
-  failure, and never reaches the bundle. `isPartialBatch` lifts
+  format with no `Included` decision (no kind recognized it, every matching
+  kind toggled off, or every file unreadable; `skipReasonFor` says which) is
+  `skipped`, never a failure, and never reaches the bundle. `isPartialBatch` lifts
   `collectImportSummary` to the batch: any rejected resource, a linked record
   included, makes it partial, and `import-results.tsx` frames a batch nothing
   of which wrote as failed; a `skipped` format alone does neither. There is
@@ -388,11 +396,12 @@ The importer has no HTTP wire union to derive, so there is no separate
   batch is its rows in the results, their cause the server's own response.
 - **The confirm affordance is gated on the batch having a resource to
   write.** `PreviewPanel` shows the single confirm button only when
-  `planBatchWrite`'s plan — the **claimed** formats' included resources and
-  the linked records it writes beside them — writes something; unreadable
+  `planWrite`'s plan — over the **claimed** formats' rows and the linked
+  records — has an `Included` decision; unreadable
   files and formats whose decode yielded nothing render their own section but
-  add nothing to write, and a linked record the server holds unchanged, or a
-  new one no written resource names, adds nothing either. A changed stored
+  add nothing to write, a linked record the server holds unchanged, or a
+  new one no included resource names, adds nothing either, and two rows
+  under one `Type/id` count once, the earlier `Superseded`. A changed stored
   copy alone is something to write, so the confirm can be offered with every
   format's resources excluded; the results then say no file's resources
   were imported. The confirm reads the same
@@ -516,7 +525,8 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   the confirm (the source file and the extracted resources go out in one
   bundle, every resource write carrying the `meta.source` its decode stamped),
   the re-picked server source file (its row present and pre-excluded, nothing
-  uploaded), the multi-file batch, the per-file source file failure, the
+  uploaded), the multi-file batch (the resources two files share under one
+  `Type/id` counted and written once), the per-file source file failure, the
   partial-write fold,
   that a single-format import reports no blank "nothing to import" rows, and
   cancel. It re-wraps `TextEncoder` output through the ambient `Uint8Array` (a
@@ -538,8 +548,9 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   and pins that a claimed format renders each decoded section under its own
   title with per-resource checkboxes, that an unreadable file renders its own
   alert, that a mixed batch sums to one confirm over every claimed format's
-  sections, that each registered format mounts its own settings picker, and
-  that the confirm appears only when at least one resource is included.
+  sections, that two rows under one `Type/id` count once, that each
+  registered format mounts its own settings picker, and that the confirm
+  appears only when at least one resource is included.
   `results/import-outcome.test.ts` is the property/example test for the folds.
 
 ## References

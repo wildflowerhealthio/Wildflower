@@ -1,21 +1,23 @@
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  StagedImport,
   DecodedFile,
+  type FileResolution,
   type FormatDecode,
   Mention,
+  StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
+import { Match, Option } from 'effect'
 
 import { claimedFormats } from './read-batch.ts'
 import type { FormatKind } from './registry.ts'
 import type { ResolvedBatch } from './resolve-mentions.ts'
+import { LINKED_GROUP, type ReviewGroup } from './review-group.ts'
 
 /**
- * The pure half of the confirm: from one format's decode result and the
- * selection it was reviewed under, exactly the resources to write — or the
- * reason nothing is — and, over a whole resolved batch, which of its linked
- * records are written beside them. The shell submits the batch's plan as one
- * transaction bundle; nothing here touches a client.
+ * The pure half of the confirm: a decision for every resource the reviewer
+ * saw, saying whether it is in the transaction and, when it is not, why. The
+ * shell submits the `Included` resources as one transaction bundle and counts
+ * the rest; nothing here touches a client.
  *
  * @remarks
  * The write set is the reviewed objects themselves — the exclusions applied
@@ -30,62 +32,52 @@ import type { ResolvedBatch } from './resolve-mentions.ts'
  * @packageDocumentation
  */
 
+/** Why a reviewed resource is, or is not, in the transaction. */
+type Disposition = 'Included' | 'Excluded' | 'Unchanged' | 'Unreferenced' | 'Superseded'
+
+/** One reviewed resource's place in the write: the row as reviewed, edits applied, and its disposition. */
+interface WriteDecision {
+  readonly group: ReviewGroup
+  readonly entry: DecodedFile.Resource
+  readonly disposition: Disposition
+}
+
 /**
- * Why a format in a confirmed batch contributes no written resources
- * without that being a failure: `nothing` — the review kept none of its
- * resources (or its decode yielded none); `unreadable` — all its files
- * rejected during decode.
+ * Why a claimed format in a confirmed batch writes nothing without that
+ * being a failure: `nothing` — the review kept none of its resources (or its
+ * decode yielded none); `unreadable` — all its files rejected during decode.
  */
 type SkipReason = 'nothing' | 'unreadable'
 
-/** What one format's confirm should do. */
-type WritePlan =
-  | { readonly _tag: 'skip'; readonly reason: SkipReason }
-  | {
-      readonly _tag: 'write'
-      /** The resources to submit, in review order, edits substituted. */
-      readonly resources: readonly FhirResourceWithId[]
-      /** How many previewed resources the reviewer opted out. */
-      readonly excluded: number
-    }
-
 /**
- * Plan one format's write from its reviewed selection.
- *
- * @param result - The format's decode result
- * @param selection - The selection the reviewer left it with
- * @returns A `write` of the chosen resources, or a `skip` with its reason
+ * The reason a claimed format with no `Included` decision writes nothing:
+ * `unreadable` when its decode yielded no resources and some file was
+ * unreadable, else `nothing`.
  */
-const planFormatWrite = (
-  result: FormatDecode.Result<string>,
-  selection: StagedImport.Selection
-): WritePlan => {
-  const labeled = DecodedFile.resources(result.decoded)
-  const resources = StagedImport.chosenResources(labeled, selection)
-  if (resources.length === 0) {
-    const reason: SkipReason =
-      labeled.length === 0 && result.unreadableFiles.length > 0 ? 'unreadable' : 'nothing'
-    return { _tag: 'skip', reason }
-  }
-  return { _tag: 'write', resources, excluded: StagedImport.excludedCount(labeled, selection) }
-}
-
-/** One claimed format's decode result with the write its review planned. */
-interface PlannedFormat {
-  readonly result: FormatDecode.Result<FormatKind>
-  readonly plan: WritePlan
-}
-
-/** What a confirm of a whole resolved batch writes. */
-interface BatchWritePlan {
-  /** Every claimed format's plan, in registry order. */
-  readonly formats: readonly PlannedFormat[]
-  /** The linked records written beside the formats' resources, in discovery order. */
-  readonly linked: readonly DecodedFile.Resource[]
-}
+const skipReasonFor = (result: FormatDecode.Result<FormatKind>): SkipReason =>
+  DecodedFile.resources(result.decoded).length === 0 && result.unreadableFiles.length > 0
+    ? 'unreadable'
+    : 'nothing'
 
 /** How the confirm reads each format's reviewed selection. */
 type SelectionFor = (format: FormatKind) => StagedImport.Selection
+
+/**
+ * A reviewed resource's disposition before the candidates under one
+ * `Type/id` are told apart: settled, or a candidate for the transaction.
+ */
+type Verdict = Exclude<Disposition, 'Included' | 'Superseded'> | 'Candidate'
+
+/** A reviewed resource with its {@link Verdict}. */
+interface ReviewedRow {
+  readonly group: ReviewGroup
+  readonly entry: DecodedFile.Resource
+  readonly verdict: Verdict
+}
+
+/** The `Type/id` a resource is written under, which a bundle entry is one per. */
+const literalReferenceOf = (resource: FhirResourceWithId): string =>
+  `${resource.resourceType}/${resource.id}`
 
 /** Every literal reference `resources` carry, in any reference field. */
 const literalReferencesIn = (resources: readonly FhirResourceWithId[]): ReadonlySet<string> =>
@@ -98,58 +90,130 @@ const literalReferencesIn = (resources: readonly FhirResourceWithId[]): Readonly
   )
 
 /**
- * Plan the write of a whole resolved batch: each claimed format's write from
- * its reviewed selection, and the linked records written beside them.
+ * Every claimed format's rows, in registry order and then review order, as
+ * reviewed: the edit substituted where the reviewer made one, `Excluded`
+ * where the reviewer toggled the row off, else a candidate.
+ */
+const formatRowsOf = (batch: ResolvedBatch, selectionFor: SelectionFor): readonly ReviewedRow[] =>
+  claimedFormats(batch.formats).flatMap((kind) => {
+    const selection = selectionFor(kind)
+    return DecodedFile.resources(batch.formats[kind].decoded).map((entry): ReviewedRow => ({
+      group: kind,
+      entry: Option.match(StagedImport.editedResource(selection, entry.key), {
+        onNone: () => entry,
+        onSome: (resource) => ({ ...entry, resource }),
+      }),
+      verdict: StagedImport.isResourceIncluded(selection, entry.key) ? 'Candidate' : 'Excluded',
+    }))
+  })
+
+/**
+ * A linked record's verdict: `Unchanged` when the server holds it as it is;
+ * else a stored copy is a candidate, the link choice being the consent to
+ * it, and a new record a candidate only when a candidate format row names it.
+ *
+ * @param record - The linked record
+ * @param unchangedLinked - The keys of the linked records the server diff
+ *   found unchanged
+ * @param named - The literal references the candidate format rows carry
+ */
+const linkedVerdictOf = (
+  record: FileResolution.LinkedRecord,
+  unchangedLinked: ReadonlySet<string>,
+  named: ReadonlySet<string>
+): Verdict =>
+  unchangedLinked.has(record.key)
+    ? 'Unchanged'
+    : Match.value(record.origin).pipe(
+        Match.when('Stored', (): Verdict => 'Candidate'),
+        Match.when('Provisional', (): Verdict =>
+          named.has(literalReferenceOf(record.resource)) ? 'Candidate' : 'Unreferenced'
+        ),
+        Match.exhaustive
+      )
+
+/**
+ * The confirm's plan: a decision per reviewed resource, in submit order,
+ * linked records first, then each claimed format in registry order, rows in
+ * review order.
  *
  * @param batch - The resolved batch the reviewer confirmed
  * @param selectionFor - Each format's reviewed selection
  * @param unchangedLinked - The keys of the linked records the server diff
  *   found unchanged
- * @returns Every claimed format's plan and the linked records to write
+ * @returns One {@link WriteDecision} per format row and linked record
  *
  * @remarks
- * The linked records are read-only in the review (a link choice is how to
- * change one), so which of them is written is decided here, and only here.
- * None the server already holds as it is (its key in `unchangedLinked`) is
- * written: that would be a rewrite of itself. Otherwise:
+ * The dispositions are decided in this order:
  *
- * - A **stored copy** — a linked record of `Stored` origin, a stored resource
- *   a link lands on having assumed the batch's identifiers — is written whatever the
- *   reviewer excluded. The link choice is the consent to it; excluding a
- *   resource says nothing about who its subject is. So a batch can write
- *   stored copies and no format's resources.
- * - A **new** record — one of `Provisional` origin, made from a mention alone — is
- *   written only when some resource a format writes references it, by its
- *   literal `Type/<id>` in any reference field: one nothing written names
- *   would be an orphan.
+ * - A format row is **`Excluded`** when the reviewer toggled it off, else a
+ *   candidate. Its `entry.resource` is the edited resource where the
+ *   reviewer made an edit.
+ * - A linked record is read-only in the review (a link choice is how to
+ *   change one), so this is the one place its write is decided. It is
+ *   **`Unchanged`** when the server holds it as it is (its key in
+ *   `unchangedLinked`). Else a `Stored` one — a stored resource a link lands
+ *   on, the batch's identifiers assumed — is a candidate whatever the
+ *   reviewer excluded: the link choice is the consent to it, and excluding a
+ *   resource says nothing about who its subject is. A `Provisional` one,
+ *   made from a mention alone, is a candidate only when some candidate
+ *   format row's resource carries its literal `Type/<id>` in any reference
+ *   field (`Mention.madeIn`), else **`Unreferenced`**: one nothing written
+ *   names would be an orphan.
+ * - Among the candidates, in submit order, the last under each `Type/id` is
+ *   **`Included`** and every earlier one **`Superseded`**. That is the rule
+ *   the transaction bundle applies to its entries (last occurrence wins), so
+ *   the `Included` resources are exactly the bundle's entries and no row's
+ *   edit is lost silently. A linked record is a record no resolved file
+ *   holds, so it never shares a `Type/id` with a format row.
  *
- * The preview's count and the confirm read the same plan.
+ * A claimed format with no `Included` decision writes nothing
+ * ({@link skipReasonFor}); a batch can so write stored copies and no
+ * format's resources. The preview's counts and the confirm read the same
+ * plan.
  */
-const planBatchWrite = (
+const planWrite = (
   batch: ResolvedBatch,
   selectionFor: SelectionFor,
   unchangedLinked: ReadonlySet<string>
-): BatchWritePlan => {
-  const formats = claimedFormats(batch.formats).map((kind): PlannedFormat => ({
-    result: batch.formats[kind],
-    plan: planFormatWrite(batch.formats[kind], selectionFor(kind)),
-  }))
-  const referenced = literalReferencesIn(
-    formats.flatMap(({ plan }) => (plan._tag === 'write' ? plan.resources : []))
+): readonly WriteDecision[] => {
+  const formatRows = formatRowsOf(batch, selectionFor)
+  const named = literalReferencesIn(
+    formatRows.flatMap(({ entry, verdict }) => (verdict === 'Candidate' ? [entry.resource] : []))
   )
-  const linked = batch.linkedRecords.filter(({ key, resource, origin }) => {
-    if (unchangedLinked.has(key)) return false
-    return origin === 'Stored' || referenced.has(`${resource.resourceType}/${resource.id}`)
-  })
-  return { formats, linked }
+  const rows: readonly ReviewedRow[] = [
+    ...batch.linkedRecords.map((record): ReviewedRow => ({
+      group: LINKED_GROUP,
+      entry: record,
+      verdict: linkedVerdictOf(record, unchangedLinked, named),
+    })),
+    ...formatRows,
+  ]
+  // Built in submit order, the map keeps each `Type/id`'s last candidate.
+  const lastCandidateIndexByLiteralReference = new Map(
+    rows.flatMap(({ entry, verdict }, index) =>
+      verdict === 'Candidate' ? [[literalReferenceOf(entry.resource), index] as const] : []
+    )
+  )
+  return rows.map(({ group, entry, verdict }, index): WriteDecision => ({
+    group,
+    entry,
+    disposition: Match.value(verdict).pipe(
+      Match.when('Candidate', (): Disposition =>
+        lastCandidateIndexByLiteralReference.get(literalReferenceOf(entry.resource)) === index
+          ? 'Included'
+          : 'Superseded'
+      ),
+      Match.orElse((settled) => settled)
+    ),
+  }))
 }
 
 export {
-  type BatchWritePlan,
-  planBatchWrite,
-  type PlannedFormat,
-  planFormatWrite,
+  type Disposition,
+  planWrite,
   type SelectionFor,
   type SkipReason,
-  type WritePlan,
+  skipReasonFor,
+  type WriteDecision,
 }

@@ -8,11 +8,14 @@ import {
   type FhirR4ResourcesHttpApiClient,
   persistTransactionBundle,
 } from '@wildflowerhealthio/fhir-r4/clients'
-import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  planBatchWrite,
+  claimedFormats,
+  LINKED_GROUP,
+  planWrite,
   type ResolvedBatch,
+  type ReviewGroup,
   type SelectionFor,
+  skipReasonFor,
 } from '@wildflowerhealthio/importer-core'
 
 import { LINKED_RECORDS_HEADING } from '../preview/preview-text.ts'
@@ -26,8 +29,8 @@ import {
 
 /**
  * The opt-in write half of the flow, as one imperative action over a batch:
- * the linked records it writes, then every format's resources the review
- * kept included, submitted together as one `persistTransactionBundle`.
+ * the resources its write plan includes, the linked records first, submitted
+ * together as one `persistTransactionBundle`.
  *
  * @remarks
  * Only the formats that claimed a file take part — the same
@@ -36,8 +39,9 @@ import {
  *
  * The seam the preview-then-confirm promise rests on — nothing here runs
  * until the user confirms a reviewed batch, and what runs is
- * `importer-core`'s `planBatchWrite` (the reviewed objects, exclusions
- * applied and edits substituted, no re-parse, and the linked records it
+ * `importer-core`'s `planWrite` (a decision per reviewed resource; the
+ * `Included` ones are the reviewed objects, exclusions applied and edits
+ * substituted, no re-parse, one per `Type/id`, and the linked records it
  * writes: the stored copies the server does not hold unchanged, and the new
  * records a written resource names) handed to
  * one `POST /` transaction bundle. The source file is one of
@@ -53,8 +57,8 @@ import {
  * server holding half of that batch would hold references to records it
  * does not. The server lands every entry or none, and
  * `persistTransactionBundle`'s error channel is `never`, so a refusal is
- * every entry's outcome, under the one cause. A format with nothing included
- * is `skipped` and never reaches the bundle.
+ * every entry's outcome, under the one cause. A format with no `Included`
+ * decision is `skipped` and never reaches the bundle.
  *
  * After the transaction resolves, the source-file list query and the stored
  * people and providers the referent rows offer are invalidated once — so a
@@ -85,11 +89,12 @@ type ConfirmState =
 interface ConfirmImport {
   readonly state: ConfirmState
   /**
-   * Write the batch as one transaction: the linked records it writes, then
-   * each format's reviewed resources. Each format's labeled resources come
-   * off its own decoded sections — the same objects the preview rendered,
-   * its source file among them. `unchangedLinked` is the keys of the linked
-   * records the server diff found unchanged, which are not written.
+   * Write the batch as one transaction: the resources its write plan
+   * includes, the linked records first, then each format's reviewed
+   * resources, which come off its own decoded sections — the same objects
+   * the preview rendered, its source file among them. `unchangedLinked` is
+   * the keys of the linked records the server diff found unchanged, which
+   * are not written.
    */
   readonly confirm: (
     batch: ResolvedBatch,
@@ -101,82 +106,73 @@ interface ConfirmImport {
 }
 
 /**
- * The transaction's `outcomes` handed back to the units that submitted them,
- * one list per unit of `resourcesPerUnit`, in submit order: the outcomes come
- * back one per resource handed in, at its position, so each unit takes as
- * many as it has resources.
- */
-const outcomesPerUnit = (
-  outcomes: readonly BatchEntryOutcome[],
-  resourcesPerUnit: readonly (readonly FhirResourceWithId[])[]
-): readonly (readonly BatchEntryOutcome[])[] =>
-  Array.mapAccum(resourcesPerUnit, outcomes, (remaining, resources) => {
-    const [taken, rest] = Array.splitAt(remaining, resources.length)
-    return [rest, taken]
-  })[1]
-
-/**
- * Write `batch` as one transaction — the linked records it writes first, then
- * each format's planned write — and fold the outcomes back onto the units
- * they came from: a {@link FileImportResult} per claimed format and
- * unrecognized file, and a {@link ResourceResult} per linked record written.
+ * Write `batch` as one transaction — the resources its write plan includes,
+ * in the plan's order — and fold the outcomes back onto the groups they came
+ * from: a {@link FileImportResult} per claimed format and unrecognized file,
+ * and a {@link ResourceResult} per linked record written.
+ *
+ * @remarks
+ * The transaction reports one outcome per resource handed in, at its
+ * position, so each `Included` decision is zipped with its own outcome and
+ * the pairs grouped by the decision's group.
  */
 const importBatch = (
   batch: ResolvedBatch,
   selectionFor: SelectionFor,
   unchangedLinked: ReadonlySet<string>
 ): Effect.Effect<BatchOutcome, never, FhirR4ResourcesHttpApiClient> => {
-  const { formats: planned, linked: linkedWrites } = planBatchWrite(
-    batch,
-    selectionFor,
-    unchangedLinked
-  )
-  const [skippedFormats, writes] = Array.partitionMap(planned, ({ result, plan }) =>
-    plan._tag === 'write'
-      ? Either.right({ result, plan })
-      : Either.left<FileImportResult>({
-          _tag: 'skipped',
-          id: result.id,
-          title: result.title,
-          reason: plan.reason,
-        })
-  )
-  const skipped: readonly FileImportResult[] = [
-    ...skippedFormats,
-    ...batch.unrecognizedFiles.map((file): FileImportResult => ({
-      _tag: 'skipped',
-      id: file.id,
-      title: file.title,
-      reason: 'unrecognized',
-    })),
-  ]
-  const linked = linkedWrites.map((entry) => entry.resource)
-  const resourcesPerUnit = [linked, ...writes.map(({ plan }) => plan.resources)]
-  return persistTransactionBundle(resourcesPerUnit.flat()).pipe(
+  const plan = planWrite(batch, selectionFor, unchangedLinked)
+  const included = plan.filter(({ disposition }) => disposition === 'Included')
+  return persistTransactionBundle(included.map(({ entry }) => entry.resource)).pipe(
     Effect.map((outcomes): BatchOutcome => {
-      const [linkedOutcomes = [], ...writeOutcomes] = outcomesPerUnit(outcomes, resourcesPerUnit)
+      const outcomesByGroup = Array.groupBy(
+        Array.zip(included, outcomes),
+        ([decision]) => decision.group
+      )
+      const outcomesOf = (group: ReviewGroup): readonly BatchEntryOutcome[] =>
+        (outcomesByGroup[group] ?? []).map(([, outcome]) => outcome)
+      const [skippedFormats, importedFormats] = Array.partitionMap(
+        claimedFormats(batch.formats),
+        (kind) => {
+          const result = batch.formats[kind]
+          const formatOutcomes = outcomesOf(kind)
+          return formatOutcomes.length === 0
+            ? Either.left<FileImportResult>({
+                _tag: 'skipped',
+                id: result.id,
+                title: result.title,
+                reason: skipReasonFor(result),
+              })
+            : Either.right<FileImportResult>({
+                _tag: 'imported',
+                id: result.id,
+                title: result.title,
+                outcome: importOutcome(
+                  formatOutcomes.length,
+                  result.title,
+                  formatOutcomes,
+                  Array.countBy(
+                    plan,
+                    ({ group, disposition }) => group === kind && disposition === 'Excluded'
+                  )
+                ),
+              })
+        }
+      )
       return {
-        linked: linkedOutcomes.map((outcome): ResourceResult => ({
+        linked: outcomesOf(LINKED_GROUP).map((outcome): ResourceResult => ({
           ...outcome,
           title: LINKED_RECORDS_HEADING,
         })),
         files: [
-          ...Array.zipWith(
-            writes,
-            writeOutcomes,
-            ({ result, plan }, unitOutcomes): FileImportResult => ({
-              _tag: 'imported',
-              id: result.id,
-              title: result.title,
-              outcome: importOutcome(
-                plan.resources.length,
-                result.title,
-                unitOutcomes,
-                plan.excluded
-              ),
-            })
-          ),
-          ...skipped,
+          ...importedFormats,
+          ...skippedFormats,
+          ...batch.unrecognizedFiles.map((file): FileImportResult => ({
+            _tag: 'skipped',
+            id: file.id,
+            title: file.title,
+            reason: 'unrecognized',
+          })),
         ],
       }
     })

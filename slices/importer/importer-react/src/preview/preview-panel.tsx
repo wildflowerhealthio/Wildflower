@@ -1,7 +1,7 @@
 import type { ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
-import { DecodedFile, StagedImport } from '@wildflowerhealthio/importer-fundamentals'
-import { Data } from 'effect'
+import { type DecodedFile, StagedImport } from '@wildflowerhealthio/importer-fundamentals'
+import { Array, Data } from 'effect'
 import { type JSX, type ReactNode, useMemo, useState } from 'react'
 
 import type { FormatKind, FormatSettings, ResolvedBatch } from '@wildflowerhealthio/importer-core'
@@ -9,7 +9,7 @@ import {
   claimedFormats,
   formatKinds,
   LINKED_GROUP,
-  planBatchWrite,
+  planWrite,
 } from '@wildflowerhealthio/importer-core'
 
 import type { FormatWithComponents } from '../registry.ts'
@@ -44,11 +44,11 @@ import panelStyles from './preview-panel.module.css'
  * sinking the batch. Below the formats, the batch's linked records — the
  * records it names but holds no copy of, as the referent rows link them —
  * are shown with their server diff and no toggle: which are written is
- * `importer-core`'s `planBatchWrite`, which the confirm reads too — a stored
+ * `importer-core`'s `planWrite`, which the confirm reads too — a stored
  * copy whenever the server does not hold it unchanged, a new record only
  * when a resource the batch writes names it. A settings change calls
  * `onSettingsChange`; the shell re-decodes that format. The confirm appears
- * only when that plan writes at least one resource, and it does not write —
+ * only when that plan includes at least one resource, and it does not write —
  * it calls `onConfirm`; the confirm step writes exactly the reviewed objects.
  *
  * @packageDocumentation
@@ -165,7 +165,7 @@ const PreviewActions = ({
 /**
  * The batch's linked records, read-only: each with its type, its one-line
  * summary and its server diff. Nothing here toggles or edits: a linked record
- * is written as the referent rows link it (`planBatchWrite` decides which
+ * is written as the referent rows link it (`planWrite` decides which
  * are), and changing it means choosing differently there.
  */
 const LinkedRecords = ({
@@ -235,23 +235,14 @@ const PreviewPanel = ({
     [batch]
   )
 
-  // What the confirm would write: the formats' included resources and the
-  // linked records the same plan writes beside them.
+  // What the confirm would write, one resource per `Type/id`, and what the
+  // reviewer toggled off: read off the plan the confirm submits.
   const { writableCount, excludedCount } = useMemo(() => {
-    const plan = planBatchWrite(batch, selectionFor, unchangedLinked)
-    return plan.formats.reduce(
-      (counts, { result, plan: formatPlan }) => ({
-        writableCount:
-          counts.writableCount + (formatPlan._tag === 'write' ? formatPlan.resources.length : 0),
-        excludedCount:
-          counts.excludedCount +
-          StagedImport.excludedCount(
-            DecodedFile.resources(result.decoded),
-            selectionFor(result.format)
-          ),
-      }),
-      { writableCount: plan.linked.length, excludedCount: 0 }
-    )
+    const plan = planWrite(batch, selectionFor, unchangedLinked)
+    return {
+      writableCount: Array.countBy(plan, ({ disposition }) => disposition === 'Included'),
+      excludedCount: Array.countBy(plan, ({ disposition }) => disposition === 'Excluded'),
+    }
   }, [batch, selectionFor, unchangedLinked])
 
   const openEditor = (format: FormatKind, key: string, resource: unknown): void => {

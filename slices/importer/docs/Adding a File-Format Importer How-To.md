@@ -127,12 +127,13 @@ review state besides the shell's per-resource selection.
 ## 3. Persistence — nothing to write
 
 There is no `persist` field. Every FHIR-targeting importer writes through the
-shell's one shared `persistBatchBundle` (`fhir-r4/clients`), so a binding brings
-no write sink and names no write client — `FileImporter` takes no `R` parameter.
-`importer-core`'s `planFormatWrite` turns a format's reviewed selection into the
-exact list of resources to write, and the shell sends them as one `POST /` batch
-bundle per format. The confirm adds nothing to any resource: the `meta.source`
-links are already there, stamped by the decode.
+shell's one shared `persistTransactionBundle` (`fhir-r4/clients`), so a binding
+brings no write sink and names no write client — `FileImporter` takes no `R`
+parameter. `importer-core`'s `planWrite` turns the batch's reviewed selections
+into a `WriteDecision` per reviewed resource, and the shell sends the
+`Included` ones, every format's and the batch's linked records, as one
+`POST /` transaction bundle. The confirm adds nothing to any resource: the
+`meta.source` links are already there, stamped by the decode.
 
 ## 4. The source file
 

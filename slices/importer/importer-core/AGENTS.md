@@ -109,27 +109,38 @@ write plan with this package alone.
   records, which no format holds. A resource key is unique within a group,
   not across groups, so the server diff, the preview and the write plan each
   scope a resource by its group.
-- `src/plan-write.ts` — **`planFormatWrite(result, selection)`**, the pure half
-  of the confirm: from one format's decode result it produces a `write` of
-  exactly the reviewed resources (exclusions applied, inline edits
-  substituted, in review order) with the `excluded` count, or a `skip` with
-  its **`SkipReason`** (`nothing` / `unreadable`). It adds no
-  provenance and rewrites nothing: the format's `decode` already minted the
-  source file and stamped `meta.source`.
-  **`planBatchWrite(batch, selectionFor, unchangedLinked)`** is the whole
-  resolved batch's plan, a **`BatchWritePlan`**: every claimed format's
-  **`PlannedFormat`** (its result and `planFormatWrite`'s plan) and the
-  `linked` records written beside them. It is the one place the rule for the
-  linked records lives, since the review shows them read-only. None whose key
-  is in `unchangedLinked` (the server diff's `unchanged`) is written.
-  Otherwise a **stored copy** — a linked record of `Stored` origin, a stored
-  resource a link lands on, the batch's identifiers assumed — is written
-  whatever the reviewer excluded, the link choice being the consent to it; a
-  **new** record — one of `Provisional` origin — only when some resource a format writes
-  references it by its literal `Type/<id>`, in any reference field
-  (`Mention.madeIn`), so it is never an orphan. A batch can so write stored
-  copies and no format's resources. The preview's count and the confirm both
-  read it.
+- `src/plan-write.ts` — **`planWrite(batch, selectionFor, unchangedLinked)`**,
+  the pure half of the confirm: one **`WriteDecision`** per reviewed
+  resource — its `ReviewGroup`, its `entry` as reviewed (the inline edit
+  substituted), and its **`Disposition`** — in submit order: the linked
+  records first, then each claimed format in registry order, rows in review
+  order. It adds no provenance and rewrites nothing: the format's `decode`
+  already minted the source file and stamped `meta.source`. The five
+  dispositions, in the order they are decided:
+  - **`Excluded`** — a format row the reviewer toggled off. Every other
+    format row is a candidate.
+  - **`Unchanged`** — a linked record the server holds as it is (its key in
+    `unchangedLinked`, the server diff's `unchanged`).
+  - **`Unreferenced`** — a linked record of `Provisional` origin, made from a
+    mention alone, that no candidate format row names by its literal
+    `Type/<id>` in any reference field (`Mention.madeIn`), so it is never an
+    orphan. A changed linked record of `Stored` origin — a stored resource a
+    link lands on, the batch's identifiers assumed — is a candidate whatever
+    the reviewer excluded, the link choice being the consent to it, so a
+    batch can write stored copies and no format's resources.
+  - **`Superseded`** — a candidate a later candidate shares its `Type/id`
+    with.
+  - **`Included`** — the last candidate under its `Type/id`: the transaction
+    bundle keeps one entry per `Type/id`, the last occurrence, so the
+    `Included` resources are exactly the bundle's entries and no row's edit
+    is lost silently.
+
+  It is the one place the rule for the linked records lives, since the review
+  shows them read-only; the preview's counts and the confirm both read it.
+  A claimed format with no `Included` decision writes nothing, and
+  **`skipReasonFor(result)`** says why, a **`SkipReason`**: `unreadable` when
+  its decode yielded no resources and some file was unreadable, else
+  `nothing`.
 
 ## Layering
 
@@ -144,7 +155,7 @@ nothing from `slices/http-extraction`.
 - **No source file knowledge here.** What a source file is, which resources point at
   it, and what happens to those links when the reviewer excludes it
   are each format's decisions, made inside its `decode` by
-  `importer-fundamentals`' `DecodeFunction.make`. `readBatch` and `planFormatWrite`
+  `importer-fundamentals`' `DecodeFunction.make`. `readBatch` and `planWrite`
   treat the source file row as any other resource. Do not reintroduce a
   shell-side mint, a side map of source files, or a "primary file".
 - **Ids are deterministic via `FormatDecode.makeId`.** An id is derived from

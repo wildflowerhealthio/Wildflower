@@ -20,28 +20,23 @@ import { HashMap, Option, ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { planBatchWrite, planFormatWrite } from './plan-write.ts'
+import { type Disposition, planWrite, skipReasonFor, type WriteDecision } from './plan-write.ts'
+import type { FormatKind } from './registry.ts'
 import type { ResolvedBatch } from './resolve-mentions.ts'
+import { LINKED_GROUP, type ReviewGroup } from './review-group.ts'
 
-const resource = (id: string): FhirResourceWithId =>
-  Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id })
+const patient = (id: string, gender: 'male' | 'female' | null = null): FhirResourceWithId =>
+  Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id, gender })
 
-const formatResult = (keys: readonly string[]): FormatDecode.Result<string> => ({
-  id: 'u',
-  title: 'a.har',
-  files: [{ id: '0:a.har', fileName: 'a.har', bytes: new Uint8Array([1]) }],
-  format: 'har',
-  decoded: {
-    sections: [
-      {
-        title: 's',
-        resources: keys.map((key) => ({ key, title: key, resource: resource(key) })),
-      },
-    ],
-    notes: [],
-  },
-  unreadableFiles: [],
+/** A row keyed `key` holding `resource`. */
+const row = (key: string, resource: FhirResourceWithId): DecodedFile.Resource => ({
+  key,
+  title: `${resource.resourceType}/${resource.id}`,
+  resource,
 })
+
+/** A row keyed `key` holding the Patient of id `key`. */
+const patientRow = (key: string): DecodedFile.Resource => row(key, patient(key))
 
 /** An `unreadableFiles` row for one broken pick. */
 const unreadableFile = (fileName: string): FormatDecode.UnreadableFile => ({
@@ -53,51 +48,83 @@ const unreadableFile = (fileName: string): FormatDecode.UnreadableFile => ({
   }),
 })
 
-describe('planFormatWrite', () => {
-  it('should skip a format with only unreadable files as unreadable', () => {
-    const result: FormatDecode.Result<string> = {
-      id: 'u',
-      title: 'broken.har',
-      files: [{ id: '0:broken.har', fileName: 'broken.har', bytes: new Uint8Array() }],
-      format: 'har',
-      decoded: { sections: [], notes: [] },
-      unreadableFiles: [unreadableFile('broken.har')],
-    }
-    expect(planFormatWrite(result, StagedImport.initial())).toEqual({
-      _tag: 'skip',
-      reason: 'unreadable',
-    })
+/** `kind`'s result of one file and one section holding `resources`. */
+const resultOf = <K extends FormatKind>(
+  kind: K,
+  resources: readonly DecodedFile.Resource[]
+): FormatDecode.Result<K> => ({
+  ...FormatDecode.emptyResult(kind),
+  id: `${kind}/a`,
+  title: `${kind} a`,
+  files: [{ id: `0:${kind}`, fileName: kind, bytes: new Uint8Array([1]) }],
+  decoded: { sections: [{ title: 's', resources }], notes: [] },
+})
+
+/** A resolved batch of the given formats' rows, the others claiming nothing, with `linked` its linked records. */
+const batchOf = (
+  rows: { readonly [K in FormatKind]?: readonly DecodedFile.Resource[] },
+  linked: readonly LinkedRecord[] = []
+): ResolvedBatch => {
+  const slot = <K extends FormatKind>(kind: K): FormatDecode.Result<K> => {
+    const resources = rows[kind]
+    return resources === undefined ? FormatDecode.emptyResult(kind) : resultOf(kind, resources)
+  }
+  return {
+    formats: { har: slot('har'), 'lifelabs-pdf': slot('lifelabs-pdf'), dicom: slot('dicom') },
+    unrecognizedFiles: [],
+    linkedRecords: linked.map(({ entry }) => entry),
+    linkTargetsByReferentKey: HashMap.fromIterable(
+      linked.map(({ link }) => [Referent.key(link.referent), link.target] as const)
+    ),
+  }
+}
+
+/** Each decision as `[group, key, disposition]`, in plan order. */
+const dispositionsOf = (
+  plan: readonly WriteDecision[]
+): readonly (readonly [ReviewGroup, string, Disposition])[] =>
+  plan.map(({ group, entry, disposition }) => [group, entry.key, disposition] as const)
+
+/** A selection with `keys` toggled off. */
+const excluding = (...keys: readonly string[]): StagedImport.Selection =>
+  StagedImport.setResourcesIncluded(StagedImport.initial(), keys, false)
+
+describe('skipReasonFor', () => {
+  it('names a format with only unreadable files unreadable', () => {
+    expect(
+      skipReasonFor({
+        ...FormatDecode.emptyResult('har'),
+        files: [{ id: '0:broken.har', fileName: 'broken.har', bytes: new Uint8Array() }],
+        unreadableFiles: [unreadableFile('broken.har')],
+      })
+    ).toBe('unreadable')
   })
 
-  it('should skip as nothing, not unreadable, when the review excluded every resource beside an unreadable file', () => {
-    const result: FormatDecode.Result<string> = {
-      ...formatResult(['a', 'b']),
-      unreadableFiles: [unreadableFile('broken.har')],
-    }
-    const selection = StagedImport.setResourcesIncluded(StagedImport.initial(), ['a', 'b'], false)
-    expect(planFormatWrite(result, selection)).toEqual({ _tag: 'skip', reason: 'nothing' })
+  it('names a format whose decode yielded resources beside an unreadable file nothing', () => {
+    expect(
+      skipReasonFor({
+        ...resultOf('har', [patientRow('a')]),
+        unreadableFiles: [unreadableFile('broken.har')],
+      })
+    ).toBe('nothing')
   })
 
-  it('should write the kept resources of a format beside its unreadable file', () => {
-    const result: FormatDecode.Result<string> = {
-      ...formatResult(['a', 'b']),
-      unreadableFiles: [unreadableFile('broken.har')],
-    }
-    const selection = StagedImport.toggleResource(StagedImport.initial(), 'a')
-    const plan = planFormatWrite(result, selection)
-    if (plan._tag !== 'write') throw new Error('expected a write')
-    expect(plan.resources.map((entry) => entry.id)).toEqual(['b'])
-    expect(plan.excluded).toBe(1)
+  it('names a format that claimed no files nothing', () => {
+    expect(skipReasonFor(FormatDecode.emptyResult('har'))).toBe('nothing')
+  })
+})
+
+describe('planWrite', () => {
+  it('includes the kept rows of a format beside its unreadable file, the toggled-off one excluded', () => {
+    const batch = batchOf({ har: [patientRow('a'), patientRow('b')] })
+
+    expect(dispositionsOf(planWrite(batch, () => excluding('a'), new Set()))).toEqual([
+      ['har', 'a', 'Excluded'],
+      ['har', 'b', 'Included'],
+    ])
   })
 
-  it('should skip a format that claimed no files as nothing', () => {
-    expect(planFormatWrite(FormatDecode.emptyResult('har'), StagedImport.initial())).toEqual({
-      _tag: 'skip',
-      reason: 'nothing',
-    })
-  })
-
-  it('property: writes exactly the included resources in review order, edits substituted, excluded counted', () => {
+  it('property: every format row is Excluded when toggled off, else Included, in review order, edits substituted', () => {
     const keysArbitrary = fc.uniqueArray(fc.stringMatching(/^[a-z]{1,4}$/u), { maxLength: 6 })
     fc.assert(
       fc.property(
@@ -108,112 +135,203 @@ describe('planFormatWrite', () => {
           let selection = StagedImport.initial()
           for (const key of keys) {
             if (excludes(key)) selection = StagedImport.toggleResource(selection, key)
-            if (edits(key)) selection = StagedImport.edit(selection, key, resource(`${key}-edited`))
+            if (edits(key)) selection = StagedImport.edit(selection, key, patient(key, 'female'))
           }
-          const plan = planFormatWrite(formatResult(keys), selection)
-          const included = keys.filter((key) => !excludes(key))
-          if (included.length === 0) {
-            expect(plan).toEqual({ _tag: 'skip', reason: 'nothing' })
-            return
-          }
-          if (plan._tag !== 'write') throw new Error('expected a write')
-          expect(plan.resources.map((entry) => entry.id)).toEqual(
-            included.map((key) => (edits(key) ? `${key}-edited` : key))
+
+          const plan = planWrite(batchOf({ har: keys.map(patientRow) }), () => selection, new Set())
+
+          expect(plan).toEqual(
+            keys.map((key): WriteDecision => ({
+              group: 'har',
+              entry: row(key, edits(key) ? patient(key, 'female') : patient(key)),
+              disposition: excludes(key) ? 'Excluded' : 'Included',
+            }))
           )
-          expect(plan.excluded).toBe(keys.length - included.length)
         }
       ),
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })
-})
 
-describe('planBatchWrite', () => {
-  it('writes a new linked record a written resource names, in any reference field', () => {
-    const batch = batchWith(
-      [observationOf('obs-1', { performer: [{ reference: PRACTITIONER }] })],
-      PROVISIONAL
+  it('submits the linked records first, then each claimed format in registry order', () => {
+    const batch = batchOf(
+      {
+        dicom: [patientRow('d')],
+        har: [observationOf('obs-1', { performer: [{ reference: PRACTITIONER }] })],
+      },
+      [PROVISIONAL]
     )
 
-    const plan = planBatchWrite(batch, () => StagedImport.initial(), new Set())
-
-    expect(plan.linked.map(({ key }) => key)).toEqual([PROVISIONAL.key])
-    expect(plan.formats.map(({ plan: formatPlan }) => formatPlan._tag)).toEqual(['write'])
+    expect(dispositionsOf(planWrite(batch, () => StagedImport.initial(), new Set()))).toEqual([
+      [LINKED_GROUP, PROVISIONAL.key, 'Included'],
+      ['har', 'obs-1', 'Included'],
+      ['dicom', 'd', 'Included'],
+    ])
   })
 
-  it('drops the provisional Practitioner once the only resource naming it is excluded', () => {
-    const batch = batchWith(
-      [
-        observationOf('obs-1', { performer: [{ reference: PRACTITIONER }] }),
-        observationOf('obs-2', {}),
-      ],
-      PROVISIONAL
+  it('includes a new linked record a written resource names, in any reference field', () => {
+    const batch = batchOf(
+      { har: [observationOf('obs-1', { performer: [{ reference: PRACTITIONER }] })] },
+      [PROVISIONAL]
     )
 
-    const plan = planBatchWrite(
-      batch,
-      () => StagedImport.toggleResource(StagedImport.initial(), 'obs-1'),
-      new Set()
-    )
-
-    expect(plan.linked).toEqual([])
+    expect(dispositionsOf(planWrite(batch, () => StagedImport.initial(), new Set()))).toEqual([
+      [LINKED_GROUP, PROVISIONAL.key, 'Included'],
+      ['har', 'obs-1', 'Included'],
+    ])
   })
 
-  it('still writes a changed stored copy once the only resource naming it is excluded', () => {
-    const batch = batchWith(
-      [observationOf('obs-1', { subject: { reference: STORED_PATIENT } })],
-      STORED
+  it('leaves the provisional Practitioner unreferenced once the only resource naming it is excluded', () => {
+    const batch = batchOf(
+      {
+        har: [
+          observationOf('obs-1', { performer: [{ reference: PRACTITIONER }] }),
+          observationOf('obs-2', {}),
+        ],
+      },
+      [PROVISIONAL]
     )
 
-    const plan = planBatchWrite(
-      batch,
-      () => StagedImport.toggleResource(StagedImport.initial(), 'obs-1'),
-      new Set()
-    )
-
-    expect(plan.linked.map(({ key }) => key)).toEqual([STORED.key])
-    expect(plan.formats.map(({ plan: formatPlan }) => formatPlan._tag)).toEqual(['skip'])
+    expect(dispositionsOf(planWrite(batch, () => excluding('obs-1'), new Set()))).toEqual([
+      [LINKED_GROUP, PROVISIONAL.key, 'Unreferenced'],
+      ['har', 'obs-1', 'Excluded'],
+      ['har', 'obs-2', 'Included'],
+    ])
   })
 
-  it('does not write a stored copy the server holds unchanged, even while a resource naming it is written', () => {
-    const batch = batchWith(
-      [observationOf('obs-1', { subject: { reference: STORED_PATIENT } })],
-      STORED
+  it('still includes a changed stored copy once the only resource naming it is excluded', () => {
+    const batch = batchOf(
+      { har: [observationOf('obs-1', { subject: { reference: STORED_PATIENT } })] },
+      [STORED]
     )
 
-    const plan = planBatchWrite(batch, () => StagedImport.initial(), new Set([STORED.key]))
-
-    expect(plan.linked).toEqual([])
+    expect(dispositionsOf(planWrite(batch, () => excluding('obs-1'), new Set()))).toEqual([
+      [LINKED_GROUP, STORED.key, 'Included'],
+      ['har', 'obs-1', 'Excluded'],
+    ])
   })
 
-  it('writes nothing on a re-import whose rows and linked record the server holds unchanged', () => {
-    const batch = batchWith(
-      [observationOf('obs-1', { performer: [{ reference: PRACTITIONER }] })],
-      PROVISIONAL
+  it('leaves out a stored copy the server holds unchanged, even while a resource naming it is written', () => {
+    const batch = batchOf(
+      { har: [observationOf('obs-1', { subject: { reference: STORED_PATIENT } })] },
+      [STORED]
     )
 
-    const plan = planBatchWrite(
-      batch,
-      () => StagedImport.toggleResource(StagedImport.initial(), 'obs-1'),
-      new Set([PROVISIONAL.key])
+    expect(
+      dispositionsOf(planWrite(batch, () => StagedImport.initial(), new Set([STORED.key])))
+    ).toEqual([
+      [LINKED_GROUP, STORED.key, 'Unchanged'],
+      ['har', 'obs-1', 'Included'],
+    ])
+  })
+
+  it('includes nothing on a re-import whose rows and linked record the server holds unchanged', () => {
+    const batch = batchOf(
+      { har: [observationOf('obs-1', { performer: [{ reference: PRACTITIONER }] })] },
+      [PROVISIONAL]
     )
 
-    expect(plan.linked).toEqual([])
-    expect(plan.formats.map(({ plan: formatPlan }) => formatPlan._tag)).toEqual(['skip'])
+    expect(
+      dispositionsOf(planWrite(batch, () => excluding('obs-1'), new Set([PROVISIONAL.key])))
+    ).toEqual([
+      [LINKED_GROUP, PROVISIONAL.key, 'Unchanged'],
+      ['har', 'obs-1', 'Excluded'],
+    ])
   })
 
   it('leaves out an unchanged new linked record while a resource naming it is written', () => {
-    const batch = batchWith(
-      [observationOf('obs-1', { performer: [{ reference: PRACTITIONER }] })],
-      PROVISIONAL
+    const batch = batchOf(
+      { har: [observationOf('obs-1', { performer: [{ reference: PRACTITIONER }] })] },
+      [PROVISIONAL]
     )
 
-    const plan = planBatchWrite(batch, () => StagedImport.initial(), new Set([PROVISIONAL.key]))
-
-    expect(plan.linked).toEqual([])
+    expect(
+      dispositionsOf(planWrite(batch, () => StagedImport.initial(), new Set([PROVISIONAL.key])))
+    ).toEqual([
+      [LINKED_GROUP, PROVISIONAL.key, 'Unchanged'],
+      ['har', 'obs-1', 'Included'],
+    ])
   })
 
-  it('property: a new linked record is written only beside a written resource naming it, a stored copy whenever the server holds it changed', () => {
+  it('includes the later of two rows under one Type/id, with its own edit, and supersedes the earlier', () => {
+    const batch = batchOf({
+      har: [row('a', patient('p'))],
+      'lifelabs-pdf': [row('b', patient('p'))],
+    })
+    const edited = patient('p', 'female')
+    const selectionFor = (format: FormatKind): StagedImport.Selection =>
+      format === 'lifelabs-pdf'
+        ? StagedImport.edit(StagedImport.initial(), 'b', edited)
+        : StagedImport.initial()
+
+    const plan = planWrite(batch, selectionFor, new Set())
+
+    expect(plan).toEqual([
+      { group: 'har', entry: row('a', patient('p')), disposition: 'Superseded' },
+      { group: 'lifelabs-pdf', entry: row('b', edited), disposition: 'Included' },
+    ])
+  })
+
+  it('includes the earlier of two rows under one Type/id once the later is excluded', () => {
+    const batch = batchOf({
+      har: [row('a', patient('p'))],
+      'lifelabs-pdf': [row('b', patient('p'))],
+    })
+    const selectionFor = (format: FormatKind): StagedImport.Selection =>
+      format === 'lifelabs-pdf' ? excluding('b') : StagedImport.initial()
+
+    expect(dispositionsOf(planWrite(batch, selectionFor, new Set()))).toEqual([
+      ['har', 'a', 'Included'],
+      ['lifelabs-pdf', 'b', 'Excluded'],
+    ])
+  })
+
+  it('property: one row is Included per distinct Type/id among the candidates, the last of them in submit order', () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.constantFrom('p-1', 'p-2', 'p-3'), { maxLength: 6 }),
+        fc.func(fc.boolean()),
+        fc.boolean(),
+        (ids, excludes, unchanged) => {
+          const rows = ids.map((id, index) => row(`k-${index}`, patient(id)))
+          let selection = StagedImport.initial()
+          for (const { key } of rows) {
+            if (excludes(key)) selection = StagedImport.toggleResource(selection, key)
+          }
+
+          const plan = planWrite(
+            batchOf({ har: rows }, [STORED]),
+            () => selection,
+            new Set(unchanged ? [STORED.key] : [])
+          )
+
+          const candidates = plan.filter(
+            ({ disposition }) => disposition === 'Included' || disposition === 'Superseded'
+          )
+          const literalReferenceOf = ({ entry }: WriteDecision): string =>
+            `${entry.resource.resourceType}/${entry.resource.id}`
+          const included = plan.filter(({ disposition }) => disposition === 'Included')
+          expect(included.length).toBe(new Set(candidates.map(literalReferenceOf)).size)
+          expect(
+            candidates.map((decision, index) =>
+              candidates
+                .slice(index + 1)
+                .some((later) => literalReferenceOf(later) === literalReferenceOf(decision))
+                ? 'Superseded'
+                : 'Included'
+            )
+          ).toEqual(candidates.map(({ disposition }) => disposition))
+          expect(candidates.map(({ entry }) => entry.key)).toEqual([
+            ...(unchanged ? [] : [STORED.key]),
+            ...rows.filter(({ key }) => !excludes(key)).map(({ key }) => key),
+          ])
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('property: a new linked record is included only beside an included resource naming it, a stored copy whenever the server holds it changed', () => {
     fc.assert(
       fc.property(
         fc.constantFrom(PROVISIONAL, STORED),
@@ -232,22 +350,24 @@ describe('planBatchWrite', () => {
             if (excludes(key)) selection = StagedImport.toggleResource(selection, key)
           }
 
-          const plan = planBatchWrite(
-            batchWith(observations, linkedRecord),
+          const plan = planWrite(
+            batchOf({ har: observations }, [linkedRecord]),
             () => selection,
             new Set(unchanged ? [linkedRecord.key] : [])
           )
 
-          const namedAndWritten = observations.some(
+          const namedAndIncluded = observations.some(
             ({ key }, index) => namesLinked[index] && !excludes(key)
           )
-          const written = !unchanged && (linkedRecord === STORED || namedAndWritten)
-          expect(plan.linked.length).toBe(written ? 1 : 0)
-          if (linkedRecord === PROVISIONAL && plan.linked.length > 0) {
-            expect(plan.formats.some(({ plan: formatPlan }) => formatPlan._tag === 'write')).toBe(
-              true
-            )
+          const expected = (): Disposition => {
+            if (unchanged) return 'Unchanged'
+            return linkedRecord === STORED || namedAndIncluded ? 'Included' : 'Unreferenced'
           }
+          expect(plan[0]).toEqual({
+            group: LINKED_GROUP,
+            entry: linkedRecord.entry,
+            disposition: expected(),
+          })
         }
       ),
       { numRuns: numRunsFor({ base: 100 }) }
@@ -328,29 +448,4 @@ const observationOf = (key: string, references: object): DecodedFile.Resource =>
     code: { text: 'Heart rate' },
     ...references,
   }),
-})
-
-/** A resolved batch of one HAR format holding `resources`, with `linkedRecord` its one linked record. */
-const batchWith = (
-  resources: readonly DecodedFile.Resource[],
-  linkedRecord: LinkedRecord
-): ResolvedBatch => ({
-  formats: {
-    har: {
-      id: 'har/a.har',
-      title: 'a.har',
-      files: [{ id: '0:a.har', fileName: 'a.har', bytes: new Uint8Array([1]) }],
-      format: 'har',
-      decoded: { sections: [{ title: 's', resources }], notes: [] },
-      unreadableFiles: [],
-    },
-    'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
-    dicom: FormatDecode.emptyResult('dicom'),
-  },
-  unrecognizedFiles: [],
-  linkedRecords: [linkedRecord.entry],
-  linkTargetsByReferentKey: HashMap.make([
-    Referent.key(linkedRecord.link.referent),
-    linkedRecord.link.target,
-  ]),
 })
