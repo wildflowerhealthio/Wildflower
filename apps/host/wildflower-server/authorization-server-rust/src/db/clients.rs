@@ -805,76 +805,96 @@ mod tests {
         );
     }
 
-    /// The App Catalog publishes each first-party app's OAuth client
+    /// The fields of an App Catalog entry that
+    /// `app_catalog_preassigns_wildflower_health_clients_as_seeded` reads.
+    /// The catalog's own test (`app-catalog-web`'s `src/catalog.test.ts`)
+    /// holds the whole entry to its schema, unknown keys included.
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct AppCatalogEntry {
+        name: String,
+        publisher: AppCatalogPublisher,
+        launch_url: Option<url::Url>,
+        scopes: Vec<String>,
+        preassigned_credentials: Option<AppCatalogPreassignedCredentials>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct AppCatalogPublisher {
+        id: String,
+    }
+
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct AppCatalogPreassignedCredentials {
+        client_id: String,
+        grant_types: Vec<AllowedGrantType>,
+        token_endpoint_auth_method: String,
+        redirect_uris: Vec<url::Url>,
+    }
+
+    /// The App Catalog publishes each Wildflower Health app's OAuth client
     /// registration as its HALO `preassignedCredentials`, for a server that
     /// registers the app itself. Every Wildflower Health entry carrying the
-    /// object must match its seeded row: a public client with no secret, the same scopes and
-    /// grant types, every redirect it lists registered, and a smart-app's
-    /// `launchUrl` among them, since its launch page is where it returns to. The row
-    /// is the source of truth, so a migration that changes one fails here
-    /// until the catalog follows.
+    /// object must match its seeded client: a public client with no secret,
+    /// the same scopes and grant types, every redirect it lists registered,
+    /// and a smart-app's `launchUrl` among them, since its launch page is
+    /// where it returns to. The seeded row is the source of truth, so a
+    /// migration that changes one fails here until the catalog follows.
     #[test]
-    fn app_catalog_preassigns_the_seeded_first_party_clients() {
+    fn app_catalog_preassigns_wildflower_health_clients_as_seeded() {
         const APP_CATALOG_JSON: &str = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../../../apps/app-catalog/app-catalog-web/public/apps.json"
         ));
-        let catalog: serde_json::Value =
-            serde_json::from_str(APP_CATALOG_JSON).expect("apps.json is JSON");
         // The catalog's id for Wildflower Health, the publisher of every app
         // whose client the migrations seed. Another publisher's credentials are
         // that publisher's to keep, so they are not checked here.
         const WILDFLOWER_HEALTH_PUBLISHER_ID: &str = "5a3385ad-9a2b-4dc6-85a0-5b874da0b019";
+        let catalog: Vec<AppCatalogEntry> =
+            serde_json::from_str(APP_CATALOG_JSON).expect("apps.json decodes as catalog entries");
         let store = SqliteGrantStore::open_in_memory().expect("open in-memory store");
         let mut checked = 0;
-        for app in catalog.as_array().expect("an array of apps") {
-            if app["publisher"]["id"] != WILDFLOWER_HEALTH_PUBLISHER_ID {
+        for entry in catalog {
+            if entry.publisher.id != WILDFLOWER_HEALTH_PUBLISHER_ID {
                 continue;
             }
-            let Some(credentials) = app.get("preassignedCredentials") else {
+            let Some(credentials) = entry.preassigned_credentials else {
                 continue;
             };
-            let name = app["name"].as_str().expect("a name");
-            let client_id = credentials["clientId"].as_str().expect("a clientId");
+            let name = entry.name;
+            let client_id = credentials.client_id;
             let client = store
-                .read(|tx| tx.client_by_id(client_id))
+                .read(|tx| tx.client_by_id(&client_id))
                 .expect("query (a decode failure surfaces here)")
                 .unwrap_or_else(|| panic!("{name}: {client_id} is seeded by a clients migration"));
 
             assert_eq!(client.kind, ClientKind::Public, "{name}");
             assert!(client.secret_hash.is_none(), "{name}");
-            assert_eq!(credentials["tokenEndpointAuthMethod"], "none", "{name}");
-            let scopes: Vec<String> =
-                serde_json::from_value(app["scopes"].clone()).expect("scopes are strings");
-            assert_eq!(scopes, client.allowed_scopes, "{name}: scopes");
-            let grant_types: Vec<AllowedGrantType> =
-                serde_json::from_value(credentials["grantTypes"].clone()).expect("grant types");
+            assert_eq!(credentials.token_endpoint_auth_method, "none", "{name}");
+            assert_eq!(entry.scopes, client.allowed_scopes, "{name}: scopes");
             assert_eq!(
-                grant_types, client.allowed_grant_types,
+                credentials.grant_types, client.allowed_grant_types,
                 "{name}: grantTypes"
             );
-            for redirect in credentials["redirectUris"]
-                .as_array()
-                .expect("redirectUris")
-            {
-                let redirect = url::Url::parse(redirect.as_str().expect("a string"))
-                    .expect("an absolute redirect");
+            for redirect in &credentials.redirect_uris {
                 assert!(
-                    client.redirect_uris.contains(&redirect),
+                    client.redirect_uris.contains(redirect),
                     "{name}: {redirect} is not registered for {client_id}",
                 );
             }
-            if let Some(launch_url) = app.get("launchUrl") {
-                let launch_url = url::Url::parse(launch_url.as_str().expect("a string"))
-                    .expect("an absolute launch URL");
+            if let Some(launch_url) = &entry.launch_url {
                 assert!(
-                    client.redirect_uris.contains(&launch_url),
+                    client.redirect_uris.contains(launch_url),
                     "{name}: its launchUrl {launch_url} is not registered for {client_id}",
                 );
             }
             checked += 1;
         }
-        assert!(checked > 0, "apps.json preassigns no first-party client");
+        assert!(
+            checked > 0,
+            "apps.json preassigns none of Wildflower Health's seeded clients"
+        );
     }
 
     /// The launcher's client (`0012`, narrowed by `0032`) allows exactly the

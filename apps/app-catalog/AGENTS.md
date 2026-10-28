@@ -23,10 +23,10 @@ app: it has no OAuth client, no homescreen tile and no dev tile.
 ## Rules
 
 - **The catalog is a committed file, decoded by a test.** Every edit goes
-  through `public/apps.json`; `src/catalog.test.ts` holds the first-party
-  entries to `branding-core`, and `authorization-server-rust`'s
-  `app_catalog_preassigns_the_seeded_first_party_clients` holds each
-  `preassignedCredentials` to the client its migrations seed.
+  through `public/apps.json`; `src/catalog.test.ts` holds Wildflower
+  Health's entries to `branding-core`, and `authorization-server-rust`'s
+  `app_catalog_preassigns_wildflower_health_clients_as_seeded` holds each of
+  their `preassignedCredentials` to the client its migrations seed.
 - **A page reads the catalog from `/apps`**, as any HALO client does; nothing
   bundles a copy of it.
 

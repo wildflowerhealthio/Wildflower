@@ -46,7 +46,7 @@ expectations go unmet:
 3. Run the tests that hold it: `vp test` here (`src/catalog.test.ts` decodes
    the file and checks each Wildflower app against `branding-core`), and
    `cargo test -p wildflowerhealthio-authorization-server
-   app_catalog_preassigns_the_seeded_first_party_clients`, which checks each
+   app_catalog_preassigns_wildflower_health_clients_as_seeded`, which checks each
    `preassignedCredentials` and `launchUrl` against the seeded client.
 
 ## The page

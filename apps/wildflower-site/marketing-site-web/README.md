@@ -76,7 +76,7 @@ vp build    # production build to dist/
   server's migrations seed for the app; the App Catalog
   (`apps/app-catalog/`) publishes the same registrations, which
   `authorization-server-rust`'s
-  `app_catalog_preassigns_the_seeded_first_party_clients` test holds to those
+  `app_catalog_preassigns_wildflower_health_clients_as_seeded` test holds to those
   rows. A third-party entry's scopes are copied by hand from the app.
 
 ## Styling conventions

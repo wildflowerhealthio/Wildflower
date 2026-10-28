@@ -48,4 +48,4 @@ The SMART apps' clients aren't written by Rust: SQL migrations insert their rows
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/db/clients.rs tests::migrations_narrow_the_launcher_client_to_the_apps_own_scopes}}
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/db/clients.rs tests::app_catalog_preassigns_the_seeded_first_party_clients}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/db/clients.rs tests::app_catalog_preassigns_wildflower_health_clients_as_seeded}}
