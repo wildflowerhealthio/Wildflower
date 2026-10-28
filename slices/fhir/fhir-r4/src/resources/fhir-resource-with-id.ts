@@ -8,8 +8,16 @@ import type { FhirResource } from './fhir-resource.ts'
  */
 type FhirResourceWithId = WithMandatoryId<FhirResource>
 
-/** Whether `resource` has an `id`, so a store can address it. */
-const hasId = (resource: FhirResource): resource is FhirResourceWithId => resource.id !== null
+/**
+ * Whether `resource` has an `id`, so a store can address it.
+ *
+ * @remarks
+ * Generic in the resource so the narrowing keeps its type: a `Patient.Type`
+ * narrows to a Patient with an id, through {@link WithMandatoryId}'s
+ * distribution, rather than to the whole {@link FhirResourceWithId} union.
+ */
+const hasId = <T extends FhirResource>(resource: T): resource is WithMandatoryId<T> =>
+  resource.id !== null
 
 export { hasId }
 export type { FhirResourceWithId }

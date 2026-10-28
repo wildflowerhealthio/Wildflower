@@ -51,6 +51,10 @@ interface AdoptableEntity {
  * @remarks
  * `parse` keeps `TEntity`'s own parameter, so a kind typed against a concrete
  * response stays one.
+ *
+ * `Omit` replaces the field because every kind has a `parse`: intersecting
+ * `TEntity` with the narrower one would overload it, and a call would resolve
+ * to the first, wide, signature, yielding resources without the id.
  */
 type Adopted<TEntity extends AdoptableEntity> = Omit<TEntity, 'parse'> & {
   readonly parse: (

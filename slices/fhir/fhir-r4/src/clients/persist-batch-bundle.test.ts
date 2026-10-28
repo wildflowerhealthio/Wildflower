@@ -36,10 +36,12 @@ import {
  *   one PUT entry per resource, addressed by `Type/id`.
  * - **Per-resource accounting**: each resource handed in gets a
  *   {@link BatchEntryOutcome} at its position — its echoed status, whether
- *   that status succeeded, and any OperationOutcome diagnostics. A
- *   whole-bundle failure (5xx or transport) attributes every resource to that
- *   one cause under the no-response sentinel; two resources under one
- *   `Type/id` are one entry, the last, whose outcome both positions get.
+ *   that status succeeded, and any OperationOutcome diagnostics. An error
+ *   answer to the whole bundle attributes every resource to that answer's
+ *   status; a round trip with no status to report (transport, an encode
+ *   failure, an unreadable `2xx`), to the no-response sentinel. Two resources
+ *   under one `Type/id` are one entry, the last, whose outcome both positions
+ *   get.
  */
 describe('persistBatchBundle', () => {
   it('posts one Bundle{type:batch} to / with one PUT entry per resource', async () => {
@@ -126,15 +128,91 @@ describe('persistBatchBundle', () => {
     ])
   })
 
-  it('attributes every entry to the sentinel status when the whole submission fails', async () => {
+  it('attributes every entry to a 503 when the server is unavailable', async () => {
     const captured = await runWith(
       [makePatient('a'), makePatient('b')],
       rawResponse(new Response('', { status: 503 }))
     )
-    expect(captured.outcomes.map((outcome) => outcome.target.id)).toEqual(['a', 'b'])
+    expect(captured.outcomes).toEqual<BatchEntryOutcome[]>(
+      ['a', 'b'].map((id) => ({
+        target: { label: 'Patient', id },
+        status: '503 Service Unavailable',
+        ok: false,
+        issues: [{ severity: 'error', code: 'exception', text: '' }],
+      }))
+    )
+  })
+
+  it('attributes every entry to an undeclared status, with the body as the issue', async () => {
+    const captured = await runWith(
+      [makePatient('a'), makePatient('b')],
+      rawResponse(
+        new Response('upstream connect error', {
+          status: 502,
+          headers: { 'content-type': 'text/plain' },
+        })
+      )
+    )
+    expect(captured.outcomes).toEqual<BatchEntryOutcome[]>(
+      ['a', 'b'].map((id) => ({
+        target: { label: 'Patient', id },
+        status: '502 Bad Gateway',
+        ok: false,
+        issues: [{ severity: 'error', code: 'exception', text: 'upstream connect error' }],
+      }))
+    )
+  })
+
+  it('attributes every entry to the sentinel status when a 2xx body is not a response bundle', async () => {
+    const captured = await runWith(
+      [makePatient('a'), makePatient('b')],
+      rawResponse(
+        new Response(JSON.stringify({ resourceType: 'Patient' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      )
+    )
+    expect(captured.outcomes.map((outcome) => [outcome.target.id, outcome.status])).toEqual([
+      ['a', NO_RESPONSE_STATUS],
+      ['b', NO_RESPONSE_STATUS],
+    ])
     expect(captured.outcomes.every((outcome) => !outcome.ok)).toBe(true)
-    expect(captured.outcomes[0]?.status).toBe(NO_RESPONSE_STATUS)
-    expect(captured.outcomes[0]?.issues[0]?.severity).toBe('error')
+    expect(captured.outcomes[0]?.issues[0]?.code).toBe('exception')
+  })
+
+  it('attributes every entry to the sentinel status, not a success, for an undeclared 2xx', async () => {
+    // The server took the bundle, but which entries it wrote is unknown: its
+    // own `201` would mark every entry written.
+    const captured = await runWith(
+      [makePatient('a'), makePatient('b')],
+      rawResponse(
+        new Response(JSON.stringify({ resourceType: 'Bundle', type: 'batch-response' }), {
+          status: 201,
+          headers: { 'content-type': 'application/json' },
+        })
+      )
+    )
+    expect(captured.outcomes.map((outcome) => [outcome.target.id, outcome.status])).toEqual([
+      ['a', NO_RESPONSE_STATUS],
+      ['b', NO_RESPONSE_STATUS],
+    ])
+    expect(captured.outcomes.every((outcome) => !outcome.ok)).toBe(true)
+  })
+
+  it('attributes every entry to the sentinel status when the request gets no answer', async () => {
+    const outcomes = await Effect.runPromise(
+      persistBatchBundle([makePatient('a'), makePatient('b')]).pipe(
+        Effect.provide(
+          FhirR4ResourcesHttpApiClient.layer.pipe(Layer.provide(failingTransportLayer))
+        )
+      )
+    )
+    expect(outcomes.map((outcome) => [outcome.target.id, outcome.status])).toEqual([
+      ['a', NO_RESPONSE_STATUS],
+      ['b', NO_RESPONSE_STATUS],
+    ])
+    expect(outcomes[0]?.issues[0]?.severity).toBe('error')
   })
 
   it('fails every entry without touching the wire when a resource holds a blank string', async () => {
@@ -257,19 +335,47 @@ describe('persistTransactionBundle', () => {
     ])
   })
 
-  it('attributes every entry to the sentinel status when a refusal carries no OperationOutcome', async () => {
+  it('gives every entry the refusal status with an empty issue when a refusal has no body', async () => {
     const captured = await runWith(
       [makePatient('a'), makeObservation('b')],
       rawResponse(new Response('', { status: 400 })),
       persistTransactionBundle
     )
-    expect(captured.outcomes.map((outcome) => outcome.target.id)).toEqual(['a', 'b'])
-    expect(captured.outcomes.every((outcome) => !outcome.ok)).toBe(true)
-    expect(captured.outcomes.map((outcome) => outcome.status)).toEqual([
-      NO_RESPONSE_STATUS,
-      NO_RESPONSE_STATUS,
+    expect(captured.outcomes).toEqual<BatchEntryOutcome[]>([
+      {
+        target: { label: 'Patient', id: 'a' },
+        status: '400 Bad Request',
+        ok: false,
+        issues: [{ severity: 'error', code: 'exception', text: '' }],
+      },
+      {
+        target: { label: 'Observation', id: 'b' },
+        status: '400 Bad Request',
+        ok: false,
+        issues: [{ severity: 'error', code: 'exception', text: '' }],
+      },
     ])
-    expect(captured.outcomes[0]?.issues[0]?.code).toBe('exception')
+  })
+
+  it('gives every entry the refusal status and the body as the issue when a refusal is plain text', async () => {
+    const captured = await runWith(
+      [makePatient('a'), makeObservation('b')],
+      rawResponse(
+        new Response('Bundle entry 1 is malformed', {
+          status: 400,
+          headers: { 'content-type': 'text/plain' },
+        })
+      ),
+      persistTransactionBundle
+    )
+    expect(captured.outcomes.map((outcome) => [outcome.target.id, outcome.status])).toEqual([
+      ['a', '400 Bad Request'],
+      ['b', '400 Bad Request'],
+    ])
+    expect(captured.outcomes.every((outcome) => !outcome.ok)).toBe(true)
+    expect(captured.outcomes[1]?.issues).toEqual([
+      { severity: 'error', code: 'exception', text: 'Bundle entry 1 is malformed' },
+    ])
   })
 })
 

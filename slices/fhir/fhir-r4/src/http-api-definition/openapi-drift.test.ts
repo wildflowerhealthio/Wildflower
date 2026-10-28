@@ -40,16 +40,12 @@ describe('generateFhirR4OpenApiSpec', () => {
 
     // Assert — no operation advertises Effect's HttpApiDecodeError 400, and the
     // schemas that existed only to describe it are pruned. `FhirDateSearch`
-    // and `OperationOutcome` survive because the FHIR contract itself names
-    // them (the `date` / `birthdate` search parameter value, and a refused
-    // Bundle's body); pinning the exact set keeps a stray schema from
-    // creeping back.
+    // survives because the FHIR contract itself names it (the `date` /
+    // `birthdate` search parameter value); pinning the exact set keeps a stray
+    // schema from creeping back.
     const json = JSON.stringify(spec)
     expect(json).not.toContain('HttpApiDecodeError')
-    expect(Object.keys(spec.components?.schemas ?? {})).toEqual([
-      'FhirDateSearch',
-      'OperationOutcome',
-    ])
+    expect(Object.keys(spec.components?.schemas ?? {})).toEqual(['FhirDateSearch'])
   })
 
   it('should match the committed snapshot embedded by fhir-r4-rust (regenerate with UPDATE_OPENAPI=1)', () => {
@@ -126,7 +122,7 @@ function generateFhirR4OpenApiSpec(): Spec {
       if (schema?.$ref === DECODE_ERROR_REF) {
         delete operation.responses?.['400']
       } else if (content !== undefined && badRequest !== undefined && schema?.anyOf !== undefined) {
-        // A 400 the operation declares itself (the Bundle refusal), which
+        // A 400 the operation declares itself (the Bundle's, read as text), which
         // Effect merges with its own: keep the declared one alone.
         const declared = schema.anyOf.filter((member) => member.$ref !== DECODE_ERROR_REF)
         content.schema = declared.length === 1 ? declared[0] : { anyOf: declared }

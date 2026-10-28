@@ -1,43 +1,36 @@
-import { HttpApiEndpoint, HttpApiError, HttpApiGroup } from '@effect/platform'
+import { HttpApiEndpoint, HttpApiError, HttpApiGroup, HttpApiSchema } from '@effect/platform'
 import { Data, Schema } from 'effect'
 
 import * as Bundle from '../data-types/resources/bundle.ts'
 
-/**
- * A Bundle the server refused whole: the HTTP `status` it answered, as
- * `"NNN Text"` like an entry's echoed `response.status`, and the
- * OperationOutcome it answered with.
- *
- * @remarks
- * FHIR R4 § 3.2.6: a transaction that fails is answered with an error for
- * the Bundle and an OperationOutcome saying why, not a per-entry response.
- * HFS does so at the status of the failure (`400` for a refused entry, `412`
- * for a failed condition, `500` for a rollback, `501` for a backend without
- * transactions, `504` for a timeout).
- */
-class BundleRefused extends Data.TaggedError('BundleRefused')<{
-  readonly status: string
-  readonly outcome: Bundle.OperationOutcomeType
+/** The server's `400` answer to a submitted Bundle, its `body` as text. */
+class BundleBadRequest extends Data.TaggedError('BundleBadRequest')<{
+  readonly body: string
 }> {}
 
 /**
- * The refusal answered at HTTP `code`: the response body, an
- * OperationOutcome, read as a {@link BundleRefused} carrying `code` and its
- * `reason` phrase, since the status is the response's, not the body's.
+ * Any `400` body, read as text into a {@link BundleBadRequest}.
+ *
+ * @remarks
+ * Every `HttpApi` declares Effect's own `HttpApiDecodeError` at `400`, so the
+ * client decodes a `400` body as that error, and a FHIR server's body fails
+ * the decode with no status. As a second member at `400`, this one takes any
+ * body the first does not.
  */
-const refusedAt = (
-  code: number,
-  reason: string
-): Schema.Schema<BundleRefused, typeof Bundle.OperationOutcomeSchema.Encoded> =>
+const badRequestAsText = HttpApiSchema.withEncoding(
   Schema.transform(
-    Bundle.OperationOutcomeSchema,
-    Schema.declare((value: unknown): value is BundleRefused => value instanceof BundleRefused),
+    Schema.String,
+    Schema.declare(
+      (value: unknown): value is BundleBadRequest => value instanceof BundleBadRequest
+    ),
     {
       strict: true,
-      decode: (outcome) => new BundleRefused({ status: `${code} ${reason}`, outcome }),
-      encode: (refused) => refused.outcome,
+      decode: (body) => new BundleBadRequest({ body }),
+      encode: (badRequest) => badRequest.body,
     }
-  )
+  ),
+  { kind: 'Text' }
+)
 
 /**
  * The FHIR `POST /` endpoint: submit a `Bundle{ type: 'batch' | 'transaction' }`
@@ -69,22 +62,25 @@ const refusedAt = (
  * per-entry statuses (`"201 Created"`, `"200 OK"`, `"404 Not Found"`) are what
  * a caller reads to reconcile each entry, both for existence pre-fetch (a `404`
  * means the id is not present) and for the write path (a non-2xx means that
- * entry did not write). A Bundle the server refuses whole is a
- * {@link BundleRefused} at each status HFS refuses one with; `Forbidden` and
- * `ServiceUnavailable` carry no OperationOutcome to read.
+ * entry did not write).
+ *
+ * A Bundle the server refuses whole (FHIR R4 § 3.2.6: an error status and an
+ * OperationOutcome for the Bundle rather than a per-entry response; HFS
+ * answers `400`, `412`, `500`, `501` or `504`) is deliberately not a declared
+ * error. A declared error's body is decoded by the client, and a body that
+ * does not decode fails as a `ParseError` carrying no status. Left undeclared,
+ * every non-2xx reaches the caller as a `ResponseError` holding the response,
+ * which the clients read status first, then the body as an OperationOutcome
+ * when it is one. `400` is the exception, since every `HttpApi` already
+ * declares one: it arrives as a {@link BundleBadRequest} carrying the body,
+ * read the same way. `Forbidden` and `ServiceUnavailable` are declared because
+ * they carry no body to read.
  */
 const httpApiGroup = HttpApiGroup.make('Bundle').add(
   HttpApiEndpoint.post('Submit', `/`)
     .setPayload(Bundle.Schema(Schema.Any))
     .addSuccess(Bundle.Schema(Schema.Any))
-    .addError(refusedAt(400, 'Bad Request'), { status: 400 })
-    .addError(refusedAt(404, 'Not Found'), { status: 404 })
-    .addError(refusedAt(409, 'Conflict'), { status: 409 })
-    .addError(refusedAt(412, 'Precondition Failed'), { status: 412 })
-    .addError(refusedAt(422, 'Unprocessable Entity'), { status: 422 })
-    .addError(refusedAt(500, 'Internal Server Error'), { status: 500 })
-    .addError(refusedAt(501, 'Not Implemented'), { status: 501 })
-    .addError(refusedAt(504, 'Gateway Timeout'), { status: 504 })
+    .addError(badRequestAsText, { status: 400 })
     .addError(HttpApiError.ServiceUnavailable)
     .addError(HttpApiError.Forbidden)
 )

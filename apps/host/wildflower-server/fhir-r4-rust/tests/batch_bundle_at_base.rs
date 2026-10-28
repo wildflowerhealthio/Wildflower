@@ -242,7 +242,8 @@ async fn transaction_with_one_refused_entry_lands_nothing() {
     let (status, body) = send(&router, "POST", "/", Some(bundle)).await;
 
     // The refusal is a 400 for the bundle with one OperationOutcome saying
-    // why: what `fhir-r4`'s `BundleRefused` decodes and every entry reports.
+    // why: what `fhir-r4`'s `persistTransactionBundle` decodes and every
+    // entry reports.
     assert_eq!(
         status,
         StatusCode::BAD_REQUEST,

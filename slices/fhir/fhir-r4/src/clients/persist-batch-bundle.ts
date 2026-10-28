@@ -1,7 +1,8 @@
+import type { HttpClientError } from '@effect/platform'
 import { unknownErrorToString } from '@wildflowerhealthio/kitchen-sink'
-import { Array as Arr, Data, Effect, Schema } from 'effect'
+import { Array as Arr, Data, Effect, Option, Schema } from 'effect'
 
-import type * as Bundle from '../data-types/resources/bundle.ts'
+import * as Bundle from '../data-types/resources/bundle.ts'
 import { FhirResourceSchema, type FhirResourceWithId } from '../resources/index.ts'
 import * as Telemetry from '../telemetry/index.ts'
 import { FhirR4ResourcesHttpApiClient } from './fhir-r4-resources-http-api-client.ts'
@@ -28,22 +29,26 @@ import { describeResource, type ResourceWriteTarget } from './persist-resources.
  * of the bundle still applies. A transaction Bundle is § 3.2.6 transaction
  * semantics: the server applies **every entry or none**, answering a
  * `transaction-response` of 2xx entries, or refusing the whole Bundle with an
- * error status and an OperationOutcome (`BundleRefused`), which is reported
- * against every entry: the refusal's status, and its issues. The Wildflower
- * server (HFS on SQLite) runs a transaction atomically; `fhir-r4-rust`'s
- * `batch_bundle_at_base` tests pin it.
+ * error status and an OperationOutcome. The Wildflower server (HFS on SQLite)
+ * runs a transaction atomically; `fhir-r4-rust`'s `batch_bundle_at_base`
+ * tests pin it.
  *
  * Each resource is encoded through {@link FhirResourceSchema} before it goes
  * in the bundle, since the endpoint's loose entry type encodes nothing.
  *
- * If the whole `POST /` fails some other way (a resource that does not
- * encode, a transport error, a status no refusal is declared at, or a decode
- * error on the response bundle), every entry in the submitted set is reported
- * as failed against that one cause under {@link NO_RESPONSE_STATUS} — one bad
- * server response cannot silently drop the batch. Every resource handed in has
- * an id (`FhirResourceWithId`), which its entry is PUT to; the bundle carries
- * one entry per `Type/id`, and the outcomes come back one per resource handed
- * in, at its position.
+ * Every entry is reported with what the server said. A response bundle gives
+ * each entry its own echoed status and issues. An error answer to the whole
+ * `POST /` (a refused transaction, a proxy's `502`, an auth layer's `401`)
+ * gives every entry that answer's status, as `"NNN Text"`, and its body's
+ * issues: an OperationOutcome's, or one issue carrying the body as text.
+ * When the server said nothing readable, every entry is failed under
+ * {@link NO_RESPONSE_STATUS}: a resource that does not encode, a request that
+ * never reached the server, a `2xx` whose body is not a response bundle. One
+ * bad server response cannot silently drop the batch.
+ *
+ * Every resource handed in has an id (`FhirResourceWithId`), which its entry
+ * is PUT to; the bundle carries one entry per `Type/id`, and the outcomes come
+ * back one per resource handed in, at its position.
  *
  * Unlike {@link persistResources}, this reports the **whole** per-entry
  * outcome — every resource's echoed HTTP status and any
@@ -77,10 +82,12 @@ interface WriteIssue {
  *
  * @remarks
  * `status` is the server's echoed `"NNN Text"` verbatim when there was a
- * response entry, the refusal's own `"NNN Text"` when the server refused the
- * whole bundle, the sentinel {@link NO_RESPONSE_STATUS} when the round trip
- * failed any other way or the response was truncated — so a caller can
- * always group by `status` without a special case.
+ * response entry, and the HTTP status of the server's answer, as `"NNN Text"`,
+ * when it answered the whole bundle with an error. It is the sentinel
+ * {@link NO_RESPONSE_STATUS} when the server said nothing readable: the round
+ * trip got no answer, a `2xx` answer could not be read, or the response
+ * bundle holds no entry for the resource. A caller can always group by `status`
+ * without a special case.
  */
 interface BatchEntryOutcome {
   readonly target: ResourceWriteTarget
@@ -89,8 +96,46 @@ interface BatchEntryOutcome {
   readonly issues: readonly WriteIssue[]
 }
 
-/** The `status` a resource gets when the server answered nothing for it. */
+/**
+ * The `status` a resource gets when the server said nothing readable for it:
+ * the request never got an answer, a resource failed to encode before leaving
+ * the client, or a `2xx` answer's body could not be read as a response bundle
+ * (or held no entry for the resource).
+ */
 const NO_RESPONSE_STATUS = 'No response'
+
+/**
+ * The standard reason phrase of each HTTP status a FHIR server, or a proxy or
+ * auth layer in front of one, can plausibly answer a `POST /` with.
+ */
+const REASON_PHRASES: Readonly<Record<number, string>> = {
+  400: 'Bad Request',
+  401: 'Unauthorized',
+  403: 'Forbidden',
+  404: 'Not Found',
+  405: 'Method Not Allowed',
+  408: 'Request Timeout',
+  409: 'Conflict',
+  412: 'Precondition Failed',
+  413: 'Content Too Large',
+  415: 'Unsupported Media Type',
+  422: 'Unprocessable Entity',
+  429: 'Too Many Requests',
+  500: 'Internal Server Error',
+  501: 'Not Implemented',
+  502: 'Bad Gateway',
+  503: 'Service Unavailable',
+  504: 'Gateway Timeout',
+}
+
+/**
+ * HTTP status `code` as `"NNN Text"`, the form an entry's `response.status`
+ * takes, or the bare number when it has no phrase in {@link REASON_PHRASES}.
+ */
+const statusLine = (code: number): string => {
+  const phrase = REASON_PHRASES[code]
+  return phrase === undefined ? `${code}` : `${code} ${phrase}`
+}
 
 /** The issues an OperationOutcome carries, as {@link WriteIssue}s. */
 const issuesOf = (outcome: Bundle.OperationOutcomeType | null | undefined): readonly WriteIssue[] =>
@@ -112,13 +157,68 @@ const entryUrl = (resource: FhirResourceWithId): string => `${resource.resourceT
  * HTTP status verbatim (`"200 OK"`, `"201 Created"`, `"404 Not Found"`), so we
  * read the leading three digits.
  */
-const statusOk = (status: string): boolean => {
-  const code = Number.parseInt(status, 10)
-  return Number.isFinite(code) && code >= 200 && code < 300
-}
+const statusOk = (status: string): boolean => successCode(Number.parseInt(status, 10))
+
+/** Whether HTTP status `code` is a success, a `2xx`. */
+const successCode = (code: number): boolean => code >= 200 && code < 300
 
 /** The two `Bundle.type`s a submission of PUT entries is sent as. */
 type BundleWriteType = 'batch' | 'transaction'
+
+/** A whole-bundle failure every submitted resource is reported under. */
+interface BundleFailure {
+  readonly _tag: 'failed'
+  readonly status: string
+  readonly issues: readonly WriteIssue[]
+}
+
+/** A response body read as an OperationOutcome, when it is one. */
+const decodeOperationOutcome = Schema.decodeUnknownOption(
+  Schema.parseJson(Bundle.OperationOutcomeSchema)
+)
+
+/**
+ * The server's error answer at HTTP status `code` with `body`: its status,
+ * and the body's OperationOutcome's issues when it is one, else one issue
+ * whose text is the body (empty when there was none, or it could not be
+ * read).
+ */
+const answeredWithError = (code: number, body: string): BundleFailure => ({
+  _tag: 'failed',
+  status: statusLine(code),
+  issues: decodeOperationOutcome(body).pipe(
+    Option.map(issuesOf),
+    Option.getOrElse((): readonly WriteIssue[] => [
+      { severity: 'error', code: 'exception', text: body },
+    ])
+  ),
+})
+
+/** A round trip with no status to report, failed under {@link NO_RESPONSE_STATUS} with `cause`. */
+const unanswered = (cause: unknown): BundleFailure => ({
+  _tag: 'failed',
+  status: NO_RESPONSE_STATUS,
+  issues: [{ severity: 'error', code: 'exception', text: unknownErrorToString(cause) }],
+})
+
+/**
+ * The failure a {@link HttpClientError.ResponseError} reports: an error
+ * answer to the whole bundle, a refusal included, under its status and its
+ * body.
+ */
+const responseErrorFailure = (
+  error: HttpClientError.ResponseError
+): Effect.Effect<BundleFailure> =>
+  // A `2xx` here is an answer the client could not decode: the server took
+  // the bundle, but which entries it wrote is unknown. Its own status would
+  // read as a success to `statusOk` and mark every entry written, so it is
+  // the sentinel instead.
+  successCode(error.response.status)
+    ? Effect.succeed(unanswered(error))
+    : error.response.text.pipe(
+        Effect.orElseSucceed(() => ''),
+        Effect.map((body) => answeredWithError(error.response.status, body))
+      )
 
 /**
  * The outcome of a submitted `resource` from its entry's `response`: the
@@ -157,11 +257,11 @@ const submittedOnce = (
  * @param resources - The batch to write
  * @returns One {@link BatchEntryOutcome} per resource of `resources`, at its
  *   position: its echoed status, whether that status succeeded, and any server
- *   diagnostics. A refused bundle gives every submitted resource the
- *   refusal's status and its OperationOutcome's issues; any other failed
- *   round trip gives it {@link NO_RESPONSE_STATUS} and the underlying cause
- *   as an issue — never failing, so one bad batch cannot fail the caller's
- *   run
+ *   diagnostics. An error answer to the whole bundle gives every submitted
+ *   resource that answer's status and its body's issues; a round trip with
+ *   nothing readable gives it {@link NO_RESPONSE_STATUS} and the underlying
+ *   cause as an issue — never failing, so one bad batch cannot fail the
+ *   caller's run
  *
  * @remarks
  * The bundle carries **one entry per `Type/id`**: when `resources` names one
@@ -228,28 +328,21 @@ const persistBundle = (
     ).pipe(
       Effect.flatMap((encoded) => client.Bundle.Submit({ payload: payloadOf(encoded) })),
       Effect.map((response) => ({ _tag: 'answered' as const, response })),
-      // A refusal is the server's own answer for the bundle: its status and
-      // its OperationOutcome's issues are every entry's.
-      Effect.catchTag('BundleRefused', (refused) =>
-        Effect.succeed({
-          _tag: 'failed' as const,
-          status: refused.status,
-          issues: issuesOf(refused.outcome),
-        })
-      ),
+      // The client reads a declared 400 as its typed error with the body, and
+      // a declared 403 or 503 without one.
+      Effect.catchTags({
+        BundleBadRequest: (badRequest) => Effect.succeed(answeredWithError(400, badRequest.body)),
+        Forbidden: () => Effect.succeed(answeredWithError(403, '')),
+        ServiceUnavailable: () => Effect.succeed(answeredWithError(503, '')),
+      }),
+      // Every other non-2xx: the server's own answer for the bundle, whose
+      // status and issues are every entry's.
+      Effect.catchTag('ResponseError', responseErrorFailure),
       // Every entry inherits any other whole-bundle failure, so it cannot
-      // silently drop the batch: a resource that does not encode, a decode
-      // error on the response bundle, a status no refusal is declared at and a
-      // transport failure, each under the no-response sentinel.
-      Effect.catchAll((cause: unknown) =>
-        Effect.succeed({
-          _tag: 'failed' as const,
-          status: NO_RESPONSE_STATUS,
-          issues: [
-            { severity: 'error', code: 'exception', text: unknownErrorToString(cause) },
-          ] satisfies readonly WriteIssue[],
-        })
-      )
+      // silently drop the batch: a resource that does not encode, a request
+      // that got no answer, and an answer whose body did not decode, each
+      // under the no-response sentinel.
+      Effect.catchAll((cause: unknown) => Effect.succeed(unanswered(cause)))
     )
 
     if (result._tag === 'failed') {
@@ -312,9 +405,10 @@ const persistTransactionBundle = (
 
 /**
  * Some entries of a batch were not accepted: each one the server answered with
- * a non-2xx status (the refusal's, for every entry, when it refused the
- * bundle), or with no status at all ({@link NO_RESPONSE_STATUS}, which every
- * entry gets when the round trip failed any other way).
+ * a non-2xx status (the status of its answer to the whole bundle, for every
+ * entry, when it refused it), or with nothing readable
+ * ({@link NO_RESPONSE_STATUS}, which every entry gets when the round trip
+ * got no readable answer).
  */
 class BatchEntriesRejected extends Data.TaggedError('BatchEntriesRejected')<{
   /** A one-line summary naming each rejected entry's target and status. */

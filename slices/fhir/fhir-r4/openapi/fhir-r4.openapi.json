@@ -23072,7 +23072,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OperationOutcome"
+                  "type": "string"
                 }
               }
             }
@@ -23080,78 +23080,8 @@
           "403": {
             "description": "Forbidden"
           },
-          "404": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OperationOutcome"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OperationOutcome"
-                }
-              }
-            }
-          },
-          "412": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OperationOutcome"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OperationOutcome"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OperationOutcome"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OperationOutcome"
-                }
-              }
-            }
-          },
           "503": {
             "description": "ServiceUnavailable"
-          },
-          "504": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OperationOutcome"
-                }
-              }
-            }
           }
         },
         "requestBody": {
@@ -23272,56 +23202,6 @@
       "FhirDateSearch": {
         "type": "string",
         "description": "A FHIR R4 date search value (§ search.html#date): an optional comparison prefix (eq/ne/gt/lt/ge/le/sa/eb/ap) in front of a date or dateTime of any precision, e.g. ge2026, 2026-07, or lt2026-07-27T14:27:30Z. The value denotes the period its precision implies. See slices/fhir/fhir-r4/docs/Client Capabilities Reference.md."
-      },
-      "OperationOutcome": {
-        "type": "object",
-        "title": "OperationOutcome",
-        "description": "A collection of error, warning, or information messages that result from a system action.",
-        "required": [
-          "resourceType"
-        ],
-        "properties": {
-          "resourceType": {
-            "type": "string",
-            "enum": [
-              "OperationOutcome"
-            ]
-          },
-          "issue": {
-            "type": "array",
-            "description": "An error, warning, or information message that results from a system action.",
-            "items": {
-              "type": "object",
-              "required": [
-                "severity",
-                "code"
-              ],
-              "properties": {
-                "severity": {
-                  "type": "string",
-                  "description": "fatal | error | warning | information"
-                },
-                "code": {
-                  "type": "string",
-                  "description": "Error or warning code."
-                },
-                "diagnostics": {
-                  "type": "string",
-                  "description": "Additional diagnostic information about the issue."
-                },
-                "details": {
-                  "type": "object",
-                  "properties": {
-                    "text": {
-                      "type": "string"
-                    }
-                  },
-                  "description": "Additional details about the error."
-                }
-              }
-            }
-          }
-        }
       }
     },
     "securitySchemes": {}
