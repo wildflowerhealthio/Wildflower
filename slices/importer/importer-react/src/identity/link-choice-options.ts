@@ -20,7 +20,7 @@ import {
   LinkChoice,
   LinkTarget,
   Referent,
-  type ReferentLinkChoices,
+  ReferentLinkChoices,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Array, HashMap, Option } from 'effect'
 
@@ -87,7 +87,7 @@ const writesOwnRecord = (
   linkChoices: ReferentLinkChoices.Type,
   linkTargets: HashMap.HashMap<string, LinkTarget.Type>
 ): boolean => {
-  const choice = LinkChoice.forReferent(linkChoices, referent)
+  const choice = ReferentLinkChoices.forReferent(linkChoices, referent)
   return (
     (LinkChoice.is('CreateResource')(choice) || LinkChoice.is('UpdateStoredResource')(choice)) &&
     HashMap.get(linkTargets, Referent.key(referent)).pipe(
@@ -120,10 +120,8 @@ const storedCopyOf = (
   current: LinkChoice.Type,
   storedOfType: readonly StoredResource[]
 ): Option.Option<LinkableResource.WithId> =>
-  Array.findFirst(
-    storedOfType,
-    ({ resource: stored }) =>
-      LinkableResource.literalReferenceOf(stored) === LinkableResource.literalReferenceOf(decoded)
+  Array.findFirst(storedOfType, ({ resource: stored }) =>
+    LinkableResource.sameRecord(stored, decoded)
   ).pipe(
     Option.map(({ resource }) => resource),
     Option.orElse(() =>

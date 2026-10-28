@@ -94,7 +94,7 @@ type SelectionFor = (format: FormatKind) => StagedImport.Selection
 const literalReferencesIn = (resources: readonly FhirResourceWithId[]): ReadonlySet<string> =>
   new Set(
     resources.flatMap((resource) =>
-      Mention.of(resource).flatMap(({ reference }) =>
+      Mention.madeIn(resource).flatMap(({ reference }) =>
         reference.reference === null ? [] : [reference.reference]
       )
     )

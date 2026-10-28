@@ -62,13 +62,14 @@ const CHANGED: ServerComparison = { status: 'changed', fields: [] }
 
 describe('diffRowsOf / byGroupAndKey', () => {
   it('should probe the linked records under their own group, after the formats', () => {
-    const batch = {
+    const batch: ResolvedBatch = {
       ...makeBatch({ har: formatResult('har', [['patient', 'p-har']]) }),
       linked: [
         {
           key: 'linked:Patient/p-stored',
           title: 'Patient/p-stored',
           resource: patient('p-stored'),
+          origin: 'Stored',
         },
       ],
     }

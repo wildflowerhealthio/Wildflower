@@ -71,7 +71,7 @@ const collect = (resolvedFile: DecodedFile.DecodedFile): readonly Type[] =>
         (!Mention.landsOnDevice(resource.subject) && !isDangling(resource.subject)))
         ? [OutsidePatientCompartment({ mentioningResourceKey: key })]
         : []
-    const dangling = Mention.of(resource)
+    const dangling = Mention.madeIn(resource)
       .filter(({ reference }) => isDangling(reference))
       .map(({ path, reference }): Type =>
         Dangling({ mentioningResourceKey: key, mentionPath: path, referenceAsWritten: reference })

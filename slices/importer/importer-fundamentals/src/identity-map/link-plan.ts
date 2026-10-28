@@ -10,13 +10,14 @@
  * referents linked to it, and which decoded literal references move to a
  * stored resource. Built once per batch by {@link make}, so a referent one
  * file holds is the link target of a mention in another, and read through
- * {@link maybeRedirectOf} and {@link maybeResolvedResourceFor} by the
+ * {@link redirectionIfLinked} and {@link resolvedResourceIfReferent} by the
  * resolution of every file.
  *
  * @packageDocumentation
  */
 
 import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
+import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { Array, Effect, HashMap, HashSet, Option, pipe } from 'effect'
 
 import * as DecodedFile from '../decoded-file.ts'
@@ -167,11 +168,13 @@ const make = (
   })
 
 /**
- * The literal reference `referenceAsDecoded` is redirected to under `plan`:
- * for a decoded literal reference, the stored one it moves to; for a logical
- * reference, its referent's link target. `None` when it stays as decoded.
+ * The literal reference `referenceAsDecoded` is redirected to under `plan`,
+ * when it names a referent whose link lands on a resource it does not already
+ * name: for a decoded literal reference, the stored one that stands in for its
+ * decoded resource; for a logical reference, its referent's link target.
+ * `None` when it names no such referent, so it stays as decoded.
  */
-const maybeRedirectOf = (
+const redirectionIfLinked = (
   plan: Type,
   referenceAsDecoded: IdentifierAndReference.ReferenceType
 ): Option.Option<string> =>
@@ -182,29 +185,42 @@ const maybeRedirectOf = (
         Option.flatMap((logicalReferenceKey) =>
           HashMap.get(plan.linkTargetsByLogicalReferenceKey, logicalReferenceKey)
         ),
-        Option.flatMap(LinkTarget.tryIntoResource),
+        Option.flatMap(LinkTarget.resourceIfLinked),
         Option.map(LinkableResource.literalReferenceOf)
       )
     : HashMap.get(plan.decodedLiteralReferencesToStored, referenceAsDecoded.reference)
 
 /**
- * The resource `decodedResource` is written as under `plan`: the resolved
- * resource under the literal reference its own is redirected to, which is a
- * stored resource's when one stands in for it and its own otherwise. `None`
- * when the plan has no resource there, so it is written as decoded.
+ * The literal reference a decoded resource under `decodedLiteralReference` is
+ * written under: the stored one that stands in for it, else its own.
  */
-const maybeResolvedResourceFor = (
-  plan: Type,
-  decodedResource: LinkableResource.WithId
-): Option.Option<ResolvedResource.Type> => {
-  const decodedLiteralReference = LinkableResource.literalReferenceOf(decodedResource)
-  return pipe(
-    HashMap.get(plan.decodedLiteralReferencesToStored, decodedLiteralReference),
-    Option.getOrElse(() => decodedLiteralReference),
-    (resolvedLiteralReference) =>
-      HashMap.get(plan.resolvedResourcesByResolvedLiteralReference, resolvedLiteralReference)
+const resolvedLiteralReferenceOf = (plan: Type, decodedLiteralReference: string): string =>
+  HashMap.get(plan.decodedLiteralReferencesToStored, decodedLiteralReference).pipe(
+    Option.getOrElse(() => decodedLiteralReference)
   )
-}
 
-export { make, maybeResolvedResourceFor, maybeRedirectOf }
+/**
+ * The resource `decodedResource` is written as under `plan`: the resolved
+ * resource under the literal reference it is written under, a stored
+ * resource's when one stands in for it and its own otherwise. `None` only for
+ * a resource that is no referent, no Patient or Practitioner with a qualified
+ * first identifier, which is written as decoded: every referent with a
+ * resource has a resolved resource under the literal reference it is written
+ * under.
+ */
+const resolvedResourceIfReferent = (
+  plan: Type,
+  decodedResource: FhirResourceWithId
+): Option.Option<ResolvedResource.Type> =>
+  pipe(
+    Option.liftPredicate(decodedResource, LinkableResource.is),
+    Option.map((linkable) =>
+      resolvedLiteralReferenceOf(plan, LinkableResource.literalReferenceOf(linkable))
+    ),
+    Option.flatMap((resolvedLiteralReference) =>
+      HashMap.get(plan.resolvedResourcesByResolvedLiteralReference, resolvedLiteralReference)
+    )
+  )
+
+export { make, redirectionIfLinked, resolvedResourceIfReferent }
 export type { Type }

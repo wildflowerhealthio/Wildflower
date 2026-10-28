@@ -61,13 +61,13 @@ const resolveAcross = (
 ): Effect.Effect<
   {
     readonly resolvedFiles: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>
-    readonly linked: readonly DecodedFile.Resource[]
+    readonly linked: readonly FileResolution.LinkedRecord[]
   },
   Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice
 > =>
   Effect.map(LinkPlan.make(files, linkChoices), (plan) => ({
-    resolvedFiles: Array.map(files, (file) => FileResolution.resolveFile(file, plan)),
-    linked: FileResolution.linkedResources(plan),
+    resolvedFiles: Array.map(files, FileResolution.resolveFile(plan)),
+    linked: FileResolution.linkedRecords(plan),
   }))
 
 /** {@link resolveAcross} over `files`, run on the test clock. */
@@ -88,7 +88,8 @@ const resolveOnTestClock = (
 const linkedOnTestClock = (
   file: DecodedFile.DecodedFile,
   linkChoices: ReferentLinkChoices.Type
-): readonly DecodedFile.Resource[] => resolveAcrossOnTestClock(Array.of(file), linkChoices).linked
+): readonly FileResolution.LinkedRecord[] =>
+  resolveAcrossOnTestClock(Array.of(file), linkChoices).linked
 
 /** `Referent.discover` over a batch of one `file`, run on the test clock. */
 const discoverOnTestClock = (file: DecodedFile.DecodedFile): readonly Referent.Type[] =>

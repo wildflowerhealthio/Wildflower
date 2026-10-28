@@ -7,6 +7,7 @@ import {
 } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   type DecodedFile,
+  type FileResolution,
   FormatDecode,
   type Link,
   LinkableResource,
@@ -264,7 +265,7 @@ const STORED_PATIENT = 'Patient/s-1'
 interface LinkedRecord {
   readonly key: string
   readonly literalReference: string
-  readonly entry: DecodedFile.Resource
+  readonly entry: FileResolution.LinkedRecord
   readonly link: Link.Type
 }
 
@@ -272,14 +273,15 @@ interface LinkedRecord {
 const linkedRecordOf = (
   linkedResource: LinkableResource.WithId,
   title: string,
-  target: (linkedTo: LinkableResource.WithId) => LinkTarget.Type
+  target: (linkedTo: LinkableResource.WithId) => LinkTarget.StoredType | LinkTarget.ProvisionalType
 ): LinkedRecord => {
   const literalReference = LinkableResource.literalReferenceOf(linkedResource)
   const key = `linked:${literalReference}`
+  const linkTarget = target(linkedResource)
   return {
     key,
     literalReference,
-    entry: { key, title, resource: linkedResource },
+    entry: { key, title, resource: linkedResource, origin: linkTarget._tag },
     link: {
       referent: {
         _tag: 'ByMentionOnly',
@@ -288,7 +290,7 @@ const linkedRecordOf = (
         ),
         label: title,
       } satisfies Referent.ByMentionOnly,
-      target: target(linkedResource),
+      target: linkTarget,
     },
   }
 }

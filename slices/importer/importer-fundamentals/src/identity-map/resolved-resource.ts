@@ -8,7 +8,8 @@
  * to, a provisional one, a decoded resource other referents link to, and a
  * decoded resource a mention links to by its stored copy are all the same
  * thing to the resolution: the resource under that literal reference, as
- * written.
+ * written. It is made from the links that landed on it, each a
+ * {@link LinkedResource}.
  *
  * @packageDocumentation
  */
@@ -17,9 +18,19 @@ import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-ty
 import { Array, Effect, HashMap, HashSet, Option, pipe, Record } from 'effect'
 
 import * as LinkTarget from './link-target.ts'
-import * as Link from './link.ts'
+import type * as Link from './link.ts'
 import * as LinkableResource from './linkable-resource.ts'
 import * as Referent from './referent.ts'
+
+/** A link that landed on a resource: the referent, and its target, which holds one. */
+interface LinkedResource {
+  readonly referent: Referent.Type
+  readonly target: Exclude<LinkTarget.Type, LinkTarget.UnlinkedType>
+}
+
+/** `link` as a linked resource; `None` when its target is `Unlinked`. */
+const tryIntoLinkedResource = ({ referent, target }: Link.Type): Option.Option<LinkedResource> =>
+  LinkTarget.is('Unlinked')(target) ? Option.none() : Option.some({ referent, target })
 
 /** The resource under one resolved literal reference, as it will be written. */
 interface Type {
@@ -58,7 +69,7 @@ interface Type {
  * copies of one resource, the last one's is written.
  */
 const writtenCopyOf = (
-  linkedResources: Array.NonEmptyReadonlyArray<Link.LinkedResource>
+  linkedResources: Array.NonEmptyReadonlyArray<LinkedResource>
 ): LinkableResource.WithId =>
   pipe(
     Array.findLast(linkedResources, ({ target }) => LinkTarget.is('Decoded')(target)),
@@ -68,7 +79,7 @@ const writtenCopyOf = (
 
 /** The stored copies the links of `linkedResources` update: each `Decoded` target's, when it has one. */
 const storedCopiesUpdatedBy = (
-  linkedResources: readonly Link.LinkedResource[]
+  linkedResources: readonly LinkedResource[]
 ): readonly LinkableResource.WithId[] =>
   Array.filterMap(linkedResources, ({ target }) =>
     LinkTarget.is('Decoded')(target) ? target.storedCopy : Option.none()
@@ -90,7 +101,7 @@ const storedCopiesUpdatedBy = (
  */
 const make = (
   resolvedLiteralReference: string,
-  linkedResources: Array.NonEmptyReadonlyArray<Link.LinkedResource>,
+  linkedResources: Array.NonEmptyReadonlyArray<LinkedResource>,
   literalReferencesWrittenAsDecoded: HashSet.HashSet<string>
 ): Effect.Effect<Type> => {
   const resource = writtenCopyOf(linkedResources)
@@ -133,7 +144,7 @@ const byResolvedLiteralReference = (
 ): Effect.Effect<HashMap.HashMap<string, Type>> =>
   pipe(
     links,
-    Array.filterMap(Link.tryIntoLinkedResource),
+    Array.filterMap(tryIntoLinkedResource),
     Array.groupBy(({ target }) => LinkableResource.literalReferenceOf(target.resource)),
     Record.toEntries,
     Effect.forEach(([resolvedLiteralReference, linkedResources]) =>
@@ -146,4 +157,4 @@ const byResolvedLiteralReference = (
   )
 
 export { byResolvedLiteralReference, make }
-export type { Type }
+export type { LinkedResource, Type }

@@ -1,12 +1,11 @@
 import {
-  type DecodedFile,
   FileResolution,
   type FormatDecode,
   type Link,
   type LinkChoice,
   LinkPlan,
   Referent,
-  type ReferentLinkChoices,
+  ReferentLinkChoices,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, HashMap } from 'effect'
 
@@ -48,11 +47,11 @@ const discoverReferents = (
  */
 type ResolvedBatch = DecodedBatch & {
   /**
-   * The batch's linked records: the resources it only mentions, as they will
-   * be written (`FileResolution.linkedResources`), keyed by
-   * `FileResolution.linkedKey`. The batch's own slot, no format's.
+   * The batch's linked records: the records it only mentions, as they will
+   * be written, each with its origin (`FileResolution.linkedRecords`), keyed
+   * by `FileResolution.linkedKey`. The batch's own slot, no format's.
    */
-  readonly linked: readonly DecodedFile.Resource[]
+  readonly linked: readonly FileResolution.LinkedRecord[]
   /** Every referent of the batch with its link target, in discovery order (the plan's `links`). */
   readonly links: readonly Link.Type[]
 }
@@ -99,13 +98,13 @@ const resolveMentions = (
       return Effect.map(
         collectFormats(<K extends FormatKind>(kind: K): Effect.Effect<FormatDecode.Result<K>> => {
           const result = results[kind]
-          const decoded = FileResolution.resolveFile(result.decoded, plan)
+          const decoded = FileResolution.resolveFile(plan)(result.decoded)
           // A slot nothing moved in comes back as itself, an unclaimed one among them.
           return Effect.succeed(decoded === result.decoded ? result : { ...result, decoded })
         }, batch.unrecognizedFiles),
         (resolvedFormats): ResolvedBatch => ({
           ...resolvedFormats,
-          linked: FileResolution.linkedResources(plan),
+          linked: FileResolution.linkedRecords(plan),
           links: plan.links,
         })
       )
@@ -138,7 +137,7 @@ const resolveMentionsWithFallback = (
   { readonly batch: ResolvedBatch; readonly linkChoices: ReferentLinkChoices.Type },
   Referent.DuplicateReferent
 > => {
-  const linkChoices = HashMap.union(defaults, chosen)
+  const linkChoices = ReferentLinkChoices.union(defaults, chosen)
   return resolveMentions(batch, linkChoices).pipe(
     Effect.map((resolved) => ({ batch: resolved, linkChoices })),
     Effect.catchTag('InvalidLinkChoice', (failure) => {
@@ -146,13 +145,13 @@ const resolveMentionsWithFallback = (
         return resolveMentionsWithFallback(
           batch,
           defaults,
-          HashMap.remove(chosen, failure.referentKey)
+          ReferentLinkChoices.remove(chosen, failure.referentKey)
         )
       }
       if (HashMap.has(defaults, failure.referentKey)) {
         return resolveMentionsWithFallback(
           batch,
-          HashMap.remove(defaults, failure.referentKey),
+          ReferentLinkChoices.remove(defaults, failure.referentKey),
           chosen
         )
       }

@@ -46,8 +46,11 @@ type Type = Stored | Decoded | Provisional | Unlinked
 
 const { Stored, Decoded, Provisional, Unlinked, $is: is, $match: match } = Data.taggedEnum<Type>()
 
-/** The resource a link target's mentions are redirected to, whatever its origin; `None` for `Unlinked`. */
-const tryIntoResource = (linkTarget: Type): Option.Option<LinkableResource.WithId> =>
+/**
+ * The resource a link target's mentions are redirected to, whatever its
+ * origin; `None` when it is `Unlinked`.
+ */
+const resourceIfLinked = (linkTarget: Type): Option.Option<LinkableResource.WithId> =>
   match(linkTarget, {
     Stored: ({ resource }) => Option.some(resource),
     Decoded: ({ resource }) => Option.some(resource),
@@ -55,7 +58,7 @@ const tryIntoResource = (linkTarget: Type): Option.Option<LinkableResource.WithI
     Unlinked: () => Option.none(),
   })
 
-export { Decoded, is, match, Provisional, Stored, tryIntoResource, Unlinked }
+export { Decoded, is, match, Provisional, resourceIfLinked, Stored, Unlinked }
 export type {
   Decoded as DecodedType,
   Provisional as ProvisionalType,

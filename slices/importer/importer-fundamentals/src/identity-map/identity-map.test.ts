@@ -30,7 +30,7 @@ import {
   LinkChoice,
   LinkTarget,
   Referent,
-  type ReferentLinkChoices,
+  ReferentLinkChoices,
   UnlinkedMention,
 } from '../index.ts'
 import {
@@ -228,8 +228,8 @@ describe('the identity map on one file', () => {
     expect(subjectAndRequesterOf(at(resolved, 'k-0')).subject?.reference).toBe('Patient/s-2')
     expect(subjectAndRequesterOf(at(resolved, 'k-1')).subject?.identifier?.value).toBe('c-9')
     expect(resolved.sections.map((section) => section.title)).toEqual(['Resources'])
-    expect(linked.map((entry) => [entry.key, entry.title])).toEqual([
-      ['linked:Patient/s-2', 'Jan Doe'],
+    expect(linked.map((entry) => [entry.key, entry.title, entry.origin])).toEqual([
+      ['linked:Patient/s-2', 'Jan Doe', 'Stored'],
     ])
     expect(identifiersOf(linkedAt(linked, 'linked:Patient/s-2'))).toEqual([
       `${DEVICE}|s-2`,
@@ -528,7 +528,9 @@ describe('the identity map on a printed name set to New', () => {
     const linked = linkedOnTestClock(file, map)
 
     expect(resolved.sections.map((section) => section.title)).toEqual(['Resources'])
-    expect(linked.map((entry) => entry.key)).toEqual([`linked:Practitioner/${PROVISIONAL_ID}`])
+    expect(linked.map((entry) => [entry.key, entry.origin])).toEqual([
+      [`linked:Practitioner/${PROVISIONAL_ID}`, 'Provisional'],
+    ])
     const provisional = linkedAt(linked, `linked:Practitioner/${PROVISIONAL_ID}`)
     expect(provisional.resourceType).toBe('Practitioner')
     expect(provisional.id).toBe(PROVISIONAL_ID)
@@ -567,7 +569,7 @@ describe('the identity map on a printed name set to New', () => {
     expect(
       referents
         .filter((referent) => Referent.key(referent) === PRESCRIBER)
-        .map((referent) => LinkChoice.forReferent(HashMap.empty(), referent)._tag)
+        .map((referent) => ReferentLinkChoices.forReferent(HashMap.empty(), referent)._tag)
     ).toEqual(['DontLink'])
     expect(linkTargetFor(map, referents, PRESCRIBER)).toBe(`Provisional ${PROVISIONAL_ID}`)
     expect(
@@ -673,7 +675,7 @@ describe('Link.fromChoices', () => {
   it('defaults a referent with a resource to New and one named only by mentions to Don’t link', () => {
     const defaultsByKey = referents.map((referent) => [
       Referent.key(referent),
-      LinkChoice.forReferent(HashMap.empty(), referent)._tag,
+      ReferentLinkChoices.forReferent(HashMap.empty(), referent)._tag,
     ])
 
     expect(defaultsByKey).toEqual([

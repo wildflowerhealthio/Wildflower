@@ -32,6 +32,10 @@ const is = (resource: FhirResourceWithId): resource is WithId =>
 /** `resource`'s relative literal reference, `Type/<id>`: what a mention of it carries. */
 const literalReferenceOf = (resource: WithId): string => `${resource.resourceType}/${resource.id}`
 
+/** Whether `a` and `b` are copies of one record: they share `Type/<id>`. */
+const sameRecord = (a: WithId, b: WithId): boolean =>
+  literalReferenceOf(a) === literalReferenceOf(b)
+
 /**
  * The linkable logical reference `resource` is keyed by: its `identifier[0]`,
  * which adoption fills with the source's own id under the source's system.
@@ -153,6 +157,7 @@ export {
   literalReferenceOf,
   maybeDerivedIdentifier,
   maybeDisplayName,
+  sameRecord,
   tryIntoLogicalReference,
   tryProvisionalFrom,
 }

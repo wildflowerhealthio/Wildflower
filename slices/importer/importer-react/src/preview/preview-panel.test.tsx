@@ -650,7 +650,7 @@ const observationOf = (key: string, references: object): DecodedFile.Resource =>
 const withLinked = (
   batch: ResolvedBatch,
   resource: LinkableResource.WithId,
-  target: (resource: LinkableResource.WithId) => LinkTarget.Type
+  target: (resource: LinkableResource.WithId) => LinkTarget.StoredType | LinkTarget.ProvisionalType
 ): ResolvedBatch => {
   const literalReference = LinkableResource.literalReferenceOf(resource)
   const referent: Referent.ByMentionOnly = {
@@ -658,10 +658,18 @@ const withLinked = (
     logicalReference: Option.getOrThrow(LinkableResource.tryIntoLogicalReference(resource)),
     label: literalReference,
   }
+  const linkTarget = target(resource)
   return {
     ...batch,
-    linked: [{ key: `linked:${literalReference}`, title: literalReference, resource }],
-    links: [{ referent, target: target(resource) }],
+    linked: [
+      {
+        key: `linked:${literalReference}`,
+        title: literalReference,
+        resource,
+        origin: linkTarget._tag,
+      },
+    ],
+    links: [{ referent, target: linkTarget }],
   }
 }
 

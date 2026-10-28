@@ -77,9 +77,10 @@ write plan with this package alone.
   **`resolveMentions(batch, linkChoices)`** resolves every mention in every
   claimed format's `decoded` on one plan over the batch's referents
   (`LinkPlan.make` once, over every claimed format's decoded file), resolving
-  each format in its own slot (`FileResolution.resolveFile`), so a mention in one format
+  each format in its own slot (`FileResolution.resolveFile(plan)`), so a mention in one format
   links to a referent another holds; it fills the `linked` slot with the
-  resources the batch only mentions (`FileResolution.linkedResources`), so a
+  records the batch only mentions, each with its `origin`, `Stored` or
+  `Provisional` (`FileResolution.linkedRecords`), so a
   stored person several formats mention is written once, and the `links`
   with the plan's, so the screen's hook reads each referent's link target
   without planning again. Keys and section titles are kept; the format slots
@@ -90,10 +91,11 @@ write plan with this package alone.
   does.
   **`resolveMentionsWithFallback(batch, defaults, chosen)`** is what the
   screen resolves: `resolveMentions` on the reviewer's choices over the
-  searched defaults, as `{ batch, linkChoices }`: the `ResolvedBatch` and the
+  searched defaults (`ReferentLinkChoices.union`), as `{ batch, linkChoices }`: the `ResolvedBatch` and the
   choices it was resolved on. A choice that
   cannot be resolved (`InvalidLinkChoice`) falls back: the reviewer's own
-  choice to its searched default, a default to its kind's default; a failure
+  choice to its searched default, a default to its kind's default
+  (`ReferentLinkChoices.remove`); a failure
   naming a referent with no choice dies. Its one failure is
   `Referent.DuplicateReferent`.
 - `src/plan-write.ts` — **`planFormatWrite(result, selection)`**, the pure half
@@ -114,7 +116,7 @@ write plan with this package alone.
   the reviewer excluded, the link choice being the consent to it; a **new**
   record — a provisional one — only when some resource a format writes
   references it by its literal `Type/<id>`, in any reference field
-  (`Mention.of`), so it is never an orphan. A batch can so write stored
+  (`Mention.madeIn`), so it is never an orphan. A batch can so write stored
   copies and no format's resources. The preview's count and the confirm both
   read it.
 

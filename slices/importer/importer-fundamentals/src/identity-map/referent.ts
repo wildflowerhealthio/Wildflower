@@ -168,7 +168,7 @@ const tryFromDecodedResource = (
 /** The referents one decoded resource's logical-reference mentions name. */
 const mentionedIn = (entry: DecodedFile.Resource): readonly ByMentionOnly[] =>
   pipe(
-    Mention.of(entry.resource),
+    Mention.madeIn(entry.resource),
     Array.filterMap(({ reference }) =>
       Option.map(LinkableLogicalReference.tryFromReference(reference), (logicalReference) =>
         ByMentionOnly({ logicalReference, label: logicalReference.identifier.value })

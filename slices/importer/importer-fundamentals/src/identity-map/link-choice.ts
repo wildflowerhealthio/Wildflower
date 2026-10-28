@@ -11,16 +11,16 @@
  * becomes), or `DontLink` (its mentions keep their identifier-only form); and
  * `CreateResource` when something provisional can stand in for its logical
  * reference (`LinkableResource.tryProvisionalFrom`). Following
- * `LinkToDecodedReferent` to the end gives a `LinkTarget`.
+ * `LinkToDecodedReferent` to the end gives a `LinkTarget`. A referent the
+ * reviewer has made no choice for takes its default
+ * (`ReferentLinkChoices.defaultFor`).
  *
  * @packageDocumentation
  */
 
-import { Data, HashMap, Option } from 'effect'
+import { Data } from 'effect'
 
 import type * as LinkableResource from './linkable-resource.ts'
-import type * as ReferentLinkChoices from './referent-link-choices.ts'
-import * as Referent from './referent.ts'
 
 /** Write the referent's own resource. For a logical reference with a provisional form, create that. */
 interface CreateResource {
@@ -95,24 +95,9 @@ class InvalidLinkChoice extends Data.TaggedError('InvalidLinkChoice')<{
   readonly reason: InvalidLinkChoiceReason
 }> {}
 
-/** The choice a referent takes when the reviewer has made none: `CreateResource` with a resource, else `DontLink`. */
-const defaultFor = (referent: Referent.Type): Type =>
-  Referent.match(referent, {
-    AsResource: () => CreateResource(),
-    ByMentionOnly: () => DontLink(),
-  })
-
-/** The choice `linkChoices` holds for `referent`, else its default. */
-const forReferent = (linkChoices: ReferentLinkChoices.Type, referent: Referent.Type): Type =>
-  HashMap.get(linkChoices, Referent.key(referent)).pipe(
-    Option.getOrElse(() => defaultFor(referent))
-  )
-
 export {
   CreateResource,
-  defaultFor,
   DontLink,
-  forReferent,
   InvalidLinkChoice,
   is,
   LinkToDecodedReferent,
