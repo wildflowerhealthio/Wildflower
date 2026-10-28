@@ -9,6 +9,7 @@ const decodeCatalog = Schema.decodeUnknownEither(AppCatalog.Catalog)
 const decodeLaunchUrl = Schema.decodeUnknownEither(AppCatalog.LaunchUrl)
 const decodeRedirectUri = Schema.decodeUnknownEither(AppCatalog.RedirectUri)
 const decodeContacts = Schema.decodeUnknownEither(AppCatalog.Contacts)
+const decodeHttpsUrl = Schema.decodeUnknownEither(AppCatalog.HttpsUrl)
 
 /** A valid public client registration for {@link app}. */
 const preassignedCredentials = {
@@ -71,16 +72,39 @@ const withCredentials = (change: object): object => ({
   preassignedCredentials: { ...preassignedCredentials, ...change },
 })
 
+/**
+ * `https:` URLs written as the URL parser writes them back (a bare origin
+ * takes its `/`), with queries and, if `withFragments`, fragments.
+ */
+const canonicalHttpsUrl = ({
+  withFragments,
+}: {
+  readonly withFragments: boolean
+}): fc.Arbitrary<string> =>
+  fc
+    .webUrl({ validSchemes: ['https'], withQueryParameters: true, withFragments })
+    .map((text) => new URL(text).href)
+
 /** `https:` URLs carrying neither `iss` nor `launch`, with paths, queries and fragments. */
-const httpsUrl = fc
-  .webUrl({ validSchemes: ['https'], withQueryParameters: true, withFragments: true })
-  .filter((text) => {
-    const { searchParams } = new URL(text)
-    return !searchParams.has('iss') && !searchParams.has('launch')
-  })
+const httpsUrl = canonicalHttpsUrl({ withFragments: true }).filter((text) => {
+  const { searchParams } = new URL(text)
+  return !searchParams.has('iss') && !searchParams.has('launch')
+})
 
 const email = fc.emailAddress().filter((text) => text.length <= 150)
-const contactUrl = fc.webUrl({ validSchemes: ['https'] })
+const contactUrl = fc.webUrl({ validSchemes: ['https'] }).map((text) => new URL(text).href)
+
+/**
+ * Ways of writing a canonical `https:` URL that the URL parser forgives and
+ * reads back as the same URL: padded, slashless, backslashed, upper-cased.
+ */
+const nonCanonicalSpelling = fc.constantFrom(
+  (text: string) => ` ${text}`,
+  (text: string) => `${text}\n`,
+  (text: string) => text.replace('https://', 'https:'),
+  (text: string) => text.replace('https://', 'https:\\\\'),
+  (text: string) => text.replace('https:', 'HTTPS:')
+)
 
 describe('Catalog', () => {
   it('decodes a minimal document, one with a client registration, and a backend service', () => {
@@ -351,10 +375,28 @@ describe('LaunchUrl', () => {
   })
 })
 
+describe('HttpsUrl', () => {
+  it('rejects any https: URL written other than as the URL parser writes it', () => {
+    fc.assert(
+      fc.property(httpsUrl, nonCanonicalSpelling, (text, respell) => {
+        const respelt = respell(text)
+        expect(new URL(respelt).href).toBe(text)
+        expect(Either.isLeft(decodeHttpsUrl(respelt))).toBe(true)
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('rejects a bare origin without its trailing slash, and accepts it with one', () => {
+    expect(Either.isLeft(decodeHttpsUrl('https://example.com'))).toBe(true)
+    expect(decodeHttpsUrl('https://example.com/')).toEqual(Either.right('https://example.com/'))
+  })
+})
+
 describe('RedirectUri', () => {
   it('accepts any https: URL without a fragment', () => {
     fc.assert(
-      fc.property(fc.webUrl({ validSchemes: ['https'], withQueryParameters: true }), (text) => {
+      fc.property(canonicalHttpsUrl({ withFragments: false }), (text) => {
         expect(decodeRedirectUri(text)).toEqual(Either.right(text))
       }),
       { numRuns: numRunsFor({ base: 100 }) }

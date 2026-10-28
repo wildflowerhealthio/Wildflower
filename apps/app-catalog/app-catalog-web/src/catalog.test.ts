@@ -80,7 +80,7 @@ describe('public/apps.json', () => {
         helpUrl: sectionUrl(app),
         privacyPolicyUrl: policyUrl('privacyPolicy'),
         termsOfServiceUrl: policyUrl('terms'),
-        publisher: { name: 'Wildflower Health', url: SITE_ORIGIN },
+        publisher: { name: 'Wildflower Health', url: sectionUrl('marketing') },
         registrationModes: ['preassigned'],
       })
       expect(entry?.publisher).toEqual(wildflowerPublisherOf(catalog))

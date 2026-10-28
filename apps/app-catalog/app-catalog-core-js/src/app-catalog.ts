@@ -24,7 +24,11 @@ const MAX_ELIGIBILITY_CRITERIA_LENGTH = 2048
 
 /**
  * A URL a published catalog links to: an absolute `https:` URL of at most
- * {@link MAX_URL_LENGTH} characters, carrying no credentials.
+ * {@link MAX_URL_LENGTH} characters, carrying no credentials, written exactly
+ * as the WHATWG URL parser writes it back. The parser forgives a padded
+ * `" https://x/"`, a slashless `https:example.com` or a backslashed
+ * `https:\\example.com`, which a stricter client might not; a bare origin
+ * takes its trailing `/`.
  */
 const HttpsUrl = Schema.String.pipe(
   Schema.maxLength(MAX_URL_LENGTH),
@@ -34,6 +38,9 @@ const HttpsUrl = Schema.String.pipe(
     if (url.protocol !== 'https:') return `${JSON.stringify(text)} is not an https: URL`
     if (url.username !== '' || url.password !== '') {
       return `${JSON.stringify(text)} carries credentials, which a published file must not`
+    }
+    if (url.href !== text) {
+      return `${JSON.stringify(text)} is not written canonically: write ${JSON.stringify(url.href)}`
     }
     return true
   }),
