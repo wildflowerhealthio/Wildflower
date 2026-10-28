@@ -1,4 +1,4 @@
-import { AppCatalog } from '@wildflowerhealthio/app-catalog-core-js'
+import { CATALOG_JSON_PATH } from '@wildflowerhealthio/app-catalog-core-js/location'
 import { SiteFooter, SiteHeader, fromApp } from '@wildflowerhealthio/branding-react'
 import type { JSX } from 'react'
 
@@ -18,7 +18,7 @@ function CatalogPage({ catalogJsonPath }: { readonly catalogJsonPath: string }):
         <h1 className={styles['catalog-page__title']}>Wildflower App Catalog</h1>
         <p>
           The SMART on FHIR apps worth trying with a Wildflower server, published as a HALO App
-          Catalog: <a href={catalogJsonPath}>{AppCatalog.CATALOG_JSON_PATH}</a>.
+          Catalog: <a href={catalogJsonPath}>{CATALOG_JSON_PATH}</a>.
         </p>
       </main>
       <SiteFooter />

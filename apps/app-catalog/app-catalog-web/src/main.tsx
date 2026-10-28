@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client'
 // page's own CSS modules so they win on tied specificity.
 import '@wildflowerhealthio/react-tundraish/styles'
 
-import { AppCatalog } from '@wildflowerhealthio/app-catalog-core-js'
+import { CATALOG_JSON_PATH } from '@wildflowerhealthio/app-catalog-core-js/location'
 import { restoreRedirectedUrl } from '@wildflowerhealthio/branding-core'
 import { addOsColorSchemeListener } from '@wildflowerhealthio/react-tundraish'
 import { CatalogPage } from './catalog-page.tsx'
@@ -26,7 +26,7 @@ addOsColorSchemeListener()
  */
 const servedDirectoryOf = (moduleUrl: string): string => new URL('..', moduleUrl).pathname
 
-const catalogJsonPath = `${servedDirectoryOf(import.meta.url)}${AppCatalog.CATALOG_JSON_PATH}`
+const catalogJsonPath = `${servedDirectoryOf(import.meta.url)}${CATALOG_JSON_PATH}`
 
 const container = document.getElementById('root')
 if (container !== null) {

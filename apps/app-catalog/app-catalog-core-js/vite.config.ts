@@ -11,6 +11,7 @@ export default defineConfig({
     platform: 'neutral',
     entry: {
       index: 'src/index.ts',
+      location: 'src/location.ts',
     },
   },
   test: {

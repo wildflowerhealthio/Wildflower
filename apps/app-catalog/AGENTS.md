@@ -13,9 +13,11 @@ app: it has no OAuth client, no homescreen tile and no dev tile.
   `SmartApp` with its `launchUrl`, or a `BackendService` with its onboarding
   endpoints; with their `Contact`, `Publisher`, `PreassignedCredentials` and
   `Intent`), each of HALO's conditional rules a filter naming the rule, the
-  document (`Catalog`, no two apps sharing an `id`), the closed `Tag` list with its `TAG_LABELS`, and
-  where the catalog is published (`CATALOG_PATH`, `CATALOG_JSON_PATH`,
-  `CATALOG_URL`). No React, no DOM.
+  document (`Catalog`, no two apps sharing an `id`), the closed `Tag` list
+  with its `TAG_LABELS`, and where the catalog is published (`CATALOG_URL`).
+  Its `./location` subpath holds the catalog's paths under its origin
+  (`CATALOG_PATH`, `CATALOG_JSON_PATH`) as plain strings, so a page or a build
+  step can name them without the schema. No React, no DOM.
 - **`app-catalog-web`** — the site at the catalog's origin. Its
   `public/apps.json` is the catalog, hand-edited; the build publishes it as
   both `/apps` and `/apps.json`. See its [README](./app-catalog-web/README.md).

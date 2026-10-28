@@ -14,6 +14,8 @@ import { sectionUrl } from '@wildflowerhealthio/branding-core'
 import { Scope } from '@wildflowerhealthio/scopes-core'
 import { Schema } from 'effect'
 
+import { CATALOG_PATH } from './location.ts'
+
 /** The longest URL HALO allows in any URL field. */
 const MAX_URL_LENGTH = 2048
 
@@ -407,24 +409,16 @@ const Catalog = Schema.Array(App).pipe(
 )
 type Catalog = typeof Catalog.Type
 
-/** The catalog's path under its origin, as HALO names it. */
-const CATALOG_PATH = 'apps'
-
 /**
- * The same catalog under a `.json` name, which GitHub Pages serves as
- * `application/json`; it serves the extensionless {@link CATALOG_PATH} as
- * `application/octet-stream`.
+ * Where the catalog is published: `GET` it for the whole catalog. Its paths
+ * under the origin are `./location.ts`'s, which a page can import without
+ * this schema.
  */
-const CATALOG_JSON_PATH = 'apps.json'
-
-/** Where the catalog is published: `GET` it for the whole catalog. */
 const CATALOG_URL = `${sectionUrl('appCatalog')}${CATALOG_PATH}`
 
 export {
   App,
   BackendService,
-  CATALOG_JSON_PATH,
-  CATALOG_PATH,
   CATALOG_URL,
   Catalog,
   Contact,

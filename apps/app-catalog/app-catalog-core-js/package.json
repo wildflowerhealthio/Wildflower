@@ -2,13 +2,17 @@
   "name": "@wildflowerhealthio/app-catalog-core-js",
   "version": "0.0.0",
   "private": true,
-  "description": "The schema of Wildflower's App Catalog, a HALO 2.0.0-DFT-preBallot App Catalog (https://simplifier.net/guide/halo/Home/HALO-Components/App-Catalog) published at `https://app-catalog.wildflowerhealth.io/apps`: `Catalog` (the document), `App` (one application object, a `SmartApp` or a `BackendService`) with its `Contact`, `Publisher`, `PreassignedCredentials` and `Intent`, the closed `Tag` list with its `TAG_LABELS`, and where the catalog is published (`CATALOG_PATH`, `CATALOG_JSON_PATH`, `CATALOG_URL`). No React, no DOM.",
+  "description": "The schema of Wildflower's App Catalog, a HALO 2.0.0-DFT-preBallot App Catalog (https://simplifier.net/guide/halo/Home/HALO-Components/App-Catalog) published at `https://app-catalog.wildflowerhealth.io/apps`: `Catalog` (the document), `App` (one application object, a `SmartApp` or a `BackendService`) with its `Contact`, `Publisher`, `PreassignedCredentials` and `Intent`, the closed `Tag` list with its `TAG_LABELS`, and where the catalog is published (`CATALOG_URL`; its paths `CATALOG_PATH` and `CATALOG_JSON_PATH`, schema-free under `./location`). No React, no DOM.",
   "license": "MIT",
   "type": "module",
   "exports": {
     ".": {
       "source": "./src/index.ts",
       "default": "./dist/index.js"
+    },
+    "./location": {
+      "source": "./src/location.ts",
+      "default": "./dist/location.js"
     },
     "./package.json": "./package.json"
   },
