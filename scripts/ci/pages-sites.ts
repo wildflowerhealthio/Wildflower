@@ -148,7 +148,9 @@ const APP_SITES: Readonly<Record<HostedAppId, AppSite>> = {
     buildDir: 'apps/app-catalog/app-catalog-web/dist',
     sentryDsnVariable: '',
     // The HALO catalog at `/apps`, and the same bytes at `/apps.json`, which
-    // Pages serves as `application/json` (`scripts/write-catalog.ts`).
+    // Pages serves as `application/json`: `app-catalog-core-js`'s
+    // `CATALOG_PATH` and `CATALOG_JSON_PATH`, which pages-sites.test.ts holds
+    // these to.
     requiredFiles: ['index.html', 'apps', 'apps.json'],
   },
 }

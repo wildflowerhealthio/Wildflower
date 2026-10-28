@@ -11,8 +11,10 @@ entry is a `smart-app`.
 ## The catalog file
 
 `public/apps.json` is the catalog, hand-edited, each entry's fields in the
-order the spec lists them. Vite copies it into `dist/`, and
-`scripts/write-catalog.ts`, the build's last step, copies it to `dist/apps`.
+order the spec lists them. Vite copies it into `dist/`, and a plugin in
+`vite.config.ts` publishes the same bytes at `apps`: `vp build` emits
+`dist/apps`, and `vp dev` answers `GET /apps` with the file (as
+`application/json`) rather than the page.
 
 ## Where a static catalog falls short of HALO
 

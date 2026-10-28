@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc && vp build && node ./scripts/write-catalog.ts",
+    "build": "tsc && vp build",
     "check": "vp check",
     "dev": "vp dev",
     "preview": "vp preview",
