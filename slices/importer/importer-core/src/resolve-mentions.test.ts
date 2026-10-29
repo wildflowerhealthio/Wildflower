@@ -1,5 +1,6 @@
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
+  DocumentReference,
   type FhirResource,
   type FhirResourceWithId,
   MedicationRequest,
@@ -10,14 +11,15 @@ import {
   FormatDecode,
   LinkChoice,
   type LinkableResource,
+  MentionLinkChoices,
   Referent,
   type ReferentLinkChoices,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { Effect, HashMap, Schema, TestContext } from 'effect'
+import { Effect, HashMap, Option, Schema, TestContext } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import type { DecodedBatch } from './read-batch.ts'
-import type { FormatKind } from './registry.ts'
+import { type FormatKind, formatRegistry } from './registry.ts'
 import {
   resolveMentions,
   discoverReferents,
@@ -103,11 +105,13 @@ const batchOf = (formats: {
   unrecognizedFiles: [],
 })
 
-/** `batch` with its mentions resolved on `linkChoices`, on the test clock. */
+/** `batch` with its mentions resolved on `linkChoices`, and on `mentionLinkChoices` when given, on the test clock. */
 const resolvedOnTestClock = (
   batch: DecodedBatch,
-  linkChoices: ReferentLinkChoices.Type
-): ResolvedBatch => runOnTestClock(resolveMentions(batch, linkChoices))
+  linkChoices: ReferentLinkChoices.Type,
+  mentionLinkChoices: MentionLinkChoices.Type = MentionLinkChoices.empty
+): ResolvedBatch =>
+  runOnTestClock(resolveMentions(batch, { referentLinkChoices: linkChoices, mentionLinkChoices }))
 
 /** The resource keyed `key` in `kind`'s decoded file. */
 const at = (batch: DecodedBatch, kind: FormatKind, key: string): FhirResource | undefined =>
@@ -171,10 +175,12 @@ describe('resolveMentions', () => {
   it('gives an empty batch back as it is, with no linked records and no link targets', () => {
     const batch = batchOf({})
 
-    const { linkTargetsByReferentKey, ...resolved } = resolvedOnTestClock(batch, HashMap.empty())
+    const { linkTargetsByReferentKey, unlinkedMentionsByFormatKind, ...resolved } =
+      resolvedOnTestClock(batch, HashMap.empty())
 
     expect(resolved).toEqual({ ...batch, linkedRecords: [] })
     expect(HashMap.isEmpty(linkTargetsByReferentKey)).toBe(true)
+    expect(HashMap.isEmpty(unlinkedMentionsByFormatKind)).toBe(true)
   })
 
   it('links a mention in one format to the person another format holds', () => {
@@ -202,7 +208,7 @@ describe('resolveMentions', () => {
       LinkChoice.LinkToStoredResource({ resource: STORED_TYRA }),
     ])
 
-    const resolved = runOnTestClock(resolveMentions(batch, choices))
+    const resolved = resolvedOnTestClock(batch, choices)
 
     expect(
       (['lifelabs-pdf', 'dicom'] as const).map((kind) =>
@@ -231,12 +237,105 @@ describe('resolveMentions', () => {
 
     expect(
       runOnTestClock(
-        Effect.either(resolveMentions(batch, HashMap.make([PERSON, LinkChoice.DontLink()])))
+        Effect.either(
+          resolveMentions(batch, {
+            referentLinkChoices: HashMap.make([PERSON, LinkChoice.DontLink()]),
+            mentionLinkChoices: MentionLinkChoices.empty,
+          })
+        )
       )
     ).toMatchObject({
       _tag: 'Left',
       left: { _tag: 'InvalidLinkChoice', referentKey: PERSON, reason: 'NotAllowedForReferent' },
     })
+  })
+})
+
+describe('resolveMentions with mention link choices', () => {
+  const batch = batchOf({
+    har: [request('rx-1', accountSubject), request('rx-2', accountSubject)],
+    'lifelabs-pdf': [patient('p-1', SOURCE_PATIENT)],
+  })
+
+  it('lands a mention one format chose for on its own where its choice says, the rest where their referent does', () => {
+    const resolved = resolvedOnTestClock(
+      batch,
+      HashMap.make([PERSON, LinkChoice.LinkToStoredResource({ resource: STORED_TYRA })]),
+      MentionLinkChoices.set(
+        MentionLinkChoices.empty,
+        'har/k-1',
+        'subject',
+        LinkChoice.LinkToDecodedReferent({ referentKey: PERSON })
+      )
+    )
+
+    expect([
+      subjectOf(at(resolved, 'har', 'har/k-0')),
+      subjectOf(at(resolved, 'har', 'har/k-1')),
+    ]).toEqual([null, 'Patient/s-1'])
+    // A mention link choice teaches nothing: the stored person, standing in
+    // for the decoded one, assumes only what its own referent brings.
+    expect(at(resolved, 'lifelabs-pdf', 'lifelabs-pdf/k-0')?.id).toBe('s-1')
+    expect(identifiersOf(at(resolved, 'lifelabs-pdf', 'lifelabs-pdf/k-0'))).not.toContain(
+      `${CUSTOMER}|c-9`
+    )
+  })
+
+  it('lists what the referent choices alone leave unlinked in each format, a mention link choice notwithstanding', () => {
+    const onReferents = resolvedOnTestClock(batch, HashMap.empty())
+    const withChosen = resolvedOnTestClock(
+      batch,
+      HashMap.empty(),
+      MentionLinkChoices.set(
+        MentionLinkChoices.empty,
+        'har/k-1',
+        'subject',
+        LinkChoice.LinkToDecodedReferent({ referentKey: PERSON })
+      )
+    )
+
+    const listed = (resolved: ResolvedBatch): readonly (readonly [string, readonly string[]])[] =>
+      Array.from(
+        HashMap.map(resolved.unlinkedMentionsByFormatKind, (unlinked) =>
+          unlinked.map(({ _tag, mentioningResourceKey }) => `${_tag} ${mentioningResourceKey}`)
+        )
+      ).toSorted(([left], [right]) => left.localeCompare(right))
+    expect(listed(onReferents)).toEqual([
+      ['har', ['Dangling har/k-0', 'Dangling har/k-1']],
+      ['lifelabs-pdf', []],
+    ])
+    expect(listed(withChosen)).toEqual(listed(onReferents))
+    expect(subjectOf(at(withChosen, 'har', 'har/k-1'))).toBe('Patient/p-1')
+  })
+
+  it('leaves a format’s own source file out of what it lists as unlinked', () => {
+    const sourceFile = Schema.decodeUnknownSync(withMandatoryId(DocumentReference.Schema))({
+      resourceType: 'DocumentReference',
+      id: 'src-1',
+      status: 'current',
+      category: [
+        {
+          coding: [
+            {
+              system: formatRegistry.har.sourceFileFormat.coding.system,
+              code: formatRegistry.har.sourceFileFormat.coding.code,
+            },
+          ],
+        },
+      ],
+      content: [{ attachment: { contentType: 'application/json' } }],
+    })
+
+    const resolved = resolvedOnTestClock(
+      batchOf({ har: [sourceFile, request('rx-1', accountSubject)] }),
+      HashMap.empty()
+    )
+
+    expect(
+      Option.map(HashMap.get(resolved.unlinkedMentionsByFormatKind, 'har'), (unlinked) =>
+        unlinked.map(({ mentioningResourceKey }) => mentioningResourceKey)
+      )
+    ).toEqual(Option.some(['har/k-1']))
   })
 })
 
@@ -252,7 +351,9 @@ describe('resolveMentionsWithFallback', () => {
     readonly linkChoices: ReadonlyArray<readonly [string, LinkChoice.Type]>
     readonly targets: readonly string[]
   } => {
-    const resolved = runOnTestClock(resolveMentionsWithFallback(batch, defaults, chosen))
+    const resolved = runOnTestClock(
+      resolveMentionsWithFallback(batch, defaults, chosen, MentionLinkChoices.empty)
+    )
     return {
       linkChoices: Array.from(HashMap.entries(resolved.linkChoices)),
       targets: Array.from(

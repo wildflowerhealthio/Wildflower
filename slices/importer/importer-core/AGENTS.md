@@ -71,20 +71,29 @@ write plan with this package alone.
   against what is **stored** on the device, the identity map's three states
   (`importer-fundamentals`' AGENTS).
   **`ResolvedBatch`** is a decoded batch, each format slot's `decoded`
-  holding the resolved file, plus the two fields a decoded batch cannot hold:
-  its **`linkedRecords`** (the resources it only mentions, written beside the
-  files, no format's) and **`linkTargetsByReferentKey`** (each referent's
-  link target by `Referent.key`, what the referent rows show a choice
-  resolved to). Only `resolveMentions` makes one, and the diff, the preview
-  and the confirm take nothing else.
+  holding the resolved file, plus the three fields a decoded batch cannot
+  hold: its **`linkedRecords`** (the resources it only mentions, written
+  beside the files, no format's), **`linkTargetsByReferentKey`** (each
+  referent's link target by `Referent.key`, what the referent rows show a
+  choice resolved to) and **`unlinkedMentionsByFormatKind`** (what the
+  referent link choices alone leave unlinked in each claimed format,
+  `UnlinkedMention.collect` on the file resolved before any mention link
+  choice, the format's own source files aside: the rows the review lists as
+  needing a patient or a provider, which a mention link choice keeps listed).
+  Only `resolveMentions` makes one, and the diff, the preview and the confirm
+  take nothing else.
   **`discoverReferents(batch)`** is `Referent.discover` over every claimed
   format's `decoded`: one referent per identity across formats,
   format-then-review order, those with a resource first.
-  **`resolveMentions(batch, linkChoices)`** resolves every mention in every
+  **`resolveMentions(batch, { referentLinkChoices, mentionLinkChoices })`**
+  (a **`LinkChoices`**) resolves every mention in every
   claimed format's `decoded` on one plan over the batch's referents
-  (`LinkPlan.make` once, over every claimed format's decoded file), resolving
+  (`LinkPlan.make` once, over every claimed format's decoded file, the
+  mention link choices laid on it with `LinkPlan.withMentionLinkChoices`), resolving
   each format in its own slot (`FileResolution.resolveFile(plan)`), so a mention in one format
-  links to a referent another holds; it fills `linkedRecords` with the
+  links to a referent another holds, and a review key being unique across
+  the batch, a mention link choice names one mention of one format's
+  resource; it fills `linkedRecords` with the
   records the batch only mentions, each with its `origin`, `Stored` or
   `Provisional` (`FileResolution.linkedRecords`), so a
   stored person several formats mention is written once, and
@@ -92,13 +101,16 @@ write plan with this package alone.
   reads each referent's link target without planning again. Keys and section
   titles are kept; the format slots are reassembled through `collectFormats`,
   a slot nothing moved in coming back as it was, and a batch with no claimed
-  format comes back with no linked records and no link targets. It fails with
+  format comes back with no linked records, no link targets and nothing
+  unlinked. It fails with
   `Referent.DuplicateReferent` or `LinkChoice.InvalidLinkChoice`, as the plan
-  does.
-  **`resolveMentionsWithFallback(batch, defaults, chosen)`** is what the
+  does; a mention link choice its mention cannot take is no choice, never a
+  failure.
+  **`resolveMentionsWithFallback(batch, defaults, chosen, mentionLinkChoices)`** is what the
   screen resolves: `resolveMentions` on the reviewer's choices over the
-  searched defaults (`ReferentLinkChoices.union`), as `{ batch, linkChoices }`: the `ResolvedBatch` and the
-  choices it was resolved on. A choice that
+  searched defaults (`ReferentLinkChoices.union`) and their mention link
+  choices, as `{ batch, linkChoices }`: the `ResolvedBatch` and the referent
+  choices it was resolved on. A referent choice that
   cannot be resolved (`InvalidLinkChoice`) falls back: the reviewer's own
   choice to its searched default, a default to its kind's default
   (`ReferentLinkChoices.remove`); a failure
