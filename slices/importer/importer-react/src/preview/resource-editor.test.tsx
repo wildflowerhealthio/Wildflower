@@ -108,6 +108,22 @@ describe('tryKeep', () => {
     }
   })
 
+  it('should refuse an edit that removes the id', () => {
+    // Arrange
+    const original = parsedPatient('pat-1')
+
+    // Act — a valid Patient with no id at all, which could not be written
+    const result = tryKeep(JSON.stringify({ resourceType: 'Patient' }), original)
+
+    // Assert
+    expect(Either.isLeft(result)).toBe(true)
+    if (Either.isLeft(result) && result.left instanceof ImmutableFieldChangedError) {
+      expect(result.left.field).toBe('id')
+    } else {
+      throw new Error('expected an ImmutableFieldChangedError for id')
+    }
+  })
+
   it('should refuse a change to resourceType', () => {
     // Arrange — an Observation is a supported resource, but not the same type.
     const original = parsedPatient('pat-1')

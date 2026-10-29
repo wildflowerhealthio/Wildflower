@@ -1,4 +1,4 @@
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import type { PlannedWorkout } from '@wildflowerhealthio/strength-core-js'
 import { Option } from 'effect'
 
@@ -10,7 +10,7 @@ import { Option } from 'effect'
  */
 const submittedWorkoutResources = (
   submitted: PlannedWorkout.Submitted
-): readonly FhirResource[] => [
+): readonly FhirResourceWithId[] => [
   submitted.workoutProcedure,
   ...submitted.exerciseSetObservations,
   ...submitted.exerciseRequestProgresses.flatMap(({ decision, current, next }) =>

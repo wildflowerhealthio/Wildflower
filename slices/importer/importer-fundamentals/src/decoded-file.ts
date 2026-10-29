@@ -1,9 +1,10 @@
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 
+/** One reviewed resource: its review key, its title, and the resource, which has an id to be written under. */
 interface Resource {
   readonly key: string
   readonly title: string
-  readonly resource: FhirResource
+  readonly resource: FhirResourceWithId
 }
 
 interface Section {

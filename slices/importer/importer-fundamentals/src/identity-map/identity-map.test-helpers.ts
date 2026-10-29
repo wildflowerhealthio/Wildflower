@@ -6,12 +6,15 @@
  * @packageDocumentation
  */
 
+import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
   FhirResourceSchema,
+  MedicationRequest,
   Observation,
   Patient,
   Practitioner,
   type FhirResource,
+  type FhirResourceWithId,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   Arbitrary,
@@ -25,8 +28,9 @@ import {
 } from 'effect'
 
 import type * as DecodedFile from '../decoded-file.ts'
-import * as IdentityMap from './identity-map.ts'
+import * as FileResolution from './file-resolution.ts'
 import * as LinkChoice from './link-choice.ts'
+import * as LinkPlan from './link-plan.ts'
 import * as LinkableLogicalReference from './linkable-logical-reference.ts'
 import * as LinkableResource from './linkable-resource.ts'
 import type * as ReferentLinkChoices from './referent-link-choices.ts'
@@ -45,25 +49,52 @@ const ABSOLUTE = 'https://elsewhere.example/fhir/Patient/1'
 const runOnTestClock = <A, E>(effect: Effect.Effect<A, E>): A =>
   Effect.runSync(Effect.provide(effect, TestContext.TestContext))
 
-/** `IdentityMap.apply` over `files`, run on the test clock. */
-const applyAcrossOnTestClock = (
+/**
+ * A batch's `files` resolved on `linkChoices` as `importer-core`'s
+ * `resolveMentions` resolves a batch's formats: one link plan over the whole
+ * batch, every file resolved on it in the order given, and the batch's linked
+ * records off the plan.
+ */
+const resolveAcross = (
   files: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>,
   linkChoices: ReferentLinkChoices.Type
-): Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile> =>
-  runOnTestClock(IdentityMap.apply(files, linkChoices))
+): Effect.Effect<
+  {
+    readonly resolvedFiles: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>
+    readonly linkedRecords: readonly FileResolution.LinkedRecord[]
+  },
+  Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice
+> =>
+  Effect.map(LinkPlan.make(files, linkChoices), (plan) => ({
+    resolvedFiles: Array.map(files, FileResolution.resolveFile(plan)),
+    linkedRecords: FileResolution.linkedRecords(plan),
+  }))
 
-/** `IdentityMap.apply` over a batch of one `file`, run on the test clock. */
-const applyOnTestClock = (
+/** {@link resolveAcross} over `files`, run on the test clock. */
+const resolveAcrossOnTestClock = (
+  files: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>,
+  linkChoices: ReferentLinkChoices.Type
+): Effect.Effect.Success<ReturnType<typeof resolveAcross>> =>
+  runOnTestClock(resolveAcross(files, linkChoices))
+
+/** The one resolved file of a batch of one `file`, run on the test clock. */
+const resolveOnTestClock = (
   file: DecodedFile.DecodedFile,
   linkChoices: ReferentLinkChoices.Type
 ): DecodedFile.DecodedFile =>
-  Array.headNonEmpty(applyAcrossOnTestClock(Array.of(file), linkChoices))
+  Array.headNonEmpty(resolveAcrossOnTestClock(Array.of(file), linkChoices).resolvedFiles)
+
+/** The linked records of a batch of one `file`, run on the test clock. */
+const linkedRecordsOnTestClock = (
+  file: DecodedFile.DecodedFile,
+  linkChoices: ReferentLinkChoices.Type
+): readonly FileResolution.LinkedRecord[] =>
+  resolveAcrossOnTestClock(Array.of(file), linkChoices).linkedRecords
 
 /** `Referent.discover` over a batch of one `file`, run on the test clock. */
 const discoverOnTestClock = (file: DecodedFile.DecodedFile): readonly Referent.Type[] =>
   runOnTestClock(Referent.discover([file]))
 
-const decodeResource = Schema.decodeUnknownSync(FhirResourceSchema)
 const encodeResource = Schema.encodeSync(FhirResourceSchema)
 
 /** A resource as its wire JSON text: what "byte-identical" compares. */
@@ -124,8 +155,8 @@ const patient = ({
   family = 'Banks',
   given = 'Tyra',
   birthDate = '1990-01-02',
-}: PatientArgs): Patient.Type =>
-  Schema.decodeUnknownSync(Patient.Schema)({
+}: PatientArgs): Patient.Type & { readonly id: string } =>
+  Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
     resourceType: 'Patient',
     id,
     identifier: [{ system, value }],
@@ -134,8 +165,12 @@ const patient = ({
   })
 
 /** A decoded `Practitioner` named only by printed `text`, as LifeLabs writes one. */
-const practitioner = (id: string, text: string, system = SOURCE_PRACTITIONER): Practitioner.Type =>
-  Schema.decodeUnknownSync(Practitioner.Schema)({
+const practitioner = (
+  id: string,
+  text: string,
+  system = SOURCE_PRACTITIONER
+): Practitioner.Type & { readonly id: string } =>
+  Schema.decodeUnknownSync(withMandatoryId(Practitioner.Schema))({
     resourceType: 'Practitioner',
     id,
     identifier: [{ system, value: id }],
@@ -167,8 +202,8 @@ const untypedSubject = (value: string): object => ({
 })
 
 /** A decoded `MedicationRequest` with the given `subject` and optional `requester`. */
-const request = (id: string, subject: object, requester?: object): FhirResource =>
-  decodeResource({
+const request = (id: string, subject: object, requester?: object): FhirResourceWithId =>
+  Schema.decodeUnknownSync(withMandatoryId(MedicationRequest.Schema))({
     resourceType: 'MedicationRequest',
     id,
     status: 'active',
@@ -183,8 +218,8 @@ const observation = (
   id: string,
   subject?: object,
   performer: readonly object[] = []
-): FhirResource =>
-  decodeResource({
+): FhirResourceWithId =>
+  Schema.decodeUnknownSync(withMandatoryId(Observation.Schema))({
     resourceType: 'Observation',
     id,
     status: 'final',
@@ -194,7 +229,7 @@ const observation = (
   })
 
 /** A decoded file of one section, keyed `k-<index>`. */
-const fileOf = (...resources: readonly FhirResource[]): DecodedFile.DecodedFile => ({
+const fileOf = (...resources: readonly FhirResourceWithId[]): DecodedFile.DecodedFile => ({
   sections: [
     {
       title: 'Resources',
@@ -209,14 +244,11 @@ const fileOf = (...resources: readonly FhirResource[]): DecodedFile.DecodedFile 
 })
 
 /** A stored resource: the decoded one with its `id` known to be set. */
-const storedOf = (resource: FhirResource): LinkableResource.WithId => {
-  if (
-    (resource.resourceType !== 'Patient' && resource.resourceType !== 'Practitioner') ||
-    resource.id === null
-  ) {
-    throw new Error('a stored resource is a Patient or Practitioner with an id')
+const storedOf = (resource: FhirResourceWithId): LinkableResource.WithId => {
+  if (resource.resourceType !== 'Patient' && resource.resourceType !== 'Practitioner') {
+    throw new Error('a stored resource is a Patient or Practitioner')
   }
-  return { ...resource, id: resource.id }
+  return resource
 }
 
 const POOL = ['a', 'b'] as const
@@ -259,12 +291,12 @@ const performerArbitrary: fc.Arbitrary<object> = fc.oneof(
 )
 
 /** Generated resources with no reference into the pool, so no map entry can touch them. */
-const unrelatedArbitrary: fc.Arbitrary<FhirResource> = Arbitrary.make(Observation.Schema).map(
-  (generated): FhirResource => ({ ...generated, contained: [] })
-)
+const unrelatedArbitrary: fc.Arbitrary<FhirResourceWithId> = fc
+  .tuple(Arbitrary.make(Observation.Schema), fc.uuid())
+  .map(([generated, id]): FhirResourceWithId => ({ ...generated, id, contained: [] }))
 
 /** A generated resource, over the pool of identities. */
-const resourceArbitrary: fc.Arbitrary<FhirResource> = fc.oneof(
+const resourceArbitrary: fc.Arbitrary<FhirResourceWithId> = fc.oneof(
   fc
     .record({
       value: valueArbitrary,
@@ -399,8 +431,8 @@ const fileWithChoicesArbitrary: fc.Arbitrary<{
 /**
  * Whether a mention of `file` is one several of its decoded resources answer
  * to and none is keyed by. On the decoded file it is a referent of its own;
- * once those resources are placed on one stored resource, that resource alone
- * answers to it, so the placed file has a referent fewer.
+ * once those resources resolve to one stored resource, that resource alone
+ * answers to it, so the resolved file has a referent fewer.
  */
 const hasMentionSeveralResourcesAnswerTo = (file: DecodedFile.DecodedFile): boolean => {
   const referents = discoverOnTestClock(file)
@@ -417,8 +449,8 @@ const hasMentionSeveralResourcesAnswerTo = (file: DecodedFile.DecodedFile): bool
 
 /**
  * Whether following the `LinkToDecodedReferent` choices of `choices` from
- * some referent comes back to it. A cycle places its members on a provisional
- * resource, which the placed file then holds as a resource keyed by one of
+ * some referent comes back to it. A cycle links its members to a provisional
+ * resource, which the resolved file then holds as a resource keyed by one of
  * them, whose `LinkToDecodedReferent` no longer fits it.
  */
 const hasLinkCycle = (choices: ReferentLinkChoices.Type): boolean =>
@@ -440,7 +472,7 @@ const hasLinkCycle = (choices: ReferentLinkChoices.Type): boolean =>
  * Whether a mention of `file` names something a stored resource `choices`
  * link to answers to, by an identifier it carries or derives (a provider's
  * printed name). On the decoded file the mention is a referent of its own;
- * once the stored resource is placed in the file, it answers to it.
+ * once the stored resource stands in the resolved file, it answers to it.
  */
 const hasMentionALinkedStoredResourceAnswersTo = (
   file: DecodedFile.DecodedFile,
@@ -465,7 +497,7 @@ const hasMentionALinkedStoredResourceAnswersTo = (
 }
 
 /**
- * A generated decoded file and choices whose placed file has the decoded
+ * A generated decoded file and choices whose resolved file has the decoded
  * file's referents, of the same kinds, so the choices apply to it as they did
  * to the decoded one. That rules out a link cycle ({@link hasLinkCycle}), a
  * mention several decoded resources answer to
@@ -490,8 +522,8 @@ export {
   STORED_SMITH,
   STORED_TYRA,
   anyChoicesArbitrary,
-  applyAcrossOnTestClock,
-  applyOnTestClock,
+  resolveAcrossOnTestClock,
+  resolveOnTestClock,
   customerSubject,
   discoverOnTestClock,
   fileArbitrary,
@@ -499,7 +531,9 @@ export {
   fileWireOf,
   fileWithChoicesArbitrary,
   fileWithReapplicableChoicesArbitrary,
+  linkedRecordsOnTestClock,
   literalSubject,
+  resolveAcross,
   namedRequester,
   observation,
   patient,

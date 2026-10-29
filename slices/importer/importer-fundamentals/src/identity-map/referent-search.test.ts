@@ -1,6 +1,11 @@
 import { HttpClient, HttpClientRequest, HttpClientResponse, UrlParams } from '@effect/platform'
 import { FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/clients'
-import { Patient, Practitioner, type FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
+import {
+  Patient,
+  Practitioner,
+  type FhirResourceWithId,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import { Effect, Exit, HashMap, Layer, Option, Schema, TestContext } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -90,7 +95,7 @@ const search = async (
 }
 
 /** The only referent `resources` hold. */
-const onlyReferent = (...resources: readonly FhirResource[]): Referent.Type => {
+const onlyReferent = (...resources: readonly FhirResourceWithId[]): Referent.Type => {
   const [referent, ...rest] = discoverOnTestClock(fileOf(...resources))
   if (referent === undefined || rest.length > 0) throw new Error('expected one referent')
   return referent
@@ -201,8 +206,8 @@ describe('ReferentSearch.defaultChoice', () => {
   })
 
   it('should search a derived identifier the decode already carries only as the derived one', async () => {
-    const placedBefore = onlyReferent(
-      Schema.decodeUnknownSync(Patient.Schema)({
+    const resolvedBefore = onlyReferent(
+      Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
         resourceType: 'Patient',
         id: 'p-1',
         identifier: [
@@ -214,7 +219,7 @@ describe('ReferentSearch.defaultChoice', () => {
       })
     )
 
-    const { urls } = await search(placedBefore)
+    const { urls } = await search(resolvedBefore)
 
     expect(searchesOf(urls)).toEqual([`/Patient ${TYRA_OWN}`, `/Patient ${TYRA_DERIVED}`])
   })

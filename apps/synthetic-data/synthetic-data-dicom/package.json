@@ -35,6 +35,7 @@
     "@wildflowerhealthio/dicom": "workspace:*",
     "@wildflowerhealthio/dicom-importer-core": "workspace:*",
     "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/fhir-r4-adoption": "workspace:*",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "@wildflowerhealthio/synthetic-data-fundamentals": "workspace:*",
     "dicom-parser": "catalog:",

@@ -34,6 +34,7 @@
     "@types/node": "catalog:",
     "@wildflowerhealthio/dicom": "workspace:*",
     "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/fhir-r4-adoption": "workspace:*",
     "@wildflowerhealthio/importer-fundamentals": "workspace:*",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "effect": "catalog:",
@@ -46,6 +47,7 @@
   "peerDependencies": {
     "@wildflowerhealthio/dicom": "workspace:*",
     "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/fhir-r4-adoption": "workspace:*",
     "@wildflowerhealthio/importer-fundamentals": "workspace:*",
     "@wildflowerhealthio/kitchen-sink": "workspace:*",
     "effect": "catalog:"

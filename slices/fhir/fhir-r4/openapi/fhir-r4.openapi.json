@@ -23067,6 +23067,16 @@
               }
             }
           },
+          "400": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Forbidden"
           },

@@ -15,6 +15,7 @@ import {
   DifferingDemographics,
   LinkChoice,
   Referent,
+  ReferentLinkChoices,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Array, Effect, HashMap, Option } from 'effect'
 
@@ -100,7 +101,7 @@ const buildAll = (
 ): HashMap.HashMap<string, BuiltReferentLine> => {
   const entries = ofType.map((referent) => {
     const referentKey = Referent.key(referent)
-    const choice = LinkChoice.forReferent(inputs.linkChoices, referent)
+    const choice = ReferentLinkChoices.forReferent(inputs.linkChoices, referent)
     const choiceValue = LinkChoiceOptions.valueOf(choice)
     const built = HashMap.get(previous, referentKey).pipe(
       Option.filter((before) => builtFromSame(before, choiceValue, inputs)),

@@ -77,9 +77,10 @@ const OperationOutcomeIssueStruct = mutableEncoded(
 )
 
 // FHIR R4 § OperationOutcome — modeled only as far as a caller needs to
-// render a batch-response entry's diagnostics (`Bundle.entry.response.outcome`,
-// which the spec types as any `Resource`). Not a member of `FhirResourceSchema`:
-// it exists only inside an entry response, never on its own. `resourceType`
+// render its diagnostics: a batch-response entry's (`Bundle.entry.response.outcome`,
+// which the spec types as any `Resource`), or the body a server answers a
+// refused Bundle with. Not a member of `FhirResourceSchema`: it is never
+// stored on its own. `resourceType`
 // stays `Schema.String` (not a literal) so this stays mutually assignable with
 // the base `Resource` the entry-response schema is pinned against — the
 // server always sends `"OperationOutcome"` here regardless.
@@ -91,6 +92,48 @@ const OperationOutcomeStruct = mutableEncoded(
     }),
   })
 )
+
+/**
+ * The OpenAPI projection of {@link OperationOutcomeStruct}, written out as the
+ * Bundle's is: the struct's backbone fields carry no JSON Schema of their own.
+ */
+const operationOutcomeJsonSchema = {
+  type: 'object',
+  title: 'OperationOutcome',
+  description:
+    'A collection of error, warning, or information messages that result from a system action.',
+  required: ['resourceType'],
+  properties: {
+    resourceType: { type: 'string', enum: ['OperationOutcome'] },
+    issue: {
+      type: 'array',
+      description: 'An error, warning, or information message that results from a system action.',
+      items: {
+        type: 'object',
+        required: ['severity', 'code'],
+        properties: {
+          severity: { type: 'string', description: 'fatal | error | warning | information' },
+          code: { type: 'string', description: 'Error or warning code.' },
+          diagnostics: {
+            type: 'string',
+            description: 'Additional diagnostic information about the issue.',
+          },
+          details: {
+            type: 'object',
+            properties: { text: { type: 'string' } },
+            description: 'Additional details about the error.',
+          },
+        },
+      },
+    },
+  },
+} as const
+
+/** An OperationOutcome on its own: the body a server answers a refused Bundle with. */
+const OperationOutcomeSchema = OperationOutcomeStruct.annotations({
+  identifier: 'OperationOutcome',
+  jsonSchema: operationOutcomeJsonSchema,
+})
 
 // FHIR R4 § Bundle.entry.response — populated on transaction/batch-response.
 // `outcome` carries an OperationOutcome with the entry's diagnostics (errors
@@ -300,4 +343,15 @@ const BundleSchema = <FhirResourceSchema extends Schema.Schema.AnyNoContext>(
 /** Decoded shape of a Bundle entry's `response` — including the `outcome` OperationOutcome. */
 type EntryResponseType = typeof EntryResponseSchema.Type
 
-export { BundleType, type EntryResponseType, EntrySchema, BundleSchema as Schema, type BundleValue }
+/** Decoded shape of an OperationOutcome, as far as its issues' rendering goes. */
+type OperationOutcomeType = typeof OperationOutcomeStruct.Type
+
+export {
+  BundleType,
+  type EntryResponseType,
+  EntrySchema,
+  OperationOutcomeSchema,
+  type OperationOutcomeType,
+  BundleSchema as Schema,
+  type BundleValue,
+}

@@ -1,7 +1,6 @@
 export {
   classifyAgainstServer,
   type DiffStatus,
-  diffKey,
   normalizedEncode,
   resetFieldToServer,
   SERVER_MANAGED_META_FIELDS,
@@ -36,11 +35,11 @@ export {
 export {
   BatchEntriesRejected,
   type BatchEntryOutcome,
-  entryUrl,
   groupByStatus,
   NO_RESPONSE_STATUS,
   persistBatchBundle,
   persistBatchBundleOrFail,
+  persistTransactionBundle,
   statusOk,
   type StatusGroup,
   type WriteIssue,

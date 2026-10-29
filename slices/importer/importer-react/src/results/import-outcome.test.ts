@@ -5,11 +5,13 @@ import { describe, expect, it, test } from 'vite-plus/test'
 
 import {
   allResults,
+  type BatchOutcome,
   type FileImportResult,
   groupResultsByStatus,
   importOutcome,
   isPartialBatch,
   isPartialOutcome,
+  type ResourceResult,
   summarizeBatch,
   writtenCount,
 } from './import-outcome.ts'
@@ -20,6 +22,7 @@ import {
  * semantics hold: **any** non-2xx makes the import partial, `written` is exactly
  * the count of accepted entries, and every result is tagged with its unit's
  * title so the batch-wide view can group by status while still naming rows.
+ * The batch's linked records count as resources, never as files.
  */
 
 describe('importOutcome', () => {
@@ -52,11 +55,11 @@ describe('importOutcome', () => {
 
 describe('summarizeBatch and isPartialBatch', () => {
   it('sums written, attempted, and excluded, and counts imported against total files', () => {
-    const batch: FileImportResult[] = [
+    const batch = batchOf([
       imported('a', 3, 0, 2),
       imported('b', 1, 1, 0),
       { _tag: 'skipped', id: 'd', title: 'd.har', reason: 'nothing' },
-    ]
+    ])
     const summary = summarizeBatch(batch)
     expect(summary.written).toBe(4) // 3 + 1
     expect(summary.attempted).toBe(5) // 3 + 2
@@ -65,24 +68,37 @@ describe('summarizeBatch and isPartialBatch', () => {
     expect(summary.totalFiles).toBe(3)
   })
 
+  it('counts a linked record as a resource, not a file', () => {
+    const batch = batchOf([imported('a', 2, 0)], linkedResults(1, 1))
+    const summary = summarizeBatch(batch)
+    expect(summary.written).toBe(3) // 2 + 1
+    expect(summary.attempted).toBe(4) // 2 + 2
+    expect(summary.importedFiles).toBe(1)
+    expect(summary.totalFiles).toBe(1)
+  })
+
   it('is partial when any resource failed to write, complete otherwise', () => {
-    expect(isPartialBatch([imported('a', 3, 0)])).toBe(false)
+    expect(isPartialBatch(batchOf([imported('a', 3, 0)]))).toBe(false)
     // A skipped file alone is not a failure — an empty review is ordinary data.
     expect(
-      isPartialBatch([
-        imported('a', 3, 0),
-        { _tag: 'skipped', id: 'b', title: 'b.har', reason: 'nothing' },
-      ])
+      isPartialBatch(
+        batchOf([
+          imported('a', 3, 0),
+          { _tag: 'skipped', id: 'b', title: 'b.har', reason: 'nothing' },
+        ])
+      )
     ).toBe(false)
     // A rejected resource (the source-file archive counts, since it writes in
-    // the same batch) makes the whole batch partial.
-    expect(isPartialBatch([imported('a', 2, 1)])).toBe(true)
+    // the same transaction) makes the whole batch partial.
+    expect(isPartialBatch(batchOf([imported('a', 2, 1)]))).toBe(true)
+    // So does a rejected linked record.
+    expect(isPartialBatch(batchOf([imported('a', 2, 0)], linkedResults(0, 1)))).toBe(true)
   })
 })
 
 describe('groupResultsByStatus', () => {
   it('groups across the whole batch and sorts failures first, then by ascending code', () => {
-    const batch: FileImportResult[] = [
+    const batch = batchOf([
       fileWith('a', [
         outcome('Patient/p1', '201 Created', true),
         outcome('Observation/o1', '404 Not Found', false),
@@ -92,7 +108,7 @@ describe('groupResultsByStatus', () => {
         outcome('Observation/o2', '422 Unprocessable Entity', false),
         outcome('Observation/o3', '404 Not Found', false),
       ]),
-    ]
+    ])
 
     const groups = groupResultsByStatus(batch)
 
@@ -108,17 +124,30 @@ describe('groupResultsByStatus', () => {
     expect(groups[0]?.ok).toBe(false)
   })
 
-  it('flattens only the imported files, skipping skipped files', () => {
-    const batch: FileImportResult[] = [
-      fileWith('a', [outcome('Patient/p1', '201 Created', true)]),
-      { _tag: 'skipped', id: 'c', title: 'c.har', reason: 'nothing' },
-    ]
-    expect(allResults(batch)).toHaveLength(1)
+  it('flattens the linked records and the imported files, skipping skipped files', () => {
+    const batch = batchOf(
+      [
+        fileWith('a', [outcome('Patient/p1', '201 Created', true)]),
+        { _tag: 'skipped', id: 'c', title: 'c.har', reason: 'nothing' },
+      ],
+      linkedResults(1, 0)
+    )
+    expect(allResults(batch).map((result) => result.title)).toEqual(['Linked records', 'a.har'])
     expect(groupResultsByStatus(batch).map((group) => group.status)).toEqual(['201 Created'])
   })
 })
 
 // Helpers
+
+/** A batch outcome of `files` and the `linked` records' results (none by default). */
+const batchOf = (
+  files: readonly FileImportResult[],
+  linked: readonly ResourceResult[] = []
+): BatchOutcome => ({ files, linked })
+
+/** `okCount` accepted linked records then `failCount` rejected ones, titled as the linked group. */
+const linkedResults = (okCount: number, failCount: number): readonly ResourceResult[] =>
+  entriesOf(okCount, failCount).map((entry) => ({ ...entry, title: 'Linked records' }))
 
 /** `okCount` accepted entries then `failCount` rejected ones, shaped like the sink's records. */
 const entriesOf = (okCount: number, failCount: number): readonly BatchEntryOutcome[] => [

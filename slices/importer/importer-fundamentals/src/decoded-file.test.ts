@@ -1,4 +1,5 @@
-import { type FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
+import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
+import { type FhirResourceWithId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Schema } from 'effect'
 import * as fc from 'fast-check'
@@ -7,8 +8,8 @@ import { describe, expect, it } from 'vite-plus/test'
 import * as DecodedFile from './decoded-file.ts'
 
 /** A minimal `FhirResource` — a `Patient` needs nothing but `resourceType` — keyed by `id`. */
-const resource = (id: string): FhirResource =>
-  Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
+const resource = (id: string): FhirResourceWithId =>
+  Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id })
 
 describe('sectionResources', () => {
   it('should flatten a decoded file’s sections into one list, in section order', () => {

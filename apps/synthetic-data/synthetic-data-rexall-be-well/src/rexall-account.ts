@@ -1,5 +1,5 @@
+import { adoptedReferenceOf } from '@wildflowerhealthio/fhir-r4-adoption'
 import type { ReferenceType } from '@wildflowerhealthio/fhir-r4/data-types'
-import { adoptedReferenceOf } from '@wildflowerhealthio/fhir-r4/identity'
 import {
   type CarebookProfile,
   type medicationListUrlOf,

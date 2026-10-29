@@ -4,7 +4,7 @@ The **HAR binding** of the importer slice: the concrete `FileImporter` for
 format `'har'`, assembled from three seams that each already have a home. It is where the resource-agnostic `importer-fundamentals`
 contract is bound to a concrete format (HAR) and resource type (FHIR). No DOM, no
 `fs`, no React: HAR text in, FHIR resources out, an opt-in write through the
-shell's shared `persistBatchBundle`.
+shell's shared `persistTransactionBundle`.
 
 ## Shape
 
@@ -127,9 +127,9 @@ codec still shares — transitional until #578 dissolves that slice), `fhir-r4`
   shared `persistBatchBundle`, gated on a confirmed review; no importer field
   takes a write client.
 - **The pool is consumed pre-adopted, never re-adopted.** `fhirR4Source`'s
-  `responseKinds` are already wrapped with `adoptUnderRecognizedRoot` in
-  `fhir-r4-source`; adopting again would hash a hash. Live and source file share
-  that single definition by reference.
+  `responseKinds` are already wrapped with `fhir-r4-adoption`'s
+  `adoptUnderRecognizedRoot` in `fhir-r4-source`; adopting again would hash a
+  hash. Live and source file share that single definition by reference.
 - **Per-URL, not per-archive.** Recognition against `fhirPool` is per response
   (highest specificity wins), so a mixed source file extracts every recognized URL.
 

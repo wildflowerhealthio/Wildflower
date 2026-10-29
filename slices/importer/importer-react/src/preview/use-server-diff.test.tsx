@@ -4,14 +4,14 @@ import { cleanup, type RenderHookResult, renderHook, waitFor } from '@testing-li
 import { FhirR4ResourcesRouterContext, type RunAuthed } from '@wildflowerhealthio/fhir-r4-react'
 import type * as FhirR4React from '@wildflowerhealthio/fhir-r4-react'
 import type { FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/clients'
-import { type FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
+import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
+import { type FhirResourceWithId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import type { ResolvedBatch } from '@wildflowerhealthio/importer-core'
 import { FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
-import { Effect, Layer, Schema } from 'effect'
+import { Effect, HashMap, Layer, Schema } from 'effect'
 import type { JSX, ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { resolvedAsIs } from './resolved-batch.test-helpers.ts'
 import { type ServerDiffState, useServerDiff } from './use-server-diff.ts'
 
 /**
@@ -35,12 +35,12 @@ afterEach(() => {
 /** The time a failed classification's two retries take at TanStack's default backoff, with room. */
 const RETRIES_TIMEOUT = 8_000
 
-const patient = (id: string): FhirResource =>
-  Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
+const patient = (id: string): FhirResourceWithId =>
+  Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id })
 
 /** A HAR result holding `resources`, the other formats claiming nothing. */
-const batchOf = (resources: readonly FhirResource[]): ResolvedBatch =>
-  resolvedAsIs({
+const batchOf = (resources: readonly FhirResourceWithId[]): ResolvedBatch => ({
+  formats: {
     har: {
       ...FormatDecode.emptyResult('har'),
       title: 'a.har',
@@ -61,8 +61,11 @@ const batchOf = (resources: readonly FhirResource[]): ResolvedBatch =>
     },
     'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
     dicom: FormatDecode.emptyResult('dicom'),
-    unrecognizedFiles: [],
-  })
+  },
+  unrecognizedFiles: [],
+  linkedRecords: [],
+  linkTargetsByReferentKey: HashMap.empty(),
+})
 
 /** A server that holds nothing: every GET entry of the diff bundle is a 404, so every id is new. */
 const emptyServerLayer = Layer.succeed(

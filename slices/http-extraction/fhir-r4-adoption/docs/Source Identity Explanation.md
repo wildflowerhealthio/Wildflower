@@ -1,7 +1,8 @@
 # Source Identity Explanation
 
 Why an imported resource is not stored under the id its source gave it, and what
-replaces that id.
+replaces that id. The derivation is `fhir-r4`'s (`fhir-r4/identity`); adoption,
+which applies it to what a source decodes, is this package's.
 
 ## Why a source's id is not the store's id
 
@@ -87,9 +88,16 @@ loudly.
 `adoptResource(source)` is the per-resource rewrite. Given a `SourceIdentity`
 (`{ system, baseUrl? }`) it:
 
-1. **Passes a null-id resource straight through.** There is no identity to adopt,
-   and `upsertResource` cannot write one either.
-2. **Derives the id** from `(system, resourceType, originalId)`.
+1. **Takes its `DecodedId`.** `FoundInSource` is the id the source gave it.
+   A resource whose `id` is `null` (third-party FHIR JSON, where `id` is
+   optional) is `GeneratedFromContent` instead: FNV-1a 64 over its FHIR JSON as
+   `FhirResourceSchema` encodes it, fields in schema order, as sixteen hex
+   digits. So every adopted resource has an id (`adoptResource` returns
+   `FhirResourceWithId`), and a re-import of the same capture lands on the same
+   one. Such a resource skips step 3: the source gave it no id, so no
+   identifier claims one, and it keeps only the identifiers it arrived with
+   (`originalIdOf` reads `null` off it).
+2. **Derives the id** from `(system, resourceType, decodedId.value)`.
 3. **Prepends one `Identifier`** carrying the source's own id —
    `identifier[0] = { system: <source system>, value: <original id> }`. Every
    identifier the source already wrote is kept, behind it. There is deliberately
@@ -97,6 +105,12 @@ loudly.
    choke point, so a source that publishes its own base URL as an identifier
    system yields a benign duplicate and nothing worse.
 4. **Rewrites references** through the per-type field table below.
+
+The digest leaves `meta` out. `meta` describes the response (`lastUpdated`,
+`versionId`), not the record, so a fresh capture of the same id-less record
+digests the same. A resource that does not encode is a defect, not a digest of
+something else: it means a kind's decode let through what the schema's encode
+refuses, and there is no FHIR JSON to digest.
 
 `Binary` is the exception to step 3: FHIR R4 gives it no `identifier` element, so
 its original id survives only in the provenance trace. It is still adopted rather
@@ -197,13 +211,16 @@ source-file `DocumentReference` afterwards — rewriting it earlier is dead work
 
 ## Where a source package states its identity
 
-Adoption is **one option-less per-kind combinator**, `adoptUnderRecognizedRoot`
-(in `fhir-r4/identity`). It wraps a single response kind, replacing its `parse`
-with one that adopts the parse output under the identity **the kind's own
-`tryRecognize` mints for the response's URL** — read verbatim from
-`entity.tryRecognize(response.url, response.method).source`, with no source
-passed in. Each kind constructs its own identity, so recognition and the
-namespace a resource keys under are the one decision:
+Adoption is **one option-less per-kind combinator**, `adoptUnderRecognizedRoot`.
+It takes a single `HttpResponseKind<FhirResource>` to a
+`HttpResponseKind<FhirResourceWithId>`, replacing its `parse` with one that
+adopts the parse output under the identity **the kind's own `tryRecognize`
+mints for the response's URL** — read verbatim from
+`kind.tryRecognize(response.url, response.method).source`, with no source
+passed in. `RecognizedUrlData.source` is `SourceIdentity`'s shape, spelled
+structurally in `http-extraction-fundamentals`, which stays FHIR-free. Each
+kind constructs its own identity, so recognition and the namespace a resource
+keys under are the one decision:
 
 - **FHIR** (`fhir-r4-source`) — `tryRecognize` returns `source: { system: root,
   baseUrl: root }`, the root captured by the kind's own `UrlMatch`. So a resource
@@ -236,17 +253,15 @@ Consequences worth knowing:
   per-response `parseError` outcome. In practice routing only ever hands a kind a
   URL it recognized, so this arm guards a misconfiguration, not a normal
   response.
-- **The guard is per kind, and reads the whole `FhirResource` union.** Adoption
-  widens: `adoptResource` is declared `FhirResource → FhirResource`, because
-  TypeScript cannot correlate the variant matched with the branch taken. A
-  combinator returning the kind's type unchanged would therefore be asserting
-  something it does not deliver for a kind that declares a narrower element type.
-  `adoptUnderRecognizedRoot` refuses such a kind, via a conditional on the
-  parameter (`TEntity & EntityParsesEveryResource<TEntity>`) — the constraint
-  alone cannot do it, since a narrower kind is a legitimate subtype by
-  covariance. The fix is to widen the kind list to
-  `HttpResponseKind<FhirResource>[]` **before** the `.map`, as each source
-  package's `response-kinds.ts` does.
+- **What comes out has an id, typed as the whole union.** `adoptResource` is
+  declared `FhirResource → FhirResourceWithId`, because TypeScript cannot
+  correlate the variant matched with the branch taken, so the combinator takes
+  a kind over the whole `FhirResource` union and returns one over
+  `FhirResourceWithId`. Each source package widens its kind list to
+  `HttpResponseKind<FhirResource>[]` (a narrower kind satisfies it by
+  covariance) before the `.map`, and its `SourceDescriptor` is over
+  `FhirResourceWithId`: everything downstream of extraction knows each resource
+  has the id it is written under.
 
 Note the variant preservation inside `adoptResource` is real but unchecked: each
 `adoptX` maps a variant to itself **by construction**, and an `adoptX` that

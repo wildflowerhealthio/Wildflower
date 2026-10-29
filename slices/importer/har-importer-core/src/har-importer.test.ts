@@ -1,4 +1,4 @@
-import type { DocumentReference, FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import { HarFromJson, HttpArchive, emitHar } from '@wildflowerhealthio/http-archive'
 import { SourceDescriptor } from '@wildflowerhealthio/http-extraction-fundamentals'
 import {
@@ -405,7 +405,7 @@ describe('harImporter.decode over a Shoppers capture', () => {
 const mintSourceFile = (
   bytes: Uint8Array,
   fileName = 'portal-session.har'
-): Promise<DocumentReference.Type> =>
+): Promise<PickedFile.SourceFile> =>
   Effect.runPromise(
     Schema.encode(PickedFile.FromDocumentReference)({
       id: `0:${fileName}`,
@@ -414,7 +414,7 @@ const mintSourceFile = (
     }).pipe(Effect.provideService(PickedFile.Format, harImporter.sourceFileFormat))
   )
 
-const readSourceFile = (resource: DocumentReference.Type): Promise<PickedFile.Type> =>
+const readSourceFile = (resource: PickedFile.SourceFile): Promise<PickedFile.Type> =>
   Effect.runPromise(
     Schema.decode(PickedFile.FromDocumentReference)(resource).pipe(
       Effect.provideService(PickedFile.Format, harImporter.sourceFileFormat)
@@ -476,7 +476,7 @@ describe('HAR archive vs captured trace', () => {
       fc.asyncProperty(exchangeArbitrary, async (exchange) => {
         const outcome = await Effect.runPromise(
           Effect.either(
-            Schema.decode(PickedFile.FromDocumentReference)(
+            Schema.decodeUnknown(PickedFile.FromDocumentReference)(
               await Effect.runPromise(toDocumentReference(exchange))
             ).pipe(Effect.provideService(PickedFile.Format, harImporter.sourceFileFormat))
           )

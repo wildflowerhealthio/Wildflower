@@ -54,8 +54,9 @@ rather than a copy, and what it writes is what the response kinds read.
 ## Layering
 
 Pure like a `-core`: no DOM, no `fs`, no React. Depends on
-`http-extraction-fundamentals`, `fhir-r4`, `fhir-stu3-as-r4` (the STU3⇄R4 schemas
-the bundles decode with), `effect`, and `kitchen-sink`. Never imports from
+`http-extraction-fundamentals`, `fhir-r4`, `fhir-r4-adoption`,
+`fhir-stu3-as-r4` (the STU3⇄R4 schemas the bundles decode with), `effect`, and
+`kitchen-sink`. Never imports from
 `slices/importer` or `apps/synthetic-data` — those consume this package, never
 the reverse.
 
@@ -327,5 +328,5 @@ Observed, not acted on — worth knowing before trusting a field:
   belongs to.
 - [har-importer-core AGENTS.md](../../importer/har-importer-core/AGENTS.md)
   — the archive importer that runs these kinds.
-- [Source Identity Explanation](../../fhir/fhir-r4/docs/Source%20Identity%20Explanation.md)
+- [Source Identity Explanation](../fhir-r4-adoption/docs/Source%20Identity%20Explanation.md)
   — why a resource is re-keyed under a derived local id.

@@ -25,8 +25,8 @@ import { type FhirResource, ResourceReferences } from '@wildflowerhealthio/fhir-
  */
 type Type = ResourceReferences.ReferenceAt
 
-/** Every mention in `resource`, in the walk's order. */
-const of = (resource: FhirResource): readonly Type[] => ResourceReferences.collect(resource)
+/** Every mention `resource` makes, in the walk's order. */
+const madeIn = (resource: FhirResource): readonly Type[] => ResourceReferences.collect(resource)
 
 /**
  * A relative literal reference, `Type/<id>` with an optional
@@ -45,5 +45,5 @@ const RELATIVE_LITERAL_REFERENCE =
 const landsOnDevice = (reference: IdentifierAndReference.ReferenceType): boolean =>
   reference.reference !== null && RELATIVE_LITERAL_REFERENCE.test(reference.reference)
 
-export { landsOnDevice, of }
+export { landsOnDevice, madeIn }
 export type { Type }

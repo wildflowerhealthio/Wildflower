@@ -1,7 +1,5 @@
-import { type FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { Option } from 'effect'
-
-import type * as DecodedFile from './decoded-file.ts'
 
 /**
  * The pure model of an import that has been decoded but not yet written: which
@@ -38,7 +36,7 @@ interface Selection {
    * resource whose key is here has its parsed value replaced by the edited one
    * at confirm.
    */
-  readonly resourceOverrides: ReadonlyMap<string, FhirResource>
+  readonly resourceOverrides: ReadonlyMap<string, FhirResourceWithId>
 }
 
 /** The default selection: every resource included, no edits. */
@@ -84,9 +82,9 @@ const setResourcesIncluded = (
 
 /**
  * Replace the resource at `key` with `resource` — the reviewer's inline edit.
- * `chosenResources` returns the override in place of the resolved value.
+ * `editedResource` reads the override back; a write plan substitutes it for the decoded value.
  */
-const edit = (selection: Selection, key: string, resource: FhirResource): Selection => {
+const edit = (selection: Selection, key: string, resource: FhirResourceWithId): Selection => {
   const resourceOverrides = new Map(selection.resourceOverrides)
   resourceOverrides.set(key, resource)
   return { ...selection, resourceOverrides }
@@ -108,42 +106,14 @@ const isResourceEdited = (selection: Selection, key: string): boolean =>
   selection.resourceOverrides.has(key)
 
 /** The edit override at `key`, when the reviewer has set one — else `None`. */
-const editedResource = (selection: Selection, key: string): Option.Option<FhirResource> => {
+const editedResource = (selection: Selection, key: string): Option.Option<FhirResourceWithId> => {
   const override = selection.resourceOverrides.get(key)
   return override === undefined ? Option.none() : Option.some(override)
 }
 
-/**
- * The confirm's write set: every labeled resource the reviewer left included,
- * with any inline edit substituted in, in resolve order.
- *
- * @param labeled - The labeled resources from the format's `resolve`
- * @param selection - The reviewer's per-resource choices
- * @returns The resources to write, each replaced by its edit override when the
- *   reviewer has set one
- */
-const chosenResources = (
-  labeled: readonly DecodedFile.Resource[],
-  selection: Selection
-): readonly FhirResource[] =>
-  labeled
-    .filter((entry) => isResourceIncluded(selection, entry.key))
-    .map((entry) => selection.resourceOverrides.get(entry.key) ?? entry.resource)
-
-/** How many labeled resources are included under a selection. */
-const includedCount = (labeled: readonly DecodedFile.Resource[], selection: Selection): number =>
-  chosenResources(labeled, selection).length
-
-/** How many labeled resources are excluded under a selection. */
-const excludedCount = (labeled: readonly DecodedFile.Resource[], selection: Selection): number =>
-  labeled.filter((entry) => !isResourceIncluded(selection, entry.key)).length
-
 export {
-  chosenResources,
   edit,
   editedResource,
-  excludedCount,
-  includedCount,
   initial,
   isResourceEdited,
   isResourceIncluded,

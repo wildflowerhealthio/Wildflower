@@ -1,10 +1,15 @@
-import { FhirResourceSchema, type FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
+import {
+  type FhirResource,
+  type FhirResourceWithId,
+  MedicationRequest,
+  Patient,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import {
   DecodedFile,
   FormatDecode,
   LinkChoice,
   type LinkableResource,
-  Placement,
   Referent,
   type ReferentLinkChoices,
 } from '@wildflowerhealthio/importer-fundamentals'
@@ -31,14 +36,12 @@ const DEVICE = 'https://device.example/id'
 const PERSON = `Patient|${SOURCE_PATIENT}|p-1`
 const ACCOUNT = `Patient|${CUSTOMER}|c-9`
 
-const decodeResource = Schema.decodeUnknownSync(FhirResourceSchema)
-
 /** `effect` run on a `TestClock` standing at the epoch; throws its failure. */
 const runOnTestClock = <A, E>(effect: Effect.Effect<A, E>): A =>
   Effect.runSync(Effect.provide(effect, TestContext.TestContext))
 
-const patient = (id: string, system: string): FhirResource =>
-  decodeResource({
+const patient = (id: string, system: string): FhirResourceWithId =>
+  Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
     resourceType: 'Patient',
     id,
     identifier: [{ system, value: id }],
@@ -46,8 +49,8 @@ const patient = (id: string, system: string): FhirResource =>
   })
 
 /** A `MedicationRequest` naming its subject by `subject`. */
-const request = (id: string, subject: object): FhirResource =>
-  decodeResource({
+const request = (id: string, subject: object): FhirResourceWithId =>
+  Schema.decodeUnknownSync(withMandatoryId(MedicationRequest.Schema))({
     resourceType: 'MedicationRequest',
     id,
     status: 'active',
@@ -59,14 +62,14 @@ const accountSubject = { type: 'Patient', identifier: { system: CUSTOMER, value:
 
 const STORED_TYRA: LinkableResource.WithId = (() => {
   const stored = patient('s-1', DEVICE)
-  if (stored.resourceType !== 'Patient' || stored.id === null) throw new Error('unreachable')
-  return { ...stored, id: stored.id }
+  if (stored.resourceType !== 'Patient') throw new Error('unreachable')
+  return stored
 })()
 
 /** `kind`'s result holding `resources`, or the empty result of a format that claimed nothing. */
 const resultOf = <K extends FormatKind>(
   kind: K,
-  resources: readonly FhirResource[] | undefined
+  resources: readonly FhirResourceWithId[] | undefined
 ): FormatDecode.Result<K> =>
   resources === undefined
     ? FormatDecode.emptyResult(kind)
@@ -90,11 +93,13 @@ const resultOf = <K extends FormatKind>(
       }
 
 const batchOf = (formats: {
-  readonly [K in FormatKind]?: readonly FhirResource[]
+  readonly [K in FormatKind]?: readonly FhirResourceWithId[]
 }): DecodedBatch => ({
-  har: resultOf('har', formats.har),
-  'lifelabs-pdf': resultOf('lifelabs-pdf', formats['lifelabs-pdf']),
-  dicom: resultOf('dicom', formats.dicom),
+  formats: {
+    har: resultOf('har', formats.har),
+    'lifelabs-pdf': resultOf('lifelabs-pdf', formats['lifelabs-pdf']),
+    dicom: resultOf('dicom', formats.dicom),
+  },
   unrecognizedFiles: [],
 })
 
@@ -106,7 +111,7 @@ const resolvedOnTestClock = (
 
 /** The resource keyed `key` in `kind`'s decoded file. */
 const at = (batch: DecodedBatch, kind: FormatKind, key: string): FhirResource | undefined =>
-  DecodedFile.resources(batch[kind].decoded).find((entry) => entry.key === key)?.resource
+  DecodedFile.resources(batch.formats[kind].decoded).find((entry) => entry.key === key)?.resource
 
 const subjectOf = (resource: FhirResource | undefined): string | null | undefined =>
   resource !== undefined && 'subject' in resource ? resource.subject?.reference : undefined
@@ -152,20 +157,24 @@ describe('resolveMentions', () => {
 
     expect(
       (['har', 'lifelabs-pdf'] as const).map((kind) =>
-        resolved[kind].decoded.sections.map((section) => [
+        resolved.formats[kind].decoded.sections.map((section) => [
           section.title,
           section.resources.map((entry) => entry.key),
         ])
       )
     ).toEqual([[['Resources', ['har/k-0']]], [['Resources', ['lifelabs-pdf/k-0']]]])
-    expect(resolved.dicom).toBe(batch.dicom)
+    expect(resolved.formats.dicom).toBe(batch.formats.dicom)
     expect(resolved.unrecognizedFiles).toBe(batch.unrecognizedFiles)
+    expect(resolved.linkedRecords).toEqual([])
   })
 
-  it('gives an empty batch back as itself', () => {
+  it('gives an empty batch back as it is, with no linked records and no link targets', () => {
     const batch = batchOf({})
 
-    expect(resolvedOnTestClock(batch, HashMap.empty())).toBe(batch)
+    const { linkTargetsByReferentKey, ...resolved } = resolvedOnTestClock(batch, HashMap.empty())
+
+    expect(resolved).toEqual({ ...batch, linkedRecords: [] })
+    expect(HashMap.isEmpty(linkTargetsByReferentKey)).toBe(true)
   })
 
   it('links a mention in one format to the person another format holds', () => {
@@ -183,25 +192,34 @@ describe('resolveMentions', () => {
     )
   })
 
-  it('writes a stored person two formats only mention once, in the first claimed format', () => {
-    const resolved = resolvedOnTestClock(
-      batchOf({
-        'lifelabs-pdf': [request('rx-1', accountSubject)],
-        dicom: [request('rx-2', accountSubject)],
-      }),
-      HashMap.make([ACCOUNT, LinkChoice.LinkToStoredResource({ resource: STORED_TYRA })])
-    )
+  it('writes a stored person two formats only mention once, as the batch’s linked record', () => {
+    const batch = batchOf({
+      'lifelabs-pdf': [request('rx-1', accountSubject)],
+      dicom: [request('rx-2', accountSubject)],
+    })
+    const choices = HashMap.make([
+      ACCOUNT,
+      LinkChoice.LinkToStoredResource({ resource: STORED_TYRA }),
+    ])
+
+    const resolved = runOnTestClock(resolveMentions(batch, choices))
 
     expect(
       (['lifelabs-pdf', 'dicom'] as const).map((kind) =>
-        resolved[kind].decoded.sections.map((section) => section.title)
+        resolved.formats[kind].decoded.sections.map((section) => section.title)
       )
-    ).toEqual([['Resources', Placement.LINKED_SECTION_TITLE], ['Resources']])
+    ).toEqual([['Resources'], ['Resources']])
+    expect(resolved.linkedRecords.map((entry) => [entry.key, entry.resource.id])).toEqual([
+      ['linked:Patient/s-1', 's-1'],
+    ])
     expect(
       (['lifelabs-pdf', 'dicom'] as const)
-        .flatMap((kind) => DecodedFile.resources(resolved[kind].decoded))
+        .flatMap((kind) => DecodedFile.resources(resolved.formats[kind].decoded))
         .filter(({ resource }) => resource.id === 's-1')
-    ).toHaveLength(1)
+    ).toHaveLength(0)
+    expect(
+      Array.from(HashMap.map(resolved.linkTargetsByReferentKey, (target) => target._tag))
+    ).toEqual([[ACCOUNT, 'Stored']])
     expect([
       subjectOf(at(resolved, 'lifelabs-pdf', 'lifelabs-pdf/k-0')),
       subjectOf(at(resolved, 'dicom', 'dicom/k-0')),
@@ -237,7 +255,10 @@ describe('resolveMentionsWithFallback', () => {
     const resolved = runOnTestClock(resolveMentionsWithFallback(batch, defaults, chosen))
     return {
       linkChoices: Array.from(HashMap.entries(resolved.linkChoices)),
-      targets: Array.from(HashMap.values(resolved.linkTargets), (target) => target._tag),
+      targets: Array.from(
+        HashMap.values(resolved.batch.linkTargetsByReferentKey),
+        (target) => target._tag
+      ),
     }
   }
 

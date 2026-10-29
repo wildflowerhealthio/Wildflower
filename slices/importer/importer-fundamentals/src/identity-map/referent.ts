@@ -73,7 +73,7 @@ const key = (referent: Type): string => LinkableLogicalReference.key(referent.lo
 /**
  * The logical references `referent`'s own identifiers make, its key's first:
  * the ones a source gave it, not one demographics derive
- * (`LinkableResource.isDerivedIdentifier`), which a placed resource carries
+ * (`LinkableResource.isDerivedIdentifier`), which a resolved resource carries
  * too.
  */
 const ownLogicalReferencesOf = (referent: Type): readonly LinkableLogicalReference.Type[] =>
@@ -128,9 +128,8 @@ const identifiersOf = (referent: Type): readonly IdentifierAndReference.Identifi
 
 /**
  * The referent a decoded resource is: `None` for a resource of another type,
- * and for a Patient or Practitioner with no `id` or an unqualified
- * `identifier[0]`, which nothing can point at or be linked to, so the stage
- * writes it as it is.
+ * and for a Patient or Practitioner with an unqualified `identifier[0]`, which
+ * nothing can be linked to, so the stage writes it as it is.
  */
 const tryFromDecodedResource = (
   entry: DecodedFile.Resource
@@ -138,10 +137,10 @@ const tryFromDecodedResource = (
   pipe(
     Option.liftPredicate(entry.resource, LinkableResource.is),
     Option.flatMap((resource) =>
-      Option.all({
-        resource: LinkableResource.tryIntoWithId(resource),
-        logicalReference: LinkableResource.tryIntoLogicalReference(resource),
-      })
+      Option.map(LinkableResource.tryIntoLogicalReference(resource), (logicalReference) => ({
+        resource,
+        logicalReference,
+      }))
     ),
     Effect.transposeMapOption(({ resource, logicalReference }) =>
       Effect.all({
@@ -169,7 +168,7 @@ const tryFromDecodedResource = (
 /** The referents one decoded resource's logical-reference mentions name. */
 const mentionedIn = (entry: DecodedFile.Resource): readonly ByMentionOnly[] =>
   pipe(
-    Mention.of(entry.resource),
+    Mention.madeIn(entry.resource),
     Array.filterMap(({ reference }) =>
       Option.map(LinkableLogicalReference.tryFromReference(reference), (logicalReference) =>
         ByMentionOnly({ logicalReference, label: logicalReference.identifier.value })

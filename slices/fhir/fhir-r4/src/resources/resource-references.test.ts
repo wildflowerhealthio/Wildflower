@@ -103,11 +103,11 @@ describe('ResourceReferences.collect', () => {
   })
 })
 
-describe('ResourceReferences.map', () => {
+describe('ResourceReferences.mapReferences', () => {
   it('property: rewrites exactly the references the rewrite changes', () => {
     fc.assert(
       fc.property(pooledResourceArbitrary, (resource) => {
-        const rewritten = ResourceReferences.map(resource, (reference) =>
+        const rewritten = ResourceReferences.mapReferences(resource, (reference) =>
           reference.reference === FROM ? { ...reference, reference: TO } : reference
         )
 
@@ -122,7 +122,7 @@ describe('ResourceReferences.map', () => {
   it('property: a resource the rewrite changes nothing in comes back as itself', () => {
     fc.assert(
       fc.property(resourceArbitrary, (resource) => {
-        expect(ResourceReferences.map(resource, (reference) => reference)).toBe(resource)
+        expect(ResourceReferences.mapReferences(resource, (reference) => reference)).toBe(resource)
       }),
       { numRuns: numRunsFor({ base: 20 }) }
     )
