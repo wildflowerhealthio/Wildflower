@@ -73,9 +73,9 @@ write plan with this package alone.
   **`ResolvedBatch`** is a decoded batch, each format slot's `decoded`
   holding the resolved file, plus the three fields a decoded batch cannot
   hold: its **`linkedRecords`** (the resources it only mentions, written
-  beside the files, no format's), **`linkTargetsByReferentKey`** (each
-  referent's link target by `Referent.key`, what the referent rows show a
-  choice resolved to) and **`unlinkedMentionsByFormatKind`** (what the
+  beside the files, no format's), **`plan`** (the
+  `LinkPlan` it was resolved on, which the referent rows ask each referent's
+  link target of) and **`unlinkedMentionsByFormatKind`** (what the
   referent link choices alone leave unlinked in each claimed format,
   `UnlinkedMention.collect` on the file resolved before any mention link
   choice, the format's own source files aside: the rows the review lists as
@@ -97,12 +97,12 @@ write plan with this package alone.
   resource; it fills `linkedRecords` with the
   records the batch only mentions, each with its `origin`, `Stored` or
   `Provisional` (`FileResolution.linkedRecords`), so a
-  stored person several formats mention is written once, and
-  `linkTargetsByReferentKey` from the plan's links, so the screen's hook
-  reads each referent's link target without planning again. Keys and section
+  stored person several formats mention is written once, and `plan`, so
+  the screen's hook reads each referent's link target without planning
+  again. Keys and section
   titles are kept; the format slots are reassembled through `collectFormats`,
   a slot nothing moved in coming back as it was, and a batch with no claimed
-  format comes back with no linked records, no link targets and nothing
+  format comes back with no linked records, an empty plan and nothing
   unlinked. It fails with
   `Referent.DuplicateReferent` or `LinkChoice.InvalidLinkChoice`, as the plan
   does; a mention link choice its mention cannot take is no choice, never a

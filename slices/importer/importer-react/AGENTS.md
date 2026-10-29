@@ -107,7 +107,8 @@ The importer has no HTTP wire union to derive, so there is no separate
   - `use-link-choice-review.ts` — `useLinkChoiceReview`
     discovers the batch's referents (`discoverReferents`) and memoizes the
     **resolved** batch (one whose mentions are resolved) with each
-    referent's `LinkTarget`, the resolved batch's `linkTargetsByReferentKey`.
+    the plan it was resolved on (`ResolvedBatch.plan`), which the rows ask
+    each referent's `LinkTarget` of (`LinkPlan.linkTargetIfReferentKey`).
     Both are Effects on the clock, run synchronously in the memo;
     their failures are states: a `DuplicateReferent` is `refused`, with the
     batch's last resolving that succeeded when a re-decode is what refused

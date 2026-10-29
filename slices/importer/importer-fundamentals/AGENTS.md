@@ -179,11 +179,9 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     the one its demographics derive, `logicalReferencesOf` both: every
     logical reference a referent answers to; **`maybeOwnResource`** is the
     record that is a referent's own (its decoded resource, or the provisional
-    one its logical reference stands for); and **`byLogicalReferenceKey`**
-    is the referent each
-    logical reference names: the one it is the key of, else the one referent
-    that answers to it, so a Shoppers account id a decoded Patient also
-    carries is that Patient. `tryFromDecodedResource` and `mentionedIn` read
+    one its logical reference stands for). A logical reference names the
+    referent it is the key of, else the one referent that answers to it, so
+    a Shoppers account id a decoded Patient also carries is that Patient. `tryFromDecodedResource` and `mentionedIn` read
     them off one decoded resource; **`discover`** finds both over a batch's
     files, resources first, once per identity, so a person one file decodes
     and another only mentions is one referent, and fails with
@@ -241,48 +239,62 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     does not hold or of another type fails, one already on the path closes a
     cycle, and any other's local target, a failure included, ends the chain.
     The first choice it cannot follow is its failure.
-  - **`ResolvedResource`** — the resource under one resolved literal reference as
-    it will be written, whatever its origin: the copy written (the decoded
-    one when a link lands on it, so a re-import's newer decode wins over the
-    stored copy a mention links to; else the last link's) having assumed its
+  - **`ResolvedResource`** — the resource under one resolved literal
+    reference as it will be written, whatever its origin: its
+    `resolvedLiteralReference`, the copy written (the decoded one when a link
+    is redirected to it, so a re-import's newer decode wins over the stored
+    copy a mention links to; else the last link's) having assumed its
     `identifiersToAssume` (its own derived identifier, then those every other
     copy of it the links carry, a stored copy a mention links to or the one a
     `Decoded` target updates, then those of every referent linked to it: the
     one place a copy's identifiers are carried forward), whether the
-    `resourceExistsInBatch` (a resolved file writes it where a decoded resource
-    was: one decoded there and not moved to another stored resource, or one
-    a decoded resource is replaced by), and its `label`, the title of an
-    entry it replaces or is appended as. **`make`** builds one from the
-    **`LinkedResource`**s under a literal reference (a link whose target
-    holds a resource: the referent and that target);
-    `byResolvedLiteralReference` groups a plan's links that land on a
-    resource and makes each.
-  - **`LinkPlan`** — `make(decodedFiles, linkChoices)`: everything
-    resolving a file needs, worked out once per batch over its referents
-    (`Referent.discover`), so a `LinkToDecodedReferent` naming a
-    referent one file holds resolves from a mention in another: the
-    **`links`**, the **`linkTargetsByReferentKey`**, the
-    **`linkTargetsByLogicalReferenceKey`**, the
-    **`resolvedResourcesByResolvedLiteralReference`**, and the
-    **`decodedLiteralReferencesToStored`** (`Type/<decoded id>` →
-    `Type/<stored id>` for every decoded resource a stored one stands in for),
-    all `HashMap`s; and, once **`withMentionLinkChoiceSet`** lays the mention
-    link choices on it, the **`linkTargetsByMentionKey`**: where each mention
-    chosen for on its own lands, a `LinkToStoredResource` on that resource, a
-    `LinkToDecodedReferent` where its referent lands (left out when that is
-    nowhere, or the batch holds no such referent, so the mention lands where
-    its own referent does), a `DontLink` `Unlinked`. Read through its three
-    lookups, each named for the fact its `None` states:
-    **`redirectionIfLinked`** (where a decoded reference is redirected when
-    it names a referent whose link lands on a resource, a literal one through
-    the redirects and a logical one through its referent's link target),
+    `resourceExistsInBatch` (a resolved file writes it where a decoded
+    resource was: one decoded there and not replaced by another stored
+    resource, or one a decoded resource is replaced by), its `label`, the
+    title of an entry it replaces or is appended as, and its
+    `ownerReferent`: the referent whose own record it is
+    (`Referent.maybeOwnResource`), `None` for a stored resource no referent
+    of the batch owns. **`make`** builds one from the **`LinkedResource`**s
+    under a literal reference (a link whose target holds a resource: the
+    referent and that target); **`fromLinks`** groups a batch's links by the
+    literal reference they redirect to and makes one per group, in the order
+    the links first reach it.
+  - **`MentionLink`** — a mention the reviewer chose a link for on its own
+    (`reviewKey`, `path`) with its link target. **`fromChoices(links,
+    byMention)`** makes them from the link choice set by mention: a
+    `LinkToStoredResource` that stored resource, a `LinkToDecodedReferent`
+    its referent's link target (none when that referent is `Unlinked` or not
+    in the batch, so the mention is redirected where its own referent's link
+    target says), a `DontLink` `Unlinked`. Only an explicit `DontLink`
+    unlinks a mention.
+  - **`LinkPlan`** — the theory the identity map is coded to: the reviewer's
+    choices become links, the links are the plan, the plan resolves the
+    batch, and the screen offers what the plan will write. The plan
+    (**`Type`**) is three lists: **`links`**, **`mentionLinks`** and
+    **`resolvedResources`**; outside the module it is read only through its
+    questions, each a search over those lists. **`make(decodedFiles,
+    byReferent)`** makes the links once per batch over its referents
+    (`Referent.discover`), so a `LinkToDecodedReferent` naming a referent one
+    file holds resolves from a mention in another, and the resolved
+    resources they redirect to (`ResolvedResource.fromLinks`);
+    **`withMentionLinkChoiceSet(plan, byMention)`** lays on the mention links
+    (`MentionLink.fromChoices`); **`empty`** is the plan of a batch with no
+    referent. Its questions, each named for the fact its `None` states:
+    **`linkTargetIfReferentKey`** (a referent's link target, when the key is
+    a referent of the batch), **`linkTargets`** (every referent's, in
+    discovery order), **`redirectionIfLinked`** (where a decoded reference is
+    redirected when it names a referent whose link target holds a resource:
+    a literal one to the stored resource standing in for its decoded one, a
+    logical one to the link target of the referent it names, the one it is
+    the key of, else the one referent that answers to it),
     **`resolvedResourceIfReferent`** (the resource a decoded resource is
     written as when it is a referent: the resolved resource under the literal
     reference it is written under; a resource that is no referent is written
-    as decoded) and **`linkTargetIfChosenForMention`** (the link target the
+    as decoded), **`linkTargetIfChosenForMention`** (the link target the
     reviewer chose for a linkable mention of the resource under a review key,
     when it is one the mention can take: `Unlinked`, or a resource of the
-    type the mention names, so a `subject` never lands on a Practitioner).
+    type the mention names, so a `subject` is never redirected to a
+    Practitioner) and **`resolvedResources`** (every resolved resource).
   - **`FileResolution`** — pure, every function taking the plan first, since
     it is fixed for a batch: **`resolveFile(plan)`** writes each decoded
     resource of one file (`DecodedFile.mapResources`) as the resolved
@@ -294,11 +306,12 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     landed where that choice says (`Mention.relinked`: on the chosen
     resource's literal reference, or, for `Unlinked`, with its literal
     dropped; an empty `subject` slot chosen for is filled);
-    **`linkedRecords(plan)`**: the batch's linked records, each a
-    **`LinkedRecord`** (a `DecodedFile.Resource` with its `origin`, the
-    `Stored` or `Provisional` link target it comes from), the records it only
-    mentions as they will be written, keyed by **`linkedKey`** and titled by
-    their label, in discovery order, no file's and so no format's.
+    **`linkedRecords(plan)`**: the batch's linked records, the resolved
+    resources no resolved file holds, each a **`LinkedRecord`** (a
+    `DecodedFile.Resource` with its `origin`: `Provisional` when a referent
+    of the batch owns it, else `Stored`), as they will be written, keyed by
+    **`linkedKey`** and titled by their label, in the order the links first
+    reach them, no file's and so no format's.
   - **`UnlinkedMention`** — `collect`: on a resolved file, every resource
     **`OutsidePatientCompartment`** (a `subject` slot in which nothing lands
     on a patient of the device; FHIR's Patient CompartmentDefinition names

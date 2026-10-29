@@ -10,11 +10,10 @@
 import type { ResolvedBatch } from '@wildflowerhealthio/importer-core'
 import type {
   LinkChoice,
-  LinkTarget,
   Referent,
   ReferentLinkChoiceSet,
 } from '@wildflowerhealthio/importer-fundamentals'
-import type { HashMap, Option } from 'effect'
+import type { Option } from 'effect'
 
 import type * as MentionLinkOptions from './mention-link-options.ts'
 import type { StoredResource } from './use-stored-resources-of-type.ts'
@@ -25,13 +24,11 @@ interface MappedIdentityMap {
   readonly referents: readonly Referent.Type[]
   /** The choices the batch is resolved on: the defaults, under the reviewer's own, less any that cannot be resolved. */
   readonly linkChoices: ReferentLinkChoiceSet.Type
-  /** Each referent's link target under {@link MappedIdentityMap.linkChoices}, by `Referent.key`. */
-  readonly linkTargets: HashMap.HashMap<string, LinkTarget.Type>
   /** The stored resources the default search found, linked to or updated, labelled, for the reviewer to pick again. */
   readonly found: readonly StoredResource[]
   /** The batch resolved on {@link MappedIdentityMap.linkChoices}: what the diff, the preview and the confirm see. */
   readonly resolved: ResolvedBatch
-  /** What the rows' mention selects offer under {@link MappedIdentityMap.linkTargets}: each resource a referent lands on, labelled. */
+  /** What the rows' mention selects offer under the resolved batch's plan: each resource a referent lands on, labelled. */
   readonly mentionLinkOptions: MentionLinkOptions.Type
 }
 

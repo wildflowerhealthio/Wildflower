@@ -287,7 +287,7 @@ const ImporterScreen = (): JSX.Element => {
             <ReferentRows
               referents={shown.referents}
               linkChoices={shown.linkChoices}
-              linkTargets={shown.linkTargets}
+              plan={shown.resolved.plan}
               found={shown.found}
               disabled={identityState._tag === 'refused'}
               onChoose={chooseLink}

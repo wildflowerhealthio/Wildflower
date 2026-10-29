@@ -280,7 +280,6 @@ const discover = (
 
 export {
   byKey,
-  byLogicalReferenceKey,
   discover,
   DuplicateReferent,
   identifiersOf,

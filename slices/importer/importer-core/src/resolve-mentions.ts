@@ -7,7 +7,6 @@ import {
   type LinkChoice,
   type LinkChoiceSet,
   LinkPlan,
-  type LinkTarget,
   PickedFile,
   Referent,
   ReferentLinkChoiceSet,
@@ -59,8 +58,8 @@ interface ResolvedBatch extends DecodedBatch {
    * `FileResolution.linkedKey`.
    */
   readonly linkedRecords: readonly FileResolution.LinkedRecord[]
-  /** Each referent's link target by `Referent.key`: what the referent rows show a choice resolved to. */
-  readonly linkTargetsByReferentKey: HashMap.HashMap<string, LinkTarget.Type>
+  /** The plan the batch was resolved on: what the referent rows read each choice's link target off. */
+  readonly plan: LinkPlan.Type
   /**
    * What the referent link choices alone leave unlinked in each claimed
    * format (`UnlinkedMention.collect`), the format's own source files aside:
@@ -124,13 +123,13 @@ const unlinkedMentionsOf = (
  * another holds, and a review key is unique across the batch, so a mention
  * link choice names one mention of one format's resource. The resources the
  * batch only mentions are its `linkedRecords`, no format's, so a stored
- * person several formats only mention is written once, and the plan's links
- * are its `linkTargetsByReferentKey`. Each format's
+ * person several formats only mention is written once, and the plan it was
+ * resolved on is its `plan`. Each format's
  * `unlinkedMentionsByFormatKind` are read off the file resolved on the
  * referent choices alone, so a mention link choice takes nothing out of
  * them. Section titles and review keys are kept, so the selections survive,
  * and a slot nothing moved in comes back as it was. A batch with no claimed
- * format comes back with no linked records, no link targets and nothing
+ * format comes back with no linked records, an empty plan and nothing
  * unlinked. Which of a person's names is current is judged at the clock's
  * now, so the clock is the one input besides the arguments. Fails with
  * `Referent.DuplicateReferent` when two decoded resources under different
@@ -165,7 +164,7 @@ const resolveMentions = (
           formats,
           unrecognizedFiles: batch.unrecognizedFiles,
           linkedRecords: FileResolution.linkedRecords(plan),
-          linkTargetsByReferentKey: plan.linkTargetsByReferentKey,
+          plan,
           unlinkedMentionsByFormatKind: HashMap.fromIterable(unlinked),
         })
       )

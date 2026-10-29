@@ -18,11 +18,12 @@
 import {
   LinkableResource,
   LinkChoice,
+  LinkPlan,
   LinkTarget,
   Referent,
   ReferentLinkChoiceSet,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { Array, HashMap, Option } from 'effect'
+import { Array, Option } from 'effect'
 
 import {
   DONT_LINK_LABEL,
@@ -85,12 +86,12 @@ const sameValue = (left: LinkChoiceOption, right: LinkChoiceOption): boolean =>
 const writesOwnRecord = (
   referent: Referent.Type,
   linkChoices: ReferentLinkChoiceSet.Type,
-  linkTargets: HashMap.HashMap<string, LinkTarget.Type>
+  plan: LinkPlan.Type
 ): boolean => {
   const choice = ReferentLinkChoiceSet.forReferent(linkChoices, referent)
   return (
     (LinkChoice.is('CreateResource')(choice) || LinkChoice.is('UpdateStoredResource')(choice)) &&
-    HashMap.get(linkTargets, Referent.key(referent)).pipe(
+    LinkPlan.linkTargetIfReferentKey(plan, Referent.key(referent)).pipe(
       Option.exists((linkTarget) => !LinkTarget.is('Unlinked')(linkTarget))
     )
   )
@@ -102,8 +103,8 @@ interface LinkChoiceOptionInputs {
   readonly referents: readonly Referent.Type[]
   /** The choices the batch is resolved on, by `Referent.key`. */
   readonly linkChoices: ReferentLinkChoiceSet.Type
-  /** Each referent's link target under `linkChoices`, by `Referent.key`. */
-  readonly linkTargets: HashMap.HashMap<string, LinkTarget.Type>
+  /** The plan the batch was resolved on under `linkChoices`: each referent's link target. */
+  readonly plan: LinkPlan.Type
   /** The stored resources of the referent's type: the search's hits, then the server's own. */
   readonly storedOfType: readonly StoredResource[]
   /** {@link LinkChoiceOptionInputs.storedOfType} as options, built once per group. */
@@ -182,7 +183,7 @@ const forReferent = (
       const inImport = Array.dedupeWith(
         [
           ...others
-            .filter((other) => writesOwnRecord(other, inputs.linkChoices, inputs.linkTargets))
+            .filter((other) => writesOwnRecord(other, inputs.linkChoices, inputs.plan))
             .map((other) =>
               optionOf(
                 LinkChoice.LinkToDecodedReferent({ referentKey: Referent.key(other) }),

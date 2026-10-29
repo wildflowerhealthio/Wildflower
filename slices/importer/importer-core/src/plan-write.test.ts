@@ -6,13 +6,14 @@ import {
   Practitioner,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import {
+  type Referent,
   type DecodedFile,
   type FileResolution,
   FormatDecode,
   type Link,
   LinkableResource,
+  LinkPlan,
   LinkTarget,
-  Referent,
   StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
@@ -73,9 +74,8 @@ const batchOf = (
     formats: { har: slot('har'), 'lifelabs-pdf': slot('lifelabs-pdf'), dicom: slot('dicom') },
     unrecognizedFiles: [],
     linkedRecords: linked.map(({ entry }) => entry),
-    linkTargetsByReferentKey: HashMap.fromIterable(
-      linked.map(({ link }) => [Referent.key(link.referent), link.target] as const)
-    ),
+    plan: { ...LinkPlan.empty, links: linked.map(({ link }) => link) },
+    unlinkedMentionsByFormatKind: HashMap.empty(),
   }
 }
 

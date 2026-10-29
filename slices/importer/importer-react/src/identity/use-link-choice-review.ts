@@ -79,15 +79,11 @@ const useLinkChoiceReview = (
         ({ batch: resolved, linkChoices }): LinkChoiceReviewState.Mapped => ({
           referents: discoveredReferents,
           linkChoices,
-          linkTargets: resolved.linkTargetsByReferentKey,
           found: defaults.found,
           resolved,
           // Labelling reads the clock (which name is current) and nothing else.
           mentionLinkOptions: Effect.runSync(
-            MentionLinkOptions.fromLinkTargets(
-              discoveredReferents,
-              resolved.linkTargetsByReferentKey
-            )
+            MentionLinkOptions.fromLinkTargets(discoveredReferents, resolved.plan)
           ),
         })
       )

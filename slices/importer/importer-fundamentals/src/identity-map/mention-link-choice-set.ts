@@ -21,41 +21,44 @@
  */
 
 import type { Option } from 'effect'
-import { HashMap } from 'effect'
+import { Data, HashMap } from 'effect'
 
 import type * as LinkChoice from './link-choice.ts'
 
-/** Every chosen mention's choice, by {@link key}. */
-type Type = HashMap.HashMap<string, LinkChoice.MentionLinkChoice>
+/**
+ * Which mention a choice is for: the resource it is made in, by the review
+ * key it is reviewed under (a `DecodedFile.Resource`'s `key`), and its
+ * `path` in it (`Mention.Type.path`). A review key is unique across a batch
+ * (`FormatDecode.keyPrefix`), so a key names one mention of the batch.
+ */
+interface Key {
+  readonly reviewKey: string
+  readonly path: string
+}
+
+/** Every chosen mention's choice, by its {@link Key}. */
+type Type = HashMap.HashMap<Key, LinkChoice.MentionLinkChoice>
 
 /** No mention chosen for on its own: every mention is redirected where its referent's choice says. */
 const empty: Type = HashMap.empty()
 
-/**
- * The key of the mention at `mentionPath` (`Mention.Type.path`) in the
- * resource reviewed under `reviewKey` (a `DecodedFile.Resource`'s `key`).
- *
- * @remarks
- * A review key is unique across a batch (`FormatDecode.keyPrefix`), and a
- * mention path never holds a `#`, so the key names one mention of the batch.
- */
-const key = (reviewKey: string, mentionPath: string): string => `${reviewKey}#${mentionPath}`
+/** The key of the mention at `path` in the resource reviewed under `reviewKey`, compared by value. */
+const key = (reviewKey: string, path: string): Key => Data.struct({ reviewKey, path })
 
-/** The choice `byMention` holds for the mention at `mentionPath` of the resource reviewed under `reviewKey`, if any. */
+/** The choice `byMention` holds for the mention at `path` of the resource reviewed under `reviewKey`, if any. */
 const forMention = (
   byMention: Type,
   reviewKey: string,
-  mentionPath: string
-): Option.Option<LinkChoice.MentionLinkChoice> =>
-  HashMap.get(byMention, key(reviewKey, mentionPath))
+  path: string
+): Option.Option<LinkChoice.MentionLinkChoice> => HashMap.get(byMention, key(reviewKey, path))
 
 /** `byMention` with `choice` set for that mention. */
 const set = (
   byMention: Type,
   reviewKey: string,
-  mentionPath: string,
+  path: string,
   choice: LinkChoice.MentionLinkChoice
-): Type => HashMap.set(byMention, key(reviewKey, mentionPath), choice)
+): Type => HashMap.set(byMention, key(reviewKey, path), choice)
 
 export { empty, forMention, key, set }
-export type { Type }
+export type { Key, Type }

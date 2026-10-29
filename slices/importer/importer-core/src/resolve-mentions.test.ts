@@ -10,6 +10,7 @@ import {
   DecodedFile,
   FormatDecode,
   LinkChoice,
+  LinkPlan,
   type LinkableResource,
   MentionLinkChoiceSet,
   Referent,
@@ -174,11 +175,13 @@ describe('resolveMentions', () => {
   it('gives an empty batch back as it is, with no linked records and no link targets', () => {
     const batch = batchOf({})
 
-    const { linkTargetsByReferentKey, unlinkedMentionsByFormatKind, ...resolved } =
-      resolvedOnTestClock(batch, HashMap.empty())
+    const { plan, unlinkedMentionsByFormatKind, ...resolved } = resolvedOnTestClock(
+      batch,
+      HashMap.empty()
+    )
 
     expect(resolved).toEqual({ ...batch, linkedRecords: [] })
-    expect(HashMap.isEmpty(linkTargetsByReferentKey)).toBe(true)
+    expect(LinkPlan.linkTargets(plan)).toEqual([])
     expect(HashMap.isEmpty(unlinkedMentionsByFormatKind)).toBe(true)
   })
 
@@ -222,9 +225,10 @@ describe('resolveMentions', () => {
         .flatMap((kind) => DecodedFile.resources(resolved.formats[kind].decoded))
         .filter(({ resource }) => resource.id === 's-1')
     ).toHaveLength(0)
+    expect(LinkPlan.linkTargets(resolved.plan).map((target) => target._tag)).toEqual(['Stored'])
     expect(
-      Array.from(HashMap.map(resolved.linkTargetsByReferentKey, (target) => target._tag))
-    ).toEqual([[ACCOUNT, 'Stored']])
+      Option.map(LinkPlan.linkTargetIfReferentKey(resolved.plan, ACCOUNT), (target) => target._tag)
+    ).toEqual(Option.some('Stored'))
     expect([
       subjectOf(at(resolved, 'lifelabs-pdf', 'lifelabs-pdf/k-0')),
       subjectOf(at(resolved, 'dicom', 'dicom/k-0')),
@@ -355,10 +359,7 @@ describe('resolveMentionsWithFallback', () => {
     )
     return {
       linkChoices: Array.from(HashMap.entries(resolved.linkChoices)),
-      targets: Array.from(
-        HashMap.values(resolved.batch.linkTargetsByReferentKey),
-        (target) => target._tag
-      ),
+      targets: LinkPlan.linkTargets(resolved.batch.plan).map((target) => target._tag),
     }
   }
 

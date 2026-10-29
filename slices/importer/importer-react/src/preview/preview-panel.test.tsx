@@ -21,9 +21,10 @@ import {
   FormatDecode,
   type DecodedFile,
   LinkableResource,
+  LinkPlan,
   LinkTarget,
   type PickedFile,
-  Referent,
+  type Referent,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { HashMap, Option, Schema, type ParseResult } from 'effect'
 import type { JSX } from 'react'
@@ -627,7 +628,7 @@ const makeBatch = (
   },
   unrecognizedFiles,
   linkedRecords: [],
-  linkTargetsByReferentKey: HashMap.empty(),
+  plan: LinkPlan.empty,
   unlinkedMentionsByFormatKind: HashMap.empty(),
 })
 
@@ -693,7 +694,7 @@ const withLinked = (
         origin: linkTarget._tag,
       },
     ],
-    linkTargetsByReferentKey: HashMap.make([Referent.key(referent), linkTarget]),
+    plan: { ...LinkPlan.empty, links: [{ referent, target: linkTarget }] },
     unlinkedMentionsByFormatKind: HashMap.empty(),
   }
 }

@@ -6,7 +6,7 @@ import {
   LINKED_GROUP,
   type ResolvedBatch,
 } from '@wildflowerhealthio/importer-core'
-import { FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
+import { FormatDecode, LinkPlan } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { HashMap, Schema } from 'effect'
 import * as fc from 'fast-check'
@@ -60,7 +60,8 @@ const makeBatch = (
   },
   unrecognizedFiles: [],
   linkedRecords: [],
-  linkTargetsByReferentKey: HashMap.empty(),
+  plan: LinkPlan.empty,
+  unlinkedMentionsByFormatKind: HashMap.empty(),
 })
 
 const UNCHANGED: ServerComparison = { status: 'unchanged', fields: [] }

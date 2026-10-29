@@ -1,12 +1,11 @@
 import {
   LinkableLogicalReference,
   type LinkChoice,
-  type LinkTarget,
+  LinkPlan,
   Referent,
   type ReferentLinkChoiceSet,
   ReferentTally,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { HashMap } from 'effect'
 import type { JSX } from 'react'
 
 import { ReferentRow } from './referent-row.tsx'
@@ -40,8 +39,8 @@ interface ReferentRowsProps {
   readonly referents: readonly Referent.Type[]
   /** The choices the batch is resolved on, by `Referent.key`. */
   readonly linkChoices: ReferentLinkChoiceSet.Type
-  /** Each referent's link target under `linkChoices`, by `Referent.key`. */
-  readonly linkTargets: HashMap.HashMap<string, LinkTarget.Type>
+  /** The plan the batch was resolved on under `linkChoices`: each referent's link target. */
+  readonly plan: LinkPlan.Type
   /** The stored resources the default search found. */
   readonly found: readonly StoredResource[]
   /** Whether the selects take no choice: while the batch is refused, a choice could not be resolved or shown. */
@@ -98,7 +97,7 @@ const ReferentRows = (props: ReferentRowsProps): JSX.Element | null => {
     <section aria-label={REFERENTS_HEADING} className={styles['referent-rows']}>
       <h3 className={styles['referent-rows__heading']}>{REFERENTS_HEADING}</h3>
       <p role="status" className={styles['referent-rows__tally']}>
-        {referentTallyLine(ReferentTally.of(HashMap.values(props.linkTargets)))}
+        {referentTallyLine(ReferentTally.of(LinkPlan.linkTargets(props.plan)))}
       </p>
       {LinkableLogicalReference.RESOURCE_TYPES.map((resourceType) => (
         <ReferentGroup key={resourceType} resourceType={resourceType} props={props} />

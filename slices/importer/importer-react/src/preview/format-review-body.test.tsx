@@ -122,10 +122,7 @@ const resolvedOn = (
       return {
         resolved: FileResolution.resolveFile(plan)(file),
         unlinked: UnlinkedMention.collect(FileResolution.resolveFile(planOnReferents)(file)),
-        options: yield* MentionLinkOptions.fromLinkTargets(
-          referents,
-          plan.linkTargetsByReferentKey
-        ),
+        options: yield* MentionLinkOptions.fromLinkTargets(referents, plan),
       }
     })
   )

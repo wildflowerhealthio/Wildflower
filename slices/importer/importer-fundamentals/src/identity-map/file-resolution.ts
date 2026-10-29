@@ -10,7 +10,7 @@
  */
 
 import { type FhirResourceWithId, ResourceReferences } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array, HashMap, Option, pipe } from 'effect'
+import { Array, Option, pipe } from 'effect'
 
 import * as DecodedFile from '../decoded-file.ts'
 import * as LinkPlan from './link-plan.ts'
@@ -127,49 +127,27 @@ const resolveEntry =
   }
 
 /**
- * The linked record `target`'s resource is under `plan`, keyed by
- * {@link linkedKey}, titled by its label and with the target's tag as its
- * origin, when the batch only mentions it; `None` when a resolved file holds
- * it where a decoded resource was.
- */
-const linkedRecordIfOnlyMentioned =
-  (plan: LinkPlan.Type) =>
-  (target: LinkTarget.StoredType | LinkTarget.ProvisionalType): Option.Option<LinkedRecord> =>
-    HashMap.get(
-      plan.resolvedResourcesByResolvedLiteralReference,
-      LinkableResource.literalReferenceOf(target.resource)
-    ).pipe(
-      Option.filter((resolvedResource) => !resolvedResource.resourceExistsInBatch),
-      Option.map(({ resource, label }) => ({
-        key: linkedKey(resource),
-        title: label,
-        resource,
-        origin: target._tag,
-      }))
-    )
-
-/**
- * The batch's linked records under `plan`: the records it only mentions, as
- * they will be written, in the order their referents were discovered. Only a
- * `Stored` or `Provisional` target can be one: a `Decoded` target's resource
- * is always in the batch, and an `Unlinked` one holds none. No resolved file
- * holds them; they are the batch's own, reviewed and written beside the
- * files.
+ * The batch's linked records under `plan`: the resolved resources no
+ * resolved file holds where a decoded resource was, as they will be
+ * written, in the order the links first reach them. Each is `Provisional`
+ * when a referent of the batch owns it (a provisional resource is its
+ * referent's own record), else `Stored`: a `Decoded` target's resource is
+ * always in the batch. No resolved file holds them; they are the batch's
+ * own, reviewed and written beside the files.
  */
 const linkedRecords = (plan: LinkPlan.Type): readonly LinkedRecord[] =>
   pipe(
-    plan.links,
-    Array.filterMap(
-      ({ target }): Option.Option<LinkTarget.StoredType | LinkTarget.ProvisionalType> =>
-        LinkTarget.match(target, {
-          Stored: Option.some,
-          Provisional: Option.some,
-          Decoded: Option.none,
-          Unlinked: Option.none,
-        })
-    ),
-    Array.dedupeWith((left, right) => LinkableResource.sameRecord(left.resource, right.resource)),
-    Array.filterMap(linkedRecordIfOnlyMentioned(plan))
+    LinkPlan.resolvedResources(plan),
+    Array.filter(({ resourceExistsInBatch }) => !resourceExistsInBatch),
+    Array.map(({ resource, label, ownerReferent }): LinkedRecord => ({
+      key: linkedKey(resource),
+      title: label,
+      resource,
+      origin: Option.match(ownerReferent, {
+        onNone: () => 'Stored' as const,
+        onSome: () => 'Provisional' as const,
+      }),
+    }))
   )
 
 /**

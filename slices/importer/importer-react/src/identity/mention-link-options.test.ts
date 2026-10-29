@@ -85,7 +85,7 @@ const optionsUnder = (linkChoices: ReferentLinkChoiceSet.Type): MentionLinkOptio
     Effect.gen(function* () {
       const referents = yield* Referent.discover([file])
       const plan = yield* LinkPlan.make([file], linkChoices)
-      return yield* MentionLinkOptions.fromLinkTargets(referents, plan.linkTargetsByReferentKey)
+      return yield* MentionLinkOptions.fromLinkTargets(referents, plan)
     })
   )
 
@@ -136,7 +136,7 @@ describe('MentionLinkOptions.fromLinkTargets', () => {
       `decoded:Patient|${SOURCE}|p-1`,
     ])
     expect(
-      runOnTestClock(MentionLinkOptions.fromLinkTargets([], HashMap.empty()))
+      runOnTestClock(MentionLinkOptions.fromLinkTargets([], LinkPlan.empty))
         .labelsByLiteralReference.size
     ).toBe(0)
   })

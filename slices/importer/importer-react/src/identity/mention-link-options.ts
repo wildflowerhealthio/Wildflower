@@ -19,6 +19,7 @@ import {
   LinkableLogicalReference,
   LinkableResource,
   LinkChoice,
+  LinkPlan,
   LinkTarget,
   Referent,
 } from '@wildflowerhealthio/importer-fundamentals'
@@ -88,16 +89,16 @@ const landingOf = (referent: Referent.Type, target: LinkTarget.Type): Option.Opt
  * (`LinkableResource.labelOf`, which reads the clock for the current name).
  *
  * @param referents - The batch's referents, once per identity
- * @param linkTargetsByReferentKey - Each referent's link target, by `Referent.key`
+ * @param plan - The plan the batch was resolved on
  */
 const fromLinkTargets = (
   referents: readonly Referent.Type[],
-  linkTargetsByReferentKey: HashMap.HashMap<string, LinkTarget.Type>
+  plan: LinkPlan.Type
 ): Effect.Effect<Type> => {
   const landings = pipe(
     referents,
     Array.filterMap((referent) =>
-      Option.flatMap(HashMap.get(linkTargetsByReferentKey, Referent.key(referent)), (target) =>
+      Option.flatMap(LinkPlan.linkTargetIfReferentKey(plan, Referent.key(referent)), (target) =>
         landingOf(referent, target)
       )
     ),
