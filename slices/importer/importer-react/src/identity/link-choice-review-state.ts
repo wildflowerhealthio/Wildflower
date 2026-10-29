@@ -28,7 +28,7 @@ interface MappedIdentityMap {
   readonly found: readonly StoredResource[]
   /** The batch resolved on {@link MappedIdentityMap.linkChoices}: what the diff, the preview and the confirm see. */
   readonly resolved: ResolvedBatch
-  /** What the rows' mention selects offer under the resolved batch's plan: each resource a referent lands on, labelled. */
+  /** What the rows' mention selects offer under the resolved batch's plan: each resolved resource, labelled. */
   readonly mentionLinkOptions: MentionLinkOptions.Type
 }
 

@@ -704,7 +704,7 @@ describe('ImporterScreen', () => {
     expect(screen.getByRole('button', { name: 'Import 3 resources (1 excluded)' })).toBeDefined()
   })
 
-  it('lands a subject picked onto the Patient on the stored record the Patient is later linked to', async () => {
+  it('redirects a subject picked onto the Patient to the stored record the Patient is later linked to', async () => {
     // Arrange — the device holds Tyra under no identifier the import carries,
     // so the Patient starts as new and the stored one is offered, not chosen
     currentRunAuthed = routingServer({ stored: [{ ...STORED_TYRA, identifier: [] }] })

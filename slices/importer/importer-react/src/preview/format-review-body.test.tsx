@@ -37,7 +37,7 @@ import { keysNeedingPatient } from './unlinked-mentions.ts'
 /**
  * One format's review body over a file resolved on the identity map: the Needs
  * a patient group, and the per-resource mention selects whose picks are
- * mention link choices the resolution lands.
+ * mention link choices the resolution redirects.
  */
 
 afterEach(cleanup)
@@ -265,7 +265,7 @@ describe('FormatReviewBody', () => {
     // Act — assign Tyra
     await userEvent.selectOptions(subject, TYRA)
 
-    // Assert — a choice the resolution lands, the row in, kept in the group, not edited
+    // Assert — a choice the resolution redirects, the row in, kept in the group, not edited
     expect(HashMap.toEntries(reported.latest().byMention)).toEqual([
       [
         MentionLinkChoiceSet.key('k-1', Mention.SUBJECT_PATH),
@@ -288,7 +288,7 @@ describe('FormatReviewBody', () => {
     expect(within(group).getByText(NAMES_NO_PATIENT)).toBeDefined()
   })
 
-  it('lands a pick on another person and back', async () => {
+  it('redirects a pick to another person and back', async () => {
     const reported = reports()
     render(
       <Harness
@@ -332,7 +332,7 @@ describe('FormatReviewBody', () => {
       />
     )
 
-    // Assert — the picked subject lands on the stored record, not the source one
+    // Assert — the picked subject is redirected to the stored record, not the source one
     expect(subjectLiteral(reported.latest().resolved, 'k-1')).toEqual(Option.some('Patient/s-1'))
     expect(
       screen

@@ -139,7 +139,7 @@ write plan with this package alone.
     mention alone, that no candidate format row names by its literal
     `Type/<id>` in any reference field (`Mention.madeIn`), so it is never an
     orphan. A changed linked record of `Stored` origin — a stored resource a
-    link lands on, the batch's identifiers assumed — is a candidate whatever
+    link targets, the batch's identifiers assumed — is a candidate whatever
     the reviewer excluded, the link choice being the consent to it, so a
     batch can write stored copies and no format's resources.
   - **`Superseded`** — a candidate a later candidate shares its `Type/id`

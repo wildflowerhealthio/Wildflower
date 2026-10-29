@@ -148,7 +148,7 @@ const linkedVerdictOf = (
  * - A linked record is read-only in the review (a link choice is how to
  *   change one), so this is the one place its write is decided. It is
  *   **`Unchanged`** when the server holds it as it is (its key in
- *   `unchangedLinked`). Else a `Stored` one — a stored resource a link lands
+ *   `unchangedLinked`). Else a `Stored` one — a stored resource a link targets
  *   on, the batch's identifiers assumed — is a candidate whatever the
  *   reviewer excluded: the link choice is the consent to it, and excluding a
  *   resource says nothing about who its subject is. A `Provisional` one,

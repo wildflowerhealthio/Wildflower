@@ -671,7 +671,7 @@ const observationOf = (key: string, references: object): DecodedFile.Resource =>
   }),
 })
 
-/** `batch` with `resource` as its one linked record, the link landing on it made by `target`. */
+/** `batch` with `resource` as its one linked record, the link whose target it is made by `target`. */
 const withLinked = (
   batch: ResolvedBatch,
   resource: LinkableResource.WithId,

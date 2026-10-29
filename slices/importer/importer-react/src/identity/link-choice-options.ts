@@ -82,7 +82,7 @@ const storedOption = ({ resource, label }: StoredResource): LinkChoiceOption =>
 const sameValue = (left: LinkChoiceOption, right: LinkChoiceOption): boolean =>
   left.value === right.value
 
-/** Whether `referent` writes a record of its own, new or over its stored copy, and that lands on a resource. */
+/** Whether `referent` writes a record of its own, new or over its stored copy, and is linked to a resource. */
 const writesOwnRecord = (
   referent: Referent.Type,
   linkChoices: ReferentLinkChoiceSet.Type,

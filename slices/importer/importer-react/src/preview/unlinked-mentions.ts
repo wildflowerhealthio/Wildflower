@@ -70,7 +70,7 @@ const unlinkedIn = (key: string, resource: FhirResourceWithId): readonly Unlinke
 /** Why `unlinked`, of `resource`, is listed, in one phrase. */
 const reasonOf = (unlinked: UnlinkedMention.Type, resource: FhirResourceWithId): string =>
   UnlinkedMention.match(unlinked, {
-    // A subject with a literal that lands nowhere on the device is an absolute URL.
+    // A subject with a literal that names no record of the device is an absolute URL.
     OutsidePatientCompartment: () =>
       'subject' in resource && resource.subject?.reference != null
         ? POINTS_OUTSIDE_IMPORT

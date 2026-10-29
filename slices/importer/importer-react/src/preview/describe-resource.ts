@@ -25,7 +25,7 @@ import { FhirResourceSchema } from '@wildflowerhealthio/fhir-r4/resources'
  * survives.
  *
  * The subject is named by a label the caller hands in for its literal
- * reference (the resource it lands on once resolved), else by its `display`,
+ * reference (the resource it is redirected to once resolved), else by its `display`,
  * never by its `Patient/<id>`.
  *
  * @packageDocumentation
@@ -328,7 +328,7 @@ const NO_LABELS: ReadonlyMap<string, string> = new Map()
  * {@link ResourceDescription} the row can render.
  *
  * @param resource - The resource as reviewed
- * @param labels - The label of each resource a subject may land on, by its
+ * @param labels - The label of each resource a subject may be redirected to, by its
  *   literal reference
  */
 const describeResource = (

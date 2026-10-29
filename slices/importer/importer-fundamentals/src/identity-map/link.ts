@@ -240,7 +240,7 @@ const linkTargetAlong = (
  * it, named for the referent whose choice it is. A cycle is linked as
  * `CreateResource` for the first of its members, in key order, that it links
  * to a resource, whichever member the chain entered at, so every referent in
- * it lands on the same one resource. Each referent's chain is followed on
+ * it is redirected to the same one resource. Each referent's chain is followed on
  * its own; none is longer than `referents`.
  */
 const fromChoices = (

@@ -23,7 +23,7 @@ import styles from './referent-rows.module.css'
 /**
  * The block above the format groups: one line per referent of the batch, its
  * label and a select of the `LinkChoice`s its kind allows, grouped by the
- * resource type its logical reference names, and a tally of where they land.
+ * resource type its logical reference names, and a tally of what they are linked to.
  *
  * @remarks
  * The groups are the resource types the identity map links, in

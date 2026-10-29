@@ -1,6 +1,6 @@
 /**
  * A mention: each place a resource names something by a `Reference`, at its
- * path, and where it lands.
+ * path, and where it is redirected.
  *
  * @remarks
  * Mentions are found by `fhir-r4`'s `ResourceReferences` walk, so a reference
@@ -41,11 +41,11 @@ const RELATIVE_LITERAL_REFERENCE =
   /^[A-Z][A-Za-z]+\/[A-Za-z0-9\-.]{1,64}(\/_history\/[A-Za-z0-9\-.]{1,64})?$/
 
 /**
- * Whether a reference lands on a record of the device: a relative literal
+ * Whether a reference names a record of the device by a relative literal
  * reference, `Type/<id>`, as opposed to none, an absolute URL into another
  * system, a contained `#<id>`, or text that is no reference at all.
  */
-const landsOnDevice = (reference: IdentifierAndReference.ReferenceType): boolean =>
+const isDeviceLiteral = (reference: IdentifierAndReference.ReferenceType): boolean =>
   reference.reference !== null && RELATIVE_LITERAL_REFERENCE.test(reference.reference)
 
 /** The path of the mention that places a resource in a patient's compartment. */
@@ -76,7 +76,7 @@ const linkableTypeOf = ({
   path,
   reference,
 }: Type): Option.Option<LinkableLogicalReference.ResourceType> => {
-  const ofLiteral = landsOnDevice(reference)
+  const ofLiteral = isDeviceLiteral(reference)
     ? Option.fromNullable(reference.reference).pipe(
         Option.map((literal) => literal.split('/')[0] ?? '')
       )
@@ -119,7 +119,7 @@ const namesNothing = (reference: IdentifierAndReference.ReferenceType): boolean 
  *
  * @param resource - The resource whose mention moves
  * @param mentionPath - The mention's path (`Type.path`)
- * @param literalReference - The `Type/<id>` to land on, or `None` for no
+ * @param literalReference - The `Type/<id>` to redirect it to, or `None` for no
  *   resource of the device
  * @returns `resource` itself when nothing changes; otherwise a copy that
  *   differs only at that mention
@@ -159,7 +159,7 @@ const relinked = <TResource extends FhirResource>(
 export {
   at,
   hasEmptySubject,
-  landsOnDevice,
+  isDeviceLiteral,
   linkableIn,
   linkableTypeOf,
   madeIn,

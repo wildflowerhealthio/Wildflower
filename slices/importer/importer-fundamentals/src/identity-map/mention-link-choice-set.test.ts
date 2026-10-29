@@ -33,7 +33,7 @@ import {
 } from './identity-map.test-helpers.ts'
 
 /**
- * A mention the reviewer chose a link for on its own lands where that choice
+ * A mention the reviewer chose a link for on its own is redirected where that choice
  * says, over its referent's rule, and the plan resolves it: a
  * `LinkToDecodedReferent` follows its referent's later link, a
  * `LinkToStoredResource` teaches and writes nothing, a `DontLink` keeps what
@@ -82,7 +82,7 @@ describe('a mention link choice on a resolved file', () => {
     observation('o-1')
   )
 
-  it('lands a LinkToDecodedReferent mention where its referent lands, and follows that referent’s later link', () => {
+  it('redirects a LinkToDecodedReferent mention to its referent’s link target, and follows that referent’s later link', () => {
     const toPerson = onSubjects([
       ['k-1', LinkChoice.LinkToDecodedReferent({ referentKey: PERSON })],
     ])
@@ -104,7 +104,7 @@ describe('a mention link choice on a resolved file', () => {
     expect(subjectAt(onStored, 'k-2')?.reference).toBe(null)
   })
 
-  it('lands a LinkToStoredResource mention on that resource, teaching it nothing and writing nothing', () => {
+  it('redirects a LinkToStoredResource mention to that resource, teaching it nothing and writing nothing', () => {
     const resolved = resolveOnTestClock(
       file,
       HashMap.empty(),
@@ -158,7 +158,7 @@ describe('a mention link choice on a resolved file', () => {
     ).toEqual(['k-1', 'k-2'])
   })
 
-  it('reads a choice the mention cannot take as none: another type, or a referent landing nowhere', () => {
+  it('reads a choice the mention cannot take as none: another type, or an unlinked referent', () => {
     const resolved = resolveOnTestClock(
       file,
       HashMap.empty(),
@@ -240,7 +240,7 @@ describe('Mention.relinked', () => {
           expect(elsewhere(after)).toEqual(elsewhere(before))
           const now = Mention.at(relinked, mention.path)
           if (relinked === entry.resource) return
-          // A relink lands the literal, or drops it, and keeps the rest of the mention.
+          // A relink sets the literal, or drops it, and keeps the rest of the mention.
           expect(Option.map(now, ({ reference }) => reference.reference)).toEqual(
             Option.some(literal ?? null)
           )

@@ -153,7 +153,8 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     at its path (`subject`, `performer[0].actor`): **`madeIn`** is every
     mention a resource makes, found by fhir-r4's
     `ResourceReferences.collect` so a reference anywhere is one; `at` the one
-    at a path; `hasEmptySubject`, whether a `subject` slot holds nothing; and `landsOnDevice`, whether a reference is a relative literal
+    at a path; `hasEmptySubject`, whether a `subject` slot holds nothing;
+    and `isDeviceLiteral`, whether a reference is a relative literal
     `Type/<id>` (not a contained `#<id>`, an absolute URL, or text). Which
     type an identifier-only mention names is the reference's own business: a
     logical reference states its `type`, and one that does not names nothing.
@@ -164,7 +165,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     CompartmentDefinition names `subject` for every type the importer
     handles), an empty `subject` slot included as an empty reference;
     `linkableTypeOf` is that type. **`relinked`** is the resource with the
-    mention at a path landed on a literal reference, or, for `None`, with its
+    mention at a path redirected to a literal reference, or, for `None`, with its
     literal dropped, keeping its `identifier` and `display` and changing
     nothing when the mention would then name nothing; it fills an empty
     `subject` slot.
@@ -303,7 +304,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     its mentions redirected to their referents' link targets either way
     (`ResourceReferences.mapReferences`, keeping `display` and `identifier`),
     then each the reviewer chose a link for under the entry's review key
-    landed where that choice says (`Mention.relinked`: on the chosen
+    redirected where that choice says (`Mention.relinked`: on the chosen
     resource's literal reference, or, for `Unlinked`, with its literal
     dropped; an empty `subject` slot chosen for is filled);
     **`linkedRecords(plan)`**: the batch's linked records, the resolved
@@ -313,8 +314,8 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     **`linkedKey`** and titled by their label, in the order the links first
     reach them, no file's and so no format's.
   - **`UnlinkedMention`** — `collect`: on a resolved file, every resource
-    **`OutsidePatientCompartment`** (a `subject` slot in which nothing lands
-    on a patient of the device; FHIR's Patient CompartmentDefinition names
+    **`OutsidePatientCompartment`** (a `subject` slot in which nothing names
+    a patient of the device; FHIR's Patient CompartmentDefinition names
     `subject` for every type the importer handles) and every **`Dangling`**
     mention (a logical reference, in any field, the map could link and left
     unlinked), matched with `UnlinkedMention.match`.
@@ -341,7 +342,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     order a warning lists them; a Practitioner compares none. What the review
     warns about; the link stands.
   - **`ReferentTally`** — **`of(linkTargets)`**: how many records the
-    referents land on (`onServer`, `fromImport`, each record counted once, a
+    referents are linked to (`onServer`, `fromImport`, each record counted once, a
     stored record the import writes over counted from the import) and how
     many referents are `unlinked`: the review's summary line.
 
@@ -455,7 +456,7 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
   one that tries to be unique across a batch cannot be, since it is not given
   the batch.
 - **Identity is the map's, never the selection's.** `StagedImport` keeps
-  exclusions and edits; what a mention lands on lives in the
+  exclusions and edits; where a mention is redirected lives in the
   `ReferentLinkChoiceSet` and, for a mention the reviewer chose for on its own,
   the `MentionLinkChoiceSet`, held beside the selections, and `importer-core`'s
   `resolveMentions` runs over the batch before the server diff, the preview
@@ -502,16 +503,16 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
   bubble to the screen
   rather than read as a default. A cycle reads as `CreateResource` for the
   first of its members, in key order, that it links to a resource, so all of
-  it lands on one resource.
+  it is redirected to one resource.
   `UnlinkedMention.collect` lists, on the resolved file, every resource outside
-  every patient's compartment (a `subject` slot in which nothing lands on a
+  every patient's compartment (a `subject` slot in which nothing names a
   patient of the device) and every dangling mention: a logical reference, in
   any field, the map could link and left unlinked. A `display`-only provider,
   an untyped identifier, an absolute URL and a contained `#<id>` are not ones
   the map could link, so they are not listed on their own. A mention link
   choice wins over its referent's rule for that one mention; only an explicit
   `DontLink` unlinks one, and a choice of a type the mention cannot name, or
-  of a referent landing nowhere, is none.
+  of an unlinked referent, is none.
 - **Selection keys by a `DecodedFile.Resource`'s `key`.** Selection state must
   be serializable and survive a settings re-decode, so both axes hold string
   keys; a key that disappears simply stops applying.

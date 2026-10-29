@@ -155,9 +155,9 @@ The importer has no HTTP wire union to derive, so there is no separate
   per job:
   - `referent-rows.tsx` — the block the panel renders above the format
     groups (its `referentRows` slot): a tally of the records the referents
-    land on (`ReferentTally`: a stored record, or one this import writes, is
-    counted once however many referents share it) and the referents that
-    land nowhere, then one group per `LinkableLogicalReference.RESOURCE_TYPES`
+    are linked to (`ReferentTally`: a stored record, or one this import
+    writes, is counted once however many referents share it) and the
+    referents that are unlinked, then one group per `LinkableLogicalReference.RESOURCE_TYPES`
     entry that has referents. A list that failed is said under its group,
     and only the search's hits are offered; a list the page limit cut off is
     said too. While the batch is `refused` the selects are disabled, since a
@@ -266,14 +266,14 @@ The importer has no HTTP wire union to derive, so there is no separate
   (`MentionLinkOptions`), the one it names now when none of them is it, plus
   Don't link where the mention keeps something to name or the referent
   choices leave it unlinked. A pick is a mention link choice in the identity
-  map (`onChooseMention`), never an edit: the resolved resource lands the
-  mention there and the row is not marked edited; a row with an edit
+  map (`onChooseMention`), never an edit: the resolved resource redirects
+  the mention there and the row is not marked edited; a row with an edit
   override has it relinked at that mention too (`Mention.relinked`), since
   the override is what gets written. A patient picked for a resource under
   Needs a patient includes it, Don't link leaves it out again, and Revert
   leaves one out again when the resolved resource has no patient either.
   `describe-resource.ts` reads a decoded resource in its wire form and names
-  its subject by the label of the resource it lands on, else its `display`,
+  its subject by the label of the resource it is redirected to, else its `display`,
   never by its `Patient/<id>`. A section's tri-state heading toggle is
   `section-toggle.tsx` — `{ title, keys, isIncluded, onSetIncluded }`, the
   `indeterminate`-via-ref pattern — shared with the server source-file list's
@@ -578,7 +578,7 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   identifier, every subject on it), a re-import that defaults the Patient to
   an update of the copy it stored and is `unchanged` and left out, one referent for one identity two files name,
   a resource naming no patient left out until one is assigned, a subject
-  picked onto the Patient landing on the stored record the Patient is later
+  picked onto the Patient redirected to the stored record the Patient is later
   linked to, and an edit on a Patient's row dropped when that Patient is
   linked to a stored one.
   Its stub refuses a `transaction` one of whose entries fails as a whole, as

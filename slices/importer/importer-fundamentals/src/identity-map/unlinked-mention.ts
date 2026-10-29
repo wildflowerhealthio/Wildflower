@@ -15,7 +15,7 @@ import * as Mention from './mention.ts'
 
 /**
  * A resource that, as written, is in no patient's compartment: it has a
- * `subject` slot and nothing in it lands on a patient of the device, the
+ * `subject` slot and nothing in it names a patient of the device, the
  * slot empty, a `display` alone, an absolute URL into another system, a
  * contained `#<id>`, or an untyped identifier.
  *
@@ -68,7 +68,7 @@ const collect = (resolvedFile: DecodedFile.DecodedFile): readonly Type[] =>
     const outsideCompartment: readonly Type[] =
       'subject' in resource &&
       (resource.subject === null ||
-        (!Mention.landsOnDevice(resource.subject) && !isDangling(resource.subject)))
+        (!Mention.isDeviceLiteral(resource.subject) && !isDangling(resource.subject)))
         ? [OutsidePatientCompartment({ mentioningResourceKey: key })]
         : []
     const dangling = Mention.madeIn(resource)

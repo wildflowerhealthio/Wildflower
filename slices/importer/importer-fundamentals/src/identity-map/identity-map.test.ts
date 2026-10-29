@@ -420,7 +420,7 @@ describe('the identity map on a re-import', () => {
     [ACCOUNT, LinkChoice.LinkToStoredResource({ resource: storedCopy })]
   )
 
-  it('lands the person decoded and the account on the stored copy, under one literal reference', () => {
+  it('redirects the person decoded and the account to the stored copy, under one literal reference', () => {
     const referents = discoverOnTestClock(reimport)
 
     expect(identifiersOf(storedCopy)).toEqual([
@@ -643,7 +643,7 @@ describe('Link.fromChoices', () => {
     ).toBe(`Invalid ${account(1)} LinkedReferentNotInBatch`)
   })
 
-  it('fails on a link to a referent of another type: a subject never lands on a practitioner', () => {
+  it('fails on a link to a referent of another type: a subject is never redirected to a practitioner', () => {
     const withPrescriber = fileOf(
       request('rx-1', customerSubject('c-9'), namedRequester('Dr. A Smith'))
     )

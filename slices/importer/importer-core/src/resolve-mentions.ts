@@ -64,7 +64,7 @@ interface ResolvedBatch extends DecodedBatch {
    * What the referent link choices alone leave unlinked in each claimed
    * format (`UnlinkedMention.collect`), the format's own source files aside:
    * the resources the review lists as needing a patient or a provider. A
-   * mention the reviewer chose a link for on its own is landed in the
+   * mention the reviewer chose a link for on its own is redirected in the
    * format's resolved file and still counted here, so the row it is on stays
    * listed, and in focus, once picked.
    */
@@ -136,7 +136,7 @@ const unlinkedMentionsOf = (
  * ids are keyed by one logical reference, and with
  * `LinkChoice.InvalidLinkChoice` when a choice cannot be followed for its
  * referent; a mention link choice its mention cannot take is no choice, so
- * that mention lands where its referent's choice says.
+ * that mention is redirected to its referent's link target.
  */
 const resolveMentions = (
   batch: DecodedBatch,

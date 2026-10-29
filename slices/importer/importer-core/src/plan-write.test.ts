@@ -381,7 +381,7 @@ const PRACTITIONER = 'Practitioner/provisional-1'
 /** The literal reference of the stored Patient a mention is linked to. */
 const STORED_PATIENT = 'Patient/s-1'
 
-/** A linked record of a batch: its review entry and the link that lands on it. */
+/** A linked record of a batch: its review entry and the link whose target it is. */
 interface LinkedRecord {
   readonly key: string
   readonly literalReference: string
@@ -389,7 +389,7 @@ interface LinkedRecord {
   readonly link: Link.Type
 }
 
-/** `linkedResource` as a linked record titled `title`, the link landing on it made by `target`. */
+/** `linkedResource` as a linked record titled `title`, the link whose target it is made by `target`. */
 const linkedRecordOf = (
   linkedResource: LinkableResource.WithId,
   title: string,

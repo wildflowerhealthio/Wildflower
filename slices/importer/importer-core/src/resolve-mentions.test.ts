@@ -260,7 +260,7 @@ describe('resolveMentions with mention link choices', () => {
     'lifelabs-pdf': [patient('p-1', SOURCE_PATIENT)],
   })
 
-  it('lands a mention one format chose for on its own where its choice says, the rest where their referent does', () => {
+  it('redirects a mention one format chose for on its own where its choice says, the rest to their referent’s link target', () => {
     const resolved = resolvedOnTestClock(
       batch,
       HashMap.make([PERSON, LinkChoice.LinkToStoredResource({ resource: STORED_TYRA })]),

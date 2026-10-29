@@ -8,7 +8,7 @@
  * to, a provisional one, a decoded resource other referents link to, and a
  * decoded resource a mention links to by its stored copy are all the same
  * thing to the resolution: the resource under that literal reference, as
- * written. It is made from the links that landed on it, each a
+ * written. It is made from the links redirected to it, each a
  * {@link LinkedResource}.
  *
  * @packageDocumentation
@@ -22,7 +22,7 @@ import type * as Link from './link.ts'
 import * as LinkableResource from './linkable-resource.ts'
 import * as Referent from './referent.ts'
 
-/** A link that landed on a resource: the referent, and its target, which holds one. */
+/** A link whose target holds a resource: the referent, and that target. */
 interface LinkedResource {
   readonly referent: Referent.Type
   readonly target: Exclude<LinkTarget.Type, LinkTarget.UnlinkedType>
@@ -66,7 +66,7 @@ interface Type {
 
 /**
  * The copy of the resource under one resolved literal reference that is
- * written: the decoded one when a referent's link lands on it, else the last
+ * written: the decoded one when it is a referent's link target, else the last
  * link's.
  *
  * @remarks
@@ -110,7 +110,7 @@ const ownerReferentAmong = (
 
 /**
  * The resolved resource under `resolvedLiteralReference`, from the links that
- * landed on it, given the literal references of the decoded resources the
+ * are redirected to it, given the literal references of the decoded resources the
  * batch writes where they were decoded.
  *
  * @remarks

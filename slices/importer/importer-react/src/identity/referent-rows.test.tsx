@@ -156,7 +156,7 @@ describe('ReferentRows', () => {
       expect(select.value).toBe('update:Patient/p-1')
     })
 
-    // The account linked to the stored copy lands on the record this import
+    // The account linked to the stored copy is redirected to the record this import
     // writes over it: one record, counted with the import's.
     await userEvent.selectOptions(
       screen.getByRole('combobox', { name: 'c-9' }),
@@ -210,7 +210,7 @@ describe('ReferentRows', () => {
   it('should resolve the batch on a changed select', async () => {
     await renderRows(BATCH, {})
 
-    // Tyra's own record is the one new record; the account and the prescriber land nowhere.
+    // Tyra's own record is the one new record; the account and the prescriber are unlinked.
     expect(screen.getByRole('status').textContent).toBe(
       '0 records on the server, 1 record from this import, 2 not linked'
     )

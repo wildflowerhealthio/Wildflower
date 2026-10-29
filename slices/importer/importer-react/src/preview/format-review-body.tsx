@@ -37,11 +37,11 @@ import styles from './format-review-body.module.css'
  * @remarks
  * A row whose resource makes a mention the identity map can link carries an
  * inline select per such mention, read as part of its summary line ("for
- * Tyra Banks", "requested by …"): the resources the batch's referents land
- * on, of the type the mention names (`MentionLinkOptions`), plus Don't link
+ * Tyra Banks", "requested by …"): the resources the batch's referents are
+ * linked to, of the type the mention names (`MentionLinkOptions`), plus Don't link
  * where the mention keeps something to name or the referent choices leave
  * it unlinked. A pick is a mention link choice in the identity map
- * (`onChooseMention`), not an edit: the resolved resource lands the
+ * (`onChooseMention`), not an edit: the resolved resource redirects the
  * mention there and the row is not marked edited; a row with an edit
  * override has the override relinked at that mention too, since the
  * override is what gets written. The resources the referent choices leave a
@@ -109,10 +109,13 @@ const DONT_LINK_VALUE = 'dont-link'
 /** The value of the option for the literal reference the mention carries now, when no offer has it. */
 const currentValue = (literalReference: string): string => `current:${literalReference}`
 
-/** The literal reference the mention at `mentionPath` of `resource` lands on the device by. */
-const landingOf = (resource: FhirResourceWithId, mentionPath: string): Option.Option<string> =>
+/** The literal reference by which the mention at `mentionPath` of `resource` names a record of the device. */
+const deviceLiteralOf = (
+  resource: FhirResourceWithId,
+  mentionPath: string
+): Option.Option<string> =>
   Mention.at(resource, mentionPath).pipe(
-    Option.filter(({ reference }) => Mention.landsOnDevice(reference)),
+    Option.filter(({ reference }) => Mention.isDeviceLiteral(reference)),
     Option.flatMapNullable(({ reference }) => reference.reference)
   )
 
@@ -139,14 +142,14 @@ const MentionSelect = ({
   /** Called with the offer picked, or `None` for Don't link. */
   readonly onPick: (picked: Option.Option<MentionLinkOptions.Offer>) => void
 }): JSX.Element => {
-  const landing = landingOf(reviewed, mention.path)
-  const offered = Option.flatMap(landing, (literalReference) =>
+  const deviceLiteral = deviceLiteralOf(reviewed, mention.path)
+  const offered = Option.flatMap(deviceLiteral, (literalReference) =>
     Option.fromNullable(offers.find((offer) => offer.literalReference === literalReference))
   )
   // A literal reference no offer has keeps an option of its own, so the
-  // select shows what the mention names; an absolute URL lands on no
+  // select shows what the mention names; an absolute URL names no
   // resource of the device, as Don't link does.
-  const current = Option.isSome(offered) ? Option.none() : landing
+  const current = Option.isSome(offered) ? Option.none() : deviceLiteral
   const value = Option.match(offered, {
     onNone: () => Option.match(current, { onNone: () => DONT_LINK_VALUE, onSome: currentValue }),
     onSome: (offer) => offer.value,

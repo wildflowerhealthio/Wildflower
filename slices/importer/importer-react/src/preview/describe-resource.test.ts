@@ -190,7 +190,7 @@ describe('describeResource', () => {
     expect(describeResource(patient).summary).toBe('Tyra Banks · 1990-01-02')
   })
 
-  it('names the subject by the label of the resource it lands on, else by its display, never by its literal', () => {
+  it('names the subject by the label of the resource it is redirected to, else by its display, never by its literal', () => {
     // Arrange
     const observation = (subject: object): unknown =>
       Schema.decodeUnknownSync(FhirResourceSchema)({
