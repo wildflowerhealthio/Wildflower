@@ -11,11 +11,13 @@ import type { ResolvedBatch } from '@wildflowerhealthio/importer-core'
 import type {
   LinkChoice,
   LinkTarget,
+  MentionLinkChoices,
   Referent,
   ReferentLinkChoices,
 } from '@wildflowerhealthio/importer-fundamentals'
 import type { HashMap, Option } from 'effect'
 
+import type * as MentionLinkOptions from './mention-link-options.ts'
 import type { StoredResource } from './use-stored-resources-of-type.ts'
 
 /** The identity map of a batch, as the screen renders and resolves it. */
@@ -30,6 +32,8 @@ interface MappedIdentityMap {
   readonly found: readonly StoredResource[]
   /** The batch resolved on {@link MappedIdentityMap.linkChoices}: what the diff, the preview and the confirm see. */
   readonly resolved: ResolvedBatch
+  /** What the rows' mention selects offer under {@link MappedIdentityMap.linkTargets}: each resource a referent lands on, labelled. */
+  readonly mentionLinkOptions: MentionLinkOptions.Type
 }
 
 /**
@@ -50,11 +54,21 @@ type LinkChoiceReviewState =
       readonly previous: Option.Option<MappedIdentityMap>
     }
 
-/** The review's surface: the state, and the one action the referent rows drive. */
+/** The review's surface: the state, the action the referent rows drive, and the one the mention selects drive. */
 interface IdentityMapReview {
   readonly state: LinkChoiceReviewState
   /** Set the reviewer's choice for the referent keyed `referentKey`. */
   readonly choose: (referentKey: string, choice: LinkChoice.Type) => void
+  /**
+   * Set the reviewer's choice for the mention at `mentionPath` of the
+   * resource reviewed under `reviewKey`, over its referent's: a mention link
+   * choice in the identity map, never an edit.
+   */
+  readonly chooseMention: (
+    reviewKey: string,
+    mentionPath: string,
+    choice: MentionLinkChoices.Choice
+  ) => void
 }
 
 export type {

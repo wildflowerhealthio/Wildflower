@@ -99,3 +99,39 @@
   color: var(--color-neutral-4);
   word-break: break-all;
 }
+
+.review-body__unlinked {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--color-warning-border);
+}
+
+.review-body__unlinked-heading {
+  margin: 0;
+  font-size: var(--font-size-2);
+}
+
+.review-body__unlinked-reason {
+  color: var(--color-neutral-4);
+  font-style: italic;
+}
+
+.review-body__mention {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  color: var(--color-neutral-4);
+}
+
+.review-body__mention-select {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: none;
+  border-bottom: 1px dotted currentcolor;
+  border-radius: 0;
+  padding: 0 var(--space-1);
+  cursor: pointer;
+}

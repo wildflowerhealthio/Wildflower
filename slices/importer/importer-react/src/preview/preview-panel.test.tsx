@@ -628,6 +628,7 @@ const makeBatch = (
   unrecognizedFiles,
   linkedRecords: [],
   linkTargetsByReferentKey: HashMap.empty(),
+  unlinkedMentionsByFormatKind: HashMap.empty(),
 })
 
 /** Verdicts for a format, keyed by format kind. */
@@ -693,6 +694,7 @@ const withLinked = (
       },
     ],
     linkTargetsByReferentKey: HashMap.make([Referent.key(referent), linkTarget]),
+    unlinkedMentionsByFormatKind: HashMap.empty(),
   }
 }
 

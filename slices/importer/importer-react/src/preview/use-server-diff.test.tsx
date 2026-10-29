@@ -65,6 +65,7 @@ const batchOf = (resources: readonly FhirResourceWithId[]): ResolvedBatch => ({
   unrecognizedFiles: [],
   linkedRecords: [],
   linkTargetsByReferentKey: HashMap.empty(),
+  unlinkedMentionsByFormatKind: HashMap.empty(),
 })
 
 /** A server that holds nothing: every GET entry of the diff bundle is a 404, so every id is new. */

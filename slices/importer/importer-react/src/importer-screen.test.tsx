@@ -17,7 +17,9 @@ import { SKIPPED_HEADING } from './results/import-results.tsx'
 import {
   dicomFile,
   ID_LESS_OBSERVATIONS_HAR,
+  NAMED_NO_SUBJECT_HAR,
   NAMED_PATIENT_HAR,
+  NO_SUBJECT_HAR,
   RECOGNIZED_HAR,
   storedSourceFile,
   type StoredSourceFile,
@@ -629,6 +631,117 @@ describe('ImporterScreen', () => {
     })
     expect(screen.getAllByText('Already on server')).toHaveLength(4)
     expect(writes()).toHaveLength(written)
+  })
+
+  it("drops an edit made on a Patient's row when the Patient is linked to another record", async () => {
+    // Arrange — the device holds Tyra under no identifier the import carries,
+    // so the Patient starts as new and the stored one is offered, not chosen
+    currentRunAuthed = routingServer({ stored: [{ ...STORED_TYRA, identifier: [] }] })
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+    await userEvent.upload(screen.getByLabelText('Import file'), namedPatientHar('a.har'))
+    const person = await screen.findByRole<HTMLSelectElement>('combobox', { name: TYRA })
+    expect(person.value).toBe('create')
+    await within(person).findByRole('option', { name: TYRA })
+
+    // Act — edit the source Patient's row, then link it to the stored one
+    await userEvent.click(screen.getByRole('button', { name: /^Edit Patient/ }))
+    const textarea = await screen.findByLabelText<HTMLTextAreaElement>('Resource JSON')
+    const source = Schema.decodeUnknownSync(
+      Schema.Record({ key: Schema.String, value: Schema.Unknown })
+    )(JSON.parse(textarea.value))
+    await userEvent.clear(textarea)
+    await userEvent.click(textarea)
+    await userEvent.paste(JSON.stringify({ ...source, gender: 'female' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Keep' }))
+    expect(await screen.findByText('Edited')).toBeDefined()
+    await userEvent.selectOptions(person, 'stored:Patient/s-1')
+
+    // Assert — the edit is gone, and the stored Patient is written as stored
+    await waitFor(() => {
+      expect(screen.queryByText('Edited')).toBeNull()
+    })
+    const confirm = await screen.findByRole<HTMLButtonElement>('button', {
+      name: /Import 4 resources/,
+    })
+    await waitFor(() => {
+      expect(confirm.disabled).toBe(false)
+    })
+    await userEvent.click(confirm)
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
+    })
+    const patientWrites = writes().filter((write) => write.url.includes('/Patient/'))
+    expect(patientWrites.map((write) => write.url)).toEqual(['/Patient/s-1'])
+    expect(JSON.parse(patientWrites[0]?.body ?? '{}')).not.toHaveProperty('gender')
+  })
+
+  it('leaves out a resource that names no patient until one is assigned', async () => {
+    // Arrange
+    currentRunAuthed = routingServer({})
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+
+    // Act — two Observations that name no one, beside the Patient they came with
+    await userEvent.upload(
+      screen.getByLabelText('Import file'),
+      new File([NO_SUBJECT_HAR], 'a.har', { type: 'application/json' })
+    )
+
+    // Assert — both listed and left out; the source file is not listed
+    // The heading is `preview-text.ts`' NEEDS_A_PATIENT_HEADING, spelled out to
+    // keep this file under its dependency cap.
+    const group = await screen.findByRole('region', { name: 'Needs a patient' })
+    const [first] = within(group).getAllByRole<HTMLSelectElement>('combobox')
+    expect(within(group).getAllByRole('listitem')).toHaveLength(2)
+    expect(screen.getByRole('button', { name: 'Import 2 resources (2 excluded)' })).toBeDefined()
+
+    // Act — assign the Patient, the one record offered, to one of them
+    if (first === undefined) throw new Error('unreachable: each listed row has a subject select')
+    const [patient] = within(first).getAllByRole<HTMLOptionElement>('option')
+    if (patient === undefined) throw new Error('unreachable: the Patient is offered')
+    await userEvent.selectOptions(first, patient)
+
+    // Assert — it is back in
+    expect(screen.getByRole('button', { name: 'Import 3 resources (1 excluded)' })).toBeDefined()
+  })
+
+  it('lands a subject picked onto the Patient on the stored record the Patient is later linked to', async () => {
+    // Arrange — the device holds Tyra under no identifier the import carries,
+    // so the Patient starts as new and the stored one is offered, not chosen
+    currentRunAuthed = routingServer({ stored: [{ ...STORED_TYRA, identifier: [] }] })
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+    await userEvent.upload(
+      screen.getByLabelText('Import file'),
+      new File([NAMED_NO_SUBJECT_HAR], 'a.har', { type: 'application/json' })
+    )
+    const person = await screen.findByRole<HTMLSelectElement>('combobox', { name: TYRA })
+    await within(person).findByRole('option', { name: TYRA })
+    const group = screen.getByRole('region', { name: 'Needs a patient' })
+    const [first] = within(group).getAllByRole<HTMLSelectElement>('combobox')
+    if (first === undefined) throw new Error('unreachable: each listed row has a subject select')
+
+    // Act — pick the Patient for one Observation, then link the Patient to the stored one
+    await userEvent.selectOptions(first, TYRA)
+    expect(screen.queryByText('Edited')).toBeNull()
+    await userEvent.selectOptions(person, 'stored:Patient/s-1')
+
+    // Assert — the pick followed the Patient: the subject is the stored record
+    await waitFor(() => {
+      expect(first.value).toBe('stored:Patient/s-1')
+    })
+    const confirm = await screen.findByRole<HTMLButtonElement>('button', {
+      name: /Import 3 resources/,
+    })
+    await waitFor(() => {
+      expect(confirm.disabled).toBe(false)
+    })
+    await userEvent.click(confirm)
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
+    })
+    const subjects = writes()
+      .filter((write) => write.url.includes('/Observation/'))
+      .map((write) => subjectOf(write.body))
+    expect(subjects).toEqual(['Patient/s-1'])
   })
 
   it('shows one referent for one identity two files name', async () => {

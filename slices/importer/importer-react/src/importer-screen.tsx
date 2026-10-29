@@ -1,7 +1,13 @@
 import type { FormatKind } from '@wildflowerhealthio/importer-core'
 import { formatKinds, LINKED_GROUP } from '@wildflowerhealthio/importer-core'
-import { StagedImport, DecodedFile } from '@wildflowerhealthio/importer-fundamentals'
-import { Match, Option } from 'effect'
+import {
+  StagedImport,
+  DecodedFile,
+  type LinkChoice,
+  Referent,
+  type UnlinkedMention,
+} from '@wildflowerhealthio/importer-fundamentals'
+import { HashMap, Match, Option } from 'effect'
 import { type JSX, useCallback, useMemo, useState } from 'react'
 
 import { ReferentRows } from './identity/referent-rows.tsx'
@@ -43,7 +49,12 @@ import styles from './importer-screen.module.css'
  * where the resource does. The identity map sits between the read and the
  * review: the batch is resolved on the reviewer's link choices before the
  * server diff, the preview and the confirm see it, so all three see the
- * resources that get written.
+ * resources that get written. A per-mention pick on a row is a mention link
+ * choice in the identity map too, not an edit. A resource whose patient the
+ * referent choices leave unlinked starts excluded, as one already on the
+ * server does, until the reviewer assigns one; and a referent's link change
+ * drops any edit made on its own row, since that row now writes a different
+ * record.
  *
  * The slice owns every level of this flow rather than the host app: an app
  * mounts only this screen. Mount it inside the host's router and
@@ -68,6 +79,9 @@ const SERVER_DIFF_ERROR_MESSAGE =
 
 /** The registered formats' detectors, in registry (priority) order. */
 const registeredDetectors = Object.values(formatRegistry)
+
+/** No unlinked mentions: the linked records name no patient of their own. */
+const NO_UNLINKED: readonly UnlinkedMention.Type[] = []
 
 /** The importer flow. Takes no props — it reads everything from router context. */
 const ImporterScreen = (): JSX.Element => {
@@ -104,7 +118,11 @@ const ImporterScreen = (): JSX.Element => {
       const result = batch.formats[kind]
       if (result.files.length === 0) continue
       const labeled = DecodedFile.resources(result.decoded)
-      const excluded = initialExclusionsFor(labeled, diff.comparisons.get(kind))
+      const excluded = initialExclusionsFor(
+        labeled,
+        diff.comparisons.get(kind),
+        Option.getOrElse(HashMap.get(batch.unlinkedMentionsByFormatKind, kind), () => NO_UNLINKED)
+      )
       if (excluded.size > 0) {
         entries.push([kind, { excludedResources: excluded, resourceOverrides: new Map() }])
       }
@@ -118,7 +136,11 @@ const ImporterScreen = (): JSX.Element => {
     (): ReadonlySet<string> =>
       diff._tag === 'loading' || batch === undefined
         ? new Set()
-        : initialExclusionsFor(batch.linkedRecords, diff.comparisons.get(LINKED_GROUP)),
+        : initialExclusionsFor(
+            batch.linkedRecords,
+            diff.comparisons.get(LINKED_GROUP),
+            NO_UNLINKED
+          ),
     [diff, batch]
   )
 
@@ -133,6 +155,29 @@ const ImporterScreen = (): JSX.Element => {
       setSelections((previous) => new Map(previous).set(format, selection))
     },
     []
+  )
+
+  // An edit on a referent's own row was made on what it linked to then: once
+  // the link changes, that row writes another record, so the edit is dropped
+  // in every format rather than written in its place.
+  const { choose } = identity
+  const referents = shown?.referents
+  const chooseLink = useCallback(
+    (referentKey: string, choice: LinkChoice.Type): void => {
+      choose(referentKey, choice)
+      const changed = referents?.find((referent) => Referent.key(referent) === referentKey)
+      if (changed === undefined || !Referent.is('AsResource')(changed)) return
+      setSelections(
+        (previous) =>
+          new Map(
+            [...previous].map(([kind, selection]) => [
+              kind,
+              StagedImport.revert(selection, changed.reviewKey),
+            ])
+          )
+      )
+    },
+    [choose, referents]
   )
 
   const startOver = (): void => {
@@ -236,6 +281,8 @@ const ImporterScreen = (): JSX.Element => {
           confirmDisabled={confirmBlocked}
           onCancel={startOver}
           onConfirm={() => confirm.confirm(shown.resolved, selectionFor, unchangedLinked)}
+          mentionLinkOptions={shown.mentionLinkOptions}
+          onChooseMention={identity.chooseMention}
           referentRows={
             <ReferentRows
               referents={shown.referents}
@@ -243,7 +290,7 @@ const ImporterScreen = (): JSX.Element => {
               linkTargets={shown.linkTargets}
               found={shown.found}
               disabled={identityState._tag === 'refused'}
-              onChoose={identity.choose}
+              onChoose={chooseLink}
             />
           }
         />

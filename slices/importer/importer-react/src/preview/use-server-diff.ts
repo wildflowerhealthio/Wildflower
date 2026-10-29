@@ -4,11 +4,12 @@ import { useMemo, useState } from 'react'
 import { useRunAuthed } from '@wildflowerhealthio/fhir-r4-react'
 import { classifyAgainstServer, type ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import { type FhirResourceWithId, literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
-import { DecodedFile } from '@wildflowerhealthio/importer-fundamentals'
+import { DecodedFile, type UnlinkedMention } from '@wildflowerhealthio/importer-fundamentals'
 
 import type { ResolvedBatch, ReviewGroup } from '@wildflowerhealthio/importer-core'
 import { formatKinds, LINKED_GROUP } from '@wildflowerhealthio/importer-core'
 import { IMPORTER_QUERY_KEY } from '../queries/keys.ts'
+import { keysNeedingPatient } from './unlinked-mentions.ts'
 
 /**
  * Pre-fetch the server's copy for every previewed resource in a batch and
@@ -241,22 +242,30 @@ const useServerDiff = (batch: ResolvedBatch | undefined, batchId: number): Serve
 
 /**
  * The `StagedImport.Selection`'s `excludedResources` set for a format, seeded
- * from its server diff: every `unchanged` labeled resource is pre-excluded
- * so a re-import of a format whose resources the server already holds writes
- * nothing by default. The reviewer can still tick any row back on.
+ * from its server diff and its unlinked mentions: every `unchanged` labeled
+ * resource is pre-excluded so a re-import of a format whose resources the
+ * server already holds writes nothing by default, and so is every resource
+ * whose patient the referent choices leave unlinked, until the reviewer
+ * assigns one. The reviewer can still tick any row back on.
  *
  * @param labeled - The format's labeled resources
  * @param comparisons - The format's own verdicts by resource key (`undefined`
  *   when the diff has none for it, which excludes nothing)
+ * @param unlinked - The mentions the referent choices alone leave unlinked
+ *   in the format (the resolved batch's `unlinkedMentionsByFormatKind`)
  * @returns The keys to pre-exclude
  */
 const initialExclusionsFor = (
   labeled: readonly DecodedFile.Resource[],
-  comparisons: ReadonlyMap<string, ServerComparison> | undefined
+  comparisons: ReadonlyMap<string, ServerComparison> | undefined,
+  unlinked: readonly UnlinkedMention.Type[]
 ): ReadonlySet<string> => {
+  const needingPatient = keysNeedingPatient(unlinked)
   const excluded = new Set<string>()
   for (const entry of labeled) {
-    if (comparisons?.get(entry.key)?.status === 'unchanged') excluded.add(entry.key)
+    if (comparisons?.get(entry.key)?.status === 'unchanged' || needingPatient.has(entry.key)) {
+      excluded.add(entry.key)
+    }
   }
   return excluded
 }

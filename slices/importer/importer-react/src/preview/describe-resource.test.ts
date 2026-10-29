@@ -1,3 +1,5 @@
+import { FhirResourceSchema } from '@wildflowerhealthio/fhir-r4/resources'
+import { Option, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { describeResource } from './describe-resource.ts'
@@ -119,7 +121,7 @@ describe('describeResource', () => {
     }
 
     // Act / Assert
-    expect(describeResource(report)).toEqual({
+    expect(describeResource(report)).toMatchObject({
       type: 'DiagnosticReport',
       summary: 'Laboratory report · 2026-08-13T17:02:00.000Z · 2 results · final',
     })
@@ -140,7 +142,7 @@ describe('describeResource', () => {
     }
 
     // Act / Assert
-    expect(describeResource(report)).toEqual({
+    expect(describeResource(report)).toMatchObject({
       type: 'DiagnosticReport',
       summary:
         'Laboratory report · 2026-08-13T08:00:00.000Z – 2026-08-13T17:00:00.000Z · 1 result · final',
@@ -157,8 +159,11 @@ describe('describeResource', () => {
     const bare = { resourceType: 'Practitioner', id: 'prac-2' }
 
     // Act / Assert
-    expect(describeResource(named)).toEqual({ type: 'Practitioner', summary: 'Dr. Okafor' })
-    expect(describeResource(bare)).toEqual({ type: 'Practitioner', summary: 'Practitioner/prac-2' })
+    expect(describeResource(named)).toMatchObject({ type: 'Practitioner', summary: 'Dr. Okafor' })
+    expect(describeResource(bare)).toMatchObject({
+      type: 'Practitioner',
+      summary: 'Practitioner/prac-2',
+    })
   })
 
   it('summarises a DocumentReference by its id', () => {
@@ -166,9 +171,48 @@ describe('describeResource', () => {
     const document = { resourceType: 'DocumentReference', id: 'doc-1' }
 
     // Act / Assert
-    expect(describeResource(document)).toEqual({
+    expect(describeResource(document)).toMatchObject({
       type: 'DocumentReference',
       summary: 'DocumentReference/doc-1',
     })
+  })
+
+  it('reads a decoded resource in its wire form, so its summary survives the nulls decoding leaves', () => {
+    // Arrange — what a decode hands the review, every absent field null
+    const patient = Schema.decodeUnknownSync(FhirResourceSchema)({
+      resourceType: 'Patient',
+      id: 'pat-7',
+      name: [{ given: ['Tyra'], family: 'Banks' }],
+      birthDate: '1990-01-02',
+    })
+
+    // Act / Assert
+    expect(describeResource(patient).summary).toBe('Tyra Banks · 1990-01-02')
+  })
+
+  it('names the subject by the label of the resource it lands on, else by its display, never by its literal', () => {
+    // Arrange
+    const observation = (subject: object): unknown =>
+      Schema.decodeUnknownSync(FhirResourceSchema)({
+        resourceType: 'Observation',
+        id: 'obs-1',
+        status: 'final',
+        code: { text: 'Weight' },
+        subject,
+      })
+    const labels = new Map([['Patient/s-1', 'Tyra Banks · 1990-01-02']])
+
+    // Act / Assert
+    expect(
+      describeResource(observation({ reference: 'Patient/s-1', display: 'T. Banks' }), labels)
+        .subject
+    ).toEqual(Option.some('Tyra Banks · 1990-01-02'))
+    expect(
+      describeResource(observation({ reference: 'Patient/other', display: 'T. Banks' }), labels)
+        .subject
+    ).toEqual(Option.some('T. Banks'))
+    expect(describeResource(observation({ reference: 'Patient/other' }), labels).subject).toEqual(
+      Option.none()
+    )
   })
 })

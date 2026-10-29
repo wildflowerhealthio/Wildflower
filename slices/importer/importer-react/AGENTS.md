@@ -92,9 +92,13 @@ The importer has no HTTP wire union to derive, so there is no separate
 - **`src/importer-screen.tsx`** — the flow, top to bottom. Reads everything from
   router context (no props): `SourcePicker` → `useImportRun` → `PreviewPanel` →
   `useConfirmImport` → `ImportResults`. It holds each format's
-  `StagedImport.Selection`, keyed by format kind (absent = the server-diff
-  seed, every `new` or `changed` resource included, so an untouched format
-  still imports everything its decode yielded). A cancel or "import
+  `StagedImport.Selection`, keyed by format kind (absent = the seed: every
+  `new` or `changed` resource included, every `unchanged` one and every one
+  whose patient the referent choices leave unlinked left out
+  (`initialExclusionsFor`), so an untouched format imports what its decode
+  yielded that is new and has a patient). A referent's link change reverts
+  the edit override at that referent's `reviewKey` in every format, since its
+  row now writes another record. A cancel or "import
   another" discards the read, every review edit, and any confirm outcome, and
   returns to the picker; the per-format settings persist across it.
 - **`src/registry.ts`** — the React half of the closed format registry (above).
@@ -119,8 +123,19 @@ The importer has no HTTP wire union to derive, so there is no separate
     alert and leaves every referent on its kind's default.
   - `link-choice-review-state.ts` — the `LinkChoiceReviewState` types: the
     `Mapped` batch (referents, choices, link targets, search hits, resolved
-    batch), the `Type` of states (`loading`, `ready`, `error`, `refused`) and
-    the hook's `Review` surface.
+    batch, and the `mentionLinkOptions` the rows' mention selects offer), the
+    `Type` of states (`loading`, `ready`, `error`, `refused`) and the hook's
+    `Review` surface: `choose` for a referent, `chooseMention` for one
+    mention of one resource.
+  - `mention-link-options.ts` — `MentionLinkOptions`, the pure half of the
+    per-resource mention selects: each record a referent lands on under its
+    link target, once, by the type it is, labelled (`LinkableResource.labelOf`),
+    and the `MentionLinkChoices.Choice` picking it makes
+    (`LinkToStoredResource` for a stored record, which no referent's later
+    choice moves; `LinkToDecodedReferent` of the referent whose decoded or
+    provisional record it is, so the mention follows that referent's later
+    link), plus each record's label by literal reference, which
+    `describeResource` names a row's subject by.
   - `use-default-link-choices-search.ts` — `useDefaultLinkChoicesSearch`
     reads each referent's default once per batch
     (`ReferentSearch.defaultChoices`, a TanStack query keyed by the batch id,
@@ -128,8 +143,10 @@ The importer has no HTTP wire union to derive, so there is no separate
     the stored lists the rows offer beside it.
   - `use-reviewer-link-choices.ts` — `useReviewerLinkChoices` keeps the
     reviewer's choices on top of the defaults by `Referent.key` across a
-    settings re-decode in a `ReferentLinkChoices`, and the referents of the
-    batch's first decode the search reads; a fresh pick starts over.
+    settings re-decode in a `ReferentLinkChoices`, their choices for single
+    mentions beside them in a `MentionLinkChoices` (by
+    `MentionLinkChoices.key`, set by `chooseMention`), and the referents of
+    the batch's first decode the search reads; a fresh pick starts over.
   - `use-last-resolved-batch.ts` — `useLastResolvedBatch`, the batch's last
     resolving that succeeded, which a refusal is shown over.
 
@@ -234,7 +251,29 @@ The importer has no HTTP wire union to derive, so there is no separate
   across every file that format claimed (per-type tallies, one titled section
   per decoded section with include checkbox and one-line `describeResource`
   summary, Edit/Revert, unreadable-file rows, and the notes folded into a
-  collapsed details block). A section's tri-state heading toggle is
+  collapsed details block). Above the sections it lists every resource the
+  referent choices leave a mention unlinked in (the resolved batch's
+  `unlinkedMentionsByFormatKind`, read by `unlinked-mentions.ts`) again,
+  under **Needs a patient** (an unlinked or empty `subject`) or else **Needs
+  a provider**, each with why in one phrase ("names no patient", "names an
+  account you chose not to link", "names a provider you chose not to link",
+  "points outside this import"); the group is a second view of the same
+  rows, so a pick keeps focus. Every row whose resource makes a mention the
+  map can link (`Mention.linkableIn`) carries an inline select per mention,
+  read as part of its summary line ("for Tyra Banks", "requested by …"):
+  the records offered for the type the mention names
+  (`MentionLinkOptions`), the one it names now when none of them is it, plus
+  Don't link where the mention keeps something to name or the referent
+  choices leave it unlinked. A pick is a mention link choice in the identity
+  map (`onChooseMention`), never an edit: the resolved resource lands the
+  mention there and the row is not marked edited; a row with an edit
+  override has it relinked at that mention too (`Mention.relinked`), since
+  the override is what gets written. A patient picked for a resource under
+  Needs a patient includes it, Don't link leaves it out again, and Revert
+  leaves one out again when the resolved resource has no patient either.
+  `describe-resource.ts` reads a decoded resource in its wire form and names
+  its subject by the label of the resource it lands on, else its `display`,
+  never by its `Patient/<id>`. A section's tri-state heading toggle is
   `section-toggle.tsx` — `{ title, keys, isIncluded, onSetIncluded }`, the
   `indeterminate`-via-ref pattern — shared with the server source-file list's
   study sections, which passes its own selected-id set where the review body
@@ -536,7 +575,11 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   pins the identity map: the reads to reach a review, a confirm linked to a
   stored Patient (only the stored one written, carrying the source's
   identifier, every subject on it), a re-import that defaults the Patient to
-  an update of the copy it stored and is `unchanged` and left out, and one referent for one identity two files name.
+  an update of the copy it stored and is `unchanged` and left out, one referent for one identity two files name,
+  a resource naming no patient left out until one is assigned, a subject
+  picked onto the Patient landing on the stored record the Patient is later
+  linked to, and an edit on a Patient's row dropped when that Patient is
+  linked to a stored one.
   Its stub refuses a `transaction` one of whose entries fails as a whole, as
   HFS does, which pins the confirm landing nothing and saying so.
 - `identity/referent-rows.test.tsx` drives `useLinkChoiceReview` and the rows over a
@@ -544,6 +587,13 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   providers, `New` without a hit, a hit pre-selected, an update over the copy
   found under the decoded id, the demographics warning,
   and a changed select resolving the batch.
+- `preview/format-review-body.test.tsx` drives one format's body over a file
+  resolved on the identity map: Needs a patient only when a subject is
+  unlinked, a pick that is a mention link choice and includes the row, Don't
+  link leaving it out again, a pick following its referent's later link,
+  where Don't link is offered, and an edit override relinked by a pick.
+  `identity/mention-link-options.test.ts` pins what a select offers: a
+  record once, as the choice of the referent whose record it is.
 - `preview/preview-panel.test.tsx` drives the pure panel by props — no router —
   and pins that a claimed format renders each decoded section under its own
   title with per-resource checkboxes, that an unreadable file renders its own

@@ -121,8 +121,11 @@ const recognizedHar = (patient: object, observation: object): string =>
     // observed the method would carry through.
   ).replaceAll('"method":"UNKNOWN"', '"method":"GET"')
 
+/** The recognized HAR with a bare Patient and Observations whose `subject` is that Patient. */
+const RECOGNIZED_HAR: string = recognizedHar({}, { subject: { reference: 'Patient/pat-7' } })
+
 /** The recognized HAR with a bare Patient and Observations that name no subject. */
-const RECOGNIZED_HAR: string = recognizedHar({}, {})
+const NO_SUBJECT_HAR: string = recognizedHar({}, {})
 
 /**
  * The recognized HAR with a named, dated Patient — so its demographics derive
@@ -131,6 +134,12 @@ const RECOGNIZED_HAR: string = recognizedHar({}, {})
 const NAMED_PATIENT_HAR: string = recognizedHar(
   { name: [{ family: 'Banks', given: ['Tyra'] }], birthDate: '1990-01-02' },
   { subject: { reference: 'Patient/pat-7' } }
+)
+
+/** The recognized HAR with a named, dated Patient and Observations that name no subject. */
+const NAMED_NO_SUBJECT_HAR: string = recognizedHar(
+  { name: [{ family: 'Banks', given: ['Tyra'] }], birthDate: '1990-01-02' },
+  {}
 )
 
 /**
@@ -180,5 +189,13 @@ const storedSourceFile = async (
   return { id: resource.id, fileName, wire }
 }
 
-export { dicomFile, ID_LESS_OBSERVATIONS_HAR, NAMED_PATIENT_HAR, RECOGNIZED_HAR, storedSourceFile }
+export {
+  dicomFile,
+  ID_LESS_OBSERVATIONS_HAR,
+  NAMED_NO_SUBJECT_HAR,
+  NAMED_PATIENT_HAR,
+  NO_SUBJECT_HAR,
+  RECOGNIZED_HAR,
+  storedSourceFile,
+}
 export type { DicomTagMap, StoredSourceFile }

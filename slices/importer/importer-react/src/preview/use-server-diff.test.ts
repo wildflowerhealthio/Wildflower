@@ -147,7 +147,7 @@ describe('initialExclusionsFor', () => {
       ['a', UNCHANGED],
       ['b', CHANGED],
     ])
-    expect([...initialExclusionsFor(labeled, verdicts)]).toEqual(['a'])
-    expect(initialExclusionsFor(labeled, undefined).size).toBe(0)
+    expect([...initialExclusionsFor(labeled, verdicts, [])]).toEqual(['a'])
+    expect(initialExclusionsFor(labeled, undefined, []).size).toBe(0)
   })
 })

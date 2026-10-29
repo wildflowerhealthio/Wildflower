@@ -6,7 +6,8 @@
  * @remarks
  * The defaults come from one search per batch
  * (`useDefaultLinkChoicesSearch`), the reviewer's choices sit on top of them
- * (`useReviewerLinkChoices`), and the batch is resolved on both
+ * and their choices for single mentions beside them
+ * (`useReviewerLinkChoices`), and the batch is resolved on all three
  * (`resolveMentionsWithFallback`). A choice that can no longer be resolved
  * after a re-decode (its referent changed kind, or the referent it linked to
  * is gone) is dropped, so the referent takes its default.
@@ -31,6 +32,7 @@ import {
 import type { Referent } from '@wildflowerhealthio/importer-fundamentals'
 
 import type * as LinkChoiceReviewState from './link-choice-review-state.ts'
+import * as MentionLinkOptions from './mention-link-options.ts'
 import { useDefaultLinkChoicesSearch } from './use-default-link-choices-search.ts'
 import { useLastResolvedBatch } from './use-last-resolved-batch.ts'
 import { useReviewerLinkChoices } from './use-reviewer-link-choices.ts'
@@ -42,7 +44,7 @@ import { useReviewerLinkChoices } from './use-reviewer-link-choices.ts'
  * @param batch - The decoded batch (undefined until the read is `ready`)
  * @param batchId - The picked batch's id: stable across a settings re-decode,
  *   new for a fresh pick
- * @returns The state and the `choose` action
+ * @returns The state, the `choose` action and the `chooseMention` action
  */
 const useLinkChoiceReview = (
   batch: DecodedBatch | undefined,
@@ -57,7 +59,10 @@ const useLinkChoiceReview = (
   )
   const referents = discovered === undefined ? undefined : Either.getOrUndefined(discovered)
 
-  const { searched, chosen, choose } = useReviewerLinkChoices(batchId, referents)
+  const { searched, chosen, mentionLinkChoices, choose, chooseMention } = useReviewerLinkChoices(
+    batchId,
+    referents
+  )
   const search = useDefaultLinkChoicesSearch(batchId, searched)
   const { defaults } = search
   const loading = batch === undefined || (searched.length > 0 && search.isPending)
@@ -69,7 +74,9 @@ const useLinkChoiceReview = (
     return Either.flatMap(discovered, (discoveredReferents) =>
       Either.map(
         Effect.runSync(
-          Effect.either(resolveMentionsWithFallback(batch, defaults.linkChoices, chosen))
+          Effect.either(
+            resolveMentionsWithFallback(batch, defaults.linkChoices, chosen, mentionLinkChoices)
+          )
         ),
         ({ batch: resolved, linkChoices }): LinkChoiceReviewState.Mapped => ({
           referents: discoveredReferents,
@@ -77,10 +84,17 @@ const useLinkChoiceReview = (
           linkTargets: resolved.linkTargetsByReferentKey,
           found: defaults.found,
           resolved,
+          // Labelling reads the clock (which name is current) and nothing else.
+          mentionLinkOptions: Effect.runSync(
+            MentionLinkOptions.fromLinkTargets(
+              discoveredReferents,
+              resolved.linkTargetsByReferentKey
+            )
+          ),
         })
       )
     )
-  }, [loading, batch, discovered, defaults, chosen])
+  }, [loading, batch, discovered, defaults, chosen, mentionLinkChoices])
 
   const previous = useLastResolvedBatch(batchId, mapped)
 
@@ -105,7 +119,7 @@ const useLinkChoiceReview = (
     })
   }, [discovered, mapped, previous, search.isError, search.error])
 
-  return { state, choose }
+  return { state, choose, chooseMention }
 }
 
 export { useLinkChoiceReview }

@@ -1,10 +1,11 @@
-import { DateTime, Either, Schema } from 'effect'
+import { DateTime, Either, Option, Schema } from 'effect'
 
 import {
   choiceElementSetPassthroughFields,
   ChoiceElementSet,
   HumanName,
 } from '@wildflowerhealthio/fhir-r4/data-types'
+import { FhirResourceSchema } from '@wildflowerhealthio/fhir-r4/resources'
 
 /**
  * The one-line description one previewed FHIR resource is listed under, on its
@@ -14,18 +15,28 @@ import {
  * @remarks
  * Accepts `unknown` because the shell threads generic previews
  * (`PreviewedResource<unknown>`) even though the HAR binding pins
- * a `FhirResource` at runtime. The read is a per-type Effect Schema
- * decode against the summary fields we care about (never the whole resource),
- * so a partial or mis-typed field folds cleanly to `''` instead of throwing,
- * and the summary falls back to `resourceType/id` when nothing survives.
+ * a `FhirResource` at runtime. A decoded `FhirResource` is read in its wire
+ * form, which is what the summary fields are written against (a decode
+ * carries `null` for every absent field, which the summary schemas would
+ * reject); anything else is read as it is. The read is a per-type Effect
+ * Schema decode against the summary fields we care about (never the whole
+ * resource), so a partial or mis-typed field folds cleanly to `''` instead
+ * of throwing, and the summary falls back to `resourceType/id` when nothing
+ * survives.
+ *
+ * The subject is named by a label the caller hands in for its literal
+ * reference (the resource it lands on once resolved), else by its `display`,
+ * never by its `Patient/<id>`.
  *
  * @packageDocumentation
  */
 
-/** One resource's description: its type (a heading label) and a one-line summary. */
+/** One resource's description: its type (a heading label), a one-line summary, and its subject. */
 interface ResourceDescription {
   readonly type: string
   readonly summary: string
+  /** Who the resource is about, by label; `None` without a `subject` or one nothing names. */
+  readonly subject: Option.Option<string>
 }
 
 /** The permissive shape every resource shares — enough to read the type and id. */
@@ -68,6 +79,16 @@ const HumanNames = Schema.Array(
     period: OptionalOrIgnored(Schema.Struct({ end: Schema.optional(Schema.String) })),
   })
 )
+
+/** The `subject` fields the description reads. */
+const SubjectSummary = Schema.Struct({
+  subject: OptionalOrIgnored(
+    Schema.Struct({
+      reference: OptionalOrIgnored(Schema.String),
+      display: OptionalOrIgnored(Schema.String),
+    })
+  ),
+})
 
 /** The Patient summary fields. */
 const PatientSummary = Schema.Struct({
@@ -191,12 +212,26 @@ const resourceTypeOf = (resource: unknown): string => {
   return typeof value === 'string' ? value : 'Unknown'
 }
 
-/**
- * Describe one FHIR resource for the interactive review. Pure and total —
- * never throws on a partially-decoded resource, always returns a
- * {@link ResourceDescription} the row can render.
- */
-const describeResource = (resource: unknown): ResourceDescription => {
+/** A decoded `FhirResource` in its wire form; anything else as it is. */
+const wireOf = (resource: unknown): unknown =>
+  Either.getOrElse(Schema.encodeUnknownEither(FhirResourceSchema)(resource), () => resource)
+
+/** The subject's label: the one `labels` holds for its literal reference, else its `display`. */
+const subjectOf = (
+  resource: unknown,
+  labels: ReadonlyMap<string, string>
+): Option.Option<string> => {
+  const subject = decode(SubjectSummary, resource)?.subject
+  const labelled = Option.fromNullable(subject?.reference).pipe(
+    Option.flatMapNullable((literalReference) => labels.get(literalReference))
+  )
+  return Option.orElse(labelled, () =>
+    Option.fromNullable(subject?.display?.trim()).pipe(Option.filter((display) => display !== ''))
+  )
+}
+
+/** The type and summary of a resource read in its wire form. */
+const typeAndSummaryOf = (resource: unknown): Omit<ResourceDescription, 'subject'> => {
   const header = decode(ResourceHeader, resource) ?? {}
   const resourceType = header.resourceType ?? 'Unknown'
   const fallback = `${resourceType}/${idOrUnknown(header.id)}`
@@ -282,6 +317,26 @@ const describeResource = (resource: unknown): ResourceDescription => {
     default:
       return { type: resourceType, summary: fallback }
   }
+}
+
+/** No labels: every subject named by its `display`. */
+const NO_LABELS: ReadonlyMap<string, string> = new Map()
+
+/**
+ * Describe one FHIR resource for the interactive review. Pure and total —
+ * never throws on a partially-decoded resource, always returns a
+ * {@link ResourceDescription} the row can render.
+ *
+ * @param resource - The resource as reviewed
+ * @param labels - The label of each resource a subject may land on, by its
+ *   literal reference
+ */
+const describeResource = (
+  resource: unknown,
+  labels: ReadonlyMap<string, string> = NO_LABELS
+): ResourceDescription => {
+  const wire = wireOf(resource)
+  return { ...typeAndSummaryOf(wire), subject: subjectOf(wire, labels) }
 }
 
 export { describeResource, resourceTypeOf, type ResourceDescription }

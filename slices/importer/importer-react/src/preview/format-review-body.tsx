@@ -3,24 +3,68 @@ import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   type FormatDecode,
   DecodedFile,
+  LinkChoice,
+  Mention,
+  type MentionLinkChoices,
   StagedImport,
+  type UnlinkedMention,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Chip } from '@wildflowerhealthio/react-tundraish'
 import { Option } from 'effect'
 import { type JSX, useMemo } from 'react'
 
-import { describeResource, resourceTypeOf } from './describe-resource.ts'
+import * as MentionLinkOptions from '../identity/mention-link-options.ts'
+import { DONT_LINK_LABEL } from '../identity/referent-text.ts'
+import { describeResource, type ResourceDescription, resourceTypeOf } from './describe-resource.ts'
 import { DiffBadge } from './diff-badge.tsx'
-import { NO_RESOURCES_MESSAGE, plural, UNREADABLE_FILE_MESSAGE } from './preview-text.ts'
+import {
+  mentionLead,
+  mentionRole,
+  NEEDS_A_PATIENT_HEADING,
+  NEEDS_A_PROVIDER_HEADING,
+  NO_RESOURCES_MESSAGE,
+  plural,
+  UNREADABLE_FILE_MESSAGE,
+} from './preview-text.ts'
 import { SectionToggle } from './section-toggle.tsx'
+import { groupsOf, isAt, isOfPatient, reasonsLine, unlinkedIn } from './unlinked-mentions.ts'
 import styles from './format-review-body.module.css'
 
 /**
  * One format's review body — the generalized per-resource review every format
- * shares, and the per-type tallies above it.
+ * shares, the per-type tallies above it, and the resources it lists as
+ * needing a patient or a provider.
+ *
+ * @remarks
+ * A row whose resource makes a mention the identity map can link carries an
+ * inline select per such mention, read as part of its summary line ("for
+ * Tyra Banks", "requested by …"): the resources the batch's referents land
+ * on, of the type the mention names (`MentionLinkOptions`), plus Don't link
+ * where the mention keeps something to name or the referent choices leave
+ * it unlinked. A pick is a mention link choice in the identity map
+ * (`onChooseMention`), not an edit: the resolved resource lands the
+ * mention there and the row is not marked edited; a row with an edit
+ * override has the override relinked at that mention too, since the
+ * override is what gets written. The resources the referent choices leave a
+ * mention unlinked in are listed again above the sections, under Needs a
+ * patient (an unlinked `subject`) or else Needs a provider, each with why;
+ * a pick keeps a row there, so it keeps focus. Picking a patient for a
+ * resource listed under Needs a patient also includes it, since the screen
+ * leaves those out until one is assigned, and picking Don't link leaves it
+ * out again.
  *
  * @packageDocumentation
  */
+
+/** Set the choice for the mention at `mentionPath` of the resource reviewed under `reviewKey`. */
+type ChooseMention = (
+  reviewKey: string,
+  mentionPath: string,
+  choice: MentionLinkChoices.Choice
+) => void
+
+/** Nothing offered, so no pick is ever made: the body without an identity map. */
+const chooseNothing: ChooseMention = () => undefined
 
 /** Aggregate include/exclude totals across a file's resources, by resource type. */
 interface TypeTally {
@@ -60,37 +104,171 @@ const tallyLabel = (tally: TypeTally): string => {
   return tally.excluded === 0 ? base : `${base}, ${tally.excluded} excluded`
 }
 
+/** The value of a mention select's Don't link option. */
+const DONT_LINK_VALUE = 'dont-link'
+
+/** The value of the option for the literal reference the mention carries now, when no offer has it. */
+const currentValue = (literalReference: string): string => `current:${literalReference}`
+
+/** The literal reference the mention at `mentionPath` of `resource` lands on the device by. */
+const landingOf = (resource: FhirResourceWithId, mentionPath: string): Option.Option<string> =>
+  Mention.at(resource, mentionPath).pipe(
+    Option.filter(({ reference }) => Mention.landsOnDevice(reference)),
+    Option.flatMapNullable(({ reference }) => reference.reference)
+  )
+
 /**
- * One previewed resource's row: its type, one-line summary, include toggle,
- * Edit/Revert affordance, and the "edited" chip when a per-resource override
- * is in place.
+ * One mention's inline select: the lead ("for", "requested by"), then the
+ * resources offered for its type, the one it names now when none of them is
+ * it, and Don't link when the mention can be left unlinked.
+ */
+const MentionSelect = ({
+  mention,
+  name,
+  reviewed,
+  offers,
+  unlinkedByReferents,
+  onPick,
+}: {
+  readonly mention: Mention.Linkable
+  readonly name: string
+  /** The resource as reviewed: resolved, or its edit override. */
+  readonly reviewed: FhirResourceWithId
+  readonly offers: readonly MentionLinkOptions.Offer[]
+  /** Whether the referent choices alone leave this mention unlinked. */
+  readonly unlinkedByReferents: boolean
+  /** Called with the offer picked, or `None` for Don't link. */
+  readonly onPick: (picked: Option.Option<MentionLinkOptions.Offer>) => void
+}): JSX.Element => {
+  const landing = landingOf(reviewed, mention.path)
+  const offered = Option.flatMap(landing, (literalReference) =>
+    Option.fromNullable(offers.find((offer) => offer.literalReference === literalReference))
+  )
+  // A literal reference no offer has keeps an option of its own, so the
+  // select shows what the mention names; an absolute URL lands on no
+  // resource of the device, as Don't link does.
+  const current = Option.isSome(offered) ? Option.none() : landing
+  const value = Option.match(offered, {
+    onNone: () => Option.match(current, { onNone: () => DONT_LINK_VALUE, onSome: currentValue }),
+    onSome: (offer) => offer.value,
+  })
+  // Don't link where it leaves the mention something to name, or where the
+  // referent choices alone leave it unlinked, so a pick can be taken back.
+  const canUnlink =
+    value === DONT_LINK_VALUE ||
+    unlinkedByReferents ||
+    Mention.relinked(reviewed, mention.path, Option.none()) !== reviewed
+  const handleChange = (picked: string): void => {
+    if (picked === DONT_LINK_VALUE) onPick(Option.none())
+    const offer = offers.find((one) => one.value === picked)
+    if (offer !== undefined) onPick(Option.some(offer))
+  }
+  return (
+    <span className={styles['review-body__mention']}>
+      {mentionLead(mention.path)}
+      <select
+        aria-label={name}
+        className={styles['review-body__mention-select']}
+        value={value}
+        onChange={(event) => handleChange(event.target.value)}
+      >
+        {offers.map((offer) => (
+          <option key={offer.value} value={offer.value}>
+            {offer.label}
+          </option>
+        ))}
+        {current.pipe(
+          Option.map((literalReference) => (
+            <option key={currentValue(literalReference)} value={currentValue(literalReference)}>
+              {mention.reference.display ?? literalReference}
+            </option>
+          )),
+          Option.getOrNull
+        )}
+        {canUnlink && <option value={DONT_LINK_VALUE}>{DONT_LINK_LABEL}</option>}
+      </select>
+    </span>
+  )
+}
+
+/** Each mention's accessible name: its role, numbered when the field holds several, and the row's description. */
+const selectNames = (
+  mentions: readonly Mention.Linkable[],
+  description: ResourceDescription
+): readonly string[] =>
+  mentions.map((mention, index) => {
+    const role = mentionRole(mention.path)
+    const sameRole = mentions.filter((other) => mentionRole(other.path) === role)
+    const number =
+      sameRole.length > 1
+        ? ` ${mentions.slice(0, index + 1).filter((other) => mentionRole(other.path) === role).length}`
+        : ''
+    return `${role}${number} of ${description.type} ${description.summary}`
+  })
+
+/**
+ * One previewed resource's row: its type, one-line summary, the inline select
+ * of each mention it makes that the map can link, include toggle, Edit/Revert
+ * affordance, and the "edited" chip when a per-resource override is in
+ * place. Listed under Needs a patient or Needs a provider, it also says why.
  */
 const ResourceRow = ({
   resourceKey,
   resource,
   selection,
   comparison,
+  mentionLinkOptions,
+  unlinked,
+  listsReason,
   onToggle,
   onEdit,
   onRevert,
   onKeepServerValue,
+  onPick,
 }: {
   readonly resourceKey: string
   readonly resource: FhirResourceWithId
   readonly selection: StagedImport.Selection
   readonly comparison: ServerComparison | undefined
+  readonly mentionLinkOptions: MentionLinkOptions.Type
+  /** The format's mentions the referent choices alone leave unlinked. */
+  readonly unlinked: readonly UnlinkedMention.Type[]
+  readonly listsReason: boolean
   readonly onToggle: (key: string) => void
   readonly onEdit: (key: string, resource: unknown) => void
   readonly onRevert: (key: string) => void
   readonly onKeepServerValue: (key: string, resource: FhirResourceWithId) => void
+  readonly onPick: (
+    mention: Mention.Linkable,
+    picked: Option.Option<MentionLinkOptions.Offer>
+  ) => void
 }): JSX.Element => {
   const edited = Option.getOrElse(
     StagedImport.editedResource(selection, resourceKey),
     () => resource
   )
-  const description = describeResource(edited)
+  // Every selection change re-renders every row; the description encodes the
+  // resource and the mentions walk it, so both wait for the resource to change.
+  const description = useMemo(
+    () => describeResource(edited, mentionLinkOptions.labelsByLiteralReference),
+    [edited, mentionLinkOptions.labelsByLiteralReference]
+  )
+  // Without a resource of either type offered there is nothing to pick, and
+  // no need to read the resource's mentions at all.
+  const mentions = useMemo(
+    () =>
+      mentionLinkOptions.labelsByLiteralReference.size === 0
+        ? []
+        : Mention.linkableIn(edited).filter(
+            (mention) => MentionLinkOptions.forType(mentionLinkOptions, mention.type).length > 0
+          ),
+    [edited, mentionLinkOptions]
+  )
+  const names = selectNames(mentions, description)
   const included = StagedImport.isResourceIncluded(selection, resourceKey)
   const isEdited = StagedImport.isResourceEdited(selection, resourceKey)
+  const reason = listsReason ? reasonsLine(resourceKey, edited) : ''
+  const hasSubjectSelect = mentions.some((mention) => mention.path === Mention.SUBJECT_PATH)
   return (
     <li className={styles['review-body__resource-row']}>
       <label className={styles['review-body__resource-label']}>
@@ -119,6 +297,28 @@ const ResourceRow = ({
           {description.summary}
         </span>
       </label>
+      {reason !== '' && <span className={styles['review-body__unlinked-reason']}>{reason}</span>}
+      {hasSubjectSelect
+        ? null
+        : description.subject.pipe(
+            Option.map((subject) => (
+              <span key="subject" className={styles['review-body__mention']}>
+                {`${mentionLead(Mention.SUBJECT_PATH)} ${subject}`}
+              </span>
+            )),
+            Option.getOrNull
+          )}
+      {mentions.map((mention, index) => (
+        <MentionSelect
+          key={mention.path}
+          mention={mention}
+          name={names[index] ?? ''}
+          reviewed={edited}
+          offers={MentionLinkOptions.forType(mentionLinkOptions, mention.type)}
+          unlinkedByReferents={unlinked.some((one) => isAt(one, resourceKey, mention.path))}
+          onPick={(picked) => onPick(mention, picked)}
+        />
+      ))}
       <DiffBadge
         comparison={comparison}
         current={edited}
@@ -149,28 +349,118 @@ const ResourceRow = ({
 
 /**
  * One format's decoded sections and notes — the generalized review body
- * every format shares: a per-type tally, one titled section per decode
- * section with per-resource rows, and the format's diagnostic notes folded
- * into a collapsed details block.
+ * every format shares: a per-type tally, the resources needing a patient or a
+ * provider, one titled section per decode section with per-resource rows, and
+ * the format's diagnostic notes folded into a collapsed details block.
  */
 const FormatReviewBody = ({
   result,
   selection,
   comparisons,
+  mentionLinkOptions = MentionLinkOptions.empty,
+  unlinked,
   onSelectionChange,
   onEditResource,
+  onChooseMention = chooseNothing,
 }: {
   readonly result: FormatDecode.Result<string>
   readonly selection: StagedImport.Selection
   readonly comparisons: ReadonlyMap<string, ServerComparison> | undefined
+  /** What each mention select offers; nothing without an identity map. */
+  readonly mentionLinkOptions?: MentionLinkOptions.Type
+  /** The mentions the referent choices alone leave unlinked in the file, source files aside. */
+  readonly unlinked: readonly UnlinkedMention.Type[]
   readonly onSelectionChange: (selection: StagedImport.Selection) => void
   readonly onEditResource: (key: string, resource: unknown) => void
+  /** The identity map's action a pick drives. */
+  readonly onChooseMention?: ChooseMention
 }): JSX.Element => {
   const { sections, notes } = result.decoded
   const tallies = useMemo(
     () => perTypeTallies(result.decoded, selection),
     [result.decoded, selection]
   )
+  const groups = useMemo(() => groupsOf(result.decoded, unlinked), [result.decoded, unlinked])
+
+  const needsPatient = (key: string): boolean =>
+    groups.needingPatient.some((listed) => listed.key === key)
+
+  // A pick is a mention link choice. A row's edit override is written in
+  // place of the resolved resource, so it is relinked at that mention too.
+  // On a resource listed under Needs a patient, a patient pick includes it
+  // and Don't link leaves it out again, as the screen first did.
+  const pick = (
+    { key }: DecodedFile.Resource,
+    mention: Mention.Linkable,
+    picked: Option.Option<MentionLinkOptions.Offer>
+  ): void => {
+    onChooseMention(
+      key,
+      mention.path,
+      Option.match(picked, {
+        onNone: (): MentionLinkChoices.Choice => LinkChoice.DontLink(),
+        onSome: ({ choice }) => choice,
+      })
+    )
+    const relinked = Option.match(StagedImport.editedResource(selection, key), {
+      onNone: () => selection,
+      onSome: (edited) =>
+        StagedImport.edit(
+          selection,
+          key,
+          Mention.relinked(
+            edited,
+            mention.path,
+            Option.map(picked, ({ literalReference }) => literalReference)
+          )
+        ),
+    })
+    const next =
+      mention.path === Mention.SUBJECT_PATH && needsPatient(key)
+        ? StagedImport.setResourcesIncluded(relinked, [key], Option.isSome(picked))
+        : relinked
+    if (next !== selection) onSelectionChange(next)
+  }
+
+  // Revert restores the resolved resource, so one listed under Needs a
+  // patient that has no patient there either is left out again.
+  const revert = ({ key, resource }: DecodedFile.Resource): void => {
+    const reverted = StagedImport.revert(selection, key)
+    const leftWithoutPatient = needsPatient(key) && unlinkedIn(key, resource).some(isOfPatient)
+    onSelectionChange(
+      leftWithoutPatient ? StagedImport.setResourcesIncluded(reverted, [key], false) : reverted
+    )
+  }
+
+  const renderRow = (entry: DecodedFile.Resource, listsReason: boolean): JSX.Element => (
+    <ResourceRow
+      key={entry.key}
+      resourceKey={entry.key}
+      resource={entry.resource}
+      selection={selection}
+      comparison={comparisons?.get(entry.key)}
+      mentionLinkOptions={mentionLinkOptions}
+      unlinked={unlinked}
+      listsReason={listsReason}
+      onToggle={(key) => onSelectionChange(StagedImport.toggleResource(selection, key))}
+      onEdit={onEditResource}
+      onRevert={() => revert(entry)}
+      onKeepServerValue={(key, next) => onSelectionChange(StagedImport.edit(selection, key, next))}
+      onPick={(mention, picked) => pick(entry, mention, picked)}
+    />
+  )
+  const unlinkedGroup = (
+    heading: string,
+    listed: readonly DecodedFile.Resource[]
+  ): JSX.Element | null =>
+    listed.length === 0 ? null : (
+      <section aria-label={heading} className={styles['review-body__unlinked']}>
+        <h4 className={styles['review-body__unlinked-heading']}>{heading}</h4>
+        <ul className={styles['review-body__resource-list']}>
+          {listed.map((entry) => renderRow(entry, true))}
+        </ul>
+      </section>
+    )
   return (
     <div className={styles['review-body']}>
       {tallies.length > 0 && (
@@ -178,6 +468,8 @@ const FormatReviewBody = ({
           {tallies.map(tallyLabel).join(' · ')}
         </p>
       )}
+      {unlinkedGroup(NEEDS_A_PATIENT_HEADING, groups.needingPatient)}
+      {unlinkedGroup(NEEDS_A_PROVIDER_HEADING, groups.needingProvider)}
       {sections.length === 0 && result.unreadableFiles.length === 0 && (
         <p className={styles['review-body__empty']}>{NO_RESOURCES_MESSAGE}</p>
       )}
@@ -209,21 +501,7 @@ const FormatReviewBody = ({
             }}
           />
           <ul className={styles['review-body__resource-list']}>
-            {section.resources.map((resource) => (
-              <ResourceRow
-                key={resource.key}
-                resourceKey={resource.key}
-                resource={resource.resource}
-                selection={selection}
-                comparison={comparisons?.get(resource.key)}
-                onToggle={(key) => onSelectionChange(StagedImport.toggleResource(selection, key))}
-                onEdit={onEditResource}
-                onRevert={(key) => onSelectionChange(StagedImport.revert(selection, key))}
-                onKeepServerValue={(key, next) =>
-                  onSelectionChange(StagedImport.edit(selection, key, next))
-                }
-              />
-            ))}
+            {section.resources.map((entry) => renderRow(entry, false))}
           </ul>
         </section>
       ))}
@@ -245,4 +523,4 @@ const FormatReviewBody = ({
   )
 }
 
-export { FormatReviewBody }
+export { type ChooseMention, FormatReviewBody }

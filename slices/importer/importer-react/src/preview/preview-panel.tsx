@@ -1,7 +1,11 @@
 import type { ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
-import { type DecodedFile, StagedImport } from '@wildflowerhealthio/importer-fundamentals'
-import { Array, Data } from 'effect'
+import {
+  type DecodedFile,
+  StagedImport,
+  type UnlinkedMention,
+} from '@wildflowerhealthio/importer-fundamentals'
+import { Array, Data, HashMap, Option } from 'effect'
 import { type JSX, type ReactNode, useMemo, useState } from 'react'
 
 import type { FormatKind, FormatSettings, ResolvedBatch } from '@wildflowerhealthio/importer-core'
@@ -12,10 +16,11 @@ import {
   planWrite,
 } from '@wildflowerhealthio/importer-core'
 
+import * as MentionLinkOptions from '../identity/mention-link-options.ts'
 import type { FormatWithComponents } from '../registry.ts'
 import { describeResource } from './describe-resource.ts'
 import { DiffBadge } from './diff-badge.tsx'
-import { FormatReviewBody } from './format-review-body.tsx'
+import { type ChooseMention, FormatReviewBody } from './format-review-body.tsx'
 import {
   confirmLabel,
   LINKED_RECORDS_HEADING,
@@ -46,7 +51,10 @@ import panelStyles from './preview-panel.module.css'
  * are shown with their server diff and no toggle: which are written is
  * `importer-core`'s `planWrite`, which the confirm reads too — a stored
  * copy whenever the server does not hold it unchanged, a new record only
- * when a resource the batch writes names it. A settings change calls
+ * when a resource the batch writes names it. Each format's body lists what
+ * the referent choices leave unlinked in it (the resolved batch's
+ * `unlinkedMentionsByFormatKind`) and offers a select per linkable mention
+ * (`mentionLinkOptions`, a pick calling `onChooseMention`). A settings change calls
  * `onSettingsChange`; the shell re-decodes that format. The confirm appears
  * only when that plan includes at least one resource, and it does not write —
  * it calls `onConfirm`; the confirm step writes exactly the reviewed objects.
@@ -105,7 +113,13 @@ interface PreviewPanelProps {
   readonly confirmDisabled?: boolean
   /** The identity map's referent rows, rendered above the format groups. */
   readonly referentRows?: ReactNode
+  /** What each row's mention selects offer; nothing without an identity map. */
+  readonly mentionLinkOptions?: MentionLinkOptions.Type
+  /** Called with the reviewer's choice for one mention of one resource. */
+  readonly onChooseMention?: ChooseMention
 }
+
+const NO_UNLINKED: readonly UnlinkedMention.Type[] = []
 
 /** One format's settings form, picked out of the registry by kind. */
 const FormatSettingsForm = <TFormat extends FormatKind>({
@@ -225,6 +239,8 @@ const PreviewPanel = ({
   confirming,
   confirmDisabled = confirming,
   referentRows,
+  mentionLinkOptions = MentionLinkOptions.empty,
+  onChooseMention,
 }: PreviewPanelProps): JSX.Element => {
   const [editing, setEditing] = useState<EditorState>(makeClosedEditor())
 
@@ -296,6 +312,12 @@ const PreviewPanel = ({
                   result={result}
                   selection={selectionFor(kind)}
                   comparisons={comparisons.get(kind)}
+                  mentionLinkOptions={mentionLinkOptions}
+                  onChooseMention={onChooseMention}
+                  unlinked={Option.getOrElse(
+                    HashMap.get(batch.unlinkedMentionsByFormatKind, kind),
+                    () => NO_UNLINKED
+                  )}
                   onSelectionChange={(selection) => onSelectionChange(kind, selection)}
                   onEditResource={(key, resource) => openEditor(kind, key, resource)}
                 />
