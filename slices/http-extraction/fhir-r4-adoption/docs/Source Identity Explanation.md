@@ -1,8 +1,11 @@
 # Source Identity Explanation
 
-Why an imported resource is not stored under the id its source gave it, and what
-replaces that id. The derivation is `fhir-r4`'s (`fhir-r4/identity`); adoption,
-which applies it to what a source decodes, is this package's.
+Why an imported resource is not stored under the id its source gave it, what
+replaces that id, and how an import links the patients and providers its
+sources name to the ones already on the device. The derivation is `fhir-r4`'s
+(`fhir-r4/identity`); adoption, which applies it to what a source decodes, is
+this package's; the identity map is `importer-fundamentals`', stated here as a
+model.
 
 ## Why a source's id is not the store's id
 
@@ -307,6 +310,139 @@ exactly once per resource, at the response-kind seam, so there is deliberately
 no "already adopted?" guard: such a guard has to guess, and a source that
 publishes its own base URL as an identifier system makes it guess wrong.
 
+## The identity map
+
+Adoption keys every resource under its source, so it cannot tell that two
+sources name one person. One human with a Shoppers account, a Rexall account
+and a LifeLabs report arrives as three Patients, each source's `subject`
+pointing at its own; a provider a lab report names and the same provider on a
+prescription are two. The importer's **identity map** links them, once per
+batch, before anything is reviewed or written. It lives in
+`importer-fundamentals` (see its
+[AGENTS.md](../../../importer/importer-fundamentals/AGENTS.md)); this section is
+the model. A batch runs through three states, one adjective each: **decoded**
+(as the files arrived), **resolved** (every link followed, as it will be
+written) and **stored** (already on the device).
+
+### Referents and mentions
+
+A **mention** is each place a resource names something by a `Reference`, at
+its path: a `subject`, a `requester`, a `performer[0].actor`, a report's
+`resultsInterpreter`. An import discovers its **referents**: the things it
+refers to that may already exist on the device, one per **linkable logical
+reference**, FHIR's logical reference (`type` and `identifier`, no literal)
+narrowed to a `Patient` or `Practitioner` and an identifier with both a
+`system` and a `value`. A referent comes in one of two kinds:
+
+- **As a resource**: the decode emitted the `Patient` or `Practitioner`
+  itself. It is keyed by its `identifier[0]`, the source's own id adoption put
+  there, and answers to every identifier it brings: its own, and the one its
+  demographics derive (below).
+- **By mention only**: mentions name it by a logical reference and no decode
+  emitted its resource. A Shoppers account id on a history fill is one; so is
+  a prescriber known only by name.
+
+Which type a mention names is the reference's own business. A logical
+reference states its `type`; an identifier-only reference that states none
+names nothing the map can tell apart from an account number, and a
+`display`-only mention names nobody the map can link. A source that knows a
+provider only by a printed name therefore writes
+`Practitioner.tryReferenceFromName(<name>)` (`tryReferenceWireFromName` when
+it builds wire): `type` Practitioner, `Practitioner.nameIdentifier(<name>)` as
+the `identifier`, the name as `display`, and no reference at all for a blank
+name. The Shoppers prescriber, the Rexall prescriber and the DICOM referring
+physician all do. DICOM builds the name from the parsed PN, given names first
+and then family, because the PN text prints the family name first and would
+never match a prescription's "Jane Smith". LifeLabs writes a `Practitioner`
+per provider it prints, so its providers are referents as resources.
+
+### Name-and-birth-date and practitioner-name identifiers
+
+Two identifier systems are Wildflower's, not any source's, so the same identity
+from two sources is one identifier. Both sit under `terminology.ts`'s
+`WILDFLOWER_IDENTIFIER_SYSTEM_BASE` and are persisted wire format:
+
+- `Patient.NAME_BIRTH_DATE_IDENTIFIER_SYSTEM`: `family;given;YYYY-MM-DD` from
+  the name shown for the person (`HumanName.displayName`'s pick) and
+  `birthDate`, the given names joined by a space, in NFC, lower-cased,
+  whitespace collapsed, the three parts joined on `;` because `|` is the FHIR
+  token separator. None unless all three parts are present, so a partial
+  match never links two people, and a name change alone never matches.
+- `Practitioner.NAME_IDENTIFIER_SYSTEM`: the printed name, trimmed, whitespace
+  collapsed, case kept.
+
+Every Patient and Practitioner referent as a resource carries its derived
+identifier beside its own once resolved, and the identifier is written with
+the resource. A name-and-birth-date match is therefore an ordinary identifier
+match, and a person whose name changed keeps both spellings on the device.
+
+### Link choices and link targets
+
+The reviewer makes one **link choice** per referent:
+
+- **Create** the resource: the referent's own resource is written and becomes
+  the person or provider. For a referent by mention only, allowed only when
+  its logical reference stands for something **provisional**: a provider's
+  printed name stands for a `Practitioner` carrying the name and the
+  identifier, at `localResourceId(NAME_IDENTIFIER_SYSTEM, 'Practitioner',
+  name)`, so the same name from two sources is one record that later imports
+  add to. Nothing stands for a Patient: a person named only by an id is linked
+  to a record or left unlinked.
+- **Update the stored resource**: the referent's own resource is written over
+  the stored copy under its own literal reference, keeping every identifier
+  the copy assumed. What a re-import does.
+- **Link to a stored resource**: a resource of that type already on the
+  device.
+- **Link to a decoded referent** of its type in the batch, for a referent by
+  mention only: it lands wherever that one lands.
+- **Don't link**, for a referent by mention only: its mentions keep their
+  logical-reference form.
+
+Each referent's default comes from one identifier search
+(`GET <Type>?identifier=`) over the identifiers its source gave it, then the
+derived one: a hit that is the stored copy of its own resource is an update,
+one hit is a link to it, two hits are ambiguous and no hit falls back to the
+kind's default, Create with a resource and Don't link without. The reviewer
+always sees every referent and can change it.
+
+A choice resolves to a **link target**: a stored resource, the referent's own
+decoded resource, a provisional resource, or unlinked. Every mention of the
+referent, literal or logical, is redirected to that target, keeping its
+`display` and `identifier`. A decoded Patient or Practitioner linked to a
+stored one is replaced by it under the same review key, so the review, the
+server diff and the confirm all see the resource that is written. The records
+the batch only mentions, stored or provisional, are the batch's **linked
+records**, written beside the files, once however many files mention them.
+
+### Mention link choices
+
+A reviewer may also choose for one mention of one resource, over whatever its
+referent's choice says: link it to a stored resource, to a decoded referent
+(so it follows that referent's later link), or don't link it. A mention link
+choice is held in the identity map beside the referent choices and resolved
+by the same plan, never written into the resource as an edit; it teaches
+nothing and writes nothing. A resource whose `subject` lands on no patient of
+the device, or whose mention is a logical reference the map left unlinked, is
+listed for the reviewer under **Needs a patient** or **Needs a provider**,
+and a resource with no patient is left out of the import until it is given
+one.
+
+### What a link target assumes
+
+A link target's resource **assumes** the identifiers of every referent linked
+to it, as one assumes an identity: they are appended to the stored or decoded
+resource, and nothing else about it changes. A stored resource's demographics
+win; a source's spelling of a name or birth date is not written over them.
+Because the stored resource now carries the source's identifier, the next
+import of the same source finds it by that identifier and defaults to
+updating or linking to it.
+
+The map applies to the batch being imported. Resources already on the device
+from earlier imports are not re-linked: the Patients earlier imports wrote stay
+separate records, and the resources filed on them keep pointing at them.
+Linking a referent to one of them adds identifiers to that record; it merges
+nothing into it.
+
 ## References
 
 - [http-extraction AGENTS.md](../../../http-extraction/AGENTS.md) — the
@@ -315,3 +451,5 @@ publishes its own base URL as an identifier system makes it guess wrong.
   the importer that runs the pre-adopted kinds over a HAR.
 - [web-trace-core AGENTS.md](../../../web-trace-core/AGENTS.md) — the codec that
   mints trace ids.
+- [importer-fundamentals AGENTS.md](../../../importer/importer-fundamentals/AGENTS.md)
+  — the identity map's phases and guardrails.
