@@ -81,10 +81,7 @@ const useLinkChoiceReview = (
           linkChoices,
           found: defaults.found,
           resolved,
-          // Labelling reads the clock (which name is current) and nothing else.
-          mentionLinkOptions: Effect.runSync(
-            MentionLinkOptions.fromLinkTargets(discoveredReferents, resolved.plan)
-          ),
+          mentionLinkOptions: MentionLinkOptions.fromPlan(resolved.plan),
         })
       )
     )

@@ -123,20 +123,22 @@ The importer has no HTTP wire union to derive, so there is no separate
     `ResolvedBatch` and so see what gets written; a failed search shows an
     alert and leaves every referent on its kind's default.
   - `link-choice-review-state.ts` — the `LinkChoiceReviewState` types: the
-    `Mapped` batch (referents, choices, link targets, search hits, resolved
-    batch, and the `mentionLinkOptions` the rows' mention selects offer), the
+    `Mapped` batch (referents, choices, search hits, the resolved batch with
+    its plan, and the `mentionLinkOptions` the rows' mention selects offer), the
     `Type` of states (`loading`, `ready`, `error`, `refused`) and the hook's
     `Review` surface: `choose` for a referent, `chooseMention` for one
     mention of one resource.
   - `mention-link-options.ts` — `MentionLinkOptions`, the pure half of the
-    per-resource mention selects: each record a referent lands on under its
-    link target, once, by the type it is, labelled (`LinkableResource.labelOf`),
-    and the `LinkChoice.MentionLinkChoice` picking it makes
-    (`LinkToStoredResource` for a stored record, which no referent's later
-    choice moves; `LinkToDecodedReferent` of the referent whose decoded or
-    provisional record it is, so the mention follows that referent's later
-    link), plus each record's label by literal reference, which
-    `describeResource` names a row's subject by.
+    per-resource mention selects, read off the plan (`fromPlan`): exactly
+    its resolved resources (`LinkPlan.resolvedResources`), one per record
+    that will exist once the batch is written, by the type it is, each a
+    link choice option labelled by the resolved resource's `label` and
+    paired with the `LinkChoice.MentionLinkChoice` picking it makes
+    (`LinkToDecodedReferent` of its `ownerReferent`, so the mention follows
+    that referent's later link; `LinkToStoredResource` for a stored record no
+    referent owns, which no referent's later choice moves), plus each
+    record's label by literal reference, which `describeResource` names a
+    row's subject by.
   - `use-default-link-choices-search.ts` — `useDefaultLinkChoicesSearch`
     reads each referent's default once per batch
     (`ReferentSearch.defaultChoices`, a TanStack query keyed by the batch id,
@@ -593,8 +595,9 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   unlinked, a pick that is a mention link choice and includes the row, Don't
   link leaving it out again, a pick following its referent's later link,
   where Don't link is offered, and an edit override relinked by a pick.
-  `identity/mention-link-options.test.ts` pins what a select offers: a
-  record once, as the choice of the referent whose record it is.
+  `identity/mention-link-options.test.ts` pins what a select offers: the
+  plan's resolved resources, a record two referents are linked to once, as
+  the choice of the referent whose record it is.
 - `preview/preview-panel.test.tsx` drives the pure panel by props — no router —
   and pins that a claimed format renders each decoded section under its own
   title with per-resource checkboxes, that an unreadable file renders its own

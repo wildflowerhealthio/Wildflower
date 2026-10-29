@@ -10,7 +10,6 @@ import {
   type DecodedFile,
   LinkChoice,
   LinkPlan,
-  Referent,
   type ReferentLinkChoiceSet,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, HashMap, Schema, TestContext } from 'effect'
@@ -19,8 +18,8 @@ import { describe, expect, it } from 'vite-plus/test'
 import * as MentionLinkOptions from './mention-link-options.ts'
 
 /**
- * What a mention select offers under the referents' link targets: each record
- * a referent lands on, once, and the mention link choice picking it makes.
+ * What a mention select offers: exactly the plan's resolved resources, once
+ * each, and the mention link choice picking each makes.
  */
 
 const SOURCE = 'https://source.example/patient-id'
@@ -79,21 +78,50 @@ const file: DecodedFile.DecodedFile = {
   notes: [],
 }
 
-/** The options under `linkChoices`, off the plan's links, on the test clock. */
+/** The options under `linkChoices`, off the plan, on the test clock. */
 const optionsUnder = (linkChoices: ReferentLinkChoiceSet.Type): MentionLinkOptions.Type =>
-  runOnTestClock(
-    Effect.gen(function* () {
-      const referents = yield* Referent.discover([file])
-      const plan = yield* LinkPlan.make([file], linkChoices)
-      return yield* MentionLinkOptions.fromLinkTargets(referents, plan)
-    })
-  )
+  MentionLinkOptions.fromPlan(runOnTestClock(LinkPlan.make([file], linkChoices)))
 
-describe('MentionLinkOptions.fromLinkTargets', () => {
+/** Each option for `type` as `[label, value]`. */
+const labelsAndValuesFor = (
+  options: MentionLinkOptions.Type,
+  type: 'Patient' | 'Practitioner'
+): readonly (readonly [string, string])[] =>
+  MentionLinkOptions.forType(options, type).map(({ label, value }) => [label, value] as const)
+
+describe('MentionLinkOptions.fromPlan', () => {
   it('offers a decoded or provisional record as the choice of the referent whose record it is, and a stored one as LinkToStoredResource', () => {
     const options = optionsUnder(
       HashMap.make(
         [`Patient|${CUSTOMER}|c-9`, LinkChoice.LinkToStoredResource({ resource: STORED_JAN })],
+        [nameKey('Dr. A Smith'), LinkChoice.CreateResource()]
+      )
+    )
+
+    expect(labelsAndValuesFor(options, 'Patient')).toEqual([
+      ['Tyra Banks · 1990-01-02', `decoded:Patient|${SOURCE}|p-1`],
+      ['Jan Doe', 'stored:Patient/s-2'],
+    ])
+    expect(MentionLinkOptions.forType(options, 'Patient').map(({ choice }) => choice._tag)).toEqual(
+      ['LinkToDecodedReferent', 'LinkToStoredResource']
+    )
+    expect(labelsAndValuesFor(options, 'Practitioner')).toEqual([
+      ['Dr. A Smith', `decoded:${nameKey('Dr. A Smith')}`],
+    ])
+    expect([...options.labelsByLiteralReference.keys()]).toEqual([
+      'Patient/p-1',
+      'Patient/s-2',
+      expect.stringMatching(/^Practitioner\//),
+    ])
+  })
+
+  it('offers a record two referents are linked to once, as the choice of the referent whose record it is', () => {
+    const options = optionsUnder(
+      HashMap.make(
+        [
+          `Patient|${CUSTOMER}|c-9`,
+          LinkChoice.LinkToDecodedReferent({ referentKey: `Patient|${SOURCE}|p-1` }),
+        ],
         [nameKey('Dr. A Smith'), LinkChoice.CreateResource()],
         [
           nameKey('Dr. B Jones'),
@@ -109,10 +137,7 @@ describe('MentionLinkOptions.fromLinkTargets', () => {
         'Tyra Banks · 1990-01-02',
         LinkChoice.LinkToDecodedReferent({ referentKey: `Patient|${SOURCE}|p-1` }),
       ],
-      ['Jan Doe', LinkChoice.LinkToStoredResource({ resource: STORED_JAN })],
     ])
-    // Two referents land on one provisional record: picking it is the choice
-    // of the name it stands for, not of the referent merely linked to it.
     expect(
       MentionLinkOptions.forType(options, 'Practitioner').map(({ label, choice }) => [
         label,
@@ -120,11 +145,6 @@ describe('MentionLinkOptions.fromLinkTargets', () => {
       ])
     ).toEqual([
       ['Dr. A Smith', LinkChoice.LinkToDecodedReferent({ referentKey: nameKey('Dr. A Smith') })],
-    ])
-    expect([...options.labelsByLiteralReference.keys()]).toEqual([
-      'Patient/p-1',
-      'Patient/s-2',
-      expect.stringMatching(/^Practitioner\//),
     ])
   })
 
@@ -135,9 +155,6 @@ describe('MentionLinkOptions.fromLinkTargets', () => {
     expect(MentionLinkOptions.forType(options, 'Patient').map(({ value }) => value)).toEqual([
       `decoded:Patient|${SOURCE}|p-1`,
     ])
-    expect(
-      runOnTestClock(MentionLinkOptions.fromLinkTargets([], LinkPlan.empty))
-        .labelsByLiteralReference.size
-    ).toBe(0)
+    expect(MentionLinkOptions.fromPlan(LinkPlan.empty)).toEqual(MentionLinkOptions.empty)
   })
 })

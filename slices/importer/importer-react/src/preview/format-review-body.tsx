@@ -9,7 +9,7 @@ import {
   type UnlinkedMention,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Chip } from '@wildflowerhealthio/react-tundraish'
-import { Option } from 'effect'
+import { Array, Option } from 'effect'
 import { type JSX, useMemo } from 'react'
 
 import * as MentionLinkOptions from '../identity/mention-link-options.ts'
@@ -106,7 +106,7 @@ const tallyLabel = (tally: TypeTally): string => {
 /** The value of a mention select's Don't link option. */
 const DONT_LINK_VALUE = 'dont-link'
 
-/** The value of the option for the literal reference the mention carries now, when no offer has it. */
+/** The value of the option for the literal reference the mention carries now, when no resolved resource's option has it. */
 const currentValue = (literalReference: string): string => `current:${literalReference}`
 
 /** The literal reference by which the mention at `mentionPath` of `resource` names a record of the device. */
@@ -121,14 +121,14 @@ const deviceLiteralOf = (
 
 /**
  * One mention's inline select: the lead ("for", "requested by"), then the
- * resources offered for its type, the one it names now when none of them is
+ * resolved resources offered for its type, the one it names now when none of them is
  * it, and Don't link when the mention can be left unlinked.
  */
 const MentionSelect = ({
   mention,
   name,
   reviewed,
-  offers,
+  options,
   unlinkedByReferents,
   onPick,
 }: {
@@ -136,23 +136,23 @@ const MentionSelect = ({
   readonly name: string
   /** The resource as reviewed: resolved, or its edit override. */
   readonly reviewed: FhirResourceWithId
-  readonly offers: readonly MentionLinkOptions.Offer[]
+  readonly options: readonly MentionLinkOptions.Option[]
   /** Whether the referent choices alone leave this mention unlinked. */
   readonly unlinkedByReferents: boolean
-  /** Called with the offer picked, or `None` for Don't link. */
-  readonly onPick: (picked: Option.Option<MentionLinkOptions.Offer>) => void
+  /** Called with the option picked, or `None` for Don't link. */
+  readonly onPick: (picked: Option.Option<MentionLinkOptions.Option>) => void
 }): JSX.Element => {
   const deviceLiteral = deviceLiteralOf(reviewed, mention.path)
-  const offered = Option.flatMap(deviceLiteral, (literalReference) =>
-    Option.fromNullable(offers.find((offer) => offer.literalReference === literalReference))
+  const namedOption = Option.flatMap(deviceLiteral, (literalReference) =>
+    Array.findFirst(options, (option) => option.literalReference === literalReference)
   )
-  // A literal reference no offer has keeps an option of its own, so the
+  // A literal reference no option has keeps an option of its own, so the
   // select shows what the mention names; an absolute URL names no
   // resource of the device, as Don't link does.
-  const current = Option.isSome(offered) ? Option.none() : deviceLiteral
-  const value = Option.match(offered, {
+  const current = Option.isSome(namedOption) ? Option.none() : deviceLiteral
+  const value = Option.match(namedOption, {
     onNone: () => Option.match(current, { onNone: () => DONT_LINK_VALUE, onSome: currentValue }),
-    onSome: (offer) => offer.value,
+    onSome: (option) => option.value,
   })
   // Don't link where it leaves the mention something to name, or where the
   // referent choices alone leave it unlinked, so a pick can be taken back.
@@ -162,8 +162,8 @@ const MentionSelect = ({
     Mention.relinked(reviewed, mention.path, Option.none()) !== reviewed
   const handleChange = (picked: string): void => {
     if (picked === DONT_LINK_VALUE) onPick(Option.none())
-    const offer = offers.find((one) => one.value === picked)
-    if (offer !== undefined) onPick(Option.some(offer))
+    const option = options.find((one) => one.value === picked)
+    if (option !== undefined) onPick(Option.some(option))
   }
   return (
     <span className={styles['review-body__mention']}>
@@ -174,9 +174,9 @@ const MentionSelect = ({
         value={value}
         onChange={(event) => handleChange(event.target.value)}
       >
-        {offers.map((offer) => (
-          <option key={offer.value} value={offer.value}>
-            {offer.label}
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
           </option>
         ))}
         {current.pipe(
@@ -242,7 +242,7 @@ const ResourceRow = ({
   readonly onKeepServerValue: (key: string, resource: FhirResourceWithId) => void
   readonly onPick: (
     mention: Mention.Linkable,
-    picked: Option.Option<MentionLinkOptions.Offer>
+    picked: Option.Option<MentionLinkOptions.Option>
   ) => void
 }): JSX.Element => {
   const edited = Option.getOrElse(
@@ -316,7 +316,7 @@ const ResourceRow = ({
           mention={mention}
           name={names[index] ?? ''}
           reviewed={edited}
-          offers={MentionLinkOptions.forType(mentionLinkOptions, mention.type)}
+          options={MentionLinkOptions.forType(mentionLinkOptions, mention.type)}
           unlinkedByReferents={unlinked.some((one) => isAt(one, resourceKey, mention.path))}
           onPick={(picked) => onPick(mention, picked)}
         />
@@ -394,7 +394,7 @@ const FormatReviewBody = ({
   const pick = (
     { key }: DecodedFile.Resource,
     mention: Mention.Linkable,
-    picked: Option.Option<MentionLinkOptions.Offer>
+    picked: Option.Option<MentionLinkOptions.Option>
   ): void => {
     onChooseMention(
       key,

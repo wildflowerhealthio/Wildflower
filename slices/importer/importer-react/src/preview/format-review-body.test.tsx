@@ -15,7 +15,6 @@ import {
   LinkPlan,
   Mention,
   MentionLinkChoiceSet,
-  Referent,
   type ReferentLinkChoiceSet,
   StagedImport,
   UnlinkedMention,
@@ -116,13 +115,12 @@ const resolvedOn = (
 } =>
   runOnTestClock(
     Effect.gen(function* () {
-      const referents = yield* Referent.discover([file])
       const planOnReferents = yield* LinkPlan.make([file], linkChoices)
       const plan = LinkPlan.withMentionLinkChoiceSet(planOnReferents, byMention)
       return {
         resolved: FileResolution.resolveFile(plan)(file),
         unlinked: UnlinkedMention.collect(FileResolution.resolveFile(planOnReferents)(file)),
-        options: yield* MentionLinkOptions.fromLinkTargets(referents, plan),
+        options: MentionLinkOptions.fromPlan(plan),
       }
     })
   )

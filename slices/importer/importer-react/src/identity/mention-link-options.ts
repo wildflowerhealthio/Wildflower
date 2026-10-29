@@ -1,142 +1,91 @@
 /**
- * The options a mention's select offers: each resource a referent of the
- * batch lands on, of the type the mention names, labelled, and the mention
- * link choice picking it makes.
+ * The options a mention's select offers: exactly the plan's resolved
+ * resources, one per record that will exist once the batch is written, of the
+ * type the mention names, each labelled and paired with the mention link
+ * choice picking it makes.
  *
  * @remarks
- * A pick onto a stored resource is `LinkToStoredResource`, which no
- * referent's later choice moves; one onto a referent's own decoded or
- * provisional record is `LinkToDecodedReferent` of that referent, so the
- * mention follows the referent when it is later linked to a stored one.
- * Several referents may land on one record; picking it is the choice of the
- * referent whose record it is, so the mention follows that one rather than a
- * referent merely linked to it.
+ * A pick onto a record a referent of the batch owns (its decoded resource,
+ * or the provisional one its logical reference stands for) is
+ * `LinkToDecodedReferent` of that referent, so the mention follows the
+ * referent when it is later linked to a stored one; a pick onto a stored
+ * record no referent owns is `LinkToStoredResource`, which no referent's
+ * later choice moves.
  *
  * @packageDocumentation
  */
 
 import {
-  LinkableLogicalReference,
-  LinkableResource,
+  type LinkableLogicalReference,
   LinkChoice,
   LinkPlan,
-  LinkTarget,
   Referent,
+  type ResolvedResource,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { Array, Effect, HashMap, Option, pipe } from 'effect'
+import { Array, Option, pipe } from 'effect'
 
 import * as LinkChoiceOptions from './link-choice-options.ts'
 
-/** One resource a mention may be landed on: its option value, its label, and the choice picking it makes. */
-interface Offer {
-  /** Unique among one select's options: `LinkChoiceOptions.valueOf` the choice. */
-  readonly value: string
-  readonly label: string
-  readonly literalReference: string
+/**
+ * One option of a mention's select: a resolved resource as a link choice
+ * option (its value and its label), the mention link choice picking it
+ * makes, and the literal reference it is written under.
+ */
+interface MentionLinkOption extends LinkChoiceOptions.Option {
   readonly choice: LinkChoice.MentionLinkChoice
+  readonly resourceType: LinkableLogicalReference.ResourceType
+  readonly literalReference: string
 }
 
-/** What the mention selects offer: the resources a mention can land on, by type, and each one's label. */
-interface Type {
-  readonly offersByType: HashMap.HashMap<LinkableLogicalReference.ResourceType, readonly Offer[]>
-  /** Each offered resource's label, by its literal reference: how a row names its subject. */
+/** What the mention selects offer: every resolved resource as an option, and each one's label. */
+interface MentionLinkOptions {
+  readonly options: readonly MentionLinkOption[]
+  /** Each resolved resource's label, by its literal reference: how a row names its subject. */
   readonly labelsByLiteralReference: ReadonlyMap<string, string>
 }
 
-/** Nothing offered: no referent lands anywhere, so no mention can be picked for. */
-const empty: Type = { offersByType: HashMap.empty(), labelsByLiteralReference: new Map() }
+/** Nothing offered: the plan resolves no resource, so no mention can be picked for. */
+const empty: MentionLinkOptions = { options: [], labelsByLiteralReference: new Map() }
 
-/** A resource a referent lands on, the choice picking it makes, and whether that referent's record it is. */
-interface Landing {
-  readonly resource: LinkableResource.WithId
-  readonly choice: LinkChoice.MentionLinkChoice
-  readonly isOwnRecord: boolean
-}
-
-/** Whether `target`'s resource is `referent`'s own: its decoded resource, or the provisional one its logical reference stands for. */
-const isOwnRecordOf = (referent: Referent.Type, resource: LinkableResource.WithId): boolean =>
-  Option.exists(Referent.maybeOwnResource(referent), (ownResource) =>
-    LinkableResource.sameRecord(ownResource, resource)
-  )
-
-/** Where `referent` lands under its `target`, as a landing; `None` for `Unlinked`. */
-const landingOf = (referent: Referent.Type, target: LinkTarget.Type): Option.Option<Landing> =>
-  LinkTarget.match(target, {
-    Stored: ({ resource }) =>
-      Option.some({
-        resource,
-        choice: LinkChoice.LinkToStoredResource({ resource }),
-        isOwnRecord: true,
-      }),
-    Decoded: ({ resource }) =>
-      Option.some({
-        resource,
-        choice: LinkChoice.LinkToDecodedReferent({ referentKey: Referent.key(referent) }),
-        isOwnRecord: isOwnRecordOf(referent, resource),
-      }),
-    Provisional: ({ resource }) =>
-      Option.some({
-        resource,
-        choice: LinkChoice.LinkToDecodedReferent({ referentKey: Referent.key(referent) }),
-        isOwnRecord: isOwnRecordOf(referent, resource),
-      }),
-    Unlinked: () => Option.none(),
+/** The mention link choice picking `resolvedResource`: its owner referent's, else the stored resource itself. */
+const choiceOf = ({
+  resource,
+  ownerReferent,
+}: ResolvedResource.Type): LinkChoice.MentionLinkChoice =>
+  Option.match(ownerReferent, {
+    onNone: () => LinkChoice.LinkToStoredResource({ resource }),
+    onSome: (owner) => LinkChoice.LinkToDecodedReferent({ referentKey: Referent.key(owner) }),
   })
 
-/**
- * The options the batch's referents give the mention selects, under their
- * link targets: each resource a referent lands on, once, labelled
- * (`LinkableResource.labelOf`, which reads the clock for the current name).
- *
- * @param referents - The batch's referents, once per identity
- * @param plan - The plan the batch was resolved on
- */
-const fromLinkTargets = (
-  referents: readonly Referent.Type[],
-  plan: LinkPlan.Type
-): Effect.Effect<Type> => {
-  const landings = pipe(
-    referents,
-    Array.filterMap((referent) =>
-      Option.flatMap(LinkPlan.linkTargetIfReferentKey(plan, Referent.key(referent)), (target) =>
-        landingOf(referent, target)
-      )
-    ),
-    // One offer per record: the referent whose record it is wins over one linked to it.
-    Array.groupBy(({ resource }) => LinkableResource.literalReferenceOf(resource)),
-    (byLiteralReference) =>
-      Object.values(byLiteralReference).map(
-        (sharing) => sharing.find(({ isOwnRecord }) => isOwnRecord) ?? sharing[0]
-      )
-  )
-  return Effect.map(
-    Effect.forEach(landings, ({ resource, choice }) => {
-      const literalReference = LinkableResource.literalReferenceOf(resource)
-      return Effect.map(
-        LinkableResource.labelOf(resource, literalReference),
-        (label): readonly [LinkableLogicalReference.ResourceType, Offer] => [
-          resource.resourceType,
-          { value: LinkChoiceOptions.valueOf(choice), label, literalReference, choice },
-        ]
-      )
-    }),
-    (offers): Type => ({
-      offersByType: HashMap.fromIterable(
-        LinkableLogicalReference.RESOURCE_TYPES.map(
-          (type) =>
-            [type, offers.filter(([ofType]) => ofType === type).map(([, offer]) => offer)] as const
-        )
-      ),
-      labelsByLiteralReference: new Map(
-        offers.map(([, { literalReference, label }]) => [literalReference, label])
-      ),
-    })
-  )
+/** `resolvedResource` as a mention select option. */
+const optionOf = (resolvedResource: ResolvedResource.Type): MentionLinkOption => {
+  const choice = choiceOf(resolvedResource)
+  return {
+    value: LinkChoiceOptions.valueOf(choice),
+    label: resolvedResource.label,
+    choice,
+    resourceType: resolvedResource.resource.resourceType,
+    literalReference: resolvedResource.resolvedLiteralReference,
+  }
 }
 
-/** The offers for a mention naming `type`. */
-const forType = (options: Type, type: LinkableLogicalReference.ResourceType): readonly Offer[] =>
-  Option.getOrElse(HashMap.get(options.offersByType, type), () => [])
+/** What the mention selects offer under `plan`: each of its resolved resources, in plan order. */
+const fromPlan = (plan: LinkPlan.Type): MentionLinkOptions => {
+  const options = pipe(LinkPlan.resolvedResources(plan), Array.map(optionOf))
+  return {
+    options,
+    labelsByLiteralReference: new Map(
+      options.map(({ literalReference, label }) => [literalReference, label])
+    ),
+  }
+}
 
-export { empty, forType, fromLinkTargets }
-export type { Offer, Type }
+/** The options for a mention naming `type`. */
+const forType = (
+  mentionLinkOptions: MentionLinkOptions,
+  type: LinkableLogicalReference.ResourceType
+): readonly MentionLinkOption[] =>
+  Array.filter(mentionLinkOptions.options, ({ resourceType }) => resourceType === type)
+
+export { empty, forType, fromPlan }
+export type { MentionLinkOption as Option, MentionLinkOptions as Type }
