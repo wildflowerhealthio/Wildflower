@@ -8,6 +8,7 @@ import { DecodedCodeableConcept } from './decoded-r4.ts'
 import { withCanonicalDinOnMedicationConcept } from './din.ts'
 import { atUrl, promoteExtension } from './extension-lift.ts'
 import { promoteRequestPharmacy } from './pharmacy-location.ts'
+import { namePrescriber } from './prescriber.ts'
 import { promoteRepeatsAvailable } from './repeats-available.ts'
 import { withSupplyDurationInDays } from './supply-days.ts'
 
@@ -57,8 +58,8 @@ const promoteDispenseRequest = (request: MedicationRequest.Type): MedicationRequ
  * the store-locator URL on `dispenseRequest.performer.reference`, the
  * remaining-repeats `modifierExtension` pair → one `RepeatsAvailable`, a
  * canonical DIN coding beside the vendor one, the UCUM day unit onto
- * `expectedSupplyDuration`, and the orphaned contained Medication linked as
- * `medication[x]`.
+ * `expectedSupplyDuration`, the orphaned contained Medication linked as
+ * `medication[x]`, and the prescriber's printed name as their identifier.
  *
  * @remarks
  * A **dialect post-step, deliberately outside `fhir-stu3-as-r4`**, run on the
@@ -79,7 +80,8 @@ const promoteMedicationRequest = (request: MedicationRequest.Type): MedicationRe
     Struct.evolve({ contained: promoteContained }),
     linkContainedMedication,
     Struct.evolve({ medicationCodeableConcept: withCanonicalDinOnMedicationConcept }),
-    promoteDispenseRequest
+    promoteDispenseRequest,
+    namePrescriber
   )
 
 export { promoteMedicationRequest }
