@@ -88,7 +88,7 @@ loudly.
 `adoptResource(source)` is the per-resource rewrite. Given a `SourceIdentity`
 (`{ system, baseUrl? }`) it:
 
-1. **Takes its `DecodedId`.** `Decoded` is the id the source gave it.
+1. **Takes its `DecodedId`.** `FoundInSource` is the id the source gave it.
    A resource whose `id` is `null` (third-party FHIR JSON, where `id` is
    optional) is `GeneratedFromContent` instead: FNV-1a 64 over its FHIR JSON as
    `FhirResourceSchema` encodes it, fields in schema order, as sixteen hex

@@ -12,12 +12,12 @@ FHIR-free.
 ## Shape
 
 - `src/decoded-id.ts` — `DecodedId`, the id a decoded resource is adopted
-  under: `Decoded` the id the source gave it, or `GeneratedFromContent` a
+  under: `FoundInSource` the id the source gave it, or `GeneratedFromContent` a
   digest of its content when it gave none (FNV-1a 64 over its FHIR JSON as
   `FhirResourceSchema` encodes it, without `meta`). `DecodedId.of(resource)`
   picks one.
 - `src/adopt-resource.ts` — `adoptResource(source)`, the per-resource rewrite:
-  the derived id, the source identifier a `Decoded` id records as
+  the derived id, the source identifier a `FoundInSource` id records as
   `identifier[0]` (a `GeneratedFromContent` one records none), and the per-type
   reference rewrite. `originalIdOf` reads the source's id back off an adopted
   resource; `adoptedReferenceOf` spells a reference to a resource a source's

@@ -111,7 +111,7 @@ const sourceIdentifier = (prepared: PreparedSource, value: string): IdentifierTy
 
 /**
  * `own` with the source identifier `decodedId` records prepended: the
- * source's id for a `Decoded` id, nothing for one `GeneratedFromContent`.
+ * source's id for a `FoundInSource` id, nothing for one `GeneratedFromContent`.
  */
 const identifiersAdopting = (
   prepared: PreparedSource,
@@ -119,7 +119,7 @@ const identifiersAdopting = (
   own: readonly IdentifierType[]
 ): readonly IdentifierType[] =>
   DecodedId.$match(decodedId, {
-    Decoded: ({ value }) => [sourceIdentifier(prepared, value), ...own],
+    FoundInSource: ({ value }) => [sourceIdentifier(prepared, value), ...own],
     GeneratedFromContent: () => own,
   })
 

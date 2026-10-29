@@ -7,18 +7,18 @@ import { Data, Schema, Struct } from 'effect'
  * source's system and the resource type, derives its local id.
  *
  * @remarks
- * `Decoded` when the source gave the resource an id, which is also recorded on
+ * `FoundInSource` when the source gave the resource an id, which is also recorded on
  * the adopted resource as its source identifier. `GeneratedFromContent` when it
  * gave none (third-party FHIR JSON, where `id` is optional), so the id is a
  * digest of the resource's content ({@link of}); no source identifier is
  * recorded for it, since the source knows the resource by no id at all.
  */
 type Type = Data.TaggedEnum<{
-  Decoded: { readonly value: string }
+  FoundInSource: { readonly value: string }
   GeneratedFromContent: { readonly value: string }
 }>
 
-const { Decoded, GeneratedFromContent, $match } = Data.taggedEnum<Type>()
+const { FoundInSource, GeneratedFromContent, $match } = Data.taggedEnum<Type>()
 
 const encodeResource = Schema.encodeSync(FhirResourceSchema)
 
@@ -46,13 +46,13 @@ const contentDigestOf = (resource: FhirResource): string =>
  * of its content.
  *
  * @param resource - A resource as its source decoded it
- * @returns `Decoded` its `id`, or `GeneratedFromContent` its content digest
+ * @returns `FoundInSource` its `id`, or `GeneratedFromContent` its content digest
  *   when its `id` is `null`
  */
 const of = (resource: FhirResource): Type =>
   resource.id === null
     ? GeneratedFromContent({ value: contentDigestOf(resource) })
-    : Decoded({ value: resource.id })
+    : FoundInSource({ value: resource.id })
 
 export { $match, of }
 export type { Type }

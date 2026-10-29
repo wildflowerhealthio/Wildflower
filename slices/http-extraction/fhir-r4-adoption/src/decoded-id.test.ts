@@ -76,7 +76,7 @@ const withMeta = (resource: FhirResource, meta: unknown): FhirResource =>
 describe('DecodedId.of', () => {
   test("is the resource's own id when it has one", () => {
     const patient = { ...sampleWithoutId(Patient.Schema, 12), id: 'src-1' }
-    expect(DecodedId.of(patient)).toMatchObject({ _tag: 'Decoded', value: 'src-1' })
+    expect(DecodedId.of(patient)).toMatchObject({ _tag: 'FoundInSource', value: 'src-1' })
   })
 
   for (const resource of idLessResources) {
