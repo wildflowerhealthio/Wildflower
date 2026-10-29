@@ -21,7 +21,7 @@ import {
   DomainResource,
   HumanName,
   IdentifierAndReference,
-  WILDFLOWER_CANONICAL_BASE,
+  WILDFLOWER_IDENTIFIER_SYSTEM_BASE,
 } from '../../data-types/index.ts'
 import * as PatientCommunication from './patient-communication.ts'
 import * as PatientContact from './patient-contact.ts'
@@ -222,7 +222,7 @@ type Type = typeof PatientSchema.Type
  * The Wildflower identifier system for a person's name and birth date, under
  * which {@link nameBirthDateIdentifier} mints its identifier.
  */
-const NAME_BIRTH_DATE_IDENTIFIER_SYSTEM = `${WILDFLOWER_CANONICAL_BASE}/identifier/patient-name-birth-date`
+const NAME_BIRTH_DATE_IDENTIFIER_SYSTEM = `${WILDFLOWER_IDENTIFIER_SYSTEM_BASE}/patient-name-birth-date`
 
 /**
  * A name part in Unicode NFC, lower-cased, trimmed, and with every run of

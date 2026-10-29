@@ -54,6 +54,7 @@ export {
   WILDFLOWER_CANONICAL_BASE,
   WILDFLOWER_CODE_SYSTEM_BASE,
   WILDFLOWER_EXTENSION_BASE,
+  WILDFLOWER_IDENTIFIER_SYSTEM_BASE,
   WildflowerCodeSystem,
   WildflowerExtension,
 } from './terminology.ts'
