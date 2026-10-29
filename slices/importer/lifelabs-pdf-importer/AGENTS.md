@@ -142,7 +142,8 @@ function.
 Depends on `positioned-text` (the positioned-text schema — the neutral seam
 between extraction and the dialect), `positioned-text-web`
 (`extractPositionedText`, the shared pdfjs seam the anonymizer also drives),
-`fhir-r4` (resource schemas, `joinIdComponents`, `adoptResource`),
+`fhir-r4` (resource schemas, `joinIdComponents`), `fhir-r4-adoption`
+(`adoptResource`),
 `importer-fundamentals` (`DecodeFunction.make`, `DecodedFile`, `PickedFile`),
 `kitchen-sink`
 (`fnv1a64` for deterministic id hashing, `numRunsFor` in tests), and `effect`

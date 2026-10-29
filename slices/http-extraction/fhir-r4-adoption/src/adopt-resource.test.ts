@@ -1,13 +1,9 @@
-import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Arbitrary, FastCheck as fc, Schema, SchemaAST } from 'effect'
-import { describe, expect, test } from 'vite-plus/test'
-
 import {
-  IdentifierSchema,
-  ReferenceSchema,
+  IdentifierAndReference,
   type IdentifierType,
   type ReferenceType,
-} from '../data-types/complex/identifier-and-reference.ts'
+} from '@wildflowerhealthio/fhir-r4/data-types'
+import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
 import {
   Binary,
   CarePlan,
@@ -26,14 +22,17 @@ import {
   Practitioner,
   Procedure,
   ServiceRequest,
-} from '../resources/index.ts'
+} from '@wildflowerhealthio/fhir-r4/resources'
+import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
+import { Arbitrary, FastCheck as fc, Schema, SchemaAST } from 'effect'
+import { describe, expect, test } from 'vite-plus/test'
+
 import {
   adoptResource,
   adoptedReferenceOf,
   originalIdOf,
   type SourceIdentity,
 } from './adopt-resource.ts'
-import { localResourceId } from './local-resource-id.ts'
 
 /**
  * Covers adoption of a single resource: the derived id, the injected source
@@ -288,10 +287,10 @@ const declaredShapeOf = (node: SchemaAST.AST, depth = 0): string => {
 }
 
 // Matched structurally rather than by AST identity: Effect rebuilds nodes when
-// it forces a `Suspend`, so `node === ReferenceSchema.ast` is false for the very
+// it forces a `Suspend`, so `node === IdentifierAndReference.ReferenceSchema.ast` is false for the very
 // occurrences this needs to find.
-const REFERENCE_SHAPE = declaredShapeOf(ReferenceSchema.ast)
-const IDENTIFIER_SHAPE = declaredShapeOf(IdentifierSchema.ast)
+const REFERENCE_SHAPE = declaredShapeOf(IdentifierAndReference.ReferenceSchema.ast)
+const IDENTIFIER_SHAPE = declaredShapeOf(IdentifierAndReference.IdentifierSchema.ast)
 
 /**
  * Every dotted path at which a resource schema declares a `Reference`.
@@ -620,11 +619,6 @@ describe('adoptResource', () => {
       if ('contained' in adopted && 'contained' in resource) {
         expect(adopted.contained).toBe(resource.contained)
       }
-    })
-
-    test(`${resourceType}: passes a null-id resource straight through`, () => {
-      const idLess = { ...resource, id: null }
-      expect(adopt(idLess)).toBe(idLess)
     })
   }
 

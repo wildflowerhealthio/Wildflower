@@ -21,6 +21,16 @@ const UNRECOGNIZED_FILE_MESSAGE = 'This file was not a format the importer recog
 /** Message for a read file whose decode yielded no importable resources. */
 const NO_RESOURCES_MESSAGE = 'No importable resources in this file.'
 
+/** Heading of the batch's linked records: the records it names but holds no copy of. */
+const LINKED_RECORDS_HEADING = 'Linked records'
+
+/**
+ * The note under the linked records: what they are, and that they are
+ * written as the referents link them, not reviewed one by one.
+ */
+const LINKED_RECORDS_NOTE =
+  'Records this import names but holds no copy of, written as the people and providers above link them: a record on the server with this import’s identifiers added, or a new record made from the mention.'
+
 /** `noun` singular when `count === 1`, else its `-s` plural. */
 const plural = (count: number, noun: string): string => (count === 1 ? noun : `${noun}s`)
 
@@ -33,6 +43,8 @@ const confirmLabel = (writable: number, excluded: number, confirming: boolean): 
 
 export {
   confirmLabel,
+  LINKED_RECORDS_HEADING,
+  LINKED_RECORDS_NOTE,
   NO_RESOURCES_MESSAGE,
   NOTHING_TO_IMPORT_HEADING,
   plural,

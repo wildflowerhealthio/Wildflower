@@ -6,7 +6,12 @@
  */
 
 import { HumanName, IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import { Patient, Practitioner } from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  type FhirResourceWithId,
+  literalReferenceOf,
+  Patient,
+  Practitioner,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import { Array, DateTime, Effect, Match, Option, pipe } from 'effect'
 
 import * as LinkableLogicalReference from './linkable-logical-reference.ts'
@@ -22,17 +27,12 @@ type WithId =
 const matchResourceType = Match.discriminator('resourceType')
 
 /** Whether `resource` is one the identity map links. */
-const is = (resource: { readonly resourceType: string }): resource is Type =>
+const is = (resource: FhirResourceWithId): resource is WithId =>
   LinkableLogicalReference.isResourceType(resource.resourceType)
 
-const hasId = (resource: Type): resource is WithId => resource.id !== null
-
-/** `resource` itself, its `id` known to be set; `None` when it has none, so nothing can point at it. */
-const tryIntoWithId = (resource: Type): Option.Option<WithId> =>
-  Option.liftPredicate(resource, hasId)
-
-/** `resource`'s relative literal reference, `Type/<id>`: what a mention of it carries. */
-const literalReferenceOf = (resource: WithId): string => `${resource.resourceType}/${resource.id}`
+/** Whether `a` and `b` are copies of one record: they share `Type/<id>`. */
+const sameRecord = (a: WithId, b: WithId): boolean =>
+  literalReferenceOf(a) === literalReferenceOf(b)
 
 /**
  * The linkable logical reference `resource` is keyed by: its `identifier[0]`,
@@ -70,7 +70,7 @@ const DERIVED_IDENTIFIER_SYSTEM_HREFS: ReadonlySet<string> = new Set(
 /**
  * Whether `identifier` is one demographics derive, under a Wildflower system
  * ({@link maybeDerivedIdentifier}'s), rather than one a source gave: what a
- * placed resource carries after assuming its own, and what a search by the
+ * resolved resource carries after assuming its own, and what a search by the
  * source's identifiers leaves out.
  */
 const isDerivedIdentifier = (identifier: IdentifierAndReference.IdentifierType): boolean =>
@@ -155,8 +155,8 @@ export {
   literalReferenceOf,
   maybeDerivedIdentifier,
   maybeDisplayName,
+  sameRecord,
   tryIntoLogicalReference,
-  tryIntoWithId,
   tryProvisionalFrom,
 }
 export type { Type, WithId }

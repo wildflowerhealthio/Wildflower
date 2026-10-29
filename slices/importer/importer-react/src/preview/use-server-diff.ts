@@ -2,16 +2,12 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 
 import { useRunAuthed } from '@wildflowerhealthio/fhir-r4-react'
-import {
-  classifyAgainstServer,
-  diffKey,
-  type ServerComparison,
-} from '@wildflowerhealthio/fhir-r4/clients'
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import { classifyAgainstServer, type ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
+import { type FhirResourceWithId, literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
 import { DecodedFile } from '@wildflowerhealthio/importer-fundamentals'
 
-import type { FormatKind, ResolvedBatch } from '@wildflowerhealthio/importer-core'
-import { formatKinds } from '@wildflowerhealthio/importer-core'
+import type { ResolvedBatch, ReviewGroup } from '@wildflowerhealthio/importer-core'
+import { formatKinds, LINKED_GROUP } from '@wildflowerhealthio/importer-core'
 import { IMPORTER_QUERY_KEY } from '../queries/keys.ts'
 
 /**
@@ -51,16 +47,16 @@ import { IMPORTER_QUERY_KEY } from '../queries/keys.ts'
  * @packageDocumentation
  */
 
-/** One labeled resource, the format it belongs to, and the value the classifier probes for it. */
+/** One labeled resource, the group it is reviewed in, and the value the classifier probes for it. */
 interface DiffRow {
-  readonly format: FormatKind
+  readonly group: ReviewGroup
   readonly key: string
-  readonly resource: FhirResource
+  readonly resource: FhirResourceWithId
 }
 
 /**
- * Every previewed resource's server comparison, keyed by format kind and
- * then by `DecodedFile.Resource`'s `key` within the format.
+ * Every previewed resource's server comparison, keyed by the group it is
+ * reviewed in and then by `DecodedFile.Resource`'s `key` within the group.
  *
  * @remarks
  * A resource key is unique within one format — a per-file decode's keys are
@@ -68,9 +64,10 @@ interface DiffRow {
  * DICOM's fixed `patient` / `imaging-study` and every format's source-file
  * row stay distinct across the files a format claimed. Across formats they
  * are not: two formats may both key a row `0:a.json/patient`. Scoping by
- * format is what keeps each format's badges and pre-exclusions its own.
+ * group is what keeps each format's badges and pre-exclusions its own; the
+ * linked records, no format's, are the {@link LINKED_GROUP}.
  */
-type FormatComparisons = ReadonlyMap<FormatKind, ReadonlyMap<string, ServerComparison>>
+type GroupComparisons = ReadonlyMap<ReviewGroup, ReadonlyMap<string, ServerComparison>>
 
 /**
  * The state of the pre-fetch: `loading` while there is nothing worth showing
@@ -84,7 +81,7 @@ type ServerDiffState =
   | { readonly _tag: 'loading' }
   | {
       readonly _tag: 'ready'
-      readonly comparisons: FormatComparisons
+      readonly comparisons: GroupComparisons
       /**
        * Whether these are the verdicts the batch last settled on, carried
        * over while the changed batch's own load: the confirm waits on it.
@@ -93,12 +90,12 @@ type ServerDiffState =
     }
   | {
       readonly _tag: 'error'
-      readonly comparisons: FormatComparisons
+      readonly comparisons: GroupComparisons
       readonly error: Error
     }
 
 /** No comparisons, held once so an empty batch keeps a stable identity. */
-const NO_COMPARISONS: FormatComparisons = new Map()
+const NO_COMPARISONS: GroupComparisons = new Map()
 
 /** No verdicts by `Type/id`: what a failed classification settles on, so every id reads as `new`. */
 const NO_VERDICTS: ReadonlyMap<string, ServerComparison> = new Map()
@@ -107,44 +104,51 @@ const NO_VERDICTS: ReadonlyMap<string, ServerComparison> = new Map()
 const AS_NEW: ServerComparison = { status: 'new', fields: [] }
 
 /**
- * Re-key a `Type/id → comparison` map onto the batch's formats and their
- * resource keys.
+ * Re-key a `Type/id → comparison` map onto the batch's review groups and
+ * their resource keys.
  *
- * @param rows - Every previewed resource with its format
+ * @param rows - Every previewed resource with its group
  * @param byDiffKey - The classifier's verdicts by `Type/id`
- * @returns The verdicts by format kind, then by resource key; a row the
- *   classifier did not cover reads as `new`
+ * @returns The verdicts by group, then by resource key; a row the classifier
+ *   did not cover reads as `new`
  */
-const byFormatAndKey = (
+const byGroupAndKey = (
   rows: readonly DiffRow[],
   byDiffKey: ReadonlyMap<string, ServerComparison>
-): FormatComparisons => {
-  const comparisons = new Map<FormatKind, Map<string, ServerComparison>>()
+): GroupComparisons => {
+  const comparisons = new Map<ReviewGroup, Map<string, ServerComparison>>()
   for (const row of rows) {
-    const format = comparisons.get(row.format) ?? new Map<string, ServerComparison>()
-    format.set(row.key, byDiffKey.get(diffKey(row.resource)) ?? AS_NEW)
-    comparisons.set(row.format, format)
+    const group = comparisons.get(row.group) ?? new Map<string, ServerComparison>()
+    group.set(row.key, byDiffKey.get(literalReferenceOf(row.resource)) ?? AS_NEW)
+    comparisons.set(row.group, group)
   }
   return comparisons
 }
 
 /**
- * Every previewed resource across a batch's formats, paired with its format
- * and labeled key — the flat list one classifier round trip probes.
+ * Every previewed resource across a batch's formats and its linked records,
+ * paired with its group and labeled key — the flat list one classifier round
+ * trip probes.
  */
-const diffRowsOf = (batch: ResolvedBatch): readonly DiffRow[] =>
-  formatKinds.flatMap((kind) =>
-    DecodedFile.resources(batch[kind].decoded).map((entry): DiffRow => ({
-      format: kind,
+const diffRowsOf = (batch: ResolvedBatch): readonly DiffRow[] => [
+  ...formatKinds.flatMap((kind) =>
+    DecodedFile.resources(batch.formats[kind].decoded).map((entry): DiffRow => ({
+      group: kind,
       key: entry.key,
       resource: entry.resource,
     }))
-  )
+  ),
+  ...batch.linkedRecords.map((entry): DiffRow => ({
+    group: LINKED_GROUP,
+    key: entry.key,
+    resource: entry.resource,
+  })),
+]
 
 /**
  * Run the pre-fetch over every labeled resource across the batch's formats
- * and expose the classification as a
- * `FormatKind → resource key → ServerComparison` lookup.
+ * and linked records and expose the classification as a
+ * `ReviewGroup → resource key → ServerComparison` lookup.
  *
  * @param batch - The current decoded batch (undefined while the
  *   import-run is still `idle` or `reading`); only read formats contribute
@@ -217,19 +221,19 @@ const useServerDiff = (batch: ResolvedBatch | undefined, batchId: number): Serve
       return { _tag: 'ready', comparisons: NO_COMPARISONS, refreshing: false }
     }
     if (query.data !== undefined) {
-      return { _tag: 'ready', comparisons: byFormatAndKey(rows, query.data), refreshing: false }
+      return { _tag: 'ready', comparisons: byGroupAndKey(rows, query.data), refreshing: false }
     }
     if (query.isError)
       return {
         _tag: 'error',
-        comparisons: byFormatAndKey(rows, NO_VERDICTS),
+        comparisons: byGroupAndKey(rows, NO_VERDICTS),
         error:
           query.error instanceof Error
             ? query.error
             : new Error('Failed to check the server for existing copies'),
       }
     if (carriedOver !== undefined) {
-      return { _tag: 'ready', comparisons: byFormatAndKey(rows, carriedOver), refreshing: true }
+      return { _tag: 'ready', comparisons: byGroupAndKey(rows, carriedOver), refreshing: true }
     }
     return { _tag: 'loading' }
   }, [enabled, rows, query.data, query.isError, query.error, carriedOver])
@@ -258,10 +262,10 @@ const initialExclusionsFor = (
 }
 
 export {
-  byFormatAndKey,
+  byGroupAndKey,
   type DiffRow,
   diffRowsOf,
-  type FormatComparisons,
+  type GroupComparisons,
   initialExclusionsFor,
   type ServerDiffState,
   useServerDiff,

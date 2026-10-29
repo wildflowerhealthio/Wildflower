@@ -1,4 +1,4 @@
-import { type AdoptableEntity, localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
+import { localResourceId } from '@wildflowerhealthio/fhir-r4/identity'
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import type { HttpResponseKind } from '@wildflowerhealthio/http-extraction-fundamentals'
 import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
@@ -25,11 +25,6 @@ const parse = (name: string, url: string, body: unknown): readonly FhirResource[
   )
 
 describe('fhirR4ResponseKinds', () => {
-  it('HttpResponseKind<FhirResource> satisfies AdoptableEntity (the seam drift guard)', () => {
-    const seam: readonly AdoptableEntity[] = fhirR4ResponseKinds
-    expect(seam.length).toBe(fhirR4ResponseKinds.length)
-  })
-
   it('contains the three kinds in plan order', () => {
     expect(fhirR4ResponseKinds.map((kind) => kind.name)).toEqual([
       'PatientResponseKind',

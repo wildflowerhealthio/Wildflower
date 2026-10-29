@@ -2,7 +2,7 @@ import type {
   CodeableConcept,
   IdentifierAndReference,
 } from '@wildflowerhealthio/fhir-r4/data-types'
-import type { FhirResource, MedicationDispense } from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResourceWithId, MedicationDispense } from '@wildflowerhealthio/fhir-r4/resources'
 import type { SourceDescriptor } from '@wildflowerhealthio/http-extraction-fundamentals'
 
 /**
@@ -68,10 +68,10 @@ const medicationOf = (
  * history copy has: the store's name and, when the status copy has none, the
  * DIN coding.
  */
-const mergeDispenseCopies = (
-  statusCopy: MedicationDispense.Type,
+const mergeDispenseCopies = <TDispense extends MedicationDispense.Type>(
+  statusCopy: TDispense,
   historyCopy: MedicationDispense.Type
-): MedicationDispense.Type => ({
+): TDispense => ({
   ...statusCopy,
   location: locationOf(statusCopy.location, historyCopy.location),
   medicationCodeableConcept: medicationOf(
@@ -86,7 +86,10 @@ const mergeDispenseCopies = (
  * either order. Anything else keeps the later copy, as the store would: two
  * copies from one feed, and every other resource type.
  */
-const mergeShoppersResources: SourceDescriptor.ResourceMerge<FhirResource> = (earlier, later) => {
+const mergeShoppersResources: SourceDescriptor.ResourceMerge<FhirResourceWithId> = (
+  earlier,
+  later
+) => {
   if (
     earlier.resourceType !== 'MedicationDispense' ||
     later.resourceType !== 'MedicationDispense'

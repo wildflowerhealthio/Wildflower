@@ -1,5 +1,6 @@
 export { FhirResourceSchema } from './fhir-resource.ts'
 export type { FhirResource } from './fhir-resource.ts'
+export { type FhirResourceWithId, hasId, literalReferenceOf } from './fhir-resource-with-id.ts'
 export * as DateSearchParam from './search/date-search-param.ts'
 export * as TokenSearchParam from './search/token-search-param.ts'
 export * as ResourceReferences from './resource-references.ts'

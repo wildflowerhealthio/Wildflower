@@ -23,7 +23,7 @@ import { Array, Effect, HashMap, Match, Option } from 'effect'
 import * as LinkChoice from './link-choice.ts'
 import type * as LinkableLogicalReference from './linkable-logical-reference.ts'
 import * as LinkableResource from './linkable-resource.ts'
-import type * as ReferentLinkChoices from './referent-link-choices.ts'
+import * as ReferentLinkChoices from './referent-link-choices.ts'
 import * as Referent from './referent.ts'
 
 /**
@@ -95,8 +95,7 @@ const theOneOf = (
  */
 const isStoredCopyOf = (referent: Referent.Type, stored: LinkableResource.WithId): boolean =>
   Referent.match(referent, {
-    AsResource: ({ resource }) =>
-      LinkableResource.literalReferenceOf(resource) === LinkableResource.literalReferenceOf(stored),
+    AsResource: ({ resource }) => LinkableResource.sameRecord(resource, stored),
     ByMentionOnly: () => false,
   })
 
@@ -121,7 +120,7 @@ const choiceAmong = (
  * The link choice `referent` takes before the reviewer makes one: the one
  * stored resource of its type that its own identifiers name; when they name
  * none, the one its derived identifier names; else its kind's default
- * (`LinkChoice.defaultFor`). A hit that is the stored copy of the referent's
+ * (`ReferentLinkChoices.defaultFor`). A hit that is the stored copy of the referent's
  * own decoded resource ({@link isStoredCopyOf}) is `UpdateStoredResource`,
  * whatever else the search found, so a re-import writes the newer decode over
  * it, keeping what the copy assumed.
@@ -149,7 +148,7 @@ const defaultChoice = (
       : []
     return Option.getOrElse(
       Option.orElse(choiceAmong(referent, namedByOwn), () => choiceAmong(referent, namedByDerived)),
-      () => LinkChoice.defaultFor(referent)
+      () => ReferentLinkChoices.defaultFor(referent)
     )
   })
 

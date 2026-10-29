@@ -27,8 +27,8 @@ extracts with. It is the first of the per-source packages;
   `fhirR4Source.responseKinds`, sharing it by reference.
 - `src/response-kinds.ts` — `fhirR4ResponseKinds` (internal, the descriptor's
   `responseKinds`): the tuple (Patient, Observation, Observation-list, in that
-  order), widened to `HttpResponseKind<FhirResource>` so the per-kind adoption
-  guard has its element type, and mapped through `adoptUnderRecognizedRoot` — so
+  order), widened to `HttpResponseKind<FhirResource>`, and mapped through
+  `fhir-r4-adoption`'s `adoptUnderRecognizedRoot` — so
   each resource is keyed under the root of the URL it arrived on, the identity
   read per response from the kind's own `tryRecognize`, no single system
   inferred. A module-level constant (the combinator takes no source parameter),
@@ -41,8 +41,8 @@ extracts with. It is the first of the per-source packages;
 
 Pure like a `-core`: no DOM, no `fs`, no React. Depends on
 `http-extraction-fundamentals` (`HttpResponseKind`, `UrlMatch`, `Specificity`,
-`RecognizedUrlData`), `fhir-r4` (resources + `identity`'s
-`adoptUnderRecognizedRoot`), `effect`, and `kitchen-sink` — nothing else. In
+`RecognizedUrlData`), `fhir-r4` (resources), `fhir-r4-adoption`
+(`adoptUnderRecognizedRoot`), `effect`, and `kitchen-sink` — nothing else. In
 particular it must **never** import anything from `slices/importer` (whose
 `har-importer-core` consumes this package's `fhirR4Source.responseKinds`).
 This package's response-kind suites and `response-kinds.test.ts` pin only its
@@ -61,12 +61,6 @@ own surface's behaviour.
   root, so a same-server capture links up and a genuine cross-server reference
   does not. That is FHIR-correct — cross-server references are meant to be
   absolute.
-- **A seam drift guard pins `HttpResponseKind<FhirResource>` against
-  `AdoptableEntity`.** The response-kind tuple maps through
-  `adoptUnderRecognizedRoot`, whose parameter is `fhir-r4/identity`'s structural
-  `AdoptableEntity` (that package sits below `http-extraction` and cannot import
-  it). The two shapes are checked against each other here so a drift in either is
-  a compile error in this package rather than a silent divergence.
 
 ## References
 
@@ -76,5 +70,5 @@ own surface's behaviour.
   — the vocabulary this package is written against.
 - [har-importer-core AGENTS.md](../../importer/har-importer-core/AGENTS.md)
   — the archive importer that runs these kinds.
-- [Source Identity Explanation](../../fhir/fhir-r4/docs/Source%20Identity%20Explanation.md)
+- [Source Identity Explanation](../fhir-r4-adoption/docs/Source%20Identity%20Explanation.md)
   — why a resource is re-keyed under a derived local id.

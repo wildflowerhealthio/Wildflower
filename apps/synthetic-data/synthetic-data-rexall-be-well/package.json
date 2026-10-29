@@ -33,6 +33,7 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/fhir-r4-adoption": "workspace:*",
     "@wildflowerhealthio/fhir-stu3-as-r4": "workspace:*",
     "@wildflowerhealthio/har-importer-core": "workspace:*",
     "@wildflowerhealthio/http-archive": "workspace:*",
@@ -51,6 +52,7 @@
   },
   "peerDependencies": {
     "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/fhir-r4-adoption": "workspace:*",
     "@wildflowerhealthio/fhir-stu3-as-r4": "workspace:*",
     "@wildflowerhealthio/http-archive": "workspace:*",
     "@wildflowerhealthio/http-extraction-fundamentals": "workspace:*",

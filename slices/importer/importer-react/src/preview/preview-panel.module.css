@@ -98,3 +98,28 @@
   cursor: default;
   opacity: 0.6;
 }
+
+.preview-panel__linked-note {
+  margin: 0;
+  color: var(--color-neutral-4);
+}
+
+.preview-panel__linked-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.preview-panel__linked-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: baseline;
+}
+
+.preview-panel__linked-type {
+  font-weight: 600;
+}

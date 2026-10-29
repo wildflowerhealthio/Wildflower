@@ -16,6 +16,7 @@ import { formatRegistry } from './registry.ts'
 import { SKIPPED_HEADING } from './results/import-results.tsx'
 import {
   dicomFile,
+  ID_LESS_OBSERVATIONS_HAR,
   NAMED_PATIENT_HAR,
   RECOGNIZED_HAR,
   storedSourceFile,
@@ -44,9 +45,9 @@ import {
  *   row writes no `DocumentReference`, and the resources still name it (the
  *   format stamped them at decode; the id is deterministic in the file, so a
  *   later upload of the same file resolves the link);
- * - **a failing write folds into a partial result** (a rejected source file is just
- *   one failed row, not a gate on the rest), and **cancel discards with no
- *   writes**.
+ * - **the batch is one transaction** — a rejected entry refuses the whole
+ *   submission, nothing lands, and the results say so under the one cause;
+ *   and **cancel discards with no writes**.
  */
 
 vi.mock('@wildflowerhealthio/fhir-r4-react', async (importOriginal) => {
@@ -231,38 +232,10 @@ describe('ImporterScreen', () => {
     }
   })
 
-  it('folds a failing write into a partial result that groups the failed resources by code', async () => {
-    // Arrange — the store rejects every Observation write
-    currentRunAuthed = routingServer({
-      failWrite: (request) => request.url.includes('/Observation/'),
-    })
-    render(<ImporterScreen />, { wrapper: withQueryClient })
-
-    // Act
-    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
-    })
-    await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
-
-    // Assert — a partial result: the source-file source file and the Patient wrote,
-    // both Observations are grouped under their failure status code (retry
-    // backoff runs on the real clock).
-    await waitFor(
-      () => {
-        expect(screen.getByRole('heading', { name: /Imported with some failures/ })).toBeDefined()
-      },
-      { timeout: 6000 }
-    )
-    expect(screen.getByText(/503 Service Unavailable/)).toBeDefined()
-    expect(screen.getAllByText(/Observation\//).length).toBeGreaterThan(0)
-    expect(screen.getByRole('status').textContent).toMatch(/Wrote 2 of 4/)
-  })
-
-  it("still writes a file's resources when its source-file source file is rejected, as a partial batch", async () => {
-    // Arrange — the store rejects the source file `DocumentReference` entry. It rides
-    // the same batch as the resources, so its rejection is one failed row — not a
-    // gate that stops the rest.
+  it('lands nothing when the server rejects one entry: the batch is one transaction, refused as a whole', async () => {
+    // Arrange — the store rejects the source file `DocumentReference` entry.
+    // It rides the same transaction as the resources it names, so the whole
+    // submission is refused: no resource lands without its source file.
     currentRunAuthed = routingServer({
       failWrite: (request) => request.url.includes('/DocumentReference/'),
     })
@@ -275,14 +248,19 @@ describe('ImporterScreen', () => {
     })
     await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
 
-    // Assert — a partial result: the source file's failed row shows under its status,
-    // yet the three resources still wrote (each stamped with the source file ref).
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Imported with some failures/ })).toBeDefined()
-    })
-    expect(screen.getByText(/503 Service Unavailable/)).toBeDefined()
+    // Assert — nothing imported: every entry is reported under the server's
+    // refusal, its status and its reason, and the server holds none of them.
+    await waitFor(
+      () => {
+        expect(screen.getByRole('heading', { name: /Nothing was imported/ })).toBeDefined()
+      },
+      { timeout: 6000 }
+    )
+    expect(screen.getByText(/400 Bad Request · 4 resources/)).toBeDefined()
+    expect(screen.getAllByText(/Transaction failed at entry/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/DocumentReference\//).length).toBeGreaterThan(0)
-    expect(writes().filter(isResourceWrite)).toHaveLength(3)
+    expect(screen.getByRole('status').textContent).toMatch(/Wrote 0 of 4/)
+    expect(writes().filter(isResourceWrite)).toHaveLength(0)
   })
 
   it('imports several files at once as one batch, each stamped with its own source file', async () => {
@@ -296,19 +274,21 @@ describe('ImporterScreen', () => {
       harFile('session-b.har'),
     ])
     await waitFor(() => {
-      // Two files × (three resources + one source-file source file) under one confirm.
-      expect(screen.getByRole('button', { name: /Import 8 resources/ })).toBeDefined()
+      // Two source files and the three resources both files hold under the
+      // same ids, each counted once, under one confirm.
+      expect(screen.getByRole('button', { name: /Import 5 resources/ })).toBeDefined()
     })
     expect(writes()).toHaveLength(0)
 
     // Confirm the whole batch
-    await userEvent.click(screen.getByRole('button', { name: /Import 8 resources/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Import 5 resources/ }))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
     })
 
-    // Assert — one source file per file, six resources, each pointing at one of the
-    // two fresh source files.
+    // Assert — one source file per file. The two files hold the same three
+    // resources under the same ids, so each is written once, pointing at one
+    // of the two fresh source files.
     const sourceFileIds = writes()
       .filter((write) => write.url.includes('/DocumentReference/'))
       .map((write) => idFromUrl(write.url))
@@ -316,7 +296,7 @@ describe('ImporterScreen', () => {
     const sources = writes()
       .filter(isResourceWrite)
       .map((write) => metaSourceOf(write.body))
-    expect(sources).toHaveLength(6)
+    expect(sources).toHaveLength(3)
     for (const source of sources) {
       expect(sourceFileIds.map((id) => `DocumentReference/${id}`)).toContain(source)
     }
@@ -617,6 +597,40 @@ describe('ImporterScreen', () => {
     expect(writes()).toHaveLength(written)
   })
 
+  it('writes Observations a server sent with no id under ids of their content, and finds them unchanged on a re-import', async () => {
+    // Arrange
+    currentRunAuthed = routingServer({})
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+    const idLessHar = (): File =>
+      new File([ID_LESS_OBSERVATIONS_HAR], 'a.har', { type: 'application/json' })
+
+    // Act — import the capture once
+    await userEvent.upload(screen.getByLabelText('Import file'), idLessHar())
+    await userEvent.click(await screen.findByRole('button', { name: /Import 4 resources/ }))
+    await screen.findByRole('heading', { name: /Import complete/ })
+
+    // Assert — each Observation was written under an id adoption minted, one apiece
+    const observationIds = writes()
+      .filter((write) => write.url.includes('/Observation/'))
+      .map((write) => idFromUrl(write.url))
+    expect(observationIds).toHaveLength(2)
+    expect(new Set(observationIds).size).toBe(2)
+    for (const id of observationIds) expect(id).toMatch(/^wf-[0-9a-f]{32}$/)
+    const written = writes().length
+
+    // Act — pick the same capture again
+    await userEvent.click(screen.getByRole('button', { name: 'Import another archive' }))
+    await userEvent.upload(screen.getByLabelText('Import file'), idLessHar())
+
+    // Assert — the same content mints the same ids, so the diff finds every
+    // row on the server unchanged and nothing is written again
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Nothing to import/ })).toBeDefined()
+    })
+    expect(screen.getAllByText('Already on server')).toHaveLength(4)
+    expect(writes()).toHaveLength(written)
+  })
+
   it('shows one referent for one identity two files name', async () => {
     // Arrange
     currentRunAuthed = routingServer({})
@@ -638,7 +652,7 @@ describe('ImporterScreen', () => {
 // Helpers
 
 const jsonResponse = (body: unknown, status = 200): Response =>
-  new Response(status === 200 ? JSON.stringify(body) : '', {
+  new Response(body === null ? '' : JSON.stringify(body), {
     status,
     headers: { 'content-type': 'application/json' },
   })
@@ -775,8 +789,11 @@ const urlWithParams = (request: HttpClientRequest.HttpClientRequest): string => 
  * source files, an `identifier` search with the held resources of its type
  * carrying any of its `system|value` tokens, a `_count`-only search with
  * every held resource of its type, a read with the held resource, and a PUT
- * stores and echoes its body (or a 503 when `failWrite` says so). Enough to
- * drive the whole flow twice over and read the log back.
+ * stores and echoes its body (or a 503 when `failWrite` says so). A
+ * `transaction` bundle one of whose entries `failWrite` rejects is refused
+ * as a whole, as HFS refuses one: a 400 with an OperationOutcome, nothing
+ * stored and no entry recorded as written. Enough to drive the whole flow
+ * twice over and read the log back.
  */
 const routingServer = (config: {
   readonly sourceFiles?: readonly StoredSourceFile[]
@@ -809,6 +826,32 @@ const routingServer = (config: {
         const parsed = safeParseBundle(body)
         if (parsed !== undefined) {
           const entries = parsed.entry ?? []
+          const refusedEntry = entries.find(
+            (entry) =>
+              entry.request?.method === 'PUT' &&
+              config.failWrite?.({ method: 'PUT', url: `/${entry.request.url}` }) === true
+          )
+          if (parsed.type === 'transaction' && refusedEntry !== undefined) {
+            recorded.push({ method: request.method, url: request.url, body })
+            return Effect.succeed(
+              HttpClientResponse.fromWeb(
+                request,
+                jsonResponse(
+                  {
+                    resourceType: 'OperationOutcome',
+                    issue: [
+                      {
+                        severity: 'error',
+                        code: 'processing',
+                        diagnostics: `Transaction failed at entry ${entries.indexOf(refusedEntry)}`,
+                      },
+                    ],
+                  },
+                  400
+                )
+              )
+            )
+          }
           const responseEntries: unknown[] = []
           for (const entry of entries) {
             const entryReq = entry.request
@@ -905,8 +948,9 @@ const searchset = (resources: readonly unknown[]): unknown => ({
   link: [],
 })
 
-/** Minimal shape read from the request body of a `POST /` batch bundle. */
+/** Minimal shape read from the request body of a `POST /` bundle. */
 interface RecordedBundleShape {
+  readonly type?: string
   readonly entry?: readonly {
     readonly request?: { readonly method: string; readonly url: string }
     readonly resource?: unknown

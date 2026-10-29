@@ -64,7 +64,9 @@ interface Imported {
   readonly personPatients: readonly Patient.Type[]
 }
 
-const isDispense = (resource: FhirResource): resource is MedicationDispense.Type =>
+const isDispense = (
+  resource: FhirResource
+): resource is MedicationDispense.Type & { readonly id: string } =>
   resource.resourceType === 'MedicationDispense'
 
 /** `har` through `harImporter.decode`, as one picked file. */

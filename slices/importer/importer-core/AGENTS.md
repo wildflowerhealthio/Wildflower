@@ -35,11 +35,16 @@ write plan with this package alone.
   format — deliberately not the whole `BoundFormat`, so a test can stand up a
   fake registry with just those fields). **`readBatch`** takes the picker's
   `PickedFile.NamedBytes`, groups them by format
-  and decodes every group concurrently into a **`DecodedBatch`** — one
-  `FormatDecode.Result<K>` per registered format (an `emptyResult` for a format
-  that claimed nothing) plus the **`UnrecognizedFile`**s, plain data for the
-  picks no `detect` claimed; **`claimedFormats`** names the formats that
-  actually took part, the one predicate the preview and the confirm both read;
+  and decodes every group concurrently into a **`DecodedBatch`**: its
+  `formats`, a **`FormatResults`** record of one `FormatDecode.Result<K>` per
+  registered format (an `emptyResult` for a format that claimed nothing),
+  and its `unrecognizedFiles`, the **`UnrecognizedFile`**s, plain data for the
+  picks no `detect` claimed. The format slots are a field of their own rather
+  than spread beside `unrecognizedFiles`, so `batch.formats[kind]` under a
+  generic `K` is that format's own `Result<K>`. A decoded batch holds no
+  linked records and no link targets; **`claimedFormats`** takes the
+  `FormatResults` (`batch.formats`) and names the formats that actually took
+  part, the one predicate the preview and the confirm both read;
   **`redecodeFormat`** re-runs one format's files from their retained picks
   under new settings (ids are deterministic, so no id-preservation logic is
   needed).
@@ -57,37 +62,85 @@ write plan with this package alone.
   **`collectFormats`** is the one place the registry is enumerated by name,
   and its remarks say why: TypeScript drops the correlation between a computed
   union key and its value, so a record assembled from a `kind` variable is
-  checked against nothing. Its slots are typed by **`FormatResults`**.
+  checked against nothing. It yields a **`FormatResults`**, which each caller
+  places in its batch.
 - `src/resolve-mentions.ts` — a batch's mentions resolved (a resolved batch
-  is one whose mentions are resolved), service-free Effects on the clock.
-  **`ResolvedBatch`** is a `DecodedBatch` branded (Effect's `Brand`) as one
-  every mention of which resolves: what the diff, the preview and the
-  confirm take, and only `resolveMentions` makes one.
-  **`discoverReferents(batch)`** is `Referent.discover` over every
-  claimed format's `decoded`: one referent per identity across formats,
+  is one whose mentions are resolved), service-free Effects on the clock. The
+  batch goes from **decoded** (`DecodedBatch`, as `readBatch` read it) to
+  **resolved** (`ResolvedBatch`, every link followed, as it will be written)
+  against what is **stored** on the device, the identity map's three states
+  (`importer-fundamentals`' AGENTS).
+  **`ResolvedBatch`** is a decoded batch, each format slot's `decoded`
+  holding the resolved file, plus the two fields a decoded batch cannot hold:
+  its **`linkedRecords`** (the resources it only mentions, written beside the
+  files, no format's) and **`linkTargetsByReferentKey`** (each referent's
+  link target by `Referent.key`, what the referent rows show a choice
+  resolved to). Only `resolveMentions` makes one, and the diff, the preview
+  and the confirm take nothing else.
+  **`discoverReferents(batch)`** is `Referent.discover` over every claimed
+  format's `decoded`: one referent per identity across formats,
   format-then-review order, those with a resource first.
   **`resolveMentions(batch, linkChoices)`** resolves every mention in every
   claimed format's `decoded` on one plan over the batch's referents
-  (`IdentityMap.apply`), so a mention in one format links to a referent
-  another holds, and appends the Linked section once, to the first claimed
-  format, so a stored person several formats mention is written once. Keys
-  and section titles are kept; the batch is reassembled through
-  `collectFormats`, so every other slot comes back as it was and an empty
-  batch comes back as itself. It fails as the stage does.
+  (`LinkPlan.make` once, over every claimed format's decoded file), resolving
+  each format in its own slot (`FileResolution.resolveFile(plan)`), so a mention in one format
+  links to a referent another holds; it fills `linkedRecords` with the
+  records the batch only mentions, each with its `origin`, `Stored` or
+  `Provisional` (`FileResolution.linkedRecords`), so a
+  stored person several formats mention is written once, and
+  `linkTargetsByReferentKey` from the plan's links, so the screen's hook
+  reads each referent's link target without planning again. Keys and section
+  titles are kept; the format slots are reassembled through `collectFormats`,
+  a slot nothing moved in coming back as it was, and a batch with no claimed
+  format comes back with no linked records and no link targets. It fails with
+  `Referent.DuplicateReferent` or `LinkChoice.InvalidLinkChoice`, as the plan
+  does.
   **`resolveMentionsWithFallback(batch, defaults, chosen)`** is what the
   screen resolves: `resolveMentions` on the reviewer's choices over the
-  searched defaults, with each referent's link target (`LinkPlan.make`) and
-  the choices used. A choice that cannot be resolved (`InvalidLinkChoice`)
-  falls back: the reviewer's own choice to its searched default, a default
-  to its kind's default; a failure naming a referent with no choice dies.
-  Its one failure is `Referent.DuplicateReferent`.
-- `src/plan-write.ts` — **`planFormatWrite(result, selection)`**, the pure half
-  of the confirm: from one format's decode result it produces a `write` of
-  exactly the reviewed resources (exclusions applied, inline edits
-  substituted, in review order) with the `excluded` count, or a `skip` with
-  its **`SkipReason`** (`nothing` / `unreadable`). It adds no
-  provenance and rewrites nothing: the format's `decode` already minted the
-  source file and stamped `meta.source`.
+  searched defaults (`ReferentLinkChoices.union`), as `{ batch, linkChoices }`: the `ResolvedBatch` and the
+  choices it was resolved on. A choice that
+  cannot be resolved (`InvalidLinkChoice`) falls back: the reviewer's own
+  choice to its searched default, a default to its kind's default
+  (`ReferentLinkChoices.remove`); a failure
+  naming a referent with no choice dies. Its one failure is
+  `Referent.DuplicateReferent`.
+- `src/review-group.ts` — **`ReviewGroup`**, the group a reviewed resource
+  falls in: a `FormatKind`, or **`LINKED_GROUP`** for the batch's linked
+  records, which no format holds. A resource key is unique within a group,
+  not across groups, so the server diff, the preview and the write plan each
+  scope a resource by its group.
+- `src/plan-write.ts` — **`planWrite(batch, selectionFor, unchangedLinked)`**,
+  the pure half of the confirm: one **`WriteDecision`** per reviewed
+  resource — its `ReviewGroup`, its `entry` as reviewed (the inline edit
+  substituted), and its **`Disposition`** — in submit order: the linked
+  records first, then each claimed format in registry order, rows in review
+  order. It adds no provenance and rewrites nothing: the format's `decode`
+  already minted the source file and stamped `meta.source`. The five
+  dispositions, in the order they are decided:
+  - **`Excluded`** — a format row the reviewer toggled off. Every other
+    format row is a candidate.
+  - **`Unchanged`** — a linked record the server holds as it is (its key in
+    `unchangedLinked`, the server diff's `unchanged`).
+  - **`Unreferenced`** — a linked record of `Provisional` origin, made from a
+    mention alone, that no candidate format row names by its literal
+    `Type/<id>` in any reference field (`Mention.madeIn`), so it is never an
+    orphan. A changed linked record of `Stored` origin — a stored resource a
+    link lands on, the batch's identifiers assumed — is a candidate whatever
+    the reviewer excluded, the link choice being the consent to it, so a
+    batch can write stored copies and no format's resources.
+  - **`Superseded`** — a candidate a later candidate shares its `Type/id`
+    with.
+  - **`Included`** — the last candidate under its `Type/id`: the transaction
+    bundle keeps one entry per `Type/id`, the last occurrence, so the
+    `Included` resources are exactly the bundle's entries and no row's edit
+    is lost silently.
+
+  It is the one place the rule for the linked records lives, since the review
+  shows them read-only; the preview's counts and the confirm both read it.
+  A claimed format with no `Included` decision writes nothing, and
+  **`skipReasonFor(result)`** says why, a **`SkipReason`**: `unreadable` when
+  its decode yielded no resources and some file was unreadable, else
+  `nothing`.
 
 ## Layering
 
@@ -102,7 +155,7 @@ nothing from `slices/http-extraction`.
 - **No source file knowledge here.** What a source file is, which resources point at
   it, and what happens to those links when the reviewer excludes it
   are each format's decisions, made inside its `decode` by
-  `importer-fundamentals`' `DecodeFunction.make`. `readBatch` and `planFormatWrite`
+  `importer-fundamentals`' `DecodeFunction.make`. `readBatch` and `planWrite`
   treat the source file row as any other resource. Do not reintroduce a
   shell-side mint, a side map of source files, or a "primary file".
 - **Ids are deterministic via `FormatDecode.makeId`.** An id is derived from

@@ -100,6 +100,8 @@ const Persist = {
     ResourceCount: 'fhir.persist.resource_count',
     /** Number of entries the server (or transport) reported as failed. */
     FailureCount: 'fhir.persist.failure_count',
+    /** The `Bundle.type` a bundle submission was sent as: `batch` or `transaction`. */
+    BundleType: 'fhir.persist.bundle_type',
   },
   /**
    * One resource's write within a batch, retries included.
@@ -114,12 +116,14 @@ const Persist = {
    */
   Write: { Span: { Name: 'fhir.persist.write' } },
   /**
-   * One `POST /` submission — a whole batch Bundle in one round trip.
+   * One `POST /` submission — a whole batch or transaction Bundle in one
+   * round trip.
    *
    * @remarks
-   * Tagged with the sent {@link Attributes.ResourceCount} and the counted
+   * Tagged with the sent {@link Attributes.ResourceCount}, the
+   * {@link Attributes.BundleType} and the counted
    * {@link Attributes.FailureCount}. Unlike {@link Write}, this is one span per
-   * whole batch (not per resource) because the wire is one HTTP request.
+   * whole bundle (not per resource) because the wire is one HTTP request.
    */
   Bundle: { Span: { Name: 'fhir.persist.bundle' } },
   /**

@@ -22,6 +22,13 @@ persistence, HAR, files, or apps.
   `Source` value (a `SourceDescriptor` recognizes nothing).
   Imports from no slice. See its
   [AGENTS.md](./http-extraction-fundamentals/AGENTS.md).
+- **`fhir-r4-adoption`** — the FHIR R4 side of extraction, above `fhir-r4`
+  and `http-extraction-fundamentals`, which stays FHIR-free: how a resource
+  decoded from a source becomes the device's own, adopted under the source's
+  identity with an id whether or not the source gave it one (`DecodedId`).
+  `adoptUnderRecognizedRoot` adopts every resource a response kind parses under
+  the identity its `tryRecognize` mints; each per-source package maps its kinds
+  through it. See its [AGENTS.md](./fhir-r4-adoption/AGENTS.md).
 - **`fhir-r4-source`** — the first per-source package: `fhirR4Source`, a
   `SourceDescriptor` whose `responseKinds` are the FHIR R4 kinds pre-adopted so
   each resource keys under the root of the URL it arrived on — the single
@@ -60,10 +67,11 @@ which is exactly what keeps the dependency graph acyclic.
 
 ## Guardrails
 
-- **This slice imports from no other slice.** `http-extraction-fundamentals`
-  depends only on `effect` and `kitchen-sink`; a source package adds only the
-  resource/dialect packages it decodes with (`fhir-r4-source` → `fhir-r4`).
-  Never `importer-*`.
+- **This slice imports from no slice but the resource and dialect packages it
+  decodes with.** `http-extraction-fundamentals` depends only on `effect` and
+  `kitchen-sink`; `fhir-r4-adoption` adds `fhir-r4`, and a source package adds
+  `fhir-r4-adoption` and the resource/dialect packages it decodes with
+  (`fhir-r4-source` → `fhir-r4`). Never `importer-*`.
 
 ## References
 
@@ -73,6 +81,6 @@ which is exactly what keeps the dependency graph acyclic.
   source package.
 - [slices/importer/AGENTS.md](../importer/AGENTS.md) — the archive-driven
   consumer.
-- [Source Identity Explanation](../fhir/fhir-r4/docs/Source%20Identity%20Explanation.md)
+- [Source Identity Explanation](./fhir-r4-adoption/docs/Source%20Identity%20Explanation.md)
   — the identity each source package's response kinds key resources under.
 - [slices/AGENTS.md](../AGENTS.md) — slice layering rules this slice follows.

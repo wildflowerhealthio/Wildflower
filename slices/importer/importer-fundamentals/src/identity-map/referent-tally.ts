@@ -33,7 +33,7 @@ const of = (linkTargets: Iterable<LinkTarget.Type>): Type => {
     pipe(
       targets,
       Array.filter(isCounted),
-      Array.filterMap(LinkTarget.tryIntoResource),
+      Array.filterMap(LinkTarget.resourceIfLinked),
       Array.map(LinkableResource.literalReferenceOf),
       HashSet.fromIterable
     )

@@ -1,10 +1,18 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import type { DiffSlot, FieldDiff, ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
-import { type FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
+import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
+  type FhirResourceWithId,
+  Observation,
+  Patient,
+  Practitioner,
+} from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  defaultFormatSettings,
   type FormatKind,
   type FormatSettings,
+  LINKED_GROUP,
   type ResolvedBatch,
   type UnrecognizedFile,
 } from '@wildflowerhealthio/importer-core'
@@ -12,22 +20,24 @@ import {
   StagedImport,
   FormatDecode,
   type DecodedFile,
+  LinkableResource,
+  LinkTarget,
   type PickedFile,
+  Referent,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { Schema, type ParseResult } from 'effect'
+import { HashMap, Option, Schema, type ParseResult } from 'effect'
 import type { JSX } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { defaultFormatSettings } from '@wildflowerhealthio/importer-core'
 import { PreviewPanel, type PreviewPanelProps, type SettingsRegistry } from './preview-panel.tsx'
 import {
+  LINKED_RECORDS_HEADING,
   NO_RESOURCES_MESSAGE,
   NOTHING_TO_IMPORT_HEADING,
   PREVIEW_HEADING,
   UNREADABLE_FILE_MESSAGE,
   UNRECOGNIZED_FILE_MESSAGE,
 } from './preview-text.ts'
-import { resolvedAsIs } from './resolved-batch.test-helpers.ts'
 
 /**
  * The preview panel renders every format's review under one confirm.
@@ -41,6 +51,126 @@ import { resolvedAsIs } from './resolved-batch.test-helpers.ts'
 afterEach(cleanup)
 
 describe('PreviewPanel', () => {
+  it('lists the linked records read-only with their diff, and counts one a written resource names into the confirm', () => {
+    const batch = withLinkedPatient(
+      makeBatch({
+        har: formatResult(
+          'session.har',
+          decoded([
+            section('s', [observationOf('obs-1', { subject: { reference: 'Patient/s-1' } })]),
+          ]),
+          'har'
+        ),
+      })
+    )
+    const comparisons: PreviewPanelProps['comparisons'] = new Map([
+      [
+        LINKED_GROUP,
+        new Map([['linked:Patient/s-1', { status: 'changed', fields: [GENDER_DIFF], server: {} }]]),
+      ],
+    ])
+    render(<PreviewPanel {...panelProps(batch, { comparisons })} />)
+
+    const group = within(screen.getByRole('region', { name: LINKED_RECORDS_HEADING }))
+    expect(group.getByText('Patient')).toBeDefined()
+    expect(group.queryByRole('checkbox')).toBeNull()
+    expect(group.queryByRole('button', { name: /Edit/ })).toBeNull()
+    expect(group.getByRole('button', { name: /Differs from server/ })).toBeDefined()
+    expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Import 2 resources' })).toBeDefined()
+  })
+
+  it('writes no provisional linked record once the only resource naming it is excluded', () => {
+    const batch = withLinkedPractitioner(
+      makeBatch({
+        har: formatResult(
+          'session.har',
+          decoded([
+            section('s', [
+              observationOf('obs-1', { performer: [{ reference: 'Practitioner/pr-1' }] }),
+            ]),
+          ]),
+          'har'
+        ),
+      })
+    )
+    const selectionFor = (): StagedImport.Selection =>
+      StagedImport.toggleResource(StagedImport.initial(), 'obs-1')
+    render(<PreviewPanel {...panelProps(batch, { selectionFor })} />)
+
+    expect(screen.getByRole('region', { name: LINKED_RECORDS_HEADING })).toBeDefined()
+    expect(screen.getByRole('heading', { name: NOTHING_TO_IMPORT_HEADING })).toBeDefined()
+    expect(screen.queryByRole('button', { name: /^Import/ })).toBeNull()
+  })
+
+  it('offers the confirm for a changed stored copy alone once every resource naming it is excluded', () => {
+    const batch = withLinkedPatient(
+      makeBatch({
+        har: formatResult(
+          'session.har',
+          decoded([
+            section('s', [observationOf('obs-1', { subject: { reference: 'Patient/s-1' } })]),
+          ]),
+          'har'
+        ),
+      })
+    )
+    const selectionFor = (): StagedImport.Selection =>
+      StagedImport.toggleResource(StagedImport.initial(), 'obs-1')
+    render(<PreviewPanel {...panelProps(batch, { selectionFor })} />)
+
+    expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Import 1 resource (1 excluded)' })).toBeDefined()
+  })
+
+  it('shows nothing to import on a re-import whose rows and linked record the server holds unchanged', () => {
+    const batch = withLinkedPatient(
+      makeBatch({
+        har: formatResult(
+          'session.har',
+          decoded([
+            section('s', [observationOf('obs-1', { subject: { reference: 'Patient/s-1' } })]),
+          ]),
+          'har'
+        ),
+      })
+    )
+    // The screen pre-excludes the unchanged row and passes the unchanged
+    // linked record's key.
+    const selectionFor = (): StagedImport.Selection =>
+      StagedImport.toggleResource(StagedImport.initial(), 'obs-1')
+    render(
+      <PreviewPanel
+        {...panelProps(batch, {
+          selectionFor,
+          unchangedLinked: new Set(['linked:Patient/s-1']),
+        })}
+      />
+    )
+
+    expect(screen.getByRole('heading', { name: NOTHING_TO_IMPORT_HEADING })).toBeDefined()
+    expect(screen.queryByRole('button', { name: /^Import/ })).toBeNull()
+  })
+
+  it('leaves an unchanged linked record out of the count while a resource naming it is written', () => {
+    const batch = withLinkedPatient(
+      makeBatch({
+        har: formatResult(
+          'session.har',
+          decoded([
+            section('s', [observationOf('obs-1', { subject: { reference: 'Patient/s-1' } })]),
+          ]),
+          'har'
+        ),
+      })
+    )
+    render(
+      <PreviewPanel {...panelProps(batch, { unchangedLinked: new Set(['linked:Patient/s-1']) })} />
+    )
+
+    expect(screen.getByRole('button', { name: 'Import 1 resource' })).toBeDefined()
+  })
+
   it('renders nothing-to-import when no format decoded any resource', () => {
     const batch = makeBatch({ har: formatResult('empty.har', decoded([]), 'har') })
     render(<PreviewPanel {...panelProps(batch)} />)
@@ -72,6 +202,29 @@ describe('PreviewPanel', () => {
     expect(onConfirm).toHaveBeenCalledOnce()
   })
 
+  it('counts two rows under one Type/id once, as the transaction writes them', () => {
+    const batch = makeBatch({
+      har: formatResult(
+        'a.har',
+        decoded([section('s', [labeledResource('a/pat-1', 'Patient/pat-1')])]),
+        'har'
+      ),
+      'lifelabs-pdf': formatResult(
+        'b.pdf',
+        decoded([
+          section('s', [
+            labeledResource('b/pat-1', 'Patient/pat-1'),
+            labeledResource('b/obs-1', 'Observation/obs-1'),
+          ]),
+        ]),
+        'lifelabs-pdf'
+      ),
+    })
+    render(<PreviewPanel {...panelProps(batch)} />)
+
+    expect(screen.getByRole('button', { name: 'Import 2 resources' })).toBeDefined()
+  })
+
   it('renders each decoded section under its own title with per-resource include checkboxes', () => {
     const batch = makeBatch({
       'lifelabs-pdf': formatResult(
@@ -96,35 +249,35 @@ describe('PreviewPanel', () => {
   })
 
   it('sums a mixed batch with unreadable and unrecognized files', () => {
-    const batch = resolvedAsIs({
-      har: {
-        id: 'har/a.har,broken.har,c.har',
-        title: 'a.har, broken.har, c.har',
-        files: [pickedFile('a.har'), pickedFile('broken.har'), pickedFile('c.har')],
-        format: 'har',
-        decoded: decoded([
-          section('https://a', [labeledResource('pat-1', 'Patient/pat-1')]),
-          section('https://c', [labeledResource('obs-1', 'Observation/obs-1')]),
-        ]),
-        unreadableFiles: [
-          {
-            id: 'har/broken.har',
-            title: 'broken.har',
-            pickedFile: pickedFile('broken.har'),
-            error: anyParseError(),
-          },
-        ],
+    const batch = makeBatch(
+      {
+        har: {
+          id: 'har/a.har,broken.har,c.har',
+          title: 'a.har, broken.har, c.har',
+          files: [pickedFile('a.har'), pickedFile('broken.har'), pickedFile('c.har')],
+          format: 'har',
+          decoded: decoded([
+            section('https://a', [labeledResource('pat-1', 'Patient/pat-1')]),
+            section('https://c', [labeledResource('obs-1', 'Observation/obs-1')]),
+          ]),
+          unreadableFiles: [
+            {
+              id: 'har/broken.har',
+              title: 'broken.har',
+              pickedFile: pickedFile('broken.har'),
+              error: anyParseError(),
+            },
+          ],
+        },
       },
-      'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
-      dicom: FormatDecode.emptyResult('dicom'),
-      unrecognizedFiles: [
+      [
         {
           id: 'x',
           title: 'notes.txt',
           files: [pickedFile('notes.txt')],
         },
-      ],
-    })
+      ]
+    )
     render(<PreviewPanel {...panelProps(batch)} />)
 
     expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
@@ -358,8 +511,11 @@ describe('PreviewPanel', () => {
 
   it('surfaces the diff for a resource that was unchanged until the reviewer edited it', async () => {
     const onServer = { resourceType: 'Patient', id: 'pat-1' }
-    const patientResource = Schema.decodeUnknownSync(Patient.Schema)(onServer)
-    const edited = Schema.decodeUnknownSync(Patient.Schema)({ ...onServer, gender: 'male' })
+    const patientResource = Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))(onServer)
+    const edited = Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
+      ...onServer,
+      gender: 'male',
+    })
     const labeled: DecodedFile.Resource = {
       key: 'pat-1',
       title: 'Patient/pat-1',
@@ -381,7 +537,7 @@ describe('PreviewPanel', () => {
   })
 
   it('edits the resource to the server value when "keep server value" is clicked', async () => {
-    const patientResource = Schema.decodeUnknownSync(Patient.Schema)({
+    const patientResource = Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
       resourceType: 'Patient',
       id: 'pat-1',
     })
@@ -420,6 +576,13 @@ describe('PreviewPanel', () => {
 /** A present diff slot around `value`. */
 const valueSlot = (value: unknown): DiffSlot => ({ _tag: 'value', value })
 
+/** A gender the server has as male and the import as female. */
+const GENDER_DIFF: FieldDiff = {
+  path: ['gender'],
+  server: valueSlot('male'),
+  incoming: valueSlot('female'),
+}
+
 const patientWire = (wire: Record<string, unknown>): unknown =>
   Schema.encodeSync(Patient.Schema)(
     Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', ...wire })
@@ -451,18 +614,21 @@ const formatResult = <K extends FormatKind>(
   unreadableFiles: [],
 })
 
-/** Build a resolved batch from partial format results. */
+/** Build a ResolvedBatch from partial format results. */
 const makeBatch = (
   results: Partial<{ [K in FormatKind]: FormatDecode.Result<K> }>,
   unrecognizedFiles: readonly UnrecognizedFile[] = []
-): ResolvedBatch =>
-  resolvedAsIs({
+): ResolvedBatch => ({
+  formats: {
     har: FormatDecode.emptyResult('har'),
     'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
     dicom: FormatDecode.emptyResult('dicom'),
     ...results,
-    unrecognizedFiles,
-  })
+  },
+  unrecognizedFiles,
+  linkedRecords: [],
+  linkTargetsByReferentKey: HashMap.empty(),
+})
 
 /** Verdicts for a format, keyed by format kind. */
 const comparisonsFor = (
@@ -486,9 +652,73 @@ const section = (
 const labeledResource = (key: string, title: string): DecodedFile.Resource => {
   const [resourceType = 'Patient', id = key] = title.split('/')
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test fixture: the panel only reads resourceType/id off the resource
-  const resource = { resourceType, id } as FhirResource
+  const resource = { resourceType, id } as FhirResourceWithId
   return { key, title, resource }
 }
+
+/** An Observation carrying the given reference fields, labeled under `key`, for a linked record to be named by. */
+const observationOf = (key: string, references: object): DecodedFile.Resource => ({
+  key,
+  title: `Observation/${key}`,
+  resource: Schema.decodeUnknownSync(withMandatoryId(Observation.Schema))({
+    resourceType: 'Observation',
+    id: key,
+    status: 'final',
+    code: { text: 'Heart rate' },
+    ...references,
+  }),
+})
+
+/** `batch` with `resource` as its one linked record, the link landing on it made by `target`. */
+const withLinked = (
+  batch: ResolvedBatch,
+  resource: LinkableResource.WithId,
+  target: (resource: LinkableResource.WithId) => LinkTarget.StoredType | LinkTarget.ProvisionalType
+): ResolvedBatch => {
+  const literalReference = LinkableResource.literalReferenceOf(resource)
+  const referent: Referent.ByMentionOnly = {
+    _tag: 'ByMentionOnly',
+    logicalReference: Option.getOrThrow(LinkableResource.tryIntoLogicalReference(resource)),
+    label: literalReference,
+  }
+  const linkTarget = target(resource)
+  return {
+    ...batch,
+    linkedRecords: [
+      {
+        key: `linked:${literalReference}`,
+        title: literalReference,
+        resource,
+        origin: linkTarget._tag,
+      },
+    ],
+    linkTargetsByReferentKey: HashMap.make([Referent.key(referent), linkTarget]),
+  }
+}
+
+/** `batch` with the stored `Patient/s-1` as its one linked record: a stored copy. */
+const withLinkedPatient = (batch: ResolvedBatch): ResolvedBatch =>
+  withLinked(
+    batch,
+    Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
+      resourceType: 'Patient',
+      id: 's-1',
+      identifier: [{ system: 'https://source.example/patient-id', value: 'mrn-1' }],
+    }),
+    (resource) => LinkTarget.Stored({ resource })
+  )
+
+/** `batch` with the provisional `Practitioner/pr-1` as its one linked record: a new one. */
+const withLinkedPractitioner = (batch: ResolvedBatch): ResolvedBatch =>
+  withLinked(
+    batch,
+    Schema.decodeUnknownSync(withMandatoryId(Practitioner.Schema))({
+      resourceType: 'Practitioner',
+      id: 'pr-1',
+      identifier: [{ system: 'https://source.example/practitioner-name', value: 'Dr. One' }],
+    }),
+    (resource) => LinkTarget.Provisional({ resource })
+  )
 
 /** A settings registry whose pickers are one-button stubs reporting the default settings back. */
 const settingsRegistry: SettingsRegistry = {
@@ -526,6 +756,7 @@ const panelProps = (
     readonly onSelectionChange?: PreviewPanelProps['onSelectionChange']
     readonly onSettingsChange?: PreviewPanelProps['onSettingsChange']
     readonly selectionFor?: PreviewPanelProps['selectionFor']
+    readonly unchangedLinked?: PreviewPanelProps['unchangedLinked']
     readonly comparisons?: PreviewPanelProps['comparisons']
     readonly confirming?: boolean
   } = {}
@@ -536,6 +767,7 @@ const panelProps = (
     settings,
     settingsRegistry,
     selectionFor: overrides.selectionFor ?? (() => StagedImport.initial()),
+    unchangedLinked: overrides.unchangedLinked ?? new Set(),
     comparisons: overrides.comparisons ?? new Map(),
     onSelectionChange: overrides.onSelectionChange ?? (() => undefined),
     onSettingsChange: overrides.onSettingsChange ?? (() => undefined),

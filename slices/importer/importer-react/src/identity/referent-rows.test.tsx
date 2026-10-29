@@ -8,7 +8,8 @@ import type { FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/c
 import {
   FhirResourceSchema,
   Practitioner,
-  type FhirResource,
+  type FhirResourceWithId,
+  hasId,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import type { DecodedBatch, ResolvedBatch } from '@wildflowerhealthio/importer-core'
 import { DecodedFile, FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
@@ -356,7 +357,12 @@ describe('ReferentRows', () => {
 
 // Helpers
 
-const decodeResource = Schema.decodeUnknownSync(FhirResourceSchema)
+/** `wire` decoded as a resource with an id; throws when it is none. */
+const decodeResource = (wire: unknown): FhirResourceWithId => {
+  const resource = Schema.decodeUnknownSync(FhirResourceSchema)(wire)
+  if (!hasId(resource)) throw new Error('expected a resource with an id')
+  return resource
+}
 
 /** A Patient's wire form: Tyra Banks born 1990-01-02 unless a part is given, `null` to leave it out. */
 const patientWire = (
@@ -387,7 +393,7 @@ const practitionerWire = (id: string, text: string): object => ({
 const requestFor = (identifier: {
   readonly system: string
   readonly value: string
-}): FhirResource =>
+}): FhirResourceWithId =>
   decodeResource({
     resourceType: 'MedicationRequest',
     id: `rx-${identifier.value}`,
@@ -402,27 +408,29 @@ const requestFor = (identifier: {
   })
 
 /** A HAR result holding `resources`, the other formats claiming nothing. */
-const batchOf = (resources: readonly FhirResource[]): DecodedBatch => ({
-  har: {
-    ...FormatDecode.emptyResult('har'),
-    title: 'a.har',
-    files: [{ id: '0:a.har', fileName: 'a.har', bytes: new Uint8Array([1]) }],
-    decoded: {
-      sections: [
-        {
-          title: 'Resources',
-          resources: resources.map((resource, index) => ({
-            key: `k-${index}`,
-            title: resource.resourceType,
-            resource,
-          })),
-        },
-      ],
-      notes: [],
+const batchOf = (resources: readonly FhirResourceWithId[]): DecodedBatch => ({
+  formats: {
+    har: {
+      ...FormatDecode.emptyResult('har'),
+      title: 'a.har',
+      files: [{ id: '0:a.har', fileName: 'a.har', bytes: new Uint8Array([1]) }],
+      decoded: {
+        sections: [
+          {
+            title: 'Resources',
+            resources: resources.map((resource, index) => ({
+              key: `k-${index}`,
+              title: resource.resourceType,
+              resource,
+            })),
+          },
+        ],
+        notes: [],
+      },
     },
+    'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
+    dicom: FormatDecode.emptyResult('dicom'),
   },
-  'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
-  dicom: FormatDecode.emptyResult('dicom'),
   unrecognizedFiles: [],
 })
 
@@ -568,7 +576,7 @@ const renderRows = async (
 }
 
 const subjectOfRequest = (): string | null | undefined => {
-  const request = DecodedFile.resources(resolved?.har.decoded ?? { sections: [] }).find(
+  const request = DecodedFile.resources(resolved?.formats.har.decoded ?? { sections: [] }).find(
     (entry) => entry.resource.resourceType === 'MedicationRequest'
   )?.resource
   return request !== undefined && 'subject' in request ? request.subject?.reference : undefined

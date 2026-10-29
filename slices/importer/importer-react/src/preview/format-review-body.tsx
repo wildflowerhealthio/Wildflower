@@ -1,5 +1,5 @@
 import type { ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   type FormatDecode,
   DecodedFile,
@@ -76,13 +76,13 @@ const ResourceRow = ({
   onKeepServerValue,
 }: {
   readonly resourceKey: string
-  readonly resource: unknown
+  readonly resource: FhirResourceWithId
   readonly selection: StagedImport.Selection
   readonly comparison: ServerComparison | undefined
   readonly onToggle: (key: string) => void
   readonly onEdit: (key: string, resource: unknown) => void
   readonly onRevert: (key: string) => void
-  readonly onKeepServerValue: (key: string, resource: FhirResource) => void
+  readonly onKeepServerValue: (key: string, resource: FhirResourceWithId) => void
 }): JSX.Element => {
   const edited = Option.getOrElse(
     StagedImport.editedResource(selection, resourceKey),

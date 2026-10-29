@@ -54,9 +54,7 @@ describe('decodeLifeLabsPdfDocument', () => {
 
         for (const item of DecodedFile.resources(decoded)) {
           const type = item.resource.resourceType
-          const id = item.resource.id
-          expect(id).not.toBeNull()
-          const expected = `${type}/${String(id)}`
+          const expected = `${type}/${item.resource.id}`
           expect(item.key).toBe(expected)
           expect(item.title).toBe(expected)
         }

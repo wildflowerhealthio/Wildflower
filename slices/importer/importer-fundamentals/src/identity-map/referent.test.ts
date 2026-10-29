@@ -156,13 +156,12 @@ describe('Referent.discover', () => {
     expect(discoverOnTestClock(file)).toEqual([])
   })
 
-  it('makes no referent of a Patient with no identifier or no id, and labels a nameless one by its id', () => {
+  it('makes no referent of a Patient with no identifier, and labels a nameless one by its id', () => {
     const referents = discoverOnTestClock(
-      fileOf(
-        patient({ id: 'p-1', family: null, birthDate: null }),
-        { ...patient({ id: 'p-2' }), identifier: [] },
-        { ...patient({ id: 'p-3' }), id: null }
-      )
+      fileOf(patient({ id: 'p-1', family: null, birthDate: null }), {
+        ...patient({ id: 'p-2' }),
+        identifier: [],
+      })
     )
 
     expect(referents.map((referent) => referent.label)).toEqual(['p-1'])

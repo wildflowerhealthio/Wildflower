@@ -45,7 +45,7 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   pick as a source file and reads it back, the `FormatDetector` seam
   the picker sniffs with, and the pure per-resource `StagedImport` model.
   There is no `persist` sink: the write is the shell's one
-  `persistBatchBundle`.
+  `persistTransactionBundle`.
 - **[`har-importer-core`](./har-importer-core/AGENTS.md)** (the HAR binding) —
   `harImporter` for format `'har'`: HAR decode through the
   pre-adopted FHIR response-kind pool into per-URL sections (with a note per
@@ -87,8 +87,9 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   `FormatDecode.Result` per registered format plus the `UnrecognizedFile`s —
   `claimedFormats` names the formats that actually took part, `redecodeFormat`
   re-runs one format's files from their retained picks under new settings, and
-  `planFormatWrite` turns a format's reviewed selection into the exact resource
-  list to write. No DOM, no React, no client.
+  `planWrite` turns the batch's reviewed selections into a `WriteDecision` per
+  reviewed resource, the `Included` ones exactly the resources to write. No
+  DOM, no React, no client.
 - **[`importer-react`](./importer-react/AGENTS.md)** (the shell) —
   `ImporterScreen`, the whole pick-review-confirm flow a host app mounts, plus
   the React half of the registry (each `importer-core` importer spread with
@@ -135,11 +136,11 @@ sits above `http-extraction` and below every binding.
   particular not `FhirR4ResourcesHttpApiClient` — so reaching a review is a
   pure function of the file bytes and its format's settings, and the write
   client is unreachable from it by construction. Writing is the shell's one
-  `persistBatchBundle`, gated on the user confirming a review. Parse runs at
+  `persistTransactionBundle`, gated on the user confirming a review. Parse runs at
   **preview** — `decode` yields the actual resources, sectioned, so the
   reviewer sees them and can opt any of them out or edit them inline;
   **writes** still only run at confirm, and confirm writes exactly those
-  reviewed objects (`importer-core`'s `planFormatWrite`) with no re-parse — the same
+  reviewed objects (`importer-core`'s `planWrite`) with no re-parse — the same
   "is the same object" argument the anonymizer's preview makes. This split
   is the whole point; do not collapse it. A settings change (a HAR kind
   toggle, the LifeLabs time zone) re-runs `decode` from the retained bytes —
@@ -162,7 +163,9 @@ sits above `http-extraction` and below every binding.
   hands every claimed file to one `decode` either way, and the server
   source-file list hands on every row the reviewer selected without deciding
   what they make up. The write itself is format-blind — one shared
-  `persistBatchBundle` at the shell.
+  `persistTransactionBundle` at the shell, of every format's reviewed
+  resources and the batch's linked records together, landing whole or not at
+  all.
 - **The registry is closed and compile-time.** The importer registry is
   `importer-core`'s literal `{ har, 'lifelabs-pdf', dicom }`, and
   `importer-react`'s registry spreads each entry with that format's

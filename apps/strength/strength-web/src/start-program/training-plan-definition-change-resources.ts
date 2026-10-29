@@ -1,4 +1,4 @@
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import type { ExerciseRequest, TrainingPlanDefinition } from '@wildflowerhealthio/strength-core-js'
 import { Option } from 'effect'
 
@@ -13,7 +13,7 @@ const trainingPlanDefinitionChangeResources = ({
 }: {
   readonly unstoredTrainingPlanDefinition: Option.Option<TrainingPlanDefinition.Type>
   readonly trainingPlanDefinitionChange: ExerciseRequest.TrainingPlanDefinitionChange
-}): readonly FhirResource[] => [
+}): readonly FhirResourceWithId[] => [
   ...Option.toArray(unstoredTrainingPlanDefinition),
   ...trainingPlanDefinitionChange.revokedExerciseRequests,
   ...trainingPlanDefinitionChange.startedExerciseRequests,

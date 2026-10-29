@@ -1,5 +1,5 @@
 import type { FormatKind } from '@wildflowerhealthio/importer-core'
-import { formatKinds } from '@wildflowerhealthio/importer-core'
+import { formatKinds, LINKED_GROUP } from '@wildflowerhealthio/importer-core'
 import { StagedImport, DecodedFile } from '@wildflowerhealthio/importer-fundamentals'
 import { Match, Option } from 'effect'
 import { type JSX, useCallback, useMemo, useState } from 'react'
@@ -32,8 +32,9 @@ import styles from './importer-screen.module.css'
  * (`SourcePicker` → `useImportRun` → `useLinkChoiceReview` → `PreviewPanel`)
  * writes nothing — each file decodes to resources grouped by format, its own
  * source file among them, that the reviewer can exclude or edit — and only
- * the explicit confirm reaches the write half (`useConfirmImport` — one batch
- * bundle per format, verbatim from the preview, best-effort). A batch may span
+ * the explicit confirm reaches the write half (`useConfirmImport` — one
+ * transaction for the whole batch, verbatim from the preview, landing whole
+ * or not at all). A batch may span
  * formats: the picker identifies each file against the registered detectors,
  * `importer-core` groups and decodes by format, and the preview mounts one
  * settings form per format present — a settings change re-decodes that
@@ -100,7 +101,7 @@ const ImporterScreen = (): JSX.Element => {
     if (diff._tag === 'loading' || batch === undefined) return new Map()
     const entries: [FormatKind, StagedImport.Selection][] = []
     for (const kind of formatKinds) {
-      const result = batch[kind]
+      const result = batch.formats[kind]
       if (result.files.length === 0) continue
       const labeled = DecodedFile.resources(result.decoded)
       const excluded = initialExclusionsFor(labeled, diff.comparisons.get(kind))
@@ -110,6 +111,16 @@ const ImporterScreen = (): JSX.Element => {
     }
     return new Map(entries)
   }, [diff, batch])
+
+  // The linked records the server already holds as they are, which the
+  // confirm does not write: the same verdict pre-excludes a format's row.
+  const unchangedLinked = useMemo(
+    (): ReadonlySet<string> =>
+      diff._tag === 'loading' || batch === undefined
+        ? new Set()
+        : initialExclusionsFor(batch.linkedRecords, diff.comparisons.get(LINKED_GROUP)),
+    [diff, batch]
+  )
 
   const selectionFor = useCallback(
     (format: FormatKind): StagedImport.Selection =>
@@ -217,13 +228,14 @@ const ImporterScreen = (): JSX.Element => {
           settings={importRun.settings}
           settingsRegistry={formatRegistry}
           selectionFor={selectionFor}
+          unchangedLinked={unchangedLinked}
           comparisons={diff.comparisons}
           onSelectionChange={onSelectionChange}
           onSettingsChange={importRun.applySettings}
           confirming={confirming}
           confirmDisabled={confirmBlocked}
           onCancel={startOver}
-          onConfirm={() => confirm.confirm(shown.resolved, selectionFor)}
+          onConfirm={() => confirm.confirm(shown.resolved, selectionFor, unchangedLinked)}
           referentRows={
             <ReferentRows
               referents={shown.referents}

@@ -1,5 +1,6 @@
 import { writeDicom } from '@wildflowerhealthio/dicom/test-helpers'
-import { type FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
+import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
+import { type FhirResourceWithId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import type { PickedFile } from '@wildflowerhealthio/importer-fundamentals'
 import { DecodedFile, FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
@@ -52,8 +53,8 @@ const kindOf = (fileName: string): FormatKind | undefined => {
 const reviewKeys = (result: FormatDecode.Result<FormatKind>): readonly string[] =>
   DecodedFile.resources(result.decoded).map((resource) => resource.key)
 
-const fakeResource = (id: string): FhirResource =>
-  Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
+const fakeResource = (id: string): FhirResourceWithId =>
+  Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id })
 
 /** A fake decode: aggregates files into one FormatDecodeResult. A file whose first byte is 0 is unreadable. */
 const fakeDecode =
@@ -149,7 +150,7 @@ describe('readBatch', () => {
         const batch = await Effect.runPromise(readBatch(fakeRegistry, defaultFormatSettings, picks))
         const stamped = withIds(picks)
         for (const kind of formatKinds) {
-          const result = batch[kind]
+          const result = batch.formats[kind]
           const expectedFiles = stamped.filter((pick) => kindOf(pick.fileName) === kind)
           expect(result.files).toEqual(expectedFiles)
           expect(result.format).toBe(kind)
@@ -173,7 +174,7 @@ describe('readBatch', () => {
     const batch = await Effect.runPromise(
       readBatch(fakeRegistry, settings, [{ fileName: 'har-a', bytes: new Uint8Array([1]) }])
     )
-    expect(batch.har.decoded.sections[0]?.title).toBe(`har:${JSON.stringify(settings.har)}`)
+    expect(batch.formats.har.decoded.sections[0]?.title).toBe(`har:${JSON.stringify(settings.har)}`)
   })
 })
 
@@ -193,17 +194,17 @@ describe('redecodeFormat', () => {
           )
           for (const kind of formatKinds) {
             if (kind !== changed) {
-              expect(after[kind]).toBe(before[kind])
+              expect(after.formats[kind]).toBe(before.formats[kind])
               continue
             }
             // The ids the reviewer's selection is keyed by survive the re-decode.
-            expect(after[kind].id).toBe(before[kind].id)
-            expect(after[kind].files).toEqual(before[kind].files)
-            expect(after[kind].unreadableFiles.map((file) => file.id)).toEqual(
-              before[kind].unreadableFiles.map((file) => file.id)
+            expect(after.formats[kind].id).toBe(before.formats[kind].id)
+            expect(after.formats[kind].files).toEqual(before.formats[kind].files)
+            expect(after.formats[kind].unreadableFiles.map((file) => file.id)).toEqual(
+              before.formats[kind].unreadableFiles.map((file) => file.id)
             )
-            expect(reviewKeys(after[kind])).toEqual(reviewKeys(before[kind]))
-            for (const section of after[kind].decoded.sections) {
+            expect(reviewKeys(after.formats[kind])).toEqual(reviewKeys(before.formats[kind]))
+            for (const section of after.formats[kind].decoded.sections) {
               expect(section.title).toBe(`${changed}:${JSON.stringify(settings[changed])}`)
             }
           }
@@ -231,9 +232,9 @@ describe('readBatch over the real registry', () => {
       { fileName: 'scan.dcm', bytes: dicomBytes },
     ]
     const batch = await Effect.runPromise(readBatch(formatRegistry, defaultFormatSettings, picks))
-    expect(batch.dicom.files.length).toBe(1)
-    expect(batch.dicom.decoded.sections[0]?.title).toBe('Source file')
-    expect(batch.dicom.decoded.sections.length).toBeGreaterThan(1)
+    expect(batch.formats.dicom.files.length).toBe(1)
+    expect(batch.formats.dicom.decoded.sections[0]?.title).toBe('Source file')
+    expect(batch.formats.dicom.decoded.sections.length).toBeGreaterThan(1)
     expect(batch.unrecognizedFiles.length).toBe(1)
     expect(batch.unrecognizedFiles[0]?.title).toBe('notes.txt')
   })
@@ -247,7 +248,7 @@ describe('claimedFormats', () => {
         const expected = formatKinds.filter((kind) =>
           picks.some((pick) => kindOf(pick.fileName) === kind)
         )
-        expect(claimedFormats(batch)).toEqual(expected)
+        expect(claimedFormats(batch.formats)).toEqual(expected)
       }),
       { numRuns: numRunsFor({ base: 40 }) }
     )
@@ -259,7 +260,7 @@ describe('claimedFormats', () => {
         { fileName: 'txt-a', bytes: new Uint8Array([1]) },
       ])
     )
-    expect(claimedFormats(batch)).toEqual([])
+    expect(claimedFormats(batch.formats)).toEqual([])
   })
 })
 

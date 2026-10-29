@@ -71,12 +71,12 @@ const useLinkChoiceReview = (
         Effect.runSync(
           Effect.either(resolveMentionsWithFallback(batch, defaults.linkChoices, chosen))
         ),
-        (withFallback): LinkChoiceReviewState.Mapped => ({
+        ({ batch: resolved, linkChoices }): LinkChoiceReviewState.Mapped => ({
           referents: discoveredReferents,
-          linkChoices: withFallback.linkChoices,
-          linkTargets: withFallback.linkTargets,
+          linkChoices,
+          linkTargets: resolved.linkTargetsByReferentKey,
           found: defaults.found,
-          resolved: withFallback.batch,
+          resolved,
         })
       )
     )

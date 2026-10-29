@@ -1,21 +1,15 @@
 import {
-  type DecodedFile,
+  FileResolution,
   type FormatDecode,
-  IdentityMap,
   type LinkChoice,
   LinkPlan,
   type LinkTarget,
   Referent,
-  type ReferentLinkChoices,
+  ReferentLinkChoices,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { Array, Brand, Effect, HashMap, Option } from 'effect'
+import { Effect, HashMap } from 'effect'
 
-import {
-  type DecodedBatch,
-  claimedFormats,
-  collectFormats,
-  type FormatResults,
-} from './read-batch.ts'
+import { type DecodedBatch, claimedFormats, collectFormats } from './read-batch.ts'
 import type { FormatKind } from './registry.ts'
 
 /**
@@ -29,15 +23,6 @@ import type { FormatKind } from './registry.ts'
  */
 
 /**
- * A batch every mention of which resolves: the batch the diff, the preview and
- * the confirm see. Only `resolveMentions` makes one.
- */
-type ResolvedBatch = DecodedBatch & Brand.Brand<'ResolvedBatch'>
-
-/** Brands a decoded batch whose mentions `resolveMentions` has just resolved. */
-const asResolvedBatch = Brand.nominal<ResolvedBatch>()
-
-/**
  * Every referent the batch holds, once per identity across formats, in
  * format-then-review order, those with a resource first
  * (`Referent.discover`).
@@ -48,59 +33,80 @@ const asResolvedBatch = Brand.nominal<ResolvedBatch>()
 const discoverReferents = (
   batch: DecodedBatch
 ): Effect.Effect<readonly Referent.Type[], Referent.DuplicateReferent> =>
-  Referent.discover(claimedFormats(batch).map((kind) => batch[kind].decoded))
+  Referent.discover(claimedFormats(batch.formats).map((kind) => batch.formats[kind].decoded))
+
+/**
+ * A batch every mention of which resolves: the batch the diff, the preview
+ * and the confirm see. Beside a decoded batch's slots it holds the linked
+ * records and every referent's link target, which a decoded batch cannot.
+ * Each format slot's `decoded` holds that format's resolved file.
+ */
+interface ResolvedBatch extends DecodedBatch {
+  /**
+   * The records the batch only mentions, written beside the files, each with
+   * its origin (`FileResolution.linkedRecords`), keyed by
+   * `FileResolution.linkedKey`.
+   */
+  readonly linkedRecords: readonly FileResolution.LinkedRecord[]
+  /** Each referent's link target by `Referent.key`: what the referent rows show a choice resolved to. */
+  readonly linkTargetsByReferentKey: HashMap.HashMap<string, LinkTarget.Type>
+}
 
 /**
  * The batch with every mention resolved to the target its referent's choice
- * in `linkChoices` gives, and the records only mentioned gathered to be
- * written: the batch to review, diff and write.
+ * in `linkChoices` gives, the records only mentioned gathered to be written
+ * as its `linkedRecords`, and every referent's link target: the batch to
+ * review, diff and write.
  *
  * @param batch - The decoded batch
  * @param linkChoices - The reviewer's link choices, by `Referent.key`
- * @returns The batch with each claimed format's decoded file resolved, every
- *   other field as it was
+ * @returns The resolved batch
  *
  * @remarks
  * Every claimed format is resolved on one plan over the batch's referents
- * (`IdentityMap.apply`), so a mention in one format links to a referent
- * another holds. The Linked section is appended once, to the first claimed
- * format, so a stored person several formats only mention is written once.
- * Section titles and review keys are kept, so the selections survive. Fails
- * as `IdentityMap.apply` does.
+ * (`LinkPlan.make` over every claimed format's decoded file), each format in
+ * its own slot (`FileResolution.resolveFile`): the choices are made for the
+ * decoded files' referents, so a mention in one format links to a referent
+ * another holds. The resources the batch only mentions are its
+ * `linkedRecords`, no format's, so a stored person several formats only
+ * mention is written once, and the plan's links are its
+ * `linkTargetsByReferentKey`. Section titles and review keys are kept, so the
+ * selections survive, and a slot nothing moved in comes back as it was. A
+ * batch with no claimed format comes back with no linked records and no link
+ * targets. Which of a person's names is current is
+ * judged at the clock's now, so the clock is the one input besides the
+ * arguments. Fails with `Referent.DuplicateReferent` when two
+ * decoded resources under different ids are keyed by one logical reference,
+ * and with `LinkChoice.InvalidLinkChoice` when a choice cannot be followed
+ * for its referent.
  */
 const resolveMentions = (
   batch: DecodedBatch,
   linkChoices: ReferentLinkChoices.Type
 ): Effect.Effect<ResolvedBatch, Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice> =>
-  Array.match(claimedFormats(batch), {
-    onEmpty: () => Effect.succeed(asResolvedBatch(batch)),
-    onNonEmpty: (claimed) =>
-      Effect.flatMap(
-        IdentityMap.apply(
-          Array.map(claimed, (kind) => batch[kind].decoded),
-          linkChoices
-        ),
-        (resolvedFiles) => {
-          const resolvedByKind: HashMap.HashMap<FormatKind, DecodedFile.DecodedFile> =
-            HashMap.fromIterable(Array.zip(claimed, resolvedFiles))
-          // Read slots through FormatResults, as `redecodeFormat` does, so each is its own `Result<K>`.
-          const results: FormatResults = batch
-          return Effect.map(
-            collectFormats(
-              <K extends FormatKind>(kind: K): Effect.Effect<FormatDecode.Result<K>> =>
-                Effect.succeed(
-                  Option.match(HashMap.get(resolvedByKind, kind), {
-                    onNone: () => results[kind],
-                    onSome: (decoded) => ({ ...results[kind], decoded }),
-                  })
-                ),
-              batch.unrecognizedFiles
-            ),
-            asResolvedBatch
-          )
-        }
-      ),
-  })
+  Effect.flatMap(
+    LinkPlan.make(
+      claimedFormats(batch.formats).map((kind) => batch.formats[kind].decoded),
+      linkChoices
+    ),
+    (plan) =>
+      Effect.map(
+        collectFormats(<K extends FormatKind>(kind: K): Effect.Effect<FormatDecode.Result<K>> => {
+          const result = batch.formats[kind]
+          const decoded = FileResolution.resolveFile(plan)(result.decoded)
+          // A slot nothing moved in comes back as itself, an unclaimed one among them.
+          return Effect.succeed(decoded === result.decoded ? result : { ...result, decoded })
+        }),
+        (formats): ResolvedBatch => ({
+          formats,
+          unrecognizedFiles: batch.unrecognizedFiles,
+          linkedRecords: FileResolution.linkedRecords(plan),
+          linkTargetsByReferentKey: HashMap.fromIterable(
+            plan.links.map(({ referent, target }) => [Referent.key(referent), target] as const)
+          ),
+        })
+      )
+  )
 
 /**
  * `batch` with its mentions resolved on the reviewer's `chosen` choices over
@@ -112,8 +118,7 @@ const resolveMentions = (
  * @param batch - The decoded batch
  * @param defaults - The searched default choices, by `Referent.key`
  * @param chosen - The reviewer's own choices, by `Referent.key`, over the defaults
- * @returns The choices used, each referent's link target under them, and the
- *   resolved batch
+ * @returns The resolved `batch` and the `linkChoices` it was resolved on
  *
  * @remarks
  * Each failure names the choice that could not be resolved, and the fallback
@@ -126,40 +131,24 @@ const resolveMentionsWithFallback = (
   defaults: ReferentLinkChoices.Type,
   chosen: ReferentLinkChoices.Type
 ): Effect.Effect<
-  {
-    readonly linkChoices: ReferentLinkChoices.Type
-    readonly linkTargets: HashMap.HashMap<string, LinkTarget.Type>
-    readonly batch: ResolvedBatch
-  },
+  { readonly batch: ResolvedBatch; readonly linkChoices: ReferentLinkChoices.Type },
   Referent.DuplicateReferent
 > => {
-  const linkChoices = HashMap.union(defaults, chosen)
-  return Effect.all({
-    batch: resolveMentions(batch, linkChoices),
-    plan: LinkPlan.make(
-      claimedFormats(batch).map((kind) => batch[kind].decoded),
-      linkChoices
-    ),
-  }).pipe(
-    Effect.map(({ batch: resolvedBatch, plan }) => ({
-      linkChoices,
-      linkTargets: HashMap.fromIterable(
-        plan.links.map(({ referent, target }) => [Referent.key(referent), target] as const)
-      ),
-      batch: resolvedBatch,
-    })),
+  const linkChoices = ReferentLinkChoices.union(defaults, chosen)
+  return resolveMentions(batch, linkChoices).pipe(
+    Effect.map((resolved) => ({ batch: resolved, linkChoices })),
     Effect.catchTag('InvalidLinkChoice', (failure) => {
       if (HashMap.has(chosen, failure.referentKey)) {
         return resolveMentionsWithFallback(
           batch,
           defaults,
-          HashMap.remove(chosen, failure.referentKey)
+          ReferentLinkChoices.remove(chosen, failure.referentKey)
         )
       }
       if (HashMap.has(defaults, failure.referentKey)) {
         return resolveMentionsWithFallback(
           batch,
-          HashMap.remove(defaults, failure.referentKey),
+          ReferentLinkChoices.remove(defaults, failure.referentKey),
           chosen
         )
       }

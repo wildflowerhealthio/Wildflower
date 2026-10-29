@@ -4,7 +4,7 @@
 // here whenever a new datatype file lands.
 
 export { narrowFields } from './narrow-fields.ts'
-export { withMandatoryId } from './with-mandatory-id.ts'
+export { withMandatoryId, type WithMandatoryId } from './with-mandatory-id.ts'
 
 // Base
 export * as BackboneElement from './base/backbone-element.ts'

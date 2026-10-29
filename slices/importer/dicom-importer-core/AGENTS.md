@@ -126,7 +126,8 @@ carrying the one `ImagingStudy` its files make up.
 
 - **Depends on**: `dicom` (DICOM tag parsing), `importer-fundamentals`
   (`DecodeFunction.make`, the `FileImporter` contract, the `PickedFile`
-  vocabulary), `fhir-r4` (resource types + identity), `kitchen-sink`
+  vocabulary), `fhir-r4` (resource types + identity), `fhir-r4-adoption`
+  (`adoptResource`), `kitchen-sink`
   (`fnv1a64`, `checkTimeZone`), `effect`.
 - **Depended on by**: `dicom-importer-react` (settings picker),
   `importer-react` (registry entry).

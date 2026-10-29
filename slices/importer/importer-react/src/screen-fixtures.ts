@@ -133,6 +133,16 @@ const NAMED_PATIENT_HAR: string = recognizedHar(
   { subject: { reference: 'Patient/pat-7' } }
 )
 
+/**
+ * {@link NAMED_PATIENT_HAR} with Observations that carry no `id`, as a FHIR
+ * server may send a searchset's entries: the passthrough kinds adopt each under
+ * an id of its content.
+ */
+const ID_LESS_OBSERVATIONS_HAR: string = recognizedHar(
+  { name: [{ family: 'Banks', given: ['Tyra'] }], birthDate: '1990-01-02' },
+  { id: undefined, subject: { reference: 'Patient/pat-7' } }
+)
+
 /** One source file already on the server: its minted id and the wire it is served as. */
 interface StoredSourceFile {
   readonly id: string
@@ -167,8 +177,8 @@ const storedSourceFile = async (
     )
   )
   const wire = await Effect.runPromise(Schema.encode(DocumentReference.Schema)(resource))
-  return { id: resource.id ?? '', fileName, wire }
+  return { id: resource.id, fileName, wire }
 }
 
-export { dicomFile, NAMED_PATIENT_HAR, RECOGNIZED_HAR, storedSourceFile }
+export { dicomFile, ID_LESS_OBSERVATIONS_HAR, NAMED_PATIENT_HAR, RECOGNIZED_HAR, storedSourceFile }
 export type { DicomTagMap, StoredSourceFile }

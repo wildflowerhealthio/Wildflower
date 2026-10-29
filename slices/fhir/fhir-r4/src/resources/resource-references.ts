@@ -80,7 +80,7 @@ const mapIn = (
  * back as itself. The type system cannot follow a walk over every field,
  * hence the one assertion; the property tests pin the shape.
  */
-const map = <TResource extends FhirResource>(
+const mapReferences = <TResource extends FhirResource>(
   resource: TResource,
   rewrite: (reference: Reference) => Reference
 ): TResource =>
@@ -97,5 +97,5 @@ const collect = (resource: FhirResource): readonly ReferenceAt[] => {
   return found
 }
 
-export { collect, map }
+export { collect, mapReferences }
 export type { ReferenceAt }

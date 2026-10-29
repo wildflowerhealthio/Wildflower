@@ -2,9 +2,15 @@ import { cleanup, render, screen } from '@testing-library/react'
 import type { BatchEntryOutcome, WriteIssue } from '@wildflowerhealthio/fhir-r4/clients'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { type BatchOutcome, type FileImportResult, importOutcome } from './import-outcome.ts'
+import {
+  type BatchOutcome,
+  type FileImportResult,
+  importOutcome,
+  type ResourceResult,
+} from './import-outcome.ts'
 import {
   COMPLETE_HEADING,
+  FAILED_HEADING,
   ImportResults,
   PARTIAL_HEADING,
   SKIPPED_HEADING,
@@ -22,9 +28,9 @@ afterEach(cleanup)
 
 describe('ImportResults', () => {
   it('frames an all-success batch as complete and names each written resource under its status', () => {
-    const batch: BatchOutcome = [
+    const batch = batchOf([
       importedFile('a', [ok('Patient/p1', '201 Created'), ok('Observation/o1', '201 Created')]),
-    ]
+    ])
 
     render(<ImportResults batch={batch} onStartOver={vi.fn()} />)
 
@@ -34,15 +40,45 @@ describe('ImportResults', () => {
     expect(screen.getByText('Patient/p1')).toBeDefined()
   })
 
+  it('counts a written linked record among the resources of the file it was written with', () => {
+    const batch = batchOf(
+      [importedFile('a', [ok('Observation/o1', '201 Created')])],
+      [{ ...ok('Practitioner/pr1', '201 Created'), title: 'Linked records' }]
+    )
+
+    render(<ImportResults batch={batch} onStartOver={vi.fn()} />)
+
+    expect(screen.getByRole('heading', { name: COMPLETE_HEADING })).toBeDefined()
+    expect(screen.getByRole('status').textContent).toBe(
+      'Wrote 2 of 2 resources across 1 of 1 file.'
+    )
+  })
+
+  it('says no file was imported when only linked records were written', () => {
+    // A stored copy the reviewer linked is written even when every resource
+    // naming it was excluded, so a batch can write linked records alone.
+    const batch = batchOf(
+      [{ _tag: 'skipped', id: 'har/a.har', title: 'a.har', reason: 'nothing' }],
+      [{ ...ok('Patient/s-1', '200 OK'), title: 'Linked records' }]
+    )
+
+    render(<ImportResults batch={batch} onStartOver={vi.fn()} />)
+
+    expect(screen.getByRole('heading', { name: COMPLETE_HEADING })).toBeDefined()
+    expect(screen.getByRole('status').textContent).toBe(
+      "Wrote 1 of 1 linked record; no file's resources were imported."
+    )
+  })
+
   it('opens failure groups to the server diagnostics and sorts them before successes', () => {
-    const batch: BatchOutcome = [
+    const batch = batchOf([
       importedFile('a', [
         ok('Patient/p1', '201 Created'),
         failed('Observation/o1', '422 Unprocessable Entity', [
           { severity: 'error', code: 'invariant', text: 'Reference Patient/x not found' },
         ]),
       ]),
-    ]
+    ])
 
     render(<ImportResults batch={batch} onStartOver={vi.fn()} />)
 
@@ -56,14 +92,14 @@ describe('ImportResults', () => {
   })
 
   it('renders a failed source-file archive as an ordinary failure row, framing the batch as partial', () => {
-    const batch: BatchOutcome = [
+    const batch = batchOf([
       importedFile('b', [
         failed('DocumentReference/archive-1', '422 Unprocessable Entity', [
           { severity: 'error', code: 'invariant', text: 'archive rejected by the server' },
         ]),
         ok('Observation/o1', '201 Created'),
       ]),
-    ]
+    ])
 
     render(<ImportResults batch={batch} onStartOver={vi.fn()} />)
 
@@ -73,11 +109,28 @@ describe('ImportResults', () => {
     expect(screen.getByText('archive rejected by the server')).toBeDefined()
   })
 
+  it('frames a refused transaction as nothing imported, every entry under its one cause', () => {
+    const refused = [
+      { severity: 'error', code: 'processing', text: 'Transaction failed at entry 1' },
+    ] satisfies readonly WriteIssue[]
+    const batch = batchOf(
+      [importedFile('a', [failed('Patient/p1', '400 Bad Request', refused)])],
+      [{ ...failed('Patient/s1', '400 Bad Request', refused), title: 'Linked records' }]
+    )
+
+    render(<ImportResults batch={batch} onStartOver={vi.fn()} />)
+
+    expect(screen.getByRole('heading', { name: FAILED_HEADING })).toBeDefined()
+    expect(screen.getByRole('status').textContent).toMatch(/Wrote 0 of 2/)
+    expect(screen.getByText(/400 Bad Request · 2 resources/)).toBeDefined()
+    expect(screen.getByText('Patient/s1')).toBeDefined()
+  })
+
   it('notes a file that had nothing to import without framing the batch as partial', () => {
-    const batch: BatchOutcome = [
+    const batch = batchOf([
       importedFile('a', [ok('Patient/p1', '201 Created')]),
       { _tag: 'skipped', id: 'c', title: 'c.har', reason: 'nothing' },
-    ]
+    ])
 
     render(<ImportResults batch={batch} onStartOver={vi.fn()} />)
 
@@ -89,6 +142,12 @@ describe('ImportResults', () => {
 })
 
 // Helpers
+
+/** A batch outcome of `files` and the `linked` records' results (none by default). */
+const batchOf = (
+  files: readonly FileImportResult[],
+  linked: readonly ResourceResult[] = []
+): BatchOutcome => ({ files, linked })
 
 /** A 2xx per-entry outcome for `Type/id`. */
 const ok = (typeId: string, status: string): BatchEntryOutcome => entry(typeId, status, true, [])

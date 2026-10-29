@@ -8,7 +8,7 @@ import {
   type BatchEntryOutcome,
   persistBatchBundleOrFail,
 } from '@wildflowerhealthio/fhir-r4/clients'
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 
 import { strengthKeyOf, type StrengthSession } from './strength-session.ts'
 
@@ -29,11 +29,11 @@ import { strengthKeyOf, type StrengthSession } from './strength-session.ts'
 const useStrengthWrite = (
   session: StrengthSession,
   writeName: string
-): UseMutationResult<readonly BatchEntryOutcome[], Error, readonly FhirResource[]> => {
+): UseMutationResult<readonly BatchEntryOutcome[], Error, readonly FhirResourceWithId[]> => {
   const queryClient = useQueryClient()
   return useMutation({
     mutationKey: [...strengthKeyOf(session.patientId), writeName],
-    mutationFn: (resources: readonly FhirResource[]) =>
+    mutationFn: (resources: readonly FhirResourceWithId[]) =>
       session.runAuthed(persistBatchBundleOrFail(resources)),
     onSettled: () => queryClient.invalidateQueries({ queryKey: strengthKeyOf(session.patientId) }),
   })

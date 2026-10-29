@@ -1,7 +1,13 @@
 import { Array as Arr, Effect, Option, Schema } from 'effect'
 
 import type * as Bundle from '../data-types/resources/bundle.ts'
-import { FhirResourceSchema, type FhirResource } from '../resources/index.ts'
+import {
+  FhirResourceSchema,
+  type FhirResource,
+  type FhirResourceWithId,
+  hasId,
+  literalReferenceOf,
+} from '../resources/index.ts'
 import * as Telemetry from '../telemetry/index.ts'
 import { FhirR4ResourcesHttpApiClient } from './fhir-r4-resources-http-api-client.ts'
 import { diffJson, setAtPath, type FieldDiff } from './field-diff.ts'
@@ -74,14 +80,6 @@ interface ServerComparison {
 const SERVER_MANAGED_META_FIELDS = ['versionId', 'lastUpdated', 'source'] as const
 
 /**
- * Stable per-resource key for the returned diff map — `resourceType/id`, the
- * same shape the batch bundle addresses entries by, so a caller can look a
- * status up by the same key it already holds. A null-id resource is skipped
- * (a caller cannot address it) and returns no entry.
- */
-const diffKey = (resource: FhirResource): string => `${resource.resourceType}/${resource.id ?? ''}`
-
-/**
  * The wire projection compared for equality — the resource encoded through its
  * schema (so `URL` fields round-trip as strings, per the Consumer Gotchas), with
  * `meta` narrowed to non-server-managed fields.
@@ -128,14 +126,20 @@ const normalizedEncode = (resource: unknown): Option.Option<unknown> => {
  * @param resource - The current (possibly already-edited) incoming resource
  * @param field - The leaf to reset, from a {@link ServerComparison}'s `fields`
  * @returns `Some` the resource with that one leaf matching the server, or
- *   `None` when the resource cannot round-trip through the schema
+ *   `None` when the resource cannot round-trip through the schema or the
+ *   reset would not keep its `id`
  */
-const resetFieldToServer = (resource: unknown, field: FieldDiff): Option.Option<FhirResource> => {
+const resetFieldToServer = (
+  resource: FhirResourceWithId,
+  field: FieldDiff
+): Option.Option<FhirResourceWithId> => {
   const encoded = encodeResource(resource)
   if (encoded._tag !== 'Right') return Option.none()
   const patched = setAtPath(encoded.right, field.path, field.server)
-  const decoded = decodeResource(patched)
-  return decoded._tag === 'Right' ? Option.some(decoded.right) : Option.none()
+  return Option.getRight(decodeResource(patched)).pipe(
+    Option.filter(hasId),
+    Option.filter((reset) => reset.id === resource.id)
+  )
 }
 
 /**
@@ -155,18 +159,17 @@ const asFhirResource = (serverCopy: unknown): Option.Option<FhirResource> => {
  * `changed` (present + differs).
  *
  * @param resources - The resources a caller (the importer's preview) is about
- *   to write; null-id resources are skipped and get no entry
+ *   to write, each under the id it would be written to
  * @returns A map from `Type/id` to {@link ServerComparison}; empty when
- *   nothing readable was submitted. Never fails — if the whole `POST /` fails,
+ *   nothing was submitted. Never fails — if the whole `POST /` fails,
  *   every probed id is reported as `new` (the caller's writes will still
  *   attempt).
  */
 const classifyAgainstServer = (
-  resources: ReadonlyArray<FhirResource>
+  resources: ReadonlyArray<FhirResourceWithId>
 ): Effect.Effect<ReadonlyMap<string, ServerComparison>, never, FhirR4ResourcesHttpApiClient> =>
   Effect.gen(function* () {
-    const readable = resources.filter((resource) => resource.id !== null)
-    if (readable.length === 0) return new Map<string, ServerComparison>()
+    if (resources.length === 0) return new Map<string, ServerComparison>()
 
     const client = yield* FhirR4ResourcesHttpApiClient
 
@@ -182,7 +185,7 @@ const classifyAgainstServer = (
       signature: null,
       timestamp: null,
       total: null,
-      entry: readable.map((resource) => ({
+      entry: resources.map((resource) => ({
         id: null,
         extension: [],
         modifierExtension: [],
@@ -193,7 +196,7 @@ const classifyAgainstServer = (
           extension: [],
           modifierExtension: [],
           method: 'GET' as const,
-          url: diffKey(resource),
+          url: literalReferenceOf(resource),
           ifNoneMatch: null,
           ifModifiedSince: null,
           ifMatch: null,
@@ -220,12 +223,12 @@ const classifyAgainstServer = (
     const opaqueChange: ServerComparison = { status: 'changed', fields: [] }
 
     if (submission._tag === 'failed') {
-      for (const resource of readable) classifications.set(diffKey(resource), asNew)
+      for (const resource of resources) classifications.set(literalReferenceOf(resource), asNew)
       return classifications
     }
 
-    for (const [resource, entry] of Arr.zip(readable, submission.response.entry ?? [])) {
-      const key = diffKey(resource)
+    for (const [resource, entry] of Arr.zip(resources, submission.response.entry ?? [])) {
+      const key = literalReferenceOf(resource)
       const status = entry.response?.status
       if (status === undefined) {
         classifications.set(key, asNew)
@@ -274,8 +277,8 @@ const classifyAgainstServer = (
     // Any resources missing a matched response entry (a truncated response)
     // default to `new` — a caller's write will attempt and either land or
     // report itself as a persist failure.
-    for (const resource of readable) {
-      const key = diffKey(resource)
+    for (const resource of resources) {
+      const key = literalReferenceOf(resource)
       if (!classifications.has(key)) classifications.set(key, asNew)
     }
 
@@ -290,7 +293,6 @@ const classifyAgainstServer = (
 
 export {
   classifyAgainstServer,
-  diffKey,
   normalizedEncode,
   resetFieldToServer,
   SERVER_MANAGED_META_FIELDS,

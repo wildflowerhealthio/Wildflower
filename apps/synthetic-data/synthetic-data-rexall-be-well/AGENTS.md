@@ -18,7 +18,7 @@ The root entry exports `RexallHar`, the `RexallAccount` type and
   `CarebookProfile`'s identifiers), the store number, the carebook pharmacy
   location id, and the `StoryDay`s the account was created and last updated.
   `rexallPatientReferenceOf` is the reference to the Patient the Rexall
-  import makes of the profile (`fhir-r4/identity`'s `adoptedReferenceOf`
+  import makes of the profile (`fhir-r4-adoption`'s `adoptedReferenceOf`
   under `REXALL_CAREBOOK_SYSTEM`), for a result from another source to be
   filed on.
 - `src/carebook-profile.ts` — `profileOf`: the `…/enduser/profile/v2/me` body
@@ -51,7 +51,8 @@ Depends on `synthetic-data-fundamentals` (the story model and `StoryDay` from
 `carebookTimestampOf`, the tunnel URLs, and the `CarebookProfile` /
 `MedicationBundle` / `MedicationResource` schemas whose encoded types the
 bodies are written as), and `fhir-r4` / `fhir-stu3-as-r4` for the encoded
-datatype types those schemas are built on. The round-trip test also uses
+datatype types those schemas are built on, and `fhir-r4-adoption`
+(`adoptedReferenceOf`). The round-trip test also uses
 `har-importer-core`, `importer-fundamentals` and `medication-core`, as
 dev dependencies only. Never imports a `-react`, `-node` or `-tauri` package.
 
