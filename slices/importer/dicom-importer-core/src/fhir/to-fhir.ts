@@ -1,6 +1,12 @@
 import type { DicomHeader, PersonName } from '@wildflowerhealthio/dicom'
+import { HumanName, type IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { joinIdComponents } from '@wildflowerhealthio/fhir-r4/identity'
-import { ImagingStudy, Patient, ServiceRequest } from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  ImagingStudy,
+  Patient,
+  Practitioner,
+  ServiceRequest,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import { fnv1a64 } from '@wildflowerhealthio/kitchen-sink'
 /**
  * Synthesize FHIR R4 resources from one study's parsed
@@ -25,7 +31,16 @@ import { fnv1a64 } from '@wildflowerhealthio/kitchen-sink'
  *
  * @packageDocumentation
  */
-import { Array as Arr, DateTime, Effect, Option, Order, type ParseResult, Schema } from 'effect'
+import {
+  Array as Arr,
+  DateTime,
+  Effect,
+  Option,
+  Order,
+  type ParseResult,
+  Schema,
+  String as Str,
+} from 'effect'
 
 import type { DicomSettings } from '../settings.ts'
 import { DICOM_SYSTEM } from '../source-system.ts'
@@ -97,6 +112,10 @@ const fhirDateTime = (
   return fhirDate(da)
 }
 
+/** A PN's given names, one per word, as `HumanName.given` holds them. */
+const givenNamesOf = (pn: PersonName.Type): readonly string[] =>
+  Arr.filter(Str.split(pn.given, /\s+/), Str.isNonEmpty)
+
 /**
  * A DICOM `PersonName.Type` as a FHIR `HumanName`. `text` is always non-empty —
  * the `dicom` parser returns `undefined` rather than an empty name — so this
@@ -105,9 +124,24 @@ const fhirDateTime = (
 const humanNameWire = (pn: PersonName.Type): Wire => {
   const wire: Wire = { text: pn.text }
   if (pn.family !== '') wire['family'] = pn.family
-  if (pn.given !== '') wire['given'] = pn.given.split(/\s+/).filter((p) => p.length > 0)
+  if (pn.given !== '') wire['given'] = givenNamesOf(pn)
   return wire
 }
+
+/**
+ * A PN in the order a prescription or a report prints a name: the given names,
+ * then the family name ("Smith^Jane" is "Jane Smith"), as `HumanName.displayName`
+ * renders a name without `text`; empty when the PN has neither.
+ *
+ * @remarks
+ * The PN `text` prints the family name first, so a name matched against
+ * other sources is built from the parsed parts instead, by the same rule the
+ * identity map renders a `Practitioner`'s name by. The parser keeps only the
+ * family and given components apart, so the middle name, prefix and suffix the
+ * `text` carries are left out.
+ */
+const naturalOrderName = (pn: PersonName.Type): string =>
+  HumanName.displayName([{ family: pn.family, given: givenNamesOf(pn) }]) ?? ''
 
 // ---------------------------------------------------------------------------
 // Patient
@@ -167,6 +201,19 @@ const patientWire = (header: DicomHeader.Type): Wire | undefined => {
 const serviceRequestOriginalId = (header: DicomHeader.Type): string =>
   sourceId(['accession', header.accessionNumber!, patientOriginalId(header) ?? ''])
 
+/**
+ * The `requester` wire for the referring physician, whom a DICOM header names
+ * only by `ReferringPhysicianName`: `fhir-r4`'s `Practitioner.tryReferenceWireFromName`
+ * of the {@link naturalOrderName}, so the reference names an identity the
+ * importer's identity map can link, and the same name on a prescription
+ * ("Jane Smith") is the same provider. `None` when the PN has neither a given
+ * nor a family name.
+ */
+const requesterWire = (
+  referringPhysician: PersonName.Type
+): Option.Option<typeof IdentifierAndReference.ReferenceSchema.Encoded> =>
+  Practitioner.tryReferenceWireFromName(naturalOrderName(referringPhysician))
+
 const serviceRequestWire = (header: DicomHeader.Type, patientId: string): Wire | undefined => {
   if (header.accessionNumber === undefined || header.accessionNumber === '') return undefined
 
@@ -185,9 +232,11 @@ const serviceRequestWire = (header: DicomHeader.Type, patientId: string): Wire |
     wire['code'] = { text: description }
   }
 
-  if (header.referringPhysicianName !== undefined) {
-    wire['requester'] = { display: header.referringPhysicianName.text }
-  }
+  const requester = Option.flatMap(
+    Option.fromNullable(header.referringPhysicianName),
+    requesterWire
+  )
+  if (Option.isSome(requester)) wire['requester'] = requester.value
 
   return wire
 }
