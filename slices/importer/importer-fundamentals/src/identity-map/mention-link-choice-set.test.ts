@@ -1,6 +1,6 @@
 import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Array, FastCheck as fc, HashMap, Option } from 'effect'
+import { Array, Equivalence, FastCheck as fc, HashMap, Option } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vite-plus/test'
 
 import {
@@ -313,6 +313,13 @@ describe('mention link choices and the referents', () => {
         ),
         ({ file, choices, mentionChoices }) => {
           const once = resolveOnTestClock(file, choices, mentionChoices)
+          // A mention choice can redirect a referent's every mention away, so
+          // the resolved file no longer holds the referent a choice links to.
+          const referentKeysOf = (of: DecodedFile.DecodedFile): readonly string[] =>
+            discoverOnTestClock(of).map(Referent.key).toSorted()
+          fc.pre(
+            Array.getEquivalence(Equivalence.string)(referentKeysOf(once), referentKeysOf(file))
+          )
           const again = resolveOnTestClock(once, choices, mentionChoices)
 
           expect(fileWireOf(again)).toBe(fileWireOf(once))

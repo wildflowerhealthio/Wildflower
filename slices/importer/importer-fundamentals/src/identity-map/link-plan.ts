@@ -66,11 +66,16 @@ const storedStandInIfLinked = (
   decodedLiteralReference: string
 ): Option.Option<LinkableResource.WithId> =>
   Array.findFirst(links, ({ referent, target }) =>
-    Referent.is('AsResource')(referent) &&
-    LinkTarget.is('Stored')(target) &&
-    LinkableResource.literalReferenceOf(referent.resource) === decodedLiteralReference
-      ? Option.some(target.resource)
-      : Option.none()
+    Option.all({
+      asResource: Option.liftPredicate(referent, Referent.is('AsResource')),
+      stored: Option.liftPredicate(target, LinkTarget.is('Stored')),
+    }).pipe(
+      Option.filter(
+        ({ asResource }) =>
+          LinkableResource.literalReferenceOf(asResource.resource) === decodedLiteralReference
+      ),
+      Option.map(({ stored }) => stored.resource)
+    )
   )
 
 /**
