@@ -28,6 +28,10 @@ import { type FormatKind, formatRegistry } from './registry.ts'
  * @packageDocumentation
  */
 
+/** The decoded file of every format `batch` claimed, in format order. */
+const decodedFilesOf = (batch: DecodedBatch): readonly DecodedFile.DecodedFile[] =>
+  claimedFormats(batch.formats).map((kind) => batch.formats[kind].decoded)
+
 /**
  * Every referent the batch holds, once per identity across formats, in
  * format-then-review order, those with a resource first
@@ -39,7 +43,7 @@ import { type FormatKind, formatRegistry } from './registry.ts'
 const discoverReferents = (
   batch: DecodedBatch
 ): Effect.Effect<readonly Referent.Type[], Referent.DuplicateReferent> =>
-  Referent.discover(claimedFormats(batch.formats).map((kind) => batch.formats[kind].decoded))
+  Referent.discover(decodedFilesOf(batch))
 
 /**
  * A batch every mention of which resolves: the batch the diff, the preview
@@ -140,10 +144,7 @@ const resolveMentions = (
   linkChoiceSet: LinkChoiceSet.Type
 ): Effect.Effect<ResolvedBatch, Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice> =>
   Effect.flatMap(
-    LinkPlan.make(
-      claimedFormats(batch.formats).map((kind) => batch.formats[kind].decoded),
-      linkChoiceSet.byReferent
-    ),
+    LinkPlan.make(decodedFilesOf(batch), linkChoiceSet.byReferent),
     (planOnReferents) => {
       const plan = LinkPlan.withMentionLinkChoiceSet(planOnReferents, linkChoiceSet.byMention)
       const unlinked: [FormatKind, readonly UnlinkedMention.Type[]][] = []

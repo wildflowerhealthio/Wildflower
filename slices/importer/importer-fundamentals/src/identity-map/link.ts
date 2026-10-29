@@ -79,15 +79,15 @@ const decodedTarget = ({ referent }: Cell<'CreateResource:AsResource'>): LocalLi
   Either.right(LinkTarget.Decoded({ resource: referent.resource, storedCopy: Option.none() }))
 
 /**
- * `CreateResource` named only by mentions: the provisional resource its
- * logical reference stands for, when there is one.
+ * `CreateResource` named only by mentions: the referent's own record, the
+ * provisional resource its logical reference stands for, when there is one.
  */
 const provisionalTarget = ({
   choice,
   referent,
 }: Cell<'CreateResource:ByMentionOnly'>): LocalLinkTarget =>
   Either.fromOption(
-    Option.map(LinkableResource.tryProvisionalFrom(referent.logicalReference), (resource) =>
+    Option.map(Referent.maybeOwnResource(referent), (resource) =>
       LinkTarget.Provisional({ resource })
     ),
     () => invalid(referent, choice, 'NotAllowedForReferent')

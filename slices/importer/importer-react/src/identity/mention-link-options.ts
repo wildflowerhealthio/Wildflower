@@ -54,13 +54,9 @@ interface Landing {
 
 /** Whether `target`'s resource is `referent`'s own: its decoded resource, or the provisional one its logical reference stands for. */
 const isOwnRecordOf = (referent: Referent.Type, resource: LinkableResource.WithId): boolean =>
-  Referent.match(referent, {
-    AsResource: (asResource) => LinkableResource.sameRecord(asResource.resource, resource),
-    ByMentionOnly: ({ logicalReference }) =>
-      Option.exists(LinkableResource.tryProvisionalFrom(logicalReference), (provisional) =>
-        LinkableResource.sameRecord(provisional, resource)
-      ),
-  })
+  Option.exists(Referent.maybeOwnResource(referent), (ownResource) =>
+    LinkableResource.sameRecord(ownResource, resource)
+  )
 
 /** Where `referent` lands under its `target`, as a landing; `None` for `Unlinked`. */
 const landingOf = (referent: Referent.Type, target: LinkTarget.Type): Option.Option<Landing> =>

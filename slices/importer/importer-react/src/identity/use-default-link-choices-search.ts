@@ -60,10 +60,7 @@ const searchDefaults = (
           ? Option.some(choice.resource)
           : Option.none()
       ),
-      Array.dedupeWith(
-        (left, right) =>
-          LinkableResource.literalReferenceOf(left) === LinkableResource.literalReferenceOf(right)
-      ),
+      Array.dedupeWith(LinkableResource.sameRecord),
       Effect.forEach(labeled)
     )
     return { linkChoices, found }

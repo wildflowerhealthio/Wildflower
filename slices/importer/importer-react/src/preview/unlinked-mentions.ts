@@ -6,11 +6,7 @@
  */
 
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
-import {
-  type DecodedFile,
-  Mention,
-  UnlinkedMention,
-} from '@wildflowerhealthio/importer-fundamentals'
+import { DecodedFile, Mention, UnlinkedMention } from '@wildflowerhealthio/importer-fundamentals'
 import { Array } from 'effect'
 
 import {
@@ -57,7 +53,7 @@ const groupsOf = (
   const providerKeys = new Set(
     unlinked.filter((one) => !isOfPatient(one)).map((one) => one.mentioningResourceKey)
   )
-  const resources = decodedFile.sections.flatMap((section) => section.resources)
+  const resources = DecodedFile.resources(decodedFile)
   return {
     needingPatient: resources.filter(({ key }) => patientKeys.has(key)),
     needingProvider: resources.filter(({ key }) => providerKeys.has(key) && !patientKeys.has(key)),

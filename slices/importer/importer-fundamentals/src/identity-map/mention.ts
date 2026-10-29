@@ -51,6 +51,10 @@ const landsOnDevice = (reference: IdentifierAndReference.ReferenceType): boolean
 /** The path of the mention that places a resource in a patient's compartment. */
 const SUBJECT_PATH = 'subject'
 
+/** Whether `resource` has a `subject` slot that holds no reference. */
+const hasEmptySubject = (resource: FhirResource): boolean =>
+  SUBJECT_PATH in resource && resource.subject === null
+
 /**
  * A mention of a type the identity map links, the type among it: what a
  * reviewer may choose a link for on its own (`MentionLinkChoiceSet`).
@@ -93,10 +97,9 @@ const linkableTypeOf = ({
  * resource that names none.
  */
 const linkableIn = (resource: FhirResource): readonly Linkable[] => {
-  const emptySubject: readonly Type[] =
-    SUBJECT_PATH in resource && resource.subject === null
-      ? [{ path: SUBJECT_PATH, reference: IdentifierAndReference.emptyReference }]
-      : []
+  const emptySubject: readonly Type[] = hasEmptySubject(resource)
+    ? [{ path: SUBJECT_PATH, reference: IdentifierAndReference.emptyReference }]
+    : []
   return Array.filterMap([...emptySubject, ...madeIn(resource)], (mention) =>
     Option.map(linkableTypeOf(mention), (type): Linkable => ({ ...mention, type }))
   )
@@ -138,7 +141,7 @@ const relinked = <TResource extends FhirResource>(
       Option.match(literalReference, {
         onNone: () => resource,
         onSome: (reference) =>
-          mentionPath === SUBJECT_PATH && SUBJECT_PATH in resource && resource.subject === null
+          mentionPath === SUBJECT_PATH && hasEmptySubject(resource)
             ? { ...resource, subject: { ...IdentifierAndReference.emptyReference, reference } }
             : resource,
       }),
@@ -153,5 +156,14 @@ const relinked = <TResource extends FhirResource>(
     },
   })
 
-export { at, landsOnDevice, linkableIn, linkableTypeOf, madeIn, relinked, SUBJECT_PATH }
+export {
+  at,
+  hasEmptySubject,
+  landsOnDevice,
+  linkableIn,
+  linkableTypeOf,
+  madeIn,
+  relinked,
+  SUBJECT_PATH,
+}
 export type { Linkable, Type }

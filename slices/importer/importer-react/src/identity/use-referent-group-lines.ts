@@ -59,9 +59,7 @@ const useReferentGroupLines = (
           ...found.filter(({ resource }) => resource.resourceType === resourceType),
           ...(stored._tag === 'ready' ? stored.resources : []),
         ],
-        (left, right) =>
-          LinkableResource.literalReferenceOf(left.resource) ===
-          LinkableResource.literalReferenceOf(right.resource)
+        (left, right) => LinkableResource.sameRecord(left.resource, right.resource)
       ),
     [found, stored, resourceType]
   )

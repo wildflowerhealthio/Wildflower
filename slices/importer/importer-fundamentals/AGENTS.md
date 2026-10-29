@@ -153,7 +153,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     at its path (`subject`, `performer[0].actor`): **`madeIn`** is every
     mention a resource makes, found by fhir-r4's
     `ResourceReferences.collect` so a reference anywhere is one; `at` the one
-    at a path; and `landsOnDevice`, whether a reference is a relative literal
+    at a path; `hasEmptySubject`, whether a `subject` slot holds nothing; and `landsOnDevice`, whether a reference is a relative literal
     `Type/<id>` (not a contained `#<id>`, an absolute URL, or text). Which
     type an identifier-only mention names is the reference's own business: a
     logical reference states its `type`, and one that does not names nothing.
@@ -177,7 +177,9 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     referent's source-given identifiers make (a derived identifier a resolved
     resource carries is not among them), `maybeDerivedLogicalReferenceOf`
     the one its demographics derive, `logicalReferencesOf` both: every
-    logical reference a referent answers to; and **`byLogicalReferenceKey`**
+    logical reference a referent answers to; **`maybeOwnResource`** is the
+    record that is a referent's own (its decoded resource, or the provisional
+    one its logical reference stands for); and **`byLogicalReferenceKey`**
     is the referent each
     logical reference names: the one it is the key of, else the one referent
     that answers to it, so a Shoppers account id a decoded Patient also
