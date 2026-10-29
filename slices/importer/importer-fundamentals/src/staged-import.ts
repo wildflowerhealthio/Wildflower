@@ -1,8 +1,6 @@
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { Option } from 'effect'
 
-import type * as DecodedFile from './decoded-file.ts'
-
 /**
  * The pure model of an import that has been decoded but not yet written: which
  * of its resources are opted out, and which carry an inline edit, against the
