@@ -11,6 +11,9 @@ import { describeResource } from './describe-resource.ts'
  * fallback used when nothing survives — the summary must never be empty.
  */
 
+/** No labels: every subject named by its `display`. */
+const NO_LABELS: ReadonlyMap<string, string> = new Map()
+
 describe('describeResource', () => {
   it('summarises a Patient by name and birthDate', () => {
     // Arrange
@@ -22,7 +25,7 @@ describe('describeResource', () => {
     }
 
     // Act
-    const description = describeResource(patient)
+    const description = describeResource(patient, NO_LABELS)
 
     // Assert
     expect(description.type).toBe('Patient')
@@ -41,7 +44,7 @@ describe('describeResource', () => {
     }
 
     // Act
-    const description = describeResource(patient)
+    const description = describeResource(patient, NO_LABELS)
 
     // Assert
     expect(description.summary).toBe('Jane Doe')
@@ -57,7 +60,7 @@ describe('describeResource', () => {
     }
 
     // Act
-    const description = describeResource(patient)
+    const description = describeResource(patient, NO_LABELS)
 
     // Assert
     expect(description.summary).toBe('Alice Jones · 1990-01-01')
@@ -73,7 +76,7 @@ describe('describeResource', () => {
     }
 
     // Act
-    const description = describeResource(request)
+    const description = describeResource(request, NO_LABELS)
 
     // Assert
     expect(description.type).toBe('MedicationRequest')
@@ -91,7 +94,7 @@ describe('describeResource', () => {
     }
 
     // Act
-    const description = describeResource(observation)
+    const description = describeResource(observation, NO_LABELS)
 
     // Assert
     expect(description.type).toBe('Observation')
@@ -103,7 +106,7 @@ describe('describeResource', () => {
     const bare = { resourceType: 'Patient', id: 'pat-3' }
 
     // Act
-    const description = describeResource(bare)
+    const description = describeResource(bare, NO_LABELS)
 
     // Assert
     expect(description.summary).toBe('Patient/pat-3')
@@ -121,7 +124,7 @@ describe('describeResource', () => {
     }
 
     // Act / Assert
-    expect(describeResource(report)).toMatchObject({
+    expect(describeResource(report, NO_LABELS)).toMatchObject({
       type: 'DiagnosticReport',
       summary: 'Laboratory report · 2026-08-13T17:02:00.000Z · 2 results · final',
     })
@@ -142,7 +145,7 @@ describe('describeResource', () => {
     }
 
     // Act / Assert
-    expect(describeResource(report)).toMatchObject({
+    expect(describeResource(report, NO_LABELS)).toMatchObject({
       type: 'DiagnosticReport',
       summary:
         'Laboratory report · 2026-08-13T08:00:00.000Z – 2026-08-13T17:00:00.000Z · 1 result · final',
@@ -159,8 +162,11 @@ describe('describeResource', () => {
     const bare = { resourceType: 'Practitioner', id: 'prac-2' }
 
     // Act / Assert
-    expect(describeResource(named)).toMatchObject({ type: 'Practitioner', summary: 'Dr. Okafor' })
-    expect(describeResource(bare)).toMatchObject({
+    expect(describeResource(named, NO_LABELS)).toMatchObject({
+      type: 'Practitioner',
+      summary: 'Dr. Okafor',
+    })
+    expect(describeResource(bare, NO_LABELS)).toMatchObject({
       type: 'Practitioner',
       summary: 'Practitioner/prac-2',
     })
@@ -171,7 +177,7 @@ describe('describeResource', () => {
     const document = { resourceType: 'DocumentReference', id: 'doc-1' }
 
     // Act / Assert
-    expect(describeResource(document)).toMatchObject({
+    expect(describeResource(document, NO_LABELS)).toMatchObject({
       type: 'DocumentReference',
       summary: 'DocumentReference/doc-1',
     })
@@ -187,7 +193,7 @@ describe('describeResource', () => {
     })
 
     // Act / Assert
-    expect(describeResource(patient).summary).toBe('Tyra Banks · 1990-01-02')
+    expect(describeResource(patient, NO_LABELS).summary).toBe('Tyra Banks · 1990-01-02')
   })
 
   it('names the subject by the label of the resource it is redirected to, else by its display, never by its literal', () => {

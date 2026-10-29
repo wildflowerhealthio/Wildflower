@@ -14,8 +14,12 @@
  */
 
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import { type FhirResource, ResourceReferences } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array, Option } from 'effect'
+import {
+  type FhirResource,
+  type FhirResourceWithId,
+  ResourceReferences,
+} from '@wildflowerhealthio/fhir-r4/resources'
+import { Array, Match, Option, pipe } from 'effect'
 
 import * as LinkableLogicalReference from './linkable-logical-reference.ts'
 
@@ -75,20 +79,21 @@ interface Linkable extends Type {
 const linkableTypeOf = ({
   path,
   reference,
-}: Type): Option.Option<LinkableLogicalReference.ResourceType> => {
-  const ofLiteral = isDeviceLiteral(reference)
-    ? Option.fromNullable(reference.reference).pipe(
-        Option.map((literal) => literal.split('/')[0] ?? '')
+}: Type): Option.Option<LinkableLogicalReference.ResourceType> =>
+  pipe(
+    Option.fromNullable(reference.type),
+    Option.orElse(() =>
+      pipe(
+        Option.liftPredicate(reference, isDeviceLiteral),
+        Option.flatMapNullable((deviceLiteral) => deviceLiteral.reference),
+        Option.flatMap((literal) => Array.head(literal.split('/')))
       )
-    : Option.none()
-  return Option.match(
-    Option.orElse(Option.fromNullable(reference.type), () => ofLiteral),
-    {
-      onNone: () => (path === SUBJECT_PATH ? Option.some('Patient' as const) : Option.none()),
+    ),
+    Option.match({
+      onNone: () => Option.liftPredicate('Patient' as const, () => path === SUBJECT_PATH),
       onSome: (stated) => Option.liftPredicate(stated, LinkableLogicalReference.isResourceType),
-    }
+    })
   )
-}
 
 /**
  * Every mention of `resource` a reviewer may choose a link for: each one it
@@ -131,30 +136,51 @@ const namesNothing = (reference: IdentifierAndReference.ReferenceType): boolean 
  * since an empty reference is not one. An empty `subject` slot is filled by
  * a literal reference and stays empty for `None`.
  */
-const relinked = <TResource extends FhirResource>(
-  resource: TResource,
+const relinked = (
+  resource: FhirResourceWithId,
   mentionPath: string,
   literalReference: Option.Option<string>
-): TResource =>
-  Option.match(at(resource, mentionPath), {
-    onNone: () =>
-      Option.match(literalReference, {
-        onNone: () => resource,
-        onSome: (reference) =>
-          mentionPath === SUBJECT_PATH && hasEmptySubject(resource)
-            ? { ...resource, subject: { ...IdentifierAndReference.emptyReference, reference } }
-            : resource,
-      }),
-    onSome: ({ reference: current }) => {
-      const reference = Option.getOrNull(literalReference)
-      if (current.reference === reference) return resource
-      const moved = { ...current, reference }
-      if (namesNothing(moved)) return resource
-      return ResourceReferences.mapReferences(resource, (found, path) =>
-        path === mentionPath ? moved : found
+): FhirResourceWithId =>
+  Match.value({ current: at(resource, mentionPath), literalReference }).pipe(
+    Match.withReturnType<FhirResourceWithId>(),
+    Match.when({ current: { _tag: 'Some' } }, ({ current }) =>
+      pipe(
+        Option.some({ ...current.value.reference, reference: Option.getOrNull(literalReference) }),
+        Option.filter(
+          (moved) => moved.reference !== current.value.reference.reference && !namesNothing(moved)
+        ),
+        Option.match({
+          onNone: () => resource,
+          onSome: (moved) =>
+            ResourceReferences.mapReferences(resource, (found, path) =>
+              path === mentionPath ? moved : found
+            ),
+        })
       )
-    },
-  })
+    ),
+    Match.when(
+      { current: { _tag: 'None' }, literalReference: { _tag: 'Some' } },
+      ({ literalReference: subjectLiteral }) =>
+        pipe(
+          Option.liftPredicate(
+            resource,
+            (withSubject) => mentionPath === SUBJECT_PATH && hasEmptySubject(withSubject)
+          ),
+          Option.match({
+            onNone: () => resource,
+            onSome: (withEmptySubject) => ({
+              ...withEmptySubject,
+              subject: {
+                ...IdentifierAndReference.emptyReference,
+                reference: subjectLiteral.value,
+              },
+            }),
+          })
+        )
+    ),
+    // No mention there and no literal to set: nothing to relink.
+    Match.orElse(() => resource)
+  )
 
 export {
   at,

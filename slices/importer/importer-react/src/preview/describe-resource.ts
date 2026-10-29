@@ -319,9 +319,6 @@ const typeAndSummaryOf = (resource: unknown): Omit<ResourceDescription, 'subject
   }
 }
 
-/** No labels: every subject named by its `display`. */
-const NO_LABELS: ReadonlyMap<string, string> = new Map()
-
 /**
  * Describe one FHIR resource for the interactive review. Pure and total —
  * never throws on a partially-decoded resource, always returns a
@@ -333,7 +330,7 @@ const NO_LABELS: ReadonlyMap<string, string> = new Map()
  */
 const describeResource = (
   resource: unknown,
-  labels: ReadonlyMap<string, string> = NO_LABELS
+  labels: ReadonlyMap<string, string>
 ): ResourceDescription => {
   const wire = wireOf(resource)
   return { ...typeAndSummaryOf(wire), subject: subjectOf(wire, labels) }

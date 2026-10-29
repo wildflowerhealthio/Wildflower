@@ -179,9 +179,12 @@ const PreviewActions = ({
  */
 const LinkedRecords = ({
   linkedRecords,
+  labels,
   comparisons,
 }: {
   readonly linkedRecords: readonly DecodedFile.Resource[]
+  /** The label of each record a subject may be redirected to, by its literal reference. */
+  readonly labels: ReadonlyMap<string, string>
   readonly comparisons: ReadonlyMap<string, ServerComparison> | undefined
 }): JSX.Element => (
   <section
@@ -192,7 +195,7 @@ const LinkedRecords = ({
     <p className={panelStyles['preview-panel__linked-note']}>{LINKED_RECORDS_NOTE}</p>
     <ul className={panelStyles['preview-panel__linked-list']}>
       {linkedRecords.map((entry) => {
-        const description = describeResource(entry.resource)
+        const description = describeResource(entry.resource, labels)
         return (
           <li key={entry.key} className={panelStyles['preview-panel__linked-row']}>
             <span className={panelStyles['preview-panel__linked-type']}>{description.type}</span>
@@ -322,6 +325,7 @@ const PreviewPanel = ({
         {batch.linkedRecords.length > 0 && (
           <LinkedRecords
             linkedRecords={batch.linkedRecords}
+            labels={mentionLinkOptions.labelsByLiteralReference}
             comparisons={comparisons.get(LINKED_GROUP)}
           />
         )}
