@@ -6,9 +6,9 @@
  * @remarks
  * The choices are keyed by `Referent.key` and survive a settings re-decode: a
  * re-decode re-discovers the referents, and a referent it brings back keeps
- * its choice. The mention link choices are keyed by `MentionLinkChoices.key`
- * and survive it the same way: a review key the re-decode brings back keeps
- * its mention's choice. A fresh pick starts over.
+ * its choice. The link choice set by mention is keyed by
+ * `MentionLinkChoiceSet.key` and survives it the same way: a review key the
+ * re-decode brings back keeps its mention's choice. A fresh pick starts over.
  *
  * @packageDocumentation
  */
@@ -18,9 +18,9 @@ import { useCallback, useState } from 'react'
 
 import {
   type LinkChoice,
-  MentionLinkChoices,
+  MentionLinkChoiceSet,
   type Referent,
-  ReferentLinkChoices,
+  ReferentLinkChoiceSet,
 } from '@wildflowerhealthio/importer-fundamentals'
 
 /** What the hook holds per picked batch, reset when the batch id changes. */
@@ -28,8 +28,8 @@ interface PerBatch {
   readonly batchId: number
   /** The referents of the batch's first decode: the ones the default search reads. */
   readonly searched: readonly Referent.Type[]
-  readonly chosen: ReferentLinkChoices.Type
-  readonly mentionLinkChoices: MentionLinkChoices.Type
+  readonly chosen: ReferentLinkChoiceSet.Type
+  readonly byMention: MentionLinkChoiceSet.Type
 }
 
 /** No referents to search for, held once so the effects keyed on it do not re-run. */
@@ -40,16 +40,16 @@ interface ReviewerLinkChoices {
   /** The referents of the batch's first decode while a batch is in hand, else none. */
   readonly searched: readonly Referent.Type[]
   /** The reviewer's own choices, by `Referent.key`. */
-  readonly chosen: ReferentLinkChoices.Type
-  /** The reviewer's choices for single mentions, by `MentionLinkChoices.key`. */
-  readonly mentionLinkChoices: MentionLinkChoices.Type
+  readonly chosen: ReferentLinkChoiceSet.Type
+  /** The reviewer's link choice set by mention, by `MentionLinkChoiceSet.key`. */
+  readonly byMention: MentionLinkChoiceSet.Type
   /** Set the reviewer's choice for the referent keyed `referentKey`. */
   readonly choose: (referentKey: string, choice: LinkChoice.Type) => void
   /** Set the reviewer's choice for the mention at `mentionPath` of the resource reviewed under `reviewKey`. */
   readonly chooseMention: (
     reviewKey: string,
     mentionPath: string,
-    choice: MentionLinkChoices.Choice
+    choice: LinkChoice.MentionLinkChoice
   ) => void
 }
 
@@ -77,8 +77,8 @@ const useReviewerLinkChoices = (
     current = {
       batchId,
       searched: referents,
-      chosen: ReferentLinkChoices.empty,
-      mentionLinkChoices: MentionLinkChoices.empty,
+      chosen: ReferentLinkChoiceSet.empty,
+      byMention: MentionLinkChoiceSet.empty,
     }
     setPerBatch(current)
   }
@@ -95,14 +95,14 @@ const useReviewerLinkChoices = (
   }, [])
 
   const chooseMention = useCallback(
-    (reviewKey: string, mentionPath: string, choice: MentionLinkChoices.Choice): void => {
+    (reviewKey: string, mentionPath: string, choice: LinkChoice.MentionLinkChoice): void => {
       setPerBatch((perBatchBefore) =>
         perBatchBefore === undefined
           ? perBatchBefore
           : {
               ...perBatchBefore,
-              mentionLinkChoices: MentionLinkChoices.set(
-                perBatchBefore.mentionLinkChoices,
+              byMention: MentionLinkChoiceSet.set(
+                perBatchBefore.byMention,
                 reviewKey,
                 mentionPath,
                 choice
@@ -115,8 +115,8 @@ const useReviewerLinkChoices = (
 
   return {
     searched,
-    chosen: current?.chosen ?? ReferentLinkChoices.empty,
-    mentionLinkChoices: current?.mentionLinkChoices ?? MentionLinkChoices.empty,
+    chosen: current?.chosen ?? ReferentLinkChoiceSet.empty,
+    byMention: current?.byMention ?? MentionLinkChoiceSet.empty,
     choose,
     chooseMention,
   }

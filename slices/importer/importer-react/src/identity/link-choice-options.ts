@@ -20,7 +20,7 @@ import {
   LinkChoice,
   LinkTarget,
   Referent,
-  ReferentLinkChoices,
+  ReferentLinkChoiceSet,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Array, HashMap, Option } from 'effect'
 
@@ -84,10 +84,10 @@ const sameValue = (left: LinkChoiceOption, right: LinkChoiceOption): boolean =>
 /** Whether `referent` writes a record of its own, new or over its stored copy, and that lands on a resource. */
 const writesOwnRecord = (
   referent: Referent.Type,
-  linkChoices: ReferentLinkChoices.Type,
+  linkChoices: ReferentLinkChoiceSet.Type,
   linkTargets: HashMap.HashMap<string, LinkTarget.Type>
 ): boolean => {
-  const choice = ReferentLinkChoices.forReferent(linkChoices, referent)
+  const choice = ReferentLinkChoiceSet.forReferent(linkChoices, referent)
   return (
     (LinkChoice.is('CreateResource')(choice) || LinkChoice.is('UpdateStoredResource')(choice)) &&
     HashMap.get(linkTargets, Referent.key(referent)).pipe(
@@ -101,7 +101,7 @@ interface LinkChoiceOptionInputs {
   /** The batch's referents, once per identity. */
   readonly referents: readonly Referent.Type[]
   /** The choices the batch is resolved on, by `Referent.key`. */
-  readonly linkChoices: ReferentLinkChoices.Type
+  readonly linkChoices: ReferentLinkChoiceSet.Type
   /** Each referent's link target under `linkChoices`, by `Referent.key`. */
   readonly linkTargets: HashMap.HashMap<string, LinkTarget.Type>
   /** The stored resources of the referent's type: the search's hits, then the server's own. */

@@ -1,15 +1,16 @@
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
-import type { MentionLinkChoices } from '@wildflowerhealthio/importer-fundamentals'
 import {
+  type MentionLinkChoiceSet,
   DecodedFile,
   FileResolution,
   type FormatDecode,
   type LinkChoice,
+  type LinkChoiceSet,
   LinkPlan,
   type LinkTarget,
   PickedFile,
   Referent,
-  ReferentLinkChoices,
+  ReferentLinkChoiceSet,
   UnlinkedMention,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, HashMap } from 'effect'
@@ -39,14 +40,6 @@ const discoverReferents = (
   batch: DecodedBatch
 ): Effect.Effect<readonly Referent.Type[], Referent.DuplicateReferent> =>
   Referent.discover(claimedFormats(batch.formats).map((kind) => batch.formats[kind].decoded))
-
-/** The reviewer's link choices a batch is resolved on: every referent's, and any mention's own. */
-interface LinkChoices {
-  /** Each referent's choice, by `Referent.key`. */
-  readonly referentLinkChoices: ReferentLinkChoices.Type
-  /** Each mention chosen for on its own, by `MentionLinkChoices.key`, over its referent's choice. */
-  readonly mentionLinkChoices: MentionLinkChoices.Type
-}
 
 /**
  * A batch every mention of which resolves: the batch the diff, the preview
@@ -114,14 +107,14 @@ const unlinkedMentionsOf = (
  * diff and write.
  *
  * @param batch - The decoded batch
- * @param linkChoices - The reviewer's link choices: every referent's, by
- *   `Referent.key`, and any mention's own, by `MentionLinkChoices.key`
+ * @param linkChoiceSet - The reviewer's link choice set: by referent, and by
+ *   mention for a mention chosen for on its own
  * @returns The resolved batch
  *
  * @remarks
  * Every claimed format is resolved on one plan over the batch's referents
  * (`LinkPlan.make` over every claimed format's decoded file, the mention link
- * choices laid on it with `LinkPlan.withMentionLinkChoices`), each format in
+ * choices laid on it with `LinkPlan.withMentionLinkChoiceSet`), each format in
  * its own slot (`FileResolution.resolveFile`): the choices are made for the
  * decoded files' referents, so a mention in one format links to a referent
  * another holds, and a review key is unique across the batch, so a mention
@@ -144,15 +137,15 @@ const unlinkedMentionsOf = (
  */
 const resolveMentions = (
   batch: DecodedBatch,
-  { referentLinkChoices, mentionLinkChoices }: LinkChoices
+  linkChoiceSet: LinkChoiceSet.Type
 ): Effect.Effect<ResolvedBatch, Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice> =>
   Effect.flatMap(
     LinkPlan.make(
       claimedFormats(batch.formats).map((kind) => batch.formats[kind].decoded),
-      referentLinkChoices
+      linkChoiceSet.byReferent
     ),
     (planOnReferents) => {
-      const plan = LinkPlan.withMentionLinkChoices(planOnReferents, mentionLinkChoices)
+      const plan = LinkPlan.withMentionLinkChoiceSet(planOnReferents, linkChoiceSet.byMention)
       const unlinked: [FormatKind, readonly UnlinkedMention.Type[]][] = []
       return Effect.map(
         collectFormats(<K extends FormatKind>(kind: K): Effect.Effect<FormatDecode.Result<K>> => {
@@ -180,7 +173,7 @@ const resolveMentions = (
 
 /**
  * `batch` with its mentions resolved on the reviewer's `chosen` choices over
- * the searched `defaults`, and on their `mentionLinkChoices`, where a
+ * the searched `defaults`, and on their link choice set `byMention`, where a
  * referent choice that cannot be resolved (`InvalidLinkChoice`) falls back:
  * the reviewer's own choice to its searched default, a default to its kind's
  * default. A re-decode may have changed a referent's kind, or removed the
@@ -189,9 +182,9 @@ const resolveMentions = (
  * @param batch - The decoded batch
  * @param defaults - The searched default choices, by `Referent.key`
  * @param chosen - The reviewer's own choices, by `Referent.key`, over the defaults
- * @param mentionLinkChoices - The reviewer's choices for single mentions, by
- *   `MentionLinkChoices.key`
- * @returns The resolved `batch` and the referent `linkChoices` it was
+ * @param byMention - The reviewer's link choice set by mention, by
+ *   `MentionLinkChoiceSet.key`
+ * @returns The resolved `batch` and the link choice set by referent, `linkChoices`, it was
  *   resolved on
  *
  * @remarks
@@ -203,31 +196,31 @@ const resolveMentions = (
  */
 const resolveMentionsWithFallback = (
   batch: DecodedBatch,
-  defaults: ReferentLinkChoices.Type,
-  chosen: ReferentLinkChoices.Type,
-  mentionLinkChoices: MentionLinkChoices.Type
+  defaults: ReferentLinkChoiceSet.Type,
+  chosen: ReferentLinkChoiceSet.Type,
+  byMention: MentionLinkChoiceSet.Type
 ): Effect.Effect<
-  { readonly batch: ResolvedBatch; readonly linkChoices: ReferentLinkChoices.Type },
+  { readonly batch: ResolvedBatch; readonly linkChoices: ReferentLinkChoiceSet.Type },
   Referent.DuplicateReferent
 > => {
-  const linkChoices = ReferentLinkChoices.union(defaults, chosen)
-  return resolveMentions(batch, { referentLinkChoices: linkChoices, mentionLinkChoices }).pipe(
+  const linkChoices = ReferentLinkChoiceSet.union(defaults, chosen)
+  return resolveMentions(batch, { byReferent: linkChoices, byMention }).pipe(
     Effect.map((resolved) => ({ batch: resolved, linkChoices })),
     Effect.catchTag('InvalidLinkChoice', (failure) => {
       if (HashMap.has(chosen, failure.referentKey)) {
         return resolveMentionsWithFallback(
           batch,
           defaults,
-          ReferentLinkChoices.remove(chosen, failure.referentKey),
-          mentionLinkChoices
+          ReferentLinkChoiceSet.remove(chosen, failure.referentKey),
+          byMention
         )
       }
       if (HashMap.has(defaults, failure.referentKey)) {
         return resolveMentionsWithFallback(
           batch,
-          ReferentLinkChoices.remove(defaults, failure.referentKey),
+          ReferentLinkChoiceSet.remove(defaults, failure.referentKey),
           chosen,
-          mentionLinkChoices
+          byMention
         )
       }
       return Effect.die(
@@ -240,4 +233,4 @@ const resolveMentionsWithFallback = (
 }
 
 export { discoverReferents, resolveMentions, resolveMentionsWithFallback }
-export type { LinkChoices, ResolvedBatch }
+export type { ResolvedBatch }

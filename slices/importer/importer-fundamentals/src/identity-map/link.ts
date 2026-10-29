@@ -13,7 +13,7 @@ import { Array, Either, HashMap, Match, Option, Order, pipe } from 'effect'
 import * as LinkChoice from './link-choice.ts'
 import * as LinkTarget from './link-target.ts'
 import * as LinkableResource from './linkable-resource.ts'
-import * as ReferentLinkChoices from './referent-link-choices.ts'
+import * as ReferentLinkChoiceSet from './referent-link-choice-set.ts'
 import * as Referent from './referent.ts'
 
 /** One referent and the resource it is linked to, or none. */
@@ -188,13 +188,13 @@ const linkTargetOfCycle = (cycle: readonly Referent.Type[]): LinkTarget.Type =>
  */
 const linkTargetAlong = (
   referentsByKey: HashMap.HashMap<string, Referent.Type>,
-  linkChoices: ReferentLinkChoices.Type,
+  byReferent: ReferentLinkChoiceSet.Type,
   path: Array.NonEmptyReadonlyArray<Referent.Type>
 ): LinkTargetOrInvalid => {
   const current = Array.lastNonEmpty(path)
   return Either.flatMap(
     localLinkTargetOf(
-      choiceForReferent(ReferentLinkChoices.forReferent(linkChoices, current), current)
+      choiceForReferent(ReferentLinkChoiceSet.forReferent(byReferent, current), current)
     ),
     (local) =>
       isLinkTarget(local)
@@ -212,7 +212,7 @@ const linkTargetAlong = (
                 {
                   onSome: (cycleStart) => Either.right(linkTargetOfCycle(path.slice(cycleStart))),
                   onNone: () =>
-                    linkTargetAlong(referentsByKey, linkChoices, Array.append(path, linked)),
+                    linkTargetAlong(referentsByKey, byReferent, Array.append(path, linked)),
                 }
               )
             )
@@ -222,7 +222,7 @@ const linkTargetAlong = (
 
 /**
  * Every referent of `referents` linked to the target its choice under
- * `linkChoices` gives, in the order given; the first choice that cannot be
+ * `byReferent` gives, in the order given; the first choice that cannot be
  * followed, as the failure it is, otherwise.
  *
  * @remarks
@@ -245,12 +245,12 @@ const linkTargetAlong = (
  */
 const fromChoices = (
   referents: readonly Referent.Type[],
-  linkChoices: ReferentLinkChoices.Type
+  byReferent: ReferentLinkChoiceSet.Type
 ): Either.Either<readonly Type[], LinkChoice.InvalidLinkChoice> => {
   const referentsByKey = Referent.byKey(referents)
   return Either.all(
     referents.map((referent) =>
-      Either.map(linkTargetAlong(referentsByKey, linkChoices, [referent]), (target): Type => ({
+      Either.map(linkTargetAlong(referentsByKey, byReferent, [referent]), (target): Type => ({
         referent,
         target,
       }))

@@ -85,11 +85,12 @@ write plan with this package alone.
   **`discoverReferents(batch)`** is `Referent.discover` over every claimed
   format's `decoded`: one referent per identity across formats,
   format-then-review order, those with a resource first.
-  **`resolveMentions(batch, { referentLinkChoices, mentionLinkChoices })`**
-  (a **`LinkChoices`**) resolves every mention in every
+  **`resolveMentions(batch, linkChoiceSet)`** (a `LinkChoiceSet`, by
+  referent and by mention) resolves every mention in every
   claimed format's `decoded` on one plan over the batch's referents
   (`LinkPlan.make` once, over every claimed format's decoded file, the
-  mention link choices laid on it with `LinkPlan.withMentionLinkChoices`), resolving
+  link choice set by mention laid on it with
+  `LinkPlan.withMentionLinkChoiceSet`), resolving
   each format in its own slot (`FileResolution.resolveFile(plan)`), so a mention in one format
   links to a referent another holds, and a review key being unique across
   the batch, a mention link choice names one mention of one format's
@@ -106,14 +107,15 @@ write plan with this package alone.
   `Referent.DuplicateReferent` or `LinkChoice.InvalidLinkChoice`, as the plan
   does; a mention link choice its mention cannot take is no choice, never a
   failure.
-  **`resolveMentionsWithFallback(batch, defaults, chosen, mentionLinkChoices)`** is what the
-  screen resolves: `resolveMentions` on the reviewer's choices over the
-  searched defaults (`ReferentLinkChoices.union`) and their mention link
-  choices, as `{ batch, linkChoices }`: the `ResolvedBatch` and the referent
+  **`resolveMentionsWithFallback(batch, defaults, chosen, byMention)`** is
+  what the screen resolves: `resolveMentions` on the link choice set built
+  from the reviewer's choices over the searched defaults
+  (`ReferentLinkChoiceSet.union`) and their link choice set by mention, as
+  `{ batch, linkChoices }`: the `ResolvedBatch` and the referent
   choices it was resolved on. A referent choice that
   cannot be resolved (`InvalidLinkChoice`) falls back: the reviewer's own
   choice to its searched default, a default to its kind's default
-  (`ReferentLinkChoices.remove`); a failure
+  (`ReferentLinkChoiceSet.remove`); a failure
   naming a referent with no choice dies. Its one failure is
   `Referent.DuplicateReferent`.
 - `src/review-group.ts` — **`ReviewGroup`**, the group a reviewed resource

@@ -187,22 +187,26 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     and another only mentions is one referent, and fails with
     **`DuplicateReferent`** when two resources under different ids, in one
     file or two, share a key; `byKey` indexes into a `HashMap`.
-  - **`ReferentLinkChoices`** — the map itself (**`Type`**, a `HashMap` of
-    every referent's `LinkChoice` by `Referent.key`; `empty`): what the screen
-    holds and a file is resolved on. **`forReferent(linkChoices, referent)`**
-    reads a referent's choice off it, else its **`defaultFor`**,
-    `CreateResource` with a resource and `DontLink` without; `union` lays one
-    map's choices over another's and `remove` drops a referent's choice.
-  - **`MentionLinkChoices`** — the reviewer's choice for one mention of one
-    resource, over whatever its referent's choice says (**`Type`**, a
-    `HashMap` by **`key(reviewKey, mentionPath)`**; `empty`, `set`,
-    `forMention`). A mention's own choice (a **`Choice`**, `isChoice`) is a
-    referent choice that writes nothing: `LinkToStoredResource`,
-    `LinkToDecodedReferent` (wherever that referent lands, so a mention picked
-    onto a referent's own record follows the referent when it is later linked
-    to a stored one) or `DontLink`. Held in the identity map beside the
-    referent choices and resolved by the plan, never written into the
-    resource as an edit; it teaches nothing and writes nothing.
+  - **`LinkChoiceSet`** — the reviewer's whole answer (**`Type`**,
+    `{ byReferent, byMention }`; `empty`): what the screen holds and a batch
+    is resolved on.
+  - **`ReferentLinkChoiceSet`** — the link choice set by referent
+    (**`Type`**, a `HashMap` of every referent's `LinkChoice` by
+    `Referent.key`; `empty`). **`forReferent(byReferent, referent)`** reads a
+    referent's choice off it, else its **`defaultFor`**, `CreateResource`
+    with a resource and `DontLink` without; `union` lays one set's choices
+    over another's and `remove` drops a referent's choice.
+  - **`MentionLinkChoiceSet`** — the link choice set by mention: the
+    reviewer's choice for one mention of one resource, over whatever its
+    referent's choice says (**`Type`**, a `HashMap` by
+    **`key(reviewKey, mentionPath)`**; `empty`, `set`, `forMention`). A
+    mention's own choice is a `LinkChoice.MentionLinkChoice`: a referent
+    choice with the writing options taken away, `LinkToStoredResource`,
+    `LinkToDecodedReferent` (wherever that referent is linked, so a mention
+    picked onto a referent's own record follows the referent when it is later
+    linked to a stored one) or `DontLink`. Resolved by the plan, never
+    written into the resource as an edit; it teaches nothing and writes
+    nothing.
   - **`LinkChoice`** — what the reviewer chooses for a referent, a family of
     imperatives: **`CreateResource`**, **`UpdateStoredResource`** (the
     referent's own resource written over its stored copy under the same
@@ -210,7 +214,10 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     **`LinkToStoredResource`** (a resource on the device),
     **`LinkToDecodedReferent`** (another referent of the import),
     **`DontLink`**; tagged objects built only through their constructors,
-    matched with `LinkChoice.match`. **`InvalidLinkChoice`** is a choice the
+    matched with `LinkChoice.match`. Two named halves: a
+    **`MentionLinkChoice`** (`LinkToStoredResource | LinkToDecodedReferent |
+    DontLink`) writes nothing, a **`WritingLinkChoice`** (`CreateResource |
+    UpdateStoredResource`) writes a resource. **`InvalidLinkChoice`** is a choice the
     stage cannot follow for its referent, with its `reason`.
   - **`LinkTarget`** — the resource a referent is linked to once
     `LinkToDecodedReferent` is followed, named for where it comes from:
@@ -257,7 +264,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     **`resolvedResourcesByResolvedLiteralReference`**, and the
     **`decodedLiteralReferencesToStored`** (`Type/<decoded id>` →
     `Type/<stored id>` for every decoded resource a stored one stands in for),
-    all `HashMap`s; and, once **`withMentionLinkChoices`** lays the mention
+    all `HashMap`s; and, once **`withMentionLinkChoiceSet`** lays the mention
     link choices on it, the **`linkTargetsByMentionKey`**: where each mention
     chosen for on its own lands, a `LinkToStoredResource` on that resource, a
     `LinkToDecodedReferent` where its referent lands (left out when that is
@@ -306,11 +313,11 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     referent's own decoded resource (same literal reference: a re-import) is
     `UpdateStoredResource`, whatever else was found; otherwise the one hit is
     `LinkToStoredResource`, two hits are ambiguous and no hit is
-    `ReferentLinkChoices.defaultFor`, so the reviewer chooses; the hits are the
+    `ReferentLinkChoiceSet.defaultFor`, so the reviewer chooses; the hits are the
     searchset's matches (an `outcome` entry is not one), a match without its
     resource fails the read as **`MatchWithoutResource`**, and a failed
     search fails the read. **`defaultChoices`** runs it per
-    referent, a few at a time, into the `ReferentLinkChoices` a review
+    referent, a few at a time, into the `ReferentLinkChoiceSet` a review
     starts from (#1431 is one search per type).
   - **`DifferingDemographics`** — **`between(decoded, stored)`**: the
     demographics (a **`Demographic`**, `FamilyName | GivenName | BirthDate`)
@@ -434,12 +441,12 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
   the batch.
 - **Identity is the map's, never the selection's.** `StagedImport` keeps
   exclusions and edits; what a mention lands on lives in the
-  `ReferentLinkChoices` and, for a mention the reviewer chose for on its own,
-  the `MentionLinkChoices`, held beside the selections, and `importer-core`'s
+  `ReferentLinkChoiceSet` and, for a mention the reviewer chose for on its own,
+  the `MentionLinkChoiceSet`, held beside the selections, and `importer-core`'s
   `resolveMentions` runs over the batch before the server diff, the preview
   and the confirm, so all three see the resources that get written: one
   `LinkPlan.make` over the batch's decoded files, the mention link choices
-  laid on it (`LinkPlan.withMentionLinkChoices`), every file resolved on it
+  laid on it (`LinkPlan.withMentionLinkChoiceSet`), every file resolved on it
   (`FileResolution.resolveFile(plan)`), the batch's linked records off it
   (`FileResolution.linkedRecords(plan)`). Resolving is a function of its arguments and
   the clock, and keeps every file's sections and keys. A batch of decoded

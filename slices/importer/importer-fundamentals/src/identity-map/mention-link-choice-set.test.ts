@@ -8,7 +8,7 @@ import {
   LinkChoice,
   LinkableResource,
   Mention,
-  MentionLinkChoices,
+  MentionLinkChoiceSet,
   Referent,
   UnlinkedMention,
 } from '../index.ts'
@@ -66,12 +66,12 @@ const subjectAt = (
 
 /** Mention link choices on the `subject` of each resource keyed in `chosen`. */
 const onSubjects = (
-  chosen: ReadonlyArray<readonly [string, MentionLinkChoices.Choice]>
-): MentionLinkChoices.Type =>
+  chosen: ReadonlyArray<readonly [string, LinkChoice.MentionLinkChoice]>
+): MentionLinkChoiceSet.Type =>
   chosen.reduce(
     (choices, [reviewKey, choice]) =>
-      MentionLinkChoices.set(choices, reviewKey, Mention.SUBJECT_PATH, choice),
-    MentionLinkChoices.empty
+      MentionLinkChoiceSet.set(choices, reviewKey, Mention.SUBJECT_PATH, choice),
+    MentionLinkChoiceSet.empty
   )
 
 describe('a mention link choice on a resolved file', () => {
@@ -258,7 +258,7 @@ describe('mention link choices and the referents', () => {
   /** Mention link choices each linkable mention of `file` can take, or none for some. */
   const mentionChoicesForArbitrary = (
     file: DecodedFile.DecodedFile
-  ): fc.Arbitrary<MentionLinkChoices.Type> => {
+  ): fc.Arbitrary<MentionLinkChoiceSet.Type> => {
     const referents = discoverOnTestClock(file)
     const slots = DecodedFile.resources(file).flatMap(({ key, resource }) =>
       Mention.linkableIn(resource).map((mention) => ({ key, mention }))
@@ -269,7 +269,7 @@ describe('mention link choices and the referents', () => {
           fc
             .option(
               fc.oneof(
-                fc.constant<MentionLinkChoices.Choice>(LinkChoice.DontLink()),
+                fc.constant<LinkChoice.MentionLinkChoice>(LinkChoice.DontLink()),
                 fc
                   .constantFrom(...STORED.filter((stored) => stored.resourceType === mention.type))
                   .map((resource) => LinkChoice.LinkToStoredResource({ resource })),
@@ -293,8 +293,8 @@ describe('mention link choices and the referents', () => {
       .map((made) =>
         made.reduce(
           (choices, { key, path, choice }) =>
-            choice === undefined ? choices : MentionLinkChoices.set(choices, key, path, choice),
-          MentionLinkChoices.empty
+            choice === undefined ? choices : MentionLinkChoiceSet.set(choices, key, path, choice),
+          MentionLinkChoiceSet.empty
         )
       )
   }
@@ -338,7 +338,7 @@ describe('mention link choices and the referents', () => {
             DecodedFile.resources(resolved).flatMap(({ key, resource }) =>
               Mention.madeIn(resource)
                 .filter(({ path }) =>
-                  Option.isNone(MentionLinkChoices.forMention(mentionChoices, key, path))
+                  Option.isNone(MentionLinkChoiceSet.forMention(mentionChoices, key, path))
                 )
                 .map((mention) => [key, mention])
             )

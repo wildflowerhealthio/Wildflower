@@ -59,7 +59,7 @@ const useLinkChoiceReview = (
   )
   const referents = discovered === undefined ? undefined : Either.getOrUndefined(discovered)
 
-  const { searched, chosen, mentionLinkChoices, choose, chooseMention } = useReviewerLinkChoices(
+  const { searched, chosen, byMention, choose, chooseMention } = useReviewerLinkChoices(
     batchId,
     referents
   )
@@ -74,9 +74,7 @@ const useLinkChoiceReview = (
     return Either.flatMap(discovered, (discoveredReferents) =>
       Either.map(
         Effect.runSync(
-          Effect.either(
-            resolveMentionsWithFallback(batch, defaults.linkChoices, chosen, mentionLinkChoices)
-          )
+          Effect.either(resolveMentionsWithFallback(batch, defaults.linkChoices, chosen, byMention))
         ),
         ({ batch: resolved, linkChoices }): LinkChoiceReviewState.Mapped => ({
           referents: discoveredReferents,
@@ -94,7 +92,7 @@ const useLinkChoiceReview = (
         })
       )
     )
-  }, [loading, batch, discovered, defaults, chosen, mentionLinkChoices])
+  }, [loading, batch, discovered, defaults, chosen, byMention])
 
   const previous = useLastResolvedBatch(batchId, mapped)
 

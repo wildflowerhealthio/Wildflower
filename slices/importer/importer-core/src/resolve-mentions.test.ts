@@ -11,9 +11,9 @@ import {
   FormatDecode,
   LinkChoice,
   type LinkableResource,
-  MentionLinkChoices,
+  MentionLinkChoiceSet,
   Referent,
-  type ReferentLinkChoices,
+  type ReferentLinkChoiceSet,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, HashMap, Option, Schema, TestContext } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
@@ -105,13 +105,12 @@ const batchOf = (formats: {
   unrecognizedFiles: [],
 })
 
-/** `batch` with its mentions resolved on `linkChoices`, and on `mentionLinkChoices` when given, on the test clock. */
+/** `batch` with its mentions resolved on `byReferent`, and on `byMention` when given, on the test clock. */
 const resolvedOnTestClock = (
   batch: DecodedBatch,
-  linkChoices: ReferentLinkChoices.Type,
-  mentionLinkChoices: MentionLinkChoices.Type = MentionLinkChoices.empty
-): ResolvedBatch =>
-  runOnTestClock(resolveMentions(batch, { referentLinkChoices: linkChoices, mentionLinkChoices }))
+  byReferent: ReferentLinkChoiceSet.Type,
+  byMention: MentionLinkChoiceSet.Type = MentionLinkChoiceSet.empty
+): ResolvedBatch => runOnTestClock(resolveMentions(batch, { byReferent, byMention }))
 
 /** The resource keyed `key` in `kind`'s decoded file. */
 const at = (batch: DecodedBatch, kind: FormatKind, key: string): FhirResource | undefined =>
@@ -239,8 +238,8 @@ describe('resolveMentions', () => {
       runOnTestClock(
         Effect.either(
           resolveMentions(batch, {
-            referentLinkChoices: HashMap.make([PERSON, LinkChoice.DontLink()]),
-            mentionLinkChoices: MentionLinkChoices.empty,
+            byReferent: HashMap.make([PERSON, LinkChoice.DontLink()]),
+            byMention: MentionLinkChoiceSet.empty,
           })
         )
       )
@@ -261,8 +260,8 @@ describe('resolveMentions with mention link choices', () => {
     const resolved = resolvedOnTestClock(
       batch,
       HashMap.make([PERSON, LinkChoice.LinkToStoredResource({ resource: STORED_TYRA })]),
-      MentionLinkChoices.set(
-        MentionLinkChoices.empty,
+      MentionLinkChoiceSet.set(
+        MentionLinkChoiceSet.empty,
         'har/k-1',
         'subject',
         LinkChoice.LinkToDecodedReferent({ referentKey: PERSON })
@@ -286,8 +285,8 @@ describe('resolveMentions with mention link choices', () => {
     const withChosen = resolvedOnTestClock(
       batch,
       HashMap.empty(),
-      MentionLinkChoices.set(
-        MentionLinkChoices.empty,
+      MentionLinkChoiceSet.set(
+        MentionLinkChoiceSet.empty,
         'har/k-1',
         'subject',
         LinkChoice.LinkToDecodedReferent({ referentKey: PERSON })
@@ -345,14 +344,14 @@ describe('resolveMentionsWithFallback', () => {
 
   /** The choices used and each referent's link target's tag, on the test clock. */
   const withFallbackOnTestClock = (
-    defaults: ReferentLinkChoices.Type,
-    chosen: ReferentLinkChoices.Type
+    defaults: ReferentLinkChoiceSet.Type,
+    chosen: ReferentLinkChoiceSet.Type
   ): {
     readonly linkChoices: ReadonlyArray<readonly [string, LinkChoice.Type]>
     readonly targets: readonly string[]
   } => {
     const resolved = runOnTestClock(
-      resolveMentionsWithFallback(batch, defaults, chosen, MentionLinkChoices.empty)
+      resolveMentionsWithFallback(batch, defaults, chosen, MentionLinkChoiceSet.empty)
     )
     return {
       linkChoices: Array.from(HashMap.entries(resolved.linkChoices)),

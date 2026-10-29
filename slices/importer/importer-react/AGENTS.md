@@ -130,7 +130,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   - `mention-link-options.ts` — `MentionLinkOptions`, the pure half of the
     per-resource mention selects: each record a referent lands on under its
     link target, once, by the type it is, labelled (`LinkableResource.labelOf`),
-    and the `MentionLinkChoices.Choice` picking it makes
+    and the `LinkChoice.MentionLinkChoice` picking it makes
     (`LinkToStoredResource` for a stored record, which no referent's later
     choice moves; `LinkToDecodedReferent` of the referent whose decoded or
     provisional record it is, so the mention follows that referent's later
@@ -143,9 +143,9 @@ The importer has no HTTP wire union to derive, so there is no separate
     the stored lists the rows offer beside it.
   - `use-reviewer-link-choices.ts` — `useReviewerLinkChoices` keeps the
     reviewer's choices on top of the defaults by `Referent.key` across a
-    settings re-decode in a `ReferentLinkChoices`, their choices for single
-    mentions beside them in a `MentionLinkChoices` (by
-    `MentionLinkChoices.key`, set by `chooseMention`), and the referents of
+    settings re-decode in a `ReferentLinkChoiceSet`, their link choice set
+    by mention beside it in a `MentionLinkChoiceSet` (by
+    `MentionLinkChoiceSet.key`, set by `chooseMention`), and the referents of
     the batch's first decode the search reads; a fresh pick starts over.
   - `use-last-resolved-batch.ts` — `useLastResolvedBatch`, the batch's last
     resolving that succeeded, which a refusal is shown over.

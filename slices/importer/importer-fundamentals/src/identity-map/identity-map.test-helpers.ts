@@ -33,8 +33,8 @@ import * as LinkChoice from './link-choice.ts'
 import * as LinkPlan from './link-plan.ts'
 import * as LinkableLogicalReference from './linkable-logical-reference.ts'
 import * as LinkableResource from './linkable-resource.ts'
-import * as MentionLinkChoices from './mention-link-choices.ts'
-import type * as ReferentLinkChoices from './referent-link-choices.ts'
+import * as MentionLinkChoiceSet from './mention-link-choice-set.ts'
+import type * as ReferentLinkChoiceSet from './referent-link-choice-set.ts'
 import * as Referent from './referent.ts'
 
 const SOURCE_PATIENT = 'https://source.example/patient-id'
@@ -51,7 +51,7 @@ const runOnTestClock = <A, E>(effect: Effect.Effect<A, E>): A =>
   Effect.runSync(Effect.provide(effect, TestContext.TestContext))
 
 /**
- * A batch's `files` resolved on `linkChoices`, and on `mentionLinkChoices`
+ * A batch's `files` resolved on `linkChoices`, and on `byMention`
  * when given, as `importer-core`'s `resolveMentions` resolves a batch's
  * formats: one link plan over the whole batch, the mention link choices laid
  * on it, every file resolved on it in the order given, and the batch's linked
@@ -59,8 +59,8 @@ const runOnTestClock = <A, E>(effect: Effect.Effect<A, E>): A =>
  */
 const resolveAcross = (
   files: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>,
-  linkChoices: ReferentLinkChoices.Type,
-  mentionLinkChoices: MentionLinkChoices.Type = MentionLinkChoices.empty
+  linkChoices: ReferentLinkChoiceSet.Type,
+  byMention: MentionLinkChoiceSet.Type = MentionLinkChoiceSet.empty
 ): Effect.Effect<
   {
     readonly resolvedFiles: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>
@@ -70,7 +70,7 @@ const resolveAcross = (
 > =>
   Effect.map(
     Effect.map(LinkPlan.make(files, linkChoices), (plan) =>
-      LinkPlan.withMentionLinkChoices(plan, mentionLinkChoices)
+      LinkPlan.withMentionLinkChoiceSet(plan, byMention)
     ),
     (plan) => ({
       resolvedFiles: Array.map(files, FileResolution.resolveFile(plan)),
@@ -81,25 +81,23 @@ const resolveAcross = (
 /** {@link resolveAcross} over `files`, run on the test clock. */
 const resolveAcrossOnTestClock = (
   files: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>,
-  linkChoices: ReferentLinkChoices.Type,
-  mentionLinkChoices: MentionLinkChoices.Type = MentionLinkChoices.empty
+  linkChoices: ReferentLinkChoiceSet.Type,
+  byMention: MentionLinkChoiceSet.Type = MentionLinkChoiceSet.empty
 ): Effect.Effect.Success<ReturnType<typeof resolveAcross>> =>
-  runOnTestClock(resolveAcross(files, linkChoices, mentionLinkChoices))
+  runOnTestClock(resolveAcross(files, linkChoices, byMention))
 
 /** The one resolved file of a batch of one `file`, run on the test clock. */
 const resolveOnTestClock = (
   file: DecodedFile.DecodedFile,
-  linkChoices: ReferentLinkChoices.Type,
-  mentionLinkChoices: MentionLinkChoices.Type = MentionLinkChoices.empty
+  linkChoices: ReferentLinkChoiceSet.Type,
+  byMention: MentionLinkChoiceSet.Type = MentionLinkChoiceSet.empty
 ): DecodedFile.DecodedFile =>
-  Array.headNonEmpty(
-    resolveAcrossOnTestClock(Array.of(file), linkChoices, mentionLinkChoices).resolvedFiles
-  )
+  Array.headNonEmpty(resolveAcrossOnTestClock(Array.of(file), linkChoices, byMention).resolvedFiles)
 
 /** The linked records of a batch of one `file`, run on the test clock. */
 const linkedRecordsOnTestClock = (
   file: DecodedFile.DecodedFile,
-  linkChoices: ReferentLinkChoices.Type
+  linkChoices: ReferentLinkChoiceSet.Type
 ): readonly FileResolution.LinkedRecord[] =>
   resolveAcrossOnTestClock(Array.of(file), linkChoices).linkedRecords
 
@@ -356,7 +354,7 @@ const anyChoiceArbitrary: fc.Arbitrary<LinkChoice.Type> = fc.oneof(
 )
 
 /** Generated choices over the pool's keys, any choice on any referent, impossible ones included. */
-const anyChoicesArbitrary: fc.Arbitrary<ReferentLinkChoices.Type> = fc
+const anyChoicesArbitrary: fc.Arbitrary<ReferentLinkChoiceSet.Type> = fc
   .array(fc.tuple(fc.constantFrom(...POOL_KEYS), anyChoiceArbitrary), {
     maxLength: POOL_KEYS.length,
   })
@@ -415,7 +413,7 @@ const choiceForArbitrary = (
 /** Generated choices every referent of `file` can take, or none for some. */
 const choicesForArbitrary = (
   file: DecodedFile.DecodedFile
-): fc.Arbitrary<ReferentLinkChoices.Type> => {
+): fc.Arbitrary<ReferentLinkChoiceSet.Type> => {
   const referents = discoverOnTestClock(file)
   return fc
     .tuple(
@@ -437,7 +435,7 @@ const choicesForArbitrary = (
 /** A generated decoded file and choices its referents can take. */
 const fileWithChoicesArbitrary: fc.Arbitrary<{
   readonly file: DecodedFile.DecodedFile
-  readonly choices: ReferentLinkChoices.Type
+  readonly choices: ReferentLinkChoiceSet.Type
 }> = fileArbitrary.chain((file) => choicesForArbitrary(file).map((choices) => ({ file, choices })))
 
 /**
@@ -465,7 +463,7 @@ const hasMentionSeveralResourcesAnswerTo = (file: DecodedFile.DecodedFile): bool
  * resource, which the resolved file then holds as a resource keyed by one of
  * them, whose `LinkToDecodedReferent` no longer fits it.
  */
-const hasLinkCycle = (choices: ReferentLinkChoices.Type): boolean =>
+const hasLinkCycle = (choices: ReferentLinkChoiceSet.Type): boolean =>
   [...HashMap.keys(choices)].some((startKey) => {
     const walked = new Set<string>()
     let referentKey = startKey
@@ -488,7 +486,7 @@ const hasLinkCycle = (choices: ReferentLinkChoices.Type): boolean =>
  */
 const hasMentionALinkedStoredResourceAnswersTo = (
   file: DecodedFile.DecodedFile,
-  choices: ReferentLinkChoices.Type
+  choices: ReferentLinkChoiceSet.Type
 ): boolean => {
   const storedAnswerKeys = [...HashMap.values(choices)]
     .filter(LinkChoice.is('LinkToStoredResource'))

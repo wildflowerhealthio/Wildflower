@@ -11,9 +11,8 @@ import type { ResolvedBatch } from '@wildflowerhealthio/importer-core'
 import type {
   LinkChoice,
   LinkTarget,
-  MentionLinkChoices,
   Referent,
-  ReferentLinkChoices,
+  ReferentLinkChoiceSet,
 } from '@wildflowerhealthio/importer-fundamentals'
 import type { HashMap, Option } from 'effect'
 
@@ -25,7 +24,7 @@ interface MappedIdentityMap {
   /** Every referent of the batch, once per identity (`discoverReferents`). */
   readonly referents: readonly Referent.Type[]
   /** The choices the batch is resolved on: the defaults, under the reviewer's own, less any that cannot be resolved. */
-  readonly linkChoices: ReferentLinkChoices.Type
+  readonly linkChoices: ReferentLinkChoiceSet.Type
   /** Each referent's link target under {@link MappedIdentityMap.linkChoices}, by `Referent.key`. */
   readonly linkTargets: HashMap.HashMap<string, LinkTarget.Type>
   /** The stored resources the default search found, linked to or updated, labelled, for the reviewer to pick again. */
@@ -67,7 +66,7 @@ interface IdentityMapReview {
   readonly chooseMention: (
     reviewKey: string,
     mentionPath: string,
-    choice: MentionLinkChoices.Choice
+    choice: LinkChoice.MentionLinkChoice
   ) => void
 }
 

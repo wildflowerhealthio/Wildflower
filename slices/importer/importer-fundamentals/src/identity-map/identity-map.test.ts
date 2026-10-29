@@ -30,7 +30,7 @@ import {
   LinkChoice,
   LinkTarget,
   Referent,
-  ReferentLinkChoices,
+  ReferentLinkChoiceSet,
   UnlinkedMention,
 } from '../index.ts'
 import {
@@ -141,7 +141,7 @@ const describeLinkTarget = (destination: LinkTarget.Type): string =>
  * `referents`, described; or why making the links fails.
  */
 const linkTargetFor = (
-  choices: ReferentLinkChoices.Type,
+  choices: ReferentLinkChoiceSet.Type,
   referents: readonly Referent.Type[],
   referentKey: string
 ): string =>
@@ -156,7 +156,7 @@ const linkTargetFor = (
 /** How resolving `files` on `choices` fails, as the failure's tag and fields. */
 const failureAcrossOf = (
   files: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>,
-  choices: ReferentLinkChoices.Type
+  choices: ReferentLinkChoiceSet.Type
 ): Either.Either<
   Effect.Effect.Success<ReturnType<typeof resolveAcross>>,
   Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice
@@ -165,7 +165,7 @@ const failureAcrossOf = (
 /** How resolving a batch of one `file` on `choices` fails. */
 const failureOf = (
   file: DecodedFile.DecodedFile,
-  choices: ReferentLinkChoices.Type
+  choices: ReferentLinkChoiceSet.Type
 ): Either.Either<
   Effect.Effect.Success<ReturnType<typeof resolveAcross>>,
   Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice
@@ -415,7 +415,7 @@ describe('the identity map on a re-import', () => {
   })
   const reimport = fileOf(decodedAgain, request('rx-2', customerSubject('c-9')))
   // What `ReferentSearch.defaultChoices` gives: both searches find the stored copy.
-  const defaultChoices: ReferentLinkChoices.Type = HashMap.make(
+  const defaultChoices: ReferentLinkChoiceSet.Type = HashMap.make(
     [PERSON, LinkChoice.UpdateStoredResource({ resource: storedCopy })],
     [ACCOUNT, LinkChoice.LinkToStoredResource({ resource: storedCopy })]
   )
@@ -515,7 +515,7 @@ describe('the identity map on a printed name set to New', () => {
     request('rx-1', customerSubject('c-9'), namedRequester('Dr. A Smith')),
     request('rx-2', customerSubject('c-9'), namedRequester('Dr. A Smith'))
   )
-  const map: ReferentLinkChoices.Type = HashMap.make([PRESCRIBER, LinkChoice.CreateResource()])
+  const map: ReferentLinkChoiceSet.Type = HashMap.make([PRESCRIBER, LinkChoice.CreateResource()])
 
   it('changes nothing when resolved again', () => {
     const once = resolveOnTestClock(file, map)
@@ -561,7 +561,7 @@ describe('the identity map on a printed name set to New', () => {
         request('rx-3', customerSubject('c-9'), namedRequester('Dr. B Jones'))
       )
     )
-    const cycle: ReferentLinkChoices.Type = HashMap.make(
+    const cycle: ReferentLinkChoiceSet.Type = HashMap.make(
       [PRESCRIBER, LinkChoice.LinkToDecodedReferent({ referentKey: jones })],
       [jones, LinkChoice.LinkToDecodedReferent({ referentKey: PRESCRIBER })]
     )
@@ -569,7 +569,7 @@ describe('the identity map on a printed name set to New', () => {
     expect(
       referents
         .filter((referent) => Referent.key(referent) === PRESCRIBER)
-        .map((referent) => ReferentLinkChoices.forReferent(HashMap.empty(), referent)._tag)
+        .map((referent) => ReferentLinkChoiceSet.forReferent(HashMap.empty(), referent)._tag)
     ).toEqual(['DontLink'])
     expect(linkTargetFor(map, referents, PRESCRIBER)).toBe(`Provisional ${PROVISIONAL_ID}`)
     expect(
@@ -591,7 +591,7 @@ describe('Link.fromChoices', () => {
   const account = (n: number): string => `Patient|${CUSTOMER}|c-${n}`
 
   it('follows a chain of referents to its end', () => {
-    const choices: ReferentLinkChoices.Type = HashMap.make(
+    const choices: ReferentLinkChoiceSet.Type = HashMap.make(
       [account(1), LinkChoice.LinkToDecodedReferent({ referentKey: account(2) })],
       [account(2), LinkChoice.LinkToDecodedReferent({ referentKey: account(3) })],
       [account(3), LinkChoice.LinkToDecodedReferent({ referentKey: PERSON })]
@@ -608,7 +608,7 @@ describe('Link.fromChoices', () => {
   })
 
   it('reads a cycle with nothing to create as unlinked', () => {
-    const cycle: ReferentLinkChoices.Type = HashMap.make(
+    const cycle: ReferentLinkChoiceSet.Type = HashMap.make(
       [account(1), LinkChoice.LinkToDecodedReferent({ referentKey: account(2) })],
       [account(2), LinkChoice.LinkToDecodedReferent({ referentKey: account(1) })],
       [account(3), LinkChoice.LinkToDecodedReferent({ referentKey: account(1) })]
@@ -647,7 +647,7 @@ describe('Link.fromChoices', () => {
     const withPrescriber = fileOf(
       request('rx-1', customerSubject('c-9'), namedRequester('Dr. A Smith'))
     )
-    const choices: ReferentLinkChoices.Type = HashMap.make(
+    const choices: ReferentLinkChoiceSet.Type = HashMap.make(
       [ACCOUNT, LinkChoice.LinkToDecodedReferent({ referentKey: PRESCRIBER })],
       [PRESCRIBER, LinkChoice.LinkToStoredResource({ resource: STORED_SMITH })]
     )
@@ -662,7 +662,7 @@ describe('Link.fromChoices', () => {
   })
 
   it('fails a choice that leads to one it cannot follow', () => {
-    const choices: ReferentLinkChoices.Type = HashMap.make(
+    const choices: ReferentLinkChoiceSet.Type = HashMap.make(
       [account(1), LinkChoice.LinkToDecodedReferent({ referentKey: PERSON })],
       [PERSON, LinkChoice.DontLink()]
     )
@@ -675,7 +675,7 @@ describe('Link.fromChoices', () => {
   it('defaults a referent with a resource to New and one named only by mentions to Don’t link', () => {
     const defaultsByKey = referents.map((referent) => [
       Referent.key(referent),
-      ReferentLinkChoices.forReferent(HashMap.empty(), referent)._tag,
+      ReferentLinkChoiceSet.forReferent(HashMap.empty(), referent)._tag,
     ])
 
     expect(defaultsByKey).toEqual([
@@ -700,7 +700,7 @@ describe('UnlinkedMention.collect on a resolved file', () => {
     observation('o-7', { reference: '#p-1' }),
     observation('o-8', { reference: 'Patient p-1' })
   )
-  const listed = (choices: ReferentLinkChoices.Type): readonly string[] =>
+  const listed = (choices: ReferentLinkChoiceSet.Type): readonly string[] =>
     UnlinkedMention.collect(resolveOnTestClock(file, choices)).map(
       (unlinked) => `${unlinked._tag} ${unlinked.mentioningResourceKey} ${pathOf(unlinked)}`
     )

@@ -10,7 +10,7 @@
  * referents linked to it, and which decoded literal references move to a
  * stored resource. A mention the reviewer chose a link for on its own lands
  * where that choice says instead, and the plan resolves that too
- * ({@link withMentionLinkChoices}). Built once per batch by {@link make}, so
+ * ({@link withMentionLinkChoiceSet}). Built once per batch by {@link make}, so
  * a referent one file holds is the link target of a mention in another, and
  * read through {@link redirectionIfLinked}, {@link resolvedResourceIfReferent}
  * and {@link linkTargetIfChosenForMention} by the resolution of every file.
@@ -28,9 +28,9 @@ import * as LinkTarget from './link-target.ts'
 import * as Link from './link.ts'
 import * as LinkableLogicalReference from './linkable-logical-reference.ts'
 import * as LinkableResource from './linkable-resource.ts'
-import * as MentionLinkChoices from './mention-link-choices.ts'
+import * as MentionLinkChoiceSet from './mention-link-choice-set.ts'
 import type * as Mention from './mention.ts'
-import type * as ReferentLinkChoices from './referent-link-choices.ts'
+import type * as ReferentLinkChoiceSet from './referent-link-choice-set.ts'
 import * as Referent from './referent.ts'
 import * as ResolvedResource from './resolved-resource.ts'
 
@@ -63,9 +63,9 @@ interface Type {
   readonly decodedLiteralReferencesToStored: HashMap.HashMap<string, string>
   /**
    * Where each mention the reviewer chose a link for on its own lands, by
-   * `MentionLinkChoices.key`, over its referent's rule: a stored resource, a
+   * `MentionLinkChoiceSet.key`, over its referent's rule: a stored resource, a
    * referent's link target, or `Unlinked`. Empty until
-   * {@link withMentionLinkChoices} lays the mention link choices on the plan.
+   * {@link withMentionLinkChoiceSet} lays the mention link choices on the plan.
    */
   readonly linkTargetsByMentionKey: HashMap.HashMap<string, LinkTarget.Type>
 }
@@ -149,10 +149,11 @@ const linkTargetsByLogicalReferenceKeyOf = (
   )
 
 /**
- * The plan for a batch's `decodedFiles` under the referent `linkChoices`:
+ * The plan for a batch's `decodedFiles` on the link choice set by referent,
+ * `byReferent`:
  * each referent's choice made once into its link (`Link.fromChoices`), and
  * every field read off those links; no mention chosen for on its own yet
- * ({@link withMentionLinkChoices}).
+ * ({@link withMentionLinkChoiceSet}).
  *
  * @remarks
  * The referents are the whole batch's (`Referent.discover`), so a
@@ -164,11 +165,11 @@ const linkTargetsByLogicalReferenceKeyOf = (
  */
 const make = (
   decodedFiles: readonly DecodedFile.DecodedFile[],
-  linkChoices: ReferentLinkChoices.Type
+  byReferent: ReferentLinkChoiceSet.Type
 ): Effect.Effect<Type, Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice> =>
   Effect.gen(function* () {
     const referents = yield* Referent.discover(decodedFiles)
-    const links = yield* Link.fromChoices(referents, linkChoices)
+    const links = yield* Link.fromChoices(referents, byReferent)
     const linkTargetsByReferentKey = linkTargetsByReferentKeyOf(links)
     const decodedLiteralReferencesToStored = decodedLiteralReferencesToStoredOf(links)
     const resolvedResourcesByResolvedLiteralReference =
@@ -208,7 +209,7 @@ const make = (
  */
 const linkTargetOfMentionChoice = (
   linkTargetsByReferentKey: HashMap.HashMap<string, LinkTarget.Type>,
-  choice: MentionLinkChoices.Choice
+  choice: LinkChoice.MentionLinkChoice
 ): Option.Option<LinkTarget.Type> =>
   Match.value(choice).pipe(
     Match.tag('LinkToStoredResource', ({ resource }) =>
@@ -224,18 +225,19 @@ const linkTargetOfMentionChoice = (
   )
 
 /**
- * `plan` with the reviewer's `mentionLinkChoices` laid on it: each chosen
+ * `plan` with the reviewer's link choice set by mention, `byMention`, laid on
+ * it: each chosen
  * mention's link target, resolved off the referents' link targets the plan
  * already holds. Every other field is kept: the mention link choices teach
  * nothing and write nothing, so no resolved resource assumes anything for
  * them.
  */
-const withMentionLinkChoices = (plan: Type, mentionLinkChoices: MentionLinkChoices.Type): Type =>
-  HashMap.isEmpty(mentionLinkChoices)
+const withMentionLinkChoiceSet = (plan: Type, byMention: MentionLinkChoiceSet.Type): Type =>
+  HashMap.isEmpty(byMention)
     ? plan
     : {
         ...plan,
-        linkTargetsByMentionKey: HashMap.filterMap(mentionLinkChoices, (choice) =>
+        linkTargetsByMentionKey: HashMap.filterMap(byMention, (choice) =>
           linkTargetOfMentionChoice(plan.linkTargetsByReferentKey, choice)
         ),
       }
@@ -252,7 +254,7 @@ const linkTargetIfChosenForMention = (
   reviewKey: string,
   mention: Mention.Linkable
 ): Option.Option<LinkTarget.Type> =>
-  HashMap.get(plan.linkTargetsByMentionKey, MentionLinkChoices.key(reviewKey, mention.path)).pipe(
+  HashMap.get(plan.linkTargetsByMentionKey, MentionLinkChoiceSet.key(reviewKey, mention.path)).pipe(
     Option.filter((target) =>
       Option.match(LinkTarget.resourceIfLinked(target), {
         onNone: () => true,
@@ -321,6 +323,6 @@ export {
   make,
   redirectionIfLinked,
   resolvedResourceIfReferent,
-  withMentionLinkChoices,
+  withMentionLinkChoiceSet,
 }
 export type { Type }

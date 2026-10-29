@@ -5,7 +5,6 @@ import {
   DecodedFile,
   LinkChoice,
   Mention,
-  type MentionLinkChoices,
   StagedImport,
   type UnlinkedMention,
 } from '@wildflowerhealthio/importer-fundamentals'
@@ -60,7 +59,7 @@ import styles from './format-review-body.module.css'
 type ChooseMention = (
   reviewKey: string,
   mentionPath: string,
-  choice: MentionLinkChoices.Choice
+  choice: LinkChoice.MentionLinkChoice
 ) => void
 
 /** Nothing offered, so no pick is ever made: the body without an identity map. */
@@ -398,7 +397,7 @@ const FormatReviewBody = ({
       key,
       mention.path,
       Option.match(picked, {
-        onNone: (): MentionLinkChoices.Choice => LinkChoice.DontLink(),
+        onNone: (): LinkChoice.MentionLinkChoice => LinkChoice.DontLink(),
         onSome: ({ choice }) => choice,
       })
     )

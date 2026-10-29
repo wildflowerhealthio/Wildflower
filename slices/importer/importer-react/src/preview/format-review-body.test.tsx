@@ -14,9 +14,9 @@ import {
   type LinkableResource,
   LinkPlan,
   Mention,
-  MentionLinkChoices,
+  MentionLinkChoiceSet,
   Referent,
-  type ReferentLinkChoices,
+  type ReferentLinkChoiceSet,
   StagedImport,
   UnlinkedMention,
 } from '@wildflowerhealthio/importer-fundamentals'
@@ -107,8 +107,8 @@ const runOnTestClock = <A, E>(effect: Effect.Effect<A, E>): A =>
 /** A file resolved as `importer-core`'s `resolveMentions` resolves one format: the resolved file, what the referent choices leave unlinked, and the options. */
 const resolvedOn = (
   file: DecodedFile.DecodedFile,
-  linkChoices: ReferentLinkChoices.Type,
-  mentionLinkChoices: MentionLinkChoices.Type
+  linkChoices: ReferentLinkChoiceSet.Type,
+  byMention: MentionLinkChoiceSet.Type
 ): {
   readonly resolved: DecodedFile.DecodedFile
   readonly unlinked: readonly UnlinkedMention.Type[]
@@ -118,7 +118,7 @@ const resolvedOn = (
     Effect.gen(function* () {
       const referents = yield* Referent.discover([file])
       const planOnReferents = yield* LinkPlan.make([file], linkChoices)
-      const plan = LinkPlan.withMentionLinkChoices(planOnReferents, mentionLinkChoices)
+      const plan = LinkPlan.withMentionLinkChoiceSet(planOnReferents, byMention)
       return {
         resolved: FileResolution.resolveFile(plan)(file),
         unlinked: UnlinkedMention.collect(FileResolution.resolveFile(planOnReferents)(file)),
@@ -133,7 +133,7 @@ const resolvedOn = (
 /** What the harness reports after every change: the selection, the mention link choices and the resolved file. */
 interface Reported {
   readonly selection: StagedImport.Selection
-  readonly mentionLinkChoices: MentionLinkChoices.Type
+  readonly byMention: MentionLinkChoiceSet.Type
   readonly resolved: DecodedFile.DecodedFile
 }
 
@@ -150,17 +150,15 @@ const Harness = ({
   onReport,
 }: {
   readonly resources: readonly FhirResourceWithId[]
-  readonly choices?: ReferentLinkChoices.Type
+  readonly choices?: ReferentLinkChoiceSet.Type
   readonly editedKey?: string
   readonly onReport: (reported: Reported) => void
 }): JSX.Element => {
   const file = useMemo(() => fileOf(resources), [resources])
-  const [mentionLinkChoices, setMentionLinkChoices] = useState<MentionLinkChoices.Type>(
-    MentionLinkChoices.empty
-  )
+  const [byMention, setByMention] = useState<MentionLinkChoiceSet.Type>(MentionLinkChoiceSet.empty)
   const { resolved, unlinked, options } = useMemo(
-    () => resolvedOn(file, choices, mentionLinkChoices),
-    [file, choices, mentionLinkChoices]
+    () => resolvedOn(file, choices, byMention),
+    [file, choices, byMention]
   )
   const [selection, setSelection] = useState<StagedImport.Selection>(() => {
     const seeded = StagedImport.setResourcesIncluded(
@@ -173,7 +171,7 @@ const Harness = ({
       ? seeded
       : StagedImport.edit(seeded, editedKey, { ...edited, id: `${edited.id}-edited` })
   })
-  onReport({ selection, mentionLinkChoices, resolved })
+  onReport({ selection, byMention, resolved })
   return (
     <FormatReviewBody
       result={{ ...FormatDecode.emptyResult('har'), decoded: resolved }}
@@ -184,8 +182,8 @@ const Harness = ({
       onSelectionChange={setSelection}
       onEditResource={() => undefined}
       onChooseMention={(reviewKey, mentionPath, choice) => {
-        setMentionLinkChoices((previous) =>
-          MentionLinkChoices.set(previous, reviewKey, mentionPath, choice)
+        setByMention((previous) =>
+          MentionLinkChoiceSet.set(previous, reviewKey, mentionPath, choice)
         )
       }}
     />
@@ -271,9 +269,9 @@ describe('FormatReviewBody', () => {
     await userEvent.selectOptions(subject, TYRA)
 
     // Assert — a choice the resolution lands, the row in, kept in the group, not edited
-    expect(HashMap.toEntries(reported.latest().mentionLinkChoices)).toEqual([
+    expect(HashMap.toEntries(reported.latest().byMention)).toEqual([
       [
-        MentionLinkChoices.key('k-1', Mention.SUBJECT_PATH),
+        MentionLinkChoiceSet.key('k-1', Mention.SUBJECT_PATH),
         LinkChoice.LinkToDecodedReferent({ referentKey: TYRA_KEY }),
       ],
     ])

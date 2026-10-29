@@ -20,7 +20,6 @@ import {
   LinkableResource,
   LinkChoice,
   LinkTarget,
-  type MentionLinkChoices,
   Referent,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Array, Effect, HashMap, Option, pipe } from 'effect'
@@ -33,7 +32,7 @@ interface Offer {
   readonly value: string
   readonly label: string
   readonly literalReference: string
-  readonly choice: MentionLinkChoices.Choice
+  readonly choice: LinkChoice.MentionLinkChoice
 }
 
 /** What the mention selects offer: the resources a mention can land on, by type, and each one's label. */
@@ -49,7 +48,7 @@ const empty: Type = { offersByType: HashMap.empty(), labelsByLiteralReference: n
 /** A resource a referent lands on, the choice picking it makes, and whether that referent's record it is. */
 interface Landing {
   readonly resource: LinkableResource.WithId
-  readonly choice: MentionLinkChoices.Choice
+  readonly choice: LinkChoice.MentionLinkChoice
   readonly isOwnRecord: boolean
 }
 

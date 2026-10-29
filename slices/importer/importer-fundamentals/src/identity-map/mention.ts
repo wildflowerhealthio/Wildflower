@@ -53,7 +53,7 @@ const SUBJECT_PATH = 'subject'
 
 /**
  * A mention of a type the identity map links, the type among it: what a
- * reviewer may choose a link for on its own (`MentionLinkChoices`).
+ * reviewer may choose a link for on its own (`MentionLinkChoiceSet`).
  */
 interface Linkable extends Type {
   readonly type: LinkableLogicalReference.ResourceType

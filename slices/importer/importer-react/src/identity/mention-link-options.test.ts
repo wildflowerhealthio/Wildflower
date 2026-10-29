@@ -11,7 +11,7 @@ import {
   LinkChoice,
   LinkPlan,
   Referent,
-  type ReferentLinkChoices,
+  type ReferentLinkChoiceSet,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, HashMap, Schema, TestContext } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
@@ -80,7 +80,7 @@ const file: DecodedFile.DecodedFile = {
 }
 
 /** The options under `linkChoices`, off the plan's links, on the test clock. */
-const optionsUnder = (linkChoices: ReferentLinkChoices.Type): MentionLinkOptions.Type =>
+const optionsUnder = (linkChoices: ReferentLinkChoiceSet.Type): MentionLinkOptions.Type =>
   runOnTestClock(
     Effect.gen(function* () {
       const referents = yield* Referent.discover([file])

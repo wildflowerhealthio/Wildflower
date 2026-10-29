@@ -3,7 +3,7 @@ import {
   type LinkChoice,
   type LinkTarget,
   Referent,
-  type ReferentLinkChoices,
+  type ReferentLinkChoiceSet,
   ReferentTally,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { HashMap } from 'effect'
@@ -39,7 +39,7 @@ interface ReferentRowsProps {
   /** The batch's referents, once per identity. */
   readonly referents: readonly Referent.Type[]
   /** The choices the batch is resolved on, by `Referent.key`. */
-  readonly linkChoices: ReferentLinkChoices.Type
+  readonly linkChoices: ReferentLinkChoiceSet.Type
   /** Each referent's link target under `linkChoices`, by `Referent.key`. */
   readonly linkTargets: HashMap.HashMap<string, LinkTarget.Type>
   /** The stored resources the default search found. */
