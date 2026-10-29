@@ -71,7 +71,8 @@ const mapIn = (
 
 /**
  * `resource` with `rewrite` applied to every `Reference` it carries, at any
- * depth.
+ * depth, each handed with its path (as {@link collect} spells it), so a
+ * rewrite can single one reference out.
  *
  * @remarks
  * The walk rebuilds only the records and arrays something changed in, and
@@ -82,7 +83,7 @@ const mapIn = (
  */
 const mapReferences = <TResource extends FhirResource>(
   resource: TResource,
-  rewrite: (reference: Reference) => Reference
+  rewrite: (reference: Reference, path: string) => Reference
 ): TResource =>
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the walk keeps the shape; see @remarks
   mapIn(resource, '', rewrite) as TResource
