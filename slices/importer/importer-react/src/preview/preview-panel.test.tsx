@@ -26,7 +26,7 @@ import {
   type PickedFile,
   type Referent,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { HashMap, Option, Schema, type ParseResult } from 'effect'
+import { Option, Schema, type ParseResult } from 'effect'
 import type { JSX } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
@@ -619,18 +619,18 @@ const formatResult = <K extends FormatKind>(
 const makeBatch = (
   results: Partial<{ [K in FormatKind]: FormatDecode.Result<K> }>,
   unrecognizedFiles: readonly UnrecognizedFile[] = []
-): ResolvedBatch => ({
-  formats: {
-    har: FormatDecode.emptyResult('har'),
-    'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
-    dicom: FormatDecode.emptyResult('dicom'),
-    ...results,
-  },
-  unrecognizedFiles,
-  linkedRecords: [],
-  plan: LinkPlan.empty,
-  unlinkedMentionsByFormatKind: HashMap.empty(),
-})
+): ResolvedBatch => {
+  const decodedBatch = {
+    formats: {
+      har: FormatDecode.emptyResult('har'),
+      'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
+      dicom: FormatDecode.emptyResult('dicom'),
+      ...results,
+    },
+    unrecognizedFiles,
+  }
+  return { ...decodedBatch, linkedRecords: [], plan: LinkPlan.empty, decodedBatch }
+}
 
 /** Verdicts for a format, keyed by format kind. */
 const comparisonsFor = (
@@ -695,7 +695,6 @@ const withLinked = (
       },
     ],
     plan: { ...LinkPlan.empty, links: [{ referent, target: linkTarget }] },
-    unlinkedMentionsByFormatKind: HashMap.empty(),
   }
 }
 

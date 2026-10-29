@@ -65,6 +65,7 @@ import {
   untypedSubject,
   wireFieldsOf,
   wireOf,
+  leftByReferentLinksOnTestClock,
 } from './identity-map.test-helpers.ts'
 
 // Schema-generated resources at fast-check's default size run to hundreds of
@@ -325,7 +326,7 @@ describe('the identity map on one file', () => {
     expect(discoverOnTestClock(file).map(Referent.key)).toEqual([PERSON])
     const resolved = resolveOnTestClock(file, HashMap.empty())
     expect(subjectAndRequesterOf(at(resolved, 'k-1')).subject?.reference).toBe('Patient/p-1')
-    expect(UnlinkedMention.collect(resolved)).toEqual([])
+    expect(leftByReferentLinksOnTestClock(file, HashMap.empty())).toEqual([])
   })
 
   it('reads a mention two decoded people answer to, by neither one’s key, as a referent of its own', () => {
@@ -547,10 +548,7 @@ describe('the identity map on a printed name set to New', () => {
         'Dr. A Smith',
       ])
     }
-    expect(UnlinkedMention.collect(resolveOnTestClock(file, map)).map(pathOf)).toEqual([
-      'subject',
-      'subject',
-    ])
+    expect(leftByReferentLinksOnTestClock(file, map).map(pathOf)).toEqual(['subject', 'subject'])
   })
 
   it('defaults a name referent to Don’t link, refuses New for anything but a name, and makes one record for a whole cycle', () => {
@@ -688,7 +686,7 @@ describe('Link.fromChoices', () => {
   })
 })
 
-describe('UnlinkedMention.collect on a resolved file', () => {
+describe('UnlinkedMention.leftByReferentLinks on a decoded file', () => {
   const file = fileOf(
     observation('o-1'),
     observation('o-2', { reference: ABSOLUTE }),
@@ -701,7 +699,7 @@ describe('UnlinkedMention.collect on a resolved file', () => {
     observation('o-8', { reference: 'Patient p-1' })
   )
   const listed = (choices: ReferentLinkChoiceSet.Type): readonly string[] =>
-    UnlinkedMention.collect(resolveOnTestClock(file, choices)).map(
+    leftByReferentLinksOnTestClock(file, choices).map(
       (unlinked) => `${unlinked._tag} ${unlinked.mentioningResourceKey} ${pathOf(unlinked)}`
     )
 
@@ -976,7 +974,7 @@ describe('identity map properties', () => {
     fc.assert(
       fc.property(fileWithChoicesArbitrary, ({ file, choices }) => {
         const resolved = resolveOnTestClock(file, choices)
-        const listedSubjects = UnlinkedMention.collect(resolved)
+        const listedSubjects = leftByReferentLinksOnTestClock(file, choices)
           .filter((unlinked) => pathOf(unlinked) === 'subject')
           .map((unlinked) => unlinked.mentioningResourceKey)
         // The generated literals are `Patient/<id>` or an absolute URL into another system.

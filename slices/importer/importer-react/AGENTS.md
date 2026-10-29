@@ -94,8 +94,8 @@ The importer has no HTTP wire union to derive, so there is no separate
   `useConfirmImport` → `ImportResults`. It holds each format's
   `StagedImport.Selection`, keyed by format kind (absent = the seed: every
   `new` or `changed` resource included, every `unchanged` one and every one
-  whose patient the referent choices leave unlinked left out
-  (`initialExclusionsFor`), so an untouched format imports what its decode
+  whose patient the referent links leave unlinked, as decoded, left out
+  (`initialFormatExclusionsFor` over `initialExclusionsFor`), so an untouched format imports what its decode
   yielded that is new and has a patient). A referent's link change reverts
   the edit override at that referent's `reviewKey` in every format, since its
   row now writes another record. A cancel or "import
@@ -255,13 +255,17 @@ The importer has no HTTP wire union to derive, so there is no separate
   per decoded section with include checkbox and one-line `describeResource`
   summary, Edit/Revert, unreadable-file rows, and the notes folded into a
   collapsed details block). Above the sections it lists every resource the
-  referent choices leave a mention unlinked in (the resolved batch's
-  `unlinkedMentionsByFormatKind`, read by `unlinked-mentions.ts`) again,
+  referent links leave a mention unlinked in again
+  (`UnlinkedMention.leftByReferentLinks` on the batch's plan, asked by
+  `unlinked-mentions.ts` of each row as edited, else as decoded in the
+  batch's `decodedBatch`, a format's own source file never),
   under **Needs a patient** (an unlinked or empty `subject`) or else **Needs
   a provider**, each with why in one phrase ("names no patient", "names an
   account you chose not to link", "names a provider you chose not to link",
-  "points outside this import"); the group is a second view of the same
-  rows, so a pick keeps focus. Every row whose resource makes a mention the
+  "points outside this import", as the row reads now); the group is a second
+  view of the same rows, so a pick, which is no edit, keeps the row there
+  and in focus, while an edit that gives its subject a record of the device
+  takes it out. Every row whose resource makes a mention the
   map can link (`Mention.linkableIn`) carries an inline select per mention,
   read as part of its summary line ("for Tyra Banks", "requested by …"):
   the records offered for the type the mention names

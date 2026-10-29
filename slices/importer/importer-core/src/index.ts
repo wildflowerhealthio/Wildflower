@@ -38,6 +38,7 @@ export {
 export { LINKED_GROUP, type ReviewGroup } from './review-group.ts'
 export {
   discoverReferents,
+  isSourceFileOf,
   resolveMentions,
   resolveMentionsWithFallback,
   type ResolvedBatch,

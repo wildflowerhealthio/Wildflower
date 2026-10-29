@@ -17,7 +17,7 @@ import {
   StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { HashMap, Option, ParseResult, Schema } from 'effect'
+import { Option, ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -70,12 +70,13 @@ const batchOf = (
     const resources = rows[kind]
     return resources === undefined ? FormatDecode.emptyResult(kind) : resultOf(kind, resources)
   }
+  const formats = { har: slot('har'), 'lifelabs-pdf': slot('lifelabs-pdf'), dicom: slot('dicom') }
   return {
-    formats: { har: slot('har'), 'lifelabs-pdf': slot('lifelabs-pdf'), dicom: slot('dicom') },
+    formats,
     unrecognizedFiles: [],
     linkedRecords: linked.map(({ entry }) => entry),
     plan: { ...LinkPlan.empty, links: linked.map(({ link }) => link) },
-    unlinkedMentionsByFormatKind: HashMap.empty(),
+    decodedBatch: { formats, unrecognizedFiles: [] },
   }
 }
 

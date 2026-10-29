@@ -8,7 +8,7 @@ import {
 } from '@wildflowerhealthio/importer-core'
 import { FormatDecode, LinkPlan } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { HashMap, Schema } from 'effect'
+import { Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -51,18 +51,18 @@ const formatResult = <K extends FormatKind>(
 
 const makeBatch = (
   results: Partial<{ [K in FormatKind]: FormatDecode.Result<K> }>
-): ResolvedBatch => ({
-  formats: {
-    har: FormatDecode.emptyResult('har'),
-    'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
-    dicom: FormatDecode.emptyResult('dicom'),
-    ...results,
-  },
-  unrecognizedFiles: [],
-  linkedRecords: [],
-  plan: LinkPlan.empty,
-  unlinkedMentionsByFormatKind: HashMap.empty(),
-})
+): ResolvedBatch => {
+  const decodedBatch = {
+    formats: {
+      har: FormatDecode.emptyResult('har'),
+      'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
+      dicom: FormatDecode.emptyResult('dicom'),
+      ...results,
+    },
+    unrecognizedFiles: [],
+  }
+  return { ...decodedBatch, linkedRecords: [], plan: LinkPlan.empty, decodedBatch }
+}
 
 const UNCHANGED: ServerComparison = { status: 'unchanged', fields: [] }
 const CHANGED: ServerComparison = { status: 'changed', fields: [] }

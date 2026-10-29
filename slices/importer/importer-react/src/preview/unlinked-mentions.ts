@@ -1,13 +1,22 @@
 /**
- * How the review reads a format's unlinked mentions: which resources need a
- * patient and which a provider, and why each is listed, in one phrase.
+ * How the review reads what the referent links leave unlinked in a format:
+ * asked of each row as reviewed (its edit override, else the resource as
+ * decoded), which resources need a patient and which a provider, and why
+ * each is listed, in one phrase.
  *
  * @packageDocumentation
  */
 
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
-import { DecodedFile, Mention, UnlinkedMention } from '@wildflowerhealthio/importer-fundamentals'
-import { Array } from 'effect'
+import { type FormatKind, isSourceFileOf } from '@wildflowerhealthio/importer-core'
+import {
+  DecodedFile,
+  type LinkPlan,
+  Mention,
+  StagedImport,
+  UnlinkedMention,
+} from '@wildflowerhealthio/importer-fundamentals'
+import { Array, Option, pipe } from 'effect'
 
 import {
   NAMES_NO_PATIENT,
@@ -15,6 +24,50 @@ import {
   NAMES_UNLINKED_PROVIDER,
   POINTS_OUTSIDE_IMPORT,
 } from './preview-text.ts'
+
+/** What the referent links leave unlinked in one resource of a format, reviewed under a key. */
+type LeftUnlinked = (
+  reviewKey: string,
+  resource: FhirResourceWithId
+) => readonly UnlinkedMention.Type[]
+
+/**
+ * What the referent links of `plan` leave unlinked in a resource of `kind`
+ * (`UnlinkedMention.leftByReferentLinks`): nothing for the format's own
+ * source file (`isSourceFileOf`), which the review never asks a patient for.
+ */
+const leftUnlinkedIn =
+  (plan: LinkPlan.Type, kind: FormatKind): LeftUnlinked =>
+  (reviewKey, resource) =>
+    pipe(
+      Option.liftPredicate(resource, (reviewed) => !isSourceFileOf(kind, reviewed)),
+      Option.match({
+        onNone: () => [],
+        onSome: (reviewed) => UnlinkedMention.leftByReferentLinks(plan, reviewKey, reviewed),
+      })
+    )
+
+/** The resource reviewed under `key`: its edit override in `selection`, else `asDecoded`. */
+const reviewedResource = (
+  selection: StagedImport.Selection,
+  key: string,
+  asDecoded: FhirResourceWithId
+): FhirResourceWithId =>
+  Option.getOrElse(StagedImport.editedResource(selection, key), () => asDecoded)
+
+/**
+ * What the referent links leave unlinked in every row of `decodedFile` (the
+ * format's file as decoded), each as reviewed under `selection`, in review
+ * order.
+ */
+const unlinkedInRows = (
+  decodedFile: DecodedFile.DecodedFile,
+  selection: StagedImport.Selection,
+  leftUnlinked: LeftUnlinked
+): readonly UnlinkedMention.Type[] =>
+  DecodedFile.resources(decodedFile).flatMap(({ key, resource }) =>
+    leftUnlinked(key, reviewedResource(selection, key, resource))
+  )
 
 /** Whether `unlinked` is of the resource's patient: outside every compartment, or a dangling `subject`. */
 const isOfPatient = (unlinked: UnlinkedMention.Type): boolean =>
@@ -60,28 +113,30 @@ const groupsOf = (
   }
 }
 
-/** The unlinked mentions of `resource` alone, as reviewed: one resource read as a file. */
-const unlinkedIn = (key: string, resource: FhirResourceWithId): readonly UnlinkedMention.Type[] =>
-  UnlinkedMention.collect({
-    sections: [{ title: '', resources: [{ key, title: '', resource }] }],
-    notes: [],
-  })
-
-/** Why `unlinked`, of `resource`, is listed, in one phrase. */
-const reasonOf = (unlinked: UnlinkedMention.Type, resource: FhirResourceWithId): string =>
+/** Why `unlinked` is listed, in one phrase. */
+const reasonOf = (unlinked: UnlinkedMention.Type): string =>
   UnlinkedMention.match(unlinked, {
     // A subject with a literal that names no record of the device is an absolute URL.
-    OutsidePatientCompartment: () =>
-      'subject' in resource && resource.subject?.reference != null
+    OutsidePatientCompartment: ({ subjectAsReviewed }) =>
+      Option.exists(subjectAsReviewed, ({ reference }) => reference !== null)
         ? POINTS_OUTSIDE_IMPORT
         : NAMES_NO_PATIENT,
     Dangling: ({ mentionPath }) =>
       mentionPath === Mention.SUBJECT_PATH ? NAMES_UNLINKED_ACCOUNT : NAMES_UNLINKED_PROVIDER,
   })
 
-/** Why `resource`, reviewed under `key`, is listed: each reason once, joined. */
-const reasonsLine = (key: string, resource: FhirResourceWithId): string =>
-  Array.dedupe(unlinkedIn(key, resource).map((one) => reasonOf(one, resource))).join(' · ')
+/** Why a resource is listed, given what is left unlinked in it as it reads now: each reason once, joined. */
+const reasonsLine = (unlinkedInResource: readonly UnlinkedMention.Type[]): string =>
+  pipe(unlinkedInResource, Array.map(reasonOf), Array.dedupe).join(' · ')
 
-export { groupsOf, isAt, isOfPatient, keysNeedingPatient, reasonsLine, unlinkedIn }
-export type { Groups }
+export {
+  groupsOf,
+  isAt,
+  isOfPatient,
+  keysNeedingPatient,
+  leftUnlinkedIn,
+  reasonsLine,
+  reviewedResource,
+  unlinkedInRows,
+}
+export type { Groups, LeftUnlinked }

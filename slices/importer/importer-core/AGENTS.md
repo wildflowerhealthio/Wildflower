@@ -71,15 +71,15 @@ write plan with this package alone.
   against what is **stored** on the device, the identity map's three states
   (`importer-fundamentals`' AGENTS).
   **`ResolvedBatch`** is a decoded batch, each format slot's `decoded`
-  holding the resolved file, plus the three fields a decoded batch cannot
-  hold: its **`linkedRecords`** (the resources it only mentions, written
-  beside the files, no format's), **`plan`** (the
+  holding the resolved file, plus its **`linkedRecords`** (the resources it
+  only mentions, written beside the files, no format's), **`plan`** (the
   `LinkPlan` it was resolved on, which the referent rows ask each referent's
-  link target of) and **`unlinkedMentionsByFormatKind`** (what the
-  referent link choices alone leave unlinked in each claimed format,
-  `UnlinkedMention.collect` on the file resolved before any mention link
-  choice, the format's own source files aside: the rows the review lists as
-  needing a patient or a provider, which a mention link choice keeps listed).
+  link target of, and the review asks what its referent links leave
+  unlinked, `UnlinkedMention.leftByReferentLinks`) and **`decodedBatch`**
+  (the batch as decoded, whose rows that question is asked of, since a
+  resolved row also carries the mention links). **`isSourceFileOf(kind,
+  resource)`** says whether a resource is a format's own source file, which
+  the review never asks a patient for.
   Only `resolveMentions` makes one, and the diff, the preview and the confirm
   take nothing else.
   **`discoverReferents(batch)`** is `Referent.discover` over every claimed
@@ -91,7 +91,8 @@ write plan with this package alone.
   (`LinkPlan.make` once, over every claimed format's decoded file, the
   link choice set by mention laid on it with
   `LinkPlan.withMentionLinkChoiceSet`), resolving
-  each format in its own slot (`FileResolution.resolveFile(plan)`), so a mention in one format
+  each format once, in its own slot (`resolveFormat`, over
+  `FileResolution.resolveFile(plan)`), so a mention in one format
   links to a referent another holds, and a review key being unique across
   the batch, a mention link choice names one mention of one format's
   resource; it fills `linkedRecords` with the

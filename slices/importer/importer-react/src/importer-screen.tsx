@@ -2,12 +2,11 @@ import type { FormatKind } from '@wildflowerhealthio/importer-core'
 import { formatKinds, LINKED_GROUP } from '@wildflowerhealthio/importer-core'
 import {
   StagedImport,
-  DecodedFile,
   type LinkChoice,
   Referent,
   type UnlinkedMention,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { HashMap, Match, Option } from 'effect'
+import { Match, Option } from 'effect'
 import { type JSX, useCallback, useMemo, useState } from 'react'
 
 import { ReferentRows } from './identity/referent-rows.tsx'
@@ -20,7 +19,11 @@ import {
 } from './identity/referent-text.ts'
 import { useLinkChoiceReview } from './identity/use-link-choice-review.ts'
 import { PreviewPanel } from './preview/preview-panel.tsx'
-import { initialExclusionsFor, useServerDiff } from './preview/use-server-diff.ts'
+import {
+  initialExclusionsFor,
+  initialFormatExclusionsFor,
+  useServerDiff,
+} from './preview/use-server-diff.ts'
 import { formatRegistry } from './registry.ts'
 import { ImportResults } from './results/import-results.tsx'
 import { useConfirmImport } from './run/use-confirm-import.ts'
@@ -115,14 +118,8 @@ const ImporterScreen = (): JSX.Element => {
     if (diff._tag === 'loading' || batch === undefined) return new Map()
     const entries: [FormatKind, StagedImport.Selection][] = []
     for (const kind of formatKinds) {
-      const result = batch.formats[kind]
-      if (result.files.length === 0) continue
-      const labeled = DecodedFile.resources(result.decoded)
-      const excluded = initialExclusionsFor(
-        labeled,
-        diff.comparisons.get(kind),
-        Option.getOrElse(HashMap.get(batch.unlinkedMentionsByFormatKind, kind), () => NO_UNLINKED)
-      )
+      if (batch.formats[kind].files.length === 0) continue
+      const excluded = initialFormatExclusionsFor(batch, kind, diff.comparisons.get(kind))
       if (excluded.size > 0) {
         entries.push([kind, { excludedResources: excluded, resourceOverrides: new Map() }])
       }

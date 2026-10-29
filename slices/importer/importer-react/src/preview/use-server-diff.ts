@@ -4,12 +4,16 @@ import { useMemo, useState } from 'react'
 import { useRunAuthed } from '@wildflowerhealthio/fhir-r4-react'
 import { classifyAgainstServer, type ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import { type FhirResourceWithId, literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
-import { DecodedFile, type UnlinkedMention } from '@wildflowerhealthio/importer-fundamentals'
+import {
+  DecodedFile,
+  StagedImport,
+  type UnlinkedMention,
+} from '@wildflowerhealthio/importer-fundamentals'
 
-import type { ResolvedBatch, ReviewGroup } from '@wildflowerhealthio/importer-core'
+import type { FormatKind, ResolvedBatch, ReviewGroup } from '@wildflowerhealthio/importer-core'
 import { formatKinds, LINKED_GROUP } from '@wildflowerhealthio/importer-core'
 import { IMPORTER_QUERY_KEY } from '../queries/keys.ts'
-import { keysNeedingPatient } from './unlinked-mentions.ts'
+import { keysNeedingPatient, leftUnlinkedIn, unlinkedInRows } from './unlinked-mentions.ts'
 
 /**
  * Pre-fetch the server's copy for every previewed resource in a batch and
@@ -251,8 +255,8 @@ const useServerDiff = (batch: ResolvedBatch | undefined, batchId: number): Serve
  * @param labeled - The format's labeled resources
  * @param comparisons - The format's own verdicts by resource key (`undefined`
  *   when the diff has none for it, which excludes nothing)
- * @param unlinked - The mentions the referent choices alone leave unlinked
- *   in the format (the resolved batch's `unlinkedMentionsByFormatKind`)
+ * @param unlinked - What the referent links leave unlinked in the format's
+ *   rows as reviewed (`unlinkedInRows`)
  * @returns The keys to pre-exclude
  */
 const initialExclusionsFor = (
@@ -270,12 +274,38 @@ const initialExclusionsFor = (
   return excluded
 }
 
+/**
+ * {@link initialExclusionsFor} `kind`'s rows of `batch`, what the referent
+ * links leave unlinked in each asked of it as decoded, since no row is
+ * edited yet.
+ *
+ * @param batch - The resolved batch
+ * @param kind - A format the batch claimed
+ * @param comparisons - The format's own verdicts by resource key
+ * @returns The keys to pre-exclude
+ */
+const initialFormatExclusionsFor = (
+  batch: ResolvedBatch,
+  kind: FormatKind,
+  comparisons: ReadonlyMap<string, ServerComparison> | undefined
+): ReadonlySet<string> =>
+  initialExclusionsFor(
+    DecodedFile.resources(batch.formats[kind].decoded),
+    comparisons,
+    unlinkedInRows(
+      batch.decodedBatch.formats[kind].decoded,
+      StagedImport.initial(),
+      leftUnlinkedIn(batch.plan, kind)
+    )
+  )
+
 export {
   byGroupAndKey,
   type DiffRow,
   diffRowsOf,
   type GroupComparisons,
   initialExclusionsFor,
+  initialFormatExclusionsFor,
   type ServerDiffState,
   useServerDiff,
 }

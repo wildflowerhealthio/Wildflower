@@ -27,7 +27,7 @@ import {
   TestContext,
 } from 'effect'
 
-import type * as DecodedFile from '../decoded-file.ts'
+import * as DecodedFile from '../decoded-file.ts'
 import * as FileResolution from './file-resolution.ts'
 import * as LinkChoice from './link-choice.ts'
 import * as LinkPlan from './link-plan.ts'
@@ -36,6 +36,7 @@ import * as LinkableResource from './linkable-resource.ts'
 import * as MentionLinkChoiceSet from './mention-link-choice-set.ts'
 import type * as ReferentLinkChoiceSet from './referent-link-choice-set.ts'
 import * as Referent from './referent.ts'
+import * as UnlinkedMention from './unlinked-mention.ts'
 
 const SOURCE_PATIENT = 'https://source.example/patient-id'
 const SOURCE_PRACTITIONER = 'https://source.example/practitioner-id'
@@ -100,6 +101,27 @@ const linkedRecordsOnTestClock = (
   linkChoices: ReferentLinkChoiceSet.Type
 ): readonly FileResolution.LinkedRecord[] =>
   resolveAcrossOnTestClock(Array.of(file), linkChoices).linkedRecords
+
+/**
+ * What the referent links leave unlinked in each resource of a batch of one
+ * `file`, as decoded, in review order (`UnlinkedMention.leftByReferentLinks`
+ * on the plan, with `byMention` laid on it when given), run on the test
+ * clock.
+ */
+const leftByReferentLinksOnTestClock = (
+  file: DecodedFile.DecodedFile,
+  linkChoices: ReferentLinkChoiceSet.Type,
+  byMention: MentionLinkChoiceSet.Type = MentionLinkChoiceSet.empty
+): readonly UnlinkedMention.Type[] => {
+  const plan = runOnTestClock(
+    Effect.map(LinkPlan.make([file], linkChoices), (onReferents) =>
+      LinkPlan.withMentionLinkChoiceSet(onReferents, byMention)
+    )
+  )
+  return DecodedFile.resources(file).flatMap(({ key, resource }) =>
+    UnlinkedMention.leftByReferentLinks(plan, key, resource)
+  )
+}
 
 /** `Referent.discover` over a batch of one `file`, run on the test clock. */
 const discoverOnTestClock = (file: DecodedFile.DecodedFile): readonly Referent.Type[] =>
@@ -541,6 +563,7 @@ export {
   fileWireOf,
   fileWithChoicesArbitrary,
   fileWithReapplicableChoicesArbitrary,
+  leftByReferentLinksOnTestClock,
   linkedRecordsOnTestClock,
   literalSubject,
   resolveAcross,

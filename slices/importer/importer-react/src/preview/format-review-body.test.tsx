@@ -17,7 +17,6 @@ import {
   MentionLinkChoiceSet,
   type ReferentLinkChoiceSet,
   StagedImport,
-  UnlinkedMention,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, HashMap, Option, Schema, TestContext } from 'effect'
 import { type JSX, useMemo, useState } from 'react'
@@ -31,7 +30,7 @@ import {
   NAMES_UNLINKED_ACCOUNT,
   NEEDS_A_PATIENT_HEADING,
 } from './preview-text.ts'
-import { keysNeedingPatient } from './unlinked-mentions.ts'
+import { keysNeedingPatient, leftUnlinkedIn, unlinkedInRows } from './unlinked-mentions.ts'
 
 /**
  * One format's review body over a file resolved on the identity map: the Needs
@@ -103,23 +102,22 @@ const STORED_TYRA: LinkableResource.WithId = decodePatient({
 const runOnTestClock = <A, E>(effect: Effect.Effect<A, E>): A =>
   Effect.runSync(Effect.provide(effect, TestContext.TestContext))
 
-/** A file resolved as `importer-core`'s `resolveMentions` resolves one format: the resolved file, what the referent choices leave unlinked, and the options. */
+/** A file resolved as `importer-core`'s `resolveMentions` resolves one format: the resolved file, what the referent links leave unlinked in a resource, and the options. */
 const resolvedOn = (
   file: DecodedFile.DecodedFile,
   linkChoices: ReferentLinkChoiceSet.Type,
   byMention: MentionLinkChoiceSet.Type
 ): {
   readonly resolved: DecodedFile.DecodedFile
-  readonly unlinked: readonly UnlinkedMention.Type[]
+  readonly plan: LinkPlan.Type
   readonly options: MentionLinkOptions.Type
 } =>
   runOnTestClock(
-    Effect.gen(function* () {
-      const planOnReferents = yield* LinkPlan.make([file], linkChoices)
-      const plan = LinkPlan.withMentionLinkChoiceSet(planOnReferents, byMention)
+    Effect.map(LinkPlan.make([file], linkChoices), (onReferents) => {
+      const plan = LinkPlan.withMentionLinkChoiceSet(onReferents, byMention)
       return {
         resolved: FileResolution.resolveFile(plan)(file),
-        unlinked: UnlinkedMention.collect(FileResolution.resolveFile(planOnReferents)(file)),
+        plan,
         options: MentionLinkOptions.fromPlan(plan),
       }
     })
@@ -135,36 +133,39 @@ interface Reported {
 /**
  * The review body over `resources` resolved on `choices` and the mention
  * link choices it holds, as the screen does: the selection seeded as the
- * screen seeds it, an edit override on `editedKey` when given. Reports every
+ * screen seeds it, an edit override on `editedKey` when given (`editedTo`
+ * the resource there, by default a copy under another id). Reports every
  * change.
  */
 const Harness = ({
   resources,
   choices = HashMap.empty(),
   editedKey,
+  editedTo = (resource) => ({ ...resource, id: `${resource.id}-edited` }),
   onReport,
 }: {
   readonly resources: readonly FhirResourceWithId[]
   readonly choices?: ReferentLinkChoiceSet.Type
   readonly editedKey?: string
+  readonly editedTo?: (resource: FhirResourceWithId) => FhirResourceWithId
   readonly onReport: (reported: Reported) => void
 }): JSX.Element => {
   const file = useMemo(() => fileOf(resources), [resources])
   const [byMention, setByMention] = useState<MentionLinkChoiceSet.Type>(MentionLinkChoiceSet.empty)
-  const { resolved, unlinked, options } = useMemo(
+  const { resolved, plan, options } = useMemo(
     () => resolvedOn(file, choices, byMention),
     [file, choices, byMention]
   )
   const [selection, setSelection] = useState<StagedImport.Selection>(() => {
     const seeded = StagedImport.setResourcesIncluded(
       StagedImport.initial(),
-      keysNeedingPatient(unlinked),
+      keysNeedingPatient(unlinkedInRows(file, StagedImport.initial(), leftUnlinkedIn(plan, 'har'))),
       false
     )
     const edited = resources.find((_, index) => `k-${index}` === editedKey)
     return edited === undefined || editedKey === undefined
       ? seeded
-      : StagedImport.edit(seeded, editedKey, { ...edited, id: `${edited.id}-edited` })
+      : StagedImport.edit(seeded, editedKey, editedTo(edited))
   })
   onReport({ selection, byMention, resolved })
   return (
@@ -173,7 +174,9 @@ const Harness = ({
       selection={selection}
       comparisons={undefined}
       mentionLinkOptions={options}
-      unlinked={unlinked}
+      kind="har"
+      decodedFile={file}
+      plan={plan}
       onSelectionChange={setSelection}
       onEditResource={() => undefined}
       onChooseMention={(reviewKey, mentionPath, choice) => {
@@ -381,6 +384,42 @@ describe('FormatReviewBody', () => {
         Option.flatMapNullable(({ reference }) => reference.reference)
       )
     ).toEqual(Option.some('Patient/p-1'))
-    expect(screen.getAllByText('Edited')).toHaveLength(2)
+    // The override now names Tyra, so the row has left Needs a patient.
+    expect(screen.getAllByText('Edited')).toHaveLength(1)
+  })
+
+  it('takes a row out of Needs a patient when an edit gives its subject a record of the device', () => {
+    render(
+      <Harness
+        resources={[TYRA_PATIENT, weight('o-1'), weight('o-2')]}
+        editedKey="k-1"
+        editedTo={(resource) =>
+          Mention.relinked(resource, Mention.SUBJECT_PATH, Option.some('Patient/p-1'))
+        }
+        onReport={() => undefined}
+      />
+    )
+
+    const group = screen.getByRole('region', { name: NEEDS_A_PATIENT_HEADING })
+    expect(within(group).queryByRole('combobox', { name: SUBJECT_OF_O1 })).toBeNull()
+    expect(
+      within(group).getByRole('combobox', { name: 'Patient of Observation Weight o-2' })
+    ).toBeDefined()
+  })
+
+  it('keeps a row under Needs a patient once a patient is picked for it, a pick being no edit', async () => {
+    render(<Harness resources={[TYRA_PATIENT, weight('o-1')]} onReport={() => undefined} />)
+    const group = screen.getByRole('region', { name: NEEDS_A_PATIENT_HEADING })
+
+    await userEvent.selectOptions(
+      within(group).getByRole<HTMLSelectElement>('combobox', { name: SUBJECT_OF_O1 }),
+      TYRA
+    )
+
+    expect(
+      within(
+        screen.getByRole('region', { name: NEEDS_A_PATIENT_HEADING })
+      ).getByRole<HTMLSelectElement>('combobox', { name: SUBJECT_OF_O1 }).value
+    ).toBe(`decoded:${TYRA_KEY}`)
   })
 })

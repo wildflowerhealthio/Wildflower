@@ -1,7 +1,7 @@
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   type MentionLinkChoiceSet,
-  DecodedFile,
+  type DecodedFile,
   FileResolution,
   type FormatDecode,
   type LinkChoice,
@@ -10,7 +10,6 @@ import {
   PickedFile,
   Referent,
   ReferentLinkChoiceSet,
-  UnlinkedMention,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, HashMap } from 'effect'
 
@@ -47,9 +46,9 @@ const discoverReferents = (
 /**
  * A batch every mention of which resolves: the batch the diff, the preview
  * and the confirm see. Beside a decoded batch's slots it holds the linked
- * records, every referent's link target and what each format still leaves
- * unlinked, which a decoded batch cannot. Each format slot's `decoded` holds
- * that format's resolved file.
+ * records and the plan it was resolved on, which a decoded batch cannot, and
+ * the decoded batch itself. Each format slot's `decoded` holds that format's
+ * resolved file.
  */
 interface ResolvedBatch extends DecodedBatch {
   /**
@@ -58,20 +57,18 @@ interface ResolvedBatch extends DecodedBatch {
    * `FileResolution.linkedKey`.
    */
   readonly linkedRecords: readonly FileResolution.LinkedRecord[]
-  /** The plan the batch was resolved on: what the referent rows read each choice's link target off. */
+  /**
+   * The plan the batch was resolved on: what the referent rows read each
+   * choice's link target off, and what the review asks the referent links
+   * leave unlinked in a resource (`UnlinkedMention.leftByReferentLinks`).
+   */
   readonly plan: LinkPlan.Type
   /**
-   * What the referent link choices alone leave unlinked in each claimed
-   * format (`UnlinkedMention.collect`), the format's own source files aside:
-   * the resources the review lists as needing a patient or a provider. A
-   * mention the reviewer chose a link for on its own is redirected in the
-   * format's resolved file and still counted here, so the row it is on stays
-   * listed, and in focus, once picked.
+   * The batch as decoded, before any link was followed: the resources the
+   * review asks the plan's referent links about, since a resolved resource
+   * also carries the mention links.
    */
-  readonly unlinkedMentionsByFormatKind: HashMap.HashMap<
-    FormatKind,
-    readonly UnlinkedMention.Type[]
-  >
+  readonly decodedBatch: DecodedBatch
 }
 
 /**
@@ -84,30 +81,33 @@ const isSourceFileOf = (kind: FormatKind, resource: FhirResourceWithId): boolean
   PickedFile.isSourceFile(formatRegistry[kind].sourceFileFormat)(resource)
 
 /**
- * What the referent link choices alone leave unlinked in `kind`'s decoded
- * file: `UnlinkedMention.collect` on the file resolved on the plan before any
- * mention link choice, `kind`'s source files aside.
+ * `kind`'s slot of `batch` with its decoded file resolved on `plan`
+ * (`FileResolution.resolveFile`); the slot itself when nothing moved in it.
  */
-const unlinkedMentionsOf = (
-  kind: FormatKind,
-  resolvedOnReferents: FormatDecode.Result<FormatKind>['decoded']
-): readonly UnlinkedMention.Type[] => {
-  const sourceFileKeys = new Set(
-    DecodedFile.resources(resolvedOnReferents)
-      .filter(({ resource }) => isSourceFileOf(kind, resource))
-      .map(({ key }) => key)
-  )
-  return UnlinkedMention.collect(resolvedOnReferents).filter(
-    ({ mentioningResourceKey }) => !sourceFileKeys.has(mentioningResourceKey)
-  )
+const resolveFormat = <K extends FormatKind>(
+  plan: LinkPlan.Type,
+  batch: DecodedBatch,
+  kind: K
+): FormatDecode.Result<K> => {
+  const result = batch.formats[kind]
+  const resolved = FileResolution.resolveFile(plan)(result.decoded)
+  return resolved === result.decoded ? result : { ...result, decoded: resolved }
 }
 
+/** The plan for `batch` on `linkChoiceSet`: its links by referent, then its mention links. */
+const planOf = (
+  batch: DecodedBatch,
+  linkChoiceSet: LinkChoiceSet.Type
+): Effect.Effect<LinkPlan.Type, Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice> =>
+  Effect.map(LinkPlan.make(decodedFilesOf(batch), linkChoiceSet.byReferent), (plan) =>
+    LinkPlan.withMentionLinkChoiceSet(plan, linkChoiceSet.byMention)
+  )
+
 /**
- * The batch with every mention resolved to the target its referent's choice
- * gives, or the one the reviewer chose for it on its own, the records only
- * mentioned gathered to be written as its `linkedRecords`, every referent's
- * link target, and what each format is left needing: the batch to review,
- * diff and write.
+ * The batch with every mention resolved to its referent's link target, or
+ * the one the reviewer chose for it on its own, the records only mentioned
+ * gathered to be written as its `linkedRecords`, and the plan it was
+ * resolved on: the batch to review, diff and write.
  *
  * @param batch - The decoded batch
  * @param linkChoiceSet - The reviewer's link choice set: by referent, and by
@@ -115,60 +115,40 @@ const unlinkedMentionsOf = (
  * @returns The resolved batch
  *
  * @remarks
- * Every claimed format is resolved on one plan over the batch's referents
- * (`LinkPlan.make` over every claimed format's decoded file, the mention link
- * choices laid on it with `LinkPlan.withMentionLinkChoiceSet`), each format in
- * its own slot (`FileResolution.resolveFile`): the choices are made for the
+ * One plan over the batch's referents ({@link planOf}: `LinkPlan.make` over
+ * every claimed format's decoded file, the mention links laid on it with
+ * `LinkPlan.withMentionLinkChoiceSet`), and each format resolved on it once,
+ * in its own slot ({@link resolveFormat}): the choices are made for the
  * decoded files' referents, so a mention in one format links to a referent
  * another holds, and a review key is unique across the batch, so a mention
- * link choice names one mention of one format's resource. The resources the
- * batch only mentions are its `linkedRecords`, no format's, so a stored
- * person several formats only mention is written once, and the plan it was
- * resolved on is its `plan`. Each format's
- * `unlinkedMentionsByFormatKind` are read off the file resolved on the
- * referent choices alone, so a mention link choice takes nothing out of
- * them. Section titles and review keys are kept, so the selections survive,
- * and a slot nothing moved in comes back as it was. A batch with no claimed
- * format comes back with no linked records, an empty plan and nothing
- * unlinked. Which of a person's names is current is judged at the clock's
- * now, so the clock is the one input besides the arguments. Fails with
- * `Referent.DuplicateReferent` when two decoded resources under different
- * ids are keyed by one logical reference, and with
- * `LinkChoice.InvalidLinkChoice` when a choice cannot be followed for its
- * referent; a mention link choice its mention cannot take is no choice, so
- * that mention is redirected to its referent's link target.
+ * link names one mention of one format's resource. The resources the batch
+ * only mentions are its `linkedRecords`, no format's, so a stored person
+ * several formats only mention is written once. Section titles and review
+ * keys are kept, so the selections survive, and a slot nothing moved in
+ * comes back as it was. A batch with no claimed format comes back with no
+ * linked records and an empty plan. Which of a person's names is current is
+ * judged at the clock's now, so the clock is the one input besides the
+ * arguments. Fails with `Referent.DuplicateReferent` when two decoded
+ * resources under different ids are keyed by one logical reference, and
+ * with `LinkChoice.InvalidLinkChoice` when a choice cannot be followed for
+ * its referent; a mention link choice its mention cannot take is no choice,
+ * so that mention is redirected to its referent's link target.
  */
 const resolveMentions = (
   batch: DecodedBatch,
   linkChoiceSet: LinkChoiceSet.Type
 ): Effect.Effect<ResolvedBatch, Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice> =>
-  Effect.flatMap(
-    LinkPlan.make(decodedFilesOf(batch), linkChoiceSet.byReferent),
-    (planOnReferents) => {
-      const plan = LinkPlan.withMentionLinkChoiceSet(planOnReferents, linkChoiceSet.byMention)
-      const unlinked: [FormatKind, readonly UnlinkedMention.Type[]][] = []
-      return Effect.map(
-        collectFormats(<K extends FormatKind>(kind: K): Effect.Effect<FormatDecode.Result<K>> => {
-          const result = batch.formats[kind]
-          if (result.files.length === 0) return Effect.succeed(result)
-          const resolvedOnReferents = FileResolution.resolveFile(planOnReferents)(result.decoded)
-          unlinked.push([kind, unlinkedMentionsOf(kind, resolvedOnReferents)])
-          const decoded =
-            plan === planOnReferents
-              ? resolvedOnReferents
-              : FileResolution.resolveFile(plan)(result.decoded)
-          // A slot nothing moved in comes back as itself.
-          return Effect.succeed(decoded === result.decoded ? result : { ...result, decoded })
-        }),
-        (formats): ResolvedBatch => ({
-          formats,
-          unrecognizedFiles: batch.unrecognizedFiles,
-          linkedRecords: FileResolution.linkedRecords(plan),
-          plan,
-          unlinkedMentionsByFormatKind: HashMap.fromIterable(unlinked),
-        })
-      )
-    }
+  Effect.flatMap(planOf(batch, linkChoiceSet), (plan) =>
+    Effect.map(
+      collectFormats((kind) => Effect.succeed(resolveFormat(plan, batch, kind))),
+      (formats): ResolvedBatch => ({
+        formats,
+        unrecognizedFiles: batch.unrecognizedFiles,
+        linkedRecords: FileResolution.linkedRecords(plan),
+        plan,
+        decodedBatch: batch,
+      })
+    )
   )
 
 /**
@@ -232,5 +212,5 @@ const resolveMentionsWithFallback = (
   )
 }
 
-export { discoverReferents, resolveMentions, resolveMentionsWithFallback }
+export { discoverReferents, isSourceFileOf, resolveMentions, resolveMentionsWithFallback }
 export type { ResolvedBatch }

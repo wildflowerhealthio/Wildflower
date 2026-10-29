@@ -10,7 +10,6 @@ import {
   Mention,
   MentionLinkChoiceSet,
   Referent,
-  UnlinkedMention,
 } from '../index.ts'
 import {
   ABSOLUTE,
@@ -30,6 +29,7 @@ import {
   request,
   resolveOnTestClock,
   STORED,
+  leftByReferentLinksOnTestClock,
 } from './identity-map.test-helpers.ts'
 
 /**
@@ -147,15 +147,17 @@ describe('a mention link choice on a resolved file', () => {
     expect(subjectAt(resolved, 'k-3')?.reference).toBe(ABSOLUTE)
   })
 
-  it('fills an empty subject slot from its choice, which the unlinked mentions then leave out', () => {
+  it('fills an empty subject slot from its choice, which the referent links still leave unlinked', () => {
     const choices = onSubjects([['k-3', LinkChoice.LinkToDecodedReferent({ referentKey: PERSON })]])
 
     const resolved = resolveOnTestClock(file, HashMap.empty(), choices)
 
     expect(subjectAt(resolved, 'k-3')?.reference).toBe('Patient/p-1')
     expect(
-      UnlinkedMention.collect(resolved).map((unlinked) => unlinked.mentioningResourceKey)
-    ).toEqual(['k-1', 'k-2'])
+      leftByReferentLinksOnTestClock(file, HashMap.empty(), choices).map(
+        (unlinked) => `${unlinked._tag} ${unlinked.mentioningResourceKey}`
+      )
+    ).toEqual(['Dangling k-1', 'Dangling k-2', 'OutsidePatientCompartment k-3'])
   })
 
   it('reads a choice the mention cannot take as none: another type, or an unlinked referent', () => {

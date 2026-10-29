@@ -1,11 +1,7 @@
 import type { ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
-import {
-  type DecodedFile,
-  StagedImport,
-  type UnlinkedMention,
-} from '@wildflowerhealthio/importer-fundamentals'
-import { Array, Data, HashMap, Option } from 'effect'
+import { type DecodedFile, StagedImport } from '@wildflowerhealthio/importer-fundamentals'
+import { Array, Data } from 'effect'
 import { type JSX, type ReactNode, useMemo, useState } from 'react'
 
 import type { FormatKind, FormatSettings, ResolvedBatch } from '@wildflowerhealthio/importer-core'
@@ -52,8 +48,9 @@ import panelStyles from './preview-panel.module.css'
  * `importer-core`'s `planWrite`, which the confirm reads too — a stored
  * copy whenever the server does not hold it unchanged, a new record only
  * when a resource the batch writes names it. Each format's body lists what
- * the referent choices leave unlinked in it (the resolved batch's
- * `unlinkedMentionsByFormatKind`) and offers a select per linkable mention
+ * the referent links leave unlinked in it (`UnlinkedMention.leftByReferentLinks`
+ * on the batch's plan, of each row as decoded or edited) and offers a select
+ * per linkable mention
  * (`mentionLinkOptions`, a pick calling `onChooseMention`). A settings change calls
  * `onSettingsChange`; the shell re-decodes that format. The confirm appears
  * only when that plan includes at least one resource, and it does not write —
@@ -118,8 +115,6 @@ interface PreviewPanelProps {
   /** Called with the reviewer's choice for one mention of one resource. */
   readonly onChooseMention?: ChooseMention
 }
-
-const NO_UNLINKED: readonly UnlinkedMention.Type[] = []
 
 /** One format's settings form, picked out of the registry by kind. */
 const FormatSettingsForm = <TFormat extends FormatKind>({
@@ -314,10 +309,9 @@ const PreviewPanel = ({
                   comparisons={comparisons.get(kind)}
                   mentionLinkOptions={mentionLinkOptions}
                   onChooseMention={onChooseMention}
-                  unlinked={Option.getOrElse(
-                    HashMap.get(batch.unlinkedMentionsByFormatKind, kind),
-                    () => NO_UNLINKED
-                  )}
+                  kind={kind}
+                  decodedFile={batch.decodedBatch.formats[kind].decoded}
+                  plan={batch.plan}
                   onSelectionChange={(selection) => onSelectionChange(kind, selection)}
                   onEditResource={(key, resource) => openEditor(kind, key, resource)}
                 />

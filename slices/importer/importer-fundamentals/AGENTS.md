@@ -313,12 +313,17 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     of the batch owns it, else `Stored`), as they will be written, keyed by
     **`linkedKey`** and titled by their label, in the order the links first
     reach them, no file's and so no format's.
-  - **`UnlinkedMention`** — `collect`: on a resolved file, every resource
-    **`OutsidePatientCompartment`** (a `subject` slot in which nothing names
-    a patient of the device; FHIR's Patient CompartmentDefinition names
-    `subject` for every type the importer handles) and every **`Dangling`**
-    mention (a logical reference, in any field, the map could link and left
-    unlinked), matched with `UnlinkedMention.match`.
+  - **`UnlinkedMention`** — **`leftByReferentLinks(plan, reviewKey,
+    resource)`**: what the plan's referent links leave unlinked in one
+    resource as decoded or edited, never as resolved (the plan says where its
+    references would be redirected): the resource as
+    **`OutsidePatientCompartment`** (a `subject` slot that is empty or names
+    neither a patient of the device by a relative literal nor someone the map
+    could link; FHIR's Patient CompartmentDefinition names `subject` for
+    every type the importer handles), and every **`Dangling`** mention (a
+    linkable logical reference, in any field, whose referent is `Unlinked`
+    or that no link answers), matched with `UnlinkedMention.match`. Only the
+    plan's links are read, so a mention link leaves a row listed.
   - **`ReferentSearch`** — the identity map's one server read, over
     `fhir-r4/clients`' `FhirR4ResourcesHttpApiClient`: **`defaultChoice`** is
     a `GET <Type>?identifier=&_count=2` with the referent's own logical
@@ -461,8 +466,8 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
   the `MentionLinkChoiceSet`, held beside the selections, and `importer-core`'s
   `resolveMentions` runs over the batch before the server diff, the preview
   and the confirm, so all three see the resources that get written: one
-  `LinkPlan.make` over the batch's decoded files, the mention link choices
-  laid on it (`LinkPlan.withMentionLinkChoiceSet`), every file resolved on it
+  `LinkPlan.make` over the batch's decoded files, the mention links laid on
+  it (`LinkPlan.withMentionLinkChoiceSet`), every file resolved on it once
   (`FileResolution.resolveFile(plan)`), the batch's linked records off it
   (`FileResolution.linkedRecords(plan)`). Resolving is a function of its arguments and
   the clock, and keeps every file's sections and keys. A batch of decoded
@@ -504,10 +509,11 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
   rather than read as a default. A cycle reads as `CreateResource` for the
   first of its members, in key order, that it links to a resource, so all of
   it is redirected to one resource.
-  `UnlinkedMention.collect` lists, on the resolved file, every resource outside
-  every patient's compartment (a `subject` slot in which nothing names a
-  patient of the device) and every dangling mention: a logical reference, in
-  any field, the map could link and left unlinked. A `display`-only provider,
+  `UnlinkedMention.leftByReferentLinks` lists, for a resource as decoded or
+  edited, whether it is outside every patient's compartment (a `subject` slot
+  in which nothing names a patient of the device or someone the map could
+  link) and every dangling mention: a logical reference, in any field, the
+  map could link and its referent links leave unlinked. A `display`-only provider,
   an untyped identifier, an absolute URL and a contained `#<id>` are not ones
   the map could link, so they are not listed on their own. A mention link
   choice wins over its referent's rule for that one mention; only an explicit

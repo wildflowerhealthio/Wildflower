@@ -15,6 +15,7 @@ import {
   MentionLinkChoiceSet,
   Referent,
   type ReferentLinkChoiceSet,
+  UnlinkedMention,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Effect, HashMap, Option, Schema, TestContext } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
@@ -24,6 +25,7 @@ import { type FormatKind, formatRegistry } from './registry.ts'
 import {
   resolveMentions,
   discoverReferents,
+  isSourceFileOf,
   resolveMentionsWithFallback,
   type ResolvedBatch,
 } from './resolve-mentions.ts'
@@ -175,14 +177,11 @@ describe('resolveMentions', () => {
   it('gives an empty batch back as it is, with no linked records and no link targets', () => {
     const batch = batchOf({})
 
-    const { plan, unlinkedMentionsByFormatKind, ...resolved } = resolvedOnTestClock(
-      batch,
-      HashMap.empty()
-    )
+    const { plan, decodedBatch, ...resolved } = resolvedOnTestClock(batch, HashMap.empty())
 
     expect(resolved).toEqual({ ...batch, linkedRecords: [] })
     expect(LinkPlan.linkTargets(plan)).toEqual([])
-    expect(HashMap.isEmpty(unlinkedMentionsByFormatKind)).toBe(true)
+    expect(decodedBatch).toBe(batch)
   })
 
   it('links a mention in one format to the person another format holds', () => {
@@ -284,7 +283,7 @@ describe('resolveMentions with mention link choices', () => {
     )
   })
 
-  it('lists what the referent choices alone leave unlinked in each format, a mention link choice notwithstanding', () => {
+  it('keeps the decoded batch, in which the plan’s referent links leave unlinked what they did before a mention link choice', () => {
     const onReferents = resolvedOnTestClock(batch, HashMap.empty())
     const withChosen = resolvedOnTestClock(
       batch,
@@ -297,21 +296,19 @@ describe('resolveMentions with mention link choices', () => {
       )
     )
 
-    const listed = (resolved: ResolvedBatch): readonly (readonly [string, readonly string[]])[] =>
-      Array.from(
-        HashMap.map(resolved.unlinkedMentionsByFormatKind, (unlinked) =>
-          unlinked.map(({ _tag, mentioningResourceKey }) => `${_tag} ${mentioningResourceKey}`)
+    const listed = (resolved: ResolvedBatch): readonly string[] =>
+      DecodedFile.resources(resolved.decodedBatch.formats.har.decoded)
+        .flatMap(({ key, resource }) =>
+          UnlinkedMention.leftByReferentLinks(resolved.plan, key, resource)
         )
-      ).toSorted(([left], [right]) => left.localeCompare(right))
-    expect(listed(onReferents)).toEqual([
-      ['har', ['Dangling har/k-0', 'Dangling har/k-1']],
-      ['lifelabs-pdf', []],
-    ])
+        .map(({ _tag, mentioningResourceKey }) => `${_tag} ${mentioningResourceKey}`)
+    expect(listed(onReferents)).toEqual(['Dangling har/k-0', 'Dangling har/k-1'])
     expect(listed(withChosen)).toEqual(listed(onReferents))
+    expect(withChosen.decodedBatch).toBe(batch)
     expect(subjectOf(at(withChosen, 'har', 'har/k-1'))).toBe('Patient/p-1')
   })
 
-  it('leaves a format’s own source file out of what it lists as unlinked', () => {
+  it('names a format’s own source file, which the review never asks a patient for', () => {
     const sourceFile = Schema.decodeUnknownSync(withMandatoryId(DocumentReference.Schema))({
       resourceType: 'DocumentReference',
       id: 'src-1',
@@ -329,16 +326,11 @@ describe('resolveMentions with mention link choices', () => {
       content: [{ attachment: { contentType: 'application/json' } }],
     })
 
-    const resolved = resolvedOnTestClock(
-      batchOf({ har: [sourceFile, request('rx-1', accountSubject)] }),
-      HashMap.empty()
-    )
-
-    expect(
-      Option.map(HashMap.get(resolved.unlinkedMentionsByFormatKind, 'har'), (unlinked) =>
-        unlinked.map(({ mentioningResourceKey }) => mentioningResourceKey)
-      )
-    ).toEqual(Option.some(['har/k-1']))
+    expect([
+      isSourceFileOf('har', sourceFile),
+      isSourceFileOf('lifelabs-pdf', sourceFile),
+      isSourceFileOf('har', request('rx-1', accountSubject)),
+    ]).toEqual([true, false, false])
   })
 })
 
