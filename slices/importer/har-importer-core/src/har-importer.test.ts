@@ -1,4 +1,4 @@
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import { type FhirResource, Practitioner } from '@wildflowerhealthio/fhir-r4/resources'
 import { HarFromJson, HttpArchive, emitHar } from '@wildflowerhealthio/http-archive'
 import { SourceDescriptor } from '@wildflowerhealthio/http-extraction-fundamentals'
 import {
@@ -6,6 +6,7 @@ import {
   PickedFile,
   FormatDecode,
   type DecodedFile,
+  Referent,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import {
@@ -424,6 +425,86 @@ const readSourceFile = (resource: PickedFile.SourceFile): Promise<PickedFile.Typ
 const isHarSourceFile = PickedFile.isSourceFile(harImporter.sourceFileFormat)
 
 const { exchange: exchangeArbitrary } = arbitraries(fc)
+
+/** The Rexall carebook profile uid of the one person a Rexall capture is about. */
+const REXALL_PROFILE_UID = 'uid-abc-123'
+
+/** The system Rexall keys its own ids under, which adoption puts in `identifier[0]`. */
+const REXALL_CAREBOOK_SYSTEM = 'https://wildflowerhealth.io/fhir/sid/rexall-carebook'
+
+/** The tunnel host the Rexall portal's XHRs go to. */
+const REXALL_TUNNEL = 'https://rexall-prd-tunnel.letsbewell.ca/enduser'
+
+/**
+ * The Rexall portal's two XHRs: the profile, and the prescription list with a
+ * fill and its dispense, the request naming its prescriber the way carebook
+ * does, by `requester.agent.display` behind an empty `reference`.
+ */
+const rexallExchanges = (): readonly TraceExchange[] =>
+  [
+    {
+      url: `${REXALL_TUNNEL}/profile/v2/me`,
+      body: {
+        data: {
+          identifiers: { uid: REXALL_PROFILE_UID },
+          names: { firstName: 'Jordan', lastName: 'Rivera' },
+          birthDate: '1985-07-14',
+        },
+      },
+    },
+    {
+      url: `${REXALL_TUNNEL}/health/v1/fhir/stu3/pharmacy/Location?subject=Patient/${REXALL_PROFILE_UID}`,
+      body: {
+        resourceType: 'Bundle',
+        type: 'searchset',
+        entry: [
+          { resourceType: 'MedicationRequest', status: 'active', intent: 'order' },
+          { resourceType: 'MedicationDispense', status: 'completed' },
+        ].map((resource) => ({
+          resource: {
+            ...resource,
+            id: 'rx-1',
+            medicationCodeableConcept: { text: 'Atorvastatin 20 mg tablet' },
+            subject: { reference: `Patient/${REXALL_PROFILE_UID}`, display: '' },
+            ...(resource.resourceType === 'MedicationRequest'
+              ? { requester: { agent: { reference: '', display: 'DR PATEL' } } }
+              : {}),
+          },
+        })),
+      },
+    },
+  ].map(({ url, body }, index) =>
+    traceExchange({
+      requestId: `req-${index}`,
+      url,
+      body: storedJson(body),
+      startedAtMillis: CAPTURE_FLOOR + index * 1000,
+    })
+  )
+
+describe('harImporter.decode over a Rexall capture', () => {
+  it('should name one Patient and the prescriber by printed name as its referents', async () => {
+    const result = await readOne({
+      id: '0:rexall.har',
+      fileName: 'rexall.har',
+      bytes: harBytesOf(rexallExchanges()),
+    })
+
+    const referents = Effect.runSync(Referent.discover([result.decoded]))
+
+    expect(
+      referents.map(({ _tag, logicalReference }) => [
+        _tag,
+        logicalReference.type,
+        logicalReference.identifier.system.href,
+        logicalReference.identifier.value,
+      ])
+    ).toEqual([
+      ['AsResource', 'Patient', REXALL_CAREBOOK_SYSTEM, REXALL_PROFILE_UID],
+      ['ByMentionOnly', 'Practitioner', Practitioner.NAME_IDENTIFIER_SYSTEM, 'DR PATEL'],
+    ])
+  })
+})
 
 describe('HAR archive coding', () => {
   it('carries the web-trace har-archive coding on type and category, the raw label, and json content', async () => {
