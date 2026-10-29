@@ -130,7 +130,7 @@ points. Every other module is one concern that exports only its pipeline steps
 (whole-resource steps, or field-level ones for `Struct.evolve`) and keeps its
 schemas and helpers private: `pharmacy-location.ts` (processor
 and store link), `contained-medication.ts` (the contained Medication's own
-promotions and its link from `medication[x]`), `din.ts`,
+promotions and its link from `medication[x]`), `din.ts`, `prescriber.ts`,
 `repeats-available.ts` and `supply-days.ts`. The shared plumbing underneath
 them is `extension-lift.ts` (`atUrl` and `promoteExtension`), `decoded-r4.ts`,
 `wire.ts` and `strength-ratio.ts`. Knowledge a reader needs too lives in
@@ -166,7 +166,7 @@ No dispense in the capture inlines a Medication, but the slot is identical, and
 one that did would otherwise be stored differently from the same drug on the
 request beside it.
 
-Two things ride along, both fixing accuracy bugs rather than moving extensions:
+Three things ride along, none of them moving an extension:
 
 - **The contained `Medication` is linked.** The dialect populates
   `medicationCodeableConcept` and leaves `contained[0]` unreferenced, so its
@@ -180,6 +180,15 @@ Two things ride along, both fixing accuracy bugs rather than moving extensions:
 - **Supply durations get their unit.** `dispenseRequest.expectedSupplyDuration`
   and `MedicationDispense.daysSupply` both arrive as a bare `{ value }`. They
   are days; the UCUM `d` is spelled out.
+- **The prescriber names their identity.** `requester.agent` arrives with an
+  empty `reference` and the prescriber's printed name, so the R4 `requester`
+  is `display` only. It becomes `fhir-r4`'s `Practitioner.tryReferenceFromName`
+  of that name (a logical reference: `type` Practitioner, the name identifier,
+  and the name as `display`), so the
+  importer's identity map can link the prescriber, and the same name from
+  another source is the same provider. A `display`-only requester with a blank
+  or absent name is dropped; one carrying a literal or an identifier is left
+  alone.
 
 ### Traps
 
