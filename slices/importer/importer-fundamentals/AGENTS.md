@@ -152,11 +152,22 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   - **`Mention`** — each place a resource names something by a `Reference`,
     at its path (`subject`, `performer[0].actor`): **`madeIn`** is every
     mention a resource makes, found by fhir-r4's
-    `ResourceReferences.collect` so a reference anywhere is one; and
-    `landsOnDevice`, whether a reference is a relative literal `Type/<id>`
-    (not a contained `#<id>`, an absolute URL, or text). Which type an
-    identifier-only mention names is the reference's own business: a logical
-    reference states its `type`, and one that does not names nothing.
+    `ResourceReferences.collect` so a reference anywhere is one; `at` the one
+    at a path; and `landsOnDevice`, whether a reference is a relative literal
+    `Type/<id>` (not a contained `#<id>`, an absolute URL, or text). Which
+    type an identifier-only mention names is the reference's own business: a
+    logical reference states its `type`, and one that does not names nothing.
+    **`linkableIn`** is every mention a reviewer may choose a link for on its
+    own (a **`Linkable`**, the mention with its `type`): each that names a
+    type the map links, by `type` or by its relative literal, plus, for a
+    `subject` that states none, a `Patient` (FHIR's Patient
+    CompartmentDefinition names `subject` for every type the importer
+    handles), an empty `subject` slot included as an empty reference;
+    `linkableTypeOf` is that type. **`relinked`** is the resource with the
+    mention at a path landed on a literal reference, or, for `None`, with its
+    literal dropped, keeping its `identifier` and `display` and changing
+    nothing when the mention would then name nothing; it fills an empty
+    `subject` slot.
   - **`Referent`** — something the import refers to that may already exist on
     the device, once per identity: **`AsResource`** when the decode emitted
     its resource (keyed by its `identifier[0]`, carrying every identifier a
@@ -182,6 +193,16 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     reads a referent's choice off it, else its **`defaultFor`**,
     `CreateResource` with a resource and `DontLink` without; `union` lays one
     map's choices over another's and `remove` drops a referent's choice.
+  - **`MentionLinkChoices`** — the reviewer's choice for one mention of one
+    resource, over whatever its referent's choice says (**`Type`**, a
+    `HashMap` by **`key(reviewKey, mentionPath)`**; `empty`, `set`,
+    `forMention`). A mention's own choice (a **`Choice`**, `isChoice`) is a
+    referent choice that writes nothing: `LinkToStoredResource`,
+    `LinkToDecodedReferent` (wherever that referent lands, so a mention picked
+    onto a referent's own record follows the referent when it is later linked
+    to a stored one) or `DontLink`. Held in the identity map beside the
+    referent choices and resolved by the plan, never written into the
+    resource as an edit; it teaches nothing and writes nothing.
   - **`LinkChoice`** — what the reviewer chooses for a referent, a family of
     imperatives: **`CreateResource`**, **`UpdateStoredResource`** (the
     referent's own resource written over its stored copy under the same
@@ -231,25 +252,39 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     resolving a file needs, worked out once per batch over its referents
     (`Referent.discover`), so a `LinkToDecodedReferent` naming a
     referent one file holds resolves from a mention in another: the
-    **`links`**, the **`linkTargetsByLogicalReferenceKey`**, the
+    **`links`**, the **`linkTargetsByReferentKey`**, the
+    **`linkTargetsByLogicalReferenceKey`**, the
     **`resolvedResourcesByResolvedLiteralReference`**, and the
     **`decodedLiteralReferencesToStored`** (`Type/<decoded id>` →
     `Type/<stored id>` for every decoded resource a stored one stands in for),
-    all `HashMap`s. Read through its two lookups, each named for the fact its
-    `None` states: **`redirectionIfLinked`** (where a decoded reference is
-    redirected when it names a referent whose link lands on a resource, a
-    literal one through the redirects and a logical one through its
-    referent's link target) and **`resolvedResourceIfReferent`** (the resource
-    a decoded resource is written as when it is a referent: the resolved
-    resource under the literal reference it is written under; a resource
-    that is no referent is written as decoded).
+    all `HashMap`s; and, once **`withMentionLinkChoices`** lays the mention
+    link choices on it, the **`linkTargetsByMentionKey`**: where each mention
+    chosen for on its own lands, a `LinkToStoredResource` on that resource, a
+    `LinkToDecodedReferent` where its referent lands (left out when that is
+    nowhere, or the batch holds no such referent, so the mention lands where
+    its own referent does), a `DontLink` `Unlinked`. Read through its three
+    lookups, each named for the fact its `None` states:
+    **`redirectionIfLinked`** (where a decoded reference is redirected when
+    it names a referent whose link lands on a resource, a literal one through
+    the redirects and a logical one through its referent's link target),
+    **`resolvedResourceIfReferent`** (the resource a decoded resource is
+    written as when it is a referent: the resolved resource under the literal
+    reference it is written under; a resource that is no referent is written
+    as decoded) and **`linkTargetIfChosenForMention`** (the link target the
+    reviewer chose for a linkable mention of the resource under a review key,
+    when it is one the mention can take: `Unlinked`, or a resource of the
+    type the mention names, so a `subject` never lands on a Practitioner).
   - **`FileResolution`** — pure, every function taking the plan first, since
     it is fixed for a batch: **`resolveFile(plan)`** writes each decoded
     resource of one file (`DecodedFile.mapResources`) as the resolved
     resource `LinkPlan.resolvedResourceIfReferent` has for it, titled by its
     label when it replaces the decoded one under another id, else as decoded,
     its mentions redirected to their referents' link targets either way
-    (`ResourceReferences.mapReferences`, keeping `display` and `identifier`);
+    (`ResourceReferences.mapReferences`, keeping `display` and `identifier`),
+    then each the reviewer chose a link for under the entry's review key
+    landed where that choice says (`Mention.relinked`: on the chosen
+    resource's literal reference, or, for `Unlinked`, with its literal
+    dropped; an empty `subject` slot chosen for is filled);
     **`linkedRecords(plan)`**: the batch's linked records, each a
     **`LinkedRecord`** (a `DecodedFile.Resource` with its `origin`, the
     `Stored` or `Provisional` link target it comes from), the records it only
@@ -399,10 +434,12 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
   the batch.
 - **Identity is the map's, never the selection's.** `StagedImport` keeps
   exclusions and edits; what a mention lands on lives in the
-  `ReferentLinkChoices`, held beside the selections, and `importer-core`'s
+  `ReferentLinkChoices` and, for a mention the reviewer chose for on its own,
+  the `MentionLinkChoices`, held beside the selections, and `importer-core`'s
   `resolveMentions` runs over the batch before the server diff, the preview
   and the confirm, so all three see the resources that get written: one
-  `LinkPlan.make` over the batch's decoded files, every file resolved on it
+  `LinkPlan.make` over the batch's decoded files, the mention link choices
+  laid on it (`LinkPlan.withMentionLinkChoices`), every file resolved on it
   (`FileResolution.resolveFile(plan)`), the batch's linked records off it
   (`FileResolution.linkedRecords(plan)`). Resolving is a function of its arguments and
   the clock, and keeps every file's sections and keys. A batch of decoded
@@ -449,7 +486,10 @@ an `importer-core`, a `*-importer-react`, or `slices/http-extraction`.
   patient of the device) and every dangling mention: a logical reference, in
   any field, the map could link and left unlinked. A `display`-only provider,
   an untyped identifier, an absolute URL and a contained `#<id>` are not ones
-  the map could link, so they are not listed on their own.
+  the map could link, so they are not listed on their own. A mention link
+  choice wins over its referent's rule for that one mention; only an explicit
+  `DontLink` unlinks one, and a choice of a type the mention cannot name, or
+  of a referent landing nowhere, is none.
 - **Selection keys by a `DecodedFile.Resource`'s `key`.** Selection state must
   be serializable and survive a settings re-decode, so both axes hold string
   keys; a key that disappears simply stops applying.

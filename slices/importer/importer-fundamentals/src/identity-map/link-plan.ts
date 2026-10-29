@@ -1,6 +1,6 @@
 /**
- * The link plan: everything resolving a batch's decoded files on the referent
- * link choices needs, worked out once from the files and the choices, and the
+ * The link plan: everything resolving a batch's decoded files on the link
+ * choices needs, worked out once from the files and the choices, and the
  * lookups that answer the resolution's and the redirection's questions.
  *
  * @remarks
@@ -8,17 +8,19 @@
  * each referent's link target is, what the resource under each resolved
  * literal reference becomes once it has assumed the identifiers of the
  * referents linked to it, and which decoded literal references move to a
- * stored resource. Built once per batch by {@link make}, so a referent one
- * file holds is the link target of a mention in another, and read through
- * {@link redirectionIfLinked} and {@link resolvedResourceIfReferent} by the
- * resolution of every file.
+ * stored resource. A mention the reviewer chose a link for on its own lands
+ * where that choice says instead, and the plan resolves that too
+ * ({@link withMentionLinkChoices}). Built once per batch by {@link make}, so
+ * a referent one file holds is the link target of a mention in another, and
+ * read through {@link redirectionIfLinked}, {@link resolvedResourceIfReferent}
+ * and {@link linkTargetIfChosenForMention} by the resolution of every file.
  *
  * @packageDocumentation
  */
 
 import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
-import { Array, Effect, HashMap, HashSet, Option, pipe } from 'effect'
+import { Array, Effect, HashMap, HashSet, Match, Option, pipe } from 'effect'
 
 import * as DecodedFile from '../decoded-file.ts'
 import type * as LinkChoice from './link-choice.ts'
@@ -26,6 +28,8 @@ import * as LinkTarget from './link-target.ts'
 import * as Link from './link.ts'
 import * as LinkableLogicalReference from './linkable-logical-reference.ts'
 import * as LinkableResource from './linkable-resource.ts'
+import * as MentionLinkChoices from './mention-link-choices.ts'
+import type * as Mention from './mention.ts'
 import type * as ReferentLinkChoices from './referent-link-choices.ts'
 import * as Referent from './referent.ts'
 import * as ResolvedResource from './resolved-resource.ts'
@@ -34,6 +38,8 @@ import * as ResolvedResource from './resolved-resource.ts'
 interface Type {
   /** Every referent of the batch with its link target, in discovery order. */
   readonly links: readonly Link.Type[]
+  /** Each referent's link target, by `Referent.key`: what a `LinkToDecodedReferent` mention choice lands on. */
+  readonly linkTargetsByReferentKey: HashMap.HashMap<string, LinkTarget.Type>
   /**
    * Each referent's link target under every logical reference that names it
    * (`Referent.byLogicalReferenceKey`), by `LinkableLogicalReference.key`:
@@ -55,6 +61,13 @@ interface Type {
    * redirected, and under which literal reference the resource is written.
    */
   readonly decodedLiteralReferencesToStored: HashMap.HashMap<string, string>
+  /**
+   * Where each mention the reviewer chose a link for on its own lands, by
+   * `MentionLinkChoices.key`, over its referent's rule: a stored resource, a
+   * referent's link target, or `Unlinked`. Empty until
+   * {@link withMentionLinkChoices} lays the mention link choices on the plan.
+   */
+  readonly linkTargetsByMentionKey: HashMap.HashMap<string, LinkTarget.Type>
 }
 
 /** The literal references the decoded resources of `decodedFiles` the identity map links carry. */
@@ -117,23 +130,29 @@ const decodedLiteralReferencesToStoredOf = (
     HashMap.fromIterable
   )
 
-/** Each link's target under every logical reference that names its referent (`Referent.byLogicalReferenceKey`). */
-const linkTargetsByLogicalReferenceKeyOf = (
+/** Each link's target by its referent's key. */
+const linkTargetsByReferentKeyOf = (
   links: readonly Link.Type[]
-): HashMap.HashMap<string, LinkTarget.Type> => {
-  const linkTargetsByReferentKey = HashMap.fromIterable(
+): HashMap.HashMap<string, LinkTarget.Type> =>
+  HashMap.fromIterable(
     links.map(({ referent, target }) => [Referent.key(referent), target] as const)
   )
-  return HashMap.filterMap(
+
+/** Each link's target under every logical reference that names its referent (`Referent.byLogicalReferenceKey`). */
+const linkTargetsByLogicalReferenceKeyOf = (
+  links: readonly Link.Type[],
+  linkTargetsByReferentKey: HashMap.HashMap<string, LinkTarget.Type>
+): HashMap.HashMap<string, LinkTarget.Type> =>
+  HashMap.filterMap(
     Referent.byLogicalReferenceKey(links.map(({ referent }) => referent)),
     (referent) => HashMap.get(linkTargetsByReferentKey, Referent.key(referent))
   )
-}
 
 /**
- * The plan for a batch's `decodedFiles` under `linkChoices`: each referent's
- * choice made once into its link (`Link.fromChoices`), and every field read
- * off those links.
+ * The plan for a batch's `decodedFiles` under the referent `linkChoices`:
+ * each referent's choice made once into its link (`Link.fromChoices`), and
+ * every field read off those links; no mention chosen for on its own yet
+ * ({@link withMentionLinkChoices}).
  *
  * @remarks
  * The referents are the whole batch's (`Referent.discover`), so a
@@ -150,6 +169,7 @@ const make = (
   Effect.gen(function* () {
     const referents = yield* Referent.discover(decodedFiles)
     const links = yield* Link.fromChoices(referents, linkChoices)
+    const linkTargetsByReferentKey = linkTargetsByReferentKeyOf(links)
     const decodedLiteralReferencesToStored = decodedLiteralReferencesToStoredOf(links)
     const resolvedResourcesByResolvedLiteralReference =
       yield* ResolvedResource.byResolvedLiteralReference(
@@ -161,11 +181,85 @@ const make = (
       )
     return {
       links,
-      linkTargetsByLogicalReferenceKey: linkTargetsByLogicalReferenceKeyOf(links),
+      linkTargetsByReferentKey,
+      linkTargetsByLogicalReferenceKey: linkTargetsByLogicalReferenceKeyOf(
+        links,
+        linkTargetsByReferentKey
+      ),
       resolvedResourcesByResolvedLiteralReference,
       decodedLiteralReferencesToStored,
+      linkTargetsByMentionKey: HashMap.empty(),
     }
   })
+
+/**
+ * Where a mention link choice lands, given every referent's link target: a
+ * `LinkToStoredResource` on that stored resource, a `DontLink` nowhere, and
+ * a `LinkToDecodedReferent` where its referent does. `None` for a
+ * `LinkToDecodedReferent` whose referent lands on no resource, or that the
+ * batch does not hold: that mention lands where its own referent does, as
+ * one with no choice does.
+ *
+ * @remarks
+ * Only an explicit `DontLink` unlinks a mention. Resolving a resolved batch
+ * again discovers no referent for an identity whose every mention was
+ * redirected, so reading a missing referent as unlinked would move a mention
+ * the first resolution had landed.
+ */
+const linkTargetOfMentionChoice = (
+  linkTargetsByReferentKey: HashMap.HashMap<string, LinkTarget.Type>,
+  choice: MentionLinkChoices.Choice
+): Option.Option<LinkTarget.Type> =>
+  Match.value(choice).pipe(
+    Match.tag('LinkToStoredResource', ({ resource }) =>
+      Option.some(LinkTarget.Stored({ resource }))
+    ),
+    Match.tag('LinkToDecodedReferent', ({ referentKey }) =>
+      HashMap.get(linkTargetsByReferentKey, referentKey).pipe(
+        Option.filter((target) => !LinkTarget.is('Unlinked')(target))
+      )
+    ),
+    Match.tag('DontLink', () => Option.some(LinkTarget.Unlinked())),
+    Match.exhaustive
+  )
+
+/**
+ * `plan` with the reviewer's `mentionLinkChoices` laid on it: each chosen
+ * mention's link target, resolved off the referents' link targets the plan
+ * already holds. Every other field is kept: the mention link choices teach
+ * nothing and write nothing, so no resolved resource assumes anything for
+ * them.
+ */
+const withMentionLinkChoices = (plan: Type, mentionLinkChoices: MentionLinkChoices.Type): Type =>
+  HashMap.isEmpty(mentionLinkChoices)
+    ? plan
+    : {
+        ...plan,
+        linkTargetsByMentionKey: HashMap.filterMap(mentionLinkChoices, (choice) =>
+          linkTargetOfMentionChoice(plan.linkTargetsByReferentKey, choice)
+        ),
+      }
+
+/**
+ * The link target the reviewer chose for `mention`, in the resource reviewed
+ * under `reviewKey`, when they chose one it can take: `Unlinked`, or a
+ * resource of the type the mention names. A target of another type is no
+ * choice, so a `subject` never lands on a Practitioner. `None` when the
+ * mention lands where its referent's choice says.
+ */
+const linkTargetIfChosenForMention = (
+  plan: Type,
+  reviewKey: string,
+  mention: Mention.Linkable
+): Option.Option<LinkTarget.Type> =>
+  HashMap.get(plan.linkTargetsByMentionKey, MentionLinkChoices.key(reviewKey, mention.path)).pipe(
+    Option.filter((target) =>
+      Option.match(LinkTarget.resourceIfLinked(target), {
+        onNone: () => true,
+        onSome: (resource) => resource.resourceType === mention.type,
+      })
+    )
+  )
 
 /**
  * The literal reference `referenceAsDecoded` is redirected to under `plan`,
@@ -222,5 +316,11 @@ const resolvedResourceIfReferent = (
     )
   )
 
-export { make, redirectionIfLinked, resolvedResourceIfReferent }
+export {
+  linkTargetIfChosenForMention,
+  make,
+  redirectionIfLinked,
+  resolvedResourceIfReferent,
+  withMentionLinkChoices,
+}
 export type { Type }

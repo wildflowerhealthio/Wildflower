@@ -33,6 +33,7 @@ import * as LinkChoice from './link-choice.ts'
 import * as LinkPlan from './link-plan.ts'
 import * as LinkableLogicalReference from './linkable-logical-reference.ts'
 import * as LinkableResource from './linkable-resource.ts'
+import * as MentionLinkChoices from './mention-link-choices.ts'
 import type * as ReferentLinkChoices from './referent-link-choices.ts'
 import * as Referent from './referent.ts'
 
@@ -50,14 +51,16 @@ const runOnTestClock = <A, E>(effect: Effect.Effect<A, E>): A =>
   Effect.runSync(Effect.provide(effect, TestContext.TestContext))
 
 /**
- * A batch's `files` resolved on `linkChoices` as `importer-core`'s
- * `resolveMentions` resolves a batch's formats: one link plan over the whole
- * batch, every file resolved on it in the order given, and the batch's linked
+ * A batch's `files` resolved on `linkChoices`, and on `mentionLinkChoices`
+ * when given, as `importer-core`'s `resolveMentions` resolves a batch's
+ * formats: one link plan over the whole batch, the mention link choices laid
+ * on it, every file resolved on it in the order given, and the batch's linked
  * records off the plan.
  */
 const resolveAcross = (
   files: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>,
-  linkChoices: ReferentLinkChoices.Type
+  linkChoices: ReferentLinkChoices.Type,
+  mentionLinkChoices: MentionLinkChoices.Type = MentionLinkChoices.empty
 ): Effect.Effect<
   {
     readonly resolvedFiles: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>
@@ -65,24 +68,33 @@ const resolveAcross = (
   },
   Referent.DuplicateReferent | LinkChoice.InvalidLinkChoice
 > =>
-  Effect.map(LinkPlan.make(files, linkChoices), (plan) => ({
-    resolvedFiles: Array.map(files, FileResolution.resolveFile(plan)),
-    linkedRecords: FileResolution.linkedRecords(plan),
-  }))
+  Effect.map(
+    Effect.map(LinkPlan.make(files, linkChoices), (plan) =>
+      LinkPlan.withMentionLinkChoices(plan, mentionLinkChoices)
+    ),
+    (plan) => ({
+      resolvedFiles: Array.map(files, FileResolution.resolveFile(plan)),
+      linkedRecords: FileResolution.linkedRecords(plan),
+    })
+  )
 
 /** {@link resolveAcross} over `files`, run on the test clock. */
 const resolveAcrossOnTestClock = (
   files: Array.NonEmptyReadonlyArray<DecodedFile.DecodedFile>,
-  linkChoices: ReferentLinkChoices.Type
+  linkChoices: ReferentLinkChoices.Type,
+  mentionLinkChoices: MentionLinkChoices.Type = MentionLinkChoices.empty
 ): Effect.Effect.Success<ReturnType<typeof resolveAcross>> =>
-  runOnTestClock(resolveAcross(files, linkChoices))
+  runOnTestClock(resolveAcross(files, linkChoices, mentionLinkChoices))
 
 /** The one resolved file of a batch of one `file`, run on the test clock. */
 const resolveOnTestClock = (
   file: DecodedFile.DecodedFile,
-  linkChoices: ReferentLinkChoices.Type
+  linkChoices: ReferentLinkChoices.Type,
+  mentionLinkChoices: MentionLinkChoices.Type = MentionLinkChoices.empty
 ): DecodedFile.DecodedFile =>
-  Array.headNonEmpty(resolveAcrossOnTestClock(Array.of(file), linkChoices).resolvedFiles)
+  Array.headNonEmpty(
+    resolveAcrossOnTestClock(Array.of(file), linkChoices, mentionLinkChoices).resolvedFiles
+  )
 
 /** The linked records of a batch of one `file`, run on the test clock. */
 const linkedRecordsOnTestClock = (

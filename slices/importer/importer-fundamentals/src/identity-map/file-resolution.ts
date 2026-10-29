@@ -1,9 +1,10 @@
 /**
  * Resolving a decoded file on its batch's link plan: each decoded resource
  * written as the resource the plan has for it, with its mentions redirected to
- * their referents' link targets; and the records the batch only mentions, as
- * the batch's own linked records. Every function takes the plan first, since
- * it is fixed for a batch.
+ * their referents' link targets, or landed where the reviewer chose for one
+ * on its own; and the records the batch only mentions, as the batch's own
+ * linked records. Every function takes the plan first, since it is fixed for
+ * a batch.
  *
  * @packageDocumentation
  */
@@ -15,6 +16,7 @@ import * as DecodedFile from '../decoded-file.ts'
 import * as LinkPlan from './link-plan.ts'
 import * as LinkTarget from './link-target.ts'
 import * as LinkableResource from './linkable-resource.ts'
+import * as Mention from './mention.ts'
 
 /**
  * A record the batch only mentions, as it will be written, with where it
@@ -33,7 +35,7 @@ const linkedKey = (onlyMentioned: LinkableResource.WithId): string =>
  * `identifier`. Walks every reference, not only the mention fields, so a
  * provider named elsewhere moves too. The same object when nothing moves.
  */
-const redirectMentions =
+const redirectToReferentLinkTargets =
   (plan: LinkPlan.Type) =>
   (mentioningResource: FhirResourceWithId): FhirResourceWithId =>
     ResourceReferences.mapReferences(mentioningResource, (referenceAsDecoded) =>
@@ -46,6 +48,46 @@ const redirectMentions =
       })
     )
 
+/**
+ * `mentioningResource`, reviewed under `reviewKey`, with each mention the
+ * reviewer chose a link for on its own landed where that choice says
+ * (`Mention.relinked`): on the chosen resource's literal reference, or, for
+ * `Unlinked`, with its literal dropped, which changes nothing when the
+ * mention would then name nothing. An empty `subject` slot chosen for is
+ * filled. The same object when no mention is chosen for.
+ */
+const landChosenMentions =
+  (plan: LinkPlan.Type, reviewKey: string) =>
+  (mentioningResource: FhirResourceWithId): FhirResourceWithId =>
+    Mention.linkableIn(mentioningResource).reduce(
+      (landed, mention) =>
+        Option.match(LinkPlan.linkTargetIfChosenForMention(plan, reviewKey, mention), {
+          onNone: () => landed,
+          onSome: (target) =>
+            Mention.relinked(
+              landed,
+              mention.path,
+              Option.map(LinkTarget.resourceIfLinked(target), LinkableResource.literalReferenceOf)
+            ),
+        }),
+      mentioningResource
+    )
+
+/**
+ * `mentioningResource`, reviewed under `reviewKey`, with every mention
+ * landed: each the reviewer chose a link for on its own where that choice
+ * says, over every other redirected to its referent's link target. The same
+ * object when nothing moves.
+ */
+const redirectMentions =
+  (plan: LinkPlan.Type, reviewKey: string) =>
+  (mentioningResource: FhirResourceWithId): FhirResourceWithId =>
+    pipe(
+      mentioningResource,
+      redirectToReferentLinkTargets(plan),
+      landChosenMentions(plan, reviewKey)
+    )
+
 /** Whether `after` holds the very resource and title `before` does. */
 const sameEntry = (before: DecodedFile.Resource, after: DecodedFile.Resource): boolean =>
   after.resource === before.resource && after.title === before.title
@@ -54,24 +96,26 @@ const sameEntry = (before: DecodedFile.Resource, after: DecodedFile.Resource): b
  * `decodedEntry` as it is resolved under `plan`: a referent's resource
  * written as its resolved resource (a stored resource standing in for it, or
  * itself having assumed what the referents linked to it bring), any other
- * written as decoded, with its mentions redirected either way. An entry whose
- * resource the resolved one replaces under another id takes the resolved
- * resource's label as its title; any other keeps its own. The same object
- * when nothing changes.
+ * written as decoded, with its mentions redirected either way, those the
+ * reviewer chose a link for under the entry's review key where their choice
+ * says. An entry whose resource the resolved one replaces under another id
+ * takes the resolved resource's label as its title; any other keeps its own.
+ * The same object when nothing changes.
  */
 const resolveEntry =
   (plan: LinkPlan.Type) =>
   (decodedEntry: DecodedFile.Resource): DecodedFile.Resource => {
+    const redirect = redirectMentions(plan, decodedEntry.key)
     const resolvedEntry = Option.match(
       LinkPlan.resolvedResourceIfReferent(plan, decodedEntry.resource),
       {
         onNone: () => ({
           ...decodedEntry,
-          resource: redirectMentions(plan)(decodedEntry.resource),
+          resource: redirect(decodedEntry.resource),
         }),
         onSome: (resolvedResource) => ({
           ...decodedEntry,
-          resource: redirectMentions(plan)(resolvedResource.resource),
+          resource: redirect(resolvedResource.resource),
           title:
             resolvedResource.resource.id === decodedEntry.resource.id
               ? decodedEntry.title
