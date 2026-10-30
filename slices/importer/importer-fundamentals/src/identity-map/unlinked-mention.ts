@@ -73,11 +73,11 @@ const isDanglingByReferentLinks = (
 
 /**
  * Whether `subject` names a patient of the device by a relative literal
- * (`Mention.isDeviceLiteral`) or someone the map could link, by a linkable
+ * (`Mention.isRelativeLiteral`) or someone the map could link, by a linkable
  * logical reference, which is redirected or else {@link Dangling}.
  */
 const namesSomeone = (subject: IdentifierAndReference.ReferenceType): boolean =>
-  Mention.isDeviceLiteral(subject) ||
+  Mention.isRelativeLiteral(subject) ||
   Option.isSome(LinkableLogicalReference.tryFromReference(subject))
 
 /** What `resource`'s `subject` slot holds; `None` when its type has no such slot. */

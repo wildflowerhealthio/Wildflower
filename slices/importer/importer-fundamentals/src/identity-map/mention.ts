@@ -45,11 +45,16 @@ const RELATIVE_LITERAL_REFERENCE =
   /^[A-Z][A-Za-z]+\/[A-Za-z0-9\-.]{1,64}(\/_history\/[A-Za-z0-9\-.]{1,64})?$/
 
 /**
- * Whether a reference names a record of the device by a relative literal
- * reference, `Type/<id>`, as opposed to none, an absolute URL into another
- * system, a contained `#<id>`, or text that is no reference at all.
+ * Whether a reference is a relative literal reference, `Type/<id>`, as
+ * opposed to none, an absolute URL into another system, a contained
+ * `#<id>`, or text that is no reference at all.
+ *
+ * @remarks
+ * FHIR resolves a relative reference against the server the resource is
+ * stored on (https://hl7.org/fhir/R4/references.html#literal), so once
+ * imported it names a record of the device.
  */
-const isDeviceLiteral = (reference: IdentifierAndReference.ReferenceType): boolean =>
+const isRelativeLiteral = (reference: IdentifierAndReference.ReferenceType): boolean =>
   reference.reference !== null && RELATIVE_LITERAL_REFERENCE.test(reference.reference)
 
 /** The path of the mention that places a resource in a patient's compartment. */
@@ -84,8 +89,8 @@ const linkableTypeOf = ({
     Option.fromNullable(reference.type),
     Option.orElse(() =>
       pipe(
-        Option.liftPredicate(reference, isDeviceLiteral),
-        Option.flatMapNullable((deviceLiteral) => deviceLiteral.reference),
+        Option.liftPredicate(reference, isRelativeLiteral),
+        Option.flatMapNullable((relativeLiteral) => relativeLiteral.reference),
         Option.flatMap((literal) => Array.head(literal.split('/')))
       )
     ),
@@ -185,7 +190,7 @@ const relinked = (
 export {
   at,
   hasEmptySubject,
-  isDeviceLiteral,
+  isRelativeLiteral,
   linkableIn,
   linkableTypeOf,
   madeIn,

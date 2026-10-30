@@ -154,7 +154,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     mention a resource makes, found by fhir-r4's
     `ResourceReferences.collect` so a reference anywhere is one; `at` the one
     at a path; `hasEmptySubject`, whether a `subject` slot holds nothing;
-    and `isDeviceLiteral`, whether a reference is a relative literal
+    and `isRelativeLiteral`, whether a reference is a relative literal
     `Type/<id>` (not a contained `#<id>`, an absolute URL, or text). Which
     type an identifier-only mention names is the reference's own business: a
     logical reference states its `type`, and one that does not names nothing.

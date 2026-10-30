@@ -123,12 +123,12 @@ const DONT_LINK_VALUE = 'dont-link'
 const currentValue = (literalReference: string): string => `current:${literalReference}`
 
 /** The literal reference by which the mention at `mentionPath` of `resource` names a record of the device. */
-const deviceLiteralOf = (
+const relativeLiteralOf = (
   resource: FhirResourceWithId,
   mentionPath: string
 ): Option.Option<string> =>
   Mention.at(resource, mentionPath).pipe(
-    Option.filter(({ reference }) => Mention.isDeviceLiteral(reference)),
+    Option.filter(({ reference }) => Mention.isRelativeLiteral(reference)),
     Option.flatMapNullable(({ reference }) => reference.reference)
   )
 
@@ -155,14 +155,14 @@ const MentionSelect = ({
   /** Called with the option picked, or `None` for Don't link. */
   readonly onPick: (picked: Option.Option<MentionLinkOptions.Option>) => void
 }): JSX.Element => {
-  const deviceLiteral = deviceLiteralOf(reviewed, mention.path)
-  const namedOption = Option.flatMap(deviceLiteral, (literalReference) =>
+  const relativeLiteral = relativeLiteralOf(reviewed, mention.path)
+  const namedOption = Option.flatMap(relativeLiteral, (literalReference) =>
     Array.findFirst(options, (option) => option.literalReference === literalReference)
   )
   // A literal reference no option has keeps an option of its own, so the
   // select shows what the mention names; an absolute URL names no
   // resource of the device, as Don't link does.
-  const current = Option.isSome(namedOption) ? Option.none() : deviceLiteral
+  const current = Option.isSome(namedOption) ? Option.none() : relativeLiteral
   const value = Option.match(namedOption, {
     onNone: () => Option.match(current, { onNone: () => DONT_LINK_VALUE, onSome: currentValue }),
     onSome: (option) => option.value,
