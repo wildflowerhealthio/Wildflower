@@ -16,7 +16,7 @@ const { authorizeMock, readyMock } = vi.hoisted(() => ({
   authorizeMock: vi.fn<(params: Record<string, unknown>) => Promise<string | void>>(),
   readyMock: vi.fn<() => Promise<unknown>>(),
 }))
-vi.mock('fhirclient', () => ({
+vi.mock('fhirclient/browser', () => ({
   default: { oauth2: { ready: readyMock, authorize: authorizeMock } },
 }))
 

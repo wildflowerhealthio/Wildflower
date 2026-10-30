@@ -10,7 +10,7 @@ import { MedicationRequest, Patient } from '@wildflowerhealthio/fhir-r4/resource
 import type { InteractionCatalog } from '@wildflowerhealthio/medication-interaction-core-js'
 import { stubRouteTabsBrowserApis } from '@wildflowerhealthio/react-tundraish/test-helpers'
 import { Effect, Option, Schema } from 'effect'
-import type Client from 'fhirclient/lib/Client'
+import type Client from 'fhirclient/Client'
 import { afterEach, beforeEach, expect, vi } from 'vite-plus/test'
 
 // The seams `App` composes: the handshake hook (its state is driven per

@@ -9,7 +9,7 @@ import {
 import { type TelemetryConsent, writeConsent } from '@wildflowerhealthio/telemetry-core'
 import type * as TelemetryWeb from '@wildflowerhealthio/telemetry-web'
 import { Option } from 'effect'
-import type Client from 'fhirclient/lib/Client'
+import type Client from 'fhirclient/Client'
 import { StrictMode, type JSX } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
@@ -66,7 +66,7 @@ const { tokenExchangeMock, authorizeMock } = vi.hoisted(() => ({
   tokenExchangeMock: vi.fn(() => Promise.resolve(clientConnectedTo(FHIR_SERVER_URL))),
   authorizeMock: vi.fn<(params: Record<string, unknown>) => Promise<string | void>>(),
 }))
-vi.mock('fhirclient', () => ({
+vi.mock('fhirclient/browser', () => ({
   default: { oauth2: { ready: tokenExchangeMock, authorize: authorizeMock } },
 }))
 

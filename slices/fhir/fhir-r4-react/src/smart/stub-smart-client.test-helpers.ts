@@ -1,4 +1,4 @@
-import type Client from 'fhirclient/lib/Client'
+import type Client from 'fhirclient/Client'
 
 /**
  * The stub {@link Client} the SMART readers' tests drive, and the record of what

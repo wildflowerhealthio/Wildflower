@@ -1,7 +1,7 @@
 import { arrivingSmartLaunchFrom as sharedArrivingSmartLaunchFrom } from '@wildflowerhealthio/authorization-core/smart-client'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import * as fc from 'fast-check'
-import type Client from 'fhirclient/lib/Client'
+import type Client from 'fhirclient/Client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import {
@@ -12,7 +12,7 @@ import {
   shouldCompleteSmartLaunch,
 } from './smart-launch.ts'
 
-// `smart-launch.ts` loads fhirclient lazily (`(await import('fhirclient')).default`)
+// `smart-launch.ts` loads fhirclient lazily (`(await import('fhirclient/browser')).default`)
 // and drives `.oauth2`, so the module boundary is where we stub. Only `authorize`
 // and `ready` are exercised. `vi.hoisted` builds the spies before the import is
 // wired so the factory can reference them, and typing `authorize`'s parameter as a
@@ -25,7 +25,7 @@ const { authorizeMock, readyMock, assignMock } = vi.hoisted(() => ({
   assignMock: vi.fn<(url: string) => void>(),
 }))
 
-vi.mock('fhirclient', () => ({
+vi.mock('fhirclient/browser', () => ({
   default: { oauth2: { authorize: authorizeMock, ready: readyMock } },
 }))
 

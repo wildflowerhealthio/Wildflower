@@ -89,7 +89,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1.21.2
+        uses: voidzero-dev/setup-vp@v1.22.0
         with:
           cache: true
           cache-save: false
@@ -127,7 +127,7 @@ jobs:
       # Its links name GITHUB_SHA, the commit checked out.
       - name: Install mdbook
         if: inputs.book
-        uses: taiki-e/install-action@v2.87.29
+        uses: taiki-e/install-action@v2.87.31
         with:
           tool: mdbook@0.5.4
 

@@ -1,7 +1,7 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import type * as FhirSmart from '@wildflowerhealthio/fhir-r4-react/smart'
 import type { SmartHandshake } from '@wildflowerhealthio/fhir-r4-react/smart'
-import type Client from 'fhirclient/lib/Client'
+import type Client from 'fhirclient/Client'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { SmartHandshakeGate } from './smart-handshake-gate.tsx'

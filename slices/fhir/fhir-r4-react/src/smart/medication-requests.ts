@@ -1,7 +1,7 @@
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import { MedicationRequest } from '@wildflowerhealthio/fhir-r4/resources'
 import type { Effect, Schema } from 'effect'
-import type Client from 'fhirclient/lib/Client'
+import type Client from 'fhirclient/Client'
 
 import {
   RESOURCE_PAGE_SIZE,

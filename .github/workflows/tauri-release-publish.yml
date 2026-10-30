@@ -366,7 +366,7 @@ jobs:
       # Vite+ owns the toolchain (Node + package manager + `vp`), same as
       # every other workflow here — no separate setup-node / corepack / pnpm.
       - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1.21.2
+        uses: voidzero-dev/setup-vp@v1.22.0
         with:
           cache: true
 
@@ -487,7 +487,7 @@ jobs:
           cache-on-failure: true
 
       - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1.21.2
+        uses: voidzero-dev/setup-vp@v1.22.0
         with:
           cache: true
 
@@ -626,7 +626,7 @@ jobs:
           cache-on-failure: true
 
       - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1.21.2
+        uses: voidzero-dev/setup-vp@v1.22.0
         with:
           cache: true
 
@@ -869,7 +869,7 @@ jobs:
       # Both apps' wscripts run `vp pack` in pkjs/ through the
       # node_modules/.bin/vp that `vp install` puts there.
       - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1.21.2
+        uses: voidzero-dev/setup-vp@v1.22.0
         with:
           cache: true
 

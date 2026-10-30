@@ -1,6 +1,6 @@
 import { Data, Effect, Either, Array as Arr, Schema, Schedule } from 'effect'
 import type { ParseError } from 'effect/ParseResult'
-import type Client from 'fhirclient/lib/Client'
+import type Client from 'fhirclient/Client'
 
 /**
  * The page size a reader pins with `_count`, instead of a server's default

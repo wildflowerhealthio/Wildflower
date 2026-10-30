@@ -7,7 +7,7 @@ import type { SmartHandshake } from '@wildflowerhealthio/fhir-r4-react/smart'
 import type { PebbleSettings } from '@wildflowerhealthio/fhir-sync-pebble-core'
 import { ReturnTarget, type ReturnTargetStore } from '@wildflowerhealthio/pebble-configuration'
 import { Effect, Either, Layer } from 'effect'
-import type Client from 'fhirclient/lib/Client'
+import type Client from 'fhirclient/Client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 /**

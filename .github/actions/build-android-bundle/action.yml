@@ -82,7 +82,7 @@ runs:
     # Its managed `pnpm` is also what the Gradle project's Rust build task
     # calls back into the Tauri CLI with.
     - name: Setup Vite+
-      uses: voidzero-dev/setup-vp@v1.21.2
+      uses: voidzero-dev/setup-vp@v1.22.0
       with:
         cache: true
 

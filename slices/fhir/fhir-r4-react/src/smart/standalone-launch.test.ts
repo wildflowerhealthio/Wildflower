@@ -13,7 +13,7 @@ import {
 } from './standalone-launch.ts'
 
 // `startStandaloneLaunch` reaches fhirclient only through `smart-launch.ts`'s
-// lazy `(await import('fhirclient')).default`, so the module boundary is where
+// lazy `(await import('fhirclient/browser')).default`, so the module boundary is where
 // we stub — the same seam `smart-launch.test.ts` uses. `detectSmartSupport`'s
 // tests never touch it (they inject `fetchFn`).
 const { authorizeMock, readyMock, assignMock } = vi.hoisted(() => ({
@@ -22,7 +22,7 @@ const { authorizeMock, readyMock, assignMock } = vi.hoisted(() => ({
   assignMock: vi.fn<(url: string) => void>(),
 }))
 
-vi.mock('fhirclient', () => ({
+vi.mock('fhirclient/browser', () => ({
   default: { oauth2: { authorize: authorizeMock, ready: readyMock } },
 }))
 

@@ -2,7 +2,8 @@ import { normalizeName, tokenize } from './normalize.ts'
 
 /**
  * How confident a name match is:
- * - `exact`   — the medication name normalizes to exactly the candidate name.
+ * - `exact`   — the medication name has exactly the candidate name's tokens,
+ *   in any order, e.g. `"sodium risedronate"` and `"risedronate sodium"`.
  * - `strong`  — the candidate name is fully contained in the medication name,
  *   e.g. `"Abilify"` inside `"Abilify 5 mg tablet"`.
  * - `partial` — the medication name is fully contained in the candidate name,
@@ -42,11 +43,13 @@ const scoreName = (medName: string, candidate: string): MatchConfidence | null =
   const med = normalizeName(medName)
   const cand = normalizeName(candidate)
   if (med.length === 0 || cand.length === 0) return null
-  if (med === cand) return 'exact'
   const medTokens = tokenize(medName)
   const candTokens = tokenize(candidate)
-  if (isTokenSubset(candTokens, medTokens)) return 'strong'
-  if (isTokenSubset(medTokens, candTokens)) return 'partial'
+  const candInMed = isTokenSubset(candTokens, medTokens)
+  const medInCand = isTokenSubset(medTokens, candTokens)
+  if (candInMed && medInCand) return 'exact'
+  if (candInMed) return 'strong'
+  if (medInCand) return 'partial'
   return null
 }
 

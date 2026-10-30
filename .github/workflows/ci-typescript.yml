@@ -28,7 +28,7 @@ jobs:
 
       # The one job that saves the pnpm store; `shards` and `test` restore only.
       - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1.21.2
+        uses: voidzero-dev/setup-vp@v1.22.0
         with:
           cache: true
 
@@ -91,7 +91,7 @@ jobs:
       # Restores the pnpm store without saving it: `check` saves this run's,
       # so the parallel jobs don't race for the same key.
       - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1.21.2
+        uses: voidzero-dev/setup-vp@v1.22.0
         with:
           cache: true
           cache-save: false
@@ -139,7 +139,7 @@ jobs:
       # Restores the pnpm store without saving it: `check` saves this run's,
       # so the parallel jobs don't race for the same key.
       - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1.21.2
+        uses: voidzero-dev/setup-vp@v1.22.0
         with:
           cache: true
           cache-save: false

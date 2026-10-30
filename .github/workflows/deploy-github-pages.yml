@@ -60,7 +60,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1.21.2
+        uses: voidzero-dev/setup-vp@v1.22.0
         with:
           cache: true
           cache-save: false
@@ -131,7 +131,7 @@ jobs:
           cache-save-if: 'false'
 
       - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1.21.2
+        uses: voidzero-dev/setup-vp@v1.22.0
         with:
           cache: true
           cache-save: false
@@ -176,7 +176,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1.21.2
+        uses: voidzero-dev/setup-vp@v1.22.0
         with:
           cache: true
           cache-save: false
@@ -185,7 +185,7 @@ jobs:
         run: vp install
 
       - name: Install mdbook
-        uses: taiki-e/install-action@v2.87.29
+        uses: taiki-e/install-action@v2.87.31
         with:
           tool: mdbook@0.5.4
 
@@ -222,7 +222,7 @@ jobs:
         uses: actions/configure-pages@v6
 
       - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1.21.2
+        uses: voidzero-dev/setup-vp@v1.22.0
         with:
           cache: true
           cache-save: false
