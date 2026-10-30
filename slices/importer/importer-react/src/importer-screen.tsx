@@ -1,10 +1,11 @@
 import type { FormatKind } from '@wildflowerhealthio/importer-core'
-import { formatKinds, LINKED_GROUP } from '@wildflowerhealthio/importer-core'
+import { claimedFormats, LINKED_GROUP } from '@wildflowerhealthio/importer-core'
 import {
-  StagedImport,
+  DecodedFile,
   type LinkChoice,
+  LinkableResource,
   Referent,
-  type UnlinkedMention,
+  StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { Match, Option } from 'effect'
 import { type JSX, useCallback, useMemo, useState } from 'react'
@@ -20,8 +21,8 @@ import {
 import { useLinkChoiceReview } from './identity/use-link-choice-review.ts'
 import { PreviewPanel } from './preview/preview-panel.tsx'
 import {
-  initialExclusionsFor,
-  initialFormatExclusionsFor,
+  formatExcludedByDefault,
+  unchangedKeysOf,
   useServerDiff,
 } from './preview/use-server-diff.ts'
 import { formatRegistry } from './registry.ts'
@@ -53,10 +54,13 @@ import styles from './importer-screen.module.css'
  * review: the batch is resolved on the reviewer's link choices before the
  * server diff, the preview and the confirm see it, so all three see the
  * resources that get written. A per-mention pick on a row is a mention link
- * choice in the identity map too, not an edit. A resource whose patient the
- * referent choices leave unlinked starts excluded, as one already on the
- * server does, until the reviewer assigns one; and a referent's link change
- * drops any edit made on its own row, since that row now writes a different
+ * choice in the identity map too, not an edit, and an edit is resolved on
+ * the plan as the row it replaces is. The selection holds only what the
+ * reviewer did: a row they never ticked or unticked is out by default when
+ * the server holds it unchanged or it is left without a patient as it will
+ * be written, derived from the batch as it is now, so a link that gives it
+ * a patient takes it back in. A referent's link change drops any edit made
+ * on a row holding its resource, since that row now writes a different
  * record.
  *
  * The slice owns every level of this flow rather than the host app: an app
@@ -83,8 +87,29 @@ const SERVER_DIFF_ERROR_MESSAGE =
 /** The registered formats' detectors, in registry (priority) order. */
 const registeredDetectors = Object.values(formatRegistry)
 
-/** No unlinked mentions: the linked records name no patient of their own. */
-const NO_UNLINKED: readonly UnlinkedMention.Type[] = []
+/** The selection of a format the reviewer has not touched. */
+const UNTOUCHED: StagedImport.Selection = StagedImport.initial()
+
+/** No row out by default: the review before the server diff lands. */
+const NONE_BY_DEFAULT: ReadonlySet<string> = new Set()
+
+/**
+ * `selection` with the edit dropped on every row of `decodedFile` that holds
+ * a copy of `referent`'s decoded resource: its first copy, and every other
+ * the referent stands for (`Referent.discover`).
+ */
+const revertCopiesOf = (
+  selection: StagedImport.Selection,
+  decodedFile: DecodedFile.DecodedFile,
+  referent: Referent.AsResource
+): StagedImport.Selection =>
+  DecodedFile.resources(decodedFile)
+    .filter(({ resource }) =>
+      Option.exists(Option.liftPredicate(resource, LinkableResource.is), (linkable) =>
+        LinkableResource.sameRecord(linkable, referent.resource)
+      )
+    )
+    .reduce((reverted, { key }) => StagedImport.revert(reverted, key), selection)
 
 /** The importer flow. Takes no props — it reads everything from router context. */
 const ImporterScreen = (): JSX.Element => {
@@ -114,37 +139,36 @@ const ImporterScreen = (): JSX.Element => {
   const batch = shown?.resolved
   const diff = useServerDiff(batch, batchId)
 
-  const initialSelections = useMemo((): ReadonlyMap<FormatKind, StagedImport.Selection> => {
-    if (diff._tag === 'loading' || batch === undefined) return new Map()
-    const entries: [FormatKind, StagedImport.Selection][] = []
-    for (const kind of formatKinds) {
-      if (batch.formats[kind].files.length === 0) continue
-      const excluded = initialFormatExclusionsFor(batch, kind, diff.comparisons.get(kind))
-      if (excluded.size > 0) {
-        entries.push([kind, { excludedResources: excluded, resourceOverrides: new Map() }])
-      }
-    }
-    return new Map(entries)
-  }, [diff, batch])
+  const selectionFor = useCallback(
+    (format: FormatKind): StagedImport.Selection => selections.get(format) ?? UNTOUCHED,
+    [selections]
+  )
 
   // The linked records the server already holds as they are, which the
-  // confirm does not write: the same verdict pre-excludes a format's row.
+  // confirm does not write.
   const unchangedLinked = useMemo(
     (): ReadonlySet<string> =>
       diff._tag === 'loading' || batch === undefined
-        ? new Set()
-        : initialExclusionsFor(
-            batch.linkedRecords,
-            diff.comparisons.get(LINKED_GROUP),
-            NO_UNLINKED
-          ),
+        ? NONE_BY_DEFAULT
+        : unchangedKeysOf(batch.linkedRecords, diff.comparisons.get(LINKED_GROUP)),
     [diff, batch]
   )
 
-  const selectionFor = useCallback(
-    (format: FormatKind): StagedImport.Selection =>
-      selections.get(format) ?? initialSelections.get(format) ?? StagedImport.initial(),
-    [selections, initialSelections]
+  // Each format's rows out unless the reviewer ticks them, derived afresh
+  // from the batch, its verdicts and the edits whenever any of them changes.
+  const excludedByDefault = useMemo((): ReadonlyMap<FormatKind, ReadonlySet<string>> => {
+    if (diff._tag === 'loading' || batch === undefined) return new Map()
+    return new Map(
+      claimedFormats(batch.formats).map((kind) => [
+        kind,
+        formatExcludedByDefault(batch, kind, diff.comparisons.get(kind), selectionFor(kind)),
+      ])
+    )
+  }, [diff, batch, selectionFor])
+
+  const excludedByDefaultFor = useCallback(
+    (format: FormatKind): ReadonlySet<string> => excludedByDefault.get(format) ?? NONE_BY_DEFAULT,
+    [excludedByDefault]
   )
 
   const onSelectionChange = useCallback(
@@ -154,27 +178,34 @@ const ImporterScreen = (): JSX.Element => {
     []
   )
 
-  // An edit on a referent's own row was made on what it linked to then: once
-  // the link changes, that row writes another record, so the edit is dropped
-  // in every format rather than written in its place.
+  // An edit on a row holding a referent's resource was made on what it
+  // linked to then: once the link changes, that row writes another record,
+  // so the edit is dropped on every such row in every format rather than
+  // written in its place.
   const { choose } = identity
   const referents = shown?.referents
+  const decodedBatch = shown?.resolved.decodedBatch
   const chooseLink = useCallback(
     (referentKey: string, choice: LinkChoice.Type): void => {
       choose(referentKey, choice)
       const changed = referents?.find((referent) => Referent.key(referent) === referentKey)
-      if (changed === undefined || !Referent.is('AsResource')(changed)) return
+      if (
+        changed === undefined ||
+        decodedBatch === undefined ||
+        !Referent.is('AsResource')(changed)
+      )
+        return
       setSelections(
         (previous) =>
           new Map(
             [...previous].map(([kind, selection]) => [
               kind,
-              StagedImport.revert(selection, changed.reviewKey),
+              revertCopiesOf(selection, decodedBatch.formats[kind].decoded, changed),
             ])
           )
       )
     },
-    [choose, referents]
+    [choose, referents, decodedBatch]
   )
 
   const startOver = (): void => {
@@ -193,7 +224,7 @@ const ImporterScreen = (): JSX.Element => {
 
   const confirming = confirm.state._tag === 'confirming'
   // A re-decode or a changed link choice re-classifies the resolved batch; until
-  // its verdicts land, the pre-exclusions are the previous resolving's. A
+  // its verdicts land, the unchanged rows are the previous resolving's. A
   // refused batch is never written: the review shown is the one before.
   const confirmBlocked =
     confirming ||
@@ -270,6 +301,7 @@ const ImporterScreen = (): JSX.Element => {
           settings={importRun.settings}
           settingsRegistry={formatRegistry}
           selectionFor={selectionFor}
+          excludedByDefaultFor={excludedByDefaultFor}
           unchangedLinked={unchangedLinked}
           comparisons={diff.comparisons}
           onSelectionChange={onSelectionChange}
@@ -277,7 +309,9 @@ const ImporterScreen = (): JSX.Element => {
           confirming={confirming}
           confirmDisabled={confirmBlocked}
           onCancel={startOver}
-          onConfirm={() => confirm.confirm(shown.resolved, selectionFor, unchangedLinked)}
+          onConfirm={() =>
+            confirm.confirm(shown.resolved, selectionFor, excludedByDefaultFor, unchangedLinked)
+          }
           mentionLinkOptions={shown.mentionLinkOptions}
           onChooseMention={identity.chooseMention}
           referentRows={

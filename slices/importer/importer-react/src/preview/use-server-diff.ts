@@ -4,23 +4,18 @@ import { useMemo, useState } from 'react'
 import { useRunAuthed } from '@wildflowerhealthio/fhir-r4-react'
 import { classifyAgainstServer, type ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import { type FhirResourceWithId, literalReferenceOf } from '@wildflowerhealthio/fhir-r4/resources'
-import {
-  DecodedFile,
-  StagedImport,
-  type UnlinkedMention,
-} from '@wildflowerhealthio/importer-fundamentals'
+import { DecodedFile, StagedImport } from '@wildflowerhealthio/importer-fundamentals'
 
 import type { FormatKind, ResolvedBatch, ReviewGroup } from '@wildflowerhealthio/importer-core'
 import { formatKinds, LINKED_GROUP } from '@wildflowerhealthio/importer-core'
 import { IMPORTER_QUERY_KEY } from '../queries/keys.ts'
-import { keysNeedingPatient, leftUnlinkedIn, unlinkedInRows } from './unlinked-mentions.ts'
+import { isOfPatient, leftUnlinkedIn } from './unlinked-mentions.ts'
 
 /**
  * Pre-fetch the server's copy for every previewed resource in a batch and
  * classify each as `new` / `unchanged` / `changed` — the diff badge the
- * preview row shows the reviewer, and the seed for the "opt out of a
- * re-import" default (an `unchanged` row is pre-excluded in the initial
- * selection).
+ * preview row shows the reviewer, and what the "opt out of a re-import"
+ * default reads (an `unchanged` row is out unless the reviewer ticks it).
  *
  * @remarks
  * The classification is a TanStack Query, so the shell can **block on it**
@@ -69,7 +64,7 @@ interface DiffRow {
  * DICOM's fixed `patient` / `imaging-study` and every format's source-file
  * row stay distinct across the files a format claimed. Across formats they
  * are not: two formats may both key a row `0:a.json/patient`. Scoping by
- * group is what keeps each format's badges and pre-exclusions its own; the
+ * group is what keeps each format's badges and defaults its own; the
  * linked records, no format's, are the {@link LINKED_GROUP}.
  */
 type GroupComparisons = ReadonlyMap<ReviewGroup, ReadonlyMap<string, ServerComparison>>
@@ -245,67 +240,60 @@ const useServerDiff = (batch: ResolvedBatch | undefined, batchId: number): Serve
 }
 
 /**
- * The `StagedImport.Selection`'s `excludedResources` set for a format, seeded
- * from its server diff and its unlinked mentions: every `unchanged` labeled
- * resource is pre-excluded so a re-import of a format whose resources the
- * server already holds writes nothing by default, and so is every resource
- * whose patient the referent choices leave unlinked, until the reviewer
- * assigns one. The reviewer can still tick any row back on.
+ * The keys of `labeled` the server diff found `unchanged`: what the review
+ * leaves out by default, so a re-import of resources the server already
+ * holds writes nothing unless the reviewer ticks them.
  *
- * @param labeled - The format's labeled resources
- * @param comparisons - The format's own verdicts by resource key (`undefined`
- *   when the diff has none for it, which excludes nothing)
- * @param unlinked - What the referent links leave unlinked in the format's
- *   rows as reviewed (`unlinkedInRows`)
- * @returns The keys to pre-exclude
+ * @param labeled - The group's labeled resources
+ * @param comparisons - The group's own verdicts by resource key (`undefined`
+ *   when the diff has none for it, which finds nothing unchanged)
  */
-const initialExclusionsFor = (
+const unchangedKeysOf = (
   labeled: readonly DecodedFile.Resource[],
-  comparisons: ReadonlyMap<string, ServerComparison> | undefined,
-  unlinked: readonly UnlinkedMention.Type[]
-): ReadonlySet<string> => {
-  const needingPatient = keysNeedingPatient(unlinked)
-  const excluded = new Set<string>()
-  for (const entry of labeled) {
-    if (comparisons?.get(entry.key)?.status === 'unchanged' || needingPatient.has(entry.key)) {
-      excluded.add(entry.key)
-    }
-  }
-  return excluded
-}
+  comparisons: ReadonlyMap<string, ServerComparison> | undefined
+): ReadonlySet<string> =>
+  new Set(
+    labeled.filter(({ key }) => comparisons?.get(key)?.status === 'unchanged').map(({ key }) => key)
+  )
 
 /**
- * {@link initialExclusionsFor} `kind`'s rows of `batch`, what the referent
- * links leave unlinked in each asked of it as decoded, since no row is
- * edited yet.
+ * The keys of `kind`'s rows of `batch` the review leaves out unless the
+ * reviewer ticks them, derived from the batch as it is now: every row the
+ * server holds `unchanged` ({@link unchangedKeysOf}), and every row left
+ * without a patient as it will be written (its edit under `selection` or
+ * else its resolved resource, `StagedImport.resolvedResourceOf`), so a link
+ * or a pick that gives it one takes it back in.
  *
  * @param batch - The resolved batch
  * @param kind - A format the batch claimed
  * @param comparisons - The format's own verdicts by resource key
- * @returns The keys to pre-exclude
+ * @param selection - The format's selection, whose edits are asked of
  */
-const initialFormatExclusionsFor = (
+const formatExcludedByDefault = (
   batch: ResolvedBatch,
   kind: FormatKind,
-  comparisons: ReadonlyMap<string, ServerComparison> | undefined
-): ReadonlySet<string> =>
-  initialExclusionsFor(
-    DecodedFile.resources(batch.formats[kind].decoded),
-    comparisons,
-    unlinkedInRows(
-      batch.decodedBatch.formats[kind].decoded,
-      StagedImport.initial(),
-      leftUnlinkedIn(batch.plan, kind)
+  comparisons: ReadonlyMap<string, ServerComparison> | undefined,
+  selection: StagedImport.Selection
+): ReadonlySet<string> => {
+  const resolvedRows = DecodedFile.resources(batch.formats[kind].decoded)
+  const leftUnlinked = leftUnlinkedIn(batch.plan, kind)
+  const withoutPatient = resolvedRows
+    .filter((entry) =>
+      leftUnlinked(entry.key, StagedImport.resolvedResourceOf(batch.plan, selection, entry)).some(
+        isOfPatient
+      )
     )
-  )
+    .map(({ key }) => key)
+  return new Set([...unchangedKeysOf(resolvedRows, comparisons), ...withoutPatient])
+}
 
 export {
   byGroupAndKey,
   type DiffRow,
   diffRowsOf,
   type GroupComparisons,
-  initialExclusionsFor,
-  initialFormatExclusionsFor,
+  formatExcludedByDefault,
   type ServerDiffState,
+  unchangedKeysOf,
   useServerDiff,
 }

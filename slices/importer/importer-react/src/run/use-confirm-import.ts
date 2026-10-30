@@ -10,6 +10,7 @@ import {
 } from '@wildflowerhealthio/fhir-r4/clients'
 import {
   claimedFormats,
+  type ExcludedByDefaultFor,
   LINKED_GROUP,
   planWrite,
   type ResolvedBatch,
@@ -92,13 +93,15 @@ interface ConfirmImport {
    * Write the batch as one transaction: the resources its write plan
    * includes, the linked records first, then each format's reviewed
    * resources, which come off its own decoded sections — the same objects
-   * the preview rendered, its source file among them. `unchangedLinked` is
-   * the keys of the linked records the server diff found unchanged, which
-   * are not written.
+   * the preview rendered, its source file among them.
+   * `excludedByDefaultFor` is the keys of each format's rows that are out
+   * unless the reviewer ticked them; `unchangedLinked` is the keys of the
+   * linked records the server diff found unchanged, which are not written.
    */
   readonly confirm: (
     batch: ResolvedBatch,
     selectionFor: SelectionFor,
+    excludedByDefaultFor: ExcludedByDefaultFor,
     unchangedLinked: ReadonlySet<string>
   ) => void
   /** Discard the outcome and return to `idle` (a "start over" from results). */
@@ -119,9 +122,10 @@ interface ConfirmImport {
 const importBatch = (
   batch: ResolvedBatch,
   selectionFor: SelectionFor,
+  excludedByDefaultFor: ExcludedByDefaultFor,
   unchangedLinked: ReadonlySet<string>
 ): Effect.Effect<BatchOutcome, never, FhirR4ResourcesHttpApiClient> => {
-  const plan = planWrite(batch, selectionFor, unchangedLinked)
+  const plan = planWrite(batch, selectionFor, excludedByDefaultFor, unchangedLinked)
   const included = plan.filter(({ disposition }) => disposition === 'Included')
   return persistTransactionBundle(included.map(({ entry }) => entry.resource)).pipe(
     Effect.map((outcomes): BatchOutcome => {
@@ -200,17 +204,20 @@ const useConfirmImport = (): ConfirmImport => {
     (
       batch: ResolvedBatch,
       selectionFor: SelectionFor,
+      excludedByDefaultFor: ExcludedByDefaultFor,
       unchangedLinked: ReadonlySet<string>
     ): void => {
       latest.current += 1
       const ticket = latest.current
       setState({ _tag: 'confirming' })
-      void runAuthed(importBatch(batch, selectionFor, unchangedLinked)).then((outcome) => {
-        if (latest.current !== ticket) return
-        setState({ _tag: 'done', batch: outcome })
-        void queryClient.invalidateQueries({ queryKey: SOURCE_FILES_QUERY_KEY })
-        void queryClient.invalidateQueries({ queryKey: STORED_RESOURCES_QUERY_KEY })
-      })
+      void runAuthed(importBatch(batch, selectionFor, excludedByDefaultFor, unchangedLinked)).then(
+        (outcome) => {
+          if (latest.current !== ticket) return
+          setState({ _tag: 'done', batch: outcome })
+          void queryClient.invalidateQueries({ queryKey: SOURCE_FILES_QUERY_KEY })
+          void queryClient.invalidateQueries({ queryKey: STORED_RESOURCES_QUERY_KEY })
+        }
+      )
     },
     [runAuthed, queryClient]
   )

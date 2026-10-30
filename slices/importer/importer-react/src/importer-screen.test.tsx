@@ -675,6 +675,40 @@ describe('ImporterScreen', () => {
     expect(JSON.parse(patientWrites[0]?.body ?? '{}')).not.toHaveProperty('gender')
   })
 
+  it("drops an edit made on another file's copy of a Patient when the Patient is linked to another record", async () => {
+    // Arrange — two files decode one Patient, one referent with two rows
+    currentRunAuthed = routingServer({ stored: [{ ...STORED_TYRA, identifier: [] }] })
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+    await userEvent.upload(screen.getByLabelText('Import file'), [
+      namedPatientHar('a.har'),
+      namedPatientHar('b.har'),
+    ])
+    const person = await screen.findByRole<HTMLSelectElement>('combobox', { name: TYRA })
+    await within(person).findByRole('option', { name: TYRA })
+
+    // Act — edit the second file's copy, then link the Patient to the stored one
+    const edits = screen.getAllByRole('button', { name: /^Edit Patient/ })
+    expect(edits).toHaveLength(2)
+    const [, secondCopy] = edits
+    if (secondCopy === undefined) throw new Error('unreachable: each file has a Patient row')
+    await userEvent.click(secondCopy)
+    const textarea = await screen.findByLabelText<HTMLTextAreaElement>('Resource JSON')
+    const source = Schema.decodeUnknownSync(
+      Schema.Record({ key: Schema.String, value: Schema.Unknown })
+    )(JSON.parse(textarea.value))
+    await userEvent.clear(textarea)
+    await userEvent.click(textarea)
+    await userEvent.paste(JSON.stringify({ ...source, gender: 'female' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Keep' }))
+    expect(await screen.findByText('Edited')).toBeDefined()
+    await userEvent.selectOptions(person, 'stored:Patient/s-1')
+
+    // Assert — the edit is gone from the copy it was made on
+    await waitFor(() => {
+      expect(screen.queryByText('Edited')).toBeNull()
+    })
+  })
+
   it('leaves out a resource that names no patient until one is assigned', async () => {
     // Arrange
     currentRunAuthed = routingServer({})

@@ -96,7 +96,7 @@ describe('PreviewPanel', () => {
       })
     )
     const selectionFor = (): StagedImport.Selection =>
-      StagedImport.toggleResource(StagedImport.initial(), 'obs-1')
+      StagedImport.toggleResource(StagedImport.initial(), NONE_BY_DEFAULT, 'obs-1')
     render(<PreviewPanel {...panelProps(batch, { selectionFor })} />)
 
     expect(screen.getByRole('region', { name: LINKED_RECORDS_HEADING })).toBeDefined()
@@ -117,7 +117,7 @@ describe('PreviewPanel', () => {
       })
     )
     const selectionFor = (): StagedImport.Selection =>
-      StagedImport.toggleResource(StagedImport.initial(), 'obs-1')
+      StagedImport.toggleResource(StagedImport.initial(), NONE_BY_DEFAULT, 'obs-1')
     render(<PreviewPanel {...panelProps(batch, { selectionFor })} />)
 
     expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
@@ -139,7 +139,7 @@ describe('PreviewPanel', () => {
     // The screen pre-excludes the unchanged row and passes the unchanged
     // linked record's key.
     const selectionFor = (): StagedImport.Selection =>
-      StagedImport.toggleResource(StagedImport.initial(), 'obs-1')
+      StagedImport.toggleResource(StagedImport.initial(), NONE_BY_DEFAULT, 'obs-1')
     render(
       <PreviewPanel
         {...panelProps(batch, {
@@ -388,7 +388,7 @@ describe('PreviewPanel', () => {
 
     expect(onSelectionChange).toHaveBeenCalledWith(
       'har',
-      StagedImport.toggleResource(StagedImport.initial(), 'pat-1')
+      StagedImport.toggleResource(StagedImport.initial(), NONE_BY_DEFAULT, 'pat-1')
     )
   })
 
@@ -418,7 +418,7 @@ describe('PreviewPanel', () => {
 
   it('opts a partially-included section fully in, and shows the toggle indeterminate', async () => {
     const onSelectionChange = vi.fn()
-    const partial = StagedImport.toggleResource(StagedImport.initial(), 'o1')
+    const partial = StagedImport.toggleResource(StagedImport.initial(), NONE_BY_DEFAULT, 'o1')
     const batch = makeBatch({
       'lifelabs-pdf': formatResult(
         'reports.pdf',
@@ -444,6 +444,35 @@ describe('PreviewPanel', () => {
     expect(onSelectionChange).toHaveBeenCalledWith(
       'lifelabs-pdf',
       StagedImport.setResourcesIncluded(partial, ['p1', 'o1'], true)
+    )
+  })
+
+  it('leaves out a row the default excludes, and records a tick on it as the reviewer’s inclusion', async () => {
+    const onSelectionChange = vi.fn()
+    const batch = makeBatch({
+      har: formatResult(
+        'a.har',
+        decoded([
+          section('s', [labeledResource('p1', 'Patient/p1'), labeledResource('p2', 'Patient/p2')]),
+        ]),
+        'har'
+      ),
+    })
+    render(
+      <PreviewPanel
+        {...panelProps(batch, {
+          onSelectionChange,
+          excludedByDefaultFor: () => new Set(['p2']),
+        })}
+      />
+    )
+    expect(screen.getByRole('button', { name: 'Import 1 resource (1 excluded)' })).toBeDefined()
+
+    await userEvent.click(screen.getByRole('checkbox', { name: /Include Patient.*p2/ }))
+
+    expect(onSelectionChange).toHaveBeenCalledWith(
+      'har',
+      StagedImport.setResourcesIncluded(StagedImport.initial(), ['p2'], true)
     )
   })
 
@@ -750,6 +779,9 @@ const settingsRegistry: SettingsRegistry = {
   },
 }
 
+/** No row out by default. */
+const NONE_BY_DEFAULT: ReadonlySet<string> = new Set()
+
 /** Shared panel props wired to synthetic lookups. */
 const panelProps = (
   batch: ResolvedBatch,
@@ -758,6 +790,7 @@ const panelProps = (
     readonly onSelectionChange?: PreviewPanelProps['onSelectionChange']
     readonly onSettingsChange?: PreviewPanelProps['onSettingsChange']
     readonly selectionFor?: PreviewPanelProps['selectionFor']
+    readonly excludedByDefaultFor?: PreviewPanelProps['excludedByDefaultFor']
     readonly unchangedLinked?: PreviewPanelProps['unchangedLinked']
     readonly comparisons?: PreviewPanelProps['comparisons']
     readonly confirming?: boolean
@@ -769,6 +802,7 @@ const panelProps = (
     settings,
     settingsRegistry,
     selectionFor: overrides.selectionFor ?? (() => StagedImport.initial()),
+    excludedByDefaultFor: overrides.excludedByDefaultFor ?? (() => NONE_BY_DEFAULT),
     unchangedLinked: overrides.unchangedLinked ?? new Set(),
     comparisons: overrides.comparisons ?? new Map(),
     onSelectionChange: overrides.onSelectionChange ?? (() => undefined),

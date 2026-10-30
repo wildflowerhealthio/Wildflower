@@ -92,13 +92,17 @@ The importer has no HTTP wire union to derive, so there is no separate
 - **`src/importer-screen.tsx`** — the flow, top to bottom. Reads everything from
   router context (no props): `SourcePicker` → `useImportRun` → `PreviewPanel` →
   `useConfirmImport` → `ImportResults`. It holds each format's
-  `StagedImport.Selection`, keyed by format kind (absent = the seed: every
-  `new` or `changed` resource included, every `unchanged` one and every one
-  whose patient the referent links leave unlinked, as decoded, left out
-  (`initialFormatExclusionsFor` over `initialExclusionsFor`), so an untouched format imports what its decode
-  yielded that is new and has a patient). A referent's link change reverts
-  the edit override at that referent's `reviewKey` in every format, since its
-  row now writes another record. A cancel or "import
+  `StagedImport.Selection`, keyed by format kind (absent = untouched), which
+  holds only what the reviewer did. What a row they never ticked or unticked
+  does is the default, derived afresh from the batch, its verdicts and the
+  edits on every change (`formatExcludedByDefault`): every `unchanged`
+  resource and every one left without a patient as it will be written (its
+  edit, else its resolved resource) is out, so an untouched format imports
+  what its decode yielded that is new and has a patient, and a link that
+  gives a row its patient takes it back in. The panel and the confirm read
+  the same `excludedByDefaultFor`. A referent's link change reverts the edit
+  override on every row holding a copy of the referent's resource, in every
+  format, since that row now writes another record. A cancel or "import
   another" discards the read, every review edit, and any confirm outcome, and
   returns to the picker; the per-format settings persist across it.
 - **`src/registry.ts`** — the React half of the closed format registry (above).
@@ -217,7 +221,7 @@ The importer has no HTTP wire union to derive, so there is no separate
 - **`src/preview/`** — the review view and the state it needs.
   `use-server-diff.ts` pre-classifies every previewed resource against the
   server (`new` / `unchanged` / `changed`) for the row badges and the "already
-  there, so pre-excluded" seed, keyed **by review group and then by resource
+  there, so out by default" rule (`unchangedKeysOf`), keyed **by review group and then by resource
   key** (`GroupComparisons`, over `importer-core`'s `ReviewGroup`) — two
   formats can carry the same resource key, so
   a flat map would let one format's verdict overwrite another's. Within one
@@ -228,7 +232,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   focus of whatever control the reviewer is using; the verdicts the batch last
   settled on stay on screen (`refreshing`), a failed classification having
   settled on "every id is new", and the confirm waits for the new ones, since
-  the pre-exclusions are read off them. A failed classification is retried
+  the defaults are read off them. A failed classification is retried
   twice before it is reported; a fresh pick carries nothing over.
   `preview-panel.tsx` renders the batch grouped by format — one group per
   `claimedFormats` entry, its settings form (the registry's own
@@ -242,7 +246,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   and the `Excluded` ones. Which linked records are written is that plan's
   too, not a toggle: none the server holds unchanged (`Unchanged`; the
   screen hands the panel and the confirm the same `unchangedLinked`, the
-  linked group's `initialExclusionsFor`); otherwise every stored copy,
+  linked group's `unchangedKeysOf`); otherwise every stored copy,
   whatever the reviewer excluded, since the link choice is the consent to
   it, and a new record only when an included resource names it, else
   `Unreferenced`. The diff keys its verdicts by
@@ -274,10 +278,13 @@ The importer has no HTTP wire union to derive, so there is no separate
   choices leave it unlinked. A pick is a mention link choice in the identity
   map (`onChooseMention`), never an edit: the resolved resource redirects
   the mention there and the row is not marked edited; a row with an edit
-  override has it relinked at that mention too (`Mention.relinked`), since
-  the override is what gets written. A patient picked for a resource under
-  Needs a patient includes it, Don't link leaves it out again, and Revert
-  leaves one out again when the resolved resource has no patient either.
+  override shows and writes the override resolved on the plan
+  (`StagedImport.resolvedResourceOf`), so the pick, and any later link of a
+  referent it names, moves it too. Whether a row is included is the
+  reviewer's tick, else the screen's default, so a patient picked for a
+  resource without one takes it in, Don't link leaves it out again, and
+  Revert leaves one out again when the resolved resource has no patient
+  either, unless the reviewer ticked or unticked it themselves.
   `describe-resource.ts` reads a decoded resource in its wire form and names
   its subject by the label of the resource it is redirected to, else its `display`,
   never by its `Patient/<id>`. A section's tri-state heading toggle is
@@ -371,7 +378,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   re-decode re-mints it at the same deterministic id, so the review key and the
   `meta.source` links survive — and so does re-picking the same file off the
   server, which is why its row comes back `unchanged` from the diff and
-  pre-excluded from the initial selection. The source-file list query is
+  out by default. The source-file list query is
   invalidated once at end-of-batch (a fresh source file is a new
   `DocumentReference` the picker should see next pick — cheap even when none
   wrote).
@@ -598,7 +605,10 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   resolved on the identity map: Needs a patient only when a subject is
   unlinked, a pick that is a mention link choice and includes the row, Don't
   link leaving it out again, a pick following its referent's later link,
-  where Don't link is offered, and an edit override relinked by a pick.
+  where Don't link is offered, an edit override resolved on the plan (a
+  pick, or a later link of the patient it names, moves it), Revert leaving
+  a row without a patient out again, an untouched row taken back in when its
+  patient is linked, and a ticked row kept in.
   `identity/mention-link-options.test.ts` pins what a select offers: the
   plan's resolved resources, a record two referents are linked to once, as
   the choice of the referent whose record it is.

@@ -6,7 +6,7 @@ import {
   Mention,
   StagedImport,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { Match, Option } from 'effect'
+import { Match } from 'effect'
 
 import { claimedFormats } from './read-batch.ts'
 import type { FormatKind } from './registry.ts'
@@ -63,6 +63,12 @@ const skipReasonFor = (result: FormatDecode.Result<FormatKind>): SkipReason =>
 type SelectionFor = (format: FormatKind) => StagedImport.Selection
 
 /**
+ * How the confirm reads which of each format's rows are out unless the
+ * reviewer ticked them: the keys the review's default excludes.
+ */
+type ExcludedByDefaultFor = (format: FormatKind) => ReadonlySet<string>
+
+/**
  * A reviewed resource's disposition before the candidates under one
  * `Type/id` are told apart: settled, or a candidate for the transaction.
  */
@@ -87,19 +93,24 @@ const literalReferencesIn = (resources: readonly FhirResourceWithId[]): Readonly
 
 /**
  * Every claimed format's rows, in registry order and then review order, as
- * reviewed: the edit substituted where the reviewer made one, `Excluded`
- * where the reviewer toggled the row off, else a candidate.
+ * reviewed: the edit, resolved on the batch's plan, substituted where the
+ * reviewer made one (`StagedImport.resolvedResourceOf`), `Excluded` where
+ * the row is not included, else a candidate.
  */
-const formatRowsOf = (batch: ResolvedBatch, selectionFor: SelectionFor): readonly ReviewedRow[] =>
+const formatRowsOf = (
+  batch: ResolvedBatch,
+  selectionFor: SelectionFor,
+  excludedByDefaultFor: ExcludedByDefaultFor
+): readonly ReviewedRow[] =>
   claimedFormats(batch.formats).flatMap((kind) => {
     const selection = selectionFor(kind)
+    const excludedByDefault = excludedByDefaultFor(kind)
     return DecodedFile.resources(batch.formats[kind].decoded).map((entry): ReviewedRow => ({
       group: kind,
-      entry: Option.match(StagedImport.editedResource(selection, entry.key), {
-        onNone: () => entry,
-        onSome: (resource) => ({ ...entry, resource }),
-      }),
-      verdict: StagedImport.isResourceIncluded(selection, entry.key) ? 'Candidate' : 'Excluded',
+      entry: { ...entry, resource: StagedImport.resolvedResourceOf(batch.plan, selection, entry) },
+      verdict: StagedImport.isResourceIncluded(selection, excludedByDefault, entry.key)
+        ? 'Candidate'
+        : 'Excluded',
     }))
   })
 
@@ -135,6 +146,8 @@ const linkedVerdictOf = (
  *
  * @param batch - The resolved batch the reviewer confirmed
  * @param selectionFor - Each format's reviewed selection
+ * @param excludedByDefaultFor - Each format's rows out unless the reviewer
+ *   ticked them
  * @param unchangedLinked - The keys of the linked records the server diff
  *   found unchanged
  * @returns One {@link WriteDecision} per format row and linked record
@@ -142,9 +155,10 @@ const linkedVerdictOf = (
  * @remarks
  * The dispositions are decided in this order:
  *
- * - A format row is **`Excluded`** when the reviewer toggled it off, else a
- *   candidate. Its `entry.resource` is the edited resource where the
- *   reviewer made an edit.
+ * - A format row is **`Excluded`** when it is not included: the reviewer
+ *   unticked it, or never ticked one the default leaves out. Else it is a
+ *   candidate. Its `entry.resource` is the edited resource, resolved on the
+ *   batch's plan, where the reviewer made an edit.
  * - A linked record is read-only in the review (a link choice is how to
  *   change one), so this is the one place its write is decided. It is
  *   **`Unchanged`** when the server holds it as it is (its key in
@@ -171,9 +185,10 @@ const linkedVerdictOf = (
 const planWrite = (
   batch: ResolvedBatch,
   selectionFor: SelectionFor,
+  excludedByDefaultFor: ExcludedByDefaultFor,
   unchangedLinked: ReadonlySet<string>
 ): readonly WriteDecision[] => {
-  const formatRows = formatRowsOf(batch, selectionFor)
+  const formatRows = formatRowsOf(batch, selectionFor, excludedByDefaultFor)
   const named = literalReferencesIn(
     formatRows.flatMap(({ entry, verdict }) => (verdict === 'Candidate' ? [entry.resource] : []))
   )
@@ -207,6 +222,7 @@ const planWrite = (
 
 export {
   type Disposition,
+  type ExcludedByDefaultFor,
   planWrite,
   type SelectionFor,
   type SkipReason,

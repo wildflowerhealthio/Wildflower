@@ -4,13 +4,12 @@ import { type DecodedFile, StagedImport } from '@wildflowerhealthio/importer-fun
 import { Array, Data } from 'effect'
 import { type JSX, type ReactNode, useMemo, useState } from 'react'
 
-import type { FormatKind, FormatSettings, ResolvedBatch } from '@wildflowerhealthio/importer-core'
-import {
+import { type FormatKind, type FormatSettings, type ResolvedBatch,
   claimedFormats,
+  type ExcludedByDefaultFor,
   formatKinds,
   LINKED_GROUP,
-  planWrite,
-} from '@wildflowerhealthio/importer-core'
+  planWrite } from '@wildflowerhealthio/importer-core'
 
 import * as MentionLinkOptions from '../identity/mention-link-options.ts'
 import type { FormatWithComponents } from '../registry.ts'
@@ -77,8 +76,10 @@ interface PreviewPanelProps {
   readonly settings: FormatSettings
   /** The registered formats' display + settings pickers, indexed by kind. */
   readonly settingsRegistry: SettingsRegistry
-  /** The reviewed selection for a format (defaults to `StagedImport.initial()` before any edit). */
+  /** The reviewed selection for a format (`StagedImport.initial()` before the reviewer touches it). */
   readonly selectionFor: (format: FormatKind) => StagedImport.Selection
+  /** The keys of a format's rows that are out unless the reviewer ticks them. */
+  readonly excludedByDefaultFor: ExcludedByDefaultFor
   /** The keys of the linked records the server diff found unchanged, which are not written. */
   readonly unchangedLinked: ReadonlySet<string>
   /**
@@ -228,6 +229,7 @@ const PreviewPanel = ({
   settings,
   settingsRegistry,
   selectionFor,
+  excludedByDefaultFor,
   unchangedLinked,
   comparisons,
   onSelectionChange,
@@ -252,12 +254,12 @@ const PreviewPanel = ({
   // What the confirm would write, one resource per `Type/id`, and what the
   // reviewer toggled off: read off the plan the confirm submits.
   const { writableCount, excludedCount } = useMemo(() => {
-    const plan = planWrite(batch, selectionFor, unchangedLinked)
+    const plan = planWrite(batch, selectionFor, excludedByDefaultFor, unchangedLinked)
     return {
       writableCount: Array.countBy(plan, ({ disposition }) => disposition === 'Included'),
       excludedCount: Array.countBy(plan, ({ disposition }) => disposition === 'Excluded'),
     }
-  }, [batch, selectionFor, unchangedLinked])
+  }, [batch, selectionFor, excludedByDefaultFor, unchangedLinked])
 
   const openEditor = (format: FormatKind, key: string, resource: unknown): void => {
     setEditing(makeOpenEditor({ format, key, resource }))
@@ -309,6 +311,7 @@ const PreviewPanel = ({
                 <FormatReviewBody
                   result={result}
                   selection={selectionFor(kind)}
+                  excludedByDefault={excludedByDefaultFor(kind)}
                   comparisons={comparisons.get(kind)}
                   mentionLinkOptions={mentionLinkOptions}
                   onChooseMention={onChooseMention}

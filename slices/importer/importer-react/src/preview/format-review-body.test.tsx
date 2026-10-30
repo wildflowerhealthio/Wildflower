@@ -7,7 +7,7 @@ import {
   Patient,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import {
-  type DecodedFile,
+  DecodedFile,
   FileResolution,
   FormatDecode,
   LinkChoice,
@@ -22,6 +22,8 @@ import { Effect, HashMap, Option, Schema, TestContext } from 'effect'
 import { type JSX, useMemo, useState } from 'react'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
+import type { ResolvedBatch } from '@wildflowerhealthio/importer-core'
+
 import * as MentionLinkOptions from '../identity/mention-link-options.ts'
 import { DONT_LINK_LABEL } from '../identity/referent-text.ts'
 import { FormatReviewBody } from './format-review-body.tsx'
@@ -30,7 +32,7 @@ import {
   NAMES_UNLINKED_ACCOUNT,
   NEEDS_A_PATIENT_HEADING,
 } from './preview-text.ts'
-import { keysNeedingPatient, leftUnlinkedIn, unlinkedInRows } from './unlinked-mentions.ts'
+import { formatExcludedByDefault } from './use-server-diff.ts'
 
 /**
  * One format's review body over a file resolved on the identity map: the Needs
@@ -123,19 +125,47 @@ const resolvedOn = (
     })
   )
 
-/** What the harness reports after every change: the selection, the mention link choices and the resolved file. */
+/**
+ * What the harness reports after every render: the selection, the rows out
+ * by default, the mention link choices, the plan and the resolved file.
+ */
 interface Reported {
   readonly selection: StagedImport.Selection
+  readonly excludedByDefault: ReadonlySet<string>
   readonly byMention: MentionLinkChoiceSet.Type
+  readonly plan: LinkPlan.Type
   readonly resolved: DecodedFile.DecodedFile
+}
+
+/** `file`, as decoded and as `resolved` on `plan`, as the one HAR format of a resolved batch. */
+const batchOf = (
+  file: DecodedFile.DecodedFile,
+  resolved: DecodedFile.DecodedFile,
+  plan: LinkPlan.Type
+): ResolvedBatch => {
+  const decodedBatch = {
+    formats: {
+      har: { ...FormatDecode.emptyResult('har'), decoded: file },
+      'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
+      dicom: FormatDecode.emptyResult('dicom'),
+    },
+    unrecognizedFiles: [],
+  }
+  return {
+    formats: { ...decodedBatch.formats, har: { ...decodedBatch.formats.har, decoded: resolved } },
+    unrecognizedFiles: [],
+    linkedRecords: [],
+    plan,
+    decodedBatch,
+  }
 }
 
 /**
  * The review body over `resources` resolved on `choices` and the mention
- * link choices it holds, as the screen does: the selection seeded as the
- * screen seeds it, an edit override on `editedKey` when given (`editedTo`
- * the resource there, by default a copy under another id). Reports every
- * change.
+ * link choices it holds, as the screen does: the rows out by default derived
+ * afresh on every render, an edit override on `editedKey` when given
+ * (`editedTo` the resource there, by default a copy under another id).
+ * Reports every render.
  */
 const Harness = ({
   resources,
@@ -157,21 +187,23 @@ const Harness = ({
     [file, choices, byMention]
   )
   const [selection, setSelection] = useState<StagedImport.Selection>(() => {
-    const seeded = StagedImport.setResourcesIncluded(
-      StagedImport.initial(),
-      keysNeedingPatient(unlinkedInRows(file, StagedImport.initial(), leftUnlinkedIn(plan, 'har'))),
-      false
-    )
     const edited = resources.find((_, index) => `k-${index}` === editedKey)
     return edited === undefined || editedKey === undefined
-      ? seeded
-      : StagedImport.edit(seeded, editedKey, editedTo(edited))
+      ? StagedImport.initial()
+      : StagedImport.edit(StagedImport.initial(), editedKey, editedTo(edited))
   })
-  onReport({ selection, byMention, resolved })
+  const excludedByDefault = formatExcludedByDefault(
+    batchOf(file, resolved, plan),
+    'har',
+    undefined,
+    selection
+  )
+  onReport({ selection, excludedByDefault, byMention, plan, resolved })
   return (
     <FormatReviewBody
       result={{ ...FormatDecode.emptyResult('har'), decoded: resolved }}
       selection={selection}
+      excludedByDefault={excludedByDefault}
       comparisons={undefined}
       mentionLinkOptions={options}
       kind="har"
@@ -213,6 +245,23 @@ const reports = (): {
     },
   }
 }
+
+/** Whether the row keyed `key` is included, as the harness last reported. */
+const includedIn = (reported: Reported, key: string): boolean =>
+  StagedImport.isResourceIncluded(reported.selection, reported.excludedByDefault, key)
+
+/** The resource the review writes for the row keyed `key`, as the harness last reported. */
+const writtenAt = (reported: Reported, key: string): FhirResourceWithId => {
+  const entry = DecodedFile.resources(reported.resolved).find((one) => one.key === key)
+  if (entry === undefined) throw new Error(`no row keyed ${key}`)
+  return StagedImport.resolvedResourceOf(reported.plan, reported.selection, entry)
+}
+
+/** The literal reference the subject of `resource` carries, or `None` for none. */
+const subjectLiteralOf = (resource: FhirResourceWithId): Option.Option<string> =>
+  Mention.at(resource, Mention.SUBJECT_PATH).pipe(
+    Option.flatMapNullable(({ reference }) => reference.reference)
+  )
 
 const SUBJECT_OF_O1 = 'Patient of Observation Weight o-1'
 
@@ -274,7 +323,7 @@ describe('FormatReviewBody', () => {
       ],
     ])
     expect(subjectLiteral(reported.latest().resolved, 'k-1')).toEqual(Option.some('Patient/p-1'))
-    expect(StagedImport.isResourceIncluded(reported.latest().selection, 'k-1')).toBe(true)
+    expect(includedIn(reported.latest(), 'k-1')).toBe(true)
     expect(StagedImport.isResourceEdited(reported.latest().selection, 'k-1')).toBe(false)
     expect(within(group).queryByText('Edited')).toBeNull()
     expect(within(group).queryByText(NAMES_NO_PATIENT)).toBeNull()
@@ -284,7 +333,7 @@ describe('FormatReviewBody', () => {
     await userEvent.selectOptions(subject, DONT_LINK_LABEL)
 
     // Assert — the mention is unlinked again and the row is left out again
-    expect(StagedImport.isResourceIncluded(reported.latest().selection, 'k-1')).toBe(false)
+    expect(includedIn(reported.latest(), 'k-1')).toBe(false)
     expect(subject.value).toBe('dont-link')
     expect(within(group).getByText(NAMES_NO_PATIENT)).toBeDefined()
   })
@@ -362,7 +411,7 @@ describe('FormatReviewBody', () => {
     expect(optionsOf('Patient of Observation Weight o-2')).toEqual([TYRA, DONT_LINK_LABEL])
   })
 
-  it('relinks a row’s edit override at the mention picked, since the override is what gets written', async () => {
+  it('records a pick on an edited row as a mention link choice the override is resolved on, leaving the override as edited', async () => {
     const reported = reports()
     render(
       <Harness
@@ -374,18 +423,153 @@ describe('FormatReviewBody', () => {
     // Listed under Needs a patient and in its section: either select will do.
     const [subject] = screen.getAllByRole<HTMLSelectElement>('combobox', { name: SUBJECT_OF_O1 })
     if (subject === undefined) throw new Error('unreachable: the row has a subject select')
+    expect(includedIn(reported.latest(), 'k-1')).toBe(false)
 
     await userEvent.selectOptions(subject, TYRA)
 
+    // Assert — the override is as edited; what is written names Tyra, and is in
     const override = StagedImport.editedResource(reported.latest().selection, 'k-1')
     expect(Option.map(override, ({ id }) => id)).toEqual(Option.some('o-1-edited'))
-    expect(
-      Option.flatMap(override, (edited) => Mention.at(edited, Mention.SUBJECT_PATH)).pipe(
-        Option.flatMapNullable(({ reference }) => reference.reference)
-      )
-    ).toEqual(Option.some('Patient/p-1'))
-    // The override now names Tyra, so the row has left Needs a patient.
-    expect(screen.getAllByText('Edited')).toHaveLength(1)
+    expect(Option.flatMap(override, subjectLiteralOf)).toEqual(Option.none())
+    expect(writtenAt(reported.latest(), 'k-1').id).toBe('o-1-edited')
+    expect(subjectLiteralOf(writtenAt(reported.latest(), 'k-1'))).toEqual(
+      Option.some('Patient/p-1')
+    )
+    expect(includedIn(reported.latest(), 'k-1')).toBe(true)
+    // A pick is no edit: the row stays under Needs a patient, beside its section's copy.
+    expect(screen.getAllByText('Edited')).toHaveLength(2)
+  })
+
+  it('writes an edited row’s picked subject at the stored record its referent is later linked to', async () => {
+    const reported = reports()
+    const resources = [TYRA_PATIENT, weight('o-1')]
+    const { rerender } = render(
+      <Harness resources={resources} editedKey="k-1" onReport={reported.onReport} />
+    )
+    const [subject] = screen.getAllByRole<HTMLSelectElement>('combobox', { name: SUBJECT_OF_O1 })
+    if (subject === undefined) throw new Error('unreachable: the row has a subject select')
+    await userEvent.selectOptions(subject, TYRA)
+
+    // Act — link Tyra's referent to the stored Tyra
+    rerender(
+      <Harness
+        resources={resources}
+        choices={HashMap.make([
+          TYRA_KEY,
+          LinkChoice.LinkToStoredResource({ resource: STORED_TYRA }),
+        ])}
+        editedKey="k-1"
+        onReport={reported.onReport}
+      />
+    )
+
+    // Assert — the edit names the stored record, not the decoded one no longer written
+    expect(writtenAt(reported.latest(), 'k-1').id).toBe('o-1-edited')
+    expect(subjectLiteralOf(writtenAt(reported.latest(), 'k-1'))).toEqual(
+      Option.some('Patient/s-1')
+    )
+  })
+
+  it('writes an edit naming a decoded patient at the stored record that patient is later linked to', () => {
+    const reported = reports()
+    const resources = [TYRA_PATIENT, weight('o-1')]
+    const toTyra = (resource: FhirResourceWithId): FhirResourceWithId =>
+      Mention.relinked(resource, Mention.SUBJECT_PATH, Option.some('Patient/p-1'))
+    const { rerender } = render(
+      <Harness
+        resources={resources}
+        editedKey="k-1"
+        editedTo={toTyra}
+        onReport={reported.onReport}
+      />
+    )
+    expect(subjectLiteralOf(writtenAt(reported.latest(), 'k-1'))).toEqual(
+      Option.some('Patient/p-1')
+    )
+
+    rerender(
+      <Harness
+        resources={resources}
+        choices={HashMap.make([
+          TYRA_KEY,
+          LinkChoice.LinkToStoredResource({ resource: STORED_TYRA }),
+        ])}
+        editedKey="k-1"
+        editedTo={toTyra}
+        onReport={reported.onReport}
+      />
+    )
+
+    expect(subjectLiteralOf(writtenAt(reported.latest(), 'k-1'))).toEqual(
+      Option.some('Patient/s-1')
+    )
+  })
+
+  it('leaves a row out again on revert when the decoded row names no patient', async () => {
+    const reported = reports()
+    render(
+      <Harness
+        resources={[TYRA_PATIENT, weight('o-1')]}
+        editedKey="k-1"
+        editedTo={(resource) =>
+          Mention.relinked(resource, Mention.SUBJECT_PATH, Option.some('Patient/p-1'))
+        }
+        onReport={reported.onReport}
+      />
+    )
+    expect(includedIn(reported.latest(), 'k-1')).toBe(true)
+
+    await userEvent.click(screen.getByRole('button', { name: /^Revert edit to Observation/ }))
+
+    expect(StagedImport.isResourceEdited(reported.latest().selection, 'k-1')).toBe(false)
+    expect(includedIn(reported.latest(), 'k-1')).toBe(false)
+  })
+
+  it('takes an untouched row back in when its patient is linked, after another row of the format was ticked', async () => {
+    const reported = reports()
+    const resources = [
+      TYRA_PATIENT,
+      weight('o-1', { type: 'Patient', identifier: { system: CUSTOMER, value: 'c-9' } }),
+      weight('o-2'),
+    ]
+    const { rerender } = render(<Harness resources={resources} onReport={reported.onReport} />)
+    expect(includedIn(reported.latest(), 'k-1')).toBe(false)
+    const [other] = screen.getAllByRole<HTMLInputElement>('checkbox', {
+      name: 'Include Observation Weight o-2',
+    })
+    if (other === undefined) throw new Error('unreachable: the row has a checkbox')
+    await userEvent.click(other)
+    expect(includedIn(reported.latest(), 'k-2')).toBe(true)
+
+    // Act — link the account to Tyra
+    rerender(
+      <Harness
+        resources={resources}
+        choices={HashMap.make([
+          `Patient|${CUSTOMER}|c-9`,
+          LinkChoice.LinkToDecodedReferent({ referentKey: TYRA_KEY }),
+        ])}
+        onReport={reported.onReport}
+      />
+    )
+
+    // Assert — the untouched row is in; the ticked one stays as ticked
+    expect(includedIn(reported.latest(), 'k-1')).toBe(true)
+    expect(includedIn(reported.latest(), 'k-2')).toBe(true)
+  })
+
+  it('keeps a row the reviewer ticked in, though it names no patient', async () => {
+    const reported = reports()
+    render(<Harness resources={[TYRA_PATIENT, weight('o-1')]} onReport={reported.onReport} />)
+    const [box] = screen.getAllByRole<HTMLInputElement>('checkbox', {
+      name: 'Include Observation Weight o-1',
+    })
+    if (box === undefined) throw new Error('unreachable: the row has a checkbox')
+
+    await userEvent.click(box)
+
+    expect(includedIn(reported.latest(), 'k-1')).toBe(true)
+    expect(reported.latest().excludedByDefault).toEqual(new Set(['k-1']))
   })
 
   it('takes a row out of Needs a patient when an edit gives its subject a record of the device', () => {

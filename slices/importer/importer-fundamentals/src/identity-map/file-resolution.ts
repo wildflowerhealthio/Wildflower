@@ -127,6 +127,21 @@ const resolveEntry =
   }
 
 /**
+ * `editedResource`, the reviewer's edit of the resource reviewed under
+ * `reviewKey`, as it is resolved under `plan`: its mentions redirected as a
+ * decoded entry's are ({@link redirectMentions}), so a mention the edit
+ * names by a decoded literal reference a stored resource now stands in for,
+ * or one the reviewer chose a link for, is written where the plan says
+ * today, not where it pointed when the edit was made. The edit itself is
+ * never replaced by a resolved resource: it is what the reviewer wants
+ * written. The same object when nothing moves.
+ */
+const resolveEdit = (
+  plan: LinkPlan.Type,
+  reviewKey: string
+): ((editedResource: FhirResourceWithId) => FhirResourceWithId) => redirectMentions(plan, reviewKey)
+
+/**
  * The batch's linked records under `plan`: the resolved resources no
  * resolved file holds where a decoded resource was, as they will be
  * written, in the order the links first reach them. Each is `Provisional`
@@ -161,5 +176,5 @@ const resolveFile =
   (decodedFile: DecodedFile.DecodedFile): DecodedFile.DecodedFile =>
     DecodedFile.mapResources(decodedFile, resolveEntry(plan))
 
-export { linkedKey, linkedRecords, resolveFile }
+export { linkedKey, linkedRecords, resolveEdit, resolveFile }
 export type { LinkedRecord }

@@ -26,9 +26,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vite-plus/test'
 
 import {
   DecodedFile,
+  FileResolution,
   Link,
   LinkChoice,
+  LinkPlan,
   LinkTarget,
+  MentionLinkChoiceSet,
   Referent,
   ReferentLinkChoiceSet,
   UnlinkedMention,
@@ -730,6 +733,51 @@ describe('UnlinkedMention.leftByReferentLinks on a decoded file', () => {
       'OutsidePatientCompartment k-7 subject',
       'OutsidePatientCompartment k-8 subject',
     ])
+  })
+})
+
+describe('FileResolution.resolveEdit', () => {
+  const decodedPerson = patient({ id: 'p-1' })
+  const file = fileOf(decodedPerson, observation('o-1'))
+  // The reviewer's edit of the Observation, naming the decoded person by its literal reference.
+  const edited = observation('o-1-edited', literalSubject('p-1'))
+  const planOn = (
+    choices: ReferentLinkChoiceSet.Type,
+    byMention: MentionLinkChoiceSet.Type = MentionLinkChoiceSet.empty
+  ): LinkPlan.Type =>
+    runOnTestClock(
+      Effect.map(LinkPlan.make([file], choices), (plan) =>
+        LinkPlan.withMentionLinkChoiceSet(plan, byMention)
+      )
+    )
+  const subjectOfEdit = (plan: LinkPlan.Type): string | null | undefined =>
+    subjectAndRequesterOf(FileResolution.resolveEdit(plan, 'k-1')(edited)).subject?.reference
+
+  it('comes back as itself while the person it names is written where it was decoded', () => {
+    expect(FileResolution.resolveEdit(planOn(HashMap.empty()), 'k-1')(edited)).toBe(edited)
+  })
+
+  it('names the stored person standing in for the decoded one it named', () => {
+    expect(
+      subjectOfEdit(
+        planOn(HashMap.make([PERSON, LinkChoice.LinkToStoredResource({ resource: STORED_TYRA })]))
+      )
+    ).toBe('Patient/s-1')
+  })
+
+  it('follows a mention link chosen for it, keeping the edit', () => {
+    const plan = planOn(
+      HashMap.empty(),
+      MentionLinkChoiceSet.set(
+        MentionLinkChoiceSet.empty,
+        'k-1',
+        'subject',
+        LinkChoice.LinkToStoredResource({ resource: STORED_JAN })
+      )
+    )
+
+    expect(FileResolution.resolveEdit(plan, 'k-1')(edited).id).toBe('o-1-edited')
+    expect(subjectOfEdit(plan)).toBe('Patient/s-2')
   })
 })
 

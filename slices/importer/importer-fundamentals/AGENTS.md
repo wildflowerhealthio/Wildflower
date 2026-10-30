@@ -89,14 +89,19 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   requirement.
 
 - `src/staged-import.ts` — the **`StagedImport`** namespace, the pure per-resource
-  selection model. A `Selection` is two axes: `excludedResources`
-  (per-resource opt-outs, keyed by a `DecodedFile.Resource`'s `key`) and
+  selection model. A `Selection` holds only what the reviewer did, on two
+  axes: `includedByReviewer` (their own include/exclude choices, `true` or
+  `false` by a `DecodedFile.Resource`'s `key`; a key absent there takes the
+  default the shell derives and passes in as `excludedByDefault`) and
   `resourceOverrides` (per-resource inline edits over `FhirResourceWithId`, same
-  keying — the reviewer's edited resource replaces the decoded original at
+  keying — the reviewer's edited resource, resolved on the batch's plan
+  (`FileResolution.resolveEdit`), replaces the resolved original at
   confirm). `initial` / `toggleResource` / `setResourcesIncluded` (the batch
   form of `toggleResource`, so the shell can opt a whole section in or out at
   once) / `edit` / `revert` are the transitions;
-  `isResourceIncluded` / `isResourceEdited` / `editedResource` the reads,
+  `isResourceIncluded` / `isResourceEdited` / `editedResource` /
+  `resolvedResourceOf` (the resource the review writes for a resolved row)
+  the reads,
   which `importer-core`'s `planWrite` folds, row by row, into the confirm's
   write set — no re-parse at confirm, the reviewed (or edited) objects are
   what gets written. Orphaned selection entries
@@ -307,6 +312,11 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
     redirected where that choice says (`Mention.relinked`: on the chosen
     resource's literal reference, or, for `Unlinked`, with its literal
     dropped; an empty `subject` slot chosen for is filled);
+    **`resolveEdit(plan, reviewKey)`**: the reviewer's edit of the row
+    reviewed under that key with its mentions redirected the same way, never
+    replaced by a resolved resource, so an edit naming a decoded record a
+    stored one now stands in for, or a mention chosen for, is written where
+    the plan says now;
     **`linkedRecords(plan)`**: the batch's linked records, the resolved
     resources no resolved file holds, each a **`LinkedRecord`** (a
     `DecodedFile.Resource` with its `origin`: `Provisional` when a referent

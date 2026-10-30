@@ -124,16 +124,18 @@ write plan with this package alone.
   records, which no format holds. A resource key is unique within a group,
   not across groups, so the server diff, the preview and the write plan each
   scope a resource by its group.
-- `src/plan-write.ts` — **`planWrite(batch, selectionFor, unchangedLinked)`**,
+- `src/plan-write.ts` — **`planWrite(batch, selectionFor,
+  excludedByDefaultFor, unchangedLinked)`**,
   the pure half of the confirm: one **`WriteDecision`** per reviewed
-  resource — its `ReviewGroup`, its `entry` as reviewed (the inline edit
-  substituted), and its **`Disposition`** — in submit order: the linked
+  resource — its `ReviewGroup`, its `entry` as reviewed (the inline edit,
+  resolved on the batch's plan, substituted), and its **`Disposition`** — in submit order: the linked
   records first, then each claimed format in registry order, rows in review
   order. It adds no provenance and rewrites nothing: the format's `decode`
   already minted the source file and stamped `meta.source`. The five
   dispositions, in the order they are decided:
-  - **`Excluded`** — a format row the reviewer toggled off. Every other
-    format row is a candidate.
+  - **`Excluded`** — a format row that is not included: the reviewer
+    unticked it, or never ticked one `excludedByDefaultFor` leaves out.
+    Every other format row is a candidate.
   - **`Unchanged`** — a linked record the server holds as it is (its key in
     `unchangedLinked`, the server diff's `unchanged`).
   - **`Unreferenced`** — a linked record of `Provisional` origin, made from a

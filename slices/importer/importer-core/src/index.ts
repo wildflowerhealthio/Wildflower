@@ -29,6 +29,7 @@ export {
 } from './read-batch.ts'
 export {
   type Disposition,
+  type ExcludedByDefaultFor,
   planWrite,
   type SelectionFor,
   type SkipReason,

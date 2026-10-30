@@ -86,6 +86,12 @@ const dispositionsOf = (
 ): readonly (readonly [ReviewGroup, string, Disposition])[] =>
   plan.map(({ group, entry, disposition }) => [group, entry.key, disposition] as const)
 
+/** No row out by default. */
+const NONE_BY_DEFAULT: ReadonlySet<string> = new Set()
+
+/** Every format's default: no row out. */
+const noneByDefault = (): ReadonlySet<string> => NONE_BY_DEFAULT
+
 /** A selection with `keys` toggled off. */
 const excluding = (...keys: readonly string[]): StagedImport.Selection =>
   StagedImport.setResourcesIncluded(StagedImport.initial(), keys, false)
@@ -119,10 +125,63 @@ describe('planWrite', () => {
   it('includes the kept rows of a format beside its unreadable file, the toggled-off one excluded', () => {
     const batch = batchOf({ har: [patientRow('a'), patientRow('b')] })
 
-    expect(dispositionsOf(planWrite(batch, () => excluding('a'), new Set()))).toEqual([
+    expect(
+      dispositionsOf(planWrite(batch, () => excluding('a'), noneByDefault, new Set()))
+    ).toEqual([
       ['har', 'a', 'Excluded'],
       ['har', 'b', 'Included'],
     ])
+  })
+
+  it('excludes a row the default leaves out unless the reviewer ticked it, and a ticked one stands', () => {
+    const batch = batchOf({ har: [patientRow('a'), patientRow('b')] })
+    const ticked = StagedImport.setResourcesIncluded(StagedImport.initial(), ['b'], true)
+
+    expect(
+      dispositionsOf(
+        planWrite(
+          batch,
+          () => ticked,
+          () => new Set(['a', 'b']),
+          new Set()
+        )
+      )
+    ).toEqual([
+      ['har', 'a', 'Excluded'],
+      ['har', 'b', 'Included'],
+    ])
+  })
+
+  it('writes an edit resolved on the plan: a mention link chosen for it moves its mention', () => {
+    const asDecoded = observationOf('obs-1', { subject: { reference: 'Patient/elsewhere' } })
+    const batch = batchOf({ har: [asDecoded] }, [STORED])
+    const withMentionLink: ResolvedBatch = {
+      ...batch,
+      plan: {
+        ...batch.plan,
+        mentionLinks: [
+          {
+            reviewKey: 'obs-1',
+            path: 'subject',
+            target: LinkTarget.Stored({ resource: STORED_RESOURCE }),
+          },
+        ],
+      },
+    }
+    const edited = observationOf('obs-1', {
+      subject: { reference: 'Patient/elsewhere' },
+      code: { text: 'Pulse' },
+    }).resource
+    const selection = StagedImport.edit(StagedImport.initial(), 'obs-1', edited)
+
+    const written = planWrite(withMentionLink, () => selection, noneByDefault, new Set()).find(
+      ({ entry }) => entry.key === 'obs-1'
+    )
+
+    expect(written?.entry.resource).toEqual(
+      observationOf('obs-1', { subject: { reference: STORED_PATIENT }, code: { text: 'Pulse' } })
+        .resource
+    )
   })
 
   it('property: every format row is Excluded when toggled off, else Included, in review order, edits substituted', () => {
@@ -135,11 +194,17 @@ describe('planWrite', () => {
         (keys, excludes, edits) => {
           let selection = StagedImport.initial()
           for (const key of keys) {
-            if (excludes(key)) selection = StagedImport.toggleResource(selection, key)
+            if (excludes(key))
+              selection = StagedImport.toggleResource(selection, NONE_BY_DEFAULT, key)
             if (edits(key)) selection = StagedImport.edit(selection, key, patient(key, 'female'))
           }
 
-          const plan = planWrite(batchOf({ har: keys.map(patientRow) }), () => selection, new Set())
+          const plan = planWrite(
+            batchOf({ har: keys.map(patientRow) }),
+            () => selection,
+            noneByDefault,
+            new Set()
+          )
 
           expect(plan).toEqual(
             keys.map((key): WriteDecision => ({
@@ -163,7 +228,9 @@ describe('planWrite', () => {
       [PROVISIONAL]
     )
 
-    expect(dispositionsOf(planWrite(batch, () => StagedImport.initial(), new Set()))).toEqual([
+    expect(
+      dispositionsOf(planWrite(batch, () => StagedImport.initial(), noneByDefault, new Set()))
+    ).toEqual([
       [LINKED_GROUP, PROVISIONAL.key, 'Included'],
       ['har', 'obs-1', 'Included'],
       ['dicom', 'd', 'Included'],
@@ -176,7 +243,9 @@ describe('planWrite', () => {
       [PROVISIONAL]
     )
 
-    expect(dispositionsOf(planWrite(batch, () => StagedImport.initial(), new Set()))).toEqual([
+    expect(
+      dispositionsOf(planWrite(batch, () => StagedImport.initial(), noneByDefault, new Set()))
+    ).toEqual([
       [LINKED_GROUP, PROVISIONAL.key, 'Included'],
       ['har', 'obs-1', 'Included'],
     ])
@@ -193,7 +262,9 @@ describe('planWrite', () => {
       [PROVISIONAL]
     )
 
-    expect(dispositionsOf(planWrite(batch, () => excluding('obs-1'), new Set()))).toEqual([
+    expect(
+      dispositionsOf(planWrite(batch, () => excluding('obs-1'), noneByDefault, new Set()))
+    ).toEqual([
       [LINKED_GROUP, PROVISIONAL.key, 'Unreferenced'],
       ['har', 'obs-1', 'Excluded'],
       ['har', 'obs-2', 'Included'],
@@ -206,7 +277,9 @@ describe('planWrite', () => {
       [STORED]
     )
 
-    expect(dispositionsOf(planWrite(batch, () => excluding('obs-1'), new Set()))).toEqual([
+    expect(
+      dispositionsOf(planWrite(batch, () => excluding('obs-1'), noneByDefault, new Set()))
+    ).toEqual([
       [LINKED_GROUP, STORED.key, 'Included'],
       ['har', 'obs-1', 'Excluded'],
     ])
@@ -219,7 +292,9 @@ describe('planWrite', () => {
     )
 
     expect(
-      dispositionsOf(planWrite(batch, () => StagedImport.initial(), new Set([STORED.key])))
+      dispositionsOf(
+        planWrite(batch, () => StagedImport.initial(), noneByDefault, new Set([STORED.key]))
+      )
     ).toEqual([
       [LINKED_GROUP, STORED.key, 'Unchanged'],
       ['har', 'obs-1', 'Included'],
@@ -233,7 +308,9 @@ describe('planWrite', () => {
     )
 
     expect(
-      dispositionsOf(planWrite(batch, () => excluding('obs-1'), new Set([PROVISIONAL.key])))
+      dispositionsOf(
+        planWrite(batch, () => excluding('obs-1'), noneByDefault, new Set([PROVISIONAL.key]))
+      )
     ).toEqual([
       [LINKED_GROUP, PROVISIONAL.key, 'Unchanged'],
       ['har', 'obs-1', 'Excluded'],
@@ -247,7 +324,9 @@ describe('planWrite', () => {
     )
 
     expect(
-      dispositionsOf(planWrite(batch, () => StagedImport.initial(), new Set([PROVISIONAL.key])))
+      dispositionsOf(
+        planWrite(batch, () => StagedImport.initial(), noneByDefault, new Set([PROVISIONAL.key]))
+      )
     ).toEqual([
       [LINKED_GROUP, PROVISIONAL.key, 'Unchanged'],
       ['har', 'obs-1', 'Included'],
@@ -265,7 +344,7 @@ describe('planWrite', () => {
         ? StagedImport.edit(StagedImport.initial(), 'b', edited)
         : StagedImport.initial()
 
-    const plan = planWrite(batch, selectionFor, new Set())
+    const plan = planWrite(batch, selectionFor, noneByDefault, new Set())
 
     expect(plan).toEqual([
       { group: 'har', entry: row('a', patient('p')), disposition: 'Superseded' },
@@ -281,7 +360,7 @@ describe('planWrite', () => {
     const selectionFor = (format: FormatKind): StagedImport.Selection =>
       format === 'lifelabs-pdf' ? excluding('b') : StagedImport.initial()
 
-    expect(dispositionsOf(planWrite(batch, selectionFor, new Set()))).toEqual([
+    expect(dispositionsOf(planWrite(batch, selectionFor, noneByDefault, new Set()))).toEqual([
       ['har', 'a', 'Included'],
       ['lifelabs-pdf', 'b', 'Excluded'],
     ])
@@ -297,12 +376,14 @@ describe('planWrite', () => {
           const rows = ids.map((id, index) => row(`k-${index}`, patient(id)))
           let selection = StagedImport.initial()
           for (const { key } of rows) {
-            if (excludes(key)) selection = StagedImport.toggleResource(selection, key)
+            if (excludes(key))
+              selection = StagedImport.toggleResource(selection, NONE_BY_DEFAULT, key)
           }
 
           const plan = planWrite(
             batchOf({ har: rows }, [STORED]),
             () => selection,
+            noneByDefault,
             new Set(unchanged ? [STORED.key] : [])
           )
 
@@ -348,12 +429,14 @@ describe('planWrite', () => {
           )
           let selection = StagedImport.initial()
           for (const { key } of observations) {
-            if (excludes(key)) selection = StagedImport.toggleResource(selection, key)
+            if (excludes(key))
+              selection = StagedImport.toggleResource(selection, NONE_BY_DEFAULT, key)
           }
 
           const plan = planWrite(
             batchOf({ har: observations }, [linkedRecord]),
             () => selection,
+            noneByDefault,
             new Set(unchanged ? [linkedRecord.key] : [])
           )
 
@@ -427,15 +510,16 @@ const PROVISIONAL = linkedRecordOf(
   (provisional) => LinkTarget.Provisional({ resource: provisional })
 )
 
+/** The stored Patient a mention is linked to. */
+const STORED_RESOURCE = Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
+  resourceType: 'Patient',
+  id: 's-1',
+  identifier: [{ system: 'https://source.example/patient-id', value: 'mrn-1' }],
+})
+
 /** A stored copy: the stored Patient a mention is linked to, the batch's identifiers assumed. */
-const STORED = linkedRecordOf(
-  Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
-    resourceType: 'Patient',
-    id: 's-1',
-    identifier: [{ system: 'https://source.example/patient-id', value: 'mrn-1' }],
-  }),
-  'Stored Patient',
-  (stored) => LinkTarget.Stored({ resource: stored })
+const STORED = linkedRecordOf(STORED_RESOURCE, 'Stored Patient', (stored) =>
+  LinkTarget.Stored({ resource: stored })
 )
 
 /** An Observation keyed `key` carrying the given reference fields. */
