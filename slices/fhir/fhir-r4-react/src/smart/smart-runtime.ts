@@ -9,15 +9,15 @@ import {
   type RunAuthed,
   type RuntimeLayer,
 } from '../router-context.ts'
+import { hasAbsoluteScheme } from './smart-client.ts'
 
 /**
  * The SMART handshake resolved to the two facts a SMART app's HTTP layer
- * needs.
+ * needs. A `SmartClient` is one.
  *
  * @remarks
- * Deliberately not a `fhirclient` `Client`: keeping the seam to primitives means
- * the runtime below is testable without a SMART handshake, and this module never
- * has to name a `fhirclient` type.
+ * Kept to primitives rather than the whole client, so the runtime below is
+ * testable without a SMART handshake.
  */
 interface SmartSession {
   /**
@@ -30,9 +30,6 @@ interface SmartSession {
   /** The bearer token from the token exchange, or `undefined` for an open server. */
   readonly accessToken: string | undefined
 }
-
-/** True when `url` leads with a scheme, per RFC 3986's `scheme` production. */
-const hasAbsoluteScheme = (url: string): boolean => /^[a-z][a-z0-9+.-]*:/iu.test(url)
 
 /**
  * Wrap an `HttpClient` layer so every relative request is addressed to the FHIR

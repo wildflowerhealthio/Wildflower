@@ -52,14 +52,7 @@ function StrengthRouter({ page, client, transport }: StrengthRouterProps): JSX.E
     buildRouter(page, {
       queryClient,
       client,
-      runAuthed: buildSmartRouterContext(
-        {
-          serverUrl: client.state.serverUrl,
-          accessToken: client.state.tokenResponse?.access_token,
-        },
-        transport,
-        queryClient
-      ).runAuthed,
+      runAuthed: buildSmartRouterContext(client, transport, queryClient).runAuthed,
       strongLiftsPlanDefinitionIdFor: strongLiftsPlanDefinitionIdMinter(),
     })
   )
@@ -77,9 +70,9 @@ function StrengthRouter({ page, client, transport }: StrengthRouterProps): JSX.E
  * The token exchange (`useSmartHandshake`) is a TanStack Query on the page's
  * shared client, keyed and deduped so StrictMode's double-mount exchanges the
  * single-use code once; the routes read the lifter's record on the same
- * client. Reads go through the fhirclient client the handshake yields (its
- * `request` already carries the token and the server base); writes go
- * through `fetch`.
+ * client. Reads go through the client the handshake yields (its `request`
+ * already carries the token and the server base); writes go through
+ * `fetch`.
  */
 const App = ({ page }: AppProps): JSX.Element => (
   <main className={styles['app']}>

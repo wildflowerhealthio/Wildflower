@@ -1,7 +1,6 @@
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import { ServiceRequest } from '@wildflowerhealthio/fhir-r4/resources'
 import type { Effect, Schema } from 'effect'
-import type Client from 'fhirclient/Client'
 
 import {
   RESOURCE_PAGE_SIZE,
@@ -12,6 +11,7 @@ import {
   type ResourcePage,
   type ResourcePageCursor,
 } from './resource-page.ts'
+import type { SmartClient } from './smart-client.ts'
 
 /**
  * The schema every `ServiceRequest` entry decodes through: the R4 resource with
@@ -115,7 +115,7 @@ const serviceRequestRead: PagedResourceRead<
  * @remarks
  * Only `active` requests are read: a `revoked` or `completed` request is no
  * longer one to act on. The patient id is a parameter rather than something
- * this reader lifts off `client.patient.id`, so the caller decides what "no
+ * this reader lifts off `client.launchPatientId`, so the caller decides what "no
  * patient in context" means for its launch; `null` drops the `patient=`
  * filter entirely. A `null` definition drops `instantiates-canonical=`, so a
  * caller can find which definitions a patient's requests carry out before it
@@ -123,7 +123,7 @@ const serviceRequestRead: PagedResourceRead<
  * other that fails to decode.
  */
 const fetchActiveServiceRequestPage = (
-  client: Client,
+  client: SmartClient,
   cursor: ServiceRequestPageCursor
 ): Effect.Effect<ServiceRequestPage, ResourcePageRequestError | BundleDecodeError> =>
   fetchResourcePage(client, activeServiceRequestRead, cursor)
@@ -143,7 +143,7 @@ const fetchActiveServiceRequestPage = (
  * request each event carried out. Which statuses it uses is its own decision.
  */
 const fetchServiceRequestPage = (
-  client: Client,
+  client: SmartClient,
   cursor: ServiceRequestPageCursor
 ): Effect.Effect<ServiceRequestPage, ResourcePageRequestError | BundleDecodeError> =>
   fetchResourcePage(client, serviceRequestRead, cursor)

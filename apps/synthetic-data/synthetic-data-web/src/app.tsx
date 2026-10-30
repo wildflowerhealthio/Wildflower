@@ -110,14 +110,7 @@ const App = (): JSX.Element => {
     () =>
       client === undefined
         ? undefined
-        : buildSmartRouterContext(
-            {
-              serverUrl: client.state.serverUrl,
-              accessToken: client.state.tokenResponse?.access_token,
-            },
-            FetchHttpClient.layer,
-            queryClient
-          ),
+        : buildSmartRouterContext(client, FetchHttpClient.layer, queryClient),
     [client, queryClient]
   )
 
@@ -126,7 +119,7 @@ const App = (): JSX.Element => {
       {handshake.kind === 'connecting' && <PageLoading message="Connecting…" />}
       {handshake.kind === 'error' && <ErrorBanner error={handshake.error} />}
       {context !== undefined && client !== undefined && (
-        <SyntheticDataApp context={context} serverUrl={client.state.serverUrl} />
+        <SyntheticDataApp context={context} serverUrl={client.serverUrl} />
       )}
     </main>
   )

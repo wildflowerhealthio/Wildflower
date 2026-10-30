@@ -51,7 +51,6 @@
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "fast-check": "catalog:",
-    "fhirclient": "^3.0.1",
     "jsdom": "catalog:",
     "typescript": "catalog:",
     "typescript-7": "catalog:",

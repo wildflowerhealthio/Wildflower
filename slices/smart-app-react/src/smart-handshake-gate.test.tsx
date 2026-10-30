@@ -1,9 +1,9 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import type * as FhirSmart from '@wildflowerhealthio/fhir-r4-react/smart'
 import type { SmartHandshake } from '@wildflowerhealthio/fhir-r4-react/smart'
-import type Client from 'fhirclient/Client'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
+import { stubSmartClient } from './smart-client.test-helpers.ts'
 import { SmartHandshakeGate } from './smart-handshake-gate.tsx'
 
 // The handshake is the gate's one input: each test hands it a state, and reads
@@ -25,14 +25,13 @@ afterEach(() => {
 })
 
 /** A client the gate only forwards to its children. */
-// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test-only stub, forwarded to the children
-const client = { state: { serverUrl: 'https://fhir.example/r4' } } as unknown as Client
+const client = { ...stubSmartClient({}).client, serverUrl: 'https://fhir.example/r4' }
 
 /** The gate, its children naming the server of the client they were handed. */
 const renderGate = (): void => {
   render(
     <SmartHandshakeGate connecting={<p>Connecting…</p>}>
-      {(ready) => <p>App over {ready.state.serverUrl}</p>}
+      {(ready) => <p>App over {ready.serverUrl}</p>}
     </SmartHandshakeGate>
   )
 }
