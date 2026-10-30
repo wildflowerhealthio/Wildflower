@@ -5,7 +5,7 @@ import {
   ChoiceElementSet,
   HumanName,
 } from '@wildflowerhealthio/fhir-r4/data-types'
-import { FhirResourceSchema } from '@wildflowerhealthio/fhir-r4/resources'
+import { type FhirResource, FhirResourceSchema } from '@wildflowerhealthio/fhir-r4/resources'
 
 /**
  * The one-line description one previewed FHIR resource is listed under, on its
@@ -13,12 +13,11 @@ import { FhirResourceSchema } from '@wildflowerhealthio/fhir-r4/resources'
  * and the summaries are asserted per resource type in this module's test.
  *
  * @remarks
- * Accepts `unknown` because the shell threads generic previews
- * (`PreviewedResource<unknown>`) even though the HAR binding pins
- * a `FhirResource` at runtime. A decoded `FhirResource` is read in its wire
- * form, which is what the summary fields are written against (a decode
- * carries `null` for every absent field, which the summary schemas would
- * reject); anything else is read as it is. The read is a per-type Effect
+ * A decoded `FhirResource` is read in its wire form, which is what the
+ * summary fields are written against (a decode carries `null` for every
+ * absent field, which the summary schemas would reject); one that does not
+ * encode is a defect, thrown to the render's error boundary. The read is a
+ * per-type Effect
  * Schema decode against the summary fields we care about (never the whole
  * resource), so a partial or mis-typed field folds cleanly to `''` instead
  * of throwing, and the summary falls back to `resourceType/id` when nothing
@@ -212,9 +211,8 @@ const resourceTypeOf = (resource: unknown): string => {
   return typeof value === 'string' ? value : 'Unknown'
 }
 
-/** A decoded `FhirResource` in its wire form; anything else as it is. */
-const wireOf = (resource: unknown): unknown =>
-  Either.getOrElse(Schema.encodeUnknownEither(FhirResourceSchema)(resource), () => resource)
+/** A decoded `FhirResource` in its wire form; throws when it does not encode. */
+const wireOf: (resource: FhirResource) => unknown = Schema.encodeSync(FhirResourceSchema)
 
 /** The subject's label: the one `labels` holds for its literal reference, else its `display`. */
 const subjectOf = (
@@ -320,16 +318,17 @@ const typeAndSummaryOf = (resource: unknown): Omit<ResourceDescription, 'subject
 }
 
 /**
- * Describe one FHIR resource for the interactive review. Pure and total —
- * never throws on a partially-decoded resource, always returns a
- * {@link ResourceDescription} the row can render.
+ * Describe one FHIR resource for the interactive review. Pure — a summary
+ * field that does not read folds away rather than throwing, so it always
+ * returns a {@link ResourceDescription} the row can render for a resource
+ * that encodes.
  *
  * @param resource - The resource as reviewed
  * @param labels - The label of each resource a subject may be redirected to, by its
  *   literal reference
  */
 const describeResource = (
-  resource: unknown,
+  resource: FhirResource,
   labels: ReadonlyMap<string, string>
 ): ResourceDescription => {
   const wire = wireOf(resource)

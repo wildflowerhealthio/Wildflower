@@ -1,4 +1,4 @@
-import { FhirResourceSchema } from '@wildflowerhealthio/fhir-r4/resources'
+import { type FhirResource, FhirResourceSchema } from '@wildflowerhealthio/fhir-r4/resources'
 import { Option, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -10,6 +10,9 @@ import { describeResource } from './describe-resource.ts'
  * summary field to be absent, so each type also asserts the `resourceType/id`
  * fallback used when nothing survives — the summary must never be empty.
  */
+
+/** A resource in its wire form as a decode hands it to the review. */
+const decoded = Schema.decodeUnknownSync(FhirResourceSchema)
 
 /** No labels: every subject named by its `display`. */
 const NO_LABELS: ReadonlyMap<string, string> = new Map()
@@ -25,7 +28,7 @@ describe('describeResource', () => {
     }
 
     // Act
-    const description = describeResource(patient, NO_LABELS)
+    const description = describeResource(decoded(patient), NO_LABELS)
 
     // Assert
     expect(description.type).toBe('Patient')
@@ -44,26 +47,10 @@ describe('describeResource', () => {
     }
 
     // Act
-    const description = describeResource(patient, NO_LABELS)
+    const description = describeResource(decoded(patient), NO_LABELS)
 
     // Assert
     expect(description.summary).toBe('Jane Doe')
-  })
-
-  it('summarises a Patient by name even when a name carries a mistyped use or period', () => {
-    // Arrange — `use` and `period` only steer which name is chosen
-    const patient = {
-      resourceType: 'Patient',
-      id: 'pat-9',
-      name: [{ use: 42, period: { end: 123 }, given: ['Alice'], family: 'Jones' }],
-      birthDate: '1990-01-01',
-    }
-
-    // Act
-    const description = describeResource(patient, NO_LABELS)
-
-    // Assert
-    expect(description.summary).toBe('Alice Jones · 1990-01-01')
   })
 
   it('summarises a MedicationRequest by medication and status', () => {
@@ -72,11 +59,13 @@ describe('describeResource', () => {
       resourceType: 'MedicationRequest',
       id: 'mr-1',
       status: 'active',
+      intent: 'order',
+      subject: { reference: 'Patient/pat-7' },
       medicationCodeableConcept: { coding: [{ display: 'Aspirin 81 mg' }] },
     }
 
     // Act
-    const description = describeResource(request, NO_LABELS)
+    const description = describeResource(decoded(request), NO_LABELS)
 
     // Assert
     expect(description.type).toBe('MedicationRequest')
@@ -94,7 +83,7 @@ describe('describeResource', () => {
     }
 
     // Act
-    const description = describeResource(observation, NO_LABELS)
+    const description = describeResource(decoded(observation), NO_LABELS)
 
     // Assert
     expect(description.type).toBe('Observation')
@@ -106,7 +95,7 @@ describe('describeResource', () => {
     const bare = { resourceType: 'Patient', id: 'pat-3' }
 
     // Act
-    const description = describeResource(bare, NO_LABELS)
+    const description = describeResource(decoded(bare), NO_LABELS)
 
     // Assert
     expect(description.summary).toBe('Patient/pat-3')
@@ -124,7 +113,7 @@ describe('describeResource', () => {
     }
 
     // Act / Assert
-    expect(describeResource(report, NO_LABELS)).toMatchObject({
+    expect(describeResource(decoded(report), NO_LABELS)).toMatchObject({
       type: 'DiagnosticReport',
       summary: 'Laboratory report · 2026-08-13T17:02:00.000Z · 2 results · final',
     })
@@ -145,7 +134,7 @@ describe('describeResource', () => {
     }
 
     // Act / Assert
-    expect(describeResource(report, NO_LABELS)).toMatchObject({
+    expect(describeResource(decoded(report), NO_LABELS)).toMatchObject({
       type: 'DiagnosticReport',
       summary:
         'Laboratory report · 2026-08-13T08:00:00.000Z – 2026-08-13T17:00:00.000Z · 1 result · final',
@@ -162,11 +151,11 @@ describe('describeResource', () => {
     const bare = { resourceType: 'Practitioner', id: 'prac-2' }
 
     // Act / Assert
-    expect(describeResource(named, NO_LABELS)).toMatchObject({
+    expect(describeResource(decoded(named), NO_LABELS)).toMatchObject({
       type: 'Practitioner',
       summary: 'Dr. Okafor',
     })
-    expect(describeResource(bare, NO_LABELS)).toMatchObject({
+    expect(describeResource(decoded(bare), NO_LABELS)).toMatchObject({
       type: 'Practitioner',
       summary: 'Practitioner/prac-2',
     })
@@ -174,18 +163,30 @@ describe('describeResource', () => {
 
   it('summarises a DocumentReference by its id', () => {
     // Arrange
-    const document = { resourceType: 'DocumentReference', id: 'doc-1' }
+    const document = {
+      resourceType: 'DocumentReference',
+      id: 'doc-1',
+      status: 'current',
+      content: [{ attachment: { contentType: 'text/plain' } }],
+    }
 
     // Act / Assert
-    expect(describeResource(document, NO_LABELS)).toMatchObject({
+    expect(describeResource(decoded(document), NO_LABELS)).toMatchObject({
       type: 'DocumentReference',
       summary: 'DocumentReference/doc-1',
     })
   })
 
+  it('throws on a resource that does not encode, rather than summarising it as it is', () => {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a value no decode produces, to reach the defect path
+    const notEncodable = { resourceType: 'Patient', id: 7 } as unknown as FhirResource
+
+    expect(() => describeResource(notEncodable, NO_LABELS)).toThrow()
+  })
+
   it('reads a decoded resource in its wire form, so its summary survives the nulls decoding leaves', () => {
     // Arrange — what a decode hands the review, every absent field null
-    const patient = Schema.decodeUnknownSync(FhirResourceSchema)({
+    const patient = decoded({
       resourceType: 'Patient',
       id: 'pat-7',
       name: [{ given: ['Tyra'], family: 'Banks' }],
@@ -198,8 +199,8 @@ describe('describeResource', () => {
 
   it('names the subject by the label of the resource it is redirected to, else by its display, never by its literal', () => {
     // Arrange
-    const observation = (subject: object): unknown =>
-      Schema.decodeUnknownSync(FhirResourceSchema)({
+    const observation = (subject: object): FhirResource =>
+      decoded({
         resourceType: 'Observation',
         id: 'obs-1',
         status: 'final',

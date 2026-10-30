@@ -2,12 +2,7 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import type { DiffSlot, FieldDiff, ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
-import {
-  type FhirResourceWithId,
-  Observation,
-  Patient,
-  Practitioner,
-} from '@wildflowerhealthio/fhir-r4/resources'
+import { Observation, Patient, Practitioner } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   defaultFormatSettings,
   type FormatKind,
@@ -493,19 +488,17 @@ describe('PreviewPanel', () => {
 
   it('reveals the field-level diffs when the changed badge is clicked', async () => {
     const batch = makeBatch({
-      har: formatResult(
-        'a.har',
-        decoded([section('s', [labeledResource('pat-1', 'Patient/pat-1')])]),
-        'har'
-      ),
+      har: formatResult('a.har', decoded([section('s', [FEMALE_PAT_1])]), 'har'),
     })
-    const field: FieldDiff = {
-      path: ['gender'],
-      server: valueSlot('male'),
-      incoming: valueSlot('female'),
-    }
     const comparisons = comparisonsFor('har', [
-      ['pat-1', { status: 'changed', fields: [field], server: {} }],
+      [
+        'pat-1',
+        {
+          status: 'changed',
+          fields: [GENDER_DIFF],
+          server: patientWire({ resourceType: 'Patient', id: 'pat-1', gender: 'male' }),
+        },
+      ],
     ])
     render(<PreviewPanel {...panelProps(batch, { comparisons })} />)
 
@@ -518,19 +511,17 @@ describe('PreviewPanel', () => {
 
   it('reveals the field-level diffs when the changed badge is hovered', async () => {
     const batch = makeBatch({
-      har: formatResult(
-        'a.har',
-        decoded([section('s', [labeledResource('pat-1', 'Patient/pat-1')])]),
-        'har'
-      ),
+      har: formatResult('a.har', decoded([section('s', [FEMALE_PAT_1])]), 'har'),
     })
-    const field: FieldDiff = {
-      path: ['gender'],
-      server: valueSlot('male'),
-      incoming: valueSlot('female'),
-    }
     const comparisons = comparisonsFor('har', [
-      ['pat-1', { status: 'changed', fields: [field], server: {} }],
+      [
+        'pat-1',
+        {
+          status: 'changed',
+          fields: [GENDER_DIFF],
+          server: patientWire({ resourceType: 'Patient', id: 'pat-1', gender: 'male' }),
+        },
+      ],
     ])
     render(<PreviewPanel {...panelProps(batch, { comparisons })} />)
 
@@ -606,6 +597,17 @@ describe('PreviewPanel', () => {
 /** A present diff slot around `value`. */
 const valueSlot = (value: unknown): DiffSlot => ({ _tag: 'value', value })
 
+/** The Patient `pat-1` as the import has her: female, where the server has male. */
+const FEMALE_PAT_1: DecodedFile.Resource = {
+  key: 'pat-1',
+  title: 'Patient/pat-1',
+  resource: Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
+    resourceType: 'Patient',
+    id: 'pat-1',
+    gender: 'female',
+  }),
+}
+
 /** A gender the server has as male and the import as female. */
 const GENDER_DIFF: FieldDiff = {
   path: ['gender'],
@@ -679,12 +681,18 @@ const section = (
   resources: readonly DecodedFile.Resource[]
 ): DecodedFile.Section => ({ title, resources })
 
-/** A synthetic labeled resource for the panel to count and display. */
+/**
+ * A labeled resource for the panel to count and display: a bare Patient, or
+ * an Observation about a patient with an empty code, each summarised by its
+ * `Type/id`.
+ */
 const labeledResource = (key: string, title: string): DecodedFile.Resource => {
   const [resourceType = 'Patient', id = key] = title.split('/')
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test fixture: the panel only reads resourceType/id off the resource
-  const resource = { resourceType, id } as FhirResourceWithId
-  return { key, title, resource }
+  const resource =
+    resourceType === 'Observation'
+      ? observationOf(key, { code: {}, subject: { reference: 'Patient/p' } }).resource
+      : Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id })
+  return { key, title, resource: { ...resource, id } }
 }
 
 /** An Observation carrying the given reference fields, labeled under `key`, for a linked record to be named by. */
