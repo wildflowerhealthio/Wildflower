@@ -73,7 +73,7 @@ On the Owner's path, the same write scope then records the **grant** for (Streng
 
 The fast path is the one place a code is issued with no person deciding:
 
-{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/code_authorization_starter.rs decide from="// The fast path:" through="let fast_path_coverage"}}
+{{#code apps/host/wildflower-server/authorization-server-rust/src/domain/capabilities/oauth/code_authorization_starter.rs fast_path_coverage}}
 
 [`GrantCoverage::resolve`](<../Authority/Standing Grant Explanation.md#item-GrantCoverage--resolve>) answers `Full` only when the request makes no change to the client's registration (its [presented client change](<../Domain/Client Explanation.md#item-PresentedClientChange>) is `NoChange`) **and** the standing grant for that client and redirect covers every requested scope. Coverage is by permission, not spelling ([`allowed_scope_covers`](<../Domain/Scopes Explanation.md#item-allowed_scope_covers>)): a grant for `patient/Observation.rs` answers a request for `patient/Observation.r`. A request that is new or steps outside the registration never takes the fast path, however well an old grant covers it: the Owner hasn't seen that combination. The browser session's part was settled by the first question: a request still waiting on its limited page never gets this far.
 

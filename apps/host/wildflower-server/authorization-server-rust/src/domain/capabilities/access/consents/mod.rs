@@ -34,6 +34,7 @@ use crate::domain::authority::{ApprovableScopes, DelegatedScopes};
 use crate::domain::authorization_request::code::CodeRequest;
 use crate::domain::authorization_request::polled::PolledRequest;
 use crate::domain::authorization_server_error::AuthorizationServerError;
+use crate::domain::browser_session::RunStart;
 use crate::domain::client::presented_change::PresentedClientChange;
 use crate::domain::GrantStore;
 use crate::ports::OwnerApproval;
@@ -284,20 +285,27 @@ pub(crate) struct ConsentDecider<S: GrantStore> {
     /// approval scopes in it, and the Owner's ticks are clamped to it, so an
     /// approval is never recorded wider than its approver's authority.
     approver_grant: Grant,
+    /// What the run took over when it started, which the browser session a
+    /// code-flow request was made in needs to be live under for its approval
+    /// to issue a code.
+    run_start: Arc<RunStart>,
 }
 
 impl<S: GrantStore> ConsentDecider<S> {
-    /// Build the decider over a store handle, the republish port, and the
-    /// approver's own granted scopes — all lifted from the state and claims.
+    /// Build the decider over a store handle, the republish port, the
+    /// approver's own granted scopes and the run's start — all lifted from
+    /// the state and claims.
     pub(crate) fn new(
         store: S,
         owner_approval: Arc<dyn OwnerApproval>,
         approver_grant: Grant,
+        run_start: Arc<RunStart>,
     ) -> Self {
         ConsentDecider {
             store,
             owner_approval,
             approver_grant,
+            run_start,
         }
     }
 
@@ -343,6 +351,7 @@ mod tests {
             store.clone(),
             owner_approval.clone(),
             approver_grant.clone(),
+            Arc::new(RunStart::before_any_session()),
         )
     }
 

@@ -1,8 +1,9 @@
 //! Ending same-device sessions: the base ends a launch's Owner session by
 //! the sign-in code it opened the launch with, through the server's current
-//! run, once the server's launch views have closed, and a server start ends
-//! every same-device session but those of the launch views still open, as
-//! each is next used. An ended session is not revoked: its cookie stops
+//! run, once the server's launch views have closed, and a server start
+//! carries over no same-device session but those of the launch views still
+//! open, so the others no longer work, though their rows stand. An ended
+//! session is not revoked: its cookie stops
 //! working at once, the browser is sent to pairing, and the next launch's
 //! code signs it in again. Paired sessions survive a start.
 
@@ -56,6 +57,11 @@ fn stored_session(db: &TestDb, sid: &str) -> BrowserSession {
         .expect("stored")
 }
 
+/// Whether `session`'s row stands at `now`: neither revoked nor expired.
+fn row_stands(session: &BrowserSession, now: chrono::DateTime<Utc>) -> bool {
+    session.revoked_at.is_none() && session.expires_at > now
+}
+
 /// Ending a launch's code ends exactly the session it signed in: that
 /// session is expired, not revoked, its cookie no longer reaches the consent
 /// card, and its token no longer passes the bearer gate. Another launch's
@@ -100,7 +106,10 @@ async fn closing_a_launch_ends_only_its_session() {
         StatusCode::UNAUTHORIZED
     );
 
-    assert!(stored_session(&db, &sid_of(&open_token)).is_live(Utc::now()));
+    assert!(row_stands(
+        &stored_session(&db, &sid_of(&open_token)),
+        Utc::now()
+    ));
     assert!(is_consent_card(
         &authorize_destination(&g, &open_token).await
     ));
@@ -141,10 +150,10 @@ async fn a_second_launch_reaches_consent() {
     ));
 }
 
-/// A server start ends every same-device session an earlier run signed in,
-/// so its cookie no longer reaches the consent card, but the session of a
-/// launch view still open, while a paired session stands. The start writes
-/// nothing: the ended session's row is left as it was. That view's
+/// A server start carries over, of the same-device sessions an earlier run
+/// signed in, only the session of a launch view still open, so another's
+/// cookie no longer reaches the consent card, while a paired session stands.
+/// The start writes nothing: the other session's row is left as it was. That view's
 /// session is ended later through the new run, by the code the earlier run
 /// minted. A launch on the new run signs the browser in again.
 #[tokio::test]
@@ -159,7 +168,7 @@ async fn a_restart_ends_same_device_sessions_but_open_views_and_paired_ones() {
     let restarted = restart(&db, std::slice::from_ref(&open_code));
 
     assert!(
-        stored_session(&db, &sid_of(&closed_token)).is_live(Utc::now()),
+        row_stands(&stored_session(&db, &sid_of(&closed_token)), Utc::now()),
         "left as it was"
     );
     assert!(is_pairing_page(
@@ -168,7 +177,10 @@ async fn a_restart_ends_same_device_sessions_but_open_views_and_paired_ones() {
     assert!(is_consent_card(
         &authorize_destination(&restarted, &open_token).await
     ));
-    assert!(stored_session(&db, &db.paired_browser_sid).is_live(Utc::now()));
+    assert!(row_stands(
+        &stored_session(&db, &db.paired_browser_sid),
+        Utc::now()
+    ));
     assert!(restarted
         .in_process_token_verifier
         .verify(&db.paired_browser_token)

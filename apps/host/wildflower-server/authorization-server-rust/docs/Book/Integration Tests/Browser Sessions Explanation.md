@@ -24,13 +24,13 @@ The verifier answers `Revoked`, not a generic rejection. Relies on [`AccessToken
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs an_app_authorized_in_a_session_is_ended_with_it}}
 
-Relies on [`RefreshTokenFamily`](<../Domain/Refresh Token Explanation.md#item-RefreshTokenFamily>) and [`BrowserSession::is_live`](<../Domain/Browser Session Explanation.md#item-BrowserSession--is_live>). Fixtures first used here: [`build_request`](<Test Fixtures Explanation.md#item-build_request>), [`authorize_query`](<Test Fixtures Explanation.md#item-authorize_query>), [`location_of`](<Test Fixtures Explanation.md#item-location_of>), [`approve_oauth_consent`](<Test Fixtures Explanation.md#item-approve_oauth_consent>), [`body_json`](<Test Fixtures Explanation.md#item-body_json>), [`post_token`](<Test Fixtures Explanation.md#item-browser_sessions--post_token>) and [`CODE_VERIFIER`](<Test Fixtures Explanation.md#item-CODE_VERIFIER>).
+Relies on [`RefreshTokenFamily`](<../Domain/Refresh Token Explanation.md#item-RefreshTokenFamily>) and [`BrowserSession::is_live_at`](<../Domain/Browser Session Explanation.md#item-BrowserSession--is_live_at>). Fixtures first used here: [`build_request`](<Test Fixtures Explanation.md#item-build_request>), [`authorize_query`](<Test Fixtures Explanation.md#item-authorize_query>), [`location_of`](<Test Fixtures Explanation.md#item-location_of>), [`approve_oauth_consent`](<Test Fixtures Explanation.md#item-approve_oauth_consent>), [`body_json`](<Test Fixtures Explanation.md#item-body_json>), [`post_token`](<Test Fixtures Explanation.md#item-browser_sessions--post_token>) and [`CODE_VERIFIER`](<Test Fixtures Explanation.md#item-CODE_VERIFIER>).
 
 ### `approving_a_request_whose_session_was_revoked_denies_it`
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs approving_a_request_whose_session_was_revoked_denies_it}}
 
-Relies on [`BrowserSession::is_live`](<../Domain/Browser Session Explanation.md#item-BrowserSession--is_live>) and [`CodeRequest::deny`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--deny>), through [`RequestApprover::approve_for_code`](<../Writers/Request Approver Explanation.md#item-RequestApprover--approve_for_code>).
+Relies on [`BrowserSession::is_live_at`](<../Domain/Browser Session Explanation.md#item-BrowserSession--is_live_at>) and [`CodeRequest::deny`](<../Domain/Authorization Request/Code Request Explanation.md#item-CodeRequest--deny>), through [`RequestApprover::approve_for_code`](<../Writers/Request Approver Explanation.md#item-RequestApprover--approve_for_code>).
 
 ### `the_browsers_list_shows_live_sessions_and_revokes_one`
 
@@ -42,7 +42,7 @@ A fresh session's `lastSeenAt` equals its `createdAt`: signing in is its first u
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs revoking_the_caller_s_own_session_signs_it_out}}
 
-Relies on [`BrowserSession::is_live`](<../Domain/Browser Session Explanation.md#item-BrowserSession--is_live>).
+Relies on [`BrowserSession::is_live_at`](<../Domain/Browser Session Explanation.md#item-BrowserSession--is_live_at>).
 
 ### `the_browsers_routes_are_scope_gated`
 
@@ -54,7 +54,7 @@ Relies on [`require_valid_session`](<../HTTP/Middleware Explanation.md#item-requ
 
 {{#item apps/host/wildflower-server/authorization-server-rust/tests/integration/browser_sessions.rs signing_out_revokes_the_cookie_s_session_and_clears_it}}
 
-Relies on [`BrowserSession::is_live`](<../Domain/Browser Session Explanation.md#item-BrowserSession--is_live>). Fixtures first used here: [`sign_out`](<Test Fixtures Explanation.md#item-sign_out>), [`LAUNCHER_BASE`](<Test Fixtures Explanation.md#item-LAUNCHER_BASE>), [`set_cookie_values`](<Test Fixtures Explanation.md#item-set_cookie_values>) and [`assert_cache_suppressed`](<Test Fixtures Explanation.md#item-assert_cache_suppressed>).
+Relies on [`BrowserSession::is_live_at`](<../Domain/Browser Session Explanation.md#item-BrowserSession--is_live_at>). Fixtures first used here: [`sign_out`](<Test Fixtures Explanation.md#item-sign_out>), [`LAUNCHER_BASE`](<Test Fixtures Explanation.md#item-LAUNCHER_BASE>), [`set_cookie_values`](<Test Fixtures Explanation.md#item-set_cookie_values>) and [`assert_cache_suppressed`](<Test Fixtures Explanation.md#item-assert_cache_suppressed>).
 
 ### `signing_out_without_a_standing_session_still_clears_the_cookie`
 

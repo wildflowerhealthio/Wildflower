@@ -224,7 +224,7 @@ mod tests {
 
     use super::*;
     use crate::domain::access_token::{verify_access_token, AccessTokenVerifyOptions};
-    use crate::domain::browser_session::BrowserSession;
+    use crate::domain::browser_session::{BrowserSession, RunStart};
     use crate::domain::same_device_sign_in_codes::SAME_DEVICE_SIGN_IN_CODE_TTL;
     use crate::domain::signing_key::SigningKey;
     use crate::domain::test_fake::{client, seed_active_signing_key, FakeGrantStore};
@@ -353,7 +353,7 @@ mod tests {
             .tx()
             .browser_session_by_sid(&sid)
             .expect("read")
-            .is_some_and(|session| session.is_live(now)));
+            .is_some_and(|session| session.is_live_at(now, &RunStart::before_any_session())));
     }
 
     /// A code withdrawn once its session is remembered by it, before the

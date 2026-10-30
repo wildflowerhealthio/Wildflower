@@ -25,8 +25,7 @@
 //!    sign-in code the base minted, signing the Owner's browser in on the
 //!    server's own device with a same-device session's token, on its way to an
 //!    allowed `next`, and [`SameDeviceSessionEnder`] ends such sessions for
-//!    the host by the codes that started them, or, as the server starts,
-//!    every one but those of the host's launch views still open;
+//!    the host by the codes that started them;
 //!  - bound to a browser session: [`SessionShortfall`] reads and cancels a
 //!    request waiting on the limited page of the browser that made it, and
 //!    [`CodeAuthorizationStarter`] goes on with one;
@@ -65,7 +64,7 @@ pub(crate) use code_authorization_starter::{
 pub(crate) use device_authorizer::{DeviceAuthorizationError, DeviceAuthorizer};
 pub(crate) use launch_contexts::{consume_launch, LaunchContexts};
 pub(crate) use public_keys_reader::PublicKeysReader;
-pub(crate) use same_device_session_ender::{EndedAtRunStart, SameDeviceSessionEnder};
+pub(crate) use same_device_session_ender::SameDeviceSessionEnder;
 pub(crate) use same_device_sign_in::{
     SameDeviceSignIn, SameDeviceSignInError, SignInRefusal, SignedIn, SAME_DEVICE_SESSION_TTL,
 };

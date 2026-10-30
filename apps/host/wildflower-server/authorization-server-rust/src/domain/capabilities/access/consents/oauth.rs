@@ -227,6 +227,7 @@ impl<S: GrantStore> ConsentDecider<S> {
             &pending_request,
             input.patient.as_deref(),
             generate_code(),
+            &self.run_start,
             now,
         )? {
             CodeApproval::Issued(issued_code) => issued_code,

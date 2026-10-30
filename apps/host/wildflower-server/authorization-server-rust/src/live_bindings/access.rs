@@ -152,7 +152,12 @@ impl Capability for LiveConsentDecider {
         // `Arc<AuthorizationServerState>` implements `OwnerApproval` (via the bare
         // state's impl), so it coerces to the port handle the capability holds.
         let owner_approval: Arc<dyn OwnerApproval> = state.clone();
-        ConsentDecider::new(state.store.clone(), owner_approval, granted)
+        ConsentDecider::new(
+            state.store.clone(),
+            owner_approval,
+            granted,
+            state.run_start.clone(),
+        )
     }
 }
 
@@ -186,7 +191,7 @@ impl FixedScopeCapability for LiveBrowserSessionsReader {
     }
 
     fn build(state: Arc<AuthorizationServerState>) -> Self {
-        BrowserSessionsReader::new(state.store.clone(), state.ended_at_run_start.clone())
+        BrowserSessionsReader::new(state.store.clone(), state.run_start.clone())
     }
 }
 

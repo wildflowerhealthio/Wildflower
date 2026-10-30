@@ -208,8 +208,7 @@ mod tests {
         can_decide_consents, standing_session_claims,
     };
     use crate::domain::access_token::{mint_access_token, NewAccessTokenArgs};
-    use crate::domain::browser_session::BrowserSession;
-    use crate::domain::capabilities::oauth::EndedAtRunStart;
+    use crate::domain::browser_session::{BrowserSession, RunStart};
     use crate::domain::capabilities::session::TokenVerifier;
     use crate::domain::signing_key::SigningKey;
     use crate::domain::test_fake::{seed_active_signing_key, FakeGrantStore, NothingRevoked};
@@ -262,7 +261,7 @@ mod tests {
             store,
             Arc::new(NothingRevoked),
             ORIGIN.into(),
-            Arc::new(EndedAtRunStart::none()),
+            Arc::new(RunStart::before_any_session()),
         );
 
         let browser_session_token = mint(&key, BROWSER_SESSION_CLIENT_ID, Some(&session.sid));
@@ -303,7 +302,7 @@ mod tests {
             store,
             Arc::new(NothingRevoked),
             ORIGIN.into(),
-            Arc::new(EndedAtRunStart::none()),
+            Arc::new(RunStart::before_any_session()),
         );
 
         for (scopes, expected) in [

@@ -47,8 +47,7 @@ use wildflowerhealthio_scopes::{
 };
 use wildflowerhealthio_token_revocation::RevocationStore;
 
-use crate::domain::browser_session::LONGEST_BROWSER_SESSION_TTL;
-use crate::domain::capabilities::oauth::EndedAtRunStart;
+use crate::domain::browser_session::{RunStart, LONGEST_BROWSER_SESSION_TTL};
 use crate::domain::last_seen_throttle::LastSeenThrottle;
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
 use crate::domain::sign_in_redirect::SignInDestinations;
@@ -229,10 +228,11 @@ pub struct AuthorizationServer {
 ///    Seeding at boot means a request that was pending
 ///    across an app restart is still reported (the row survived in SQLite, the
 ///    in-memory `watch` value didn't);
-///  - ends every same-device session an earlier run signed in, but those
-///    `open_views_sign_in_codes` signed in: the codes of the host's launch
-///    views still open, whichever run minted them. They are ended as they are
-///    next used, so the start writes nothing for them. Paired sessions stand;
+///  - starts the run carrying over, of the same-device sessions earlier runs
+///    signed in, only those `open_views_sign_in_codes` signed in: the codes
+///    of the host's launch views still open, whichever run minted them. No
+///    other such session is live under the run, so the start writes nothing
+///    for them. Paired sessions stand;
 ///  - returns a `Router` whose routes are at `/.well-known/jwks.json`,
 ///    `/oauth/*`, and `/authorization/*` (authenticated bearer JWT + per-resource
 ///    scope gates via the `Scoped<…>` extractors) — the
@@ -285,7 +285,7 @@ pub fn setup_authorization_server(
     let server_origin: Arc<str> =
         wildflowerhealthio_shared_structures::origin_string(&config.server_origin).into();
     let same_device_sign_in_codes = Arc::new(SameDeviceSignInCodes::new());
-    let ended_at_run_start = Arc::new(EndedAtRunStart::new(open_views_sign_in_codes, Utc::now()));
+    let run_start = Arc::new(RunStart::new(open_views_sign_in_codes, Utc::now()));
     let (pending_consents_recomputed_tx, pending_consents_recomputed_rx) = watch::channel(());
     let state = Arc::new(AuthorizationServerState {
         store: store.clone(),
@@ -306,7 +306,7 @@ pub fn setup_authorization_server(
         )),
         authorization_start_gate,
         last_seen_throttle: Arc::new(LastSeenThrottle::new()),
-        ended_at_run_start,
+        run_start,
     });
     // Publish the Owner prompt from SQLite so a request that was
     // pending across an app restart is reported in the run's first detail —

@@ -27,7 +27,7 @@ The OAuth capabilities are the server's **front door**: the `/oauth/*` surface a
 - [Device Authorizer](<OAuth/Device Authorizer Explanation.md>): `/oauth/device_authorization`, parking a device's request for the Owner.
 - [Browser Pairing](<OAuth/Browser Pairing Explanation.md>): giving a browser that isn't the Owner's a paired session, once the Owner approves.
 - [Same-Device Sign-In](<OAuth/Same Device Sign In Explanation.md>): redeeming the one-time code the base mints to sign the Owner's browser in.
-- [Same-Device Session Ender](<OAuth/Same Device Session Ender Explanation.md>): ending the Owner sessions launches' codes started, once the server's last launch view closes, and, when the server starts, every one but those of the views still open.
+- [Same-Device Session Ender](<OAuth/Same Device Session Ender Explanation.md>): ending the Owner sessions launches' codes started, once the server's last launch view closes.
 - [Token Exchanger](<OAuth/Token Exchanger Explanation.md>): `/oauth/token`, redeeming a code, a device code or a refresh token for tokens.
 - [Client Token Revoker](<OAuth/Client Token Revoker Explanation.md>): `/oauth/revoke`, a client ending one of its own tokens.
 - [Public Keys Reader](<OAuth/Public Keys Reader Explanation.md>): the JWKS, the public halves of the signing keys.
