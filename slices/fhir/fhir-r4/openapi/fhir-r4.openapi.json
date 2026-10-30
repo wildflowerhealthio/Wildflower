@@ -32,6 +32,14 @@
             "required": false
           },
           {
+            "name": "identifier",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
             "name": "gender",
             "in": "query",
             "schema": {
@@ -1425,6 +1433,9 @@
                     "description": "a string to be decoded into a number"
                   },
                   "_pageToken": {
+                    "type": "string"
+                  },
+                  "identifier": {
                     "type": "string"
                   },
                   "gender": {
@@ -23052,6 +23063,16 @@
                       "description": "Digital Signature - base64 encoded. XML-DSig or a JWT."
                     }
                   }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
                 }
               }
             }

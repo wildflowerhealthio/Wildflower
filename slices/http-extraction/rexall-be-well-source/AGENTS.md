@@ -54,8 +54,9 @@ rather than a copy, and what it writes is what the response kinds read.
 ## Layering
 
 Pure like a `-core`: no DOM, no `fs`, no React. Depends on
-`http-extraction-fundamentals`, `fhir-r4`, `fhir-stu3-as-r4` (the STU3⇄R4 schemas
-the bundles decode with), `effect`, and `kitchen-sink`. Never imports from
+`http-extraction-fundamentals`, `fhir-r4`, `fhir-r4-adoption`,
+`fhir-stu3-as-r4` (the STU3⇄R4 schemas the bundles decode with), `effect`, and
+`kitchen-sink`. Never imports from
 `slices/importer` or `apps/synthetic-data` — those consume this package, never
 the reverse.
 
@@ -129,7 +130,7 @@ points. Every other module is one concern that exports only its pipeline steps
 (whole-resource steps, or field-level ones for `Struct.evolve`) and keeps its
 schemas and helpers private: `pharmacy-location.ts` (processor
 and store link), `contained-medication.ts` (the contained Medication's own
-promotions and its link from `medication[x]`), `din.ts`,
+promotions and its link from `medication[x]`), `din.ts`, `prescriber.ts`,
 `repeats-available.ts` and `supply-days.ts`. The shared plumbing underneath
 them is `extension-lift.ts` (`atUrl` and `promoteExtension`), `decoded-r4.ts`,
 `wire.ts` and `strength-ratio.ts`. Knowledge a reader needs too lives in
@@ -165,7 +166,7 @@ No dispense in the capture inlines a Medication, but the slot is identical, and
 one that did would otherwise be stored differently from the same drug on the
 request beside it.
 
-Two things ride along, both fixing accuracy bugs rather than moving extensions:
+Three things ride along, none of them moving an extension:
 
 - **The contained `Medication` is linked.** The dialect populates
   `medicationCodeableConcept` and leaves `contained[0]` unreferenced, so its
@@ -179,6 +180,15 @@ Two things ride along, both fixing accuracy bugs rather than moving extensions:
 - **Supply durations get their unit.** `dispenseRequest.expectedSupplyDuration`
   and `MedicationDispense.daysSupply` both arrive as a bare `{ value }`. They
   are days; the UCUM `d` is spelled out.
+- **The prescriber names their identity.** `requester.agent` arrives with an
+  empty `reference` and the prescriber's printed name, so the R4 `requester`
+  is `display` only. It becomes `fhir-r4`'s `Practitioner.tryReferenceFromName`
+  of that name (a logical reference: `type` Practitioner, the name identifier,
+  and the name as `display`), so the
+  importer's identity map can link the prescriber, and the same name from
+  another source is the same provider. A `display`-only requester with a blank
+  or absent name is dropped; one carrying a literal or an identifier is left
+  alone.
 
 ### Traps
 
@@ -327,5 +337,5 @@ Observed, not acted on — worth knowing before trusting a field:
   belongs to.
 - [har-importer-core AGENTS.md](../../importer/har-importer-core/AGENTS.md)
   — the archive importer that runs these kinds.
-- [Source Identity Explanation](../../fhir/fhir-r4/docs/Source%20Identity%20Explanation.md)
+- [Source Identity Explanation](../fhir-r4-adoption/docs/Source%20Identity%20Explanation.md)
   — why a resource is re-keyed under a derived local id.

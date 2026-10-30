@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
 
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   type HttpResponseKind,
   SourceDescriptor,
@@ -25,7 +25,10 @@ import { defaultHarSettings, type HarSettings } from './har-settings.ts'
 import { mergeSharedResources } from './merge-shared-resources.ts'
 import { preview, type PreviewedResponse } from './review.ts'
 
-type FhirPreview = PreviewedResponse<HttpResponseKind.HttpResponseKind<FhirResource>, FhirResource>
+type FhirPreview = PreviewedResponse<
+  HttpResponseKind.HttpResponseKind<FhirResourceWithId>,
+  FhirResourceWithId
+>
 
 const fhirPool = SourceDescriptor.poolOf(fhirSources)
 
@@ -42,7 +45,7 @@ const sectionsByUrl = (previews: readonly FhirPreview[]): readonly DecodedFile.S
     const url = entry.ref.url
     const labeled = entry.outcome.resources.map((resource): DecodedFile.Resource => ({
       key: resource.key,
-      title: `${resource.resource.resourceType}/${resource.resource.id ?? '?'}`,
+      title: `${resource.resource.resourceType}/${resource.resource.id}`,
       resource: resource.resource,
     }))
     const existing = byUrl.get(url)

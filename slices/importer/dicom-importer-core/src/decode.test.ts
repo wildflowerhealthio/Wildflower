@@ -6,21 +6,25 @@ import {
   type StudyFixture,
   type DicomTagMap,
 } from '@wildflowerhealthio/dicom/test-helpers'
+import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
   DocumentReference,
-  type FhirResource,
+  type FhirResourceWithId,
   type ImagingStudy,
+  Practitioner,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   type DecodeFunction,
   type FileImporter,
   DecodedFile,
   type FormatDecode,
+  LinkableResource,
   type PickedFile,
+  Referent,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import type { Array as Arr } from 'effect'
-import { Effect, Either, Schema } from 'effect'
+import { Effect, Either, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -28,6 +32,7 @@ import { DicomHeader } from '@wildflowerhealthio/dicom'
 import { decodeStudy, studyGroupKey, studyKey } from './decode.ts'
 import { dicomImporter } from './dicom-importer.ts'
 import { type DicomSettings } from './settings.ts'
+import { DICOM_SYSTEM } from './source-system.ts'
 
 /**
  * A fixed zone rather than the default, whose `timeZone` is the runtime's own:
@@ -41,8 +46,8 @@ const defaultDicomSettings: DicomSettings = { timeZone: 'America/Toronto' }
  * each member. Only its `id` matters here: it is what an instance's
  * `gridfsFileId` names.
  */
-const sourceFileWithId = (id: string): DocumentReference.Type =>
-  Schema.decodeSync(DocumentReference.Schema)({
+const sourceFileWithId = (id: string): PickedFile.SourceFile =>
+  Schema.decodeSync(withMandatoryId(DocumentReference.Schema))({
     resourceType: 'DocumentReference',
     id,
     status: 'current',
@@ -168,6 +173,37 @@ describe('decodeStudy', () => {
       return result.sections.flatMap((s) => s.resources.map((r) => r.key))
     }
     expect(await keysOf()).toEqual(await keysOf())
+  })
+
+  it('names the Patient and the referring physician as its referents', async () => {
+    const result = await Effect.runPromise(
+      decodeStudy(
+        sample({ ReferringPhysicianName: { family: 'Smith', given: 'Jane', text: 'Smith Jane' } }),
+        defaultDicomSettings
+      )
+    )
+
+    const referents = Effect.runSync(Referent.discover([result]))
+
+    expect(
+      referents.map((referent) => [
+        referent._tag,
+        referent.logicalReference.type,
+        referent.logicalReference.identifier.system.href,
+      ])
+    ).toEqual([
+      ['AsResource', 'Patient', DICOM_SYSTEM],
+      ['ByMentionOnly', 'Practitioner', Practitioner.NAME_IDENTIFIER_SYSTEM],
+    ])
+    const [, physician] = referents
+    expect(physician?.logicalReference.identifier.value).toBe('Jane Smith')
+    expect(
+      Option.isSome(
+        Option.flatMap(Option.fromNullable(physician), ({ logicalReference }) =>
+          LinkableResource.tryProvisionalFrom(logicalReference)
+        )
+      )
+    ).toBe(true)
   })
 
   describe('a study spread across files', () => {
@@ -298,14 +334,14 @@ const resourcesOf = (result: FormatDecode.Result<string>): readonly DecodedFile.
   DecodedFile.resources(result.decoded)
 
 /** Every decoded resource of one type, across every section. */
-const of = <K extends FhirResource['resourceType']>(
+const of = <K extends FhirResourceWithId['resourceType']>(
   result: FormatDecode.Result<string>,
   resourceType: K
-): readonly Extract<FhirResource, { readonly resourceType: K }>[] =>
+): readonly Extract<FhirResourceWithId, { readonly resourceType: K }>[] =>
   resourcesOf(result)
     .map((entry) => entry.resource)
     .filter(
-      (resource): resource is Extract<FhirResource, { readonly resourceType: K }> =>
+      (resource): resource is Extract<FhirResourceWithId, { readonly resourceType: K }> =>
         resource.resourceType === resourceType
     )
 

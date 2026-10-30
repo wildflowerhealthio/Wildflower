@@ -1,11 +1,12 @@
-import type { FhirResource, MedicationDispense } from '@wildflowerhealthio/fhir-r4/resources'
+import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
+import type { FhirResourceWithId, MedicationDispense } from '@wildflowerhealthio/fhir-r4/resources'
 import { makeHttpResponse } from '@wildflowerhealthio/http-extraction-fundamentals/test-helpers'
-import { Effect, Option } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { mergeShoppersResources } from './merge-resources.ts'
 import { customerUrlOf, prescriptionHistoryUrlOf, prescriptionStatusUrlOf } from './portal-url.ts'
-import { shoppersStoreLocatorUrl } from './shoppers.ts'
+import { ShoppersIdentifierSystem, shoppersStoreLocatorUrl } from './shoppers.ts'
 import { shoppersDrugMartSource } from './source.ts'
 
 /**
@@ -20,8 +21,10 @@ const DISPENSE_ID = 'disp-1'
 const STORE_ID = 9000
 const STORE_NAME = 'SDM Pharmacy #9000'
 
+const decodeReference = Schema.decodeUnknownSync(IdentifierAndReference.ReferenceSchema)
+
 /** What the source's kinds make of `payload` served at `url`. */
-const extract = (url: string, payload: unknown): readonly FhirResource[] => {
+const extract = (url: string, payload: unknown): readonly FhirResourceWithId[] => {
   const kind = shoppersDrugMartSource.responseKinds.find((candidate) =>
     Option.isSome(candidate.tryRecognize(url, Option.some('GET')))
   )
@@ -29,25 +32,28 @@ const extract = (url: string, payload: unknown): readonly FhirResource[] => {
   return Effect.runSync(kind.parse(makeHttpResponse({ url, body: JSON.stringify(payload) })))
 }
 
-const dispensesOf = (resources: readonly FhirResource[]): readonly MedicationDispense.Type[] =>
+/** A dispense the source's kinds made: adopted, so with an id. */
+type AdoptedDispense = MedicationDispense.Type & { readonly id: string }
+
+const dispensesOf = (resources: readonly FhirResourceWithId[]): readonly AdoptedDispense[] =>
   resources.flatMap((resource) =>
     resource.resourceType === 'MedicationDispense' ? [resource] : []
   )
 
 /** The one dispense `resources` holds. */
-const onlyDispenseOf = (resources: readonly FhirResource[]): MedicationDispense.Type => {
+const onlyDispenseOf = (resources: readonly FhirResourceWithId[]): AdoptedDispense => {
   const [dispense, ...rest] = dispensesOf(resources)
   if (dispense === undefined || rest.length > 0) throw new Error('expected exactly one dispense')
   return dispense
 }
 
-const customers = (): readonly FhirResource[] =>
+const customers = (): readonly FhirResourceWithId[] =>
   extract(customerUrlOf(ACCOUNT_ID), {
-    customer: { pcid: ACCOUNT_ID, patients: [{ id: PERSON_ID, firstName: 'Ada' }] },
+    customer: { patients: [{ id: PERSON_ID, firstName: 'Ada' }] },
   })
 
 /** The status feed's copy; `din` is the prescription's, when it states one. */
-const statusCopy = (din?: string): MedicationDispense.Type =>
+const statusCopy = (din?: string): AdoptedDispense =>
   onlyDispenseOf(
     extract(prescriptionStatusUrlOf(PRESCRIPTION_ID), {
       id: PRESCRIPTION_ID,
@@ -60,7 +66,7 @@ const statusCopy = (din?: string): MedicationDispense.Type =>
   )
 
 /** The history feed's copy of the same fill. */
-const historyCopy = (): MedicationDispense.Type =>
+const historyCopy = (): AdoptedDispense =>
   onlyDispenseOf(
     extract(prescriptionHistoryUrlOf(ACCOUNT_ID), {
       dispenses: [
@@ -82,13 +88,17 @@ describe('shoppersDrugMartSource', () => {
     expect(shoppersDrugMartSource.mergeResources).toBe(mergeShoppersResources)
   })
 
-  it("should adopt a history dispense's subject onto the account Patient the customers feed keys", () => {
-    const accountPatient = customers().find(
-      (resource) => resource.resourceType === 'Patient' && resource.link.length > 0
-    )
+  it("should adopt the status copy's subject onto the person's Patient, and leave the history copy's naming the account by identifier alone", () => {
+    const [personPatient] = customers()
 
-    expect(accountPatient?.id).toEqual(expect.stringMatching(/^wf-/))
-    expect(historyCopy().subject?.reference).toBe(`Patient/${accountPatient?.id}`)
+    expect(personPatient?.id).toEqual(expect.stringMatching(/^wf-/))
+    expect(statusCopy().subject?.reference).toBe(`Patient/${personPatient?.id}`)
+    expect(historyCopy().subject).toStrictEqual(
+      decodeReference({
+        type: 'Patient',
+        identifier: { system: ShoppersIdentifierSystem.CustomerId, value: ACCOUNT_ID },
+      })
+    )
   })
 
   it('should give both copies of one fill the same adopted id', () => {

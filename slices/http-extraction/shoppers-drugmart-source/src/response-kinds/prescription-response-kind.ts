@@ -1,5 +1,10 @@
+import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { FhirString } from '@wildflowerhealthio/fhir-r4/data-types'
-import { MedicationDispense, MedicationRequest } from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  MedicationDispense,
+  MedicationRequest,
+  Practitioner,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   HttpResponseKind,
@@ -11,6 +16,7 @@ import {
   DateTime,
   Duration,
   Effect,
+  flow,
   Option,
   pipe,
   RegExp as EffectRegExp,
@@ -230,6 +236,25 @@ const statusReasonWire = (rx: SourcePrescription): Record<string, unknown> | und
 }
 
 /**
+ * The `requester` wire for a prescriber the portal knows only by name:
+ * `fhir-r4`'s `Practitioner.tryReferenceWireFromName`, a logical reference
+ * that states its type and names the provider by the name identifier, so the
+ * importer's identity map can resolve it. `undefined` for a blank name.
+ */
+const requesterWireOfName: (
+  prescriberName: string
+) => typeof IdentifierAndReference.ReferenceSchema.Encoded | undefined = flow(
+  Practitioner.tryReferenceWireFromName,
+  Option.getOrUndefined
+)
+
+/** {@link requesterWireOfName}, or `undefined` when the payload names no prescriber. */
+const requesterWire = (
+  prescriberName: string | undefined
+): typeof IdentifierAndReference.ReferenceSchema.Encoded | undefined =>
+  prescriberName == null ? undefined : requesterWireOfName(prescriberName)
+
+/**
  * Build the R4 `MedicationRequest` **wire** from the decoded prescription; the
  * machine `status.type` / label ride `statusReason` and `note`, so nothing is
  * lost. Only slots the payload populates are emitted.
@@ -254,7 +279,8 @@ const requestWire = (
     ]
   }
   if (medication != null) wire['medicationCodeableConcept'] = medication
-  if (rx.prescriberName != null) wire['requester'] = { display: rx.prescriberName }
+  const requester = requesterWire(rx.prescriberName)
+  if (requester != null) wire['requester'] = requester
 
   const statusReason = statusReasonWire(rx)
   if (statusReason != null) wire['statusReason'] = statusReason

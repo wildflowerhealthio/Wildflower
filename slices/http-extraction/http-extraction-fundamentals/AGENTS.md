@@ -19,7 +19,7 @@ and functions read in the namespace's context (`Extraction.routeTo`, not
   `parse`. `tryRecognize(url)` returns `Option<RecognizedUrlData>` — `None` when
   the kind does not claim the URL, `Some { specificity, source? }` when it does,
   where each kind constructs its **own** identity: recognition, root, and
-  confidence are one read. `source` (structurally `fhir-r4/identity`'s
+  confidence are one read. `source` (structurally `fhir-r4-adoption`'s
   `SourceIdentity`, on purpose) is the namespace this response's resources key
   under, and is **absent** for a kind that recognizes but mints no identity (a
   recorder records, it does not import). `parse` takes an `HttpResponse` and

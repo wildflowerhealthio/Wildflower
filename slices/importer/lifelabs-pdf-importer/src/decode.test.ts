@@ -1,4 +1,4 @@
-import { DecodedFile } from '@wildflowerhealthio/importer-fundamentals'
+import { DecodedFile, Referent } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, Either, ParseResult } from 'effect'
 import * as fc from 'fast-check'
@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import { decodeLifeLabsPdfDocument, reportSectionTitle } from './decode.ts'
 import { arbitrary as reportArbitrary } from './entities/report-arbitrary.ts'
+import { patientOriginalId, practitionerOriginalId } from './fhir/to-fhir.ts'
 import { LIFELABS_SYSTEM } from './source-system.ts'
 import { layoutDocument } from './test-helpers.ts'
 
@@ -54,9 +55,7 @@ describe('decodeLifeLabsPdfDocument', () => {
 
         for (const item of DecodedFile.resources(decoded)) {
           const type = item.resource.resourceType
-          const id = item.resource.id
-          expect(id).not.toBeNull()
-          const expected = `${type}/${String(id)}`
+          const expected = `${type}/${item.resource.id}`
           expect(item.key).toBe(expected)
           expect(item.title).toBe(expected)
         }
@@ -83,6 +82,39 @@ describe('decodeLifeLabsPdfDocument', () => {
             expect(String(identifier.system)).toBe(LIFELABS_SYSTEM)
           }
         }
+      }),
+      { numRuns: numRunsFor({ base: 30 }) }
+    )
+  })
+
+  it('property: its referents are each Patient and each provider it names, with their resources', () => {
+    fc.assert(
+      fc.property(fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }), (reports) => {
+        const document = layoutDocument(reports)
+        const providerNames = reports
+          .flatMap((report) => [report.orderedBy, ...report.copyTo])
+          .map((name) => name.trim())
+          .filter((name) => name !== '')
+        const expected = [
+          ...new Set(reports.map((report) => `Patient|${patientOriginalId(report.patient)}`)),
+          ...new Set(providerNames.map((name) => `Practitioner|${practitionerOriginalId(name)}`)),
+        ]
+
+        const decoded = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
+        const referents = Effect.runSync(Referent.discover([decoded]))
+
+        for (const referent of referents) {
+          expect(referent._tag).toBe('AsResource')
+          expect(referent.logicalReference.identifier.system.href).toBe(LIFELABS_SYSTEM)
+        }
+        expect(
+          referents
+            .map(
+              ({ logicalReference }) =>
+                `${logicalReference.type}|${logicalReference.identifier.value}`
+            )
+            .toSorted()
+        ).toEqual(expected.toSorted())
       }),
       { numRuns: numRunsFor({ base: 30 }) }
     )

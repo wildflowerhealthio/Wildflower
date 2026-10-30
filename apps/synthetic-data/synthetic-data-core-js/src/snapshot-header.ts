@@ -39,10 +39,7 @@ const MemberSchema = Schema.Struct({
 /** A member and the entries that are theirs, as the header lists them. */
 const MemberListingSchema = Schema.Struct({
   ...MemberSchema.fields,
-  /**
-   * The ids of the member's Patient records, sorted. Usually one; a
-   * Shoppers account holder also has the account's `pcid` Patient.
-   */
+  /** The ids of the member's Patient records, sorted: one per source that holds them. */
   patientIds: Schema.Array(Entry.ResourceIdSchema),
   /** The paths of the member's resources, in path order. */
   resources: Schema.Array(Entry.ResourcePathSchema),
@@ -189,7 +186,7 @@ interface MemberPaths {
 
 /**
  * The paths of the entries of the members `memberKeys` names: an entry two of
- * them share (a family account's HAR, its Patient) is listed once.
+ * them share (a family account's HAR) is listed once.
  *
  * @param header - A decoded header
  * @param memberKeys - The keys of the members to load; a key the header does

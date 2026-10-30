@@ -33,13 +33,13 @@ walkthrough itself is the host's.
 `importer-react` is an adapter and follows the rule in
 [slices/AGENTS.md](../../../slices/AGENTS.md): it depends on its sources, never the reverse.
 It depends on `importer-core` (the importer registry, `readBatch` /
-`redecodeFormat` / `claimedFormats` / `planFormatWrite`, and the
-`BatchDecodeResult` model), `importer-fundamentals` (the `PickedFile`
+`redecodeFormat` / `claimedFormats` / `planWrite`, and the
+`DecodedBatch` model), `importer-fundamentals` (the `PickedFile`
 vocabulary, the `FormatDecode.Result` and `DecodedFile` shapes, and the pure
 `StagedImport` model), each format's
 React package for its settings picker only (`har-importer-react`,
 `lifelabs-pdf-importer-react`, `dicom-importer-react`), `fhir-r4` (the typed
-client, `persistBatchBundle`, and the server-diff classifier), `fhir-r4-react`
+client, `persistTransactionBundle`, and the server-diff classifier), `fhir-r4-react`
 (the authed runner and the slice runtime layer), and `react-tundraish`. It
 names no format's core package and no `web-trace-core` at runtime — HAR
 fixtures in `importer-screen.test.tsx` are the only place `http-archive` and
@@ -49,8 +49,9 @@ The seam between this package and a format is its **`FileImporter`** (reached
 through `importer-core`'s registry) and the `StagedImport` model: the read half
 runs `readBatch` (no writes) into one result per format — sections + notes —
 the review drives `StagedImport`'s pure per-resource transitions over the
-flattened sections, and the write half runs `planFormatWrite`'s resources
-through the shared `persistBatchBundle`. If a component needs more than those expose, widen them
+flattened sections, and the write half runs the resources `planWrite`
+includes, the batch's linked records among them, through one
+`persistTransactionBundle`. If a component needs more than those expose, widen them
 rather than reaching around them.
 
 **Presentation and interaction only.** Nothing here parses a file, mints or
@@ -91,19 +92,125 @@ The importer has no HTTP wire union to derive, so there is no separate
 - **`src/importer-screen.tsx`** — the flow, top to bottom. Reads everything from
   router context (no props): `SourcePicker` → `useImportRun` → `PreviewPanel` →
   `useConfirmImport` → `ImportResults`. It holds each format's
-  `StagedImport.Selection`, keyed by format kind (absent = the server-diff
-  seed, every `new` or `changed` resource included, so an untouched format
-  still imports everything its decode yielded). A cancel or "import
+  `StagedImport.Selection`, keyed by format kind (absent = untouched), which
+  holds only what the reviewer did. What a row they never ticked or unticked
+  does is the default, derived afresh from the batch, its verdicts and the
+  edits on every change (`formatExcludedByDefault`): every `unchanged`
+  resource and every one left without a patient as it will be written (its
+  edit, else its resolved resource) is out, so an untouched format imports
+  what its decode yielded that is new and has a patient, and a link that
+  gives a row its patient takes it back in. The panel and the confirm read
+  the same `excludedByDefaultFor`. A referent's link change reverts the edit
+  override on every row holding a copy of the referent's resource, in every
+  format, since that row now writes another record. A cancel or "import
   another" discards the read, every review edit, and any confirm outcome, and
   returns to the picker; the per-format settings persist across it.
 - **`src/registry.ts`** — the React half of the closed format registry (above).
+- **`src/identity/`** — the identity map in the screen.
+  The review of a batch is one hook composed of three, each in its own file:
+  - `use-link-choice-review.ts` — `useLinkChoiceReview`
+    discovers the batch's referents (`discoverReferents`) and memoizes the
+    **resolved** batch (one whose mentions are resolved) with each
+    the plan it was resolved on (`ResolvedBatch.plan`), which the rows ask
+    each referent's `LinkTarget` of (`LinkPlan.linkTargetIfReferentKey`).
+    Both are Effects on the clock, run synchronously in the memo;
+    their failures are states: a `DuplicateReferent` is `refused`, with the
+    batch's last resolving that succeeded when a re-decode is what refused
+    it (the screen keeps that review up under the refusal, confirm
+    disabled, so the reviewer can undo the setting; on a first decode it
+    says why and offers the picker), and a
+    choice that cannot be resolved after a re-decode (`InvalidLinkChoice`)
+    falls back, the reviewer's own to its searched default, a default to its
+    kind's default. The screen blocks its first paint on the default
+    search, as it does on the server diff, and hands the resolved batch to
+    `useServerDiff`, `PreviewPanel` and the confirm, which take a
+    `ResolvedBatch` and so see what gets written; a failed search shows an
+    alert and leaves every referent on its kind's default.
+  - `link-choice-review-state.ts` — the `LinkChoiceReviewState` types: the
+    `Mapped` batch (referents, choices, search hits, the resolved batch with
+    its plan, and the `mentionLinkOptions` the rows' mention selects offer), the
+    `Type` of states (`loading`, `ready`, `error`, `refused`) and the hook's
+    `Review` surface: `choose` for a referent, `chooseMention` for one
+    mention of one resource.
+  - `mention-link-options.ts` — `MentionLinkOptions`, the pure half of the
+    per-resource mention selects, read off the plan (`fromPlan`): exactly
+    its resolved resources (`LinkPlan.resolvedResources`), one per record
+    that will exist once the batch is written, by the type it is, each a
+    link choice option labelled by the resolved resource's `label` and
+    paired with the `LinkChoice.MentionLinkChoice` picking it makes
+    (`LinkToDecodedReferent` of its `ownerReferent`, so the mention follows
+    that referent's later link; `LinkToStoredResource` for a stored record no
+    referent owns, which no referent's later choice moves), plus each
+    record's label by literal reference, which `describeResource` names a
+    row's subject by.
+  - `use-default-link-choices-search.ts` — `useDefaultLinkChoicesSearch`
+    reads each referent's default once per batch
+    (`ReferentSearch.defaultChoices`, a TanStack query keyed by the batch id,
+    which also labels the stored resources the defaults link to), and starts
+    the stored lists the rows offer beside it.
+  - `use-reviewer-link-choices.ts` — `useReviewerLinkChoices` keeps the
+    reviewer's choices on top of the defaults by `Referent.key` across a
+    settings re-decode in a `ReferentLinkChoiceSet`, their link choice set
+    by mention beside it in a `MentionLinkChoiceSet` (by
+    `MentionLinkChoiceSet.key`, set by `chooseMention`), and the referents of
+    the batch's first decode the search reads; a fresh pick starts over.
+  - `use-last-resolved-batch.ts` — `useLastResolvedBatch`, the batch's last
+    resolving that succeeded, which a refusal is shown over.
+
+  The referent block, "People and providers in this import", is one file
+  per job:
+  - `referent-rows.tsx` — the block the panel renders above the format
+    groups (its `referentRows` slot): a tally of the records the referents
+    are linked to (`ReferentTally`: a stored record, or one this import
+    writes, is counted once however many referents share it) and the
+    referents that are unlinked, then one group per `LinkableLogicalReference.RESOURCE_TYPES`
+    entry that has referents. A list that failed is said under its group,
+    and only the search's hits are offered; a list the page limit cut off is
+    said too. While the batch is `refused` the selects are disabled, since a
+    choice could neither be resolved nor shown.
+  - `referent-row.tsx` — one referent's line, memoised: its label, a select
+    of its options, and its warning.
+  - `link-choice-options.ts` — the `LinkChoiceOptions` view model: the
+    options a referent's select offers, in four groups. `New`, or an update
+    of the stored copy under its own id when one is known
+    (`UpdateStoredResource`, a re-import's default), or a stored resource for
+    an `AsResource` referent; a stored resource, `New: <label>`
+    (`LinkToDecodedReferent`) for each other referent of its type that
+    creates a record, `New` when `LinkableResource.tryProvisionalFrom` stands
+    for its logical reference, and "Don't link" for a `ByMentionOnly` one.
+  - `referent-line.ts` — the `ReferentLine` namespace: a group's lines (a
+    referent, its choice, its options, its warning), each built once per
+    change of what it is built from (its own choice, the stored list, the
+    batch's referents and which of them write their own record) and kept
+    across every other change, so a select change rebuilds the lines it
+    changed and the memoised rows of the others skip their render. The
+    warning is `DifferingDemographics`: a Patient linked to a stored one
+    whose family name, given name or birth date (`Patient.demographics`, the
+    parts the name-and-birth-date identifier is minted from) differs gets a
+    warning line, never a block; a Practitioner has nothing compared.
+  - `use-referent-group-lines.ts` — `useReferentGroupLines`, the group's
+    React side: the stored options as one memo per group, shared by its
+    lines, and the built lines kept in state across renders.
+  - `use-stored-resources-of-type.ts` — `useStoredResourcesOfType`: the
+    server's own stored resources, every page read up front
+    (`GET <Type>?_count=` through `fhir-r4/clients`' `searchAllPages`, capped at
+    ten pages: a select has no room for a load-more action, and a personal
+    server holds a household, not a hospital), each labelled on the way in
+    since `LinkableResource.labelOf` reads the clock. The read starts beside
+    the default search (`useDefaultLinkChoicesSearch` starts the same query,
+    `storedResourcesQuery`, as soon as the batch's referents are known) and
+    is never stale on its own: a confirm invalidates it, the one thing that
+    changes it.
+  - `referent-text.ts` — the block's strings, which say "server", never
+    "device": the importer can be pointed at any FHIR server.
+
 - **`src/run/`** — the two hooks that drive the flow's halves, held apart from
   the view they feed: the read (`use-import-run.ts`) and the opt-in write
   (`use-confirm-import.ts`). The confirm hook is the write half and does not
   belong under `preview/`.
   `use-import-run.ts` is React state around `importer-core`: `run` calls
   `readBatch` (through `useRunAuthed`) over the whole pick and holds the
-  resulting `BatchDecodeResult`, `applySettings` calls `redecodeFormat` for the
+  resulting `DecodedBatch`, `applySettings` calls `redecodeFormat` for the
   one format whose settings changed — from that format's retained
   `PickedFile`s, keeping every id and review key, so keyed selections keep
   applying — and it owns the `FormatSettings` record, the `batchId` that tells
@@ -114,25 +221,73 @@ The importer has no HTTP wire union to derive, so there is no separate
 - **`src/preview/`** — the review view and the state it needs.
   `use-server-diff.ts` pre-classifies every previewed resource against the
   server (`new` / `unchanged` / `changed`) for the row badges and the "already
-  there, so pre-excluded" seed, keyed **by format kind and then by resource
-  key** (`FormatComparisons`) — two formats can carry the same resource key, so
+  there, so out by default" rule (`unchangedKeysOf`), keyed **by review group and then by resource
+  key** (`GroupComparisons`, over `importer-core`'s `ReviewGroup`) — two
+  formats can carry the same resource key, so
   a flat map would let one format's verdict overwrite another's. Within one
   format the keys are already distinct, because `DecodeFunction.make` namespaces each
   claimed file's keys by its slot in the batch. The screen blocks the
-  first paint on it but **not** on the re-classification a settings change
-  triggers, since unmounting the panel mid-review would drop the focus of
-  whatever settings control the reviewer is using.
+  first paint on it but **not** on the re-classification a settings change or
+  a link choice triggers, since unmounting the panel mid-review would drop the
+  focus of whatever control the reviewer is using; the verdicts the batch last
+  settled on stay on screen (`refreshing`), a failed classification having
+  settled on "every id is new", and the confirm waits for the new ones, since
+  the defaults are read off them. A failed classification is retried
+  twice before it is reported; a fresh pick carries nothing over.
   `preview-panel.tsx` renders the batch grouped by format — one group per
   `claimedFormats` entry, its settings form (the registry's own
   `SettingsPicker`, indexed by the format tag) over that format's sectioned,
-  per-resource review — under one shared confirm, gated on the batch having at
-  least one **included** resource. It is the panel, the actions and the editor
-  dialog only; the review body it renders per format is
+  per-resource review — then the batch's **linked records** (`batch.linkedRecords`,
+  the records it names but holds no copy of, as the referent rows link them)
+  read-only with their diff badge and no toggle or edit, under one shared
+  confirm, gated on the batch writing at least one resource. The panel's
+  counts come off `importer-core`'s `planWrite`, the plan the confirm
+  submits: the confirm names the `Included` decisions, one per `Type/id`,
+  and the `Excluded` ones. Which linked records are written is that plan's
+  too, not a toggle: none the server holds unchanged (`Unchanged`; the
+  screen hands the panel and the confirm the same `unchangedLinked`, the
+  linked group's `unchangedKeysOf`); otherwise every stored copy,
+  whatever the reviewer excluded, since the link choice is the consent to
+  it, and a new record only when an included resource names it, else
+  `Unreferenced`. The diff keys its verdicts by
+  `importer-core`'s `ReviewGroup`, a format or `LINKED_GROUP`, so the linked
+  records' badges are their own. It is the
+  panel, the actions and the editor dialog only; the review body it renders
+  per format is
   `format-review-body.tsx` — named for what it covers, one _format's_ review
   across every file that format claimed (per-type tallies, one titled section
   per decoded section with include checkbox and one-line `describeResource`
   summary, Edit/Revert, unreadable-file rows, and the notes folded into a
-  collapsed details block). A section's tri-state heading toggle is
+  collapsed details block). Above the sections it lists every resource the
+  referent links leave a mention unlinked in again
+  (`UnlinkedMention.leftByReferentLinks` on the batch's plan, asked by
+  `unlinked-mentions.ts` of each row as edited, else as decoded in the
+  batch's `decodedBatch`, a format's own source file never),
+  under **Needs a patient** (an unlinked or empty `subject`) or else **Needs
+  a provider**, each with why in one phrase ("names no patient", "names an
+  account you chose not to link", "names a provider you chose not to link",
+  "points outside this import", as the row reads now); the group is a second
+  view of the same rows, so a pick, which is no edit, keeps the row there
+  and in focus, while an edit that gives its subject a record of the device
+  takes it out. Every row whose resource makes a mention the
+  map can link (`Mention.linkableIn`) carries an inline select per mention,
+  read as part of its summary line ("for Tyra Banks", "requested by …"):
+  the records offered for the type the mention names
+  (`MentionLinkOptions`), the one it names now when none of them is it, plus
+  Don't link where the mention keeps something to name or the referent
+  choices leave it unlinked. A pick is a mention link choice in the identity
+  map (`onChooseMention`), never an edit: the resolved resource redirects
+  the mention there and the row is not marked edited; a row with an edit
+  override shows and writes the override resolved on the plan
+  (`StagedImport.resolvedResourceOf`), so the pick, and any later link of a
+  referent it names, moves it too. Whether a row is included is the
+  reviewer's tick, else the screen's default, so a patient picked for a
+  resource without one takes it in, Don't link leaves it out again, and
+  Revert leaves one out again when the resolved resource has no patient
+  either, unless the reviewer ticked or unticked it themselves.
+  `describe-resource.ts` reads a decoded resource in its wire form and names
+  its subject by the label of the resource it is redirected to, else its `display`,
+  never by its `Patient/<id>`. A section's tri-state heading toggle is
   `section-toggle.tsx` — `{ title, keys, isIncluded, onSetIncluded }`, the
   `indeterminate`-via-ref pattern — shared with the server source-file list's
   study sections, which passes its own selected-id set where the review body
@@ -141,14 +296,15 @@ The importer has no HTTP wire union to derive, so there is no separate
   `preview-text.ts` — imported from there by everything that shows one,
   including this package's `index.ts`, rather than re-exported through the
   panel.
-  `use-confirm-import.ts` is the opt-in write action, per **claimed** format,
-  best-effort: `planFormatWrite` (in `importer-core`) then one
-  `persistBatchBundle` of exactly those resources. It adds nothing to any
+  `use-confirm-import.ts` is the opt-in write action: `planWrite` (in
+  `importer-core`), then one `persistTransactionBundle` of exactly the
+  resources of its `Included` decisions, in the plan's order, the linked
+  records first. It adds nothing to any
   resource — no id locking, no provenance stamping — because the format's
   `decode` already minted the source file and stamped every extracted
-  resource's `meta.source`. One format's failure never stops the rest, and a
-  rejected source file is just one failed entry; there is no separate upload
-  step to fail.
+  resource's `meta.source`. The transaction lands whole or not at all, so a
+  rejected entry refuses the batch and every entry reports the one cause;
+  there is no separate upload step to fail.
   `resource-editor.tsx` (+ `resource-editor-helpers.ts`) is the inline JSON
   editor: **Keep** parses the text, decodes through
   `Schema.decodeUnknown(FhirResourceSchema)`, and refuses the edit unless it
@@ -157,12 +313,17 @@ The importer has no HTTP wire union to derive, so there is no separate
   `har-importer-react` when the review display was generalized.
 - **`src/results/`** — the outcome. `import-outcome.ts` is the pure fold: the
   per-format `ImportOutcome` and the `FileImportResult`/`BatchOutcome`
-  aggregate (`summarizeBatch`, `isPartialBatch`), every row carrying the
-  format result's `title` (its claimed file names) rather than a file name of
-  its own, all on `collectImportSummary` semantics (any failure ⇒ partial);
+  aggregate (`summarizeBatch`, `isPartialBatch`) — the `files` and, beside
+  them, the `linked` records' results, counted as resources and never as
+  files — every row carrying the format result's `title` (its claimed file
+  names, or the linked records' heading) rather than a file name of its own,
+  all on `collectImportSummary` semantics (any failure ⇒ partial; nothing
+  written of what was attempted ⇒ failed);
   `import-results.tsx` renders the batch grouped by response code — every
   submitted resource (the source file included) with its status, plus the
-  formats that had nothing to import — under one aggregate tally. Only claimed
+  formats that had nothing to import — under one aggregate tally, which a
+  batch that wrote linked records alone words as such rather than as
+  resources across no file. Only claimed
   formats appear: a format that took no files is not a "nothing to import"
   row. There is no
   upload-failed section: a rejected source file is an ordinary failure row.
@@ -204,9 +365,9 @@ The importer has no HTTP wire union to derive, so there is no separate
   fetch-and-decode through `PickedFile.FromDocumentReference` under that
   format's constants, which both a row selection and the preview modal read
   through.
-  `page-token.ts` pulls the continuation cursor out of a bundle's `next`
-  link (see the trap); `keys.ts` holds
-  the query-key roots.
+  The continuation cursor comes out of a bundle's `next` link through
+  `fhir-r4/clients`' `nextPageToken` (see the trap); `keys.ts` holds the
+  query-key roots.
 - **The source file is a reviewed resource the format minted.** Every pick's
   source file `DocumentReference` is minted inside that format's
   `decode` (by the batch decode `DecodeFunction.make` built) and arrives as its own
@@ -217,7 +378,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   re-decode re-mints it at the same deterministic id, so the review key and the
   `meta.source` links survive — and so does re-picking the same file off the
   server, which is why its row comes back `unchanged` from the diff and
-  pre-excluded from the initial selection. The source-file list query is
+  out by default. The source-file list query is
   invalidated once at end-of-batch (a fresh source file is a new
   `DocumentReference` the picker should see next pick — cheap even when none
   wrote).
@@ -227,8 +388,10 @@ The importer has no HTTP wire union to derive, so there is no separate
 - **The read half writes nothing, and the split is the whole product.** Reaching
   a review issues no writes — `decode` requires no services and is run for its
   data only, and the confirm writes exactly the reviewed objects
-  (`planFormatWrite` over the format's decoded sections) with no
-  re-parse. A test pins this on the wire (zero writes to reach a review); do
+  (`planWrite`'s `Included` decisions over the formats' decoded sections)
+  with no re-parse. A test pins this on the wire (zero writes to reach a review, and
+  the reads are the source list, one identifier search per referent, the diff
+  bundle and the stored resources per referent type); do
   not add a write to the read path (e.g. an "auto-upload on pick") that would
   collapse the opt-in seam. A settings change re-runs `decode` — still the
   read half, still no writes.
@@ -241,52 +404,63 @@ The importer has no HTTP wire union to derive, so there is no separate
   controlled — the screen passes `selectionFor` in and receives every change
   via `onSelectionChange`, holding the canonical
   `Map<FormatKind, Selection>` so it can hand the confirm the exact selection
-  each format was reviewed with (`planFormatWrite` over that format's own
-  decoded sections). Same for
+  each format was reviewed with (`planWrite` reads each format's own
+  decoded sections under it). Same for
   settings: the panel renders `settings` and reports `onSettingsChange`;
   `useImportRun` owns the record and the re-decode. Don't move either down
   into the panel, or the shell and the view can disagree.
-- **A format's confirm is one `persistBatchBundle`, and nothing is stamped at
-  confirm.** `planFormatWrite` (in `importer-core`) turns the format's decoded
-  sections plus the reviewer's selection into the exact resource list — a set
-  leads with its source files in the same bundle as its
+- **The confirm is one `persistTransactionBundle`, and nothing is stamped at
+  confirm.** `planWrite` (in `importer-core`) turns the formats' decoded
+  sections plus the reviewer's selections, and the batch's linked records,
+  into a **`WriteDecision`** per reviewed resource — `Included`, `Excluded`,
+  `Unchanged`, `Unreferenced` or `Superseded` — a set leading with its
+  source files in the same bundle as its
   extracted resources, no upload-then-persist sequence and no ordering to
-  protect. `importOneFormat` hands that list straight to
-  `persistBatchBundle`: it does not look for the
+  protect. `importBatch` hands the `Included` decisions' resources, in the
+  plan's order, to one `persistTransactionBundle`: it does not look for the
   source file, lock an id, or write `meta.source`, because the format's
   `decode` already minted the source file at a deterministic id and stamped
   every extracted resource with its reference. A source file row the reviewer
   **excluded** is simply not written, and the resources keep their
   `meta.source` — the link points at a `DocumentReference` this batch chose not
   to upload, which is the reviewer's decision, not a rewrite the shell makes.
-  The batch is one Effect (`Effect.forEach` at unbounded concurrency) run
-  through `runAuthed`; cross-format interleaving is fine because each resource
-  carries its own file's reference. `useConfirmImport` needs nothing from the
-  registry — persistence is format-blind.
-- **The batch is best-effort, and there is no upload-failed case.**
-  `persistBatchBundle`'s error channel is `never`, so a rejected resource —
-  the source file included — is a per-entry outcome, not a raised error; one
-  format's failures never stop the rest. A claimed format whose review chose
-  nothing (no kind recognized it, or every matching kind toggled off) or whose
-  every file was unreadable is `skipped`, never a failure. `isPartialBatch`
-  lifts `collectImportSummary` to the batch: any rejected resource makes it
-  partial; a `skipped` format alone does not. There is **no** whole-flow `errored` state and no `uploadFailed` result —
-  a failed source file is an ordinary row in the results, its cause the server's own
-  response. Note the trade-off the fold-in accepts: if the source file is included
-  but its write fails while the resources succeed, those resources carry a
-  `meta.source` pointing at a source file that is not there — FHIR batch entries
-  are independent, so there is no way to gate them on the source file within one
-  bundle. The failed source file row makes this visible rather than silent.
-- **The confirm affordance is gated on the batch having an included resource to
+  The batch is one Effect run through `runAuthed`, and its outcomes are handed
+  back by position: the write reports one outcome per resource handed in, so
+  each `Included` decision is zipped with its own outcome and the pairs
+  grouped by the decision's `ReviewGroup`, a claimed format's becoming its
+  `imported` result (attempted its `Included` count, excluded its `Excluded`
+  count) and the linked group's the linked records' results. `useConfirmImport`
+  needs nothing from the registry — persistence is format-blind.
+- **The batch lands whole or not at all, and there is no upload-failed case.**
+  The batch is resolved as one: a format's resources point at the linked records
+  and at referents another format holds, so a server holding half of it would
+  hold references to records it does not. One `transaction` bundle, which
+  the server lands every entry of or none (`fhir-r4-rust`'s
+  `batch_bundle_at_base.rs` pins HFS doing so), rather than one `batch` per
+  format. `persistTransactionBundle`'s error channel is `never`, so a refusal
+  is every entry's outcome under the one cause, not a raised error. A claimed
+  format with no `Included` decision (no kind recognized it, every matching
+  kind toggled off, or every file unreadable; `skipReasonFor` says which) is
+  `skipped`, never a failure, and never reaches the bundle. `isPartialBatch` lifts
+  `collectImportSummary` to the batch: any rejected resource, a linked record
+  included, makes it partial, and `import-results.tsx` frames a batch nothing
+  of which wrote as failed; a `skipped` format alone does neither. There is
+  **no** whole-flow `errored` state and no `uploadFailed` result — a refused
+  batch is its rows in the results, their cause the server's own response.
+- **The confirm affordance is gated on the batch having a resource to
   write.** `PreviewPanel` shows the single confirm button only when
-  `StagedImport.includedCount` summed across the **claimed** formats is
-  positive; unreadable files and formats whose decode yielded nothing render
-  their own section but add nothing to write. Both that sum and the group list
-  come off `claimedFormats`, the one predicate for "did this format take part",
-  which the confirm reads too — a format that claimed nothing is not planned,
-  tallied, or reported. `useConfirmImport` re-checks each claimed format
-  (skipping the ones with nothing included) — the gate is the affordance, the
-  per-format check is the safety.
+  `planWrite`'s plan — over the **claimed** formats' rows and the linked
+  records — has an `Included` decision; unreadable
+  files and formats whose decode yielded nothing render their own section but
+  add nothing to write, a linked record the server holds unchanged, or a
+  new one no included resource names, adds nothing either, and two rows
+  under one `Type/id` count once, the earlier `Superseded`. A changed stored
+  copy alone is something to write, so the confirm can be offered with every
+  format's resources excluded; the results then say no file's resources
+  were imported. The confirm reads the same
+  plan, so the count and the write cannot disagree, and both come off
+  `claimedFormats`, the one predicate for "did this format take part" — a
+  format that claimed nothing is not planned, tallied, or reported.
 - **The source file list is format-blind and disjoint from web traces on the
   same axis.** The list searches `category` for `SOURCE_FILES_CATEGORY_TOKEN` —
   the comma-joined `system|code` tokens of every registered format's
@@ -311,9 +485,9 @@ The importer has no HTTP wire union to derive, so there is no separate
   still runs in that format's `decode` one step downstream, so a file the
   picker accepted whose bytes are malformed lands in the preview as its own
   unreadable row rather than a batch-wide error.
-- **`page-token.ts` reads a present-but-empty `_pageToken=` as token-less.**
-  `''` is not `null`, so TanStack Query would take it for a real cursor and
-  re-request page one forever.
+- **`fhir-r4/clients`' `nextPageToken` reads a present-but-empty
+  `_pageToken=` as token-less.** `''` is not `null`, so TanStack Query would
+  take it for a real cursor and re-request page one forever.
 - **The list carries rows, not source files.** A source file's bytes are the whole
   file, potentially megabytes (a multi-MB HAR, a PDF); `SourceFileRow` holds
   only the id, its classified format, the title, what it is a source of, and
@@ -404,18 +578,47 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   the confirm (the source file and the extracted resources go out in one
   bundle, every resource write carrying the `meta.source` its decode stamped),
   the re-picked server source file (its row present and pre-excluded, nothing
-  uploaded), the multi-file batch, the per-file source file failure, the
+  uploaded), the multi-file batch (the resources two files share under one
+  `Type/id` counted and written once), the per-file source file failure, the
   partial-write fold,
   that a single-format import reports no blank "nothing to import" rows, and
   cancel. It re-wraps `TextEncoder` output through the ambient `Uint8Array` (a
   jsdom single-realm workaround; the production encode stays `new
-  TextEncoder().encode(text)`).
+  TextEncoder().encode(text)`). Its stub server holds what it is seeded with
+  and what is written to it, and answers identifier searches and paged lists from that, so it also
+  pins the identity map: the reads to reach a review, a confirm linked to a
+  stored Patient (only the stored one written, carrying the source's
+  identifier, every subject on it), a re-import that defaults the Patient to
+  an update of the copy it stored and is `unchanged` and left out, one referent for one identity two files name,
+  a resource naming no patient left out until one is assigned, a subject
+  picked onto the Patient redirected to the stored record the Patient is later
+  linked to, and an edit on a Patient's row dropped when that Patient is
+  linked to a stored one.
+  Its stub refuses a `transaction` one of whose entries fails as a whole, as
+  HFS does, which pins the confirm landing nothing and saying so.
+- `identity/referent-rows.test.tsx` drives `useLinkChoiceReview` and the rows over a
+  hand-built batch and a stub search: a line per referent, people before
+  providers, `New` without a hit, a hit pre-selected, an update over the copy
+  found under the decoded id, the demographics warning,
+  and a changed select resolving the batch.
+- `preview/format-review-body.test.tsx` drives one format's body over a file
+  resolved on the identity map: Needs a patient only when a subject is
+  unlinked, a pick that is a mention link choice and includes the row, Don't
+  link leaving it out again, a pick following its referent's later link,
+  where Don't link is offered, an edit override resolved on the plan (a
+  pick, or a later link of the patient it names, moves it), Revert leaving
+  a row without a patient out again, an untouched row taken back in when its
+  patient is linked, and a ticked row kept in.
+  `identity/mention-link-options.test.ts` pins what a select offers: the
+  plan's resolved resources, a record two referents are linked to once, as
+  the choice of the referent whose record it is.
 - `preview/preview-panel.test.tsx` drives the pure panel by props — no router —
   and pins that a claimed format renders each decoded section under its own
   title with per-resource checkboxes, that an unreadable file renders its own
   alert, that a mixed batch sums to one confirm over every claimed format's
-  sections, that each registered format mounts its own settings picker, and
-  that the confirm appears only when at least one resource is included.
+  sections, that two rows under one `Type/id` count once, that each
+  registered format mounts its own settings picker, and that the confirm
+  appears only when at least one resource is included.
   `results/import-outcome.test.ts` is the property/example test for the folds.
 
 ## References

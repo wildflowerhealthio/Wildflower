@@ -357,7 +357,8 @@ const searchsetOf = (...resources: readonly unknown[]): Record<string, unknown> 
 /**
  * A HAR the `fhir-r4` source recognizes: a Patient read and an Observation
  * searchset off one server, built through `web-trace-core`'s own `emitHar` so it
- * is shaped exactly like a real capture. Previews to 1 Patient + 2 Observations.
+ * is shaped exactly like a real capture. Previews to 1 Patient + 2 Observations
+ * about that Patient, so none is left out as naming no patient.
  */
 const RECOGNIZED_HAR: string = Effect.runSync(
   Schema.encode(HarFromJson)(
@@ -381,12 +382,14 @@ const RECOGNIZED_HAR: string = Effect.runSync(
                 id: 'obs-1',
                 status: 'final',
                 code: { text: 'Weight' },
+                subject: { reference: 'Patient/pat-7' },
               },
               {
                 resourceType: 'Observation',
                 id: 'obs-2',
                 status: 'final',
                 code: { text: 'Height' },
+                subject: { reference: 'Patient/pat-7' },
               }
             )
           ),

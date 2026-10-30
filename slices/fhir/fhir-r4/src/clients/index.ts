@@ -1,7 +1,6 @@
 export {
   classifyAgainstServer,
   type DiffStatus,
-  diffKey,
   normalizedEncode,
   resetFieldToServer,
   SERVER_MANAGED_META_FIELDS,
@@ -17,17 +16,30 @@ export {
 } from './field-diff.ts'
 export { trimTrailingSlashes } from './fhir-base-url.ts'
 export {
+  matchesIn,
+  MatchWithoutResource,
+  NEXT_RELATION,
+  nextPageToken,
+  PAGE_TOKEN_PARAM,
+  type PageLink,
+  PageTokenRepeated,
+  searchAllPages,
+  type SearchPages,
+  type SearchsetEntry,
+  type SearchsetPage,
+} from './search-pages.ts'
+export {
   FhirR4ResourcesHttpApiClient,
   type FhirR4ResourcesHttpApiClientShape,
 } from './fhir-r4-resources-http-api-client.ts'
 export {
   BatchEntriesRejected,
   type BatchEntryOutcome,
-  entryUrl,
   groupByStatus,
   NO_RESPONSE_STATUS,
   persistBatchBundle,
   persistBatchBundleOrFail,
+  persistTransactionBundle,
   statusOk,
   type StatusGroup,
   type WriteIssue,

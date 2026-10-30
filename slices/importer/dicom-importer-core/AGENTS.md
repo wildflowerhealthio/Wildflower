@@ -38,7 +38,13 @@ carrying the one `ImagingStudy` its files make up.
   (name, identifier, birthDate, gender from M/F/O), `ServiceRequest` (emitted
   only when `AccessionNumber` is present: status completed, intent order,
   identifier = accession, code from RequestedProcedureDescription or
-  StudyDescription, requester display from ReferringPhysicianName), and
+  StudyDescription, requester from ReferringPhysicianName:
+  `Practitioner.tryReferenceWireFromName` of the physician's given names, then family
+  name (`Smith^Jane` is `Jane Smith`, as a prescription prints it; middle
+  name, prefix and suffix left out), so the referring physician is a referent
+  the identity map can link to the same provider named elsewhere, and no
+  requester for a PN with neither; the Patient's `name` keeps the PN `text`,
+  family first), and
   `ImagingStudy` (status available, identifier `urn:dicom:uid` /
   `urn:oid:<StudyInstanceUID>`, `started` from StudyDate+StudyTime resolved
   against `settings.timeZone` and written as an instant in UTC
@@ -126,7 +132,8 @@ carrying the one `ImagingStudy` its files make up.
 
 - **Depends on**: `dicom` (DICOM tag parsing), `importer-fundamentals`
   (`DecodeFunction.make`, the `FileImporter` contract, the `PickedFile`
-  vocabulary), `fhir-r4` (resource types + identity), `kitchen-sink`
+  vocabulary), `fhir-r4` (resource types + identity), `fhir-r4-adoption`
+  (`adoptResource`), `kitchen-sink`
   (`fnv1a64`, `checkTimeZone`), `effect`.
 - **Depended on by**: `dicom-importer-react` (settings picker),
   `importer-react` (registry entry).

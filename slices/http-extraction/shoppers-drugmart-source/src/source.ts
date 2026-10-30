@@ -1,4 +1,4 @@
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { SourceDescriptor } from '@wildflowerhealthio/http-extraction-fundamentals'
 
 import { mergeShoppersResources } from './merge-resources.ts'
@@ -10,7 +10,7 @@ import { shoppersDrugMartResponseKinds } from './response-kinds.ts'
  * through it by reference. See `response-kinds.ts`, and `merge-resources.ts`
  * for how a dispense seen in both prescription feeds becomes one.
  */
-const shoppersDrugMartSource: SourceDescriptor.SourceDescriptor<FhirResource> =
+const shoppersDrugMartSource: SourceDescriptor.SourceDescriptor<FhirResourceWithId> =
   SourceDescriptor.make({
     name: 'shoppers-drugmart',
     display: {

@@ -61,8 +61,8 @@ the Rexall and Shoppers generators, as dev dependencies only. Never imports a
   a pharmacy generator gives for the person (`rexallPatientReferenceOf`,
   `shoppersPatientReferenceOf`), so the results and the prescriptions of one
   person land on one Patient. `lifelabs.round-trip.test.ts` pins that through
-  the real HAR importer, and that a Shoppers person's results never name the
-  account (`pcid`) Patient.
+  the real HAR importer, and that each Shoppers person's results name their
+  own Patient.
 - **The importer is the proof.** `lifelabs.test.ts` prints each generated
   report with the importer's `layoutDocument`, reads it back with
   `Report.tryFromDocument`, and checks the read-back equals the report and
@@ -87,5 +87,5 @@ the Rexall and Shoppers generators, as dev dependencies only. Never imports a
 - [apps/synthetic-data/AGENTS.md](../AGENTS.md) — the slice and its packages.
 - [lifelabs-pdf-importer AGENTS.md](../../../slices/importer/lifelabs-pdf-importer/AGENTS.md)
   — the report model, the synthesis and the `/synthesis` subpath.
-- [Source Identity Explanation](../../../slices/fhir/fhir-r4/docs/Source%20Identity%20Explanation.md)
+- [Source Identity Explanation](../../../slices/http-extraction/fhir-r4-adoption/docs/Source%20Identity%20Explanation.md)
   — how adoption keys a Patient, and `adoptedReferenceOf`.

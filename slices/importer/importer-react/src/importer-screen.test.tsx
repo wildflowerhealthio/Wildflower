@@ -5,15 +5,21 @@ import { userEvent } from '@testing-library/user-event'
 import { FhirR4ResourcesRouterContext, type RunAuthed } from '@wildflowerhealthio/fhir-r4-react'
 import type * as FhirR4React from '@wildflowerhealthio/fhir-r4-react'
 import type { FhirR4ResourcesHttpApiClient } from '@wildflowerhealthio/fhir-r4/clients'
-import { Effect, Layer, Schema } from 'effect'
+import { Patient } from '@wildflowerhealthio/fhir-r4/resources'
+import { Effect, Layer, Option, Schema } from 'effect'
 import type { JSX, ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
+import { REFERENTS_HEADING } from './identity/referent-text.ts'
 import { CHECKING_SERVER_MESSAGE, ImporterScreen } from './importer-screen.tsx'
 import { formatRegistry } from './registry.ts'
 import { SKIPPED_HEADING } from './results/import-results.tsx'
 import {
   dicomFile,
+  ID_LESS_OBSERVATIONS_HAR,
+  NAMED_NO_SUBJECT_HAR,
+  NAMED_PATIENT_HAR,
+  NO_SUBJECT_HAR,
   RECOGNIZED_HAR,
   storedSourceFile,
   type StoredSourceFile,
@@ -41,9 +47,9 @@ import {
  *   row writes no `DocumentReference`, and the resources still name it (the
  *   format stamped them at decode; the id is deterministic in the file, so a
  *   later upload of the same file resolves the link);
- * - **a failing write folds into a partial result** (a rejected source file is just
- *   one failed row, not a gate on the rest), and **cancel discards with no
- *   writes**.
+ * - **the batch is one transaction** — a rejected entry refuses the whole
+ *   submission, nothing lands, and the results say so under the one cause;
+ *   and **cancel discards with no writes**.
  */
 
 vi.mock('@wildflowerhealthio/fhir-r4-react', async (importOriginal) => {
@@ -228,38 +234,10 @@ describe('ImporterScreen', () => {
     }
   })
 
-  it('folds a failing write into a partial result that groups the failed resources by code', async () => {
-    // Arrange — the store rejects every Observation write
-    currentRunAuthed = routingServer({
-      failWrite: (request) => request.url.includes('/Observation/'),
-    })
-    render(<ImporterScreen />, { wrapper: withQueryClient })
-
-    // Act
-    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
-    })
-    await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
-
-    // Assert — a partial result: the source-file source file and the Patient wrote,
-    // both Observations are grouped under their failure status code (retry
-    // backoff runs on the real clock).
-    await waitFor(
-      () => {
-        expect(screen.getByRole('heading', { name: /Imported with some failures/ })).toBeDefined()
-      },
-      { timeout: 6000 }
-    )
-    expect(screen.getByText(/503 Service Unavailable/)).toBeDefined()
-    expect(screen.getAllByText(/Observation\//).length).toBeGreaterThan(0)
-    expect(screen.getByRole('status').textContent).toMatch(/Wrote 2 of 4/)
-  })
-
-  it("still writes a file's resources when its source-file source file is rejected, as a partial batch", async () => {
-    // Arrange — the store rejects the source file `DocumentReference` entry. It rides
-    // the same batch as the resources, so its rejection is one failed row — not a
-    // gate that stops the rest.
+  it('lands nothing when the server rejects one entry: the batch is one transaction, refused as a whole', async () => {
+    // Arrange — the store rejects the source file `DocumentReference` entry.
+    // It rides the same transaction as the resources it names, so the whole
+    // submission is refused: no resource lands without its source file.
     currentRunAuthed = routingServer({
       failWrite: (request) => request.url.includes('/DocumentReference/'),
     })
@@ -272,14 +250,19 @@ describe('ImporterScreen', () => {
     })
     await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
 
-    // Assert — a partial result: the source file's failed row shows under its status,
-    // yet the three resources still wrote (each stamped with the source file ref).
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Imported with some failures/ })).toBeDefined()
-    })
-    expect(screen.getByText(/503 Service Unavailable/)).toBeDefined()
+    // Assert — nothing imported: every entry is reported under the server's
+    // refusal, its status and its reason, and the server holds none of them.
+    await waitFor(
+      () => {
+        expect(screen.getByRole('heading', { name: /Nothing was imported/ })).toBeDefined()
+      },
+      { timeout: 6000 }
+    )
+    expect(screen.getByText(/400 Bad Request · 4 resources/)).toBeDefined()
+    expect(screen.getAllByText(/Transaction failed at entry/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/DocumentReference\//).length).toBeGreaterThan(0)
-    expect(writes().filter(isResourceWrite)).toHaveLength(3)
+    expect(screen.getByRole('status').textContent).toMatch(/Wrote 0 of 4/)
+    expect(writes().filter(isResourceWrite)).toHaveLength(0)
   })
 
   it('imports several files at once as one batch, each stamped with its own source file', async () => {
@@ -293,19 +276,21 @@ describe('ImporterScreen', () => {
       harFile('session-b.har'),
     ])
     await waitFor(() => {
-      // Two files × (three resources + one source-file source file) under one confirm.
-      expect(screen.getByRole('button', { name: /Import 8 resources/ })).toBeDefined()
+      // Two source files and the three resources both files hold under the
+      // same ids, each counted once, under one confirm.
+      expect(screen.getByRole('button', { name: /Import 5 resources/ })).toBeDefined()
     })
     expect(writes()).toHaveLength(0)
 
     // Confirm the whole batch
-    await userEvent.click(screen.getByRole('button', { name: /Import 8 resources/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Import 5 resources/ }))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
     })
 
-    // Assert — one source file per file, six resources, each pointing at one of the
-    // two fresh source files.
+    // Assert — one source file per file. The two files hold the same three
+    // resources under the same ids, so each is written once, pointing at one
+    // of the two fresh source files.
     const sourceFileIds = writes()
       .filter((write) => write.url.includes('/DocumentReference/'))
       .map((write) => idFromUrl(write.url))
@@ -313,7 +298,7 @@ describe('ImporterScreen', () => {
     const sources = writes()
       .filter(isResourceWrite)
       .map((write) => metaSourceOf(write.body))
-    expect(sources).toHaveLength(6)
+    expect(sources).toHaveLength(3)
     for (const source of sources) {
       expect(sourceFileIds.map((id) => `DocumentReference/${id}`)).toContain(source)
     }
@@ -521,12 +506,300 @@ describe('ImporterScreen', () => {
     })
     expect(document.activeElement).toBe(kindToggle)
   })
+
+  it('reads only the source list, one search per referent and the diff bundle to reach a review', async () => {
+    // Arrange
+    currentRunAuthed = routingServer({})
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+
+    // Act
+    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
+    })
+
+    // Assert — no writes; the reads are the picker's source list, the one
+    // Patient's identifier search, the diff bundle's reads, and, once the review
+    // has painted, the first page of stored Patients its select offers.
+    expect(writes()).toHaveLength(0)
+    await waitFor(() => {
+      expect(reads()).toContain('search Patient?_count')
+    })
+    expect(reads().toSorted()).toEqual(
+      [
+        'search DocumentReference?_count&category',
+        'search Patient?_count&identifier',
+        'read DocumentReference',
+        'read Patient',
+        'read Observation',
+        'read Observation',
+        'search Patient?_count',
+      ].toSorted()
+    )
+  })
+
+  it('links the Patient to the stored one its demographics name: the stored one is written, with every subject pointing at it', async () => {
+    // Arrange — the device already holds Tyra, under its own id and the
+    // identifier her name and birth date derive
+    currentRunAuthed = routingServer({ stored: [STORED_TYRA] })
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+
+    // Act — the search pre-selects her; confirm
+    await userEvent.upload(screen.getByLabelText('Import file'), namedPatientHar('a.har'))
+    const person = await screen.findByRole<HTMLSelectElement>('combobox', { name: TYRA })
+    expect(person.value).toBe('stored:Patient/s-1')
+    expect(screen.getByText(/1 record on the server, 0 records from this import/)).toBeDefined()
+    await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
+    })
+
+    // Assert — one Patient write, the stored one, carrying the source's
+    // identifier beside its own; no source Patient; every subject on it
+    const patientWrites = writes().filter((write) => write.url.includes('/Patient/'))
+    expect(patientWrites.map((write) => write.url)).toEqual(['/Patient/s-1'])
+    const identifiers = heldWireOf(JSON.parse(patientWrites[0]?.body ?? '')).identifier.map(
+      ({ system, value }) => `${system}|${value}`
+    )
+    expect(identifiers).toEqual([
+      `${DEVICE}|s-1`,
+      `${Patient.NAME_BIRTH_DATE_IDENTIFIER_SYSTEM}|${DERIVED.value}`,
+      'https://r4.example.org/baseR4|pat-7',
+    ])
+    const subjects = writes()
+      .filter((write) => write.url.includes('/Observation/'))
+      .map((write) => subjectOf(write.body))
+    expect(subjects).toEqual(['Patient/s-1', 'Patient/s-1'])
+  })
+
+  it('shows a re-import as unchanged and pre-excluded, the Patient written over the copy it stored', async () => {
+    // Arrange — import the file once
+    currentRunAuthed = routingServer({})
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+    await userEvent.upload(screen.getByLabelText('Import file'), namedPatientHar('a.har'))
+    await userEvent.click(await screen.findByRole('button', { name: /Import 4 resources/ }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Import another archive' }))
+    const written = writes().length
+
+    // Act — pick the same file again
+    await userEvent.upload(screen.getByLabelText('Import file'), namedPatientHar('a.har'))
+
+    // Assert — the search finds the Patient the first import wrote under the
+    // decoded id, so the decode is written over it; every row is unchanged and
+    // left out, and nothing is written
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Nothing to import/ })).toBeDefined()
+    })
+    const person = screen.getByRole<HTMLSelectElement>('combobox', { name: TYRA })
+    expect(person.value).toMatch(/^update:Patient\//)
+    expect(screen.getAllByText('Already on server')).toHaveLength(4)
+    for (const box of screen.getAllByRole<HTMLInputElement>('checkbox', { name: /^Include / })) {
+      expect(box.checked).toBe(false)
+    }
+    expect(writes()).toHaveLength(written)
+  })
+
+  it('writes Observations a server sent with no id under ids of their content, and finds them unchanged on a re-import', async () => {
+    // Arrange
+    currentRunAuthed = routingServer({})
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+    const idLessHar = (): File =>
+      new File([ID_LESS_OBSERVATIONS_HAR], 'a.har', { type: 'application/json' })
+
+    // Act — import the capture once
+    await userEvent.upload(screen.getByLabelText('Import file'), idLessHar())
+    await userEvent.click(await screen.findByRole('button', { name: /Import 4 resources/ }))
+    await screen.findByRole('heading', { name: /Import complete/ })
+
+    // Assert — each Observation was written under an id adoption minted, one apiece
+    const observationIds = writes()
+      .filter((write) => write.url.includes('/Observation/'))
+      .map((write) => idFromUrl(write.url))
+    expect(observationIds).toHaveLength(2)
+    expect(new Set(observationIds).size).toBe(2)
+    for (const id of observationIds) expect(id).toMatch(/^wf-[0-9a-f]{32}$/)
+    const written = writes().length
+
+    // Act — pick the same capture again
+    await userEvent.click(screen.getByRole('button', { name: 'Import another archive' }))
+    await userEvent.upload(screen.getByLabelText('Import file'), idLessHar())
+
+    // Assert — the same content mints the same ids, so the diff finds every
+    // row on the server unchanged and nothing is written again
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Nothing to import/ })).toBeDefined()
+    })
+    expect(screen.getAllByText('Already on server')).toHaveLength(4)
+    expect(writes()).toHaveLength(written)
+  })
+
+  it("drops an edit made on a Patient's row when the Patient is linked to another record", async () => {
+    // Arrange — the device holds Tyra under no identifier the import carries,
+    // so the Patient starts as new and the stored one is offered, not chosen
+    currentRunAuthed = routingServer({ stored: [{ ...STORED_TYRA, identifier: [] }] })
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+    await userEvent.upload(screen.getByLabelText('Import file'), namedPatientHar('a.har'))
+    const person = await screen.findByRole<HTMLSelectElement>('combobox', { name: TYRA })
+    expect(person.value).toBe('create')
+    await within(person).findByRole('option', { name: TYRA })
+
+    // Act — edit the source Patient's row, then link it to the stored one
+    await userEvent.click(screen.getByRole('button', { name: /^Edit Patient/ }))
+    const textarea = await screen.findByLabelText<HTMLTextAreaElement>('Resource JSON')
+    const source = Schema.decodeUnknownSync(
+      Schema.Record({ key: Schema.String, value: Schema.Unknown })
+    )(JSON.parse(textarea.value))
+    await userEvent.clear(textarea)
+    await userEvent.click(textarea)
+    await userEvent.paste(JSON.stringify({ ...source, gender: 'female' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Keep' }))
+    expect(await screen.findByText('Edited')).toBeDefined()
+    await userEvent.selectOptions(person, 'stored:Patient/s-1')
+
+    // Assert — the edit is gone, and the stored Patient is written as stored
+    await waitFor(() => {
+      expect(screen.queryByText('Edited')).toBeNull()
+    })
+    const confirm = await screen.findByRole<HTMLButtonElement>('button', {
+      name: /Import 4 resources/,
+    })
+    await waitFor(() => {
+      expect(confirm.disabled).toBe(false)
+    })
+    await userEvent.click(confirm)
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
+    })
+    const patientWrites = writes().filter((write) => write.url.includes('/Patient/'))
+    expect(patientWrites.map((write) => write.url)).toEqual(['/Patient/s-1'])
+    expect(JSON.parse(patientWrites[0]?.body ?? '{}')).not.toHaveProperty('gender')
+  })
+
+  it("drops an edit made on another file's copy of a Patient when the Patient is linked to another record", async () => {
+    // Arrange — two files decode one Patient, one referent with two rows
+    currentRunAuthed = routingServer({ stored: [{ ...STORED_TYRA, identifier: [] }] })
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+    await userEvent.upload(screen.getByLabelText('Import file'), [
+      namedPatientHar('a.har'),
+      namedPatientHar('b.har'),
+    ])
+    const person = await screen.findByRole<HTMLSelectElement>('combobox', { name: TYRA })
+    await within(person).findByRole('option', { name: TYRA })
+
+    // Act — edit the second file's copy, then link the Patient to the stored one
+    const edits = screen.getAllByRole('button', { name: /^Edit Patient/ })
+    expect(edits).toHaveLength(2)
+    const [, secondCopy] = edits
+    if (secondCopy === undefined) throw new Error('unreachable: each file has a Patient row')
+    await userEvent.click(secondCopy)
+    const textarea = await screen.findByLabelText<HTMLTextAreaElement>('Resource JSON')
+    const source = Schema.decodeUnknownSync(
+      Schema.Record({ key: Schema.String, value: Schema.Unknown })
+    )(JSON.parse(textarea.value))
+    await userEvent.clear(textarea)
+    await userEvent.click(textarea)
+    await userEvent.paste(JSON.stringify({ ...source, gender: 'female' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Keep' }))
+    expect(await screen.findByText('Edited')).toBeDefined()
+    await userEvent.selectOptions(person, 'stored:Patient/s-1')
+
+    // Assert — the edit is gone from the copy it was made on
+    await waitFor(() => {
+      expect(screen.queryByText('Edited')).toBeNull()
+    })
+  })
+
+  it('leaves out a resource that names no patient until one is assigned', async () => {
+    // Arrange
+    currentRunAuthed = routingServer({})
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+
+    // Act — two Observations that name no one, beside the Patient they came with
+    await userEvent.upload(
+      screen.getByLabelText('Import file'),
+      new File([NO_SUBJECT_HAR], 'a.har', { type: 'application/json' })
+    )
+
+    // Assert — both listed and left out; the source file is not listed
+    // The heading is `preview-text.ts`' NEEDS_A_PATIENT_HEADING, spelled out to
+    // keep this file under its dependency cap.
+    const group = await screen.findByRole('region', { name: 'Needs a patient' })
+    const [first] = within(group).getAllByRole<HTMLSelectElement>('combobox')
+    expect(within(group).getAllByRole('listitem')).toHaveLength(2)
+    expect(screen.getByRole('button', { name: 'Import 2 resources (2 excluded)' })).toBeDefined()
+
+    // Act — assign the Patient, the one record offered, to one of them
+    if (first === undefined) throw new Error('unreachable: each listed row has a subject select')
+    const [patient] = within(first).getAllByRole<HTMLOptionElement>('option')
+    if (patient === undefined) throw new Error('unreachable: the Patient is offered')
+    await userEvent.selectOptions(first, patient)
+
+    // Assert — it is back in
+    expect(screen.getByRole('button', { name: 'Import 3 resources (1 excluded)' })).toBeDefined()
+  })
+
+  it('redirects a subject picked onto the Patient to the stored record the Patient is later linked to', async () => {
+    // Arrange — the device holds Tyra under no identifier the import carries,
+    // so the Patient starts as new and the stored one is offered, not chosen
+    currentRunAuthed = routingServer({ stored: [{ ...STORED_TYRA, identifier: [] }] })
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+    await userEvent.upload(
+      screen.getByLabelText('Import file'),
+      new File([NAMED_NO_SUBJECT_HAR], 'a.har', { type: 'application/json' })
+    )
+    const person = await screen.findByRole<HTMLSelectElement>('combobox', { name: TYRA })
+    await within(person).findByRole('option', { name: TYRA })
+    const group = screen.getByRole('region', { name: 'Needs a patient' })
+    const [first] = within(group).getAllByRole<HTMLSelectElement>('combobox')
+    if (first === undefined) throw new Error('unreachable: each listed row has a subject select')
+
+    // Act — pick the Patient for one Observation, then link the Patient to the stored one
+    await userEvent.selectOptions(first, TYRA)
+    expect(screen.queryByText('Edited')).toBeNull()
+    await userEvent.selectOptions(person, 'stored:Patient/s-1')
+
+    // Assert — the pick followed the Patient: the subject is the stored record
+    await waitFor(() => {
+      expect(first.value).toBe('stored:Patient/s-1')
+    })
+    const confirm = await screen.findByRole<HTMLButtonElement>('button', {
+      name: /Import 3 resources/,
+    })
+    await waitFor(() => {
+      expect(confirm.disabled).toBe(false)
+    })
+    await userEvent.click(confirm)
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
+    })
+    const subjects = writes()
+      .filter((write) => write.url.includes('/Observation/'))
+      .map((write) => subjectOf(write.body))
+    expect(subjects).toEqual(['Patient/s-1'])
+  })
+
+  it('shows one referent for one identity two files name', async () => {
+    // Arrange
+    currentRunAuthed = routingServer({})
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+
+    // Act
+    await userEvent.upload(screen.getByLabelText('Import file'), [
+      namedPatientHar('a.har'),
+      namedPatientHar('b.har'),
+    ])
+
+    // Assert
+    const referents = await screen.findByRole('region', { name: REFERENTS_HEADING })
+    expect(within(referents).getAllByRole('combobox')).toHaveLength(1)
+    expect(within(referents).getByRole('combobox', { name: TYRA })).toBeDefined()
+  })
 })
 
 // Helpers
 
 const jsonResponse = (body: unknown, status = 200): Response =>
-  new Response(status === 200 ? JSON.stringify(body) : '', {
+  new Response(body === null ? '' : JSON.stringify(body), {
     status,
     headers: { 'content-type': 'application/json' },
   })
@@ -551,6 +824,61 @@ const ImagingStudyWire = Schema.Struct({
     })
   ),
 })
+
+/** The Patient {@link NAMED_PATIENT_HAR} reads, as its referent line is labelled. */
+const TYRA = 'Tyra Banks · 1990-01-02'
+
+/** The system the stored Patient's own identifier is under. */
+const DEVICE = 'https://device.example/id'
+
+/** The identifier Tyra's name and birth date derive. */
+const DERIVED = Option.getOrThrow(
+  Effect.runSync(
+    Patient.nameBirthDateIdentifier(
+      Schema.decodeUnknownSync(Patient.Schema)({
+        resourceType: 'Patient',
+        name: [{ family: 'Banks', given: ['Tyra'] }],
+        birthDate: '1990-01-02',
+      })
+    )
+  )
+)
+
+/** Tyra as the device already holds her: her own id, and the identifier her demographics derive. */
+const STORED_TYRA = {
+  resourceType: 'Patient',
+  id: 's-1',
+  identifier: [
+    { system: DEVICE, value: 's-1' },
+    { system: Patient.NAME_BIRTH_DATE_IDENTIFIER_SYSTEM, value: DERIVED.value },
+  ],
+  name: [{ family: 'Banks', given: ['Tyra'] }],
+  birthDate: '1990-01-02',
+}
+
+/** A {@link NAMED_PATIENT_HAR} `File`, for the OS-picker path. */
+const namedPatientHar = (name: string): File =>
+  new File([NAMED_PATIENT_HAR], name, { type: 'application/json' })
+
+/**
+ * The read requests recorded so far, each as `read <Type>` or
+ * `search <Type>?<sorted parameter names>`.
+ */
+const reads = (): readonly string[] =>
+  recorded
+    .filter((request) => request.method === 'GET')
+    .map((request) => {
+      const [path = '', query] = request.url.split('?')
+      const segments = path.split('/').filter((segment) => segment !== '')
+      if (query === undefined) return `read ${segments.at(-2) ?? ''}`
+      const names = [...new URLSearchParams(query).keys()].toSorted().join('&')
+      return `search ${segments.at(-1) ?? ''}?${names}`
+    })
+
+/** The `subject.reference` a written resource carries. */
+const SubjectWire = Schema.Struct({ subject: Schema.Struct({ reference: Schema.String }) })
+const subjectOf = (body: string): string =>
+  Schema.decodeUnknownSync(SubjectWire)(JSON.parse(body)).subject.reference
 
 /** A recognized-HAR `File`, for the OS-picker (`upload`) path. */
 const harFile = (name: string): File =>
@@ -583,18 +911,52 @@ const idFromUrl = (url: string): string => {
   return segments[segments.length - 1] ?? ''
 }
 
+/** Just enough of a held resource to key it and search it by identifier. */
+const HeldWire = Schema.Struct({
+  resourceType: Schema.String,
+  id: Schema.String,
+  identifier: Schema.optionalWith(
+    Schema.Array(Schema.Struct({ system: Schema.String, value: Schema.String })),
+    { default: () => [] }
+  ),
+})
+const heldWireOf = Schema.decodeUnknownSync(HeldWire)
+
+/** A request URL with its search parameters, as the log records it. */
+const urlWithParams = (request: HttpClientRequest.HttpClientRequest): string => {
+  const params = new URLSearchParams(
+    request.urlParams.map(([key, value]) => [key, value])
+  ).toString()
+  return params === '' ? request.url : `${request.url}?${params}`
+}
+
 /**
- * A stub transport that records every request and routes it: a `category` search
- * answers with the configured source files, a `DocumentReference/<id>` GET answers
- * with that source file, and every PUT echoes the written body back (or a 503 when
- * `failWrite` says so). One stateless rule per shape — enough to drive the whole
- * flow and read the write log back.
+ * A stub server that records every request and holds what it is given and
+ * what is written to it: a `category` search answers with the configured
+ * source files, an `identifier` search with the held resources of its type
+ * carrying any of its `system|value` tokens, a `_count`-only search with
+ * every held resource of its type, a read with the held resource, and a PUT
+ * stores and echoes its body (or a 503 when `failWrite` says so). A
+ * `transaction` bundle one of whose entries `failWrite` rejects is refused
+ * as a whole, as HFS refuses one: a 400 with an OperationOutcome, nothing
+ * stored and no entry recorded as written. Enough to drive the whole flow
+ * twice over and read the log back.
  */
 const routingServer = (config: {
   readonly sourceFiles?: readonly StoredSourceFile[]
+  readonly stored?: readonly unknown[]
   readonly failWrite?: (request: { readonly method: string; readonly url: string }) => boolean
 }): RunAuthed => {
   const sourceFiles = config.sourceFiles ?? []
+  const held = new Map<string, unknown>([
+    ...sourceFiles.map((one): [string, unknown] => [`DocumentReference/${one.id}`, one.wire]),
+    ...(config.stored ?? []).map((wire): [string, unknown] => {
+      const { resourceType, id } = heldWireOf(wire)
+      return [`${resourceType}/${id}`, wire]
+    }),
+  ])
+  const heldOfType = (resourceType: string): readonly unknown[] =>
+    [...held.values()].filter((wire) => heldWireOf(wire).resourceType === resourceType)
   const httpLayer = Layer.succeed(
     HttpClient.HttpClient,
     HttpClient.make((request) => {
@@ -611,6 +973,32 @@ const routingServer = (config: {
         const parsed = safeParseBundle(body)
         if (parsed !== undefined) {
           const entries = parsed.entry ?? []
+          const refusedEntry = entries.find(
+            (entry) =>
+              entry.request?.method === 'PUT' &&
+              config.failWrite?.({ method: 'PUT', url: `/${entry.request.url}` }) === true
+          )
+          if (parsed.type === 'transaction' && refusedEntry !== undefined) {
+            recorded.push({ method: request.method, url: request.url, body })
+            return Effect.succeed(
+              HttpClientResponse.fromWeb(
+                request,
+                jsonResponse(
+                  {
+                    resourceType: 'OperationOutcome',
+                    issue: [
+                      {
+                        severity: 'error',
+                        code: 'processing',
+                        diagnostics: `Transaction failed at entry ${entries.indexOf(refusedEntry)}`,
+                      },
+                    ],
+                  },
+                  400
+                )
+              )
+            )
+          }
           const responseEntries: unknown[] = []
           for (const entry of entries) {
             const entryReq = entry.request
@@ -629,16 +1017,15 @@ const routingServer = (config: {
               continue
             }
             if (entryReq.method === 'GET') {
-              // The only resources this suite's server already holds are the
-              // configured source files; every other classify probe is a miss.
-              const stored = sourceFiles.find((one) => entryUrl.endsWith(`/${one.id}`))
+              const stored = held.get(entryReq.url)
               responseEntries.push(
                 stored === undefined
                   ? { response: { status: '404 Not Found' } }
-                  : { response: { status: '200 OK' }, resource: stored.wire }
+                  : { response: { status: '200 OK' }, resource: stored }
               )
               continue
             }
+            if (entry.resource !== undefined) held.set(entryReq.url, entry.resource)
             responseEntries.push({
               response: { status: '200 OK' },
               ...(entry.resource !== undefined ? { resource: entry.resource } : {}),
@@ -657,17 +1044,28 @@ const routingServer = (config: {
         }
       }
 
-      recorded.push({ method: request.method, url: request.url, body })
+      recorded.push({ method: request.method, url: urlWithParams(request), body })
+      const segments = request.url.split('/').filter((segment) => segment !== '')
       if (request.method === 'GET' && params['category'] !== undefined) {
         const wires = sourceFiles.map((one) => one.wire)
         return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(searchset(wires))))
       }
+      if (request.method === 'GET' && params['_count'] !== undefined) {
+        const tokens = params['identifier']?.split(',')
+        const hits = heldOfType(segments.at(-1) ?? '').filter(
+          (wire) =>
+            tokens === undefined ||
+            heldWireOf(wire).identifier.some(({ system, value }) =>
+              tokens.includes(`${system}|${value}`)
+            )
+        )
+        return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(searchset(hits))))
+      }
       if (request.method === 'GET') {
-        const sourceFile = sourceFiles.find((one) => one.id === idFromUrl(request.url))
-        if (sourceFile === undefined) {
-          return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(null, 404)))
-        }
-        return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(sourceFile.wire)))
+        const stored = held.get(segments.slice(-2).join('/'))
+        return Effect.succeed(
+          HttpClientResponse.fromWeb(request, jsonResponse(stored ?? null, stored ? 200 : 404))
+        )
       }
       if (config.failWrite?.({ method: request.method, url: request.url }) === true) {
         return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(null, 503)))
@@ -697,8 +1095,9 @@ const searchset = (resources: readonly unknown[]): unknown => ({
   link: [],
 })
 
-/** Minimal shape read from the request body of a `POST /` batch bundle. */
+/** Minimal shape read from the request body of a `POST /` bundle. */
 interface RecordedBundleShape {
+  readonly type?: string
   readonly entry?: readonly {
     readonly request?: { readonly method: string; readonly url: string }
     readonly resource?: unknown

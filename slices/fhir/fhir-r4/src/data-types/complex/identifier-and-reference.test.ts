@@ -8,9 +8,11 @@ import {
   fragmentIdOf,
   fragmentReferenceTo,
   IdentifierSchema,
+  identifierEquivalence,
   ReferenceSchema,
   referencedIdOf,
   referenceTo,
+  isQualifiedIdentifier,
 } from './identifier-and-reference.ts'
 
 // ---------------------------------------------------------------------------
@@ -249,5 +251,46 @@ describe('referenceTo / referencedIdOf', () => {
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
+  })
+})
+
+describe('identifierEquivalence', () => {
+  const decodeIdentifier = Schema.decodeUnknownSync(IdentifierSchema)
+
+  it('should hold two identifiers with the same system and value alike, whatever else they carry', () => {
+    expect(
+      identifierEquivalence(
+        decodeIdentifier({ system: 'https://a.example/id', value: '1', use: 'official' }),
+        decodeIdentifier({ system: 'https://a.example/id', value: '1' })
+      )
+    ).toBe(true)
+  })
+
+  it.each([
+    {
+      left: { system: 'https://a.example/id', value: '1' },
+      right: { system: 'https://b.example/id', value: '1' },
+    },
+    {
+      left: { system: 'https://a.example/id', value: '1' },
+      right: { system: 'https://a.example/id', value: '2' },
+    },
+    { left: { system: 'https://a.example/id', value: '1' }, right: { value: '1' } },
+  ])('should tell $left from $right', ({ left, right }) => {
+    expect(identifierEquivalence(decodeIdentifier(left), decodeIdentifier(right))).toBe(false)
+  })
+})
+
+describe('isQualifiedIdentifier', () => {
+  const decodeIdentifier = Schema.decodeUnknownSync(IdentifierSchema)
+
+  test.each([
+    [{ system: 'https://source.example/id', value: '7' }, true],
+    [{ system: 'https://source.example/id', value: '' }, false],
+    [{ system: 'https://source.example/id' }, false],
+    [{ value: '7' }, false],
+    [{}, false],
+  ])('%j → %s', (wire, qualified) => {
+    expect(isQualifiedIdentifier(decodeIdentifier(wire))).toBe(qualified)
   })
 })

@@ -1,4 +1,3 @@
-import type { DocumentReference } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   DecodeFunction,
   type FileImporter,
@@ -113,7 +112,7 @@ describe('lifeLabsPdfImporter decode', () => {
           const sourceId = sourceRow?.resource.id
           expect(sourceId).toEqual(expect.any(String))
           for (const item of DecodedFile.resources(decoded).slice(1)) {
-            expect(item.resource.meta?.source).toBe(`DocumentReference/${String(sourceId)}`)
+            expect(item.resource.meta?.source).toBe(`DocumentReference/${sourceId}`)
           }
         }
       ),
@@ -150,7 +149,7 @@ describe('lifeLabsPdfImporter decode', () => {
 const mintSourceFile = (
   bytes: Uint8Array,
   fileName = 'lab-report.pdf'
-): Promise<DocumentReference.Type> =>
+): Promise<PickedFile.SourceFile> =>
   Effect.runPromise(
     Schema.encode(PickedFile.FromDocumentReference)({
       id: `0:${fileName}`,

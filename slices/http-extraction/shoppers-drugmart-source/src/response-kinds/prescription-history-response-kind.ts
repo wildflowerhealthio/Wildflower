@@ -70,22 +70,23 @@ const decodeCustomerId = Schema.decodeUnknown(Schema.NonEmptyString)
 const decodeDispense = Schema.decodeUnknown(MedicationDispense.Schema)
 
 /**
- * The account a history XHR is for: its `customerId` query parameter, which
- * is the account's `pcid`. A `ParseError` when the URL carries none.
+ * The account a history XHR is for: its `customerId` query parameter. A
+ * `ParseError` when the URL carries none.
  */
 const customerIdOf = (url: string): Effect.Effect<string, ParseResult.ParseError> =>
   decodeCustomerId(URL.parse(url)?.searchParams.get('customerId'))
 
 /**
- * The `subject` wire: the **account** `Patient`, `Patient/<pcid>`, which is
- * the id `CustomerResponseKind` keys the account under, so adoption lands both
- * on one local id. The feed names no managed person, so the account is the
- * most it can say. The `pcid` rides as the reference's own `identifier`, under
- * `ShoppersIdentifierSystem.PcId`, so the reference says it names an account.
+ * The `subject` wire: the account the history is for, as a logical reference
+ * to a `Patient` by `customerId` under `ShoppersIdentifierSystem.CustomerId`,
+ * with no literal `reference`. The feed names no managed person and no
+ * Patient stands for the account, so the identifier is all it can say, for
+ * the importer's identity map to resolve to a person; the stated `type` is
+ * what tells the map it names a patient.
  */
-const accountReferenceWire = (customerId: string): Record<string, unknown> => ({
-  reference: `Patient/${customerId}`,
-  identifier: { system: ShoppersIdentifierSystem.PcId, value: customerId },
+const accountSubjectWire = (customerId: string): Record<string, unknown> => ({
+  type: 'Patient',
+  identifier: { system: ShoppersIdentifierSystem.CustomerId, value: customerId },
 })
 
 /**
@@ -135,8 +136,8 @@ const locationWire = (
 /**
  * Build the R4 `MedicationDispense` **wire** for one history entry; `undefined`
  * when it has no `dispenseId` (so it drops-and-counts). `status` is a flat
- * `'completed'`, and the `subject` is the account the history is for — the
- * payload carries no `patientId`.
+ * `'completed'`, and the `subject` names the account the history is for, by
+ * identifier alone — the payload carries no `patientId`.
  */
 const dispenseWire = (
   dispense: SourceHistoryDispense,
@@ -148,7 +149,7 @@ const dispenseWire = (
     id: dispense.dispenseId,
     identifier: [{ system: ShoppersIdentifierSystem.DispenseId, value: dispense.dispenseId }],
     status: 'completed',
-    subject: accountReferenceWire(customerId),
+    subject: accountSubjectWire(customerId),
   }
   const medication = medicationWire(dispense)
   if (medication != null) wire['medicationCodeableConcept'] = medication
@@ -177,9 +178,10 @@ const historyUrl = new RegExp(
  * Entity for the Shoppers prescription-history XHR: one payload carrying **every**
  * dispense across all prescriptions of an account. Each entry synthesizes one
  * **`MedicationDispense`** (no Patient, no MedicationRequest), linked to its
- * request via `authorizingPrescription`. Its `subject` is the **account**
- * `Patient` named by the URL's `customerId`, not the managed person the fill
- * was for: the payload does not say which person that is. A prescription's
+ * request via `authorizingPrescription`. Its `subject` names the **account**
+ * by the URL's `customerId`, as an identifier-only reference under
+ * `ShoppersIdentifierSystem.CustomerId`, not the managed person the fill was
+ * for: the payload does not say which person that is. A prescription's
  * latest fill also appears in the status feed under the same `dispenseId`,
  * which names the person; the source's `mergeResources` combines the two
  * copies wherever one extraction holds both (`merge-resources.ts`). A

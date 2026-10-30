@@ -1,10 +1,10 @@
 import { Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 
-import { type FhirResource, Patient } from '@wildflowerhealthio/fhir-r4/resources'
+import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
+import { type FhirResourceWithId, Patient } from '@wildflowerhealthio/fhir-r4/resources'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
-import type * as DecodedFile from './decoded-file.ts'
 import * as StagedImport from './staged-import.ts'
 
 /**
@@ -18,37 +18,22 @@ import * as StagedImport from './staged-import.ts'
 // ---------------------------------------------------------------------------
 
 /** A minimal `FhirResource` — a `Patient` needs nothing but `resourceType` — keyed by `id`. */
-const resource = (id: string): FhirResource =>
-  Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
+const resource = (id: string): FhirResourceWithId =>
+  Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id })
 
-/** Build a `LabeledResource<FhirResource>` from a key and resource id. */
-const labeled = (key: string, resourceId: string, title = key): DecodedFile.Resource => ({
-  key,
-  title,
-  resource: resource(resourceId),
-})
-
-/** A standard three-resource pool used across most tests. */
-const threeLabeled: readonly DecodedFile.Resource[] = [
-  labeled('a', 'alpha'),
-  labeled('b', 'beta'),
-  labeled('c', 'gamma'),
-]
-
-/** The `id`s of a set of chosen resources, in order — what most assertions compare. */
-const idsOf = (resources: readonly FhirResource[]): readonly (string | null)[] =>
-  resources.map((entry) => entry.id)
+/** No resource is out by default. */
+const NONE_BY_DEFAULT: ReadonlySet<string> = new Set()
 
 // ---------------------------------------------------------------------------
 // StagedImport.initial
 // ---------------------------------------------------------------------------
 
 describe('StagedImport.initial', () => {
-  it('should return an empty selection with no exclusions and no overrides', () => {
-    const selection = StagedImport.initial()
-
-    expect(selection.excludedResources.size).toBe(0)
-    expect(selection.resourceOverrides.size).toBe(0)
+  it('should return an empty selection with no reviewer choices and no overrides', () => {
+    expect(StagedImport.initial()).toEqual({
+      includedByReviewer: new Map(),
+      resourceOverrides: new Map(),
+    })
   })
 })
 
@@ -57,17 +42,31 @@ describe('StagedImport.initial', () => {
 // ---------------------------------------------------------------------------
 
 describe('StagedImport.isResourceIncluded', () => {
-  it('should return true for a key not in excludedResources', () => {
+  it('should take the default for a key the reviewer made no choice for', () => {
     const selection = StagedImport.initial()
 
-    expect(StagedImport.isResourceIncluded(selection, 'a')).toBe(true)
-    expect(StagedImport.isResourceIncluded(selection, 'anything')).toBe(true)
+    expect(StagedImport.isResourceIncluded(selection, NONE_BY_DEFAULT, 'a')).toBe(true)
+    expect(StagedImport.isResourceIncluded(selection, new Set(['a']), 'a')).toBe(false)
   })
 
-  it('should return false for a key in excludedResources', () => {
-    const selection = StagedImport.toggleResource(StagedImport.initial(), 'a')
+  it("should take the reviewer's choice over the default either way", () => {
+    const ticked = StagedImport.setResourcesIncluded(StagedImport.initial(), ['a'], true)
+    const unticked = StagedImport.setResourcesIncluded(StagedImport.initial(), ['a'], false)
 
-    expect(StagedImport.isResourceIncluded(selection, 'a')).toBe(false)
+    expect(StagedImport.isResourceIncluded(ticked, new Set(['a']), 'a')).toBe(true)
+    expect(StagedImport.isResourceIncluded(unticked, NONE_BY_DEFAULT, 'a')).toBe(false)
+  })
+
+  it('property: a key with no choice is included exactly when the default does not exclude it', () => {
+    fc.assert(
+      fc.property(fc.string(), fc.boolean(), (key, excluded) => {
+        const excludedByDefault = excluded ? new Set([key]) : NONE_BY_DEFAULT
+        expect(
+          StagedImport.isResourceIncluded(StagedImport.initial(), excludedByDefault, key)
+        ).toBe(!excluded)
+      }),
+      { numRuns: numRunsFor({ base: 30 }) }
+    )
   })
 })
 
@@ -76,40 +75,47 @@ describe('StagedImport.isResourceIncluded', () => {
 // ---------------------------------------------------------------------------
 
 describe('StagedImport.toggleResource', () => {
-  it('should exclude an included resource', () => {
-    const selection = StagedImport.toggleResource(StagedImport.initial(), 'a')
+  it('should record an exclusion for a resource included by default', () => {
+    const selection = StagedImport.toggleResource(StagedImport.initial(), NONE_BY_DEFAULT, 'a')
 
-    expect(selection.excludedResources.has('a')).toBe(true)
+    expect(selection.includedByReviewer).toEqual(new Map([['a', false]]))
   })
 
-  it('should re-include an excluded resource', () => {
-    const once = StagedImport.toggleResource(StagedImport.initial(), 'a')
-    const twice = StagedImport.toggleResource(once, 'a')
+  it('should record an inclusion for a resource excluded by default', () => {
+    const selection = StagedImport.toggleResource(StagedImport.initial(), new Set(['a']), 'a')
 
-    expect(twice.excludedResources.has('a')).toBe(false)
+    expect(selection.includedByReviewer).toEqual(new Map([['a', true]]))
   })
 
   it('should not disturb other keys when toggling one', () => {
-    const s1 = StagedImport.toggleResource(StagedImport.initial(), 'a')
-    const s2 = StagedImport.toggleResource(s1, 'b')
+    const s1 = StagedImport.toggleResource(StagedImport.initial(), NONE_BY_DEFAULT, 'a')
+    const s2 = StagedImport.toggleResource(s1, NONE_BY_DEFAULT, 'b')
 
-    expect(s2.excludedResources.has('a')).toBe(true)
-    expect(s2.excludedResources.has('b')).toBe(true)
+    expect(s2.includedByReviewer).toEqual(
+      new Map([
+        ['a', false],
+        ['b', false],
+      ])
+    )
   })
 
   it('should preserve resourceOverrides across toggles', () => {
     const edited = StagedImport.edit(StagedImport.initial(), 'a', resource('edited-alpha'))
-    const toggled = StagedImport.toggleResource(edited, 'b')
+    const toggled = StagedImport.toggleResource(edited, NONE_BY_DEFAULT, 'b')
 
     expect(toggled.resourceOverrides.get('a')).toEqual(resource('edited-alpha'))
   })
 
-  it('should be self-inverse for any key (property)', () => {
+  it('property: toggling twice restores whether the key is included, whatever the default', () => {
     fc.assert(
-      fc.property(fc.string(), (key) => {
-        const initial = StagedImport.initial()
-        const toggled = StagedImport.toggleResource(StagedImport.toggleResource(initial, key), key)
-        expect(toggled.excludedResources.size).toBe(0)
+      fc.property(fc.string(), fc.boolean(), (key, excluded) => {
+        const excludedByDefault = excluded ? new Set([key]) : NONE_BY_DEFAULT
+        const toggled = StagedImport.toggleResource(
+          StagedImport.toggleResource(StagedImport.initial(), excludedByDefault, key),
+          excludedByDefault,
+          key
+        )
+        expect(StagedImport.isResourceIncluded(toggled, excludedByDefault, key)).toBe(!excluded)
       }),
       { numRuns: numRunsFor({ base: 30 }) }
     )
@@ -124,10 +130,9 @@ describe('StagedImport.setResourcesIncluded', () => {
   it('should exclude every listed key when included is false', () => {
     const selection = StagedImport.setResourcesIncluded(StagedImport.initial(), ['a', 'b'], false)
 
-    expect(StagedImport.excludedCount(threeLabeled, selection)).toBe(2)
-    expect(StagedImport.isResourceIncluded(selection, 'a')).toBe(false)
-    expect(StagedImport.isResourceIncluded(selection, 'b')).toBe(false)
-    expect(StagedImport.isResourceIncluded(selection, 'c')).toBe(true)
+    expect(StagedImport.isResourceIncluded(selection, NONE_BY_DEFAULT, 'a')).toBe(false)
+    expect(StagedImport.isResourceIncluded(selection, NONE_BY_DEFAULT, 'b')).toBe(false)
+    expect(StagedImport.isResourceIncluded(selection, NONE_BY_DEFAULT, 'c')).toBe(true)
   })
 
   it('should re-include every listed key when included is true', () => {
@@ -138,16 +143,16 @@ describe('StagedImport.setResourcesIncluded', () => {
     )
     const reincluded = StagedImport.setResourcesIncluded(excluded, ['a', 'b'], true)
 
-    expect(StagedImport.isResourceIncluded(reincluded, 'a')).toBe(true)
-    expect(StagedImport.isResourceIncluded(reincluded, 'b')).toBe(true)
-    expect(StagedImport.isResourceIncluded(reincluded, 'c')).toBe(false)
+    expect(StagedImport.isResourceIncluded(reincluded, NONE_BY_DEFAULT, 'a')).toBe(true)
+    expect(StagedImport.isResourceIncluded(reincluded, NONE_BY_DEFAULT, 'b')).toBe(true)
+    expect(StagedImport.isResourceIncluded(reincluded, NONE_BY_DEFAULT, 'c')).toBe(false)
   })
 
   it('should leave keys outside the batch untouched', () => {
-    const start = StagedImport.toggleResource(StagedImport.initial(), 'c')
+    const start = StagedImport.toggleResource(StagedImport.initial(), NONE_BY_DEFAULT, 'c')
     const next = StagedImport.setResourcesIncluded(start, ['a'], false)
 
-    expect(StagedImport.isResourceIncluded(next, 'c')).toBe(false)
+    expect(StagedImport.isResourceIncluded(next, NONE_BY_DEFAULT, 'c')).toBe(false)
   })
 
   it('should preserve resourceOverrides across the batch change', () => {
@@ -157,12 +162,14 @@ describe('StagedImport.setResourcesIncluded', () => {
     expect(next.resourceOverrides.get('a')).toEqual(resource('edited-alpha'))
   })
 
-  it('property: excluding then re-including the same keys restores inclusion', () => {
+  it('property: the listed keys are included as asked, whatever the default', () => {
     fc.assert(
-      fc.property(fc.array(fc.string()), (keys) => {
-        const excluded = StagedImport.setResourcesIncluded(StagedImport.initial(), keys, false)
-        const reincluded = StagedImport.setResourcesIncluded(excluded, keys, true)
-        for (const key of keys) expect(StagedImport.isResourceIncluded(reincluded, key)).toBe(true)
+      fc.property(fc.array(fc.string()), fc.boolean(), (keys, included) => {
+        const excludedByDefault = new Set(keys)
+        const next = StagedImport.setResourcesIncluded(StagedImport.initial(), keys, included)
+        for (const key of keys) {
+          expect(StagedImport.isResourceIncluded(next, excludedByDefault, key)).toBe(included)
+        }
       }),
       { numRuns: numRunsFor({ base: 30 }) }
     )
@@ -197,11 +204,11 @@ describe('StagedImport.edit', () => {
     expect(Option.isNone(StagedImport.editedResource(selection, 'b'))).toBe(true)
   })
 
-  it('should preserve excludedResources across edits', () => {
-    const toggled = StagedImport.toggleResource(StagedImport.initial(), 'b')
+  it("should preserve the reviewer's include/exclude choices across edits", () => {
+    const toggled = StagedImport.toggleResource(StagedImport.initial(), NONE_BY_DEFAULT, 'b')
     const edited = StagedImport.edit(toggled, 'a', resource('edited'))
 
-    expect(edited.excludedResources.has('b')).toBe(true)
+    expect(edited.includedByReviewer).toEqual(new Map([['b', false]]))
   })
 })
 
@@ -271,218 +278,6 @@ describe('StagedImport.editedResource', () => {
     expect(Option.isSome(StagedImport.editedResource(edited, 'a'))).toBe(true)
     expect(Option.getOrThrow(StagedImport.editedResource(edited, 'a'))).toEqual(
       resource('override')
-    )
-  })
-})
-
-// ---------------------------------------------------------------------------
-// StagedImport.chosenResources
-// ---------------------------------------------------------------------------
-
-describe('StagedImport.chosenResources', () => {
-  it('should return all resources when nothing is excluded or edited', () => {
-    const chosen = StagedImport.chosenResources(threeLabeled, StagedImport.initial())
-
-    expect(idsOf(chosen)).toEqual(['alpha', 'beta', 'gamma'])
-  })
-
-  it('should drop exactly the excluded resource', () => {
-    const selection = StagedImport.toggleResource(StagedImport.initial(), 'b')
-    const chosen = StagedImport.chosenResources(threeLabeled, selection)
-
-    expect(idsOf(chosen)).toEqual(['alpha', 'gamma'])
-  })
-
-  it('should drop multiple excluded resources', () => {
-    const selection = StagedImport.toggleResource(
-      StagedImport.toggleResource(StagedImport.initial(), 'a'),
-      'c'
-    )
-    const chosen = StagedImport.chosenResources(threeLabeled, selection)
-
-    expect(idsOf(chosen)).toEqual(['beta'])
-  })
-
-  it('should substitute an edit override in place of the original', () => {
-    const selection = StagedImport.edit(StagedImport.initial(), 'b', resource('BETA'))
-    const chosen = StagedImport.chosenResources(threeLabeled, selection)
-
-    expect(idsOf(chosen)).toEqual(['alpha', 'BETA', 'gamma'])
-  })
-
-  it('should drop an edited resource when it is also excluded', () => {
-    const selection = StagedImport.toggleResource(
-      StagedImport.edit(StagedImport.initial(), 'b', resource('BETA')),
-      'b'
-    )
-    const chosen = StagedImport.chosenResources(threeLabeled, selection)
-
-    expect(idsOf(chosen)).toEqual(['alpha', 'gamma'])
-  })
-
-  it('should preserve the original order', () => {
-    const selection = StagedImport.toggleResource(StagedImport.initial(), 'b')
-    const chosen = StagedImport.chosenResources(threeLabeled, selection)
-
-    // 'a' before 'c' — the order from `labeled`
-    expect(idsOf(chosen)).toEqual(['alpha', 'gamma'])
-  })
-
-  it('should return an empty array when all resources are excluded', () => {
-    let selection = StagedImport.initial()
-    for (const entry of threeLabeled) {
-      selection = StagedImport.toggleResource(selection, entry.key)
-    }
-    const chosen = StagedImport.chosenResources(threeLabeled, selection)
-
-    expect(chosen).toEqual([])
-  })
-
-  it('should return an empty array when labeled is empty', () => {
-    const chosen = StagedImport.chosenResources([], StagedImport.initial())
-
-    expect(chosen).toEqual([])
-  })
-
-  it('should ignore overrides that do not match any labeled key', () => {
-    const selection = StagedImport.edit(StagedImport.initial(), 'nonexistent', resource('X'))
-    const chosen = StagedImport.chosenResources(threeLabeled, selection)
-
-    expect(idsOf(chosen)).toEqual(['alpha', 'beta', 'gamma'])
-  })
-
-  it('should ignore exclusions that do not match any labeled key', () => {
-    const selection = StagedImport.toggleResource(StagedImport.initial(), 'nonexistent')
-    const chosen = StagedImport.chosenResources(threeLabeled, selection)
-
-    expect(idsOf(chosen)).toEqual(['alpha', 'beta', 'gamma'])
-  })
-
-  it('should reflect exactly the last edit per key under any sequence of edits (property)', () => {
-    const keys = ['a', 'b', 'c'] as const
-    const originals = ['alpha', 'beta', 'gamma'] as const
-
-    fc.assert(
-      fc.property(
-        fc.array(fc.tuple(fc.constantFrom(...keys), fc.string()), {
-          minLength: 0,
-          maxLength: 16,
-        }),
-        (edits) => {
-          let selection = StagedImport.initial()
-          const expected: string[] = [...originals]
-          for (const [key, value] of edits) {
-            selection = StagedImport.edit(selection, key, resource(value))
-            const index = keys.indexOf(key)
-            if (index !== -1) expected[index] = value
-          }
-          expect(idsOf(StagedImport.chosenResources(threeLabeled, selection))).toEqual(expected)
-        }
-      ),
-      { numRuns: numRunsFor({ base: 40 }) }
-    )
-  })
-
-  it('should equal the initial set under any sequence of self-cancelling toggles (property)', () => {
-    const keys = ['a', 'b', 'c'] as const
-
-    fc.assert(
-      fc.property(
-        fc.array(fc.constantFrom(...keys), { minLength: 0, maxLength: 8 }),
-        (toggledKeys) => {
-          // Toggle twice per key — the outcome is a no-op.
-          let selection = StagedImport.initial()
-          for (const key of toggledKeys) selection = StagedImport.toggleResource(selection, key)
-          for (const key of toggledKeys) selection = StagedImport.toggleResource(selection, key)
-          expect(idsOf(StagedImport.chosenResources(threeLabeled, selection))).toEqual([
-            'alpha',
-            'beta',
-            'gamma',
-          ])
-        }
-      ),
-      { numRuns: numRunsFor({ base: 20 }) }
-    )
-  })
-})
-
-// ---------------------------------------------------------------------------
-// StagedImport.includedCount
-// ---------------------------------------------------------------------------
-
-describe('StagedImport.includedCount', () => {
-  it('should equal the number of labeled resources when nothing is excluded', () => {
-    expect(StagedImport.includedCount(threeLabeled, StagedImport.initial())).toBe(3)
-  })
-
-  it('should decrease by one per exclusion', () => {
-    const selection = StagedImport.toggleResource(StagedImport.initial(), 'a')
-
-    expect(StagedImport.includedCount(threeLabeled, selection)).toBe(2)
-  })
-
-  it('should be zero when every resource is excluded', () => {
-    let selection = StagedImport.initial()
-    for (const entry of threeLabeled) {
-      selection = StagedImport.toggleResource(selection, entry.key)
-    }
-    expect(StagedImport.includedCount(threeLabeled, selection)).toBe(0)
-  })
-
-  it('should be zero for an empty labeled list', () => {
-    expect(StagedImport.includedCount([], StagedImport.initial())).toBe(0)
-  })
-
-  it('should not be affected by edit overrides (edits change value, not count)', () => {
-    const selection = StagedImport.edit(StagedImport.initial(), 'b', resource('BETA'))
-
-    expect(StagedImport.includedCount(threeLabeled, selection)).toBe(3)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// StagedImport.excludedCount
-// ---------------------------------------------------------------------------
-
-describe('StagedImport.excludedCount', () => {
-  it('should be zero when nothing is excluded', () => {
-    expect(StagedImport.excludedCount(threeLabeled, StagedImport.initial())).toBe(0)
-  })
-
-  it('should count one excluded resource', () => {
-    const selection = StagedImport.toggleResource(StagedImport.initial(), 'b')
-
-    expect(StagedImport.excludedCount(threeLabeled, selection)).toBe(1)
-  })
-
-  it('should equal the labeled length when everything is excluded', () => {
-    let selection = StagedImport.initial()
-    for (const entry of threeLabeled) {
-      selection = StagedImport.toggleResource(selection, entry.key)
-    }
-    expect(StagedImport.excludedCount(threeLabeled, selection)).toBe(3)
-  })
-
-  it('should not count exclusions that do not match any labeled key', () => {
-    const selection = StagedImport.toggleResource(StagedImport.initial(), 'nonexistent')
-
-    expect(StagedImport.excludedCount(threeLabeled, selection)).toBe(0)
-  })
-
-  it('should satisfy includedCount + excludedCount === labeled.length (property)', () => {
-    const keys = ['a', 'b', 'c'] as const
-
-    fc.assert(
-      fc.property(fc.subarray([...keys], { minLength: 0, maxLength: keys.length }), (excluded) => {
-        let selection = StagedImport.initial()
-        for (const key of excluded) {
-          selection = StagedImport.toggleResource(selection, key)
-        }
-        const included = StagedImport.includedCount(threeLabeled, selection)
-        const excludedN = StagedImport.excludedCount(threeLabeled, selection)
-        expect(included + excludedN).toBe(threeLabeled.length)
-      }),
-      { numRuns: numRunsFor({ base: 20 }) }
     )
   })
 })

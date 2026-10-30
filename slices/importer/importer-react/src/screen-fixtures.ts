@@ -70,49 +70,87 @@ const searchsetOf = (...resources: readonly unknown[]): Record<string, unknown> 
  * A HAR the `fhir-r4` importer recognizes: a Patient read and an Observation
  * searchset off one server, built through `web-trace-core`'s own `emitHar` so it
  * is shaped exactly like a real capture. Previews to 1 Patient + 2 Observations.
+ *
+ * @param patient - What the Patient read answers with, beyond its type and id
+ * @param observation - What each Observation carries, beyond its type, id,
+ *   status and code
  */
-const RECOGNIZED_HAR: string = Effect.runSync(
-  Schema.encode(HarFromJson)(
-    emitHar(
-      [
-        traceExchange({
-          requestId: 'req-0',
-          url: 'https://r4.example.org/baseR4/Patient/pat-7?_format=json',
-          headers: [['content-type', 'application/fhir+json']],
-          body: storedJson({ resourceType: 'Patient', id: 'pat-7' }),
-          startedAtMillis: CAPTURE_FLOOR,
-        }),
-        traceExchange({
-          requestId: 'req-1',
-          url: 'https://r4.example.org/baseR4/Observation?subject%3APatient=pat-7&_count=250',
-          headers: [['content-type', 'application/fhir+json']],
-          body: storedJson(
-            searchsetOf(
-              {
-                resourceType: 'Observation',
-                id: 'obs-1',
-                status: 'final',
-                code: { text: 'Weight' },
-              },
-              {
-                resourceType: 'Observation',
-                id: 'obs-2',
-                status: 'final',
-                code: { text: 'Height' },
-              }
-            )
-          ),
-          startedAtMillis: CAPTURE_FLOOR + 1000,
-        }),
-      ],
-      { sessionId: 'test-session' }
+const recognizedHar = (patient: object, observation: object): string =>
+  Effect.runSync(
+    Schema.encode(HarFromJson)(
+      emitHar(
+        [
+          traceExchange({
+            requestId: 'req-0',
+            url: 'https://r4.example.org/baseR4/Patient/pat-7?_format=json',
+            headers: [['content-type', 'application/fhir+json']],
+            body: storedJson({ resourceType: 'Patient', id: 'pat-7', ...patient }),
+            startedAtMillis: CAPTURE_FLOOR,
+          }),
+          traceExchange({
+            requestId: 'req-1',
+            url: 'https://r4.example.org/baseR4/Observation?subject%3APatient=pat-7&_count=250',
+            headers: [['content-type', 'application/fhir+json']],
+            body: storedJson(
+              searchsetOf(
+                {
+                  resourceType: 'Observation',
+                  id: 'obs-1',
+                  status: 'final',
+                  code: { text: 'Weight' },
+                  ...observation,
+                },
+                {
+                  resourceType: 'Observation',
+                  id: 'obs-2',
+                  status: 'final',
+                  code: { text: 'Height' },
+                  ...observation,
+                }
+              )
+            ),
+            startedAtMillis: CAPTURE_FLOOR + 1000,
+          }),
+        ],
+        { sessionId: 'test-session' }
+      )
     )
-  )
-  // `emitHar` writes `request.method: 'UNKNOWN'` (the capture side never
-  // observed a verb); rewrite the wire so the FHIR pool's `verb: ['GET']`
-  // matchers claim these entries, mirroring what a real capture that
-  // observed the method would carry through.
-).replaceAll('"method":"UNKNOWN"', '"method":"GET"')
+    // `emitHar` writes `request.method: 'UNKNOWN'` (the capture side never
+    // observed a verb); rewrite the wire so the FHIR pool's `verb: ['GET']`
+    // matchers claim these entries, mirroring what a real capture that
+    // observed the method would carry through.
+  ).replaceAll('"method":"UNKNOWN"', '"method":"GET"')
+
+/** The recognized HAR with a bare Patient and Observations whose `subject` is that Patient. */
+const RECOGNIZED_HAR: string = recognizedHar({}, { subject: { reference: 'Patient/pat-7' } })
+
+/** The recognized HAR with a bare Patient and Observations that name no subject. */
+const NO_SUBJECT_HAR: string = recognizedHar({}, {})
+
+/**
+ * The recognized HAR with a named, dated Patient — so its demographics derive
+ * an identifier — and Observations whose `subject` is that Patient.
+ */
+const NAMED_PATIENT_HAR: string = recognizedHar(
+  { name: [{ family: 'Banks', given: ['Tyra'] }], birthDate: '1990-01-02' },
+  { subject: { reference: 'Patient/pat-7' } }
+)
+
+/** The recognized HAR with a named, dated Patient and Observations that name no subject. */
+const NAMED_NO_SUBJECT_HAR: string = recognizedHar(
+  { name: [{ family: 'Banks', given: ['Tyra'] }], birthDate: '1990-01-02' },
+  {}
+)
+
+/**
+ * {@link NAMED_PATIENT_HAR} with Observations that carry no `id`, as a FHIR
+ * server may send a searchset's entries: the passthrough kinds adopt each under
+ * an id of its content.
+ */
+const ID_LESS_OBSERVATIONS_HAR: string = recognizedHar(
+  { name: [{ family: 'Banks', given: ['Tyra'] }], birthDate: '1990-01-02' },
+  { id: undefined, subject: { reference: 'Patient/pat-7' } }
+)
 
 /** One source file already on the server: its minted id and the wire it is served as. */
 interface StoredSourceFile {
@@ -148,8 +186,16 @@ const storedSourceFile = async (
     )
   )
   const wire = await Effect.runPromise(Schema.encode(DocumentReference.Schema)(resource))
-  return { id: resource.id ?? '', fileName, wire }
+  return { id: resource.id, fileName, wire }
 }
 
-export { dicomFile, RECOGNIZED_HAR, storedSourceFile }
+export {
+  dicomFile,
+  ID_LESS_OBSERVATIONS_HAR,
+  NAMED_NO_SUBJECT_HAR,
+  NAMED_PATIENT_HAR,
+  NO_SUBJECT_HAR,
+  RECOGNIZED_HAR,
+  storedSourceFile,
+}
 export type { DicomTagMap, StoredSourceFile }

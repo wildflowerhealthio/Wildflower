@@ -1,5 +1,5 @@
-import { adoptUnderRecognizedRoot } from '@wildflowerhealthio/fhir-r4/identity'
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import { adoptUnderRecognizedRoot } from '@wildflowerhealthio/fhir-r4-adoption'
+import type { FhirResource, FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import type { HttpResponseKind } from '@wildflowerhealthio/http-extraction-fundamentals'
 
 import { ObservationListResponseKind } from './response-kinds/observation-list-response-kind.ts'
@@ -16,12 +16,9 @@ import { PatientResponseKind } from './response-kinds/patient-response-kind.ts'
  * by reference. A module-level constant — the combinator takes no source
  * parameter, so the array is stable by identity.
  *
- * The declared element type is the whole `FhirResource` union, which each
- * kind's narrower type satisfies by covariance — so no cast is needed, and
- * `adoptUnderRecognizedRoot` (whose per-kind guard demands the full union) can
- * map over the tuple as-is. `mustHaveQuery` on the Observation-list pattern
- * keeps the two Observation kinds disjoint, so the order is not load-bearing;
- * it only fixes the sequence both surfaces route by.
+ * `mustHaveQuery` on the Observation-list pattern keeps the two Observation
+ * kinds disjoint, so the order is not load-bearing; it only fixes the sequence
+ * both surfaces route by.
  */
 const unadopted: readonly HttpResponseKind.HttpResponseKind<FhirResource>[] = [
   PatientResponseKind,
@@ -29,6 +26,7 @@ const unadopted: readonly HttpResponseKind.HttpResponseKind<FhirResource>[] = [
   ObservationListResponseKind,
 ]
 
-const fhirR4ResponseKinds = unadopted.map(adoptUnderRecognizedRoot)
+const fhirR4ResponseKinds: readonly HttpResponseKind.HttpResponseKind<FhirResourceWithId>[] =
+  unadopted.map(adoptUnderRecognizedRoot)
 
 export { fhirR4ResponseKinds }

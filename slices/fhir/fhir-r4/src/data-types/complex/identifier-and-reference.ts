@@ -1,4 +1,4 @@
-import { Option, pipe, Schema } from 'effect'
+import { Equivalence, Option, pipe, Schema } from 'effect'
 
 import {
   OrNullAsOptional,
@@ -11,6 +11,7 @@ import type * as FhirR4 from 'fhir/r4.d.ts'
 import { registerDatatypeSchema } from '../base/datatype-registry.ts'
 import * as Element from '../base/element.ts'
 import * as FhirString from '../base/fhir-string.ts'
+import { narrowFields } from '../narrow-fields.ts'
 import * as CodeableConcept from './codeable-concept.ts'
 import * as Period from './period.ts'
 
@@ -66,6 +67,23 @@ const IdentifierSchema: Schema.Schema<IdentifierType, FhirR4.Identifier, never> 
 
 registerDatatypeSchema('Identifier', IdentifierSchema)
 registerDatatypeSchema('Reference', ReferenceSchema)
+
+/**
+ * A decoded `Identifier` that names something in particular: one carrying
+ * both a `system` and a non-empty `value`, the value qualified by the
+ * namespace it is drawn from. An identifier missing either names nothing, so
+ * anything that links records by identifier keeps only these.
+ */
+const QualifiedIdentifierSchema = narrowFields(Schema.typeSchema(IdentifierSchema), {
+  system: Schema.instanceOf(URL),
+  value: Schema.NonEmptyString,
+})
+
+type QualifiedIdentifierType = typeof QualifiedIdentifierSchema.Type
+
+/** Whether a decoded `Identifier` is a {@link QualifiedIdentifierSchema}. */
+const isQualifiedIdentifier: (identifier: IdentifierType) => identifier is QualifiedIdentifierType =
+  Schema.is(QualifiedIdentifierSchema)
 
 /** An all-empty `Reference`; a placeholder for required-reference slots. */
 const emptyReference: ReferenceType = {
@@ -123,14 +141,33 @@ const referencedIdOf = (reference: ReferenceType, resourceType: string): Option.
     Option.filter((id) => id.length > 0)
   )
 
+/**
+ * Whether two identifiers name the same thing: the same `system` and the same
+ * `value`, whatever else (`use`, `period`, `assigner`) either carries.
+ *
+ * @remarks
+ * A missing `system` or `value` compares equal to another missing one, as an
+ * equivalence must hold every identifier alike to itself. Two such identifiers
+ * name nothing in common, so a caller linking records by identifier keeps only
+ * those carrying both before comparing.
+ */
+const identifierEquivalence: Equivalence.Equivalence<IdentifierType> = Equivalence.make(
+  (left, right) =>
+    (left.system?.href ?? null) === (right.system?.href ?? null) && left.value === right.value
+)
+
 export {
   ReferenceSchema,
   referenceTo,
   referencedIdOf,
   IdentifierSchema,
+  identifierEquivalence,
+  isQualifiedIdentifier,
+  QualifiedIdentifierSchema,
   emptyReference,
   fragmentIdOf,
   fragmentReferenceTo,
   type ReferenceType,
   type IdentifierType,
+  type QualifiedIdentifierType,
 }

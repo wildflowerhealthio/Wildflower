@@ -17,15 +17,19 @@ rather than a copy, and what it writes is what the response kinds read.
 ## Shape
 
 - `src/response-kinds/customer-response-kind.ts` —
-  `…/api/v1/customers/pcid/<uuid>` → one demographic `Patient` per managed person,
-  plus a linked account `Patient` keyed by `pcid`.
+  `…/api/v1/customers/pcid/<uuid>` → one demographic `Patient` per managed
+  person, the holder included, and nothing for the account itself. When the
+  account's `patients` holds exactly one entry, a person, the account's email
+  and phone join that person's `telecom` (each once); with any other entry
+  beside them (another person, or one that does not decode), they are
+  dropped. The account's own name and address are not read.
 - `src/response-kinds/prescription-response-kind.ts` —
   `…/prescriptions/:uuid/prescription-status` → one `MedicationRequest` + one
   `MedicationDispense` per dispense entry.
 - `src/response-kinds/prescription-history-response-kind.ts` —
   `…/prescription-history?customerId=…` → one `MedicationDispense` per history
-  entry (no Patient, no MedicationRequest), its `subject` the **account**
-  `Patient` (see [Conventional slots](#conventional-slots)).
+  entry (no Patient, no MedicationRequest), its `subject` the **account** by
+  identifier alone (see [Conventional slots](#conventional-slots)).
 - `src/response-kinds/medication-wire.ts` — the `medicationCodeableConcept`
   builder (brand/chemical text + DIN codings) shared by the two dispense-emitting
   entities.
@@ -80,8 +84,8 @@ rather than a copy, and what it writes is what the response kinds read.
 
 Pure like a `-core`: no DOM, no `fs`, no React. Depends on
 `http-extraction-fundamentals` (`HttpResponseKind`, `UrlMatch`, `Specificity`,
-`RecognizedUrlData`), `fhir-r4` (resources + `identity`'s
-`adoptUnderRecognizedRoot`), `effect`, and `kitchen-sink` — nothing else. In
+`RecognizedUrlData`), `fhir-r4` (resources), `fhir-r4-adoption`
+(`adoptUnderRecognizedRoot`), `effect`, and `kitchen-sink` — nothing else. In
 particular it must **never** import anything from `slices/importer` (whose
 `har-importer-core` consumes this package's
 `shoppersDrugMartSource.responseKinds`).
@@ -93,11 +97,20 @@ and `rexall-be-well-source` alike:
 
 - **Subject** — a status-feed `MedicationRequest` or `MedicationDispense` names
   the managed **person** (`Patient/<patientId>`). A history-feed
-  `MedicationDispense` names the **account** (`Patient/<pcid>`, the URL's
-  `customerId`), with the `pcid` as the reference's `identifier` under
-  `ShoppersIdentifierSystem.PcId`: the history payload does not say which
-  managed person a fill was for. Adoption lands that reference on the account
-  `Patient` `CustomerResponseKind` emits, which `link.seealso`s every person.
+  `MedicationDispense` names the **account** by an identifier-only reference,
+  the URL's `customerId` under `ShoppersIdentifierSystem.CustomerId`, with no
+  literal `reference`: the history payload does not say which managed person
+  a fill was for, and no Patient stands for the account. The identifier is
+  there for the importer's identity map to resolve to a person; adoption
+  leaves it as it is.
+- **Prescriber** — a status-feed `MedicationRequest.requester` is
+  `fhir-r4`'s `Practitioner.tryReferenceWireFromName` of `prescriberName`,
+  since the portal knows the prescriber only by that name: a logical
+  reference stating `type` Practitioner, the name identifier (under the
+  shared `Practitioner.NAME_IDENTIFIER_SYSTEM`) and the name as printed in
+  `display`. Every source names such a provider through that one helper (the
+  Rexall prescriber, the DICOM referring physician), so the same name from
+  two sources is one referent. A blank or absent name writes no `requester`.
 - **DIN** — one coding on `medicationCodeableConcept` under `fhir-r4`'s
   canonical `CanadianCodingSystem.Din`
   (`http://hl7.org/fhir/NamingSystem/ca-hc-din`). The portal does not namespace
@@ -132,8 +145,8 @@ and `rexall-be-well-source` alike:
   `status`, `authorizingPrescription` and `location.reference`, with the
   history copy's store name as `location.display`, and its DIN coding when the
   status copy has none. It tells the copies apart by the history copy's
-  account-`pcid` subject identifier, so the result is the same in either
-  arrival order. Only a consumer that holds both copies applies it (the HAR
+  `subject`, which has no literal `reference`, so the result is the same in
+  either arrival order. Only a consumer that holds both copies applies it (the HAR
   import).
 - **`responseKinds` order is not load-bearing, and should stay that way.** The
   three recognizers are disjoint by construction (different path segments:
@@ -155,5 +168,5 @@ and `rexall-be-well-source` alike:
   — the vocabulary this package is written against.
 - [har-importer-core AGENTS.md](../../importer/har-importer-core/AGENTS.md)
   — the archive importer that runs these kinds.
-- [Source Identity Explanation](../../fhir/fhir-r4/docs/Source%20Identity%20Explanation.md)
+- [Source Identity Explanation](../fhir-r4-adoption/docs/Source%20Identity%20Explanation.md)
   — why a resource is re-keyed under a derived local id.

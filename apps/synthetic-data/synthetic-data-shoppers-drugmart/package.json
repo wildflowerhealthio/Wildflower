@@ -33,6 +33,7 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/fhir-r4-adoption": "workspace:*",
     "@wildflowerhealthio/har-importer-core": "workspace:*",
     "@wildflowerhealthio/http-archive": "workspace:*",
     "@wildflowerhealthio/importer-fundamentals": "workspace:*",
@@ -49,6 +50,7 @@
   },
   "peerDependencies": {
     "@wildflowerhealthio/fhir-r4": "workspace:*",
+    "@wildflowerhealthio/fhir-r4-adoption": "workspace:*",
     "@wildflowerhealthio/http-archive": "workspace:*",
     "@wildflowerhealthio/shoppers-drugmart-source": "workspace:*",
     "@wildflowerhealthio/synthetic-data-fundamentals": "workspace:*",

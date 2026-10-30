@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 
 import { useRunAuthed } from '@wildflowerhealthio/fhir-r4-react'
 import {
-  type BatchDecodeResult,
+  type DecodedBatch,
   defaultFormatSettings,
   type FormatKind,
   type FormatSettings,
@@ -15,7 +15,7 @@ import { formatRegistry } from '../registry.ts'
 
 /**
  * Running the read half of the import over a batch of {@link PickedFile}s —
- * `importer-core`'s `readBatch` — and holding the {@link BatchDecodeResult}
+ * `importer-core`'s `readBatch` — and holding the {@link DecodedBatch}
  * for the screen to review, alongside the per-format settings the decodes
  * ran under.
  *
@@ -37,7 +37,7 @@ import { formatRegistry } from '../registry.ts'
  */
 
 /**
- * The lifecycle of one batch read, holding the decode result so the screen
+ * The lifecycle of one batch read, holding the decoded batch so the screen
  * can render one combined review.
  */
 type ImportRunState =
@@ -54,7 +54,7 @@ type ImportRunState =
        * stay on screen while the next one loads.
        */
       readonly batchId: number
-      readonly batch: BatchDecodeResult
+      readonly batch: DecodedBatch
     }
 
 /** Imperative surface the screen drives the read through. */

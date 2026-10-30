@@ -2,10 +2,14 @@ import { HttpClient, HttpClientRequest, HttpClientResponse } from '@effect/platf
 import { Arbitrary, Effect, FastCheck as fc, Layer, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { Patient, type FhirResource } from '../resources/index.ts'
+import {
+  type FhirResource,
+  type FhirResourceWithId,
+  literalReferenceOf,
+  Patient,
+} from '../resources/index.ts'
 import {
   classifyAgainstServer,
-  diffKey,
   resetFieldToServer,
   SERVER_MANAGED_META_FIELDS,
   type DiffStatus,
@@ -31,7 +35,7 @@ describe('classifyAgainstServer', () => {
       [patient],
       perEntry(() => ({ status: '404 Not Found' }))
     )
-    expect(result.classifications.get(diffKey(patient))?.status).toBe<DiffStatus>('new')
+    expect(result.classifications.get(literalReferenceOf(patient))?.status).toBe<DiffStatus>('new')
   })
 
   it('classifies an id as unchanged when the server returns a byte-equal resource (minus server-managed meta)', async () => {
@@ -45,7 +49,7 @@ describe('classifyAgainstServer', () => {
       [patient],
       perEntry(() => ({ status: '200 OK', resource: echoed }))
     )
-    const comparison = result.classifications.get(diffKey(patient))
+    const comparison = result.classifications.get(literalReferenceOf(patient))
     expect(comparison?.status).toBe<DiffStatus>('unchanged')
     // The server copy is carried even when nothing differs, so a later edit
     // to this resource can be diffed against it.
@@ -59,7 +63,9 @@ describe('classifyAgainstServer', () => {
       [patient],
       perEntry(() => ({ status: '200 OK', resource: encodePatient(drifted) }))
     )
-    expect(result.classifications.get(diffKey(patient))?.status).toBe<DiffStatus>('changed')
+    expect(result.classifications.get(literalReferenceOf(patient))?.status).toBe<DiffStatus>(
+      'changed'
+    )
   })
 
   it('carries the leaf-level field diffs (server value) for a changed resource', async () => {
@@ -75,7 +81,7 @@ describe('classifyAgainstServer', () => {
     )
 
     // Assert: the changed status names the gender leaf, showing the server's value.
-    const comparison = result.classifications.get(diffKey(patient))
+    const comparison = result.classifications.get(literalReferenceOf(patient))
     expect(comparison?.status).toBe<DiffStatus>('changed')
     const genderDiff = comparison?.fields.find((field) => formatPath(field.path) === 'gender')
     expect(genderDiff?.server).toEqual(present(serverGender))
@@ -84,7 +90,7 @@ describe('classifyAgainstServer', () => {
   it('classifies as new when the whole submission fails, so writes still attempt', async () => {
     const patient = makePatient('svc-out')
     const result = await runWith([patient], rawResponse(new Response('', { status: 503 })))
-    expect(result.classifications.get(diffKey(patient))?.status).toBe<DiffStatus>('new')
+    expect(result.classifications.get(literalReferenceOf(patient))?.status).toBe<DiffStatus>('new')
   })
 
   it('classifies as changed when the server returns 2xx with no body', async () => {
@@ -93,7 +99,9 @@ describe('classifyAgainstServer', () => {
       [patient],
       perEntry(() => ({ status: '200 OK' }))
     )
-    expect(result.classifications.get(diffKey(patient))?.status).toBe<DiffStatus>('changed')
+    expect(result.classifications.get(literalReferenceOf(patient))?.status).toBe<DiffStatus>(
+      'changed'
+    )
   })
 
   it('classifies as changed when the returned resource is not decodable through the FHIR union', async () => {
@@ -106,16 +114,9 @@ describe('classifyAgainstServer', () => {
         resource: { resourceType: 'Organization', id: 'nope' },
       }))
     )
-    expect(result.classifications.get(diffKey(patient))?.status).toBe<DiffStatus>('changed')
-  })
-
-  it('skips null-id resources and returns nothing for them', async () => {
-    const result = await runWith(
-      [makePatient(null)],
-      perEntry(() => ({ status: '200 OK' }))
+    expect(result.classifications.get(literalReferenceOf(patient))?.status).toBe<DiffStatus>(
+      'changed'
     )
-    expect(result.requests).toEqual([])
-    expect(result.classifications.size).toBe(0)
   })
 
   it('never issues a request for an empty batch', async () => {
@@ -145,12 +146,6 @@ describe('classifyAgainstServer', () => {
 describe('SERVER_MANAGED_META_FIELDS', () => {
   it('lists the three fields the classifier drops before comparing', () => {
     expect(SERVER_MANAGED_META_FIELDS).toEqual(['versionId', 'lastUpdated', 'source'])
-  })
-})
-
-describe('diffKey', () => {
-  it('joins resourceType and logical id with a slash', () => {
-    expect(diffKey(makePatient('p-1'))).toBe('Patient/p-1')
   })
 })
 
@@ -220,16 +215,16 @@ const parseBody = (raw: string): RecordedBundle => {
 
 const genWithId = <A extends FhirResource, I>(
   schema: Schema.Schema<A, I>,
-  id: string | null
-): A => {
+  id: string
+): A & { readonly id: string } => {
   const value = fc.sample(Arbitrary.make(schema), { numRuns: 1, seed: 11 })[0]
   if (value === undefined) throw new Error('unreachable: one sample requested')
   return { ...value, id }
 }
 
-type PatientType = Extract<FhirResource, { readonly resourceType: 'Patient' }>
+type PatientType = Extract<FhirResourceWithId, { readonly resourceType: 'Patient' }>
 
-const makePatient = (id: string | null): PatientType => genWithId(Patient.Schema, id)
+const makePatient = (id: string): PatientType => genWithId(Patient.Schema, id)
 
 const encodePatient = Schema.encodeSync(Patient.Schema)
 
@@ -294,7 +289,7 @@ const recordingHttpClientLayer = (
   )
 
 const runWith = async (
-  resources: ReadonlyArray<FhirResource>,
+  resources: ReadonlyArray<FhirResourceWithId>,
   responder: Responder
 ): Promise<{
   readonly requests: ReadonlyArray<RecordedRequest>

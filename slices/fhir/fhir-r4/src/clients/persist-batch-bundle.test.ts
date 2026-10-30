@@ -8,16 +8,24 @@ import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Arbitrary, Effect, Either, FastCheck as fc, Layer, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { FhirResourceSchema, Patient, Observation, type FhirResource } from '../resources/index.ts'
+import { withMandatoryId } from '../data-types/index.ts'
+import {
+  FhirResourceSchema,
+  Patient,
+  Observation,
+  type FhirResource,
+  type FhirResourceWithId,
+  literalReferenceOf,
+} from '../resources/index.ts'
 import { FhirR4ResourcesHttpApiClient } from './fhir-r4-resources-http-api-client.ts'
 import {
   BatchEntriesRejected,
   type BatchEntryOutcome,
-  entryUrl,
   groupByStatus,
   NO_RESPONSE_STATUS,
   persistBatchBundle,
   persistBatchBundleOrFail,
+  persistTransactionBundle,
 } from './persist-batch-bundle.ts'
 
 /**
@@ -26,12 +34,14 @@ import {
  *
  * - **Wire shape**: the client posts a `Bundle{ type: 'batch' }` at `/` with
  *   one PUT entry per resource, addressed by `Type/id`.
- * - **Per-entry accounting**: each submitted resource gets a
- *   {@link BatchEntryOutcome} — its echoed status, whether that status
- *   succeeded, and any OperationOutcome diagnostics. A whole-bundle failure
- *   (5xx or transport) attributes every resource to that one cause under the
- *   no-response sentinel; a null-id resource is skipped and never touches the
- *   wire.
+ * - **Per-resource accounting**: each resource handed in gets a
+ *   {@link BatchEntryOutcome} at its position — its echoed status, whether
+ *   that status succeeded, and any OperationOutcome diagnostics. An error
+ *   answer to the whole bundle attributes every resource to that answer's
+ *   status; a round trip with no status to report (transport, an encode
+ *   failure, an unreadable `2xx`), to the no-response sentinel. Two resources
+ *   under one `Type/id` are one entry, the last, whose outcome both positions
+ *   get.
  */
 describe('persistBatchBundle', () => {
   it('posts one Bundle{type:batch} to / with one PUT entry per resource', async () => {
@@ -53,7 +63,7 @@ describe('persistBatchBundle', () => {
     // A decoded Observation holds every unset `effective[x]` as `null`; posted
     // as is, HFS reads `Observation.effective` as the null `effectiveDateTime`
     // and indexes no `date` for the period.
-    const observation = Schema.decodeUnknownSync(Observation.Schema)({
+    const observation = Schema.decodeUnknownSync(withMandatoryId(Observation.Schema))({
       resourceType: 'Observation',
       id: 'hr-1',
       status: 'final',
@@ -118,20 +128,96 @@ describe('persistBatchBundle', () => {
     ])
   })
 
-  it('attributes every entry to the sentinel status when the whole submission fails', async () => {
+  it('attributes every entry to a 503 when the server is unavailable', async () => {
     const captured = await runWith(
       [makePatient('a'), makePatient('b')],
       rawResponse(new Response('', { status: 503 }))
     )
-    expect(captured.outcomes.map((outcome) => outcome.target.id)).toEqual(['a', 'b'])
+    expect(captured.outcomes).toEqual<BatchEntryOutcome[]>(
+      ['a', 'b'].map((id) => ({
+        target: { label: 'Patient', id },
+        status: '503 Service Unavailable',
+        ok: false,
+        issues: [{ severity: 'error', code: 'exception', text: '' }],
+      }))
+    )
+  })
+
+  it('attributes every entry to an undeclared status, with the body as the issue', async () => {
+    const captured = await runWith(
+      [makePatient('a'), makePatient('b')],
+      rawResponse(
+        new Response('upstream connect error', {
+          status: 502,
+          headers: { 'content-type': 'text/plain' },
+        })
+      )
+    )
+    expect(captured.outcomes).toEqual<BatchEntryOutcome[]>(
+      ['a', 'b'].map((id) => ({
+        target: { label: 'Patient', id },
+        status: '502 Bad Gateway',
+        ok: false,
+        issues: [{ severity: 'error', code: 'exception', text: 'upstream connect error' }],
+      }))
+    )
+  })
+
+  it('attributes every entry to the sentinel status when a 2xx body is not a response bundle', async () => {
+    const captured = await runWith(
+      [makePatient('a'), makePatient('b')],
+      rawResponse(
+        new Response(JSON.stringify({ resourceType: 'Patient' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      )
+    )
+    expect(captured.outcomes.map((outcome) => [outcome.target.id, outcome.status])).toEqual([
+      ['a', NO_RESPONSE_STATUS],
+      ['b', NO_RESPONSE_STATUS],
+    ])
     expect(captured.outcomes.every((outcome) => !outcome.ok)).toBe(true)
-    expect(captured.outcomes[0]?.status).toBe(NO_RESPONSE_STATUS)
-    expect(captured.outcomes[0]?.issues[0]?.severity).toBe('error')
+    expect(captured.outcomes[0]?.issues[0]?.code).toBe('exception')
+  })
+
+  it('attributes every entry to the sentinel status, not a success, for an undeclared 2xx', async () => {
+    // The server took the bundle, but which entries it wrote is unknown: its
+    // own `201` would mark every entry written.
+    const captured = await runWith(
+      [makePatient('a'), makePatient('b')],
+      rawResponse(
+        new Response(JSON.stringify({ resourceType: 'Bundle', type: 'batch-response' }), {
+          status: 201,
+          headers: { 'content-type': 'application/json' },
+        })
+      )
+    )
+    expect(captured.outcomes.map((outcome) => [outcome.target.id, outcome.status])).toEqual([
+      ['a', NO_RESPONSE_STATUS],
+      ['b', NO_RESPONSE_STATUS],
+    ])
+    expect(captured.outcomes.every((outcome) => !outcome.ok)).toBe(true)
+  })
+
+  it('attributes every entry to the sentinel status when the request gets no answer', async () => {
+    const outcomes = await Effect.runPromise(
+      persistBatchBundle([makePatient('a'), makePatient('b')]).pipe(
+        Effect.provide(
+          FhirR4ResourcesHttpApiClient.layer.pipe(Layer.provide(failingTransportLayer))
+        )
+      )
+    )
+    expect(outcomes.map((outcome) => [outcome.target.id, outcome.status])).toEqual([
+      ['a', NO_RESPONSE_STATUS],
+      ['b', NO_RESPONSE_STATUS],
+    ])
+    expect(outcomes[0]?.issues[0]?.severity).toBe('error')
   })
 
   it('fails every entry without touching the wire when a resource holds a blank string', async () => {
     // FHIR forbids a blank `string`, so encode refuses one rather than posting it.
-    const observation = Schema.decodeUnknownSync(Observation.Schema)({
+    const observation = Schema.decodeUnknownSync(withMandatoryId(Observation.Schema))({
       resourceType: 'Observation',
       id: 'blank-1',
       status: 'final',
@@ -152,16 +238,144 @@ describe('persistBatchBundle', () => {
     expect(captured.outcomes[1]?.issues[0]?.severity).toBe('error')
   })
 
-  it('skips a null-id resource without touching the wire', async () => {
-    const captured = await runWith([makePatient(null)], allOk)
-    expect(captured.requests).toEqual([])
-    expect(captured.outcomes).toEqual([])
-  })
-
   it('never issues a request for an empty batch', async () => {
     const captured = await runWith([], allOk)
     expect(captured.requests).toEqual([])
     expect(captured.outcomes).toEqual([])
+  })
+})
+
+/**
+ * Covers the transaction form of the write: the same submission typed
+ * `transaction`, so the server lands every entry or none, and a refused
+ * submission (the server answers the whole bundle with an error status and an
+ * OperationOutcome rather than a per-entry response) gives every entry that
+ * status and the server's issues. Two resources under one `Type/id` go out as
+ * one entry, which a transaction requires.
+ */
+describe('persistTransactionBundle', () => {
+  it('posts one Bundle{type:transaction} to / with one PUT entry per resource', async () => {
+    const captured = await runWith(
+      [makePatient('patient-1'), makeObservation('obs-1')],
+      allOk,
+      persistTransactionBundle
+    )
+
+    expect(captured.requests).toHaveLength(1)
+    const [request] = captured.requests
+    expect(request?.method).toBe('POST')
+    expect(request?.url).toBe(`${TEST_ORIGIN}/`)
+    expect(request?.body.type).toBe('transaction')
+    expect(request?.body.entry?.map((entry) => entry.request?.url)).toEqual([
+      'Patient/patient-1',
+      'Observation/obs-1',
+    ])
+    expect(captured.outcomes.every((outcome) => outcome.ok)).toBe(true)
+  })
+
+  it('submits one entry per Type/id, the last occurrence, and gives each position its outcome', async () => {
+    // Two overlapping exports of one record: a transaction naming it twice is
+    // refused whole (FHIR R4 § 3.2.6), so it goes out once.
+    const observationWithStatus = (status: string): FhirResourceWithId =>
+      Schema.decodeUnknownSync(withMandatoryId(Observation.Schema))({
+        resourceType: 'Observation',
+        id: 'o-1',
+        status,
+        code: { text: 'Heart rate' },
+      })
+    const captured = await runWith(
+      [observationWithStatus('preliminary'), makePatient('p-1'), observationWithStatus('final')],
+      perEntry((_body, index) => ({ status: index === 0 ? '201 Created' : '200 OK' })),
+      persistTransactionBundle
+    )
+
+    const entries = captured.requests[0]?.body.entry ?? []
+    expect(entries.map((entry) => entry.request?.url)).toEqual(['Observation/o-1', 'Patient/p-1'])
+    expect(entries[0]?.resource).toMatchObject({ status: 'final' })
+    expect(captured.outcomes.map((outcome) => [outcome.target.id, outcome.status])).toEqual([
+      ['o-1', '201 Created'],
+      ['p-1', '200 OK'],
+      ['o-1', '201 Created'],
+    ])
+  })
+
+  it("gives every entry the refusal's status and the server's issues when it refuses the transaction", async () => {
+    // HFS answers a transaction with a refused entry as a 400 and one
+    // OperationOutcome for the bundle (fhir-r4-rust's batch_bundle_at_base).
+    const refusal = new Response(
+      JSON.stringify({
+        resourceType: 'OperationOutcome',
+        issue: [
+          {
+            severity: 'error',
+            code: 'processing',
+            diagnostics: 'Transaction failed at entry 1: resource type mismatch',
+          },
+        ],
+      }),
+      { status: 400, headers: { 'content-type': 'application/fhir+json' } }
+    )
+    const captured = await runWith(
+      [makePatient('a'), makeObservation('b')],
+      rawResponse(refusal),
+      persistTransactionBundle
+    )
+
+    expect(captured.outcomes.map((outcome) => [outcome.target.id, outcome.status])).toEqual([
+      ['a', '400 Bad Request'],
+      ['b', '400 Bad Request'],
+    ])
+    expect(captured.outcomes.every((outcome) => !outcome.ok)).toBe(true)
+    expect(captured.outcomes[1]?.issues).toEqual([
+      {
+        severity: 'error',
+        code: 'processing',
+        text: 'Transaction failed at entry 1: resource type mismatch',
+      },
+    ])
+  })
+
+  it('gives every entry the refusal status with an empty issue when a refusal has no body', async () => {
+    const captured = await runWith(
+      [makePatient('a'), makeObservation('b')],
+      rawResponse(new Response('', { status: 400 })),
+      persistTransactionBundle
+    )
+    expect(captured.outcomes).toEqual<BatchEntryOutcome[]>([
+      {
+        target: { label: 'Patient', id: 'a' },
+        status: '400 Bad Request',
+        ok: false,
+        issues: [{ severity: 'error', code: 'exception', text: '' }],
+      },
+      {
+        target: { label: 'Observation', id: 'b' },
+        status: '400 Bad Request',
+        ok: false,
+        issues: [{ severity: 'error', code: 'exception', text: '' }],
+      },
+    ])
+  })
+
+  it('gives every entry the refusal status and the body as the issue when a refusal is plain text', async () => {
+    const captured = await runWith(
+      [makePatient('a'), makeObservation('b')],
+      rawResponse(
+        new Response('Bundle entry 1 is malformed', {
+          status: 400,
+          headers: { 'content-type': 'text/plain' },
+        })
+      ),
+      persistTransactionBundle
+    )
+    expect(captured.outcomes.map((outcome) => [outcome.target.id, outcome.status])).toEqual([
+      ['a', '400 Bad Request'],
+      ['b', '400 Bad Request'],
+    ])
+    expect(captured.outcomes.every((outcome) => !outcome.ok)).toBe(true)
+    expect(captured.outcomes[1]?.issues).toEqual([
+      { severity: 'error', code: 'exception', text: 'Bundle entry 1 is malformed' },
+    ])
   })
 })
 
@@ -315,10 +529,10 @@ describe('groupByStatus', () => {
 const asMultiset = (outcomes: readonly BatchEntryOutcome[]): readonly string[] =>
   outcomes.map((outcome) => JSON.stringify(outcome)).toSorted()
 
-describe('entryUrl', () => {
+describe('literalReferenceOf', () => {
   it('is the resource type and logical id, joined by a slash', () => {
-    expect(entryUrl(makePatient('p-1'))).toBe('Patient/p-1')
-    expect(entryUrl(makeObservation('o-2'))).toBe('Observation/o-2')
+    expect(literalReferenceOf(makePatient('p-1'))).toBe('Patient/p-1')
+    expect(literalReferenceOf(makeObservation('o-2'))).toBe('Observation/o-2')
   })
 })
 
@@ -352,15 +566,15 @@ const parseBody = (raw: string): RecordedBundle => {
 
 const genWithId = <A extends FhirResource, I>(
   schema: Schema.Schema<A, I>,
-  id: string | null
-): A => {
+  id: string
+): A & { readonly id: string } => {
   const value = fc.sample(Arbitrary.make(schema), { numRuns: 1, seed: 7 })[0]
   if (value === undefined) throw new Error('unreachable: one sample requested')
   return { ...value, id }
 }
 
-const makePatient = (id: string | null): FhirResource => genWithId(Patient.Schema, id)
-const makeObservation = (id: string | null): FhirResource => genWithId(Observation.Schema, id)
+const makePatient = (id: string): FhirResourceWithId => genWithId(Patient.Schema, id)
+const makeObservation = (id: string): FhirResourceWithId => genWithId(Observation.Schema, id)
 
 /** One response entry the stub echoes: a status, and an optional OperationOutcome. */
 interface EntryOverride {
@@ -428,7 +642,7 @@ const failingTransportLayer: Layer.Layer<HttpClient.HttpClient> = Layer.succeed(
 
 const runOrFailWith = (
   httpClientLayer: Layer.Layer<HttpClient.HttpClient>,
-  resources: ReadonlyArray<FhirResource>
+  resources: ReadonlyArray<FhirResourceWithId>
 ): Promise<Either.Either<ReadonlyArray<BatchEntryOutcome>, BatchEntriesRejected>> =>
   Effect.runPromise(
     persistBatchBundleOrFail(resources).pipe(
@@ -438,8 +652,9 @@ const runOrFailWith = (
   )
 
 const runWith = async (
-  resources: ReadonlyArray<FhirResource>,
-  responder: Responder
+  resources: ReadonlyArray<FhirResourceWithId>,
+  responder: Responder,
+  persist: typeof persistBatchBundle = persistBatchBundle
 ): Promise<{
   readonly requests: ReadonlyArray<RecordedRequest>
   readonly outcomes: ReadonlyArray<BatchEntryOutcome>
@@ -448,8 +663,6 @@ const runWith = async (
   const clientLayer = FhirR4ResourcesHttpApiClient.layer.pipe(
     Layer.provide(recordingHttpClientLayer(records, responder))
   )
-  const outcomes = await Effect.runPromise(
-    persistBatchBundle(resources).pipe(Effect.provide(clientLayer))
-  )
+  const outcomes = await Effect.runPromise(persist(resources).pipe(Effect.provide(clientLayer)))
   return { requests: records, outcomes }
 }

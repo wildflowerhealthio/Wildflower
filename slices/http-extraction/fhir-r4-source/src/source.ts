@@ -1,4 +1,4 @@
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import { SourceDescriptor } from '@wildflowerhealthio/http-extraction-fundamentals'
 
 import { fhirR4ResponseKinds } from './response-kinds.ts'
@@ -12,7 +12,7 @@ import { fhirR4ResponseKinds } from './response-kinds.ts'
  * flattens it. See `response-kinds.ts` for the tuple's adoption and ordering
  * rationale.
  */
-const fhirR4Source: SourceDescriptor.SourceDescriptor<FhirResource> = SourceDescriptor.make({
+const fhirR4Source: SourceDescriptor.SourceDescriptor<FhirResourceWithId> = SourceDescriptor.make({
   name: 'fhir-r4',
   display: {
     title: 'FHIR R4 server',

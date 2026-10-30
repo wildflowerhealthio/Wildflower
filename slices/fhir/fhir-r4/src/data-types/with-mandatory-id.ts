@@ -25,3 +25,12 @@ export const withMandatoryId = <
         .ast
     )
   )
+
+/**
+ * `TResource` with its `id` known to be set: what a {@link withMandatoryId}
+ * schema decodes to, distributed over a union so each variant keeps its own
+ * `resourceType` — a resource stored on, or bound for, a FHIR store, which
+ * addresses it by `Type/id`.
+ */
+export type WithMandatoryId<TResource extends { readonly id: string | null | undefined }> =
+  TResource extends unknown ? TResource & { readonly id: string } : never

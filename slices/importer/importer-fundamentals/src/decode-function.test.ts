@@ -1,8 +1,7 @@
-import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
+import { IdentifierAndReference, withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
-  type DocumentReference,
   DocumentReferenceContext,
-  type FhirResource,
+  type FhirResourceWithId,
   Patient,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
@@ -22,8 +21,8 @@ import * as PickedFile from './picked-file.ts'
 
 const SYSTEM = 'https://example.test/fhir/CodeSystem/source-file'
 
-const fakeResource = (id: string): FhirResource =>
-  Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
+const fakeResource = (id: string): FhirResourceWithId =>
+  Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id })
 
 /** A pick as `readBatch` stamps it: its slot in the batch, then its name. */
 const pickedFile = (index: number, fileName: string, bytes: Uint8Array): PickedFile.Type => ({
@@ -101,7 +100,7 @@ const asBatch = (files: readonly PickedFile.Type[]): readonly PickedFile.Type[] 
 const mintedSourceFile = async (
   batchDecode: DecodeFunction.Type<null, typeof testFormat>,
   file: PickedFile.Type
-): Promise<DocumentReference.Type> => {
+): Promise<PickedFile.SourceFile> => {
   const result = await Effect.runPromise(batchDecode([file], null))
   const resource = result.decoded.sections[0]?.resources[0]?.resource
   if (resource?.resourceType !== 'DocumentReference')
@@ -111,7 +110,7 @@ const mintedSourceFile = async (
 
 const readBack = (
   format: PickedFile.FormatValue,
-  resource: DocumentReference.Type
+  resource: PickedFile.SourceFile
 ): Promise<PickedFile.Type> =>
   Effect.runPromise(
     Schema.decode(PickedFile.FromDocumentReference)(resource).pipe(
@@ -197,7 +196,7 @@ const linkingDecode = DecodeFunction.make({
   decodeFileSet: (members) => decodeBytes(members[0]),
   // The decode's own resources name the links, so a format never parses its
   // file twice to derive one.
-  linkSourceFile: (minted, decoded): DocumentReference.Type => {
+  linkSourceFile: (minted, decoded): PickedFile.SourceFile => {
     const first = DecodedFile.resources(decoded)[0]
     if (first === undefined) return minted
     const reference = referenceValue(`Patient/${first.resource.id}`)

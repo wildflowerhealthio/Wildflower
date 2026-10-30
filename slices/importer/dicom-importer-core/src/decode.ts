@@ -6,13 +6,9 @@
  * @packageDocumentation
  */
 import { DicomHeader } from '@wildflowerhealthio/dicom'
+import { adoptResource } from '@wildflowerhealthio/fhir-r4-adoption'
 import { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
-import { adoptResource } from '@wildflowerhealthio/fhir-r4/identity'
-import {
-  type DocumentReference,
-  DocumentReferenceContext,
-  type FhirResource,
-} from '@wildflowerhealthio/fhir-r4/resources'
+import { DocumentReferenceContext, type FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   type DecodeFunction,
   DecodedFile,
@@ -137,10 +133,7 @@ const referenceTo = (
   Arr.findFirst(
     DecodedFile.resources(decoded),
     (entry) => entry.resource.resourceType === resourceType
-  ).pipe(
-    Option.flatMap((entry) => Option.fromNullable(entry.resource.id)),
-    Option.map((id) => `${resourceType}/${id}`)
-  )
+  ).pipe(Option.map((entry) => `${resourceType}/${entry.resource.id}`))
 
 /** A `Reference` naming one resource, built through the resource schema's own value. */
 const referenceValue = (reference: string): typeof IdentifierAndReference.ReferenceSchema.Type => ({
@@ -172,9 +165,9 @@ const emptyContext = Schema.decodeSync(DocumentReferenceContext.Schema)({})
  * are both read back off this result.
  */
 const linkToPatientAndStudy = (
-  minted: DocumentReference.Type,
+  minted: PickedFile.SourceFile,
   decoded: DecodedFile.DecodedFile
-): DocumentReference.Type => {
+): PickedFile.SourceFile => {
   const subject = referenceTo(decoded, 'Patient')
   const study = referenceTo(decoded, 'ImagingStudy')
   return {
@@ -232,7 +225,7 @@ const decodeStudy = (
       Effect.map(headerOf(member), (header) => ({
         fileName: member.fileName,
         header,
-        sourceFileId: member.sourceFile.id ?? undefined,
+        sourceFileId: member.sourceFile.id,
       }))
     )
     const ordered = orderedInstances(files)

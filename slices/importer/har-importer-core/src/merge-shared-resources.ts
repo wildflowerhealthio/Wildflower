@@ -1,6 +1,6 @@
 import { Option } from 'effect'
 
-import type { FhirResource } from '@wildflowerhealthio/fhir-r4/resources'
+import type { FhirResourceWithId } from '@wildflowerhealthio/fhir-r4/resources'
 import type { SourceDescriptor } from '@wildflowerhealthio/http-extraction-fundamentals'
 
 import type { PreviewedResource, PreviewedResponse } from './review.ts'
@@ -18,23 +18,21 @@ import type { PreviewedResource, PreviewedResponse } from './review.ts'
  * The source is part of it so one source's merge never sees another's
  * resource.
  */
-const identityOf = (sourceName: string, resource: FhirResource): Option.Option<string> =>
-  resource.id === null
-    ? Option.none()
-    : Option.some(`${sourceName} ${resource.resourceType}/${resource.id}`)
+const identityOf = (sourceName: string, resource: FhirResourceWithId): string =>
+  `${sourceName} ${resource.resourceType}/${resource.id}`
 
 /** A source that gives a `mergeResources`. */
-type MergingSource = SourceDescriptor.SourceDescriptor<FhirResource> &
-  Required<Pick<SourceDescriptor.SourceDescriptor<FhirResource>, 'mergeResources'>>
+type MergingSource = SourceDescriptor.SourceDescriptor<FhirResourceWithId> &
+  Required<Pick<SourceDescriptor.SourceDescriptor<FhirResourceWithId>, 'mergeResources'>>
 
 const givesMerge = (
-  source: SourceDescriptor.SourceDescriptor<FhirResource>
+  source: SourceDescriptor.SourceDescriptor<FhirResourceWithId>
 ): source is MergingSource => source.mergeResources !== undefined
 
 /** One identity's resources merged so far, and the key of the first to arrive. */
 interface MergedIdentity {
   readonly firstKey: string
-  readonly resource: FhirResource
+  readonly resource: FhirResourceWithId
 }
 
 /**
@@ -49,16 +47,16 @@ interface MergedIdentity {
  *   later copies dropped. A source without a merge keeps every copy.
  */
 const mergeSharedResources = <K>(
-  sources: readonly SourceDescriptor.SourceDescriptor<FhirResource>[],
-  previews: readonly PreviewedResponse<K, FhirResource>[]
-): readonly PreviewedResponse<K, FhirResource>[] => {
+  sources: readonly SourceDescriptor.SourceDescriptor<FhirResourceWithId>[],
+  previews: readonly PreviewedResponse<K, FhirResourceWithId>[]
+): readonly PreviewedResponse<K, FhirResourceWithId>[] => {
   const mergingSourceByKindName = new Map(
     sources
       .filter(givesMerge)
       .flatMap((source) => source.responseKinds.map((kind) => [kind.name, source] as const))
   )
   const mergingSourceOf = (
-    preview: PreviewedResponse<K, FhirResource>
+    preview: PreviewedResponse<K, FhirResourceWithId>
   ): Option.Option<MergingSource> =>
     Option.flatMap(preview.pickKindName, (kindName) =>
       Option.fromNullable(mergingSourceByKindName.get(kindName))
@@ -72,10 +70,9 @@ const mergeSharedResources = <K>(
     const { name, mergeResources } = source.value
     for (const { key, resource } of preview.outcome.resources) {
       const identity = identityOf(name, resource)
-      if (Option.isNone(identity)) continue
-      const earlier = mergedByIdentity.get(identity.value)
+      const earlier = mergedByIdentity.get(identity)
       mergedByIdentity.set(
-        identity.value,
+        identity,
         earlier === undefined
           ? { firstKey: key, resource }
           : { firstKey: earlier.firstKey, resource: mergeResources(earlier.resource, resource) }
@@ -86,17 +83,13 @@ const mergeSharedResources = <K>(
   /** One resource's place after the merge: the merged copy, or nothing for a later copy. */
   const heldCopyOf =
     (sourceName: string) =>
-    (previewed: PreviewedResource<FhirResource>): readonly PreviewedResource<FhirResource>[] =>
-      Option.match(identityOf(sourceName, previewed.resource), {
-        onNone: () => [previewed],
-        onSome: (identity) => {
-          const merged = mergedByIdentity.get(identity)
-          if (merged === undefined) return [previewed]
-          return merged.firstKey === previewed.key
-            ? [{ ...previewed, resource: merged.resource }]
-            : []
-        },
-      })
+    (
+      previewed: PreviewedResource<FhirResourceWithId>
+    ): readonly PreviewedResource<FhirResourceWithId>[] => {
+      const merged = mergedByIdentity.get(identityOf(sourceName, previewed.resource))
+      if (merged === undefined) return [previewed]
+      return merged.firstKey === previewed.key ? [{ ...previewed, resource: merged.resource }] : []
+    }
 
   return previews.map((preview) => {
     if (preview.outcome._tag !== 'resources') return preview
