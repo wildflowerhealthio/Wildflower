@@ -59,4 +59,18 @@ describe('Checkbox', () => {
     // Assert
     expect(getCheckbox('Read-only').disabled).toBe(true)
   })
+
+  it('paints the box partly checked while indeterminate, and clears it after', () => {
+    // Arrange
+    const { rerender } = render(
+      <Checkbox checked={false} indeterminate={true} onChange={vi.fn()} label="All fields" />
+    )
+    const partly = getCheckbox('All fields').indeterminate
+
+    // Act
+    rerender(<Checkbox checked={true} onChange={vi.fn()} label="All fields" />)
+
+    // Assert
+    expect([partly, getCheckbox('All fields').indeterminate]).toEqual([true, false])
+  })
 })

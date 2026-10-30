@@ -225,6 +225,24 @@ describe('colors-custom.css span lane tokens', () => {
   })
 })
 
+describe('colors-custom.css success tint', () => {
+  it("should mix the tint off each palette's own success colour and surface", () => {
+    for (const selector of [LIGHT_SELECTOR, DARK_SELECTOR]) {
+      // Arrange
+      const palette = customPropertiesOf(selector)
+
+      // Act
+      const tint = palette.get('--color-success-tint') ?? ''
+
+      // Assert — defined in each mode's own rule, as a wash over the card
+      // surface rather than a second literal that could drift from the status.
+      expect(tint).toMatch(
+        /^color-mix\(in oklab, var\(--color-success\) \d+%, var\(--color-background\)\)$/
+      )
+    }
+  })
+})
+
 // Helpers
 
 /** Every series token name, both the marks and their band companions. */

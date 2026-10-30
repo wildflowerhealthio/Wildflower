@@ -128,6 +128,15 @@ node <dataviz-skill>/scripts/validate_palette.js \
 hex in each mode, distinct within a mode and from the series slots, and never
 a status value.
 
+## Success tint
+
+`--color-success-tint` is a faint wash of `--color-success` over the card
+surface (`--color-background`), for a surface that is about to add something:
+a picked `RadioCard`'s tray while it takes fields. It is a backdrop under
+ordinary text, quieter than `--color-success-background` (the badge fill), and
+mixed rather than a literal so it follows the status colour and the surface in
+each mode.
+
 ## References
 
 - [global AGENTS.md](../AGENTS.md) — the project-agnostic rule these packages live by.

@@ -193,6 +193,11 @@
   --color-success-foreground: #005f2f; /* badge text */
   --color-success-border: #6bc891;
 
+  /* A faint success wash behind a surface that is about to gain something
+   * (an option card's tray while it takes fields) — quieter than the badge
+   * fill, so text on it keeps the surface's own contrast. */
+  --color-success-tint: color-mix(in oklab, var(--color-success) 10%, var(--color-background));
+
   /*
    * Warning tone (amber) — a desaturated gold kept clear of the navy accent.
    * The still-loading `PartialBanner` and the yellow `StatusBadge` share it;
@@ -344,6 +349,7 @@
   --color-success-background: #0e3721;
   --color-success-foreground: #70d79a; /* badge text */
   --color-success-border: #1f5436;
+  --color-success-tint: color-mix(in oklab, var(--color-success) 14%, var(--color-background));
 
   --color-warning: #d99e1a; /* dot / strong */
   --color-warning-background: #33290e;

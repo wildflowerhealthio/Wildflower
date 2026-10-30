@@ -1,0 +1,55 @@
+/*
+ * A parent checkbox over an indented checkbox per field. Each field reads as
+ * `name from → to`: the name in mono, the value it takes in bold, success-
+ * toned when it only fills a gap; a field left untaken fades back.
+ */
+
+.field-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Both set their own tracking over the Checkbox label's wide body tracking. */
+.field-checklist__label {
+  font-size: var(--font-size-3);
+  letter-spacing: var(--letter-spacing-3);
+  font-weight: var(--font-weight-2);
+  line-height: var(--line-height-4);
+}
+
+.field-checklist__field {
+  padding-inline-start: var(--space-9);
+}
+
+.field-checklist__field:has(input:disabled) {
+  cursor: not-allowed;
+}
+
+.field-checklist__change {
+  font-size: var(--font-size-2);
+  letter-spacing: var(--letter-spacing-3);
+  line-height: var(--line-height-4);
+  color: var(--color-neutral-2);
+  overflow-wrap: anywhere;
+}
+
+.field-checklist__change--left {
+  opacity: 0.55;
+}
+
+.field-checklist__name {
+  font-family: var(--font-mono);
+}
+
+.field-checklist__to {
+  font-weight: var(--font-weight-3);
+}
+
+.field-checklist__to--fills-gap {
+  color: var(--color-success-foreground);
+}
+
+.field-checklist__reason {
+  color: var(--color-neutral-5);
+}

@@ -3,6 +3,12 @@ import type { ChangeEvent, JSX, ReactNode } from 'react'
 
 type CheckboxBase = {
   readonly checked: boolean
+  /**
+   * Paint the box as partly checked (a dash) — a parent over some, not all,
+   * of its children. It is a display state only: a click still reports the
+   * next `checked`.
+   */
+  readonly indeterminate?: boolean
   readonly label: ReactNode
   readonly className?: string
 }
@@ -14,10 +20,15 @@ type CheckboxProps = CheckboxBase &
   )
 
 const Checkbox = (props: CheckboxProps): JSX.Element => {
-  const { checked, label, disabled, className } = props
+  const { checked, indeterminate = false, label, disabled, className } = props
   return (
     <label className={cn('checkbox-row', className)}>
       <input
+        // `indeterminate` is a DOM property with no attribute, so React can
+        // only set it through the element.
+        ref={(input) => {
+          if (input !== null) input.indeterminate = indeterminate
+        }}
         type="checkbox"
         className="checkbox-2"
         checked={checked}
