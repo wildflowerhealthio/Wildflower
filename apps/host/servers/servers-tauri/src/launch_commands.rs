@@ -785,9 +785,10 @@ struct OwnerSignIn<'a> {
 /// `launch_browser`, beside the views showing as `mode` says, open in
 /// `launch_presence` from before the open until the browser reports the view
 /// closed, or the open fails, and kept alive there once the browser reports
-/// that. Where the base hears closes, the view's code counts among the
-/// server's [`LaunchViewSignIns`] meanwhile, and is withdrawn at the close or
-/// the failed open.
+/// that. The view's code counts among the server's [`LaunchViewSignIns`]
+/// meanwhile, and is withdrawn at the close or the failed open. A desktop
+/// hears no close, so its view's code counts until the app exits, and the
+/// server's runs keep its session until then.
 async fn open_launch_view(
     launch_browser: &impl LaunchBrowser,
     launch_presence: impl LaunchPresence,
@@ -805,11 +806,9 @@ async fn open_launch_view(
     // Before the open, so a close reported as the view opens finds it, and
     // a background session can start while the app is still in front.
     launch_presence.view_opened(&view);
-    if launch_browser.view_closes() != ViewCloses::Unheard {
-        launch_presence
-            .launch_view_sign_ins()
-            .view_opened(&domain, &view, sign_in_code.clone());
-    }
+    launch_presence
+        .launch_view_sign_ins()
+        .view_opened(&domain, &view, sign_in_code.clone());
     let view_events: LaunchViewEvents = {
         let launch_presence = launch_presence.clone();
         let view = view.clone();
@@ -1637,16 +1636,18 @@ mod tests {
         until_signed_out(&authorization_server, &first).await;
     }
 
-    /// A desktop hears no close, so its views count no sign-in: the server's
-    /// start ends their sessions.
+    /// A desktop hears no close, so each of its views' sign-ins counts until
+    /// the app exits, and a run's start keeps their sessions.
     #[tokio::test(flavor = "multi_thread")]
-    async fn a_desktop_s_views_count_no_sign_in() {
+    async fn a_desktop_s_views_count_their_sign_ins_until_the_app_exits() {
         let authorization_server = test_authorization_server();
         let presence = OpenLaunchViews::running_over(&authorization_server);
-        launch_launchable(&authorization_server, DesktopBrowser::default(), &presence)
-            .await
-            .unwrap();
-        assert_eq!(kept_sign_ins(&presence), 0);
+        for _ in 0..2 {
+            launch_launchable(&authorization_server, DesktopBrowser::default(), &presence)
+                .await
+                .unwrap();
+        }
+        assert_eq!(kept_sign_ins(&presence), 2);
     }
 
     #[tokio::test(flavor = "multi_thread")]

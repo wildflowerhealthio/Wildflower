@@ -569,8 +569,10 @@ changing how servers run or what the host notifies about them.
   (as iOS's return from a suspend brings): `ServerUnits::push` hands each run
   the codes of the views still open (`LaunchViewSignIns::kept_at_run_start`),
   whose sessions its start keeps while it ends every other Owner session. A
-  desktop hears no close, so its views count no code, and it relies on the
-  server's start ending them. It never changes the run policy. Errors are
+  desktop hears no close, so its views' codes count until the app exits: a
+  restart for a rename, a run-policy change or a certificate renewal keeps the
+  desktop browser signed in, and the first run after the app's next start ends
+  its sessions. It never changes the run policy. Errors are
   `{kind, message}`: `serverNotRunning`, `tokenRejected`, `tunnelUnknown`,
   `notYetProbed`, `unreachable`, `noValidCertificate`, `untrustedCertificate` (a valid certificate from
   Let's Encrypt's staging CA), `authorizationServer`, `openingBrowser`, or the registry's

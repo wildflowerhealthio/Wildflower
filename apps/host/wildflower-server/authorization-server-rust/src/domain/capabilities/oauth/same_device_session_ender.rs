@@ -69,9 +69,10 @@ impl<S: GrantStore> SameDeviceSessionEnder<S> {
 
 /// The same-device sessions a run's start ends: every one started before the
 /// run did, but those the launch views still open hold. The host ends a
-/// session once the last of the server's launch views has closed, and a
-/// desktop hears no close, so a session no open view holds is one the host
-/// would never end. They are ended as they are next used: the token verifier
+/// session once the last of the server's launch views has closed, so a
+/// session no open view holds is one whose ending was missed, as across the
+/// app's exit, or failed, and one the host would otherwise never end. They
+/// are ended as they are next used: the token verifier
 /// refuses an ended one's cookie, as it does an expired one's, and the
 /// browser is sent through sign-in again, which the host's next launch does.
 /// The Browsers list leaves them out. Paired sessions stand.
