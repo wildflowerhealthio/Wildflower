@@ -56,7 +56,7 @@
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "@wildflowerhealthio/fhir-r4": "workspace:*",
-    "fhirclient": "^2.5.4",
+    "fhirclient": "^3.0.1",
     "jsdom": "catalog:",
     "typescript": "catalog:",
     "typescript-7": "catalog:",
