@@ -40,12 +40,12 @@ interface ReferentGroupLines {
  */
 const useReferentGroupLines = (
   resourceType: LinkableLogicalReference.ResourceType,
-  props: Pick<LinkChoiceOptions.Inputs, 'referents' | 'linkChoices' | 'linkTargets'> & {
+  props: Pick<LinkChoiceOptions.Inputs, 'referents' | 'linkChoices' | 'plan'> & {
     /** The stored resources the default search found. */
     readonly found: readonly StoredResource[]
   }
 ): ReferentGroupLines => {
-  const { referents, linkChoices, linkTargets, found } = props
+  const { referents, linkChoices, plan, found } = props
   const ofType = useMemo(
     () => referents.filter((referent) => referent.logicalReference.type === resourceType),
     [referents, resourceType]
@@ -59,9 +59,7 @@ const useReferentGroupLines = (
           ...found.filter(({ resource }) => resource.resourceType === resourceType),
           ...(stored._tag === 'ready' ? stored.resources : []),
         ],
-        (left, right) =>
-          LinkableResource.literalReferenceOf(left.resource) ===
-          LinkableResource.literalReferenceOf(right.resource)
+        (left, right) => LinkableResource.sameRecord(left.resource, right.resource)
       ),
     [found, stored, resourceType]
   )
@@ -72,10 +70,10 @@ const useReferentGroupLines = (
   const ownRecordWritersKey = useMemo(
     () =>
       referents
-        .filter((referent) => LinkChoiceOptions.writesOwnRecord(referent, linkChoices, linkTargets))
+        .filter((referent) => LinkChoiceOptions.writesOwnRecord(referent, linkChoices, plan))
         .map(Referent.key)
         .join('\n'),
-    [referents, linkChoices, linkTargets]
+    [referents, linkChoices, plan]
   )
   // The built lines are kept in state and adjusted during render (the
   // "derive from a changed prop" pattern), so a line survives the changes it
@@ -87,19 +85,10 @@ const useReferentGroupLines = (
     () =>
       ReferentLine.buildAll(
         ofType,
-        { referents, linkChoices, linkTargets, storedOfType, onServer, ownRecordWritersKey },
+        { referents, linkChoices, plan, storedOfType, onServer, ownRecordWritersKey },
         builtLines
       ),
-    [
-      ofType,
-      referents,
-      linkChoices,
-      linkTargets,
-      storedOfType,
-      onServer,
-      ownRecordWritersKey,
-      builtLines,
-    ]
+    [ofType, referents, linkChoices, plan, storedOfType, onServer, ownRecordWritersKey, builtLines]
   )
   if (nextBuiltLines !== builtLines) setBuiltLines(nextBuiltLines)
   const lines = Array.filterMap(ofType, (referent) =>

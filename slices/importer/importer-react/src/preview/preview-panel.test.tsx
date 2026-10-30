@@ -2,12 +2,7 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import type { DiffSlot, FieldDiff, ServerComparison } from '@wildflowerhealthio/fhir-r4/clients'
 import { withMandatoryId } from '@wildflowerhealthio/fhir-r4/data-types'
-import {
-  type FhirResourceWithId,
-  Observation,
-  Patient,
-  Practitioner,
-} from '@wildflowerhealthio/fhir-r4/resources'
+import { Observation, Patient, Practitioner } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   defaultFormatSettings,
   type FormatKind,
@@ -21,11 +16,12 @@ import {
   FormatDecode,
   type DecodedFile,
   LinkableResource,
+  LinkPlan,
   LinkTarget,
   type PickedFile,
-  Referent,
+  type Referent,
 } from '@wildflowerhealthio/importer-fundamentals'
-import { HashMap, Option, Schema, type ParseResult } from 'effect'
+import { Option, Schema, type ParseResult } from 'effect'
 import type { JSX } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
@@ -95,7 +91,7 @@ describe('PreviewPanel', () => {
       })
     )
     const selectionFor = (): StagedImport.Selection =>
-      StagedImport.toggleResource(StagedImport.initial(), 'obs-1')
+      StagedImport.toggleResource(StagedImport.initial(), NONE_BY_DEFAULT, 'obs-1')
     render(<PreviewPanel {...panelProps(batch, { selectionFor })} />)
 
     expect(screen.getByRole('region', { name: LINKED_RECORDS_HEADING })).toBeDefined()
@@ -116,7 +112,7 @@ describe('PreviewPanel', () => {
       })
     )
     const selectionFor = (): StagedImport.Selection =>
-      StagedImport.toggleResource(StagedImport.initial(), 'obs-1')
+      StagedImport.toggleResource(StagedImport.initial(), NONE_BY_DEFAULT, 'obs-1')
     render(<PreviewPanel {...panelProps(batch, { selectionFor })} />)
 
     expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
@@ -138,7 +134,7 @@ describe('PreviewPanel', () => {
     // The screen pre-excludes the unchanged row and passes the unchanged
     // linked record's key.
     const selectionFor = (): StagedImport.Selection =>
-      StagedImport.toggleResource(StagedImport.initial(), 'obs-1')
+      StagedImport.toggleResource(StagedImport.initial(), NONE_BY_DEFAULT, 'obs-1')
     render(
       <PreviewPanel
         {...panelProps(batch, {
@@ -387,7 +383,7 @@ describe('PreviewPanel', () => {
 
     expect(onSelectionChange).toHaveBeenCalledWith(
       'har',
-      StagedImport.toggleResource(StagedImport.initial(), 'pat-1')
+      StagedImport.toggleResource(StagedImport.initial(), NONE_BY_DEFAULT, 'pat-1')
     )
   })
 
@@ -417,7 +413,7 @@ describe('PreviewPanel', () => {
 
   it('opts a partially-included section fully in, and shows the toggle indeterminate', async () => {
     const onSelectionChange = vi.fn()
-    const partial = StagedImport.toggleResource(StagedImport.initial(), 'o1')
+    const partial = StagedImport.toggleResource(StagedImport.initial(), NONE_BY_DEFAULT, 'o1')
     const batch = makeBatch({
       'lifelabs-pdf': formatResult(
         'reports.pdf',
@@ -446,6 +442,35 @@ describe('PreviewPanel', () => {
     )
   })
 
+  it('leaves out a row the default excludes, and records a tick on it as the reviewer’s inclusion', async () => {
+    const onSelectionChange = vi.fn()
+    const batch = makeBatch({
+      har: formatResult(
+        'a.har',
+        decoded([
+          section('s', [labeledResource('p1', 'Patient/p1'), labeledResource('p2', 'Patient/p2')]),
+        ]),
+        'har'
+      ),
+    })
+    render(
+      <PreviewPanel
+        {...panelProps(batch, {
+          onSelectionChange,
+          excludedByDefaultFor: () => new Set(['p2']),
+        })}
+      />
+    )
+    expect(screen.getByRole('button', { name: 'Import 1 resource (1 excluded)' })).toBeDefined()
+
+    await userEvent.click(screen.getByRole('checkbox', { name: /Include Patient.*p2/ }))
+
+    expect(onSelectionChange).toHaveBeenCalledWith(
+      'har',
+      StagedImport.setResourcesIncluded(StagedImport.initial(), ['p2'], true)
+    )
+  })
+
   it('shows a static badge for a resource the server does not hold', () => {
     const batch = makeBatch({
       har: formatResult(
@@ -463,19 +488,17 @@ describe('PreviewPanel', () => {
 
   it('reveals the field-level diffs when the changed badge is clicked', async () => {
     const batch = makeBatch({
-      har: formatResult(
-        'a.har',
-        decoded([section('s', [labeledResource('pat-1', 'Patient/pat-1')])]),
-        'har'
-      ),
+      har: formatResult('a.har', decoded([section('s', [FEMALE_PAT_1])]), 'har'),
     })
-    const field: FieldDiff = {
-      path: ['gender'],
-      server: valueSlot('male'),
-      incoming: valueSlot('female'),
-    }
     const comparisons = comparisonsFor('har', [
-      ['pat-1', { status: 'changed', fields: [field], server: {} }],
+      [
+        'pat-1',
+        {
+          status: 'changed',
+          fields: [GENDER_DIFF],
+          server: patientWire({ resourceType: 'Patient', id: 'pat-1', gender: 'male' }),
+        },
+      ],
     ])
     render(<PreviewPanel {...panelProps(batch, { comparisons })} />)
 
@@ -488,19 +511,17 @@ describe('PreviewPanel', () => {
 
   it('reveals the field-level diffs when the changed badge is hovered', async () => {
     const batch = makeBatch({
-      har: formatResult(
-        'a.har',
-        decoded([section('s', [labeledResource('pat-1', 'Patient/pat-1')])]),
-        'har'
-      ),
+      har: formatResult('a.har', decoded([section('s', [FEMALE_PAT_1])]), 'har'),
     })
-    const field: FieldDiff = {
-      path: ['gender'],
-      server: valueSlot('male'),
-      incoming: valueSlot('female'),
-    }
     const comparisons = comparisonsFor('har', [
-      ['pat-1', { status: 'changed', fields: [field], server: {} }],
+      [
+        'pat-1',
+        {
+          status: 'changed',
+          fields: [GENDER_DIFF],
+          server: patientWire({ resourceType: 'Patient', id: 'pat-1', gender: 'male' }),
+        },
+      ],
     ])
     render(<PreviewPanel {...panelProps(batch, { comparisons })} />)
 
@@ -576,6 +597,17 @@ describe('PreviewPanel', () => {
 /** A present diff slot around `value`. */
 const valueSlot = (value: unknown): DiffSlot => ({ _tag: 'value', value })
 
+/** The Patient `pat-1` as the import has her: female, where the server has male. */
+const FEMALE_PAT_1: DecodedFile.Resource = {
+  key: 'pat-1',
+  title: 'Patient/pat-1',
+  resource: Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({
+    resourceType: 'Patient',
+    id: 'pat-1',
+    gender: 'female',
+  }),
+}
+
 /** A gender the server has as male and the import as female. */
 const GENDER_DIFF: FieldDiff = {
   path: ['gender'],
@@ -618,17 +650,18 @@ const formatResult = <K extends FormatKind>(
 const makeBatch = (
   results: Partial<{ [K in FormatKind]: FormatDecode.Result<K> }>,
   unrecognizedFiles: readonly UnrecognizedFile[] = []
-): ResolvedBatch => ({
-  formats: {
-    har: FormatDecode.emptyResult('har'),
-    'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
-    dicom: FormatDecode.emptyResult('dicom'),
-    ...results,
-  },
-  unrecognizedFiles,
-  linkedRecords: [],
-  linkTargetsByReferentKey: HashMap.empty(),
-})
+): ResolvedBatch => {
+  const decodedBatch = {
+    formats: {
+      har: FormatDecode.emptyResult('har'),
+      'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
+      dicom: FormatDecode.emptyResult('dicom'),
+      ...results,
+    },
+    unrecognizedFiles,
+  }
+  return { ...decodedBatch, linkedRecords: [], plan: LinkPlan.empty, decodedBatch }
+}
 
 /** Verdicts for a format, keyed by format kind. */
 const comparisonsFor = (
@@ -648,12 +681,18 @@ const section = (
   resources: readonly DecodedFile.Resource[]
 ): DecodedFile.Section => ({ title, resources })
 
-/** A synthetic labeled resource for the panel to count and display. */
+/**
+ * A labeled resource for the panel to count and display: a bare Patient, or
+ * an Observation about a patient with an empty code, each summarised by its
+ * `Type/id`.
+ */
 const labeledResource = (key: string, title: string): DecodedFile.Resource => {
   const [resourceType = 'Patient', id = key] = title.split('/')
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test fixture: the panel only reads resourceType/id off the resource
-  const resource = { resourceType, id } as FhirResourceWithId
-  return { key, title, resource }
+  const resource =
+    resourceType === 'Observation'
+      ? observationOf(key, { code: {}, subject: { reference: 'Patient/p' } }).resource
+      : Schema.decodeUnknownSync(withMandatoryId(Patient.Schema))({ resourceType: 'Patient', id })
+  return { key, title, resource: { ...resource, id } }
 }
 
 /** An Observation carrying the given reference fields, labeled under `key`, for a linked record to be named by. */
@@ -669,7 +708,7 @@ const observationOf = (key: string, references: object): DecodedFile.Resource =>
   }),
 })
 
-/** `batch` with `resource` as its one linked record, the link landing on it made by `target`. */
+/** `batch` with `resource` as its one linked record, the link whose target it is made by `target`. */
 const withLinked = (
   batch: ResolvedBatch,
   resource: LinkableResource.WithId,
@@ -692,7 +731,7 @@ const withLinked = (
         origin: linkTarget._tag,
       },
     ],
-    linkTargetsByReferentKey: HashMap.make([Referent.key(referent), linkTarget]),
+    plan: { ...LinkPlan.empty, links: [{ referent, target: linkTarget }] },
   }
 }
 
@@ -748,6 +787,9 @@ const settingsRegistry: SettingsRegistry = {
   },
 }
 
+/** No row out by default. */
+const NONE_BY_DEFAULT: ReadonlySet<string> = new Set()
+
 /** Shared panel props wired to synthetic lookups. */
 const panelProps = (
   batch: ResolvedBatch,
@@ -756,6 +798,7 @@ const panelProps = (
     readonly onSelectionChange?: PreviewPanelProps['onSelectionChange']
     readonly onSettingsChange?: PreviewPanelProps['onSettingsChange']
     readonly selectionFor?: PreviewPanelProps['selectionFor']
+    readonly excludedByDefaultFor?: PreviewPanelProps['excludedByDefaultFor']
     readonly unchangedLinked?: PreviewPanelProps['unchangedLinked']
     readonly comparisons?: PreviewPanelProps['comparisons']
     readonly confirming?: boolean
@@ -767,6 +810,7 @@ const panelProps = (
     settings,
     settingsRegistry,
     selectionFor: overrides.selectionFor ?? (() => StagedImport.initial()),
+    excludedByDefaultFor: overrides.excludedByDefaultFor ?? (() => NONE_BY_DEFAULT),
     unchangedLinked: overrides.unchangedLinked ?? new Set(),
     comparisons: overrides.comparisons ?? new Map(),
     onSelectionChange: overrides.onSelectionChange ?? (() => undefined),

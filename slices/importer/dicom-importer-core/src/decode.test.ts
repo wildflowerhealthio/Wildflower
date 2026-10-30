@@ -11,17 +11,20 @@ import {
   DocumentReference,
   type FhirResourceWithId,
   type ImagingStudy,
+  Practitioner,
 } from '@wildflowerhealthio/fhir-r4/resources'
 import {
   type DecodeFunction,
   type FileImporter,
   DecodedFile,
   type FormatDecode,
+  LinkableResource,
   type PickedFile,
+  Referent,
 } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import type { Array as Arr } from 'effect'
-import { Effect, Either, Schema } from 'effect'
+import { Effect, Either, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -29,6 +32,7 @@ import { DicomHeader } from '@wildflowerhealthio/dicom'
 import { decodeStudy, studyGroupKey, studyKey } from './decode.ts'
 import { dicomImporter } from './dicom-importer.ts'
 import { type DicomSettings } from './settings.ts'
+import { DICOM_SYSTEM } from './source-system.ts'
 
 /**
  * A fixed zone rather than the default, whose `timeZone` is the runtime's own:
@@ -169,6 +173,37 @@ describe('decodeStudy', () => {
       return result.sections.flatMap((s) => s.resources.map((r) => r.key))
     }
     expect(await keysOf()).toEqual(await keysOf())
+  })
+
+  it('names the Patient and the referring physician as its referents', async () => {
+    const result = await Effect.runPromise(
+      decodeStudy(
+        sample({ ReferringPhysicianName: { family: 'Smith', given: 'Jane', text: 'Smith Jane' } }),
+        defaultDicomSettings
+      )
+    )
+
+    const referents = Effect.runSync(Referent.discover([result]))
+
+    expect(
+      referents.map((referent) => [
+        referent._tag,
+        referent.logicalReference.type,
+        referent.logicalReference.identifier.system.href,
+      ])
+    ).toEqual([
+      ['AsResource', 'Patient', DICOM_SYSTEM],
+      ['ByMentionOnly', 'Practitioner', Practitioner.NAME_IDENTIFIER_SYSTEM],
+    ])
+    const [, physician] = referents
+    expect(physician?.logicalReference.identifier.value).toBe('Jane Smith')
+    expect(
+      Option.isSome(
+        Option.flatMap(Option.fromNullable(physician), ({ logicalReference }) =>
+          LinkableResource.tryProvisionalFrom(logicalReference)
+        )
+      )
+    ).toBe(true)
   })
 
   describe('a study spread across files', () => {

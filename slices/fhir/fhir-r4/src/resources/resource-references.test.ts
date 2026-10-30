@@ -127,6 +127,21 @@ describe('ResourceReferences.mapReferences', () => {
       { numRuns: numRunsFor({ base: 20 }) }
     )
   })
+
+  it('property: hands the rewrite each reference at the path collect spells for it', () => {
+    fc.assert(
+      fc.property(resourceArbitrary, (resource) => {
+        const seen: { readonly path: string; readonly reference: unknown }[] = []
+        ResourceReferences.mapReferences(resource, (reference, path) => {
+          seen.push({ path, reference })
+          return reference
+        })
+
+        expect(seen).toEqual(ResourceReferences.collect(resource))
+      }),
+      { numRuns: numRunsFor({ base: 20 }) }
+    )
+  })
 })
 
 describe('ResourceReferences.collect paths', () => {

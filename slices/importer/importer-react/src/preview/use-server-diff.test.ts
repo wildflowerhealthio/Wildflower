@@ -6,13 +6,13 @@ import {
   LINKED_GROUP,
   type ResolvedBatch,
 } from '@wildflowerhealthio/importer-core'
-import { FormatDecode } from '@wildflowerhealthio/importer-fundamentals'
+import { FormatDecode, LinkPlan } from '@wildflowerhealthio/importer-fundamentals'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { HashMap, Schema } from 'effect'
+import { Schema } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { byGroupAndKey, diffRowsOf, initialExclusionsFor } from './use-server-diff.ts'
+import { byGroupAndKey, diffRowsOf, unchangedKeysOf } from './use-server-diff.ts'
 
 /**
  * The pure folds behind the server diff: every previewed resource is probed
@@ -51,17 +51,18 @@ const formatResult = <K extends FormatKind>(
 
 const makeBatch = (
   results: Partial<{ [K in FormatKind]: FormatDecode.Result<K> }>
-): ResolvedBatch => ({
-  formats: {
-    har: FormatDecode.emptyResult('har'),
-    'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
-    dicom: FormatDecode.emptyResult('dicom'),
-    ...results,
-  },
-  unrecognizedFiles: [],
-  linkedRecords: [],
-  linkTargetsByReferentKey: HashMap.empty(),
-})
+): ResolvedBatch => {
+  const decodedBatch = {
+    formats: {
+      har: FormatDecode.emptyResult('har'),
+      'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
+      dicom: FormatDecode.emptyResult('dicom'),
+      ...results,
+    },
+    unrecognizedFiles: [],
+  }
+  return { ...decodedBatch, linkedRecords: [], plan: LinkPlan.empty, decodedBatch }
+}
 
 const UNCHANGED: ServerComparison = { status: 'unchanged', fields: [] }
 const CHANGED: ServerComparison = { status: 'changed', fields: [] }
@@ -137,8 +138,8 @@ describe('diffRowsOf / byGroupAndKey', () => {
   })
 })
 
-describe('initialExclusionsFor', () => {
-  it('should pre-exclude exactly the unchanged keys, and nothing without verdicts', () => {
+describe('unchangedKeysOf', () => {
+  it('should find exactly the unchanged keys, and nothing without verdicts', () => {
     const labeled = [
       { key: 'a', title: 'Patient/a', resource: patient('a') },
       { key: 'b', title: 'Patient/b', resource: patient('b') },
@@ -147,7 +148,7 @@ describe('initialExclusionsFor', () => {
       ['a', UNCHANGED],
       ['b', CHANGED],
     ])
-    expect([...initialExclusionsFor(labeled, verdicts)]).toEqual(['a'])
-    expect(initialExclusionsFor(labeled, undefined).size).toBe(0)
+    expect(unchangedKeysOf(labeled, verdicts)).toEqual(new Set(['a']))
+    expect(unchangedKeysOf(labeled, undefined)).toEqual(new Set())
   })
 })

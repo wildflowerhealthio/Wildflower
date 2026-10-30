@@ -18,7 +18,7 @@ import {
   DomainResource,
   HumanName,
   IdentifierAndReference,
-  WILDFLOWER_CANONICAL_BASE,
+  WILDFLOWER_IDENTIFIER_SYSTEM_BASE,
 } from '../../data-types/index.ts'
 import { localResourceId } from '../../identity/local-resource-id.ts'
 import * as PractitionerQualification from './practitioner-qualification.ts'
@@ -153,7 +153,7 @@ type Type = typeof PractitionerSchema.Type
  * The Wildflower-minted identifier system for a provider known only by the
  * name a source prints, the name as the value: see {@link nameIdentifier}.
  */
-const NAME_IDENTIFIER_SYSTEM = `${WILDFLOWER_CANONICAL_BASE}/identifier/practitioner-name`
+const NAME_IDENTIFIER_SYSTEM = `${WILDFLOWER_IDENTIFIER_SYSTEM_BASE}/practitioner-name`
 
 /**
  * The identifier for a provider a source knows only by its printed `name`:
@@ -203,6 +203,17 @@ const tryReferenceFromName = (name: string): Option.Option<IdentifierAndReferenc
     identifier,
     display: name,
   }))
+
+const encodeReference = Schema.encodeSync(IdentifierAndReference.ReferenceSchema)
+
+/**
+ * {@link tryReferenceFromName} as wire, for a source that builds its resources
+ * as JSON before decoding them (the Shoppers kinds, the DICOM study).
+ */
+const tryReferenceWireFromName: (name: string) => Option.Option<FhirR4.Reference> = flow(
+  tryReferenceFromName,
+  Option.map(encodeReference)
+)
 
 /** A `Practitioner` on, or bound for, the device: one with an `id`. */
 type WithId = Type & { readonly id: string }
@@ -259,5 +270,6 @@ export {
   PractitionerSchema as Schema,
   tryFromNameIdentifier,
   tryReferenceFromName,
+  tryReferenceWireFromName,
 }
 export type { Type, WithId }

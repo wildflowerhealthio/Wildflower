@@ -1,5 +1,5 @@
 /**
- * How many records a batch's referents land on, and how many referents land
+ * How many records a batch's referents are linked to, and how many referents are
  * nowhere: the review's one-line summary of its link targets.
  *
  * @packageDocumentation
@@ -10,7 +10,7 @@ import { Array, HashSet, pipe } from 'effect'
 import * as LinkTarget from './link-target.ts'
 import * as LinkableResource from './linkable-resource.ts'
 
-/** How many records the referents land on, and how many referents land nowhere. */
+/** How many records the referents are linked to, and how many referents are unlinked. */
 interface Type {
   /** Stored records linked to, as they are. */
   readonly onServer: number
@@ -24,7 +24,7 @@ interface Type {
  * The tally of `linkTargets`: stored records as they are, and the ones this
  * import writes (decoded, over a stored copy or not, and provisional), each
  * counted once however many referents share it, and once in all when a stored
- * link lands on a record this import writes over; and how many referents land
+ * link is to a record this import writes over; and how many referents are
  * nowhere.
  */
 const of = (linkTargets: Iterable<LinkTarget.Type>): Type => {

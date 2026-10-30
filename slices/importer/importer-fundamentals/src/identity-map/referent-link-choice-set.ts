@@ -1,7 +1,7 @@
 /**
- * The referent link choices: the reviewer's `LinkChoice` for every referent
- * an import discovers, by `Referent.key`. What the identity map screen holds
- * and a decoded file is resolved on.
+ * The referent link choice set: the reviewer's link choice set by referent,
+ * a `LinkChoice` for every referent an import discovers, by `Referent.key`.
+ * What `Link.fromChoices` makes the plan's links from.
  *
  * @remarks
  * Held beside the per-format selections, never inside them: `StagedImport`
@@ -28,18 +28,16 @@ const defaultFor = (referent: Referent.Type): LinkChoice.Type =>
     ByMentionOnly: () => LinkChoice.DontLink(),
   })
 
-/** The choice `linkChoices` holds for `referent`, else its default. */
-const forReferent = (linkChoices: Type, referent: Referent.Type): LinkChoice.Type =>
-  HashMap.get(linkChoices, Referent.key(referent)).pipe(
-    Option.getOrElse(() => defaultFor(referent))
-  )
+/** The choice `byReferent` holds for `referent`, else its default. */
+const forReferent = (byReferent: Type, referent: Referent.Type): LinkChoice.Type =>
+  HashMap.get(byReferent, Referent.key(referent)).pipe(Option.getOrElse(() => defaultFor(referent)))
 
 /** `over`'s choices laid over `under`'s: a referent `over` holds a choice for takes that one. */
 const union = (under: Type, over: Type): Type => HashMap.union(under, over)
 
-/** `linkChoices` without a choice for the referent keyed `referentKey`. */
-const remove = (linkChoices: Type, referentKey: string): Type =>
-  HashMap.remove(linkChoices, referentKey)
+/** `byReferent` without a choice for the referent keyed `referentKey`. */
+const remove = (byReferent: Type, referentKey: string): Type =>
+  HashMap.remove(byReferent, referentKey)
 
 export { defaultFor, empty, forReferent, remove, union }
 export type { Type }

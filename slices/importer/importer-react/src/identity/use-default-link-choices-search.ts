@@ -23,7 +23,7 @@ import {
   LinkChoice,
   LinkableResource,
   type Referent,
-  ReferentLinkChoices,
+  ReferentLinkChoiceSet,
   ReferentSearch,
 } from '@wildflowerhealthio/importer-fundamentals'
 
@@ -36,11 +36,11 @@ import {
 
 /** What the default search answers with: the defaults, and the stored resources they link to, labelled. */
 interface SearchedDefaults {
-  readonly linkChoices: ReferentLinkChoices.Type
+  readonly linkChoices: ReferentLinkChoiceSet.Type
   readonly found: readonly StoredResource[]
 }
 
-const NO_DEFAULTS: SearchedDefaults = { linkChoices: ReferentLinkChoices.empty, found: [] }
+const NO_DEFAULTS: SearchedDefaults = { linkChoices: ReferentLinkChoiceSet.empty, found: [] }
 
 /** The default choice of every referent of `referents`, and each stored resource those defaults link to or update, once. */
 const searchDefaults = (
@@ -60,10 +60,7 @@ const searchDefaults = (
           ? Option.some(choice.resource)
           : Option.none()
       ),
-      Array.dedupeWith(
-        (left, right) =>
-          LinkableResource.literalReferenceOf(left) === LinkableResource.literalReferenceOf(right)
-      ),
+      Array.dedupeWith(LinkableResource.sameRecord),
       Effect.forEach(labeled)
     )
     return { linkChoices, found }

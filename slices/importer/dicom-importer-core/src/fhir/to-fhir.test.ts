@@ -1,8 +1,12 @@
-import type { DicomHeader } from '@wildflowerhealthio/dicom'
+import { type DicomHeader, PersonName } from '@wildflowerhealthio/dicom'
 import { dicomHeaderArb } from '@wildflowerhealthio/dicom/test-helpers'
-import type { ImagingStudy } from '@wildflowerhealthio/fhir-r4/resources'
+import {
+  Practitioner,
+  type ImagingStudy,
+  type ServiceRequest,
+} from '@wildflowerhealthio/fhir-r4/resources'
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
-import { Effect } from 'effect'
+import { Effect, Option } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -249,6 +253,86 @@ describe('toFhirResources', () => {
     if (sr?.resourceType === 'ServiceRequest') {
       expect(sr.code?.text).toBe('CT Chest')
     }
+  })
+
+  /** The `ServiceRequest` the minimal header gives with `referringPhysicianName`. */
+  const requestReferredBy = async (
+    referringPhysicianName: DicomHeader.Type['referringPhysicianName']
+  ): Promise<ServiceRequest.Type> => {
+    const resources = await Effect.runPromise(
+      toFhirResources(oneFileStudy(minimalHeader({ referringPhysicianName })), SETTINGS)
+    )
+    const sr = resources.find((r) => r.resourceType === 'ServiceRequest')
+    if (sr?.resourceType !== 'ServiceRequest') throw new Error('expected a ServiceRequest')
+    return sr
+  }
+
+  it('ServiceRequest requester names the referring physician given names first', async () => {
+    const sr = await requestReferredBy(PersonName.tryFromPnString('Smith^Jane'))
+
+    expect(sr.requester).toEqual(Option.getOrThrow(Practitioner.tryReferenceFromName('Jane Smith')))
+    expect(sr.requester?.identifier).toEqual(
+      Option.getOrThrow(Practitioner.nameIdentifier('Jane Smith'))
+    )
+  })
+
+  it.each([
+    { pn: 'Smith^Jane Ann', name: 'Jane Ann Smith' },
+    { pn: 'Smith^Jane^Q^Dr^Jr', name: 'Jane Smith' },
+    { pn: 'Smith', name: 'Smith' },
+    { pn: '^Jane', name: 'Jane' },
+  ])('ServiceRequest requester for the PN $pn is named $name', async ({ pn, name }) => {
+    const sr = await requestReferredBy(PersonName.tryFromPnString(pn))
+
+    expect(sr.requester).toEqual(Option.getOrThrow(Practitioner.tryReferenceFromName(name)))
+  })
+
+  it('ServiceRequest has no requester when the PN has neither a given nor a family name', async () => {
+    const sr = await requestReferredBy(PersonName.tryFromPnString('^^^Dr'))
+
+    expect(sr.requester).toBeNull()
+  })
+
+  it('property: the requester is the name reference to the given names, then the family name', async () => {
+    const word = fc.stringMatching(/^[A-Za-z]{1,8}$/)
+    await fc.assert(
+      fc.asyncProperty(
+        word,
+        fc.array(word, { minLength: 1, maxLength: 3 }),
+        async (family, given) => {
+          const sr = await requestReferredBy(
+            PersonName.tryFromPnString(`${family}^${given.join(' ')}`)
+          )
+          expect(sr.requester).toEqual(
+            Option.getOrThrow(Practitioner.tryReferenceFromName([...given, family].join(' ')))
+          )
+        }
+      ),
+      { numRuns: numRunsFor({ base: 50 }) }
+    )
+  })
+
+  it('Patient name keeps the PN text, family first', async () => {
+    const resources = await Effect.runPromise(
+      toFhirResources(
+        oneFileStudy(minimalHeader({ patientName: PersonName.tryFromPnString('Doe^John') })),
+        SETTINGS
+      )
+    )
+    const patient = resources.find((r) => r.resourceType === 'Patient')
+    if (patient?.resourceType !== 'Patient') throw new Error('expected a Patient')
+    expect(patient.name.map(({ text, family, given }) => ({ text, family, given }))).toEqual([
+      { text: 'Doe John', family: 'Doe', given: ['John'] },
+    ])
+  })
+
+  it('ServiceRequest has no requester when ReferringPhysicianName is absent', async () => {
+    const resources = await Effect.runPromise(
+      toFhirResources(oneFileStudy(minimalHeader({ referringPhysicianName: undefined })), SETTINGS)
+    )
+    const sr = resources.find((r) => r.resourceType === 'ServiceRequest')
+    if (sr?.resourceType !== 'ServiceRequest') throw new Error('expected a ServiceRequest')
+    expect(sr.requester).toBeNull()
   })
 })
 

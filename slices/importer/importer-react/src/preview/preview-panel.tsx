@@ -4,18 +4,22 @@ import { type DecodedFile, StagedImport } from '@wildflowerhealthio/importer-fun
 import { Array, Data } from 'effect'
 import { type JSX, type ReactNode, useMemo, useState } from 'react'
 
-import type { FormatKind, FormatSettings, ResolvedBatch } from '@wildflowerhealthio/importer-core'
 import {
+  type FormatKind,
+  type FormatSettings,
+  type ResolvedBatch,
   claimedFormats,
+  type ExcludedByDefaultFor,
   formatKinds,
   LINKED_GROUP,
   planWrite,
 } from '@wildflowerhealthio/importer-core'
 
+import * as MentionLinkOptions from '../identity/mention-link-options.ts'
 import type { FormatWithComponents } from '../registry.ts'
 import { describeResource } from './describe-resource.ts'
 import { DiffBadge } from './diff-badge.tsx'
-import { FormatReviewBody } from './format-review-body.tsx'
+import { type ChooseMention, FormatReviewBody } from './format-review-body.tsx'
 import {
   confirmLabel,
   LINKED_RECORDS_HEADING,
@@ -46,7 +50,11 @@ import panelStyles from './preview-panel.module.css'
  * are shown with their server diff and no toggle: which are written is
  * `importer-core`'s `planWrite`, which the confirm reads too — a stored
  * copy whenever the server does not hold it unchanged, a new record only
- * when a resource the batch writes names it. A settings change calls
+ * when a resource the batch writes names it. Each format's body lists what
+ * the referent links leave unlinked in it (`UnlinkedMention.leftByReferentLinks`
+ * on the batch's plan, of each row as decoded or edited) and offers a select
+ * per linkable mention
+ * (`mentionLinkOptions`, a pick calling `onChooseMention`). A settings change calls
  * `onSettingsChange`; the shell re-decodes that format. The confirm appears
  * only when that plan includes at least one resource, and it does not write —
  * it calls `onConfirm`; the confirm step writes exactly the reviewed objects.
@@ -72,8 +80,10 @@ interface PreviewPanelProps {
   readonly settings: FormatSettings
   /** The registered formats' display + settings pickers, indexed by kind. */
   readonly settingsRegistry: SettingsRegistry
-  /** The reviewed selection for a format (defaults to `StagedImport.initial()` before any edit). */
+  /** The reviewed selection for a format (`StagedImport.initial()` before the reviewer touches it). */
   readonly selectionFor: (format: FormatKind) => StagedImport.Selection
+  /** The keys of a format's rows that are out unless the reviewer ticks them. */
+  readonly excludedByDefaultFor: ExcludedByDefaultFor
   /** The keys of the linked records the server diff found unchanged, which are not written. */
   readonly unchangedLinked: ReadonlySet<string>
   /**
@@ -105,6 +115,10 @@ interface PreviewPanelProps {
   readonly confirmDisabled?: boolean
   /** The identity map's referent rows, rendered above the format groups. */
   readonly referentRows?: ReactNode
+  /** What each row's mention selects offer; nothing without an identity map. */
+  readonly mentionLinkOptions?: MentionLinkOptions.Type
+  /** Called with the reviewer's choice for one mention of one resource. */
+  readonly onChooseMention?: ChooseMention
 }
 
 /** One format's settings form, picked out of the registry by kind. */
@@ -170,9 +184,12 @@ const PreviewActions = ({
  */
 const LinkedRecords = ({
   linkedRecords,
+  labels,
   comparisons,
 }: {
   readonly linkedRecords: readonly DecodedFile.Resource[]
+  /** The label of each record a subject may be redirected to, by its literal reference. */
+  readonly labels: ReadonlyMap<string, string>
   readonly comparisons: ReadonlyMap<string, ServerComparison> | undefined
 }): JSX.Element => (
   <section
@@ -183,7 +200,7 @@ const LinkedRecords = ({
     <p className={panelStyles['preview-panel__linked-note']}>{LINKED_RECORDS_NOTE}</p>
     <ul className={panelStyles['preview-panel__linked-list']}>
       {linkedRecords.map((entry) => {
-        const description = describeResource(entry.resource)
+        const description = describeResource(entry.resource, labels)
         return (
           <li key={entry.key} className={panelStyles['preview-panel__linked-row']}>
             <span className={panelStyles['preview-panel__linked-type']}>{description.type}</span>
@@ -216,6 +233,7 @@ const PreviewPanel = ({
   settings,
   settingsRegistry,
   selectionFor,
+  excludedByDefaultFor,
   unchangedLinked,
   comparisons,
   onSelectionChange,
@@ -225,6 +243,8 @@ const PreviewPanel = ({
   confirming,
   confirmDisabled = confirming,
   referentRows,
+  mentionLinkOptions = MentionLinkOptions.empty,
+  onChooseMention,
 }: PreviewPanelProps): JSX.Element => {
   const [editing, setEditing] = useState<EditorState>(makeClosedEditor())
 
@@ -238,12 +258,12 @@ const PreviewPanel = ({
   // What the confirm would write, one resource per `Type/id`, and what the
   // reviewer toggled off: read off the plan the confirm submits.
   const { writableCount, excludedCount } = useMemo(() => {
-    const plan = planWrite(batch, selectionFor, unchangedLinked)
+    const plan = planWrite(batch, selectionFor, excludedByDefaultFor, unchangedLinked)
     return {
       writableCount: Array.countBy(plan, ({ disposition }) => disposition === 'Included'),
       excludedCount: Array.countBy(plan, ({ disposition }) => disposition === 'Excluded'),
     }
-  }, [batch, selectionFor, unchangedLinked])
+  }, [batch, selectionFor, excludedByDefaultFor, unchangedLinked])
 
   const openEditor = (format: FormatKind, key: string, resource: unknown): void => {
     setEditing(makeOpenEditor({ format, key, resource }))
@@ -295,7 +315,13 @@ const PreviewPanel = ({
                 <FormatReviewBody
                   result={result}
                   selection={selectionFor(kind)}
+                  excludedByDefault={excludedByDefaultFor(kind)}
                   comparisons={comparisons.get(kind)}
+                  mentionLinkOptions={mentionLinkOptions}
+                  onChooseMention={onChooseMention}
+                  kind={kind}
+                  decodedFile={batch.decodedBatch.formats[kind].decoded}
+                  plan={batch.plan}
                   onSelectionChange={(selection) => onSelectionChange(kind, selection)}
                   onEditResource={(key, resource) => openEditor(kind, key, resource)}
                 />
@@ -306,6 +332,7 @@ const PreviewPanel = ({
         {batch.linkedRecords.length > 0 && (
           <LinkedRecords
             linkedRecords={batch.linkedRecords}
+            labels={mentionLinkOptions.labelsByLiteralReference}
             comparisons={comparisons.get(LINKED_GROUP)}
           />
         )}
