@@ -6,12 +6,15 @@
 //! `sid` does. Generic over the store port, so each is unit-testable against
 //! the in-memory fake.
 
+use std::sync::Arc;
+
 use chrono::{DateTime, Utc};
 
 use wildflowerhealthio_scopes::{Permission, Scope, WildflowerResource};
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::browser_session::BrowserSession;
+use crate::domain::capabilities::oauth::EndedAtRunStart;
 use crate::domain::grant_store::BrowserSessionsTx as _;
 use crate::domain::GrantStore;
 
@@ -45,18 +48,24 @@ pub(crate) struct BrowserSessionView {
 pub(crate) struct BrowserSessionsReader<S: GrantStore> {
     /// The store the sessions are read from.
     store: S,
+    /// The same-device sessions the run's start ended, which aren't live.
+    ended_at_run_start: Arc<EndedAtRunStart>,
 }
 
 impl<S: GrantStore> BrowserSessionsReader<S> {
-    /// Build the reader over a store handle lifted from the state.
-    pub(crate) fn new(store: S) -> Self {
-        BrowserSessionsReader { store }
+    /// Build the reader over a store handle and the sessions the run's start
+    /// ended, lifted from the state.
+    pub(crate) fn new(store: S, ended_at_run_start: Arc<EndedAtRunStart>) -> Self {
+        BrowserSessionsReader {
+            store,
+            ended_at_run_start,
+        }
     }
 
-    /// Every browser session live at `now` (neither revoked nor expired),
-    /// newest first, each marked by whether it is `caller_sid`'s, the session
-    /// the caller's token was minted under. A caller under no session holds
-    /// none of them.
+    /// Every browser session live at `now` (neither revoked, expired, nor
+    /// ended by the run's start), newest first, each marked by whether it is
+    /// `caller_sid`'s, the session the caller's token was minted under. A
+    /// caller under no session holds none of them.
     pub(crate) fn list_live(
         &self,
         caller_sid: Option<&str>,
@@ -66,6 +75,7 @@ impl<S: GrantStore> BrowserSessionsReader<S> {
             .store
             .read(|tx| tx.live_browser_sessions(now))?
             .into_iter()
+            .filter(|session| !self.ended_at_run_start.includes(session))
             .map(|session| BrowserSessionView {
                 held_by_caller: caller_sid == Some(session.sid.as_str()),
                 session,
@@ -120,13 +130,19 @@ mod tests {
     use super::*;
     use crate::domain::test_fake::FakeGrantStore;
 
-    /// The list holds only the live sessions, and marks the caller's.
+    /// The list holds only the live sessions, not those the run's start
+    /// ended, and marks the caller's.
     #[test]
     fn the_list_holds_the_live_sessions_and_marks_the_caller_s() {
         let store = FakeGrantStore::default();
         let now = Utc::now();
         let caller_s = BrowserSession::new_same_device_session(vec![], Duration::hours(8), now);
         let other = BrowserSession::new_same_device_session(
+            vec![],
+            Duration::hours(8),
+            now - Duration::minutes(10),
+        );
+        let ended_at_start = BrowserSession::new_same_device_session(
             vec![],
             Duration::hours(8),
             now - Duration::hours(1),
@@ -137,14 +153,17 @@ mod tests {
             now - Duration::hours(9),
         );
         let revoked = BrowserSession::new_same_device_session(vec![], Duration::hours(8), now);
-        for session in [&caller_s, &other, &expired, &revoked] {
+        for session in [&caller_s, &other, &ended_at_start, &expired, &revoked] {
             store.tx().insert_browser_session(session).unwrap();
         }
         store
             .tx()
             .revoke_browser_session(&revoked.sid, now)
             .unwrap();
-        let reader = BrowserSessionsReader::new(store);
+        let reader = BrowserSessionsReader::new(
+            store,
+            Arc::new(EndedAtRunStart::new(&[], now - Duration::minutes(30))),
+        );
 
         let listed: Vec<(String, bool)> = reader
             .list_live(Some(&caller_s.sid), now)

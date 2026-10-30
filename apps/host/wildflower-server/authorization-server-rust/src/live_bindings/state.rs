@@ -21,6 +21,7 @@ use wildflowerhealthio_shared_structures::launcher::LauncherBase;
 use wildflowerhealthio_token_revocation::RevocationStore;
 
 use crate::db::SqliteGrantStore;
+use crate::domain::capabilities::oauth::EndedAtRunStart;
 use crate::domain::last_seen_throttle::LastSeenThrottle;
 use crate::domain::owner_prompt::OwnerPrompt;
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
@@ -102,6 +103,11 @@ pub struct AuthorizationServerState {
     /// the last [`LAST_SEEN_RESOLUTION`](crate::domain::browser_session::LAST_SEEN_RESOLUTION),
     /// so the rest of a page load's requests write nothing.
     pub(crate) last_seen_throttle: Arc<LastSeenThrottle>,
+    /// The same-device sessions the run's start ended, built at
+    /// [`crate::setup_authorization_server`] from the codes of the host's
+    /// launch views still open: the token verifier refuses their cookies, and
+    /// the Browsers list leaves them out.
+    pub(crate) ended_at_run_start: Arc<EndedAtRunStart>,
 }
 
 impl AuthorizationServerState {

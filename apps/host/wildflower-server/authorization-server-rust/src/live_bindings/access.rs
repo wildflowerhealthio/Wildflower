@@ -186,7 +186,7 @@ impl FixedScopeCapability for LiveBrowserSessionsReader {
     }
 
     fn build(state: Arc<AuthorizationServerState>) -> Self {
-        BrowserSessionsReader::new(state.store.clone())
+        BrowserSessionsReader::new(state.store.clone(), state.ended_at_run_start.clone())
     }
 }
 

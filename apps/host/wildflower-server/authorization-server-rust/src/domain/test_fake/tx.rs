@@ -12,7 +12,7 @@ use crate::domain::authorization_request::pairing::PairingRequest;
 use crate::domain::authorization_request::polled::PolledRequest;
 use crate::domain::authorization_request::{AuthorizationRequest, RequestStatus};
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::browser_session::{BrowserSession, BrowserSessionKind};
+use crate::domain::browser_session::BrowserSession;
 use crate::domain::client::Client;
 use crate::domain::consent_key::ConsentKey;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
@@ -576,30 +576,6 @@ impl BrowserSessionsTx for FakeGrantTx<'_> {
                 _ => false,
             },
         )
-    }
-
-    fn expire_browser_sessions_of_kind_but(
-        &mut self,
-        kind: BrowserSessionKind,
-        kept_sids: &[String],
-        now: DateTime<Utc>,
-    ) -> Result<usize, AuthorizationServerError> {
-        let mut expired = 0;
-        for session in self
-            .store
-            .browser_sessions
-            .borrow_mut()
-            .values_mut()
-            .filter(|session| {
-                session.kind == kind
-                    && session.expires_at > now
-                    && !kept_sids.contains(&session.sid)
-            })
-        {
-            session.expires_at = now;
-            expired += 1;
-        }
-        Ok(expired)
     }
 
     fn touch_browser_session_last_seen(

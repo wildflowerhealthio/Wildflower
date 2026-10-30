@@ -48,7 +48,7 @@ use wildflowerhealthio_scopes::{
 use wildflowerhealthio_token_revocation::RevocationStore;
 
 use crate::domain::browser_session::LONGEST_BROWSER_SESSION_TTL;
-use crate::domain::capabilities::oauth::SameDeviceSessionEnder;
+use crate::domain::capabilities::oauth::EndedAtRunStart;
 use crate::domain::last_seen_throttle::LastSeenThrottle;
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
 use crate::domain::sign_in_redirect::SignInDestinations;
@@ -229,10 +229,10 @@ pub struct AuthorizationServer {
 ///    Seeding at boot means a request that was pending
 ///    across an app restart is still reported (the row survived in SQLite, the
 ///    in-memory `watch` value didn't);
-///  - ends every same-device session an earlier run signed in, by expiring
-///    it, but those `open_views_sign_in_codes` signed in: the codes of the
-///    host's launch views still open, whichever run minted them. Paired
-///    sessions stand;
+///  - ends every same-device session an earlier run signed in, but those
+///    `open_views_sign_in_codes` signed in: the codes of the host's launch
+///    views still open, whichever run minted them. They are ended as they are
+///    next used, so the start writes nothing for them. Paired sessions stand;
 ///  - returns a `Router` whose routes are at `/.well-known/jwks.json`,
 ///    `/oauth/*`, and `/authorization/*` (authenticated bearer JWT + per-resource
 ///    scope gates via the `Scoped<…>` extractors) — the
@@ -267,8 +267,7 @@ pub struct AuthorizationServer {
 ///
 /// # Errors
 ///
-/// Returns an error if opening and seeding the store fails, or ending the
-/// earlier runs' same-device sessions does.
+/// Returns an error if opening and seeding the store fails.
 pub fn setup_authorization_server(
     pool: DieselPool,
     revocation_store: RevocationStore,
@@ -286,7 +285,7 @@ pub fn setup_authorization_server(
     let server_origin: Arc<str> =
         wildflowerhealthio_shared_structures::origin_string(&config.server_origin).into();
     let same_device_sign_in_codes = Arc::new(SameDeviceSignInCodes::new());
-    end_earlier_same_device_sessions(&store, open_views_sign_in_codes)?;
+    let ended_at_run_start = Arc::new(EndedAtRunStart::new(open_views_sign_in_codes, Utc::now()));
     let (pending_consents_recomputed_tx, pending_consents_recomputed_rx) = watch::channel(());
     let state = Arc::new(AuthorizationServerState {
         store: store.clone(),
@@ -307,6 +306,7 @@ pub fn setup_authorization_server(
         )),
         authorization_start_gate,
         last_seen_throttle: Arc::new(LastSeenThrottle::new()),
+        ended_at_run_start,
     });
     // Publish the Owner prompt from SQLite so a request that was
     // pending across an app restart is reported in the run's first detail —
@@ -334,29 +334,6 @@ pub fn setup_authorization_server(
         pending_consent_watcher,
         in_process_token_verifier,
     })
-}
-
-/// End every same-device session an earlier run of the server signed in, by
-/// expiring it, but those `open_views_sign_in_codes` signed in. The host ends
-/// a session once the last of the server's launch views has closed, and a
-/// desktop hears no close, so a session no open view holds is one the host
-/// would never end. A browser left signed in as the Owner is sent through
-/// sign-in again; the host's next launch signs it in. Paired sessions stand.
-///
-/// # Errors
-///
-/// [`AuthorizationServerError::Infrastructure`](domain::authorization_server_error::AuthorizationServerError::Infrastructure)
-/// when the sessions can't be expired.
-fn end_earlier_same_device_sessions(
-    store: &SqliteGrantStore,
-    open_views_sign_in_codes: &[SameDeviceSignInCode],
-) -> anyhow::Result<()> {
-    let ended = SameDeviceSessionEnder::new(store.clone())
-        .end_every_session_but(open_views_sign_in_codes, Utc::now())?;
-    if ended > 0 {
-        tracing::info!(ended, "ended the same-device sessions of earlier runs");
-    }
-    Ok(())
 }
 
 /// Spawn the background sweep that purges expired rows from the revocation

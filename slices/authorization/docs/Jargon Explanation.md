@@ -793,8 +793,8 @@ through the run up then). The server remembers, in memory, which session each
 code started, and the host holds the codes, across the server's runs. Leaving
 the app with a view open and coming back isn't a close, and keeps it. When the
 server starts, it ends every same-device session but those of the launch
-views still open, so the restart iOS brings on a return from a suspend keeps
-them; a desktop hears no close, counts no view, and the start ends its
+views still open, as each is next used, so the restart iOS brings on a return
+from a suspend keeps them; a desktop hears no close, counts no view, and the start ends its
 sessions.
 Ending a session expires it (`expires_at` moves to now); it isn't revoked. Its
 cookie stops working at once, and a refresh-token family minted under it lives

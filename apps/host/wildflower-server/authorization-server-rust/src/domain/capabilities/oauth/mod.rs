@@ -65,7 +65,7 @@ pub(crate) use code_authorization_starter::{
 pub(crate) use device_authorizer::{DeviceAuthorizationError, DeviceAuthorizer};
 pub(crate) use launch_contexts::{consume_launch, LaunchContexts};
 pub(crate) use public_keys_reader::PublicKeysReader;
-pub(crate) use same_device_session_ender::SameDeviceSessionEnder;
+pub(crate) use same_device_session_ender::{EndedAtRunStart, SameDeviceSessionEnder};
 pub(crate) use same_device_sign_in::{
     SameDeviceSignIn, SameDeviceSignInError, SignInRefusal, SignedIn, SAME_DEVICE_SESSION_TTL,
 };

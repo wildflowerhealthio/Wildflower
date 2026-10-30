@@ -151,32 +151,6 @@ impl BrowserSessionsTx for SqliteGrantTx<'_> {
         Ok(affected == 1)
     }
 
-    /// Move every `kind` session's `expires_at` back to `now`, but those
-    /// `kept_sids` name, returning how many moved. The same guard as
-    /// [`expire_browser_session`](BrowserSessionsTx::expire_browser_session).
-    fn expire_browser_sessions_of_kind_but(
-        &mut self,
-        kind: BrowserSessionKind,
-        kept_sids: &[String],
-        now: DateTime<Utc>,
-    ) -> Result<usize, AuthorizationServerError> {
-        let conn = &mut *self.conn;
-        diesel::update(
-            browser_sessions::table
-                .filter(browser_sessions::kind.eq(kind))
-                .filter(browser_sessions::expires_at.gt(now))
-                .filter(browser_sessions::sid.ne_all(kept_sids)),
-        )
-        .set(browser_sessions::expires_at.eq(now))
-        .execute(conn)
-        .map_err(|e| {
-            AuthorizationServerError::infrastructure(
-                "expire_browser_sessions_of_kind_but failed",
-                e,
-            )
-        })
-    }
-
     /// Move the browser session `sid`'s `last_seen_at` to `seen_at`, unless it was
     /// last seen after `seen_before`, returning `true` iff it moved. The
     /// guard keeps the column from moving backwards, and from moving more than
@@ -300,7 +274,7 @@ mod tests {
     use chrono::Duration;
 
     use crate::db::SqliteGrantStore;
-    use crate::domain::browser_session::{BrowserSession, BrowserSessionKind};
+    use crate::domain::browser_session::BrowserSession;
     use crate::domain::refresh_token::RefreshTokenFamily;
 
     /// A fresh store on an in-memory database, migrated.
@@ -459,60 +433,6 @@ mod tests {
                     expires_at,
                     ..session.clone()
                 })
-            );
-        }
-    }
-
-    /// Expiring the sessions of a kind expires each live one of that kind
-    /// but the kept one, and no other.
-    #[test]
-    fn expiring_a_kind_expires_only_its_live_sessions_but_the_kept() {
-        let store = store();
-        let now = chrono::Utc::now();
-        let same_device = BrowserSession::new_same_device_session(vec![], Duration::hours(8), now);
-        let kept = BrowserSession::new_same_device_session(vec![], Duration::hours(8), now);
-        let expired_same_device = BrowserSession::new_same_device_session(
-            vec![],
-            Duration::hours(8),
-            now - Duration::hours(9),
-        );
-        let paired = BrowserSession::new_paired_session(
-            "Firefox on Linux".to_owned(),
-            vec![],
-            Duration::hours(24),
-            now,
-        );
-        for session in [&same_device, &kept, &expired_same_device, &paired] {
-            store
-                .write(|tx| tx.insert_browser_session(session))
-                .expect("insert");
-        }
-
-        assert_eq!(
-            store
-                .write(|tx| tx.expire_browser_sessions_of_kind_but(
-                    BrowserSessionKind::SameDevice,
-                    std::slice::from_ref(&kept.sid),
-                    now
-                ))
-                .expect("expire"),
-            1
-        );
-
-        for (session, expires_at) in [
-            (&same_device, now),
-            (&kept, kept.expires_at),
-            (&expired_same_device, expired_same_device.expires_at),
-            (&paired, paired.expires_at),
-        ] {
-            assert_eq!(
-                store
-                    .read(|tx| tx.browser_session_by_sid(&session.sid))
-                    .expect("read")
-                    .map(|stored| stored.expires_at),
-                Some(expires_at),
-                "{:?}",
-                session.kind
             );
         }
     }

@@ -46,24 +46,17 @@ Two clients are **essential** (see [`is_essential_client`](<../Domain/Client Exp
 **Build the server over the host's database, and start it working.** In order:
 
 1. **Open and seed the store** ([`open_and_seed_store`](<Seeding Explanation.md#item-open_and_seed_store>)): run the migrations, make sure a signing key is active, and rewrite the server's own clients.
-2. **End the earlier runs' same-device sessions** ([`end_earlier_same_device_sessions`](#item-end_earlier_same_device_sessions)): a start expires every Owner session but those the host's launch views still open signed in, whose sign-in codes it is handed, whichever run minted them. Paired sessions stand.
-3. **Build the shared state** ([`AuthorizationServerState`](<Live Bindings Explanation.md#item-AuthorizationServerState>)) from the config.
-4. **Publish the [Owner prompt](<../Domain/Owner Prompt Explanation.md>)** on `owner_approval_tx`. The channel's value doesn't survive a restart, but the row does, so a request left pending across a restart is in the server's first status, and the host notifies about it.
-5. **Start the background sweeps** below.
-6. **Build the router**, whose routes are at `/.well-known/jwks.json`, `/oauth/*` and `/authorization/*`. The host merges it as it is.
-7. **Build the in-process handles** the host keeps.
+2. **Build the shared state** ([`AuthorizationServerState`](<Live Bindings Explanation.md#item-AuthorizationServerState>)) from the config, with the [same-device sessions the start ends](<../Capabilities/OAuth/Same Device Session Ender Explanation.md#item-EndedAtRunStart>): every Owner session an earlier run signed in, but those the host's launch views still open signed in, whose sign-in codes it is handed, whichever run minted them. They end as they are next used, so the start writes nothing for them, and a store that can't be written then doesn't keep the server from starting. Paired sessions stand.
+3. **Publish the [Owner prompt](<../Domain/Owner Prompt Explanation.md>)** on `owner_approval_tx`. The channel's value doesn't survive a restart, but the row does, so a request left pending across a restart is in the server's first status, and the host notifies about it.
+4. **Start the background sweeps** below.
+5. **Build the router**, whose routes are at `/.well-known/jwks.json`, `/oauth/*` and `/authorization/*`. The host merges it as it is.
+6. **Build the in-process handles** the host keeps.
 
 The host builds `revocation_store` once and passes the same store to the FHIR server's adapter, so **the authorization server's gates and the FHIR server read one denylist**. Where no visitor can reach the server, the host passes [`AdmitEveryAuthorizationStart`](<Ports and Adapters Explanation.md#item-AdmitEveryAuthorizationStart>) as the start gate.
 
 {{#item apps/host/wildflower-server/authorization-server-rust/src/lib.rs setup_authorization_server}}
 
 Every integration test starts from it, through the harness's [`spin_up`](<../Integration Tests/Test Fixtures Explanation.md#item-spin_up>).
-
-### `end_earlier_same_device_sessions`
-
-{{#item apps/host/wildflower-server/authorization-server-rust/src/lib.rs end_earlier_same_device_sessions}}
-
-The [Same-Device Session Ending](<../Integration Tests/Same Device Session Ending Explanation.md#item-a_restart_ends_same_device_sessions_but_open_views_and_paired_ones>) tests restart a server over its database and hold it to ending the same-device sessions but an open view's, and no paired one.
 
 ### `AuthorizationServer`
 

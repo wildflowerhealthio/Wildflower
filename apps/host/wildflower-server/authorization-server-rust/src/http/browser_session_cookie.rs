@@ -209,6 +209,7 @@ mod tests {
     };
     use crate::domain::access_token::{mint_access_token, NewAccessTokenArgs};
     use crate::domain::browser_session::BrowserSession;
+    use crate::domain::capabilities::oauth::EndedAtRunStart;
     use crate::domain::capabilities::session::TokenVerifier;
     use crate::domain::signing_key::SigningKey;
     use crate::domain::test_fake::{seed_active_signing_key, FakeGrantStore, NothingRevoked};
@@ -257,7 +258,12 @@ mod tests {
         let session =
             BrowserSession::new_same_device_session(vec![], Duration::hours(8), Utc::now());
         store.tx().insert_browser_session(&session).expect("insert");
-        let verifier = TokenVerifier::new(store, Arc::new(NothingRevoked), ORIGIN.into());
+        let verifier = TokenVerifier::new(
+            store,
+            Arc::new(NothingRevoked),
+            ORIGIN.into(),
+            Arc::new(EndedAtRunStart::none()),
+        );
 
         let browser_session_token = mint(&key, BROWSER_SESSION_CLIENT_ID, Some(&session.sid));
         let claims = standing_session_claims(&verifier, &browser_session_token)
@@ -293,7 +299,12 @@ mod tests {
         let session =
             BrowserSession::new_same_device_session(vec![], Duration::hours(8), Utc::now());
         store.tx().insert_browser_session(&session).expect("insert");
-        let verifier = TokenVerifier::new(store, Arc::new(NothingRevoked), ORIGIN.into());
+        let verifier = TokenVerifier::new(
+            store,
+            Arc::new(NothingRevoked),
+            ORIGIN.into(),
+            Arc::new(EndedAtRunStart::none()),
+        );
 
         for (scopes, expected) in [
             (

@@ -1,10 +1,10 @@
 //! Ending same-device sessions: the base ends a launch's Owner session by
 //! the sign-in code it opened the launch with, through the server's current
 //! run, once the server's launch views have closed, and a server start ends
-//! every same-device session but those of the launch views still open. An
-//! ended session is expired, not revoked: its cookie stops working at once,
-//! the browser is sent to pairing, and the next launch's code signs it in
-//! again. Paired sessions survive a start.
+//! every same-device session but those of the launch views still open, as
+//! each is next used. An ended session is not revoked: its cookie stops
+//! working at once, the browser is sent to pairing, and the next launch's
+//! code signs it in again. Paired sessions survive a start.
 
 use crate::common::*;
 
@@ -141,9 +141,10 @@ async fn a_second_launch_reaches_consent() {
     ));
 }
 
-/// A server start expires every same-device session an earlier run signed
-/// in, so its cookie no longer reaches the consent card, but the session of
-/// a launch view still open, while a paired session stands. That view's
+/// A server start ends every same-device session an earlier run signed in,
+/// so its cookie no longer reaches the consent card, but the session of a
+/// launch view still open, while a paired session stands. The start writes
+/// nothing: the ended session's row is left as it was. That view's
 /// session is ended later through the new run, by the code the earlier run
 /// minted. A launch on the new run signs the browser in again.
 #[tokio::test]
@@ -157,9 +158,10 @@ async fn a_restart_ends_same_device_sessions_but_open_views_and_paired_ones() {
 
     let restarted = restart(&db, std::slice::from_ref(&open_code));
 
-    let closed_session = stored_session(&db, &sid_of(&closed_token));
-    assert!(closed_session.expires_at <= Utc::now(), "expired");
-    assert_eq!(closed_session.revoked_at, None, "not revoked");
+    assert!(
+        stored_session(&db, &sid_of(&closed_token)).is_live(Utc::now()),
+        "left as it was"
+    );
     assert!(is_pairing_page(
         &authorize_destination(&restarted, &closed_token).await
     ));

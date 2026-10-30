@@ -1,15 +1,18 @@
 //! [`SameDeviceSessionEnder`] — ends the Owner's same-device sessions, for
 //! the host: those the sign-in codes of a server's launch views signed in,
-//! once the server's last launch view closes, and, as the server starts,
-//! every one but those of the launch views still open. Ending a session
-//! expires it rather than revoking it: its cookie stops working at once, and
-//! a refresh-token family minted under it lives on as its client's refresh
-//! policy says.
+//! once the server's last launch view closes. Ending a session expires it
+//! rather than revoking it: its cookie stops working at once, and a
+//! refresh-token family minted under it lives on as its client's refresh
+//! policy says. [`EndedAtRunStart`] — the same-device sessions a run's start
+//! ends: every one an earlier run signed in, but those of the launch views
+//! still open. They are ended as they are next used, not at the start.
+
+use std::collections::HashSet;
 
 use chrono::{DateTime, Utc};
 
 use crate::domain::authorization_server_error::AuthorizationServerError;
-use crate::domain::browser_session::BrowserSessionKind;
+use crate::domain::browser_session::{BrowserSession, BrowserSessionKind};
 use crate::domain::grant_store::BrowserSessionsTx as _;
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCode;
 use crate::domain::GrantStore;
@@ -17,7 +20,7 @@ use crate::domain::GrantStore;
 /// End same-device sessions. Generic over the store port so it's
 /// unit-testable against the fake; the
 /// [`SameDeviceSignInCodeMinter`](crate::SameDeviceSignInCodeMinter) binding
-/// and the server's setup instantiate it over the concrete `SqliteGrantStore`.
+/// instantiates it over the concrete `SqliteGrantStore`.
 pub(crate) struct SameDeviceSessionEnder<S: GrantStore> {
     /// The store holding the sessions it expires.
     store: S,
@@ -62,26 +65,56 @@ impl<S: GrantStore> SameDeviceSessionEnder<S> {
         }
         Ok(ended)
     }
+}
 
-    /// Expire, at `now`, every same-device session but those
-    /// `kept_sign_in_codes` signed browsers in with, returning how many were
-    /// ended. Paired sessions stand.
-    ///
-    /// # Errors
-    ///
-    /// [`AuthorizationServerError::Infrastructure`] on a store failure.
-    pub(crate) fn end_every_session_but(
-        &self,
+/// The same-device sessions a run's start ends: every one started before the
+/// run did, but those the launch views still open hold. The host ends a
+/// session once the last of the server's launch views has closed, and a
+/// desktop hears no close, so a session no open view holds is one the host
+/// would never end. They are ended as they are next used: the token verifier
+/// refuses an ended one's cookie, as it does an expired one's, and the
+/// browser is sent through sign-in again, which the host's next launch does.
+/// The Browsers list leaves them out. Paired sessions stand.
+#[derive(Debug)]
+pub(crate) struct EndedAtRunStart {
+    /// When the run started: a session started since is the run's own.
+    run_started_at: DateTime<Utc>,
+    /// The `sid`s of the sessions the launch views still open hold.
+    kept_sids: HashSet<String>,
+}
+
+impl EndedAtRunStart {
+    /// The same-device sessions the start, at `run_started_at`, of a run
+    /// ends: every one but those `kept_sign_in_codes`, the codes of the
+    /// host's launch views still open, whichever run minted them, signed
+    /// browsers in with.
+    pub(crate) fn new(
         kept_sign_in_codes: &[SameDeviceSignInCode],
-        now: DateTime<Utc>,
-    ) -> Result<usize, AuthorizationServerError> {
-        let kept_sids: Vec<String> = kept_sign_in_codes
-            .iter()
-            .filter_map(SameDeviceSignInCode::signed_in_sid)
-            .collect();
-        self.store.write(|tx| {
-            tx.expire_browser_sessions_of_kind_but(BrowserSessionKind::SameDevice, &kept_sids, now)
-        })
+        run_started_at: DateTime<Utc>,
+    ) -> Self {
+        EndedAtRunStart {
+            run_started_at,
+            kept_sids: kept_sign_in_codes
+                .iter()
+                .filter_map(SameDeviceSignInCode::signed_in_sid)
+                .collect(),
+        }
+    }
+
+    /// None: as a run's start before any session was.
+    #[cfg(test)]
+    pub(crate) fn none() -> Self {
+        EndedAtRunStart {
+            run_started_at: DateTime::<Utc>::MIN_UTC,
+            kept_sids: HashSet::new(),
+        }
+    }
+
+    /// Whether `session` is one the run's start ended.
+    pub(crate) fn includes(&self, session: &BrowserSession) -> bool {
+        session.kind == BrowserSessionKind::SameDevice
+            && session.created_at < self.run_started_at
+            && !self.kept_sids.contains(&session.sid)
     }
 }
 
@@ -190,41 +223,31 @@ mod tests {
         assert!(!codes.take("code-1", now));
     }
 
-    /// Ending every session but the kept codes' expires each other live
-    /// same-device session, and leaves the kept one, paired sessions and an
-    /// already-expired one as they were.
+    /// A run's start ends each same-device session started before it, but
+    /// the kept codes' and paired ones, and none started since.
     #[test]
-    fn ending_every_session_keeps_the_kept_codes_and_paired_ones() {
-        let store = FakeGrantStore::default();
+    fn a_run_start_ends_earlier_same_device_sessions_but_the_kept_and_paired() {
         let codes = Arc::new(SameDeviceSignInCodes::new());
-        let now = Utc::now();
-        let same_device = stored_same_device_session(&store, now - Duration::hours(1));
-        let kept = stored_same_device_session(&store, now - Duration::hours(1));
-        let already_expired = stored_same_device_session(&store, now - Duration::hours(9));
+        let run_started_at = Utc::now();
+        let earlier = run_started_at - Duration::hours(1);
+        let same_device =
+            BrowserSession::new_same_device_session(vec![], Duration::hours(8), earlier);
+        let kept = BrowserSession::new_same_device_session(vec![], Duration::hours(8), earlier);
         let paired = BrowserSession::new_paired_session(
             "Firefox on Linux".to_owned(),
             vec![],
             Duration::hours(24),
-            now - Duration::hours(1),
+            earlier,
         );
-        store.tx().insert_browser_session(&paired).expect("insert");
-        let kept_code = signed_in_code(&codes, "open-view-code", &kept, now);
-        let ender = SameDeviceSessionEnder::new(store.clone());
+        let since =
+            BrowserSession::new_same_device_session(vec![], Duration::hours(8), run_started_at);
+        let kept_code = signed_in_code(&codes, "open-view-code", &kept, earlier);
 
-        assert_eq!(
-            ender.end_every_session_but(&[kept_code], now).expect("end"),
-            1
-        );
+        let ended = EndedAtRunStart::new(&[kept_code], run_started_at);
 
-        assert_eq!(
-            stored(&store, &same_device.sid),
-            BrowserSession {
-                expires_at: now,
-                ..same_device
-            }
-        );
-        assert_eq!(stored(&store, &kept.sid), kept);
-        assert_eq!(stored(&store, &already_expired.sid), already_expired);
-        assert_eq!(stored(&store, &paired.sid), paired);
+        assert!(ended.includes(&same_device));
+        assert!(!ended.includes(&kept));
+        assert!(!ended.includes(&paired));
+        assert!(!ended.includes(&since));
     }
 }
