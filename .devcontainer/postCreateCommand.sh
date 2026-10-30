@@ -49,9 +49,9 @@ fi
 # releases and its bundled vitest peer-warns against the aliased vite. These
 # pins must be re-synced on every bump; the full list of places a vite-plus
 # version is recorded is in docs/Dependencies/Bumping vite-plus How-To.md.
-pnpm install -g vite-plus@1.3.0
+pnpm install -g vite-plus@1.4.0
 pnpm install -g typescript@7.0.2
-pnpm install -g @tsdown/css@0.23.0
+pnpm install -g @tsdown/css@0.23.4
 vp install
 
 
