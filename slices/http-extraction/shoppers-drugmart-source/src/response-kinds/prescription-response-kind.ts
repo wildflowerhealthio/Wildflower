@@ -1,4 +1,4 @@
-import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types';
+import type { IdentifierAndReference } from '@wildflowerhealthio/fhir-r4/data-types'
 import { FhirString } from '@wildflowerhealthio/fhir-r4/data-types'
 import {
   MedicationDispense,
