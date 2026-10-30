@@ -42,9 +42,10 @@ struct ServerSignIns<C> {
     /// The views open, by name.
     open_views: BTreeSet<String>,
     /// The codes of the views opened since the server's views last all
-    /// closed, the closed ones' included, and those whose sessions couldn't
-    /// be ended then.
+    /// closed, the closed ones' included.
     sign_in_codes: Vec<C>,
+    /// The codes whose sessions couldn't be ended at an earlier last close.
+    pending_end: Vec<C>,
 }
 
 impl<C> Default for ServerSignIns<C> {
@@ -52,6 +53,7 @@ impl<C> Default for ServerSignIns<C> {
         Self {
             open_views: BTreeSet::new(),
             sign_in_codes: Vec::new(),
+            pending_end: Vec::new(),
         }
     }
 }
@@ -68,8 +70,9 @@ impl<C: Clone> LaunchViewSignIns<C> {
 
     /// The launch view `view` on the server `domain` closed, or failed to
     /// open. Once it was the server's last open view, returns every code the
-    /// server's views were opened with since they last all closed, for their
-    /// sessions to be ended now, and forgets them; otherwise nothing.
+    /// server's views were opened with since they last all closed, and those
+    /// whose sessions couldn't be ended before, for their sessions to be
+    /// ended now, and forgets them; otherwise nothing.
     #[must_use]
     pub fn view_closed(&self, domain: &str, view: &str) -> Vec<C> {
         let mut by_server = self.by_server.lock();
@@ -82,20 +85,25 @@ impl<C: Clone> LaunchViewSignIns<C> {
         }
         by_server
             .remove(domain)
-            .map(|server| server.sign_in_codes)
+            .map(|server| {
+                let mut sign_in_codes = server.pending_end;
+                sign_in_codes.extend(server.sign_in_codes);
+                sign_in_codes
+            })
             .unwrap_or_default()
     }
 
     /// The sessions `sign_in_codes`, which [`view_closed`](Self::view_closed)
-    /// returned for the server `domain`, couldn't be ended: keep the codes,
-    /// so they are returned again once the server's next open view closes,
-    /// or a run's start ends their sessions.
+    /// returned for the server `domain`, couldn't be ended: keep the codes
+    /// apart from the open views', so they are returned again once the
+    /// server's next open view closes, and a run's start doesn't keep their
+    /// sessions, but ends them.
     pub fn not_ended(&self, domain: &str, sign_in_codes: Vec<C>) {
         self.by_server
             .lock()
             .entry(domain.to_owned())
             .or_default()
-            .sign_in_codes
+            .pending_end
             .extend(sign_in_codes);
     }
 
@@ -103,9 +111,10 @@ impl<C: Clone> LaunchViewSignIns<C> {
     /// starts, while it ends every other same-device session: while one of
     /// its launch views is open, every code its views were opened with since
     /// they last all closed, the closed views' included, since any of their
-    /// sessions may be the cookie an open view holds. With none open, nothing,
-    /// and the server's codes are forgotten, since the start ends their
-    /// sessions.
+    /// sessions may be the cookie an open view holds, but not those whose
+    /// sessions couldn't be ended at an earlier last close. With none open,
+    /// nothing, and the server's codes are forgotten, since the start ends
+    /// their sessions.
     #[must_use]
     pub fn kept_at_run_start(&self, domain: &str) -> Vec<C> {
         let mut by_server = self.by_server.lock();
@@ -170,6 +179,18 @@ mod tests {
         assert_eq!(sign_ins.kept_at_run_start(DOMAIN), Vec::<&str>::new());
         sign_ins.view_opened(DOMAIN, "launch-3", "code-3");
         assert_eq!(sign_ins.view_closed(DOMAIN, "launch-3"), ["code-3"]);
+    }
+
+    /// Codes whose sessions couldn't be ended aren't kept by a run's start
+    /// while a later view is open: the start ends their sessions.
+    #[test]
+    fn a_run_start_keeps_no_code_not_ended() {
+        let sign_ins = LaunchViewSignIns::default();
+        sign_ins.view_opened(DOMAIN, "launch-1", "code-1");
+        let ended = sign_ins.view_closed(DOMAIN, "launch-1");
+        sign_ins.not_ended(DOMAIN, ended);
+        sign_ins.view_opened(DOMAIN, "launch-2", "code-2");
+        assert_eq!(sign_ins.kept_at_run_start(DOMAIN), ["code-2"]);
     }
 
     /// Codes whose sessions couldn't be ended come back with the server's

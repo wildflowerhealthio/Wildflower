@@ -563,7 +563,8 @@ changing how servers run or what the host notifies about them.
   a Custom Tab's session doesn't outlive the views in Chrome. Not sooner: a
   server's views share one cookie jar on iOS and Android, so a stacked consent
   view's sign-in replaces the cookie of the launch view under it. With no run
-  up, or a failed ending, the codes are kept for the next last close. Moving
+  up, or a failed ending, the codes are kept for the next last close, apart
+  from the open views', so a run's start ends their sessions too. Moving
   to the background and back doesn't end a session, nor does a run's restart
   (as iOS's return from a suspend brings): `ServerUnits::push` hands each run
   the codes of the views still open (`LaunchViewSignIns::kept_at_run_start`),

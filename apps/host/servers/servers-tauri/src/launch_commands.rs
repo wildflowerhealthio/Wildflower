@@ -1620,7 +1620,11 @@ mod tests {
         launch_launchable(&authorization_server, browser.clone(), &presence)
             .await
             .unwrap();
-        assert_eq!(kept_sign_ins(&presence), 2, "the first view's code is kept");
+        assert_eq!(
+            kept_sign_ins(&presence),
+            1,
+            "the first view's code is kept apart, for a run's start to end"
+        );
         assert!(authorization_server.is_signed_in(&first));
         browser.close_top();
         until_signed_out(&authorization_server, &first).await;
