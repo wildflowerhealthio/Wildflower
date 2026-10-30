@@ -23,7 +23,7 @@ wildflowerhealthio-rathole-settings = { path = "../../../../slices/rathole-setti
 # `launcher_url` and a self-hosted relay's `base_url`, stored as URLs in the file.
 url = { version = "2", features = ["serde"] }
 # Serialises read-modify-write cycles on `servers.json` within the process.
-parking_lot = "0.12"
+parking_lot = "0.13"
 # `RegistryError`'s and `EnrolmentError`'s `Display`/`source` wiring.
 thiserror = "2"
 # `RelayClient` is an `#[async_trait]`, so the base holds it as a trait object.

@@ -9,7 +9,7 @@ publish.workspace = true
 # instant, so the store stays clock-free.
 chrono = { workspace = true, features = ["serde"] }
 # Held across each read-modify-write of `recorder-bookmarks.json`.
-parking_lot = "0.12"
+parking_lot = "0.13"
 serde.workspace = true
 serde_json.workspace = true
 # `SaveError`'s and `BookmarkError`'s `Display`/`source` wiring — the message
