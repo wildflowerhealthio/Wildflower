@@ -7,7 +7,7 @@ The Owner signs a browser in by asking the base, the Wildflower app on the devic
 
 **A code is single-use, short-lived, and never stored in the clear.** Each is 256 random bits, redeemable once, for a minute. The outstanding codes live only in the server's memory and only as SHA-256 hashes: a restart drops them all, and reading the server's memory yields none.
 
-**The set follows each code past its redemption**, by the same hash: while the session it starts is being stored, and then which session it started, until that session expires. The base holds each code it minted as a `SameDeviceSignInCode`: the code with the set of the run that minted it, and nothing of the run's store, so it outlives that run. Through it the base **withdraws** the code once the view it was opened in closes: an unredeemed code is no longer redeemable, and a code withdrawn while its session is still being stored signs nobody in, the session expired as it lands. Through it the [same-device session ender](<../Capabilities/OAuth/Same Device Session Ender Explanation.md>) finds the session to end once the server's last launch view closes, and the next run's setup the session to keep while a view is still open. A code forgets its session only once the ending has landed, so a failed ending can be tried again.
+**The set follows each code past its redemption**, by the same hash: while the session it starts is being stored, for a minute at most, after which a sign-in that never finished is given up on, and then which session it started, until that session expires. The base holds each code it minted as a `SameDeviceSignInCode`: the code with the set of the run that minted it, and nothing of the run's store, so it outlives that run. Through it the base **withdraws** the code once the view it was opened in closes: an unredeemed code is no longer redeemable, and a code withdrawn while its session is still being stored signs nobody in, the session never landing. Through it the [same-device session ender](<../Capabilities/OAuth/Same Device Session Ender Explanation.md>) finds the session to end once the server's last launch view closes, and the next run's setup the session to keep while a view is still open. A code forgets its session only once the ending has landed, so a failed ending can be tried again.
 
 ## Where a sign-in may send the browser
 
@@ -35,7 +35,7 @@ A browser pairing's `next` is held tighter: a paired browser is only ever sent o
 
 Minting a code. The base's minter, {{#code-link apps/host/wildflower-server/authorization-server-rust/src/live_bindings/oauth.rs SameDeviceSignInCodeMinter}}, calls this with each code it generates.
 
-{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/same_device_sign_in_codes.rs SameDeviceSignInCodes::insert tests="tests::only_the_hash_is_kept tests::minting_drops_the_expired_codes tests::minting_forgets_the_expired_sessions"}}
+{{#item apps/host/wildflower-server/authorization-server-rust/src/domain/same_device_sign_in_codes.rs SameDeviceSignInCodes::insert tests="tests::only_the_hash_is_kept tests::minting_drops_the_expired_codes tests::minting_forgets_the_expired_sessions tests::minting_gives_up_on_the_sign_ins_that_never_finished"}}
 
 #### `take`
 

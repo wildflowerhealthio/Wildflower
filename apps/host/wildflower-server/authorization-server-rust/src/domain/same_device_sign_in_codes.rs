@@ -13,13 +13,13 @@
 //! matches.
 //!
 //! The set follows each code past its redemption: while the session it starts
-//! is being stored, and then, until that session expires, which session it
-//! started. The base holds each code it minted as a [`SameDeviceSignInCode`],
-//! through which it withdraws the code once the view it opened the code in
-//! closes, and through which the session ender finds the session to end, or
-//! the next run's setup the session to keep. A code withdrawn while its
-//! session is being stored signs nobody in: the session is expired as it
-//! lands.
+//! is being stored, until a sign-in that never finished is given up on, and
+//! then, until that session expires, which session it started. The base holds
+//! each code it minted as a [`SameDeviceSignInCode`], through which it
+//! withdraws the code once the view it opened the code in closes, and through
+//! which the session ender finds the session to end, or the next run's setup
+//! the session to keep. A code withdrawn while its session is being stored
+//! signs nobody in: the session never lands.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -51,10 +51,16 @@ enum CodeSignIn {
         expires_at: DateTime<Utc>,
     },
     /// Redeemed, its session being stored.
-    SigningIn,
+    SigningIn {
+        /// When the sign-in is given up on, as one that never finished.
+        expires_at: DateTime<Utc>,
+    },
     /// Redeemed, then withdrawn while its session was being stored: the
-    /// session is expired as it lands.
-    WithdrawnWhileSigningIn,
+    /// session never lands.
+    WithdrawnWhileSigningIn {
+        /// When the sign-in is given up on, as one that never finished.
+        expires_at: DateTime<Utc>,
+    },
     /// Signed a browser in.
     SignedIn {
         /// The session's `sid`.
@@ -73,15 +79,16 @@ impl SameDeviceSignInCodes {
     }
 
     /// Keep `code` redeemable until [`SAME_DEVICE_SIGN_IN_CODE_TTL`] past `now`. The
-    /// codes already expired at `now`, and the sessions already expired at
-    /// `now`, are dropped, so only live ones are kept.
+    /// codes already expired at `now`, the sign-ins given up on by `now`, and
+    /// the sessions already expired at `now`, are dropped, so only live ones
+    /// are kept.
     pub(crate) fn insert(&self, code: &str, now: DateTime<Utc>) {
         let mut sign_in_by_code_hash = self.sign_in_by_code_hash.lock();
         sign_in_by_code_hash.retain(|_, sign_in| match sign_in {
-            CodeSignIn::Outstanding { expires_at } | CodeSignIn::SignedIn { expires_at, .. } => {
-                *expires_at > now
-            }
-            CodeSignIn::SigningIn | CodeSignIn::WithdrawnWhileSigningIn => true,
+            CodeSignIn::Outstanding { expires_at }
+            | CodeSignIn::SigningIn { expires_at }
+            | CodeSignIn::WithdrawnWhileSigningIn { expires_at }
+            | CodeSignIn::SignedIn { expires_at, .. } => *expires_at > now,
         });
         sign_in_by_code_hash.insert(
             token_storage_hash(code),
@@ -94,17 +101,23 @@ impl SameDeviceSignInCodes {
     /// Redeem `presented`: whether it was outstanding, and unexpired at
     /// `now`. Redeemed, its session is being stored until
     /// [`session_stored`](Self::session_stored) or
-    /// [`session_not_stored`](Self::session_not_stored) says how that went;
-    /// an expired one is dropped. Either way it is no longer outstanding, so
-    /// a code is redeemed at most once and an expired one is spent by the
-    /// attempt. The presented code is hashed before the lookup, which
+    /// [`session_not_stored`](Self::session_not_stored) says how that went,
+    /// or, past [`SAME_DEVICE_SIGN_IN_CODE_TTL`] from `now`, the sign-in is
+    /// given up on as one that never finished; an expired one is dropped.
+    /// Either way it is no longer outstanding, so a code is redeemed at most
+    /// once and an expired one is spent by the attempt. The presented code is hashed before the lookup, which
     /// compares hashes, never the code itself.
     pub(crate) fn take(&self, presented: &str, now: DateTime<Utc>) -> bool {
         let mut sign_in_by_code_hash = self.sign_in_by_code_hash.lock();
         let code_hash = token_storage_hash(presented);
         match sign_in_by_code_hash.get(&code_hash) {
             Some(CodeSignIn::Outstanding { expires_at }) if *expires_at > now => {
-                sign_in_by_code_hash.insert(code_hash, CodeSignIn::SigningIn);
+                sign_in_by_code_hash.insert(
+                    code_hash,
+                    CodeSignIn::SigningIn {
+                        expires_at: now + SAME_DEVICE_SIGN_IN_CODE_TTL,
+                    },
+                );
                 true
             }
             Some(CodeSignIn::Outstanding { .. }) => {
@@ -117,12 +130,15 @@ impl SameDeviceSignInCodes {
 
     /// The session the redeemed `code` started has been stored: remember it,
     /// so the code finds its `sid`, and return `true`; or, when the code was
-    /// withdrawn meanwhile, forget the code and return `false`, for the
-    /// caller to expire the session at once.
+    /// withdrawn meanwhile, or its sign-in given up on, forget the code and
+    /// return `false`, for the caller to roll the session back.
     pub(crate) fn session_stored(&self, code: &str, session: &BrowserSession) -> bool {
         let mut sign_in_by_code_hash = self.sign_in_by_code_hash.lock();
         let code_hash = token_storage_hash(code);
-        if sign_in_by_code_hash.get(&code_hash) == Some(&CodeSignIn::WithdrawnWhileSigningIn) {
+        if !matches!(
+            sign_in_by_code_hash.get(&code_hash),
+            Some(CodeSignIn::SigningIn { .. })
+        ) {
             sign_in_by_code_hash.remove(&code_hash);
             return false;
         }
@@ -136,16 +152,18 @@ impl SameDeviceSignInCodes {
         true
     }
 
-    /// The session the redeemed `code` started wasn't stored: forget the
-    /// code, which is spent. Only the sign-in that [took](Self::take) `code`
-    /// says so; another presentation of it leaves its sign-in be. A code that is outstanding, as one whose
-    /// presentation was refused before it was redeemed, stays so.
+    /// The session the redeemed `code` started wasn't stored, its scope
+    /// rolled back even after [`session_stored`](Self::session_stored): forget
+    /// the code, which is spent. Only the sign-in that [took](Self::take)
+    /// `code` says so; another presentation of it leaves its sign-in be. A
+    /// code that is outstanding, as one whose presentation was refused before
+    /// it was redeemed, stays so.
     pub(crate) fn session_not_stored(&self, code: &str) {
         let mut sign_in_by_code_hash = self.sign_in_by_code_hash.lock();
         let code_hash = token_storage_hash(code);
-        if matches!(
+        if !matches!(
             sign_in_by_code_hash.get(&code_hash),
-            Some(CodeSignIn::SigningIn | CodeSignIn::WithdrawnWhileSigningIn)
+            Some(CodeSignIn::Outstanding { .. })
         ) {
             sign_in_by_code_hash.remove(&code_hash);
         }
@@ -162,10 +180,15 @@ impl SameDeviceSignInCodes {
             Some(CodeSignIn::Outstanding { .. }) => {
                 sign_in_by_code_hash.remove(&code_hash);
             }
-            Some(CodeSignIn::SigningIn) => {
-                sign_in_by_code_hash.insert(code_hash, CodeSignIn::WithdrawnWhileSigningIn);
+            Some(CodeSignIn::SigningIn { expires_at }) => {
+                let expires_at = *expires_at;
+                sign_in_by_code_hash.insert(
+                    code_hash,
+                    CodeSignIn::WithdrawnWhileSigningIn { expires_at },
+                );
             }
-            Some(CodeSignIn::WithdrawnWhileSigningIn | CodeSignIn::SignedIn { .. }) | None => {}
+            Some(CodeSignIn::WithdrawnWhileSigningIn { .. } | CodeSignIn::SignedIn { .. })
+            | None => {}
         }
     }
 
@@ -378,6 +401,30 @@ mod tests {
         let sign_in_by_code_hash = codes.sign_in_by_code_hash.lock();
         assert_eq!(sign_in_by_code_hash.len(), 1);
         assert!(sign_in_by_code_hash.contains_key(&token_storage_hash("fresh")));
+    }
+
+    /// Minting a code a full lifetime after a redemption gives up on a
+    /// sign-in that never finished, withdrawn or not: its entry is dropped,
+    /// and a session landing after that signs nobody in.
+    #[test]
+    fn minting_gives_up_on_the_sign_ins_that_never_finished() {
+        let codes = SameDeviceSignInCodes::new();
+        let redeemed_at = Utc::now();
+        let session =
+            BrowserSession::new_same_device_session(vec![], Duration::hours(8), redeemed_at);
+        for code in ["signing-in", "withdrawn"] {
+            codes.insert(code, redeemed_at);
+            assert!(codes.take(code, redeemed_at));
+        }
+        codes.withdraw("withdrawn");
+        codes.insert("fresh", redeemed_at + SAME_DEVICE_SIGN_IN_CODE_TTL);
+        {
+            let sign_in_by_code_hash = codes.sign_in_by_code_hash.lock();
+            assert_eq!(sign_in_by_code_hash.len(), 1);
+            assert!(sign_in_by_code_hash.contains_key(&token_storage_hash("fresh")));
+        }
+        assert!(!codes.session_stored("signing-in", &session));
+        assert_eq!(codes.signed_in_sid("signing-in"), None);
     }
 
     /// Minting a code a full lifetime after another drops the expired one, so

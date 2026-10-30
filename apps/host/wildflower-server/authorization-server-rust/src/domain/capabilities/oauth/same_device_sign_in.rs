@@ -15,7 +15,7 @@ use crate::domain::access_token::AccessTokenIssuanceError;
 use crate::domain::authority::{RedeemedSameDeviceSignInCode, TokenEntitlement};
 use crate::domain::authorization_server_error::AuthorizationServerError;
 use crate::domain::capabilities::writers::{AccessTokenMinter, BrowserSessionWriter};
-use crate::domain::grant_store::{BrowserSessionsTx as _, ClientsTx};
+use crate::domain::grant_store::ClientsTx;
 use crate::domain::same_device_sign_in_codes::SameDeviceSignInCodes;
 use crate::domain::sign_in_redirect::{SignInDestinations, SignInRedirect};
 use crate::domain::GrantStore;
@@ -105,15 +105,16 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
     /// token, both lasting [`SAME_DEVICE_SESSION_TTL`], to go on to `next`.
     /// A `next` that isn't allowed, or a disabled browser-session client, is
     /// refused before the code is touched, so the code stays redeemable. The
-    /// session is stored and its token signed in one write scope; once it
-    /// lands, the codes remember the session by the code, so the base can end
-    /// it once the view it opened closes. A code the base withdrew while the
-    /// session was being stored, as its view closed, signs nobody in: the
-    /// session is expired at once and the token never handed out. A failure
-    /// after this call takes the code spends it: the code leaves memory even
-    /// when the scope rolls back, so signing in again takes a new code. A
-    /// failure before then leaves the code as it stood, so a second
-    /// presentation of a code mid-sign-in can't clear its withdrawal.
+    /// session is stored and its token signed in one write scope, which
+    /// also has the codes remember the session by the code before it
+    /// commits, so the base can end it once the view it opened closes, and
+    /// no session lands that its code doesn't find. A code the base withdrew
+    /// before then, as its view closed, signs nobody in: the scope rolls
+    /// back, and the token is never handed out. A failure after this call
+    /// takes the code spends it: the code leaves memory even when the scope
+    /// rolls back, so signing in again takes a new code. A failure before
+    /// then leaves the code as it stood, so a second presentation of a code
+    /// mid-sign-in can't clear its withdrawal.
     ///
     /// # Errors
     ///
@@ -167,10 +168,18 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
                 minter.mint(TokenEntitlement::SameDeviceSignIn(&redeemed_sign_in_code))
             })
             .map_err(SameDeviceSignInError::Issuance)?;
-            Ok((session_token, redeemed_sign_in_code.session().clone()))
+            if !self
+                .codes
+                .session_stored(presented_code, redeemed_sign_in_code.session())
+            {
+                return Err(SameDeviceSignInError::Refused(
+                    SignInRefusal::CodeNotRedeemable,
+                ));
+            }
+            Ok(session_token)
         });
-        let (session_token, session) = match stored {
-            Ok(stored) => stored,
+        let session_token = match stored {
+            Ok(session_token) => session_token,
             Err(error) => {
                 if code_taken {
                     self.codes.session_not_stored(presented_code);
@@ -178,13 +187,6 @@ impl<S: GrantStore> SameDeviceSignIn<S> {
                 return Err(error);
             }
         };
-        if !self.codes.session_stored(presented_code, &session) {
-            self.store
-                .write(|tx| tx.expire_browser_session(&session.sid, now))?;
-            return Err(SameDeviceSignInError::Refused(
-                SignInRefusal::CodeNotRedeemable,
-            ));
-        }
         Ok(SignedIn {
             session_token,
             redirect,
@@ -274,7 +276,7 @@ mod tests {
 
     /// A store that withdraws `code-1` from `codes` at the end of each write
     /// scope, before it commits: the view the code was opened in closing
-    /// while its session is being stored.
+    /// as its session is about to land.
     struct WithdrawingStore {
         store: FakeGrantStore,
         codes: Arc<SameDeviceSignInCodes>,
@@ -354,14 +356,15 @@ mod tests {
             .is_some_and(|session| session.is_live(now)));
     }
 
-    /// A code withdrawn while its session is being stored signs nobody in:
-    /// the sign-in is refused, and the session it stored is expired.
+    /// A code withdrawn once its session is remembered by it, before the
+    /// scope commits, still finds the session, so no session lands that the
+    /// base can't end by its code.
     #[test]
-    fn a_code_withdrawn_while_signing_in_signs_nobody_in() {
+    fn a_code_withdrawn_before_its_scope_commits_finds_its_session() {
         let now = Utc::now();
         let (sign_in, _signing_key) = sign_in_with_a_code(now);
-        // Withdrawn as the browser-session client is read, inside the write
-        // scope, after the code is redeemed: the view closed mid-sign-in.
+        // Withdrawn at the end of the write scope, before it commits: the
+        // view closed mid-sign-in.
         let withdrawing = WithdrawingStore {
             store: sign_in.store.clone(),
             codes: Arc::clone(&sign_in.codes),
@@ -373,14 +376,21 @@ mod tests {
             Arc::clone(&sign_in.server_origin),
             sign_in.owner_grant.clone(),
         );
-        assert!(matches!(
-            sign_in.sign_in("code-1", "/", now),
-            Err(SameDeviceSignInError::Refused(
-                SignInRefusal::CodeNotRedeemable
-            ))
-        ));
-        let sessions = sign_in.store.store.tx().live_browser_sessions(now);
-        assert!(sessions.expect("read").is_empty(), "no session stands");
+        sign_in.sign_in("code-1", "/", now).expect("signed in");
+        let sessions = sign_in
+            .store
+            .store
+            .tx()
+            .live_browser_sessions(now)
+            .expect("read");
+        assert_eq!(
+            sessions
+                .iter()
+                .map(|session| Some(session.sid.clone()))
+                .collect::<Vec<_>>(),
+            [sign_in.codes.signed_in_sid("code-1")],
+            "the one session stands, found by its code"
+        );
     }
 
     /// A second presentation of a code whose first is still signing in is
