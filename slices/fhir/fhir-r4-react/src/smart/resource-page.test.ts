@@ -12,8 +12,8 @@ import {
   TestContext,
 } from 'effect'
 import * as fc from 'fast-check'
-import type Client from 'fhirclient/lib/Client'
-import HttpError from 'fhirclient/lib/HttpError'
+import type Client from 'fhirclient/Client'
+import HttpError from 'fhirclient/HttpError'
 import { describe, expect, test, vi } from 'vite-plus/test'
 
 import {

@@ -13,7 +13,7 @@ import { BASEPATH, pageAt, stubPageBrowserApis } from './importer-app.test-helpe
 const { readyMock } = vi.hoisted(() => ({
   readyMock: vi.fn<() => Promise<unknown>>(),
 }))
-vi.mock('fhirclient', () => ({
+vi.mock('fhirclient/browser', () => ({
   default: { oauth2: { ready: readyMock, authorize: vi.fn() } },
 }))
 

@@ -1,7 +1,7 @@
 import { numRunsFor } from '@wildflowerhealthio/kitchen-sink/test'
 import { Effect, Option } from 'effect'
 import * as fc from 'fast-check'
-import type Client from 'fhirclient/lib/Client'
+import type Client from 'fhirclient/Client'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { fetchPatient, fetchPatientPage } from './patients.ts'

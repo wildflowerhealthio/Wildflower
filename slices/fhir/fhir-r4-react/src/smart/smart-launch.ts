@@ -5,12 +5,12 @@ import {
   type ArrivingSmartLaunch,
 } from '@wildflowerhealthio/authorization-core/smart-client'
 import { Either } from 'effect'
-import type Client from 'fhirclient/lib/Client'
-import type { fhirclient } from 'fhirclient/lib/types'
+import type Client from 'fhirclient/Client'
+import type { fhirclient } from 'fhirclient/types'
 
-/** The slice of fhirclient's `module.exports` this module actually uses. */
+/** The slice of fhirclient's default export this module actually uses. */
 interface FhirClientModule {
-  readonly oauth2: fhirclient.SMART
+  readonly oauth2: Pick<fhirclient.SMART, 'authorize' | 'ready'>
 }
 
 /**
@@ -26,13 +26,10 @@ interface SmartLaunchConfig {
 }
 
 /**
- * fhirclient is a CommonJS (`export =`) package whose browser build is selected
- * via its `browser` field. Under this slice's `verbatimModuleSyntax` a static
- * default import of an `export =` module is disallowed, so we load it lazily
- * with a dynamic import (which also code-splits it out of the main chunk) and
- * read `.default` — the CommonJS `module.exports` object — off the namespace.
+ * fhirclient's browser build is its `fhirclient/browser` entry. It is loaded
+ * lazily with a dynamic import, which code-splits it out of the main chunk.
  */
-const loadFhir = async (): Promise<FhirClientModule> => (await import('fhirclient')).default
+const loadFhir = async (): Promise<FhirClientModule> => (await import('fhirclient/browser')).default
 
 /**
  * Begin the SMART App Launch. Sends the browser to the EHR's authorize

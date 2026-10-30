@@ -5,7 +5,7 @@ import {
   type Query,
   type QueryClient,
 } from '@tanstack/react-query'
-import type Client from 'fhirclient/lib/Client'
+import type Client from 'fhirclient/Client'
 import { useEffect } from 'react'
 
 import { launchErrorBodyFor, launchErrorRedirect } from './launch-error.ts'

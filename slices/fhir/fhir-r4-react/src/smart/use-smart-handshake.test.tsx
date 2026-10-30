@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
-import type Client from 'fhirclient/lib/Client'
+import type Client from 'fhirclient/Client'
 import { StrictMode, type JSX } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
