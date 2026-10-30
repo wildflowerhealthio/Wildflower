@@ -25,16 +25,16 @@ tracing = "0.1"
 # together — they depend on each other at `^` of the same version, and a
 # Dependabot group can bump only some of them. wildflowerhealthio-fhir-r4 embeds:
 #   helios-rest        — Axum router + handlers serving the FHIR REST surface
-helios-rest = { version = "=0.2.5", default-features = false, features = ["R4", "sqlite"] }
+helios-rest = { version = "=0.2.6", default-features = false, features = ["R4", "sqlite"] }
 #   helios-persistence — sqlite-backed storage backend
-helios-persistence = { version = "=0.2.5", default-features = false, features = ["R4", "sqlite"] }
+helios-persistence = { version = "=0.2.6", default-features = false, features = ["R4", "sqlite"] }
 #   helios-auth        — JWT/JWKS bearer auth + SMART v2 scope policy, and the
 #                        web UI's login sessions
 helios-auth = "=0.2.6"
 #   helios-fhir        — the FHIR version the web UI is mounted for
 helios-fhir = "=0.2.6"
 #   helios-ui          — the web UI, at `/ui`
-helios-ui = "=0.2.5"
+helios-ui = "=0.2.6"
 #   helios-audit       — audit sink trait (we use the null sink today)
 helios-audit = { version = "=0.2.6", default-features = false, features = ["R4"] }
 wildflowerhealthio-shared-structures = { path = "../../../../slices/shared-structures/shared-structures-rust" }
