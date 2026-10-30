@@ -4,12 +4,16 @@ import { type DecodedFile, StagedImport } from '@wildflowerhealthio/importer-fun
 import { Array, Data } from 'effect'
 import { type JSX, type ReactNode, useMemo, useState } from 'react'
 
-import { type FormatKind, type FormatSettings, type ResolvedBatch,
+import {
+  type FormatKind,
+  type FormatSettings,
+  type ResolvedBatch,
   claimedFormats,
   type ExcludedByDefaultFor,
   formatKinds,
   LINKED_GROUP,
-  planWrite } from '@wildflowerhealthio/importer-core'
+  planWrite,
+} from '@wildflowerhealthio/importer-core'
 
 import * as MentionLinkOptions from '../identity/mention-link-options.ts'
 import type { FormatWithComponents } from '../registry.ts'
