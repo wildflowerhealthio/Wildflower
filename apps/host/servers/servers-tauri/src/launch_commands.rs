@@ -884,29 +884,25 @@ fn launch_view_sign_in_closed(
 /// expired, so their cookies stop working, and the next launch signs the
 /// browser in again. When the ending fails, the codes are kept among
 /// `launch_presence`'s [`LaunchViewSignIns`], so the server's next last close
-/// ends them, or its next run's start does. The outcome is logged.
+/// ends them, or its next run's start does; when it panics, the codes are
+/// lost with it, and the next run's start ends their sessions. The outcome is
+/// logged.
 async fn end_owner_sessions_of_closed_views(
     launch_presence: impl LaunchPresence,
     sign_in_code_minter: ServerSignInCodeMinter,
     domain: String,
     sign_in_codes: Vec<SameDeviceSignInCode>,
 ) {
-    let ending = sign_in_codes.clone();
-    let ended =
-        tokio::task::spawn_blocking(move || sign_in_code_minter.end_signed_in_sessions(&ending))
-            .await
-            .map_err(|error| {
-                AuthorizationServerError::infrastructure(
-                    "ending closed launch views' Owner sessions",
-                    error,
-                )
-            })
-            .and_then(|ended| ended);
-    match ended {
-        Ok(ended) => {
+    let ending = tokio::task::spawn_blocking(move || {
+        let ended = sign_in_code_minter.end_signed_in_sessions(&sign_in_codes);
+        (ended, sign_in_codes)
+    })
+    .await;
+    match ending {
+        Ok((Ok(ended), _)) => {
             log::info!("[servers] ended {ended} Owner sessions of {domain}'s closed launch views");
         }
-        Err(error) => {
+        Ok((Err(error), sign_in_codes)) => {
             log::warn!(
                 "[servers] ending the Owner sessions of {domain}'s closed launch views failed: \
                  {error}"
@@ -914,6 +910,12 @@ async fn end_owner_sessions_of_closed_views(
             launch_presence
                 .launch_view_sign_ins()
                 .not_ended(&domain, sign_in_codes);
+        }
+        Err(error) => {
+            log::warn!(
+                "[servers] ending the Owner sessions of {domain}'s closed launch views panicked, \
+                 so its next start ends them: {error}"
+            );
         }
     }
 }
