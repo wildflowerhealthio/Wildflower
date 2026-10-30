@@ -10,9 +10,8 @@ import { Array, HashMap, Match, Option, pipe } from 'effect'
 
 import type * as LinkChoice from './link-choice.ts'
 import * as LinkTarget from './link-target.ts'
-import type * as Link from './link.ts'
+import * as Link from './link.ts'
 import type * as MentionLinkChoiceSet from './mention-link-choice-set.ts'
-import * as Referent from './referent.ts'
 
 /** The mention at `path` of the resource reviewed under `reviewKey`, and the link target chosen for it. */
 interface Type {
@@ -45,8 +44,7 @@ const linkTargetOfChoice = (
     ),
     Match.tag('LinkToDecodedReferent', ({ referentKey }) =>
       pipe(
-        Array.findFirst(links, ({ referent }) => Referent.key(referent) === referentKey),
-        Option.map(({ target }) => target),
+        Link.targetIfReferentKey(links, referentKey),
         Option.filter((target) => !LinkTarget.is('Unlinked')(target))
       )
     ),

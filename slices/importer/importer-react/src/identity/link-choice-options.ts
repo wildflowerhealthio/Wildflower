@@ -122,9 +122,8 @@ const storedCopyOf = (
   storedOfType: readonly StoredResource[]
 ): Option.Option<LinkableResource.WithId> =>
   Array.findFirst(storedOfType, ({ resource: stored }) =>
-    LinkableResource.sameRecord(stored, decoded)
+    Option.liftPredicate(stored, () => LinkableResource.sameRecord(stored, decoded))
   ).pipe(
-    Option.map(({ resource }) => resource),
     Option.orElse(() =>
       Option.map(
         Option.liftPredicate(current, LinkChoice.is('UpdateStoredResource')),

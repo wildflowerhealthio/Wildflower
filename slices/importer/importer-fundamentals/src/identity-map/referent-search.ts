@@ -109,8 +109,11 @@ const choiceAmong = (
   referent: Referent.Type,
   hits: readonly LinkableResource.WithId[]
 ): Option.Option<LinkChoice.Type> =>
-  Array.findFirst(hits, (hit) => isStoredCopyOf(referent, hit)).pipe(
-    Option.map((resource): LinkChoice.Type => LinkChoice.UpdateStoredResource({ resource })),
+  Array.findFirst(hits, (resource): Option.Option<LinkChoice.Type> =>
+    Option.liftPredicate(LinkChoice.UpdateStoredResource({ resource }), () =>
+      isStoredCopyOf(referent, resource)
+    )
+  ).pipe(
     Option.orElse(() =>
       Option.map(theOneOf(hits), (resource) => LinkChoice.LinkToStoredResource({ resource }))
     )

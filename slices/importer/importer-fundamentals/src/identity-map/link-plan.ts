@@ -159,10 +159,7 @@ const withMentionLinkChoiceSet = (plan: Type, byMention: MentionLinkChoiceSet.Ty
 
 /** The link target of the referent keyed `referentKey`, when it is a referent of the batch. */
 const linkTargetIfReferentKey = (plan: Type, referentKey: string): Option.Option<LinkTarget.Type> =>
-  pipe(
-    Array.findFirst(plan.links, ({ referent }) => Referent.key(referent) === referentKey),
-    Option.map(({ target }) => target)
-  )
+  Link.targetIfReferentKey(plan.links, referentKey)
 
 /** Every referent's link target, in discovery order. */
 const linkTargets = (plan: Type): readonly LinkTarget.Type[] =>

@@ -258,5 +258,14 @@ const fromChoices = (
   )
 }
 
-export { fromChoices }
+/** The link target of the referent keyed `referentKey` among `links`, when one of them is its link. */
+const targetIfReferentKey = (
+  links: readonly Type[],
+  referentKey: string
+): Option.Option<LinkTarget.Type> =>
+  Array.findFirst(links, ({ referent, target }) =>
+    Option.liftPredicate(target, () => Referent.key(referent) === referentKey)
+  )
+
+export { fromChoices, targetIfReferentKey }
 export type { Type }

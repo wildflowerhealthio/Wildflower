@@ -99,13 +99,12 @@ const ownerReferentAmong = (
   linkedResources: readonly LinkedResource[],
   resource: LinkableResource.WithId
 ): Option.Option<Referent.Type> =>
-  pipe(
-    Array.findFirst(linkedResources, ({ referent }) =>
-      Option.exists(Referent.maybeOwnResource(referent), (ownResource) =>
-        LinkableResource.sameRecord(ownResource, resource)
-      )
-    ),
-    Option.map(({ referent }) => referent)
+  Array.findFirst(linkedResources, ({ referent }) =>
+    pipe(
+      Referent.maybeOwnResource(referent),
+      Option.filter((ownResource) => LinkableResource.sameRecord(ownResource, resource)),
+      Option.as(referent)
+    )
   )
 
 /**
