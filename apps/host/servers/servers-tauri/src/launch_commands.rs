@@ -786,7 +786,8 @@ struct OwnerSignIn<'a> {
 /// `launch_presence` from before the open until the browser reports the view
 /// closed, or the open fails, and kept alive there once the browser reports
 /// that. Where the base hears closes, the view's code counts among the
-/// server's [`LaunchViewSignIns`] meanwhile, and is withdrawn at the close.
+/// server's [`LaunchViewSignIns`] meanwhile, and is withdrawn at the close or
+/// the failed open.
 async fn open_launch_view(
     launch_browser: &impl LaunchBrowser,
     launch_presence: impl LaunchPresence,
@@ -814,6 +815,7 @@ async fn open_launch_view(
         let view = view.clone();
         let closed = Arc::clone(&closed);
         let domain = domain.clone();
+        let sign_in_code = sign_in_code.clone();
         let runtime = runtime.clone();
         Box::new(move |event| match event {
             BrowserEvent::KeptAlive => launch_presence.view_kept_alive(&view),
@@ -822,16 +824,19 @@ async fn open_launch_view(
                 launch_presence.view_returned_to_foreground(&view);
             }
             BrowserEvent::Closed => {
-                launch_presence.view_closed(&view);
-                closed.notify_one();
+                // The sign-in first: the view's close can stop a `WhileOpen`
+                // run, through which the server's sessions are ended.
                 sign_in_code.withdraw();
                 launch_view_sign_in_closed(&launch_presence, &runtime, &domain, &view);
+                launch_presence.view_closed(&view);
+                closed.notify_one();
             }
         })
     };
     if let Err(error) = launch_browser.open(url, &view, mode, view_events).await {
-        launch_presence.view_closed(&view);
+        sign_in_code.withdraw();
         launch_view_sign_in_closed(&launch_presence, &runtime, &domain, &view);
+        launch_presence.view_closed(&view);
         return Err(error);
     }
     Ok(LaunchView { name: view, closed })
@@ -1719,6 +1724,40 @@ mod tests {
 
         assert_eq!(failed.map_err(|error| error.kind()), Err("openingBrowser"));
         assert!(presence.views().is_empty());
+    }
+
+    /// A view the browser can't open withdraws its sign-in code, so the code
+    /// signs nobody in, though another of the server's views is still open.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_view_the_browser_can_t_open_withdraws_its_sign_in_code() {
+        let authorization_server = test_authorization_server();
+        let browser = PhoneBrowser::new(Phone::Android);
+        let presence = OpenLaunchViews::running_over(&authorization_server);
+        launch_launchable(&authorization_server, browser, &presence)
+            .await
+            .unwrap();
+        let sign_in_code = authorization_server.same_device_sign_in_code_minter.mint();
+        let sign_in_url = wildflowerhealthio_servers::sign_in_url(
+            &Url::parse(&format!("https://{DOMAIN}")).unwrap(),
+            sign_in_code.as_str(),
+            "/",
+        );
+
+        let failed = open_launch_view(
+            &FailingBrowser,
+            presence.clone(),
+            sign_in_url.clone(),
+            OwnerSignIn {
+                domain: DOMAIN,
+                sign_in_code,
+            },
+            OpenMode::Stack,
+        )
+        .await;
+
+        assert!(failed.is_err());
+        assert_eq!(presence.views().len(), 1, "the launch's view is still open");
+        assert_eq!(authorization_server.try_sign_in(&sign_in_url).await, None);
     }
 
     #[tokio::test(flavor = "multi_thread")]

@@ -48,6 +48,15 @@ impl TestAuthorizationServer {
     /// Follow `sign_in_url`, a launch's `/oauth/sign-in`, as the launch's
     /// browser does, returning the browser session token its cookie holds.
     pub(crate) async fn sign_in(&self, sign_in_url: &Url) -> String {
+        self.try_sign_in(sign_in_url)
+            .await
+            .expect("the sign-in sets the browser session cookie")
+    }
+
+    /// Follow `sign_in_url` as [`sign_in`](Self::sign_in) does, returning
+    /// the browser session token its cookie holds, or `None` when the
+    /// sign-in is refused.
+    pub(crate) async fn try_sign_in(&self, sign_in_url: &Url) -> Option<String> {
         let signed_in = self
             .router
             .clone()
@@ -58,18 +67,22 @@ impl TestAuthorizationServer {
             )
             .await
             .unwrap();
-        assert_eq!(signed_in.status(), axum::http::StatusCode::SEE_OTHER);
+        if signed_in.status() != axum::http::StatusCode::SEE_OTHER {
+            return None;
+        }
         let set_cookie = signed_in
             .headers()
             .get(axum::http::header::SET_COOKIE)
-            .expect("the sign-in sets the browser session cookie")
+            .expect("a sign-in sets the browser session cookie")
             .to_str()
             .unwrap();
-        set_cookie
-            .strip_prefix(&format!("{BROWSER_SESSION_COOKIE}="))
-            .and_then(|rest| rest.split(';').next())
-            .expect("the browser session cookie")
-            .to_owned()
+        Some(
+            set_cookie
+                .strip_prefix(&format!("{BROWSER_SESSION_COOKIE}="))
+                .and_then(|rest| rest.split(';').next())
+                .expect("the browser session cookie")
+                .to_owned(),
+        )
     }
 
     /// Whether the browser session `session_token` holds stands: its cookie
